@@ -4,9 +4,9 @@
 //! in-memory account that signs IOU envelopes with a [`SigningBackend`].
 //! The mint rule is deterministic and pure over `(receipt, pricing_context)`:
 //!
-//! - The receipt's signature MUST verify against its embedded kernel
-//!   key. Otherwise [`CreditEvaluatorError::SignatureInvalid`] is
-//!   returned.
+//! - The receipt's signature, content-addressed id, and action hash
+//!   MUST verify against its embedded kernel key. Otherwise
+//!   [`CreditEvaluatorError::SignatureInvalid`] is returned.
 //! - Only semantically authorized receipts are eligible for minting. Deny,
 //!   Cancelled, Incomplete, trace, and advisory receipts return `Ok(None)`.
 //! - The price is read from the receipt's
@@ -25,7 +25,7 @@ use crate::crypto::{sha256_hex, sign_canonical_with_backend, SigningBackend};
 use crate::hook::{
     CreditEvaluatorError, CreditEvaluatorHook, IouEnvelope, IouEnvelopeBody, IOU_ENVELOPE_SCHEMA,
 };
-use crate::receipt::ChioReceipt;
+use crate::receipt::{chio_receipt_id, ChioReceipt};
 
 /// Deterministic IOU id derivation from the originating receipt id.
 ///
@@ -43,14 +43,35 @@ fn derive_iou_id(receipt_id: &str) -> String {
 /// envelope.
 pub struct LocalCreditAccount<B: SigningBackend> {
     backend: B,
+    trusted_kernel_keys: std::collections::BTreeSet<String>,
 }
 
 impl<B: SigningBackend> LocalCreditAccount<B> {
-    /// Construct an account around an existing signing backend. The
-    /// backend's public key is recorded as the issuer on every
-    /// IOU minted by this account.
+    /// Construct an account around an existing signing backend.
+    ///
+    /// This constructor has no trusted kernel signer set, so IOU minting
+    /// fails closed until [`Self::new_with_trusted_kernel_keys`] is used.
     pub fn new(backend: B) -> Self {
-        Self { backend }
+        Self {
+            backend,
+            trusted_kernel_keys: std::collections::BTreeSet::new(),
+        }
+    }
+
+    /// Construct an account with an explicit trusted kernel signer set.
+    /// When configured, IOU minting fails closed for receipts whose
+    /// embedded kernel key is outside the set.
+    pub fn new_with_trusted_kernel_keys<I>(backend: B, trusted_kernel_keys: I) -> Self
+    where
+        I: IntoIterator<Item = crate::crypto::PublicKey>,
+    {
+        Self {
+            backend,
+            trusted_kernel_keys: trusted_kernel_keys
+                .into_iter()
+                .map(|key| key.to_hex())
+                .collect(),
+        }
     }
 
     /// Borrow the underlying signing backend.
@@ -69,6 +90,30 @@ impl<B: SigningBackend> CreditEvaluatorHook for LocalCreditAccount<B> {
         if !verified {
             return Err(CreditEvaluatorError::SignatureInvalid {
                 receipt_id: receipt.id.clone(),
+            });
+        }
+        let expected_receipt_id = chio_receipt_id(&receipt.body())
+            .map_err(|err| CreditEvaluatorError::Canonical(err.to_string()))?;
+        if expected_receipt_id != receipt.id {
+            return Err(CreditEvaluatorError::SignatureInvalid {
+                receipt_id: receipt.id.clone(),
+            });
+        }
+        let parameter_hash_valid = receipt.action.verify_hash().map_err(|err| {
+            CreditEvaluatorError::Canonical(format!(
+                "receipt action hash verification raised: {err}"
+            ))
+        })?;
+        if !parameter_hash_valid {
+            return Err(CreditEvaluatorError::SignatureInvalid {
+                receipt_id: receipt.id.clone(),
+            });
+        }
+        let kernel_key = receipt.kernel_key.to_hex();
+        if !self.trusted_kernel_keys.contains(&kernel_key) {
+            return Err(CreditEvaluatorError::SignerUntrusted {
+                receipt_id: receipt.id.clone(),
+                kernel_key,
             });
         }
 
@@ -133,6 +178,15 @@ mod tests {
         decision: Decision,
         financial: Option<FinancialReceiptMetadata>,
     ) -> ChioReceipt {
+        make_signed_receipt_with_action(kp, decision, financial, make_action())
+    }
+
+    fn make_signed_receipt_with_action(
+        kp: &Keypair,
+        decision: Decision,
+        financial: Option<FinancialReceiptMetadata>,
+        action: ToolCallAction,
+    ) -> ChioReceipt {
         let metadata = financial.map(|fin| serde_json::json!({"financial": fin}));
         let body = ChioReceiptBody {
             id: "rcpt-iou-001".to_string(),
@@ -140,8 +194,14 @@ mod tests {
             capability_id: "cap-001".to_string(),
             tool_server: "srv-files".to_string(),
             tool_name: "file_read".to_string(),
-            action: make_action(),
-            decision,
+            action,
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
+            decision: Some(decision),
             content_hash: sha256_hex(br#"{"ok":true}"#),
             policy_hash: "abc123def456".to_string(),
             evidence: vec![GuardEvidence {
@@ -177,7 +237,10 @@ mod tests {
     #[test]
     fn allow_with_priced_metadata_mints_one_iou() {
         let kp = Keypair::generate();
-        let account = LocalCreditAccount::new(Ed25519Backend::new(kp.clone()));
+        let account = LocalCreditAccount::new_with_trusted_kernel_keys(
+            Ed25519Backend::new(kp.clone()),
+            [kp.public_key()],
+        );
         let receipt = make_signed_receipt(&kp, Decision::Allow, Some(priced_metadata()));
         let envelope = account
             .evaluate(&receipt)
@@ -193,7 +256,10 @@ mod tests {
     #[test]
     fn allow_without_financial_metadata_mints_zero_iou() {
         let kp = Keypair::generate();
-        let account = LocalCreditAccount::new(Ed25519Backend::new(kp.clone()));
+        let account = LocalCreditAccount::new_with_trusted_kernel_keys(
+            Ed25519Backend::new(kp.clone()),
+            [kp.public_key()],
+        );
         let receipt = make_signed_receipt(&kp, Decision::Allow, None);
         assert!(account.evaluate(&receipt).unwrap().is_none());
     }
@@ -201,7 +267,10 @@ mod tests {
     #[test]
     fn allow_with_zero_cost_metadata_mints_zero_iou() {
         let kp = Keypair::generate();
-        let account = LocalCreditAccount::new(Ed25519Backend::new(kp.clone()));
+        let account = LocalCreditAccount::new_with_trusted_kernel_keys(
+            Ed25519Backend::new(kp.clone()),
+            [kp.public_key()],
+        );
         let mut financial = priced_metadata();
         financial.cost_charged = 0;
         let receipt = make_signed_receipt(&kp, Decision::Allow, Some(financial));
@@ -211,7 +280,10 @@ mod tests {
     #[test]
     fn deny_decision_mints_zero_iou_even_with_price() {
         let kp = Keypair::generate();
-        let account = LocalCreditAccount::new(Ed25519Backend::new(kp.clone()));
+        let account = LocalCreditAccount::new_with_trusted_kernel_keys(
+            Ed25519Backend::new(kp.clone()),
+            [kp.public_key()],
+        );
         let receipt = make_signed_receipt(
             &kp,
             Decision::Deny {
@@ -226,7 +298,10 @@ mod tests {
     #[test]
     fn tampered_signature_returns_signature_invalid() {
         let kp = Keypair::generate();
-        let account = LocalCreditAccount::new(Ed25519Backend::new(kp.clone()));
+        let account = LocalCreditAccount::new_with_trusted_kernel_keys(
+            Ed25519Backend::new(kp.clone()),
+            [kp.public_key()],
+        );
         let mut receipt = make_signed_receipt(&kp, Decision::Allow, Some(priced_metadata()));
         // Mutate a signed field to invalidate the signature.
         receipt.tool_name = "file_write".to_string();
@@ -239,9 +314,54 @@ mod tests {
     }
 
     #[test]
+    fn mismatched_action_hash_returns_signature_invalid() {
+        let kp = Keypair::generate();
+        let account = LocalCreditAccount::new_with_trusted_kernel_keys(
+            Ed25519Backend::new(kp.clone()),
+            [kp.public_key()],
+        );
+        let mut action = make_action();
+        action.parameters = serde_json::json!({"path": "/tmp/changed"});
+        let receipt =
+            make_signed_receipt_with_action(&kp, Decision::Allow, Some(priced_metadata()), action);
+
+        match account.evaluate(&receipt) {
+            Err(CreditEvaluatorError::SignatureInvalid { receipt_id }) => {
+                assert_eq!(receipt_id, receipt.id);
+            }
+            other => panic!("expected SignatureInvalid, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn untrusted_kernel_key_returns_signer_untrusted() {
+        let kp = Keypair::generate();
+        let trusted = Keypair::generate();
+        let account = LocalCreditAccount::new_with_trusted_kernel_keys(
+            Ed25519Backend::new(kp.clone()),
+            [trusted.public_key()],
+        );
+        let receipt = make_signed_receipt(&kp, Decision::Allow, Some(priced_metadata()));
+
+        match account.evaluate(&receipt) {
+            Err(CreditEvaluatorError::SignerUntrusted {
+                receipt_id,
+                kernel_key,
+            }) => {
+                assert_eq!(receipt_id, receipt.id);
+                assert_eq!(kernel_key, kp.public_key().to_hex());
+            }
+            other => panic!("expected SignerUntrusted, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn iou_id_is_deterministic_across_re_evaluation() {
         let kp = Keypair::generate();
-        let account = LocalCreditAccount::new(Ed25519Backend::new(kp.clone()));
+        let account = LocalCreditAccount::new_with_trusted_kernel_keys(
+            Ed25519Backend::new(kp.clone()),
+            [kp.public_key()],
+        );
         let receipt = make_signed_receipt(&kp, Decision::Allow, Some(priced_metadata()));
         let first = account.evaluate(&receipt).unwrap().unwrap();
         let second = account.evaluate(&receipt).unwrap().unwrap();

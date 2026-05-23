@@ -1,6 +1,6 @@
 # 04 - Policy Engine Collaborators: OPA, Cedar, OpenFGA, Tetragon
 
-> **Erratum (wave 3):** Per the wave-3 policy/guards review, [`ChioReceiptBody.policy_hash`](../../../crates/chio-core-types/src/receipt.rs#L159) is a hex `String`, not `[u8; 32]`. The "fold `policy_digest: [u8; 32]` into `policy_hash`" wording below needs an explicit hex-encoding step. Canonical form across docs 04, 10, 15: **hex `String`** (RFC 8785 canonical JSON friendly). See [reviews/03-policy-guards-review.md](reviews/03-policy-guards-review.md).
+> **Erratum (wave 3 + v1-only collapse):** [`ChioReceiptBody.policy_hash`](../../../crates/chio-core-types/src/receipt.rs#L159) is the current signed receipt field and is a hex or operator-pinned `String`, not `[u8; 32]`. The `policy_digest` wording below is an internal per-engine digest sketch, not a current core receipt field. See [reviews/03-policy-guards-review.md](reviews/03-policy-guards-review.md).
 
 ## TL;DR
 
@@ -158,12 +158,9 @@ bundle digests of all OPA-backed guards into `policy_hash` so a verifier can
 replay.
 
 **Failure semantics.** Sidecar unreachable -> `ExternalGuardError::Transient`
--> circuit breaker opens after the configured failure threshold ->
-`CircuitOpenVerdict::Deny` (fail-closed default at
-`crates/chio-guards/src/external/mod.rs:136`). Embedded-engine panic
-handling is a requirement for the provider wrapper, not a property the
-current adapter gives for free; any unwind or worker crash must be mapped to
-`ExternalGuardError` and therefore to Deny.
+-> circuit breaker opens after the configured failure threshold -> `CircuitOpenVerdict::Deny` (fail-closed default at
+`crates/chio-guards/src/external/mod.rs:136`). Embedded `regorus` panics are
+caught by the adapter and become Deny.
 
 ---
 
@@ -375,8 +372,7 @@ Default fail-closed already applies because `ExternalGuard` is the substrate:
   -> circuit opens after threshold -> `CircuitOpenVerdict::Deny` (default at
   `crates/chio-guards/src/external/mod.rs:136`).
 - Engine returns malformed response ->
-  `ExternalGuardError::Permanent` -> `Verdict::Deny`; the current
-  `AsyncGuardAdapter` records the failure before returning Deny
+  `ExternalGuardError::Permanent` -> `Verdict::Deny`, breaker untouched
   (`crates/chio-guards/src/external/mod.rs:381-398`).
 - Engine rate-limited by Chio's own `TokenBucket` -> `RateLimitedVerdict::Deny`
   (default at `crates/chio-guards/src/external/mod.rs:155`).

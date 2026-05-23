@@ -16,8 +16,7 @@ event distinct from the audio pipeline, which is the shape Chio already mediates
 Recommended ordering: ship a **LiveKit Python middleware** at MVP (OSS, native MCP,
 biggest 2026 momentum), then a Pipecat `FrameProcessor`, then a paired Vapi+Retell
 HTTP shim. Ed25519 signing (~25 us) and hybrid Ed25519+ML-DSA-65 (~150-225 us) both fit
-the budget; the limiter is durability, so **sign synchronously, WAL-fsync before
-ack, then drain asynchronously**.
+the budget; the limiter is durability, so **sign synchronously, write asynchronously**.
 New: a `human_principal` field on `CallerIdentity` plus voice-specific receipt fields
 (`session_id`, `participant_id`, `audio_timestamp_estimate`, `platform`).
 
@@ -98,10 +97,11 @@ STT and TTS pipelines, WebRTC signalling, session lifecycle.
 
 Chio is not a session manager. The verdict path is a thin synchronous slice between
 "LLM decided to call a tool" and "the tool actually runs." This is the same shape
-already enforced for OpenAI Responses and Anthropic tool use via
-`chio-tool-call-fabric` and the provider adapters
-(`crates/chio-openai`, `crates/chio-anthropic-tools-adapter`); the voice bridge work
-is about getting the platform-native tool-call event *into* that fabric.
+already enforced for Anthropic tool use via `chio-tool-call-fabric` and the
+provider adapter (`crates/chio-anthropic-tools-adapter`). OpenAI function-tool
+adapter work remains deferred until v1 receipt/read-boundary gates land. The
+voice bridge work is about getting the platform-native tool-call event *into*
+that fabric.
 
 ## 3. Latency budget
 

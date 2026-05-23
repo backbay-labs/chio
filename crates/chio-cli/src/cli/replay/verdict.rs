@@ -49,12 +49,13 @@ pub struct VerdictOutcome {
 /// Matches the `#[serde(tag = "verdict", rename_all = "snake_case")]`
 /// representation on `chio_core::receipt::Decision` so the labels the
 /// comparator exposes are byte-identical to the receipt wire format.
-fn decision_label(decision: &chio_core::receipt::Decision) -> &'static str {
+fn decision_label(decision: Option<&chio_core::receipt::Decision>) -> &'static str {
     match decision {
-        chio_core::receipt::Decision::Allow => "allow",
-        chio_core::receipt::Decision::Deny { .. } => "deny",
-        chio_core::receipt::Decision::Cancelled { .. } => "cancelled",
-        chio_core::receipt::Decision::Incomplete { .. } => "incomplete",
+        Some(chio_core::receipt::Decision::Allow) => "allow",
+        Some(chio_core::receipt::Decision::Deny { .. }) => "deny",
+        Some(chio_core::receipt::Decision::Cancelled { .. }) => "cancelled",
+        Some(chio_core::receipt::Decision::Incomplete { .. }) => "incomplete",
+        None => "none",
     }
 }
 
@@ -105,8 +106,8 @@ pub fn rederive_verdict(
             receipt_id: receipt.id.clone(),
         });
     }
-    let stored = decision_label(&receipt.decision);
-    if let chio_core::receipt::Decision::Deny { guard, .. } = &receipt.decision {
+    let stored = decision_label(receipt.decision.as_ref());
+    if let Some(chio_core::receipt::Decision::Deny { guard, .. }) = &receipt.decision {
         if guard == REPLAY_FIXTURE_DRIFT_GUARD_SENTINEL {
             return compare_verdicts(&receipt.id, stored, "allow");
         }
@@ -133,7 +134,13 @@ mod replay_verdict_tests {
             tool_server: "fs".to_string(),
             tool_name: "read_file".to_string(),
             action: ToolCallAction::from_parameters(json!({})).expect("hash test parameters"),
-            decision,
+            decision: Some(decision),
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
             content_hash: "0".repeat(64),
             policy_hash: "0".repeat(64),
             evidence: Vec::new(),
@@ -200,11 +207,9 @@ mod replay_verdict_tests {
     }
 
     #[test]
-    fn rederive_rejects_receipt_with_empty_id() {
-        // A receipt parseable as JSON but missing the `id` field
-        // collapses into the MissingDecision shape, which the dispatch
-        // layer maps separately from drift.
-        let receipt = signed_receipt_with("", Decision::Allow);
+    fn rederive_rejects_mutated_receipt_with_empty_id() {
+        let mut receipt = signed_receipt_with("rcpt-empty-id", Decision::Allow);
+        receipt.id.clear();
         let err = rederive_verdict(&receipt).unwrap_err();
         match err {
             VerdictError::MissingDecision { receipt_id } => {

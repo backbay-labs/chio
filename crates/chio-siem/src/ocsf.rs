@@ -23,7 +23,7 @@
 //! | `capability_id`                 | `observables[*]`, `unmapped.chio.capability_id` |
 //! | `evidence[]`                    | `enrichments[*]` (one per guard)    |
 //! | `trust_level`                   | `enrichments[0].data.trust_level` and top-level `unmapped.chio.trust_level` |
-//! | `metadata.tenant_id` (if any)   | `unmapped.chio.tenant_id`            |
+//! | `tenant_id` (if any)            | `unmapped.chio.tenant_id`            |
 //! | full canonical JSON             | `raw_data`                          |
 //!
 //! ## Fail-closed behaviour
@@ -32,9 +32,11 @@
 //! that still carries `class_uid = 3002` so downstream consumers can reason
 //! about the failure. Mapping never panics.
 
+use chio_core::chio_receipt_id;
 use chio_core::receipt::{ChioReceipt, Decision, GuardEvidence, ReceiptSemanticFields, TrustLevel};
 use serde_json::{json, Map, Value};
 
+use crate::event::SiemEvent;
 use crate::redaction::redact_for_operator_log;
 
 /// OCSF schema version targeted by this mapper.
@@ -68,9 +70,31 @@ pub const OCSF_PRODUCT_VENDOR: &str = "Backbay Industries";
 #[must_use]
 pub fn receipt_to_ocsf(receipt: &ChioReceipt) -> Value {
     let semantics = receipt.semantic_fields();
-    let (activity_id, activity_name) = activity_for(receipt, &semantics);
-    let (status_id, status_name) = status_for(receipt, &semantics);
-    let (severity_id, severity_name) = severity_for(receipt, &semantics);
+    let authority = OcsfAuthority::from_receipt(receipt, &semantics);
+    receipt_to_ocsf_with_authority(receipt, &semantics, authority)
+}
+
+/// Convert an already-authorized [`SiemEvent`] into OCSF.
+///
+/// This preserves signer trust and verification state from the SIEM manager
+/// instead of recomputing authorization from the embedded receipt alone.
+#[must_use]
+pub fn siem_event_to_ocsf(event: &SiemEvent) -> Value {
+    let receipt = &event.receipt;
+    let semantics = receipt.semantic_fields();
+    let authority = OcsfAuthority::from_event(event);
+    receipt_to_ocsf_with_authority(receipt, &semantics, authority)
+}
+
+fn receipt_to_ocsf_with_authority(
+    receipt: &ChioReceipt,
+    semantics: &ReceiptSemanticFields,
+    authority: OcsfAuthority,
+) -> Value {
+    let authorized = authority.authorized;
+    let (activity_id, activity_name) = activity_for(receipt, semantics, authorized);
+    let (status_id, status_name) = status_for(receipt, semantics, authorized);
+    let (severity_id, severity_name) = severity_for(receipt, semantics, authorized);
     let type_uid = OCSF_CLASS_UID * 100 + activity_id;
 
     let mut event = Map::new();
@@ -94,7 +118,7 @@ pub fn receipt_to_ocsf(receipt: &ChioReceipt) -> Value {
     let time_ms = (receipt.timestamp as u128).saturating_mul(1_000);
     event.insert("time".into(), json!(time_ms as u64));
 
-    if let Decision::Deny { reason, .. } = &receipt.decision {
+    if let Some(Decision::Deny { reason, .. }) = &receipt.decision {
         event.insert("status_detail".into(), json!(reason));
     }
 
@@ -141,7 +165,7 @@ pub fn receipt_to_ocsf(receipt: &ChioReceipt) -> Value {
                     "policy": {
                         "uid": receipt.policy_hash,
                     },
-                    "decision": semantics.result_label(&receipt.decision),
+                    "decision": result_label_for_export(receipt, semantics, authorized),
                 }
             ],
         }),
@@ -156,8 +180,8 @@ pub fn receipt_to_ocsf(receipt: &ChioReceipt) -> Value {
     );
 
     event.insert("observables".into(), build_observables(receipt));
-    event.insert("enrichments".into(), build_enrichments(receipt));
-    event.insert("unmapped".into(), build_unmapped(receipt));
+    event.insert("enrichments".into(), build_enrichments(receipt, authorized));
+    event.insert("unmapped".into(), build_unmapped(receipt, authority));
 
     match serde_json::to_string(receipt) {
         Ok(raw) => {
@@ -182,8 +206,72 @@ pub fn receipt_to_ocsf(receipt: &ChioReceipt) -> Value {
     Value::Object(event)
 }
 
-fn activity_for(receipt: &ChioReceipt, semantics: &ReceiptSemanticFields) -> (u32, &'static str) {
-    if matches!(&receipt.decision, Decision::Allow) && !semantics.is_authorized(&receipt.decision) {
+#[derive(Clone, Copy)]
+struct OcsfAuthority {
+    authoritative: bool,
+    signature_valid: bool,
+    receipt_id_valid: bool,
+    parameter_hash_valid: bool,
+    signer_trusted: bool,
+    authorized: bool,
+}
+
+impl OcsfAuthority {
+    fn from_receipt(receipt: &ChioReceipt, semantics: &ReceiptSemanticFields) -> Self {
+        let receipt_id_valid = chio_receipt_id(&receipt.body())
+            .map(|id| id == receipt.id)
+            .unwrap_or(false);
+        let signature_valid = receipt.verify_signature().unwrap_or(false);
+        let parameter_hash_valid = receipt.action.verify_hash().unwrap_or(false);
+        let authoritative = receipt_id_valid && signature_valid && parameter_hash_valid;
+        let signer_trusted = false;
+        let authorized =
+            authoritative && signer_trusted && semantics.is_authorized(receipt.decision.as_ref());
+
+        Self {
+            authoritative,
+            signature_valid,
+            receipt_id_valid,
+            parameter_hash_valid,
+            signer_trusted,
+            authorized,
+        }
+    }
+
+    fn from_event(event: &SiemEvent) -> Self {
+        Self {
+            authoritative: event.authoritative,
+            signature_valid: event.signature_valid,
+            receipt_id_valid: event.receipt_id_valid,
+            parameter_hash_valid: event.parameter_hash_valid,
+            signer_trusted: event.signer_trusted,
+            authorized: event.authorized,
+        }
+    }
+}
+
+fn result_label_for_export(
+    receipt: &ChioReceipt,
+    semantics: &ReceiptSemanticFields,
+    authorized: bool,
+) -> &'static str {
+    if authorized {
+        return "Authorized";
+    }
+    if matches!(&receipt.decision, Some(Decision::Allow))
+        && semantics.is_authorized(receipt.decision.as_ref())
+    {
+        return "Unverified";
+    }
+    semantics.result_label(receipt.decision.as_ref())
+}
+
+fn activity_for(
+    receipt: &ChioReceipt,
+    _semantics: &ReceiptSemanticFields,
+    authorized: bool,
+) -> (u32, &'static str) {
+    if matches!(&receipt.decision, Some(Decision::Allow)) && !authorized {
         return (99, "Other");
     }
     match &receipt.decision {
@@ -193,38 +281,49 @@ fn activity_for(receipt: &ChioReceipt, semantics: &ReceiptSemanticFields) -> (u3
         // represents with activity Grant + status Failure (not Revoke, which
         // is a prior grant being rescinded). Cancelled and Incomplete are
         // neither Grant nor Revoke; they surface as Other.
-        Decision::Allow => (1, "Grant"),
-        Decision::Deny { .. } => (1, "Grant"),
-        Decision::Cancelled { .. } => (99, "Other"),
-        Decision::Incomplete { .. } => (99, "Other"),
+        Some(Decision::Allow) => (1, "Grant"),
+        Some(Decision::Deny { .. }) => (1, "Grant"),
+        Some(Decision::Cancelled { .. }) => (99, "Other"),
+        Some(Decision::Incomplete { .. }) => (99, "Other"),
+        None => (99, "Other"),
     }
 }
 
-fn status_for(receipt: &ChioReceipt, semantics: &ReceiptSemanticFields) -> (u32, &'static str) {
-    if matches!(&receipt.decision, Decision::Allow) && !semantics.is_authorized(&receipt.decision) {
+fn status_for(
+    receipt: &ChioReceipt,
+    _semantics: &ReceiptSemanticFields,
+    authorized: bool,
+) -> (u32, &'static str) {
+    if matches!(&receipt.decision, Some(Decision::Allow)) && !authorized {
         return (99, "Other");
     }
     match &receipt.decision {
         // OCSF status_id enum: 0 Unknown, 1 Success, 2 Failure, 99 Other.
-        Decision::Allow => (1, "Success"),
-        Decision::Deny { .. } => (2, "Failure"),
-        Decision::Cancelled { .. } => (2, "Failure"),
-        Decision::Incomplete { .. } => (99, "Other"),
+        Some(Decision::Allow) => (1, "Success"),
+        Some(Decision::Deny { .. }) => (2, "Failure"),
+        Some(Decision::Cancelled { .. }) => (2, "Failure"),
+        Some(Decision::Incomplete { .. }) => (99, "Other"),
+        None => (99, "Other"),
     }
 }
 
-fn severity_for(receipt: &ChioReceipt, semantics: &ReceiptSemanticFields) -> (u32, &'static str) {
-    if matches!(&receipt.decision, Decision::Allow) && !semantics.is_authorized(&receipt.decision) {
+fn severity_for(
+    receipt: &ChioReceipt,
+    _semantics: &ReceiptSemanticFields,
+    authorized: bool,
+) -> (u32, &'static str) {
+    if matches!(&receipt.decision, Some(Decision::Allow)) && !authorized {
         return (1, "Informational");
     }
     match &receipt.decision {
         // OCSF severity_id enum:
         //   0 Unknown, 1 Informational, 2 Low, 3 Medium, 4 High,
         //   5 Critical, 6 Fatal, 99 Other.
-        Decision::Allow => (1, "Informational"),
-        Decision::Deny { .. } => (4, "High"),
-        Decision::Cancelled { .. } => (2, "Low"),
-        Decision::Incomplete { .. } => (3, "Medium"),
+        Some(Decision::Allow) => (1, "Informational"),
+        Some(Decision::Deny { .. }) => (4, "High"),
+        Some(Decision::Cancelled { .. }) => (2, "Low"),
+        Some(Decision::Incomplete { .. }) => (3, "Medium"),
+        None => (1, "Informational"),
     }
 }
 
@@ -273,7 +372,7 @@ fn build_observables(receipt: &ChioReceipt) -> Value {
         }),
     ];
 
-    if let Decision::Deny { guard, .. } = &receipt.decision {
+    if let Some(Decision::Deny { guard, .. }) = &receipt.decision {
         observables.push(json!({
             "name": "chio.guard",
             "type": "Other",
@@ -285,7 +384,7 @@ fn build_observables(receipt: &ChioReceipt) -> Value {
     Value::Array(observables)
 }
 
-fn build_enrichments(receipt: &ChioReceipt) -> Value {
+fn build_enrichments(receipt: &ChioReceipt, authorized: bool) -> Value {
     let mut enrichments = Vec::new();
     let semantics = receipt.semantic_fields();
 
@@ -305,7 +404,7 @@ fn build_enrichments(receipt: &ChioReceipt) -> Value {
         "data": {
             "receipt_kind": semantics.receipt_kind.as_str(),
             "boundary_class": semantics.boundary_class.as_str(),
-            "result": semantics.result_label(&receipt.decision),
+            "result": result_label_for_export(receipt, &semantics, authorized),
         },
     }));
 
@@ -313,15 +412,13 @@ fn build_enrichments(receipt: &ChioReceipt) -> Value {
         enrichments.push(guard_evidence_enrichment(index, evidence));
     }
 
-    if let Some(meta) = &receipt.metadata {
-        if let Some(tenant) = meta.get("tenant_id").and_then(|v| v.as_str()) {
-            enrichments.push(json!({
-                "name": "chio.tenant_id",
-                "type": "string",
-                "value": tenant,
-                "data": { "tenant_id": tenant },
-            }));
-        }
+    if let Some(tenant) = receipt.tenant_id.as_deref() {
+        enrichments.push(json!({
+            "name": "chio.tenant_id",
+            "type": "string",
+            "value": tenant,
+            "data": { "tenant_id": tenant },
+        }));
     }
 
     Value::Array(enrichments)
@@ -342,7 +439,7 @@ fn guard_evidence_enrichment(index: usize, evidence: &GuardEvidence) -> Value {
     })
 }
 
-fn build_unmapped(receipt: &ChioReceipt) -> Value {
+fn build_unmapped(receipt: &ChioReceipt, authority: OcsfAuthority) -> Value {
     // The OCSF `unmapped` attribute holds a key/value object for fields that
     // are meaningful to the producer but are not represented in the class.
     let semantics = receipt.semantic_fields();
@@ -371,38 +468,55 @@ fn build_unmapped(receipt: &ChioReceipt) -> Value {
     );
     chio_map.insert(
         "result".into(),
-        json!(semantics.result_label(&receipt.decision)),
+        json!(result_label_for_export(
+            receipt,
+            &semantics,
+            authority.authorized
+        )),
     );
+    chio_map.insert("authorized".into(), json!(authority.authorized));
+    chio_map.insert("authoritative".into(), json!(authority.authoritative));
+    chio_map.insert("signature_valid".into(), json!(authority.signature_valid));
+    chio_map.insert("receipt_id_valid".into(), json!(authority.receipt_id_valid));
+    chio_map.insert(
+        "parameter_hash_valid".into(),
+        json!(authority.parameter_hash_valid),
+    );
+    chio_map.insert("signer_trusted".into(), json!(authority.signer_trusted));
 
     match &receipt.decision {
-        Decision::Allow if semantics.is_authorized(&receipt.decision) => {
+        Some(Decision::Allow) if authority.authorized => {
             chio_map.insert("decision.verdict".into(), json!("allow"));
         }
-        Decision::Allow => {
+        Some(Decision::Allow) => {
             chio_map.insert(
                 "decision.verdict".into(),
                 json!(semantics.receipt_kind.as_str()),
             );
         }
-        Decision::Deny { reason, guard } => {
+        Some(Decision::Deny { reason, guard }) => {
             chio_map.insert("decision.verdict".into(), json!("deny"));
             chio_map.insert("decision.reason".into(), json!(reason));
             chio_map.insert("decision.guard".into(), json!(guard));
         }
-        Decision::Cancelled { reason } => {
+        Some(Decision::Cancelled { reason }) => {
             chio_map.insert("decision.verdict".into(), json!("cancelled"));
             chio_map.insert("decision.reason".into(), json!(reason));
         }
-        Decision::Incomplete { reason } => {
+        Some(Decision::Incomplete { reason }) => {
             chio_map.insert("decision.verdict".into(), json!("incomplete"));
             chio_map.insert("decision.reason".into(), json!(reason));
         }
+        None => {
+            chio_map.insert(
+                "decision.verdict".into(),
+                json!(semantics.receipt_kind.as_str()),
+            );
+        }
     }
 
-    if let Some(meta) = &receipt.metadata {
-        if let Some(tenant) = meta.get("tenant_id").and_then(|v| v.as_str()) {
-            chio_map.insert("tenant_id".into(), json!(tenant));
-        }
+    if let Some(tenant) = receipt.tenant_id.as_deref() {
+        chio_map.insert("tenant_id".into(), json!(tenant));
     }
 
     let mut root = Map::new();
@@ -439,6 +553,12 @@ mod tests {
             Ok(action) => action,
             Err(error) => panic!("hash receipt parameters: {error}"),
         };
+        let semantics = semantics.unwrap_or_else(ReceiptSemanticFields::mediated_prevent);
+        let decision = if semantics.receipt_kind == chio_core::ReceiptKind::MediatedDecision {
+            Some(decision)
+        } else {
+            None
+        };
         let body = ChioReceiptBody {
             id: id.to_string(),
             timestamp: 1_712_345_678,
@@ -447,34 +567,33 @@ mod tests {
             tool_name: "file_read".to_string(),
             action,
             decision,
+            receipt_kind: semantics.receipt_kind,
+            boundary_class: semantics.boundary_class,
+            observation_outcome: semantics.observation_outcome,
+            tool_origin: semantics.tool_origin,
+            redaction_mode: semantics.redaction_mode,
+            actor_chain: semantics.actor_chain,
             content_hash: "content-xyz".to_string(),
             policy_hash: "policy-xyz".to_string(),
             evidence: Vec::new(),
             metadata: None,
-            trust_level: TrustLevel::Mediated,
+            trust_level,
             tenant_id: None,
             kernel_key: kp.public_key(),
         };
         #[allow(clippy::unwrap_used)]
-        let mut receipt = ChioReceipt::sign(body, &kp).unwrap();
-        if let Some(semantics) = semantics {
-            receipt.metadata = Some(serde_json::json!({
-                "receipt_semantics": semantics,
-            }));
-            receipt.trust_level = trust_level;
-        }
-        receipt
+        ChioReceipt::sign(body, &kp).unwrap()
     }
 
     #[test]
-    fn allow_maps_to_class_3002_and_informational() {
+    fn raw_receipt_allow_without_trusted_signer_is_unverified() {
         let ev = receipt_to_ocsf(&test_receipt("r-1", Decision::Allow));
         assert_eq!(ev["class_uid"], 3002);
         assert_eq!(ev["category_uid"], 3);
-        assert_eq!(ev["activity_id"], 1);
-        assert_eq!(ev["status_id"], 1);
-        assert_eq!(ev["severity_id"], 1);
-        assert_eq!(ev["type_uid"], 300_201);
+        assert_ne!(ev["activity_name"], "Grant");
+        assert_ne!(ev["status"], "Success");
+        assert_eq!(ev["unmapped"]["chio"]["signer_trusted"], false);
+        assert_eq!(ev["unmapped"]["chio"]["authorized"], false);
     }
 
     #[test]
@@ -491,5 +610,6 @@ mod tests {
         assert_ne!(ev["status"], "Success");
         assert_eq!(ev["unmapped"]["chio"]["receipt_kind"], "trace_observation");
         assert_eq!(ev["unmapped"]["chio"]["boundary_class"], "detect_only");
+        assert_eq!(ev["unmapped"]["chio"]["authorized"], false);
     }
 }

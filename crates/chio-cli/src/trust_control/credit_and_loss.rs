@@ -6,6 +6,7 @@ fn build_credit_provider_risk_package_from_store(
     issuance_policy: Option<&crate::policy::ReputationIssuancePolicy>,
     keypair: &Keypair,
     query: &CreditProviderRiskPackageQuery,
+    read_context: chio_kernel::ReceiptReadContext,
 ) -> Result<CreditProviderRiskPackage, TrustHttpError> {
     let normalized = query.normalized();
     if let Err(message) = normalized.validate() {
@@ -23,6 +24,7 @@ fn build_credit_provider_risk_package_from_store(
         since: normalized.since,
         until: normalized.until,
         receipt_limit: normalized.receipt_limit,
+        read_context: Some(read_context.clone()),
     };
     let (matching_loss_events, recent_loss_receipts) = receipt_store
         .query_recent_credit_loss_receipts(
@@ -31,25 +33,37 @@ fn build_credit_provider_risk_package_from_store(
         )
         .map_err(trust_http_error_from_receipt_store)?;
     let exposure_query = normalized.exposure_query().normalized();
-    let exposure_report = build_exposure_ledger_report(receipt_store, &exposure_query)?;
+    let exposure_report = build_exposure_ledger_report_with_context(
+        receipt_store,
+        &exposure_query,
+        read_context.clone(),
+    )?;
     let signed_exposure = SignedExposureLedgerReport::sign(exposure_report.clone(), keypair)
         .map_err(|error| TrustHttpError::internal(error.to_string()))?;
-    let scorecard_report = build_credit_scorecard_report(
+    // Anchor the reputation scoring trust set to this signer's public key so
+    // locally signed receipts are not silently filtered out (see
+    // chio-reputation::receipt_integrity_valid).
+    let trusted_kernel_keys = vec![keypair.public_key().to_hex()];
+    let scorecard_report = build_credit_scorecard_report_with_context(
         receipt_store,
         receipt_db_path,
         budget_db_path,
         issuance_policy,
         &exposure_query,
+        read_context.clone(),
+        &trusted_kernel_keys,
     )?;
     let signed_scorecard = SignedCreditScorecardReport::sign(scorecard_report.clone(), keypair)
         .map_err(|error| TrustHttpError::internal(error.to_string()))?;
-    let facility_report = build_credit_facility_report_from_store(
+    let facility_report = build_credit_facility_report_from_store_with_context(
         receipt_store,
         receipt_db_path,
         budget_db_path,
         certification_registry_file,
         issuance_policy,
         &exposure_query,
+        read_context.clone(),
+        &trusted_kernel_keys,
     )?;
     let underwriting_input = build_underwriting_policy_input(
         receipt_store,
@@ -57,6 +71,8 @@ fn build_credit_provider_risk_package_from_store(
         budget_db_path,
         certification_registry_file,
         &underwriting_input_query_from_exposure_query(&exposure_query),
+        read_context.clone(),
+        &trusted_kernel_keys,
     )?;
     let latest_facility = latest_credit_facility_snapshot(
         receipt_store,
@@ -137,6 +153,27 @@ fn build_credit_scorecard_report(
     budget_db_path: Option<&Path>,
     issuance_policy: Option<&crate::policy::ReputationIssuancePolicy>,
     query: &ExposureLedgerQuery,
+    trusted_kernel_keys: &[String],
+) -> Result<CreditScorecardReport, TrustHttpError> {
+    build_credit_scorecard_report_with_context(
+        receipt_store,
+        receipt_db_path,
+        budget_db_path,
+        issuance_policy,
+        query,
+        chio_kernel::ReceiptReadContext::local_operator_admin_all(),
+        trusted_kernel_keys,
+    )
+}
+
+fn build_credit_scorecard_report_with_context(
+    receipt_store: &SqliteReceiptStore,
+    receipt_db_path: &Path,
+    budget_db_path: Option<&Path>,
+    issuance_policy: Option<&crate::policy::ReputationIssuancePolicy>,
+    query: &ExposureLedgerQuery,
+    read_context: chio_kernel::ReceiptReadContext,
+    trusted_kernel_keys: &[String],
 ) -> Result<CreditScorecardReport, TrustHttpError> {
     let normalized_query = query.normalized();
     if let Err(message) = normalized_query.validate() {
@@ -149,7 +186,12 @@ fn build_credit_scorecard_report(
         )
     })?;
 
-    let exposure = build_exposure_ledger_report(receipt_store, &normalized_query)?;
+    let exposure =
+        build_exposure_ledger_report_with_context(
+            receipt_store,
+            &normalized_query,
+            read_context.clone(),
+        )?;
     if exposure.summary.matching_receipts == 0 {
         return Err(TrustHttpError::new(
             StatusCode::CONFLICT,
@@ -157,13 +199,15 @@ fn build_credit_scorecard_report(
         ));
     }
 
-    let mut inspection = issuance::inspect_local_reputation(
+    let mut inspection = issuance::inspect_local_reputation_with_read_context(
         &subject_key,
         Some(receipt_db_path),
         budget_db_path,
         normalized_query.since,
         normalized_query.until,
         issuance_policy,
+        trusted_kernel_keys,
+        &read_context,
     )
     .map_err(|error| TrustHttpError::internal(error.to_string()))?;
 
@@ -249,13 +293,38 @@ fn build_credit_facility_report_from_store(
     certification_registry_file: Option<&Path>,
     issuance_policy: Option<&crate::policy::ReputationIssuancePolicy>,
     query: &ExposureLedgerQuery,
+    trusted_kernel_keys: &[String],
 ) -> Result<CreditFacilityReport, TrustHttpError> {
-    let scorecard = build_credit_scorecard_report(
+    build_credit_facility_report_from_store_with_context(
+        receipt_store,
+        receipt_db_path,
+        budget_db_path,
+        certification_registry_file,
+        issuance_policy,
+        query,
+        chio_kernel::ReceiptReadContext::local_operator_admin_all(),
+        trusted_kernel_keys,
+    )
+}
+
+fn build_credit_facility_report_from_store_with_context(
+    receipt_store: &SqliteReceiptStore,
+    receipt_db_path: &Path,
+    budget_db_path: Option<&Path>,
+    certification_registry_file: Option<&Path>,
+    issuance_policy: Option<&crate::policy::ReputationIssuancePolicy>,
+    query: &ExposureLedgerQuery,
+    read_context: chio_kernel::ReceiptReadContext,
+    trusted_kernel_keys: &[String],
+) -> Result<CreditFacilityReport, TrustHttpError> {
+    let scorecard = build_credit_scorecard_report_with_context(
         receipt_store,
         receipt_db_path,
         budget_db_path,
         issuance_policy,
         query,
+        read_context.clone(),
+        trusted_kernel_keys,
     )?;
     let underwriting_input = build_underwriting_policy_input(
         receipt_store,
@@ -263,6 +332,8 @@ fn build_credit_facility_report_from_store(
         budget_db_path,
         certification_registry_file,
         &underwriting_input_query_from_exposure_query(&scorecard.filters),
+        read_context,
+        trusted_kernel_keys,
     )?;
     let minimum_runtime_assurance_tier =
         credit_facility_minimum_runtime_assurance_tier(scorecard.summary.band);
@@ -345,6 +416,7 @@ fn build_credit_bond_report_from_store(
     certification_registry_file: Option<&Path>,
     issuance_policy: Option<&crate::policy::ReputationIssuancePolicy>,
     query: &ExposureLedgerQuery,
+    trusted_kernel_keys: &[String],
 ) -> Result<CreditBondReport, TrustHttpError> {
     let scorecard = build_credit_scorecard_report(
         receipt_store,
@@ -352,6 +424,7 @@ fn build_credit_bond_report_from_store(
         budget_db_path,
         issuance_policy,
         query,
+        trusted_kernel_keys,
     )?;
     let exposure = build_exposure_ledger_report(receipt_store, &scorecard.filters)?;
     if exposure.summary.mixed_currency_book || exposure.positions.len() != 1 {
@@ -367,6 +440,8 @@ fn build_credit_bond_report_from_store(
         budget_db_path,
         certification_registry_file,
         &underwriting_input_query_from_exposure_query(&scorecard.filters),
+        chio_kernel::ReceiptReadContext::local_operator_admin_all(),
+        trusted_kernel_keys,
     )?;
 
     let facility_policy = build_credit_facility_report_from_store(
@@ -376,6 +451,7 @@ fn build_credit_bond_report_from_store(
         certification_registry_file,
         issuance_policy,
         &scorecard.filters,
+        trusted_kernel_keys,
     )?;
     let latest_facility = latest_active_granted_credit_facility(
         receipt_store,
@@ -507,6 +583,11 @@ fn issue_signed_credit_bond_detailed(
         supersedes_artifact_id,
     } = args;
     let mut receipt_store = SqliteReceiptStore::open(receipt_db_path)?;
+    // Load the signing keypair up front so its public key anchors the
+    // reputation scoring trust set; reuse it to sign the bond artifact below.
+    let keypair = load_behavioral_feed_signing_keypair(authority_seed_path, authority_db_path)
+        .map_err(|error| TrustHttpError::internal(error.to_string()))?;
+    let trusted_kernel_keys = vec![keypair.public_key().to_hex()];
     let report = build_credit_bond_report_from_store(
         &receipt_store,
         receipt_db_path,
@@ -514,6 +595,7 @@ fn issue_signed_credit_bond_detailed(
         certification_registry_file,
         issuance_policy,
         query,
+        &trusted_kernel_keys,
     )?;
     let latest_facility_expires_at = latest_active_granted_credit_facility(
         &receipt_store,
@@ -530,7 +612,6 @@ fn issue_signed_credit_bond_detailed(
         supersedes_artifact_id.map(ToOwned::to_owned),
         latest_facility_expires_at,
     )?;
-    let keypair = load_behavioral_feed_signing_keypair(authority_seed_path, authority_db_path)?;
     let signed = SignedCreditBond::sign(artifact, &keypair)
         .map_err(|error| TrustHttpError::internal(error.to_string()))?;
     receipt_store
@@ -1141,6 +1222,7 @@ fn build_credit_loss_lifecycle_report_from_store(
         since: bond.body.report.filters.since,
         until: bond.body.report.filters.until,
         receipt_limit: Some(chio_kernel::MAX_BEHAVIORAL_FEED_RECEIPT_LIMIT),
+        read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
     };
     let (_, recent_loss_receipts) = receipt_store
         .query_recent_credit_loss_receipts(
@@ -1641,6 +1723,11 @@ fn issue_signed_credit_facility_detailed(
         supersedes_artifact_id,
     } = args;
     let mut receipt_store = SqliteReceiptStore::open(receipt_db_path)?;
+    // Load the signing keypair up front so its public key anchors the
+    // reputation scoring trust set; reuse it to sign the facility artifact.
+    let keypair = load_behavioral_feed_signing_keypair(authority_seed_path, authority_db_path)
+        .map_err(|error| TrustHttpError::internal(error.to_string()))?;
+    let trusted_kernel_keys = vec![keypair.public_key().to_hex()];
     let report = build_credit_facility_report_from_store(
         &receipt_store,
         receipt_db_path,
@@ -1648,6 +1735,7 @@ fn issue_signed_credit_facility_detailed(
         certification_registry_file,
         issuance_policy,
         query,
+        &trusted_kernel_keys,
     )?;
     let issued_at = unix_timestamp_now();
     let artifact = build_credit_facility_artifact(
@@ -1655,7 +1743,6 @@ fn issue_signed_credit_facility_detailed(
         issued_at,
         supersedes_artifact_id.map(ToOwned::to_owned),
     )?;
-    let keypair = load_behavioral_feed_signing_keypair(authority_seed_path, authority_db_path)?;
     let signed = SignedCreditFacility::sign(artifact, &keypair)
         .map_err(|error| TrustHttpError::internal(error.to_string()))?;
     receipt_store

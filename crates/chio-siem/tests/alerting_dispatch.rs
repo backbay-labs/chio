@@ -41,7 +41,13 @@ fn allow_receipt(id: &str) -> ChioReceipt {
             tool_name: "bash".to_string(),
             action: ToolCallAction::from_parameters(serde_json::json!({}))
                 .expect("action parameters serialize"),
-            decision: Decision::Allow,
+            decision: Some(Decision::Allow),
+            receipt_kind: chio_core::ReceiptKind::MediatedDecision,
+            boundary_class: chio_core::BoundaryClass::Prevent,
+            observation_outcome: None,
+            tool_origin: chio_core::ToolOrigin::CallerExecuted,
+            redaction_mode: chio_core::RedactionMode::None,
+            actor_chain: Vec::new(),
             content_hash: "c".to_string(),
             policy_hash: "p".to_string(),
             evidence: Vec::new(),
@@ -66,10 +72,16 @@ fn deny_receipt(id: &str, guard: &str) -> ChioReceipt {
             tool_name: "run".to_string(),
             action: ToolCallAction::from_parameters(serde_json::json!({}))
                 .expect("action parameters serialize"),
-            decision: Decision::Deny {
+            decision: Some(Decision::Deny {
                 reason: "blocked by policy".to_string(),
                 guard: guard.to_string(),
-            },
+            }),
+            receipt_kind: chio_core::ReceiptKind::MediatedDecision,
+            boundary_class: chio_core::BoundaryClass::Prevent,
+            observation_outcome: None,
+            tool_origin: chio_core::ToolOrigin::CallerExecuted,
+            redaction_mode: chio_core::RedactionMode::None,
+            actor_chain: Vec::new(),
             content_hash: "c".to_string(),
             policy_hash: "p".to_string(),
             evidence: vec![GuardEvidence {
@@ -131,16 +143,18 @@ async fn high_severity_deny_dispatches_to_backend() {
         .with_backend(Box::new(backend))
         .build();
 
+    let deny = deny_receipt("alert-2", "ForbiddenPathGuard");
+    let expected_receipt_id = deny.id.clone();
     let events = vec![
         SiemEvent::from_receipt(allow_receipt("alert-1")),
-        SiemEvent::from_receipt(deny_receipt("alert-2", "ForbiddenPathGuard")),
+        SiemEvent::from_receipt(deny),
     ];
     let result = exporter.export_batch(&events).await.expect("ok");
     assert_eq!(result, 2);
 
     let recorded = recorded.lock().unwrap();
     assert_eq!(recorded.len(), 1, "only the deny should be alerted on");
-    assert_eq!(recorded[0].receipt_id, "alert-2");
+    assert_eq!(recorded[0].receipt_id, expected_receipt_id);
     assert_eq!(recorded[0].severity, AlertSeverity::High);
     assert_eq!(recorded[0].guard, "ForbiddenPathGuard");
 }

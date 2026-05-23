@@ -16,6 +16,7 @@ use chio_siem::ocsf::{receipt_to_ocsf, OCSF_CATEGORY_UID, OCSF_CLASS_UID, OCSF_S
 use chio_siem::Exporter;
 use chio_siem::{OcsfExporter, OcsfExporterConfig, OcsfPayloadFormat};
 use serde_json::Value;
+use std::collections::BTreeSet;
 use std::time::{Duration, Instant};
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -28,6 +29,16 @@ fn receipt_with(
     metadata: Option<serde_json::Value>,
 ) -> ChioReceipt {
     let keypair = Keypair::generate();
+    let semantics = match trust_level {
+        TrustLevel::Advisory => chio_core::ReceiptSemanticFields::advisory_only(),
+        TrustLevel::Verified => chio_core::ReceiptSemanticFields::trace_detect_only(),
+        TrustLevel::Mediated => chio_core::ReceiptSemanticFields::mediated_prevent(),
+    };
+    let decision = if semantics.receipt_kind == chio_core::ReceiptKind::MediatedDecision {
+        Some(decision)
+    } else {
+        None
+    };
     let body = ChioReceiptBody {
         id: id.to_string(),
         timestamp: 1_712_345_678,
@@ -37,6 +48,12 @@ fn receipt_with(
         action: ToolCallAction::from_parameters(serde_json::json!({"cmd": "ls"}))
             .expect("action parameters serialize"),
         decision,
+        receipt_kind: semantics.receipt_kind,
+        boundary_class: semantics.boundary_class,
+        observation_outcome: semantics.observation_outcome,
+        tool_origin: semantics.tool_origin,
+        redaction_mode: semantics.redaction_mode,
+        actor_chain: semantics.actor_chain,
         content_hash: "content-hash".to_string(),
         policy_hash: "policy-hash".to_string(),
         evidence,
@@ -94,6 +111,20 @@ fn allow_receipt_maps_to_success_event() {
 }
 
 #[test]
+fn invalid_receipt_id_never_exports_as_authorized() {
+    let mut receipt = allow_receipt();
+    receipt.id = "0000000000000000000000000000000000000000000000000000000000000000".to_string();
+    let ev = receipt_to_ocsf(&receipt);
+
+    assert_eq!(ev["activity_name"], "Other");
+    assert_eq!(ev["status"], "Other");
+    assert_eq!(ev["actor"]["authorizations"][0]["decision"], "Unverified");
+    assert_eq!(ev["unmapped"]["chio"]["authorized"], false);
+    assert_eq!(ev["unmapped"]["chio"]["result"], "Unverified");
+    assert_ne!(ev["unmapped"]["chio"]["decision.verdict"], "allow");
+}
+
+#[test]
 fn deny_receipt_maps_to_failure_event() {
     let ev = receipt_to_ocsf(&deny_receipt());
 
@@ -133,7 +164,9 @@ fn cancelled_receipt_uses_other_activity_and_low_severity() {
 fn receipt_with_trust_level_populates_enrichment() {
     let receipt = receipt_with(
         "rc-trust-1",
-        Decision::Allow,
+        Decision::Incomplete {
+            reason: "advisory observation".to_string(),
+        },
         TrustLevel::Advisory,
         vec![],
         None,
@@ -194,15 +227,15 @@ fn deny_receipt_observables_include_guard() {
 }
 
 #[test]
-fn tenant_id_in_metadata_surfaces_in_enrichments_and_unmapped() {
-    let metadata = serde_json::json!({"tenant_id": "tenant-42"});
-    let receipt = receipt_with(
+fn tenant_id_surfaces_only_from_top_level_receipt_field() {
+    let mut receipt = receipt_with(
         "rc-tenant-1",
         Decision::Allow,
         TrustLevel::Mediated,
         vec![],
-        Some(metadata),
+        Some(serde_json::json!({"tenant_id": "metadata-tenant"})),
     );
+    receipt.tenant_id = Some("tenant-42".to_string());
     let ev = receipt_to_ocsf(&receipt);
 
     let enrichments = ev["enrichments"].as_array().expect("enrichments array");
@@ -213,6 +246,26 @@ fn tenant_id_in_metadata_surfaces_in_enrichments_and_unmapped() {
         "expected tenant_id enrichment: {enrichments:?}",
     );
     assert_eq!(ev["unmapped"]["chio"]["tenant_id"], "tenant-42");
+}
+
+#[test]
+fn metadata_tenant_id_is_not_authoritative() {
+    let metadata = serde_json::json!({"tenant_id": "metadata-tenant"});
+    let receipt = receipt_with(
+        "rc-tenant-metadata-only",
+        Decision::Allow,
+        TrustLevel::Mediated,
+        vec![],
+        Some(metadata),
+    );
+    let ev = receipt_to_ocsf(&receipt);
+
+    let enrichments = ev["enrichments"].as_array().expect("enrichments array");
+    assert!(
+        !enrichments.iter().any(|e| e["name"] == "chio.tenant_id"),
+        "metadata tenant_id must not create authoritative tenant enrichment: {enrichments:?}",
+    );
+    assert!(ev["unmapped"]["chio"]["tenant_id"].is_null());
 }
 
 #[test]
@@ -293,6 +346,27 @@ fn ocsf_exporter_emits_one_json_object_per_receipt() {
     assert!(mapped.iter().all(|v| v.is_object()));
     assert_eq!(mapped[0]["status_id"], 1);
     assert_eq!(mapped[1]["status_id"], 2);
+}
+
+#[test]
+fn ocsf_exporter_preserves_untrusted_signer_state() {
+    let trusted_kernel_keys = BTreeSet::new();
+    let events = vec![SiemEvent::from_receipt_with_trusted_kernel_keys(
+        allow_receipt(),
+        Some(&trusted_kernel_keys),
+    )];
+
+    let mapped = OcsfExporter::format_events(&events);
+
+    assert_eq!(mapped.len(), 1);
+    assert_eq!(mapped[0]["activity_id"], 99);
+    assert_eq!(mapped[0]["status_id"], 99);
+    assert_eq!(mapped[0]["unmapped"]["chio"]["authorized"], false);
+    assert_eq!(mapped[0]["unmapped"]["chio"]["signer_trusted"], false);
+    assert_eq!(
+        mapped[0]["unmapped"]["chio"]["decision.verdict"],
+        "mediated_decision"
+    );
 }
 
 #[test]

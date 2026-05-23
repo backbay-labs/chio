@@ -224,21 +224,26 @@ naming surface is not silently colonized by later docs.
 
 ## Big-findings status
 
-- **Bench-stub urgency**: clear in 00-overview-v2.md:13, 49 and in
+- **Bench-stub urgency (resolved in-tree)**: was clear in 00-overview-v2.md:13, 49 and in
   `16-latency-budget-audit.md:22-26, 244-265`. Docs 04, 10, and 14 cite
   per-stage latency numbers (e.g. `04-policy-engine-collaborators.md:108-112`,
   `10-cedar-first-guard.md:332-348`, `14-voice-agent-bridges.md:109-117`)
-  without acknowledging they depend on benches that don't yet measure
-  reality. Add a one-line callout to each: "Latency budgets cited here
-  depend on bench bodies tracked in 16; CI today measures
-  `black_box(0_u64)`."
-- **`tool_origin` core vs extension**: resolved after review. The core
-  receipt body owns the three execution-locus variants
-  (`CallerExecuted`, `HostExecutedProviderReported`,
-  `HostExecutedUnmediated`), and redaction is a separate signed field.
-  Provider-specific extensions keep provider IDs and trace metadata only.
-  Doc 13 still needs an implementation-ticket pass to align
-  `mediation_scope` wording to the core origin field.
+  that depended on benches which used to measure `black_box(0_u64)`. The
+  bench bodies now drive real dispatch through `dispatch_request_fixture`,
+  so the open work is re-baselining those per-stage numbers against the
+  new bodies rather than backfilling missing measurement infrastructure.
+- **`tool_origin` core vs extension**: **NOT consistent**. v2 overview
+  line 14, 35, 53 says core v3 field with FOUR variants
+  (`caller-executed`, `host-executed-provider-reported`, `host-executed-unmediated`,
+  `host-executed-redacted`). Doc 12 line 150-157 enumerates THREE
+  variants (no `redacted` form). Doc 15 line 425-432, 502-509 puts
+  `tool_origin` inside `OpenaiResponsesExtension` and explicitly
+  recommends keeping it on the extension, not promoting to core. Doc 13
+  uses `mediation_scope` (binary `trace_only` /
+  `full_runtime`) instead of `tool_origin`
+  (`13-bedrock-agents-bridge.md:25, 97`). Doc 14 mentions neither. Pick
+  one (the v2 overview is the right place to land the call) and have
+  X1, E1, E2 amend.
 - **n8n priority erratum**: doc 05 at line 56-73 still asserts priority
   1 without the Chain-C caveat. Doc 11 line 4-15 cleanly explains the
   caveat. v2 overview line 26 captures it. Recommended edit: a one-line
@@ -313,16 +318,18 @@ bench-stub PR ordering. None repeat wave-1.
 - `05-workflow-orchestrator-mediation.md`: add an errata note pointing
   at doc 11's Chain-C narrowing.
 - `12-openai-responses-adapter.md`: align `ToolOrigin` enum variants
-  with the three core execution-locus variants and keep redaction state
-  separate.
+  with the v2 overview's four-variant set (add
+  `host-executed-redacted` or have the v2 overview drop it).
 - `13-bedrock-agents-bridge.md`: reconcile `mediation_scope` with
   `tool_origin`; either map Lambda to
   `tool_origin = host-executed-unmediated` and drop `mediation_scope`,
   or have v2 overview acknowledge two parallel fields.
 - `14-voice-agent-bridges.md`: add `tool_origin = caller-executed` to
   the receipt-field table so the cross-cut is visible.
-- `15-receipt-kind-v1.md`: `tool_origin` is now on the core receipt body;
-  keep OpenAI extension fields provider-specific.
+- `15-receipt-kind-v1.md`: promote `tool_origin` from
+  `OpenaiResponsesExtension` to the core v3 body per v2 overview's
+  call; reconcile open question 4 (`15-receipt-kind-v1.md:502-509`)
+  with the v2 overview's verdict.
 
 ---
 

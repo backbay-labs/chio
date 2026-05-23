@@ -8,7 +8,7 @@ use chio_core::capability::{
     RuntimeAttestationEvidence, ToolGrant,
 };
 use chio_core::crypto::PublicKey;
-use chio_kernel::{BudgetStore, CapabilityAuthority, KernelError};
+use chio_kernel::{BudgetStore, CapabilityAuthority, KernelError, ReceiptReadContext};
 use chio_reputation::{
     compute_local_scorecard, BudgetUsageRecord as ReputationBudgetUsageRecord,
     CapabilityLineageRecord, CapabilityLineageScopeJsonInput, ImportedReputationSignal,
@@ -136,6 +136,19 @@ impl CapabilityAuthority for PolicyBackedCapabilityAuthority {
         )?;
 
         if let Some(policy) = &self.issuance_policy {
+            // Reputation integrity validation requires a trust set of kernel
+            // signing keys. The inner authority (the local kernel) is the
+            // canonical signer of issuance-context receipts, and its trusted
+            // peers (federation/cross-kernel) extend that set. Without these,
+            // an empty trust set would silently filter every receipt as
+            // unsigned (see chio-reputation::receipt_integrity_valid).
+            let mut trusted_keys: Vec<String> = self
+                .inner
+                .trusted_public_keys()
+                .into_iter()
+                .map(|key| key.to_hex())
+                .collect();
+            trusted_keys.push(self.inner.authority_public_key().to_hex());
             enforce_reputation_policy(
                 subject,
                 &scope,
@@ -143,6 +156,7 @@ impl CapabilityAuthority for PolicyBackedCapabilityAuthority {
                 policy,
                 self.receipt_db_path.as_deref(),
                 self.budget_db_path.as_deref(),
+                &trusted_keys,
             )?;
         }
 
@@ -223,6 +237,7 @@ fn enforce_reputation_policy(
     policy: &ReputationIssuancePolicy,
     receipt_db_path: Option<&Path>,
     budget_db_path: Option<&Path>,
+    trusted_kernel_keys: &[String],
 ) -> Result<(), KernelError> {
     let subject_key = subject.to_hex();
     let inspection = inspect_local_reputation(
@@ -232,6 +247,7 @@ fn enforce_reputation_policy(
         None,
         None,
         Some(policy),
+        trusted_kernel_keys,
     )?;
     let tier = inspection.resolved_tier.ok_or_else(|| {
         KernelError::CapabilityIssuanceFailed(
@@ -254,11 +270,40 @@ pub(crate) fn inspect_local_reputation(
     since: Option<u64>,
     until: Option<u64>,
     issuance_policy: Option<&ReputationIssuancePolicy>,
+    trusted_kernel_keys: &[String],
 ) -> Result<LocalReputationInspection, KernelError> {
-    let corpus =
-        build_local_reputation_corpus(subject_key, receipt_db_path, budget_db_path, since, until)?;
+    inspect_local_reputation_with_read_context(
+        subject_key,
+        receipt_db_path,
+        budget_db_path,
+        since,
+        until,
+        issuance_policy,
+        trusted_kernel_keys,
+        &ReceiptReadContext::local_operator_admin_all(),
+    )
+}
+
+pub(crate) fn inspect_local_reputation_with_read_context(
+    subject_key: &str,
+    receipt_db_path: Option<&Path>,
+    budget_db_path: Option<&Path>,
+    since: Option<u64>,
+    until: Option<u64>,
+    issuance_policy: Option<&ReputationIssuancePolicy>,
+    trusted_kernel_keys: &[String],
+    read_context: &ReceiptReadContext,
+) -> Result<LocalReputationInspection, KernelError> {
+    let corpus = build_local_reputation_corpus_with_read_context(
+        subject_key,
+        receipt_db_path,
+        budget_db_path,
+        since,
+        until,
+        read_context,
+    )?;
     let (scoring_source, scoring, probationary_receipt_count, probationary_min_days, ceiling) =
-        scoring_context(issuance_policy);
+        scoring_context(issuance_policy, trusted_kernel_keys);
     let now = unix_now();
     let scorecard = compute_local_scorecard(subject_key, now, &corpus, &scoring);
     let probationary_status = ProbationaryStatus {
@@ -305,6 +350,24 @@ pub fn build_local_reputation_corpus(
     since: Option<u64>,
     until: Option<u64>,
 ) -> Result<LocalReputationCorpus, KernelError> {
+    build_local_reputation_corpus_with_read_context(
+        subject_key,
+        receipt_db_path,
+        budget_db_path,
+        since,
+        until,
+        &ReceiptReadContext::local_operator_admin_all(),
+    )
+}
+
+pub fn build_local_reputation_corpus_with_read_context(
+    subject_key: &str,
+    receipt_db_path: Option<&Path>,
+    budget_db_path: Option<&Path>,
+    since: Option<u64>,
+    until: Option<u64>,
+    read_context: &ReceiptReadContext,
+) -> Result<LocalReputationCorpus, KernelError> {
     let mut receipts = Vec::new();
     let mut capabilities = BTreeMap::new();
 
@@ -312,7 +375,7 @@ pub fn build_local_reputation_corpus(
         let store = SqliteReceiptStore::open(path)
             .map_err(|error| KernelError::CapabilityIssuanceFailed(error.to_string()))?;
         receipts = store
-            .list_tool_receipts_for_subject(subject_key)
+            .list_tool_receipts_for_subject_with_context(read_context, subject_key)
             .map_err(|error| KernelError::CapabilityIssuanceFailed(error.to_string()))?
             .into_iter()
             .filter(|receipt| {
@@ -580,6 +643,7 @@ fn required_constraints(grant: &ToolGrant) -> Vec<Constraint> {
 
 fn scoring_context(
     issuance_policy: Option<&ReputationIssuancePolicy>,
+    trusted_kernel_keys: &[String],
 ) -> (
     ReputationScoringSource,
     ReputationConfig,
@@ -588,15 +652,18 @@ fn scoring_context(
     Option<f64>,
 ) {
     if let Some(policy) = issuance_policy {
+        let mut scoring = policy.scoring.clone();
+        merge_trusted_kernel_keys(&mut scoring, trusted_kernel_keys);
         (
             ReputationScoringSource::IssuancePolicy,
-            policy.scoring.clone(),
+            scoring,
             policy.probationary_receipt_count,
             policy.probationary_min_days,
             Some(policy.probationary_score_ceiling),
         )
     } else {
-        let scoring = ReputationConfig::default();
+        let mut scoring = ReputationConfig::default();
+        merge_trusted_kernel_keys(&mut scoring, trusted_kernel_keys);
         (
             ReputationScoringSource::Default,
             scoring.clone(),
@@ -605,6 +672,22 @@ fn scoring_context(
             None,
         )
     }
+}
+
+/// Merge caller-supplied trusted kernel keys into the scoring config. Existing
+/// keys from a policy-derived config are preserved; additional caller keys are
+/// added so reputation scoring can verify receipts signed by either source.
+fn merge_trusted_kernel_keys(config: &mut ReputationConfig, trusted_kernel_keys: &[String]) {
+    if trusted_kernel_keys.is_empty() {
+        return;
+    }
+    let merged: std::collections::BTreeSet<String> = config
+        .trusted_kernel_keys
+        .iter()
+        .cloned()
+        .chain(trusted_kernel_keys.iter().cloned())
+        .collect();
+    config.trusted_kernel_keys = merged;
 }
 
 fn unix_now() -> u64 {
@@ -862,7 +945,13 @@ mod tests {
                     "path": "/workspace/safe/data.txt"
                 }))
                 .expect("action"),
-                decision: Decision::Allow,
+                decision: Some(Decision::Allow),
+                receipt_kind: Default::default(),
+                boundary_class: Default::default(),
+                observation_outcome: None,
+                tool_origin: Default::default(),
+                redaction_mode: Default::default(),
+                actor_chain: Vec::new(),
                 content_hash: format!("content-{id}"),
                 policy_hash: "policy-hash".to_string(),
                 evidence: Vec::new(),

@@ -74,6 +74,11 @@ pq = ["dep:fips204"]
 # The T1.1 wire primitive is now always available, including no-default
 # builds; this feature is a no-op for downstream manifests that still enable it.
 delegation = []
+# Backward-compatibility alias for the legacy `delegation_v2` feature name.
+# External path/git consumers that still depend on
+# `features = ["delegation_v2"]` continue to resolve. Both spellings are
+# no-ops today; new code should use `delegation`.
+delegation_v2 = ["delegation"]
 
 [dev-dependencies]
 jsonschema = { version = "0.46.0", default-features = false }

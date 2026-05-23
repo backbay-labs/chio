@@ -129,10 +129,10 @@ namespace chio_kernel_mobile {
         string jwks_json
     );
 
-    // Verify a mobile receipt against App Attest or Play Integrity evidence.
+    // Shape-check a mobile receipt against App Attest or Play Integrity evidence.
     //
-    // Validates the receipt and evidence envelopes as JSON and delegates to
-    // the shared receipt-chain verifier.
+    // Returns an explicit non-authoritative status until full receipt-chain
+    // verification is wired to trusted issuer pins and challenge binding.
     [Throws=ChioMobileError]
     string verify_mobile_receipt(string receipt_json, string evidence_json);
 };

@@ -6,7 +6,7 @@
 |-------|-------|
 | Regulation | Colorado Senate Bill 24-205, "Consumer Protections for Artificial Intelligence" |
 | Effective Date | February 1, 2026 |
-| Chio Version | v2.0 Phase 9 |
+| Chio Profile | Current v1-only pre-release profile; draft originally tracked under internal phase 9 |
 | Document Date | 2026-03-22 |
 | Filing Deadline | June 30, 2026 |
 | Maintained by | Chio Protocol Team |

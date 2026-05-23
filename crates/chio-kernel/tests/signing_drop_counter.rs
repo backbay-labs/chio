@@ -11,7 +11,9 @@ use std::task::{Context, Poll, Wake, Waker};
 use std::time::Duration;
 
 use chio_core::crypto::{sha256_hex, Keypair};
-use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
+use chio_core::receipt::{
+    chio_receipt_id, ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
+};
 use chio_kernel::KernelError;
 use serde_json::json;
 
@@ -55,14 +57,25 @@ fn make_body(n: usize, kernel_key: &Keypair) -> Result<ChioReceiptBody, String> 
     .map_err(|error| format!("payload canonicalisation failed: {error}"))?;
     let content_hash = sha256_hex(action.parameter_hash.as_bytes());
     let policy_hash = sha256_hex(format!("policy:{nonce}").as_bytes());
-    Ok(ChioReceiptBody {
+    // Pre-compute the content-addressed id so the test fixture matches the
+    // canonical id `sign_one_with_backend` rewrites into the signed
+    // receipt. Without this the test would compare the user-supplied label
+    // (e.g. `rcpt-block-counter-0001`) against the post-signing canonical
+    // hash and fail.
+    let mut body = ChioReceiptBody {
         id: format!("rcpt-{nonce}"),
         timestamp: 1_700_200_000 + (n as u64),
         capability_id: format!("cap-{nonce}"),
         tool_server: "tool.example".to_string(),
         tool_name: "echo".to_string(),
         action,
-        decision: Decision::Allow,
+        decision: Some(Decision::Allow),
+        receipt_kind: Default::default(),
+        boundary_class: Default::default(),
+        observation_outcome: None,
+        tool_origin: Default::default(),
+        redaction_mode: Default::default(),
+        actor_chain: Vec::new(),
         content_hash,
         policy_hash,
         evidence: Vec::new(),
@@ -70,7 +83,10 @@ fn make_body(n: usize, kernel_key: &Keypair) -> Result<ChioReceiptBody, String> 
         trust_level: TrustLevel::default(),
         tenant_id: None,
         kernel_key: kernel_key.public_key(),
-    })
+    };
+    body.id =
+        chio_receipt_id(&body).map_err(|error| format!("canonical receipt id failed: {error}"))?;
+    Ok(body)
 }
 
 fn rendered_signing_queue_block_total() -> Result<u64, String> {
@@ -91,12 +107,19 @@ async fn full_signing_queue_increments_block_counter_without_dropping() -> Resul
     let keypair = make_keypair();
     let handle = signing_task::SigningTaskHandle::with_capacity(keypair.clone(), 1);
 
+    let queued_body = make_body(1, &keypair)?;
+    // `make_body` pre-computes the content-addressed id so the body's id
+    // already matches what the signing task will emit. Capture both ids
+    // for the post-sign assertions below so the test does not need to
+    // hardcode the SHA-256 hash of the fixture.
+    let queued_expected_id = queued_body.id.clone();
     let queued = handle
-        .try_sign(make_body(1, &keypair)?)
+        .try_sign(queued_body)
         .map_err(|_| "first request should queue before spawned task runs".to_string())?;
     let before = rendered_signing_queue_block_total()?;
 
     let blocked_body = make_body(2, &keypair)?;
+    let blocked_expected_id = blocked_body.id.clone();
     let mut blocked = Box::pin(handle.sign(blocked_body));
     let waker = noop_waker();
     let mut context = Context::from_waker(&waker);
@@ -115,13 +138,13 @@ async fn full_signing_queue_increments_block_counter_without_dropping() -> Resul
         .await
         .map_err(|error| format!("queued signer reply channel closed: {error}"))?
         .map_err(|error| format!("queued request failed to sign: {error}"))?;
-    assert_eq!(signed.id, "rcpt-block-counter-0001");
+    assert_eq!(signed.id, queued_expected_id);
 
     let blocked_signed = tokio::time::timeout(Duration::from_secs(1), &mut blocked)
         .await
         .map_err(|_| "blocked producer did not finish after queue capacity freed".to_string())?
         .map_err(|error| format!("blocked request failed to sign: {error}"))?;
-    assert_eq!(blocked_signed.id, "rcpt-block-counter-0002");
+    assert_eq!(blocked_signed.id, blocked_expected_id);
 
     handle.shutdown().await;
     Ok(())

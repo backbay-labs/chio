@@ -25,7 +25,10 @@ use chio_core_types::capability::{
     ToolGrant,
 };
 use chio_core_types::crypto::{Keypair, PublicKey};
-use chio_core_types::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction};
+use chio_core_types::receipt::{
+    BoundaryClass, ChioReceipt, ChioReceiptBody, Decision, ObservationOutcome, ReceiptKind,
+    RedactionMode, ToolCallAction, ToolOrigin, TrustLevel,
+};
 use chio_http_core::{
     client_builder_with_contract, handle_batch_respond, handle_get_approval, handle_list_pending,
     handle_respond, http_status_metadata_decision, http_status_metadata_final, send_with_contract,
@@ -962,7 +965,7 @@ async fn sidecar_evaluate_handler(
 }
 
 async fn sidecar_verify_handler(
-    State(_state): State<Arc<ProxyState>>,
+    State(state): State<Arc<ProxyState>>,
     request: Request<Body>,
 ) -> Response {
     let (_parts, body) = request.into_parts();
@@ -996,8 +999,9 @@ async fn sidecar_verify_handler(
         }
     };
 
-    let valid = receipt.verify_signature().unwrap_or(false);
-    (StatusCode::OK, axum::Json(VerifyReceiptResponse { valid })).into_response()
+    let signer_trusted = receipt.kernel_key.to_hex() == state.signer_keypair.public_key().to_hex();
+    let verification = VerifyReceiptResponse::from_http_receipt(&receipt, signer_trusted);
+    (StatusCode::OK, axum::Json(verification)).into_response()
 }
 
 async fn sidecar_health_handler(State(_state): State<Arc<ProxyState>>) -> Response {
@@ -1296,11 +1300,18 @@ async fn sidecar_submit_receipt_handler(
             caller_identity_hash,
             session_id: None,
             verdict: Verdict::Allow,
+            receipt_kind: chio_core_types::ReceiptKind::MediatedDecision,
+            boundary_class: chio_core_types::BoundaryClass::Prevent,
+            observation_outcome: None,
+            tool_origin: chio_core_types::ToolOrigin::CallerExecuted,
+            redaction_mode: chio_core_types::RedactionMode::None,
+            actor_chain: Vec::new(),
             evidence: Vec::new(),
             response_status: StatusCode::OK.as_u16(),
             timestamp: chrono::Utc::now().timestamp() as u64,
             content_hash: chio_core_types::sha256_hex(&body_bytes),
             policy_hash: manual_receipt_policy_hash("chio_api_protect_sidecar_receipt_submission"),
+            trust_level: chio_core_types::TrustLevel::Mediated,
             capability_id,
             metadata: Some(sidecar_submit_receipt_metadata(&receipt_request)),
             kernel_key: state.signer_keypair.public_key(),
@@ -1322,7 +1333,7 @@ async fn sidecar_submit_receipt_handler(
     (
         StatusCode::OK,
         axum::Json(SidecarSubmitReceiptResponse {
-            receipt_id,
+            receipt_id: receipt.id.clone(),
             accepted: true,
         }),
     )
@@ -1773,12 +1784,13 @@ async fn sidecar_verify_receipt_handler(
         .into_response()
 }
 
-fn decision_label(decision: &Decision) -> String {
+fn decision_label(decision: &Option<Decision>) -> String {
     match decision {
-        Decision::Allow => "allow".to_string(),
-        Decision::Deny { .. } => "deny".to_string(),
-        Decision::Cancelled { .. } => "cancelled".to_string(),
-        Decision::Incomplete { .. } => "incomplete".to_string(),
+        Some(Decision::Allow) => "allow".to_string(),
+        Some(Decision::Deny { .. }) => "deny".to_string(),
+        Some(Decision::Cancelled { .. }) => "cancelled".to_string(),
+        Some(Decision::Incomplete { .. }) => "incomplete".to_string(),
+        None => "none".to_string(),
     }
 }
 
@@ -1911,22 +1923,33 @@ async fn sidecar_evaluate_tool_call_handler(
         .await
         .contains(&evaluate_request.capability_id);
 
-    let decision = if revoked {
-        Decision::Deny {
-            reason: "capability has been revoked".to_string(),
-            guard: "CapabilityRevocation".to_string(),
-        }
-    } else if let Some(claimed) = claimed_hash.as_ref() {
-        if !claimed.is_empty() && *claimed != parameter_hash {
-            Decision::Deny {
-                reason: "parameter_hash does not match canonical hash of parameters".to_string(),
-                guard: "ParameterHashMismatch".to_string(),
-            }
-        } else {
-            Decision::Allow
-        }
+    let hash_mismatch = match claimed_hash.as_ref() {
+        Some(claimed) => !claimed.is_empty() && *claimed != parameter_hash,
+        None => false,
+    };
+
+    // The sidecar `/v1/evaluate` alias only checks revocation state and the
+    // canonical parameter hash; it does not present a capability token,
+    // validate its scope, or run the kernel's authorization pipeline. Emit
+    // an `AdvisoryEvaluation` receipt (no signed `Decision`, advisory trust
+    // level) so downstream v1 authority gates do not mistake this alias
+    // outcome for a kernel-mediated authorization.
+    let alias_check_outcome = if revoked {
+        "capability_revoked"
+    } else if hash_mismatch {
+        "parameter_hash_mismatch"
     } else {
-        Decision::Allow
+        "alias_checks_passed"
+    };
+
+    // `Dropped` signals "the alias-side checks would refuse to proceed";
+    // `Evaluated` signals "the alias evaluated the call but did not
+    // synchronously authorize anything". Neither implies the kernel mediated
+    // the tool call.
+    let observation_outcome = if revoked || hash_mismatch {
+        ObservationOutcome::Dropped
+    } else {
+        ObservationOutcome::Evaluated
     };
 
     let action = ToolCallAction {
@@ -1942,7 +1965,13 @@ async fn sidecar_evaluate_tool_call_handler(
             tool_server: evaluate_request.tool_server,
             tool_name: evaluate_request.tool_name,
             action,
-            decision,
+            decision: None,
+            receipt_kind: ReceiptKind::AdvisoryEvaluation,
+            boundary_class: BoundaryClass::AdvisoryOnly,
+            observation_outcome: Some(observation_outcome),
+            tool_origin: ToolOrigin::HostExecutedUnmediated,
+            redaction_mode: RedactionMode::None,
+            actor_chain: Vec::new(),
             content_hash: chio_core_types::sha256_hex(&body_bytes),
             policy_hash: manual_receipt_policy_hash(
                 "chio_api_protect_sidecar_tool_call_evaluation_v1",
@@ -1950,9 +1979,10 @@ async fn sidecar_evaluate_tool_call_handler(
             evidence: Vec::new(),
             metadata: Some(serde_json::json!({
                 "evaluation_kind": "sidecar_tool_call_alias",
-                "limitation": "kernel-driven tool-call evaluation is not yet wired through the sidecar; this receipt records cap-revocation and parameter-hash checks only",
+                "alias_check_outcome": alias_check_outcome,
+                "limitation": "kernel-driven tool-call evaluation is not yet wired through the sidecar; this receipt records cap-revocation and parameter-hash checks only and must not be treated as kernel-mediated authorization",
             })),
-            trust_level: chio_core_types::receipt::TrustLevel::default(),
+            trust_level: TrustLevel::Advisory,
             tenant_id: None,
             kernel_key: state.signer_keypair.public_key(),
         },
@@ -2421,11 +2451,18 @@ fn build_manual_receipt(
             caller_identity_hash,
             session_id,
             verdict,
+            receipt_kind: chio_core_types::ReceiptKind::MediatedDecision,
+            boundary_class: chio_core_types::BoundaryClass::Prevent,
+            observation_outcome: None,
+            tool_origin: chio_core_types::ToolOrigin::CallerExecuted,
+            redaction_mode: chio_core_types::RedactionMode::None,
+            actor_chain: Vec::new(),
             evidence: Vec::new(),
             response_status,
             timestamp,
             content_hash,
             policy_hash: manual_receipt_policy_hash(policy_label),
+            trust_level: chio_core_types::TrustLevel::Mediated,
             capability_id,
             metadata,
             kernel_key: state.signer_keypair.public_key(),
@@ -3965,7 +4002,6 @@ paths:
     #[tokio::test]
     async fn sidecar_verify_reports_signature_validity() {
         let state = test_state(Vec::new(), "http://127.0.0.1:1".to_string());
-        let keypair = Keypair::generate();
         let receipt = HttpReceipt::sign(
             chio_http_core::HttpReceiptBody {
                 id: "receipt-verify".to_string(),
@@ -3975,11 +4011,70 @@ paths:
                 caller_identity_hash: "caller-hash".to_string(),
                 session_id: None,
                 verdict: chio_http_core::Verdict::Allow,
+                receipt_kind: chio_core_types::ReceiptKind::MediatedDecision,
+                boundary_class: chio_core_types::BoundaryClass::Prevent,
+                observation_outcome: None,
+                tool_origin: chio_core_types::ToolOrigin::CallerExecuted,
+                redaction_mode: chio_core_types::RedactionMode::None,
+                actor_chain: Vec::new(),
                 evidence: Vec::new(),
                 response_status: 200,
                 timestamp: 1_700_000_000,
-                content_hash: "hash".to_string(),
+                content_hash: chio_core_types::sha256_hex(b"test-content"),
                 policy_hash: "policy".to_string(),
+                trust_level: chio_core_types::TrustLevel::Mediated,
+                capability_id: None,
+                metadata: None,
+                kernel_key: state.signer_keypair.public_key(),
+            },
+            &state.signer_keypair,
+        )
+        .test_unwrap();
+        let request = Request::builder()
+            .method("POST")
+            .uri("/chio/verify")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&receipt).test_unwrap()))
+            .test_unwrap();
+
+        let response = sidecar_verify_handler(State(state), request).await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let bytes = to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .test_unwrap();
+        let verification: VerifyReceiptResponse = serde_json::from_slice(&bytes).test_unwrap();
+        assert!(verification.signature_valid);
+        assert!(verification.signer_trusted);
+        assert!(verification.authorized);
+        assert!(verification.ok);
+    }
+
+    #[tokio::test]
+    async fn sidecar_verify_does_not_authorize_self_signed_receipts() {
+        let state = test_state(Vec::new(), "http://127.0.0.1:1".to_string());
+        let keypair = Keypair::generate();
+        let receipt = HttpReceipt::sign(
+            chio_http_core::HttpReceiptBody {
+                id: "receipt-self-signed".to_string(),
+                request_id: "req-self-signed".to_string(),
+                route_pattern: "/pets".to_string(),
+                method: HttpMethod::Get,
+                caller_identity_hash: "caller-hash".to_string(),
+                session_id: None,
+                verdict: chio_http_core::Verdict::Allow,
+                receipt_kind: chio_core_types::ReceiptKind::MediatedDecision,
+                boundary_class: chio_core_types::BoundaryClass::Prevent,
+                observation_outcome: None,
+                tool_origin: chio_core_types::ToolOrigin::CallerExecuted,
+                redaction_mode: chio_core_types::RedactionMode::None,
+                actor_chain: Vec::new(),
+                evidence: Vec::new(),
+                response_status: 200,
+                timestamp: 1_700_000_000,
+                content_hash: chio_core_types::sha256_hex(b"test-content"),
+                policy_hash: "policy".to_string(),
+                trust_level: chio_core_types::TrustLevel::Mediated,
                 capability_id: None,
                 metadata: None,
                 kernel_key: keypair.public_key(),
@@ -4001,7 +4096,10 @@ paths:
             .await
             .test_unwrap();
         let verification: VerifyReceiptResponse = serde_json::from_slice(&bytes).test_unwrap();
-        assert!(verification.valid);
+        assert!(verification.signature_valid);
+        assert!(!verification.signer_trusted);
+        assert!(!verification.authorized);
+        assert!(!verification.ok);
     }
 
     #[tokio::test]
@@ -4375,6 +4473,19 @@ paths:
             "demo-pod"
         );
         assert!(stored.verify_signature().test_unwrap());
+        // The returned id must be the content-addressed signed id (64-char
+        // SHA-256 hex), not the pre-sign UUID. This guarantees clients can
+        // look up the submitted job receipt in the receipt log.
+        assert_eq!(submit_response.receipt_id, stored.id);
+        assert_eq!(
+            submit_response.receipt_id,
+            stored.recompute_id().test_unwrap()
+        );
+        assert_eq!(submit_response.receipt_id.len(), 64);
+        assert!(submit_response
+            .receipt_id
+            .chars()
+            .all(|c| c.is_ascii_hexdigit()));
 
         let _ = std::fs::remove_file(receipt_db);
     }
@@ -4998,7 +5109,18 @@ paths:
         let receipt: ChioReceipt = serde_json::from_slice(&receipt_bytes).test_unwrap();
         assert!(receipt.verify_signature().test_unwrap());
         assert_eq!(receipt.capability_id, token.id);
-        assert!(matches!(receipt.decision, Decision::Allow));
+        // The sidecar alias-only path emits advisory receipts (no decision)
+        // so v1 authority gates cannot mistake the result for a kernel-
+        // mediated authorization.
+        assert!(receipt.decision.is_none());
+        assert_eq!(receipt.receipt_kind, ReceiptKind::AdvisoryEvaluation);
+        assert_eq!(receipt.boundary_class, BoundaryClass::AdvisoryOnly);
+        assert_eq!(receipt.trust_level, TrustLevel::Advisory);
+        assert_eq!(
+            receipt.observation_outcome,
+            Some(ObservationOutcome::Evaluated)
+        );
+        assert!(!receipt.is_allowed());
 
         // Now feed it back through `/v1/receipts/verify`.
         let verify_body = serde_json::to_value(&receipt).test_unwrap();
@@ -5014,7 +5136,7 @@ paths:
         )
         .test_unwrap();
         assert_eq!(verify_json["valid"], true);
-        assert_eq!(verify_json["decision"], "allow");
+        assert_eq!(verify_json["decision"], "none");
         assert_eq!(verify_json["receipt_id"], receipt.id);
     }
 
@@ -5127,7 +5249,23 @@ paths:
                 .test_unwrap(),
         )
         .test_unwrap();
-        assert!(receipt.is_denied());
+        // The alias-only path must not emit an authorizing or mediated
+        // receipt; revocation is surfaced via the advisory observation
+        // outcome and the recorded alias check outcome.
+        assert!(receipt.decision.is_none());
+        assert!(!receipt.is_allowed());
+        assert_eq!(receipt.receipt_kind, ReceiptKind::AdvisoryEvaluation);
+        assert_eq!(receipt.trust_level, TrustLevel::Advisory);
+        assert_eq!(
+            receipt.observation_outcome,
+            Some(ObservationOutcome::Dropped)
+        );
+        let alias_outcome = receipt
+            .metadata
+            .as_ref()
+            .and_then(|m| m.get("alias_check_outcome"))
+            .and_then(|v| v.as_str());
+        assert_eq!(alias_outcome, Some("capability_revoked"));
         assert!(receipt.verify_signature().test_unwrap());
 
         let _ = std::fs::remove_file(receipt_db);
@@ -5155,10 +5293,23 @@ paths:
                 .test_unwrap(),
         )
         .test_unwrap();
-        assert!(receipt.is_denied());
-        match &receipt.decision {
-            Decision::Deny { guard, .. } => assert_eq!(guard, "ParameterHashMismatch"),
-            other => panic!("expected ParameterHashMismatch, got {other:?}"),
-        }
+        // Parameter-hash mismatch is surfaced as an advisory observation
+        // outcome of `Dropped` plus an explicit `parameter_hash_mismatch`
+        // alias-check outcome in metadata; the signed receipt must not
+        // carry an authorization decision.
+        assert!(receipt.decision.is_none());
+        assert!(!receipt.is_allowed());
+        assert_eq!(receipt.receipt_kind, ReceiptKind::AdvisoryEvaluation);
+        assert_eq!(receipt.trust_level, TrustLevel::Advisory);
+        assert_eq!(
+            receipt.observation_outcome,
+            Some(ObservationOutcome::Dropped)
+        );
+        let alias_outcome = receipt
+            .metadata
+            .as_ref()
+            .and_then(|m| m.get("alias_check_outcome"))
+            .and_then(|v| v.as_str());
+        assert_eq!(alias_outcome, Some("parameter_hash_mismatch"));
     }
 }

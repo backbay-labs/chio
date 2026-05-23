@@ -81,6 +81,7 @@ fn make_kernel(receipt_store_path: &std::path::Path) -> ChioKernel {
         max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
         max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
         require_web3_evidence: false,
+        allow_ephemeral_receipt_log: true,
         checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
     };

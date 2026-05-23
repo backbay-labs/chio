@@ -17,7 +17,7 @@
 
 use std::time::Duration;
 
-use crate::alerting::{derive_severity, AlertSeverity};
+use crate::alerting::{derive_event_severity, AlertSeverity};
 use crate::event::SiemEvent;
 use crate::exporter::{ExportError, ExportFuture, Exporter};
 use crate::redaction::redact_for_operator_log;
@@ -198,19 +198,24 @@ impl DatadogExporter {
             let receipt = &ev.receipt;
             let authorized = ev.is_authorized();
             let (allow, guard_label, reason) = match &receipt.decision {
-                Decision::Allow if authorized => (true, "allow", "chio.receipt".to_string()),
-                Decision::Allow => (
+                Some(Decision::Allow) if authorized => (true, "allow", "chio.receipt".to_string()),
+                Some(Decision::Allow) => (
                     false,
                     ev.receipt_kind.as_str(),
                     format!("{} receipt", ev.receipt_kind),
                 ),
-                Decision::Deny { reason, guard } => (false, guard.as_str(), reason.clone()),
-                Decision::Cancelled { reason } => (false, "cancelled", reason.clone()),
-                Decision::Incomplete { reason } => (false, "incomplete", reason.clone()),
+                Some(Decision::Deny { reason, guard }) => (false, guard.as_str(), reason.clone()),
+                Some(Decision::Cancelled { reason }) => (false, "cancelled", reason.clone()),
+                Some(Decision::Incomplete { reason }) => (false, "incomplete", reason.clone()),
+                None => (
+                    false,
+                    ev.receipt_kind.as_str(),
+                    format!("{} receipt", ev.receipt_kind),
+                ),
             };
             let reason = redact_for_operator_log(reason);
 
-            let severity = derive_severity(receipt);
+            let severity = derive_event_severity(ev);
 
             let mut tags = self.config.tags.clone();
             tags.push(format!("tool:{}", sanitize_tag_value(&receipt.tool_name)));
@@ -266,6 +271,10 @@ impl DatadogExporter {
                     "result".to_string(),
                     serde_json::Value::String(ev.result.clone()),
                 );
+                obj.insert(
+                    "authorized".to_string(),
+                    serde_json::Value::Bool(ev.authorized),
+                );
             }
 
             logs.push(serde_json::json!({
@@ -278,6 +287,7 @@ impl DatadogExporter {
                 "receipt_kind": ev.receipt_kind.clone(),
                 "boundary_class": ev.boundary_class.clone(),
                 "result": ev.result.clone(),
+                "authorized": ev.authorized,
                 "event": event_json,
             }));
         }
@@ -414,6 +424,8 @@ mod tests {
         assert!(!tags.contains("outcome:allow"));
         assert_eq!(payload[0]["receipt_kind"], "trace_observation");
         assert_eq!(payload[0]["boundary_class"], "detect_only");
+        assert_eq!(payload[0]["authorized"], false);
+        assert_eq!(payload[0]["event"]["authorized"], false);
     }
 
     fn test_receipt_with_semantics(
@@ -426,7 +438,12 @@ mod tests {
             "path": "/etc/passwd"
         }))
         .expect("hash test receipt parameters");
-        let mut receipt = ChioReceipt::sign(
+        let decision = if semantics.receipt_kind == chio_core::ReceiptKind::MediatedDecision {
+            Some(decision)
+        } else {
+            None
+        };
+        ChioReceipt::sign(
             ChioReceiptBody {
                 id: "trace-datadog-1".to_string(),
                 timestamp: 1_712_345_678,
@@ -435,21 +452,22 @@ mod tests {
                 tool_name: "file_read".to_string(),
                 action,
                 decision,
+                receipt_kind: semantics.receipt_kind,
+                boundary_class: semantics.boundary_class,
+                observation_outcome: semantics.observation_outcome,
+                tool_origin: semantics.tool_origin,
+                redaction_mode: semantics.redaction_mode,
+                actor_chain: semantics.actor_chain,
                 content_hash: "content-xyz".to_string(),
                 policy_hash: "policy-xyz".to_string(),
                 evidence: Vec::new(),
                 metadata: None,
-                trust_level: TrustLevel::Mediated,
+                trust_level,
                 tenant_id: None,
                 kernel_key: kp.public_key(),
             },
             &kp,
         )
-        .expect("sign test receipt");
-        receipt.metadata = Some(serde_json::json!({
-            "receipt_semantics": semantics,
-        }));
-        receipt.trust_level = trust_level;
-        receipt
+        .expect("sign test receipt")
     }
 }

@@ -2,7 +2,7 @@
 #
 # Source: spec/schemas/chio-wire/v1/**/*.schema.json
 # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
-# Schema sha256: 27d4f7c80ab3dae2f37ecd9e2cac2b620d452d76da7aabe48d91abcd19c69d61
+# Schema sha256: 7223531823b07d4fb9431326768d3983613ee0dfdc0d30b28876f52d7a901e0b
 #
 # Manual edits will be overwritten by the next regeneration; the
 # spec-drift CI lane enforces this header on every file
@@ -14,10 +14,9 @@ from .capability_list_schema import Algorithm, AttenuationProof, Capability, Cav
 from .capability_revoked_schema import ChioKernelmessageCapabilityRevoked
 from .heartbeat_schema import ChioKernelmessageHeartbeat
 from .tool_call_chunk_schema import ChioKernelmessageToolCallChunk
-from .tool_call_response_schema import Action, ChioKernelmessageToolCallResponse, Decision, Decision6, Decision7, Decision8, Detail, Error, Error10, Error11, Error12, Error13, Error9, EvidenceItem, Receipt, Result, Result1, Result2, Result3, Result4
+from .tool_call_response_schema import ChioKernelmessageToolCallResponse, Detail, Error, Error10, Error11, Error12, Error13, Error9, Result, Result1, Result2, Result3, Result4
 
 __all__ = [
-    "Action",
     "Algorithm",
     "AttenuationProof",
     "Capability",
@@ -28,10 +27,6 @@ __all__ = [
     "ChioKernelmessageToolCallChunk",
     "ChioKernelmessageToolCallResponse",
     "Constraint",
-    "Decision",
-    "Decision6",
-    "Decision7",
-    "Decision8",
     "DelegationChainItem",
     "Detail",
     "Error",
@@ -40,13 +35,11 @@ __all__ = [
     "Error12",
     "Error13",
     "Error9",
-    "EvidenceItem",
     "Grant",
     "MaxCostPerInvocation",
     "MaxTotalCost",
     "Operation",
     "PromptGrant",
-    "Receipt",
     "ResourceGrant",
     "Result",
     "Result1",

@@ -75,10 +75,16 @@ fn deny_receipt() -> Result<ArenaReceipt, Box<dyn std::error::Error>> {
             tool_server: "filesystem".to_string(),
             tool_name: "read_file".to_string(),
             action,
-            decision: Decision::Deny {
+            decision: Some(Decision::Deny {
                 reason: "policy:denied".to_string(),
                 guard: "test-guard".to_string(),
-            },
+            }),
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
             content_hash: sha256_hex(b"content"),
             policy_hash: sha256_hex(b"policy"),
             evidence: Vec::new(),

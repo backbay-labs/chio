@@ -30,6 +30,7 @@ from chio_sdk.models import (
     EvaluateResponse,
     GuardEvidence,
     HttpReceipt,
+    VerifyReceiptResponse,
 )
 from chio_sdk.models_approvals import (
     Approval,
@@ -203,23 +204,29 @@ class ChioClient:
     # ------------------------------------------------------------------
 
     async def verify_receipt(self, receipt: ChioReceipt) -> bool:
-        """Ask the sidecar to verify a receipt signature.
+        """Ask the sidecar to verify a receipt's authority.
 
-        Returns True if the signature is valid.
+        Returns True only when the structured verification report authorizes
+        the presented receipt. Legacy ``{"valid": true}`` responses are not
+        authoritative.
         """
         data = await self._post(
             "/v1/receipts/verify",
             receipt.model_dump(exclude_none=True),
         )
-        return bool(data.get("valid", False))
+        try:
+            report = VerifyReceiptResponse.model_validate(data)
+        except ValueError:
+            return False
+        return report.authorizes(receipt)
 
-    async def verify_http_receipt(self, receipt: HttpReceipt) -> bool:
-        """Ask the sidecar to verify an HTTP receipt signature."""
+    async def verify_http_receipt(self, receipt: HttpReceipt) -> VerifyReceiptResponse:
+        """Ask the sidecar to verify an HTTP receipt's authority."""
         data = await self._post(
             "/chio/verify",
             receipt.model_dump(exclude_none=True),
         )
-        return bool(data.get("valid", False))
+        return VerifyReceiptResponse.model_validate(data)
 
     async def verify_receipt_chain(
         self, receipts: list[ChioReceipt]
@@ -267,7 +274,13 @@ class ChioClient:
             "parameter_hash": param_hash,
         }
         data = await self._post("/v1/evaluate", body)
-        return ChioReceipt.model_validate(data)
+        receipt = ChioReceipt.model_validate(data)
+        if not await self.verify_receipt(receipt):
+            raise ChioError(
+                "Chio sidecar returned an unverified receipt",
+                code="INVALID_RECEIPT",
+            )
+        return receipt
 
     async def evaluate_http_request(
         self,
@@ -314,7 +327,20 @@ class ChioClient:
             request_model.model_dump(exclude_none=True),
             headers=request_headers,
         )
-        return EvaluateResponse.model_validate(data)
+        result = EvaluateResponse.model_validate(data)
+        if result.verdict.is_allowed:
+            if not result.receipt.is_allowed:
+                raise ChioError(
+                    "Chio sidecar returned an allow verdict without an authorizing receipt",
+                    code="INVALID_RECEIPT",
+                )
+            verification = await self.verify_http_receipt(result.receipt)
+            if not verification.authorizes(result.receipt):
+                raise ChioError(
+                    "Chio sidecar returned an unverified receipt",
+                    code="INVALID_RECEIPT",
+                )
+        return result
 
     # ------------------------------------------------------------------
     # HITL approval channel

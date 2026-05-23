@@ -29,6 +29,12 @@ pub enum CreditEvaluatorError {
     /// The supplied receipt failed signature verification.
     #[error("receipt signature verification failed for receipt {receipt_id}")]
     SignatureInvalid { receipt_id: String },
+    /// The supplied receipt was signed by a kernel key outside the configured trust set.
+    #[error("receipt {receipt_id} was signed by untrusted kernel key {kernel_key}")]
+    SignerUntrusted {
+        receipt_id: String,
+        kernel_key: String,
+    },
     /// The supplied receipt could not be canonically encoded.
     #[error("canonical encoding failed: {0}")]
     Canonical(String),

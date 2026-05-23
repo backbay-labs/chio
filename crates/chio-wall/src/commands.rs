@@ -338,10 +338,16 @@ fn chio_wall_receipt(
             tool_server: "chio-wall".to_string(),
             tool_name: authorization_context.tool_name.clone(),
             action,
-            decision: Decision::Deny {
+            decision: Some(Decision::Deny {
                 reason: guard_outcome.reason.clone(),
                 guard: guard_outcome.guard_name.clone(),
-            },
+            }),
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
             content_hash,
             policy_hash,
             evidence: Vec::new(),
@@ -825,6 +831,8 @@ mod tests {
             base_backoff_ms: 0,
             dlq_capacity: 100,
             rate_limit: None,
+            trusted_kernel_keys: std::collections::BTreeSet::new(),
+            read_context: chio_kernel::ReceiptReadContext::local_operator_admin_all(),
         })
         .expect("open ExporterManager");
         manager.add_exporter(Box::new(exporter.clone()));
@@ -844,7 +852,7 @@ mod tests {
         assert_eq!(events[0].receipt.tool_server, "chio-wall");
         assert_eq!(events[0].receipt.tool_name, CHIO_WALL_REQUESTED_TOOL);
         match &events[0].receipt.decision {
-            Decision::Deny { guard, .. } => assert_eq!(guard, "mcp-tool"),
+            Some(Decision::Deny { guard, .. }) => assert_eq!(guard, "mcp-tool"),
             other => panic!("expected denied Chio-Wall receipt, got {other:?}"),
         }
         assert_eq!(manager.dlq_len(), 0, "successful export should not DLQ");

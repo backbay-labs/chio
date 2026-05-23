@@ -3,9 +3,10 @@
 ## Purpose
 
 This runbook defines the operator-facing review path for Chio's stronger
-post-v3.16 technical claim: Chio is a cryptographically signed, fail-closed,
-intent-aware governance control plane on the qualified authoritative protocol
-surfaces.
+internal technical-control claim: Chio is a cryptographically signed,
+fail-closed, intent-aware governance control plane on the qualified
+authoritative protocol surfaces. This is an internal milestone claim, not a
+Chio-owned protocol version.
 
 This runbook is not the market-position proof. It documents the technical
 runtime, trust boundaries, and failure handling that back the stronger control-
@@ -17,18 +18,18 @@ The current control-plane claim covers the authoritative paths across:
 
 - HTTP/API enforcement via `chio-api-protect` and `chio-tower`
 - MCP runtime execution
-- OpenAI tool execution routed through the kernel
 - A2A authoritative send/stream/get/cancel mediation
 - ACP authoritative invoke/stream/resume/cancel mediation
 
-Compatibility-only helpers are out of scope for this claim.
+Compatibility-only helpers and deferred OpenAI adapter surfaces are out of
+scope for this claim.
 
 ## Trust Boundaries
 
 The qualified topology has three material trust layers:
 
 1. Source protocol surface
-   - HTTP, OpenAI, A2A, or ACP originates a governed request
+   - HTTP, MCP, A2A, or ACP originates a governed request
 2. Chio control plane
    - route planning
    - capability / policy enforcement

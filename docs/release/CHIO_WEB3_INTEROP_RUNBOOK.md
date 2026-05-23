@@ -2,8 +2,13 @@
 
 ## Purpose
 
-This runbook covers the supported operator actions for the shipped `v2.38`
-web3 automation, transport, and payment-interop surfaces.
+This runbook covers the supported operator actions for web3 automation,
+transport, and payment-interop surfaces originally tracked under internal
+milestone `v2.38`.
+
+> Version posture: this is a pre-release operator runbook. Internal `v2.x`
+> milestone labels are historical planning labels, not Chio-owned protocol,
+> schema, SDK, or runtime versions. Current protocol posture is v1-only.
 
 These lanes are bounded overlays on top of `chio-link`, `chio-anchor`, and
 `chio-settle`. They do not replace those runtimes or widen Chio truth from
@@ -11,7 +16,7 @@ external scheduler, DON, bridge, or facilitator behavior.
 
 ## Routine Checks
 
-Before enabling any `v2.38` interop surface:
+Before enabling any web3 interop surface:
 
 1. Review `docs/standards/CHIO_FUNCTIONS_FALLBACK_PROFILE.md`,
    `docs/standards/CHIO_AUTOMATION_PROFILE.md`,

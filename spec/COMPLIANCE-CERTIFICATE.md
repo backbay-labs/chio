@@ -186,8 +186,11 @@ Lightweight verification does not re-verify individual receipt signatures.
 ### 5.2 Full Bundle Verification
 
 Full bundle verification re-verifies all receipt signatures independently
-of the kernel's assertions. It provides non-repudiation: a third party
-can confirm the certificate without trusting the issuing kernel.
+of the kernel's assertions. It supports non-repudiation when the verifier
+resolves each receipt's signing key against a trusted-key set populated
+out of band (operator-pinned roots, federation registry, or exported
+`KernelKeyDirectory`): a third party with that key set can confirm the
+certificate without trusting the issuing kernel.
 
 ```
 verify_full_bundle(cert, receipts) -> CertificateVerificationResult

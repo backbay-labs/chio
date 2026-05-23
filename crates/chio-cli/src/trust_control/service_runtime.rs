@@ -960,13 +960,17 @@ pub fn issue_signed_portable_reputation_summary(
     )?;
     let local_operator = public_generic_registry_publisher(config)?;
     let issued_at = request.issued_at.unwrap_or(now_unix_secs()?);
-    let inspection = issuance::inspect_local_reputation(
+    let read_context = chio_kernel::ReceiptReadContext::admin_service();
+    let trusted_kernel_keys = vec![signer_keypair.public_key().to_hex()];
+    let inspection = issuance::inspect_local_reputation_with_read_context(
         &request.subject_key,
         config.receipt_db_path.as_deref(),
         config.budget_db_path.as_deref(),
         request.since,
         request.until,
         config.issuance_policy.as_ref(),
+        &trusted_kernel_keys,
+        &read_context,
     )
     .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     let Some(receipt_db_path) = config.receipt_db_path.as_deref() else {
@@ -1104,13 +1108,23 @@ fn evaluate_federation_policy_request(
     }
 
     if let Some(minimum_score) = record.minimum_reputation_score {
-        let inspection = issuance::inspect_local_reputation(
+        let read_context = chio_kernel::ReceiptReadContext::admin_service();
+        let trusted_kernel_keys = trusted_kernel_keys_from_service_config(&state.config)
+            .map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "trust service authority material is configured but could not be loaded for federation admission: {error}"
+                ))
+            })?
+            .unwrap_or_default();
+        let inspection = issuance::inspect_local_reputation_with_read_context(
             &request.subject_key,
             state.config.receipt_db_path.as_deref(),
             state.config.budget_db_path.as_deref(),
             None,
             None,
             state.config.issuance_policy.as_ref(),
+            &trusted_kernel_keys,
+            &read_context,
         )
         .map_err(|error| {
             CliError::cli_other_error(format!(
@@ -4250,6 +4264,7 @@ mod service_runtime_tests {
             issuer: Some("issuer-1".to_string()),
             partner: Some("partner-1".to_string()),
             limit: Some(6),
+            read_context: None,
         });
 
         let exposure_query = ExposureLedgerQuery {
@@ -4270,6 +4285,7 @@ mod service_runtime_tests {
             since: Some(50),
             until: Some(60),
             receipt_limit: Some(7),
+            read_context: None,
         });
         let _ = client.exposure_ledger(&exposure_query);
         let _ = client.credit_scorecard(&exposure_query);
@@ -4366,6 +4382,7 @@ mod service_runtime_tests {
             metered_limit: Some(25),
             authorization_limit: Some(26),
             economic_limit: Some(27),
+            read_context: None,
         };
         let _ = client.operator_report(&operator_query);
         let _ = client.metered_billing_report(&operator_query);

@@ -16,7 +16,7 @@ with :class:`dagster.AssetExecutionContext` must keep eager annotations.
 
 from typing import Any
 
-from chio_sdk.models import ChioScope, Operation, ToolGrant
+from chio_sdk.models import ChioReceipt, ChioScope, Operation, ToolCallAction, ToolGrant
 from chio_sdk.testing import MockChioClient, MockVerdict, allow_all, deny_all
 from dagster import (
     AssetExecutionContext,
@@ -43,6 +43,32 @@ def _scope_for_tools(*tool_names: str, server_id: str = "srv") -> ChioScope:
 def _ephemeral_instance() -> DagsterInstance:
     """Return a fresh ephemeral Dagster instance for each test run."""
     return DagsterInstance.ephemeral()
+
+
+class _DecisionlessReceiptClient:
+    async def evaluate_tool_call(self, **kwargs: Any) -> ChioReceipt:
+        return ChioReceipt(
+            id="mock-trace-receipt",
+            timestamp=1_700_000_000,
+            capability_id=str(kwargs["capability_id"]),
+            tool_server=str(kwargs["tool_server"]),
+            tool_name=str(kwargs["tool_name"]),
+            action=ToolCallAction(parameters=dict(kwargs["parameters"]), parameter_hash="hash"),
+            decision=None,
+            receipt_kind="trace_observation",
+            boundary_class="detect_only",
+            observation_outcome="observed_allow",
+            tool_origin="provider_reported",
+            redaction_mode="metadata_only",
+            content_hash="content",
+            policy_hash="policy",
+            trust_level="verified",
+            kernel_key="kernel",
+            signature="signature",
+        )
+
+    async def close(self) -> None:
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -288,6 +314,36 @@ class TestDenyPath:
             failure_events[0].event_specific_data.error
         )
         assert "PermissionError" in error_chain
+
+    def test_decisionless_non_authorizing_receipt_fails_without_attribute_error(self) -> None:
+        chio = _DecisionlessReceiptClient()
+
+        @chio_asset(
+            scope=_scope_for_tools("observe"),
+            capability_id="cap-1",
+            tool_server="srv",
+            chio_client=chio,
+        )
+        def observe(context: AssetExecutionContext) -> str:
+            return "observed"
+
+        result = materialize(
+            [observe],
+            instance=_ephemeral_instance(),
+            raise_on_error=False,
+        )
+        assert not result.success
+        failure_events = [
+            e
+            for e in result.all_events
+            if getattr(e, "event_type_value", None) == "STEP_FAILURE"
+        ]
+        assert failure_events
+        error_chain = _error_chain_class_names(
+            failure_events[0].event_specific_data.error
+        )
+        assert "PermissionError" in error_chain
+        assert "AttributeError" not in error_chain
 
 
 # ---------------------------------------------------------------------------

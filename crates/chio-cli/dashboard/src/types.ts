@@ -26,11 +26,12 @@ export interface ReceiptAction {
 }
 
 export type ReceiptDecision =
-  | 'allow'
   | { verdict: 'allow' }
-  | { deny: { reason: string; guard: string } }
-  | { cancelled: Record<string, unknown> }
-  | { incomplete: Record<string, unknown> }
+  | { verdict: 'deny'; reason: string; guard: string }
+  | { verdict: 'cancelled'; reason: string }
+  | { verdict: 'incomplete'; reason: string }
+
+export type ReceiptDecisionKind = DecisionKind | 'none'
 
 export interface ReceiptMetadata {
   financial?: FinancialMetadata
@@ -44,7 +45,9 @@ export interface Receipt {
   tool_server: string
   tool_name: string
   action: ReceiptAction
-  decision: ReceiptDecision
+  decision?: ReceiptDecision
+  receipt_kind?: 'mediated_decision' | 'trace_observation' | 'advisory_evaluation'
+  boundary_class?: 'prevent' | 'detect_only' | 'advisory_only'
   metadata?: ReceiptMetadata
 }
 
@@ -850,14 +853,8 @@ export interface ReceiptAnalyticsFilters {
 /**
  * Extract a DecisionKind label from a raw receipt decision value.
  */
-export function decisionKind(decision: ReceiptDecision): DecisionKind {
-  if (decision === 'allow') return 'allow'
-  if (typeof decision === 'object' && 'verdict' in decision && decision.verdict === 'allow') {
-    return 'allow'
-  }
-  if (typeof decision === 'object' && 'deny' in decision) return 'deny'
-  if (typeof decision === 'object' && 'cancelled' in decision) return 'cancelled'
-  return 'incomplete'
+export function decisionKind(decision?: ReceiptDecision): ReceiptDecisionKind {
+  return decision?.verdict ?? 'none'
 }
 
 /**

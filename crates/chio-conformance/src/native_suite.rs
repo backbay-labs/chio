@@ -13,8 +13,8 @@ use chio_core::capability::{
 use chio_core::crypto::Keypair;
 use chio_core::message::{AgentMessage, KernelMessage, ToolCallError, ToolCallResult};
 use chio_core::receipt::{
-    ChioReceipt, ChioReceiptBody, Decision, GovernedTransactionReceiptMetadata, GuardEvidence,
-    ToolCallAction,
+    BoundaryClass, ChioReceipt, ChioReceiptBody, Decision, GovernedTransactionReceiptMetadata,
+    GuardEvidence, ReceiptKind, RedactionMode, ToolCallAction, ToolOrigin,
 };
 use chio_kernel::dpop::{verify_dpop_proof, DpopConfig, DpopNonceStore, DpopProof, DpopProofBody};
 use chio_kernel::transport::{read_frame, write_frame, TransportError};
@@ -1243,7 +1243,13 @@ fn build_receipt(
             tool_server: "conformance".to_string(),
             tool_name: tool_name.to_string(),
             action: ToolCallAction::from_parameters(params).expect("build action"),
-            decision,
+            decision: Some(decision),
+            receipt_kind: ReceiptKind::MediatedDecision,
+            boundary_class: BoundaryClass::Prevent,
+            observation_outcome: None,
+            tool_origin: ToolOrigin::CallerExecuted,
+            redaction_mode: RedactionMode::None,
+            actor_chain: Vec::new(),
             content_hash: chio_core::sha256_hex(b"{\"ok\":true}"),
             policy_hash: "policy-hash-001".to_string(),
             evidence: vec![GuardEvidence {

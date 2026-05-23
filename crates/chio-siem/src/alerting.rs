@@ -47,6 +47,7 @@ use zeroize::Zeroizing;
 use crate::event::SiemEvent;
 use crate::exporter::{ExportError, ExportFuture, Exporter};
 use crate::redaction::redact_for_operator_log;
+use chio_core::chio_receipt_id;
 use chio_core::receipt::{ChioReceipt, Decision, GuardEvidence};
 use chio_egress_contract::{client_builder_with_contract, send_with_contract, HttpEgressContract};
 
@@ -117,19 +118,47 @@ impl AlertSeverity {
 /// | Deny     | `financial`, `budget`, `limit` | High     |
 /// | Deny     | (any other)                    | Medium   |
 /// | Cancelled / Incomplete | any             | Low      |
-/// | Allow    | any failed `evidence[]` entry  | Low      |
-/// | Allow    | (clean)                        | Info     |
+/// | Allow    | non-authorizing semantics      | Low      |
+/// | Allow    | authorized, failed evidence    | Low      |
+/// | Allow    | authorized, clean              | Info     |
 pub fn derive_severity(receipt: &ChioReceipt) -> AlertSeverity {
+    let receipt_id_valid = chio_receipt_id(&receipt.body())
+        .map(|id| id == receipt.id)
+        .unwrap_or(false);
+    let authoritative = receipt_id_valid
+        && receipt.verify_signature().unwrap_or(false)
+        && receipt.action.verify_hash().unwrap_or(false);
+    let authorized = authoritative
+        && receipt
+            .semantic_fields()
+            .is_authorized(receipt.decision.as_ref());
     match &receipt.decision {
-        Decision::Allow => {
-            if receipt.evidence.iter().any(|g| !g.verdict) {
+        Some(Decision::Allow) => {
+            if !authorized || receipt.evidence.iter().any(|g| !g.verdict) {
                 AlertSeverity::Low
             } else {
                 AlertSeverity::Info
             }
         }
-        Decision::Cancelled { .. } | Decision::Incomplete { .. } => AlertSeverity::Low,
-        Decision::Deny { guard, .. } => severity_for_guard(guard, &receipt.evidence),
+        Some(Decision::Cancelled { .. }) | Some(Decision::Incomplete { .. }) | None => {
+            AlertSeverity::Low
+        }
+        Some(Decision::Deny { guard, .. }) => severity_for_guard(guard, &receipt.evidence),
+    }
+}
+
+/// Derive severity from an already-verified SIEM event. This path preserves
+/// signer trust and semantic authorization computed at ingestion time.
+pub fn derive_event_severity(event: &SiemEvent) -> AlertSeverity {
+    match &event.receipt.decision {
+        Some(Decision::Allow) => {
+            if !event.authorized || event.receipt.evidence.iter().any(|g| !g.verdict) {
+                AlertSeverity::Low
+            } else {
+                AlertSeverity::Info
+            }
+        }
+        _ => derive_severity(&event.receipt),
     }
 }
 
@@ -635,11 +664,11 @@ impl AlertingExporter {
     fn should_alert(&self, event: &SiemEvent) -> bool {
         // Only fire on explicit Deny; Allow/Cancelled/Incomplete never page.
         let (guard, _reason) = match &event.receipt.decision {
-            Decision::Deny { guard, reason } => (guard.clone(), reason.clone()),
+            Some(Decision::Deny { guard, reason }) => (guard.clone(), reason.clone()),
             _ => return false,
         };
 
-        if derive_severity(&event.receipt) < self.config.min_severity {
+        if derive_event_severity(event) < self.config.min_severity {
             return false;
         }
         if self.config.exclude_guards.iter().any(|g| g == &guard) {
@@ -655,11 +684,11 @@ impl AlertingExporter {
 
     fn build_alert(event: &SiemEvent) -> Result<Alert, ExportError> {
         let (guard, reason) = match &event.receipt.decision {
-            Decision::Deny { guard, reason } => (guard.clone(), reason.clone()),
+            Some(Decision::Deny { guard, reason }) => (guard.clone(), reason.clone()),
             _ => ("chio.kernel".to_string(), "non-deny event".to_string()),
         };
 
-        let severity = derive_severity(&event.receipt);
+        let severity = derive_event_severity(event);
         let summary = format!(
             "Chio guard deny: {} ({}) on {}/{}",
             guard, reason, event.receipt.tool_server, event.receipt.tool_name
@@ -761,7 +790,9 @@ impl Exporter for AlertingExporter {
 mod tests {
     use super::*;
     use chio_core::crypto::Keypair;
-    use chio_core::receipt::{ChioReceiptBody, GuardEvidence, ToolCallAction};
+    use chio_core::receipt::{
+        ChioReceiptBody, GuardEvidence, ReceiptSemanticFields, ToolCallAction,
+    };
 
     fn deny_receipt(guard: &str) -> ChioReceipt {
         let keypair = Keypair::generate();
@@ -775,10 +806,16 @@ mod tests {
                 tool_server: "shell".to_string(),
                 tool_name: "bash".to_string(),
                 action,
-                decision: Decision::Deny {
+                decision: Some(Decision::Deny {
                     reason: "denied".to_string(),
                     guard: guard.to_string(),
-                },
+                }),
+                receipt_kind: chio_core::ReceiptKind::MediatedDecision,
+                boundary_class: chio_core::BoundaryClass::Prevent,
+                observation_outcome: None,
+                tool_origin: chio_core::ToolOrigin::CallerExecuted,
+                redaction_mode: chio_core::RedactionMode::None,
+                actor_chain: Vec::new(),
                 content_hash: "c".to_string(),
                 policy_hash: "p".to_string(),
                 evidence: vec![GuardEvidence {
@@ -808,7 +845,13 @@ mod tests {
                 tool_server: "shell".to_string(),
                 tool_name: "bash".to_string(),
                 action,
-                decision: Decision::Allow,
+                decision: Some(Decision::Allow),
+                receipt_kind: chio_core::ReceiptKind::MediatedDecision,
+                boundary_class: chio_core::BoundaryClass::Prevent,
+                observation_outcome: None,
+                tool_origin: chio_core::ToolOrigin::CallerExecuted,
+                redaction_mode: chio_core::RedactionMode::None,
+                actor_chain: Vec::new(),
                 content_hash: "c".to_string(),
                 policy_hash: "p".to_string(),
                 evidence: Vec::new(),
@@ -822,9 +865,49 @@ mod tests {
         .expect("sign")
     }
 
+    fn trace_allow_receipt() -> ChioReceipt {
+        let keypair = Keypair::generate();
+        let action = ToolCallAction::from_parameters(serde_json::json!({}))
+            .expect("hash receipt parameters");
+        let semantics = ReceiptSemanticFields::trace_detect_only();
+        ChioReceipt::sign(
+            ChioReceiptBody {
+                id: "alert-rcpt-trace".to_string(),
+                timestamp: 1_700_000_000,
+                capability_id: "cap".to_string(),
+                tool_server: "shell".to_string(),
+                tool_name: "bash".to_string(),
+                action,
+                decision: None,
+                receipt_kind: semantics.receipt_kind,
+                boundary_class: semantics.boundary_class,
+                observation_outcome: semantics.observation_outcome,
+                tool_origin: semantics.tool_origin,
+                redaction_mode: semantics.redaction_mode,
+                actor_chain: semantics.actor_chain,
+                content_hash: "c".to_string(),
+                policy_hash: "p".to_string(),
+                evidence: Vec::new(),
+                metadata: None,
+                trust_level: chio_core::TrustLevel::Verified,
+                tenant_id: None,
+                kernel_key: keypair.public_key(),
+            },
+            &keypair,
+        )
+        .expect("sign")
+    }
+
     #[test]
     fn severity_allow_clean_is_info() {
         assert_eq!(derive_severity(&allow_receipt()), AlertSeverity::Info);
+    }
+
+    #[test]
+    fn severity_trace_allow_is_not_authorization_info() {
+        let receipt = trace_allow_receipt();
+        assert!(!receipt.is_allowed());
+        assert_eq!(derive_severity(&receipt), AlertSeverity::Low);
     }
 
     #[test]

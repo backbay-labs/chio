@@ -113,7 +113,13 @@ fn make_receipt_body(keypair: &Keypair) -> ChioReceiptBody {
         tool_server: "srv-a".to_string(),
         tool_name: "echo".to_string(),
         action: ToolCallAction::from_parameters(serde_json::json!({"msg": "hi"})).unwrap(),
-        decision: Decision::Allow,
+        decision: Some(Decision::Allow),
+        receipt_kind: Default::default(),
+        boundary_class: Default::default(),
+        observation_outcome: None,
+        tool_origin: Default::default(),
+        redaction_mode: Default::default(),
+        actor_chain: Vec::new(),
         content_hash: "0".repeat(64),
         policy_hash: "0".repeat(64),
         evidence: vec![],
@@ -654,5 +660,11 @@ fn verify_mobile_receipt_accepts_known_attestation_platform_shape() {
     let raw = verify_mobile_receipt(receipt_json, evidence_json).unwrap();
     let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
     assert_eq!(value["schema"], "chio.mobile.receipt-verification.v1");
+    assert_eq!(value["status"], "shape_only");
+    assert_eq!(value["receipt_kind"], "trace_observation");
+    assert_eq!(value["boundary_class"], "detect_only");
+    assert_eq!(value["result"], "observed");
+    assert_eq!(value["authoritative"], false);
+    assert_eq!(value["authorized"], false);
     assert_eq!(value["platform"], "app_attest");
 }

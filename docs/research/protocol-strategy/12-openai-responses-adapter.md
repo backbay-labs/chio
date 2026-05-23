@@ -5,8 +5,15 @@
 > **Erratum (wave 3 + PR 652 review):** `tool_origin` records execution locus, not redaction policy. ADR-0010 keeps `tool_origin` and `redaction_mode` as separate signed current v1 fields. The planning default is `CallerExecuted | HostExecutedProviderReported | HostExecutedUnmediated`. References below that imply redaction as an origin variant should be read as historical.
 >
 > **API refresh note (PR 652 review):** Before implementation, refresh against the current official OpenAI tools docs. `function` tools remain the clean MVP seam because the caller executes them. Current tool docs also describe `computer` as a caller-harness action surface and remote MCP / connectors as approval-mediated but externally executed surfaces, so this document's older "all built-ins are host-executed" shorthand must not drive adapter code.
+>
+> **Current status:** No present-tense OpenAI adapter package is part of the v1
+> protocol claim. The workspace may contain partial, feature-gated OpenAI
+> lifting/lowering or stream-gating code, but it is not a qualified adapter and
+> does not include a release-ready real HTTP client. OpenAI work remains blocked
+> until v1 receipt authority, read-boundary, and adapter qualification gates
+> land and official docs are refreshed in the ticket itself.
 
-Status: research, not yet implemented.
+Status: research; any in-tree OpenAI code is partial and unqualified.
 Branch: `research/protocol-strategy-2026`.
 Output of swarm task E1. Coordinates with X1 (current v1 receipt-kind semantics) on the
 `tool_origin` field and with the latency-audit track on streaming gates.
@@ -25,10 +32,10 @@ normative field to the
 receipt schema (`tool_origin`) and a "trace receipt" sub-type that carries no
 verdict because there is nothing to mediate. Read that historical shorthand as
 ADR-0010's `trace_observation` or `advisory_evaluation` receipt kind, not as a
-mediated decision receipt. The proposed crate is
-`chio-openai-responses-adapter` and its MVP gates only caller-executed
-`function` tools over streaming SSE; reasoning and built-in tools follow in a
-second release only after the boundary ADR.
+mediated decision receipt. A future OpenAI adapter crate may gate only
+caller-executed `function` tools over streaming SSE; reasoning and built-in
+tools remain deferred until a surface-specific boundary ticket proves a
+Chio-owned dispatch boundary.
 
 ## Wire shape
 
@@ -276,9 +283,7 @@ guarantees.
 
 ## Crate structure
 
-New crate `chio-openai-responses-adapter` (distinct from the existing
-`chio-openai` which today targets Chat Completions and the legacy
-streaming surface - see `crates/chio-openai/src/`). File layout:
+Historical crate sketch (name and layout still subject to the adapter ticket):
 
 ```
 crates/chio-openai-responses-adapter/
@@ -294,9 +299,9 @@ crates/chio-openai-responses-adapter/
     streaming.rs     # StreamGate over output_item / content_part / tool calls
 ```
 
-Keep `chio-openai` as the Chat Completions adapter to avoid breaking
-the migration path; document the deprecation in
-`crates/chio-openai/README.md` once the Responses adapter ships.
+Do not claim an existing OpenAI adapter surface in this research doc. If
+an OpenAI adapter is later implemented, the ticket must define the crate name,
+official API pin, fixture corpus, and migration story.
 
 ## Authentication
 
@@ -399,10 +404,9 @@ model and probably wants its own adapter sub-module).
 
 ## Summary
 
-1. Crate name `chio-openai-responses-adapter`; MVP gates only
-   caller-executed `function` tools over streaming SSE on
-   non-reasoning models, refusing any request with built-in tools or
-   reasoning configured.
+1. Future crate name TBD; the potential MVP gates only caller-executed
+   `function` tools over streaming SSE on non-reasoning models, refusing any
+   request with built-in tools or reasoning configured.
 2. The novel receipt field is `tool_origin` (enum:
    `caller-executed` | `host-executed-provider-reported` | `host-executed-unmediated`),
    required on every tool record so host-executed calls cannot

@@ -398,7 +398,7 @@ fn tuple_from_browser_core(
     core: &chio_kernel_browser::EvaluationVerdictJson,
     scope_set: &[String],
 ) -> VerdictTuple {
-    match core.verdict.as_str() {
+    match core.capability_verdict.as_str() {
         "allow" => tuple("allow", REASON_NONE, scope_set.to_vec()),
         "deny" => tuple(
             "deny",

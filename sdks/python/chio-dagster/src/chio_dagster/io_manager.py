@@ -243,15 +243,19 @@ class ChioIOManager:
                 except Exception:  # noqa: BLE001 -- close never fails the op
                     pass
 
-        if receipt.is_denied:
+        if not receipt.is_allowed:
             decision = receipt.decision
             raise self._deny_permission_error(
-                reason=decision.reason or "denied by Chio kernel",
-                guard=decision.guard,
+                reason=decision.reason
+                if decision is not None and decision.reason is not None
+                else "non-authorizing Chio receipt",
+                guard=decision.guard if decision is not None else None,
                 receipt_id=receipt.id,
                 tool_name=tool_name,
                 partition_key=partition_key,
-                decision=decision.model_dump(exclude_none=True),
+                decision=decision.model_dump(exclude_none=True)
+                if decision is not None
+                else None,
             )
         return receipt
 

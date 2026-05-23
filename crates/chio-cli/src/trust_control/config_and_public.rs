@@ -1640,6 +1640,15 @@ fn build_scim_deprovision_receipt(
     revoked_capability_ids: &[String],
     now: u64,
 ) -> Result<ChioReceipt, CliError> {
+    let tenant_id = record
+        .enterprise_identity
+        .tenant_id
+        .clone()
+        .ok_or_else(|| {
+            CliError::cli_other_error(
+                "scim deprovision receipts require an enterprise tenant_id".to_string(),
+            )
+        })?;
     let keypair = load_behavioral_feed_signing_keypair(
         config.authority_seed_path.as_deref(),
         config.authority_db_path.as_deref(),
@@ -1675,7 +1684,13 @@ fn build_scim_deprovision_receipt(
             tool_server: "chio.scim".to_string(),
             tool_name: "delete_user".to_string(),
             action,
-            decision: Decision::Allow,
+            decision: Some(Decision::Allow),
+            receipt_kind: chio_core::ReceiptKind::MediatedDecision,
+            boundary_class: chio_core::BoundaryClass::Prevent,
+            observation_outcome: None,
+            tool_origin: chio_core::ToolOrigin::CallerExecuted,
+            redaction_mode: chio_core::RedactionMode::None,
+            actor_chain: Vec::new(),
             content_hash,
             policy_hash,
             evidence: Vec::new(),
@@ -1703,8 +1718,8 @@ fn build_scim_deprovision_receipt(
                     "receiptKind": "deprovisioning",
                 }
             })),
-            trust_level: chio_core::TrustLevel::default(),
-            tenant_id: None,
+            trust_level: chio_core::TrustLevel::Mediated,
+            tenant_id: Some(tenant_id),
             kernel_key: keypair.public_key(),
         },
         &keypair,
@@ -1722,6 +1737,7 @@ mod config_and_public_tests {
         TrustServiceConfig {
             listen: "127.0.0.1:0".parse().expect("parse listen addr"),
             service_token: "token".to_string(),
+            tenant_read_tokens: BTreeMap::new(),
             receipt_db_path: None,
             revocation_db_path: None,
             authority_seed_path: None,

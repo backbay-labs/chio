@@ -1,6 +1,7 @@
 use chio_core_types::crypto::Keypair;
 use chio_core_types::receipt::{
-    ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
+    ActorRef, BoundaryClass, ChioReceipt, ChioReceiptBody, Decision, ReceiptKind, RedactionMode,
+    ToolCallAction, ToolOrigin, TrustLevel,
 };
 use chio_federation::{
     sign_chio_bilateral_dsse_envelope, BilateralPredicateExtensions, CapabilityLeaseRef,
@@ -224,7 +225,16 @@ fn strict_dsse_fixture_receipt_with_id(
                 "record": "vendor-ledger-7",
                 "value": "closed"
             }))?),
-            decision: Decision::Allow,
+            decision: Some(Decision::Allow),
+            receipt_kind: ReceiptKind::MediatedDecision,
+            boundary_class: BoundaryClass::Prevent,
+            observation_outcome: None,
+            tool_origin: ToolOrigin::CallerExecuted,
+            redaction_mode: RedactionMode::None,
+            actor_chain: vec![ActorRef {
+                actor_id: "agent:chiodos-runtime/buyer-review".to_string(),
+                actor_kind: Some("agent".to_string()),
+            }],
             content_hash: "c".repeat(64),
             policy_hash: "policy-live".to_string(),
             evidence: Vec::new(),

@@ -18,10 +18,10 @@ current code supports:
 
 | Claim area | Correct grounding | Planning implication |
 |---|---|---|
-| Benchmarks | 11 kernel Criterion benches still use `black_box(0_u64)` stubs. | Real bench bodies block latency-sensitive plans for voice, Cedar overhead, hybrid signing, and fast paths. |
+| Benchmarks | 11 kernel Criterion benches previously used `black_box(0_u64)` stubs; they now carry real bodies driven through `dispatch_request_fixture`. | Latency-sensitive plans for voice, Cedar overhead, hybrid signing, and fast paths can now be measured against the new bodies; remaining work is `required-features` gating per bench. |
 | Receipt fields | `ChioReceiptBody` has `policy_hash`, `metadata`, `trust_level`, and `tenant_id`, but not `policy_version` or `manifest_id`. | Treat `policy_version` and `manifest_id` as proposed current v1 fields or signed metadata, not current fields. |
 | Workflow manifests | `SkillStep` uses `input_contract` / `output_contract`, not `args_schema`. | Orchestrator examples using `args_schema` are desired constraint shape, not current schema. |
-| Manifest event actions | Current manifests do not yet carry first-class event publish/consume actions. | Fold `EventPublish` / `EventConsume` into current v1 manifest planning after receipt/read-boundary gates exist; do not add a manifest schema-ceiling field before release. |
+| Manifest event actions | Current manifests do not yet carry first-class event publish/consume actions. | Fold `EventPublish` / `EventConsume` into current v1 manifest planning after receipt/read-boundary gates exist; do not add a manifest schema limit field before release. |
 
 CI health is also not research signal yet. The PR checks failed before job
 startup because of GitHub Actions billing or spending-limit state. Rerun after
@@ -33,7 +33,7 @@ Use the ADRs below before implementation tickets:
 
 | ADR | Default stance | Locks |
 |---|---|---|
-| [ADR-0010 Current V1 Receipt-Kind And Trace Semantics](../../adr/ADR-0010-current-v1-receipt-kind-trace-semantics.md) | Receipt-kind semantics are folded into unreleased v1. Trace/advisory records are not allow-shaped receipts. | `receipt_kind`, `boundary_class`, verifier behavior, `tool_origin`, redaction, `ActorRef`, `policy_digest` hex `String`, extension signing, and `must_understand`. |
+| [ADR-0010 Current V1 Receipt-Kind And Trace Semantics](../../adr/ADR-0010-current-v1-receipt-kind-trace-semantics.md) | Receipt-kind semantics are folded into unreleased v1. Trace/advisory records are not allow-shaped receipts. | `receipt_kind`, `boundary_class`, verifier behavior, `tool_origin`, redaction, `ActorRef`, and current `policy_hash` handling. Extension signing, extension hashes, and `must_understand` remain blocked until a separate accepted extension-binding design lands. |
 | [ADR-0011 Boundary Taxonomy And Product Wording](../../adr/ADR-0011-boundary-taxonomy-product-wording.md) | Every surface must say what Chio prevents, only detects, only advises on, or cannot see. | `boundary_class`, `planning_status`, mediated versus trace-only wording, and SIEM/UI labels. |
 | [ADR-0012 Current V1 Manifest Event-Action Planning](../../adr/ADR-0012-current-v1-manifest-event-actions.md) | `EventPublish` / `EventConsume` are current v1 planning work, not a new manifest generation. | Broker identity, rejection behavior, `RequiredPermissions` unknown-field behavior, SDK migration window, and enforcement location. |
 | [ADR-0013 Async Receipt Durability](../../adr/ADR-0013-async-receipt-durability.md) | Durable-before-allow remains default; async requires WAL-backed recovery. | WAL versus bounded loss, queue saturation deny behavior, sequence gaps, replay detection, and audit wording. |
@@ -65,22 +65,23 @@ Use two fields, not one overloaded status:
 | LiveKit function tools | `prevent` | `blocked_by_adr` | Wrapper is plausible; voice implementation waits on async receipt SLO and voice-tier guard rules. |
 | Vapi / Retell shims | `prevent` | `deferred` | Needs fresh webhook/auth contract research and durability rules. |
 | Cedar engine behind Chio guard pipeline | `prevent` | `ready_after_adr` | Cedar is a collaborator, not a replacement substrate; start with selected list/branch guards after real latency measurements. |
-| OPA / OpenFGA | `prevent` | `deferred` | Keep as research until Cedar pattern and latency measurements are real. |
-| Tetragon | `detect_only` | `deferred` | Treat as observability / evidence ingestion or out-of-band enforcement. Do not model it as a synchronous Chio guard. |
+| OPA / OpenFGA / Tetragon | `prevent` | `deferred` | Keep as research until Cedar pattern and latency measurements are real. |
 | Below-L7 mediation, DNS, TLS interception, SOCKS5, DB wire proxies | `cannot_see` | `hard_skip` | Out of this PR's scope and outside the core Chio boundary. |
 
 ## Planning Sequence
 
 1. **Measurement foundation**
-   - Use the bench-stub engineering plan:
-     [2026-05-12-bench-stub-foundation.md](../../superpowers/plans/2026-05-12-bench-stub-foundation.md).
-   - Replace the 11 `black_box(0_u64)` bodies in a later code PR.
-   - Add `required-features` gating per bench where needed.
-   - Do not use latency claims for voice, Cedar, or hybrid signing until real bench data exists.
+   - The bench-stub engineering plan
+     [2026-05-12-bench-stub-foundation.md](../../superpowers/plans/2026-05-12-bench-stub-foundation.md)
+     has shipped: the 11 `black_box(0_u64)` bodies are replaced in-tree
+     with real bodies driven through `dispatch_request_fixture`.
+   - Remaining work in this area: add `required-features` gating per bench
+     where needed, and re-baseline latency claims for voice, Cedar, and
+     hybrid signing against the new bodies.
 
 2. **Semantic foundation**
    - Use accepted ADRs for current v1 receipt-kind semantics, origin/redaction, boundary matrix, current v1 manifest event-action planning, and async durability.
-   - Do not add receipt or manifest schema-ceiling fields or legacy
+   - Do not add receipt or manifest schema limit fields or legacy
      compatibility paths before release.
    - Manifest constraints are enforced through manifest admission, typed guard/action evaluation, and SDK/bridge wire checks.
    - OAuth AS implementation tickets remain blocked until a dedicated ADR or equivalent decision note is accepted.

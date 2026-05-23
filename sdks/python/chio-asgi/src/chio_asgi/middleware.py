@@ -16,7 +16,7 @@ from typing import Any, Callable, Awaitable
 
 from chio_sdk.client import ChioClient
 from chio_sdk.errors import ChioConnectionError, ChioError, ChioTimeoutError
-from chio_sdk.models import ChioPassthrough, CallerIdentity, HttpReceipt
+from chio_sdk.models import CallerIdentity, HttpReceipt
 
 from chio_asgi.config import ChioASGIConfig
 from chio_asgi.extractors import CompositeExtractor, IdentityExtractor
@@ -160,17 +160,6 @@ class ChioASGIMiddleware:
                 capability_token=_extract_capability_token(scope),
             )
         except (ChioConnectionError, ChioTimeoutError):
-            if self._config.fail_open:
-                _attach_passthrough(
-                    scope,
-                    ChioPassthrough(
-                        mode="allow_without_receipt",
-                        error="chio_sidecar_unreachable",
-                        message="Chio sidecar unavailable",
-                    ),
-                )
-                await self._app(scope, replay_receive, send)
-                return
             await _send_error_response(
                 send, 503, "Chio sidecar unavailable", "SidecarUnavailable"
             )
@@ -183,12 +172,9 @@ class ChioASGIMiddleware:
 
         receipt = result.receipt
 
-        # Fire receipt callback
-        if self._on_receipt is not None:
-            await self._on_receipt(receipt)
-
-        # Check verdict
-        if receipt.is_denied:
+        # Check verdicts. Anything other than explicit allow from both the
+        # response and embedded receipt fails closed.
+        if not result.verdict.is_allowed or not receipt.is_allowed:
             status = 403
             if receipt.verdict.http_status is not None:
                 status = receipt.verdict.http_status
@@ -201,6 +187,25 @@ class ChioASGIMiddleware:
                 receipt_header=self._config.receipt_header,
             )
             return
+
+        try:
+            verification = await client.verify_http_receipt(receipt)
+        except (ChioConnectionError, ChioTimeoutError, ChioError):
+            verification = None
+        if verification is None or not verification.authorizes(receipt):
+            await _send_error_response(
+                send,
+                502,
+                "Chio sidecar returned an unverified receipt",
+                "InvalidReceipt",
+                receipt_id=receipt.id,
+                receipt_header=self._config.receipt_header,
+            )
+            return
+
+        # Fire receipt callback only after the authorizing receipt verifies.
+        if self._on_receipt is not None:
+            await self._on_receipt(receipt)
 
         # Allowed -- forward with receipt header
         receipt_header_name = self._config.receipt_header.lower().encode("latin-1")
@@ -232,13 +237,6 @@ def _extract_capability_token(scope: Scope) -> str | None:
         if param.startswith("chio_capability="):
             return param.split("=", 1)[1]
     return None
-
-
-def _attach_passthrough(scope: Scope, passthrough: ChioPassthrough) -> None:
-    scope["chio_passthrough"] = passthrough
-    state = scope.setdefault("state", {})
-    if isinstance(state, dict):
-        state["chio_passthrough"] = passthrough
 
 
 def _selected_headers(scope: Scope) -> dict[str, str]:

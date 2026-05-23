@@ -129,12 +129,14 @@ class _BaseChioTool:
             )
         except ChioDeniedError:
             raise
-        if receipt.is_denied:
+        if not receipt.is_allowed:
             decision = receipt.decision
             raise ChioDeniedError(
-                decision.reason or "denied by Chio kernel",
-                guard=decision.guard,
-                reason=decision.reason,
+                decision.reason
+                if decision is not None and decision.reason is not None
+                else "non-authorizing Chio receipt",
+                guard=decision.guard if decision is not None else None,
+                reason=decision.reason if decision is not None else None,
                 tool_name=tool_name,
                 tool_server=self.SERVER_ID,
                 receipt_id=receipt.id,

@@ -80,6 +80,12 @@ export interface HttpReceipt {
   caller_identity_hash: string;
   session_id?: string | undefined;
   verdict: Verdict;
+  receipt_kind: "mediated_decision" | "trace_observation" | "advisory_evaluation";
+  boundary_class: "prevent" | "detect_only" | "advisory_only";
+  observation_outcome?: "observed" | "evaluated" | "dropped" | undefined;
+  tool_origin: "caller_executed" | "host_executed_provider_reported" | "host_executed_unmediated";
+  redaction_mode: "none" | "summary" | "redacted";
+  actor_chain?: Array<Record<string, unknown>> | undefined;
   evidence: GuardEvidence[];
   // Chio evaluation-time HTTP status; allow receipts may be signed before the
   // downstream response exists.
@@ -87,10 +93,70 @@ export interface HttpReceipt {
   timestamp: number;
   content_hash: string;
   policy_hash: string;
+  trust_level: "mediated" | "verified" | "advisory";
   capability_id?: string | undefined;
   metadata?: unknown;
   kernel_key: string;
   signature: string;
+}
+
+export function isAuthorizedHttpReceipt(receipt: HttpReceipt): boolean {
+  return receipt.receipt_kind === "mediated_decision"
+    && receipt.boundary_class === "prevent"
+    && receipt.observation_outcome === undefined
+    && receipt.trust_level === "mediated"
+    && isAllowed(receipt.verdict);
+}
+
+export interface VerifyReceiptResponse {
+  signature_valid: boolean;
+  signer_trusted: boolean;
+  receipt_id_valid: boolean;
+  parameter_hash_valid: boolean;
+  receipt_kind: string;
+  boundary_class: string;
+  trust_level: string;
+  result: string;
+  authorized: boolean;
+  signer_key_hex: string;
+  ok: boolean;
+}
+
+export function isVerifyReceiptResponse(value: unknown): value is VerifyReceiptResponse {
+  if (typeof value !== "object" || value === null) return false;
+  const record = value as Record<string, unknown>;
+  return typeof record.signature_valid === "boolean"
+    && typeof record.signer_trusted === "boolean"
+    && typeof record.receipt_id_valid === "boolean"
+    && typeof record.parameter_hash_valid === "boolean"
+    && typeof record.receipt_kind === "string"
+    && typeof record.boundary_class === "string"
+    && typeof record.trust_level === "string"
+    && typeof record.result === "string"
+    && typeof record.authorized === "boolean"
+    && typeof record.signer_key_hex === "string"
+    && typeof record.ok === "boolean";
+}
+
+export function isAuthoritativeVerification(
+  verification: VerifyReceiptResponse,
+  receipt?: HttpReceipt | undefined,
+): boolean {
+  return verification.ok
+    && verification.authorized
+    && verification.signer_trusted
+    && verification.signature_valid
+    && verification.receipt_id_valid
+    && verification.parameter_hash_valid
+    && verification.receipt_kind === "mediated_decision"
+    && verification.boundary_class === "prevent"
+    && verification.trust_level === "mediated"
+    && (
+      verification.result === "allow"
+      || verification.result === "authorized"
+      || verification.result === "Authorized"
+    )
+    && (receipt == null || isAuthorizedHttpReceipt(receipt));
 }
 
 // -- Chio HTTP Request (sent to sidecar for evaluation) --
@@ -125,10 +191,7 @@ export interface EvaluateResponse {
   evidence: GuardEvidence[];
 }
 
-/**
- * Explicit passthrough state when Chio is configured fail-open and the sidecar
- * could not produce a signed evaluation result.
- */
+/** Explicit passthrough state reserved for legacy callers. */
 export interface ChioPassthrough {
   mode: "allow_without_receipt";
   error: typeof CHIO_ERROR_CODES.SIDECAR_UNREACHABLE;
@@ -161,10 +224,7 @@ export interface ChioConfig {
    */
   routePatternResolver?: RoutePatternResolver | undefined;
 
-  /**
-   * Called when the sidecar is unreachable. Defaults to deny (fail-closed).
-   * `allow` forwards the request without an Chio receipt.
-   */
+  /** Legacy option. Current middleware always denies sidecar errors. */
   onSidecarError?: "deny" | "allow" | undefined;
 
   /**

@@ -45,6 +45,7 @@ from chio_sdk.models_legacy import (
     ToolCallAction,
     ToolGrant,
     Verdict,
+    VerifyReceiptResponse,
 )
 
 # `generated` is the namespace under which the schema-derived Pydantic v2
@@ -84,4 +85,5 @@ __all__ = [
     "ToolCallAction",
     "ToolGrant",
     "Verdict",
+    "VerifyReceiptResponse",
 ]

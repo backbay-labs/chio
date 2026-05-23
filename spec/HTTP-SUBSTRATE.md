@@ -340,7 +340,7 @@ evidence under an Ed25519 signature from the kernel.
 
 | Field | Type | Required | Default | Signed | Description |
 | --- | --- | --- | --- | --- | --- |
-| `id` | `string` | MUST | | Yes | Unique receipt ID. UUIDv7 recommended. |
+| `id` | `string` | MUST | | Yes | Content-addressed receipt ID. |
 | `request_id` | `string` | MUST | | Yes | Unique request ID this receipt covers |
 | `route_pattern` | `string` | MUST | | Yes | Matched route pattern (e.g., `"/pets/{petId}"`) |
 | `method` | `HttpMethod` | MUST | | Yes | HTTP method of the evaluated request |

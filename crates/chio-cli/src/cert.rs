@@ -1,5 +1,6 @@
 // CLI handlers for `chio cert` commands.
 
+use std::collections::BTreeSet;
 use std::path::Path;
 
 use chio_acp_proxy::{
@@ -36,6 +37,8 @@ pub fn cmd_cert_generate(
         budget_limit,
         required_guards: Vec::new(),
         authorized_scopes: Vec::new(),
+        expected_tenant_id: None,
+        trusted_kernel_keys: BTreeSet::from([keypair.public_key().to_hex()]),
     };
 
     let cert = generate_compliance_certificate(session_id, &receipts, &config, &keypair)
@@ -68,6 +71,7 @@ pub fn cmd_cert_verify(
     certificate_path: &Path,
     full: bool,
     receipt_db: Option<&Path>,
+    trusted_kernel_pubkey: &Path,
     json_output: bool,
 ) -> Result<(), CliError> {
     let cert_text = std::fs::read_to_string(certificate_path)
@@ -98,7 +102,19 @@ pub fn cmd_cert_verify(
         None
     };
 
-    let result = verify_compliance_certificate(&cert, mode, receipts.as_deref());
+    let trusted_kernel_key =
+        crate::load_trusted_kernel_pubkey(trusted_kernel_pubkey).map_err(|e| {
+            CliError::cli_other_error(format!("failed to load trusted kernel pubkey: {e}"))
+        })?;
+    let config = ComplianceConfig {
+        budget_limit: 0,
+        required_guards: Vec::new(),
+        authorized_scopes: Vec::new(),
+        expected_tenant_id: None,
+        trusted_kernel_keys: BTreeSet::from([trusted_kernel_key.to_hex()]),
+    };
+
+    let result = verify_compliance_certificate(&cert, mode, receipts.as_deref(), &config);
 
     if json_output {
         let result_json = serde_json::to_string_pretty(&result)

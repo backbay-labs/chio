@@ -283,11 +283,11 @@ bridge.
 free; no crate should claim it. `chio-directory` keeps its name and
 its slot.
 
-**Latency budget (doc 16):** the AGNTCY-ACP hop in latency claims
+**Latency budget (doc 16):** historical AGNTCY-to-ACP hop claims
 should be removed or replaced with the A2A hop, since ACP is no
 longer a real target.
 
-**Receipt schema v3 (doc 15):** the `tool_origin` field still
+**Current v1 receipt semantics (doc 15):** the `tool_origin` field still
 surfaces from the AGNTCY case
 ([00-overview-v2.md:14](00-overview-v2.md)), but the example should
 move from ACP to A2A. No schema change needed.
@@ -298,6 +298,6 @@ Doc 08's bridge is for a dead spec. The live AGNTCY components are
 real and worth quiet consumption, but none of them is a
 `ToolServerConnection` candidate. Build one new crate
 (`chio-directory`), build nothing else AGNTCY-flavored, and let the
-existing MCP and A2A bridges absorb whatever traffic the AGNTCY stack
+qualified MCP and A2A bridge paths absorb whatever traffic the AGNTCY stack
 ends up surfacing. The C2 naming review is partially vindicated:
 `chio-bridge-agntcy` should never have been a crate.

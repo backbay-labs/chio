@@ -2,7 +2,7 @@
 // or 'cargo xtask codegen --lang go'.
 //
 // Source: spec/schemas/chio-wire/v1/**/*.schema.json
-// Schema content SHA-256: 3a2f6d2248320839e70f755fbf7e3f8dbed06ceab1559277bfcea2312d494a5a
+// Schema content SHA-256: 5e2ef4edbea873423625045a2fcceac852ba473a2b42e9f022a1d04863dd6488
 // Tool:   oapi-codegen v2.4.1 (see xtask/codegen-tools.lock.toml)
 //
 // The Schema content SHA-256 is computed from the lex-sorted schema bytes
@@ -338,6 +338,30 @@ const (
 	KernelToolCallChunkTypeToolCallChunk KernelToolCallChunkType = "tool_call_chunk"
 )
 
+// Defines values for KernelToolCallResponseReceiptActorChainKind.
+const (
+	KernelToolCallResponseReceiptActorChainKindAgent      KernelToolCallResponseReceiptActorChainKind = "agent"
+	KernelToolCallResponseReceiptActorChainKindOther      KernelToolCallResponseReceiptActorChainKind = "other"
+	KernelToolCallResponseReceiptActorChainKindProvider   KernelToolCallResponseReceiptActorChainKind = "provider"
+	KernelToolCallResponseReceiptActorChainKindService    KernelToolCallResponseReceiptActorChainKind = "service"
+	KernelToolCallResponseReceiptActorChainKindToolServer KernelToolCallResponseReceiptActorChainKind = "tool_server"
+	KernelToolCallResponseReceiptActorChainKindUser       KernelToolCallResponseReceiptActorChainKind = "user"
+)
+
+// Defines values for KernelToolCallResponseReceiptAlgorithm.
+const (
+	KernelToolCallResponseReceiptAlgorithmEd25519 KernelToolCallResponseReceiptAlgorithm = "ed25519"
+	KernelToolCallResponseReceiptAlgorithmP256    KernelToolCallResponseReceiptAlgorithm = "p256"
+	KernelToolCallResponseReceiptAlgorithmP384    KernelToolCallResponseReceiptAlgorithm = "p384"
+)
+
+// Defines values for KernelToolCallResponseReceiptBoundaryClass.
+const (
+	KernelToolCallResponseReceiptBoundaryClassAdvisoryOnly KernelToolCallResponseReceiptBoundaryClass = "advisory_only"
+	KernelToolCallResponseReceiptBoundaryClassDetectOnly   KernelToolCallResponseReceiptBoundaryClass = "detect_only"
+	KernelToolCallResponseReceiptBoundaryClassPrevent      KernelToolCallResponseReceiptBoundaryClass = "prevent"
+)
+
 // Defines values for KernelToolCallResponseReceiptDecision0Verdict.
 const (
 	KernelToolCallResponseReceiptDecision0VerdictAllow KernelToolCallResponseReceiptDecision0Verdict = "allow"
@@ -356,6 +380,41 @@ const (
 // Defines values for KernelToolCallResponseReceiptDecision3Verdict.
 const (
 	KernelToolCallResponseReceiptDecision3VerdictIncomplete KernelToolCallResponseReceiptDecision3Verdict = "incomplete"
+)
+
+// Defines values for KernelToolCallResponseReceiptObservationOutcome.
+const (
+	KernelToolCallResponseReceiptObservationOutcomeDropped   KernelToolCallResponseReceiptObservationOutcome = "dropped"
+	KernelToolCallResponseReceiptObservationOutcomeEvaluated KernelToolCallResponseReceiptObservationOutcome = "evaluated"
+	KernelToolCallResponseReceiptObservationOutcomeObserved  KernelToolCallResponseReceiptObservationOutcome = "observed"
+)
+
+// Defines values for KernelToolCallResponseReceiptReceiptKind.
+const (
+	KernelToolCallResponseReceiptReceiptKindAdvisoryEvaluation KernelToolCallResponseReceiptReceiptKind = "advisory_evaluation"
+	KernelToolCallResponseReceiptReceiptKindMediatedDecision   KernelToolCallResponseReceiptReceiptKind = "mediated_decision"
+	KernelToolCallResponseReceiptReceiptKindTraceObservation   KernelToolCallResponseReceiptReceiptKind = "trace_observation"
+)
+
+// Defines values for KernelToolCallResponseReceiptRedactionMode.
+const (
+	KernelToolCallResponseReceiptRedactionModeNone     KernelToolCallResponseReceiptRedactionMode = "none"
+	KernelToolCallResponseReceiptRedactionModeRedacted KernelToolCallResponseReceiptRedactionMode = "redacted"
+	KernelToolCallResponseReceiptRedactionModeSummary  KernelToolCallResponseReceiptRedactionMode = "summary"
+)
+
+// Defines values for KernelToolCallResponseReceiptToolOrigin.
+const (
+	KernelToolCallResponseReceiptToolOriginCallerExecuted               KernelToolCallResponseReceiptToolOrigin = "caller_executed"
+	KernelToolCallResponseReceiptToolOriginHostExecutedProviderReported KernelToolCallResponseReceiptToolOrigin = "host_executed_provider_reported"
+	KernelToolCallResponseReceiptToolOriginHostExecutedUnmediated       KernelToolCallResponseReceiptToolOrigin = "host_executed_unmediated"
+)
+
+// Defines values for KernelToolCallResponseReceiptTrustLevel.
+const (
+	KernelToolCallResponseReceiptTrustLevelAdvisory KernelToolCallResponseReceiptTrustLevel = "advisory"
+	KernelToolCallResponseReceiptTrustLevelMediated KernelToolCallResponseReceiptTrustLevel = "mediated"
+	KernelToolCallResponseReceiptTrustLevelVerified KernelToolCallResponseReceiptTrustLevel = "verified"
 )
 
 // Defines values for KernelToolCallResponseResult0Status.
@@ -503,6 +562,41 @@ const (
 	ReceiptRecordAlgorithmEd25519 ReceiptRecordAlgorithm = "ed25519"
 	ReceiptRecordAlgorithmP256    ReceiptRecordAlgorithm = "p256"
 	ReceiptRecordAlgorithmP384    ReceiptRecordAlgorithm = "p384"
+)
+
+// Defines values for ReceiptRecordBoundaryClass.
+const (
+	ReceiptRecordBoundaryClassAdvisoryOnly ReceiptRecordBoundaryClass = "advisory_only"
+	ReceiptRecordBoundaryClassDetectOnly   ReceiptRecordBoundaryClass = "detect_only"
+	ReceiptRecordBoundaryClassPrevent      ReceiptRecordBoundaryClass = "prevent"
+)
+
+// Defines values for ReceiptRecordObservationOutcome.
+const (
+	ReceiptRecordObservationOutcomeDropped   ReceiptRecordObservationOutcome = "dropped"
+	ReceiptRecordObservationOutcomeEvaluated ReceiptRecordObservationOutcome = "evaluated"
+	ReceiptRecordObservationOutcomeObserved  ReceiptRecordObservationOutcome = "observed"
+)
+
+// Defines values for ReceiptRecordReceiptKind.
+const (
+	ReceiptRecordReceiptKindAdvisoryEvaluation ReceiptRecordReceiptKind = "advisory_evaluation"
+	ReceiptRecordReceiptKindMediatedDecision   ReceiptRecordReceiptKind = "mediated_decision"
+	ReceiptRecordReceiptKindTraceObservation   ReceiptRecordReceiptKind = "trace_observation"
+)
+
+// Defines values for ReceiptRecordRedactionMode.
+const (
+	ReceiptRecordRedactionModeNone     ReceiptRecordRedactionMode = "none"
+	ReceiptRecordRedactionModeRedacted ReceiptRecordRedactionMode = "redacted"
+	ReceiptRecordRedactionModeSummary  ReceiptRecordRedactionMode = "summary"
+)
+
+// Defines values for ReceiptRecordToolOrigin.
+const (
+	ReceiptRecordToolOriginCallerExecuted               ReceiptRecordToolOrigin = "caller_executed"
+	ReceiptRecordToolOriginHostExecutedProviderReported ReceiptRecordToolOrigin = "host_executed_provider_reported"
+	ReceiptRecordToolOriginHostExecutedUnmediated       ReceiptRecordToolOrigin = "host_executed_unmediated"
 )
 
 // Defines values for ReceiptRecordTrustLevel.
@@ -1442,32 +1536,20 @@ type KernelToolCallChunkType string
 
 // KernelToolCallResponse defines model for KernelToolCallResponse.
 type KernelToolCallResponse struct {
-	Id      string `json:"id"`
-	Receipt struct {
-		Action struct {
-			ParameterHash string      `json:"parameter_hash"`
-			Parameters    interface{} `json:"parameters"`
-		} `json:"action"`
-		CapabilityId string                                  `json:"capability_id"`
-		ContentHash  string                                  `json:"content_hash"`
-		Decision     KernelToolCallResponse_Receipt_Decision `json:"decision"`
-		Evidence     *[]struct {
-			Details   *string `json:"details,omitempty"`
-			GuardName string  `json:"guard_name"`
-			Verdict   bool    `json:"verdict"`
-		} `json:"evidence,omitempty"`
-		Id         string       `json:"id"`
-		KernelKey  string       `json:"kernel_key"`
-		Metadata   *interface{} `json:"metadata,omitempty"`
-		PolicyHash string       `json:"policy_hash"`
-		Signature  string       `json:"signature"`
-		Timestamp  int64        `json:"timestamp"`
-		ToolName   string       `json:"tool_name"`
-		ToolServer string       `json:"tool_server"`
-	} `json:"receipt"`
-	Result KernelToolCallResponse_Result `json:"result"`
-	Type   KernelToolCallResponseType    `json:"type"`
+	Id      string                        `json:"id"`
+	Receipt ReceiptRecord                 `json:"receipt"`
+	Result  KernelToolCallResponse_Result `json:"result"`
+	Type    KernelToolCallResponseType    `json:"type"`
 }
+
+// KernelToolCallResponseReceiptActorChainKind defines model for KernelToolCallResponse.Receipt.ActorChain.Kind.
+type KernelToolCallResponseReceiptActorChainKind string
+
+// KernelToolCallResponseReceiptAlgorithm defines model for KernelToolCallResponse.Receipt.Algorithm.
+type KernelToolCallResponseReceiptAlgorithm string
+
+// KernelToolCallResponseReceiptBoundaryClass defines model for KernelToolCallResponse.Receipt.BoundaryClass.
+type KernelToolCallResponseReceiptBoundaryClass string
 
 // KernelToolCallResponseReceiptDecision0 defines model for .
 type KernelToolCallResponseReceiptDecision0 struct {
@@ -1509,6 +1591,21 @@ type KernelToolCallResponseReceiptDecision3Verdict string
 type KernelToolCallResponse_Receipt_Decision struct {
 	union json.RawMessage
 }
+
+// KernelToolCallResponseReceiptObservationOutcome defines model for KernelToolCallResponse.Receipt.ObservationOutcome.
+type KernelToolCallResponseReceiptObservationOutcome string
+
+// KernelToolCallResponseReceiptReceiptKind defines model for KernelToolCallResponse.Receipt.ReceiptKind.
+type KernelToolCallResponseReceiptReceiptKind string
+
+// KernelToolCallResponseReceiptRedactionMode defines model for KernelToolCallResponse.Receipt.RedactionMode.
+type KernelToolCallResponseReceiptRedactionMode string
+
+// KernelToolCallResponseReceiptToolOrigin defines model for KernelToolCallResponse.Receipt.ToolOrigin.
+type KernelToolCallResponseReceiptToolOrigin string
+
+// KernelToolCallResponseReceiptTrustLevel defines model for KernelToolCallResponse.Receipt.TrustLevel.
+type KernelToolCallResponseReceiptTrustLevel string
 
 // KernelToolCallResponseResult0 defines model for .
 type KernelToolCallResponseResult0 struct {
@@ -1858,8 +1955,14 @@ type ReceiptRecord struct {
 	// Action Describes the tool call that was evaluated. Mirrors `ToolCallAction`.
 	Action ReceiptRecordToolCallAction `json:"action"`
 
-	// Algorithm Signing algorithm envelope hint. Omitted for legacy Ed25519 receipts to preserve byte-for-byte compatibility. Verification dispatches off the signature hex prefix, not this field.
+	// ActorChain Signed actor attribution chain. Omitted from the wire when empty.
+	ActorChain *[]ReceiptRecordActorRef `json:"actor_chain,omitempty"`
+
+	// Algorithm Signing algorithm envelope hint. Verification dispatches off the signature hex prefix, not this field.
 	Algorithm *ReceiptRecordAlgorithm `json:"algorithm,omitempty"`
+
+	// BoundaryClass Signed runtime boundary class. `cannot_see` is planning metadata only and is not valid on signed runtime receipts.
+	BoundaryClass ReceiptRecordBoundaryClass `json:"boundary_class"`
 
 	// CapabilityId ID of the capability token that was exercised (or presented).
 	CapabilityId string `json:"capability_id"`
@@ -1868,7 +1971,7 @@ type ReceiptRecord struct {
 	ContentHash string `json:"content_hash"`
 
 	// Decision The Kernel's verdict on the tool call. Internally tagged enum mirroring `Decision` in `chio-core-types` (`#[serde(tag = "verdict", rename_all = "snake_case")]`).
-	Decision ReceiptRecordDecision `json:"decision"`
+	Decision *ReceiptRecordDecision `json:"decision,omitempty"`
 
 	// Evidence Per-guard evidence collected during evaluation. Omitted from the wire when empty (matches `#[serde(skip_serializing_if = "Vec::is_empty")]`).
 	Evidence *[]ReceiptRecordGuardEvidence `json:"evidence,omitempty"`
@@ -1882,13 +1985,22 @@ type ReceiptRecord struct {
 	// Metadata Optional receipt metadata for stream/accounting/financial details. Schema-less by design (mirrors `Option<serde_json::Value>`).
 	Metadata *interface{} `json:"metadata,omitempty"`
 
+	// ObservationOutcome Signed outcome for trace and advisory records. Omitted for mediated decisions.
+	ObservationOutcome *ReceiptRecordObservationOutcome `json:"observation_outcome,omitempty"`
+
 	// PolicyHash SHA-256 hash (or symbolic identifier) of the policy that was applied. Mirrors the `String` shape on `ChioReceipt::policy_hash` rather than enforcing a hex pattern, since some deployments embed a symbolic version id (e.g. `policy-bindings-v1`) rather than a raw digest.
 	PolicyHash string `json:"policy_hash"`
+
+	// ReceiptKind Signed semantic class for this v1 receipt.
+	ReceiptKind ReceiptRecordReceiptKind `json:"receipt_kind"`
+
+	// RedactionMode Signed redaction mode applied to receipt details.
+	RedactionMode ReceiptRecordRedactionMode `json:"redaction_mode"`
 
 	// Signature Hex-encoded signature over the canonical JSON of the receipt body. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.
 	Signature string `json:"signature"`
 
-	// TenantId Phase 1.5 multi-tenant receipt isolation: tenant identifier for multi-tenant deployments. Absent in single-tenant mode; derived from the authenticated session's enterprise identity context, never from caller-provided request fields. Omitted from the wire when unset so single-tenant receipts remain byte-identical.
+	// TenantId Tenant identifier for multi-tenant deployments. Absent in single-tenant mode; derived from the authenticated session's enterprise identity context, never from caller-provided request fields.
 	TenantId *string `json:"tenant_id,omitempty"`
 
 	// Timestamp Unix timestamp (seconds) when the receipt was created.
@@ -1897,18 +2009,42 @@ type ReceiptRecord struct {
 	// ToolName Tool that was invoked (or attempted).
 	ToolName string `json:"tool_name"`
 
+	// ToolOrigin Signed classification of where the tool effect executed relative to Chio.
+	ToolOrigin ReceiptRecordToolOrigin `json:"tool_origin"`
+
 	// ToolServer Tool server that handled the invocation.
 	ToolServer string `json:"tool_server"`
 
-	// TrustLevel Strength of kernel mediation that produced this receipt. Defaults to mediated.
-	TrustLevel *ReceiptRecordTrustLevel `json:"trust_level,omitempty"`
+	// TrustLevel Strength of kernel mediation that produced this receipt. Must cohere with receipt_kind: mediated_decision uses mediated, trace_observation uses verified, and advisory_evaluation uses advisory.
+	TrustLevel ReceiptRecordTrustLevel `json:"trust_level"`
 }
 
-// ReceiptRecordAlgorithm Signing algorithm envelope hint. Omitted for legacy Ed25519 receipts to preserve byte-for-byte compatibility. Verification dispatches off the signature hex prefix, not this field.
+// ReceiptRecordAlgorithm Signing algorithm envelope hint. Verification dispatches off the signature hex prefix, not this field.
 type ReceiptRecordAlgorithm string
 
-// ReceiptRecordTrustLevel Strength of kernel mediation that produced this receipt. Defaults to mediated.
+// ReceiptRecordBoundaryClass Signed runtime boundary class. `cannot_see` is planning metadata only and is not valid on signed runtime receipts.
+type ReceiptRecordBoundaryClass string
+
+// ReceiptRecordObservationOutcome Signed outcome for trace and advisory records. Omitted for mediated decisions.
+type ReceiptRecordObservationOutcome string
+
+// ReceiptRecordReceiptKind Signed semantic class for this v1 receipt.
+type ReceiptRecordReceiptKind string
+
+// ReceiptRecordRedactionMode Signed redaction mode applied to receipt details.
+type ReceiptRecordRedactionMode string
+
+// ReceiptRecordToolOrigin Signed classification of where the tool effect executed relative to Chio.
+type ReceiptRecordToolOrigin string
+
+// ReceiptRecordTrustLevel Strength of kernel mediation that produced this receipt. Must cohere with receipt_kind: mediated_decision uses mediated, trace_observation uses verified, and advisory_evaluation uses advisory.
 type ReceiptRecordTrustLevel string
+
+// ReceiptRecordActorRef defines model for ReceiptRecordActorRef.
+type ReceiptRecordActorRef struct {
+	ActorId   string  `json:"actor_id"`
+	ActorKind *string `json:"actor_kind,omitempty"`
+}
 
 // ReceiptRecordDecision The Kernel's verdict on the tool call. Internally tagged enum mirroring `Decision` in `chio-core-types` (`#[serde(tag = "verdict", rename_all = "snake_case")]`).
 type ReceiptRecordDecision struct {

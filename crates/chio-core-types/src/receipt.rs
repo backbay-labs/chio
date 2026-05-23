@@ -65,14 +65,11 @@ impl TrustLevel {
     }
 }
 
-fn is_default_trust_level(level: &TrustLevel) -> bool {
-    matches!(level, TrustLevel::Mediated)
-}
-
 /// Semantic class of a signed receipt in the current v1 pre-release model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ReceiptKind {
+    #[default]
     MediatedDecision,
     TraceObservation,
     AdvisoryEvaluation,
@@ -90,9 +87,10 @@ impl ReceiptKind {
 }
 
 /// Runtime boundary class for what Chio can enforce on this receipt.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum BoundaryClass {
+    #[default]
     Prevent,
     DetectOnly,
     AdvisoryOnly,
@@ -132,9 +130,10 @@ impl ObservationOutcome {
 }
 
 /// Where the tool effect was executed relative to Chio.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ToolOrigin {
+    #[default]
     CallerExecuted,
     HostExecutedProviderReported,
     HostExecutedUnmediated,
@@ -152,9 +151,10 @@ impl ToolOrigin {
 }
 
 /// Redaction mode applied to signed or exported receipt details.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum RedactionMode {
+    #[default]
     None,
     Summary,
     Redacted,
@@ -171,18 +171,18 @@ impl RedactionMode {
     }
 }
 
-/// Actor reference carried by semantic receipt metadata.
+/// Actor reference carried by signed receipt semantics.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "snake_case")]
 pub struct ActorRef {
     pub actor_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub actor_kind: Option<String>,
 }
 
-/// Derived v1 semantic fields used by UI, SIEM, and bridge admission.
+/// Signed v1 semantic fields used by UI, SIEM, and bridge admission.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "snake_case")]
 pub struct ReceiptSemanticFields {
     pub receipt_kind: ReceiptKind,
     pub boundary_class: BoundaryClass,
@@ -231,31 +231,70 @@ impl ReceiptSemanticFields {
         }
     }
 
-    /// Strict decision compatibility check for v1 semantic metadata.
-    ///
-    /// The current Rust receipt object still carries a decision for legacy
-    /// call sites. This validator defines the pre-release v1 wire rule:
-    /// trace and advisory semantics must not be interpreted as decisions.
-    pub fn validate_decision(&self, decision: &Decision) -> Result<()> {
-        if self.receipt_kind != ReceiptKind::MediatedDecision {
+    /// Strict decision compatibility check for v1 signed semantics.
+    pub fn validate_decision(&self, decision: Option<&Decision>) -> Result<()> {
+        if self.boundary_class == BoundaryClass::CannotSee {
             return Err(Error::CanonicalJson(format!(
-                "{} receipts must not carry {:?} as an authorization decision",
-                self.receipt_kind.as_str(),
-                decision
+                "{} receipts cannot use cannot_see as a signed runtime boundary",
+                self.receipt_kind.as_str()
             )));
         }
-        Ok(())
+        match (
+            self.receipt_kind,
+            self.boundary_class,
+            self.observation_outcome,
+            decision,
+        ) {
+            (ReceiptKind::MediatedDecision, BoundaryClass::Prevent, None, Some(_)) => Ok(()),
+            (ReceiptKind::MediatedDecision, _, _, _) => Err(Error::CanonicalJson(
+                "mediated_decision receipts require a prevent boundary, no observation outcome, and a decision"
+                    .to_string(),
+            )),
+            (
+                ReceiptKind::TraceObservation,
+                BoundaryClass::DetectOnly,
+                Some(_),
+                None,
+            ) => Ok(()),
+            (ReceiptKind::TraceObservation, _, _, Some(decision)) => {
+                Err(Error::CanonicalJson(format!(
+                    "trace_observation receipts must not carry {:?} as an authorization decision",
+                    decision
+                )))
+            }
+            (ReceiptKind::TraceObservation, _, _, None) => Err(Error::CanonicalJson(
+                "trace_observation receipts require detect_only boundary and observation outcome"
+                    .to_string(),
+            )),
+            (
+                ReceiptKind::AdvisoryEvaluation,
+                BoundaryClass::AdvisoryOnly,
+                Some(_),
+                None,
+            ) => Ok(()),
+            (ReceiptKind::AdvisoryEvaluation, _, _, Some(decision)) => {
+                Err(Error::CanonicalJson(format!(
+                    "advisory_evaluation receipts must not carry {:?} as an authorization decision",
+                    decision
+                )))
+            }
+            (ReceiptKind::AdvisoryEvaluation, _, _, None) => Err(Error::CanonicalJson(
+                "advisory_evaluation receipts require advisory_only boundary and observation outcome"
+                    .to_string(),
+            )),
+        }
     }
 
     #[must_use]
-    pub fn is_authorized(&self, decision: &Decision) -> bool {
+    pub fn is_authorized(&self, decision: Option<&Decision>) -> bool {
         self.receipt_kind == ReceiptKind::MediatedDecision
             && self.boundary_class == BoundaryClass::Prevent
-            && matches!(decision, Decision::Allow)
+            && self.observation_outcome.is_none()
+            && matches!(decision, Some(Decision::Allow))
     }
 
     #[must_use]
-    pub fn result_label(&self, decision: &Decision) -> &'static str {
+    pub fn result_label(&self, decision: Option<&Decision>) -> &'static str {
         if self.is_authorized(decision) {
             return "Authorized";
         }
@@ -263,10 +302,11 @@ impl ReceiptSemanticFields {
             ReceiptKind::TraceObservation => "Observed",
             ReceiptKind::AdvisoryEvaluation => "Advisory",
             ReceiptKind::MediatedDecision => match decision {
-                Decision::Allow => "Allowed",
-                Decision::Deny { .. } => "Denied",
-                Decision::Cancelled { .. } => "Cancelled",
-                Decision::Incomplete { .. } => "Incomplete",
+                Some(Decision::Allow) => "Allowed",
+                Some(Decision::Deny { .. }) => "Denied",
+                Some(Decision::Cancelled { .. }) => "Cancelled",
+                Some(Decision::Incomplete { .. }) => "Incomplete",
+                None => "Invalid",
             },
         }
     }
@@ -298,7 +338,7 @@ impl From<&ModelMetadata> for ModelMetadataReceiptMetadata {
 /// A Chio receipt. Signed proof that a tool call was evaluated by the Kernel.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChioReceipt {
-    /// Unique receipt ID (UUIDv7 recommended).
+    /// Content-addressed receipt ID derived from the canonical receipt body.
     pub id: String,
     /// Unix timestamp (seconds) when the receipt was created.
     pub timestamp: u64,
@@ -310,8 +350,23 @@ pub struct ChioReceipt {
     pub tool_name: String,
     /// The action that was evaluated.
     pub action: ToolCallAction,
-    /// The Kernel's decision.
-    pub decision: Decision,
+    /// The Kernel's decision. Present only for mediated decisions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decision: Option<Decision>,
+    /// Signed receipt semantic kind.
+    pub receipt_kind: ReceiptKind,
+    /// Signed runtime boundary class.
+    pub boundary_class: BoundaryClass,
+    /// Signed observation outcome for trace and advisory records.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observation_outcome: Option<ObservationOutcome>,
+    /// Signed tool-origin classification.
+    pub tool_origin: ToolOrigin,
+    /// Signed redaction mode.
+    pub redaction_mode: RedactionMode,
+    /// Signed actor attribution chain.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub actor_chain: Vec<ActorRef>,
     /// SHA-256 hash of the evaluated content for this receipt.
     pub content_hash: String,
     /// SHA-256 hash of the policy that was applied.
@@ -322,30 +377,25 @@ pub struct ChioReceipt {
     /// Optional receipt metadata for stream/accounting details.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<serde_json::Value>,
-    /// Strength of kernel mediation that produced this receipt. Defaults
-    /// to `Mediated`. Older receipts that omit this field deserialize
-    /// to `Mediated` for backward compatibility.
-    #[serde(default, skip_serializing_if = "is_default_trust_level")]
+    /// Strength of kernel mediation that produced this receipt.
     pub trust_level: TrustLevel,
-    /// Phase 1.5 multi-tenant receipt isolation: tenant identifier for
+    /// Multi-tenant receipt isolation: tenant identifier for
     /// multi-tenant deployments. `None` in single-tenant mode; derived
     /// from the authenticated session's enterprise identity context and
     /// MUST NOT be taken from caller-provided request fields (caller
     /// choice would defeat the isolation intent).
     ///
-    /// Serialized only when set, so receipts emitted by single-tenant
-    /// deployments remain byte-identical on the wire.
+    /// Serialized only when set.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tenant_id: Option<String>,
     /// The Kernel's public key (for verification without out-of-band lookup).
     pub kernel_key: PublicKey,
-    /// Signing algorithm used for [`ChioReceipt::signature`]. Absent means
-    /// Ed25519 for backward compatibility with receipts issued prior to the
-    /// introduction of [`SigningAlgorithm`]. Informational only: verification
-    /// dispatches off the self-describing encoding of the signature itself.
+    /// Signing algorithm used for [`ChioReceipt::signature`]. Informational
+    /// only: verification dispatches off the self-describing encoding of the
+    /// signature itself.
     #[serde(default, skip_serializing_if = "is_default_optional_algorithm")]
     pub algorithm: Option<SigningAlgorithm>,
-    /// Signature over canonical JSON of all fields above.
+    /// Signature over canonical JSON of [`ChioReceiptSigningBody`].
     pub signature: Signature,
 }
 
@@ -358,18 +408,25 @@ pub struct ChioReceiptBody {
     pub tool_server: String,
     pub tool_name: String,
     pub action: ToolCallAction,
-    pub decision: Decision,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decision: Option<Decision>,
+    pub receipt_kind: ReceiptKind,
+    pub boundary_class: BoundaryClass,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observation_outcome: Option<ObservationOutcome>,
+    pub tool_origin: ToolOrigin,
+    pub redaction_mode: RedactionMode,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub actor_chain: Vec<ActorRef>,
     pub content_hash: String,
     pub policy_hash: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub evidence: Vec<GuardEvidence>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<serde_json::Value>,
-    #[serde(default, skip_serializing_if = "is_default_trust_level")]
     pub trust_level: TrustLevel,
-    /// Phase 1.5: tenant_id on the canonical signing body. Omitted from
-    /// canonical JSON when `None` so single-tenant deployments continue
-    /// to produce byte-identical signatures.
+    /// Tenant id on the canonical signing body. Omitted from canonical JSON
+    /// when `None`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tenant_id: Option<String>,
     pub kernel_key: PublicKey,
@@ -379,28 +436,30 @@ impl ChioReceiptBody {
     /// Derive v1 receipt semantics for this signing body.
     #[must_use]
     pub fn semantic_fields(&self) -> ReceiptSemanticFields {
-        receipt_semantic_fields(&self.metadata, self.trust_level)
+        ReceiptSemanticFields {
+            receipt_kind: self.receipt_kind,
+            boundary_class: self.boundary_class,
+            observation_outcome: self.observation_outcome,
+            tool_origin: self.tool_origin,
+            redaction_mode: self.redaction_mode,
+            actor_chain: self.actor_chain.clone(),
+        }
     }
 
-    /// Validate the current non-optional Rust decision slot before signing.
-    ///
-    /// The pre-release wire target is an optional decision for non-mediated
-    /// receipts. Until that shape is fully collapsed through all call sites,
-    /// non-mediated receipts may carry `Incomplete` as a non-authorizing
-    /// placeholder, but they must never sign as allow, deny, or cancelled.
+    /// Validate receipt semantics before signing.
     pub fn validate_signable_semantics(&self) -> Result<()> {
         let semantics = self.semantic_fields();
-        let legacy_verified_allow = self.trust_level == TrustLevel::Verified
-            && matches!(self.decision, Decision::Allow)
-            && !has_explicit_receipt_semantics(&self.metadata);
-        if semantics.receipt_kind != ReceiptKind::MediatedDecision
-            && !matches!(self.decision, Decision::Incomplete { .. })
-            && !legacy_verified_allow
-        {
+        semantics.validate_decision(self.decision.as_ref())?;
+        let expected_trust = match semantics.receipt_kind {
+            ReceiptKind::MediatedDecision => TrustLevel::Mediated,
+            ReceiptKind::TraceObservation => TrustLevel::Verified,
+            ReceiptKind::AdvisoryEvaluation => TrustLevel::Advisory,
+        };
+        if self.trust_level != expected_trust {
             return Err(Error::CanonicalJson(format!(
-                "{} receipts must not sign {:?} as an authorization decision",
+                "{} receipts require trust_level {}",
                 semantics.receipt_kind.as_str(),
-                self.decision
+                expected_trust.as_str()
             )));
         }
         Ok(())
@@ -415,86 +474,61 @@ pub struct ChioReceiptIdInput {
     pub tool_server: String,
     pub tool_name: String,
     pub action: ToolCallAction,
-    pub decision: Decision,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decision: Option<Decision>,
+    pub receipt_kind: ReceiptKind,
+    pub boundary_class: BoundaryClass,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observation_outcome: Option<ObservationOutcome>,
+    pub tool_origin: ToolOrigin,
+    pub redaction_mode: RedactionMode,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub actor_chain: Vec<ActorRef>,
     pub content_hash: String,
     pub policy_hash: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub evidence: Vec<GuardEvidence>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<serde_json::Value>,
-    #[serde(default, skip_serializing_if = "is_default_trust_level")]
     pub trust_level: TrustLevel,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tenant_id: Option<String>,
     pub kernel_key: PublicKey,
 }
 
-fn typed_metadata_from<T>(metadata: &Option<serde_json::Value>, key: &str) -> Option<T>
-where
-    T: for<'de> Deserialize<'de>,
-{
-    metadata
-        .as_ref()
-        .and_then(|metadata| metadata.get(key))
-        .cloned()
-        .and_then(|value| serde_json::from_value(value).ok())
+/// Canonical receipt signing input.
+///
+/// The receipt id is computed from [`ChioReceiptIdInput`]. The signature then
+/// binds both that id and the exact body input used to derive it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChioReceiptSigningBody {
+    pub id: String,
+    pub body: ChioReceiptIdInput,
 }
 
-fn receipt_semantic_fields(
-    metadata: &Option<serde_json::Value>,
-    trust_level: TrustLevel,
-) -> ReceiptSemanticFields {
-    if let Some(semantics) =
-        typed_metadata_from::<ReceiptSemanticFields>(metadata, "receipt_semantics")
-    {
-        return semantics;
+pub const CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY: &str = "chio_receipt_signing_nonce";
+const CHIO_RECEIPT_ORIGINAL_METADATA_KEY: &str = "original_metadata";
+
+fn bind_receipt_signing_nonce(body: &mut ChioReceiptBody) {
+    let nonce = body.id.trim();
+    if nonce.is_empty() {
+        return;
     }
-    if let Some(semantics) =
-        typed_metadata_from::<ReceiptSemanticFields>(metadata, "receiptSemantics")
-    {
-        return semantics;
-    }
-    if let Some(acp) = metadata.as_ref().and_then(|metadata| metadata.get("acp")) {
-        if acp
-            .get("enforcementMode")
-            .and_then(serde_json::Value::as_str)
-            == Some("audit_only")
-        {
-            return ReceiptSemanticFields::trace_detect_only();
+
+    let mut metadata = match body.metadata.take() {
+        Some(serde_json::Value::Object(map)) => map,
+        Some(value) => {
+            let mut map = serde_json::Map::new();
+            map.insert(CHIO_RECEIPT_ORIGINAL_METADATA_KEY.to_string(), value);
+            map
         }
-    }
-    match trust_level {
-        TrustLevel::Mediated => ReceiptSemanticFields::mediated_prevent(),
-        TrustLevel::Verified => ReceiptSemanticFields {
-            receipt_kind: ReceiptKind::TraceObservation,
-            boundary_class: BoundaryClass::DetectOnly,
-            observation_outcome: Some(ObservationOutcome::Observed),
-            tool_origin: ToolOrigin::CallerExecuted,
-            redaction_mode: RedactionMode::Summary,
-            actor_chain: Vec::new(),
-        },
-        TrustLevel::Advisory => ReceiptSemanticFields::advisory_only(),
-    }
-}
-
-fn has_explicit_receipt_semantics(metadata: &Option<serde_json::Value>) -> bool {
-    metadata.as_ref().is_some_and(|metadata| {
-        metadata.get("receipt_semantics").is_some() || metadata.get("receiptSemantics").is_some()
-    })
-}
-
-fn is_legacy_receipt_id(id: &str) -> bool {
-    id.starts_with("rcpt-") || is_uuid_like(id)
-}
-
-fn is_uuid_like(id: &str) -> bool {
-    if id.len() != 36 {
-        return false;
-    }
-    id.char_indices().all(|(index, ch)| match index {
-        8 | 13 | 18 | 23 => ch == '-',
-        _ => ch.is_ascii_hexdigit(),
-    })
+        None => serde_json::Map::new(),
+    };
+    metadata.insert(
+        CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY.to_string(),
+        serde_json::Value::String(nonce.to_string()),
+    );
+    body.metadata = Some(serde_json::Value::Object(metadata));
 }
 
 impl From<&ChioReceiptBody> for ChioReceiptIdInput {
@@ -506,6 +540,12 @@ impl From<&ChioReceiptBody> for ChioReceiptIdInput {
             tool_name: body.tool_name.clone(),
             action: body.action.clone(),
             decision: body.decision.clone(),
+            receipt_kind: body.receipt_kind,
+            boundary_class: body.boundary_class,
+            observation_outcome: body.observation_outcome,
+            tool_origin: body.tool_origin,
+            redaction_mode: body.redaction_mode,
+            actor_chain: body.actor_chain.clone(),
             content_hash: body.content_hash.clone(),
             policy_hash: body.policy_hash.clone(),
             evidence: body.evidence.clone(),
@@ -513,6 +553,15 @@ impl From<&ChioReceiptBody> for ChioReceiptIdInput {
             trust_level: body.trust_level,
             tenant_id: body.tenant_id.clone(),
             kernel_key: body.kernel_key.clone(),
+        }
+    }
+}
+
+impl From<&ChioReceiptBody> for ChioReceiptSigningBody {
+    fn from(body: &ChioReceiptBody) -> Self {
+        Self {
+            id: body.id.clone(),
+            body: ChioReceiptIdInput::from(body),
         }
     }
 }
@@ -567,8 +616,10 @@ impl ChioReceipt {
     pub fn sign(body: ChioReceiptBody, keypair: &Keypair) -> Result<Self> {
         let mut body = body;
         body.validate_signable_semantics()?;
+        bind_receipt_signing_nonce(&mut body);
         body.id = chio_receipt_id(&body)?;
-        let (signature, _bytes) = keypair.sign_canonical(&body)?;
+        let signing_body = ChioReceiptSigningBody::from(&body);
+        let (signature, _bytes) = keypair.sign_canonical(&signing_body)?;
         Ok(Self {
             id: body.id,
             timestamp: body.timestamp,
@@ -577,6 +628,12 @@ impl ChioReceipt {
             tool_name: body.tool_name,
             action: body.action,
             decision: body.decision,
+            receipt_kind: body.receipt_kind,
+            boundary_class: body.boundary_class,
+            observation_outcome: body.observation_outcome,
+            tool_origin: body.tool_origin,
+            redaction_mode: body.redaction_mode,
+            actor_chain: body.actor_chain,
             content_hash: body.content_hash,
             policy_hash: body.policy_hash,
             evidence: body.evidence,
@@ -595,8 +652,10 @@ impl ChioReceipt {
     pub fn sign_with_backend(body: ChioReceiptBody, backend: &dyn SigningBackend) -> Result<Self> {
         let mut body = body;
         body.validate_signable_semantics()?;
+        bind_receipt_signing_nonce(&mut body);
         body.id = chio_receipt_id(&body)?;
-        let (signature, _bytes) = sign_canonical_with_backend(backend, &body)?;
+        let signing_body = ChioReceiptSigningBody::from(&body);
+        let (signature, _bytes) = sign_canonical_with_backend(backend, &signing_body)?;
         Ok(Self {
             id: body.id,
             timestamp: body.timestamp,
@@ -605,6 +664,12 @@ impl ChioReceipt {
             tool_name: body.tool_name,
             action: body.action,
             decision: body.decision,
+            receipt_kind: body.receipt_kind,
+            boundary_class: body.boundary_class,
+            observation_outcome: body.observation_outcome,
+            tool_origin: body.tool_origin,
+            redaction_mode: body.redaction_mode,
+            actor_chain: body.actor_chain,
             content_hash: body.content_hash,
             policy_hash: body.policy_hash,
             evidence: body.evidence,
@@ -628,6 +693,12 @@ impl ChioReceipt {
             tool_name: self.tool_name.clone(),
             action: self.action.clone(),
             decision: self.decision.clone(),
+            receipt_kind: self.receipt_kind,
+            boundary_class: self.boundary_class,
+            observation_outcome: self.observation_outcome,
+            tool_origin: self.tool_origin,
+            redaction_mode: self.redaction_mode,
+            actor_chain: self.actor_chain.clone(),
             content_hash: self.content_hash.clone(),
             policy_hash: self.policy_hash.clone(),
             evidence: self.evidence.clone(),
@@ -644,41 +715,50 @@ impl ChioReceipt {
         if body.validate_signable_semantics().is_err() {
             return Ok(false);
         }
-        let content_addressed_id = chio_receipt_id(&body)?;
-        if content_addressed_id != self.id && !is_legacy_receipt_id(&self.id) {
+        if chio_receipt_id(&body)? != self.id {
             return Ok(false);
         }
-        self.kernel_key.verify_canonical(&body, &self.signature)
+        let signing_body = ChioReceiptSigningBody::from(&body);
+        self.kernel_key
+            .verify_canonical(&signing_body, &self.signature)
     }
 
     /// Derive v1 receipt semantics for display, SIEM, and bridge gates.
     #[must_use]
     pub fn semantic_fields(&self) -> ReceiptSemanticFields {
-        receipt_semantic_fields(&self.metadata, self.trust_level)
+        ReceiptSemanticFields {
+            receipt_kind: self.receipt_kind,
+            boundary_class: self.boundary_class,
+            observation_outcome: self.observation_outcome,
+            tool_origin: self.tool_origin,
+            redaction_mode: self.redaction_mode,
+            actor_chain: self.actor_chain.clone(),
+        }
     }
 
     /// Whether this receipt records an allow decision.
     #[must_use]
     pub fn is_allowed(&self) -> bool {
-        self.semantic_fields().is_authorized(&self.decision)
+        self.trust_level == TrustLevel::Mediated
+            && self.semantic_fields().is_authorized(self.decision.as_ref())
     }
 
     /// Whether this receipt records a deny decision.
     #[must_use]
     pub fn is_denied(&self) -> bool {
-        matches!(self.decision, Decision::Deny { .. })
+        matches!(self.decision, Some(Decision::Deny { .. }))
     }
 
     /// Whether this receipt records a cancelled terminal outcome.
     #[must_use]
     pub fn is_cancelled(&self) -> bool {
-        matches!(self.decision, Decision::Cancelled { .. })
+        matches!(self.decision, Some(Decision::Cancelled { .. }))
     }
 
     /// Whether this receipt records an incomplete terminal outcome.
     #[must_use]
     pub fn is_incomplete(&self) -> bool {
-        matches!(self.decision, Decision::Incomplete { .. })
+        matches!(self.decision, Some(Decision::Incomplete { .. }))
     }
 
     fn typed_metadata<T>(&self, key: &str) -> Option<T>
@@ -1671,7 +1751,13 @@ mod tests {
             tool_server: "srv-files".to_string(),
             tool_name: "file_read".to_string(),
             action: make_action(),
-            decision: Decision::Allow,
+            decision: Some(Decision::Allow),
+            receipt_kind: ReceiptKind::MediatedDecision,
+            boundary_class: BoundaryClass::Prevent,
+            observation_outcome: None,
+            tool_origin: ToolOrigin::CallerExecuted,
+            redaction_mode: RedactionMode::None,
+            actor_chain: Vec::new(),
             content_hash: sha256_hex(br#"{"ok":true}"#),
             policy_hash: "abc123def456".to_string(),
             evidence: vec![
@@ -1792,12 +1878,22 @@ mod tests {
     fn receipt_sign_and_verify() {
         let kp = Keypair::generate();
         let body = make_receipt_body(&kp);
-        let expected_id = chio_receipt_id(&body).unwrap();
+        let mut expected_body = body.clone();
+        bind_receipt_signing_nonce(&mut expected_body);
+        let expected_id = chio_receipt_id(&expected_body).unwrap();
         let receipt = ChioReceipt::sign(body, &kp).unwrap();
         assert_eq!(receipt.id, expected_id);
         assert!(receipt.verify_signature().unwrap());
         assert!(receipt.is_allowed());
         assert!(!receipt.is_denied());
+        assert_eq!(
+            receipt
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get(CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY))
+                .and_then(serde_json::Value::as_str),
+            Some("rcpt-001")
+        );
     }
 
     #[test]
@@ -1814,6 +1910,57 @@ mod tests {
     }
 
     #[test]
+    fn receipt_signing_nonce_preserves_repeated_invocation_identity() {
+        let kp = Keypair::generate();
+        let mut first = make_receipt_body(&kp);
+        let mut second = first.clone();
+        first.id = "request-1".to_string();
+        second.id = "request-2".to_string();
+
+        let first_receipt = ChioReceipt::sign(first, &kp).unwrap();
+        let second_receipt = ChioReceipt::sign(second, &kp).unwrap();
+
+        assert_ne!(first_receipt.id, second_receipt.id);
+        assert_eq!(
+            first_receipt
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get(CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY))
+                .and_then(serde_json::Value::as_str),
+            Some("request-1")
+        );
+        assert_eq!(
+            second_receipt
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get(CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY))
+                .and_then(serde_json::Value::as_str),
+            Some("request-2")
+        );
+        assert!(first_receipt.verify_signature().unwrap());
+        assert!(second_receipt.verify_signature().unwrap());
+    }
+
+    #[test]
+    fn receipt_signature_binds_typed_id_and_body_wrapper() {
+        let kp = Keypair::generate();
+        let receipt = ChioReceipt::sign(make_receipt_body(&kp), &kp).unwrap();
+        let body = receipt.body();
+        let signing_body = ChioReceiptSigningBody::from(&body);
+
+        assert_eq!(signing_body.id, receipt.id);
+        assert_eq!(chio_receipt_id(&body).unwrap(), receipt.id);
+        assert!(receipt
+            .kernel_key
+            .verify_canonical(&signing_body, &receipt.signature)
+            .unwrap());
+        assert!(!receipt
+            .kernel_key
+            .verify_canonical(&body, &receipt.signature)
+            .unwrap());
+    }
+
+    #[test]
     fn receipt_semantics_authorized_only_for_mediated_prevent_allow() {
         let kp = Keypair::generate();
         let receipt = ChioReceipt::sign(make_receipt_body(&kp), &kp).unwrap();
@@ -1822,8 +1969,34 @@ mod tests {
 
         assert_eq!(semantics.receipt_kind, ReceiptKind::MediatedDecision);
         assert_eq!(semantics.boundary_class, BoundaryClass::Prevent);
-        assert_eq!(semantics.result_label(&receipt.decision), "Authorized");
-        assert!(semantics.is_authorized(&receipt.decision));
+        assert_eq!(
+            semantics.result_label(receipt.decision.as_ref()),
+            "Authorized"
+        );
+        assert!(semantics.is_authorized(receipt.decision.as_ref()));
+    }
+
+    #[test]
+    fn receipt_semantics_are_signed_top_level_fields() {
+        let kp = Keypair::generate();
+        let mut body = make_receipt_body(&kp);
+        body.actor_chain = vec![ActorRef {
+            actor_id: "agent-001".to_string(),
+            actor_kind: Some("agent".to_string()),
+        }];
+        let receipt = ChioReceipt::sign(body, &kp).unwrap();
+
+        let json = serde_json::to_value(&receipt).unwrap();
+
+        assert_eq!(json["receipt_kind"], "mediated_decision");
+        assert_eq!(json["boundary_class"], "prevent");
+        assert_eq!(json["tool_origin"], "caller_executed");
+        assert_eq!(json["redaction_mode"], "none");
+        assert_eq!(json["actor_chain"][0]["actor_id"], "agent-001");
+        assert!(json
+            .get("metadata")
+            .and_then(|metadata| metadata.get("receipt_semantics"))
+            .is_none());
     }
 
     #[test]
@@ -1845,69 +2018,64 @@ mod tests {
             actor_chain: Vec::new(),
         };
 
-        assert!(trace.validate_decision(&Decision::Allow).is_err());
+        assert!(trace.validate_decision(Some(&Decision::Allow)).is_err());
         assert!(advisory
-            .validate_decision(&Decision::Deny {
+            .validate_decision(Some(&Decision::Deny {
                 reason: "advisory finding".to_string(),
                 guard: "AdvisoryGuard".to_string(),
-            })
+            }))
             .is_err());
-        assert!(!trace.is_authorized(&Decision::Allow));
-        assert_eq!(trace.result_label(&Decision::Allow), "Observed");
-        assert_eq!(advisory.result_label(&Decision::Allow), "Advisory");
+        assert!(!trace.is_authorized(Some(&Decision::Allow)));
+        assert_eq!(trace.result_label(Some(&Decision::Allow)), "Observed");
+        assert_eq!(advisory.result_label(Some(&Decision::Allow)), "Advisory");
     }
 
     #[test]
-    fn trace_receipt_cannot_sign_allow_decision() {
+    fn trace_receipt_omits_decision_field() {
+        let kp = Keypair::generate();
+        let mut body = make_receipt_body(&kp);
+        body.decision = None;
+        body.trust_level = TrustLevel::Verified;
+        body.receipt_kind = ReceiptKind::TraceObservation;
+        body.boundary_class = BoundaryClass::DetectOnly;
+        body.observation_outcome = Some(ObservationOutcome::Observed);
+        body.tool_origin = ToolOrigin::HostExecutedProviderReported;
+        body.redaction_mode = RedactionMode::Summary;
+
+        let receipt = ChioReceipt::sign(body, &kp).unwrap();
+        let json = serde_json::to_value(&receipt).unwrap();
+
+        assert_eq!(json["receipt_kind"], "trace_observation");
+        assert_eq!(json["boundary_class"], "detect_only");
+        assert!(json.get("decision").is_none());
+        assert!(receipt.decision.is_none());
+        assert!(!receipt.is_allowed());
+        assert!(receipt.verify_signature().unwrap());
+    }
+
+    #[test]
+    fn non_mediated_receipt_cannot_sign_any_decision() {
         let kp = Keypair::generate();
         let mut body = make_receipt_body(&kp);
         body.trust_level = TrustLevel::Verified;
-        body.metadata = Some(serde_json::json!({
-            "receipt_semantics": ReceiptSemanticFields::trace_detect_only(),
-        }));
+        body.receipt_kind = ReceiptKind::TraceObservation;
+        body.boundary_class = BoundaryClass::DetectOnly;
+        body.observation_outcome = Some(ObservationOutcome::Observed);
+        body.tool_origin = ToolOrigin::HostExecutedProviderReported;
+        body.redaction_mode = RedactionMode::Summary;
 
-        let err = ChioReceipt::sign(body, &kp).expect_err("trace allow must not sign");
+        let err = ChioReceipt::sign(body, &kp).expect_err("trace decision must not sign");
         assert!(err.to_string().contains("trace_observation"));
     }
 
     #[test]
-    fn verified_allow_without_explicit_trace_semantics_can_sign() {
+    fn mediated_receipt_requires_decision() {
         let kp = Keypair::generate();
         let mut body = make_receipt_body(&kp);
-        body.trust_level = TrustLevel::Verified;
-        body.metadata = None;
+        body.decision = None;
 
-        let receipt = ChioReceipt::sign(body, &kp).unwrap();
-        assert!(receipt.verify_signature().unwrap());
-        assert!(!receipt.is_allowed());
-    }
-
-    #[test]
-    fn legacy_receipt_id_verifies_when_signature_matches_body() {
-        let kp = Keypair::generate();
-        let body = make_receipt_body(&kp);
-        let (signature, _) = kp.sign_canonical(&body).unwrap();
-        let receipt = ChioReceipt {
-            id: body.id.clone(),
-            timestamp: body.timestamp,
-            capability_id: body.capability_id,
-            tool_server: body.tool_server,
-            tool_name: body.tool_name,
-            action: body.action,
-            decision: body.decision,
-            content_hash: body.content_hash,
-            policy_hash: body.policy_hash,
-            evidence: body.evidence,
-            metadata: body.metadata,
-            trust_level: body.trust_level,
-            tenant_id: body.tenant_id,
-            kernel_key: body.kernel_key,
-            algorithm: None,
-            signature,
-        };
-
-        assert_eq!(receipt.id, "rcpt-001");
-        assert!(receipt.verify_signature().unwrap());
+        let err = ChioReceipt::sign(body, &kp).expect_err("mediated receipt needs decision");
+        assert!(err.to_string().contains("mediated_decision"));
     }
 
     #[test]
@@ -1932,10 +2100,16 @@ mod tests {
     fn receipt_deny_decision() {
         let kp = Keypair::generate();
         let body = ChioReceiptBody {
-            decision: Decision::Deny {
+            decision: Some(Decision::Deny {
                 reason: "path /etc/passwd is forbidden".to_string(),
                 guard: "ForbiddenPathGuard".to_string(),
-            },
+            }),
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
             ..make_receipt_body(&kp)
         };
         let receipt = ChioReceipt::sign(body, &kp).unwrap();
@@ -1948,9 +2122,15 @@ mod tests {
     fn receipt_cancelled_decision() {
         let kp = Keypair::generate();
         let body = ChioReceiptBody {
-            decision: Decision::Cancelled {
+            decision: Some(Decision::Cancelled {
                 reason: "cancelled by user".to_string(),
-            },
+            }),
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
             ..make_receipt_body(&kp)
         };
         let receipt = ChioReceipt::sign(body, &kp).unwrap();
@@ -1964,9 +2144,15 @@ mod tests {
     fn receipt_incomplete_decision() {
         let kp = Keypair::generate();
         let body = ChioReceiptBody {
-            decision: Decision::Incomplete {
+            decision: Some(Decision::Incomplete {
                 reason: "stream terminated before final frame".to_string(),
-            },
+            }),
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
             ..make_receipt_body(&kp)
         };
         let receipt = ChioReceipt::sign(body, &kp).unwrap();

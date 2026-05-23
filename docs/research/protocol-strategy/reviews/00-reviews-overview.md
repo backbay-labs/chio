@@ -39,7 +39,7 @@ These claims hold up under code grounding. They can be cited downstream without 
 
 - **chio-streaming Python SDK** exists at `sdks/python/chio-streaming/`, 5013 LOC across 12 modules. All seven brokers from doc 01 confirmed: Kafka top-level `middleware.py` plus per-broker `nats.py`, `pulsar.py`, `eventbridge.py`, `pubsub.py`, `redis_streams.py`, `flink.py`. ([C5](05-egress-orchestrator-review.md))
 - **chio-temporal** (1291 LOC, `ChioActivityInterceptor`) and **chio-airflow** (1384 LOC, `ChioOperator` + decorator + DAG listener) exist as Python SDKs. Doc 05's framing matches. ([C5](05-egress-orchestrator-review.md))
-- **Bench stubs**: verified and **worse than doc 16 reported**. Not 4 stubs, **11+**: `single_guard`, `cap_verify_ed25519`, `receipt_sign`, `guard_pipeline_5`, `scope_match`, `time_bound`, `revocation_lookup`, `budget_decrement`, `receipt_append`, `session_lookup`, `dispatch_deny` are all `b.iter(|| black_box(0_u64))`. `dispatch_allow` is the only live Criterion path called out here; the hybrid family is currently wired as tests, not live Criterion benches. CI at `.github/workflows/bench-regression.yml:101-108` runs every bench from Cargo.toml without `required-features` gating, so PR regression checks compare stub-vs-stub for 10+ primitives. ([C4](04-receipts-kernel-latency-review.md))
+- **Bench stubs (historical, resolved in-tree)**: verification at the time confirmed **11+ stubs**, not 4: `single_guard`, `cap_verify_ed25519`, `receipt_sign`, `guard_pipeline_5`, `scope_match`, `time_bound`, `revocation_lookup`, `budget_decrement`, `receipt_append`, `session_lookup`, `dispatch_deny` were all `b.iter(|| black_box(0_u64))`. The bench bodies now drive real dispatch through `dispatch_request_fixture`; the hybrid family is still wired as tests rather than live Criterion benches and CI runs benches from Cargo.toml without `required-features` gating, so re-baselining and gating are the remaining open work. ([C4](04-receipts-kernel-latency-review.md))
 - **`ToolServerConnection` trait** at `crates/chio-kernel/src/runtime.rs:255` is real and unchanged. All five new bridge proposals map onto it without inventing methods. ([C2](02-bridges-consistency-review.md))
 - **Guard inventory** in doc 10 is exact. 16 guards spot-checked, all LOC counts match. `ExternalGuard`, `AsyncGuardAdapter`, `ScopedAsyncGuard`, `ChioExtAuthzService`, `McpToolGuard`, `GuardEvidence` citations all resolve. ([C3](03-policy-guards-review.md))
 - **OAuth AS** at `chio-mcp-remote/src/remote_mcp/oauth.rs`: live but opt-in scaffolding (doc 07). Hybrid signing claims and OAuth profile in `spec/PROTOCOL.md:1351-1453` hold. ([C1](01-identity-credentials-review.md))
@@ -84,9 +84,10 @@ final wire shape before implementation. ([C1](01-identity-credentials-review.md)
 
 ### 5. `policy_hash` is `String`, not `[u8; 32]` (addressed with PR 652 follow-up)
 
-[`crates/chio-core-types/src/receipt.rs`](../../../../crates/chio-core-types/src/receipt.rs) defines `policy_hash` as a hex `String`. Earlier docs used byte-array sketches for `policy_digest`; PR 652 now treats receipt-facing `policy_hash` / `policy_digest` as hex `String` through ADR-0010.
+[`crates/chio-core-types/src/receipt.rs`](../../../../crates/chio-core-types/src/receipt.rs) defines `policy_hash` as a hex `String`. Earlier docs used byte-array sketches for `policy_digest`; after the v1-only collapse, `policy_hash` is the current signed receipt field and `policy_digest` remains only a historical per-engine sketch term.
 
-**Fix applied:** Receipt-facing `policy_hash` / `policy_digest` use hex `String`. ([C3](03-policy-guards-review.md))
+**Fix applied:** Receipt-facing current v1 docs name `policy_hash`; historical
+`policy_digest` sketches are labeled as non-current. ([C3](03-policy-guards-review.md))
 
 ### 6. `tool_origin` enum drift across three docs (addressed with PR 652 follow-up)
 
@@ -120,11 +121,11 @@ the research directory for em/en dashes. ([C6](06-vision-non-goals-review.md))
 
 ## Cross-cutting threads
 
-1. **`policy_hash` / `policy_digest` / `decision_id` is the highest-traffic identity-of-decision field group.** It surfaces in docs 04, 10, 15, plus the v2 overview, and the C3 verification revealed a real type incompatibility. This needs a one-paragraph canonical spec before any wave-A code lands.
+1. **`policy_hash` / historical per-engine digest sketches / `decision_id` is the highest-traffic identity-of-decision field group.** It surfaces in docs 04, 10, 15, plus the v2 overview, and the C3 verification revealed a real type incompatibility. Current v1 uses signed `policy_hash`; historical `policy_digest` sketches are not core receipt fields.
 
-2. **The "extensions" map in doc 15 is load-bearing for half of wave 2.** Voice (`human_principal` reference), Bedrock (`trace_redaction_mode`, `action_group_kind`), OpenAI provider IDs, directory traces, and event-actions (R3) all depend on it. Core fields now own `tool_origin`, redaction mode, receipt kind, boundary class, and extension integrity; bridge extensions carry provider-specific evidence.
+2. **The "extensions" map in doc 15 is load-bearing for half of wave 2.** Voice (`human_principal`, `deferred_durability`), Bedrock (`trace_redaction_mode`, `action_group_kind`), OpenAI (`tool_origin` if extension instead of core), directory traces, and event-actions (R3) all depend on it. The C1 finding that two docs put `human_principal` in different homes shows the design needs a clear "core vs extension" criterion before bridge work starts.
 
-3. **The bench-stub finding affects every latency claim across the swarm.** Until the 11+ stubs have real bodies, no doc can cite a verified per-stage latency number. The Cedar `<150 µs` estimate, the voice `200 ms` budget, the hybrid signing `150-225 µs` figure are all extrapolations from external benchmarks.
+3. **The bench-stub finding affected every latency claim across the swarm (resolved in-tree).** The 11+ stubs now carry real bodies driven through `dispatch_request_fixture`, so the Cedar `<150 µs` estimate, the voice `200 ms` budget, and the hybrid signing `150-225 µs` figure can be re-baselined against the new bodies rather than extrapolated from external benchmarks.
 
 ## Historical next steps and current disposition
 

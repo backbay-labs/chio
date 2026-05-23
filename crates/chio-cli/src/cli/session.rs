@@ -288,10 +288,16 @@ fn make_error_receipt(
         tool_server: request.server_id.clone(),
         tool_name: request.tool_name.clone(),
         action,
-        decision: chio_core::receipt::Decision::Deny {
+        decision: Some(chio_core::receipt::Decision::Deny {
             reason: "internal kernel error".to_string(),
             guard: "kernel".to_string(),
-        },
+        }),
+        receipt_kind: chio_core::ReceiptKind::MediatedDecision,
+        boundary_class: chio_core::BoundaryClass::Prevent,
+        observation_outcome: None,
+        tool_origin: chio_core::ToolOrigin::CallerExecuted,
+        redaction_mode: chio_core::RedactionMode::None,
+        actor_chain: Vec::new(),
         content_hash: chio_core::sha256_hex(b"null"),
         policy_hash: "error".to_string(),
         evidence: vec![],

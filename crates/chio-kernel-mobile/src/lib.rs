@@ -752,7 +752,11 @@ pub fn verify_play_integrity_evidence(
     })
 }
 
-/// Verify a mobile receipt against App Attest or Play Integrity evidence.
+/// Shape-check a mobile receipt against App Attest or Play Integrity evidence.
+///
+/// This does not authorize a capability or prove device integrity. It returns
+/// an explicit non-authoritative status until full receipt-chain verification
+/// is wired to trusted issuer pins and challenge binding.
 pub fn verify_mobile_receipt(
     receipt_json: String,
     evidence_json: String,
@@ -770,6 +774,12 @@ pub fn verify_mobile_receipt(
         .map_err(map_attestation_error)?;
     serde_json::to_string(&serde_json::json!({
         "schema": "chio.mobile.receipt-verification.v1",
+        "status": "shape_only",
+        "receipt_kind": "trace_observation",
+        "boundary_class": "detect_only",
+        "result": "observed",
+        "authoritative": false,
+        "authorized": false,
         "receipt_schema": verified.receipt_schema,
         "evidence_schema": verified.evidence_schema,
         "platform": verified.platform

@@ -1,45 +1,23 @@
 # Chio Release Candidate Surface
 
-This document defines the supported Chio production-candidate surface for this
-repository, including the completed `v2.8` launch-closure work plus the
-locally verified `v2.9` economic-interop, `v2.10` underwriting,
-`v2.11` portable-credential interop, `v2.12` workload-identity and
-attestation, `v2.13` portable-credential lifecycle additions, `v2.14`
-verifier-side OID4VP additions, `v2.15` multi-cloud attestation appraisal
-additions, and `v2.16` enterprise-IAM profile additions, plus the `v2.17`
-governed public certification-marketplace surface, the `v2.18` credit,
-exposure, and capital-policy surface, the `v2.19` bonded-autonomy surface,
-the `v2.20` liability-market surface, the `v2.21` standards-native
-authorization and credential-fabric surface, and the `v2.22` wallet
-exchange, identity-assertion, and sender-constrained authorization surface,
-plus the `v2.23` common appraisal vocabulary and external result-interop
-surface, plus the `v2.24` verifier federation, cross-issuer portability,
-discovery, and assurance-aware policy surface, plus the `v2.25` live
-capital-book, custody-neutral instruction, and simulation-first allocation
-surface, plus the phase-`121` portable reputation, negative-event exchange,
-and local-weighting surface, plus the phase-`122` signed open-market
-fee-schedule, bond, and slashing surface, the phase-`123` adversarial
-multi-operator open-market qualification surface, and the phase-`124` final
-release-boundary closure in the completed `v2.28` milestone, plus the
-completed `v2.29` official-stack and extension-SDK surface, plus the
-completed `v2.30` official web3 settlement-rail surface, plus the completed
-`v2.34` official web3 runtime contract-package surface, plus the completed
-`v2.35` `chio-link` oracle runtime and cross-currency budget-enforcement
-surface, plus the completed `v2.36` `chio-anchor` multi-chain publication,
-discovery, and proof-bundle surface, plus the completed `v2.37`
-`chio-settle` settlement-runtime surface, plus the completed `v2.38`
-web3 automation, cross-chain transport, and agent payment-interop surface,
-plus the completed `v2.39` web3 operations, readiness, partner-proof, and
-public-boundary closure surface, plus the completed `v2.40`
-runtime-integrity, evidence-gating, and contract-coherence surface, plus the
-completed `v2.41` hosted qualification, reviewed-manifest promotion,
-exercised operator-control, and generated end-to-end settlement proof
-surface, plus the completed `v2.31` bounded autonomous pricing, capital-pool,
-and insurance-automation
-surface, plus the completed `v2.32` federated trust-activation, quorum,
-open-admission, and shared-reputation surface, plus the completed `v2.33`
-public identity-profile, wallet-directory, routing, and maximal-endgame
-qualification surface.
+> Version posture: Chio is pre-release. Chio-owned protocol, schema, SDK, and
+> runtime surfaces are current v1-only. The `v2.x`, `v3.x`, and phase labels
+> in this release history are internal milestone labels, not public wire or
+> compatibility versions.
+
+This document is an internal pre-release v1 candidate inventory. Internal
+`v2.x`, `v3.x`, and phase labels name implementation milestones only. They do
+not define public protocol versions, compatibility levels, or release history.
+The public Chio-owned surface remains v1-only and unreleased.
+
+The current pre-release v1 branch contains locally qualified
+implementation/evidence for the launch-closure, economic-interop,
+underwriting, portable-credential, workload-identity, enterprise-IAM,
+certification-marketplace, credit, exposure, liability, standards-native
+authorization, appraisal, verifier federation, capital-book, reputation,
+open-market, official-stack, web3 settlement, oracle, anchoring, interop,
+runtime-integrity, hosted qualification, and operator-control surfaces that
+were historically tracked through those internal milestones.
 
 It is intentionally limited to behavior backed by the current codebase,
 qualification scripts, and release docs.
@@ -49,8 +27,8 @@ qualification scripts, and release docs.
 Use the release documents this way:
 
 - this file defines the supported production-candidate surface only
-- [RELEASE_AUDIT.md](RELEASE_AUDIT.md) is the authoritative repo-local
-  release-go or hold record
+- [RELEASE_AUDIT.md](RELEASE_AUDIT.md) is the repo-local pre-release evidence
+  inventory and release-hold record
 - [QUALIFICATION.md](QUALIFICATION.md) defines the evidence lanes and command
   contract
 - [GA_CHECKLIST.md](GA_CHECKLIST.md) is the operator-facing publication

@@ -4,7 +4,7 @@
 // cryptographic receipts and capability-based access control. This package
 // wraps any net/http Handler, sending evaluation requests to the Chio Rust
 // kernel running as a localhost sidecar and attaching signed receipt IDs to
-// evaluated responses. Fail-open passthroughs do not synthesize Chio receipts.
+// evaluated responses.
 //
 // Usage:
 //
@@ -15,6 +15,7 @@
 package chio
 
 import (
+	"errors"
 	"net/http"
 )
 
@@ -25,8 +26,7 @@ import (
 // the X-Chio-Receipt-Id response header when Chio evaluation succeeds.
 //
 // The middleware fails closed: if the sidecar is unreachable or returns an
-// error, the request is denied (unless OnSidecarError is set to "allow" in
-// the config).
+// error, the request is denied.
 func Protect(handler http.Handler, opts ...Option) http.Handler {
 	cfg := defaultConfig()
 	for _, opt := range opts {
@@ -69,19 +69,25 @@ func (m *chioMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	routePattern := m.routeResolver(method, r.URL.Path)
 
 	// Build Chio HTTP request.
-	chioReq := buildChioHTTPRequest(r, method, routePattern, caller)
+	chioReq, err := buildChioHTTPRequest(r, method, routePattern, caller)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, ErrorResponse{
+			Error:   ErrEvaluationFailed,
+			Message: "failed to read request body for Chio evaluation: " + err.Error(),
+		})
+		return
+	}
 	capabilityToken := extractCapabilityToken(r)
 
 	// Evaluate against sidecar.
 	result, err := m.client.Evaluate(r.Context(), chioReq, capabilityToken)
 	if err != nil {
-		if m.config.OnSidecarError == "allow" {
-			passthrough := &ChioPassthrough{
-				Mode:    "allow_without_receipt",
-				Error:   ErrSidecarUnreachable,
-				Message: "Chio sidecar error: " + err.Error(),
-			}
-			m.inner.ServeHTTP(w, r.WithContext(withChioPassthrough(r.Context(), passthrough)))
+		var sidecarErr *SidecarError
+		if errors.As(err, &sidecarErr) && sidecarErr.Code == ErrInvalidReceipt {
+			writeJSONError(w, http.StatusBadGateway, ErrorResponse{
+				Error:   ErrInvalidReceipt,
+				Message: "Chio sidecar receipt verification failed: " + err.Error(),
+			})
 			return
 		}
 		writeJSONError(w, http.StatusBadGateway, ErrorResponse{
@@ -91,11 +97,8 @@ func (m *chioMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Attach receipt ID to response.
-	w.Header().Set("X-Chio-Receipt-Id", result.Receipt.ID)
-
-	// Check verdict.
-	if result.Verdict.Verdict == "deny" {
+	// Check verdict. Anything other than a mediated allow fails closed.
+	if !result.Verdict.IsAllowed() || !result.Receipt.IsAuthorized() {
 		status := result.Verdict.HTTPStatus
 		if status == 0 {
 			status = http.StatusForbidden
@@ -109,6 +112,27 @@ func (m *chioMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Request allowed -- forward to inner handler.
+	verification, err := m.client.VerifyReceipt(r.Context(), result.Receipt)
+	if err != nil {
+		writeJSONError(w, http.StatusBadGateway, ErrorResponse{
+			Error:     ErrInvalidReceipt,
+			Message:   "Chio sidecar receipt verification failed: " + err.Error(),
+			ReceiptID: result.Receipt.ID,
+		})
+		return
+	}
+	if !verification.IsAuthorizedFor(result.Receipt) {
+		writeJSONError(w, http.StatusBadGateway, ErrorResponse{
+			Error:     ErrInvalidReceipt,
+			Message:   "Chio sidecar returned an unverified receipt",
+			ReceiptID: result.Receipt.ID,
+		})
+		return
+	}
+
+	// Attach receipt ID only after the receipt verifies.
+	w.Header().Set("X-Chio-Receipt-Id", result.Receipt.ID)
+
+	// Request allowed and verified, so forward to inner handler.
 	m.inner.ServeHTTP(w, r)
 }

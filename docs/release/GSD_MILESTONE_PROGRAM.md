@@ -1,10 +1,14 @@
 # GSD Milestone Program
 
+> Historical internal milestone narrative. Chio-owned protocol surfaces are
+> current v1 only; this document is not the active protocol posture.
+
 This document maps the remaining Chio roadmap into GSD milestone cycles.
 
 ## Operating Rules
 
-- `.planning/` is the execution source of truth for the active milestone.
+- Accepted protocol ADRs and `spec/PROTOCOL.md` are the execution source of
+  truth for protocol work.
 - [STRATEGIC_ROADMAP.md](../STRATEGIC_ROADMAP.md), [FULL_VISION_EXECUTION_PROGRAM.md](FULL_VISION_EXECUTION_PROGRAM.md), and [V2_EXECUTION_BACKLOG.md](V2_EXECUTION_BACKLOG.md) remain the strategic reference set.
 - Every phase exit must keep `cargo test --workspace` green.
 - Every milestone exit must run audit before completion.
@@ -41,7 +45,7 @@ It finishes the portable-trust lane already shipped in alpha and closes the miss
 ### v2.3 Production and Standards
 
 **Scope:**
-- protocol specification v2
+- current v1 protocol specification hardening
 - deployment/runbook/performance hardening
 - production qualification and standards submission
 

@@ -1,15 +1,17 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_core::canonical::{canonical_json_bytes, CanonicalBytes};
 use chio_core::capability::{CapabilityToken, ChioScope};
-use chio_core::crypto::{sha256_hex, Signature};
+use chio_core::crypto::{sha256_hex, Keypair, Signature};
 use chio_core::receipt::{
     ChildRequestReceipt, ChioReceipt, Decision, FinancialReceiptMetadata,
     GovernedTransactionReceiptMetadata, ReceiptAttributionMetadata, SettlementStatus,
@@ -51,15 +53,18 @@ use chio_kernel::receipt_analytics::{
     AgentAnalyticsRow, AnalyticsTimeBucket, ReceiptAnalyticsMetrics, ReceiptAnalyticsQuery,
     ReceiptAnalyticsResponse, TimeAnalyticsRow, ToolAnalyticsRow, MAX_ANALYTICS_GROUP_LIMIT,
 };
-use chio_kernel::receipt_query::{ReceiptQuery, ReceiptQueryResult, MAX_QUERY_LIMIT};
+use chio_kernel::receipt_query::{
+    ReceiptQuery, ReceiptQueryResult, ReceiptReadBoundary, ReceiptReadContext, MAX_QUERY_LIMIT,
+};
 use chio_kernel::receipt_store::{ReceiptLineageStatementLink, ReceiptLineageVerification};
 use chio_kernel::{
-    CapabilitySnapshot, CreditBondDisposition, CreditBondLifecycleState, CreditBondListQuery,
-    CreditBondListReport, CreditBondListSummary, CreditBondRow, CreditFacilityDisposition,
-    CreditFacilityLifecycleState, CreditFacilityListQuery, CreditFacilityListReport,
-    CreditFacilityListSummary, CreditFacilityRow, CreditLossLifecycleEventKind,
-    CreditLossLifecycleListQuery, CreditLossLifecycleListReport, CreditLossLifecycleListSummary,
-    CreditLossLifecycleRow, EvidenceChildReceiptScope, EvidenceExportQuery, ExposureLedgerQuery,
+    AuthorizationReceiptConsumption, CapabilitySnapshot, CreditBondDisposition,
+    CreditBondLifecycleState, CreditBondListQuery, CreditBondListReport, CreditBondListSummary,
+    CreditBondRow, CreditFacilityDisposition, CreditFacilityLifecycleState,
+    CreditFacilityListQuery, CreditFacilityListReport, CreditFacilityListSummary,
+    CreditFacilityRow, CreditLossLifecycleEventKind, CreditLossLifecycleListQuery,
+    CreditLossLifecycleListReport, CreditLossLifecycleListSummary, CreditLossLifecycleRow,
+    EvidenceChildReceiptScope, EvidenceExportQuery, ExposureLedgerQuery,
     FederatedEvidenceShareImport, FederatedEvidenceShareSummary, LiabilityAutoBindDisposition,
     LiabilityClaimPayoutReconciliationState, LiabilityClaimResponseDisposition,
     LiabilityClaimSettlementReconciliationState, LiabilityClaimWorkflowQuery,
@@ -68,17 +73,19 @@ use chio_kernel::{
     LiabilityMarketWorkflowSummary, LiabilityProviderLifecycleState, LiabilityProviderListQuery,
     LiabilityProviderListReport, LiabilityProviderListSummary, LiabilityProviderResolutionQuery,
     LiabilityProviderResolutionReport, LiabilityProviderRow, LiabilityQuoteDisposition,
-    ReceiptStore, ReceiptStoreError, RetentionConfig, SignedCreditBond, SignedCreditFacility,
-    SignedCreditLossLifecycle, SignedLiabilityAutoBindDecision, SignedLiabilityBoundCoverage,
-    SignedLiabilityClaimAdjudication, SignedLiabilityClaimDispute, SignedLiabilityClaimPackage,
-    SignedLiabilityClaimPayoutInstruction, SignedLiabilityClaimPayoutReceipt,
-    SignedLiabilityClaimResponse, SignedLiabilityClaimSettlementInstruction,
-    SignedLiabilityClaimSettlementReceipt, SignedLiabilityPlacement,
-    SignedLiabilityPricingAuthority, SignedLiabilityProvider, SignedLiabilityQuoteRequest,
-    SignedLiabilityQuoteResponse, SignedUnderwritingDecision, StoredChildReceipt,
-    StoredToolReceipt, UnderwritingAppealCreateRequest, UnderwritingAppealRecord,
-    UnderwritingAppealResolution, UnderwritingAppealResolveRequest, UnderwritingAppealStatus,
-    UnderwritingDecisionLifecycleState, UnderwritingDecisionListReport,
+    ReceiptCheckpointCreateReport, ReceiptCheckpointRange, ReceiptCheckpointStatusReport,
+    ReceiptFlushReport, ReceiptStore, ReceiptStoreError, ReceiptStoreHealthReport,
+    ReceiptWalCheckpointReport, ReceiptWriterCounters, RetentionConfig, SignedCreditBond,
+    SignedCreditFacility, SignedCreditLossLifecycle, SignedLiabilityAutoBindDecision,
+    SignedLiabilityBoundCoverage, SignedLiabilityClaimAdjudication, SignedLiabilityClaimDispute,
+    SignedLiabilityClaimPackage, SignedLiabilityClaimPayoutInstruction,
+    SignedLiabilityClaimPayoutReceipt, SignedLiabilityClaimResponse,
+    SignedLiabilityClaimSettlementInstruction, SignedLiabilityClaimSettlementReceipt,
+    SignedLiabilityPlacement, SignedLiabilityPricingAuthority, SignedLiabilityProvider,
+    SignedLiabilityQuoteRequest, SignedLiabilityQuoteResponse, SignedUnderwritingDecision,
+    StoredChildReceipt, StoredToolReceipt, UnderwritingAppealCreateRequest,
+    UnderwritingAppealRecord, UnderwritingAppealResolution, UnderwritingAppealResolveRequest,
+    UnderwritingAppealStatus, UnderwritingDecisionLifecycleState, UnderwritingDecisionListReport,
     UnderwritingDecisionOutcome, UnderwritingDecisionQuery, UnderwritingDecisionRow,
     UnderwritingDecisionSummary, CREDIT_BOND_LIST_REPORT_SCHEMA,
     CREDIT_FACILITY_LIST_REPORT_SCHEMA, CREDIT_LOSS_LIFECYCLE_LIST_REPORT_SCHEMA,
@@ -113,6 +120,18 @@ const RECEIPT_COMMIT_ACTOR_CHANNEL_CAPACITY: usize = RECEIPT_GROUP_COMMIT_MAX_BA
 
 struct ReceiptCommitActor {
     sender: mpsc::SyncSender<ReceiptCommitCommand>,
+    health: Arc<ReceiptCommitWriterHealth>,
+}
+
+#[derive(Default)]
+struct ReceiptCommitWriterHealth {
+    accepted_total: AtomicU64,
+    committed_total: AtomicU64,
+    failed_total: AtomicU64,
+    saturated_total: AtomicU64,
+    inflight: AtomicU64,
+    last_commit_unix_ms: AtomicU64,
+    last_error: Mutex<Option<String>>,
 }
 
 struct ReceiptCommitRequest {
@@ -129,34 +148,109 @@ enum ReceiptCommitCommand {
 impl ReceiptCommitActor {
     fn start(pool: Pool<SqliteConnectionManager>) -> Self {
         let (sender, receiver) = receipt_commit_channel();
-        thread::spawn(move || receipt_commit_actor_loop(pool, receiver));
-        Self { sender }
+        let health = Arc::new(ReceiptCommitWriterHealth::default());
+        let actor_health = Arc::clone(&health);
+        thread::spawn(move || receipt_commit_actor_loop(pool, receiver, actor_health));
+        Self { sender, health }
     }
 
     fn append(&self, receipt: ChioReceipt, raw_json: String) -> Result<u64, ReceiptStoreError> {
         let (response, result) = mpsc::sync_channel(1);
-        self.sender
-            .send(ReceiptCommitCommand::Append(Box::new(
-                ReceiptCommitRequest {
-                    receipt,
-                    raw_json,
-                    response,
-                },
-            )))
-            .map_err(|_| receipt_actor_unavailable_error())?;
-        result
-            .recv()
-            .map_err(|_| receipt_actor_unavailable_error())?
+        let command = ReceiptCommitCommand::Append(Box::new(ReceiptCommitRequest {
+            receipt,
+            raw_json,
+            response,
+        }));
+        // Increment `inflight` BEFORE handing the command to the worker. If we
+        // wait until after `try_send`, the worker can dequeue, commit, and run
+        // `atomic_saturating_sub(&health.inflight, n)` (see
+        // `commit_receipt_batch`) before this thread observes the send result.
+        // That race saturates `inflight` to 0 and leaks the increment, leaving
+        // `health.writer.inflight` permanently misreporting drained writes.
+        // The worker decrements unconditionally on dequeue, so the pre-send
+        // increment pairs correctly. Any failure of `try_send` undoes the
+        // speculative increment before returning.
+        self.health.inflight.fetch_add(1, Ordering::SeqCst);
+        match self.sender.try_send(command) {
+            Ok(()) => {
+                self.health.accepted_total.fetch_add(1, Ordering::SeqCst);
+            }
+            Err(mpsc::TrySendError::Full(_)) => {
+                atomic_saturating_sub(&self.health.inflight, 1);
+                self.health.saturated_total.fetch_add(1, Ordering::SeqCst);
+                return Err(receipt_actor_saturated_error());
+            }
+            Err(mpsc::TrySendError::Disconnected(_)) => {
+                atomic_saturating_sub(&self.health.inflight, 1);
+                return Err(receipt_actor_unavailable_error());
+            }
+        }
+        match result.recv() {
+            Ok(result) => result,
+            Err(_) => {
+                atomic_saturating_sub(&self.health.inflight, 1);
+                self.health.failed_total.fetch_add(1, Ordering::SeqCst);
+                Err(receipt_actor_unavailable_error())
+            }
+        }
     }
 
     fn flush(&self) -> Result<(), ReceiptStoreError> {
+        self.flush_with_receiver(|receiver| {
+            receiver
+                .recv()
+                .map_err(|_| receipt_actor_unavailable_error())?
+        })
+    }
+
+    fn flush_with_timeout(&self, timeout: Duration) -> Result<(), ReceiptStoreError> {
+        self.flush_with_receiver(|receiver| match receiver.recv_timeout(timeout) {
+            Ok(result) => result,
+            Err(mpsc::RecvTimeoutError::Timeout) => Err(receipt_actor_flush_timeout_error(timeout)),
+            Err(mpsc::RecvTimeoutError::Disconnected) => Err(receipt_actor_unavailable_error()),
+        })
+    }
+
+    fn flush_with_receiver(
+        &self,
+        receive: impl FnOnce(
+            mpsc::Receiver<Result<(), ReceiptStoreError>>,
+        ) -> Result<(), ReceiptStoreError>,
+    ) -> Result<(), ReceiptStoreError> {
         let (response, result) = mpsc::sync_channel(1);
-        self.sender
-            .send(ReceiptCommitCommand::Flush(response))
-            .map_err(|_| receipt_actor_unavailable_error())?;
-        result
-            .recv()
-            .map_err(|_| receipt_actor_unavailable_error())?
+        match self.sender.try_send(ReceiptCommitCommand::Flush(response)) {
+            Ok(()) => {}
+            Err(mpsc::TrySendError::Full(_)) => {
+                self.health.saturated_total.fetch_add(1, Ordering::SeqCst);
+                return Err(receipt_actor_saturated_error());
+            }
+            Err(mpsc::TrySendError::Disconnected(_)) => {
+                return Err(receipt_actor_unavailable_error());
+            }
+        }
+        receive(result)
+    }
+
+    fn writer_counters(&self) -> ReceiptWriterCounters {
+        let last_commit_unix_ms = match self.health.last_commit_unix_ms.load(Ordering::SeqCst) {
+            0 => None,
+            value => Some(value),
+        };
+        let last_error = self
+            .health
+            .last_error
+            .lock()
+            .map(|error| error.clone())
+            .unwrap_or_else(|_| Some("receipt commit writer health lock poisoned".to_string()));
+        ReceiptWriterCounters {
+            accepted_total: self.health.accepted_total.load(Ordering::SeqCst),
+            committed_total: self.health.committed_total.load(Ordering::SeqCst),
+            failed_total: self.health.failed_total.load(Ordering::SeqCst),
+            saturated_total: self.health.saturated_total.load(Ordering::SeqCst),
+            inflight: self.health.inflight.load(Ordering::SeqCst),
+            last_commit_unix_ms,
+            last_error,
+        }
     }
 }
 
@@ -171,9 +265,21 @@ fn receipt_actor_unavailable_error() -> ReceiptStoreError {
     ReceiptStoreError::Pool("sqlite receipt commit actor is unavailable".to_string())
 }
 
+fn receipt_actor_saturated_error() -> ReceiptStoreError {
+    ReceiptStoreError::Pool("sqlite receipt commit queue saturated".to_string())
+}
+
+fn receipt_actor_flush_timeout_error(timeout: Duration) -> ReceiptStoreError {
+    ReceiptStoreError::Timeout {
+        operation: "sqlite receipt commit flush".to_string(),
+        timeout_ms: timeout.as_millis().min(u128::from(u64::MAX)) as u64,
+    }
+}
+
 fn receipt_commit_actor_loop(
     pool: Pool<SqliteConnectionManager>,
     receiver: mpsc::Receiver<ReceiptCommitCommand>,
+    health: Arc<ReceiptCommitWriterHealth>,
 ) {
     let mut pending_flush_error: Option<ReceiptStoreError> = None;
     while let Ok(command) = receiver.recv() {
@@ -192,7 +298,7 @@ fn receipt_commit_actor_loop(
                         Err(mpsc::RecvTimeoutError::Disconnected) => break,
                     }
                 }
-                pending_flush_error = commit_receipt_batch(&pool, requests, flushes);
+                pending_flush_error = commit_receipt_batch(&pool, requests, flushes, &health);
             }
             ReceiptCommitCommand::Flush(response) => {
                 let result = match &pending_flush_error {
@@ -209,11 +315,29 @@ fn commit_receipt_batch(
     pool: &Pool<SqliteConnectionManager>,
     requests: Vec<ReceiptCommitRequest>,
     flushes: Vec<mpsc::SyncSender<Result<(), ReceiptStoreError>>>,
+    health: &ReceiptCommitWriterHealth,
 ) -> Option<ReceiptStoreError> {
     let results = append_receipt_batch(pool, &requests);
     let flush_error = results
         .iter()
         .find_map(|result| result.as_ref().err().map(receipt_store_error_snapshot));
+    let committed = results.iter().filter(|result| result.is_ok()).count() as u64;
+    let failed = results.iter().filter(|result| result.is_err()).count() as u64;
+    if committed > 0 {
+        health
+            .committed_total
+            .fetch_add(committed, Ordering::SeqCst);
+        health
+            .last_commit_unix_ms
+            .store(current_unix_ms(), Ordering::SeqCst);
+    }
+    if failed > 0 {
+        health.failed_total.fetch_add(failed, Ordering::SeqCst);
+    }
+    atomic_saturating_sub(&health.inflight, results.len() as u64);
+    if let Ok(mut last_error) = health.last_error.lock() {
+        *last_error = flush_error.as_ref().map(ToString::to_string);
+    }
     for (request, result) in requests.into_iter().zip(results) {
         let _ = request.response.send(result);
     }
@@ -225,6 +349,24 @@ fn commit_receipt_batch(
         let _ = response.send(result);
     }
     flush_error
+}
+
+fn current_unix_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64)
+        .unwrap_or(0)
+}
+
+fn atomic_saturating_sub(value: &AtomicU64, amount: u64) {
+    let mut current = value.load(Ordering::SeqCst);
+    loop {
+        let next = current.saturating_sub(amount);
+        match value.compare_exchange(current, next, Ordering::SeqCst, Ordering::SeqCst) {
+            Ok(_) => return,
+            Err(observed) => current = observed,
+        }
+    }
 }
 
 fn append_receipt_batch(
@@ -240,12 +382,21 @@ fn append_receipt_batch(
             );
         }
     };
+    if let Err(error) = ensure_checkpoint_transparency_guards(&connection) {
+        return receipt_batch_error_results(requests.len(), error);
+    }
+    if let Err(error) = validate_claim_receipt_log_entries(&connection) {
+        return receipt_batch_error_results(requests.len(), error);
+    }
     let tx = match connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate) {
         Ok(tx) => tx,
         Err(error) => {
             return receipt_batch_error_results(requests.len(), ReceiptStoreError::Sqlite(error));
         }
     };
+    if let Err(error) = verify_latest_checkpoint_integrity(&tx) {
+        return receipt_batch_error_results(requests.len(), error);
+    }
     let mut results = Vec::with_capacity(requests.len());
     for request in requests {
         match append_chio_receipt_tx(&tx, &request.receipt, &request.raw_json) {
@@ -282,6 +433,13 @@ fn receipt_store_error_snapshot(error: &ReceiptStoreError) -> ReceiptStoreError 
             )))
         }
         ReceiptStoreError::Pool(message) => ReceiptStoreError::Pool(message.clone()),
+        ReceiptStoreError::Timeout {
+            operation,
+            timeout_ms,
+        } => ReceiptStoreError::Timeout {
+            operation: operation.clone(),
+            timeout_ms: *timeout_ms,
+        },
         ReceiptStoreError::Json(error) => ReceiptStoreError::Json(serde_json::Error::io(
             std::io::Error::other(error.to_string()),
         )),
@@ -294,6 +452,9 @@ fn receipt_store_error_snapshot(error: &ReceiptStoreError) -> ReceiptStoreError 
         ReceiptStoreError::Canonical(message) => ReceiptStoreError::Canonical(message.clone()),
         ReceiptStoreError::InvalidOutcome(message) => {
             ReceiptStoreError::InvalidOutcome(message.clone())
+        }
+        ReceiptStoreError::ReadBoundary(message) => {
+            ReceiptStoreError::ReadBoundary(message.clone())
         }
         ReceiptStoreError::Conflict(message) => ReceiptStoreError::Conflict(message.clone()),
         ReceiptStoreError::NotFound(message) => ReceiptStoreError::NotFound(message.clone()),
@@ -319,7 +480,7 @@ mod tests;
 mod underwriting_credit;
 
 use support::*;
-pub(crate) use support::{decode_verified_child_receipt, decode_verified_chio_receipt};
+pub(crate) use support::{decode_verified_child_receipt, decode_verified_chio_receipt, sqlite_u64};
 
 impl SqliteReceiptStore {
     pub(crate) fn connection(&self) -> Result<SqliteStoreConnection, ReceiptStoreError> {
@@ -396,9 +557,379 @@ impl SqliteReceiptStore {
             .append(receipt.clone(), raw_json.to_string())
     }
 
-    pub fn flush_receipt_writes(&self) -> Result<(), ReceiptStoreError> {
-        self.receipt_commit_actor.flush()
+    pub fn append_chio_receipt_consuming_authorization(
+        &self,
+        receipt: &ChioReceipt,
+        consumption: &AuthorizationReceiptConsumption,
+    ) -> Result<(), ReceiptStoreError> {
+        ensure_chio_receipt_verified(receipt)?;
+        if receipt.id != consumption.consumer_receipt_id {
+            return Err(ReceiptStoreError::Conflict(
+                "authorization consumption consumer receipt id does not match appended receipt"
+                    .to_string(),
+            ));
+        }
+        if receipt.tenant_id.as_deref() != consumption.tenant_id.as_deref() {
+            return Err(ReceiptStoreError::Conflict(
+                "authorization consumption tenant id does not match appended receipt".to_string(),
+            ));
+        }
+        sqlite_i64(receipt.timestamp, "receipt timestamp")?;
+        let raw_json = canonical_json_bytes(receipt)
+            .map_err(|error| ReceiptStoreError::Canonical(error.to_string()))?;
+        let raw_json = std::str::from_utf8(raw_json.as_slice()).map_err(|error| {
+            ReceiptStoreError::Canonical(format!("canonical receipt bytes are not UTF-8: {error}"))
+        })?;
+        let mut connection = self.connection()?;
+        ensure_checkpoint_transparency_guards(&connection)?;
+        validate_claim_receipt_log_entries(&connection)?;
+        let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        verify_latest_checkpoint_integrity(&tx)?;
+        consume_authorization_receipt_tx(&tx, consumption)?;
+        append_chio_receipt_tx(&tx, receipt, raw_json)?;
+        ensure_receipt_lineage_statement_for_receipt_id_tx(&tx, &receipt.id)?;
+        tx.commit()?;
+        Ok(())
     }
+
+    pub fn flush_receipt_writes(&self) -> Result<ReceiptFlushReport, ReceiptStoreError> {
+        self.receipt_commit_actor.flush()?;
+        let wal_checkpoint = Some(self.wal_checkpoint_passive()?);
+        self.flush_report(wal_checkpoint)
+    }
+
+    pub fn flush_receipt_writes_with_timeout(
+        &self,
+        timeout: Duration,
+    ) -> Result<ReceiptFlushReport, ReceiptStoreError> {
+        self.receipt_commit_actor.flush_with_timeout(timeout)?;
+        let wal_checkpoint = Some(self.wal_checkpoint_passive()?);
+        self.flush_report(wal_checkpoint)
+    }
+
+    pub fn receipt_store_health(&self) -> Result<ReceiptStoreHealthReport, ReceiptStoreError> {
+        self.validate_claim_receipt_log_projection_current()?;
+        let status = self.receipt_checkpoint_status(Some(1))?;
+        if status.latest_committed_entry_seq > status.latest_checkpointed_entry_seq {
+            let connection = self.connection()?;
+            let start_seq = status.latest_checkpointed_entry_seq + 1;
+            load_claim_tree_canonical_bytes_range(
+                &connection,
+                start_seq,
+                status.latest_committed_entry_seq,
+            )?;
+        }
+        let healthy = status.healthy
+            && self
+                .receipt_commit_actor
+                .writer_counters()
+                .last_error
+                .is_none();
+        let (uncheckpointed_start_seq, uncheckpointed_end_seq) = uncheckpointed_range(
+            status.latest_checkpointed_entry_seq,
+            status.latest_committed_entry_seq,
+        );
+        Ok(ReceiptStoreHealthReport {
+            healthy,
+            writer: self.receipt_commit_actor.writer_counters(),
+            latest_committed_entry_seq: status.latest_committed_entry_seq,
+            latest_checkpoint_seq: status.latest_checkpoint_seq,
+            latest_checkpointed_entry_seq: status.latest_checkpointed_entry_seq,
+            uncheckpointed_start_seq,
+            uncheckpointed_end_seq,
+            checkpoint_error: status.checkpoint_error,
+            db_size_bytes: self.db_size_bytes().ok(),
+        })
+    }
+
+    pub fn latest_committed_entry_seq(&self) -> Result<u64, ReceiptStoreError> {
+        let connection = self.connection()?;
+        latest_claim_log_entry_seq(&connection)
+    }
+
+    pub fn latest_checkpointed_entry_seq(&self) -> Result<u64, ReceiptStoreError> {
+        let connection = self.connection()?;
+        latest_checkpointed_entry_seq(&connection)
+    }
+
+    pub fn next_checkpoint_range(
+        &self,
+        max_batch: u64,
+    ) -> Result<Option<ReceiptCheckpointRange>, ReceiptStoreError> {
+        let connection = self.connection()?;
+        next_checkpoint_range_for_connection(&connection, max_batch)
+    }
+
+    pub fn receipt_checkpoint_status(
+        &self,
+        max_batch: Option<u64>,
+    ) -> Result<ReceiptCheckpointStatusReport, ReceiptStoreError> {
+        self.validate_claim_receipt_log_projection_current()?;
+        let connection = self.connection()?;
+        let latest_committed_entry_seq = latest_claim_log_entry_seq(&connection)?;
+        match verify_checkpoint_chain_integrity(&connection) {
+            Ok(latest) => {
+                let latest_checkpoint_seq = latest
+                    .as_ref()
+                    .map(|checkpoint| checkpoint.body.checkpoint_seq);
+                let latest_checkpointed_entry_seq = latest
+                    .as_ref()
+                    .map_or(0, |checkpoint| checkpoint.body.batch_end_seq);
+                if latest_committed_entry_seq > latest_checkpointed_entry_seq {
+                    let start_seq = latest_checkpointed_entry_seq + 1;
+                    if let Err(error) = ensure_claim_log_range_contiguous(
+                        &connection,
+                        start_seq,
+                        latest_committed_entry_seq,
+                        "uncheckpointed range",
+                    ) {
+                        return Ok(ReceiptCheckpointStatusReport {
+                            healthy: false,
+                            latest_committed_entry_seq,
+                            latest_checkpoint_seq,
+                            latest_checkpointed_entry_seq,
+                            next_range: None,
+                            checkpoint_error: Some(error.to_string()),
+                        });
+                    }
+                }
+                let next_range = match max_batch {
+                    Some(max_batch) => {
+                        next_checkpoint_range_for_connection(&connection, max_batch)?
+                    }
+                    None => None,
+                };
+                Ok(ReceiptCheckpointStatusReport {
+                    healthy: true,
+                    latest_committed_entry_seq,
+                    latest_checkpoint_seq,
+                    latest_checkpointed_entry_seq,
+                    next_range,
+                    checkpoint_error: None,
+                })
+            }
+            Err(error) => Ok(ReceiptCheckpointStatusReport {
+                healthy: false,
+                latest_committed_entry_seq,
+                latest_checkpoint_seq: None,
+                latest_checkpointed_entry_seq: 0,
+                next_range: None,
+                checkpoint_error: Some(error.to_string()),
+            }),
+        }
+    }
+
+    pub fn create_next_receipt_checkpoint(
+        &self,
+        max_batch: u64,
+        keypair: &Keypair,
+    ) -> Result<ReceiptCheckpointCreateReport, ReceiptStoreError> {
+        let mut connection = self.connection()?;
+        validate_claim_receipt_log_entries(&connection)?;
+        create_next_receipt_checkpoint_atomic(&mut connection, max_batch, keypair)
+    }
+
+    fn flush_report(
+        &self,
+        wal_checkpoint: Option<ReceiptWalCheckpointReport>,
+    ) -> Result<ReceiptFlushReport, ReceiptStoreError> {
+        self.validate_claim_receipt_log_projection_current()?;
+        let latest_committed_entry_seq = self.latest_committed_entry_seq()?;
+        let latest = self.load_latest_checkpoint()?;
+        let latest_checkpoint_seq = latest
+            .as_ref()
+            .map(|checkpoint| checkpoint.body.checkpoint_seq);
+        let latest_checkpointed_entry_seq = latest
+            .as_ref()
+            .map_or(0, |checkpoint| checkpoint.body.batch_end_seq);
+        let (uncheckpointed_start_seq, uncheckpointed_end_seq) =
+            uncheckpointed_range(latest_checkpointed_entry_seq, latest_committed_entry_seq);
+        Ok(ReceiptFlushReport {
+            writer: self.receipt_commit_actor.writer_counters(),
+            latest_committed_entry_seq,
+            latest_checkpoint_seq,
+            latest_checkpointed_entry_seq,
+            uncheckpointed_start_seq,
+            uncheckpointed_end_seq,
+            wal_checkpoint,
+            db_size_bytes: self.db_size_bytes().ok(),
+        })
+    }
+
+    fn validate_claim_receipt_log_projection_current(&self) -> Result<(), ReceiptStoreError> {
+        let connection = self.connection()?;
+        validate_claim_receipt_log_entries(&connection)
+    }
+
+    fn wal_checkpoint_passive(&self) -> Result<ReceiptWalCheckpointReport, ReceiptStoreError> {
+        let connection = self.connection()?;
+        let (busy, log_frames, checkpointed_frames) =
+            connection.query_row("PRAGMA wal_checkpoint(PASSIVE)", [], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
+            })?;
+        Ok(ReceiptWalCheckpointReport {
+            busy: sqlite_u64(busy, "wal checkpoint busy")?,
+            log_frames: sqlite_u64(log_frames, "wal checkpoint log frames")?,
+            checkpointed_frames: sqlite_u64(checkpointed_frames, "wal checkpointed frames")?,
+        })
+    }
+}
+
+fn uncheckpointed_range(checkpointed: u64, committed: u64) -> (Option<u64>, Option<u64>) {
+    if committed > checkpointed {
+        (Some(checkpointed + 1), Some(committed))
+    } else {
+        (None, None)
+    }
+}
+
+fn latest_claim_log_entry_seq(connection: &Connection) -> Result<u64, ReceiptStoreError> {
+    connection
+        .query_row(
+            "SELECT COALESCE(MAX(entry_seq), 0) FROM claim_receipt_log_entries",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(ReceiptStoreError::from)
+        .and_then(|value| sqlite_u64(value, "latest claim receipt log entry_seq"))
+}
+
+fn latest_checkpointed_entry_seq(connection: &Connection) -> Result<u64, ReceiptStoreError> {
+    verify_checkpoint_chain_integrity(connection)
+        .map(|latest| latest.map_or(0, |checkpoint| checkpoint.body.batch_end_seq))
+}
+
+fn next_checkpoint_range_for_connection(
+    connection: &Connection,
+    max_batch: u64,
+) -> Result<Option<ReceiptCheckpointRange>, ReceiptStoreError> {
+    if max_batch == 0 {
+        return Err(ReceiptStoreError::Conflict(
+            "checkpoint max_batch must be greater than zero".to_string(),
+        ));
+    }
+    let latest_committed = latest_claim_log_entry_seq(connection)?;
+    let latest_checkpointed = latest_checkpointed_entry_seq(connection)?;
+    if latest_committed <= latest_checkpointed {
+        return Ok(None);
+    }
+    let start_seq = latest_checkpointed + 1;
+    let end_seq = latest_committed.min(start_seq.saturating_add(max_batch - 1));
+    ensure_claim_log_range_contiguous(connection, start_seq, end_seq, "checkpoint range")?;
+    Ok(Some(ReceiptCheckpointRange { start_seq, end_seq }))
+}
+
+fn ensure_claim_log_range_contiguous(
+    connection: &Connection,
+    start_seq: u64,
+    end_seq: u64,
+    context: &str,
+) -> Result<(), ReceiptStoreError> {
+    if end_seq < start_seq {
+        return Err(ReceiptStoreError::Conflict(format!(
+            "claim receipt log {context} end {end_seq} is before start {start_seq}"
+        )));
+    }
+    let (count, min_seq, max_seq) = connection.query_row(
+        r#"
+        SELECT COUNT(*), MIN(entry_seq), MAX(entry_seq)
+        FROM claim_receipt_log_entries
+        WHERE entry_seq >= ?1 AND entry_seq <= ?2
+        "#,
+        params![
+            sqlite_i64(start_seq, "claim log range start_seq")?,
+            sqlite_i64(end_seq, "claim log range end_seq")?,
+        ],
+        |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, Option<i64>>(1)?,
+                row.get::<_, Option<i64>>(2)?,
+            ))
+        },
+    )?;
+    let expected = end_seq - start_seq + 1;
+    let count = sqlite_u64(count, "claim receipt log range count")?;
+    let min_seq = min_seq
+        .map(|value| sqlite_u64(value, "claim receipt log range min_seq"))
+        .transpose()?;
+    let max_seq = max_seq
+        .map(|value| sqlite_u64(value, "claim receipt log range max_seq"))
+        .transpose()?;
+    if count != expected || min_seq != Some(start_seq) || max_seq != Some(end_seq) {
+        return Err(ReceiptStoreError::Conflict(format!(
+            "claim receipt log has a gap in {context} {start_seq}..={end_seq}"
+        )));
+    }
+    Ok(())
+}
+
+fn claim_log_entry_seq_for_source_tx(
+    tx: &rusqlite::Transaction<'_>,
+    receipt_kind: &str,
+    source_seq: u64,
+) -> Result<u64, ReceiptStoreError> {
+    let source_seq_i64 = sqlite_i64(source_seq, "claim receipt source_seq")?;
+    let (entry_seq, log_receipt_id, log_raw_json, source_receipt_id, source_raw_json) =
+        match receipt_kind {
+            "tool_receipt" => tx.query_row(
+                r#"
+                SELECT l.entry_seq, l.receipt_id, l.raw_json, r.receipt_id, r.raw_json
+                FROM claim_receipt_log_entries l
+                JOIN chio_tool_receipts r ON r.seq = l.source_seq
+                WHERE l.receipt_kind = ?1 AND l.source_seq = ?2
+                "#,
+                params![receipt_kind, source_seq_i64],
+                |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
+                    ))
+                },
+            ),
+            "child_receipt" => tx.query_row(
+                r#"
+                SELECT l.entry_seq, l.receipt_id, l.raw_json, r.receipt_id, r.raw_json
+                FROM claim_receipt_log_entries l
+                JOIN chio_child_receipts r ON r.seq = l.source_seq
+                WHERE l.receipt_kind = ?1 AND l.source_seq = ?2
+                "#,
+                params![receipt_kind, source_seq_i64],
+                |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
+                    ))
+                },
+            ),
+            other => {
+                return Err(ReceiptStoreError::Conflict(format!(
+                    "unsupported claim receipt log kind `{other}`"
+                )));
+            }
+        }
+        .optional()?
+        .ok_or_else(|| {
+            ReceiptStoreError::Conflict(format!(
+                "claim receipt log entry missing for {receipt_kind} source seq {source_seq}"
+            ))
+        })?;
+    if log_receipt_id != source_receipt_id || log_raw_json != source_raw_json {
+        return Err(ReceiptStoreError::Conflict(format!(
+            "claim receipt log entry for {receipt_kind} source seq {source_seq} diverges from source row"
+        )));
+    }
+    sqlite_positive_u64(entry_seq, "claim receipt log entry_seq")
 }
 
 fn append_chio_receipt_tx(
@@ -455,19 +986,112 @@ fn append_chio_receipt_tx(
         )
         .optional()?;
     let Some(source_seq) = source_seq else {
-        return Ok(0);
+        let (existing_source_seq, existing_raw_json) = tx.query_row(
+            "SELECT seq, raw_json FROM chio_tool_receipts WHERE receipt_id = ?1",
+            params![receipt.id.as_str()],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+        )?;
+        let existing_source_seq =
+            sqlite_positive_u64(existing_source_seq, "tool receipt source_seq")?;
+        if existing_raw_json != raw_json {
+            return Err(ReceiptStoreError::Conflict(format!(
+                "tool receipt `{}` already exists with different content",
+                receipt.id
+            )));
+        }
+        decode_verified_chio_receipt(
+            &existing_raw_json,
+            "persisted duplicate tool receipt",
+            Some(existing_source_seq),
+        )?;
+        return claim_log_entry_seq_for_source_tx(tx, "tool_receipt", existing_source_seq);
     };
-    let source_seq = sqlite_u64(source_seq, "tool receipt source_seq")?;
-    let entry_seq = tx.query_row(
-        r#"
-        SELECT entry_seq
-        FROM claim_receipt_log_entries
-        WHERE receipt_kind = 'tool_receipt' AND source_seq = ?1
-        "#,
-        params![sqlite_i64(source_seq, "tool receipt source_seq")?],
-        |row| row.get::<_, i64>(0),
+    let source_seq = sqlite_positive_u64(source_seq, "tool receipt source_seq")?;
+    claim_log_entry_seq_for_source_tx(tx, "tool_receipt", source_seq)
+}
+
+fn consume_authorization_receipt_tx(
+    tx: &rusqlite::Transaction<'_>,
+    consumption: &AuthorizationReceiptConsumption,
+) -> Result<(), ReceiptStoreError> {
+    if consumption.authorization_receipt_id.trim().is_empty()
+        || consumption.consumer_receipt_id.trim().is_empty()
+        || consumption.request_id.trim().is_empty()
+        || consumption.session_id.trim().is_empty()
+        || consumption.tool_call_id.trim().is_empty()
+        || consumption.parameter_hash.trim().is_empty()
+    {
+        return Err(ReceiptStoreError::Conflict(
+            "authorization receipt consumption requires non-empty binding fields".to_string(),
+        ));
+    }
+    // Tenant id may be `None` for non-enterprise / single-tenant deployments,
+    // but if it is `Some(_)` it must not be an empty / whitespace-only string.
+    if matches!(&consumption.tenant_id, Some(tenant) if tenant.trim().is_empty()) {
+        return Err(ReceiptStoreError::Conflict(
+            "authorization receipt consumption tenant id must not be empty when present"
+                .to_string(),
+        ));
+    }
+    let consumed_at = sqlite_i64(
+        consumption.consumed_at_unix_ms,
+        "authorization receipt consumed_at_unix_ms",
     )?;
-    sqlite_u64(entry_seq, "tool receipt claim log entry_seq")
+    let authorization_tenant = tx
+        .query_row(
+            "SELECT tenant_id FROM chio_tool_receipts WHERE receipt_id = ?1",
+            params![consumption.authorization_receipt_id.as_str()],
+            |row| row.get::<_, Option<String>>(0),
+        )
+        .optional()?
+        .ok_or_else(|| {
+            ReceiptStoreError::NotFound(format!(
+                "authorization receipt {} was not found",
+                consumption.authorization_receipt_id
+            ))
+        })?;
+    if authorization_tenant.as_deref() != consumption.tenant_id.as_deref() {
+        return Err(ReceiptStoreError::Conflict(
+            "authorization receipt tenant id does not match consumption tenant".to_string(),
+        ));
+    }
+    match tx.execute(
+        r#"
+        INSERT INTO chio_authorization_receipt_consumptions (
+            authorization_receipt_id,
+            consumer_receipt_id,
+            request_id,
+            session_id,
+            tool_call_id,
+            tenant_id,
+            parameter_hash,
+            consumed_at_unix_ms
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+        "#,
+        params![
+            consumption.authorization_receipt_id.as_str(),
+            consumption.consumer_receipt_id.as_str(),
+            consumption.request_id.as_str(),
+            consumption.session_id.as_str(),
+            consumption.tool_call_id.as_str(),
+            consumption.tenant_id.as_deref(),
+            consumption.parameter_hash.as_str(),
+            consumed_at,
+        ],
+    ) {
+        Ok(_) => Ok(()),
+        Err(error)
+            if matches!(
+                error.sqlite_error_code(),
+                Some(rusqlite::ErrorCode::ConstraintViolation)
+            ) =>
+        {
+            Err(ReceiptStoreError::Conflict(
+                "authorization receipt already consumed".to_string(),
+            ))
+        }
+        Err(error) => Err(ReceiptStoreError::Sqlite(error)),
+    }
 }
 
 fn decode_canonical_chio_receipt(
@@ -495,6 +1119,37 @@ fn canonical_receipt_json(canonical: &CanonicalBytes) -> Result<&str, ReceiptSto
 mod receipt_commit_actor_tests {
     use super::*;
 
+    fn actor_test_receipt() -> Result<ChioReceipt, ReceiptStoreError> {
+        let keypair = chio_core::crypto::Keypair::generate();
+        ChioReceipt::sign(
+            chio_core::receipt::ChioReceiptBody {
+                id: "rcpt-actor-test".to_string(),
+                timestamp: 1,
+                capability_id: "cap-actor".to_string(),
+                tool_server: "shell".to_string(),
+                tool_name: "bash".to_string(),
+                action: chio_core::receipt::ToolCallAction::from_parameters(serde_json::json!({}))
+                    .map_err(|error| ReceiptStoreError::Canonical(error.to_string()))?,
+                decision: Some(Decision::Allow),
+                receipt_kind: Default::default(),
+                boundary_class: Default::default(),
+                observation_outcome: None,
+                tool_origin: Default::default(),
+                redaction_mode: Default::default(),
+                actor_chain: Vec::new(),
+                content_hash: "content".to_string(),
+                policy_hash: "policy".to_string(),
+                evidence: Vec::new(),
+                metadata: None,
+                trust_level: chio_core::TrustLevel::default(),
+                tenant_id: None,
+                kernel_key: keypair.public_key(),
+            },
+            &keypair,
+        )
+        .map_err(|error| ReceiptStoreError::CryptoDecode(error.to_string()))
+    }
+
     #[test]
     fn receipt_commit_actor_channel_has_fixed_capacity() -> Result<(), Box<dyn std::error::Error>> {
         let (sender, _receiver) = receipt_commit_channel();
@@ -511,5 +1166,51 @@ mod receipt_commit_actor_tests {
             }
             Ok(()) => Err("commit actor channel accepted beyond fixed capacity".into()),
         }
+    }
+
+    #[test]
+    fn receipt_commit_actor_append_fails_closed_when_queue_is_full(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let (sender, _receiver) = receipt_commit_channel();
+        let health = Arc::new(ReceiptCommitWriterHealth::default());
+        for _ in 0..RECEIPT_COMMIT_ACTOR_CHANNEL_CAPACITY {
+            let (response, _result) = mpsc::sync_channel(1);
+            sender.try_send(ReceiptCommitCommand::Flush(response))?;
+        }
+        let actor = ReceiptCommitActor { sender, health };
+
+        let error = actor.append(actor_test_receipt()?, "{}".to_string());
+
+        assert!(error
+            .err()
+            .ok_or("expected queue saturation error")?
+            .to_string()
+            .contains("sqlite receipt commit queue saturated"));
+        Ok(())
+    }
+
+    #[test]
+    fn receipt_commit_actor_flush_honors_timeout() -> Result<(), Box<dyn std::error::Error>> {
+        let (sender, _receiver) = receipt_commit_channel();
+        let health = Arc::new(ReceiptCommitWriterHealth::default());
+        let actor = ReceiptCommitActor { sender, health };
+
+        let error = actor.flush_with_timeout(Duration::from_millis(1));
+
+        match error.err().ok_or("expected flush timeout error")? {
+            ReceiptStoreError::Timeout {
+                operation,
+                timeout_ms,
+            } => {
+                assert_eq!(operation, "sqlite receipt commit flush");
+                assert_eq!(timeout_ms, 1);
+            }
+            other => {
+                return Err(
+                    std::io::Error::other(format!("expected timeout error, got {other}")).into(),
+                );
+            }
+        }
+        Ok(())
     }
 }

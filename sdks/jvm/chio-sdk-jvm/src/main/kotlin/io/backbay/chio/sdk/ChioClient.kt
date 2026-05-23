@@ -98,7 +98,14 @@ class ChioClient
                     "parameter_hash" to paramHash,
                 )
             val node = postJson(SidecarPaths.EVALUATE_TOOL_CALL, body)
-            return parser.treeToValue(node, ChioReceipt::class.java)
+            val receipt = parser.treeToValue(node, ChioReceipt::class.java)
+            if (!receipt.isAllowed() || !verifyReceipt(receipt)) {
+                throw ChioError(
+                    "Chio sidecar returned a non-authoritative receipt",
+                    ChioErrorCodes.INVALID_RECEIPT,
+                )
+            }
+            return receipt
         }
 
         /** POST /chio/evaluate. Mirrors evaluate_http_request. */
@@ -112,9 +119,25 @@ class ChioClient
                     emptyMap()
                 } else {
                     mapOf("X-Chio-Capability" to capabilityToken)
-                }
+            }
             val node = postJson(SidecarPaths.EVALUATE_HTTP, request, extraHeaders = headers)
-            return parser.treeToValue(node, EvaluateResponse::class.java)
+            val result = parser.treeToValue(node, EvaluateResponse::class.java)
+            if (result.verdict.isAllowed() || result.receipt.verdict.isAllowed()) {
+                if (!result.verdict.isAllowed() || !result.receipt.isAuthorized()) {
+                    throw ChioError(
+                        "Chio sidecar returned an allow-shaped response without mediated receipt authorization",
+                        ChioErrorCodes.INVALID_RECEIPT,
+                    )
+                }
+                val verification = verifyHttpReceipt(result.receipt)
+                if (!verification.authorizes(result.receipt)) {
+                    throw ChioError(
+                        "Chio sidecar returned an unverified HTTP receipt",
+                        ChioErrorCodes.INVALID_RECEIPT,
+                    )
+                }
+            }
+            return result
         }
 
         /** Field-taking overload for Java callers (no model pre-built). */
@@ -160,18 +183,29 @@ class ChioClient
         /** POST /v1/receipts/verify. Mirrors verify_receipt. */
         fun verifyReceipt(receipt: ChioReceipt): Boolean {
             val node = postJson(SidecarPaths.VERIFY_RECEIPT, receipt)
-            return node.path("valid").asBoolean(false)
+            return node.has("ok") &&
+                node.has("authorized") &&
+                node.path("ok").asBoolean(false) &&
+                node.path("authorized").asBoolean(false) &&
+                node.path("signer_trusted").asBoolean(false) &&
+                node.path("receipt_id_valid").asBoolean(false) &&
+                node.path("signature_valid").asBoolean(false) &&
+                node.path("parameter_hash_valid").asBoolean(false) &&
+                node.path("receipt_kind").asText("") == "mediated_decision" &&
+                node.path("boundary_class").asText("") == "prevent" &&
+                node.path("trust_level").asText("") == "mediated" &&
+                node.path("result").asText("") in setOf("allow", "authorized", "Authorized")
         }
 
         /** POST /chio/verify. Mirrors verify_http_receipt. */
-        fun verifyHttpReceipt(receipt: HttpReceipt): Boolean {
+        fun verifyHttpReceipt(receipt: HttpReceipt): VerifyReceiptResponse {
             val node = postJson(SidecarPaths.VERIFY_HTTP_RECEIPT, receipt)
-            return node.path("valid").asBoolean(false)
+            return parser.treeToValue(node, VerifyReceiptResponse::class.java)
         }
 
         /** Deprecated single-name alias for one-release compat. */
         @Deprecated("Use verifyHttpReceipt", ReplaceWith("verifyHttpReceipt(receipt)"))
-        fun verifyReceipt(receipt: HttpReceipt): Boolean = verifyHttpReceipt(receipt)
+        fun verifyReceipt(receipt: HttpReceipt): VerifyReceiptResponse = verifyHttpReceipt(receipt)
 
         /**
          * Pure client-side Merkle chain walk. Mirrors verify_receipt_chain;

@@ -6,8 +6,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
-use chio_core::receipt::ChioReceipt;
-use chio_core::{canonical_json_bytes, sha256_hex, PublicKey, Signature};
+use chio_core::receipt::{BoundaryClass, ChioReceipt, ReceiptKind};
+use chio_core::{canonical_json_bytes, chio_receipt_id, sha256_hex, PublicKey, Signature};
 use chio_kernel::checkpoint::{
     checkpoint_body_sha256, validate_checkpoint_transparency, CheckpointConsistencyProof,
     CheckpointEquivocation, CheckpointPublication, CheckpointTransparencySummary,
@@ -66,6 +66,19 @@ struct EvidenceExportCounts {
 struct EvidenceProofCoverage {
     checkpointed_receipts: u64,
     uncheckpointed_receipts: u64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct EvidenceReceiptSemanticSummary {
+    mediated_decisions: u64,
+    trace_observations: u64,
+    advisory_evaluations: u64,
+    prevent: u64,
+    detect_only: u64,
+    advisory_only: u64,
+    cannot_see: u64,
+    authorized: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -179,6 +192,78 @@ pub(crate) struct PreparedEvidenceExport {
     pub federation_policy: Option<FederationPolicyDocument>,
 }
 
+/// Documented metadata disclosure attached to tenant-scoped exports.
+///
+/// Tenant-scoped evidence exports inherit kernel-signed checkpoint bodies and
+/// their inclusion proofs. Those signed artifacts cover the full per-batch
+/// Merkle tree, which is shared across tenants by design. This notice lists
+/// which cross-tenant fields the exported checkpoint set inherently reveals,
+/// so receiving parties can audit the disclosure boundary without parsing
+/// every signed body manually. Admin-all exports do not carry the notice
+/// because the operator already requested a cross-tenant view.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct EvidenceDisclosureNotice {
+    /// Stable identifier for the notice format so downstream parsers can
+    /// branch deterministically when the disclosure list changes.
+    schema: String,
+    /// Concise summary describing why this disclosure is unavoidable in the
+    /// current protocol version.
+    summary: String,
+    /// Names of fields on each exported `KernelCheckpointBody` (in
+    /// `checkpoints.ndjson`) that describe the full per-batch Merkle tree and
+    /// therefore reveal cross-tenant aggregate information.
+    disclosed_checkpoint_body_fields: Vec<String>,
+    /// Names of derived publication / witness fields (in
+    /// `checkpoint-*.ndjson`) that mirror the signed body and are therefore
+    /// equivalent disclosures.
+    disclosed_publication_fields: Vec<String>,
+    /// Specific metadata that is intentionally narrowed for tenant-scoped
+    /// exports compared to admin-all exports.
+    narrowed_metadata: Vec<String>,
+    /// Stable reference to the docs section describing why the disclosure
+    /// cannot be eliminated without protocol-level changes.
+    protocol_reference: String,
+}
+
+const EVIDENCE_DISCLOSURE_NOTICE_SCHEMA: &str = "chio.evidence_export_disclosure_notice.v1";
+
+fn tenant_scoped_disclosure_notice() -> EvidenceDisclosureNotice {
+    EvidenceDisclosureNotice {
+        schema: EVIDENCE_DISCLOSURE_NOTICE_SCHEMA.to_string(),
+        summary: "Kernel-signed checkpoint bodies and their derived publication records cover the full per-batch Merkle tree shared across tenants. Tenant-scoped exports therefore reveal aggregate batch metadata for receipts they do not contain. This disclosure is unavoidable without protocol-level per-tenant subtree proofs.".to_string(),
+        disclosed_checkpoint_body_fields: vec![
+            "batch_start_seq".to_string(),
+            "batch_end_seq".to_string(),
+            "tree_size".to_string(),
+            "merkle_root".to_string(),
+            "checkpoint_seq".to_string(),
+            "issued_at".to_string(),
+            "previous_checkpoint_sha256".to_string(),
+        ],
+        disclosed_publication_fields: vec![
+            "entry_start_seq".to_string(),
+            "entry_end_seq".to_string(),
+            "log_tree_size".to_string(),
+        ],
+        narrowed_metadata: vec![
+            "retention.liveDbSizeBytes is omitted (admin-all only)".to_string(),
+            "retention.oldestLiveReceiptTimestamp is restricted to the requesting tenant"
+                .to_string(),
+        ],
+        protocol_reference:
+            "docs/release/COMPLIANCE_EVIDENCE_EXPORT_PLAN.md#tenant-scoped-disclosure".to_string(),
+    }
+}
+
+#[must_use]
+fn maybe_build_disclosure_notice(query: &EvidenceExportQuery) -> Option<EvidenceDisclosureNotice> {
+    match &query.read_boundary {
+        Some(ReceiptReadBoundary::TenantScoped { .. }) => Some(tenant_scoped_disclosure_notice()),
+        Some(ReceiptReadBoundary::AdminAll) | None => None,
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 struct EvidenceExportManifest {
@@ -187,6 +272,8 @@ struct EvidenceExportManifest {
     query: EvidenceExportQuery,
     counts: EvidenceExportCounts,
     proof_coverage: EvidenceProofCoverage,
+    #[serde(default)]
+    receipt_semantics: EvidenceReceiptSemanticSummary,
     child_receipt_scope: EvidenceChildReceiptScope,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     claim_boundary: Option<EvidenceTransparencyClaims>,
@@ -195,6 +282,11 @@ struct EvidenceExportManifest {
     policy: Option<PolicyAttachmentMetadata>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     federation_policy: Option<FederationPolicyAttachmentMetadata>,
+    /// Per-tenant disclosure notice attached when the export is tenant-scoped.
+    /// Documents which signed-checkpoint fields inherently reveal aggregate
+    /// cross-tenant metadata so the disclosure boundary stays auditable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    disclosure_notice: Option<EvidenceDisclosureNotice>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -212,9 +304,12 @@ struct EvidenceVerificationResult {
     capability_lineage: u64,
     inclusion_proofs: u64,
     uncheckpointed_receipts: u64,
+    receipt_semantics: EvidenceReceiptSemanticSummary,
     verified_files: u64,
     child_receipt_scope: EvidenceChildReceiptScope,
     claim_boundary: EvidenceTransparencyClaims,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    disclosure_notice: Option<EvidenceDisclosureNotice>,
 }
 
 fn unix_now() -> u64 {
@@ -365,6 +460,7 @@ fn render_readme(
     bundle: &EvidenceExportBundle,
     transparency: &CheckpointTransparencySummary,
     claim_boundary: &EvidenceTransparencyClaims,
+    disclosure_notice: Option<&EvidenceDisclosureNotice>,
 ) -> String {
     let trust_anchor = claim_boundary.trust_anchor.as_deref().unwrap_or("none");
     let child_scope = match bundle.child_receipt_scope {
@@ -377,6 +473,17 @@ fn render_readme(
         EvidenceChildReceiptScope::OmittedNoJoinPath => {
             "Child receipts are omitted because the export was capability/agent scoped without a truthful child-receipt join path."
         }
+    };
+    let disclosure_block = match disclosure_notice {
+        Some(notice) => format!(
+            "\nCross-tenant disclosure notice\n{}\nDisclosed checkpoint body fields: {}\nDisclosed publication record fields: {}\nNarrowed metadata: {}\nProtocol reference: {}\n",
+            notice.summary,
+            notice.disclosed_checkpoint_body_fields.join(", "),
+            notice.disclosed_publication_fields.join(", "),
+            notice.narrowed_metadata.join("; "),
+            notice.protocol_reference,
+        ),
+        None => String::new(),
     };
 
     format!(
@@ -406,7 +513,7 @@ Checkpoint equivocations: {}
 Transparency preview logs: {}
 
 {}
-",
+{}",
         claim_boundary.publication_state.as_str(),
         trust_anchor,
         bundle.tool_receipts.len(),
@@ -419,7 +526,8 @@ Transparency preview logs: {}
         transparency.consistency_proofs.len(),
         transparency.equivocations.len(),
         claim_boundary.transparency_preview.len(),
-        child_scope
+        child_scope,
+        disclosure_block,
     )
 }
 
@@ -491,6 +599,46 @@ pub(crate) fn verify_federation_policy(policy: &FederationPolicyDocument) -> Res
         return Err(CliError::attest_error(
             "federation policy signature verification failed".to_string(),
         ));
+    }
+    match &policy.body.query.read_boundary {
+        Some(ReceiptReadBoundary::TenantScoped { tenant }) => {
+            if tenant.trim().is_empty() {
+                return Err(CliError::attest_error(
+                    "federation policy tenant read boundary requires a non-empty tenant"
+                        .to_string(),
+                ));
+            }
+            if policy
+                .body
+                .query
+                .tenant
+                .as_deref()
+                .is_some_and(|query_tenant| query_tenant != tenant)
+            {
+                return Err(CliError::attest_error(
+                    "federation policy tenant scope must match its read boundary".to_string(),
+                ));
+            }
+        }
+        Some(ReceiptReadBoundary::AdminAll) => {
+            if policy
+                .body
+                .query
+                .tenant
+                .as_deref()
+                .is_some_and(|tenant| !tenant.trim().is_empty())
+            {
+                return Err(CliError::attest_error(
+                    "federation policy admin-all read boundary must not include tenant scope"
+                        .to_string(),
+                ));
+            }
+        }
+        None => {
+            return Err(CliError::attest_error(
+                "federation policy must bind an explicit receipt read boundary".to_string(),
+            ));
+        }
     }
     Ok(())
 }
@@ -604,13 +752,10 @@ fn merge_read_boundary(
                 "requested admin-all export exceeds tenant-scoped federation policy".to_string(),
             ))
         }
-        (
-            Some(ReceiptReadBoundary::AdminAll),
-            Some(boundary @ ReceiptReadBoundary::TenantScoped { .. }),
-        ) => Ok(Some(boundary.clone())),
         (Some(boundary), _) => Ok(Some(boundary.clone())),
-        (None, Some(boundary)) => Ok(Some(boundary.clone())),
-        (None, None) => Ok(None),
+        (None, Some(_)) | (None, None) => Err(CliError::attest_error(
+            "signed federation policy must bind an explicit receipt read boundary".to_string(),
+        )),
     }
 }
 
@@ -618,6 +763,26 @@ pub(crate) fn ensure_query_within_federation_policy(
     policy_query: &EvidenceExportQuery,
     export_query: &EvidenceExportQuery,
 ) -> Result<(), CliError> {
+    let merged_boundary = merge_read_boundary(
+        policy_query.read_boundary.as_ref(),
+        export_query.read_boundary.as_ref(),
+    )?;
+    if merged_boundary != export_query.read_boundary {
+        return Err(CliError::attest_error(
+            "evidence package read boundary exceeds federation policy scope".to_string(),
+        ));
+    }
+    if let Some(ReceiptReadBoundary::TenantScoped { tenant }) = &export_query.read_boundary {
+        if export_query
+            .tenant
+            .as_deref()
+            .is_some_and(|query_tenant| query_tenant != tenant)
+        {
+            return Err(CliError::attest_error(
+                "evidence package read boundary tenant conflicts with query tenant".to_string(),
+            ));
+        }
+    }
     if policy_query.capability_id.is_some()
         && policy_query.capability_id != export_query.capability_id
     {
@@ -704,7 +869,7 @@ fn safe_relative_path(relative_path: &str) -> Result<PathBuf, CliError> {
             Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
                 return Err(CliError::attest_error(format!(
                     "evidence package manifest path escapes the package root: {relative_path}"
-                )))
+                )));
             }
         }
     }
@@ -767,7 +932,24 @@ fn verify_query_scope(
         ));
     }
 
+    let tenant_scope = match &query.read_boundary {
+        Some(ReceiptReadBoundary::TenantScoped { tenant }) => Some(tenant.as_str()),
+        Some(ReceiptReadBoundary::AdminAll) | None => query
+            .tenant
+            .as_deref()
+            .map(str::trim)
+            .filter(|tenant| !tenant.is_empty()),
+    };
+
     for record in tool_receipts {
+        if let Some(tenant) = tenant_scope {
+            if record.receipt.tenant_id.as_deref() != Some(tenant) {
+                return Err(CliError::attest_error(format!(
+                    "tool receipt {} is outside tenant scope {}",
+                    record.receipt.id, tenant
+                )));
+            }
+        }
         if let Some(capability_id) = &query.capability_id {
             if &record.receipt.capability_id != capability_id {
                 return Err(CliError::attest_error(format!(
@@ -1061,6 +1243,36 @@ fn verify_inclusion_proofs(
     Ok(())
 }
 
+fn evidence_receipt_semantic_summary(
+    tool_receipts: &[EvidenceToolReceiptRecord],
+) -> EvidenceReceiptSemanticSummary {
+    let mut summary = EvidenceReceiptSemanticSummary::default();
+    for record in tool_receipts {
+        let semantics = record.receipt.semantic_fields();
+        match semantics.receipt_kind {
+            ReceiptKind::MediatedDecision => summary.mediated_decisions += 1,
+            ReceiptKind::TraceObservation => summary.trace_observations += 1,
+            ReceiptKind::AdvisoryEvaluation => summary.advisory_evaluations += 1,
+        }
+        match semantics.boundary_class {
+            BoundaryClass::Prevent => summary.prevent += 1,
+            BoundaryClass::DetectOnly => summary.detect_only += 1,
+            BoundaryClass::AdvisoryOnly => summary.advisory_only += 1,
+            BoundaryClass::CannotSee => summary.cannot_see += 1,
+        }
+        if chio_receipt_id(&record.receipt.body())
+            .map(|id| id == record.receipt.id)
+            .unwrap_or(false)
+            && record.receipt.is_allowed()
+            && record.receipt.verify_signature().unwrap_or(false)
+            && record.receipt.action.verify_hash().unwrap_or(false)
+        {
+            summary.authorized += 1;
+        }
+    }
+    summary
+}
+
 fn verify_manifest_counts(
     manifest: &EvidenceExportManifest,
     tool_receipts: &[EvidenceToolReceiptRecord],
@@ -1090,6 +1302,12 @@ fn verify_manifest_counts(
             "evidence package proof coverage summary does not match receipt counts".to_string(),
         ));
     }
+    let derived_semantics = evidence_receipt_semantic_summary(tool_receipts);
+    if manifest.receipt_semantics != derived_semantics {
+        return Err(CliError::attest_error(
+            "evidence package receipt semantic summary does not match exported data".to_string(),
+        ));
+    }
     Ok(())
 }
 
@@ -1114,6 +1332,32 @@ fn verify_policy_attachment(
         )));
     }
     Ok(())
+}
+
+fn verify_disclosure_notice(manifest: &EvidenceExportManifest) -> Result<(), CliError> {
+    let expected_notice = maybe_build_disclosure_notice(&manifest.query);
+    match (&manifest.disclosure_notice, expected_notice) {
+        (Some(actual), Some(expected)) => {
+            if actual != &expected {
+                return Err(CliError::attest_error(
+                    "evidence package disclosure notice does not match the canonical \
+                     tenant-scoped disclosure boundary"
+                        .to_string(),
+                ));
+            }
+            Ok(())
+        }
+        (None, Some(_)) => Err(CliError::attest_error(
+            "tenant-scoped evidence package is missing the required cross-tenant \
+             disclosure notice"
+                .to_string(),
+        )),
+        (Some(_), None) => Err(CliError::attest_error(
+            "admin-all evidence package must not carry a tenant-scoped disclosure notice"
+                .to_string(),
+        )),
+        (None, None) => Ok(()),
+    }
 }
 
 fn verify_federation_policy_attachment(
@@ -1163,6 +1407,11 @@ pub(crate) fn validate_import_package_data(
             "evidence import package query does not match the embedded manifest".to_string(),
         ));
     }
+    package
+        .bundle
+        .query
+        .validate_read_boundary()
+        .map_err(|error| CliError::attest_error(error.to_string()))?;
     verify_manifest_counts(
         &package.manifest,
         &package.bundle.tool_receipts,
@@ -1171,6 +1420,7 @@ pub(crate) fn validate_import_package_data(
         &package.bundle.capability_lineage,
         &package.bundle.inclusion_proofs,
     )?;
+    verify_disclosure_notice(&package.manifest)?;
     let actual_federation_metadata = package
         .federation_policy
         .as_ref()
@@ -1283,6 +1533,7 @@ fn load_verified_evidence_package(input: &Path) -> Result<EvidenceImportPackage,
         &capability_lineage,
         &inclusion_proofs,
     )?;
+    verify_disclosure_notice(&manifest)?;
     verify_policy_attachment(input, &manifest)?;
     verify_federation_policy_attachment(input, &manifest)?;
 
@@ -1417,6 +1668,7 @@ fn write_evidence_package(
         None => validate_checkpoint_transparency_summary(&bundle.checkpoints)?,
     };
     let claim_boundary = build_evidence_transparency_claims(&bundle, &transparency, None);
+    let disclosure_notice = maybe_build_disclosure_notice(&bundle.query);
 
     let mut file_hashes = Vec::new();
     write_json_file(output, "query.json", &bundle.query, &mut file_hashes)?;
@@ -1483,7 +1735,13 @@ fn write_evidence_package(
     write_bytes_file(
         output,
         "README.txt",
-        render_readme(&bundle, &transparency, &claim_boundary).as_bytes(),
+        render_readme(
+            &bundle,
+            &transparency,
+            &claim_boundary,
+            disclosure_notice.as_ref(),
+        )
+        .as_bytes(),
         &mut file_hashes,
     )?;
 
@@ -1524,17 +1782,20 @@ fn write_evidence_package(
             .saturating_sub(counts.uncheckpointed_receipts),
         uncheckpointed_receipts: counts.uncheckpointed_receipts,
     };
+    let receipt_semantics = evidence_receipt_semantic_summary(&bundle.tool_receipts);
     let manifest = EvidenceExportManifest {
         schema: EVIDENCE_EXPORT_MANIFEST_SCHEMA.to_string(),
         exported_at: unix_now(),
         query: bundle.query,
         counts,
         proof_coverage,
+        receipt_semantics,
         child_receipt_scope: bundle.child_receipt_scope,
         claim_boundary: Some(claim_boundary),
         files: file_hashes,
         policy,
         federation_policy,
+        disclosure_notice,
     };
     let manifest_path = output.join("manifest.json");
     fs::write(&manifest_path, serde_json::to_vec_pretty(&manifest)?)?;
@@ -1577,19 +1838,17 @@ pub fn cmd_evidence_federation_policy_create(
     }
     if args.admin_all && args.tenant.is_some() {
         return Err(CliError::attest_error(
-            "use either --tenant or --admin-all for evidence federation policy create, not both"
-                .to_string(),
-        ));
-    }
-    if !args.admin_all && args.tenant.is_none() {
-        return Err(CliError::attest_error(
-            "evidence federation policy create requires either --tenant or --admin-all".to_string(),
+            "use either --tenant or --admin-all for a federation policy, not both".to_string(),
         ));
     }
     let read_boundary = if args.admin_all {
         Some(ReceiptReadBoundary::AdminAll)
+    } else if let Some(tenant) = args.tenant {
+        Some(ReceiptReadBoundary::tenant_scoped(tenant))
     } else {
-        args.tenant.map(ReceiptReadBoundary::tenant_scoped)
+        return Err(CliError::attest_error(
+            "federation policy requires either --tenant or --admin-all".to_string(),
+        ));
     };
 
     let body = FederationPolicyBody {
@@ -1798,9 +2057,11 @@ pub fn cmd_evidence_verify(input: &Path, json_output: bool) -> Result<(), CliErr
         capability_lineage: manifest.counts.capability_lineage,
         inclusion_proofs: manifest.counts.inclusion_proofs,
         uncheckpointed_receipts: manifest.counts.uncheckpointed_receipts,
+        receipt_semantics: manifest.receipt_semantics,
         verified_files: manifest.files.len() as u64,
         child_receipt_scope: manifest.child_receipt_scope,
         claim_boundary,
+        disclosure_notice: manifest.disclosure_notice,
     };
 
     if json_output {
@@ -1829,6 +2090,18 @@ pub fn cmd_evidence_verify(input: &Path, json_output: bool) -> Result<(), CliErr
             "uncheckpointed_receipts: {}",
             result.uncheckpointed_receipts
         );
+        println!(
+            "authorized_receipts:     {}",
+            result.receipt_semantics.authorized
+        );
+        println!(
+            "trace_observations:      {}",
+            result.receipt_semantics.trace_observations
+        );
+        println!(
+            "advisory_evaluations:    {}",
+            result.receipt_semantics.advisory_evaluations
+        );
         println!("verified_files:         {}", result.verified_files);
         println!("child_receipt_scope:    {:?}", result.child_receipt_scope);
         println!(
@@ -1841,6 +2114,14 @@ pub fn cmd_evidence_verify(input: &Path, json_output: bool) -> Result<(), CliErr
         );
         if let Some(trust_anchor) = result.claim_boundary.trust_anchor.as_deref() {
             println!("trust_anchor:          {}", trust_anchor);
+        }
+        if let Some(notice) = result.disclosure_notice.as_ref() {
+            println!(
+                "disclosure_notice:      tenant-scoped export discloses {} signed-checkpoint and {} derived-publication aggregate fields (see README.txt and {})",
+                notice.disclosed_checkpoint_body_fields.len(),
+                notice.disclosed_publication_fields.len(),
+                notice.protocol_reference,
+            );
         }
     }
 
@@ -1955,7 +2236,13 @@ mod tests {
                     serde_json::json!({"release":"candidate-1"}),
                 )
                 .test_unwrap(),
-                decision: Decision::Allow,
+                decision: Some(Decision::Allow),
+                receipt_kind: Default::default(),
+                boundary_class: Default::default(),
+                observation_outcome: None,
+                tool_origin: Default::default(),
+                redaction_mode: Default::default(),
+                actor_chain: Vec::new(),
                 content_hash: "content-export-1".to_string(),
                 policy_hash: "policy-export-1".to_string(),
                 evidence: Vec::new(),
@@ -1994,10 +2281,117 @@ mod tests {
             inclusion_proofs: vec![proof],
             uncheckpointed_receipts: Vec::new(),
             retention: EvidenceRetentionMetadata {
-                live_db_size_bytes: 512,
+                live_db_size_bytes: Some(512),
                 oldest_live_receipt_timestamp: Some(1_775_137_626),
             },
         }
+    }
+
+    fn manifest_for_bundle(bundle: &EvidenceExportBundle) -> EvidenceExportManifest {
+        let counts = EvidenceExportCounts {
+            tool_receipts: bundle.tool_receipts.len() as u64,
+            child_receipts: bundle.child_receipts.len() as u64,
+            checkpoints: bundle.checkpoints.len() as u64,
+            capability_lineage: bundle.capability_lineage.len() as u64,
+            inclusion_proofs: bundle.inclusion_proofs.len() as u64,
+            uncheckpointed_receipts: bundle.uncheckpointed_receipts.len() as u64,
+        };
+        let disclosure_notice = maybe_build_disclosure_notice(&bundle.query);
+        EvidenceExportManifest {
+            schema: EVIDENCE_EXPORT_MANIFEST_SCHEMA.to_string(),
+            exported_at: unix_now(),
+            query: bundle.query.clone(),
+            proof_coverage: EvidenceProofCoverage {
+                checkpointed_receipts: counts
+                    .tool_receipts
+                    .saturating_sub(counts.uncheckpointed_receipts),
+                uncheckpointed_receipts: counts.uncheckpointed_receipts,
+            },
+            receipt_semantics: evidence_receipt_semantic_summary(&bundle.tool_receipts),
+            counts,
+            child_receipt_scope: bundle.child_receipt_scope,
+            claim_boundary: None,
+            files: Vec::new(),
+            policy: None,
+            federation_policy: None,
+            disclosure_notice,
+        }
+    }
+
+    #[test]
+    fn manifest_count_verification_rejects_semantic_drift() {
+        let bundle = sample_bundle();
+        let mut manifest = manifest_for_bundle(&bundle);
+        manifest.receipt_semantics.authorized = 0;
+
+        let error = verify_manifest_counts(
+            &manifest,
+            &bundle.tool_receipts,
+            &bundle.child_receipts,
+            &bundle.checkpoints,
+            &bundle.capability_lineage,
+            &bundle.inclusion_proofs,
+        )
+        .test_unwrap_err();
+
+        assert!(
+            error.to_string().contains("semantic summary"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn query_scope_rejects_tenant_scoped_package_with_mixed_receipt_tenant() {
+        let mut receipt = sample_receipt();
+        receipt.tenant_id = Some("tenant-b".to_string());
+        let tool_receipts = vec![EvidenceToolReceiptRecord { seq: 1, receipt }];
+        let error = verify_query_scope(
+            &EvidenceExportQuery {
+                capability_id: None,
+                agent_subject: None,
+                since: None,
+                until: None,
+                tenant: Some("tenant-a".to_string()),
+                read_boundary: Some(ReceiptReadBoundary::tenant_scoped("tenant-a")),
+            },
+            &tool_receipts,
+            &[],
+            EvidenceChildReceiptScope::OmittedNoJoinPath,
+            &BTreeMap::new(),
+        )
+        .test_unwrap_err();
+
+        assert!(
+            error.to_string().contains("outside tenant scope tenant-a"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn query_scope_rejects_admin_tenant_filtered_package_with_mixed_receipt_tenant() {
+        let mut receipt = sample_receipt();
+        receipt.tenant_id = Some("tenant-b".to_string());
+        let tool_receipts = vec![EvidenceToolReceiptRecord { seq: 1, receipt }];
+        let error = verify_query_scope(
+            &EvidenceExportQuery {
+                capability_id: None,
+                agent_subject: None,
+                since: None,
+                until: None,
+                tenant: Some("tenant-a".to_string()),
+                read_boundary: Some(ReceiptReadBoundary::AdminAll),
+            },
+            &tool_receipts,
+            &[],
+            EvidenceChildReceiptScope::OmittedNoJoinPath,
+            &BTreeMap::new(),
+        )
+        .test_unwrap_err();
+
+        assert!(
+            error.to_string().contains("outside tenant scope tenant-a"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]
@@ -2053,7 +2447,7 @@ mod tests {
     }
 
     #[test]
-    fn merge_export_query_uses_cli_tenant_when_policy_is_admin_all() {
+    fn merge_export_query_allows_admin_policy_to_narrow_to_tenant_filter() {
         let merged = merge_export_query(
             &EvidenceExportQuery {
                 capability_id: None,
@@ -2063,14 +2457,46 @@ mod tests {
                 tenant: None,
                 read_boundary: Some(ReceiptReadBoundary::AdminAll),
             },
-            &EvidenceExportQuery::tenant_scoped("tenant-a"),
+            &EvidenceExportQuery {
+                capability_id: None,
+                agent_subject: None,
+                since: None,
+                until: None,
+                tenant: Some("tenant-a".to_string()),
+                read_boundary: None,
+            },
         )
         .test_unwrap();
 
         assert_eq!(merged.tenant.as_deref(), Some("tenant-a"));
-        assert_eq!(
-            merged.read_boundary,
-            Some(ReceiptReadBoundary::tenant_scoped("tenant-a"))
+        assert_eq!(merged.read_boundary, Some(ReceiptReadBoundary::AdminAll));
+    }
+
+    #[test]
+    fn merge_export_query_rejects_request_chosen_boundary_without_policy_binding() {
+        let error = merge_export_query(
+            &EvidenceExportQuery {
+                capability_id: None,
+                agent_subject: None,
+                since: None,
+                until: None,
+                tenant: None,
+                read_boundary: None,
+            },
+            &EvidenceExportQuery {
+                capability_id: None,
+                agent_subject: None,
+                since: None,
+                until: None,
+                tenant: None,
+                read_boundary: Some(ReceiptReadBoundary::AdminAll),
+            },
+        )
+        .test_unwrap_err();
+
+        assert!(
+            error.to_string().contains("read boundary"),
+            "unexpected error: {error}"
         );
     }
 
@@ -2097,6 +2523,101 @@ mod tests {
         .test_unwrap_err();
 
         assert!(error.to_string().contains("tenant scope"));
+    }
+
+    #[test]
+    fn ensure_query_within_federation_policy_rejects_admin_all_under_tenant_scope() {
+        let error = ensure_query_within_federation_policy(
+            &EvidenceExportQuery {
+                capability_id: None,
+                agent_subject: None,
+                since: None,
+                until: None,
+                tenant: Some("tenant-a".to_string()),
+                read_boundary: Some(ReceiptReadBoundary::tenant_scoped("tenant-a")),
+            },
+            &EvidenceExportQuery {
+                capability_id: None,
+                agent_subject: None,
+                since: None,
+                until: None,
+                tenant: Some("tenant-a".to_string()),
+                read_boundary: Some(ReceiptReadBoundary::AdminAll),
+            },
+        )
+        .test_unwrap_err();
+
+        assert!(error.to_string().contains("admin-all"));
+    }
+
+    #[test]
+    fn ensure_query_within_federation_policy_allows_admin_policy_tenant_narrowing() {
+        ensure_query_within_federation_policy(
+            &EvidenceExportQuery {
+                capability_id: None,
+                agent_subject: None,
+                since: None,
+                until: None,
+                tenant: None,
+                read_boundary: Some(ReceiptReadBoundary::AdminAll),
+            },
+            &EvidenceExportQuery {
+                capability_id: None,
+                agent_subject: None,
+                since: None,
+                until: None,
+                tenant: Some("tenant-a".to_string()),
+                read_boundary: Some(ReceiptReadBoundary::AdminAll),
+            },
+        )
+        .test_unwrap();
+    }
+
+    #[test]
+    fn signed_federation_policy_rejects_unbound_read_boundary() {
+        let keypair = Keypair::generate();
+        let body = FederationPolicyBody {
+            schema: FEDERATION_POLICY_SCHEMA.to_string(),
+            issuer: "issuer-a".to_string(),
+            partner: "partner-b".to_string(),
+            signer_public_key: keypair.public_key(),
+            created_at: 10,
+            expires_at: 20,
+            query: EvidenceExportQuery {
+                capability_id: None,
+                agent_subject: None,
+                since: None,
+                until: None,
+                tenant: None,
+                read_boundary: None,
+            },
+            require_proofs: false,
+            purpose: None,
+        };
+        let (signature, _) = keypair.sign_canonical(&body).test_unwrap();
+        let policy = FederationPolicyDocument { body, signature };
+
+        let error = verify_federation_policy(&policy).test_unwrap_err();
+
+        assert!(
+            error.to_string().contains("read boundary"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn import_package_requires_explicit_read_boundary() {
+        let bundle = sample_bundle();
+        let manifest = manifest_for_bundle(&bundle);
+        let package = EvidenceImportPackage {
+            manifest,
+            bundle,
+            transparency: None,
+            federation_policy: None,
+        };
+        let error = validate_import_package_data(&package).test_unwrap_err();
+
+        assert!(error.to_string().contains("read boundary"));
     }
 
     #[test]
@@ -2313,6 +2834,129 @@ mod tests {
                 .to_string()
                 .contains("checkpoint transparency verification failed"),
             "unexpected stale-publication error: {stale_error}"
+        );
+    }
+
+    #[test]
+    fn tenant_scoped_disclosure_notice_is_built_for_tenant_read_boundary() {
+        let query = EvidenceExportQuery::tenant_scoped("tenant-a");
+        let notice = maybe_build_disclosure_notice(&query).test_unwrap();
+        assert_eq!(notice.schema, EVIDENCE_DISCLOSURE_NOTICE_SCHEMA);
+        for required in [
+            "batch_start_seq",
+            "batch_end_seq",
+            "tree_size",
+            "merkle_root",
+        ] {
+            assert!(
+                notice
+                    .disclosed_checkpoint_body_fields
+                    .iter()
+                    .any(|field| field == required),
+                "{required} must appear in disclosed checkpoint body fields: {:?}",
+                notice.disclosed_checkpoint_body_fields,
+            );
+        }
+        for required in ["entry_start_seq", "entry_end_seq", "log_tree_size"] {
+            assert!(
+                notice
+                    .disclosed_publication_fields
+                    .iter()
+                    .any(|field| field == required),
+                "{required} must appear in disclosed publication fields: {:?}",
+                notice.disclosed_publication_fields,
+            );
+        }
+        assert!(
+            !notice.narrowed_metadata.is_empty(),
+            "narrowed metadata list must enumerate the tenant-scoped narrowings",
+        );
+    }
+
+    #[test]
+    fn admin_all_export_carries_no_tenant_disclosure_notice() {
+        let query = EvidenceExportQuery::admin_all();
+        assert!(maybe_build_disclosure_notice(&query).is_none());
+    }
+
+    #[test]
+    fn verify_disclosure_notice_rejects_stripped_tenant_notice() {
+        let bundle = EvidenceExportBundle {
+            query: EvidenceExportQuery::tenant_scoped("tenant-a"),
+            tool_receipts: Vec::new(),
+            child_receipts: Vec::new(),
+            child_receipt_scope: EvidenceChildReceiptScope::OmittedNoJoinPath,
+            checkpoints: Vec::new(),
+            capability_lineage: Vec::new(),
+            inclusion_proofs: Vec::new(),
+            uncheckpointed_receipts: Vec::new(),
+            retention: EvidenceRetentionMetadata {
+                live_db_size_bytes: None,
+                oldest_live_receipt_timestamp: None,
+            },
+        };
+        let mut manifest = manifest_for_bundle(&bundle);
+        assert!(manifest.disclosure_notice.is_some());
+        manifest.disclosure_notice = None;
+
+        let error = verify_disclosure_notice(&manifest).test_unwrap_err();
+        assert!(
+            error.to_string().contains("disclosure notice"),
+            "unexpected error: {error}",
+        );
+    }
+
+    #[test]
+    fn verify_disclosure_notice_rejects_admin_all_with_spurious_notice() {
+        let bundle = EvidenceExportBundle {
+            query: EvidenceExportQuery::admin_all(),
+            tool_receipts: Vec::new(),
+            child_receipts: Vec::new(),
+            child_receipt_scope: EvidenceChildReceiptScope::OmittedNoJoinPath,
+            checkpoints: Vec::new(),
+            capability_lineage: Vec::new(),
+            inclusion_proofs: Vec::new(),
+            uncheckpointed_receipts: Vec::new(),
+            retention: EvidenceRetentionMetadata {
+                live_db_size_bytes: Some(0),
+                oldest_live_receipt_timestamp: None,
+            },
+        };
+        let mut manifest = manifest_for_bundle(&bundle);
+        manifest.disclosure_notice = Some(tenant_scoped_disclosure_notice());
+
+        let error = verify_disclosure_notice(&manifest).test_unwrap_err();
+        assert!(
+            error.to_string().contains("admin-all"),
+            "unexpected error: {error}",
+        );
+    }
+
+    #[test]
+    fn verify_disclosure_notice_rejects_tampered_notice() {
+        let bundle = EvidenceExportBundle {
+            query: EvidenceExportQuery::tenant_scoped("tenant-a"),
+            tool_receipts: Vec::new(),
+            child_receipts: Vec::new(),
+            child_receipt_scope: EvidenceChildReceiptScope::OmittedNoJoinPath,
+            checkpoints: Vec::new(),
+            capability_lineage: Vec::new(),
+            inclusion_proofs: Vec::new(),
+            uncheckpointed_receipts: Vec::new(),
+            retention: EvidenceRetentionMetadata {
+                live_db_size_bytes: None,
+                oldest_live_receipt_timestamp: None,
+            },
+        };
+        let mut manifest = manifest_for_bundle(&bundle);
+        if let Some(notice) = manifest.disclosure_notice.as_mut() {
+            notice.disclosed_checkpoint_body_fields.clear();
+        }
+
+        let error = verify_disclosure_notice(&manifest).test_unwrap_err();
+        assert!(
+            error.to_string().contains("disclosure notice"),
+            "unexpected error: {error}",
         );
     }
 }

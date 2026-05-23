@@ -13,6 +13,11 @@ struct ParsedSidecarVerdict {
   std::string reason;
 };
 
+bool bool_field(const detail::JsonValue& root, std::string_view key) {
+  const auto* value = root.get(key);
+  return value != nullptr && value->is_bool() && value->as_bool();
+}
+
 ParsedSidecarVerdict parse_sidecar_verdict(const detail::JsonValue& root) {
   ParsedSidecarVerdict out;
   const auto* verdict = root.get("verdict");
@@ -142,12 +147,25 @@ Result<bool> Evaluator::verify_receipt(std::string receipt_json) const {
     return Result<bool>::failure(
         Error{ErrorCode::Json, "sidecar verify returned malformed JSON"});
   }
-  const auto* valid = parsed->get("valid");
-  if (valid == nullptr || !valid->is_bool()) {
+  const auto* ok = parsed->get("ok");
+  const auto* authorized = parsed->get("authorized");
+  if (ok == nullptr || !ok->is_bool() || authorized == nullptr || !authorized->is_bool()) {
     return Result<bool>::failure(
-        Error{ErrorCode::Json, "sidecar verify response missing boolean valid field"});
+        Error{ErrorCode::Json,
+              "sidecar verify response missing structured authority fields"});
   }
-  return Result<bool>::success(valid->as_bool());
+  const auto authorizes =
+      ok->as_bool() &&
+      authorized->as_bool() &&
+      bool_field(*parsed, "signature_valid") &&
+      bool_field(*parsed, "signer_trusted") &&
+      bool_field(*parsed, "receipt_id_valid") &&
+      bool_field(*parsed, "parameter_hash_valid") &&
+      parsed->string_field("receipt_kind") == "mediated_decision" &&
+      parsed->string_field("boundary_class") == "prevent" &&
+      parsed->string_field("trust_level") == "mediated" &&
+      parsed->string_field("result") == "allow";
+  return Result<bool>::success(authorizes);
 }
 
 Result<std::string> Evaluator::health() const {
@@ -198,6 +216,25 @@ EvaluateVerdict Middleware::evaluate_fail_closed(const ChioHttpRequest& request)
   if (verdict.verdict.empty()) {
     verdict.verdict = "deny";
     verdict.reason = "missing verdict";
+    return verdict;
+  }
+  if (verdict.verdict == "allow") {
+    if (verdict.receipt_json.empty()) {
+      verdict.verdict = "deny";
+      verdict.reason = "allow verdict missing receipt";
+      return verdict;
+    }
+    auto verified = evaluator_.verify_receipt(verdict.receipt_json);
+    if (!verified) {
+      verdict.verdict = "deny";
+      verdict.reason = "allow receipt verification failed: " + verified.error().message;
+      return verdict;
+    }
+    if (!verified.value()) {
+      verdict.verdict = "deny";
+      verdict.reason = "allow receipt is not authoritative";
+      return verdict;
+    }
   }
   return verdict;
 }

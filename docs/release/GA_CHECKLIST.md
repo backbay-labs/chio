@@ -1,7 +1,7 @@
 # GA Checklist
 
 Use this checklist before claiming general-availability readiness for the
-current post-`v2.41` Chio production candidate.
+current v1-only pre-release Chio production candidate.
 
 This checklist is procedural. Use
 [RELEASE_AUDIT.md](RELEASE_AUDIT.md) for the authoritative repo-local

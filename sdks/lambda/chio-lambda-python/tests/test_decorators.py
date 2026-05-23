@@ -20,6 +20,10 @@ def _allow_response(_request: httpx.Request) -> httpx.Response:
         json={
             "decision": "allow",
             "receipt_id": "r-allow",
+            "authorized": True,
+            "authoritative": True,
+            "receipt_kind": "mediated_decision",
+            "boundary_class": "prevent",
             "reason": None,
             "capability_id": "cap-1",
             "tool_server": "srv",

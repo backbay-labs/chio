@@ -3,7 +3,11 @@
 ## Purpose
 
 This runbook covers the supported operator actions for the shipped
-`chio-anchor` runtime in `v2.36`.
+`chio-anchor` runtime originally tracked under internal milestone `v2.36`.
+
+> Version posture: this is a pre-release operator runbook. Internal `v2.x`
+> milestone labels are historical planning labels, not Chio-owned protocol,
+> schema, SDK, or runtime versions. Current protocol posture is v1-only.
 
 `chio-anchor` is the bounded checkpoint-anchoring surface. It does not release
 funds, automate jobs, or widen trust from discovery visibility alone.

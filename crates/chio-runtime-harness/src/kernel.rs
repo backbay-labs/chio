@@ -302,6 +302,7 @@ pub(crate) fn execute_runtime_loopback_step(
         require_web3_evidence: false,
         checkpoint_batch_size: chio_kernel::DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
+        allow_ephemeral_receipt_log: false,
     });
     kernel.set_federation_local_kernel_id(step.request.host_kernel_id.clone());
     let receipt_store_nonce =

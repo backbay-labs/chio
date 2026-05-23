@@ -25,8 +25,8 @@ pub mod ratelimit;
 mod redaction;
 
 pub use alerting::{
-    derive_severity, Alert, AlertBackend, AlertSeverity, AlertingConfig, AlertingExporter,
-    AlertingExporterBuilder, OpsGenieBackend, PagerDutyBackend,
+    derive_event_severity, derive_severity, Alert, AlertBackend, AlertSeverity, AlertingConfig,
+    AlertingExporter, AlertingExporterBuilder, OpsGenieBackend, PagerDutyBackend,
 };
 pub use dlq::{DeadLetterQueue, FailedEvent};
 pub use event::SiemEvent;

@@ -1,5 +1,10 @@
 # Chio OAuth Authorization Profile
 
+Status: normative profile reference only. Hosted OAuth AS product work remains
+blocked until a dedicated ADR or equivalent decision note is accepted. This
+document defines the shape any future hosted OAuth-family surface must project
+from governed receipts; it does not make that hosted surface plan-ready.
+
 This document defines Chio's first normative enterprise-facing authorization
 profile over governed receipt truth.
 
@@ -71,8 +76,8 @@ context distinct while preserving traceability back to one governed intent.
 
 ## Request-Time Contract
 
-Chio now supports one bounded hosted request-time authorization contract over
-the same governed semantics:
+Any future hosted request-time authorization contract must stay bounded to the
+same governed semantics:
 
 - authorization request parameter: `authorization_details`
 - authorization request parameter: `chio_transaction_context`
@@ -133,7 +138,7 @@ binding forward through `cnf`:
 
 ## Resource Binding
 
-Chio's hosted OAuth-family edge now makes resource binding explicit:
+Any future hosted OAuth-family edge must make resource binding explicit:
 
 - protected-resource metadata publishes one canonical `resource`
 - authorization requests must include `resource`
@@ -147,7 +152,7 @@ different live audience rule.
 
 ## Portable Identity Alignment
 
-Chio's hosted authorization profile now publishes the same portable-identity
+The hosted authorization profile must publish the same portable-identity
 alignment used by Chio's portable credential metadata:
 
 - `portableClaimCatalog`

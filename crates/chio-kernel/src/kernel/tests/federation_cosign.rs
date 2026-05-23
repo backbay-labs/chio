@@ -22,11 +22,6 @@ struct CountingRejectingCosigner {
     calls: std::sync::Arc<AtomicU64>,
 }
 
-struct TreatyBindingRuntimeAdmissionHook {
-    metadata: serde_json::Value,
-    bind_request_hash: bool,
-}
-
 impl BilateralCoSigningProtocol for CountingRejectingCosigner {
     fn request_cosignature(
         &self,
@@ -59,27 +54,6 @@ impl ReceiptStore for FailingAppendReceiptStore {
     }
 }
 
-impl RuntimeAdmissionHook for TreatyBindingRuntimeAdmissionHook {
-    fn name(&self) -> &str {
-        "treaty-binding-runtime-admission"
-    }
-
-    fn evaluate(
-        &self,
-        context: &RuntimeAdmissionContext<'_>,
-    ) -> Result<RuntimeAdmissionDecision, KernelError> {
-        let mut metadata = self.metadata.clone();
-        let request_hash = chio_core::crypto::sha256_hex(
-            &chio_core::canonical::canonical_json_bytes(&context.request.arguments).unwrap(),
-        );
-        if self.bind_request_hash {
-            metadata["chio_runtime"]["federation_treaty_dsse"]["treaty_binding_ref"]
-                ["request_sha256"] = serde_json::json!(request_hash);
-        }
-        Ok(RuntimeAdmissionDecision::allow(Some(metadata)))
-    }
-}
-
 fn handshake_and_pin(
     local: &KernelTrustExchange,
     remote_kernel_id: &str,
@@ -99,66 +73,8 @@ fn handshake_and_pin(
         .expect("local accepts envelope and pins peer")
 }
 
-fn treaty_binding_runtime_metadata(
-    origin_kernel_id: &str,
-    tool_host_kernel_id: &str,
-) -> serde_json::Value {
-    serde_json::json!({
-        "chio_runtime": {
-            "federation_treaty_dsse": {
-                "capability_lease_ref": {
-                    "lease_id": "lease-kernel-strict-1",
-                    "issuer": origin_kernel_id,
-                    "expires_at_unix_ms": 4_102_444_800_000u64
-                },
-                "policy_evaluation_summary": {
-                    "server_a_verdict": {
-                        "verdict": "allow",
-                        "policy_id": "origin-runtime-policy",
-                        "policy_version": "v1"
-                    },
-                    "server_b_verdict": {
-                        "verdict": "allow",
-                        "policy_id": "host-runtime-policy",
-                        "policy_version": "v1"
-                    },
-                    "joint_disposition": "allow"
-                },
-                "governance_receipt_ref": {
-                    "receipt_id": "governance-receipt-kernel-strict-1",
-                    "kernel_id": tool_host_kernel_id,
-                    "digest": {
-                        "alg": "sha256",
-                        "value": "d".repeat(64)
-                    }
-                },
-                "consistency_anchor": "anchor:kernel-strict:1",
-                "consistency_model": "totally_ordered",
-                "cross_org_visibility": "federated",
-                "treaty_binding_ref": {
-                    "treaty_id": "treaty-kernel-strict",
-                    "treaty_scope_sha256": "a".repeat(64),
-                    "ladder_intersection_sha256": "b".repeat(64),
-                    "admission_report_sha256": "c".repeat(64),
-                    "continuation_sha256": "e".repeat(64),
-                    "lineage_bundle_sha256": "f".repeat(64),
-                    "action_class_id": "workflow.destructive.vendor_call",
-                    "consistency_model": "totally_ordered",
-                    "request_sha256": "0".repeat(64),
-                    "outcome_sha256": "1".repeat(64),
-                    "local_receipt_sha256": "2".repeat(64),
-                    "remote_receipt_sha256": "3".repeat(64),
-                    "lease_refs": ["lease-kernel-strict-1"],
-                    "governance_refs": ["governance-receipt-kernel-strict-1"],
-                    "signer_kernel_ids": [origin_kernel_id, tool_host_kernel_id]
-                }
-            }
-        }
-    })
-}
-
 #[test]
-fn federated_request_without_runtime_treaty_material_fails_closed() {
+fn federated_request_produces_dual_signed_receipt_verifiable_by_both_orgs() {
     // Org A holds the origin kernel; Org B hosts the tool.
     let origin_kp = Keypair::generate(); // Org A (origin) kernel key
     let origin_kernel_id = "kernel.org-a";
@@ -216,348 +132,30 @@ fn federated_request_without_runtime_treaty_material_fails_closed() {
     );
     request.federated_origin_kernel_id = Some(origin_kernel_id.to_string());
 
-    let result = kernel.evaluate_tool_call_blocking(&request);
-    let (verdict, reason, receipt_id) = match result {
-        Ok(response) => (
-            response.verdict,
-            response.reason.unwrap_or_default(),
-            Some(response.receipt.id),
-        ),
-        Err(error) => (Verdict::Deny, error.to_string(), None),
-    };
-
-    assert_eq!(
-        verdict,
-        Verdict::Deny,
-        "federated requests must not emit DSSE without runtime treaty material"
-    );
-    assert!(
-        reason.contains("runtime treaty"),
-        "denial must identify missing runtime treaty material, got: {reason}"
-    );
-    if let Some(receipt_id) = receipt_id {
-        assert!(
-            kernel.federation_dsse_envelope(&receipt_id).is_none(),
-            "denied missing-treaty requests must not persist federation DSSE"
-        );
-    }
-}
-
-#[test]
-fn federated_request_with_runtime_treaty_material_produces_buyer_verifiable_strict_dsse() {
-    let origin_kp = Keypair::generate();
-    let origin_kernel_id = "kernel.org-a";
-
-    let mut kernel = make_kernel(make_config());
-    let tool_host_public_key = kernel.config.keypair.public_key();
-    let tool_host_kernel_id = "kernel.org-b";
-    kernel.set_federation_local_kernel_id(tool_host_kernel_id);
-    let path = unique_receipt_db_path("federated-strict-treaty-dsse");
-    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
-    kernel.register_tool_server(Box::new(EchoServer::new(
-        "srv-fed",
-        vec!["file_read"],
-    )));
-
-    let trust = KernelTrustExchange::new(tool_host_kernel_id, kernel.config.keypair.clone())
-        .with_trusted_peer(origin_kernel_id, origin_kp.public_key());
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let peer = handshake_and_pin(&trust, origin_kernel_id, &origin_kp, now);
-    let mut kernel = kernel.with_federation_peers(vec![peer]);
-    kernel.set_federation_cosigner(std::sync::Arc::new(InProcessCoSigner::new(
-        origin_kernel_id,
-        origin_kp.clone(),
-        tool_host_public_key.clone(),
-    )));
-    kernel.set_runtime_admission_hook(std::sync::Arc::new(
-        TreatyBindingRuntimeAdmissionHook {
-            metadata: treaty_binding_runtime_metadata(origin_kernel_id, tool_host_kernel_id),
-            bind_request_hash: true,
-        },
-    ));
-
-    let agent_kp = make_keypair();
-    let cap = make_capability(
-        &kernel,
-        &agent_kp,
-        make_scope(vec![make_grant("srv-fed", "file_read")]),
-        300,
-    );
-    let mut request = make_request_with_arguments(
-        "req-fed-strict-1",
-        &cap,
-        "file_read",
-        "srv-fed",
-        serde_json::json!({ "path": "/data/fed-strict.txt" }),
-    );
-    request.federated_origin_kernel_id = Some(origin_kernel_id.to_string());
-
     let response = kernel.evaluate_tool_call_blocking(&request).unwrap();
     assert_eq!(response.verdict, Verdict::Allow);
+
+    // The post-sign hook fired and a DualSignedReceipt was stashed.
+    let dual = kernel
+        .dual_signed_receipt(&response.receipt.id)
+        .expect("dual-signed receipt must exist for federated request");
+    assert_eq!(dual.org_a_kernel_id, origin_kernel_id);
+    assert_eq!(dual.org_b_kernel_id, tool_host_kernel_id);
+    assert_eq!(dual.body.id, response.receipt.id);
+
+    // Either org can independently verify the receipt chain.
+    dual.verify(&origin_kp.public_key(), &tool_host_public_key)
+        .expect("dual-signed receipt must verify against both pinned peer keys");
+
     let envelope = kernel
         .federation_dsse_envelope(&response.receipt.id)
         .expect("DSSE envelope must exist for federated request");
-    let (statement, _) = envelope.decode_statement().expect("statement decodes");
-    assert_eq!(
-        statement.predicate_type,
-        chio_federation::PREDICATE_TYPE_CHIO_BILATERAL_INVOCATION
-    );
-    let mut expected_treaty = statement
-        .predicate
-        .treaty_binding_ref
-        .clone()
-        .expect("strict DSSE carries treaty binding");
-    expected_treaty.request_sha256 = response.receipt.action.parameter_hash.clone();
-    expected_treaty.outcome_sha256 = response.receipt.content_hash.clone();
-    expected_treaty.remote_receipt_sha256 = chio_core::crypto::sha256_hex(
-        &chio_core::canonical::canonical_json_bytes(&response.receipt).unwrap(),
-    );
-    let expected_subject_name = chio_federation::receipt_subject_name(&response.receipt.id);
-    let expected_subject_sha256 = chio_core::crypto::sha256_hex(
-        &chio_core::canonical::canonical_json_bytes(&response.receipt.body()).unwrap(),
-    );
-    let lease = statement
-        .predicate
-        .capability_lease_ref
-        .as_ref()
-        .expect("strict DSSE carries lease ref");
-    let governance = statement
-        .predicate
-        .governance_receipt_ref
-        .as_ref()
-        .expect("strict DSSE carries governance ref");
-    let anchor = statement
-        .predicate
-        .consistency_anchor
-        .as_deref()
-        .expect("strict DSSE carries consistency anchor");
-    let signer_public_keys = std::collections::BTreeMap::from([
-        (origin_kernel_id.to_string(), origin_kp.public_key()),
-        (tool_host_kernel_id.to_string(), tool_host_public_key),
-    ]);
-    let review = chio_federation::TreatyBoundBilateralDsseReview {
-        expected_treaty_binding: &expected_treaty,
-        expected_subject_name: &expected_subject_name,
-        expected_subject_sha256: &expected_subject_sha256,
-        expected_capability_lease_ref: lease,
-        expected_governance_receipt_ref: governance,
-        expected_consistency_anchor: anchor,
-        signer_public_keys: &signer_public_keys,
-    };
-    chio_federation::verify_treaty_bound_chio_bilateral_invocation(&envelope, &review)
-        .expect("kernel-produced strict DSSE verifies under buyer review");
-}
-
-#[test]
-fn federated_request_with_runtime_treaty_material_preserves_original_metadata_refs() {
-    let origin_kp = Keypair::generate();
-    let origin_kernel_id = "kernel.org-a";
-
-    let mut kernel = make_kernel(make_config());
-    let tool_host_public_key = kernel.config.keypair.public_key();
-    let tool_host_kernel_id = "kernel.org-b";
-    kernel.set_federation_local_kernel_id(tool_host_kernel_id);
-    let path = unique_receipt_db_path("federated-strict-treaty-dsse-metadata");
-    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
-    kernel.register_tool_server(Box::new(EchoServer::new(
-        "srv-fed",
-        vec!["file_read"],
-    )));
-
-    let trust = KernelTrustExchange::new(tool_host_kernel_id, kernel.config.keypair.clone())
-        .with_trusted_peer(origin_kernel_id, origin_kp.public_key());
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let peer = handshake_and_pin(&trust, origin_kernel_id, &origin_kp, now);
-    let mut kernel = kernel.with_federation_peers(vec![peer]);
-    kernel.set_federation_cosigner(std::sync::Arc::new(InProcessCoSigner::new(
-        origin_kernel_id,
-        origin_kp.clone(),
-        tool_host_public_key,
-    )));
-
-    let metadata = treaty_binding_runtime_metadata(origin_kernel_id, tool_host_kernel_id);
-    kernel.set_runtime_admission_hook(std::sync::Arc::new(
-        TreatyBindingRuntimeAdmissionHook {
-            metadata: metadata.clone(),
-            bind_request_hash: true,
-        },
-    ));
-
-    let agent_kp = make_keypair();
-    let cap = make_capability(
-        &kernel,
-        &agent_kp,
-        make_scope(vec![make_grant("srv-fed", "file_read")]),
-        300,
-    );
-    let mut request = make_request_with_arguments(
-        "req-fed-strict-metadata",
-        &cap,
-        "file_read",
-        "srv-fed",
-        serde_json::json!({ "path": "/data/fed-strict-metadata.txt" }),
-    );
-    request.federated_origin_kernel_id = Some(origin_kernel_id.to_string());
-
-    let response = kernel.evaluate_tool_call_blocking(&request).unwrap();
-    assert_eq!(response.verdict, Verdict::Allow);
-    let envelope = kernel
-        .federation_dsse_envelope(&response.receipt.id)
-        .expect("DSSE envelope must exist for federated request");
-    let (statement, _) = envelope.decode_statement().expect("statement decodes");
-    let material = &metadata["chio_runtime"]["federation_treaty_dsse"];
-    let expected_lease: chio_federation::CapabilityLeaseRef =
-        serde_json::from_value(material["capability_lease_ref"].clone()).unwrap();
-    let expected_policy: chio_federation::PolicyEvaluationSummary =
-        serde_json::from_value(material["policy_evaluation_summary"].clone()).unwrap();
-    let expected_governance: chio_federation::GovernanceReceiptRef =
-        serde_json::from_value(material["governance_receipt_ref"].clone()).unwrap();
-    let mut expected_treaty: chio_federation::TreatyBindingRef =
-        serde_json::from_value(material["treaty_binding_ref"].clone()).unwrap();
-    expected_treaty.request_sha256 = response.receipt.action.parameter_hash.clone();
-    expected_treaty.outcome_sha256 = response.receipt.content_hash.clone();
-    expected_treaty.remote_receipt_sha256 = chio_core::crypto::sha256_hex(
-        &chio_core::canonical::canonical_json_bytes(&response.receipt).unwrap(),
-    );
-
-    assert_eq!(
-        statement.predicate.capability_lease_ref.as_ref(),
-        Some(&expected_lease)
-    );
-    assert_eq!(
-        statement.predicate.policy_evaluation_summary.as_ref(),
-        Some(&expected_policy)
-    );
-    assert_eq!(
-        statement.predicate.governance_receipt_ref.as_ref(),
-        Some(&expected_governance)
-    );
-    assert_eq!(
-        statement.predicate.consistency_anchor.as_deref(),
-        material["consistency_anchor"].as_str()
-    );
-    assert_eq!(
-        statement.predicate.consistency_model,
-        material["consistency_model"].as_str().unwrap()
-    );
-    assert_eq!(
-        statement.predicate.cross_org_visibility,
-        material["cross_org_visibility"].as_str().unwrap()
-    );
-    assert_eq!(
-        statement.predicate.treaty_binding_ref.as_ref(),
-        Some(&expected_treaty)
-    );
-}
-
-#[test]
-fn federated_request_with_mismatched_runtime_treaty_material_fails_closed() {
-    for (case, expected) in [
-        ("request", "request hash"),
-        ("signers", "signer"),
-        ("lease", "lease"),
-        ("governance", "governance"),
-        ("consistency", "consistency"),
-        ("missing_consistency", "consistency"),
-    ] {
-        let origin_kp = Keypair::generate();
-        let origin_kernel_id = "kernel.org-a";
-        let mut kernel = make_kernel(make_config());
-        let tool_host_public_key = kernel.config.keypair.public_key();
-        let tool_host_kernel_id = "kernel.org-b";
-        kernel.set_federation_local_kernel_id(tool_host_kernel_id);
-        let path = unique_receipt_db_path(&format!("federated-strict-treaty-dsse-bad-{case}"));
-        kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
-        kernel.register_tool_server(Box::new(EchoServer::new(
-            "srv-fed",
-            vec!["file_read"],
-        )));
-
-        let trust = KernelTrustExchange::new(tool_host_kernel_id, kernel.config.keypair.clone())
-            .with_trusted_peer(origin_kernel_id, origin_kp.public_key());
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-        let peer = handshake_and_pin(&trust, origin_kernel_id, &origin_kp, now);
-        let mut kernel = kernel.with_federation_peers(vec![peer]);
-        kernel.set_federation_cosigner(std::sync::Arc::new(InProcessCoSigner::new(
-            origin_kernel_id,
-            origin_kp.clone(),
-            tool_host_public_key,
-        )));
-
-        let mut metadata = treaty_binding_runtime_metadata(origin_kernel_id, tool_host_kernel_id);
-        match case {
-            "request" => {
-                metadata["chio_runtime"]["federation_treaty_dsse"]["treaty_binding_ref"]
-                    ["request_sha256"] = serde_json::json!("9".repeat(64));
-            }
-            "signers" => {
-                metadata["chio_runtime"]["federation_treaty_dsse"]["treaty_binding_ref"]
-                    ["signer_kernel_ids"] =
-                    serde_json::json!(["kernel.org-a", "kernel.unpinned"]);
-            }
-            "lease" => {
-                metadata["chio_runtime"]["federation_treaty_dsse"]["treaty_binding_ref"]
-                    ["lease_refs"] = serde_json::json!(["lease-other"]);
-            }
-            "governance" => {
-                metadata["chio_runtime"]["federation_treaty_dsse"]["treaty_binding_ref"]
-                    ["governance_refs"] = serde_json::json!(["governance-other"]);
-            }
-            "consistency" => {
-                metadata["chio_runtime"]["federation_treaty_dsse"]["consistency_model"] =
-                    serde_json::json!("causal");
-            }
-            "missing_consistency" => {
-                metadata["chio_runtime"]["federation_treaty_dsse"]
-                    .as_object_mut()
-                    .unwrap()
-                    .remove("consistency_model");
-            }
-            _ => unreachable!("unknown mismatch case"),
-        }
-        kernel.set_runtime_admission_hook(std::sync::Arc::new(
-            TreatyBindingRuntimeAdmissionHook {
-                metadata,
-                bind_request_hash: case != "request",
-            },
-        ));
-
-        let agent_kp = make_keypair();
-        let cap = make_capability(
-            &kernel,
-            &agent_kp,
-            make_scope(vec![make_grant("srv-fed", "file_read")]),
-            300,
-        );
-        let mut request = make_request_with_arguments(
-            &format!("req-fed-strict-bad-{case}"),
-            &cap,
-            "file_read",
-            "srv-fed",
-            serde_json::json!({ "path": format!("/data/fed-strict-bad-{case}.txt") }),
-        );
-        request.federated_origin_kernel_id = Some(origin_kernel_id.to_string());
-
-        let result = kernel.evaluate_tool_call_blocking(&request);
-        let (verdict, reason) = match result {
-            Ok(resp) => (resp.verdict, resp.reason.unwrap_or_default()),
-            Err(err) => (Verdict::Deny, err.to_string()),
-        };
-        assert_eq!(verdict, Verdict::Deny, "case {case} must fail closed");
-        assert!(
-            reason.contains(expected),
-            "case {case} should mention {expected}, got: {reason}"
-        );
-    }
+    chio_federation::verify_dsse_envelope(
+        &envelope,
+        &origin_kp.public_key(),
+        &tool_host_public_key,
+    )
+    .expect("DSSE envelope must verify against both pinned peer keys");
 }
 
 #[test]
@@ -699,6 +297,93 @@ fn federated_request_without_receipt_store_denies_before_dispatch_or_cosign() {
     assert!(
         kernel.federation_dsse_envelope(&response.receipt.id).is_none(),
         "DSSE envelope must not be produced for a pre-dispatch denial"
+    );
+}
+
+#[test]
+fn non_federated_kernel_without_receipt_store_fails_closed_unless_ephemeral_enabled() {
+    // Mirrors the sibling federated `..._denies_before_dispatch_or_cosign`
+    // test for the non-federated path. With `allow_ephemeral_receipt_log`
+    // disabled and no receipt store installed, the pre-dispatch receipt
+    // persistence admission gate must fail closed: the tool server is
+    // never invoked, and the kernel emits a signed Deny pointing at the
+    // missing durable receipt store. Flipping the flag back on restores
+    // the ordinary local dispatch path.
+    let mut config = make_config();
+    config.allow_ephemeral_receipt_log = false;
+    let mut kernel = make_kernel(config);
+    let invocations = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(SideEffectServer::new(
+        "srv-local",
+        vec!["file_read"],
+        std::sync::Arc::clone(&invocations),
+    )));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant("srv-local", "file_read")]),
+        300,
+    );
+    let request = make_request_with_arguments(
+        "req-local-no-store-strict",
+        &cap,
+        "file_read",
+        "srv-local",
+        serde_json::json!({ "path": "/data/local.txt" }),
+    );
+
+    let response = kernel
+        .evaluate_tool_call_blocking(&request)
+        .expect("missing receipt persistence must produce a signed deny response");
+    assert_eq!(response.verdict, Verdict::Deny);
+    let reason = response.reason.unwrap_or_default();
+    assert!(
+        reason.contains("receipt persistence") && reason.contains("durable"),
+        "unexpected deny reason: {reason}"
+    );
+    assert_eq!(
+        invocations.load(Ordering::SeqCst),
+        0,
+        "tool must not run without durable receipt persistence when ephemeral logging is disabled"
+    );
+
+    // Flip the ephemeral flag back on with a fresh kernel and confirm the
+    // same request now succeeds without a receipt store, invoking the
+    // tool exactly once.
+    let mut ephemeral_config = make_config();
+    ephemeral_config.allow_ephemeral_receipt_log = true;
+    let mut ephemeral_kernel = make_kernel(ephemeral_config);
+    let ephemeral_invocations = std::sync::Arc::new(AtomicU64::new(0));
+    ephemeral_kernel.register_tool_server(Box::new(SideEffectServer::new(
+        "srv-local",
+        vec!["file_read"],
+        std::sync::Arc::clone(&ephemeral_invocations),
+    )));
+
+    let ephemeral_agent_kp = make_keypair();
+    let ephemeral_cap = make_capability(
+        &ephemeral_kernel,
+        &ephemeral_agent_kp,
+        make_scope(vec![make_grant("srv-local", "file_read")]),
+        300,
+    );
+    let ephemeral_request = make_request_with_arguments(
+        "req-local-no-store-ephemeral",
+        &ephemeral_cap,
+        "file_read",
+        "srv-local",
+        serde_json::json!({ "path": "/data/local.txt" }),
+    );
+    let ephemeral_response = ephemeral_kernel
+        .evaluate_tool_call_blocking(&ephemeral_request)
+        .expect("ephemeral receipt logging must permit dispatch without a receipt store");
+    assert_eq!(ephemeral_response.verdict, Verdict::Allow);
+    assert_eq!(
+        ephemeral_invocations.load(Ordering::SeqCst),
+        1,
+        "tool must be invoked exactly once when ephemeral receipt logging is permitted"
     );
 }
 

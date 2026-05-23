@@ -3,6 +3,7 @@ use super::*;
 use chio_core::capability::GovernedProvenanceEvidenceClass;
 use chio_kernel::evidence_export::EvidenceLineageReferences;
 use chio_kernel::operator_report::GovernedTransactionDiagnostics;
+use chio_kernel::receipt_query::{ReceiptReadBoundary, ReceiptReadContext};
 
 #[derive(Debug, Clone)]
 struct GovernedTransactionProjection {
@@ -168,11 +169,36 @@ fn authorization_transaction_context_from_projection(
     transaction_context
 }
 
+fn require_admin_receipt_read_context(
+    context: Option<&ReceiptReadContext>,
+    surface: &str,
+) -> Result<(), ReceiptStoreError> {
+    match context {
+        Some(ReceiptReadContext {
+            boundary: ReceiptReadBoundary::AdminAll,
+            ..
+        }) => Ok(()),
+        Some(ReceiptReadContext {
+            boundary: ReceiptReadBoundary::TenantScoped { .. },
+            ..
+        }) => Err(ReceiptStoreError::ReadBoundary(format!(
+            "{surface} requires admin receipt read authority until tenant-scoped report filtering is implemented"
+        ))),
+        None => Err(ReceiptStoreError::ReadBoundary(format!(
+            "{surface} requires an explicit receipt read context"
+        ))),
+    }
+}
+
 impl SqliteReceiptStore {
     pub fn query_receipt_analytics(
         &self,
         query: &ReceiptAnalyticsQuery,
     ) -> Result<ReceiptAnalyticsResponse, ReceiptStoreError> {
+        require_admin_receipt_read_context(
+            query.read_context.as_ref(),
+            "receipt analytics report",
+        )?;
         let group_limit = query
             .group_limit
             .unwrap_or(50)
@@ -404,6 +430,7 @@ impl SqliteReceiptStore {
         &self,
         query: &CostAttributionQuery,
     ) -> Result<CostAttributionReport, ReceiptStoreError> {
+        require_admin_receipt_read_context(query.read_context.as_ref(), "cost attribution report")?;
         let limit = query
             .limit
             .unwrap_or(100)
@@ -655,6 +682,7 @@ impl SqliteReceiptStore {
         &self,
         query: &SharedEvidenceQuery,
     ) -> Result<SharedEvidenceReferenceReport, ReceiptStoreError> {
+        require_admin_receipt_read_context(query.read_context.as_ref(), "shared evidence report")?;
         let limit = query.limit_or_default();
         let capability_id = query.capability_id.as_deref();
         let tool_server = query.tool_server.as_deref();
@@ -856,6 +884,7 @@ impl SqliteReceiptStore {
         &self,
         query: &OperatorReportQuery,
     ) -> Result<ComplianceReport, ReceiptStoreError> {
+        require_admin_receipt_read_context(query.read_context.as_ref(), "compliance report")?;
         let capability_id = query.capability_id.as_deref();
         let tool_server = query.tool_server.as_deref();
         let tool_name = query.tool_name.as_deref();
@@ -928,7 +957,9 @@ impl SqliteReceiptStore {
 
         let uncheckpointed_receipts = matching_receipts.saturating_sub(evidence_ready_receipts);
         let lineage_gap_receipts = matching_receipts.saturating_sub(lineage_covered_receipts);
-        let export_query = query.to_evidence_export_query();
+        let export_query = query
+            .to_evidence_export_query()
+            .map_err(ReceiptStoreError::ReadBoundary)?;
 
         Ok(ComplianceReport {
             matching_receipts,
@@ -1103,6 +1134,10 @@ impl SqliteReceiptStore {
         &self,
         query: &OperatorReportQuery,
     ) -> Result<MeteredBillingReconciliationReport, ReceiptStoreError> {
+        require_admin_receipt_read_context(
+            query.read_context.as_ref(),
+            "metered billing reconciliation report",
+        )?;
         let capability_id = query.capability_id.as_deref();
         let tool_server = query.tool_server.as_deref();
         let tool_name = query.tool_name.as_deref();
@@ -1279,6 +1314,10 @@ impl SqliteReceiptStore {
         &self,
         query: &OperatorReportQuery,
     ) -> Result<EconomicReceiptProjectionReport, ReceiptStoreError> {
+        require_admin_receipt_read_context(
+            query.read_context.as_ref(),
+            "economic receipt projection report",
+        )?;
         let capability_id = query.capability_id.as_deref();
         let tool_server = query.tool_server.as_deref();
         let tool_name = query.tool_name.as_deref();
@@ -1553,6 +1592,7 @@ impl SqliteReceiptStore {
     pub fn query_economic_completion_flow_report(
         &self,
         query: &ExposureLedgerQuery,
+        read_context: ReceiptReadContext,
     ) -> Result<EconomicCompletionFlowReport, ReceiptStoreError> {
         let normalized = query.normalized();
         if let Err(message) = normalized.validate() {
@@ -1568,6 +1608,7 @@ impl SqliteReceiptStore {
                 since: normalized.since,
                 until: normalized.until,
                 economic_limit: normalized.receipt_limit,
+                read_context: Some(read_context),
                 ..OperatorReportQuery::default()
             })?;
         let underwriting_decisions =
@@ -1661,6 +1702,10 @@ impl SqliteReceiptStore {
         &self,
         query: &OperatorReportQuery,
     ) -> Result<SettlementReconciliationReport, ReceiptStoreError> {
+        require_admin_receipt_read_context(
+            query.read_context.as_ref(),
+            "settlement reconciliation report",
+        )?;
         let capability_id = query.capability_id.as_deref();
         let tool_server = query.tool_server.as_deref();
         let tool_name = query.tool_name.as_deref();
@@ -1867,6 +1912,10 @@ impl SqliteReceiptStore {
         &self,
         query: &OperatorReportQuery,
     ) -> Result<AuthorizationContextReport, ReceiptStoreError> {
+        require_admin_receipt_read_context(
+            query.read_context.as_ref(),
+            "authorization context report",
+        )?;
         let capability_id = query.capability_id.as_deref();
         let tool_server = query.tool_server.as_deref();
         let tool_name = query.tool_name.as_deref();
@@ -2229,6 +2278,10 @@ impl SqliteReceiptStore {
         &self,
         query: &OperatorReportQuery,
     ) -> Result<ChioOAuthAuthorizationReviewPack, ReceiptStoreError> {
+        require_admin_receipt_read_context(
+            query.read_context.as_ref(),
+            "authorization review pack",
+        )?;
         let authorization_context = self.query_authorization_context_report(query)?;
         let metadata = self.authorization_profile_metadata_report();
         let mut records = Vec::with_capacity(authorization_context.receipts.len());
@@ -2320,6 +2373,7 @@ impl SqliteReceiptStore {
         ),
         ReceiptStoreError,
     > {
+        require_admin_receipt_read_context(query.read_context.as_ref(), "behavioral feed report")?;
         let operator_query = query.to_operator_report_query();
         let capability_id = operator_query.capability_id.as_deref();
         let tool_server = operator_query.tool_server.as_deref();
@@ -2523,6 +2577,10 @@ impl SqliteReceiptStore {
         query: &BehavioralFeedQuery,
         limit: usize,
     ) -> Result<(u64, Vec<BehavioralFeedReceiptRow>), ReceiptStoreError> {
+        require_admin_receipt_read_context(
+            query.read_context.as_ref(),
+            "recent credit loss receipts",
+        )?;
         let operator_query = query.to_operator_report_query();
         let capability_id = operator_query.capability_id.as_deref();
         let tool_server = operator_query.tool_server.as_deref();
@@ -2698,7 +2756,9 @@ impl SqliteReceiptStore {
             reconciliation_state,
         );
         let budget_authority = receipt.financial_budget_authority_metadata();
-        let authorized = receipt.is_allowed();
+        let authorized = receipt.is_allowed()
+            && receipt.verify_signature().unwrap_or(false)
+            && receipt.action.verify_hash().unwrap_or(false);
 
         Ok(BehavioralFeedReceiptRow {
             receipt_id: receipt.id,
@@ -2738,6 +2798,7 @@ impl SqliteReceiptStore {
         &self,
         query: &OperatorReportQuery,
     ) -> Result<BehavioralFeedMeteredBillingSummary, ReceiptStoreError> {
+        require_admin_receipt_read_context(query.read_context.as_ref(), "metered billing summary")?;
         let capability_id = query.capability_id.as_deref();
         let tool_server = query.tool_server.as_deref();
         let tool_name = query.tool_name.as_deref();

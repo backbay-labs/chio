@@ -87,16 +87,35 @@ public class ChioSidecarClient : IDisposable
         }
 
         var result = await response.Content.ReadFromJsonAsync<EvaluateResponse>(_jsonOptions);
-        return result ?? throw new ChioSidecarException(
+        result ??= throw new ChioSidecarException(
             ChioErrorCodes.EvaluationFailed,
             "Sidecar returned null response"
         );
+        if (result.Verdict.IsAllowed() || result.Receipt.Verdict.IsAllowed())
+        {
+            if (!result.Verdict.IsAllowed() || !result.Receipt.IsAuthorized())
+            {
+                throw new ChioSidecarException(
+                    ChioErrorCodes.InvalidReceipt,
+                    "Sidecar returned an allow-shaped response without mediated receipt authorization"
+                );
+            }
+            var verification = await VerifyReceiptAsync(result.Receipt);
+            if (!verification.Authorizes(result.Receipt))
+            {
+                throw new ChioSidecarException(
+                    ChioErrorCodes.InvalidReceipt,
+                    "Sidecar returned an unverified receipt"
+                );
+            }
+        }
+        return result;
     }
 
     /// <summary>
-    /// Verify a receipt signature against the sidecar.
+    /// Verify a receipt authority result against the sidecar.
     /// </summary>
-    public async Task<bool> VerifyReceiptAsync(HttpReceipt receipt)
+    public async Task<VerifyReceiptResponse> VerifyReceiptAsync(HttpReceipt receipt)
     {
         try
         {
@@ -107,14 +126,14 @@ public class ChioSidecarClient : IDisposable
             );
 
             if (!response.IsSuccessStatusCode)
-                return false;
+                return new VerifyReceiptResponse();
 
-            var result = await response.Content.ReadFromJsonAsync<Dictionary<string, object>>(_jsonOptions);
-            return result?.TryGetValue("valid", out var valid) == true && valid is JsonElement elem && elem.GetBoolean();
+            return await response.Content.ReadFromJsonAsync<VerifyReceiptResponse>(_jsonOptions)
+                ?? new VerifyReceiptResponse();
         }
         catch
         {
-            return false;
+            return new VerifyReceiptResponse();
         }
     }
 

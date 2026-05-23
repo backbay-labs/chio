@@ -1,10 +1,10 @@
 # Chio Protocol Specification
 
 This directory holds the normative Chio protocol specification. The canonical
-version banner lives at the top of `PROTOCOL.md` (currently v3.0, a
-backward-compatible extension of v2.0). All other documents in this directory
-are either normative companions to `PROTOCOL.md` or supporting machine-readable
-artifacts.
+version banner lives at the top of `PROTOCOL.md`; Chio is unreleased and the
+current Chio-owned protocol surface is v1 only. All other documents in this
+directory are either normative companions to `PROTOCOL.md` or supporting
+machine-readable artifacts.
 
 ## Reading order
 
@@ -69,6 +69,7 @@ The canonical version banner lives in the header of `PROTOCOL.md`. Individual
 normative companion documents carry their own `Version` stamp that is
 independently maintained. The machine-readable negotiation artifact lives in
 `versions/chio-protocol-negotiation.v1.json` and is the authoritative source
-for which protocol versions an implementation may advertise during session
-initialization. When the banner in `PROTOCOL.md` moves, the negotiation
-artifact and any affected companion documents must move in the same change.
+for which protocol version an implementation may advertise during session
+initialization. Until first public release, Chio-owned schema and API surfaces
+remain v1 or unversioned, and pre-release semantic changes are folded into the
+current v1 shape.

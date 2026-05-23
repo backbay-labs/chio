@@ -368,7 +368,13 @@ mod tests {
                 "method": "release"
             }))
             .test_unwrap(),
-            decision: Decision::Allow,
+            decision: Some(Decision::Allow),
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
             content_hash: chio_core::crypto::sha256_hex(br#"{"released":true}"#),
             policy_hash: "abc123".to_string(),
             evidence: vec![GuardEvidence {

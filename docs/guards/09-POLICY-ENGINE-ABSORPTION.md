@@ -670,7 +670,7 @@ chio-policy compiler
   |      +--> chio-kernel (direct tool calls)
   |      +--> chio-mcp-edge (MCP protocol)
   |      +--> chio-a2a-edge (A2A protocol)
-  |      +--> chio-openai (OpenAI-compatible API)
+  |      +--> future OpenAI adapter (deferred, not shipped)
   |      +--> chio-api-protect (HTTP proxy)
   |
   +--> CustomGuardSpec[] (WASM guards)

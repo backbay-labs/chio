@@ -74,6 +74,18 @@ pub struct AgUiReceiptBody {
     pub kernel_key: PublicKey,
 }
 
+/// Verification result that separates signature validity from trusted authority.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AgUiReceiptVerification {
+    pub signature_valid: bool,
+    pub signer_trusted: bool,
+    pub receipt_kind: String,
+    pub boundary_class: String,
+    pub result: String,
+    /// AG-UI receipts are observational and never grant Chio authorization.
+    pub authorized: bool,
+}
+
 impl AgUiReceipt {
     /// Sign a receipt body with the given keypair.
     pub fn sign(body: AgUiReceiptBody, keypair: &Keypair) -> Result<Self, chio_core::Error> {
@@ -97,8 +109,8 @@ impl AgUiReceipt {
         })
     }
 
-    /// Verify the receipt signature.
-    pub fn verify(&self) -> Result<bool, chio_core::Error> {
+    /// Verify the embedded signature only. This is not an authorization check.
+    pub fn verify_embedded_signature(&self) -> Result<bool, chio_core::Error> {
         let body = AgUiReceiptBody {
             id: self.id.clone(),
             timestamp: self.timestamp,
@@ -116,6 +128,30 @@ impl AgUiReceipt {
             kernel_key: self.kernel_key.clone(),
         };
         self.kernel_key.verify_canonical(&body, &self.signature)
+    }
+
+    /// Verify the receipt against an explicit trusted kernel-key set.
+    pub fn verify_with_trusted_kernel_keys(
+        &self,
+        trusted_kernel_keys: &[PublicKey],
+    ) -> Result<AgUiReceiptVerification, chio_core::Error> {
+        let signature_valid = self.verify_embedded_signature()?;
+        let signer_trusted = trusted_kernel_keys
+            .iter()
+            .any(|key| key.to_hex() == self.kernel_key.to_hex());
+        Ok(AgUiReceiptVerification {
+            signature_valid,
+            signer_trusted,
+            receipt_kind: "trace_observation".to_string(),
+            boundary_class: "detect_only".to_string(),
+            result: if self.allowed {
+                "observed_allow"
+            } else {
+                "observed_deny"
+            }
+            .to_string(),
+            authorized: false,
+        })
     }
 
     /// Compute the payload hash for an event payload.
@@ -153,7 +189,20 @@ mod tests {
         };
 
         let receipt = AgUiReceipt::sign(body, &kp).unwrap();
-        assert!(receipt.verify().unwrap());
+        assert!(receipt.verify_embedded_signature().unwrap());
+        let trusted = receipt
+            .verify_with_trusted_kernel_keys(&[kp.public_key()])
+            .unwrap();
+        assert!(trusted.signature_valid);
+        assert!(trusted.signer_trusted);
+        assert_eq!(trusted.receipt_kind, "trace_observation");
+        assert_eq!(trusted.boundary_class, "detect_only");
+        assert_eq!(trusted.result, "observed_allow");
+        assert!(!trusted.authorized);
+        let untrusted = receipt.verify_with_trusted_kernel_keys(&[]).unwrap();
+        assert!(untrusted.signature_valid);
+        assert!(!untrusted.signer_trusted);
+        assert!(!untrusted.authorized);
     }
 
     #[test]
@@ -178,7 +227,7 @@ mod tests {
 
         let mut receipt = AgUiReceipt::sign(body, &kp).unwrap();
         receipt.allowed = true; // tamper
-        assert!(!receipt.verify().unwrap());
+        assert!(!receipt.verify_embedded_signature().unwrap());
     }
 
     #[test]

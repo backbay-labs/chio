@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 
 use chio_core::capability::{CapabilityToken, ChioScope, Operation, ToolGrant};
@@ -27,6 +28,7 @@ pub struct DispatchAllowFixture {
     receipt_keypair: Keypair,
     receipt_body: ChioReceiptBody,
     signed_receipt: ChioReceipt,
+    receipt_log: RefCell<ReceiptLog>,
     budget_store: InMemoryBudgetStore,
     revocation_store: InMemoryRevocationStore,
     revoked_capability_id: String,
@@ -57,6 +59,7 @@ impl DispatchAllowFixture {
         let receipt_keypair = Keypair::generate();
         let receipt_body = make_receipt_body(&receipt_keypair, &capability);
         let receipt = sign_receipt(&receipt_body, &receipt_keypair);
+        let receipt_log = RefCell::new(ReceiptLog::new());
         let budget_store = InMemoryBudgetStore::new();
         let revocation_store = InMemoryRevocationStore::new();
         let revoked_capability_id = "bench-revoked-capability".to_string();
@@ -102,6 +105,7 @@ impl DispatchAllowFixture {
             receipt_keypair,
             receipt_body,
             signed_receipt: receipt.clone(),
+            receipt_log,
             budget_store,
             revocation_store,
             revoked_capability_id,
@@ -149,15 +153,9 @@ impl DispatchAllowFixture {
             fixture.receipt_sign_once(),
             "receipt signing fixture must verify"
         );
-        let mut receipt_log = ReceiptLog::new();
         assert!(
-            fixture.receipt_append_once(&mut receipt_log) > 0,
+            fixture.receipt_append_once() > 0,
             "receipt append fixture must append to the log"
-        );
-        assert_eq!(
-            receipt_log.len(),
-            1,
-            "receipt append fixture setup must stay bounded"
         );
         assert!(
             fixture.dispatch_allow_once(),
@@ -199,14 +197,7 @@ impl DispatchAllowFixture {
             .block_on(self.kernel.evaluate_tool_call(&self.deny_request));
 
         match response {
-            Ok(response) if response.verdict == Verdict::Deny && response.reason.is_some() => true,
-            Ok(response) => {
-                let reason = response.reason.as_deref().unwrap_or("missing reason");
-                panic!(
-                    "dispatch_deny benchmark produced {:?}: {reason}",
-                    response.verdict
-                );
-            }
+            Ok(response) => response.verdict == Verdict::Deny && response.reason.is_some(),
             Err(error) => panic!("dispatch_deny benchmark request failed: {error}"),
         }
     }
@@ -271,7 +262,8 @@ impl DispatchAllowFixture {
             .unwrap_or(false)
     }
 
-    pub fn receipt_append_once(&self, log: &mut ReceiptLog) -> usize {
+    pub fn receipt_append_once(&self) -> usize {
+        let mut log = self.receipt_log.borrow_mut();
         log.append(self.signed_receipt.clone());
         log.len()
     }
@@ -317,6 +309,7 @@ fn make_config() -> KernelConfig {
         max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
         max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
         require_web3_evidence: false,
+        allow_ephemeral_receipt_log: true,
         checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
     }
@@ -418,7 +411,13 @@ fn make_receipt_body(keypair: &Keypair, capability: &CapabilityToken) -> ChioRec
             Ok(action) => action,
             Err(error) => panic!("failed to build receipt action fixture: {error}"),
         },
-        decision: Decision::Allow,
+        decision: Some(Decision::Allow),
+        receipt_kind: Default::default(),
+        boundary_class: Default::default(),
+        observation_outcome: None,
+        tool_origin: Default::default(),
+        redaction_mode: Default::default(),
+        actor_chain: Vec::new(),
         content_hash: chio_core::sha256_hex(br#"{"allowed":true}"#),
         policy_hash: "bench-dispatch-allow-policy".to_string(),
         evidence: vec![GuardEvidence {

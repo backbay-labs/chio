@@ -261,7 +261,7 @@ class ChioQueryEngineTool(QueryEngineTool):
         receipt = await self._evaluate(parameters)
         self._last_receipt = receipt
 
-        if receipt.is_denied:
+        if not receipt.is_allowed:
             return self._on_deny(receipt, parameters)
 
         return await super().acall(*args, **kwargs)
@@ -345,16 +345,23 @@ class ChioQueryEngineTool(QueryEngineTool):
         parameters: dict[str, Any],
     ) -> ToolOutput:
         """Translate a deny receipt into the configured outcome."""
-        reason = receipt.decision.reason or "denied by Chio kernel"
+        decision = receipt.decision
+        reason = (
+            decision.reason
+            if decision is not None and decision.reason is not None
+            else "non-authorizing Chio receipt"
+        )
         if self._raise_on_deny:
             raise ChioToolError(
                 reason,
                 tool_name=self.metadata.name,
                 server_id=self._server_id,
-                guard=receipt.decision.guard,
-                reason=receipt.decision.reason,
+                guard=decision.guard if decision is not None else None,
+                reason=decision.reason if decision is not None else reason,
                 receipt_id=receipt.id,
-                decision=receipt.decision.model_dump(exclude_none=True),
+                decision=decision.model_dump(exclude_none=True)
+                if decision is not None
+                else None,
             )
 
         return ToolOutput(

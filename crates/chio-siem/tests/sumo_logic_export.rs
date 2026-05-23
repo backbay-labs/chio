@@ -20,7 +20,13 @@ fn sample_receipt(id: &str) -> ChioReceipt {
             tool_name: "bash".to_string(),
             action: ToolCallAction::from_parameters(serde_json::json!({"cmd": "ls"}))
                 .expect("action parameters serialize"),
-            decision: Decision::Allow,
+            decision: Some(Decision::Allow),
+            receipt_kind: chio_core::ReceiptKind::MediatedDecision,
+            boundary_class: chio_core::BoundaryClass::Prevent,
+            observation_outcome: None,
+            tool_origin: chio_core::ToolOrigin::CallerExecuted,
+            redaction_mode: chio_core::RedactionMode::None,
+            actor_chain: Vec::new(),
             content_hash: "c".to_string(),
             policy_hash: "p".to_string(),
             evidence: Vec::new(),
@@ -58,9 +64,12 @@ async fn sumo_json_posts_ndjson_with_sumo_headers() {
     };
     let exporter = SumoLogicExporter::new_plaintext_for_tests(config).expect("builds");
 
+    let first = sample_receipt("sumo-001");
+    let first_id = first.id.clone();
+    let second = sample_receipt("sumo-002");
     let events = vec![
-        SiemEvent::from_receipt(sample_receipt("sumo-001")),
-        SiemEvent::from_receipt(sample_receipt("sumo-002")),
+        SiemEvent::from_receipt(first),
+        SiemEvent::from_receipt(second),
     ];
     let result = exporter.export_batch(&events).await;
     assert!(result.is_ok(), "export_batch ok: {result:?}");
@@ -76,7 +85,7 @@ async fn sumo_json_posts_ndjson_with_sumo_headers() {
             .get("receipt")
             .and_then(|r| r.get("id"))
             .and_then(|v| v.as_str()),
-        Some("sumo-001")
+        Some(first_id.as_str())
     );
 }
 
@@ -96,12 +105,14 @@ async fn sumo_keyvalue_emits_kv_lines() {
         ..SumoLogicConfig::default()
     };
     let exporter = SumoLogicExporter::new_plaintext_for_tests(config).expect("builds");
-    let events = vec![SiemEvent::from_receipt(sample_receipt("sumo-kv-1"))];
+    let receipt = sample_receipt("sumo-kv-1");
+    let receipt_id = receipt.id.clone();
+    let events = vec![SiemEvent::from_receipt(receipt)];
     let _ = exporter.export_batch(&events).await.expect("ok");
 
     let received = server.received_requests().await.unwrap();
     let body = String::from_utf8(received[0].body.clone()).expect("utf8");
-    assert!(body.contains("receipt_id=sumo-kv-1"));
+    assert!(body.contains(&format!("receipt_id={receipt_id}")));
     assert!(body.contains("decision=allow"));
 }
 

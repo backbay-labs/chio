@@ -3,9 +3,18 @@
     {
       "description": "Valid allow receipt with matching signature and parameter hash.",
       "expected": {
+        "authorized": false,
+        "boundary_class": "prevent",
         "decision": "allow",
+        "ok": false,
         "parameter_hash_valid": true,
-        "signature_valid": true
+        "receipt_id_valid": true,
+        "receipt_kind": "mediated_decision",
+        "result": "Authorized",
+        "signature_valid": true,
+        "signer_key_hex": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+        "signer_trusted": false,
+        "trust_level": "mediated"
       },
       "id": "allow_receipt",
       "receipt": {
@@ -16,6 +25,7 @@
             "path": "/workspace/docs/roadmap.md"
           }
         },
+        "boundary_class": "prevent",
         "capability_id": "cap-bindings-001",
         "content_hash": "4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93",
         "decision": {
@@ -33,27 +43,39 @@
             "verdict": true
           }
         ],
-        "id": "rcpt-bindings-allow",
+        "id": "c9909f733d5fb367922293f0167d06db715393be114f212096cf2866f29433ea",
         "kernel_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
         "metadata": {
           "surface": "bindings-vectors",
           "version": 1
         },
         "policy_hash": "policy-bindings-v1",
-        "signature": "c1420914fa6a85a668ba2bf79d8a3fcc6b0f467c6fe5f419a1efb64e81b3b2bd56de534c8c56f758eaaa72565889278288e4fa3c0a97a03f42acca86d915c30c",
+        "receipt_kind": "mediated_decision",
+        "redaction_mode": "none",
+        "signature": "276a4c59dbc5e0c4fbd47beefa33515d207e8f516aca296afee2cb95a443bb18d31031cae0b69943e7a930be03b2e0a60156e5a26e732e888e32d4653d059f03",
         "timestamp": 1710000200,
         "tool_name": "file_read",
-        "tool_server": "srv-files"
+        "tool_origin": "caller_executed",
+        "tool_server": "srv-files",
+        "trust_level": "mediated"
       },
-      "receipt_body_canonical_json": "{\"action\":{\"parameter_hash\":\"035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929\",\"parameters\":{\"mode\":\"read\",\"path\":\"/workspace/docs/roadmap.md\"}},\"capability_id\":\"cap-bindings-001\",\"content_hash\":\"4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93\",\"decision\":{\"verdict\":\"allow\"},\"evidence\":[{\"details\":\"path allowed\",\"guard_name\":\"ForbiddenPathGuard\",\"verdict\":true},{\"details\":\"no secrets detected\",\"guard_name\":\"SecretLeakGuard\",\"verdict\":true}],\"id\":\"rcpt-bindings-allow\",\"kernel_key\":\"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c\",\"metadata\":{\"surface\":\"bindings-vectors\",\"version\":1},\"policy_hash\":\"policy-bindings-v1\",\"timestamp\":1710000200,\"tool_name\":\"file_read\",\"tool_server\":\"srv-files\"}",
-      "verify_only": true
+      "receipt_body_canonical_json": "{\"action\":{\"parameter_hash\":\"035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929\",\"parameters\":{\"mode\":\"read\",\"path\":\"/workspace/docs/roadmap.md\"}},\"boundary_class\":\"prevent\",\"capability_id\":\"cap-bindings-001\",\"content_hash\":\"4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93\",\"decision\":{\"verdict\":\"allow\"},\"evidence\":[{\"details\":\"path allowed\",\"guard_name\":\"ForbiddenPathGuard\",\"verdict\":true},{\"details\":\"no secrets detected\",\"guard_name\":\"SecretLeakGuard\",\"verdict\":true}],\"id\":\"c9909f733d5fb367922293f0167d06db715393be114f212096cf2866f29433ea\",\"kernel_key\":\"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c\",\"metadata\":{\"surface\":\"bindings-vectors\",\"version\":1},\"policy_hash\":\"policy-bindings-v1\",\"receipt_kind\":\"mediated_decision\",\"redaction_mode\":\"none\",\"timestamp\":1710000200,\"tool_name\":\"file_read\",\"tool_origin\":\"caller_executed\",\"tool_server\":\"srv-files\",\"trust_level\":\"mediated\"}"
     },
     {
       "description": "Valid deny receipt with matching signature and parameter hash.",
       "expected": {
+        "authorized": false,
+        "boundary_class": "prevent",
         "decision": "deny",
+        "ok": false,
         "parameter_hash_valid": true,
-        "signature_valid": true
+        "receipt_id_valid": true,
+        "receipt_kind": "mediated_decision",
+        "result": "Denied",
+        "signature_valid": true,
+        "signer_key_hex": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+        "signer_trusted": false,
+        "trust_level": "mediated"
       },
       "id": "deny_receipt",
       "receipt": {
@@ -64,6 +86,7 @@
             "path": "/etc/shadow"
           }
         },
+        "boundary_class": "prevent",
         "capability_id": "cap-bindings-001",
         "content_hash": "4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93",
         "decision": {
@@ -83,27 +106,39 @@
             "verdict": true
           }
         ],
-        "id": "rcpt-bindings-deny",
+        "id": "56d5644db5c53d0bb837bf615a60e541724858757aee1b8259a25816b75bb682",
         "kernel_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
         "metadata": {
           "surface": "bindings-vectors",
           "version": 1
         },
         "policy_hash": "policy-bindings-v1",
-        "signature": "d272e21ab1030d25e28daa50065ecea47e60fa07a1f446b587e64b5cc8616048627afd2cdf547a2ab8abbeaa3b661afd8dfb423c6b2bdad4b1955189e755b30a",
+        "receipt_kind": "mediated_decision",
+        "redaction_mode": "none",
+        "signature": "e3778cd741746bf1295ed45d5ffa4d311dd7076d4e8d7c009bdf3283e88e693cc9cd19bb07d2f65d8306e04d1c58bdcbc1753d79af4a7c2234758b5dbf8a1c06",
         "timestamp": 1710000200,
         "tool_name": "file_read",
-        "tool_server": "srv-files"
+        "tool_origin": "caller_executed",
+        "tool_server": "srv-files",
+        "trust_level": "mediated"
       },
-      "receipt_body_canonical_json": "{\"action\":{\"parameter_hash\":\"d6f55d803ff027795f4a4c43fd8f6d3119051f82b7e3e1a13b1713fd37ea7b09\",\"parameters\":{\"mode\":\"read\",\"path\":\"/etc/shadow\"}},\"capability_id\":\"cap-bindings-001\",\"content_hash\":\"4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93\",\"decision\":{\"guard\":\"ForbiddenPathGuard\",\"reason\":\"path is forbidden\",\"verdict\":\"deny\"},\"evidence\":[{\"details\":\"path allowed\",\"guard_name\":\"ForbiddenPathGuard\",\"verdict\":true},{\"details\":\"no secrets detected\",\"guard_name\":\"SecretLeakGuard\",\"verdict\":true}],\"id\":\"rcpt-bindings-deny\",\"kernel_key\":\"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c\",\"metadata\":{\"surface\":\"bindings-vectors\",\"version\":1},\"policy_hash\":\"policy-bindings-v1\",\"timestamp\":1710000200,\"tool_name\":\"file_read\",\"tool_server\":\"srv-files\"}",
-      "verify_only": true
+      "receipt_body_canonical_json": "{\"action\":{\"parameter_hash\":\"d6f55d803ff027795f4a4c43fd8f6d3119051f82b7e3e1a13b1713fd37ea7b09\",\"parameters\":{\"mode\":\"read\",\"path\":\"/etc/shadow\"}},\"boundary_class\":\"prevent\",\"capability_id\":\"cap-bindings-001\",\"content_hash\":\"4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93\",\"decision\":{\"guard\":\"ForbiddenPathGuard\",\"reason\":\"path is forbidden\",\"verdict\":\"deny\"},\"evidence\":[{\"details\":\"path allowed\",\"guard_name\":\"ForbiddenPathGuard\",\"verdict\":true},{\"details\":\"no secrets detected\",\"guard_name\":\"SecretLeakGuard\",\"verdict\":true}],\"id\":\"56d5644db5c53d0bb837bf615a60e541724858757aee1b8259a25816b75bb682\",\"kernel_key\":\"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c\",\"metadata\":{\"surface\":\"bindings-vectors\",\"version\":1},\"policy_hash\":\"policy-bindings-v1\",\"receipt_kind\":\"mediated_decision\",\"redaction_mode\":\"none\",\"timestamp\":1710000200,\"tool_name\":\"file_read\",\"tool_origin\":\"caller_executed\",\"tool_server\":\"srv-files\",\"trust_level\":\"mediated\"}"
     },
     {
       "description": "Receipt is signed correctly but carries a bad action parameter hash.",
       "expected": {
+        "authorized": false,
+        "boundary_class": "prevent",
         "decision": "allow",
+        "ok": false,
         "parameter_hash_valid": false,
-        "signature_valid": true
+        "receipt_id_valid": true,
+        "receipt_kind": "mediated_decision",
+        "result": "Authorized",
+        "signature_valid": true,
+        "signer_key_hex": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+        "signer_trusted": false,
+        "trust_level": "mediated"
       },
       "id": "signed_receipt_with_invalid_parameter_hash",
       "receipt": {
@@ -114,6 +149,7 @@
             "path": "/workspace/docs/private.md"
           }
         },
+        "boundary_class": "prevent",
         "capability_id": "cap-bindings-001",
         "content_hash": "4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93",
         "decision": {
@@ -131,26 +167,39 @@
             "verdict": true
           }
         ],
-        "id": "rcpt-bindings-invalid-hash",
+        "id": "462d00b0dcb5b8b858dd986f52542967908b0d0f3cd6201fd9c0b0be83873136",
         "kernel_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
         "metadata": {
           "surface": "bindings-vectors",
           "version": 1
         },
         "policy_hash": "policy-bindings-v1",
-        "signature": "c043ad36f6cc2965a61f692691ac551067d3d0e8da7ff3280379e6eb1e84dcdc709358462b59d3b8801a5e78904286b2321f68dd195a8d00b6d926b2bc1b8903",
+        "receipt_kind": "mediated_decision",
+        "redaction_mode": "none",
+        "signature": "cd57a64ada061677b7c1e59f2ecb1fae38cc79e1ee5895c36151537113b439c2d322915d6b88571a8c300ace65d7c794eafcea193d0c21c9043f0407d4f2440c",
         "timestamp": 1710000200,
         "tool_name": "file_read",
-        "tool_server": "srv-files"
+        "tool_origin": "caller_executed",
+        "tool_server": "srv-files",
+        "trust_level": "mediated"
       },
-      "receipt_body_canonical_json": "{\"action\":{\"parameter_hash\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"parameters\":{\"mode\":\"read\",\"path\":\"/workspace/docs/private.md\"}},\"capability_id\":\"cap-bindings-001\",\"content_hash\":\"4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93\",\"decision\":{\"verdict\":\"allow\"},\"evidence\":[{\"details\":\"path allowed\",\"guard_name\":\"ForbiddenPathGuard\",\"verdict\":true},{\"details\":\"no secrets detected\",\"guard_name\":\"SecretLeakGuard\",\"verdict\":true}],\"id\":\"rcpt-bindings-invalid-hash\",\"kernel_key\":\"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c\",\"metadata\":{\"surface\":\"bindings-vectors\",\"version\":1},\"policy_hash\":\"policy-bindings-v1\",\"timestamp\":1710000200,\"tool_name\":\"file_read\",\"tool_server\":\"srv-files\"}"
+      "receipt_body_canonical_json": "{\"action\":{\"parameter_hash\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"parameters\":{\"mode\":\"read\",\"path\":\"/workspace/docs/private.md\"}},\"boundary_class\":\"prevent\",\"capability_id\":\"cap-bindings-001\",\"content_hash\":\"4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93\",\"decision\":{\"verdict\":\"allow\"},\"evidence\":[{\"details\":\"path allowed\",\"guard_name\":\"ForbiddenPathGuard\",\"verdict\":true},{\"details\":\"no secrets detected\",\"guard_name\":\"SecretLeakGuard\",\"verdict\":true}],\"id\":\"462d00b0dcb5b8b858dd986f52542967908b0d0f3cd6201fd9c0b0be83873136\",\"kernel_key\":\"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c\",\"metadata\":{\"surface\":\"bindings-vectors\",\"version\":1},\"policy_hash\":\"policy-bindings-v1\",\"receipt_kind\":\"mediated_decision\",\"redaction_mode\":\"none\",\"timestamp\":1710000200,\"tool_name\":\"file_read\",\"tool_origin\":\"caller_executed\",\"tool_server\":\"srv-files\",\"trust_level\":\"mediated\"}"
     },
     {
       "description": "Receipt payload was modified after signing, so signature verification fails.",
       "expected": {
+        "authorized": false,
+        "boundary_class": "prevent",
         "decision": "allow",
+        "ok": false,
         "parameter_hash_valid": true,
-        "signature_valid": false
+        "receipt_id_valid": false,
+        "receipt_kind": "mediated_decision",
+        "result": "Authorized",
+        "signature_valid": false,
+        "signer_key_hex": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+        "signer_trusted": false,
+        "trust_level": "mediated"
       },
       "id": "tampered_receipt_signature",
       "receipt": {
@@ -161,6 +210,7 @@
             "path": "/workspace/docs/roadmap.md"
           }
         },
+        "boundary_class": "prevent",
         "capability_id": "cap-bindings-001",
         "content_hash": "4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93",
         "decision": {
@@ -178,28 +228,41 @@
             "verdict": true
           }
         ],
-        "id": "rcpt-bindings-invalid-signature",
+        "id": "c9909f733d5fb367922293f0167d06db715393be114f212096cf2866f29433ea",
         "kernel_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
         "metadata": {
           "surface": "bindings-vectors",
           "version": 1
         },
-        "policy_hash": "policy-bindings-v2",
-        "signature": "403a76d11a30eef531374cb83f9fd9618d44c40892cc909928e3cf784e1255572bff3267fec538507c4d82a5616d64ab65eff79452aa989c414f7141bb71c70e",
+        "policy_hash": "policy-bindings-v1-tampered",
+        "receipt_kind": "mediated_decision",
+        "redaction_mode": "none",
+        "signature": "01a89acadd44e845d3ebed80b92234cd2579b218296924f10fb197b9e270adf50794c78218eddd8709e6bbdbba2a28ee734ab3733a00d504bafa78c8e9b5d00d",
         "timestamp": 1710000200,
         "tool_name": "file_read",
-        "tool_server": "srv-files"
+        "tool_origin": "caller_executed",
+        "tool_server": "srv-files",
+        "trust_level": "mediated"
       },
-      "receipt_body_canonical_json": "{\"action\":{\"parameter_hash\":\"035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929\",\"parameters\":{\"mode\":\"read\",\"path\":\"/workspace/docs/roadmap.md\"}},\"capability_id\":\"cap-bindings-001\",\"content_hash\":\"4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93\",\"decision\":{\"verdict\":\"allow\"},\"evidence\":[{\"details\":\"path allowed\",\"guard_name\":\"ForbiddenPathGuard\",\"verdict\":true},{\"details\":\"no secrets detected\",\"guard_name\":\"SecretLeakGuard\",\"verdict\":true}],\"id\":\"rcpt-bindings-invalid-signature\",\"kernel_key\":\"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c\",\"metadata\":{\"surface\":\"bindings-vectors\",\"version\":1},\"policy_hash\":\"policy-bindings-v2\",\"timestamp\":1710000200,\"tool_name\":\"file_read\",\"tool_server\":\"srv-files\"}"
+      "receipt_body_canonical_json": "{\"action\":{\"parameter_hash\":\"035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929\",\"parameters\":{\"mode\":\"read\",\"path\":\"/workspace/docs/roadmap.md\"}},\"boundary_class\":\"prevent\",\"capability_id\":\"cap-bindings-001\",\"content_hash\":\"4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93\",\"decision\":{\"verdict\":\"allow\"},\"evidence\":[{\"details\":\"path allowed\",\"guard_name\":\"ForbiddenPathGuard\",\"verdict\":true},{\"details\":\"no secrets detected\",\"guard_name\":\"SecretLeakGuard\",\"verdict\":true}],\"id\":\"c9909f733d5fb367922293f0167d06db715393be114f212096cf2866f29433ea\",\"kernel_key\":\"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c\",\"metadata\":{\"surface\":\"bindings-vectors\",\"version\":1},\"policy_hash\":\"policy-bindings-v1-tampered\",\"receipt_kind\":\"mediated_decision\",\"redaction_mode\":\"none\",\"timestamp\":1710000200,\"tool_name\":\"file_read\",\"tool_origin\":\"caller_executed\",\"tool_server\":\"srv-files\",\"trust_level\":\"mediated\"}"
     },
     {
-      "description": "Valid cancelled receipt: operator-initiated interruption with a reason.",
+      "description": "Valid trace observation has no decision and is never authorizing.",
       "expected": {
-        "decision": "cancelled",
+        "authorized": false,
+        "boundary_class": "detect_only",
+        "decision": "none",
+        "ok": false,
         "parameter_hash_valid": true,
-        "signature_valid": true
+        "receipt_id_valid": true,
+        "receipt_kind": "trace_observation",
+        "result": "Observed",
+        "signature_valid": true,
+        "signer_key_hex": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+        "signer_trusted": false,
+        "trust_level": "verified"
       },
-      "id": "cancelled_receipt",
+      "id": "trace_observation_receipt",
       "receipt": {
         "action": {
           "parameter_hash": "035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929",
@@ -208,608 +271,106 @@
             "path": "/workspace/docs/roadmap.md"
           }
         },
+        "boundary_class": "detect_only",
         "capability_id": "cap-bindings-001",
         "content_hash": "4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93",
-        "decision": {
-          "reason": "operator interrupted the call",
-          "verdict": "cancelled"
-        },
         "evidence": [
           {
-            "details": "path allowed",
-            "guard_name": "ForbiddenPathGuard",
-            "verdict": true
-          },
-          {
-            "details": "no secrets detected",
-            "guard_name": "SecretLeakGuard",
+            "details": "recorded without mediated authorization",
+            "guard_name": "ObservationRecorder",
             "verdict": true
           }
         ],
-        "id": "rcpt-bindings-cancelled",
+        "id": "c0fc48280a60092927bbf49e43abfae221902932fe57367b9255ddbb525b387c",
         "kernel_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
         "metadata": {
           "surface": "bindings-vectors",
           "version": 1
         },
+        "observation_outcome": "observed",
         "policy_hash": "policy-bindings-v1",
-        "signature": "61645c048274ebf18c7d52e9c4d14ec8aa671dc7fbd9235c975e011165ecf152426246663405979dc58cc4ced2c431afd727f6410c5b483be2bc7764496c8c05",
+        "receipt_kind": "trace_observation",
+        "redaction_mode": "none",
+        "signature": "47f01121da79377ba45a88a98a25e09183da270affe4d6b439d6af436becdf80475753fa44ce2f348382776d36d57f716d2873203eedeee62207addce3a5ff0c",
         "timestamp": 1710000200,
         "tool_name": "file_read",
-        "tool_server": "srv-files"
-      },
-      "receipt_body_canonical_json": "{\"action\":{\"parameter_hash\":\"035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929\",\"parameters\":{\"mode\":\"read\",\"path\":\"/workspace/docs/roadmap.md\"}},\"capability_id\":\"cap-bindings-001\",\"content_hash\":\"4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93\",\"decision\":{\"reason\":\"operator interrupted the call\",\"verdict\":\"cancelled\"},\"evidence\":[{\"details\":\"path allowed\",\"guard_name\":\"ForbiddenPathGuard\",\"verdict\":true},{\"details\":\"no secrets detected\",\"guard_name\":\"SecretLeakGuard\",\"verdict\":true}],\"id\":\"rcpt-bindings-cancelled\",\"kernel_key\":\"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c\",\"metadata\":{\"surface\":\"bindings-vectors\",\"version\":1},\"policy_hash\":\"policy-bindings-v1\",\"timestamp\":1710000200,\"tool_name\":\"file_read\",\"tool_server\":\"srv-files\"}",
-      "verify_only": true
-    },
-    {
-      "description": "Valid incomplete receipt: tool did not reach a terminal state in time.",
-      "expected": {
-        "decision": "incomplete",
-        "parameter_hash_valid": true,
-        "signature_valid": true
-      },
-      "id": "incomplete_receipt",
-      "receipt": {
-        "action": {
-          "parameter_hash": "035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929",
-          "parameters": {
-            "mode": "read",
-            "path": "/workspace/docs/roadmap.md"
-          }
-        },
-        "capability_id": "cap-bindings-001",
-        "content_hash": "4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93",
-        "decision": {
-          "reason": "tool returned no terminal result before deadline",
-          "verdict": "incomplete"
-        },
-        "evidence": [
-          {
-            "details": "path allowed",
-            "guard_name": "ForbiddenPathGuard",
-            "verdict": true
-          },
-          {
-            "details": "no secrets detected",
-            "guard_name": "SecretLeakGuard",
-            "verdict": true
-          }
-        ],
-        "id": "rcpt-bindings-incomplete",
-        "kernel_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
-        "metadata": {
-          "surface": "bindings-vectors",
-          "version": 1
-        },
-        "policy_hash": "policy-bindings-v1",
-        "signature": "65209d0669b58704cf6c313df7fcfddf976d1d06ab1c63989856aec8564f46cb5c2d95c1c300ae79a89bc6128ebf321955024484954f3b5757bf0411b1cdba03",
-        "timestamp": 1710000200,
-        "tool_name": "file_read",
-        "tool_server": "srv-files"
-      },
-      "receipt_body_canonical_json": "{\"action\":{\"parameter_hash\":\"035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929\",\"parameters\":{\"mode\":\"read\",\"path\":\"/workspace/docs/roadmap.md\"}},\"capability_id\":\"cap-bindings-001\",\"content_hash\":\"4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93\",\"decision\":{\"reason\":\"tool returned no terminal result before deadline\",\"verdict\":\"incomplete\"},\"evidence\":[{\"details\":\"path allowed\",\"guard_name\":\"ForbiddenPathGuard\",\"verdict\":true},{\"details\":\"no secrets detected\",\"guard_name\":\"SecretLeakGuard\",\"verdict\":true}],\"id\":\"rcpt-bindings-incomplete\",\"kernel_key\":\"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c\",\"metadata\":{\"surface\":\"bindings-vectors\",\"version\":1},\"policy_hash\":\"policy-bindings-v1\",\"timestamp\":1710000200,\"tool_name\":\"file_read\",\"tool_server\":\"srv-files\"}",
-      "verify_only": true
-    },
-    {
-      "description": "Allow receipt that embeds a transparency-log inclusion-proof in metadata.",
-      "expected": {
-        "decision": "allow",
-        "parameter_hash_valid": true,
-        "signature_valid": true
-      },
-      "id": "receipt_with_inclusion_proof_metadata",
-      "receipt": {
-        "action": {
-          "parameter_hash": "035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929",
-          "parameters": {
-            "mode": "read",
-            "path": "/workspace/docs/roadmap.md"
-          }
-        },
-        "capability_id": "cap-bindings-001",
-        "content_hash": "4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93",
-        "decision": {
-          "verdict": "allow"
-        },
-        "evidence": [
-          {
-            "details": "path allowed",
-            "guard_name": "ForbiddenPathGuard",
-            "verdict": true
-          },
-          {
-            "details": "no secrets detected",
-            "guard_name": "SecretLeakGuard",
-            "verdict": true
-          }
-        ],
-        "id": "rcpt-bindings-inclusion-proof",
-        "kernel_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
-        "metadata": {
-          "inclusion_proof": {
-            "anchor": "anchor-2026-04-25",
-            "audit_path": [
-              "1111111111111111111111111111111111111111111111111111111111111111",
-              "2222222222222222222222222222222222222222222222222222222222222222"
-            ],
-            "leaf_hash": "9b9c4f9e6f9a44e3b3a2c1d09f6c2c5b8a7e6d5c4b3a29180f7e6d5c4b3a2918",
-            "leaf_index": 42,
-            "tree_size": 128
-          },
-          "surface": "bindings-vectors",
-          "version": 1
-        },
-        "policy_hash": "policy-bindings-v1",
-        "signature": "bb8744a89bfa8984e5b01a214391207a26f8b5fda459ce82ebaff53231aaba8efe98fd0d436c30eaac32b367ebfe2a97aaf9ac88a17058441805376d93fb7d0b",
-        "timestamp": 1710000200,
-        "tool_name": "file_read",
-        "tool_server": "srv-files"
-      },
-      "receipt_body_canonical_json": "{\"action\":{\"parameter_hash\":\"035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929\",\"parameters\":{\"mode\":\"read\",\"path\":\"/workspace/docs/roadmap.md\"}},\"capability_id\":\"cap-bindings-001\",\"content_hash\":\"4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93\",\"decision\":{\"verdict\":\"allow\"},\"evidence\":[{\"details\":\"path allowed\",\"guard_name\":\"ForbiddenPathGuard\",\"verdict\":true},{\"details\":\"no secrets detected\",\"guard_name\":\"SecretLeakGuard\",\"verdict\":true}],\"id\":\"rcpt-bindings-inclusion-proof\",\"kernel_key\":\"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c\",\"metadata\":{\"inclusion_proof\":{\"anchor\":\"anchor-2026-04-25\",\"audit_path\":[\"1111111111111111111111111111111111111111111111111111111111111111\",\"2222222222222222222222222222222222222222222222222222222222222222\"],\"leaf_hash\":\"9b9c4f9e6f9a44e3b3a2c1d09f6c2c5b8a7e6d5c4b3a29180f7e6d5c4b3a2918\",\"leaf_index\":42,\"tree_size\":128},\"surface\":\"bindings-vectors\",\"version\":1},\"policy_hash\":\"policy-bindings-v1\",\"timestamp\":1710000200,\"tool_name\":\"file_read\",\"tool_server\":\"srv-files\"}",
-      "verify_only": true
-    },
-    {
-      "description": "Allow receipt issued under policy-bindings-v2 (different policy generation).",
-      "expected": {
-        "decision": "allow",
-        "parameter_hash_valid": true,
-        "signature_valid": true
-      },
-      "id": "receipt_at_policy_v2",
-      "receipt": {
-        "action": {
-          "parameter_hash": "035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929",
-          "parameters": {
-            "mode": "read",
-            "path": "/workspace/docs/roadmap.md"
-          }
-        },
-        "capability_id": "cap-bindings-001",
-        "content_hash": "4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93",
-        "decision": {
-          "verdict": "allow"
-        },
-        "evidence": [
-          {
-            "details": "path allowed",
-            "guard_name": "ForbiddenPathGuard",
-            "verdict": true
-          },
-          {
-            "details": "no secrets detected",
-            "guard_name": "SecretLeakGuard",
-            "verdict": true
-          }
-        ],
-        "id": "rcpt-bindings-policy-v2",
-        "kernel_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
-        "metadata": {
-          "surface": "bindings-vectors",
-          "version": 1
-        },
-        "policy_hash": "policy-bindings-v2",
-        "signature": "f02bf8be828079f26fbb462e8a0ac89bcd30e8ffb672c717c3919c07e5b17f2eaaa1122c35c4902beda0f0a6307539ed3b25ffbdddf92db4a4cbcc0d1881c108",
-        "timestamp": 1710000200,
-        "tool_name": "file_read",
-        "tool_server": "srv-files"
-      },
-      "receipt_body_canonical_json": "{\"action\":{\"parameter_hash\":\"035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929\",\"parameters\":{\"mode\":\"read\",\"path\":\"/workspace/docs/roadmap.md\"}},\"capability_id\":\"cap-bindings-001\",\"content_hash\":\"4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93\",\"decision\":{\"verdict\":\"allow\"},\"evidence\":[{\"details\":\"path allowed\",\"guard_name\":\"ForbiddenPathGuard\",\"verdict\":true},{\"details\":\"no secrets detected\",\"guard_name\":\"SecretLeakGuard\",\"verdict\":true}],\"id\":\"rcpt-bindings-policy-v2\",\"kernel_key\":\"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c\",\"metadata\":{\"surface\":\"bindings-vectors\",\"version\":1},\"policy_hash\":\"policy-bindings-v2\",\"timestamp\":1710000200,\"tool_name\":\"file_read\",\"tool_server\":\"srv-files\"}"
-    },
-    {
-      "description": "Allow receipt whose policy_hash is a SHA-256 hex digest rather than a symbolic id.",
-      "expected": {
-        "decision": "allow",
-        "parameter_hash_valid": true,
-        "signature_valid": true
-      },
-      "id": "receipt_at_policy_hex_hash",
-      "receipt": {
-        "action": {
-          "parameter_hash": "035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929",
-          "parameters": {
-            "mode": "read",
-            "path": "/workspace/docs/roadmap.md"
-          }
-        },
-        "capability_id": "cap-bindings-001",
-        "content_hash": "4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93",
-        "decision": {
-          "verdict": "allow"
-        },
-        "evidence": [
-          {
-            "details": "path allowed",
-            "guard_name": "ForbiddenPathGuard",
-            "verdict": true
-          },
-          {
-            "details": "no secrets detected",
-            "guard_name": "SecretLeakGuard",
-            "verdict": true
-          }
-        ],
-        "id": "rcpt-bindings-policy-hex",
-        "kernel_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
-        "metadata": {
-          "surface": "bindings-vectors",
-          "version": 1
-        },
-        "policy_hash": "8c5c1e8d3e2b4f6a9d7c0b1a2e3f4d5c6b7a8c9d0e1f2a3b4c5d6e7f8091a2b3",
-        "signature": "61fc540681aae3bf01d9bd120b351bfcaa092be5c73da3805e3bdf95123e0ead2cbf10eb382019edf1125f4ccc1c308eed881eac4edd693a7b306332688db00c",
-        "timestamp": 1710000200,
-        "tool_name": "file_read",
-        "tool_server": "srv-files"
-      },
-      "receipt_body_canonical_json": "{\"action\":{\"parameter_hash\":\"035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929\",\"parameters\":{\"mode\":\"read\",\"path\":\"/workspace/docs/roadmap.md\"}},\"capability_id\":\"cap-bindings-001\",\"content_hash\":\"4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93\",\"decision\":{\"verdict\":\"allow\"},\"evidence\":[{\"details\":\"path allowed\",\"guard_name\":\"ForbiddenPathGuard\",\"verdict\":true},{\"details\":\"no secrets detected\",\"guard_name\":\"SecretLeakGuard\",\"verdict\":true}],\"id\":\"rcpt-bindings-policy-hex\",\"kernel_key\":\"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c\",\"metadata\":{\"surface\":\"bindings-vectors\",\"version\":1},\"policy_hash\":\"8c5c1e8d3e2b4f6a9d7c0b1a2e3f4d5c6b7a8c9d0e1f2a3b4c5d6e7f8091a2b3\",\"timestamp\":1710000200,\"tool_name\":\"file_read\",\"tool_server\":\"srv-files\"}"
-    },
-    {
-      "description": "Allow receipt with sizeable nested metadata (lists plus an object with many keys).",
-      "expected": {
-        "decision": "allow",
-        "parameter_hash_valid": true,
-        "signature_valid": true
-      },
-      "id": "receipt_with_large_metadata",
-      "receipt": {
-        "action": {
-          "parameter_hash": "035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929",
-          "parameters": {
-            "mode": "read",
-            "path": "/workspace/docs/roadmap.md"
-          }
-        },
-        "capability_id": "cap-bindings-001",
-        "content_hash": "4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93",
-        "decision": {
-          "verdict": "allow"
-        },
-        "evidence": [
-          {
-            "details": "path allowed",
-            "guard_name": "ForbiddenPathGuard",
-            "verdict": true
-          },
-          {
-            "details": "no secrets detected",
-            "guard_name": "SecretLeakGuard",
-            "verdict": true
-          }
-        ],
-        "id": "rcpt-bindings-large-metadata",
-        "kernel_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
-        "metadata": {
-          "attributes": {
-            "attribute_00": "value-with-some-length-00",
-            "attribute_01": "value-with-some-length-01",
-            "attribute_02": "value-with-some-length-02",
-            "attribute_03": "value-with-some-length-03",
-            "attribute_04": "value-with-some-length-04",
-            "attribute_05": "value-with-some-length-05",
-            "attribute_06": "value-with-some-length-06",
-            "attribute_07": "value-with-some-length-07"
-          },
-          "labels": [
-            "tag-00",
-            "tag-01",
-            "tag-02",
-            "tag-03",
-            "tag-04",
-            "tag-05",
-            "tag-06",
-            "tag-07",
-            "tag-08",
-            "tag-09",
-            "tag-10",
-            "tag-11",
-            "tag-12",
-            "tag-13",
-            "tag-14",
-            "tag-15"
-          ],
-          "notes": "Large metadata exercising deeper nesting and longer key/value pairs across the canonical-JSON encoder.",
-          "surface": "bindings-vectors",
-          "version": 1
-        },
-        "policy_hash": "policy-bindings-v1",
-        "signature": "8c4b68203bdbee588c7dc04aef1cda4ca69b336622210e1103ddd1ded80813b02e2342a7594cb5571ef7e640114762ae48fb089b3c0647ce8d3d38cc1f96a601",
-        "timestamp": 1710000200,
-        "tool_name": "file_read",
-        "tool_server": "srv-files"
-      },
-      "receipt_body_canonical_json": "{\"action\":{\"parameter_hash\":\"035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929\",\"parameters\":{\"mode\":\"read\",\"path\":\"/workspace/docs/roadmap.md\"}},\"capability_id\":\"cap-bindings-001\",\"content_hash\":\"4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93\",\"decision\":{\"verdict\":\"allow\"},\"evidence\":[{\"details\":\"path allowed\",\"guard_name\":\"ForbiddenPathGuard\",\"verdict\":true},{\"details\":\"no secrets detected\",\"guard_name\":\"SecretLeakGuard\",\"verdict\":true}],\"id\":\"rcpt-bindings-large-metadata\",\"kernel_key\":\"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c\",\"metadata\":{\"attributes\":{\"attribute_00\":\"value-with-some-length-00\",\"attribute_01\":\"value-with-some-length-01\",\"attribute_02\":\"value-with-some-length-02\",\"attribute_03\":\"value-with-some-length-03\",\"attribute_04\":\"value-with-some-length-04\",\"attribute_05\":\"value-with-some-length-05\",\"attribute_06\":\"value-with-some-length-06\",\"attribute_07\":\"value-with-some-length-07\"},\"labels\":[\"tag-00\",\"tag-01\",\"tag-02\",\"tag-03\",\"tag-04\",\"tag-05\",\"tag-06\",\"tag-07\",\"tag-08\",\"tag-09\",\"tag-10\",\"tag-11\",\"tag-12\",\"tag-13\",\"tag-14\",\"tag-15\"],\"notes\":\"Large metadata exercising deeper nesting and longer key/value pairs across the canonical-JSON encoder.\",\"surface\":\"bindings-vectors\",\"version\":1},\"policy_hash\":\"policy-bindings-v1\",\"timestamp\":1710000200,\"tool_name\":\"file_read\",\"tool_server\":\"srv-files\"}"
-    },
-    {
-      "description": "Valid allow receipt with an empty evidence array (omitted from canonical JSON).",
-      "expected": {
-        "decision": "allow",
-        "parameter_hash_valid": true,
-        "signature_valid": true
-      },
-      "id": "receipt_with_no_evidence",
-      "receipt": {
-        "action": {
-          "parameter_hash": "035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929",
-          "parameters": {
-            "mode": "read",
-            "path": "/workspace/docs/roadmap.md"
-          }
-        },
-        "capability_id": "cap-bindings-001",
-        "content_hash": "4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93",
-        "decision": {
-          "verdict": "allow"
-        },
-        "id": "rcpt-bindings-no-evidence",
-        "kernel_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
-        "metadata": {
-          "surface": "bindings-vectors",
-          "version": 1
-        },
-        "policy_hash": "policy-bindings-v1",
-        "signature": "e97d7e27a33bdd8fc7fc98a72d6bb3faa6d2bc15174caa246d7aee205456676cf817f2989aa56584f37329e331c9a660eee2ca13379ce251206a17fdd75fbf0d",
-        "timestamp": 1710000200,
-        "tool_name": "file_read",
-        "tool_server": "srv-files"
-      },
-      "receipt_body_canonical_json": "{\"action\":{\"parameter_hash\":\"035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929\",\"parameters\":{\"mode\":\"read\",\"path\":\"/workspace/docs/roadmap.md\"}},\"capability_id\":\"cap-bindings-001\",\"content_hash\":\"4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93\",\"decision\":{\"verdict\":\"allow\"},\"id\":\"rcpt-bindings-no-evidence\",\"kernel_key\":\"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c\",\"metadata\":{\"surface\":\"bindings-vectors\",\"version\":1},\"policy_hash\":\"policy-bindings-v1\",\"timestamp\":1710000200,\"tool_name\":\"file_read\",\"tool_server\":\"srv-files\"}",
-      "verify_only": true
-    },
-    {
-      "description": "Valid allow receipt with no metadata field (omitted from canonical JSON).",
-      "expected": {
-        "decision": "allow",
-        "parameter_hash_valid": true,
-        "signature_valid": true
-      },
-      "id": "receipt_with_no_metadata",
-      "receipt": {
-        "action": {
-          "parameter_hash": "035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929",
-          "parameters": {
-            "mode": "read",
-            "path": "/workspace/docs/roadmap.md"
-          }
-        },
-        "capability_id": "cap-bindings-001",
-        "content_hash": "4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93",
-        "decision": {
-          "verdict": "allow"
-        },
-        "evidence": [
-          {
-            "details": "path allowed",
-            "guard_name": "ForbiddenPathGuard",
-            "verdict": true
-          },
-          {
-            "details": "no secrets detected",
-            "guard_name": "SecretLeakGuard",
-            "verdict": true
-          }
-        ],
-        "id": "rcpt-bindings-no-metadata",
-        "kernel_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
-        "policy_hash": "policy-bindings-v1",
-        "signature": "bb5632ff38ca60ab5221fe3cd35502cc67dfac5fbfc1887e0268b073debd7625915d62777c3bf5daf2dedc8d8cec2ed08eb417823e116a68dc12072a7dc0ae03",
-        "timestamp": 1710000200,
-        "tool_name": "file_read",
-        "tool_server": "srv-files"
-      },
-      "receipt_body_canonical_json": "{\"action\":{\"parameter_hash\":\"035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929\",\"parameters\":{\"mode\":\"read\",\"path\":\"/workspace/docs/roadmap.md\"}},\"capability_id\":\"cap-bindings-001\",\"content_hash\":\"4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93\",\"decision\":{\"verdict\":\"allow\"},\"evidence\":[{\"details\":\"path allowed\",\"guard_name\":\"ForbiddenPathGuard\",\"verdict\":true},{\"details\":\"no secrets detected\",\"guard_name\":\"SecretLeakGuard\",\"verdict\":true}],\"id\":\"rcpt-bindings-no-metadata\",\"kernel_key\":\"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c\",\"policy_hash\":\"policy-bindings-v1\",\"timestamp\":1710000200,\"tool_name\":\"file_read\",\"tool_server\":\"srv-files\"}"
-    },
-    {
-      "description": "First of two receipts in a multi-step stream, linked through metadata.stream.",
-      "expected": {
-        "decision": "allow",
-        "parameter_hash_valid": true,
-        "signature_valid": true
-      },
-      "id": "multi_step_receipt_step_one",
-      "receipt": {
-        "action": {
-          "parameter_hash": "980cd3774ba3652064ad3cb3be14db3edd670c734b274433f4fb077dc5d26fdd",
-          "parameters": {
-            "mode": "read",
-            "path": "/workspace/docs/roadmap.md",
-            "step": 1
-          }
-        },
-        "capability_id": "cap-bindings-001",
-        "content_hash": "4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93",
-        "decision": {
-          "verdict": "allow"
-        },
-        "evidence": [
-          {
-            "details": "path allowed",
-            "guard_name": "ForbiddenPathGuard",
-            "verdict": true
-          },
-          {
-            "details": "no secrets detected",
-            "guard_name": "SecretLeakGuard",
-            "verdict": true
-          }
-        ],
-        "id": "rcpt-bindings-multistep-1",
-        "kernel_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
-        "metadata": {
-          "stream": {
-            "id": "stream-001",
-            "of": 2,
-            "step": 1
-          },
-          "surface": "bindings-vectors",
-          "version": 1
-        },
-        "policy_hash": "policy-bindings-v1",
-        "signature": "7ceedb40e2b7e5e8ea4461a60e7d764bd8e75dae625675c6fb63558c605e4ecede6305a01e56f1019582bab1890c4f86dd5ab2e8cce0b3b8e6334d79e10c7f00",
-        "timestamp": 1710000300,
-        "tool_name": "file_read",
-        "tool_server": "srv-files"
-      },
-      "receipt_body_canonical_json": "{\"action\":{\"parameter_hash\":\"980cd3774ba3652064ad3cb3be14db3edd670c734b274433f4fb077dc5d26fdd\",\"parameters\":{\"mode\":\"read\",\"path\":\"/workspace/docs/roadmap.md\",\"step\":1}},\"capability_id\":\"cap-bindings-001\",\"content_hash\":\"4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93\",\"decision\":{\"verdict\":\"allow\"},\"evidence\":[{\"details\":\"path allowed\",\"guard_name\":\"ForbiddenPathGuard\",\"verdict\":true},{\"details\":\"no secrets detected\",\"guard_name\":\"SecretLeakGuard\",\"verdict\":true}],\"id\":\"rcpt-bindings-multistep-1\",\"kernel_key\":\"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c\",\"metadata\":{\"stream\":{\"id\":\"stream-001\",\"of\":2,\"step\":1},\"surface\":\"bindings-vectors\",\"version\":1},\"policy_hash\":\"policy-bindings-v1\",\"timestamp\":1710000300,\"tool_name\":\"file_read\",\"tool_server\":\"srv-files\"}"
-    },
-    {
-      "description": "Second of two receipts in a multi-step stream, references the previous receipt id.",
-      "expected": {
-        "decision": "allow",
-        "parameter_hash_valid": true,
-        "signature_valid": true
-      },
-      "id": "multi_step_receipt_step_two",
-      "receipt": {
-        "action": {
-          "parameter_hash": "263956ff868348c287815fa505c396569abf2bfaf908e53367e7c147d5e8d47d",
-          "parameters": {
-            "mode": "read",
-            "path": "/workspace/docs/roadmap.md",
-            "step": 2
-          }
-        },
-        "capability_id": "cap-bindings-001",
-        "content_hash": "4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93",
-        "decision": {
-          "verdict": "allow"
-        },
-        "evidence": [
-          {
-            "details": "path allowed",
-            "guard_name": "ForbiddenPathGuard",
-            "verdict": true
-          },
-          {
-            "details": "no secrets detected",
-            "guard_name": "SecretLeakGuard",
-            "verdict": true
-          }
-        ],
-        "id": "rcpt-bindings-multistep-2",
-        "kernel_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
-        "metadata": {
-          "stream": {
-            "id": "stream-001",
-            "of": 2,
-            "previous_receipt_id": "rcpt-bindings-multistep-1",
-            "step": 2
-          },
-          "surface": "bindings-vectors",
-          "version": 1
-        },
-        "policy_hash": "policy-bindings-v1",
-        "signature": "dd876034bf34d195f0c193c80999b7c961405d758d4e00c41055d5d629aaa583102eef596f11144026a5ec902110ad6091a24289c60766ebce1d72e98e4d2f08",
-        "timestamp": 1710000400,
-        "tool_name": "file_read",
-        "tool_server": "srv-files"
-      },
-      "receipt_body_canonical_json": "{\"action\":{\"parameter_hash\":\"263956ff868348c287815fa505c396569abf2bfaf908e53367e7c147d5e8d47d\",\"parameters\":{\"mode\":\"read\",\"path\":\"/workspace/docs/roadmap.md\",\"step\":2}},\"capability_id\":\"cap-bindings-001\",\"content_hash\":\"4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93\",\"decision\":{\"verdict\":\"allow\"},\"evidence\":[{\"details\":\"path allowed\",\"guard_name\":\"ForbiddenPathGuard\",\"verdict\":true},{\"details\":\"no secrets detected\",\"guard_name\":\"SecretLeakGuard\",\"verdict\":true}],\"id\":\"rcpt-bindings-multistep-2\",\"kernel_key\":\"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c\",\"metadata\":{\"stream\":{\"id\":\"stream-001\",\"of\":2,\"previous_receipt_id\":\"rcpt-bindings-multistep-1\",\"step\":2},\"surface\":\"bindings-vectors\",\"version\":1},\"policy_hash\":\"policy-bindings-v1\",\"timestamp\":1710000400,\"tool_name\":\"file_read\",\"tool_server\":\"srv-files\"}"
-    },
-    {
-      "description": "Allow receipt issued by an in-process kernel (trust_level = verified).",
-      "expected": {
-        "decision": "allow",
-        "parameter_hash_valid": true,
-        "signature_valid": true
-      },
-      "id": "receipt_with_trust_level_verified",
-      "receipt": {
-        "action": {
-          "parameter_hash": "035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929",
-          "parameters": {
-            "mode": "read",
-            "path": "/workspace/docs/roadmap.md"
-          }
-        },
-        "capability_id": "cap-bindings-001",
-        "content_hash": "4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93",
-        "decision": {
-          "verdict": "allow"
-        },
-        "evidence": [
-          {
-            "details": "path allowed",
-            "guard_name": "ForbiddenPathGuard",
-            "verdict": true
-          },
-          {
-            "details": "no secrets detected",
-            "guard_name": "SecretLeakGuard",
-            "verdict": true
-          }
-        ],
-        "id": "rcpt-bindings-trust-verified",
-        "kernel_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
-        "metadata": {
-          "surface": "bindings-vectors",
-          "version": 1
-        },
-        "policy_hash": "policy-bindings-v1",
-        "signature": "4d3e72592aa553d7fa87ffc2e553aee040847a5a3edd3d090ac940f3c1a3fa7b0831b001e85be111328e4d84e1b4bc98d074358927a76d348598a0cb71c12702",
-        "timestamp": 1710000200,
-        "tool_name": "file_read",
+        "tool_origin": "caller_executed",
         "tool_server": "srv-files",
         "trust_level": "verified"
       },
-      "receipt_body_canonical_json": "{\"action\":{\"parameter_hash\":\"035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929\",\"parameters\":{\"mode\":\"read\",\"path\":\"/workspace/docs/roadmap.md\"}},\"capability_id\":\"cap-bindings-001\",\"content_hash\":\"4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93\",\"decision\":{\"verdict\":\"allow\"},\"evidence\":[{\"details\":\"path allowed\",\"guard_name\":\"ForbiddenPathGuard\",\"verdict\":true},{\"details\":\"no secrets detected\",\"guard_name\":\"SecretLeakGuard\",\"verdict\":true}],\"id\":\"rcpt-bindings-trust-verified\",\"kernel_key\":\"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c\",\"metadata\":{\"surface\":\"bindings-vectors\",\"version\":1},\"policy_hash\":\"policy-bindings-v1\",\"timestamp\":1710000200,\"tool_name\":\"file_read\",\"tool_server\":\"srv-files\",\"trust_level\":\"verified\"}",
-      "verify_only": true
+      "receipt_body_canonical_json": "{\"action\":{\"parameter_hash\":\"035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929\",\"parameters\":{\"mode\":\"read\",\"path\":\"/workspace/docs/roadmap.md\"}},\"boundary_class\":\"detect_only\",\"capability_id\":\"cap-bindings-001\",\"content_hash\":\"4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93\",\"evidence\":[{\"details\":\"recorded without mediated authorization\",\"guard_name\":\"ObservationRecorder\",\"verdict\":true}],\"id\":\"c0fc48280a60092927bbf49e43abfae221902932fe57367b9255ddbb525b387c\",\"kernel_key\":\"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c\",\"metadata\":{\"surface\":\"bindings-vectors\",\"version\":1},\"observation_outcome\":\"observed\",\"policy_hash\":\"policy-bindings-v1\",\"receipt_kind\":\"trace_observation\",\"redaction_mode\":\"none\",\"timestamp\":1710000200,\"tool_name\":\"file_read\",\"tool_origin\":\"caller_executed\",\"tool_server\":\"srv-files\",\"trust_level\":\"verified\"}"
     },
     {
-      "description": "Allow receipt issued in shadow/observability mode (trust_level = advisory).",
+      "description": "Valid advisory evaluation has no decision and is never authorizing.",
       "expected": {
-        "decision": "allow",
+        "authorized": false,
+        "boundary_class": "advisory_only",
+        "decision": "none",
+        "ok": false,
         "parameter_hash_valid": true,
-        "signature_valid": true
+        "receipt_id_valid": true,
+        "receipt_kind": "advisory_evaluation",
+        "result": "Advisory",
+        "signature_valid": true,
+        "signer_key_hex": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+        "signer_trusted": false,
+        "trust_level": "advisory"
       },
-      "id": "receipt_with_trust_level_advisory",
+      "id": "advisory_evaluation_receipt",
       "receipt": {
         "action": {
-          "parameter_hash": "035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929",
+          "parameter_hash": "488c1c976ea2e8db55238019946f817920d824bf0f48c70a3dadfdaccc3a47af",
           "parameters": {
             "mode": "read",
-            "path": "/workspace/docs/roadmap.md"
+            "path": "/workspace/docs/private.md"
           }
         },
+        "boundary_class": "advisory_only",
         "capability_id": "cap-bindings-001",
         "content_hash": "4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93",
-        "decision": {
-          "verdict": "allow"
-        },
         "evidence": [
           {
-            "details": "path allowed",
-            "guard_name": "ForbiddenPathGuard",
-            "verdict": true
-          },
-          {
-            "details": "no secrets detected",
-            "guard_name": "SecretLeakGuard",
+            "details": "recorded without mediated authorization",
+            "guard_name": "ObservationRecorder",
             "verdict": true
           }
         ],
-        "id": "rcpt-bindings-trust-advisory",
+        "id": "d943b4e9ef9e6aa90f09b97e0a22da3efab37a1daf3b5e7b9e7ab590fa6a0399",
         "kernel_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
         "metadata": {
           "surface": "bindings-vectors",
           "version": 1
         },
+        "observation_outcome": "evaluated",
         "policy_hash": "policy-bindings-v1",
-        "signature": "5edb29f1e073a82eebcda23765b2eb2ba00ce59d0fa1a5cbebe234942b7668f0996e67967d3e5f14e4acd63e32b96f2fabbeeed45b18541a7f716d52abfc1b01",
+        "receipt_kind": "advisory_evaluation",
+        "redaction_mode": "none",
+        "signature": "455a593595c298fa95458bc67b4db75f8b73965e89d7a8a485927f0bd0b3b39480b1230a240f57ae49be2ff1a8e76fa35c9619395b20376681ba64b281e17c0d",
         "timestamp": 1710000200,
         "tool_name": "file_read",
+        "tool_origin": "caller_executed",
         "tool_server": "srv-files",
         "trust_level": "advisory"
       },
-      "receipt_body_canonical_json": "{\"action\":{\"parameter_hash\":\"035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929\",\"parameters\":{\"mode\":\"read\",\"path\":\"/workspace/docs/roadmap.md\"}},\"capability_id\":\"cap-bindings-001\",\"content_hash\":\"4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93\",\"decision\":{\"verdict\":\"allow\"},\"evidence\":[{\"details\":\"path allowed\",\"guard_name\":\"ForbiddenPathGuard\",\"verdict\":true},{\"details\":\"no secrets detected\",\"guard_name\":\"SecretLeakGuard\",\"verdict\":true}],\"id\":\"rcpt-bindings-trust-advisory\",\"kernel_key\":\"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c\",\"metadata\":{\"surface\":\"bindings-vectors\",\"version\":1},\"policy_hash\":\"policy-bindings-v1\",\"timestamp\":1710000200,\"tool_name\":\"file_read\",\"tool_server\":\"srv-files\",\"trust_level\":\"advisory\"}",
-      "verify_only": true
+      "receipt_body_canonical_json": "{\"action\":{\"parameter_hash\":\"488c1c976ea2e8db55238019946f817920d824bf0f48c70a3dadfdaccc3a47af\",\"parameters\":{\"mode\":\"read\",\"path\":\"/workspace/docs/private.md\"}},\"boundary_class\":\"advisory_only\",\"capability_id\":\"cap-bindings-001\",\"content_hash\":\"4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93\",\"evidence\":[{\"details\":\"recorded without mediated authorization\",\"guard_name\":\"ObservationRecorder\",\"verdict\":true}],\"id\":\"d943b4e9ef9e6aa90f09b97e0a22da3efab37a1daf3b5e7b9e7ab590fa6a0399\",\"kernel_key\":\"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c\",\"metadata\":{\"surface\":\"bindings-vectors\",\"version\":1},\"observation_outcome\":\"evaluated\",\"policy_hash\":\"policy-bindings-v1\",\"receipt_kind\":\"advisory_evaluation\",\"redaction_mode\":\"none\",\"timestamp\":1710000200,\"tool_name\":\"file_read\",\"tool_origin\":\"caller_executed\",\"tool_server\":\"srv-files\",\"trust_level\":\"advisory\"}"
     },
     {
-      "description": "Allow receipt issued under a multi-tenant deployment (tenant_id present).",
+      "description": "A trace observation carrying an allow-shaped decision is not signable or authoritative.",
       "expected": {
+        "authorized": false,
+        "boundary_class": "detect_only",
         "decision": "allow",
+        "ok": false,
         "parameter_hash_valid": true,
-        "signature_valid": true
+        "receipt_id_valid": false,
+        "receipt_kind": "trace_observation",
+        "result": "Observed",
+        "signature_valid": false,
+        "signer_key_hex": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+        "signer_trusted": false,
+        "trust_level": "verified"
       },
-      "id": "receipt_with_tenant_id",
+      "id": "trace_observation_with_decision",
       "receipt": {
         "action": {
           "parameter_hash": "035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929",
@@ -818,6 +379,285 @@
             "path": "/workspace/docs/roadmap.md"
           }
         },
+        "boundary_class": "detect_only",
+        "capability_id": "cap-bindings-001",
+        "content_hash": "4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93",
+        "decision": {
+          "verdict": "allow"
+        },
+        "evidence": [
+          {
+            "details": "recorded without mediated authorization",
+            "guard_name": "ObservationRecorder",
+            "verdict": true
+          }
+        ],
+        "id": "c0fc48280a60092927bbf49e43abfae221902932fe57367b9255ddbb525b387c",
+        "kernel_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+        "metadata": {
+          "surface": "bindings-vectors",
+          "version": 1
+        },
+        "observation_outcome": "observed",
+        "policy_hash": "policy-bindings-v1",
+        "receipt_kind": "trace_observation",
+        "redaction_mode": "none",
+        "signature": "a1712d4e8a533dd074c79f416506d698bf32ef092ae3e303eb7fed518b6f0214d2b2b28dca9257f0172039e6fd207af44810e9f653aa13e66b1933042a726e0c",
+        "timestamp": 1710000200,
+        "tool_name": "file_read",
+        "tool_origin": "caller_executed",
+        "tool_server": "srv-files",
+        "trust_level": "verified"
+      },
+      "receipt_body_canonical_json": "{\"action\":{\"parameter_hash\":\"035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929\",\"parameters\":{\"mode\":\"read\",\"path\":\"/workspace/docs/roadmap.md\"}},\"boundary_class\":\"detect_only\",\"capability_id\":\"cap-bindings-001\",\"content_hash\":\"4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93\",\"decision\":{\"verdict\":\"allow\"},\"evidence\":[{\"details\":\"recorded without mediated authorization\",\"guard_name\":\"ObservationRecorder\",\"verdict\":true}],\"id\":\"c0fc48280a60092927bbf49e43abfae221902932fe57367b9255ddbb525b387c\",\"kernel_key\":\"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c\",\"metadata\":{\"surface\":\"bindings-vectors\",\"version\":1},\"observation_outcome\":\"observed\",\"policy_hash\":\"policy-bindings-v1\",\"receipt_kind\":\"trace_observation\",\"redaction_mode\":\"none\",\"timestamp\":1710000200,\"tool_name\":\"file_read\",\"tool_origin\":\"caller_executed\",\"tool_server\":\"srv-files\",\"trust_level\":\"verified\"}"
+    },
+    {
+      "description": "A mediated receipt without a decision is not signable or authoritative.",
+      "expected": {
+        "authorized": false,
+        "boundary_class": "prevent",
+        "decision": "none",
+        "ok": false,
+        "parameter_hash_valid": true,
+        "receipt_id_valid": false,
+        "receipt_kind": "mediated_decision",
+        "result": "Invalid",
+        "signature_valid": false,
+        "signer_key_hex": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+        "signer_trusted": false,
+        "trust_level": "mediated"
+      },
+      "id": "mediated_receipt_missing_decision",
+      "receipt": {
+        "action": {
+          "parameter_hash": "035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929",
+          "parameters": {
+            "mode": "read",
+            "path": "/workspace/docs/roadmap.md"
+          }
+        },
+        "boundary_class": "prevent",
+        "capability_id": "cap-bindings-001",
+        "content_hash": "4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93",
+        "evidence": [
+          {
+            "details": "path allowed",
+            "guard_name": "ForbiddenPathGuard",
+            "verdict": true
+          },
+          {
+            "details": "no secrets detected",
+            "guard_name": "SecretLeakGuard",
+            "verdict": true
+          }
+        ],
+        "id": "c9909f733d5fb367922293f0167d06db715393be114f212096cf2866f29433ea",
+        "kernel_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+        "metadata": {
+          "surface": "bindings-vectors",
+          "version": 1
+        },
+        "policy_hash": "policy-bindings-v1",
+        "receipt_kind": "mediated_decision",
+        "redaction_mode": "none",
+        "signature": "7dbeea5f3b63e5466db7f3d8f8c626daef3a651d012cdfdcb81a81112f292297d9d2845153f8751c67ee0f7df507afeb1909834c8fd629eec90258f380fbca03",
+        "timestamp": 1710000200,
+        "tool_name": "file_read",
+        "tool_origin": "caller_executed",
+        "tool_server": "srv-files",
+        "trust_level": "mediated"
+      },
+      "receipt_body_canonical_json": "{\"action\":{\"parameter_hash\":\"035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929\",\"parameters\":{\"mode\":\"read\",\"path\":\"/workspace/docs/roadmap.md\"}},\"boundary_class\":\"prevent\",\"capability_id\":\"cap-bindings-001\",\"content_hash\":\"4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93\",\"evidence\":[{\"details\":\"path allowed\",\"guard_name\":\"ForbiddenPathGuard\",\"verdict\":true},{\"details\":\"no secrets detected\",\"guard_name\":\"SecretLeakGuard\",\"verdict\":true}],\"id\":\"c9909f733d5fb367922293f0167d06db715393be114f212096cf2866f29433ea\",\"kernel_key\":\"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c\",\"metadata\":{\"surface\":\"bindings-vectors\",\"version\":1},\"policy_hash\":\"policy-bindings-v1\",\"receipt_kind\":\"mediated_decision\",\"redaction_mode\":\"none\",\"timestamp\":1710000200,\"tool_name\":\"file_read\",\"tool_origin\":\"caller_executed\",\"tool_server\":\"srv-files\",\"trust_level\":\"mediated\"}"
+    },
+    {
+      "description": "An advisory evaluation carrying an allow-shaped decision has a valid id but is not signable.",
+      "expected": {
+        "authorized": false,
+        "boundary_class": "advisory_only",
+        "decision": "allow",
+        "ok": false,
+        "parameter_hash_valid": true,
+        "receipt_id_valid": true,
+        "receipt_kind": "advisory_evaluation",
+        "result": "Advisory",
+        "signature_valid": false,
+        "signer_key_hex": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+        "signer_trusted": false,
+        "trust_level": "advisory"
+      },
+      "id": "advisory_evaluation_with_decision",
+      "receipt": {
+        "action": {
+          "parameter_hash": "488c1c976ea2e8db55238019946f817920d824bf0f48c70a3dadfdaccc3a47af",
+          "parameters": {
+            "mode": "read",
+            "path": "/workspace/docs/private.md"
+          }
+        },
+        "boundary_class": "advisory_only",
+        "capability_id": "cap-bindings-001",
+        "content_hash": "4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93",
+        "decision": {
+          "verdict": "allow"
+        },
+        "evidence": [
+          {
+            "details": "recorded without mediated authorization",
+            "guard_name": "ObservationRecorder",
+            "verdict": true
+          }
+        ],
+        "id": "7f36aa40771e0bc1bdea7c9b6c6e72a2f75ea942b9f6db8bf97e995bbec62143",
+        "kernel_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+        "metadata": {
+          "surface": "bindings-vectors",
+          "version": 1
+        },
+        "observation_outcome": "evaluated",
+        "policy_hash": "policy-bindings-v1",
+        "receipt_kind": "advisory_evaluation",
+        "redaction_mode": "none",
+        "signature": "3cd4778ecd13cf46585806a44ebb6c7a073d1399be2b39aeac4e3647d80919bd38ff756a9d43b23d95ae3f011526f1955c666b1ae0e49dde4323104139524701",
+        "timestamp": 1710000200,
+        "tool_name": "file_read",
+        "tool_origin": "caller_executed",
+        "tool_server": "srv-files",
+        "trust_level": "advisory"
+      },
+      "receipt_body_canonical_json": "{\"action\":{\"parameter_hash\":\"488c1c976ea2e8db55238019946f817920d824bf0f48c70a3dadfdaccc3a47af\",\"parameters\":{\"mode\":\"read\",\"path\":\"/workspace/docs/private.md\"}},\"boundary_class\":\"advisory_only\",\"capability_id\":\"cap-bindings-001\",\"content_hash\":\"4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93\",\"decision\":{\"verdict\":\"allow\"},\"evidence\":[{\"details\":\"recorded without mediated authorization\",\"guard_name\":\"ObservationRecorder\",\"verdict\":true}],\"id\":\"7f36aa40771e0bc1bdea7c9b6c6e72a2f75ea942b9f6db8bf97e995bbec62143\",\"kernel_key\":\"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c\",\"metadata\":{\"surface\":\"bindings-vectors\",\"version\":1},\"observation_outcome\":\"evaluated\",\"policy_hash\":\"policy-bindings-v1\",\"receipt_kind\":\"advisory_evaluation\",\"redaction_mode\":\"none\",\"timestamp\":1710000200,\"tool_name\":\"file_read\",\"tool_origin\":\"caller_executed\",\"tool_server\":\"srv-files\",\"trust_level\":\"advisory\"}"
+    },
+    {
+      "description": "A trace observation without an observation outcome has a valid id but is not signable.",
+      "expected": {
+        "authorized": false,
+        "boundary_class": "detect_only",
+        "decision": "none",
+        "ok": false,
+        "parameter_hash_valid": true,
+        "receipt_id_valid": true,
+        "receipt_kind": "trace_observation",
+        "result": "Observed",
+        "signature_valid": false,
+        "signer_key_hex": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+        "signer_trusted": false,
+        "trust_level": "verified"
+      },
+      "id": "trace_observation_missing_observation_outcome",
+      "receipt": {
+        "action": {
+          "parameter_hash": "035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929",
+          "parameters": {
+            "mode": "read",
+            "path": "/workspace/docs/roadmap.md"
+          }
+        },
+        "boundary_class": "detect_only",
+        "capability_id": "cap-bindings-001",
+        "content_hash": "4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93",
+        "evidence": [
+          {
+            "details": "recorded without mediated authorization",
+            "guard_name": "ObservationRecorder",
+            "verdict": true
+          }
+        ],
+        "id": "83a60012bec7c84448c6217aa6e3f2d0d53b8cea70c3dfa0cfd66b1c3f158cd5",
+        "kernel_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+        "metadata": {
+          "surface": "bindings-vectors",
+          "version": 1
+        },
+        "policy_hash": "policy-bindings-v1",
+        "receipt_kind": "trace_observation",
+        "redaction_mode": "none",
+        "signature": "7dec65e58c2bfcedef87eab5727b4414eef13c4e2d478904b539ff0f5b06b40af27b9c5a49fb0ba4edca266afbaa90bed7d65a3beb369927240a7f2932235001",
+        "timestamp": 1710000200,
+        "tool_name": "file_read",
+        "tool_origin": "caller_executed",
+        "tool_server": "srv-files",
+        "trust_level": "verified"
+      },
+      "receipt_body_canonical_json": "{\"action\":{\"parameter_hash\":\"035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929\",\"parameters\":{\"mode\":\"read\",\"path\":\"/workspace/docs/roadmap.md\"}},\"boundary_class\":\"detect_only\",\"capability_id\":\"cap-bindings-001\",\"content_hash\":\"4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93\",\"evidence\":[{\"details\":\"recorded without mediated authorization\",\"guard_name\":\"ObservationRecorder\",\"verdict\":true}],\"id\":\"83a60012bec7c84448c6217aa6e3f2d0d53b8cea70c3dfa0cfd66b1c3f158cd5\",\"kernel_key\":\"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c\",\"metadata\":{\"surface\":\"bindings-vectors\",\"version\":1},\"policy_hash\":\"policy-bindings-v1\",\"receipt_kind\":\"trace_observation\",\"redaction_mode\":\"none\",\"timestamp\":1710000200,\"tool_name\":\"file_read\",\"tool_origin\":\"caller_executed\",\"tool_server\":\"srv-files\",\"trust_level\":\"verified\"}"
+    },
+    {
+      "description": "An advisory evaluation without an observation outcome has a valid id but is not signable.",
+      "expected": {
+        "authorized": false,
+        "boundary_class": "advisory_only",
+        "decision": "none",
+        "ok": false,
+        "parameter_hash_valid": true,
+        "receipt_id_valid": true,
+        "receipt_kind": "advisory_evaluation",
+        "result": "Advisory",
+        "signature_valid": false,
+        "signer_key_hex": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+        "signer_trusted": false,
+        "trust_level": "advisory"
+      },
+      "id": "advisory_evaluation_missing_observation_outcome",
+      "receipt": {
+        "action": {
+          "parameter_hash": "488c1c976ea2e8db55238019946f817920d824bf0f48c70a3dadfdaccc3a47af",
+          "parameters": {
+            "mode": "read",
+            "path": "/workspace/docs/private.md"
+          }
+        },
+        "boundary_class": "advisory_only",
+        "capability_id": "cap-bindings-001",
+        "content_hash": "4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93",
+        "evidence": [
+          {
+            "details": "recorded without mediated authorization",
+            "guard_name": "ObservationRecorder",
+            "verdict": true
+          }
+        ],
+        "id": "49a1a1fc638f13963a551626406fcd04ac0eb5dab4871ccb183b1321a8e5670a",
+        "kernel_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+        "metadata": {
+          "surface": "bindings-vectors",
+          "version": 1
+        },
+        "policy_hash": "policy-bindings-v1",
+        "receipt_kind": "advisory_evaluation",
+        "redaction_mode": "none",
+        "signature": "9f40c65196813fa1daad7141dab1238e15cd31f317175e684e3774d5259e6a270c689b3860cb69d7e60e3b488fc4ec2ba2404423826756f6572153627c614e0e",
+        "timestamp": 1710000200,
+        "tool_name": "file_read",
+        "tool_origin": "caller_executed",
+        "tool_server": "srv-files",
+        "trust_level": "advisory"
+      },
+      "receipt_body_canonical_json": "{\"action\":{\"parameter_hash\":\"488c1c976ea2e8db55238019946f817920d824bf0f48c70a3dadfdaccc3a47af\",\"parameters\":{\"mode\":\"read\",\"path\":\"/workspace/docs/private.md\"}},\"boundary_class\":\"advisory_only\",\"capability_id\":\"cap-bindings-001\",\"content_hash\":\"4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93\",\"evidence\":[{\"details\":\"recorded without mediated authorization\",\"guard_name\":\"ObservationRecorder\",\"verdict\":true}],\"id\":\"49a1a1fc638f13963a551626406fcd04ac0eb5dab4871ccb183b1321a8e5670a\",\"kernel_key\":\"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c\",\"metadata\":{\"surface\":\"bindings-vectors\",\"version\":1},\"policy_hash\":\"policy-bindings-v1\",\"receipt_kind\":\"advisory_evaluation\",\"redaction_mode\":\"none\",\"timestamp\":1710000200,\"tool_name\":\"file_read\",\"tool_origin\":\"caller_executed\",\"tool_server\":\"srv-files\",\"trust_level\":\"advisory\"}"
+    },
+    {
+      "description": "A mediated decision carrying an observation outcome has a valid id but is not signable.",
+      "expected": {
+        "authorized": false,
+        "boundary_class": "prevent",
+        "decision": "allow",
+        "ok": false,
+        "parameter_hash_valid": true,
+        "receipt_id_valid": true,
+        "receipt_kind": "mediated_decision",
+        "result": "Authorized",
+        "signature_valid": false,
+        "signer_key_hex": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+        "signer_trusted": false,
+        "trust_level": "mediated"
+      },
+      "id": "mediated_decision_with_observation_outcome",
+      "receipt": {
+        "action": {
+          "parameter_hash": "035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929",
+          "parameters": {
+            "mode": "read",
+            "path": "/workspace/docs/roadmap.md"
+          }
+        },
+        "boundary_class": "prevent",
         "capability_id": "cap-bindings-001",
         "content_hash": "4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93",
         "decision": {
@@ -835,30 +675,42 @@
             "verdict": true
           }
         ],
-        "id": "rcpt-bindings-tenant-acme",
+        "id": "64f593c5f0fd835d87f40c4c4daaae81df0f3bdb025aa0992ba5159dda4aff07",
         "kernel_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
         "metadata": {
           "surface": "bindings-vectors",
           "version": 1
         },
+        "observation_outcome": "observed",
         "policy_hash": "policy-bindings-v1",
-        "signature": "4acc36de68844e1e99b54b0238682cfec7cbf8fc7aa103d453dc3a742b1e27fa0eaf18fdd5a454be57588da4216a794af0e640a0bfa2292b10dcf7f767282d09",
-        "tenant_id": "tenant-acme",
+        "receipt_kind": "mediated_decision",
+        "redaction_mode": "none",
+        "signature": "f3f19dcf073bc34b8576d51b3fdaa7909b2c80447a05fb15f0be4a963f6c54cf85b8be08d1933539005d023ed99aae1a958be4d9bde955cab2a53aac8a9fb409",
         "timestamp": 1710000200,
         "tool_name": "file_read",
-        "tool_server": "srv-files"
+        "tool_origin": "caller_executed",
+        "tool_server": "srv-files",
+        "trust_level": "mediated"
       },
-      "receipt_body_canonical_json": "{\"action\":{\"parameter_hash\":\"035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929\",\"parameters\":{\"mode\":\"read\",\"path\":\"/workspace/docs/roadmap.md\"}},\"capability_id\":\"cap-bindings-001\",\"content_hash\":\"4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93\",\"decision\":{\"verdict\":\"allow\"},\"evidence\":[{\"details\":\"path allowed\",\"guard_name\":\"ForbiddenPathGuard\",\"verdict\":true},{\"details\":\"no secrets detected\",\"guard_name\":\"SecretLeakGuard\",\"verdict\":true}],\"id\":\"rcpt-bindings-tenant-acme\",\"kernel_key\":\"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c\",\"metadata\":{\"surface\":\"bindings-vectors\",\"version\":1},\"policy_hash\":\"policy-bindings-v1\",\"tenant_id\":\"tenant-acme\",\"timestamp\":1710000200,\"tool_name\":\"file_read\",\"tool_server\":\"srv-files\"}",
-      "verify_only": true
+      "receipt_body_canonical_json": "{\"action\":{\"parameter_hash\":\"035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929\",\"parameters\":{\"mode\":\"read\",\"path\":\"/workspace/docs/roadmap.md\"}},\"boundary_class\":\"prevent\",\"capability_id\":\"cap-bindings-001\",\"content_hash\":\"4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93\",\"decision\":{\"verdict\":\"allow\"},\"evidence\":[{\"details\":\"path allowed\",\"guard_name\":\"ForbiddenPathGuard\",\"verdict\":true},{\"details\":\"no secrets detected\",\"guard_name\":\"SecretLeakGuard\",\"verdict\":true}],\"id\":\"64f593c5f0fd835d87f40c4c4daaae81df0f3bdb025aa0992ba5159dda4aff07\",\"kernel_key\":\"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c\",\"metadata\":{\"surface\":\"bindings-vectors\",\"version\":1},\"observation_outcome\":\"observed\",\"policy_hash\":\"policy-bindings-v1\",\"receipt_kind\":\"mediated_decision\",\"redaction_mode\":\"none\",\"timestamp\":1710000200,\"tool_name\":\"file_read\",\"tool_origin\":\"caller_executed\",\"tool_server\":\"srv-files\",\"trust_level\":\"mediated\"}"
     },
     {
-      "description": "Allow receipt signed by the rotated kernel key (different signing seed; embedded kernel_key matches signer).",
+      "description": "A trace observation using mediated trust has a valid id but is not signable.",
       "expected": {
-        "decision": "allow",
+        "authorized": false,
+        "boundary_class": "detect_only",
+        "decision": "none",
+        "ok": false,
         "parameter_hash_valid": true,
-        "signature_valid": true
+        "receipt_id_valid": true,
+        "receipt_kind": "trace_observation",
+        "result": "Observed",
+        "signature_valid": false,
+        "signer_key_hex": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+        "signer_trusted": false,
+        "trust_level": "mediated"
       },
-      "id": "receipt_with_rotated_kernel_key",
+      "id": "trace_observation_wrong_trust_level",
       "receipt": {
         "action": {
           "parameter_hash": "035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929",
@@ -867,46 +719,52 @@
             "path": "/workspace/docs/roadmap.md"
           }
         },
+        "boundary_class": "detect_only",
         "capability_id": "cap-bindings-001",
         "content_hash": "4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93",
-        "decision": {
-          "verdict": "allow"
-        },
         "evidence": [
           {
-            "details": "path allowed",
-            "guard_name": "ForbiddenPathGuard",
-            "verdict": true
-          },
-          {
-            "details": "no secrets detected",
-            "guard_name": "SecretLeakGuard",
+            "details": "recorded without mediated authorization",
+            "guard_name": "ObservationRecorder",
             "verdict": true
           }
         ],
-        "id": "rcpt-bindings-rotated-key",
-        "kernel_key": "1398f62c6d1a457c51ba6a4b5f3dbd2f69fca93216218dc8997e416bd17d93ca",
+        "id": "013c64878f3664c4943f64d6844fe476475ba0df829f7a375c70e8d82ed4f9c8",
+        "kernel_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
         "metadata": {
           "surface": "bindings-vectors",
           "version": 1
         },
+        "observation_outcome": "observed",
         "policy_hash": "policy-bindings-v1",
-        "signature": "142c48e18edce93c3bda9f058d0d0988f7bd8a41c58141d87ccb99dd09ce56be71079a46c99fd447e11790f7216db77556f1d0d25e03643f572e3c4fbd9a300d",
+        "receipt_kind": "trace_observation",
+        "redaction_mode": "none",
+        "signature": "77baac04fc825fb459d328da87080dc9953ac10557f8d6bf8b0b8d441e28d962202370e93c40f792edcd887949b075db1da073f5f08d08c177badf537e672302",
         "timestamp": 1710000200,
         "tool_name": "file_read",
-        "tool_server": "srv-files"
+        "tool_origin": "caller_executed",
+        "tool_server": "srv-files",
+        "trust_level": "mediated"
       },
-      "receipt_body_canonical_json": "{\"action\":{\"parameter_hash\":\"035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929\",\"parameters\":{\"mode\":\"read\",\"path\":\"/workspace/docs/roadmap.md\"}},\"capability_id\":\"cap-bindings-001\",\"content_hash\":\"4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93\",\"decision\":{\"verdict\":\"allow\"},\"evidence\":[{\"details\":\"path allowed\",\"guard_name\":\"ForbiddenPathGuard\",\"verdict\":true},{\"details\":\"no secrets detected\",\"guard_name\":\"SecretLeakGuard\",\"verdict\":true}],\"id\":\"rcpt-bindings-rotated-key\",\"kernel_key\":\"1398f62c6d1a457c51ba6a4b5f3dbd2f69fca93216218dc8997e416bd17d93ca\",\"metadata\":{\"surface\":\"bindings-vectors\",\"version\":1},\"policy_hash\":\"policy-bindings-v1\",\"timestamp\":1710000200,\"tool_name\":\"file_read\",\"tool_server\":\"srv-files\"}",
-      "verify_only": true
+      "receipt_body_canonical_json": "{\"action\":{\"parameter_hash\":\"035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929\",\"parameters\":{\"mode\":\"read\",\"path\":\"/workspace/docs/roadmap.md\"}},\"boundary_class\":\"detect_only\",\"capability_id\":\"cap-bindings-001\",\"content_hash\":\"4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93\",\"evidence\":[{\"details\":\"recorded without mediated authorization\",\"guard_name\":\"ObservationRecorder\",\"verdict\":true}],\"id\":\"013c64878f3664c4943f64d6844fe476475ba0df829f7a375c70e8d82ed4f9c8\",\"kernel_key\":\"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c\",\"metadata\":{\"surface\":\"bindings-vectors\",\"version\":1},\"observation_outcome\":\"observed\",\"policy_hash\":\"policy-bindings-v1\",\"receipt_kind\":\"trace_observation\",\"redaction_mode\":\"none\",\"timestamp\":1710000200,\"tool_name\":\"file_read\",\"tool_origin\":\"caller_executed\",\"tool_server\":\"srv-files\",\"trust_level\":\"mediated\"}"
     },
     {
-      "description": "Receipt was signed by the rotated kernel key but its embedded kernel_key was replaced with the primary key, so signature verification fails.",
+      "description": "The cannot_see planning boundary is not a valid signed runtime receipt boundary.",
       "expected": {
-        "decision": "allow",
+        "authorized": false,
+        "boundary_class": "cannot_see",
+        "decision": "none",
+        "ok": false,
         "parameter_hash_valid": true,
-        "signature_valid": false
+        "receipt_id_valid": true,
+        "receipt_kind": "trace_observation",
+        "result": "Observed",
+        "signature_valid": false,
+        "signer_key_hex": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+        "signer_trusted": false,
+        "trust_level": "verified"
       },
-      "id": "signed_with_old_key_after_rotation",
+      "id": "cannot_see_runtime_receipt",
       "receipt": {
         "action": {
           "parameter_hash": "035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929",
@@ -915,85 +773,34 @@
             "path": "/workspace/docs/roadmap.md"
           }
         },
+        "boundary_class": "cannot_see",
         "capability_id": "cap-bindings-001",
         "content_hash": "4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93",
-        "decision": {
-          "verdict": "allow"
-        },
         "evidence": [
           {
-            "details": "path allowed",
-            "guard_name": "ForbiddenPathGuard",
-            "verdict": true
-          },
-          {
-            "details": "no secrets detected",
-            "guard_name": "SecretLeakGuard",
+            "details": "recorded without mediated authorization",
+            "guard_name": "ObservationRecorder",
             "verdict": true
           }
         ],
-        "id": "rcpt-bindings-rotation-mismatch",
+        "id": "287f56a03420932e3f61b28b3f2f3d4db0c21c25c5c718ca884ff71c52d749f4",
         "kernel_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
         "metadata": {
           "surface": "bindings-vectors",
           "version": 1
         },
+        "observation_outcome": "observed",
         "policy_hash": "policy-bindings-v1",
-        "signature": "0703a98d7a9f273405fd26edd8412abe0ae066f24f31daea5cddf61c41e235f5cccdbd96db1a4a2ab931a45f02379b369c752c297f6103ee6b93992c2bd9b30d",
+        "receipt_kind": "trace_observation",
+        "redaction_mode": "none",
+        "signature": "6c3ddfeeeb8d5e07ebb81297c7216df91ae7f70f6571b27dda297f913ae3c0ec146ea61a47840ebafb3dc9d8a8304ab7bbcdac2cd186d43c11a0bb7063cc4f0a",
         "timestamp": 1710000200,
         "tool_name": "file_read",
-        "tool_server": "srv-files"
+        "tool_origin": "caller_executed",
+        "tool_server": "srv-files",
+        "trust_level": "verified"
       },
-      "receipt_body_canonical_json": "{\"action\":{\"parameter_hash\":\"035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929\",\"parameters\":{\"mode\":\"read\",\"path\":\"/workspace/docs/roadmap.md\"}},\"capability_id\":\"cap-bindings-001\",\"content_hash\":\"4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93\",\"decision\":{\"verdict\":\"allow\"},\"evidence\":[{\"details\":\"path allowed\",\"guard_name\":\"ForbiddenPathGuard\",\"verdict\":true},{\"details\":\"no secrets detected\",\"guard_name\":\"SecretLeakGuard\",\"verdict\":true}],\"id\":\"rcpt-bindings-rotation-mismatch\",\"kernel_key\":\"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c\",\"metadata\":{\"surface\":\"bindings-vectors\",\"version\":1},\"policy_hash\":\"policy-bindings-v1\",\"timestamp\":1710000200,\"tool_name\":\"file_read\",\"tool_server\":\"srv-files\"}"
-    },
-    {
-      "description": "Deny receipt with a longer human-readable reason string (signature-block boundary stress).",
-      "expected": {
-        "decision": "deny",
-        "parameter_hash_valid": true,
-        "signature_valid": true
-      },
-      "id": "deny_receipt_with_long_reason",
-      "receipt": {
-        "action": {
-          "parameter_hash": "d6f55d803ff027795f4a4c43fd8f6d3119051f82b7e3e1a13b1713fd37ea7b09",
-          "parameters": {
-            "mode": "read",
-            "path": "/etc/shadow"
-          }
-        },
-        "capability_id": "cap-bindings-001",
-        "content_hash": "4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93",
-        "decision": {
-          "guard": "ForbiddenPathGuard",
-          "reason": "blocked by ForbiddenPathGuard: target path is on the deny-list and matches the protected-system-files prefix; no override capability was presented within the request envelope",
-          "verdict": "deny"
-        },
-        "evidence": [
-          {
-            "details": "path allowed",
-            "guard_name": "ForbiddenPathGuard",
-            "verdict": true
-          },
-          {
-            "details": "no secrets detected",
-            "guard_name": "SecretLeakGuard",
-            "verdict": true
-          }
-        ],
-        "id": "rcpt-bindings-deny-long-reason",
-        "kernel_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
-        "metadata": {
-          "surface": "bindings-vectors",
-          "version": 1
-        },
-        "policy_hash": "policy-bindings-v1",
-        "signature": "c307aa128de240727ea2c96dfbfd387d676de74935530545b6aadf45b8e9bf8a0992e435bf10d802dd96aa3e71ee42982a1cb2e6e050c9b8ed946f201edf8c0d",
-        "timestamp": 1710000200,
-        "tool_name": "file_read",
-        "tool_server": "srv-files"
-      },
-      "receipt_body_canonical_json": "{\"action\":{\"parameter_hash\":\"d6f55d803ff027795f4a4c43fd8f6d3119051f82b7e3e1a13b1713fd37ea7b09\",\"parameters\":{\"mode\":\"read\",\"path\":\"/etc/shadow\"}},\"capability_id\":\"cap-bindings-001\",\"content_hash\":\"4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93\",\"decision\":{\"guard\":\"ForbiddenPathGuard\",\"reason\":\"blocked by ForbiddenPathGuard: target path is on the deny-list and matches the protected-system-files prefix; no override capability was presented within the request envelope\",\"verdict\":\"deny\"},\"evidence\":[{\"details\":\"path allowed\",\"guard_name\":\"ForbiddenPathGuard\",\"verdict\":true},{\"details\":\"no secrets detected\",\"guard_name\":\"SecretLeakGuard\",\"verdict\":true}],\"id\":\"rcpt-bindings-deny-long-reason\",\"kernel_key\":\"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c\",\"metadata\":{\"surface\":\"bindings-vectors\",\"version\":1},\"policy_hash\":\"policy-bindings-v1\",\"timestamp\":1710000200,\"tool_name\":\"file_read\",\"tool_server\":\"srv-files\"}"
+      "receipt_body_canonical_json": "{\"action\":{\"parameter_hash\":\"035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929\",\"parameters\":{\"mode\":\"read\",\"path\":\"/workspace/docs/roadmap.md\"}},\"boundary_class\":\"cannot_see\",\"capability_id\":\"cap-bindings-001\",\"content_hash\":\"4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93\",\"evidence\":[{\"details\":\"recorded without mediated authorization\",\"guard_name\":\"ObservationRecorder\",\"verdict\":true}],\"id\":\"287f56a03420932e3f61b28b3f2f3d4db0c21c25c5c718ca884ff71c52d749f4\",\"kernel_key\":\"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c\",\"metadata\":{\"surface\":\"bindings-vectors\",\"version\":1},\"observation_outcome\":\"observed\",\"policy_hash\":\"policy-bindings-v1\",\"receipt_kind\":\"trace_observation\",\"redaction_mode\":\"none\",\"timestamp\":1710000200,\"tool_name\":\"file_read\",\"tool_origin\":\"caller_executed\",\"tool_server\":\"srv-files\",\"trust_level\":\"verified\"}"
     }
   ],
   "generated_by": "chio-binding-helpers",

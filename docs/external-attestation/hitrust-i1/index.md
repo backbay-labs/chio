@@ -11,10 +11,10 @@
 
 ## Scope
 
-The readiness package covers Chio v3.18 plus the M01 healthcare
-design-partner deployment. It does not cover M07 mobile surfaces, M10
-AWS Bedrock or MCP marketplace surfaces, other Chio tenants, unrelated
-Backbay systems, or Chio versions before or after v3.18.
+The readiness package covers the current pre-release v1 Chio posture plus the
+M01 healthcare design-partner deployment. It does not cover M07 mobile
+surfaces, M10 AWS Bedrock or MCP marketplace surfaces, other Chio tenants,
+unrelated Backbay systems, or future released Chio versions.
 
 ## Evidence Record
 

@@ -638,7 +638,7 @@ describe('dashboard api helpers', () => {
         parameters: {},
         parameter_hash: 'hash',
       },
-      decision: 'allow',
+      decision: { verdict: 'allow' },
       metadata: {
         attribution: {
           subject_key: 'agent-subject',

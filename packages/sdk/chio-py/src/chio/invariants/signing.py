@@ -96,3 +96,48 @@ def verify_json_string_signature_ed25519(
         public_key_hex,
         signature_hex,
     )
+
+
+def verify_chio_signature(
+    signed_bytes: bytes | str,
+    signature: str,
+    public_key: str,
+) -> bool:
+    """Verify a Chio v1 wire signature, dispatching on its algorithm prefix.
+
+    The v1 receipt signature pattern accepts bare 128-hex (Ed25519), ``p256:``
+    prefixed ECDSA P-256/sha256, and ``p384:`` prefixed ECDSA P-384/sha384
+    encodings. This SDK build currently supports Ed25519 inline via
+    ``pure25519``. ECDSA and hybrid post-quantum prefixes raise
+    ``ChioInvariantError`` until a FIPS-capable backend is wired in.
+    """
+
+    if isinstance(signed_bytes, (bytes, bytearray)):
+        message_text = bytes(signed_bytes).decode("utf-8")
+    else:
+        message_text = signed_bytes
+
+    if signature.startswith("p256:"):
+        # TODO(chio-sdk-py-fips): wire ECDSA P-256/sha256 through
+        # cryptography.hazmat.primitives.asymmetric.ec once the package
+        # depends on `cryptography`. Verification is rejected fail-closed
+        # for now so unsupported receipts cannot be silently accepted.
+        raise ChioInvariantError(
+            "invalid_signature",
+            "ECDSA P-256 signatures are not yet supported by this SDK build",
+        )
+    if signature.startswith("p384:"):
+        # TODO(chio-sdk-py-fips): wire ECDSA P-384/sha384 through
+        # cryptography.hazmat.primitives.asymmetric.ec once the package
+        # depends on `cryptography`.
+        raise ChioInvariantError(
+            "invalid_signature",
+            "ECDSA P-384 signatures are not yet supported by this SDK build",
+        )
+    if signature.startswith("hybrid:"):
+        raise ChioInvariantError(
+            "invalid_signature",
+            "hybrid post-quantum signatures are not supported by this SDK build",
+        )
+
+    return verify_utf8_message_ed25519(message_text, public_key, signature)

@@ -1,8 +1,7 @@
 use super::support::{
-    checkpoint_error_to_receipt_store, ensure_checkpoint_transparency_guards,
-    ensure_transparency_projection_guards, load_claim_tree_canonical_bytes_range,
-    load_persisted_checkpoint_row, parse_persisted_checkpoint_row,
-    verify_checkpoint_chain_integrity,
+    ensure_checkpoint_transparency_guards, ensure_transparency_projection_guards,
+    load_claim_tree_canonical_bytes_range, load_persisted_checkpoint_row,
+    parse_persisted_checkpoint_row, store_kernel_checkpoint_atomic,
 };
 use super::*;
 
@@ -17,88 +16,8 @@ impl SqliteReceiptStore {
 
     /// Store a signed KernelCheckpoint in the kernel_checkpoints table.
     pub fn store_checkpoint(&self, checkpoint: &KernelCheckpoint) -> Result<(), ReceiptStoreError> {
-        let connection = self.connection()?;
-        ensure_checkpoint_transparency_guards(&connection)?;
-
-        chio_kernel::checkpoint::validate_checkpoint(checkpoint)
-            .map_err(checkpoint_error_to_receipt_store)?;
-        if let Some(existing) =
-            load_persisted_checkpoint_row(&connection, checkpoint.body.checkpoint_seq)?
-        {
-            let existing = parse_persisted_checkpoint_row(existing)?;
-            if existing == *checkpoint {
-                return Ok(());
-            }
-            return Err(ReceiptStoreError::Conflict(format!(
-                "checkpoint {} already exists with different content",
-                checkpoint.body.checkpoint_seq
-            )));
-        }
-
-        match verify_checkpoint_chain_integrity(&connection)? {
-            Some(predecessor) => {
-                if checkpoint.body.checkpoint_seq <= predecessor.body.checkpoint_seq {
-                    return Err(ReceiptStoreError::Conflict(format!(
-                        "checkpoint {} must be appended after existing checkpoint {}",
-                        checkpoint.body.checkpoint_seq, predecessor.body.checkpoint_seq
-                    )));
-                }
-                chio_kernel::checkpoint::validate_checkpoint_predecessor(&predecessor, checkpoint)
-                    .map_err(|error| {
-                        ReceiptStoreError::Conflict(format!(
-                            "checkpoint predecessor continuity violation: {error}"
-                        ))
-                    })?;
-            }
-            None if checkpoint.body.checkpoint_seq != 1 => {
-                return Err(ReceiptStoreError::Conflict(format!(
-                    "checkpoint {} cannot initialize an empty checkpoint log",
-                    checkpoint.body.checkpoint_seq
-                )));
-            }
-            None => {}
-        }
-
-        let statement_json = serde_json::to_string(&checkpoint.body)?;
-        connection
-            .execute(
-                r#"
-            INSERT INTO kernel_checkpoints (
-                checkpoint_seq, batch_start_seq, batch_end_seq, tree_size,
-                merkle_root, issued_at, statement_json, signature, kernel_key
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
-            "#,
-                params![
-                    sqlite_i64(checkpoint.body.checkpoint_seq, "checkpoint_seq")?,
-                    sqlite_i64(checkpoint.body.batch_start_seq, "batch_start_seq")?,
-                    sqlite_i64(checkpoint.body.batch_end_seq, "batch_end_seq")?,
-                    sqlite_i64(checkpoint.body.tree_size as u64, "tree_size")?,
-                    checkpoint.body.merkle_root.to_hex(),
-                    sqlite_i64(checkpoint.body.issued_at, "issued_at")?,
-                    statement_json,
-                    checkpoint.signature.to_hex(),
-                    checkpoint.body.kernel_key.to_hex(),
-                ],
-            )
-            .map_err(|error| {
-                ReceiptStoreError::Conflict(format!("checkpoint append conflict: {error}"))
-            })?;
-
-        let stored = load_persisted_checkpoint_row(&connection, checkpoint.body.checkpoint_seq)?
-            .ok_or_else(|| {
-                ReceiptStoreError::Conflict(format!(
-                    "checkpoint {} was not visible after persistence",
-                    checkpoint.body.checkpoint_seq
-                ))
-            })?;
-        let stored = parse_persisted_checkpoint_row(stored)?;
-        if stored != *checkpoint {
-            return Err(ReceiptStoreError::Conflict(format!(
-                "checkpoint {} persisted with conflicting contents",
-                checkpoint.body.checkpoint_seq
-            )));
-        }
-        Ok(())
+        let mut connection = self.connection()?;
+        store_kernel_checkpoint_atomic(&mut connection, checkpoint)
     }
 
     /// Load a KernelCheckpoint by its checkpoint_seq.
@@ -583,27 +502,19 @@ impl SqliteReceiptStore {
 
         let limit = query.limit.clamp(1, MAX_QUERY_LIMIT);
 
-        // Phase 1.5 multi-tenant receipt isolation: compute the tenant
-        // WHERE fragment. Three modes:
-        //
-        //   * `tenant_filter = None`           -> "1=1" (admin/compat).
-        //   * `tenant_filter = Some(id)` w/ strict_tenant_isolation=true
-        //     -> `tenant_id = ?X` (legacy rows hidden).
-        //   * `tenant_filter = Some(id)` w/ strict_tenant_isolation=false
-        //     -> `tenant_id = ?X OR tenant_id IS NULL` so legacy
-        //     pre-1.5 receipts stay visible during explicit
-        //     compatibility mode.
-        //
-        // Bound parameter ?12 carries the tenant string when present.
-        // When `tenant_filter = None`, `?12 IS NULL` makes the fragment
-        // a tautology and no rows are removed.
+        // Receipt read isolation: admin contexts can read all rows, tenant
+        // contexts see exact tenant rows by default, and local compatibility
+        // mode may include legacy NULL-tenant rows.
+        let read_scope = query
+            .effective_read_scope()
+            .map_err(ReceiptStoreError::ReadBoundary)?;
         let tenant_fragment = match (
-            query.tenant_filter.as_deref(),
-            self.strict_tenant_isolation_enabled(),
+            read_scope.tenant.as_deref(),
+            read_scope.include_legacy_null_tenant && !self.strict_tenant_isolation_enabled(),
         ) {
             (None, _) => "(?12 IS NULL)",
-            (Some(_), true) => "(r.tenant_id = ?12)",
-            (Some(_), false) => "(r.tenant_id = ?12 OR r.tenant_id IS NULL)",
+            (Some(_), true) => "(r.tenant_id = ?12 OR r.tenant_id IS NULL)",
+            (Some(_), false) => "(r.tenant_id = ?12)",
         };
 
         // Both queries share the same filter parameters.
@@ -674,7 +585,7 @@ impl SqliteReceiptStore {
         let min_cost = query.min_cost.map(|v| v as i64);
         let max_cost = query.max_cost.map(|v| v as i64);
         let agent_sub = query.agent_subject.as_deref();
-        let tenant = query.tenant_filter.as_deref();
+        let tenant = read_scope.tenant.as_deref();
         // Convert cursor to signed i64 for SQLite. SQLite AUTOINCREMENT seq
         // values are bounded by i64::MAX; a cursor above that can never be
         // exceeded. Convert with a checked cast: on overflow return an empty

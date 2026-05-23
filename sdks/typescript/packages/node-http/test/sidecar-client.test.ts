@@ -1,9 +1,14 @@
 import http from "node:http";
 import { describe, it, expect } from "vitest";
 import { ChioSidecarClient, resolveSidecarUrl, SidecarError } from "../src/sidecar-client.js";
-import type { HttpReceipt } from "../src/types.js";
+import type {
+  ChioHttpRequest,
+  EvaluateResponse,
+  HttpReceipt,
+  VerifyReceiptResponse,
+} from "../src/types.js";
 
-function testReceipt(): HttpReceipt {
+function legacyBareReceipt(): HttpReceipt {
   return {
     id: "rcpt-1",
     request_id: "req-1",
@@ -18,6 +23,51 @@ function testReceipt(): HttpReceipt {
     policy_hash: "c".repeat(64),
     kernel_key: "d".repeat(64),
     signature: "e".repeat(128),
+  } as unknown as HttpReceipt;
+}
+
+function authoritativeAllowReceipt(): HttpReceipt {
+  return {
+    ...legacyBareReceipt(),
+    receipt_kind: "mediated_decision",
+    boundary_class: "prevent",
+    tool_origin: "caller_executed",
+    redaction_mode: "none",
+    trust_level: "mediated",
+  };
+}
+
+function verifyResponse(authorized: boolean): VerifyReceiptResponse {
+  return {
+    signature_valid: authorized,
+    signer_trusted: authorized,
+    receipt_id_valid: authorized,
+    parameter_hash_valid: authorized,
+    receipt_kind: "mediated_decision",
+    boundary_class: "prevent",
+    trust_level: "mediated",
+    result: authorized ? "allow" : "deny",
+    authorized,
+    signer_key_hex: "d".repeat(64),
+    ok: authorized,
+  };
+}
+
+function testRequest(): ChioHttpRequest {
+  return {
+    request_id: "req-1",
+    method: "GET",
+    route_pattern: "/pets",
+    path: "/pets",
+    query: {},
+    headers: {},
+    caller: {
+      subject: "user-1",
+      auth_method: { method: "anonymous" },
+      verified: false,
+    },
+    body_length: 0,
+    timestamp: 1_700_000_000,
   };
 }
 
@@ -56,6 +106,41 @@ async function closeServer(server: http.Server): Promise<void> {
       resolve();
     });
   });
+}
+
+async function startEvaluateSidecar(
+  result: EvaluateResponse,
+  verifyValid: boolean,
+  onVerify?: () => void,
+): Promise<{ server: http.Server; url: string }> {
+  const server = http.createServer((req, res) => {
+    if (req.method === "POST" && req.url === "/chio/evaluate") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(result));
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/chio/verify") {
+      onVerify?.();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(verifyResponse(verifyValid)));
+      return;
+    }
+
+    res.writeHead(404);
+    res.end();
+  });
+
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  if (address == null || typeof address === "string") {
+    throw new Error("server not listening");
+  }
+
+  return {
+    server,
+    url: `http://127.0.0.1:${address.port}`,
+  };
 }
 
 async function expectSidecarError(
@@ -122,16 +207,101 @@ describe("SidecarError", () => {
   });
 });
 
-describe("ChioSidecarClient.verifyReceipt", () => {
-  it("returns false without error when the verifier returns valid false", async () => {
-    const { server, url } = await startVerifySidecar((res) => {
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ valid: false }));
+describe("ChioSidecarClient.evaluate", () => {
+  it("returns allow only after receipt authority verification", async () => {
+    let verifyCalls = 0;
+    const result: EvaluateResponse = {
+      verdict: { verdict: "allow" },
+      receipt: authoritativeAllowReceipt(),
+      evidence: [],
+    };
+    const { server, url } = await startEvaluateSidecar(result, true, () => {
+      verifyCalls += 1;
     });
 
     try {
       const client = new ChioSidecarClient({ sidecarUrl: url });
-      await expect(client.verifyReceipt(testReceipt())).resolves.toBe(false);
+      await expect(client.evaluate(testRequest())).resolves.toEqual(result);
+      expect(verifyCalls).toBe(1);
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  it("rejects allow-shaped responses without structural receipt authority", async () => {
+    const result: EvaluateResponse = {
+      verdict: { verdict: "allow" },
+      receipt: legacyBareReceipt(),
+      evidence: [],
+    };
+    const { server, url } = await startEvaluateSidecar(result, true);
+
+    try {
+      const client = new ChioSidecarClient({ sidecarUrl: url });
+      await expectSidecarError(
+        client.evaluate(testRequest()),
+        "chio_invalid_receipt",
+      );
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  it("rejects unverified authoritative allow receipts", async () => {
+    const result: EvaluateResponse = {
+      verdict: { verdict: "allow" },
+      receipt: authoritativeAllowReceipt(),
+      evidence: [],
+    };
+    const { server, url } = await startEvaluateSidecar(result, false);
+
+    try {
+      const client = new ChioSidecarClient({ sidecarUrl: url });
+      await expectSidecarError(
+        client.evaluate(testRequest()),
+        "chio_invalid_receipt",
+      );
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  it("does not verify non-allow responses", async () => {
+    let verifyCalls = 0;
+    const result: EvaluateResponse = {
+      verdict: { verdict: "deny", reason: "blocked", guard: "policy", http_status: 403 },
+      receipt: {
+        ...legacyBareReceipt(),
+        verdict: { verdict: "deny", reason: "blocked", guard: "policy", http_status: 403 },
+      },
+      evidence: [],
+    };
+    const { server, url } = await startEvaluateSidecar(result, true, () => {
+      verifyCalls += 1;
+    });
+
+    try {
+      const client = new ChioSidecarClient({ sidecarUrl: url });
+      await expect(client.evaluate(testRequest())).resolves.toEqual(result);
+      expect(verifyCalls).toBe(0);
+    } finally {
+      await closeServer(server);
+    }
+  });
+});
+
+describe("ChioSidecarClient.verifyReceipt", () => {
+  it("returns structured non-authorizing verifier reports", async () => {
+    const { server, url } = await startVerifySidecar((res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(verifyResponse(false)));
+    });
+
+    try {
+      const client = new ChioSidecarClient({ sidecarUrl: url });
+      await expect(client.verifyReceipt(legacyBareReceipt())).resolves.toEqual(
+        verifyResponse(false),
+      );
     } finally {
       await closeServer(server);
     }
@@ -149,7 +319,7 @@ describe("ChioSidecarClient.verifyReceipt", () => {
       try {
         const client = new ChioSidecarClient({ sidecarUrl: url });
         await expectSidecarError(
-          client.verifyReceipt(testReceipt()),
+          client.verifyReceipt(legacyBareReceipt()),
           "chio_invalid_receipt",
           422,
         );
@@ -171,7 +341,7 @@ describe("ChioSidecarClient.verifyReceipt", () => {
       try {
         const client = new ChioSidecarClient({ sidecarUrl: url });
         await expectSidecarError(
-          client.verifyReceipt(testReceipt()),
+          client.verifyReceipt(legacyBareReceipt()),
           "chio_evaluation_failed",
           statusCode,
         );
@@ -193,7 +363,7 @@ describe("ChioSidecarClient.verifyReceipt", () => {
       try {
         const client = new ChioSidecarClient({ sidecarUrl: url });
         await expectSidecarError(
-          client.verifyReceipt(testReceipt()),
+          client.verifyReceipt(legacyBareReceipt()),
           "chio_sidecar_unavailable",
           statusCode,
         );
@@ -212,7 +382,7 @@ describe("ChioSidecarClient.verifyReceipt", () => {
     try {
       const client = new ChioSidecarClient({ sidecarUrl: url });
       await expectSidecarError(
-        client.verifyReceipt(testReceipt()),
+        client.verifyReceipt(legacyBareReceipt()),
         "chio_sidecar_unavailable",
         503,
       );
@@ -224,13 +394,13 @@ describe("ChioSidecarClient.verifyReceipt", () => {
   it("throws sidecar-unreachable SidecarError for network failure", async () => {
     const { server, url } = await startVerifySidecar((res) => {
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ valid: true }));
+      res.end(JSON.stringify(verifyResponse(true)));
     });
     await closeServer(server);
 
     const client = new ChioSidecarClient({ sidecarUrl: url, timeoutMs: 250 });
     await expectSidecarError(
-      client.verifyReceipt(testReceipt()),
+      client.verifyReceipt(legacyBareReceipt()),
       "chio_sidecar_unreachable",
     );
   });
@@ -244,7 +414,7 @@ describe("ChioSidecarClient.verifyReceipt", () => {
     try {
       const client = new ChioSidecarClient({ sidecarUrl: url });
       await expectSidecarError(
-        client.verifyReceipt(testReceipt()),
+        client.verifyReceipt(legacyBareReceipt()),
         "chio_evaluation_failed",
       );
     } finally {
@@ -261,7 +431,7 @@ describe("ChioSidecarClient.verifyReceipt", () => {
     try {
       const client = new ChioSidecarClient({ sidecarUrl: url });
       await expectSidecarError(
-        client.verifyReceipt(testReceipt()),
+        client.verifyReceipt(legacyBareReceipt()),
         "chio_evaluation_failed",
       );
     } finally {
@@ -278,7 +448,7 @@ describe("ChioSidecarClient.verifyReceipt", () => {
     try {
       const client = new ChioSidecarClient({ sidecarUrl: url, timeoutMs: 25 });
       await expectSidecarError(
-        client.verifyReceipt(testReceipt()),
+        client.verifyReceipt(legacyBareReceipt()),
         "chio_timeout",
       );
     } finally {
@@ -302,7 +472,7 @@ describe("ChioSidecarClient.verifyReceipt", () => {
     try {
       const client = new ChioSidecarClient({ sidecarUrl: "http://127.0.0.1:9090" });
       await expectSidecarError(
-        client.verifyReceipt(testReceipt()),
+        client.verifyReceipt(legacyBareReceipt()),
         "chio_sidecar_unreachable",
       );
     } finally {

@@ -434,7 +434,18 @@ func (r *JobReconciler) handleDeletion(ctx context.Context, logger logr.Logger, 
 	return ctrl.Result{}, nil
 }
 
-// collectStepReceipts reads receipt annotations from Pods owned by the Job.
+// collectStepReceipts builds per-pod observations for inclusion in the
+// aggregate JobReceipt the controller submits to the sidecar.
+//
+// The controller mints every authoritative field on the StepReceipt
+// (PodName, Phase, ObservedAt) from objects it observes through the
+// apiserver. Any payload the workload wrote to its own
+// `chio.protocol/receipt` annotation is captured separately under
+// AdvisoryPodAnnotation with Source=AdvisoryPodAnnotationSource and is
+// explicitly NOT treated as authoritative receipt content. Pod annotations
+// are user-owned, so allowing them to flow verbatim into the mediated
+// JobReceipt would let any actor with create-pod rights write into the
+// authoritative audit trail.
 //
 // We list all pods in the Job's namespace and filter by ownership. We
 // deliberately avoid relying on the `controller-uid` label (which the Job
@@ -454,18 +465,44 @@ func (r *JobReconciler) collectStepReceipts(ctx context.Context, job *batchv1.Jo
 		if !isOwnedByJob(p, job) {
 			continue
 		}
-		payload := p.Annotations[PodAnnotationReceipt]
-		if payload == "" {
-			continue
-		}
-		steps = append(steps, chioapi.StepReceipt{
+		step := chioapi.StepReceipt{
 			PodName:    p.Name,
 			Phase:      string(p.Status.Phase),
-			Payload:    payload,
 			ObservedAt: now,
-		})
+		}
+		if advisory := buildAdvisoryPodAnnotation(p.Annotations[PodAnnotationReceipt]); advisory != nil {
+			step.AdvisoryPodAnnotation = advisory
+		} else if p.Annotations[PodAnnotationReceipt] == "" {
+			// No annotation and no other content worth surfacing; skip the
+			// pod entirely to preserve prior behaviour of only emitting
+			// step entries for pods that actually produced something.
+			continue
+		}
+		steps = append(steps, step)
 	}
 	return steps, nil
+}
+
+// buildAdvisoryPodAnnotation wraps a pod's raw receipt annotation in the
+// advisory envelope, applying the AdvisoryPodAnnotationMaxBytes cap. Empty
+// input yields nil so the StepReceipt's AdvisoryPodAnnotation field is
+// omitted on the wire.
+func buildAdvisoryPodAnnotation(raw string) *chioapi.AdvisoryPodAnnotation {
+	if raw == "" {
+		return nil
+	}
+	payload := raw
+	truncated := false
+	if len(payload) > chioapi.AdvisoryPodAnnotationMaxBytes {
+		payload = payload[:chioapi.AdvisoryPodAnnotationMaxBytes]
+		truncated = true
+	}
+	return &chioapi.AdvisoryPodAnnotation{
+		Source:        chioapi.AdvisoryPodAnnotationSource,
+		AnnotationKey: PodAnnotationReceipt,
+		Payload:       payload,
+		Truncated:     truncated,
+	}
 }
 
 func (r *JobReconciler) event(obj client.Object, eventType, reason, message string) {

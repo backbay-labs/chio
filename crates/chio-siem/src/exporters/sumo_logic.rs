@@ -182,18 +182,19 @@ impl SumoLogicExporter {
                 ))
             }),
             SumoLogicFormat::Text => Ok(format!(
-                "ts={} id={} tool={} tool_server={} receipt_kind={} boundary_class={} decision={} reason={}",
+                "ts={} id={} tool={} tool_server={} receipt_kind={} boundary_class={} authorized={} decision={} reason={}",
                 event.receipt.timestamp,
                 event.receipt.id,
                 event.receipt.tool_name,
                 event.receipt.tool_server,
                 event.receipt_kind.as_str(),
                 event.boundary_class.as_str(),
+                event.authorized,
                 decision_label(event),
                 reason.replace('\n', " "),
             )),
             SumoLogicFormat::KeyValue => Ok(format!(
-                "receipt_id={} timestamp={} tool={} tool_server={} capability={} receipt_kind={} boundary_class={} decision={} result=\"{}\" reason=\"{}\"",
+                "receipt_id={} timestamp={} tool={} tool_server={} capability={} receipt_kind={} boundary_class={} authorized={} decision={} result=\"{}\" reason=\"{}\"",
                 event.receipt.id,
                 event.receipt.timestamp,
                 event.receipt.tool_name,
@@ -201,6 +202,7 @@ impl SumoLogicExporter {
                 event.receipt.capability_id,
                 event.receipt_kind.as_str(),
                 event.boundary_class.as_str(),
+                event.authorized,
                 decision_label(event),
                 event.result.replace('"', "'"),
                 reason.replace('"', "'"),
@@ -286,26 +288,28 @@ impl Exporter for SumoLogicExporter {
 }
 
 fn decision_label(event: &SiemEvent) -> &str {
-    if !event.is_authorized() && matches!(&event.receipt.decision, Decision::Allow) {
+    if !event.is_authorized() && matches!(&event.receipt.decision, Some(Decision::Allow)) {
         return event.receipt_kind.as_str();
     }
     match &event.receipt.decision {
-        Decision::Allow => "allow",
-        Decision::Deny { .. } => "deny",
-        Decision::Cancelled { .. } => "cancelled",
-        Decision::Incomplete { .. } => "incomplete",
+        Some(Decision::Allow) => "allow",
+        Some(Decision::Deny { .. }) => "deny",
+        Some(Decision::Cancelled { .. }) => "cancelled",
+        Some(Decision::Incomplete { .. }) => "incomplete",
+        None => event.receipt_kind.as_str(),
     }
 }
 
 fn decision_reason(event: &SiemEvent) -> String {
-    if !event.is_authorized() && matches!(&event.receipt.decision, Decision::Allow) {
+    if !event.is_authorized() && matches!(&event.receipt.decision, Some(Decision::Allow)) {
         return event.result.clone();
     }
     match &event.receipt.decision {
-        Decision::Allow => "allowed".to_string(),
-        Decision::Deny { reason, guard } => format!("{guard}: {reason}"),
-        Decision::Cancelled { reason } => reason.clone(),
-        Decision::Incomplete { reason } => reason.clone(),
+        Some(Decision::Allow) => "allowed".to_string(),
+        Some(Decision::Deny { reason, guard }) => format!("{guard}: {reason}"),
+        Some(Decision::Cancelled { reason }) => reason.clone(),
+        Some(Decision::Incomplete { reason }) => reason.clone(),
+        None => event.result.clone(),
     }
 }
 
@@ -341,5 +345,56 @@ mod tests {
             ..SumoLogicConfig::default()
         };
         assert!(SumoLogicExporter::new(cfg).is_ok());
+    }
+
+    #[test]
+    fn trace_observation_allow_includes_authorized_false() {
+        let exporter = SumoLogicExporter::new(SumoLogicConfig {
+            http_source_url: "https://collectors.sumologic.com/foo".to_string(),
+            format: SumoLogicFormat::KeyValue,
+            egress_contract: Some(HttpEgressContract::permissive_for_tests(
+                "collectors.sumologic.com",
+            )),
+            ..SumoLogicConfig::default()
+        })
+        .expect("construct sumo exporter");
+        let keypair = chio_core::crypto::Keypair::generate();
+        let action =
+            chio_core::receipt::ToolCallAction::from_parameters(serde_json::json!({"path":"/tmp"}))
+                .expect("hash parameters");
+        let semantics = chio_core::ReceiptSemanticFields::trace_detect_only();
+        let receipt = chio_core::receipt::ChioReceipt::sign(
+            chio_core::receipt::ChioReceiptBody {
+                id: "sumo-trace-allow".to_string(),
+                timestamp: 1_712_345_678,
+                capability_id: "cap-sumo".to_string(),
+                tool_server: "srv-files".to_string(),
+                tool_name: "file_read".to_string(),
+                action,
+                decision: None,
+                receipt_kind: semantics.receipt_kind,
+                boundary_class: semantics.boundary_class,
+                observation_outcome: semantics.observation_outcome,
+                tool_origin: semantics.tool_origin,
+                redaction_mode: semantics.redaction_mode,
+                actor_chain: semantics.actor_chain,
+                content_hash: "content".to_string(),
+                policy_hash: "policy".to_string(),
+                evidence: Vec::new(),
+                metadata: None,
+                trust_level: chio_core::TrustLevel::Verified,
+                tenant_id: None,
+                kernel_key: keypair.public_key(),
+            },
+            &keypair,
+        )
+        .expect("sign receipt");
+        let formatted = exporter
+            .format_event(&SiemEvent::from_receipt(receipt))
+            .expect("format event");
+
+        assert!(formatted.contains("receipt_kind=trace_observation"));
+        assert!(formatted.contains("authorized=false"));
+        assert!(!formatted.contains("decision=allow"));
     }
 }

@@ -1,22 +1,29 @@
 # 15 - Receipt schema stress test and current v1 evolution strategy
 
 > **Historical research note (PR 652):** This document stress-tested a design
-> that was previously framed as a later receipt generation. Chio is unreleased, so accepted
-> planning folds these semantics into the current v1 receipt shape. Treat
-> mentions of later generations, schema compatibility limits, negotiation, compatibility paths, and
-> compatibility windows below as historical sketches unless [18-decision-packet.md](18-decision-packet.md)
+> that was previously framed as a later receipt generation. Chio is unreleased,
+> so accepted planning folds these semantics into the current v1 receipt shape.
+> Treat mentions of later generations, schema compatibility limits,
+> negotiation, compatibility paths, and compatibility windows below as
+> historical sketches unless [18-decision-packet.md](18-decision-packet.md)
 > keeps them.
 >
-> **Erratum (wave 3) - canonical types for current v1 core fields:**
+> **Erratum (wave 3 + v1-only collapse) - canonical current fields:**
 >
-> - **`policy_hash` / `policy_digest`** is a hex `String` (matches existing [`crates/chio-core-types/src/receipt.rs:159`](../../../crates/chio-core-types/src/receipt.rs#L159); RFC 8785 canonical-JSON friendly). NOT `[u8; 32]`. Earlier references in this doc to `[u8; 32]` should be read as the hex-encoded form.
+> - **`policy_hash`** is the current signed receipt field. It is a hex or
+>   operator-pinned `String` (RFC 8785 canonical-JSON friendly), not `[u8; 32]`.
+>   Earlier `policy_digest` references are per-engine digest sketches, not a
+>   current core receipt field.
 > - **`tool_origin`** records execution locus, not redaction policy. ADR-0010 keeps `tool_origin` and `redaction_mode` as separate signed current v1 fields. Planning default: `CallerExecuted | HostExecutedProviderReported | HostExecutedUnmediated`.
+> - **Extension signing, `extensions_hash`, and `must_understand` are deferred.**
+>   This document explored them, but they are not current signed v1 fields and
+>   require a separate accepted extension-binding design.
 > - **`human_principal`** is the typed `HumanPrincipal` enum defined on `CallerIdentity` in [doc 14](14-voice-agent-bridges.md). This doc's `VoiceExtension` references it by canonical encoding, not as a duplicate `Option<String>` definition.
 > - **`ActorRef`** (the actor-chain element type) needs a concrete definition stub. Proposed shape:
 >
 >   ```rust
->   /// Single actor in the OAuth on-behalf-of delegation chain.
->   /// Maps to the IETF draft-oauth-ai-agents-on-behalf-of-user actor-chain JWT claim.
+>   /// Single actor in a delegation or provenance chain.
+>   /// Can encode external on-behalf-of actor-chain hops when that profile is used.
 >   #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 >   pub struct ActorRef {
 >       /// Stable subject identifier (DID, user ID, agent ID).
@@ -34,21 +41,18 @@
 >
 >   This stub should land in `chio-core-types` alongside the current v1 ReceiptBody promotion. Refine in a follow-on against the IETF draft as it stabilizes.
 >
-> **Post-review status:** This document is a stress test, not the implementation spec. [18-decision-packet.md](18-decision-packet.md) is the decision packet to settle before tickets are written. It supersedes historical sketches or review notes that show `policy_digest: [u8; 32]`, redaction as a `tool_origin` variant, feature-bit-only v3 negotiation, optional extension integrity, or a trace/advisory receipt carrying a mediation decision.
+> **Post-review status:** This document is a stress test, not the implementation spec. [18-decision-packet.md](18-decision-packet.md) is the decision packet to settle before tickets are written. It supersedes historical sketches or review notes that show `policy_digest` as a current core field, redaction as a `tool_origin` variant, successor-receipt negotiation, or a decided `extensions_hash` / `must_understand` strategy.
 
 ## TL;DR
 
-The current `ChioReceiptBody` is too flat and too unstructured to absorb the
-ten field-pile-ups proposed across docs 01-06 and the parallel agents R2-R4
-and E1-E3 without becoming a 40+ field god-struct. Recommend **Option D
-(hybrid candidate)**: promote a small set of universally relevant fields
-(`actor_chain`, `engine_id`, `policy_digest`, `decision_id`) into the current
-v1 body, and route every bridge-, surface-, or provider-specific payload
-through a typed `extensions: BTreeMap<ExtensionNamespace, ExtensionPayload>`
-map keyed by stable namespace strings. ADR-0010 folds this work into current
-v1 and rejects schema-ceiling or feature-bit negotiation before release. A
-`must_understand` flag per extension lets bridges mark namespace-specific
-payloads as verification-mandatory.
+The historical `ChioReceiptBody` stress test showed that provider- and
+surface-specific field piles would turn the receipt body into a 40+ field
+god-struct. The accepted direction is narrower: fold receipt-kind, trace, actor
+chain, tool-origin, redaction, trust, and existing `policy_hash` semantics into
+the current v1 receipt shape, while treating extension signing,
+`extensions_hash`, and `must_understand` as deferred until a separate accepted
+extension-binding design exists. Provider-specific payloads remain sketches,
+not current signed authority.
 
 ---
 
@@ -92,24 +96,19 @@ pub struct GuardEvidence {
 
 ### Versioning and signing path
 
-- v1 schema constant is implicit (no top-level `schema` field on
-  `ChioReceiptBody`). v2 schema constant `chio.receipt.v2` at
-  `receipt.rs:30`. v2 receipts (`ChioReceiptV2`, `receipt.rs:421-430`) are
-  built on top of v1 bodies via `ReceiptV2BodyHashInput::from_v1_body`
-  (`receipt.rs:478-510`) and add `chain_id`, `parent_receipt_ids`,
-  `parent_set_hash`, `dag_ordinal`, `hlc`. v2 is content-addressed
-  (`body_hash := H(canonical_jcs(ReceiptV2BodyHashInput))`,
-  `receipt.rs:703-707`).
+- Chio-owned pre-release receipt semantics are current v1 only. Earlier
+  later-generation constants, feature names, and body-hash sketches are
+  migration debt or historical planning notes, not a public compatibility
+  surface.
 - Signing path: `Keypair::sign_canonical` and `sign_canonical_with_backend`
   (`crates/chio-core-types/src/crypto.rs:206,866`) call
   `canonical_json_bytes` (`crates/chio-core-types/src/canonical.rs:102`)
   which sorts object keys by UTF-16 code-unit order per RFC 8785.
   Every body field participates in signing; there is no
   hash-then-sign-the-hash optimization today.
-- Negotiation surface: `chio.capabilities.v1` carries a string bitset and
-  `maxCapabilitySchema` (`PROTOCOL.md:286-303`). Existing feature names
-  include `accepts_receipt_v2`. v3 introduces backward-compatible HTTP
-  substrate extensions (`PROTOCOL.md:7-8, 117-125`).
+- Negotiation surface: current planning rejects receipt schema ceilings,
+  downgrade paths, and schema-generation feature bits before release. Peers
+  that cannot validate the current v1 receipt-kind semantics fail closed.
 - Extension points today: zero on `ChioReceiptBody`. `metadata:
   Option<serde_json::Value>` is the only escape hatch and is untyped at
   the schema level. Several typed payloads
@@ -127,14 +126,14 @@ pub struct GuardEvidence {
 ### Policy-engine bucket (doc 04, R4)
 
 - `engine_id: &'static str` (Cedar / OPA / OpenFGA / hand-rolled)
-- `policy_digest: String` (hex-encoded digest at the receipt boundary)
+- `policy_hash: String` (current receipt-bound policy identifier or digest)
 - `decision_id: String` (engine-issued, non-deterministic)
 - `obligations: serde_json::Value`
 - `diagnostics: Option<String>`
 
 ### Identity-chain bucket (doc 03)
 
-- `actor_chain: Vec<ActorRef>` (IETF agent-OBO draft;
+- `actor_chain: Vec<ActorRef>` (agent on-behalf-of provenance;
   human -> agent -> sub-agent provenance)
 - `dpop_cnf: Option<DpopConfirmation>` (RFC 9449 thumbprint or `jkt`)
 - `rar_scope_refs: Vec<RarScopeRef>` (RFC 9396 governed-RAR profile
@@ -207,120 +206,94 @@ bridge-specific shapes. Cons: deserialization needs a typed-enum
 dispatch (`#[serde(tag = "namespace")]` or
 `untagged + try_from`), canonicalization needs deterministic ordering
 (BTreeMap suffices because RFC 8785 sorts string keys anyway), and the
-fields used on every receipt (`policy_digest`, `engine_id`,
-`actor_chain`) get demoted to "look it up in the extensions map"
-which is awkward for replay tooling.
+fields used on every receipt (`policy_hash`, `actor_chain`, receipt kind,
+tool origin, redaction, and trust level) get demoted to "look it up in the
+extensions map" which is awkward for replay tooling.
 
-### Option C: hard v3 bump
+### Historical Option C: hard version bump
 
-Coordinate a single v3 schema that hand-picks all proposed fields,
-deprecate v2 with a defined transition window. Pros: clean break, one
-opportunity to also fix v1/v2 wart (`metadata: Option<serde_json::Value>`
-as the only typing escape hatch), strong story for audit/replay
-tooling. Cons: per `PROTOCOL.md:7-8`, "v3.0 is a backward-compatible
-extension of v2.0. All v2 artifacts, wire formats, and verification
-rules remain valid"; a hard schema break violates that spec. Federation
-peers on v2 would need dual-version handling per the negotiated-ceiling
-machinery at `PROTOCOL.md:305-329`. Audit/replay tooling, the Lean
-theorem `theorem.handshake.negotiation_safety`
-(`formal/lean4/Chio/Chio/Proofs/HandshakeNegotiation.lean`), and the
-conformance fixture
-(`crates/chio-conformance/tests/verify_rejects_v2_token_when_peer_negotiated_v1_only.rs`)
-all need a v3 analog.
+Earlier notes considered a hard receipt schema bump. That option is now
+rejected for Chio-owned unreleased surfaces. The current protocol line is
+v1-only: the receipt-kind, boundary, actor-chain, redaction, and trace
+semantics are folded into the current v1 receipt shape instead of
+creating compatibility ceilings, downgrade paths, or successor receipt
+schemas.
 
-### Option D: hybrid (RECOMMEND)
+### Option D: hybrid (historical, superseded)
 
-Promote a small set of universally relevant fields onto the v3 core
-body. Use a typed extensions map for everything bridge-, engine-, or
-surface-specific. Bump schema version when adding core fields; do not
-bump when registering a new extension namespace.
+Current status: the accepted pre-release plan folds current authority fields
+into the current v1 receipt body. Do not create a successor receipt schema, a
+later-generation floor, schema ceilings, or compatibility downgrade paths for
+Chio-owned receipts before the first public release.
 
-Core promotions (used on essentially every receipt or by every audit
-replay):
+Promote a small set of universally relevant fields onto the current v1
+receipt core body. Use a typed extensions map for everything bridge-, engine-,
+or surface-specific. Do not create a successor Chio-owned receipt generation
+before the first public release; new pre-release fields are current v1 fields.
 
-- `schema: String` (new in v3, valued `chio.receipt.v3`)
+Core current v1 fields confirmed by ADR-0010:
+
+- `receipt_kind`
 - `actor_chain: Vec<ActorRef>` (every governed-agent receipt has one)
-- `engine_id: String` (every policy-engine-mediated receipt; default
-  `"native"` when the kernel ran no external engine)
-- `policy_digest: String` (hex-encoded digest at the receipt boundary;
-  promoting it as a typed field lets verifiers replay without parsing the
-  aggregation rule)
-- `decision_id: String` (per-receipt opaque correlation handle;
-  optional, but high enough frequency it earns a top-level slot)
+- `tool_origin`, orthogonal to redaction
+- `redaction_mode`
+- `trust_level`
+- `policy_hash`
 
 Everything else (per-provider IDs, voice call metadata, presigned-URL
-shapes, AGNTCY peer refs, directory-lookup traces, event broker hashes,
+shapes, AGNTCY directory refs, directory-lookup traces, event broker hashes,
 Bedrock action groups, OpenAI response IDs) lives in
-`extensions: BTreeMap<ExtensionNamespace, ExtensionPayload>`.
+deferred extension-binding sketches until a later accepted ADR lands.
 
 ---
 
-## Recommendation: Option D
+## Recommendation: current v1 folding
 
 Justification:
 
-1. **Pre-release v1 folding.** Chio is unreleased, so Option D is folded into
+1. **Pre-release v1 folding.** Chio is unreleased, so the historical hybrid is folded into
    the current v1 receipt shape rather than shipped as a new generation. This
    keeps one authoritative receipt model while preserving fail-closed parsing.
 2. **No schema-version negotiation before release.** The older sketch used
    feature bits and later compatibility limits. PR 652 now treats those as
    historical compatibility work. Verifiers that cannot validate current v1
    receipt-kind semantics fail closed.
-3. **Signing canonicalization stays cheap and deterministic.** Two
-  rule:
-   - The extensions map uses `BTreeMap<String, ExtensionPayload>`;
-     RFC 8785 already sorts object keys by UTF-16 code units
-     (`canonical.rs:8-9, 123`), so the BTreeMap insertion order is
-     irrelevant on the wire.
-   - Canonicalize the extension map, hash it, and put a hex
-     `extensions_hash` in the signed body. Verifiers reject receipts
-     whose signed extension hash does not match the supplied
-     extensions map.
+3. **Extension binding stays blocked.** RFC 8785 canonicalization remains the
+   signing baseline for current v1. Extension-map signing, hash indirection,
+   and verification-mandatory extension semantics require a separate accepted
+   ADR before they can affect security decisions.
 
-### Migration
+### Historical migration sketch superseded
 
-- Add `chio.receipt.v3` to `spec/schemas/registry.json` and to
-  `KNOWN_SIGNED_ARTIFACT_SCHEMAS`.
-- Continue producing `chio.receipt.v2` for any peer that has not
-  advertised `accepts_receipt_v3`. v2 remains the universal floor (per
-  the v1 -> v2 precedent at `PROTOCOL.md:322-324`).
-- v3 production behind a kernel flag; flip the default after a
-  transition window during which v3 is opt-in.
-- Audit/replay tooling supports both schemas indefinitely. Current SQLite
-  receipt storage keeps `raw_json` rather than a separate schema column, so
-  any store-level schema index is future work.
+The earlier migration plan in this section described a later receipt schema and
+dual production with older Chio-owned receipt shapes. That plan is superseded.
+Before the first public release, Chio-owned receipt semantics are folded into
+the current v1 receipt body only. There is no Chio-owned receipt generation
+above v1, no schema-ceiling negotiation, no compatibility window, and no
+downgrade path for trace or advisory records.
 
 ---
 
 ## Concrete spec sketch
 
-### v3 receipt body Rust shape
+### Current v1 receipt body Rust shape
 
 ```rust
-pub const CHIO_RECEIPT_V3_SCHEMA: &str = "chio.receipt.v3";
+pub const CHIO_RECEIPT_SCHEMA: &str = "chio.receipt.v1";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ChioReceiptV3Body {
-    #[serde(default = "receipt_v3_schema")]
-    pub schema: String,
+pub struct ChioReceiptBody {
     pub id: String,
     pub timestamp: u64,
     pub capability_id: String,
     pub tool_server: String,
     pub tool_name: String,
     pub action: ToolCallAction,
-    pub receipt_kind: ReceiptKind,           // mediated | trace | advisory
-    pub boundary_class: BoundaryClass,       // prevent | detect_only | advisory_only | cannot_see
-    pub decision: Option<Decision>,          // required for mediated, absent for trace/advisory
-    pub tool_origin: ToolOrigin,             // execution locus only
-    pub redaction_mode: RedactionMode,       // redaction policy, orthogonal to origin
+    pub decision: Decision,
     pub content_hash: String,
     pub policy_hash: String,
-    pub policy_digest: String,             // hex digest
-    pub engine_id: String,                 // "native" if no engine
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub decision_id: Option<String>,
+    pub receipt_kind: ReceiptKind,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub actor_chain: Vec<ActorRef>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -328,18 +301,12 @@ pub struct ChioReceiptV3Body {
     #[serde(default, skip_serializing_if = "is_default_trust_level")]
     pub trust_level: TrustLevel,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_origin: Option<ToolOrigin>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub redaction_mode: Option<RedactionMode>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tenant_id: Option<String>,
-    pub extensions_hash: String,             // hex H(canonical_jcs(extensions))
     pub kernel_key: PublicKey,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ChioReceiptV3 {
-    pub body: ChioReceiptV3Body,
-    pub extensions: BTreeMap<ExtensionNamespace, ExtensionEnvelope>,
-    pub algorithm: Option<SigningAlgorithm>,
-    pub signature: Signature,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -351,7 +318,10 @@ pub struct ExtensionEnvelope {
 }
 ```
 
-### Extension namespace and payload
+### Deferred extension namespace and payload
+
+The following extension shapes are sketches only. They are not current signed
+v1 authority.
 
 ```rust
 pub type ExtensionNamespace = String;       // "cedar", "bedrock_agents", ...
@@ -365,62 +335,44 @@ pub enum ExtensionPayload {
     OpenaiResponses(OpenaiResponsesExtension),
     BedrockAgents(BedrockAgentsExtension),
     Voice(VoiceExtension),
-    Agntcy(AgntcyExtension),
+    AgntcyDirectory(AgntcyDirectoryExtension),
     DirectoryTrace(DirectoryTraceExtension),
     OrchestratorRun(OrchestratorRunExtension),
     PresignedUrl(PresignedUrlExtension),
-    /// Forward-compat slot. v3 verifiers preserve the canonical raw
-    /// payload bytes for re-signing or relay, but refuse to honor
-    /// `must_understand = true` for unknown kinds.
-    Unknown(Box<serde_json::value::RawValue>),
+    /// Deferred forward-compat slot. Current v1 verifiers must not treat
+    /// unknown extension data as signed protocol authority.
+    Unknown(serde_json::Value),
 }
 ```
 
 ### Signing canonicalization
 
-1. Compute `extensions_canonical := canonical_json_bytes(extensions)`
-   (RFC 8785; BTreeMap ensures stable iteration, UTF-16 key sort
-   re-confirms order).
-2. Compute `extensions_hash := sha256(extensions_canonical)` and
-   hex-encode it into `body.extensions_hash`.
-3. Compute `signing_input` over the body that contains the extension
-   hash.
-4. `signature := sign(signing_input)`.
-5. Wire: send `body`, `extensions`, `signature`.
+Extension binding is intentionally not current v1 protocol authority. A future
+ADR must decide whether extension payloads are signed inline, signed through an
+`extensions_hash`, or excluded from security decisions before any
+security-affecting extension ships.
 
 Verifier:
 
-1. Validate `body.schema == chio.receipt.v3`.
-2. Recompute `extensions_hash` from `extensions`; reject on mismatch
-   or absence.
-3. Verify signature over the ADR-selected canonical input.
-4. Reject any trace or advisory receipt that carries a mediation
-   `decision`; only mediated receipts may carry allow/deny/cancelled/
-   incomplete.
-5. For each extension whose namespace is on the locally supported
-   list, decode payload. For each extension marked
-   `must_understand = true` whose namespace is NOT supported,
-   reject fail-closed.
+1. Validate the current v1 body shape and kind-dependent decision rules.
+2. Verify signature over the current v1 canonical signing input.
+3. Reject trace or advisory records that carry mediated decisions.
+4. Treat extension payloads as non-authoritative until an accepted
+   extension-binding ADR and tests land.
 
 ### Federation negotiation
 
 ADR-0010 folds Chio-owned receipt-kind semantics into current v1. Do not add
-receipt schema-ceiling fields, schema-generation feature bits, or pre-release
+receipt schema limit fields, schema-generation feature bits, or pre-release
 compatibility paths.
 
-- Current plan: one v1 receipt shape plus extension support.
+- Current plan: one v1 receipt shape.
 - Historical candidates: feature bits and schema compatibility limits.
-- Producers MUST NOT emit `must_understand = true` extensions for any
-  namespace the negotiated peer has not advertised.
 - Federation handshake remains fail-closed: malformed feature names
   abort negotiation before either side uses an upgrade
   (`PROTOCOL.md:286-292`).
-
-The Lean theorem at
-`formal/lean4/Chio/Chio/Proofs/HandshakeNegotiation.lean` needs a v3
-analog asserting that a v2-only verifier never receives a v3 receipt,
-and that a v3 verifier with a smaller extension set never receives an
-extension marked must-understand outside its set.
+- If extension negotiation returns, it needs a new ADR, verifier tests, and
+  formal target text that does not imply a successor receipt generation.
 
 ---
 
@@ -430,7 +382,7 @@ extension marked must-understand outside its set.
 pub struct CedarExtension {
     pub engine_version: String,
     pub policy_set_id: String,
-    pub policy_digest: String,
+    pub policy_hash: String,
     pub decision_id: String,
     pub obligations: serde_json::Value,
     pub diagnostics: Option<String>,
@@ -456,6 +408,9 @@ pub struct OpenaiResponsesExtension {
     pub response_id: String,
     pub model_version: String,
     pub system_fingerprint: String,
+    pub tool_origin: ToolOrigin,              // HostExecutedUnmediated |
+                                              // HostExecutedProviderReported |
+                                              // CallerExecuted
 }
 
 pub struct BedrockAgentsExtension {
@@ -478,10 +433,10 @@ pub struct VoiceExtension {
     pub platform: VoicePlatform,              // Twilio | Vonage | LiveKit | ...
 }
 
-pub struct AgntcyExtension {
+pub struct AgntcyDirectoryExtension {
+    pub agent_record_id: String,
     pub directory_entry_hash: [u8; 32],
     pub directory_provider_id: String,
-    pub identity_issuer_hash: Option<[u8; 32]>,
 }
 
 pub struct DirectoryTraceExtension {
@@ -505,7 +460,8 @@ pub struct PresignedUrlExtension {
 ```
 
 Each extension is independently versioned (`ExtensionEnvelope.version`)
-so bridges can evolve their shape without touching `ChioReceiptV3Body`.
+so bridges can evolve their shape without touching the current v1 receipt body,
+but this remains a deferred extension-binding sketch.
 
 ---
 
@@ -518,29 +474,29 @@ so bridges can evolve their shape without touching `ChioReceiptV3Body`.
    `String`.
 2. **R2's directory hash shape.** Is `directory_entry_hash` a hash of
    the canonical entry document or a Merkle leaf into the directory's
-   own commitment tree? Affects whether the AGNTCY extension needs a
+   own commitment tree? Affects whether the AGNTCY directory extension needs a
    `directory_inclusion_proof` field alongside the hash.
-3. **R4 (Cedar) versus body promotion.** R4 is proposing `engine_id`
-   and `policy_digest` for the body. If R4 lands as core fields,
-   `CedarExtension.policy_digest` becomes redundant; keep it on the
-   extension only when the engine emits multiple policy sets per
-   decision (which Cedar can, via additive policy stores).
-4. **E1's `tool_origin` versus existing `trust_level`.** Resolved after
-   review: `tool_origin` is an orthogonal core receipt-body field.
-   `trust_level` remains kernel-mediation strength, while
-   `tool_origin` records execution locus for every provider surface.
-   OpenAI extension payloads keep provider IDs only.
+3. **R4 (Cedar) versus body promotion.** R4 is proposing engine metadata and
+   policy identifiers. ADR-0010 keeps `policy_hash` as the current core field;
+   keep engine-specific policy details on the deferred extension only when the
+   engine emits multiple policy sets per decision.
+4. **E1's `tool_origin` versus existing `trust_level`.** The
+   OpenAI Responses host-executed flag overlaps semantically with
+   `TrustLevel::Mediated|Verified|Advisory` (`receipt.rs:47-62`).
+   Decide whether `tool_origin` is a refinement of `trust_level` for
+   the OpenAI bridge, or an orthogonal axis. Recommend: keep
+   `trust_level` for kernel-mediation strength and put
+   `tool_origin` in the OpenAI extension as a provider-specific
+   refinement.
 5. **E3 voice and replay.** Audio timestamps are not deterministic
    across replays. The voice extension must carry only stable handles
    (call_id, participant_id) in the signed body; raw audio refs and
    transcripts ride alongside but are out of scope for the signed
    receipt.
-6. **`must_understand` defaults.** Should bridges default
-   `must_understand = false` (extensions are advisory) or
-   `must_understand = true` (extensions are load-bearing)? Recommend
-   `false`-by-default to keep federation forgiving; bridges that
-   carry security-critical state (e.g. presigned-URL expiry) opt in
-   per their own threat model.
+6. **Extension binding defaults.** Deferred. A future ADR must decide whether
+   any extension can be verification-mandatory, how that is negotiated, and how
+   verifiers fail closed before bridges carry security-critical extension state
+   such as presigned-URL expiry.
 7. **Hot-path indirection.** Whether `extensions_hash` indirection is
    net-positive depends on the X2 latency analysis. If the hash
    computation cost exceeds the canonicalization cost of inlining the
@@ -551,9 +507,9 @@ so bridges can evolve their shape without touching `ChioReceiptV3Body`.
 
 ## Summary (3-line)
 
-1. Recommend **Option D (hybrid)**: small set of core promotions plus a
-   typed `extensions: BTreeMap<String, ExtensionEnvelope>` map.
-2. **Yes**, a v3 bump is needed, but as a backward-compatible additive
-   schema per `PROTOCOL.md:7-8`; `chio.receipt.v2` remains the universal
-   floor and a documented transition window keeps v2 verifiers working.
+1. Current accepted direction: ADR-0010 current v1 receipt-kind semantics,
+   with typed extensions deferred until there is implementation evidence.
+2. No successor receipt generation is needed before release. Chio-owned
+   pre-release receipt semantics stay in current v1, with incompatible drafts
+   regenerated or reset.
 3. File: this file.

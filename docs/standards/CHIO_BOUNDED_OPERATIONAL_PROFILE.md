@@ -17,7 +17,7 @@ bounded Chio release. Anything stronger stays out of the ship-facing claim.
 | Trust-control reads | `leader-local` | bounded clustered visibility over local SQLite-backed state | no globally linearizable control-plane view |
 | Monetary budgets | `local-only` | single-node atomic budget enforcement on one SQLite store | no distributed-linearizable budget truth |
 | Clustered monetary budgets | `leader-local` | bounded provisional authorized exposure with documented overrun bound | no actual realized-spend `<=` budget guarantee under split brain |
-| Receipt and checkpoint plane | `local-only` | signed local audit evidence, immutable local checkpoints, local continuity summaries, and inclusion proofs over checkpointed tool-receipt batches | no public transparency-log, full child-receipt append-only coverage, or strong non-repudiation semantics |
+| Receipt and checkpoint plane | `local-only` | signed local audit evidence, immutable local checkpoints, local continuity summaries, and inclusion proofs over checkpointed claim-log batches that may contain tool and child receipts | no public transparency-log, cross-node append-only coverage, or strong non-repudiation semantics |
 | Discovery / certify transparency | `informational-only` | signed snapshot/feed visibility metadata for review | no automatic trust activation or transparency-log semantics |
 | Hosted auth with `cnf` and dedicated sessions | `local-only` | bounded request-time authorization and protected-resource admission | no cross-node auth-code failover or restart-safe replay guarantee |
 | Static bearer / non-`cnf` / `shared_hosted_owner` | `compatibility-only` | supported interoperability and migration path | not part of the recommended bounded security profile |
@@ -48,8 +48,11 @@ bounded Chio release. Anything stronger stays out of the ship-facing claim.
 - no report or export surface may collapse `asserted` lineage into `verified`
   truth
 - checkpoint continuity records support local audit and
-  `transparency_preview` claims only; child receipts are not yet part of the
-  checkpoint tree
+  `transparency_preview` claims only; current checkpoints are built over the
+  local claim log, so child receipts with persisted canonical bytes can be
+  covered without turning the local log into public transparency
+- child receipt inclusion-proof export remains deferred unless an evidence
+  package explicitly exports child receipt proof rows
 
 ## Non-Claims
 

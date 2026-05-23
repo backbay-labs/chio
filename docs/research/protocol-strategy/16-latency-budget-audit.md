@@ -5,8 +5,8 @@
 > labeled (measured) come from existing benches; the rest are engineering
 > estimates from primitive costs and code structure.
 
-> **Erratum (wave 3):**
-> - **Bench-stub coverage is broader than reported below.** Wave 3 verification ([reviews/04-receipts-kernel-latency-review.md](reviews/04-receipts-kernel-latency-review.md)) confirmed **11+ stubs**, not 4: `single_guard`, `cap_verify_ed25519`, `receipt_sign`, `guard_pipeline_5`, `scope_match`, `time_bound`, `revocation_lookup`, `budget_decrement`, `receipt_append`, `session_lookup`, `dispatch_deny` are all `b.iter(|| black_box(0_u64))`. The hybrid family (`hybrid_receipt_sign`, `canonical_bytes_hybrid`, `pq_key_load_after_self_quote`, `compliance_certificate_hybrid`) is currently wired as tests, not live Criterion benches; do not cite those names as benchmark evidence until they are added to the bench target set. CI runs every bench from Cargo.toml without `required-features` gating, so PR regression checks compare stub-vs-stub for 10+ primitives.
+> **Erratum (wave 3, resolved in-tree):**
+> - **Bench-stub coverage was broader than reported below.** Wave 3 verification ([reviews/04-receipts-kernel-latency-review.md](reviews/04-receipts-kernel-latency-review.md)) confirmed **11+ stubs**, not 4: `single_guard`, `cap_verify_ed25519`, `receipt_sign`, `guard_pipeline_5`, `scope_match`, `time_bound`, `revocation_lookup`, `budget_decrement`, `receipt_append`, `session_lookup`, `dispatch_deny` were all `b.iter(|| black_box(0_u64))`. The bench bodies now drive real dispatch through `dispatch_request_fixture` rather than constants. The hybrid family (`hybrid_receipt_sign`, `canonical_bytes_hybrid`, `pq_key_load_after_self_quote`, `compliance_certificate_hybrid`) is still wired as tests, not live Criterion benches; do not cite those names as benchmark evidence until they are added to the bench target set. The remaining open work in this area is gating benches with `required-features` per bench file.
 > - **`build_and_sign_receipt` path was wrong.** Below this doc cites `crates/chio-http-core/src/responses.rs:1506-1507`; the actual location is [`crates/chio-kernel/src/kernel/responses.rs:1459-1517`](../../../crates/chio-kernel/src/kernel/responses.rs#L1459). Several other `responses.rs` references in this doc omit the `chio-kernel/src/kernel/` crate qualifier.
 
 ## TL;DR
@@ -22,11 +22,13 @@ warns at p99 = 50 ms (`crates/chio-kernel/benches/sustained_p99_30min.rs:14`).
 Voice integration at sub-200ms is **conditional**: feasible with Ed25519-only,
 in-process guards (Cedar), and async receipt write; infeasible with hybrid
 Ed25519+ML-DSA-65 plus OpenFGA Check plus synchronous SQLite persistence in
-the same call. The single biggest finding: **almost every per-stage bench is a
+the same call. The single biggest historical finding -- **almost every per-stage bench was a
 `black_box(0_u64)` placeholder** (`single_guard.rs:8`, `cap_verify_ed25519.rs:7`,
-`receipt_sign.rs:8`, `guard_pipeline_5.rs:8`); only `dispatch_allow` does live
-work (`dispatch_allow.rs:12-14`). We do not yet have a real per-stage latency
-budget in CI.
+`receipt_sign.rs:8`, `guard_pipeline_5.rs:8`) while only `dispatch_allow` did live
+work (`dispatch_allow.rs:12-14`) -- is resolved in-tree: the bench bodies now
+drive real dispatch through `dispatch_request_fixture`. The remaining work is
+gating benches with `required-features` per bench file so a per-stage latency
+budget in CI is built on the new bodies.
 
 ## Hot-path trace
 
@@ -166,11 +168,10 @@ WAL fsync, and pilot p95 receipt-write target is 100 ms).
 Recommended SLO classes:
 
 - **Voice tier** (sub-200 ms end-to-end). Hard caps: Ed25519-only, in-process
-  guards only, WAL-backed async receipt write with fail-closed queue
-  saturation and replayable sequence gaps. No in-memory bounded-loss-only
-  audit path. No OpenFGA, no remote OPA, no LLM judges. Cedar OK. Bridges
-  should call `evaluate_tool_call` directly; the double-sign `HttpAuthority`
-  path is too heavy for voice.
+  guards only, async receipt write to an in-mem ring with bounded-loss SLO.
+  No OpenFGA, no remote OPA, no LLM judges. Cedar OK. Bridges should call
+  `evaluate_tool_call` directly; the double-sign `HttpAuthority` path is too
+  heavy for voice.
 - **Standard tier** (matches `slo.md:32-36`, p50 < 75 / p95 < 250 / p99 < 1000).
   Sidecar OPA permitted, OpenFGA permitted, hybrid permitted, synchronous
   persistence permitted.
@@ -252,12 +253,12 @@ R4 (Cedar) and E3 (voice) ship:
 
 | Bench | Measures | Why |
 |---|---|---|
-| `cap_verify_ed25519` | Ed25519 `verify_capability_full` | Currently stub; required for base verify cost. |
+| `cap_verify_ed25519` | Ed25519 `verify_capability_full` | Previously a stub (resolved in-tree); required for base verify cost. |
 | `cap_verify_hybrid` (new) | Ed25519+ML-DSA-65 verify | Quantifies PQ tax. |
 | `single_guard` | One in-process guard end-to-end | Required by R4. |
 | `guard_pipeline_5` | 5-guard chain | Tail under realistic stacking. |
 | `cedar_authorize_small_policyset` (new) | Cedar `is_authorized` with 5 policies | R4 owns, cite in their doc. |
-| `receipt_sign_ed25519` | Ed25519 sign + canonical JSON | Today a stub. |
+| `receipt_sign_ed25519` | Ed25519 sign + canonical JSON | Historically a stub (resolved in-tree). |
 | `receipt_sign_hybrid` | Hybrid sign | Voice vs standard delta. |
 | `canonical_json_receipt_body` | RFC 8785 over a realistic body | Catches body-bloat regressions. |
 | `http_authority_allow_full` (new) | End-to-end `HttpAuthority::evaluate`, warm | The single number operators care about. |
@@ -265,8 +266,9 @@ R4 (Cedar) and E3 (voice) ship:
 
 The existing `bench-regression` workflow already runs
 `cargo bench -p chio-kernel --bench "$bench" -- --noplot --sample-size 100`
-(`.github/workflows/bench-regression.yml:108`); replacing stub bodies is
-enough, no new CI scaffolding needed.
+(`.github/workflows/bench-regression.yml:108`); the stub bodies have been
+replaced with real dispatch bodies in-tree, so the remaining CI work is
+gating benches with `required-features` per bench file.
 
 Also recommended: wire **per-stage tracing spans** that feed child histograms
 into the existing `chio_kernel_decision_latency_seconds`

@@ -137,20 +137,26 @@ class DLQRouter:
           ``include_original_value=True``) encoded as UTF-8 text when
           the bytes decode cleanly, else a ``{"hex": "..."}`` stub.
         """
-        if not receipt.is_denied:
+        if receipt.is_allowed:
             raise ChioStreamingConfigError(
-                "DLQRouter.build_record called with a non-deny receipt; the "
-                "DLQ path is reserved for denials"
+                "DLQRouter.build_record called with an authorized receipt; the "
+                "DLQ path is reserved for non-authorizing receipts"
             )
 
-        reason = receipt.decision.reason or "denied by Chio kernel"
-        guard = receipt.decision.guard or "unknown"
+        decision = receipt.decision
+        verdict = "deny" if receipt.is_denied else "none"
+        reason = (
+            decision.reason
+            if decision is not None and decision.reason is not None
+            else "non-authorizing Chio receipt"
+        )
+        guard = decision.guard if decision is not None and decision.guard is not None else "unknown"
         metadata = dict(extra_metadata or {})
 
         payload: dict[str, Any] = {
             "version": "chio-streaming/dlq/v1",
             "request_id": request_id,
-            "verdict": "deny",
+            "verdict": verdict,
             "reason": reason,
             "guard": guard,
             "receipt_id": receipt.id,
@@ -168,7 +174,7 @@ class DLQRouter:
 
         headers: list[tuple[str, bytes]] = [
             (RECEIPT_HEADER, receipt.id.encode("utf-8")),
-            (VERDICT_HEADER, b"deny"),
+            (VERDICT_HEADER, verdict.encode("utf-8")),
             ("X-Chio-Deny-Guard", guard.encode("utf-8")),
             ("X-Chio-Deny-Reason", reason.encode("utf-8")),
         ]

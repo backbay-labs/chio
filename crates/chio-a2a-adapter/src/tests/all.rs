@@ -71,6 +71,21 @@ mod tests {
         HttpEgressContract::permissive_for_tests(&authority)
     }
 
+    fn seed_a2a_task(adapter: &A2aAdapter, tool_name: &str, task_id: &str) {
+        adapter
+            .record_task_activity(
+                tool_name,
+                &json!({
+                    "task": {
+                        "id": task_id,
+                        "status": { "state": "TASK_STATE_WORKING" }
+                    }
+                }),
+                "test_seed",
+            )
+            .expect("seed A2A task registry");
+    }
+
     fn insert_test_egress_authority(contract: &mut HttpEgressContract, base_url: &str) {
         let url = Url::parse(base_url).expect("test base URL parses");
         let host = url.host_str().expect("test base URL has host");
@@ -644,12 +659,14 @@ mod tests {
 
     #[tokio::test]
     async fn adapter_jsonrpc_get_task_follow_up() {
+        let registry_path = unique_path("chio-a2a-jsonrpc-follow-up", ".json");
         let Some(server) = FakeA2aServer::spawn_jsonrpc_task_follow_up() else {
             return;
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
             test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
+                .with_task_registry_file(&registry_path)
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover JSONRPC adapter");
@@ -698,12 +715,14 @@ mod tests {
 
     #[tokio::test]
     async fn adapter_http_json_get_task_follow_up() {
+        let registry_path = unique_path("chio-a2a-http-follow-up", ".json");
         let Some(server) = FakeA2aServer::spawn_http_json_task_follow_up() else {
             return;
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
             test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
+                .with_task_registry_file(&registry_path)
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover HTTP+JSON adapter");
@@ -1342,15 +1361,18 @@ mod tests {
 
     #[tokio::test]
     async fn adapter_jsonrpc_subscribe_task_returns_complete_stream() {
+        let registry_path = unique_path("chio-a2a-jsonrpc-subscribe", ".json");
         let Some(server) = FakeA2aServer::spawn_jsonrpc_subscribe_complete() else {
             return;
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
             test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
+                .with_task_registry_file(&registry_path)
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover JSONRPC adapter");
+        seed_a2a_task(&adapter, "research", "task-1");
 
         let stream = adapter
             .invoke_stream(
@@ -1382,15 +1404,18 @@ mod tests {
 
     #[tokio::test]
     async fn adapter_http_json_subscribe_task_returns_complete_stream() {
+        let registry_path = unique_path("chio-a2a-http-subscribe", ".json");
         let Some(server) = FakeA2aServer::spawn_http_json_subscribe_complete() else {
             return;
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
             test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
+                .with_task_registry_file(&registry_path)
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover HTTP+JSON adapter");
+        seed_a2a_task(&adapter, "research", "task-1");
 
         let stream = adapter
             .invoke_stream(
@@ -1422,15 +1447,18 @@ mod tests {
 
     #[tokio::test]
     async fn adapter_subscribe_task_closure_without_terminal_state_is_incomplete() {
+        let registry_path = unique_path("chio-a2a-jsonrpc-subscribe-incomplete", ".json");
         let Some(server) = FakeA2aServer::spawn_jsonrpc_subscribe_incomplete() else {
             return;
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
             test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
+                .with_task_registry_file(&registry_path)
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover JSONRPC adapter");
+        seed_a2a_task(&adapter, "research", "task-1");
 
         let stream = adapter
             .invoke_stream(
@@ -1454,15 +1482,18 @@ mod tests {
 
     #[tokio::test]
     async fn adapter_jsonrpc_cancel_task_returns_cancelled_task() {
+        let registry_path = unique_path("chio-a2a-jsonrpc-cancel", ".json");
         let Some(server) = FakeA2aServer::spawn_jsonrpc_cancel_task() else {
             return;
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
             test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
+                .with_task_registry_file(&registry_path)
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover JSONRPC adapter");
+        seed_a2a_task(&adapter, "research", "task-1");
 
         let result = adapter
             .invoke(
@@ -1490,15 +1521,18 @@ mod tests {
 
     #[tokio::test]
     async fn adapter_http_json_cancel_task_returns_cancelled_task() {
+        let registry_path = unique_path("chio-a2a-http-cancel", ".json");
         let Some(server) = FakeA2aServer::spawn_http_json_cancel_task() else {
             return;
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
             test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
+                .with_task_registry_file(&registry_path)
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover HTTP+JSON adapter");
+        seed_a2a_task(&adapter, "research", "task-1");
 
         let result = adapter
             .invoke(
@@ -1526,15 +1560,18 @@ mod tests {
 
     #[tokio::test]
     async fn adapter_jsonrpc_push_notification_config_crud_roundtrip() {
+        let registry_path = unique_path("chio-a2a-jsonrpc-push", ".json");
         let Some(server) = FakeA2aServer::spawn_jsonrpc_push_notification_crud() else {
             return;
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
             test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
+                .with_task_registry_file(&registry_path)
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover JSONRPC adapter");
+        seed_a2a_task(&adapter, "research", "task-1");
 
         let created = adapter
             .invoke(
@@ -1626,15 +1663,18 @@ mod tests {
 
     #[tokio::test]
     async fn adapter_http_json_push_notification_config_crud_roundtrip() {
+        let registry_path = unique_path("chio-a2a-http-push", ".json");
         let Some(server) = FakeA2aServer::spawn_http_json_push_notification_crud() else {
             return;
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
             test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
+                .with_task_registry_file(&registry_path)
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover HTTP+JSON adapter");
+        seed_a2a_task(&adapter, "research", "task-1");
 
         let created = adapter
             .invoke(
@@ -1727,15 +1767,18 @@ mod tests {
 
     #[tokio::test]
     async fn adapter_rejects_insecure_push_notification_callback_url() {
+        let registry_path = unique_path("chio-a2a-insecure-push", ".json");
         let Some(server) = FakeA2aServer::spawn_jsonrpc_push_notification_capability_only() else {
             return;
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
             test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
+                .with_task_registry_file(&registry_path)
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover JSONRPC adapter");
+        seed_a2a_task(&adapter, "research", "task-1");
 
         let error = adapter
             .invoke(
@@ -2352,6 +2395,7 @@ mod tests {
             max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
             max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
             require_web3_evidence: false,
+            allow_ephemeral_receipt_log: true,
             checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
             retention_config: None,
         });
@@ -2404,7 +2448,7 @@ mod tests {
             .expect("evaluate A2A tool call");
 
         assert_eq!(response.verdict, Verdict::Allow);
-        assert_eq!(response.receipt.body().decision, Decision::Allow);
+        assert_eq!(response.receipt.body().decision, Some(Decision::Allow));
         assert_eq!(response.receipt.body().tool_name, "research");
         assert_eq!(response.receipt.body().tool_server, expected_server_id);
         assert_eq!(
@@ -2444,6 +2488,7 @@ mod tests {
             max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
             max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
             require_web3_evidence: false,
+            allow_ephemeral_receipt_log: true,
             checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
             retention_config: None,
         });
@@ -2470,7 +2515,7 @@ mod tests {
             .expect("evaluate query-auth A2A tool call");
 
         assert_eq!(response.verdict, Verdict::Allow);
-        assert_eq!(response.receipt.body().decision, Decision::Allow);
+        assert_eq!(response.receipt.body().decision, Some(Decision::Allow));
         assert_eq!(
             response.output.expect("tool output").into_value()["task"]["artifacts"][0]["parts"][0]
                 ["text"],
@@ -2509,6 +2554,7 @@ mod tests {
             max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
             max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
             require_web3_evidence: false,
+            allow_ephemeral_receipt_log: true,
             checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
             retention_config: None,
         });
@@ -2535,7 +2581,7 @@ mod tests {
             .expect("evaluate basic-auth A2A tool call");
 
         assert_eq!(response.verdict, Verdict::Allow);
-        assert_eq!(response.receipt.body().decision, Decision::Allow);
+        assert_eq!(response.receipt.body().decision, Some(Decision::Allow));
         assert_eq!(
             response.output.expect("tool output").into_value()["task"]["artifacts"][0]["parts"][0]
                 ["text"],
@@ -2583,6 +2629,7 @@ mod tests {
             max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
             max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
             require_web3_evidence: false,
+            allow_ephemeral_receipt_log: true,
             checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
             retention_config: None,
         });
@@ -2609,7 +2656,7 @@ mod tests {
             .expect("evaluate mTLS A2A tool call");
 
         assert_eq!(response.verdict, Verdict::Allow);
-        assert_eq!(response.receipt.body().decision, Decision::Allow);
+        assert_eq!(response.receipt.body().decision, Some(Decision::Allow));
         assert_eq!(response.receipt.body().tool_server, expected_server_id);
         assert_eq!(
             response.output.expect("tool output").into_value()["message"]["parts"][0]["text"],
@@ -2623,6 +2670,7 @@ mod tests {
 
     #[tokio::test]
     async fn kernel_e2e_a2a_get_task_follow_up_produces_allow_receipt() {
+        let registry_path = unique_path("chio-a2a-kernel-follow-up", ".json");
         let Some(server) = FakeA2aServer::spawn_jsonrpc_task_follow_up() else {
             return;
         };
@@ -2631,6 +2679,7 @@ mod tests {
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
             test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
+                .with_task_registry_file(&registry_path)
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover adapter");
@@ -2648,6 +2697,7 @@ mod tests {
             max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
             max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
             require_web3_evidence: false,
+            allow_ephemeral_receipt_log: true,
             checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
             retention_config: None,
         });
@@ -2699,7 +2749,7 @@ mod tests {
             .await
             .expect("evaluate initial A2A tool call");
         assert_eq!(initial.verdict, Verdict::Allow);
-        assert_eq!(initial.receipt.body().decision, Decision::Allow);
+        assert_eq!(initial.receipt.body().decision, Some(Decision::Allow));
         assert_eq!(initial.receipt.body().tool_server, expected_server_id);
         assert_eq!(
             initial.output.expect("initial task output").into_value()["task"]["status"]["state"],
@@ -2729,7 +2779,7 @@ mod tests {
             .expect("evaluate follow-up A2A tool call");
 
         assert_eq!(follow_up.verdict, Verdict::Allow);
-        assert_eq!(follow_up.receipt.body().decision, Decision::Allow);
+        assert_eq!(follow_up.receipt.body().decision, Some(Decision::Allow));
         assert_eq!(follow_up.receipt.body().tool_name, "research");
         assert_eq!(
             follow_up
@@ -2747,6 +2797,7 @@ mod tests {
 
     #[tokio::test]
     async fn kernel_e2e_a2a_cancel_task_produces_allow_receipt() {
+        let registry_path = unique_path("chio-a2a-kernel-cancel", ".json");
         let Some(server) = FakeA2aServer::spawn_jsonrpc_cancel_task() else {
             return;
         };
@@ -2755,10 +2806,12 @@ mod tests {
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
             test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
+                .with_task_registry_file(&registry_path)
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover adapter");
         let server_id = adapter.server_id().to_string();
+        seed_a2a_task(&adapter, "research", "task-1");
 
         let mut kernel = ChioKernel::new(KernelConfig {
             keypair: Keypair::generate(),
@@ -2771,6 +2824,7 @@ mod tests {
             max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
             max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
             require_web3_evidence: false,
+            allow_ephemeral_receipt_log: true,
             checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
             retention_config: None,
         });
@@ -2800,7 +2854,7 @@ mod tests {
             .expect("evaluate cancel-task A2A tool call");
 
         assert_eq!(response.verdict, Verdict::Allow);
-        assert_eq!(response.receipt.body().decision, Decision::Allow);
+        assert_eq!(response.receipt.body().decision, Some(Decision::Allow));
         assert_eq!(
             response.output.expect("cancel task output").into_value()["task"]["status"]["state"],
             "TASK_STATE_CANCELED"
@@ -2837,6 +2891,7 @@ mod tests {
             max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
             max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
             require_web3_evidence: false,
+            allow_ephemeral_receipt_log: true,
             checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
             retention_config: None,
         });
@@ -2864,7 +2919,7 @@ mod tests {
             .expect("evaluate streaming A2A tool call");
 
         assert_eq!(response.verdict, Verdict::Allow);
-        assert_eq!(response.receipt.body().decision, Decision::Allow);
+        assert_eq!(response.receipt.body().decision, Some(Decision::Allow));
         let stream = response.output.expect("stream output").into_stream();
         assert_eq!(stream.chunk_count(), 3);
         assert_eq!(
@@ -2900,6 +2955,7 @@ mod tests {
             max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
             max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
             require_web3_evidence: false,
+            allow_ephemeral_receipt_log: true,
             checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
             retention_config: None,
         });
@@ -2930,7 +2986,7 @@ mod tests {
         assert_eq!(response.verdict, Verdict::Deny);
         assert!(matches!(
             response.receipt.body().decision,
-            Decision::Incomplete { .. }
+            Some(Decision::Incomplete { .. })
         ));
         let stream = response
             .output
@@ -2942,6 +2998,7 @@ mod tests {
 
     #[tokio::test]
     async fn kernel_e2e_a2a_subscribe_task_produces_allow_receipt() {
+        let registry_path = unique_path("chio-a2a-kernel-subscribe", ".json");
         let Some(server) = FakeA2aServer::spawn_jsonrpc_subscribe_complete() else {
             return;
         };
@@ -2950,10 +3007,12 @@ mod tests {
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
             test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
+                .with_task_registry_file(&registry_path)
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover adapter");
         let server_id = adapter.server_id().to_string();
+        seed_a2a_task(&adapter, "research", "task-1");
 
         let mut kernel = ChioKernel::new(KernelConfig {
             keypair: Keypair::generate(),
@@ -2966,6 +3025,7 @@ mod tests {
             max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
             max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
             require_web3_evidence: false,
+            allow_ephemeral_receipt_log: true,
             checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
             retention_config: None,
         });
@@ -2992,7 +3052,7 @@ mod tests {
             .expect("evaluate subscribe-to-task A2A tool call");
 
         assert_eq!(response.verdict, Verdict::Allow);
-        assert_eq!(response.receipt.body().decision, Decision::Allow);
+        assert_eq!(response.receipt.body().decision, Some(Decision::Allow));
         let stream = response.output.expect("stream output").into_stream();
         assert_eq!(stream.chunk_count(), 3);
         assert_eq!(
@@ -3004,6 +3064,7 @@ mod tests {
 
     #[tokio::test]
     async fn kernel_e2e_a2a_incomplete_subscribe_task_produces_incomplete_receipt() {
+        let registry_path = unique_path("chio-a2a-kernel-subscribe-incomplete", ".json");
         let Some(server) = FakeA2aServer::spawn_jsonrpc_subscribe_incomplete() else {
             return;
         };
@@ -3012,10 +3073,12 @@ mod tests {
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
             test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
+                .with_task_registry_file(&registry_path)
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover adapter");
         let server_id = adapter.server_id().to_string();
+        seed_a2a_task(&adapter, "research", "task-1");
 
         let mut kernel = ChioKernel::new(KernelConfig {
             keypair: Keypair::generate(),
@@ -3028,6 +3091,7 @@ mod tests {
             max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
             max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
             require_web3_evidence: false,
+            allow_ephemeral_receipt_log: true,
             checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
             retention_config: None,
         });
@@ -3061,7 +3125,7 @@ mod tests {
         assert_eq!(response.verdict, Verdict::Deny);
         assert!(matches!(
             response.receipt.body().decision,
-            Decision::Incomplete { .. }
+            Some(Decision::Incomplete { .. })
         ));
         let stream = response
             .output
@@ -3097,6 +3161,7 @@ mod tests {
             max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
             max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
             require_web3_evidence: false,
+            allow_ephemeral_receipt_log: true,
             checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
             retention_config: None,
         });
@@ -3160,6 +3225,7 @@ mod tests {
             max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
             max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
             require_web3_evidence: false,
+            allow_ephemeral_receipt_log: true,
             checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
             retention_config: None,
         });
@@ -3186,7 +3252,7 @@ mod tests {
             .expect("evaluate OAuth-backed A2A tool call");
 
         assert_eq!(response.verdict, Verdict::Allow);
-        assert_eq!(response.receipt.body().decision, Decision::Allow);
+        assert_eq!(response.receipt.body().decision, Some(Decision::Allow));
         assert_eq!(
             response.output.expect("tool output").into_value()["message"]["parts"][0]["text"],
             "completed research request"

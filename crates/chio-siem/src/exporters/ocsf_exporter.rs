@@ -1,7 +1,7 @@
 //! OCSF exporter for Chio receipts.
 //!
 //! This exporter transforms each [`SiemEvent`] into an OCSF 1.3.0
-//! Authorization event (class_uid 3002) using [`receipt_to_ocsf`] and forwards
+//! Authorization event (class_uid 3002) using [`siem_event_to_ocsf`] and forwards
 //! the resulting JSON to a configurable HTTPS sink (for example, AWS Security
 //! Lake's custom source ingestion endpoint or a Splunk OCSF add-on receiver).
 //!
@@ -23,7 +23,7 @@ use std::time::Duration;
 use crate::event::SiemEvent;
 use crate::exporter::{ExportError, ExportFuture, Exporter};
 use crate::exporters::require_https_endpoint;
-use crate::ocsf::receipt_to_ocsf;
+use crate::ocsf::siem_event_to_ocsf;
 use crate::redaction::redact_for_operator_log;
 use chio_egress_contract::{client_builder_with_contract, send_with_contract, HttpEgressContract};
 
@@ -164,10 +164,7 @@ impl OcsfExporter {
     /// tests that want to assert on the mapped shape directly.
     #[must_use]
     pub fn format_events(events: &[SiemEvent]) -> Vec<serde_json::Value> {
-        events
-            .iter()
-            .map(|ev| receipt_to_ocsf(&ev.receipt))
-            .collect()
+        events.iter().map(siem_event_to_ocsf).collect()
     }
 
     /// Serialize a batch of OCSF events into the on-the-wire body for the

@@ -348,7 +348,13 @@ fn sample_receipt(
                 "to": beneficiary_address,
             }))
             .test_expect("receipt params"),
-            decision: Decision::Allow,
+            decision: Some(Decision::Allow),
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
             content_hash: sha256_hex(format!("settlement:{receipt_id}").as_bytes()),
             policy_hash: sha256_hex(b"policy:web3"),
             evidence: Vec::new(),
@@ -623,7 +629,7 @@ async fn runtime_devnet_executes_merkle_refund_and_dual_sign_paths(
         inclusion_proofs: vec![inclusion],
         uncheckpointed_receipts: vec![],
         retention: EvidenceRetentionMetadata {
-            live_db_size_bytes: 0,
+            live_db_size_bytes: Some(0),
             oldest_live_receipt_timestamp: None,
         },
     };

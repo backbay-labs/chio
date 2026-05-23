@@ -2,7 +2,11 @@
 
 > **Historical research note (PR 652):** Use [00-overview-v2.md](00-overview-v2.md) and [18-decision-packet.md](18-decision-packet.md) for planning. This file remains research input, not an implementation ticket.
 >
-> **Erratum (PR 652 review):** References below to `policy_digest: [u8; 32]` are digest-source sketches, not final receipt wire shape. Receipt-facing `policy_hash` / `policy_digest` should use the hex `String` encoding called out in [15-receipt-kind-v1.md](15-receipt-kind-v1.md), ADR-0010, and [18-decision-packet.md](18-decision-packet.md).
+> **Erratum (PR 652 review + v1-only collapse):** References below to
+> `policy_digest: [u8; 32]` are digest-source sketches, not final receipt wire
+> shape. The current signed receipt field is `policy_hash`, encoded as a hex or
+> operator-pinned `String`; `policy_digest` remains only an internal
+> per-engine sketch term in this historical research.
 
 ## TL;DR
 
@@ -150,7 +154,6 @@ forbid (
     resource
 )
 when {
-    context.guard_enabled == true &&
     resource is Chio::Tool &&
     context.block_set.contains(resource.tool_name)
 };

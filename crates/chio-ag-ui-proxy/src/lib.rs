@@ -30,5 +30,5 @@ pub mod transport;
 
 pub use event::{AgUiEvent, EventClassification, TargetComponent};
 pub use proxy::{AgUiProxy, AgUiProxyConfig, ProxyDecision};
-pub use receipt::{AgUiReceipt, AgUiReceiptBody};
+pub use receipt::{AgUiReceipt, AgUiReceiptBody, AgUiReceiptVerification};
 pub use transport::{Transport, TransportKind};

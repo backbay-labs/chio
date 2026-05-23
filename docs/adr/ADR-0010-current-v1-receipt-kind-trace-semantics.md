@@ -34,7 +34,7 @@ new allow-like decisions. If a trace or advisory record needs status, it uses a
 non-authorizing `observation_outcome` field such as `reported`, `failed`, or
 `redacted`, never `Allow`, `Deny`, `Cancelled`, or `Incomplete`.
 
-There is no receipt schema-ceiling field or legacy compatibility path before
+There is no receipt schema limit field or legacy compatibility path before
 release. All Chio-owned runtime and SDK surfaces expose the current v1 shape
 only. A peer that cannot validate the current receipt-kind semantics must fail
 closed.
@@ -47,21 +47,15 @@ Current v1 core fields:
 - `tool_origin`, orthogonal to redaction.
 - `trust_level`, using the existing trust vocabulary.
 - `redaction_mode`, signed separately from `tool_origin`.
-- `policy_digest`, encoded as lowercase hex `String`.
-- `extensions_hash`, a lowercase hex digest over the canonical extension set.
+- `policy_hash`, using the existing receipt field. Implementations may use a
+  lowercase digest or an operator-pinned symbolic policy id.
 
-Extension handling:
-
-- The signed receipt body includes `extensions_hash`.
-- The persisted and exported receipt bundle must include the canonical extension
-  payloads covered by that hash.
-- Verifiers reject a receipt if `extensions_hash` is present but required
-  extension payloads are missing or hash validation fails.
-- Each extension declares `must_understand`.
-- Extensions that affect security meaning default to `must_understand = true`.
-  Examples: mediation scope, presigned URLs, event decisions, broker identity,
-  and policy override data.
-- Telemetry-only extensions may set `must_understand = false`.
+Extension hash handling is not part of the current signed v1 receipt body.
+Security-affecting extension bundles remain blocked until an accepted extension
+binding design lands in code and tests.
+There is no current v1 `extensions_hash` field, extension signing contract, or
+`must_understand` registry. Future extension work must define those semantics in
+a separate accepted ADR before implementation.
 
 The async durability ADR defines `signed_but_not_durable` state. Current v1
 only names that state; it does not allow trace or advisory records to stand in
@@ -79,9 +73,9 @@ for shapes that never shipped. Verifiers that cannot reason about trace-only and
 advisory-only records fail closed rather than receiving allow-shaped fallback
 records.
 
-Hashing canonical extensions keeps the signed core stable while still allowing
-current v1 to carry richer provider-specific details. The `must_understand`
-default keeps security-affecting extension changes fail-closed.
+Deferring extension signing keeps the current v1 receipt core narrow and
+prevents unimplemented extension semantics from looking like signed protocol
+authority.
 
 ## Consequences
 
@@ -91,12 +85,13 @@ default keeps security-affecting extension changes fail-closed.
 - Trace-only and advisory-only observations can be exported without borrowing
   mediated receipt language.
 - Verifiers fail closed instead of accepting misleading allow-shaped traces.
-- Extension signing is explicit and testable.
+- Extension-bearing security changes remain blocked until their binding is
+  explicit and testable.
 
 ### Negative
 
-- Receipt stores and exporters must persist extension bundles, not only the
-  signed core.
+- Security-affecting extension bundles cannot be treated as current protocol
+  authority until a later accepted design lands.
 - Existing receipt UI must learn `receipt_kind` before showing current receipts.
 - Pre-release dev data may need destructive migration or regeneration.
 
@@ -104,8 +99,8 @@ default keeps security-affecting extension changes fail-closed.
 
 - Add schema tests for mediated, trace, and advisory current v1 receipts.
 - Add verifier tests that reject trace/advisory records carrying decisions.
-- Add verifier tests for missing, tampered, and unknown `must_understand`
-  extensions.
+- Add a separate extension-binding ADR before adding `must_understand`,
+  extension signing, or extension hash tests.
 - Add UI and SIEM wording tests that forbid showing trace or advisory records as
   `Allow`.
 - Update adapter ticket templates to require `receipt_kind`,

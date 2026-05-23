@@ -6,16 +6,11 @@ Status: draft, May 2026. Supersedes the earlier "reject as out-of-scope" memo.
 
 ## TL;DR
 
-The "decentralized internet of agents" stack splits cleanly along an axis
-Chio already understands: discovery and gossip on one side, request/response
-tool calls on the other. Chio should consume NANDA as a read-only directory
-of named peers (never become a NANDA registry node), bridge AGNTCY's Agent
-Connect Protocol (ACP) as a first-class `ToolServerConnection` (with SLIM
-treated as a pluggable transport, not a bridge), and treat Agora as a
-research track that mediates negotiated routines at the moment they become
-HTTP request/response shaped. In all three, the kernel's discipline is
-preserved by mediating only the call-time interaction and refusing to widen
-local trust from the directory side.
+This historical memo has been superseded by docs 17 and 18. The surviving
+direction is consume-only, operator-pinned directory data that never becomes
+capability scope. AGNTCY ACP bridge work, SLIM, Agora, live directory import,
+and below-L7 mediation remain deferred. The kernel keeps its closed-world view
+and refuses to widen local trust from directory assertions.
 
 ## 1. NANDA
 
@@ -53,8 +48,8 @@ system.
   does not honor NANDA capability assertions as local grants, and does not
   resolve unknown identifiers on the hot path. The directory is consulted
   out-of-band, an operator pins the subset they care about, and the kernel
-  keeps its closed-world view. This aligns with the PROTOCOL.md v2
-  non-goals on permissionless identity discovery (lines 96 to 115).
+  keeps its closed-world view. This aligns with the current protocol
+  non-goals on permissionless identity discovery.
 - Receipt semantics. The receipt covers the local kernel's verdict on a
   resolved peer call. The AgentFacts record hash and the NANDA index
   fingerprint go into receipt metadata as provenance, the same way a
@@ -131,7 +126,8 @@ SLIM and ACP are not called out as in production there.
   was the transport. Group membership and pub/sub fan-out, if any, stay
   inside SLIM and are not part of the signed receipt: the receipt covers
   the kernel's verdict on a specific bilateral call.
-- Bridge sketch. Two crates. `chio-bridge-acp` implements
+- Historical bridge sketch. This is superseded and must not be ticketed.
+  The archived sketch used two crates. `chio-bridge-acp` implements
   `ToolServerConnection` over the published OpenAPI: generate a client
   from `spec.acp.agntcy.org`, drive runs, fold SSE into
   `ToolServerStreamResult`. MVP wraps a single ACP server URL with bearer
@@ -186,7 +182,7 @@ out of scope in the spec.
   provenance, so an auditor can later resolve which routine and which
   peer was in scope. The receipt does not attest that the PD itself is
   safe; that judgment lives in the operator's allowlist.
-- Bridge sketch. Single crate `chio-bridge-agora`, research-track, not
+- Historical bridge sketch. Single crate `chio-bridge-agora`, research-track, not
   shipped to v1. MVP: one `ToolServerConnection` per allowlisted PD,
   treating the PD's request schema as the tool input schema. The PD
   becomes effectively an OpenAPI-flavored manifest for one tool. Key
@@ -239,11 +235,15 @@ plug in at the same layer as the existing HTTP/UDS transports under
 moral equivalent of "mTLS over UDS" with a different framing. That
 keeps the bridge implementations transport-agnostic.
 
-## 5. Phased Rollout
+## 5. Historical Phased Rollout (superseded)
 
-Phase 1 (v3.x, next minor): land the ACP bridge.
-- `chio-bridge-acp` as a first-class `ToolServerConnection`, using the
-  archived-but-stable acp-spec OpenAPI.
+The rollout below is archived research, not an implementation plan. The
+accepted current plan defers AGNTCY ACP bridge work and keeps only static,
+operator-pinned directory consumption in scope after the receipt/read-boundary
+foundation is merged.
+
+Phase 1 (superseded): ACP bridge.
+- Superseded AGNTCY ACP bridge sketch using the archived acp-spec OpenAPI.
 - `DirectoryProvider` trait introduced with an `acp-static` impl that
   reads an operator-curated list of ACP endpoints.
 - No SLIM, no NANDA. HTTP only.
@@ -251,7 +251,7 @@ Phase 1 (v3.x, next minor): land the ACP bridge.
   already operates the surrounding directory/identity bits, so
   there's a real downstream consumer.
 
-Phase 2 (v3.x+1): land NANDA consumption.
+Phase 2 (superseded): NANDA consumption.
 - `chio-directory-nanda` as a `DirectoryProvider`.
 - Read-only AgentFacts ingestion with operator allowlists.
 - Wire NANDA-resolved endpoints to existing MCP/A2A/ACP bridges.
@@ -267,10 +267,9 @@ Phase 3 (v4 candidate): SLIM transport plug-in.
 - Only the unary request/reply pattern is exposed to bridges; pub/sub
   and streaming-group patterns stay below the bridge.
 
-Defer: Agora. Build a prototype `chio-bridge-agora` behind a feature
-flag for one operator-pinned PD, gather data, do not ship as v1
-surface. Revisit when Agora demonstrates production deployments and
-adopts an identity story.
+Defer: Agora. Do not build `chio-bridge-agora` in the current protocol
+foundation. Revisit only after Agora demonstrates production deployments,
+adopts an identity story, and the receipt/read-boundary foundation is merged.
 
 Hard non-goals across phases: no NANDA index participation, no SLIM
 group/pub-sub termination at the kernel, no Agora PD negotiation inside

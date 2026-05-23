@@ -16,7 +16,7 @@ use chio_kernel::evidence_export::{
 use chio_kernel::ReceiptStoreError;
 use rusqlite::{params, Connection, OptionalExtension};
 
-use crate::receipt_store::SqliteReceiptStore;
+use crate::receipt_store::{sqlite_u64, SqliteReceiptStore};
 
 impl SqliteReceiptStore {
     /// Build a local-only evidence export bundle from the current SQLite store.
@@ -38,9 +38,18 @@ impl SqliteReceiptStore {
         let capability_lineage = self.collect_lineage_for_export(&tool_receipts)?;
         let (inclusion_proofs, uncheckpointed_receipts) =
             self.collect_inclusion_proofs_for_export(&tool_receipts, &checkpoints)?;
-        let retention = EvidenceRetentionMetadata {
-            live_db_size_bytes: self.db_size_bytes()?,
-            oldest_live_receipt_timestamp: self.oldest_receipt_timestamp()?,
+        let retention = match &query.read_boundary {
+            Some(chio_kernel::ReceiptReadBoundary::TenantScoped { tenant }) => {
+                EvidenceRetentionMetadata {
+                    live_db_size_bytes: None,
+                    oldest_live_receipt_timestamp: self
+                        .oldest_receipt_timestamp_for_tenant(tenant)?,
+                }
+            }
+            Some(chio_kernel::ReceiptReadBoundary::AdminAll) | None => EvidenceRetentionMetadata {
+                live_db_size_bytes: Some(self.db_size_bytes()?),
+                oldest_live_receipt_timestamp: self.oldest_receipt_timestamp()?,
+            },
         };
 
         Ok(EvidenceExportBundle {
@@ -120,14 +129,18 @@ impl SqliteReceiptStore {
                 break;
             }
             let next_cursor = page.next_cursor;
-            records.extend(
-                page.receipts
-                    .into_iter()
-                    .map(|stored| EvidenceToolReceiptRecord {
-                        seq: stored.seq,
+            let page_records = page
+                .receipts
+                .into_iter()
+                .map(|stored| {
+                    let seq = self.claim_log_entry_seq_for_receipt_id(&stored.receipt.id)?;
+                    Ok(EvidenceToolReceiptRecord {
+                        seq,
                         receipt: stored.receipt,
-                    }),
-            );
+                    })
+                })
+                .collect::<Result<Vec<_>, EvidenceExportError>>()?;
+            records.extend(page_records);
             match next_cursor {
                 Some(next) => cursor = Some(next),
                 None => break,
@@ -135,6 +148,26 @@ impl SqliteReceiptStore {
         }
 
         Ok(records)
+    }
+
+    fn claim_log_entry_seq_for_receipt_id(
+        &self,
+        receipt_id: &str,
+    ) -> Result<u64, EvidenceExportError> {
+        let connection = self.connection()?;
+        let seq = connection
+            .query_row(
+                "SELECT entry_seq FROM claim_receipt_log_entries WHERE receipt_id = ?1",
+                params![receipt_id],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()?
+            .ok_or_else(|| {
+                EvidenceExportError::ReceiptStore(ReceiptStoreError::Conflict(format!(
+                    "receipt {receipt_id} is missing from claim receipt log"
+                )))
+            })?;
+        sqlite_u64(seq, "claim receipt log entry_seq").map_err(EvidenceExportError::ReceiptStore)
     }
 
     fn resolve_child_receipt_scope(
@@ -188,12 +221,19 @@ impl SqliteReceiptStore {
         &self,
         tool_receipts: &[EvidenceToolReceiptRecord],
     ) -> Result<Vec<KernelCheckpoint>, EvidenceExportError> {
-        let (Some(min_seq), Some(max_seq)) = (
-            tool_receipts.first().map(|record| record.seq),
-            tool_receipts.last().map(|record| record.seq),
-        ) else {
+        if tool_receipts.is_empty() {
             return Ok(Vec::new());
-        };
+        }
+        let min_seq = tool_receipts
+            .iter()
+            .map(|record| record.seq)
+            .min()
+            .unwrap_or(0);
+        let max_seq = tool_receipts
+            .iter()
+            .map(|record| record.seq)
+            .max()
+            .unwrap_or(0);
 
         let connection = self.connection()?;
         let mut statement = connection.prepare(
@@ -472,13 +512,17 @@ mod tests {
         receipt_with_ts_and_tenant(id, capability_id, timestamp, None)
     }
 
+    fn evidence_receipt_keypair() -> Keypair {
+        Keypair::from_seed(&[0x42; 32])
+    }
+
     fn receipt_with_ts_and_tenant(
         id: &str,
         capability_id: &str,
         timestamp: u64,
         tenant_id: Option<&str>,
     ) -> ChioReceipt {
-        let keypair = Keypair::generate();
+        let keypair = evidence_receipt_keypair();
         ChioReceipt::sign(
             ChioReceiptBody {
                 id: id.to_string(),
@@ -486,10 +530,18 @@ mod tests {
                 capability_id: capability_id.to_string(),
                 tool_server: "shell".to_string(),
                 tool_name: "bash".to_string(),
-                action: ToolCallAction::from_parameters(serde_json::json!({"cmd":"echo hi"}))
-                    .expect("action"),
-                decision: Decision::Allow,
-                content_hash: "content-1".to_string(),
+                action: ToolCallAction::from_parameters(
+                    serde_json::json!({"cmd":"echo hi", "receipt": id}),
+                )
+                .expect("action"),
+                decision: Some(Decision::Allow),
+                receipt_kind: Default::default(),
+                boundary_class: Default::default(),
+                observation_outcome: None,
+                tool_origin: Default::default(),
+                redaction_mode: Default::default(),
+                actor_chain: Vec::new(),
+                content_hash: format!("content-{id}"),
                 policy_hash: "policy-1".to_string(),
                 evidence: Vec::new(),
                 metadata: None,
@@ -556,7 +608,7 @@ mod tests {
                 .into_iter()
                 .map(|(_, bytes)| bytes)
                 .collect::<Vec<_>>(),
-            &issuer,
+            &evidence_receipt_keypair(),
         )
         .unwrap();
         store.store_checkpoint(&checkpoint).unwrap();
@@ -575,7 +627,10 @@ mod tests {
         assert_eq!(bundle.inclusion_proofs.len(), 2);
         assert!(bundle.uncheckpointed_receipts.is_empty());
         assert_eq!(bundle.capability_lineage.len(), 2);
-        assert!(bundle.retention.live_db_size_bytes > 0);
+        assert!(bundle
+            .retention
+            .live_db_size_bytes
+            .is_some_and(|size| size > 0));
 
         let transparency = validate_checkpoint_transparency(&bundle.checkpoints).unwrap();
         assert_eq!(transparency.publications.len(), 1);
@@ -633,6 +688,8 @@ mod tests {
             bundle.tool_receipts[0].receipt.tenant_id.as_deref(),
             Some("tenant-a")
         );
+        assert_eq!(bundle.retention.live_db_size_bytes, None);
+        assert_eq!(bundle.retention.oldest_live_receipt_timestamp, Some(100));
 
         let _ = std::fs::remove_file(path);
     }

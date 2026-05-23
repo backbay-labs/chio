@@ -1,14 +1,16 @@
-# Chio v2.0 Agent Economy Foundation -- Session Summary
+# Historical Agent Economy Foundation Session Summary
 
 ## What We Built
 
-Transformed Chio from a v1.0 security protocol into the economic infrastructure for autonomous agent systems. In a single autonomous session, we executed 5 phases (8-12), ran 3 rounds of security audits with full remediation, and produced comprehensive documentation.
+Explored the agent-economy foundation while Chio was still pre-release. This
+summary uses old internal milestone language and is not a released protocol
+version record.
 
-### Milestone: v2.0 Agent Economy Foundation
+### Internal Milestone: Agent Economy Foundation
 
 **Scope:** 6 phases (7-12), 19 plans, 22 requirements, 123 commits
 **Codebase:** 10 Rust crates, 69K lines of Rust, 3.5K lines of TypeScript, 461+ tests
-**Tag:** `v2.0`
+**Tag:** no public protocol tag
 
 ---
 
@@ -117,15 +119,15 @@ Plus protocol spec additions, 4 ADRs, migration guide, and changelog.
 - `docs/adr/ADR-0009-siem-isolation.md`
 
 ### Release (new)
-- `docs/MIGRATION_GUIDE_V2.md` -- v1.0 to v2.0 migration
-- `docs/CHANGELOG.md` -- v2.0 feature list
+- `docs/MIGRATION_GUIDE_V2.md` -- archived internal transition draft
+- `docs/CHANGELOG.md` -- archived internal milestone feature list
 
 ### Compliance (existing, created during Phase 9)
 - `docs/compliance/colorado-sb-24-205.md` -- 16 clause mappings
 - `docs/compliance/eu-ai-act-article-19.md` -- 19 clause mappings
 
 ### Updated
-- `README.md` -- v2.0 features section, updated crate map
+- `README.md` -- internal milestone features section, updated crate map
 - `docs/AGENT_ECONOMY.md` -- Phase 1 marked shipped, operational guide links
 - `docs/EXECUTION_PLAN.md` -- v2.0 shipped features section
 
@@ -136,7 +138,7 @@ Plus protocol spec additions, 4 ADRs, migration guide, and changelog.
 1. **Audit** -- Integration checker found 2 wiring gaps (DPoP not called in evaluate, lineage not recorded at issuance)
 2. **Gap closure** -- Both fixed with single-call wiring additions
 3. **Archive** -- `.planning/milestones/v2.0-ROADMAP.md`, `.planning/milestones/v2.0-REQUIREMENTS.md`
-4. **Tag** -- `git tag -a v2.0`
+4. **Tag** -- no public protocol tag was cut
 
 ---
 

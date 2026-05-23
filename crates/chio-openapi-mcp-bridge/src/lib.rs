@@ -21,7 +21,7 @@ use chio_egress_contract::HttpEgressContract;
 use chio_kernel::{KernelError, NestedFlowBridge, ToolServerConnection};
 use chio_manifest::ToolManifest;
 use chio_mcp_edge::McpToolInfo;
-use chio_openapi::{GeneratorConfig, ManifestGenerator, OpenApiError, OpenApiSpec};
+use chio_openapi::{ChioExtensions, GeneratorConfig, ManifestGenerator, OpenApiError, OpenApiSpec};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -179,6 +179,10 @@ impl OpenApiMcpBridge {
         let mut route_bindings = BTreeMap::new();
         for (path, path_item) in &spec.paths {
             for (method_str, operation) in &path_item.operations {
+                let extensions = ChioExtensions::from_operation(&operation.raw);
+                if !extensions.should_publish() {
+                    continue;
+                }
                 let tool_name = operation
                     .operation_id
                     .clone()
@@ -262,8 +266,8 @@ impl OpenApiMcpBridge {
             .collect()
     }
 
-    /// Invoke a bridged tool. If a dispatcher is set, the actual HTTP call
-    /// is made. Otherwise, a simulated response is returned.
+    /// Invoke a bridged tool. A dispatcher is required so the kernel cannot
+    /// sign successful receipts for simulated side effects.
     pub fn invoke_tool(&self, tool_name: &str, arguments: Value) -> Result<Value, BridgeError> {
         let binding = self
             .route_bindings
@@ -294,23 +298,9 @@ impl OpenApiMcpBridge {
                 }
             }))
         } else {
-            // Simulation mode: return the route binding info
-            Ok(json!({
-                "content": [{
-                    "type": "text",
-                    "text": format!(
-                        "Bridged {} {} (no dispatcher configured)",
-                        binding.method, binding.path
-                    ),
-                }],
-                "isError": false,
-                "structuredContent": {
-                    "bridgeMode": "simulation",
-                    "method": binding.method,
-                    "path": binding.path,
-                    "arguments": arguments,
-                }
-            }))
+            Err(BridgeError::Kernel(
+                "OpenAPI bridge requires a dispatcher for live tool invocation".to_string(),
+            ))
         }
     }
 
@@ -396,22 +386,9 @@ impl OwnedBridgeToolServer {
                 }
             }))
         } else {
-            Ok(json!({
-                "content": [{
-                    "type": "text",
-                    "text": format!(
-                        "Bridged {} {} (no dispatcher configured)",
-                        binding.method, binding.path
-                    ),
-                }],
-                "isError": false,
-                "structuredContent": {
-                    "bridgeMode": "simulation",
-                    "method": binding.method,
-                    "path": binding.path,
-                    "arguments": arguments,
-                }
-            }))
+            Err(BridgeError::Kernel(
+                "OpenAPI bridge requires a dispatcher for live tool invocation".to_string(),
+            ))
         }
     }
 
@@ -600,15 +577,12 @@ mod tests {
     }
 
     #[test]
-    fn bridge_invoke_simulation_mode() {
+    fn bridge_without_dispatcher_fails_closed() {
         let bridge = OpenApiMcpBridge::from_spec(PETSTORE_SPEC, petstore_config()).unwrap();
-        let result = bridge
+        let error = bridge
             .invoke_tool("listPets", json!({"limit": 10}))
-            .unwrap();
-        assert_eq!(result["isError"], false);
-        assert_eq!(result["structuredContent"]["bridgeMode"], "simulation");
-        assert_eq!(result["structuredContent"]["method"], "GET");
-        assert_eq!(result["structuredContent"]["path"], "/pets");
+            .unwrap_err();
+        assert!(matches!(error, BridgeError::Kernel(_)));
     }
 
     #[test]
@@ -718,8 +692,11 @@ mod tests {
     async fn bridge_tool_server_invoke_delegates() {
         let bridge = OpenApiMcpBridge::from_spec(PETSTORE_SPEC, petstore_config()).unwrap();
         let server = bridge.as_tool_server();
-        let result = server.invoke("listPets", json!({}), None).await.unwrap();
-        assert_eq!(result["structuredContent"]["bridgeMode"], "simulation");
+        let error = server
+            .invoke("listPets", json!({}), None)
+            .await
+            .unwrap_err();
+        assert!(matches!(error, KernelError::ToolServerError(_)));
     }
 
     #[tokio::test]
@@ -739,8 +716,8 @@ mod tests {
         let owned = OwnedBridgeToolServer::from_bridge(bridge);
         assert_eq!(owned.server_id(), "petstore-bridge");
         assert_eq!(owned.tool_names().len(), 4);
-        let result = owned.invoke("listPets", json!({}), None).await.unwrap();
-        assert_eq!(result["structuredContent"]["bridgeMode"], "simulation");
+        let error = owned.invoke("listPets", json!({}), None).await.unwrap_err();
+        assert!(matches!(error, KernelError::ToolServerError(_)));
     }
 
     #[tokio::test]
@@ -820,6 +797,38 @@ mod tests {
     fn bridge_route_binding_unknown_returns_none() {
         let bridge = OpenApiMcpBridge::from_spec(PETSTORE_SPEC, petstore_config()).unwrap();
         assert!(bridge.route_binding("nope").is_none());
+    }
+
+    #[test]
+    fn unpublished_operations_are_not_routable() {
+        let spec = r#"{
+            "openapi": "3.0.3",
+            "info": { "title": "Hidden API", "version": "1.0.0" },
+            "paths": {
+                "/visible": {
+                    "get": {
+                        "operationId": "visibleOp",
+                        "responses": { "200": { "description": "OK" } }
+                    }
+                },
+                "/hidden": {
+                    "post": {
+                        "operationId": "hiddenOp",
+                        "x-chio-publish": false,
+                        "responses": { "200": { "description": "OK" } }
+                    }
+                }
+            }
+        }"#;
+        let bridge = OpenApiMcpBridge::from_spec(spec, petstore_config()).unwrap();
+
+        assert!(bridge.tool_names().contains(&"visibleOp".to_string()));
+        assert!(!bridge.tool_names().contains(&"hiddenOp".to_string()));
+        assert!(bridge.route_binding("hiddenOp").is_none());
+        assert!(matches!(
+            bridge.invoke_tool("hiddenOp", json!({})),
+            Err(BridgeError::ToolNotFound(name)) if name == "hiddenOp"
+        ));
     }
 
     #[test]

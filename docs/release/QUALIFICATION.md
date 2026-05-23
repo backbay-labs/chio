@@ -2,9 +2,10 @@
 
 This document defines the qualification lane for the current bounded Chio
 release candidate. The ship boundary is intentionally narrower than the
-stronger repo-local v3.16 and v3.17 thesis gates: bounded Chio is the
-release-facing claim, while stronger technical-control-plane and
-comptroller-capable packaging claims remain optional addenda.
+stronger repo-local internal thesis gates: bounded Chio is the release-facing
+claim, while stronger technical-control-plane and comptroller-capable
+packaging claims remain optional addenda. Chio-owned protocol, schema, SDK, and
+runtime surfaces remain current v1-only until public release.
 
 Use the release documents this way:
 

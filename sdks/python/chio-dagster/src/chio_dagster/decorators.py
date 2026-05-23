@@ -367,14 +367,22 @@ async def _run_with_guard(
     finally:
         await owner.close()
 
-    if receipt.is_denied:
+    if not receipt.is_allowed:
         decision = receipt.decision
-        reason = decision.reason or "denied by Chio kernel"
+        reason = (
+            decision.reason
+            if decision is not None and decision.reason is not None
+            else "non-authorizing Chio receipt"
+        )
+        guard = decision.guard if decision is not None else None
+        decision_payload = (
+            decision.model_dump(exclude_none=True) if decision is not None else None
+        )
         _attach_deny_metadata(
             context,
             receipt_id=receipt.id,
             reason=reason,
-            guard=decision.guard,
+            guard=guard,
             partition_key=partition_key,
         )
         _context_log(
@@ -390,9 +398,9 @@ async def _run_with_guard(
             capability_id=capability_id,
             tool_server=resolved_tool_server,
             reason=reason,
-            guard=decision.guard,
+            guard=guard,
             receipt_id=receipt.id,
-            decision=decision.model_dump(exclude_none=True),
+            decision=decision_payload,
         )
 
     _ = scope  # reserved for future guard-composition

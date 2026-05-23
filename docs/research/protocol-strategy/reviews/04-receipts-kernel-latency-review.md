@@ -7,16 +7,17 @@
 
 ## TL;DR
 
-The bench-stub bombshell is **confirmed and worse than the doc reports it.**
+The bench-stub finding was **confirmed and broader than the doc reported (resolved in-tree).**
 Every per-stage Criterion bench in `crates/chio-kernel/benches/` except
-`dispatch_allow` (and `dispatch_allow_dhat`) is literally
+`dispatch_allow` (and `dispatch_allow_dhat`) used to be literally
 `b.iter(|| black_box(0_u64))` (`single_guard.rs:8`, `cap_verify_ed25519.rs:7`,
 `receipt_sign.rs:7`, `guard_pipeline_5.rs:7`); the bench-regression workflow
 at `.github/workflows/bench-regression.yml:101-108` ingests **all of them**
-from `Cargo.toml` and runs each through `cargo bench -p chio-kernel`, so CI
-is comparing nothing-to-nothing for 10+ supposed primitives. Doc 16 calls
-this out but undersells it: the file:line evidence shows CI is **actively
-falsifying** a baseline, not merely missing one. The receipt-shape and
+from `Cargo.toml` and runs each through `cargo bench -p chio-kernel`. The
+bench bodies now drive real dispatch through `dispatch_request_fixture`
+in-tree, so CI compares real bodies for the previously-stubbed primitives;
+the remaining open work is `required-features` gating per bench and
+re-baselining latency claims against the new bodies. The receipt-shape and
 event-action proposals in 15 and 09 ground cleanly, with three name
 inconsistencies and one mislabelled file path (doc 16 cites `chio-http-core/src/responses.rs:1506-1507` for `build_and_sign_receipt`; the
 function actually lives at
@@ -53,7 +54,7 @@ function actually lives at
 | `ToolServerStreamResult` (task brief) | `crates/chio-kernel/src/runtime.rs:134-142` | Verified. |
 | RFC 8785 canonical JSON | `crates/chio-core-types/src/canonical.rs:1-12`; `spec/PROTOCOL.md:169-171` references "canonical JSON" but the literal string "8785" does not appear in `PROTOCOL.md`. | Partial - implementation file labels it RFC 8785, spec does not name the RFC. |
 
-## Bench-stub verification (the bombshell)
+## Bench-stub verification (resolved in-tree)
 
 Verified read of each cited bench file shows the stubs are literal:
 
@@ -147,16 +148,18 @@ points are semantic:
    `{decision_id, obligations, diagnostics}` inside `details`. v3 should
    either widen `details` to `Option<Value>` or rely entirely on the Cedar
    extension. **Pick one; doc 04, 10, and 15 currently all overlap here.**
-4. **`extensions_hash` placement.** Resolved after review: doc 15 requires a
-   signed body `extensions_hash` over canonicalized extensions. Doc 16 keeps
-   this as part of the receipt CPU + persistence budget rather than treating
-   inline extension signing as an alternate path.
+4. **`extensions_hash` placement.** Doc 15 line 308 keeps it in the body for
+   signing. The trade-off is real: hashing the extension blob doubles canonical-JSON
+   work (one over extensions, one over body). Doc 15 open-question 7
+   correctly flags this for X2 (doc 16) reconciliation - which doc 16 does
+   **not** address. The two docs should not ship without a coordinated
+   decision.
 
 ## Cross-doc field-name consistency
 
 | Concept | Doc 12 (OpenAI) | Doc 13 (Bedrock) | Doc 14 (Voice) | Doc 15 (v3) | Doc 00 v2 |
 |---|---|---|---|---|---|
-| `tool_origin` enum variants | `HostExecutedProviderReported {...}`, `HostExecutedUnmediated`, `CallerExecuted` (doc 12 line 152-155); also `"host-executed-unmediated"` string form (doc 12 line 145) | not used by name; "Lambda action group" stand-in | core body should use `CallerExecuted` | core body field; `HostExecutedProviderReported | HostExecutedUnmediated | CallerExecuted` | core current-v1 field with the same three variants; redaction is separate |
+| `tool_origin` enum variants | `HostExecutedProviderReported {...}`, `HostExecutedUnmediated`, `CallerExecuted` (doc 12 line 152-155); also `"host-executed-unmediated"` string form (doc 12 line 145) | not used by name; "Lambda action group" stand-in | not used | `HostExecutedUnmediated | HostExecutedProviderReported | CallerExecuted` (line 121, 429-431) | core v3 field; "caller-executed", "host-executed-provider-reported", "host-executed-unmediated", **`host-executed-redacted`** (overview v2 line 35) |
 | `engine_id` | n/a | n/a | n/a | core v3 field, `String` | core v3 field |
 | `policy_digest` | n/a | n/a | n/a | `[u8; 32]`, core v3 + on `CedarExtension` | per doc 04 / doc 10 - `[u8; 32]` on a per-engine `EngineDecision` |
 | `actor_chain` | n/a | n/a | n/a | core v3 (`Vec<ActorRef>`) | core v3 |
@@ -166,12 +169,17 @@ points are semantic:
 
 **Issues to fix:**
 
-1. **`tool_origin` variant set is resolved.** Use three execution-locus
-   variants (`CallerExecuted`, `HostExecutedProviderReported`,
-   `HostExecutedUnmediated`) and keep redaction in a separate signed field.
-2. **`tool_origin` placement.** Resolved after review: overview v2 and
-   doc 15 put `tool_origin` on the core receipt body. The
-   OpenAI-specific extension keeps provider IDs only.
+1. **`tool_origin` variant set is inconsistent across docs.** Doc 12 and doc
+   15 define **three** variants; overview v2 line 35 adds a fourth
+   (`host-executed-redacted`). Pick three or four; pick a single casing
+   (`HostExecutedUnmediated` or `host-executed-unmediated`); reflect in
+   `00-overview-v2.md`, `12-openai-responses-adapter.md`, `13-bedrock-agents-bridge.md`,
+   and `15-receipt-kind-v1.md` in lockstep.
+2. **`tool_origin` placement.** Overview v2 says "core v3 field, not an
+   extension." Doc 15 puts it on `OpenaiResponsesExtension` only (line
+   429-431) and explicitly recommends extension over core (line 502-508).
+   These two docs disagree on the highest-impact field. **Resolve in
+   overview v2.**
 3. **Deferred durability flag.** Doc 14 (line 135) says X1 owes a "deferred
    durability status flag in v3." Doc 15 does not mention it. Add either to
    the core body (as a `durability: Durability::Deferred | Persisted | Mirrored`

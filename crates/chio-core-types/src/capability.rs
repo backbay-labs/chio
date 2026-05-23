@@ -622,7 +622,26 @@ impl CapabilityToken {
         Ok(())
     }
 
-    /// Feature-aware wrapper around [`Self::validate_chain_binding`].
+    /// Whether the token's shape requires the chain-binding rule to fire.
+    ///
+    /// Chain binding closes the P0 soundness gap where an issuer could mint
+    /// an attenuated token claiming `parent_scope = scope_BIGGER` and
+    /// supply an internally consistent witness. The rule binds
+    /// `attenuation_proof.parent_scope_hash` to either the trust-root scope
+    /// hash (direct issue) or `delegation_chain.last().scope_hash` (delegated
+    /// chain). The rule is therefore meaningful only when the token actually
+    /// introduces narrowing relative to its parent: an explicit
+    /// `attenuation_proof`, non-empty `scope_attenuations`, or a
+    /// `budget_share_bps` value that narrows the parent budget.
+    ///
+    /// A non-empty `delegation_chain` by itself is NOT a trigger: each
+    /// `DelegationLink` carries its own signature (`DelegationLink.signature`),
+    /// the leaf token is signed by its issuer, and signature/connectivity
+    /// invariants over the chain are enforced by
+    /// [`validate_delegation_chain`]. A plain pass-through delegation that
+    /// introduces no new attenuation has nothing to bind against the parent
+    /// scope, so requiring `attenuation_proof` would render every plain
+    /// delegated token unverifiable while adding no soundness.
     #[must_use]
     pub fn requires_chain_binding(&self) -> bool {
         self.attenuation_proof.is_some()
@@ -631,7 +650,6 @@ impl CapabilityToken {
                 .as_ref()
                 .is_some_and(|items| !items.is_empty())
             || self.budget_share_bps.is_some()
-            || !self.delegation_chain.is_empty()
     }
 
     pub fn validate_chain_binding_with_features(
@@ -3922,6 +3940,134 @@ mod tests {
                 &negotiated,
             )
             .unwrap();
+    }
+
+    #[test]
+    fn plain_delegated_token_without_attenuation_proof_verifies_and_skips_chain_binding() {
+        // Regression: a plain pass-through delegation that introduces no
+        // new attenuation must not trigger the chain-binding requirement.
+        // The leaf token is signed by its issuer, each `DelegationLink`
+        // carries its own signature, and the chain connectivity invariants
+        // hold via `validate_delegation_chain`. Requiring an
+        // `attenuation_proof` in this shape would make every plain mobile/
+        // context delegation flow unverifiable while adding no soundness.
+        let issuer = Keypair::generate();
+        let subject = Keypair::generate();
+
+        let parent_link = DelegationLink::sign(
+            DelegationLinkBody {
+                capability_id: "cap-parent".to_string(),
+                delegator: issuer.public_key(),
+                delegatee: subject.public_key(),
+                attenuations: vec![],
+                timestamp: 100,
+                scope_hash: None,
+            },
+            &issuer,
+        )
+        .unwrap();
+
+        let token = CapabilityToken::sign(
+            CapabilityTokenBody {
+                id: "cap-delegated-passthrough".to_string(),
+                issuer: issuer.public_key(),
+                subject: subject.public_key(),
+                scope: ChioScope::default(),
+                issued_at: 100,
+                expires_at: 200,
+                delegation_chain: vec![parent_link],
+            },
+            &issuer,
+        )
+        .unwrap();
+
+        // A plain pass-through delegation should not require chain binding.
+        assert!(
+            !token.requires_chain_binding(),
+            "plain delegation without new attenuation must not require chain binding"
+        );
+
+        // The leaf-token signature still verifies and the chain links still
+        // validate independently.
+        assert!(token.verify_signature().unwrap());
+        assert!(validate_delegation_chain(&token.delegation_chain, None).is_ok());
+
+        // The chain-binding entry point is a no-op for non-attenuated tokens.
+        token
+            .validate_chain_binding(&scope_hash(&ChioScope::default()).unwrap())
+            .unwrap();
+
+        // Even when the peer disables `delegation_chain_binding`, a plain
+        // pass-through delegation must still verify: there is no attenuation
+        // for the rule to bind against.
+        let mut negotiated = CapabilityNegotiation::t1_default();
+        negotiated.features.insert(
+            capability_features::DELEGATION_CHAIN_BINDING.to_string(),
+            false,
+        );
+        token
+            .validate_chain_binding_with_features(
+                &scope_hash(&ChioScope::default()).unwrap(),
+                &negotiated,
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn requires_chain_binding_tracks_only_new_attenuation() {
+        // `requires_chain_binding` must reflect that the token introduces
+        // new narrowing relative to its parent. `delegation_chain` alone
+        // does NOT introduce narrowing; an explicit `attenuation_proof`,
+        // non-empty `scope_attenuations`, or a `budget_share_bps` value
+        // do.
+        let issuer = Keypair::generate();
+        let subject = Keypair::generate();
+
+        let plain_token = CapabilityToken::sign(
+            CapabilityTokenBody {
+                id: "cap-plain".to_string(),
+                issuer: issuer.public_key(),
+                subject: subject.public_key(),
+                scope: ChioScope::default(),
+                issued_at: 100,
+                expires_at: 200,
+                delegation_chain: vec![],
+            },
+            &issuer,
+        )
+        .unwrap();
+        assert!(!plain_token.requires_chain_binding());
+
+        let parent_link = DelegationLink::sign(
+            DelegationLinkBody {
+                capability_id: "cap-parent".to_string(),
+                delegator: issuer.public_key(),
+                delegatee: subject.public_key(),
+                attenuations: vec![],
+                timestamp: 100,
+                scope_hash: None,
+            },
+            &issuer,
+        )
+        .unwrap();
+        let mut delegated_token = plain_token.clone();
+        delegated_token.delegation_chain = vec![parent_link];
+        assert!(
+            !delegated_token.requires_chain_binding(),
+            "pass-through delegation does not introduce new attenuation"
+        );
+
+        // budget_share_bps narrows the parent's budget: chain binding fires.
+        let mut budget_narrowed = delegated_token.clone();
+        budget_narrowed.budget_share_bps = Some(5_000);
+        assert!(budget_narrowed.requires_chain_binding());
+
+        // A non-empty scope_attenuations list also fires chain binding.
+        let mut scope_narrowed = delegated_token.clone();
+        scope_narrowed.scope_attenuations = Some(vec![Attenuation::ShortenExpiry {
+            new_expires_at: 150,
+        }]);
+        assert!(scope_narrowed.requires_chain_binding());
     }
 
     fn make_signed_link(

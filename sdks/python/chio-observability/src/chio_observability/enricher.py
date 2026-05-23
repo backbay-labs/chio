@@ -228,15 +228,19 @@ class ReceiptEnricher:
         *,
         tool_result: Any | None,
     ) -> dict[str, Any]:
+        decision = receipt.decision
         outputs: dict[str, Any] = {
-            "decision": {
-                "verdict": receipt.decision.verdict,
-            },
+            "receipt_kind": getattr(receipt, "receipt_kind", None),
+            "boundary_class": getattr(receipt, "boundary_class", None),
         }
-        if receipt.decision.reason is not None:
-            outputs["decision"]["reason"] = receipt.decision.reason
-        if receipt.decision.guard is not None:
-            outputs["decision"]["guard"] = receipt.decision.guard
+        if decision is not None:
+            outputs["decision"] = {
+                "verdict": decision.verdict,
+            }
+            if decision.reason is not None:
+                outputs["decision"]["reason"] = decision.reason
+            if decision.guard is not None:
+                outputs["decision"]["guard"] = decision.guard
         if receipt.evidence:
             outputs["evidence"] = [self._evidence_to_dict(e) for e in receipt.evidence]
         if tool_result is not None:
@@ -250,11 +254,18 @@ class ReceiptEnricher:
         cost_metadata: dict[str, Any],
     ) -> list[str]:
         tags: list[str] = list(self._default_tags)
-        tags.append(f"chio.verdict:{receipt.decision.verdict}")
+        decision = receipt.decision
+        tags.append(f"chio.verdict:{decision.verdict if decision is not None else 'none'}")
+        if getattr(receipt, "receipt_kind", None) is not None:
+            tags.append(f"chio.receipt_kind:{receipt.receipt_kind}")
+        if getattr(receipt, "boundary_class", None) is not None:
+            tags.append(f"chio.boundary_class:{receipt.boundary_class}")
+        if getattr(receipt, "trust_level", None) is not None:
+            tags.append(f"chio.trust_level:{receipt.trust_level}")
         tags.append(f"chio.tool:{receipt.tool_name}")
         tags.append(f"chio.server:{receipt.tool_server}")
-        if receipt.decision.guard:
-            tags.append(f"chio.guard:{receipt.decision.guard}")
+        if decision is not None and decision.guard:
+            tags.append(f"chio.guard:{decision.guard}")
         for evidence in receipt.evidence:
             # Guard evidence may list multiple guards; add each as a tag.
             tags.append(
@@ -286,16 +297,19 @@ class ReceiptEnricher:
             "chio.capability_id": receipt.capability_id,
             "chio.tool_name": receipt.tool_name,
             "chio.tool_server": receipt.tool_server,
-            "chio.verdict": receipt.decision.verdict,
+            "chio.verdict": receipt.decision.verdict if receipt.decision is not None else "none",
+            "chio.receipt_kind": getattr(receipt, "receipt_kind", None),
+            "chio.boundary_class": getattr(receipt, "boundary_class", None),
+            "chio.trust_level": getattr(receipt, "trust_level", None),
             "chio.timestamp": receipt.timestamp,
             "chio.content_hash": receipt.content_hash,
             "chio.policy_hash": receipt.policy_hash,
             "chio.kernel_key": receipt.kernel_key,
             "chio.parameter_hash": receipt.action.parameter_hash,
         }
-        if receipt.decision.reason is not None:
+        if receipt.decision is not None and receipt.decision.reason is not None:
             metadata["chio.reason"] = receipt.decision.reason
-        if receipt.decision.guard is not None:
+        if receipt.decision is not None and receipt.decision.guard is not None:
             metadata["chio.guard"] = receipt.decision.guard
         if cost_metadata:
             metadata["chio.cost"] = dict(cost_metadata)

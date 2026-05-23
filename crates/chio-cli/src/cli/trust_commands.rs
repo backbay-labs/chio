@@ -5,10 +5,29 @@ struct QueryBackend<'a> {
     control_token: Option<&'a str>,
 }
 
+/// Derive a trusted-kernel-key list from an authority seed file. Returns the
+/// loaded public key (so locally signed receipts can pass reputation integrity
+/// validation) or an empty vec when no seed file is configured. See
+/// `chio-reputation::receipt_integrity_valid`.
+fn trusted_kernel_keys_from_authority(
+    authority_seed_path: Option<&Path>,
+) -> Result<Vec<String>, CliError> {
+    let Some(path) = authority_seed_path else {
+        return Ok(Vec::new());
+    };
+    let keypair = load_or_create_authority_keypair(path)?;
+    Ok(vec![keypair.public_key().to_hex()])
+}
+
 struct BudgetQueryBackend<'a> {
     query: QueryBackend<'a>,
     budget_db_path: Option<&'a Path>,
     certification_registry_file: Option<&'a Path>,
+    /// Optional authority seed file used to derive the trusted kernel key
+    /// for local reputation scoring. Plumbing this through means receipts
+    /// signed by the local kernel are not silently filtered out as unsigned.
+    /// See `chio-reputation::receipt_integrity_valid`.
+    authority_seed_path: Option<&'a Path>,
 }
 
 struct SignedQueryBackend<'a> {
@@ -127,6 +146,8 @@ struct ReceiptListArgs<'a> {
     max_cost: Option<u64>,
     limit: usize,
     cursor: Option<u64>,
+    tenant: Option<&'a str>,
+    admin_all: bool,
 }
 
 struct ReceiptExplainArgs<'a> {
@@ -142,6 +163,224 @@ struct ReceiptExplainArgs<'a> {
     /// CLI flag spelling is preserved as a `clap` alias on the parent
     /// enum.
     inspect_bilateral: bool,
+    tenant: Option<&'a str>,
+    admin_all: bool,
+}
+
+const CHIO_CLI_RECEIPT_HEALTH_SCHEMA: &str = "chio.cli.receipt.health.v1";
+const CHIO_CLI_RECEIPT_FLUSH_SCHEMA: &str = "chio.cli.receipt.flush.v1";
+const CHIO_CLI_RECEIPT_CHECKPOINT_STATUS_SCHEMA: &str =
+    "chio.cli.receipt.checkpoint_status.v1";
+const CHIO_CLI_RECEIPT_CHECKPOINT_CREATE_SCHEMA: &str =
+    "chio.cli.receipt.checkpoint_create.v1";
+const CHIO_CLI_RECEIPT_CHECKPOINT_VERIFY_SCHEMA: &str =
+    "chio.cli.receipt.checkpoint_verify.v1";
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ReceiptOperatorJsonEnvelope<'a, T>
+where
+    T: serde::Serialize + ?Sized,
+{
+    schema: &'static str,
+    report: &'a T,
+}
+
+fn receipt_operator_json_value<T>(
+    schema: &'static str,
+    report: &T,
+) -> Result<serde_json::Value, CliError>
+where
+    T: serde::Serialize + ?Sized,
+{
+    Ok(serde_json::to_value(ReceiptOperatorJsonEnvelope {
+        schema,
+        report,
+    })?)
+}
+
+fn print_receipt_operator_json<T>(
+    schema: &'static str,
+    report: &T,
+) -> Result<(), CliError>
+where
+    T: serde::Serialize + ?Sized,
+{
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&receipt_operator_json_value(schema, report)?)?
+    );
+    Ok(())
+}
+
+fn optional_u64(value: Option<u64>) -> String {
+    value
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "none".to_string())
+}
+
+fn push_writer_counters_human(
+    lines: &mut Vec<String>,
+    writer: &chio_kernel::ReceiptWriterCounters,
+) {
+    lines.push(format!("writer_accepted_total: {}", writer.accepted_total));
+    lines.push(format!("writer_committed_total: {}", writer.committed_total));
+    lines.push(format!("writer_failed_total: {}", writer.failed_total));
+    lines.push(format!("writer_saturated_total: {}", writer.saturated_total));
+    lines.push(format!("writer_inflight: {}", writer.inflight));
+    lines.push(format!(
+        "writer_last_commit_unix_ms: {}",
+        optional_u64(writer.last_commit_unix_ms)
+    ));
+    lines.push(format!(
+        "writer_last_error: {}",
+        writer.last_error.as_deref().unwrap_or("none")
+    ));
+}
+
+fn render_receipt_health_human(report: &chio_kernel::ReceiptStoreHealthReport) -> String {
+    let mut lines = vec![
+        format!(
+            "status: {}",
+            if report.healthy {
+                "healthy"
+            } else {
+                "unhealthy"
+            }
+        ),
+        format!("committed_entry_seq: {}", report.latest_committed_entry_seq),
+        format!("checkpoint_seq: {}", optional_u64(report.latest_checkpoint_seq)),
+        format!(
+            "checkpointed_entry_seq: {}",
+            report.latest_checkpointed_entry_seq
+        ),
+    ];
+    if let (Some(start), Some(end)) = (
+        report.uncheckpointed_start_seq,
+        report.uncheckpointed_end_seq,
+    ) {
+        lines.push(format!("uncheckpointed_range: {start}..={end}"));
+    }
+    push_writer_counters_human(&mut lines, &report.writer);
+    lines.push(format!(
+        "db_size_bytes: {}",
+        optional_u64(report.db_size_bytes)
+    ));
+    if let Some(error) = report.checkpoint_error.as_deref() {
+        lines.push(format!("checkpoint_error: {error}"));
+    }
+    lines.join("\n") + "\n"
+}
+
+fn render_receipt_flush_human(report: &chio_kernel::ReceiptFlushReport) -> String {
+    let mut lines = vec![
+        "flushed: true".to_string(),
+        format!("committed_entry_seq: {}", report.latest_committed_entry_seq),
+        format!("checkpoint_seq: {}", optional_u64(report.latest_checkpoint_seq)),
+        format!(
+            "checkpointed_entry_seq: {}",
+            report.latest_checkpointed_entry_seq
+        ),
+    ];
+    if let (Some(start), Some(end)) = (
+        report.uncheckpointed_start_seq,
+        report.uncheckpointed_end_seq,
+    ) {
+        lines.push(format!("uncheckpointed_range: {start}..={end}"));
+    }
+    push_writer_counters_human(&mut lines, &report.writer);
+    lines.push(format!(
+        "db_size_bytes: {}",
+        optional_u64(report.db_size_bytes)
+    ));
+    if let Some(wal) = &report.wal_checkpoint {
+        lines.push(format!("wal_checkpoint_busy: {}", wal.busy));
+        lines.push(format!("wal_checkpoint_log_frames: {}", wal.log_frames));
+        lines.push(format!(
+            "wal_checkpoint_checkpointed_frames: {}",
+            wal.checkpointed_frames
+        ));
+    } else {
+        lines.push("wal_checkpoint_busy: none".to_string());
+        lines.push("wal_checkpoint_log_frames: none".to_string());
+        lines.push("wal_checkpoint_checkpointed_frames: none".to_string());
+    }
+    lines.join("\n") + "\n"
+}
+
+fn render_receipt_checkpoint_status_human(
+    report: &chio_kernel::ReceiptCheckpointStatusReport,
+) -> String {
+    let mut lines = vec![
+        format!(
+            "status: {}",
+            if report.healthy {
+                "healthy"
+            } else {
+                "unhealthy"
+            }
+        ),
+        format!("committed_entry_seq: {}", report.latest_committed_entry_seq),
+        format!("checkpoint_seq: {}", optional_u64(report.latest_checkpoint_seq)),
+        format!(
+            "checkpointed_entry_seq: {}",
+            report.latest_checkpointed_entry_seq
+        ),
+    ];
+    if let Some(range) = &report.next_range {
+        lines.push(format!("next_range: {}..={}", range.start_seq, range.end_seq));
+    } else {
+        lines.push("next_range: none".to_string());
+    }
+    if let Some(error) = report.checkpoint_error.as_deref() {
+        lines.push(format!("checkpoint_error: {error}"));
+    }
+    lines.join("\n") + "\n"
+}
+
+fn render_receipt_checkpoint_create_human(
+    report: &chio_kernel::ReceiptCheckpointCreateReport,
+) -> String {
+    let mut lines = vec![
+        format!("created: {}", report.created),
+        format!("checkpoint_seq: {}", optional_u64(report.checkpoint_seq)),
+    ];
+    if let (Some(start), Some(end)) = (report.batch_start_seq, report.batch_end_seq) {
+        lines.push(format!("checkpoint_range: {start}..={end}"));
+    } else {
+        lines.push("checkpoint_range: none".to_string());
+    }
+    lines.push(format!(
+        "committed_entry_seq: {}",
+        report.latest_committed_entry_seq
+    ));
+    lines.push(format!(
+        "checkpointed_entry_seq: {}",
+        report.latest_checkpointed_entry_seq
+    ));
+    lines.join("\n") + "\n"
+}
+
+fn receipt_checkpoint_report_error(
+    report: &chio_kernel::ReceiptCheckpointStatusReport,
+) -> CliError {
+    CliError::cli_other_error(
+        report
+            .checkpoint_error
+            .as_deref()
+            .unwrap_or("receipt checkpoint verification failed")
+            .to_string(),
+    )
+}
+
+fn receipt_health_report_error(report: &chio_kernel::ReceiptStoreHealthReport) -> CliError {
+    CliError::cli_other_error(
+        report
+            .checkpoint_error
+            .as_deref()
+            .unwrap_or("receipt store health check failed")
+            .to_string(),
+    )
 }
 
 fn build_underwriting_policy_input_query(
@@ -398,12 +637,14 @@ fn cmd_trust_credit_backtest_export(
                     .to_string(),
             )
         })?;
+        let trusted_kernel_keys = trusted_kernel_keys_from_authority(backend.authority_seed_path)?;
         trust_control::build_credit_backtest_report(
             receipt_db_path,
             backend.budget_db_path,
             backend.certification_registry_file,
             None,
             &query,
+            &trusted_kernel_keys,
         )?
     };
 
@@ -1614,11 +1855,13 @@ fn cmd_trust_underwriting_decision_evaluate(
                     .to_string(),
             )
         })?;
+        let trusted_kernel_keys = trusted_kernel_keys_from_authority(backend.authority_seed_path)?;
         trust_control::build_underwriting_decision_report(
             receipt_db_path,
             backend.budget_db_path,
             backend.certification_registry_file,
             &query,
+            &trusted_kernel_keys,
         )?
     };
 
@@ -1668,11 +1911,13 @@ fn cmd_trust_underwriting_decision_simulate(
                     .to_string(),
             )
         })?;
+        let trusted_kernel_keys = trusted_kernel_keys_from_authority(backend.authority_seed_path)?;
         trust_control::build_underwriting_simulation_report(
             receipt_db_path,
             backend.budget_db_path,
             backend.certification_registry_file,
             &request,
+            &trusted_kernel_keys,
         )?
     };
 
@@ -2364,6 +2609,12 @@ fn cmd_receipt_list(
     backend: QueryBackend<'_>,
 ) -> Result<(), CliError> {
     if let Some(url) = backend.control_url {
+        if args.tenant.is_some() || args.admin_all {
+            return Err(CliError::cli_other_error(
+                "receipt list read-boundary flags apply to local --receipt-db; remote reads derive scope from the control token"
+                    .to_string(),
+            ));
+        }
         let token = require_control_token(backend.control_token)?;
         let client = trust_control::build_client(url, token)?;
         let query = trust_control::ReceiptQueryHttpQuery {
@@ -2395,7 +2646,14 @@ fn cmd_receipt_list(
                 "receipt commands require --receipt-db <path> or --control-url".to_string(),
             )
         })?;
-        let store = chio_store_sqlite::SqliteReceiptStore::open(path)?;
+        if !path.is_file() {
+            return Err(CliError::cli_other_error(format!(
+                "receipt list requires an existing --receipt-db <path>: {}",
+                path.display()
+            )));
+        }
+        let read_context = local_receipt_read_context(args.tenant, args.admin_all)?;
+        let store = chio_store_sqlite::SqliteReceiptStore::open_existing(path)?;
         let kernel_query = chio_kernel::ReceiptQuery {
             capability_id: args.capability.map(ToOwned::to_owned),
             tool_server: args.tool_server.map(ToOwned::to_owned),
@@ -2408,11 +2666,8 @@ fn cmd_receipt_list(
             cursor: args.cursor,
             limit: args.limit,
             agent_subject: None,
-            // Phase 1.5: CLI receipt listing does not derive a tenant
-            // claim today; operator-driven listings must flip the
-            // store's strict-tenant-isolation mode to enforce boundaries
-            // (populated by higher-level admin workflows later).
-            tenant_filter: None,
+            tenant_filter: args.tenant.map(ToOwned::to_owned),
+            read_context: Some(read_context),
         };
         let result = store.query_receipts(&kernel_query)?;
         for stored in &result.receipts {
@@ -2428,6 +2683,148 @@ fn cmd_receipt_list(
     Ok(())
 }
 
+/// Resolve the local-CLI receipt read context from explicit operator
+/// flags. The local CLI does NOT silently default to admin-all reads
+/// across all tenants. Exactly one of `--tenant <id>` or `--admin-all`
+/// must be specified by the operator for any local --receipt-db
+/// listing or lookup; otherwise this function fails closed.
+///
+/// Note: clap is configured with `conflicts_with = "admin_all"` on the
+/// `--tenant` flag, so the both-set case is rejected at parse time.
+/// This function still defends against the both-set state in case any
+/// caller bypasses the clap surface.
+fn local_receipt_read_context(
+    tenant: Option<&str>,
+    admin_all: bool,
+) -> Result<chio_kernel::ReceiptReadContext, CliError> {
+    match (tenant, admin_all) {
+        (Some(_), true) => Err(CliError::cli_other_error(
+            "--tenant <id> and --admin-all are mutually exclusive".to_string(),
+        )),
+        (Some(tenant), false) => Ok(chio_kernel::ReceiptReadContext::authenticated_tenant(
+            tenant.to_string(),
+        )),
+        (None, true) => Ok(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
+        (None, false) => Err(CliError::cli_other_error(
+            "--tenant <id> or --admin-all is required for local receipt reads".to_string(),
+        )),
+    }
+}
+
+fn local_receipt_store(
+    backend: &QueryBackend<'_>,
+    command_name: &str,
+) -> Result<chio_store_sqlite::SqliteReceiptStore, CliError> {
+    if backend.control_url.is_some() {
+        return Err(CliError::cli_other_error(format!(
+            "{command_name} requires local --receipt-db; remote receipt operator operations are not supported in this release"
+        )));
+    }
+    let path = backend.receipt_db_path.ok_or_else(|| {
+        CliError::cli_other_error(format!("{command_name} requires --receipt-db <path>"))
+    })?;
+    if !path.is_file() {
+        return Err(CliError::cli_other_error(format!(
+            "{command_name} requires an existing --receipt-db <path>: {}",
+            path.display()
+        )));
+    }
+    chio_store_sqlite::SqliteReceiptStore::open_existing(path).map_err(CliError::from)
+}
+
+fn load_existing_kernel_checkpoint_keypair(path: &Path) -> Result<chio_core::Keypair, CliError> {
+    let seed_hex = std::fs::read_to_string(path).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::NotFound {
+            CliError::cli_other_error(format!(
+                "receipt checkpoint create requires an existing kernel seed file: {}",
+                path.display()
+            ))
+        } else {
+            CliError::Io(error)
+        }
+    })?;
+    chio_core::Keypair::from_seed_hex(seed_hex.trim()).map_err(CliError::from)
+}
+
+fn cmd_receipt_health(backend: QueryBackend<'_>) -> Result<(), CliError> {
+    let store = local_receipt_store(&backend, "receipt health")?;
+    let report = store.receipt_store_health()?;
+    if backend.json_output {
+        print_receipt_operator_json(CHIO_CLI_RECEIPT_HEALTH_SCHEMA, &report)?;
+    } else {
+        print!("{}", render_receipt_health_human(&report));
+    }
+    if report.healthy {
+        Ok(())
+    } else {
+        Err(receipt_health_report_error(&report))
+    }
+}
+
+fn cmd_receipt_flush(
+    timeout_ms: u64,
+    backend: QueryBackend<'_>,
+) -> Result<(), CliError> {
+    let store = local_receipt_store(&backend, "receipt flush")?;
+    let report =
+        store.flush_receipt_writes_with_timeout(std::time::Duration::from_millis(timeout_ms))?;
+    if backend.json_output {
+        print_receipt_operator_json(CHIO_CLI_RECEIPT_FLUSH_SCHEMA, &report)?;
+    } else {
+        print!("{}", render_receipt_flush_human(&report));
+    }
+    Ok(())
+}
+
+fn cmd_receipt_checkpoint_status(
+    max_batch: u64,
+    backend: QueryBackend<'_>,
+) -> Result<(), CliError> {
+    let store = local_receipt_store(&backend, "receipt checkpoint status")?;
+    let report = store.receipt_checkpoint_status(Some(max_batch))?;
+    if backend.json_output {
+        print_receipt_operator_json(CHIO_CLI_RECEIPT_CHECKPOINT_STATUS_SCHEMA, &report)?;
+    } else {
+        print!("{}", render_receipt_checkpoint_status_human(&report));
+    }
+    if report.healthy {
+        Ok(())
+    } else {
+        Err(receipt_checkpoint_report_error(&report))
+    }
+}
+
+fn cmd_receipt_checkpoint_create(
+    kernel_seed_file: &Path,
+    max_batch: u64,
+    backend: QueryBackend<'_>,
+) -> Result<(), CliError> {
+    let store = local_receipt_store(&backend, "receipt checkpoint create")?;
+    let keypair = load_existing_kernel_checkpoint_keypair(kernel_seed_file)?;
+    let report = store.create_next_receipt_checkpoint(max_batch, &keypair)?;
+    if backend.json_output {
+        print_receipt_operator_json(CHIO_CLI_RECEIPT_CHECKPOINT_CREATE_SCHEMA, &report)?;
+    } else {
+        print!("{}", render_receipt_checkpoint_create_human(&report));
+    }
+    Ok(())
+}
+
+fn cmd_receipt_checkpoint_verify(backend: QueryBackend<'_>) -> Result<(), CliError> {
+    let store = local_receipt_store(&backend, "receipt checkpoint verify")?;
+    let report = store.receipt_checkpoint_status(Some(1))?;
+    if backend.json_output {
+        print_receipt_operator_json(CHIO_CLI_RECEIPT_CHECKPOINT_VERIFY_SCHEMA, &report)?;
+    } else {
+        print!("{}", render_receipt_checkpoint_status_human(&report));
+    }
+    if report.healthy {
+        Ok(())
+    } else {
+        Err(receipt_checkpoint_report_error(&report))
+    }
+}
+
 fn cmd_receipt_explain(
     args: ReceiptExplainArgs<'_>,
     backend: QueryBackend<'_>,
@@ -2435,7 +2832,7 @@ fn cmd_receipt_explain(
     let value = if let Some(input_file) = args.input_file {
         serde_json::from_slice::<serde_json::Value>(&fs::read(input_file)?)?
     } else {
-        load_receipt_for_explain(args.receipt_id, &backend)?
+        load_receipt_for_explain(args.receipt_id, args.tenant, args.admin_all, &backend)?
     };
     if is_bilateral_artifacts_value(&value) {
         return render_bilateral_explain(&value, &args, &backend);
@@ -3070,11 +3467,19 @@ fn print_bilateral_human(report: &serde_json::Value, with_trace: bool) {
 
 fn load_receipt_for_explain(
     receipt_id: &str,
+    tenant: Option<&str>,
+    admin_all: bool,
     backend: &QueryBackend<'_>,
 ) -> Result<serde_json::Value, CliError> {
     const RECEIPT_EXPLAIN_PAGE_LIMIT: usize = 1000;
 
     if let Some(url) = backend.control_url {
+        if tenant.is_some() || admin_all {
+            return Err(CliError::cli_other_error(
+                "receipt explain read-boundary flags apply to local --receipt-db; remote reads derive scope from the control token"
+                    .to_string(),
+            ));
+        }
         let token = require_control_token(backend.control_token)?;
         let client = trust_control::build_client(url, token)?;
         let mut cursor = None;
@@ -3119,7 +3524,14 @@ fn load_receipt_for_explain(
             "receipt explain requires --input-file, --receipt-db, or --control-url".to_string(),
         )
     })?;
-    let store = chio_store_sqlite::SqliteReceiptStore::open(path)?;
+    if !path.is_file() {
+        return Err(CliError::cli_other_error(format!(
+            "receipt explain requires an existing --receipt-db <path>: {}",
+            path.display()
+        )));
+    }
+    let read_context = local_receipt_read_context(tenant, admin_all)?;
+    let store = chio_store_sqlite::SqliteReceiptStore::open_existing(path)?;
     let mut cursor = None;
     let mut matches = Vec::new();
     loop {
@@ -3135,7 +3547,8 @@ fn load_receipt_for_explain(
             cursor,
             limit: RECEIPT_EXPLAIN_PAGE_LIMIT,
             agent_subject: None,
-            tenant_filter: None,
+            tenant_filter: tenant.map(ToOwned::to_owned),
+            read_context: Some(read_context.clone()),
         })?;
         let receipts = result
             .receipts
@@ -3231,8 +3644,26 @@ fn explain_receipt_value(
 ) -> Result<serde_json::Value, CliError> {
     let receipt: chio_core::receipt::ChioReceipt = serde_json::from_value(value)?;
     let signature_ok = receipt.verify_signature()?;
-    let decision = explain_decision_label(&receipt.decision);
-    let (reason, guard) = decision_details(&receipt.decision);
+    let receipt_id_ok = chio_core::receipt::chio_receipt_id(&receipt.body())? == receipt.id;
+    let parameter_hash_ok = receipt.action.verify_hash()?;
+    let decision = explain_decision_label(receipt.decision.as_ref());
+    let semantics = receipt.semantic_fields();
+    let semantic_authorized = semantics.is_authorized(receipt.decision.as_ref());
+    let verified = signature_ok && receipt_id_ok && parameter_hash_ok;
+    let result = if verified || !semantic_authorized {
+        semantics.result_label(receipt.decision.as_ref())
+    } else {
+        "Unverified"
+    };
+    let authorized = verified && semantic_authorized;
+    let receipt_kind = semantics.receipt_kind.as_str();
+    let boundary_class = semantics.boundary_class.as_str();
+    let observation_outcome = semantics
+        .observation_outcome
+        .map(|outcome| outcome.as_str());
+    let tool_origin = semantics.tool_origin.as_str();
+    let redaction_mode = semantics.redaction_mode.as_str();
+    let (reason, guard) = decision_details(receipt.decision.as_ref());
     let parents = receipt
         .metadata
         .as_ref()
@@ -3258,7 +3689,16 @@ fn explain_receipt_value(
         "identity": receipt.id,
         "requested_id": requested_id,
         "signature_ok": signature_ok,
+        "receipt_id_ok": receipt_id_ok,
+        "parameter_hash_ok": parameter_hash_ok,
         "decision": decision,
+        "receipt_kind": receipt_kind,
+        "boundary_class": boundary_class,
+        "observation_outcome": observation_outcome,
+        "tool_origin": tool_origin,
+        "redaction_mode": redaction_mode,
+        "result": result,
+        "authorized": authorized,
         "reason": reason,
         "guard": guard,
         "policy_hash": receipt.policy_hash,
@@ -3268,48 +3708,103 @@ fn explain_receipt_value(
         "depth_limit": depth,
         "fanout_limit": fanout_limit,
         "batch_witness": batch_witness,
-        "repair_hint": repair_hint(&receipt.decision),
+        "repair_hint": repair_hint(receipt.decision.as_ref()),
     }))
 }
 
-fn explain_decision_label(decision: &chio_core::receipt::Decision) -> &'static str {
+fn explain_decision_label(decision: Option<&chio_core::receipt::Decision>) -> &'static str {
     match decision {
-        chio_core::receipt::Decision::Allow => "allow",
-        chio_core::receipt::Decision::Deny { .. } => "deny",
-        chio_core::receipt::Decision::Cancelled { .. } => "cancelled",
-        chio_core::receipt::Decision::Incomplete { .. } => "incomplete",
+        Some(chio_core::receipt::Decision::Allow) => "allow",
+        Some(chio_core::receipt::Decision::Deny { .. }) => "deny",
+        Some(chio_core::receipt::Decision::Cancelled { .. }) => "cancelled",
+        Some(chio_core::receipt::Decision::Incomplete { .. }) => "incomplete",
+        None => "none",
     }
 }
 
-fn decision_details(decision: &chio_core::receipt::Decision) -> (Option<&str>, Option<&str>) {
+fn decision_details(
+    decision: Option<&chio_core::receipt::Decision>,
+) -> (Option<&str>, Option<&str>) {
     match decision {
-        chio_core::receipt::Decision::Deny { reason, guard } => {
+        Some(chio_core::receipt::Decision::Deny { reason, guard }) => {
             (Some(reason.as_str()), Some(guard.as_str()))
         }
-        chio_core::receipt::Decision::Cancelled { reason }
-        | chio_core::receipt::Decision::Incomplete { reason } => (Some(reason.as_str()), None),
-        chio_core::receipt::Decision::Allow => (None, None),
+        Some(chio_core::receipt::Decision::Cancelled { reason })
+        | Some(chio_core::receipt::Decision::Incomplete { reason }) => {
+            (Some(reason.as_str()), None)
+        }
+        Some(chio_core::receipt::Decision::Allow) | None => (None, None),
     }
 }
 
-fn repair_hint(decision: &chio_core::receipt::Decision) -> Option<&'static str> {
+fn repair_hint(decision: Option<&chio_core::receipt::Decision>) -> Option<&'static str> {
     match decision {
-        chio_core::receipt::Decision::Deny { .. } => {
+        Some(chio_core::receipt::Decision::Deny { .. }) => {
             Some("inspect the guard and policy_hash, then mint or narrow a matching capability")
         }
-        chio_core::receipt::Decision::Incomplete { .. } => {
+        Some(chio_core::receipt::Decision::Incomplete { .. }) => {
             Some("retry after checking the parent receipt and terminal operation state")
         }
-        chio_core::receipt::Decision::Cancelled { .. } => {
+        Some(chio_core::receipt::Decision::Cancelled { .. }) => {
             Some("resume only if the caller still owns the request and session")
         }
-        chio_core::receipt::Decision::Allow => None,
+        Some(chio_core::receipt::Decision::Allow) | None => None,
     }
 }
 
 #[cfg(test)]
 mod receipt_explain_tests {
     use super::*;
+
+    fn signed_explain_receipt(
+        decision: chio_core::receipt::Decision,
+        semantics: Option<chio_core::receipt::ReceiptSemanticFields>,
+    ) -> chio_core::receipt::ChioReceipt {
+        let keypair = Keypair::generate();
+        let semantics = semantics
+            .unwrap_or_else(chio_core::receipt::ReceiptSemanticFields::mediated_prevent);
+        let decision =
+            if semantics.receipt_kind == chio_core::receipt::ReceiptKind::MediatedDecision {
+                Some(decision)
+            } else {
+                None
+            };
+        let trust_level =
+            if semantics.receipt_kind == chio_core::receipt::ReceiptKind::MediatedDecision {
+                chio_core::TrustLevel::Mediated
+            } else {
+                chio_core::TrustLevel::Verified
+            };
+        chio_core::receipt::ChioReceipt::sign(
+            chio_core::receipt::ChioReceiptBody {
+                id: "ignored-before-content-id".to_string(),
+                timestamp: 1,
+                capability_id: "cap-explain".to_string(),
+                tool_server: "shell".to_string(),
+                tool_name: "bash".to_string(),
+                action: chio_core::receipt::ToolCallAction::from_parameters(
+                    serde_json::json!({}),
+                )
+                .unwrap_or_else(|error| panic!("valid tool action: {error}")),
+                decision,
+                receipt_kind: semantics.receipt_kind,
+                boundary_class: semantics.boundary_class,
+                observation_outcome: semantics.observation_outcome,
+                tool_origin: semantics.tool_origin,
+                redaction_mode: semantics.redaction_mode,
+                actor_chain: semantics.actor_chain,
+                content_hash: "content-explain".to_string(),
+                policy_hash: "policy-explain".to_string(),
+                evidence: Vec::new(),
+                metadata: None,
+                trust_level,
+                tenant_id: None,
+                kernel_key: keypair.public_key(),
+            },
+            &keypair,
+        )
+        .unwrap_or_else(|error| panic!("valid receipt: {error}"))
+    }
 
     #[test]
     fn receipt_value_matches_legacy_and_v2_ids() {
@@ -3372,6 +3867,367 @@ mod receipt_explain_tests {
         let selected = finish_receipt_for_explain("receipt-b", matches, "test source")?;
         assert_eq!(selected["id"].as_str(), Some("receipt-b"));
 
+        Ok(())
+    }
+
+    #[test]
+    fn receipt_explain_reports_semantic_authorization_fields() -> Result<(), CliError> {
+        let mediated =
+            signed_explain_receipt(chio_core::receipt::Decision::Allow, None);
+        let mediated_explain = explain_receipt_value(
+            &mediated.id,
+            serde_json::to_value(&mediated)?,
+            1,
+            1,
+        )?;
+        assert_eq!(mediated_explain["receipt_kind"].as_str(), Some("mediated_decision"));
+        assert_eq!(mediated_explain["boundary_class"].as_str(), Some("prevent"));
+        assert_eq!(mediated_explain["result"].as_str(), Some("Authorized"));
+        assert_eq!(mediated_explain["authorized"].as_bool(), Some(true));
+
+        let trace = signed_explain_receipt(
+            chio_core::receipt::Decision::Incomplete {
+                reason: "trace only".to_string(),
+            },
+            Some(chio_core::receipt::ReceiptSemanticFields::trace_detect_only()),
+        );
+        let trace_explain = explain_receipt_value(
+            &trace.id,
+            serde_json::to_value(&trace)?,
+            1,
+            1,
+        )?;
+        assert_eq!(trace_explain["receipt_kind"].as_str(), Some("trace_observation"));
+        assert_eq!(trace_explain["boundary_class"].as_str(), Some("detect_only"));
+        assert_eq!(trace_explain["result"].as_str(), Some("Observed"));
+        assert_eq!(trace_explain["authorized"].as_bool(), Some(false));
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod receipt_operator_tests {
+    use super::*;
+    use chio_kernel::ReceiptStore;
+
+    fn unique_temp_path(name: &str, suffix: &str) -> std::path::PathBuf {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        std::env::temp_dir().join(format!("chio-{name}-{}-{stamp}.{suffix}", std::process::id()))
+    }
+
+    fn operator_sample_receipt() -> Result<chio_core::receipt::ChioReceipt, chio_core::Error> {
+        let keypair = chio_core::crypto::Keypair::generate();
+        operator_sample_receipt_with_keypair(&keypair)
+    }
+
+    fn operator_sample_receipt_with_keypair(
+        keypair: &chio_core::crypto::Keypair,
+    ) -> Result<chio_core::receipt::ChioReceipt, chio_core::Error> {
+        chio_core::receipt::ChioReceipt::sign(
+            chio_core::receipt::ChioReceiptBody {
+                id: "receipt-operator-1".to_string(),
+                timestamp: 1_775_137_626,
+                capability_id: "cap-operator-1".to_string(),
+                tool_server: "operator".to_string(),
+                tool_name: "flush".to_string(),
+                action: chio_core::receipt::ToolCallAction::from_parameters(
+                    serde_json::json!({"operation":"flush"}),
+                )?,
+                decision: Some(chio_core::receipt::Decision::Allow),
+                receipt_kind: Default::default(),
+                boundary_class: Default::default(),
+                observation_outcome: None,
+                tool_origin: Default::default(),
+                redaction_mode: Default::default(),
+                actor_chain: Vec::new(),
+                content_hash: "content-operator-1".to_string(),
+                policy_hash: "policy-operator-1".to_string(),
+                evidence: Vec::new(),
+                metadata: None,
+                trust_level: chio_core::TrustLevel::default(),
+                tenant_id: None,
+                kernel_key: keypair.public_key(),
+            },
+            &keypair,
+        )
+    }
+
+    fn backend<'a>(
+        receipt_db_path: Option<&'a Path>,
+        control_url: Option<&'a str>,
+    ) -> QueryBackend<'a> {
+        QueryBackend {
+            json_output: true,
+            receipt_db_path,
+            control_url,
+            control_token: None,
+        }
+    }
+
+    #[test]
+    fn receipt_operator_json_envelope_includes_schema_and_null_fields() -> Result<(), CliError> {
+        let health = chio_kernel::ReceiptStoreHealthReport {
+            healthy: true,
+            ..chio_kernel::ReceiptStoreHealthReport::default()
+        };
+        let flush = chio_kernel::ReceiptFlushReport::default();
+        let status = chio_kernel::ReceiptCheckpointStatusReport {
+            healthy: true,
+            ..chio_kernel::ReceiptCheckpointStatusReport::default()
+        };
+        let create = chio_kernel::ReceiptCheckpointCreateReport::default();
+
+        for (schema, report) in [
+            (
+                CHIO_CLI_RECEIPT_HEALTH_SCHEMA,
+                receipt_operator_json_value(CHIO_CLI_RECEIPT_HEALTH_SCHEMA, &health)?,
+            ),
+            (
+                CHIO_CLI_RECEIPT_FLUSH_SCHEMA,
+                receipt_operator_json_value(CHIO_CLI_RECEIPT_FLUSH_SCHEMA, &flush)?,
+            ),
+            (
+                CHIO_CLI_RECEIPT_CHECKPOINT_STATUS_SCHEMA,
+                receipt_operator_json_value(CHIO_CLI_RECEIPT_CHECKPOINT_STATUS_SCHEMA, &status)?,
+            ),
+            (
+                CHIO_CLI_RECEIPT_CHECKPOINT_CREATE_SCHEMA,
+                receipt_operator_json_value(CHIO_CLI_RECEIPT_CHECKPOINT_CREATE_SCHEMA, &create)?,
+            ),
+            (
+                CHIO_CLI_RECEIPT_CHECKPOINT_VERIFY_SCHEMA,
+                receipt_operator_json_value(CHIO_CLI_RECEIPT_CHECKPOINT_VERIFY_SCHEMA, &status)?,
+            ),
+        ] {
+            assert_eq!(report["schema"].as_str(), Some(schema));
+        }
+
+        let value = receipt_operator_json_value(CHIO_CLI_RECEIPT_HEALTH_SCHEMA, &health)?;
+        assert!(value["report"]["latestCheckpointSeq"].is_null());
+        assert!(value["report"]["uncheckpointedStartSeq"].is_null());
+        assert!(value["report"]["writer"]["lastError"].is_null());
+
+        let create_value =
+            receipt_operator_json_value(CHIO_CLI_RECEIPT_CHECKPOINT_CREATE_SCHEMA, &create)?;
+        assert!(create_value["report"]["checkpointSeq"].is_null());
+        assert!(create_value["report"]["batchStartSeq"].is_null());
+        Ok(())
+    }
+
+    #[test]
+    fn receipt_operator_human_output_includes_operational_fields() {
+        let counters = chio_kernel::ReceiptWriterCounters {
+            accepted_total: 10,
+            committed_total: 9,
+            failed_total: 1,
+            saturated_total: 2,
+            inflight: 3,
+            last_commit_unix_ms: Some(1234),
+            last_error: Some("writer lag".to_string()),
+        };
+        let health = chio_kernel::ReceiptStoreHealthReport {
+            healthy: false,
+            writer: counters.clone(),
+            latest_committed_entry_seq: 12,
+            latest_checkpoint_seq: Some(2),
+            latest_checkpointed_entry_seq: 8,
+            uncheckpointed_start_seq: Some(9),
+            uncheckpointed_end_seq: Some(12),
+            checkpoint_error: Some("projection drift".to_string()),
+            db_size_bytes: Some(4096),
+        };
+        let health_output = render_receipt_health_human(&health);
+        assert!(health_output.contains("checkpoint_seq: 2"));
+        assert!(health_output.contains("uncheckpointed_range: 9..=12"));
+        assert!(health_output.contains("writer_accepted_total: 10"));
+        assert!(health_output.contains("writer_saturated_total: 2"));
+        assert!(health_output.contains("db_size_bytes: 4096"));
+        assert!(health_output.contains("checkpoint_error: projection drift"));
+        assert!(health_output.contains("writer_last_error: writer lag"));
+
+        let flush = chio_kernel::ReceiptFlushReport {
+            writer: counters,
+            latest_committed_entry_seq: 12,
+            latest_checkpoint_seq: Some(2),
+            latest_checkpointed_entry_seq: 8,
+            uncheckpointed_start_seq: Some(9),
+            uncheckpointed_end_seq: Some(12),
+            wal_checkpoint: Some(chio_kernel::ReceiptWalCheckpointReport {
+                busy: 0,
+                log_frames: 7,
+                checkpointed_frames: 6,
+            }),
+            db_size_bytes: Some(4096),
+        };
+        let flush_output = render_receipt_flush_human(&flush);
+        assert!(flush_output.contains("wal_checkpoint_log_frames: 7"));
+        assert!(flush_output.contains("wal_checkpoint_checkpointed_frames: 6"));
+
+        let create = chio_kernel::ReceiptCheckpointCreateReport {
+            created: true,
+            checkpoint_seq: Some(3),
+            batch_start_seq: Some(9),
+            batch_end_seq: Some(12),
+            latest_committed_entry_seq: 12,
+            latest_checkpointed_entry_seq: 12,
+        };
+        let create_output = render_receipt_checkpoint_create_human(&create);
+        assert!(create_output.contains("checkpoint_seq: 3"));
+        assert!(create_output.contains("checkpoint_range: 9..=12"));
+    }
+
+    fn assert_remote_unsupported(result: Result<(), CliError>) {
+        let error = match result {
+            Ok(()) => panic!("remote receipt operator command should be deferred"),
+            Err(error) => error,
+        };
+
+        assert!(error
+            .to_string()
+            .contains("requires local --receipt-db; remote receipt operator operations are not supported in this release"));
+        assert!(!error.to_string().contains("requires --receipt-db"));
+    }
+
+    #[test]
+    fn receipt_operator_commands_reject_remote_control_backend_first() {
+        let error = match local_receipt_store(
+            &backend(None, Some("http://127.0.0.1:9977")),
+            "receipt flush",
+        ) {
+            Ok(_) => panic!("remote receipt flush should be deferred"),
+            Err(error) => error,
+        };
+
+        assert!(error
+            .to_string()
+            .contains("requires local --receipt-db; remote receipt operator operations are not supported in this release"));
+        assert!(!error.to_string().contains("requires --receipt-db"));
+    }
+
+    #[test]
+    fn receipt_operator_entrypoints_reject_remote_control_backend_first() {
+        let control_url = Some("http://127.0.0.1:9977");
+
+        assert_remote_unsupported(cmd_receipt_health(backend(None, control_url)));
+        assert_remote_unsupported(cmd_receipt_flush(5000, backend(None, control_url)));
+        assert_remote_unsupported(cmd_receipt_checkpoint_status(
+            1000,
+            backend(None, control_url),
+        ));
+        assert_remote_unsupported(cmd_receipt_checkpoint_create(
+            Path::new("kernel.seed"),
+            1000,
+            backend(None, control_url),
+        ));
+        assert_remote_unsupported(cmd_receipt_checkpoint_verify(backend(None, control_url)));
+    }
+
+    #[test]
+    fn receipt_operator_entrypoints_work_against_local_temp_db(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let db_path = unique_temp_path("receipt-operator", "sqlite3");
+        let seed_path = unique_temp_path("receipt-operator-kernel", "seed");
+        let keypair = chio_core::crypto::Keypair::generate();
+        let store = chio_store_sqlite::SqliteReceiptStore::open(&db_path)?;
+        store.append_chio_receipt(&operator_sample_receipt_with_keypair(&keypair)?)?;
+        drop(store);
+        std::fs::write(&seed_path, keypair.seed_hex())?;
+
+        cmd_receipt_health(backend(Some(&db_path), None))?;
+        cmd_receipt_flush(5000, backend(Some(&db_path), None))?;
+        cmd_receipt_checkpoint_status(10, backend(Some(&db_path), None))?;
+        cmd_receipt_checkpoint_create(&seed_path, 10, backend(Some(&db_path), None))?;
+        cmd_receipt_checkpoint_verify(backend(Some(&db_path), None))?;
+
+        let _ = std::fs::remove_file(db_path);
+        let _ = std::fs::remove_file(seed_path);
+        Ok(())
+    }
+
+    #[test]
+    fn receipt_operator_commands_require_local_receipt_db() {
+        let error = match local_receipt_store(&backend(None, None), "receipt health") {
+            Ok(_) => panic!("local receipt health should require a database"),
+            Err(error) => error,
+        };
+
+        assert!(error
+            .to_string()
+            .contains("receipt health requires --receipt-db <path>"));
+    }
+
+    #[test]
+    fn receipt_operator_commands_reject_missing_receipt_db_path() {
+        let db_path = unique_temp_path("receipt-missing", "sqlite3");
+        let error = match local_receipt_store(&backend(Some(&db_path), None), "receipt health") {
+            Ok(_) => panic!("missing receipt database must not be created"),
+            Err(error) => error,
+        };
+
+        assert!(error
+            .to_string()
+            .contains("receipt health requires an existing --receipt-db"));
+        assert!(
+            !db_path.exists(),
+            "receipt operator command must not create a missing database"
+        );
+    }
+
+    #[test]
+    fn receipt_operator_commands_reject_touched_empty_receipt_db_file() -> Result<(), CliError> {
+        let db_path = unique_temp_path("receipt-empty", "sqlite3");
+        std::fs::write(&db_path, "")?;
+
+        let error = match local_receipt_store(&backend(Some(&db_path), None), "receipt health") {
+            Ok(_) => panic!("empty receipt database file must not be initialized"),
+            Err(error) => error,
+        };
+
+        assert!(
+            error
+                .to_string()
+                .contains("not an initialized Chio receipt store"),
+            "unexpected error: {error}"
+        );
+        assert!(
+            db_path.is_file(),
+            "receipt operator command should refuse, not remove, an empty database file"
+        );
+
+        let _ = std::fs::remove_file(db_path);
+        Ok(())
+    }
+
+    #[test]
+    fn receipt_checkpoint_create_requires_existing_kernel_seed() -> Result<(), CliError> {
+        let db_path = unique_temp_path("receipt-checkpoint-seed", "sqlite3");
+        let seed_path = unique_temp_path("receipt-checkpoint-missing-seed", "seed");
+        let store = chio_store_sqlite::SqliteReceiptStore::open(&db_path)?;
+        store.append_chio_receipt(&operator_sample_receipt()?)?;
+        drop(store);
+
+        let error = match cmd_receipt_checkpoint_create(&seed_path, 10, backend(Some(&db_path), None))
+        {
+            Ok(_) => panic!("checkpoint create must not generate a missing seed"),
+            Err(error) => error,
+        };
+
+        assert!(
+            error
+                .to_string()
+                .contains("receipt checkpoint create requires an existing kernel seed file"),
+            "unexpected error: {error}"
+        );
+        assert!(
+            !seed_path.exists(),
+            "checkpoint create must not create a new kernel seed"
+        );
+
+        let _ = std::fs::remove_file(db_path);
         Ok(())
     }
 }

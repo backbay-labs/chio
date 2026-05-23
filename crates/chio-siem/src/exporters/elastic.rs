@@ -188,6 +188,10 @@ impl Exporter for ElasticsearchExporter {
                         "result".to_string(),
                         serde_json::Value::String(ev.result.clone()),
                     );
+                    obj.insert(
+                        "authorized".to_string(),
+                        serde_json::Value::Bool(ev.authorized),
+                    );
                 }
                 let doc = serde_json::to_string(&document).map_err(|e| {
                     ExportError::SerializationError(format!(

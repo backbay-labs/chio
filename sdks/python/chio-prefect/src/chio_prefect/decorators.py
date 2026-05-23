@@ -160,13 +160,22 @@ async def _evaluate_and_emit(
     except ChioError:
         raise
 
-    if receipt.is_denied:
+    if not receipt.is_allowed:
         decision = receipt.decision
+        reason = (
+            decision.reason
+            if decision is not None and decision.reason is not None
+            else "non-authorizing Chio receipt"
+        )
+        guard = decision.guard if decision is not None else None
+        decision_payload = (
+            decision.model_dump(exclude_none=True) if decision is not None else None
+        )
         emit_deny_event(
             receipt=receipt,
             task_name=tool_name,
-            reason=decision.reason or "denied by Chio kernel",
-            guard=decision.guard,
+            reason=reason,
+            guard=guard,
             flow_run_id=flow_run_id,
             task_run_id=task_run_id,
         )
@@ -176,10 +185,10 @@ async def _evaluate_and_emit(
             task_run_id=task_run_id,
             capability_id=capability_id,
             tool_server=tool_server,
-            reason=decision.reason or "denied by Chio kernel",
-            guard=decision.guard,
+            reason=reason,
+            guard=guard,
             receipt_id=receipt.id,
-            decision=decision.model_dump(exclude_none=True),
+            decision=decision_payload,
         )
 
     emit_allow_event(

@@ -195,6 +195,108 @@ mod cli_entrypoint_tests {
     }
 
     #[test]
+    fn receipt_flush_subcommand_parses() {
+        let cli = Cli::try_parse_from([
+            "chio",
+            "--receipt-db",
+            "receipts.sqlite3",
+            "receipt",
+            "flush",
+            "--timeout-ms",
+            "2500",
+        ])
+        .unwrap();
+
+        match cli.command {
+            Commands::Receipt {
+                command:
+                    ReceiptCommands::Flush {
+                        timeout_ms,
+                    },
+            } => assert_eq!(timeout_ms, 2500),
+            _ => panic!("expected receipt flush subcommand"),
+        }
+    }
+
+    #[test]
+    fn receipt_flush_rejects_zero_timeout() {
+        let result = Cli::try_parse_from([
+            "chio",
+            "--receipt-db",
+            "receipts.sqlite3",
+            "receipt",
+            "flush",
+            "--timeout-ms",
+            "0",
+        ]);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn receipt_checkpoint_create_subcommand_parses() {
+        let cli = Cli::try_parse_from([
+            "chio",
+            "--receipt-db",
+            "receipts.sqlite3",
+            "receipt",
+            "checkpoint",
+            "create",
+            "--kernel-seed-file",
+            "kernel.seed",
+            "--max-batch",
+            "250",
+        ])
+        .unwrap();
+
+        match cli.command {
+            Commands::Receipt {
+                command:
+                    ReceiptCommands::Checkpoint {
+                        command:
+                            ReceiptCheckpointCommands::Create {
+                                kernel_seed_file,
+                                max_batch,
+                            },
+                    },
+            } => {
+                assert_eq!(kernel_seed_file, PathBuf::from("kernel.seed"));
+                assert_eq!(max_batch, 250);
+            }
+            _ => panic!("expected receipt checkpoint create subcommand"),
+        }
+    }
+
+    #[test]
+    fn receipt_checkpoint_rejects_zero_max_batch() {
+        let create = Cli::try_parse_from([
+            "chio",
+            "--receipt-db",
+            "receipts.sqlite3",
+            "receipt",
+            "checkpoint",
+            "create",
+            "--kernel-seed-file",
+            "kernel.seed",
+            "--max-batch",
+            "0",
+        ]);
+        let status = Cli::try_parse_from([
+            "chio",
+            "--receipt-db",
+            "receipts.sqlite3",
+            "receipt",
+            "checkpoint",
+            "status",
+            "--max-batch",
+            "0",
+        ]);
+
+        assert!(create.is_err());
+        assert!(status.is_err());
+    }
+
+    #[test]
     fn write_cli_error_emits_structured_json() {
         let error = CliError::Kernel(chio_kernel::KernelError::OutOfScope {
             tool: "read_file".to_string(),

@@ -40,6 +40,196 @@ pub mod error {
         }
     }
 }
+///`ActorRef`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "actor_id"
+///  ],
+///  "properties": {
+///    "actor_id": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "actor_kind": {
+///      "type": "string",
+///      "minLength": 1
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ActorRef {
+    pub actor_id: ActorRefActorId,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub actor_kind: ::std::option::Option<ActorRefActorKind>,
+}
+impl ::std::convert::From<&ActorRef> for ActorRef {
+    fn from(value: &ActorRef) -> Self {
+        value.clone()
+    }
+}
+///`ActorRefActorId`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ActorRefActorId(::std::string::String);
+impl ::std::ops::Deref for ActorRefActorId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ActorRefActorId> for ::std::string::String {
+    fn from(value: ActorRefActorId) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ActorRefActorId> for ActorRefActorId {
+    fn from(value: &ActorRefActorId) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ActorRefActorId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ActorRefActorId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ActorRefActorId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ActorRefActorId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ActorRefActorId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ActorRefActorKind`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ActorRefActorKind(::std::string::String);
+impl ::std::ops::Deref for ActorRefActorKind {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ActorRefActorKind> for ::std::string::String {
+    fn from(value: ActorRefActorKind) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ActorRefActorKind> for ActorRefActorKind {
+    fn from(value: &ActorRefActorKind) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ActorRefActorKind {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ActorRefActorKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ActorRefActorKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ActorRefActorKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ActorRefActorKind {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
 ///`AttenuationProof`
 ///
 /// <details><summary>JSON schema</summary>
@@ -1410,47 +1600,22 @@ for ChioAgentMessageListCapabilities {
 ///        "attenuation_proof": {
 ///          "type": "object",
 ///          "required": [
-///            "childScopeHash",
-///            "normalizedSubsetProof",
-///            "parentScopeHash"
+///            "child_scope_hash",
+///            "normalized_subset_proof",
+///            "parent_scope_hash"
 ///          ],
 ///          "properties": {
-///            "childScopeHash": {
+///            "child_scope_hash": {
 ///              "type": "string",
 ///              "pattern": "^[0-9a-f]{64}$"
 ///            },
-///            "normalizedSubsetProof": {
-///              "type": "object",
-///              "required": [
-///                "normalizedChildScope",
-///                "normalizedParentScope"
-///              ],
-///              "properties": {
-///                "normalizedChildScope": {
-///                  "type": "string",
-///                  "minLength": 2
-///                },
-///                "normalizedParentScope": {
-///                  "type": "string",
-///                  "minLength": 2
-///                },
-///                "restrictedPredicates": {
-///                  "type": "array",
-///                  "items": {
-///                    "type": "string"
-///                  }
-///                },
-///                "subsetRelations": {
-///                  "type": "array",
-///                  "items": {
-///                    "type": "object",
-///                    "additionalProperties": true
-///                  }
-///                }
-///              },
-///              "additionalProperties": false
+///            "normalized_subset_proof": {
+///              "type": "array",
+///              "items": {
+///                "type": "string"
+///              }
 ///            },
-///            "parentScopeHash": {
+///            "parent_scope_hash": {
 ///              "type": "string",
 ///              "pattern": "^[0-9a-f]{64}$"
 ///            }
@@ -1809,47 +1974,22 @@ for ChioAgentMessageToolCallRequest {
 ///    "attenuation_proof": {
 ///      "type": "object",
 ///      "required": [
-///        "childScopeHash",
-///        "normalizedSubsetProof",
-///        "parentScopeHash"
+///        "child_scope_hash",
+///        "normalized_subset_proof",
+///        "parent_scope_hash"
 ///      ],
 ///      "properties": {
-///        "childScopeHash": {
+///        "child_scope_hash": {
 ///          "type": "string",
 ///          "pattern": "^[0-9a-f]{64}$"
 ///        },
-///        "normalizedSubsetProof": {
-///          "type": "object",
-///          "required": [
-///            "normalizedChildScope",
-///            "normalizedParentScope"
-///          ],
-///          "properties": {
-///            "normalizedChildScope": {
-///              "type": "string",
-///              "minLength": 2
-///            },
-///            "normalizedParentScope": {
-///              "type": "string",
-///              "minLength": 2
-///            },
-///            "restrictedPredicates": {
-///              "type": "array",
-///              "items": {
-///                "type": "string"
-///              }
-///            },
-///            "subsetRelations": {
-///              "type": "array",
-///              "items": {
-///                "type": "object",
-///                "additionalProperties": true
-///              }
-///            }
-///          },
-///          "additionalProperties": false
+///        "normalized_subset_proof": {
+///          "type": "array",
+///          "items": {
+///            "type": "string"
+///          }
 ///        },
-///        "parentScopeHash": {
+///        "parent_scope_hash": {
 ///          "type": "string",
 ///          "pattern": "^[0-9a-f]{64}$"
 ///        }
@@ -2290,47 +2430,22 @@ for ChioAgentMessageToolCallRequestCapabilityTokenAlgorithm {
 ///{
 ///  "type": "object",
 ///  "required": [
-///    "childScopeHash",
-///    "normalizedSubsetProof",
-///    "parentScopeHash"
+///    "child_scope_hash",
+///    "normalized_subset_proof",
+///    "parent_scope_hash"
 ///  ],
 ///  "properties": {
-///    "childScopeHash": {
+///    "child_scope_hash": {
 ///      "type": "string",
 ///      "pattern": "^[0-9a-f]{64}$"
 ///    },
-///    "normalizedSubsetProof": {
-///      "type": "object",
-///      "required": [
-///        "normalizedChildScope",
-///        "normalizedParentScope"
-///      ],
-///      "properties": {
-///        "normalizedChildScope": {
-///          "type": "string",
-///          "minLength": 2
-///        },
-///        "normalizedParentScope": {
-///          "type": "string",
-///          "minLength": 2
-///        },
-///        "restrictedPredicates": {
-///          "type": "array",
-///          "items": {
-///            "type": "string"
-///          }
-///        },
-///        "subsetRelations": {
-///          "type": "array",
-///          "items": {
-///            "type": "object",
-///            "additionalProperties": true
-///          }
-///        }
-///      },
-///      "additionalProperties": false
+///    "normalized_subset_proof": {
+///      "type": "array",
+///      "items": {
+///        "type": "string"
+///      }
 ///    },
-///    "parentScopeHash": {
+///    "parent_scope_hash": {
 ///      "type": "string",
 ///      "pattern": "^[0-9a-f]{64}$"
 ///    }
@@ -2342,11 +2457,8 @@ for ChioAgentMessageToolCallRequestCapabilityTokenAlgorithm {
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProof {
-    #[serde(rename = "childScopeHash")]
     pub child_scope_hash: ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofChildScopeHash,
-    #[serde(rename = "normalizedSubsetProof")]
-    pub normalized_subset_proof: ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProof,
-    #[serde(rename = "parentScopeHash")]
+    pub normalized_subset_proof: ::std::vec::Vec<::std::string::String>,
     pub parent_scope_hash: ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofParentScopeHash,
 }
 impl ::std::convert::From<
@@ -2442,264 +2554,6 @@ for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofChildScopeHash
 }
 impl<'de> ::serde::Deserialize<'de>
 for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofChildScopeHash {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProof`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "object",
-///  "required": [
-///    "normalizedChildScope",
-///    "normalizedParentScope"
-///  ],
-///  "properties": {
-///    "normalizedChildScope": {
-///      "type": "string",
-///      "minLength": 2
-///    },
-///    "normalizedParentScope": {
-///      "type": "string",
-///      "minLength": 2
-///    },
-///    "restrictedPredicates": {
-///      "type": "array",
-///      "items": {
-///        "type": "string"
-///      }
-///    },
-///    "subsetRelations": {
-///      "type": "array",
-///      "items": {
-///        "type": "object",
-///        "additionalProperties": true
-///      }
-///    }
-///  },
-///  "additionalProperties": false
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProof {
-    #[serde(rename = "normalizedChildScope")]
-    pub normalized_child_scope: ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedChildScope,
-    #[serde(rename = "normalizedParentScope")]
-    pub normalized_parent_scope: ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedParentScope,
-    #[serde(
-        rename = "restrictedPredicates",
-        default,
-        skip_serializing_if = "::std::vec::Vec::is_empty"
-    )]
-    pub restricted_predicates: ::std::vec::Vec<::std::string::String>,
-    #[serde(
-        rename = "subsetRelations",
-        default,
-        skip_serializing_if = "::std::vec::Vec::is_empty"
-    )]
-    pub subset_relations: ::std::vec::Vec<
-        ::serde_json::Map<::std::string::String, ::serde_json::Value>,
-    >,
-}
-impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProof,
->
-for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProof {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProof,
-    ) -> Self {
-        value.clone()
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedChildScope`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 2
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedChildScope(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedChildScope {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<
-    ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedChildScope,
-> for ::std::string::String {
-    fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedChildScope,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedChildScope,
->
-for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedChildScope {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedChildScope,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedChildScope {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 2usize {
-            return Err("shorter than 2 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedChildScope {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedChildScope {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedChildScope {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedChildScope {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedParentScope`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 2
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedParentScope(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedParentScope {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<
-    ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedParentScope,
-> for ::std::string::String {
-    fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedParentScope,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedParentScope,
->
-for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedParentScope {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedParentScope,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedParentScope {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 2usize {
-            return Err("shorter than 2 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedParentScope {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedParentScope {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedParentScope {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedParentScope {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -6352,7 +6206,7 @@ for ChioBilateralDsseSignatureSliceEnvelopeSignaturesItemSig {
             })
     }
 }
-///Bounded in-toto Statement payload for Chio bilateral DSSE signature slices. This is not the strict treaty-bound bilateral invocation predicate.
+///Bounded in-toto Statement payload for Chio bilateral DSSE signature slices. This is not the strict CHIODOS bilateral cosign invocation predicate.
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -6360,7 +6214,7 @@ for ChioBilateralDsseSignatureSliceEnvelopeSignaturesItemSig {
 ///{
 ///  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/federation/bilateral-signature-slice",
 ///  "title": "Chio bilateral DSSE signature-slice statement",
-///  "description": "Bounded in-toto Statement payload for Chio bilateral DSSE signature slices. This is not the strict treaty-bound bilateral invocation predicate.",
+///  "description": "Bounded in-toto Statement payload for Chio bilateral DSSE signature slices. This is not the strict CHIODOS bilateral cosign invocation predicate.",
 ///  "type": "object",
 ///  "required": [
 ///    "_type",
@@ -9442,47 +9296,22 @@ impl<'de> ::serde::Deserialize<'de> for ChioJsonRpc20ResponseVariant1IdVariant1 
 ///          "attenuation_proof": {
 ///            "type": "object",
 ///            "required": [
-///              "childScopeHash",
-///              "normalizedSubsetProof",
-///              "parentScopeHash"
+///              "child_scope_hash",
+///              "normalized_subset_proof",
+///              "parent_scope_hash"
 ///            ],
 ///            "properties": {
-///              "childScopeHash": {
+///              "child_scope_hash": {
 ///                "type": "string",
 ///                "pattern": "^[0-9a-f]{64}$"
 ///              },
-///              "normalizedSubsetProof": {
-///                "type": "object",
-///                "required": [
-///                  "normalizedChildScope",
-///                  "normalizedParentScope"
-///                ],
-///                "properties": {
-///                  "normalizedChildScope": {
-///                    "type": "string",
-///                    "minLength": 2
-///                  },
-///                  "normalizedParentScope": {
-///                    "type": "string",
-///                    "minLength": 2
-///                  },
-///                  "restrictedPredicates": {
-///                    "type": "array",
-///                    "items": {
-///                      "type": "string"
-///                    }
-///                  },
-///                  "subsetRelations": {
-///                    "type": "array",
-///                    "items": {
-///                      "type": "object",
-///                      "additionalProperties": true
-///                    }
-///                  }
-///                },
-///                "additionalProperties": false
+///              "normalized_subset_proof": {
+///                "type": "array",
+///                "items": {
+///                  "type": "string"
+///                }
 ///              },
-///              "parentScopeHash": {
+///              "parent_scope_hash": {
 ///                "type": "string",
 ///                "pattern": "^[0-9a-f]{64}$"
 ///              }
@@ -9821,47 +9650,22 @@ for ChioKernelMessageCapabilityList {
 ///    "attenuation_proof": {
 ///      "type": "object",
 ///      "required": [
-///        "childScopeHash",
-///        "normalizedSubsetProof",
-///        "parentScopeHash"
+///        "child_scope_hash",
+///        "normalized_subset_proof",
+///        "parent_scope_hash"
 ///      ],
 ///      "properties": {
-///        "childScopeHash": {
+///        "child_scope_hash": {
 ///          "type": "string",
 ///          "pattern": "^[0-9a-f]{64}$"
 ///        },
-///        "normalizedSubsetProof": {
-///          "type": "object",
-///          "required": [
-///            "normalizedChildScope",
-///            "normalizedParentScope"
-///          ],
-///          "properties": {
-///            "normalizedChildScope": {
-///              "type": "string",
-///              "minLength": 2
-///            },
-///            "normalizedParentScope": {
-///              "type": "string",
-///              "minLength": 2
-///            },
-///            "restrictedPredicates": {
-///              "type": "array",
-///              "items": {
-///                "type": "string"
-///              }
-///            },
-///            "subsetRelations": {
-///              "type": "array",
-///              "items": {
-///                "type": "object",
-///                "additionalProperties": true
-///              }
-///            }
-///          },
-///          "additionalProperties": false
+///        "normalized_subset_proof": {
+///          "type": "array",
+///          "items": {
+///            "type": "string"
+///          }
 ///        },
-///        "parentScopeHash": {
+///        "parent_scope_hash": {
 ///          "type": "string",
 ///          "pattern": "^[0-9a-f]{64}$"
 ///        }
@@ -10298,47 +10102,22 @@ for ChioKernelMessageCapabilityListCapabilitiesItemAlgorithm {
 ///{
 ///  "type": "object",
 ///  "required": [
-///    "childScopeHash",
-///    "normalizedSubsetProof",
-///    "parentScopeHash"
+///    "child_scope_hash",
+///    "normalized_subset_proof",
+///    "parent_scope_hash"
 ///  ],
 ///  "properties": {
-///    "childScopeHash": {
+///    "child_scope_hash": {
 ///      "type": "string",
 ///      "pattern": "^[0-9a-f]{64}$"
 ///    },
-///    "normalizedSubsetProof": {
-///      "type": "object",
-///      "required": [
-///        "normalizedChildScope",
-///        "normalizedParentScope"
-///      ],
-///      "properties": {
-///        "normalizedChildScope": {
-///          "type": "string",
-///          "minLength": 2
-///        },
-///        "normalizedParentScope": {
-///          "type": "string",
-///          "minLength": 2
-///        },
-///        "restrictedPredicates": {
-///          "type": "array",
-///          "items": {
-///            "type": "string"
-///          }
-///        },
-///        "subsetRelations": {
-///          "type": "array",
-///          "items": {
-///            "type": "object",
-///            "additionalProperties": true
-///          }
-///        }
-///      },
-///      "additionalProperties": false
+///    "normalized_subset_proof": {
+///      "type": "array",
+///      "items": {
+///        "type": "string"
+///      }
 ///    },
-///    "parentScopeHash": {
+///    "parent_scope_hash": {
 ///      "type": "string",
 ///      "pattern": "^[0-9a-f]{64}$"
 ///    }
@@ -10350,11 +10129,8 @@ for ChioKernelMessageCapabilityListCapabilitiesItemAlgorithm {
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProof {
-    #[serde(rename = "childScopeHash")]
     pub child_scope_hash: ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofChildScopeHash,
-    #[serde(rename = "normalizedSubsetProof")]
-    pub normalized_subset_proof: ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProof,
-    #[serde(rename = "parentScopeHash")]
+    pub normalized_subset_proof: ::std::vec::Vec<::std::string::String>,
     pub parent_scope_hash: ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofParentScopeHash,
 }
 impl ::std::convert::From<
@@ -10450,264 +10226,6 @@ for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofChildScopeHas
 }
 impl<'de> ::serde::Deserialize<'de>
 for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofChildScopeHash {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProof`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "object",
-///  "required": [
-///    "normalizedChildScope",
-///    "normalizedParentScope"
-///  ],
-///  "properties": {
-///    "normalizedChildScope": {
-///      "type": "string",
-///      "minLength": 2
-///    },
-///    "normalizedParentScope": {
-///      "type": "string",
-///      "minLength": 2
-///    },
-///    "restrictedPredicates": {
-///      "type": "array",
-///      "items": {
-///        "type": "string"
-///      }
-///    },
-///    "subsetRelations": {
-///      "type": "array",
-///      "items": {
-///        "type": "object",
-///        "additionalProperties": true
-///      }
-///    }
-///  },
-///  "additionalProperties": false
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProof {
-    #[serde(rename = "normalizedChildScope")]
-    pub normalized_child_scope: ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedChildScope,
-    #[serde(rename = "normalizedParentScope")]
-    pub normalized_parent_scope: ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedParentScope,
-    #[serde(
-        rename = "restrictedPredicates",
-        default,
-        skip_serializing_if = "::std::vec::Vec::is_empty"
-    )]
-    pub restricted_predicates: ::std::vec::Vec<::std::string::String>,
-    #[serde(
-        rename = "subsetRelations",
-        default,
-        skip_serializing_if = "::std::vec::Vec::is_empty"
-    )]
-    pub subset_relations: ::std::vec::Vec<
-        ::serde_json::Map<::std::string::String, ::serde_json::Value>,
-    >,
-}
-impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProof,
->
-for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProof {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProof,
-    ) -> Self {
-        value.clone()
-    }
-}
-///`ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedChildScope`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 2
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedChildScope(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedChildScope {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<
-    ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedChildScope,
-> for ::std::string::String {
-    fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedChildScope,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedChildScope,
->
-for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedChildScope {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedChildScope,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedChildScope {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 2usize {
-            return Err("shorter than 2 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedChildScope {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedChildScope {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedChildScope {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedChildScope {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedParentScope`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 2
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedParentScope(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedParentScope {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<
-    ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedParentScope,
-> for ::std::string::String {
-    fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedParentScope,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedParentScope,
->
-for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedParentScope {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedParentScope,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedParentScope {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 2usize {
-            return Err("shorter than 2 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedParentScope {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedParentScope {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedParentScope {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedParentScope {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -13815,167 +13333,163 @@ impl<'de> ::serde::Deserialize<'de> for ChioKernelMessageToolCallChunkId {
 ///      "minLength": 1
 ///    },
 ///    "receipt": {
+///      "title": "Chio Receipt Record",
+///      "description": "A signed Chio receipt: proof that a tool call was evaluated by the Kernel. The receipt id is the authoritative content-addressed SHA-256 hash over the canonical ChioReceiptIdInput.",
 ///      "type": "object",
 ///      "required": [
 ///        "action",
+///        "boundary_class",
 ///        "capability_id",
 ///        "content_hash",
-///        "decision",
 ///        "id",
 ///        "kernel_key",
 ///        "policy_hash",
+///        "receipt_kind",
+///        "redaction_mode",
 ///        "signature",
 ///        "timestamp",
 ///        "tool_name",
-///        "tool_server"
+///        "tool_origin",
+///        "tool_server",
+///        "trust_level"
 ///      ],
 ///      "properties": {
 ///        "action": {
-///          "type": "object",
-///          "required": [
-///            "parameter_hash",
-///            "parameters"
-///          ],
-///          "properties": {
-///            "parameter_hash": {
-///              "type": "string",
-///              "pattern": "^[0-9a-f]{64}$"
-///            },
-///            "parameters": true
-///          },
-///          "additionalProperties": false
+///          "$ref": "#/$defs/toolCallAction"
+///        },
+///        "actor_chain": {
+///          "description": "Signed actor attribution chain. Omitted from the wire when empty.",
+///          "type": "array",
+///          "items": {
+///            "$ref": "#/$defs/actorRef"
+///          }
+///        },
+///        "algorithm": {
+///          "description": "Signing algorithm envelope hint. Verification dispatches off the signature hex prefix, not this field.",
+///          "type": "string",
+///          "enum": [
+///            "ed25519",
+///            "p256",
+///            "p384"
+///          ]
+///        },
+///        "boundary_class": {
+///          "description": "Signed runtime boundary class. `cannot_see` is planning metadata only and is not valid on signed runtime receipts.",
+///          "type": "string",
+///          "enum": [
+///            "prevent",
+///            "detect_only",
+///            "advisory_only"
+///          ]
 ///        },
 ///        "capability_id": {
+///          "description": "ID of the capability token that was exercised (or presented).",
 ///          "type": "string",
 ///          "minLength": 1
 ///        },
 ///        "content_hash": {
+///          "description": "SHA-256 hex hash of the evaluated content for this receipt.",
 ///          "type": "string",
 ///          "pattern": "^[0-9a-f]{64}$"
 ///        },
 ///        "decision": {
-///          "oneOf": [
-///            {
-///              "type": "object",
-///              "required": [
-///                "verdict"
-///              ],
-///              "properties": {
-///                "verdict": {
-///                  "const": "allow"
-///                }
-///              },
-///              "additionalProperties": false
-///            },
-///            {
-///              "type": "object",
-///              "required": [
-///                "guard",
-///                "reason",
-///                "verdict"
-///              ],
-///              "properties": {
-///                "guard": {
-///                  "type": "string",
-///                  "minLength": 1
-///                },
-///                "reason": {
-///                  "type": "string",
-///                  "minLength": 1
-///                },
-///                "verdict": {
-///                  "const": "deny"
-///                }
-///              },
-///              "additionalProperties": false
-///            },
-///            {
-///              "type": "object",
-///              "required": [
-///                "reason",
-///                "verdict"
-///              ],
-///              "properties": {
-///                "reason": {
-///                  "type": "string",
-///                  "minLength": 1
-///                },
-///                "verdict": {
-///                  "const": "cancelled"
-///                }
-///              },
-///              "additionalProperties": false
-///            },
-///            {
-///              "type": "object",
-///              "required": [
-///                "reason",
-///                "verdict"
-///              ],
-///              "properties": {
-///                "reason": {
-///                  "type": "string",
-///                  "minLength": 1
-///                },
-///                "verdict": {
-///                  "const": "incomplete"
-///                }
-///              },
-///              "additionalProperties": false
-///            }
-///          ]
+///          "$ref": "#/$defs/decision"
 ///        },
 ///        "evidence": {
+///          "description": "Per-guard evidence collected during evaluation. Omitted from the wire when empty (matches `#[serde(skip_serializing_if = \"Vec::is_empty\")]`).",
 ///          "type": "array",
 ///          "items": {
-///            "type": "object",
-///            "required": [
-///              "guard_name",
-///              "verdict"
-///            ],
-///            "properties": {
-///              "details": {
-///                "type": "string"
-///              },
-///              "guard_name": {
-///                "type": "string",
-///                "minLength": 1
-///              },
-///              "verdict": {
-///                "type": "boolean"
-///              }
-///            },
-///            "additionalProperties": false
+///            "$ref": "#/$defs/guardEvidence"
 ///          }
 ///        },
 ///        "id": {
+///          "description": "Authoritative content-addressed receipt id.",
+///          "type": "string",
+///          "minLength": 1,
+///          "pattern": "^[0-9a-f]{64}$"
+///        },
+///        "kernel_key": {
+///          "description": "Kernel public key (for verification without out-of-band lookup). Bare 64-char lowercase hex string for Ed25519, `p256:<130-char hex>` for uncompressed SEC1 P-256 (65 bytes; leading byte `0x04`), or `p384:<194-char hex>` for uncompressed SEC1 P-384 (97 bytes; leading byte `0x04`). Anything outside these length classes is rejected at decode time by `PublicKey::from_hex` in `crates/chio-core-types/src/crypto.rs`.",
+///          "type": "string",
+///          "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$"
+///        },
+///        "metadata": {
+///          "description": "Optional receipt metadata for stream/accounting/financial details. Schema-less by design (mirrors `Option<serde_json::Value>`)."
+///        },
+///        "observation_outcome": {
+///          "description": "Signed outcome for trace and advisory records. Omitted for mediated decisions.",
+///          "type": "string",
+///          "enum": [
+///            "observed",
+///            "evaluated",
+///            "dropped"
+///          ]
+///        },
+///        "policy_hash": {
+///          "description": "SHA-256 hash (or symbolic identifier) of the policy that was applied. Mirrors the `String` shape on `ChioReceipt::policy_hash` rather than enforcing a hex pattern, since some deployments embed a symbolic version id (e.g. `policy-bindings-v1`) rather than a raw digest.",
 ///          "type": "string",
 ///          "minLength": 1
 ///        },
-///        "kernel_key": {
+///        "receipt_kind": {
+///          "description": "Signed semantic class for this v1 receipt.",
 ///          "type": "string",
-///          "pattern": "^[0-9a-f]{64}$"
+///          "enum": [
+///            "mediated_decision",
+///            "trace_observation",
+///            "advisory_evaluation"
+///          ]
 ///        },
-///        "metadata": true,
-///        "policy_hash": {
+///        "redaction_mode": {
+///          "description": "Signed redaction mode applied to receipt details.",
 ///          "type": "string",
-///          "pattern": "^[0-9a-f]{64}$"
+///          "enum": [
+///            "none",
+///            "summary",
+///            "redacted"
+///          ]
 ///        },
 ///        "signature": {
+///          "description": "Hex-encoded signature over canonical JSON of ChioReceiptSigningBody { id, body: ChioReceiptIdInput }. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.",
 ///          "type": "string",
-///          "pattern": "^[0-9a-f]{128}$"
+///          "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$"
+///        },
+///        "tenant_id": {
+///          "description": "Tenant identifier for multi-tenant deployments. Absent in single-tenant mode; derived from the authenticated session's enterprise identity context, never from caller-provided request fields.",
+///          "type": "string",
+///          "minLength": 1
 ///        },
 ///        "timestamp": {
+///          "description": "Unix timestamp (seconds) when the receipt was created.",
 ///          "type": "integer",
 ///          "minimum": 0.0
 ///        },
 ///        "tool_name": {
+///          "description": "Tool that was invoked (or attempted).",
 ///          "type": "string",
 ///          "minLength": 1
 ///        },
+///        "tool_origin": {
+///          "description": "Signed classification of where the tool effect executed relative to Chio.",
+///          "type": "string",
+///          "enum": [
+///            "caller_executed",
+///            "host_executed_provider_reported",
+///            "host_executed_unmediated"
+///          ]
+///        },
 ///        "tool_server": {
+///          "description": "Tool server that handled the invocation.",
 ///          "type": "string",
 ///          "minLength": 1
+///        },
+///        "trust_level": {
+///          "description": "Strength of kernel mediation that produced this receipt. Must cohere with receipt_kind: mediated_decision uses mediated, trace_observation uses verified, and advisory_evaluation uses advisory.",
+///          "type": "string",
+///          "enum": [
+///            "mediated",
+///            "verified",
+///            "advisory"
+///          ]
 ///        }
 ///      },
 ///      "additionalProperties": false
@@ -14194,7 +13708,7 @@ impl<'de> ::serde::Deserialize<'de> for ChioKernelMessageToolCallChunkId {
 #[serde(deny_unknown_fields)]
 pub struct ChioKernelMessageToolCallResponse {
     pub id: ChioKernelMessageToolCallResponseId,
-    pub receipt: ChioKernelMessageToolCallResponseReceipt,
+    pub receipt: ChioReceiptRecord,
     pub result: ChioKernelMessageToolCallResponseResult,
     #[serde(rename = "type")]
     pub type_: ::serde_json::Value,
@@ -14275,1394 +13789,6 @@ for ChioKernelMessageToolCallResponseId {
     }
 }
 impl<'de> ::serde::Deserialize<'de> for ChioKernelMessageToolCallResponseId {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioKernelMessageToolCallResponseReceipt`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "object",
-///  "required": [
-///    "action",
-///    "capability_id",
-///    "content_hash",
-///    "decision",
-///    "id",
-///    "kernel_key",
-///    "policy_hash",
-///    "signature",
-///    "timestamp",
-///    "tool_name",
-///    "tool_server"
-///  ],
-///  "properties": {
-///    "action": {
-///      "type": "object",
-///      "required": [
-///        "parameter_hash",
-///        "parameters"
-///      ],
-///      "properties": {
-///        "parameter_hash": {
-///          "type": "string",
-///          "pattern": "^[0-9a-f]{64}$"
-///        },
-///        "parameters": true
-///      },
-///      "additionalProperties": false
-///    },
-///    "capability_id": {
-///      "type": "string",
-///      "minLength": 1
-///    },
-///    "content_hash": {
-///      "type": "string",
-///      "pattern": "^[0-9a-f]{64}$"
-///    },
-///    "decision": {
-///      "oneOf": [
-///        {
-///          "type": "object",
-///          "required": [
-///            "verdict"
-///          ],
-///          "properties": {
-///            "verdict": {
-///              "const": "allow"
-///            }
-///          },
-///          "additionalProperties": false
-///        },
-///        {
-///          "type": "object",
-///          "required": [
-///            "guard",
-///            "reason",
-///            "verdict"
-///          ],
-///          "properties": {
-///            "guard": {
-///              "type": "string",
-///              "minLength": 1
-///            },
-///            "reason": {
-///              "type": "string",
-///              "minLength": 1
-///            },
-///            "verdict": {
-///              "const": "deny"
-///            }
-///          },
-///          "additionalProperties": false
-///        },
-///        {
-///          "type": "object",
-///          "required": [
-///            "reason",
-///            "verdict"
-///          ],
-///          "properties": {
-///            "reason": {
-///              "type": "string",
-///              "minLength": 1
-///            },
-///            "verdict": {
-///              "const": "cancelled"
-///            }
-///          },
-///          "additionalProperties": false
-///        },
-///        {
-///          "type": "object",
-///          "required": [
-///            "reason",
-///            "verdict"
-///          ],
-///          "properties": {
-///            "reason": {
-///              "type": "string",
-///              "minLength": 1
-///            },
-///            "verdict": {
-///              "const": "incomplete"
-///            }
-///          },
-///          "additionalProperties": false
-///        }
-///      ]
-///    },
-///    "evidence": {
-///      "type": "array",
-///      "items": {
-///        "type": "object",
-///        "required": [
-///          "guard_name",
-///          "verdict"
-///        ],
-///        "properties": {
-///          "details": {
-///            "type": "string"
-///          },
-///          "guard_name": {
-///            "type": "string",
-///            "minLength": 1
-///          },
-///          "verdict": {
-///            "type": "boolean"
-///          }
-///        },
-///        "additionalProperties": false
-///      }
-///    },
-///    "id": {
-///      "type": "string",
-///      "minLength": 1
-///    },
-///    "kernel_key": {
-///      "type": "string",
-///      "pattern": "^[0-9a-f]{64}$"
-///    },
-///    "metadata": true,
-///    "policy_hash": {
-///      "type": "string",
-///      "pattern": "^[0-9a-f]{64}$"
-///    },
-///    "signature": {
-///      "type": "string",
-///      "pattern": "^[0-9a-f]{128}$"
-///    },
-///    "timestamp": {
-///      "type": "integer",
-///      "minimum": 0.0
-///    },
-///    "tool_name": {
-///      "type": "string",
-///      "minLength": 1
-///    },
-///    "tool_server": {
-///      "type": "string",
-///      "minLength": 1
-///    }
-///  },
-///  "additionalProperties": false
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct ChioKernelMessageToolCallResponseReceipt {
-    pub action: ChioKernelMessageToolCallResponseReceiptAction,
-    pub capability_id: ChioKernelMessageToolCallResponseReceiptCapabilityId,
-    pub content_hash: ChioKernelMessageToolCallResponseReceiptContentHash,
-    pub decision: ChioKernelMessageToolCallResponseReceiptDecision,
-    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-    pub evidence: ::std::vec::Vec<ChioKernelMessageToolCallResponseReceiptEvidenceItem>,
-    pub id: ChioKernelMessageToolCallResponseReceiptId,
-    pub kernel_key: ChioKernelMessageToolCallResponseReceiptKernelKey,
-    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-    pub metadata: ::std::option::Option<::serde_json::Value>,
-    pub policy_hash: ChioKernelMessageToolCallResponseReceiptPolicyHash,
-    pub signature: ChioKernelMessageToolCallResponseReceiptSignature,
-    pub timestamp: u64,
-    pub tool_name: ChioKernelMessageToolCallResponseReceiptToolName,
-    pub tool_server: ChioKernelMessageToolCallResponseReceiptToolServer,
-}
-impl ::std::convert::From<&ChioKernelMessageToolCallResponseReceipt>
-for ChioKernelMessageToolCallResponseReceipt {
-    fn from(value: &ChioKernelMessageToolCallResponseReceipt) -> Self {
-        value.clone()
-    }
-}
-///`ChioKernelMessageToolCallResponseReceiptAction`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "object",
-///  "required": [
-///    "parameter_hash",
-///    "parameters"
-///  ],
-///  "properties": {
-///    "parameter_hash": {
-///      "type": "string",
-///      "pattern": "^[0-9a-f]{64}$"
-///    },
-///    "parameters": true
-///  },
-///  "additionalProperties": false
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct ChioKernelMessageToolCallResponseReceiptAction {
-    pub parameter_hash: ChioKernelMessageToolCallResponseReceiptActionParameterHash,
-    pub parameters: ::serde_json::Value,
-}
-impl ::std::convert::From<&ChioKernelMessageToolCallResponseReceiptAction>
-for ChioKernelMessageToolCallResponseReceiptAction {
-    fn from(value: &ChioKernelMessageToolCallResponseReceiptAction) -> Self {
-        value.clone()
-    }
-}
-///`ChioKernelMessageToolCallResponseReceiptActionParameterHash`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "pattern": "^[0-9a-f]{64}$"
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioKernelMessageToolCallResponseReceiptActionParameterHash(
-    ::std::string::String,
-);
-impl ::std::ops::Deref for ChioKernelMessageToolCallResponseReceiptActionParameterHash {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ChioKernelMessageToolCallResponseReceiptActionParameterHash>
-for ::std::string::String {
-    fn from(value: ChioKernelMessageToolCallResponseReceiptActionParameterHash) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ChioKernelMessageToolCallResponseReceiptActionParameterHash>
-for ChioKernelMessageToolCallResponseReceiptActionParameterHash {
-    fn from(
-        value: &ChioKernelMessageToolCallResponseReceiptActionParameterHash,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioKernelMessageToolCallResponseReceiptActionParameterHash {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
-        if PATTERN.find(value).is_none() {
-            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageToolCallResponseReceiptActionParameterHash {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageToolCallResponseReceiptActionParameterHash {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageToolCallResponseReceiptActionParameterHash {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageToolCallResponseReceiptActionParameterHash {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioKernelMessageToolCallResponseReceiptCapabilityId`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioKernelMessageToolCallResponseReceiptCapabilityId(::std::string::String);
-impl ::std::ops::Deref for ChioKernelMessageToolCallResponseReceiptCapabilityId {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ChioKernelMessageToolCallResponseReceiptCapabilityId>
-for ::std::string::String {
-    fn from(value: ChioKernelMessageToolCallResponseReceiptCapabilityId) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ChioKernelMessageToolCallResponseReceiptCapabilityId>
-for ChioKernelMessageToolCallResponseReceiptCapabilityId {
-    fn from(value: &ChioKernelMessageToolCallResponseReceiptCapabilityId) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr for ChioKernelMessageToolCallResponseReceiptCapabilityId {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageToolCallResponseReceiptCapabilityId {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageToolCallResponseReceiptCapabilityId {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageToolCallResponseReceiptCapabilityId {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageToolCallResponseReceiptCapabilityId {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioKernelMessageToolCallResponseReceiptContentHash`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "pattern": "^[0-9a-f]{64}$"
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioKernelMessageToolCallResponseReceiptContentHash(::std::string::String);
-impl ::std::ops::Deref for ChioKernelMessageToolCallResponseReceiptContentHash {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ChioKernelMessageToolCallResponseReceiptContentHash>
-for ::std::string::String {
-    fn from(value: ChioKernelMessageToolCallResponseReceiptContentHash) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ChioKernelMessageToolCallResponseReceiptContentHash>
-for ChioKernelMessageToolCallResponseReceiptContentHash {
-    fn from(value: &ChioKernelMessageToolCallResponseReceiptContentHash) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr for ChioKernelMessageToolCallResponseReceiptContentHash {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
-        if PATTERN.find(value).is_none() {
-            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageToolCallResponseReceiptContentHash {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageToolCallResponseReceiptContentHash {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageToolCallResponseReceiptContentHash {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageToolCallResponseReceiptContentHash {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioKernelMessageToolCallResponseReceiptDecision`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "oneOf": [
-///    {
-///      "type": "object",
-///      "required": [
-///        "verdict"
-///      ],
-///      "properties": {
-///        "verdict": {
-///          "const": "allow"
-///        }
-///      },
-///      "additionalProperties": false
-///    },
-///    {
-///      "type": "object",
-///      "required": [
-///        "guard",
-///        "reason",
-///        "verdict"
-///      ],
-///      "properties": {
-///        "guard": {
-///          "type": "string",
-///          "minLength": 1
-///        },
-///        "reason": {
-///          "type": "string",
-///          "minLength": 1
-///        },
-///        "verdict": {
-///          "const": "deny"
-///        }
-///      },
-///      "additionalProperties": false
-///    },
-///    {
-///      "type": "object",
-///      "required": [
-///        "reason",
-///        "verdict"
-///      ],
-///      "properties": {
-///        "reason": {
-///          "type": "string",
-///          "minLength": 1
-///        },
-///        "verdict": {
-///          "const": "cancelled"
-///        }
-///      },
-///      "additionalProperties": false
-///    },
-///    {
-///      "type": "object",
-///      "required": [
-///        "reason",
-///        "verdict"
-///      ],
-///      "properties": {
-///        "reason": {
-///          "type": "string",
-///          "minLength": 1
-///        },
-///        "verdict": {
-///          "const": "incomplete"
-///        }
-///      },
-///      "additionalProperties": false
-///    }
-///  ]
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(tag = "verdict", deny_unknown_fields)]
-pub enum ChioKernelMessageToolCallResponseReceiptDecision {
-    #[serde(rename = "allow")]
-    Allow,
-    #[serde(rename = "deny")]
-    Deny {
-        guard: ChioKernelMessageToolCallResponseReceiptDecisionGuard,
-        reason: ChioKernelMessageToolCallResponseReceiptDecisionReason,
-    },
-    #[serde(rename = "cancelled")]
-    Cancelled { reason: ChioKernelMessageToolCallResponseReceiptDecisionReason },
-    #[serde(rename = "incomplete")]
-    Incomplete { reason: ChioKernelMessageToolCallResponseReceiptDecisionReason },
-}
-impl ::std::convert::From<&Self> for ChioKernelMessageToolCallResponseReceiptDecision {
-    fn from(value: &ChioKernelMessageToolCallResponseReceiptDecision) -> Self {
-        value.clone()
-    }
-}
-///`ChioKernelMessageToolCallResponseReceiptDecisionGuard`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioKernelMessageToolCallResponseReceiptDecisionGuard(::std::string::String);
-impl ::std::ops::Deref for ChioKernelMessageToolCallResponseReceiptDecisionGuard {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ChioKernelMessageToolCallResponseReceiptDecisionGuard>
-for ::std::string::String {
-    fn from(value: ChioKernelMessageToolCallResponseReceiptDecisionGuard) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ChioKernelMessageToolCallResponseReceiptDecisionGuard>
-for ChioKernelMessageToolCallResponseReceiptDecisionGuard {
-    fn from(value: &ChioKernelMessageToolCallResponseReceiptDecisionGuard) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr for ChioKernelMessageToolCallResponseReceiptDecisionGuard {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageToolCallResponseReceiptDecisionGuard {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageToolCallResponseReceiptDecisionGuard {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageToolCallResponseReceiptDecisionGuard {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageToolCallResponseReceiptDecisionGuard {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioKernelMessageToolCallResponseReceiptDecisionReason`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioKernelMessageToolCallResponseReceiptDecisionReason(::std::string::String);
-impl ::std::ops::Deref for ChioKernelMessageToolCallResponseReceiptDecisionReason {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ChioKernelMessageToolCallResponseReceiptDecisionReason>
-for ::std::string::String {
-    fn from(value: ChioKernelMessageToolCallResponseReceiptDecisionReason) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ChioKernelMessageToolCallResponseReceiptDecisionReason>
-for ChioKernelMessageToolCallResponseReceiptDecisionReason {
-    fn from(value: &ChioKernelMessageToolCallResponseReceiptDecisionReason) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr for ChioKernelMessageToolCallResponseReceiptDecisionReason {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageToolCallResponseReceiptDecisionReason {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageToolCallResponseReceiptDecisionReason {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageToolCallResponseReceiptDecisionReason {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageToolCallResponseReceiptDecisionReason {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioKernelMessageToolCallResponseReceiptEvidenceItem`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "object",
-///  "required": [
-///    "guard_name",
-///    "verdict"
-///  ],
-///  "properties": {
-///    "details": {
-///      "type": "string"
-///    },
-///    "guard_name": {
-///      "type": "string",
-///      "minLength": 1
-///    },
-///    "verdict": {
-///      "type": "boolean"
-///    }
-///  },
-///  "additionalProperties": false
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct ChioKernelMessageToolCallResponseReceiptEvidenceItem {
-    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-    pub details: ::std::option::Option<::std::string::String>,
-    pub guard_name: ChioKernelMessageToolCallResponseReceiptEvidenceItemGuardName,
-    pub verdict: bool,
-}
-impl ::std::convert::From<&ChioKernelMessageToolCallResponseReceiptEvidenceItem>
-for ChioKernelMessageToolCallResponseReceiptEvidenceItem {
-    fn from(value: &ChioKernelMessageToolCallResponseReceiptEvidenceItem) -> Self {
-        value.clone()
-    }
-}
-///`ChioKernelMessageToolCallResponseReceiptEvidenceItemGuardName`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioKernelMessageToolCallResponseReceiptEvidenceItemGuardName(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioKernelMessageToolCallResponseReceiptEvidenceItemGuardName {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ChioKernelMessageToolCallResponseReceiptEvidenceItemGuardName>
-for ::std::string::String {
-    fn from(
-        value: ChioKernelMessageToolCallResponseReceiptEvidenceItemGuardName,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ChioKernelMessageToolCallResponseReceiptEvidenceItemGuardName>
-for ChioKernelMessageToolCallResponseReceiptEvidenceItemGuardName {
-    fn from(
-        value: &ChioKernelMessageToolCallResponseReceiptEvidenceItemGuardName,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioKernelMessageToolCallResponseReceiptEvidenceItemGuardName {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageToolCallResponseReceiptEvidenceItemGuardName {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageToolCallResponseReceiptEvidenceItemGuardName {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageToolCallResponseReceiptEvidenceItemGuardName {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageToolCallResponseReceiptEvidenceItemGuardName {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioKernelMessageToolCallResponseReceiptId`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioKernelMessageToolCallResponseReceiptId(::std::string::String);
-impl ::std::ops::Deref for ChioKernelMessageToolCallResponseReceiptId {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ChioKernelMessageToolCallResponseReceiptId>
-for ::std::string::String {
-    fn from(value: ChioKernelMessageToolCallResponseReceiptId) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ChioKernelMessageToolCallResponseReceiptId>
-for ChioKernelMessageToolCallResponseReceiptId {
-    fn from(value: &ChioKernelMessageToolCallResponseReceiptId) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr for ChioKernelMessageToolCallResponseReceiptId {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str> for ChioKernelMessageToolCallResponseReceiptId {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageToolCallResponseReceiptId {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageToolCallResponseReceiptId {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de> for ChioKernelMessageToolCallResponseReceiptId {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioKernelMessageToolCallResponseReceiptKernelKey`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "pattern": "^[0-9a-f]{64}$"
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioKernelMessageToolCallResponseReceiptKernelKey(::std::string::String);
-impl ::std::ops::Deref for ChioKernelMessageToolCallResponseReceiptKernelKey {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ChioKernelMessageToolCallResponseReceiptKernelKey>
-for ::std::string::String {
-    fn from(value: ChioKernelMessageToolCallResponseReceiptKernelKey) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ChioKernelMessageToolCallResponseReceiptKernelKey>
-for ChioKernelMessageToolCallResponseReceiptKernelKey {
-    fn from(value: &ChioKernelMessageToolCallResponseReceiptKernelKey) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr for ChioKernelMessageToolCallResponseReceiptKernelKey {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
-        if PATTERN.find(value).is_none() {
-            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageToolCallResponseReceiptKernelKey {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageToolCallResponseReceiptKernelKey {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageToolCallResponseReceiptKernelKey {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageToolCallResponseReceiptKernelKey {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioKernelMessageToolCallResponseReceiptPolicyHash`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "pattern": "^[0-9a-f]{64}$"
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioKernelMessageToolCallResponseReceiptPolicyHash(::std::string::String);
-impl ::std::ops::Deref for ChioKernelMessageToolCallResponseReceiptPolicyHash {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ChioKernelMessageToolCallResponseReceiptPolicyHash>
-for ::std::string::String {
-    fn from(value: ChioKernelMessageToolCallResponseReceiptPolicyHash) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ChioKernelMessageToolCallResponseReceiptPolicyHash>
-for ChioKernelMessageToolCallResponseReceiptPolicyHash {
-    fn from(value: &ChioKernelMessageToolCallResponseReceiptPolicyHash) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr for ChioKernelMessageToolCallResponseReceiptPolicyHash {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
-        if PATTERN.find(value).is_none() {
-            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageToolCallResponseReceiptPolicyHash {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageToolCallResponseReceiptPolicyHash {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageToolCallResponseReceiptPolicyHash {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageToolCallResponseReceiptPolicyHash {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioKernelMessageToolCallResponseReceiptSignature`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "pattern": "^[0-9a-f]{128}$"
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioKernelMessageToolCallResponseReceiptSignature(::std::string::String);
-impl ::std::ops::Deref for ChioKernelMessageToolCallResponseReceiptSignature {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ChioKernelMessageToolCallResponseReceiptSignature>
-for ::std::string::String {
-    fn from(value: ChioKernelMessageToolCallResponseReceiptSignature) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ChioKernelMessageToolCallResponseReceiptSignature>
-for ChioKernelMessageToolCallResponseReceiptSignature {
-    fn from(value: &ChioKernelMessageToolCallResponseReceiptSignature) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr for ChioKernelMessageToolCallResponseReceiptSignature {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        { ::regress::Regex::new("^[0-9a-f]{128}$").unwrap() });
-        if PATTERN.find(value).is_none() {
-            return Err("doesn't match pattern \"^[0-9a-f]{128}$\"".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageToolCallResponseReceiptSignature {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageToolCallResponseReceiptSignature {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageToolCallResponseReceiptSignature {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageToolCallResponseReceiptSignature {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioKernelMessageToolCallResponseReceiptToolName`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioKernelMessageToolCallResponseReceiptToolName(::std::string::String);
-impl ::std::ops::Deref for ChioKernelMessageToolCallResponseReceiptToolName {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ChioKernelMessageToolCallResponseReceiptToolName>
-for ::std::string::String {
-    fn from(value: ChioKernelMessageToolCallResponseReceiptToolName) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ChioKernelMessageToolCallResponseReceiptToolName>
-for ChioKernelMessageToolCallResponseReceiptToolName {
-    fn from(value: &ChioKernelMessageToolCallResponseReceiptToolName) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr for ChioKernelMessageToolCallResponseReceiptToolName {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str> for ChioKernelMessageToolCallResponseReceiptToolName {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageToolCallResponseReceiptToolName {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageToolCallResponseReceiptToolName {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageToolCallResponseReceiptToolName {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioKernelMessageToolCallResponseReceiptToolServer`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioKernelMessageToolCallResponseReceiptToolServer(::std::string::String);
-impl ::std::ops::Deref for ChioKernelMessageToolCallResponseReceiptToolServer {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ChioKernelMessageToolCallResponseReceiptToolServer>
-for ::std::string::String {
-    fn from(value: ChioKernelMessageToolCallResponseReceiptToolServer) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ChioKernelMessageToolCallResponseReceiptToolServer>
-for ChioKernelMessageToolCallResponseReceiptToolServer {
-    fn from(value: &ChioKernelMessageToolCallResponseReceiptToolServer) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr for ChioKernelMessageToolCallResponseReceiptToolServer {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageToolCallResponseReceiptToolServer {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageToolCallResponseReceiptToolServer {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageToolCallResponseReceiptToolServer {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageToolCallResponseReceiptToolServer {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -21794,40 +19920,59 @@ impl<'de> ::serde::Deserialize<'de> for ChioReceiptMerkleInclusionProofAuditPath
             })
     }
 }
-///A signed Chio receipt: proof that a tool call was evaluated by the Kernel. The receipt id is the authoritative content-addressed SHA-256 hash over the canonical receipt body excluding id, algorithm, and signature.
+///A signed Chio receipt: proof that a tool call was evaluated by the Kernel. The receipt id is the authoritative content-addressed SHA-256 hash over the canonical ChioReceiptIdInput.
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
-///  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/receipt/record/v1",
 ///  "title": "Chio Receipt Record",
-///  "description": "A signed Chio receipt: proof that a tool call was evaluated by the Kernel. The receipt id is the authoritative content-addressed SHA-256 hash over the canonical receipt body excluding id, algorithm, and signature.",
+///  "description": "A signed Chio receipt: proof that a tool call was evaluated by the Kernel. The receipt id is the authoritative content-addressed SHA-256 hash over the canonical ChioReceiptIdInput.",
 ///  "type": "object",
 ///  "required": [
 ///    "action",
+///    "boundary_class",
 ///    "capability_id",
 ///    "content_hash",
-///    "decision",
 ///    "id",
 ///    "kernel_key",
 ///    "policy_hash",
+///    "receipt_kind",
+///    "redaction_mode",
 ///    "signature",
 ///    "timestamp",
 ///    "tool_name",
-///    "tool_server"
+///    "tool_origin",
+///    "tool_server",
+///    "trust_level"
 ///  ],
 ///  "properties": {
 ///    "action": {
 ///      "$ref": "#/$defs/toolCallAction"
 ///    },
+///    "actor_chain": {
+///      "description": "Signed actor attribution chain. Omitted from the wire when empty.",
+///      "type": "array",
+///      "items": {
+///        "$ref": "#/$defs/actorRef"
+///      }
+///    },
 ///    "algorithm": {
-///      "description": "Signing algorithm envelope hint. Omitted for legacy Ed25519 receipts to preserve byte-for-byte compatibility. Verification dispatches off the signature hex prefix, not this field.",
+///      "description": "Signing algorithm envelope hint. Verification dispatches off the signature hex prefix, not this field.",
 ///      "type": "string",
 ///      "enum": [
 ///        "ed25519",
 ///        "p256",
 ///        "p384"
+///      ]
+///    },
+///    "boundary_class": {
+///      "description": "Signed runtime boundary class. `cannot_see` is planning metadata only and is not valid on signed runtime receipts.",
+///      "type": "string",
+///      "enum": [
+///        "prevent",
+///        "detect_only",
+///        "advisory_only"
 ///      ]
 ///    },
 ///    "capability_id": {
@@ -21864,18 +20009,45 @@ impl<'de> ::serde::Deserialize<'de> for ChioReceiptMerkleInclusionProofAuditPath
 ///    "metadata": {
 ///      "description": "Optional receipt metadata for stream/accounting/financial details. Schema-less by design (mirrors `Option<serde_json::Value>`)."
 ///    },
+///    "observation_outcome": {
+///      "description": "Signed outcome for trace and advisory records. Omitted for mediated decisions.",
+///      "type": "string",
+///      "enum": [
+///        "observed",
+///        "evaluated",
+///        "dropped"
+///      ]
+///    },
 ///    "policy_hash": {
 ///      "description": "SHA-256 hash (or symbolic identifier) of the policy that was applied. Mirrors the `String` shape on `ChioReceipt::policy_hash` rather than enforcing a hex pattern, since some deployments embed a symbolic version id (e.g. `policy-bindings-v1`) rather than a raw digest.",
 ///      "type": "string",
 ///      "minLength": 1
 ///    },
+///    "receipt_kind": {
+///      "description": "Signed semantic class for this v1 receipt.",
+///      "type": "string",
+///      "enum": [
+///        "mediated_decision",
+///        "trace_observation",
+///        "advisory_evaluation"
+///      ]
+///    },
+///    "redaction_mode": {
+///      "description": "Signed redaction mode applied to receipt details.",
+///      "type": "string",
+///      "enum": [
+///        "none",
+///        "summary",
+///        "redacted"
+///      ]
+///    },
 ///    "signature": {
-///      "description": "Hex-encoded signature over the canonical JSON of the receipt body. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.",
+///      "description": "Hex-encoded signature over canonical JSON of ChioReceiptSigningBody { id, body: ChioReceiptIdInput }. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.",
 ///      "type": "string",
 ///      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$"
 ///    },
 ///    "tenant_id": {
-///      "description": "Phase 1.5 multi-tenant receipt isolation: tenant identifier for multi-tenant deployments. Absent in single-tenant mode; derived from the authenticated session's enterprise identity context, never from caller-provided request fields. Omitted from the wire when unset so single-tenant receipts remain byte-identical.",
+///      "description": "Tenant identifier for multi-tenant deployments. Absent in single-tenant mode; derived from the authenticated session's enterprise identity context, never from caller-provided request fields.",
 ///      "type": "string",
 ///      "minLength": 1
 ///    },
@@ -21889,13 +20061,22 @@ impl<'de> ::serde::Deserialize<'de> for ChioReceiptMerkleInclusionProofAuditPath
 ///      "type": "string",
 ///      "minLength": 1
 ///    },
+///    "tool_origin": {
+///      "description": "Signed classification of where the tool effect executed relative to Chio.",
+///      "type": "string",
+///      "enum": [
+///        "caller_executed",
+///        "host_executed_provider_reported",
+///        "host_executed_unmediated"
+///      ]
+///    },
 ///    "tool_server": {
 ///      "description": "Tool server that handled the invocation.",
 ///      "type": "string",
 ///      "minLength": 1
 ///    },
 ///    "trust_level": {
-///      "description": "Strength of kernel mediation that produced this receipt. Defaults to mediated.",
+///      "description": "Strength of kernel mediation that produced this receipt. Must cohere with receipt_kind: mediated_decision uses mediated, trace_observation uses verified, and advisory_evaluation uses advisory.",
 ///      "type": "string",
 ///      "enum": [
 ///        "mediated",
@@ -21912,14 +20093,20 @@ impl<'de> ::serde::Deserialize<'de> for ChioReceiptMerkleInclusionProofAuditPath
 #[serde(deny_unknown_fields)]
 pub struct ChioReceiptRecord {
     pub action: ToolCallAction,
-    ///Signing algorithm envelope hint. Omitted for legacy Ed25519 receipts to preserve byte-for-byte compatibility. Verification dispatches off the signature hex prefix, not this field.
+    ///Signed actor attribution chain. Omitted from the wire when empty.
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub actor_chain: ::std::vec::Vec<ActorRef>,
+    ///Signing algorithm envelope hint. Verification dispatches off the signature hex prefix, not this field.
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub algorithm: ::std::option::Option<ChioReceiptRecordAlgorithm>,
+    ///Signed runtime boundary class. `cannot_see` is planning metadata only and is not valid on signed runtime receipts.
+    pub boundary_class: ChioReceiptRecordBoundaryClass,
     ///ID of the capability token that was exercised (or presented).
     pub capability_id: ChioReceiptRecordCapabilityId,
     ///SHA-256 hex hash of the evaluated content for this receipt.
     pub content_hash: ChioReceiptRecordContentHash,
-    pub decision: Decision,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub decision: ::std::option::Option<Decision>,
     ///Per-guard evidence collected during evaluation. Omitted from the wire when empty (matches `#[serde(skip_serializing_if = "Vec::is_empty")]`).
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub evidence: ::std::vec::Vec<GuardEvidence>,
@@ -21930,35 +20117,43 @@ pub struct ChioReceiptRecord {
     ///Optional receipt metadata for stream/accounting/financial details. Schema-less by design (mirrors `Option<serde_json::Value>`).
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub metadata: ::std::option::Option<::serde_json::Value>,
+    ///Signed outcome for trace and advisory records. Omitted for mediated decisions.
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub observation_outcome: ::std::option::Option<ChioReceiptRecordObservationOutcome>,
     ///SHA-256 hash (or symbolic identifier) of the policy that was applied. Mirrors the `String` shape on `ChioReceipt::policy_hash` rather than enforcing a hex pattern, since some deployments embed a symbolic version id (e.g. `policy-bindings-v1`) rather than a raw digest.
     pub policy_hash: ChioReceiptRecordPolicyHash,
-    ///Hex-encoded signature over the canonical JSON of the receipt body. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.
+    ///Signed semantic class for this v1 receipt.
+    pub receipt_kind: ChioReceiptRecordReceiptKind,
+    ///Signed redaction mode applied to receipt details.
+    pub redaction_mode: ChioReceiptRecordRedactionMode,
+    ///Hex-encoded signature over canonical JSON of ChioReceiptSigningBody { id, body: ChioReceiptIdInput }. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.
     pub signature: ChioReceiptRecordSignature,
-    ///Phase 1.5 multi-tenant receipt isolation: tenant identifier for multi-tenant deployments. Absent in single-tenant mode; derived from the authenticated session's enterprise identity context, never from caller-provided request fields. Omitted from the wire when unset so single-tenant receipts remain byte-identical.
+    ///Tenant identifier for multi-tenant deployments. Absent in single-tenant mode; derived from the authenticated session's enterprise identity context, never from caller-provided request fields.
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub tenant_id: ::std::option::Option<ChioReceiptRecordTenantId>,
     ///Unix timestamp (seconds) when the receipt was created.
     pub timestamp: u64,
     ///Tool that was invoked (or attempted).
     pub tool_name: ChioReceiptRecordToolName,
+    ///Signed classification of where the tool effect executed relative to Chio.
+    pub tool_origin: ChioReceiptRecordToolOrigin,
     ///Tool server that handled the invocation.
     pub tool_server: ChioReceiptRecordToolServer,
-    ///Strength of kernel mediation that produced this receipt. Defaults to mediated.
-    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-    pub trust_level: ::std::option::Option<ChioReceiptRecordTrustLevel>,
+    ///Strength of kernel mediation that produced this receipt. Must cohere with receipt_kind: mediated_decision uses mediated, trace_observation uses verified, and advisory_evaluation uses advisory.
+    pub trust_level: ChioReceiptRecordTrustLevel,
 }
 impl ::std::convert::From<&ChioReceiptRecord> for ChioReceiptRecord {
     fn from(value: &ChioReceiptRecord) -> Self {
         value.clone()
     }
 }
-///Signing algorithm envelope hint. Omitted for legacy Ed25519 receipts to preserve byte-for-byte compatibility. Verification dispatches off the signature hex prefix, not this field.
+///Signing algorithm envelope hint. Verification dispatches off the signature hex prefix, not this field.
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
-///  "description": "Signing algorithm envelope hint. Omitted for legacy Ed25519 receipts to preserve byte-for-byte compatibility. Verification dispatches off the signature hex prefix, not this field.",
+///  "description": "Signing algorithm envelope hint. Verification dispatches off the signature hex prefix, not this field.",
 ///  "type": "string",
 ///  "enum": [
 ///    "ed25519",
@@ -22032,6 +20227,93 @@ impl ::std::convert::TryFrom<&::std::string::String> for ChioReceiptRecordAlgori
     }
 }
 impl ::std::convert::TryFrom<::std::string::String> for ChioReceiptRecordAlgorithm {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///Signed runtime boundary class. `cannot_see` is planning metadata only and is not valid on signed runtime receipts.
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "Signed runtime boundary class. `cannot_see` is planning metadata only and is not valid on signed runtime receipts.",
+///  "type": "string",
+///  "enum": [
+///    "prevent",
+///    "detect_only",
+///    "advisory_only"
+///  ]
+///}
+/// ```
+/// </details>
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ChioReceiptRecordBoundaryClass {
+    #[serde(rename = "prevent")]
+    Prevent,
+    #[serde(rename = "detect_only")]
+    DetectOnly,
+    #[serde(rename = "advisory_only")]
+    AdvisoryOnly,
+}
+impl ::std::convert::From<&Self> for ChioReceiptRecordBoundaryClass {
+    fn from(value: &ChioReceiptRecordBoundaryClass) -> Self {
+        value.clone()
+    }
+}
+impl ::std::fmt::Display for ChioReceiptRecordBoundaryClass {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Prevent => f.write_str("prevent"),
+            Self::DetectOnly => f.write_str("detect_only"),
+            Self::AdvisoryOnly => f.write_str("advisory_only"),
+        }
+    }
+}
+impl ::std::str::FromStr for ChioReceiptRecordBoundaryClass {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "prevent" => Ok(Self::Prevent),
+            "detect_only" => Ok(Self::DetectOnly),
+            "advisory_only" => Ok(Self::AdvisoryOnly),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ChioReceiptRecordBoundaryClass {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ChioReceiptRecordBoundaryClass {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ChioReceiptRecordBoundaryClass {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -22371,6 +20653,95 @@ impl<'de> ::serde::Deserialize<'de> for ChioReceiptRecordKernelKey {
             })
     }
 }
+///Signed outcome for trace and advisory records. Omitted for mediated decisions.
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "Signed outcome for trace and advisory records. Omitted for mediated decisions.",
+///  "type": "string",
+///  "enum": [
+///    "observed",
+///    "evaluated",
+///    "dropped"
+///  ]
+///}
+/// ```
+/// </details>
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ChioReceiptRecordObservationOutcome {
+    #[serde(rename = "observed")]
+    Observed,
+    #[serde(rename = "evaluated")]
+    Evaluated,
+    #[serde(rename = "dropped")]
+    Dropped,
+}
+impl ::std::convert::From<&Self> for ChioReceiptRecordObservationOutcome {
+    fn from(value: &ChioReceiptRecordObservationOutcome) -> Self {
+        value.clone()
+    }
+}
+impl ::std::fmt::Display for ChioReceiptRecordObservationOutcome {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Observed => f.write_str("observed"),
+            Self::Evaluated => f.write_str("evaluated"),
+            Self::Dropped => f.write_str("dropped"),
+        }
+    }
+}
+impl ::std::str::FromStr for ChioReceiptRecordObservationOutcome {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "observed" => Ok(Self::Observed),
+            "evaluated" => Ok(Self::Evaluated),
+            "dropped" => Ok(Self::Dropped),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ChioReceiptRecordObservationOutcome {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ChioReceiptRecordObservationOutcome {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ChioReceiptRecordObservationOutcome {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
 ///SHA-256 hash (or symbolic identifier) of the policy that was applied. Mirrors the `String` shape on `ChioReceipt::policy_hash` rather than enforcing a hex pattern, since some deployments embed a symbolic version id (e.g. `policy-bindings-v1`) rather than a raw digest.
 ///
 /// <details><summary>JSON schema</summary>
@@ -22449,13 +20820,187 @@ impl<'de> ::serde::Deserialize<'de> for ChioReceiptRecordPolicyHash {
             })
     }
 }
-///Hex-encoded signature over the canonical JSON of the receipt body. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.
+///Signed semantic class for this v1 receipt.
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
-///  "description": "Hex-encoded signature over the canonical JSON of the receipt body. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.",
+///  "description": "Signed semantic class for this v1 receipt.",
+///  "type": "string",
+///  "enum": [
+///    "mediated_decision",
+///    "trace_observation",
+///    "advisory_evaluation"
+///  ]
+///}
+/// ```
+/// </details>
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ChioReceiptRecordReceiptKind {
+    #[serde(rename = "mediated_decision")]
+    MediatedDecision,
+    #[serde(rename = "trace_observation")]
+    TraceObservation,
+    #[serde(rename = "advisory_evaluation")]
+    AdvisoryEvaluation,
+}
+impl ::std::convert::From<&Self> for ChioReceiptRecordReceiptKind {
+    fn from(value: &ChioReceiptRecordReceiptKind) -> Self {
+        value.clone()
+    }
+}
+impl ::std::fmt::Display for ChioReceiptRecordReceiptKind {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::MediatedDecision => f.write_str("mediated_decision"),
+            Self::TraceObservation => f.write_str("trace_observation"),
+            Self::AdvisoryEvaluation => f.write_str("advisory_evaluation"),
+        }
+    }
+}
+impl ::std::str::FromStr for ChioReceiptRecordReceiptKind {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "mediated_decision" => Ok(Self::MediatedDecision),
+            "trace_observation" => Ok(Self::TraceObservation),
+            "advisory_evaluation" => Ok(Self::AdvisoryEvaluation),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ChioReceiptRecordReceiptKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ChioReceiptRecordReceiptKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ChioReceiptRecordReceiptKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///Signed redaction mode applied to receipt details.
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "Signed redaction mode applied to receipt details.",
+///  "type": "string",
+///  "enum": [
+///    "none",
+///    "summary",
+///    "redacted"
+///  ]
+///}
+/// ```
+/// </details>
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ChioReceiptRecordRedactionMode {
+    #[serde(rename = "none")]
+    None,
+    #[serde(rename = "summary")]
+    Summary,
+    #[serde(rename = "redacted")]
+    Redacted,
+}
+impl ::std::convert::From<&Self> for ChioReceiptRecordRedactionMode {
+    fn from(value: &ChioReceiptRecordRedactionMode) -> Self {
+        value.clone()
+    }
+}
+impl ::std::fmt::Display for ChioReceiptRecordRedactionMode {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::None => f.write_str("none"),
+            Self::Summary => f.write_str("summary"),
+            Self::Redacted => f.write_str("redacted"),
+        }
+    }
+}
+impl ::std::str::FromStr for ChioReceiptRecordRedactionMode {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "none" => Ok(Self::None),
+            "summary" => Ok(Self::Summary),
+            "redacted" => Ok(Self::Redacted),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ChioReceiptRecordRedactionMode {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ChioReceiptRecordRedactionMode {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ChioReceiptRecordRedactionMode {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///Hex-encoded signature over canonical JSON of ChioReceiptSigningBody { id, body: ChioReceiptIdInput }. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "Hex-encoded signature over canonical JSON of ChioReceiptSigningBody { id, body: ChioReceiptIdInput }. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.",
 ///  "type": "string",
 ///  "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$"
 ///}
@@ -22535,13 +21080,13 @@ impl<'de> ::serde::Deserialize<'de> for ChioReceiptRecordSignature {
             })
     }
 }
-///Phase 1.5 multi-tenant receipt isolation: tenant identifier for multi-tenant deployments. Absent in single-tenant mode; derived from the authenticated session's enterprise identity context, never from caller-provided request fields. Omitted from the wire when unset so single-tenant receipts remain byte-identical.
+///Tenant identifier for multi-tenant deployments. Absent in single-tenant mode; derived from the authenticated session's enterprise identity context, never from caller-provided request fields.
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
-///  "description": "Phase 1.5 multi-tenant receipt isolation: tenant identifier for multi-tenant deployments. Absent in single-tenant mode; derived from the authenticated session's enterprise identity context, never from caller-provided request fields. Omitted from the wire when unset so single-tenant receipts remain byte-identical.",
+///  "description": "Tenant identifier for multi-tenant deployments. Absent in single-tenant mode; derived from the authenticated session's enterprise identity context, never from caller-provided request fields.",
 ///  "type": "string",
 ///  "minLength": 1
 ///}
@@ -22691,6 +21236,95 @@ impl<'de> ::serde::Deserialize<'de> for ChioReceiptRecordToolName {
             })
     }
 }
+///Signed classification of where the tool effect executed relative to Chio.
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "Signed classification of where the tool effect executed relative to Chio.",
+///  "type": "string",
+///  "enum": [
+///    "caller_executed",
+///    "host_executed_provider_reported",
+///    "host_executed_unmediated"
+///  ]
+///}
+/// ```
+/// </details>
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ChioReceiptRecordToolOrigin {
+    #[serde(rename = "caller_executed")]
+    CallerExecuted,
+    #[serde(rename = "host_executed_provider_reported")]
+    HostExecutedProviderReported,
+    #[serde(rename = "host_executed_unmediated")]
+    HostExecutedUnmediated,
+}
+impl ::std::convert::From<&Self> for ChioReceiptRecordToolOrigin {
+    fn from(value: &ChioReceiptRecordToolOrigin) -> Self {
+        value.clone()
+    }
+}
+impl ::std::fmt::Display for ChioReceiptRecordToolOrigin {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::CallerExecuted => f.write_str("caller_executed"),
+            Self::HostExecutedProviderReported => {
+                f.write_str("host_executed_provider_reported")
+            }
+            Self::HostExecutedUnmediated => f.write_str("host_executed_unmediated"),
+        }
+    }
+}
+impl ::std::str::FromStr for ChioReceiptRecordToolOrigin {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "caller_executed" => Ok(Self::CallerExecuted),
+            "host_executed_provider_reported" => Ok(Self::HostExecutedProviderReported),
+            "host_executed_unmediated" => Ok(Self::HostExecutedUnmediated),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ChioReceiptRecordToolOrigin {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ChioReceiptRecordToolOrigin {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ChioReceiptRecordToolOrigin {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
 ///Tool server that handled the invocation.
 ///
 /// <details><summary>JSON schema</summary>
@@ -22769,13 +21403,13 @@ impl<'de> ::serde::Deserialize<'de> for ChioReceiptRecordToolServer {
             })
     }
 }
-///Strength of kernel mediation that produced this receipt. Defaults to mediated.
+///Strength of kernel mediation that produced this receipt. Must cohere with receipt_kind: mediated_decision uses mediated, trace_observation uses verified, and advisory_evaluation uses advisory.
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
-///  "description": "Strength of kernel mediation that produced this receipt. Defaults to mediated.",
+///  "description": "Strength of kernel mediation that produced this receipt. Must cohere with receipt_kind: mediated_decision uses mediated, trace_observation uses verified, and advisory_evaluation uses advisory.",
 ///  "type": "string",
 ///  "enum": [
 ///    "mediated",

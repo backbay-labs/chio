@@ -194,7 +194,10 @@ Once the baseline deny list is in place:
    `chio receipt` to query them:
 
    ```bash
-   chio --receipt-db ./receipts.sqlite receipt list --limit 20
+   # Tenant-scoped local read (fails closed unless --tenant or --admin-all is set).
+   chio --receipt-db ./receipts.sqlite receipt list --tenant <your-tenant> --limit 20
+   # Cross-tenant operator read.
+   chio --receipt-db ./receipts.sqlite receipt list --admin-all --limit 20
    chio --receipt-db ./receipts.sqlite receipt verify <receipt-id>
    ```
 

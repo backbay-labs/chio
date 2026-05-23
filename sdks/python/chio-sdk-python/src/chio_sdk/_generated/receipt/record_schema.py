@@ -2,7 +2,7 @@
 #
 # Source: spec/schemas/chio-wire/v1/**/*.schema.json
 # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
-# Schema sha256: 27d4f7c80ab3dae2f37ecd9e2cac2b620d452d76da7aabe48d91abcd19c69d61
+# Schema sha256: 7223531823b07d4fb9431326768d3983613ee0dfdc0d30b28876f52d7a901e0b
 #
 # Manual edits will be overwritten by the next regeneration; the
 # spec-drift CI lane enforces this header on every file
@@ -17,9 +17,59 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, RootModel, conint, constr
 
 
+class ReceiptKind(Enum):
+    """
+    Signed semantic class for this v1 receipt.
+    """
+
+    mediated_decision = "mediated_decision"
+    trace_observation = "trace_observation"
+    advisory_evaluation = "advisory_evaluation"
+
+
+class BoundaryClass(Enum):
+    """
+    Signed runtime boundary class. `cannot_see` is planning metadata only and is not valid on signed runtime receipts.
+    """
+
+    prevent = "prevent"
+    detect_only = "detect_only"
+    advisory_only = "advisory_only"
+
+
+class ObservationOutcome(Enum):
+    """
+    Signed outcome for trace and advisory records. Omitted for mediated decisions.
+    """
+
+    observed = "observed"
+    evaluated = "evaluated"
+    dropped = "dropped"
+
+
+class ToolOrigin(Enum):
+    """
+    Signed classification of where the tool effect executed relative to Chio.
+    """
+
+    caller_executed = "caller_executed"
+    host_executed_provider_reported = "host_executed_provider_reported"
+    host_executed_unmediated = "host_executed_unmediated"
+
+
+class RedactionMode(Enum):
+    """
+    Signed redaction mode applied to receipt details.
+    """
+
+    none = "none"
+    summary = "summary"
+    redacted = "redacted"
+
+
 class TrustLevel(Enum):
     """
-    Strength of kernel mediation that produced this receipt. Defaults to mediated.
+    Strength of kernel mediation that produced this receipt. Must cohere with receipt_kind: mediated_decision uses mediated, trace_observation uses verified, and advisory_evaluation uses advisory.
     """
 
     mediated = "mediated"
@@ -29,7 +79,7 @@ class TrustLevel(Enum):
 
 class Algorithm(Enum):
     """
-    Signing algorithm envelope hint. Omitted for legacy Ed25519 receipts to preserve byte-for-byte compatibility. Verification dispatches off the signature hex prefix, not this field.
+    Signing algorithm envelope hint. Verification dispatches off the signature hex prefix, not this field.
     """
 
     ed25519 = "ed25519"
@@ -132,9 +182,17 @@ class GuardEvidence(BaseModel):
     )
 
 
+class ActorRef(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    actor_id: constr(min_length=1)
+    actor_kind: constr(min_length=1) | None = None
+
+
 class ChioReceiptRecord(BaseModel):
     """
-    A signed Chio receipt: proof that a tool call was evaluated by the Kernel. The receipt id is the authoritative content-addressed SHA-256 hash over the canonical receipt body excluding id, algorithm, and signature.
+    A signed Chio receipt: proof that a tool call was evaluated by the Kernel. The receipt id is the authoritative content-addressed SHA-256 hash over the canonical ChioReceiptIdInput.
     """
 
     model_config = ConfigDict(
@@ -156,7 +214,29 @@ class ChioReceiptRecord(BaseModel):
         ..., description="Tool that was invoked (or attempted)."
     )
     action: ToolCallAction
-    decision: Decision
+    decision: Decision | None = None
+    receipt_kind: ReceiptKind = Field(
+        ..., description="Signed semantic class for this v1 receipt."
+    )
+    boundary_class: BoundaryClass = Field(
+        ...,
+        description="Signed runtime boundary class. `cannot_see` is planning metadata only and is not valid on signed runtime receipts.",
+    )
+    observation_outcome: ObservationOutcome | None = Field(
+        None,
+        description="Signed outcome for trace and advisory records. Omitted for mediated decisions.",
+    )
+    tool_origin: ToolOrigin = Field(
+        ...,
+        description="Signed classification of where the tool effect executed relative to Chio.",
+    )
+    redaction_mode: RedactionMode = Field(
+        ..., description="Signed redaction mode applied to receipt details."
+    )
+    actor_chain: list[ActorRef] | None = Field(
+        None,
+        description="Signed actor attribution chain. Omitted from the wire when empty.",
+    )
     content_hash: constr(pattern=r"^[0-9a-f]{64}$") = Field(
         ..., description="SHA-256 hex hash of the evaluated content for this receipt."
     )
@@ -172,13 +252,13 @@ class ChioReceiptRecord(BaseModel):
         None,
         description="Optional receipt metadata for stream/accounting/financial details. Schema-less by design (mirrors `Option<serde_json::Value>`).",
     )
-    trust_level: TrustLevel | None = Field(
-        None,
-        description="Strength of kernel mediation that produced this receipt. Defaults to mediated.",
+    trust_level: TrustLevel = Field(
+        ...,
+        description="Strength of kernel mediation that produced this receipt. Must cohere with receipt_kind: mediated_decision uses mediated, trace_observation uses verified, and advisory_evaluation uses advisory.",
     )
     tenant_id: constr(min_length=1) | None = Field(
         None,
-        description="Phase 1.5 multi-tenant receipt isolation: tenant identifier for multi-tenant deployments. Absent in single-tenant mode; derived from the authenticated session's enterprise identity context, never from caller-provided request fields. Omitted from the wire when unset so single-tenant receipts remain byte-identical.",
+        description="Tenant identifier for multi-tenant deployments. Absent in single-tenant mode; derived from the authenticated session's enterprise identity context, never from caller-provided request fields.",
     )
     kernel_key: constr(
         pattern=r"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$"
@@ -188,11 +268,11 @@ class ChioReceiptRecord(BaseModel):
     )
     algorithm: Algorithm | None = Field(
         None,
-        description="Signing algorithm envelope hint. Omitted for legacy Ed25519 receipts to preserve byte-for-byte compatibility. Verification dispatches off the signature hex prefix, not this field.",
+        description="Signing algorithm envelope hint. Verification dispatches off the signature hex prefix, not this field.",
     )
     signature: constr(pattern=r"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$") = (
         Field(
             ...,
-            description="Hex-encoded signature over the canonical JSON of the receipt body. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.",
+            description="Hex-encoded signature over canonical JSON of ChioReceiptSigningBody { id, body: ChioReceiptIdInput }. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.",
         )
     )

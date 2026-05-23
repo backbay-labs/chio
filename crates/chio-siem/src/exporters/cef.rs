@@ -51,11 +51,7 @@ impl CefExporter {
         let name = event_name(event);
         let severity = severity(event);
         let reason = reason_code(event);
-        let tenant_id = receipt
-            .tenant_id
-            .as_deref()
-            .or_else(|| metadata_str(receipt.metadata.as_ref(), "tenant_id"))
-            .unwrap_or("single-tenant");
+        let tenant_id = receipt.tenant_id.as_deref().unwrap_or("single-tenant");
         let actor_subject =
             metadata_str(receipt.metadata.as_ref(), "actor_subject").unwrap_or("chio-agent");
         let redaction_status =
@@ -98,6 +94,7 @@ impl CefExporter {
             ("receiptKind", event.receipt_kind.clone()),
             ("boundaryClass", event.boundary_class.clone()),
             ("result", event.result.clone()),
+            ("authorized", event.authorized.to_string()),
         ]
         .into_iter()
         .map(|(key, value)| format!("{key}={}", escape_extension(&value)))
@@ -128,19 +125,20 @@ fn metadata_str<'a>(metadata: Option<&'a serde_json::Value>, key: &str) -> Optio
 }
 
 fn decision_label(event: &SiemEvent) -> &str {
-    if !event.is_authorized() && matches!(&event.receipt.decision, Decision::Allow) {
+    if !event.is_authorized() && matches!(&event.receipt.decision, Some(Decision::Allow)) {
         return event.receipt_kind.as_str();
     }
     match &event.receipt.decision {
-        Decision::Allow => "allow",
-        Decision::Deny { .. } => "deny",
-        Decision::Cancelled { .. } => "cancelled",
-        Decision::Incomplete { .. } => "incomplete",
+        Some(Decision::Allow) => "allow",
+        Some(Decision::Deny { .. }) => "deny",
+        Some(Decision::Cancelled { .. }) => "cancelled",
+        Some(Decision::Incomplete { .. }) => "incomplete",
+        None => event.receipt_kind.as_str(),
     }
 }
 
 fn signature_id(event: &SiemEvent) -> &str {
-    if !event.is_authorized() && matches!(&event.receipt.decision, Decision::Allow) {
+    if !event.is_authorized() && matches!(&event.receipt.decision, Some(Decision::Allow)) {
         return match event.receipt_kind.as_str() {
             "trace_observation" => "chio.trace_observation",
             "advisory_evaluation" => "chio.advisory_evaluation",
@@ -148,15 +146,20 @@ fn signature_id(event: &SiemEvent) -> &str {
         };
     }
     match &event.receipt.decision {
-        Decision::Allow => "chio.allow",
-        Decision::Deny { guard, .. } => guard.as_str(),
-        Decision::Cancelled { .. } => "chio.cancelled",
-        Decision::Incomplete { .. } => "chio.incomplete",
+        Some(Decision::Allow) => "chio.allow",
+        Some(Decision::Deny { guard, .. }) => guard.as_str(),
+        Some(Decision::Cancelled { .. }) => "chio.cancelled",
+        Some(Decision::Incomplete { .. }) => "chio.incomplete",
+        None => match event.receipt_kind.as_str() {
+            "trace_observation" => "chio.trace_observation",
+            "advisory_evaluation" => "chio.advisory_evaluation",
+            _ => "chio.observation",
+        },
     }
 }
 
 fn event_name(event: &SiemEvent) -> &'static str {
-    if !event.is_authorized() && matches!(&event.receipt.decision, Decision::Allow) {
+    if !event.is_authorized() && matches!(&event.receipt.decision, Some(Decision::Allow)) {
         return match event.receipt_kind.as_str() {
             "trace_observation" => "Chio trace observation",
             "advisory_evaluation" => "Chio advisory evaluation",
@@ -164,34 +167,41 @@ fn event_name(event: &SiemEvent) -> &'static str {
         };
     }
     match &event.receipt.decision {
-        Decision::Allow => "Chio allow",
-        Decision::Deny { .. } => "Chio guard deny",
-        Decision::Cancelled { .. } => "Chio cancelled",
-        Decision::Incomplete { .. } => "Chio incomplete",
+        Some(Decision::Allow) => "Chio allow",
+        Some(Decision::Deny { .. }) => "Chio guard deny",
+        Some(Decision::Cancelled { .. }) => "Chio cancelled",
+        Some(Decision::Incomplete { .. }) => "Chio incomplete",
+        None => match event.receipt_kind.as_str() {
+            "trace_observation" => "Chio trace observation",
+            "advisory_evaluation" => "Chio advisory evaluation",
+            _ => "Chio observation",
+        },
     }
 }
 
 fn reason_code(event: &SiemEvent) -> &str {
-    if !event.is_authorized() && matches!(&event.receipt.decision, Decision::Allow) {
+    if !event.is_authorized() && matches!(&event.receipt.decision, Some(Decision::Allow)) {
         return event.result.as_str();
     }
     match &event.receipt.decision {
-        Decision::Allow => "allow",
-        Decision::Deny { reason, .. } => reason.as_str(),
-        Decision::Cancelled { reason } => reason.as_str(),
-        Decision::Incomplete { reason } => reason.as_str(),
+        Some(Decision::Allow) => "allow",
+        Some(Decision::Deny { reason, .. }) => reason.as_str(),
+        Some(Decision::Cancelled { reason }) => reason.as_str(),
+        Some(Decision::Incomplete { reason }) => reason.as_str(),
+        None => event.result.as_str(),
     }
 }
 
 fn severity(event: &SiemEvent) -> u8 {
-    if !event.is_authorized() && matches!(&event.receipt.decision, Decision::Allow) {
+    if !event.is_authorized() && matches!(&event.receipt.decision, Some(Decision::Allow)) {
         return 3;
     }
     match &event.receipt.decision {
-        Decision::Allow => 2,
-        Decision::Deny { .. } => 8,
-        Decision::Cancelled { .. } => 4,
-        Decision::Incomplete { .. } => 5,
+        Some(Decision::Allow) => 2,
+        Some(Decision::Deny { .. }) => 8,
+        Some(Decision::Cancelled { .. }) => 4,
+        Some(Decision::Incomplete { .. }) => 5,
+        None => 3,
     }
 }
 
@@ -250,9 +260,29 @@ mod tests {
 
         assert!(cef.contains("receiptKind=trace_observation"));
         assert!(cef.contains("boundaryClass=detect_only"));
+        assert!(cef.contains("authorized=false"));
         assert!(!cef.contains("act=allow"));
         assert!(!cef.contains("chio.allow"));
         assert!(!cef.contains("Chio allow"));
+    }
+
+    #[test]
+    fn metadata_tenant_id_does_not_drive_authoritative_cef_tenant() {
+        let mut receipt = test_receipt_with_semantics(
+            Decision::Allow,
+            ReceiptSemanticFields::mediated_prevent(),
+            TrustLevel::Mediated,
+        );
+        receipt.metadata = Some(serde_json::json!({
+            "tenant_id": "metadata-tenant"
+        }));
+        let event = SiemEvent::from_receipt(receipt);
+        let cef = CefExporter::default()
+            .format_event(&event)
+            .expect("format CEF");
+
+        assert!(cef.contains("cs5=single-tenant"));
+        assert!(!cef.contains("metadata-tenant"));
     }
 
     fn test_receipt_with_semantics(
@@ -265,7 +295,12 @@ mod tests {
             "path": "/etc/passwd"
         }))
         .expect("hash test receipt parameters");
-        let mut receipt = ChioReceipt::sign(
+        let decision = if semantics.receipt_kind == chio_core::ReceiptKind::MediatedDecision {
+            Some(decision)
+        } else {
+            None
+        };
+        ChioReceipt::sign(
             ChioReceiptBody {
                 id: "trace-cef-1".to_string(),
                 timestamp: 1_712_345_678,
@@ -274,21 +309,22 @@ mod tests {
                 tool_name: "file_read".to_string(),
                 action,
                 decision,
+                receipt_kind: semantics.receipt_kind,
+                boundary_class: semantics.boundary_class,
+                observation_outcome: semantics.observation_outcome,
+                tool_origin: semantics.tool_origin,
+                redaction_mode: semantics.redaction_mode,
+                actor_chain: semantics.actor_chain,
                 content_hash: "content-xyz".to_string(),
                 policy_hash: "policy-xyz".to_string(),
                 evidence: Vec::new(),
                 metadata: None,
-                trust_level: TrustLevel::Mediated,
+                trust_level,
                 tenant_id: None,
                 kernel_key: kp.public_key(),
             },
             &kp,
         )
-        .expect("sign test receipt");
-        receipt.metadata = Some(serde_json::json!({
-            "receipt_semantics": semantics,
-        }));
-        receipt.trust_level = trust_level;
-        receipt
+        .expect("sign test receipt")
     }
 }

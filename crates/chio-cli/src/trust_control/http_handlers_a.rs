@@ -55,8 +55,7 @@ async fn handle_issue_capability(
     headers: HeaderMap,
     Json(payload): Json<IssueCapabilityRequest>,
 ) -> Response {
-    if let Err(response) =
-        validate_authority_mutation_auth(&headers, &state, ISSUE_CAPABILITY_PATH)
+    if let Err(response) = validate_authority_mutation_auth(&headers, &state, ISSUE_CAPABILITY_PATH)
     {
         return response;
     }
@@ -181,11 +180,11 @@ async fn handle_scim_delete_user(
                     return scim_error_response(
                         StatusCode::INTERNAL_SERVER_ERROR,
                         &error.to_string(),
-                    )
+                    );
                 }
             },
             Err(error) => {
-                return scim_error_response(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
+                return scim_error_response(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
             }
         }
     }
@@ -212,10 +211,10 @@ async fn handle_scim_delete_user(
                 return scim_error_response(
                     StatusCode::NOT_FOUND,
                     &format!("scim user `{user_id}` was not found"),
-                )
+                );
             }
             Err(error) => {
-                return scim_error_response(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
+                return scim_error_response(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
             }
         };
     if let Err(error) = registry.save(&path) {
@@ -906,7 +905,7 @@ async fn handle_redeem_passport_issuance_credential(
     ) {
         Ok(response) => response,
         Err(error) if error.to_string().contains("access token") => {
-            return plain_http_error(StatusCode::UNAUTHORIZED, &error.to_string())
+            return plain_http_error(StatusCode::UNAUTHORIZED, &error.to_string());
         }
         Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     };
@@ -1023,7 +1022,7 @@ async fn handle_revoke_certification(
     let entry = match registry.revoke(&artifact_id, request.reason.as_deref(), request.revoked_at) {
         Ok(entry) => entry,
         Err(error) if error.to_string().contains("was not found") => {
-            return plain_http_error(StatusCode::NOT_FOUND, &error.to_string())
+            return plain_http_error(StatusCode::NOT_FOUND, &error.to_string());
         }
         Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     };
@@ -1049,7 +1048,7 @@ async fn handle_dispute_certification(
     let entry = match registry.dispute(&artifact_id, &request) {
         Ok(entry) => entry,
         Err(error) if error.to_string().contains("was not found") => {
-            return plain_http_error(StatusCode::NOT_FOUND, &error.to_string())
+            return plain_http_error(StatusCode::NOT_FOUND, &error.to_string());
         }
         Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     };
@@ -1180,7 +1179,7 @@ async fn handle_revoke_passport_status(
     {
         Ok(record) => record,
         Err(error) if error.to_string().contains("was not found") => {
-            return plain_http_error(StatusCode::NOT_FOUND, &error.to_string())
+            return plain_http_error(StatusCode::NOT_FOUND, &error.to_string());
         }
         Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     };
@@ -1381,7 +1380,7 @@ fn verify_passport_challenge_payload(
             return Err(plain_http_error(
                 StatusCode::BAD_REQUEST,
                 &error.to_string(),
-            ))
+            ));
         }
     };
     if resolved_policy
@@ -1507,7 +1506,7 @@ async fn handle_public_verify_passport_challenge(
             return plain_http_error(
                 StatusCode::BAD_REQUEST,
                 "public holder submission requires a non-empty challenge_id",
-            )
+            );
         }
     };
     let challenge_db_path = match configured_verifier_challenge_db_path(&state.config) {
@@ -1521,7 +1520,7 @@ async fn handle_public_verify_passport_challenge(
     let stored_challenge = match store.fetch_active(&challenge_id, unix_timestamp_now()) {
         Ok(challenge) => challenge,
         Err(error) if error.to_string().contains("not registered") => {
-            return plain_http_error(StatusCode::NOT_FOUND, &error.to_string())
+            return plain_http_error(StatusCode::NOT_FOUND, &error.to_string());
         }
         Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     };
@@ -1599,7 +1598,7 @@ async fn handle_create_oid4vp_request(
     ) {
         Ok(wallet_exchange) => wallet_exchange,
         Err(error) => {
-            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
+            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
         }
     };
     Json(CreateOid4vpRequestResponse {
@@ -1625,10 +1624,10 @@ async fn handle_public_get_wallet_exchange(
     let snapshot = match store.snapshot(&request_id, unix_timestamp_now()) {
         Ok(snapshot) => snapshot,
         Err(error) if error.to_string().contains("not registered") => {
-            return plain_http_error(StatusCode::NOT_FOUND, &error.to_string())
+            return plain_http_error(StatusCode::NOT_FOUND, &error.to_string());
         }
         Err(error) => {
-            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
+            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
         }
     };
     let same_device_url = oid4vp_same_device_url(&snapshot.request.request_uri);
@@ -1668,7 +1667,7 @@ async fn handle_public_get_oid4vp_request(
     let (request, request_jwt) = match store.fetch_active(&request_id, unix_timestamp_now()) {
         Ok(values) => values,
         Err(error) if error.to_string().contains("not registered") => {
-            return plain_http_error(StatusCode::NOT_FOUND, &error.to_string())
+            return plain_http_error(StatusCode::NOT_FOUND, &error.to_string());
         }
         Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     };
@@ -1712,7 +1711,7 @@ async fn handle_public_launch_oid4vp_request(
     let (request, _) = match store.fetch_active(&request_id, unix_timestamp_now()) {
         Ok(values) => values,
         Err(error) if error.to_string().contains("not registered") => {
-            return plain_http_error(StatusCode::NOT_FOUND, &error.to_string())
+            return plain_http_error(StatusCode::NOT_FOUND, &error.to_string());
         }
         Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     };
@@ -1746,7 +1745,7 @@ async fn handle_public_submit_oid4vp_response(
     let (request, request_jwt) = match store.fetch_active(&request_id, now) {
         Ok(values) => values,
         Err(error) if error.to_string().contains("not registered") => {
-            return plain_http_error(StatusCode::NOT_FOUND, &error.to_string())
+            return plain_http_error(StatusCode::NOT_FOUND, &error.to_string());
         }
         Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     };
@@ -2166,7 +2165,7 @@ async fn handle_federated_issue(
                                 return plain_http_error(
                                     StatusCode::INTERNAL_SERVER_ERROR,
                                     &error.to_string(),
-                                )
+                                );
                             }
                         };
                         let child_snapshot = match build_capability_snapshot(
@@ -2179,7 +2178,7 @@ async fn handle_federated_issue(
                                 return plain_http_error(
                                     StatusCode::INTERNAL_SERVER_ERROR,
                                     &error.to_string(),
-                                )
+                                );
                             }
                         };
                         if let Err(error) = store.upsert_capability_snapshot(&anchor_snapshot) {
@@ -2254,7 +2253,7 @@ async fn handle_list_revocations(
         match store.list_revocations(list_limit(query.limit), query.capability_id.as_deref()) {
             Ok(revocations) => revocations,
             Err(error) => {
-                return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
+                return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
             }
         };
     let revoked = query
@@ -2265,7 +2264,7 @@ async fn handle_list_revocations(
     let revoked = match revoked {
         Ok(value) => value,
         Err(error) => {
-            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
+            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
         }
     };
     Json(revocation_list_response(
@@ -2321,33 +2320,44 @@ async fn handle_list_tool_receipts(
     Query(query): Query<ToolReceiptQuery>,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
-        return response;
-    }
+    let principal = match resolve_control_read_principal(&headers, &state.config) {
+        Ok(principal) => principal,
+        Err(response) => return response,
+    };
     let store = match open_receipt_store(&state.config) {
         Ok(store) => store,
         Err(response) => return response,
     };
-    let receipts = match store.list_tool_receipts(
-        list_limit(query.limit),
-        query.capability_id.as_deref(),
-        query.tool_server.as_deref(),
-        query.tool_name.as_deref(),
-        query.decision.as_deref(),
-    ) {
-        Ok(receipts) => receipts,
+    let kernel_query = ReceiptQuery {
+        capability_id: query.capability_id.clone(),
+        tool_server: query.tool_server.clone(),
+        tool_name: query.tool_name.clone(),
+        outcome: query.decision.clone(),
+        since: None,
+        until: None,
+        min_cost: None,
+        max_cost: None,
+        cursor: None,
+        limit: list_limit(query.limit),
+        agent_subject: None,
+        tenant_filter: None,
+        read_context: Some(principal.receipt_read_context()),
+    };
+    let result = match store.query_receipts(&kernel_query) {
+        Ok(result) => result,
         Err(error) => {
-            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
+            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
         }
     };
-    let receipts = match receipts
+    let receipts = match result
+        .receipts
         .into_iter()
-        .map(serde_json::to_value)
+        .map(|stored| serde_json::to_value(stored.receipt))
         .collect::<Result<Vec<_>, _>>()
     {
         Ok(receipts) => receipts,
         Err(error) => {
-            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
+            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
         }
     };
 
@@ -2389,13 +2399,15 @@ async fn handle_append_tool_receipt(
             &state,
             "tool receipt was not visible on the leader after write",
             || {
+                let read_context = chio_kernel::ReceiptReadContext::admin_service();
                 let receipts = store
-                    .list_tool_receipts(
+                    .list_tool_receipts_with_context(
+                        &read_context,
                         MAX_LIST_LIMIT,
                         Some(&receipt.capability_id),
                         Some(&receipt.tool_server),
                         Some(&receipt.tool_name),
-                        Some(decision_kind(&receipt.decision)),
+                        Some(receipt_decision_kind(&receipt)),
                     )
                     .map_err(|error| {
                         plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
@@ -2422,14 +2434,23 @@ async fn handle_list_child_receipts(
     Query(query): Query<ChildReceiptQuery>,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
-        return response;
+    let principal = match resolve_control_read_principal(&headers, &state.config) {
+        Ok(principal) => principal,
+        Err(response) => return response,
+    };
+    if matches!(principal, ResolvedControlReadPrincipal::TenantRead { .. }) {
+        return plain_http_error(
+            StatusCode::FORBIDDEN,
+            "tenant read token cannot list child receipts until child receipts carry tenant attribution",
+        );
     }
     let store = match open_receipt_store(&state.config) {
         Ok(store) => store,
         Err(response) => return response,
     };
-    let receipts = match store.list_child_receipts(
+    let read_context = principal.receipt_read_context();
+    let receipts = match store.list_child_receipts_with_context(
+        &read_context,
         list_limit(query.limit),
         query.session_id.as_deref(),
         query.parent_request_id.as_deref(),
@@ -2439,7 +2460,7 @@ async fn handle_list_child_receipts(
     ) {
         Ok(receipts) => receipts,
         Err(error) => {
-            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
+            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
         }
     };
     let receipts = match receipts
@@ -2449,7 +2470,7 @@ async fn handle_list_child_receipts(
     {
         Ok(receipts) => receipts,
         Err(error) => {
-            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
+            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
         }
     };
 
@@ -2475,9 +2496,10 @@ async fn handle_query_receipts(
     Query(query): Query<ReceiptQueryHttpQuery>,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
-        return response;
-    }
+    let principal = match resolve_control_read_principal(&headers, &state.config) {
+        Ok(principal) => principal,
+        Err(response) => return response,
+    };
     let store = match open_receipt_store(&state.config) {
         Ok(store) => store,
         Err(response) => return response,
@@ -2494,16 +2516,13 @@ async fn handle_query_receipts(
         cursor: query.cursor,
         limit: list_limit(query.limit),
         agent_subject: query.agent_subject.clone(),
-        // Phase 1.5: tenant_filter must be derived from the operator's
-        // authenticated tenant claim, not a query parameter. Left None
-        // here pending the auth-context plumb-through; strict-isolation
-        // mode at the store level guards against leakage during rollout.
         tenant_filter: None,
+        read_context: Some(principal.receipt_read_context()),
     };
     let result = match store.query_receipts(&kernel_query) {
         Ok(result) => result,
         Err(error) => {
-            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
+            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
         }
     };
     let receipts = match result
@@ -2514,7 +2533,7 @@ async fn handle_query_receipts(
     {
         Ok(receipts) => receipts,
         Err(error) => {
-            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
+            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
         }
     };
     Json(ReceiptQueryResponse {

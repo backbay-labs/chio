@@ -1,4 +1,9 @@
 export {
+  isAuthorizedEvaluation,
+  nonAuthorizingReason,
+  type ChioAuthorityFields,
+} from "./authority.js";
+export {
   createDenialResponse,
   type ChioDenialBody,
   type ChioDenialOptions,

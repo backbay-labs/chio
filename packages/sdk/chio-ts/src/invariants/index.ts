@@ -1,12 +1,14 @@
 export { canonicalizeJson, canonicalizeJsonString } from "./json.ts";
 export type { JsonPrimitive, JsonValue } from "./json.ts";
-export { sha256Hex } from "./crypto.ts";
+export { sha256Hex, verifyChioSignature } from "./crypto.ts";
 export { sha256HexBytes, sha256HexUtf8 } from "./hashing.ts";
 export {
   parseReceiptJson,
   receiptBodyCanonicalJson,
+  receiptSigningBodyCanonicalJson,
   verifyReceipt,
   verifyReceiptJson,
+  verifyReceiptWithTrustedSigners,
 } from "./receipt.ts";
 export type { ChioReceipt, ReceiptDecisionKind, ReceiptVerification } from "./receipt.ts";
 export {

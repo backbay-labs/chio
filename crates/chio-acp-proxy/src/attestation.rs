@@ -54,10 +54,26 @@ pub trait ReceiptSigner: Send + Sync {
 pub struct AcpCapabilityRequest {
     /// Session ID the operation belongs to.
     pub session_id: String,
+    /// ACP tool-call id, when known before the authoritative authorization
+    /// receipt is minted. Enforced receipts require this value to be signed
+    /// into the authorization context before a later ACP audit entry can be
+    /// promoted to mediated/prevent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
+    /// Correlates the live authorization receipt with the later ACP audit event.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authorization_correlation_id: Option<String>,
     /// The kind of operation being checked: "fs_read", "fs_write", or "terminal".
     pub operation: String,
     /// The resource being accessed (path for fs, command for terminal).
     pub resource: String,
+    /// Canonical SHA-256 hash of the full ACP operation parameters.
+    pub authorization_parameter_hash: String,
+    /// Full ACP operation parameters covered by the live authorization.
+    ///
+    /// This keeps authorization receipts bound to the actual file or terminal
+    /// request payload instead of only a reduced resource string plus hash.
+    pub operation_payload: Value,
     /// Optional capability token string presented by the agent.
     pub token: Option<String>,
 }

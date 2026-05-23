@@ -40,6 +40,11 @@ func trustCapabilitySigner(t *testing.T, signer capabilitySigner) {
 	t.Setenv(envTrustedIssuerKeys, "")
 }
 
+func requireControllerScopes(t *testing.T, scopes string) {
+	t.Helper()
+	t.Setenv(envRequiredScopes, scopes)
+}
+
 func signedCapabilityTokenJSON(
 	t *testing.T,
 	signer capabilitySigner,
@@ -171,6 +176,9 @@ func TestValidate_RejectWithoutCapability(t *testing.T) {
 	if review.Response.Allowed {
 		t.Fatal("expected pod to be rejected without capability token")
 	}
+	if strings.Contains(review.Response.Result.Message, AnnotationExempt) {
+		t.Fatalf("missing-token denial must not advertise self-exemption, got %q", review.Response.Result.Message)
+	}
 	if review.Response.UID != "test-uid-001" {
 		t.Fatalf("expected UID test-uid-001, got %s", review.Response.UID)
 	}
@@ -179,6 +187,7 @@ func TestValidate_RejectWithoutCapability(t *testing.T) {
 func TestValidate_AllowWithCapability(t *testing.T) {
 	signer := newCapabilitySigner(t)
 	trustCapabilitySigner(t, signer)
+	requireControllerScopes(t, "db:invoke")
 	body := buildAdmissionReview(t, map[string]string{
 		AnnotationCapabilityToken: validToolCapabilityTokenJSON(t, signer, "db", "invoke"),
 	})
@@ -202,6 +211,7 @@ func TestValidate_AllowWithCapability(t *testing.T) {
 func TestValidate_AllowWithProtocolCapabilityToken(t *testing.T) {
 	signer := newCapabilitySigner(t)
 	trustCapabilitySigner(t, signer)
+	requireControllerScopes(t, "db:invoke")
 	body := buildAdmissionReview(t, map[string]string{
 		"chio.protocol/capability-token": validToolCapabilityTokenJSON(t, signer, "db", "invoke"),
 	})
@@ -222,7 +232,7 @@ func TestValidate_AllowWithProtocolCapabilityToken(t *testing.T) {
 	}
 }
 
-func TestValidate_AllowExempt(t *testing.T) {
+func TestValidate_RejectSelfAssertedExemptAnnotation(t *testing.T) {
 	body := buildAdmissionReview(t, map[string]string{
 		AnnotationExempt: "true",
 	})
@@ -238,16 +248,21 @@ func TestValidate_AllowExempt(t *testing.T) {
 		t.Fatalf("failed to decode response: %v", err)
 	}
 
-	if !review.Response.Allowed {
-		t.Fatal("expected exempt pod to be allowed")
+	if review.Response.Allowed {
+		t.Fatal("expected self-asserted exempt pod to be rejected")
+	}
+	if strings.Contains(review.Response.Result.Message, AnnotationExempt) {
+		t.Fatalf("self-asserted exemption denial must not advertise pod exemption, got %q", review.Response.Result.Message)
 	}
 }
 
-func TestValidate_RejectInvalidScopes(t *testing.T) {
+func TestValidate_RejectPodSuppliedRequiredScopes(t *testing.T) {
 	signer := newCapabilitySigner(t)
+	trustCapabilitySigner(t, signer)
+	requireControllerScopes(t, "db:invoke")
 	body := buildAdmissionReview(t, map[string]string{
 		AnnotationCapabilityToken: validToolCapabilityTokenJSON(t, signer, "db", "invoke"),
-		AnnotationRequiredScopes:  "read,,write",
+		AnnotationRequiredScopes:  "db:invoke",
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/validate", bytes.NewReader(body))
@@ -262,13 +277,17 @@ func TestValidate_RejectInvalidScopes(t *testing.T) {
 	}
 
 	if review.Response.Allowed {
-		t.Fatal("expected pod to be rejected with invalid scopes")
+		t.Fatal("expected pod-controlled scope policy to be rejected")
+	}
+	if !strings.Contains(review.Response.Result.Message, envRequiredScopes) {
+		t.Fatalf("expected denial to reference controller scope configuration, got %q", review.Response.Result.Message)
 	}
 }
 
 func TestValidate_RejectInvalidCapabilitySignature(t *testing.T) {
 	signer := newCapabilitySigner(t)
 	trustCapabilitySigner(t, signer)
+	requireControllerScopes(t, "db:invoke")
 	token := validToolCapabilityTokenJSON(t, signer, "db", "invoke")
 	var parsed map[string]any
 	if err := json.Unmarshal([]byte(token), &parsed); err != nil {
@@ -304,6 +323,7 @@ func TestValidate_RejectExpiredCapability(t *testing.T) {
 	now := time.Now().UTC()
 	signer := newCapabilitySigner(t)
 	trustCapabilitySigner(t, signer)
+	requireControllerScopes(t, "db:invoke")
 	body := buildAdmissionReview(t, map[string]string{
 		AnnotationCapabilityToken: signedCapabilityTokenJSON(
 			t,
@@ -335,9 +355,9 @@ func TestValidate_RejectExpiredCapability(t *testing.T) {
 func TestValidate_AllowWithMatchingRequiredScope(t *testing.T) {
 	signer := newCapabilitySigner(t)
 	trustCapabilitySigner(t, signer)
+	requireControllerScopes(t, "db:write")
 	body := buildAdmissionReview(t, map[string]string{
 		AnnotationCapabilityToken: validToolCapabilityTokenJSON(t, signer, "db", "invoke"),
-		AnnotationRequiredScopes:  "db:write",
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/validate", bytes.NewReader(body))
@@ -359,9 +379,9 @@ func TestValidate_AllowWithMatchingRequiredScope(t *testing.T) {
 func TestValidate_RejectOutOfScopeCapability(t *testing.T) {
 	signer := newCapabilitySigner(t)
 	trustCapabilitySigner(t, signer)
+	requireControllerScopes(t, "tool:*:admin:invoke")
 	body := buildAdmissionReview(t, map[string]string{
 		AnnotationCapabilityToken: validToolCapabilityTokenJSON(t, signer, "db", "invoke"),
-		AnnotationRequiredScopes:  "tool:*:admin:invoke",
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/validate", bytes.NewReader(body))
@@ -384,6 +404,7 @@ func TestValidate_RejectUntrustedIssuer(t *testing.T) {
 	trustedSigner := newCapabilitySigner(t)
 	untrustedSigner := newCapabilitySigner(t)
 	trustCapabilitySigner(t, trustedSigner)
+	requireControllerScopes(t, "db:invoke")
 
 	body := buildAdmissionReview(t, map[string]string{
 		AnnotationCapabilityToken: validToolCapabilityTokenJSON(t, untrustedSigner, "db", "invoke"),
@@ -409,6 +430,7 @@ func TestValidate_RejectWhenTrustedIssuerConfigMissing(t *testing.T) {
 	signer := newCapabilitySigner(t)
 	t.Setenv(envTrustedIssuerKey, "")
 	t.Setenv(envTrustedIssuerKeys, "")
+	requireControllerScopes(t, "db:invoke")
 
 	body := buildAdmissionReview(t, map[string]string{
 		AnnotationCapabilityToken: validToolCapabilityTokenJSON(t, signer, "db", "invoke"),
@@ -427,6 +449,34 @@ func TestValidate_RejectWhenTrustedIssuerConfigMissing(t *testing.T) {
 
 	if review.Response.Allowed {
 		t.Fatal("expected validation to fail closed without trusted issuer configuration")
+	}
+}
+
+func TestValidate_RejectWhenControllerRequiredScopesMissing(t *testing.T) {
+	signer := newCapabilitySigner(t)
+	trustCapabilitySigner(t, signer)
+	t.Setenv(envRequiredScopes, "")
+
+	body := buildAdmissionReview(t, map[string]string{
+		AnnotationCapabilityToken: validToolCapabilityTokenJSON(t, signer, "db", "invoke"),
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/validate", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handleValidate(rec, req)
+
+	var review AdmissionReview
+	if err := json.NewDecoder(rec.Body).Decode(&review); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if review.Response.Allowed {
+		t.Fatal("expected validation to fail closed without controller required scopes")
+	}
+	if !strings.Contains(review.Response.Result.Message, envRequiredScopes) {
+		t.Fatalf("expected denial to reference controller required scopes, got %q", review.Response.Result.Message)
 	}
 }
 

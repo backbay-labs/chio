@@ -7,8 +7,8 @@ import (
 
 type chioPassthroughContextKey struct{}
 
-// GetChioPassthrough returns the explicit fail-open degraded-state marker, if
-// one was attached to the request context by Chio middleware.
+// GetChioPassthrough returns a legacy degraded-state marker, if present.
+// Current v1 middleware always fails closed and does not set this marker.
 func GetChioPassthrough(r *http.Request) (*ChioPassthrough, bool) {
 	value := r.Context().Value(chioPassthroughContextKey{})
 	passthrough, ok := value.(*ChioPassthrough)

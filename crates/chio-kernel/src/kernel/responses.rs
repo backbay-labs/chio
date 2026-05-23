@@ -1,5 +1,6 @@
 use std::sync::atomic::Ordering;
 
+use chio_core::{BoundaryClass, ReceiptKind, RedactionMode, ToolOrigin};
 use chio_log_redact::redacted;
 
 use super::*;
@@ -1522,7 +1523,13 @@ impl ChioKernel {
             tool_server: params.server_id.to_string(),
             tool_name: params.tool_name.to_string(),
             action: params.action,
-            decision: params.decision,
+            decision: Some(params.decision),
+            receipt_kind: ReceiptKind::MediatedDecision,
+            boundary_class: BoundaryClass::Prevent,
+            observation_outcome: None,
+            tool_origin: ToolOrigin::CallerExecuted,
+            redaction_mode: RedactionMode::None,
+            actor_chain: Vec::new(),
             content_hash: params.content_hash,
             policy_hash: self.config.policy_hash.clone(),
             evidence: current_post_invocation_guard_evidence(),
@@ -1611,9 +1618,11 @@ impl ChioKernel {
         _request: &crate::runtime::ToolCallRequest,
         receipt: &ChioReceipt,
     ) -> Result<(), KernelError> {
-        // Runtime-admission denies must persist locally, but they must not
-        // trigger the federation co-signature hook for a remote side effect
-        // that never ran.
+        // PR 682 v1 receipt shape: persist the v1 deny receipt locally and
+        // deliberately stop before the federation co-signature hook. The
+        // runtime-admission deny path does not co-sign because the deny
+        // decision is locally authoritative and may have been triggered
+        // before any federation peer was contacted.
         self.record_chio_receipt(receipt)
     }
 
@@ -1666,46 +1675,29 @@ impl ChioKernel {
         const CHECKPOINT_CONFLICT_RETRIES: usize = 8;
 
         for attempt in 0..=CHECKPOINT_CONFLICT_RETRIES {
-            let previous_checkpoint = self.refresh_checkpoint_counters_from_store()?;
+            self.refresh_checkpoint_counters_from_store()?;
             let last_checkpoint_seq = self.last_checkpoint_seq.load(Ordering::SeqCst);
             if batch_end_seq <= last_checkpoint_seq {
                 return Ok(());
             }
-            let batch_start_seq = last_checkpoint_seq + 1;
 
-            let Some(receipt_bytes_with_seqs) = self.with_receipt_store(|store| {
-                Ok(store.receipts_canonical_bytes_range(batch_start_seq, batch_end_seq)?)
-            })?
-            else {
-                return Ok(());
-            };
-
-            if receipt_bytes_with_seqs.is_empty() {
-                return Ok(());
-            }
-
-            let receipt_bytes: Vec<Vec<u8>> = receipt_bytes_with_seqs
-                .into_iter()
-                .map(|(_, bytes)| bytes)
-                .collect();
-
-            let checkpoint_seq = self.checkpoint_seq_counter.load(Ordering::SeqCst) + 1;
-            let checkpoint = checkpoint::build_checkpoint_with_previous(
-                checkpoint_seq,
-                batch_start_seq,
-                batch_end_seq,
-                &receipt_bytes,
-                &self.config.keypair,
-                previous_checkpoint.as_ref(),
-            )
-            .map_err(|e| KernelError::Internal(format!("checkpoint build failed: {e}")))?;
-
-            match self.with_receipt_store(|store| Ok(store.store_checkpoint(&checkpoint)?)) {
-                Ok(_) => {
-                    self.checkpoint_seq_counter
-                        .store(checkpoint_seq, Ordering::SeqCst);
+            match self.with_receipt_store(|store| {
+                Ok(store.create_next_receipt_checkpoint(
+                    self.checkpoint_batch_size,
+                    &self.config.keypair,
+                )?)
+            }) {
+                Ok(Some(report)) if report.created => {
+                    if let Some(checkpoint_seq) = report.checkpoint_seq {
+                        self.checkpoint_seq_counter
+                            .store(checkpoint_seq, Ordering::SeqCst);
+                    }
                     self.last_checkpoint_seq
-                        .store(batch_end_seq, Ordering::SeqCst);
+                        .store(report.latest_checkpointed_entry_seq, Ordering::SeqCst);
+                    return Ok(());
+                }
+                Ok(Some(_)) | Ok(None) => {
+                    self.refresh_checkpoint_counters_from_store()?;
                     return Ok(());
                 }
                 Err(KernelError::ReceiptPersistence(ReceiptStoreError::Conflict(_)))

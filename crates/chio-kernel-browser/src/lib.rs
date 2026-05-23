@@ -57,7 +57,7 @@ use alloc::vec::Vec;
 
 use chio_core_types::capability::{CapabilityNegotiation, CapabilityToken, ScopeHash};
 use chio_core_types::crypto::{Ed25519Backend, Keypair, PublicKey, SigningBackend};
-use chio_core_types::receipt::{ChioReceipt, ChioReceiptBody, Decision};
+use chio_core_types::receipt::{chio_receipt_id, ChioReceipt, ChioReceiptBody, Decision};
 use chio_kernel_core::{
     evaluate_with_full_floor as core_evaluate_with_full_floor, sign_receipt as core_sign_receipt,
     verify_capability_full, BudgetRegistry, BudgetSplitError, EvaluateInput,
@@ -161,10 +161,23 @@ pub struct AdmittedChildBudgetJson {
 /// consume a plain object without reaching into Rust enum tags.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EvaluationVerdictJson {
-    /// `"allow"`, `"deny"`, or `"pending_approval"`.
+    /// `"deny"` or `"pending_approval"` for browser capability-only
+    /// evaluation. An empty guard pipeline never emits authoritative
+    /// `"allow"` at this boundary.
     pub verdict: String,
+    /// Raw kernel-core capability and scope verdict before the browser
+    /// authority downgrade. Callers may use this for diagnostics, not
+    /// as execution authorization.
+    pub capability_verdict: String,
     /// Deny reason when `verdict == "deny"`.
     pub reason: Option<String>,
+    /// Whether this evaluation result is authoritative authorization.
+    /// Browser capability-only evaluation always reports `false`.
+    pub authorized: bool,
+    /// Machine-readable reason for the authorization state.
+    pub authorization_basis: String,
+    /// Whether a guard pipeline participated in the authorization.
+    pub guards_evaluated: bool,
     /// Index of the matched grant on allow or after guard denial.
     pub matched_grant_index: Option<usize>,
     /// Subject hex-encoded public key (populated when the capability
@@ -180,10 +193,24 @@ pub struct EvaluationVerdictJson {
 
 impl EvaluationVerdictJson {
     fn from_core(value: chio_kernel_core::EvaluationVerdict) -> Self {
-        let verdict_str = match value.verdict {
+        let capability_verdict = match value.verdict {
             chio_kernel_core::Verdict::Allow => "allow",
             chio_kernel_core::Verdict::Deny => "deny",
             chio_kernel_core::Verdict::PendingApproval => "pending_approval",
+        };
+        let (verdict_str, reason, authorization_basis) = match value.verdict {
+            chio_kernel_core::Verdict::Allow => (
+                "pending_approval",
+                Some(
+                    "capability-only browser evaluation requires a mediated prevent receipt before execution"
+                        .to_string(),
+                ),
+                "capability_only",
+            ),
+            chio_kernel_core::Verdict::Deny => ("deny", value.reason, "denied"),
+            chio_kernel_core::Verdict::PendingApproval => {
+                ("pending_approval", value.reason, "pending_approval")
+            }
         };
         let (subject_hex, issuer_hex, capability_id, evaluated_at) = match value.verified {
             Some(verified) => (
@@ -196,7 +223,11 @@ impl EvaluationVerdictJson {
         };
         Self {
             verdict: verdict_str.to_string(),
-            reason: value.reason,
+            capability_verdict: capability_verdict.to_string(),
+            reason,
+            authorized: false,
+            authorization_basis: authorization_basis.to_string(),
+            guards_evaluated: false,
             matched_grant_index: value.matched_grant_index,
             subject_hex,
             issuer_hex,
@@ -284,9 +315,20 @@ pub struct VerifyReceiptResultJson {
     pub signer_key_hex: String,
     /// Receipt id, surfaced for telemetry / dedup.
     pub receipt_id: String,
+    /// `true` when the receipt id matches the content-addressed id
+    /// derived from the canonical receipt body.
+    pub receipt_id_valid: bool,
     /// Snake_case decision verdict: `"allow"`, `"deny"`, `"cancelled"`,
     /// or `"incomplete"`.
     pub decision: String,
+    /// Current v1 semantic receipt kind.
+    pub receipt_kind: String,
+    /// Current v1 runtime boundary class.
+    pub boundary_class: String,
+    /// Human-facing semantic result label.
+    pub result: String,
+    /// `true` only for mediated prevent-boundary allow receipts.
+    pub authorized: bool,
     /// `true` when the parameter hash on the embedded `ToolCallAction`
     /// matches the canonical hash of the parameters.
     pub parameter_hash_valid: bool,
@@ -544,11 +586,19 @@ pub fn verify_receipt_pure(
 
     let signer_key_hex = receipt.kernel_key.to_hex();
     let receipt_id = receipt.id.clone();
+    let computed_receipt_id = chio_receipt_id(&receipt.body()).map_err(|error| {
+        BindingError::new(
+            "receipt_id_check_failed",
+            format!("receipt id check could not run: {error}"),
+        )
+    })?;
+    let receipt_id_valid = computed_receipt_id == receipt_id;
     let decision_str = match &receipt.decision {
-        Decision::Allow => "allow",
-        Decision::Deny { .. } => "deny",
-        Decision::Cancelled { .. } => "cancelled",
-        Decision::Incomplete { .. } => "incomplete",
+        Some(Decision::Allow) => "allow",
+        Some(Decision::Deny { .. }) => "deny",
+        Some(Decision::Cancelled { .. }) => "cancelled",
+        Some(Decision::Incomplete { .. }) => "incomplete",
+        None => "none",
     }
     .to_string();
 
@@ -571,13 +621,27 @@ pub fn verify_receipt_pure(
             .iter()
             .any(|issuer| issuer == &receipt.kernel_key);
 
-    let ok = signature_valid && parameter_hash_valid && signer_trusted;
+    let semantics = receipt.semantic_fields();
+    let semantic_authorized = semantics.is_authorized(receipt.decision.as_ref());
+    let result = semantics
+        .result_label(receipt.decision.as_ref())
+        .to_string();
+    let receipt_kind = semantics.receipt_kind.as_str().to_string();
+    let boundary_class = semantics.boundary_class.as_str().to_string();
+
+    let ok = signature_valid && parameter_hash_valid && receipt_id_valid && signer_trusted;
+    let authorized = semantic_authorized && ok;
 
     Ok(VerifyReceiptResultJson {
         ok,
         signer_key_hex,
         receipt_id,
+        receipt_id_valid,
         decision: decision_str,
+        receipt_kind,
+        boundary_class,
+        result,
+        authorized,
         parameter_hash_valid,
         signature_valid,
         signer_trusted,
@@ -761,8 +825,8 @@ pub mod wasm {
     /// returns an [`EvaluationVerdictJson`]. The underlying
     /// `chio_kernel_core::evaluate` runs with an empty guard pipeline --
     /// browser evaluations today target offline-capability checks; a
-    /// follow-up phase will plumb WASM guard modules through the same
-    /// entry point.
+    /// capability-only success is therefore downgraded to
+    /// `pending_approval` instead of authoritative `allow`.
     #[wasm_bindgen]
     pub fn evaluate(request_json: &str) -> Result<JsValue, JsValue> {
         let request: EvaluateRequestJson = parse_json("evaluate request", request_json)?;
@@ -910,7 +974,10 @@ mod tests {
         DelegationLinkBody, Operation, ToolGrant,
     };
     use chio_core_types::crypto::Keypair;
-    use chio_core_types::receipt::{ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
+    use chio_core_types::receipt::{
+        BoundaryClass, ChioReceiptBody, Decision, ReceiptKind, RedactionMode, ToolCallAction,
+        ToolOrigin, TrustLevel,
+    };
     use chio_kernel_core::FixedClock;
 
     const ISSUED_AT: u64 = 1_700_000_000;
@@ -926,6 +993,8 @@ mod tests {
         subject: &Keypair,
         issuer: &Keypair,
     ) -> CapabilityToken {
+        let body = make_capability_body(id, subject, issuer);
+        let parent_scope_hash = scope_hash(&body.scope).unwrap();
         let parent_link = DelegationLink::sign(
             DelegationLinkBody {
                 capability_id: parent_id.to_string(),
@@ -933,14 +1002,35 @@ mod tests {
                 delegatee: subject.public_key(),
                 attenuations: std::vec![],
                 timestamp: ISSUED_AT,
-                scope_hash: None,
+                scope_hash: Some(parent_scope_hash.clone()),
             },
             issuer,
         )
         .unwrap();
-        let mut body = make_capability_body(id, subject, issuer);
+        let proof = AttenuationProof {
+            parent_scope_hash,
+            child_scope_hash: scope_hash(&body.scope).unwrap(),
+            normalized_subset_proof: compute_attenuation_witness(&body.scope, &body.scope).unwrap(),
+        };
+        let mut body = body;
         body.delegation_chain = std::vec![parent_link];
-        CapabilityToken::sign(body, issuer).unwrap()
+        CapabilityToken::sign_attenuated(
+            CapabilityTokenAttenuationBody {
+                body,
+                caveats: std::vec![],
+                scope_attenuations: std::vec![],
+                attenuation_proof: proof,
+                budget_share_bps: None,
+            },
+            issuer,
+        )
+        .unwrap()
+    }
+
+    fn trust_roots_for_scope(issuer: &Keypair, scope: &ChioScope) -> BTreeMap<String, ScopeHash> {
+        let mut roots = BTreeMap::new();
+        roots.insert(issuer.public_key().to_hex(), scope_hash(scope).unwrap());
+        roots
     }
 
     fn parent_budget_snapshot(parent_id: &str) -> ParentBudgetSnapshotJson {
@@ -1039,7 +1129,16 @@ mod tests {
         let clock = FixedClock::new(ISSUED_AT + 1);
 
         let verdict = evaluate_pure(input, &clock).expect("evaluate_pure");
-        assert_eq!(verdict.verdict, "allow");
+        assert_eq!(verdict.verdict, "pending_approval");
+        assert_eq!(verdict.capability_verdict, "allow");
+        assert!(!verdict.authorized);
+        assert_eq!(verdict.authorization_basis, "capability_only");
+        assert!(!verdict.guards_evaluated);
+        assert!(verdict
+            .reason
+            .as_deref()
+            .unwrap_or_default()
+            .contains("mediated prevent receipt"));
         assert_eq!(verdict.matched_grant_index, Some(0));
         assert!(verdict.subject_hex.is_some());
         assert!(verdict.issuer_hex.is_some());
@@ -1107,6 +1206,7 @@ mod tests {
         let subject = Keypair::generate();
         let issuer = Keypair::generate();
         let capability = make_delegated_capability("cap-child", "cap-parent", &subject, &issuer);
+        let capability_trust_roots = trust_roots_for_scope(&issuer, &capability.scope);
         let request = make_request_json(&subject);
 
         let input = EvaluateRequestJson {
@@ -1116,14 +1216,16 @@ mod tests {
             clock_override_unix_secs: Some(ISSUED_AT + 1),
             session_filesystem_roots: None,
             peer_capabilities: None,
-            capability_trust_roots: BTreeMap::new(),
+            capability_trust_roots,
             parent_budget_snapshots: std::vec![parent_budget_snapshot("cap-parent")],
         };
         let clock = FixedClock::new(ISSUED_AT + 1);
 
         let verdict = evaluate_pure(input, &clock).expect("evaluate_pure");
 
-        assert_eq!(verdict.verdict, "allow");
+        assert_eq!(verdict.verdict, "pending_approval");
+        assert_eq!(verdict.capability_verdict, "allow");
+        assert!(!verdict.authorized);
         assert_eq!(verdict.capability_id.as_deref(), Some("cap-child"));
     }
 
@@ -1132,6 +1234,7 @@ mod tests {
         let subject = Keypair::generate();
         let issuer = Keypair::generate();
         let capability = make_delegated_capability("cap-child", "cap-parent", &subject, &issuer);
+        let capability_trust_roots = trust_roots_for_scope(&issuer, &capability.scope);
         let request = make_request_json(&subject);
 
         let input = EvaluateRequestJson {
@@ -1141,7 +1244,7 @@ mod tests {
             clock_override_unix_secs: Some(ISSUED_AT + 1),
             session_filesystem_roots: None,
             peer_capabilities: None,
-            capability_trust_roots: BTreeMap::new(),
+            capability_trust_roots,
             parent_budget_snapshots: std::vec![oversubscribed_budget_snapshot("cap-parent")],
         };
         let clock = FixedClock::new(ISSUED_AT + 1);
@@ -1183,13 +1286,14 @@ mod tests {
         let subject = Keypair::generate();
         let issuer = Keypair::generate();
         let capability = make_delegated_capability("cap-child", "cap-parent", &subject, &issuer);
+        let capability_trust_roots = trust_roots_for_scope(&issuer, &capability.scope);
 
         let input = VerifyCapabilityRequestJson {
             token: capability,
             trusted_issuers_hex: std::vec![issuer.public_key().to_hex()],
             clock_override_unix_secs: Some(ISSUED_AT + 1),
             peer_capabilities: None,
-            capability_trust_roots: BTreeMap::new(),
+            capability_trust_roots,
             parent_budget_snapshots: std::vec![parent_budget_snapshot("cap-parent")],
         };
         let clock = FixedClock::new(ISSUED_AT + 1);
@@ -1204,13 +1308,14 @@ mod tests {
         let subject = Keypair::generate();
         let issuer = Keypair::generate();
         let capability = make_delegated_capability("cap-child", "cap-parent", &subject, &issuer);
+        let capability_trust_roots = trust_roots_for_scope(&issuer, &capability.scope);
 
         let input = VerifyCapabilityRequestJson {
             token: capability,
             trusted_issuers_hex: std::vec![issuer.public_key().to_hex()],
             clock_override_unix_secs: Some(ISSUED_AT + 1),
             peer_capabilities: None,
-            capability_trust_roots: BTreeMap::new(),
+            capability_trust_roots,
             parent_budget_snapshots: std::vec![oversubscribed_budget_snapshot("cap-parent")],
         };
         let clock = FixedClock::new(ISSUED_AT + 1);
@@ -1232,7 +1337,13 @@ mod tests {
             tool_server: "srv-a".to_string(),
             tool_name: "echo".to_string(),
             action: ToolCallAction::from_parameters(serde_json::json!({"msg": "hi"})).unwrap(),
-            decision: Decision::Allow,
+            decision: Some(Decision::Allow),
+            receipt_kind: ReceiptKind::MediatedDecision,
+            boundary_class: BoundaryClass::Prevent,
+            observation_outcome: None,
+            tool_origin: ToolOrigin::CallerExecuted,
+            redaction_mode: RedactionMode::None,
+            actor_chain: std::vec![],
             content_hash: "0".repeat(64),
             policy_hash: "0".repeat(64),
             evidence: std::vec![],
@@ -1261,7 +1372,13 @@ mod tests {
             tool_server: "srv-a".to_string(),
             tool_name: "echo".to_string(),
             action: ToolCallAction::from_parameters(serde_json::json!({"msg": "hi"})).unwrap(),
-            decision: Decision::Allow,
+            decision: Some(Decision::Allow),
+            receipt_kind: ReceiptKind::MediatedDecision,
+            boundary_class: BoundaryClass::Prevent,
+            observation_outcome: None,
+            tool_origin: ToolOrigin::CallerExecuted,
+            redaction_mode: RedactionMode::None,
+            actor_chain: std::vec![],
             content_hash: "0".repeat(64),
             policy_hash: "0".repeat(64),
             evidence: std::vec![],
@@ -1313,7 +1430,13 @@ mod tests {
             tool_server: "srv-a".to_string(),
             tool_name: "echo".to_string(),
             action: ToolCallAction::from_parameters(serde_json::json!({"msg": "verify"})).unwrap(),
-            decision: Decision::Allow,
+            decision: Some(Decision::Allow),
+            receipt_kind: ReceiptKind::MediatedDecision,
+            boundary_class: BoundaryClass::Prevent,
+            observation_outcome: None,
+            tool_origin: ToolOrigin::CallerExecuted,
+            redaction_mode: RedactionMode::None,
+            actor_chain: std::vec![],
             content_hash: "0".repeat(64),
             policy_hash: "0".repeat(64),
             evidence: std::vec![],
@@ -1336,7 +1459,16 @@ mod tests {
         assert!(result.parameter_hash_valid);
         assert!(!result.signer_trusted);
         assert_eq!(result.decision, "allow");
-        assert_eq!(result.receipt_id, "rcpt-verify-pure");
+        assert_eq!(result.receipt_id.len(), 64);
+        assert!(result
+            .receipt_id
+            .chars()
+            .all(|value| value.is_ascii_hexdigit()));
+        assert!(result.receipt_id_valid);
+        assert_eq!(result.receipt_kind, "mediated_decision");
+        assert_eq!(result.boundary_class, "prevent");
+        assert_eq!(result.result, "Authorized");
+        assert!(!result.authorized);
         assert_eq!(result.signer_key_hex, receipt.kernel_key.to_hex());
     }
 
@@ -1349,6 +1481,7 @@ mod tests {
             .expect("verify_receipt_pure");
         assert!(result.ok);
         assert!(result.signer_trusted);
+        assert!(result.authorized);
     }
 
     #[test]

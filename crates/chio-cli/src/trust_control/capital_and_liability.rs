@@ -1149,6 +1149,7 @@ pub fn build_credit_facility_report(
     certification_registry_file: Option<&Path>,
     issuance_policy: Option<&crate::policy::ReputationIssuancePolicy>,
     query: &ExposureLedgerQuery,
+    trusted_kernel_keys: &[String],
 ) -> Result<CreditFacilityReport, CliError> {
     let receipt_store = SqliteReceiptStore::open(receipt_db_path)?;
     build_credit_facility_report_from_store(
@@ -1158,6 +1159,7 @@ pub fn build_credit_facility_report(
         certification_registry_file,
         issuance_policy,
         query,
+        trusted_kernel_keys,
     )
     .map_err(CliError::from)
 }
@@ -1193,6 +1195,7 @@ pub fn build_credit_bond_report(
     certification_registry_file: Option<&Path>,
     issuance_policy: Option<&crate::policy::ReputationIssuancePolicy>,
     query: &ExposureLedgerQuery,
+    trusted_kernel_keys: &[String],
 ) -> Result<CreditBondReport, CliError> {
     let receipt_store = SqliteReceiptStore::open(receipt_db_path)?;
     build_credit_bond_report_from_store(
@@ -1202,6 +1205,7 @@ pub fn build_credit_bond_report(
         certification_registry_file,
         issuance_policy,
         query,
+        trusted_kernel_keys,
     )
     .map_err(CliError::from)
 }
@@ -1268,6 +1272,7 @@ pub fn build_credit_backtest_report(
     certification_registry_file: Option<&Path>,
     issuance_policy: Option<&crate::policy::ReputationIssuancePolicy>,
     query: &CreditBacktestQuery,
+    trusted_kernel_keys: &[String],
 ) -> Result<CreditBacktestReport, CliError> {
     let receipt_store = SqliteReceiptStore::open(receipt_db_path)?;
     build_credit_backtest_report_from_store(
@@ -1277,6 +1282,7 @@ pub fn build_credit_backtest_report(
         certification_registry_file,
         issuance_policy,
         query,
+        trusted_kernel_keys,
     )
     .map_err(CliError::from)
 }
@@ -1300,6 +1306,7 @@ pub fn build_signed_credit_provider_risk_package(
         issuance_policy,
         &keypair,
         query,
+        chio_kernel::ReceiptReadContext::local_operator_admin_all(),
     )
     .map_err(CliError::from)?;
     SignedCreditProviderRiskPackage::sign(package, &keypair).map_err(Into::into)
@@ -2719,6 +2726,7 @@ fn build_credit_backtest_report_from_store(
     certification_registry_file: Option<&Path>,
     issuance_policy: Option<&crate::policy::ReputationIssuancePolicy>,
     query: &CreditBacktestQuery,
+    trusted_kernel_keys: &[String],
 ) -> Result<CreditBacktestReport, TrustHttpError> {
     let normalized = query.normalized();
     if let Err(message) = normalized.validate() {
@@ -2770,6 +2778,7 @@ fn build_credit_backtest_report_from_store(
             budget_db_path,
             issuance_policy,
             &exposure_query,
+            trusted_kernel_keys,
         )?;
         let facility = build_credit_facility_report_from_store(
             receipt_store,
@@ -2778,6 +2787,7 @@ fn build_credit_backtest_report_from_store(
             certification_registry_file,
             issuance_policy,
             &exposure_query,
+            trusted_kernel_keys,
         )?;
         let simulated_terms = facility
             .terms

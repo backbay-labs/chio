@@ -169,7 +169,13 @@ fn make_receipt(
                 "path": "/workspace/safe/data.txt"
             }))
             .expect("action"),
-            decision: Decision::Allow,
+            decision: Some(Decision::Allow),
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
             content_hash: format!("content-{id}"),
             policy_hash: "policy-hash".to_string(),
             evidence: Vec::new(),

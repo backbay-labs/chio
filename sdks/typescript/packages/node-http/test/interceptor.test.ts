@@ -20,6 +20,11 @@ function allowResponse(): EvaluateResponse {
       method: "POST",
       caller_identity_hash: "a".repeat(64),
       verdict: { verdict: "allow" },
+      receipt_kind: "mediated_decision",
+      boundary_class: "prevent",
+      tool_origin: "caller_executed",
+      redaction_mode: "none",
+      trust_level: "mediated",
       evidence: [],
       response_status: 200,
       timestamp: 1_700_000_000,
@@ -29,6 +34,22 @@ function allowResponse(): EvaluateResponse {
       signature: "e".repeat(128),
     },
     evidence: [],
+  };
+}
+
+function verifyResponse() {
+  return {
+    signature_valid: true,
+    signer_trusted: true,
+    receipt_id_valid: true,
+    parameter_hash_valid: true,
+    receipt_kind: "mediated_decision",
+    boundary_class: "prevent",
+    trust_level: "mediated",
+    result: "allow",
+    authorized: true,
+    signer_key_hex: "d".repeat(64),
+    ok: true,
   };
 }
 
@@ -44,6 +65,12 @@ async function startMockSidecar(
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(allowResponse()));
       });
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/chio/verify") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(verifyResponse()));
       return;
     }
 
@@ -198,9 +225,9 @@ describe("resolveConfig", () => {
     expect(resolved.client).toBeDefined();
   });
 
-  it("uses custom onSidecarError", () => {
+  it("coerces fail-open sidecar errors to fail-closed", () => {
     const resolved = resolveConfig({ onSidecarError: "allow" });
-    expect(resolved.onSidecarError).toBe("allow");
+    expect(resolved.onSidecarError).toBe("deny");
   });
 
   it("uses custom timeout", () => {
@@ -274,7 +301,7 @@ describe("request body preservation", () => {
     }
   });
 
-  it("marks fail-open Node passthroughs without a synthetic receipt", async () => {
+  it("fails closed for Node sidecar errors even when fail-open is requested", async () => {
     const resolved = resolveConfig({
       sidecarUrl: "http://127.0.0.1:1",
       onSidecarError: "allow",
@@ -283,29 +310,23 @@ describe("request body preservation", () => {
 
     const server = http.createServer(async (req, res) => {
       const outcome = await interceptNodeRequest(req, res, resolved);
-      expect(outcome.responseSent).toBe(false);
+      expect(outcome.responseSent).toBe(true);
       expect(outcome.result).toBeNull();
-      expect(outcome.passthrough).toEqual({
-        mode: "allow_without_receipt",
-        error: "chio_sidecar_unreachable",
-        message: expect.stringContaining("sidecar"),
-      });
+      expect(outcome.passthrough).toBeNull();
       expect(res.getHeader("X-Chio-Receipt-Id")).toBeUndefined();
-      res.writeHead(204);
-      res.end();
     });
     await new Promise<void>((resolve) => server.listen(0, resolve));
 
     try {
       const response = await request(server, "GET", "/health");
-      expect(response.status).toBe(204);
+      expect(response.status).toBe(502);
       expect(response.headers["x-chio-receipt-id"]).toBeUndefined();
     } finally {
       server.close();
     }
   });
 
-  it("marks fail-open Web passthroughs without a synthetic receipt", async () => {
+  it("fails closed for Web sidecar errors even when fail-open is requested", async () => {
     const resolved = resolveConfig({
       sidecarUrl: "http://127.0.0.1:1",
       onSidecarError: "allow",
@@ -317,13 +338,9 @@ describe("request body preservation", () => {
       resolved,
     );
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(502);
     expect(result).toBeNull();
-    expect(passthrough).toEqual({
-      mode: "allow_without_receipt",
-      error: "chio_sidecar_unreachable",
-      message: expect.stringContaining("sidecar"),
-    });
+    expect(passthrough).toBeNull();
     expect(response.headers.get("X-Chio-Receipt-Id")).toBeNull();
   });
 });

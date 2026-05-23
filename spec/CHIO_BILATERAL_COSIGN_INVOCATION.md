@@ -1,16 +1,17 @@
-# Chio Bilateral Co-Signed Invocation: An in-toto Predicate Proposal
+# Chiodos Bilateral Co-Signed Invocation: An in-toto Predicate Proposal
 
-**Status:** Draft v0.1 | **Date:** 2026-05-04
+**Status:** v1 (Chio-owned pre-release spec carrying an in-toto WG proposal) | **Date:** 2026-05-04
 **Intended audience:** in-toto Attestation WG; OpenSSF AI/ML Security
 WG; CoSAI Workstream 4. **Editors:** chio maintainers, per
-[CHIO_CONCEPT.md](../docs/research/CHIO_CONCEPT.md) section 5.
+[CHIODOS_CONCEPT.md](../docs/research/CHIODOS_CONCEPT.md) section 5.
 
-This document proposes a new in-toto attestation predicate type for
-**bilateral co-signed runtime invocations** between two distinct
-organisational kernels. It is a draft proposal, not a finalised
-standard. The intent is either to land chio's bilateral-co-signed
-invocation semantics in the in-toto vocabulary or to confirm in writing
-the structural gap that motivates the chio-namespaced fallback.
+This document specifies the shipped Chio-owned predicate type
+`chio.bilateral-cosign-invocation.v1` for **bilateral co-signed runtime
+invocations** between two distinct organisational kernels, and carries
+the matching in-toto WG proposal that mirrors it. The intent is either
+to land chiodos's bilateral-co-signed invocation semantics in the
+in-toto vocabulary or to confirm in writing the structural gap that
+motivates the chio-namespaced predicate.
 
 The keywords MUST, MUST NOT, REQUIRED, SHOULD, SHOULD NOT, MAY are to
 be interpreted as described in RFC 2119. Canonical JSON serialisation
@@ -21,12 +22,15 @@ follows RFC 8785 (JCS). DSSE follows the Secure Systems Lab spec
 
 ## 1. Status
 
-- **Version:** Draft v0.1; **Date:** 2026-05-04.
+- **Version:** v1 (Chio-owned pre-release spec carrying an in-toto WG
+  proposal); **Date:** 2026-05-04.
 - **Intended audience:** in-toto Attestation WG (primary), OpenSSF AI/ML
   Security WG (secondary), CoSAI Workstream 4 (secondary).
-- **Disposition:** Open for comment. Chio will adopt the chio-namespaced
-  fallback predicate type (section 3) immediately and switch to the
-  in-toto vocabulary once (or if) accepted.
+- **Disposition:** Chio ships the Chio-owned predicate type
+  `chio.bilateral-cosign-invocation.v1` (section 3) today and proposes
+  the matching in-toto canonical URI for adoption by the in-toto WG.
+  Implementations switch to the in-toto vocabulary once (or if) it is
+  accepted.
 - **Engagement contacts named:** Aditya Sirish A Yelgundhalli (in-toto),
   Tom Hennen (SLSA). See section 12.
 
@@ -49,7 +53,7 @@ verifies if and only if these two specific organisational identities
 both signed the same Statement, each having independently evaluated
 their local policy on the underlying invocation."
 
-That is the gap chio addresses. It is not a transparency-log gap and
+That is the gap chiodos addresses. It is not a transparency-log gap and
 it is not a build-provenance gap. It is the gap between two parties
 **signing the same canonical body** (a statistical accident) and two
 parties **independently committing to the same canonical action under
@@ -61,7 +65,7 @@ The composition unit is the workflow receipt
 and capability scoping rides on agent passports
 ([../crates/chio-credentials/src/lib.rs](../crates/chio-credentials/src/lib.rs)).
 The cross-vendor agent action attestation use case
-([CHIO_CONCEPT.md](../docs/research/CHIO_CONCEPT.md) section 2)
+([CHIODOS_CONCEPT.md](../docs/research/CHIODOS_CONCEPT.md) section 2)
 needs all three properties at once: bilateral intent, per-action
 capability scoping, and workflow-receipt composition.
 
@@ -86,17 +90,17 @@ break signature verification).
 
 Implementation status: `crates/chio-federation` emits and verifies the
 chio-namespaced fallback strict predicate type,
-`chio.bilateral-cosign-invocation.v1`, for Chio proof packages. The
+`chio.bilateral-cosign-invocation.v1`, for Chiodos proof packages. The
 older `chio.bilateral-signature-slice.v1` profile remains available as a
-compatibility artifact for local receipt binding, but strict Chio
+compatibility artifact for local receipt binding, but strict Chiodos
 verification rejects it as conformance evidence.
 
-Chio offline package verification is verifier-owned. The proof package
+Chiodos offline package verification is verifier-owned. The proof package
 MUST NOT define its own peer pins, accepted ladder refs, action-class
 policy, workflow-intersection acceptance hash, revocation checkpoint, BBS
 issuer trust, authority lifecycle, or disclosure policy. Those values are
-supplied by `chio.federation.verifier-trust-bundle.v1` plus the required
-`chio.federation.verification-context.v1`. A verifier MUST reject packages
+supplied by `chio.chiodos.verifier-trust-bundle.v1` plus the required
+`chio.chiodos.verification-context.v1`. A verifier MUST reject packages
 whose embedded hints disagree with the trust bundle or whose BBS proof
 nonce is not bound to the verifier context.
 
@@ -147,7 +151,7 @@ The predicate is a JSON object with the following JSON Schema (Draft
 2020-12). Implementations MUST validate the predicate against this
 schema before signature verification.
 
-This schema is the strict CHIO target, not the currently emitted
+This schema is the strict CHIODOS target, not the currently emitted
 `chio.bilateral-signature-slice.v1` compatibility profile. A signature
 slice MUST NOT be described as conforming to this section unless its
 predicate validates against the schema below.
@@ -156,7 +160,7 @@ predicate validates against the schema below.
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://in-toto.io/attestation/bilateral-cosign-invocation/v1",
-  "title": "Chio Bilateral Co-Signed Invocation",
+  "title": "Chiodos Bilateral Co-Signed Invocation",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -247,12 +251,12 @@ predicate validates against the schema below.
           }
         }
       },
-      "description": "REQUIRED iff the action class is declared `receipt-backed` in the chio governance ladder manifest (see CHIO_LADDER.md section 3.3). Otherwise OPTIONAL."
+      "description": "REQUIRED iff the action class is declared `receipt-backed` in the chiodos governance ladder manifest (see CHIODOS_LADDER.md section 3.3). Otherwise OPTIONAL."
     },
     "consistency_model": {
       "type": "string",
       "enum": ["crdt-commutative", "totally-ordered", "quorum-required"],
-      "description": "Mirrors CHIO_LADDER.md section 4. The chosen model MUST match the action class declaration in both kernels' ladder manifests."
+      "description": "Mirrors CHIODOS_LADDER.md section 4. The chosen model MUST match the action class declaration in both kernels' ladder manifests."
     },
     "consistency_anchor": {
       "type": "string",
@@ -334,7 +338,7 @@ default `bilateral_required` and `bilateral_if_cross_org` co-sign modes.
 For the `n_of_m` mode the envelope carries `n` signatures (where `n` is
 the FROST quorum size) but the verification contract still requires
 that **every signature in the envelope verify**; threshold rejection
-falls back to the chio governance ladder, not to DSSE's `(t,n)`
+falls back to the chiodos governance ladder, not to DSSE's `(t,n)`
 permissive default.
 
 The serialised envelope:
@@ -499,7 +503,7 @@ primitive.
 The DSSE envelope MAY be additionally submitted to a Sigstore Rekor v2
 instance for transparency-log evidence. Recommended Rekor entry kind:
 `dsse` (Rekor v2's native DSSE entry). The envelope is anchored
-verbatim; no chio-specific transformation is required.
+verbatim; no chiodos-specific transformation is required.
 
 This composition is a **free property**. The verification contract in
 section 7 does not depend on Rekor inclusion. A Rekor-anchored envelope
@@ -596,11 +600,11 @@ The chio maintainers intend the following next steps:
    implementation covered by production tests, then switch emission to the
    canonical URI if the in-toto WG accepts it. The existing
    `chio.bilateral-signature-slice.v1` helper remains compatibility-only and
-   must not be treated as strict Chio predicate evidence.
+   must not be treated as strict Chiodos predicate evidence.
 
 If the WG declines or the discussion stalls, this document remains the
 written record of the structural gap that motivates the
 chio-namespaced predicate, satisfying the v1.1 open decision in
-[CHIO_CONCEPT.md](../docs/research/CHIO_CONCEPT.md) section 9
+[CHIODOS_CONCEPT.md](../docs/research/CHIODOS_CONCEPT.md) section 9
 ("either land bilateral co-signed invocation predicate semantics in
 their vocabulary or confirm the structural gap in writing").

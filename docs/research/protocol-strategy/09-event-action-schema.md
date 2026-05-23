@@ -181,7 +181,7 @@ Hashing `broker_id`, `partition_key`, and `consumer_group` keeps receipts portab
 **Current v1 coordination with X1:** promote `event_decision` to a typed sibling
 of `action` in `ChioReceiptBody` only as part of the current v1 receipt-kind
 shape. PR 652 review corrected the schema wording: current receipts do not have
-a `receipt_schema: SemVer` field, and ADR-0010 rejects schema-ceiling
+a `receipt_schema: SemVer` field, and ADR-0010 rejects schema limit
 negotiation before release. The minimum coordination point with X1 is: reserve
 `event_decision` as a current v1 field name so X1 does not collide on it.
 
@@ -191,7 +191,10 @@ fail closed.
 
 ## Manifest schema version
 
-Bump `chio-manifest` from `chio.manifest.v1` to `chio.manifest.v2`. The added surface is:
+Historical note: this document originally proposed a `chio.manifest.v2` bump.
+The accepted pre-release posture keeps Chio-owned manifest work in current v1.
+Event-action fields are rejected until an accepted v1 implementation and tests
+land. The proposed added surface was:
 
 ```rust
 pub struct RequiredPermissions {

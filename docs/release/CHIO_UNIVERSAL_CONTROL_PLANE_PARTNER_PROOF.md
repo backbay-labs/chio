@@ -6,8 +6,8 @@ Chio now qualifies a stronger technical claim than the earlier bounded-fabric
 gate:
 
 - Chio is a cryptographically signed, fail-closed, intent-aware governance
-  control plane across the qualified authoritative HTTP, MCP, OpenAI, A2A, and
-  ACP surfaces.
+  control plane across the qualified authoritative HTTP, MCP, A2A, and ACP
+  surfaces. OpenAI remains deferred until separately implemented and qualified.
 
 This document is the reviewer-facing proof package for that claim. It does not
 assert that Chio has already proven market dominance or a comptroller-of-the-
@@ -61,10 +61,11 @@ The artifact bundle root is:
 Representative authoritative routes now covered by the technical claim:
 
 - HTTP -> kernel authority -> native tool execution
-- OpenAI tool call -> kernel route selection -> native tool execution
 - A2A -> MCP -> native execution with route evidence
 - ACP -> MCP -> native execution with route evidence
 
 These examples are sufficient to prove the shared control-plane pattern across
-the currently qualified protocol families. They are not a claim that every
-possible future partner ecosystem or protocol family is already integrated.
+the currently qualified protocol families. OpenAI remains a deferred adapter
+planning surface until caller-executed function-tool mediation is implemented
+and separately qualified. These examples are not a claim that every possible
+future partner ecosystem or protocol family is already integrated.

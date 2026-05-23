@@ -1155,6 +1155,12 @@ pub struct KernelConfig {
     /// prerequisites for this deployment.
     pub require_web3_evidence: bool,
 
+    /// Allow process-local receipt logs when no durable receipt store is
+    /// installed. This is for tests and local scaffolds only; protocol
+    /// deployments should leave it false so successful dispatch requires
+    /// durable receipt persistence before any tool side effect.
+    pub allow_ephemeral_receipt_log: bool,
+
     /// Number of receipts between Merkle checkpoint snapshots. Default: 100.
     ///
     /// Set to 0 to disable automatic checkpointing for deployments that do not
@@ -1835,6 +1841,15 @@ impl ChioKernel {
         Ok(())
     }
 
+    pub(crate) fn ensure_receipt_persistence_ready(&self) -> Result<(), KernelError> {
+        if self.receipt_store.is_some() || self.config.allow_ephemeral_receipt_log {
+            return Ok(());
+        }
+        Err(KernelError::Internal(
+            "durable receipt persistence unavailable: no receipt store configured".to_string(),
+        ))
+    }
+
     pub(crate) fn scope_receipt_federation_admission_for_request(
         &self,
         request_id: &str,
@@ -2082,7 +2097,11 @@ impl ChioKernel {
         &self,
         receipt: &chio_core::receipt::ChioReceipt,
     ) -> settlement_observer::SettlementObserverStatus {
-        settlement_observer::run_observer(self.settlement_observer.as_ref(), receipt)
+        settlement_observer::run_observer(
+            self.settlement_observer.as_ref(),
+            receipt,
+            &[self.public_key()],
+        )
     }
 
     /// Phase 18.2: install a memory-provenance chain.
@@ -3423,6 +3442,21 @@ impl ChioKernel {
                 extra_metadata.clone(),
             );
         }
+        if let Err(error) = self.ensure_receipt_persistence_ready() {
+            let msg = error.to_string();
+            warn!(
+                request_id = %request.request_id,
+                reason = %redacted!(&msg),
+                "receipt persistence unavailable pre-dispatch"
+            );
+            return self.build_receipt_persistence_failclosed_deny_response_with_metadata(
+                request,
+                &msg,
+                now,
+                None,
+                extra_metadata.clone(),
+            );
+        }
 
         let (matched_grant_index, charge_result) = match self.check_and_increment_budget(
             &request.request_id,
@@ -3972,6 +4006,17 @@ impl ChioKernel {
                 request_id = %request.request_id,
                 reason = %redacted!(&msg),
                 "federated receipt persistence unavailable pre-dispatch (nested flow)"
+            );
+            return self.build_receipt_persistence_failclosed_deny_response_with_metadata(
+                request, &msg, now, None, None,
+            );
+        }
+        if let Err(error) = self.ensure_receipt_persistence_ready() {
+            let msg = error.to_string();
+            warn!(
+                request_id = %request.request_id,
+                reason = %redacted!(&msg),
+                "receipt persistence unavailable pre-dispatch (nested flow)"
             );
             return self.build_receipt_persistence_failclosed_deny_response_with_metadata(
                 request, &msg, now, None, None,

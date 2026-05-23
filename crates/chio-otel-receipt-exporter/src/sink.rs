@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use chio_core::canonical::CanonicalBytes;
-use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
+use chio_core::receipt::{
+    BoundaryClass, ChioReceipt, ChioReceiptBody, ObservationOutcome, ReceiptKind, RedactionMode,
+    ToolCallAction, ToolOrigin, TrustLevel,
+};
 use chio_core::{sha256_hex, Keypair};
 use chio_kernel::otel::{
     ATTR_CHIO_AGENT_ID, ATTR_CHIO_KERNEL_ID, ATTR_CHIO_RECEIPT_ID, ATTR_CHIO_SERVER_ID,
@@ -209,6 +212,7 @@ impl ReceiptStoreSink {
             "attributes": sanitized_attribute_map,
         }))
         .map_err(OTelReceiptExportError::Sign)?;
+        validate_span_verdict(span)?;
 
         let body = ChioReceiptBody {
             id: next_receipt_id(),
@@ -226,12 +230,18 @@ impl ReceiptStoreSink {
                 .map(str::to_string)
                 .unwrap_or_else(|| self.config.default_tool_name.clone()),
             action,
-            decision: decision_from_span(span)?,
+            decision: None,
+            receipt_kind: ReceiptKind::TraceObservation,
+            boundary_class: BoundaryClass::DetectOnly,
+            observation_outcome: Some(ObservationOutcome::Observed),
+            tool_origin: ToolOrigin::HostExecutedProviderReported,
+            redaction_mode: RedactionMode::Summary,
+            actor_chain: Vec::new(),
             content_hash: sha256_hex(canonical_span.as_bytes()),
             policy_hash: self.config.policy_hash.clone(),
             evidence: Vec::new(),
             metadata: Some(receipt_metadata(span, &sanitized_attributes)),
-            trust_level: TrustLevel::default(),
+            trust_level: TrustLevel::Verified,
             tenant_id: self.config.tenant_id.clone(),
             kernel_key: self.config.signing_keypair.public_key(),
         };
@@ -285,6 +295,7 @@ fn receipt_metadata(
             "span_name": span.name,
             "kernel_id": span.attribute_string(ATTR_CHIO_KERNEL_ID),
             "agent_id": span.attribute_string(ATTR_CHIO_AGENT_ID),
+            "source_verdict": span.attribute_string("chio.verdict"),
             "attributes": attributes_to_map(sanitized_attributes)
         }
     });
@@ -303,26 +314,16 @@ fn receipt_metadata(
     metadata
 }
 
-fn decision_from_span(span: &OtlpSpan) -> Result<Decision, OTelReceiptExportError> {
+fn validate_span_verdict(span: &OtlpSpan) -> Result<(), OTelReceiptExportError> {
     match span.attribute_value("chio.verdict") {
         None => Err(OTelReceiptExportError::InvalidSpan(
             "chio.verdict is required".to_string(),
         )),
-        Some(serde_json::Value::String(verdict)) if verdict == "allow" => Ok(Decision::Allow),
-        Some(serde_json::Value::String(verdict)) if verdict == "deny" => Ok(Decision::Deny {
-            reason: span
-                .attribute_string("chio.deny.reason")
-                .unwrap_or("otel span reported deny verdict")
-                .to_string(),
-            guard: "otel-receipt-exporter".to_string(),
-        }),
-        Some(serde_json::Value::String(verdict)) if verdict == "incomplete" => {
-            Ok(Decision::Incomplete {
-                reason: span
-                    .attribute_string("chio.incomplete.reason")
-                    .unwrap_or("otel span reported incomplete verdict")
-                    .to_string(),
-            })
+        Some(serde_json::Value::String(verdict))
+            if verdict == "allow" || verdict == "deny" || verdict == "incomplete" =>
+        {
+            let _ = observation_reason(span, verdict);
+            Ok(())
         }
         Some(serde_json::Value::String(verdict)) => Err(OTelReceiptExportError::InvalidSpan(
             format!("chio.verdict must be allow, deny, or incomplete, got {verdict:?}"),
@@ -330,6 +331,20 @@ fn decision_from_span(span: &OtlpSpan) -> Result<Decision, OTelReceiptExportErro
         Some(value) => Err(OTelReceiptExportError::InvalidSpan(format!(
             "chio.verdict must be a string, got {value}"
         ))),
+    }
+}
+
+fn observation_reason(span: &OtlpSpan, verdict: &str) -> String {
+    match verdict {
+        "deny" => span
+            .attribute_string("chio.deny.reason")
+            .unwrap_or("otel span reported deny observation")
+            .to_string(),
+        "incomplete" => span
+            .attribute_string("chio.incomplete.reason")
+            .unwrap_or("otel span reported incomplete observation")
+            .to_string(),
+        _ => "otel span reported allow observation".to_string(),
     }
 }
 

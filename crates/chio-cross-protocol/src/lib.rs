@@ -474,6 +474,22 @@ pub fn route_selection_metadata(evidence: &RouteSelectionEvidence) -> Result<Val
     }))
 }
 
+fn metadata_with_source_receipt_context(
+    mut metadata: Value,
+    source_envelope: &Value,
+) -> Result<Value, BridgeError> {
+    let Some(receipt_context) = source_envelope.get("receipt_context").cloned() else {
+        return Ok(metadata);
+    };
+    let Some(metadata_obj) = metadata.as_object_mut() else {
+        return Err(BridgeError::InvalidRequest(
+            "receipt metadata must be a JSON object".to_string(),
+        ));
+    };
+    metadata_obj.insert("receipt_context".to_string(), receipt_context);
+    Ok(metadata)
+}
+
 /// Parse a protocol-family name used in bridge metadata.
 pub fn parse_discovery_protocol(value: &str) -> Result<DiscoveryProtocol, String> {
     let normalized = value.trim().to_ascii_lowercase();
@@ -773,7 +789,10 @@ impl TargetProtocolExecutor for OpenAiTargetExecutor {
         &self,
         request: CrossProtocolTargetRequest<'_>,
     ) -> Result<CrossProtocolTargetExecution, BridgeError> {
-        let route_metadata = route_selection_metadata(request.route_selection)?;
+        let route_metadata = metadata_with_source_receipt_context(
+            route_selection_metadata(request.route_selection)?,
+            &request.execution.source_envelope,
+        )?;
         let response = request
             .kernel
             .evaluate_tool_call_blocking_with_metadata(
@@ -1053,7 +1072,10 @@ impl<'a> CrossProtocolOrchestrator<'a> {
         projected_request: &Value,
     ) -> Result<CrossProtocolTargetExecution, BridgeError> {
         if request.target_protocol == DiscoveryProtocol::Native {
-            let route_metadata = route_selection_metadata(route_selection)?;
+            let route_metadata = metadata_with_source_receipt_context(
+                route_selection_metadata(route_selection)?,
+                &request.source_envelope,
+            )?;
             let response = self
                 .kernel
                 .evaluate_tool_call_blocking_with_metadata(
@@ -1613,6 +1635,7 @@ mod tests {
             max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
             max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
             require_web3_evidence: false,
+            allow_ephemeral_receipt_log: true,
             checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
             retention_config: None,
         };

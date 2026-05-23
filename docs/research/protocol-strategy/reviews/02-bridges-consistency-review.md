@@ -188,9 +188,9 @@ Each per-bridge field list against doc 15's `ExtensionNamespace`:
 
 | Bridge field set                                                        | Doc 15 extension                | Match? |
 |-------------------------------------------------------------------------|---------------------------------|--------|
-| 08: `directory_entry_hash`, `directory_provider_id`, optional identity issuer hash | `AgntcyExtension` (doc 15)      | yes; ACP peer/message IDs were removed after AGNTCY ACP was classified as archived/dead. Keep Directory + Identity fields only. |
-| 08: historical `metadata.agntcy_acp` block (doc-08:343-362)             | superseded by `AgntcyExtension` | doc 08's ACP metadata block is historical. Doc 15's typed shape is Directory + Identity only and must not imply an AGNTCY ACP bridge. |
-| 12: `response_id`, `model_version`, `system_fingerprint`               | `OpenaiResponsesExtension`      | yes. `tool_origin` lives on the core receipt body, not in the OpenAI extension. |
+| 08: `acp_peer_id`, `acp_message_id`, `directory_entry_hash`             | `AgntcyExtension` (line 454)    | yes; doc 15 also has `directory_provider_id`, doc 08 calls it `provider` inside `directory_entry`. Rename one for consistency. |
+| 08: full `metadata.agntcy_acp` block (doc-08:343-362)                   | `AgntcyExtension`               | doc 08 puts everything under `metadata.agntcy_acp`; doc 15 promotes this to a typed extension. Doc 08 should reference doc 15's typed shape. |
+| 12: `response_id`, `model_version`, `system_fingerprint`, `tool_origin` | `OpenaiResponsesExtension` (425)| yes. `tool_origin` lives on core body per doc 00-v2:35 plus the extension. |
 | 13: `agent_id`, `agent_alias_id`, `session_id`, `action_group_kind`, `return_control_payload_hash`, `trace_redaction_mode` | `BedrockAgentsExtension` (434) | yes; doc 15 also has `invocation_id`, `action_group_id`, `knowledge_base_citations`. Doc 13 enumerates a superset (doc-13:84-97). Reconcile field names: doc 13 calls one field `action_group_kind`, doc 15 calls the type `ActionGroupKind` (consistent). |
 | 14: `call_id`, `participant_id`, `audio_timestamp_estimate`, `human_principal`, `platform` | `VoiceExtension` (446)          | yes; field-for-field match. |
 
@@ -218,9 +218,13 @@ doc 13 should mark them as optional/follow-on.
    - Doc 15:429-431: `ToolOrigin { HostExecutedUnmediated |
      HostExecutedProviderReported | CallerExecuted }` (plain enum, no attestation
      payload).
-   - Review resolution: use the three execution-locus variants and keep
-     redaction state in a separate signed field. `host-executed-redacted`
-     is not a `tool_origin` variant.
+   - Doc 00-v2:35: adds a fourth, `host-executed-redacted`, that appears
+     nowhere else.
+   **Fix:** pick one. Recommend doc 12's three-variant struct shape with
+   `HostExecutedProviderReported { provider_report_ref: String }` and drop
+   `host-executed-redacted` from doc 00-v2 unless docs 12/13/15 are updated
+   to define it. A redaction state is a separate orthogonal flag, not a
+   tool-origin variant.
 
 3. **`did:jwk` vs `did:key`.** Doc 02:118 uses `did:jwk`. Doc 08:174-181
    reserves `did:web` and `did:key`. Pick doc 08.
@@ -313,8 +317,9 @@ similarly, or supersede with v2.
   (new field) or in `VoiceExtension` (doc 15). Recommend the latter.
   Confirm v2 metadata block name (doc 14 says `metadata.voice`,
   consistent with doc 15's `VoiceExtension`).
-- **Doc 00 (v1) and v2:** use the three `tool_origin` variants and keep
-  redaction state separate. Update v1 line 41 to use the agreed AGNTCY crate name, or formally
+- **Doc 00 (v1) and v2:** drop the fourth `tool_origin` variant
+  (`host-executed-redacted`) from v2 line 35 unless adopted in 12/15.
+  Update v1 line 41 to use the agreed AGNTCY crate name, or formally
   retire v1 in favor of v2.
 
 ## 3-line summary

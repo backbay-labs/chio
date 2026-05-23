@@ -156,6 +156,7 @@ impl Exporter for SplunkHecExporter {
                         "receipt_kind": ev.receipt_kind.clone(),
                         "boundary_class": ev.boundary_class.clone(),
                         "result": ev.result.clone(),
+                        "authorized": ev.authorized,
                     },
                     "event": &ev.receipt,
                 });

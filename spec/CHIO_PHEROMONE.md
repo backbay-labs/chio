@@ -1,19 +1,19 @@
-# Chio Pheromone Substrate
+# Chiodos Pheromone Substrate
 
-**Status:** Draft v0.2 (wire-freeze gate; not a finalized standard)
+**Status:** v1 (Chio-owned pre-release; wire-frozen against `chio.pheromone-deposit.v1` and the sibling pheromone schemas)
 **Date:** 2026-05-04
-**Supersedes:** Draft v0.1 (2026-05-04)
+**Supersedes:** none
 
-**Revision history:**
-- v0.1 (2026-05-04): initial wire freeze; sqrt(N) cap framed as a Sybil-cost reducer; newcomer-discount cybersec default `N = 28`; observation-cost commitments required only for `cost_committed_only` subject classes.
-- v0.2 (2026-05-04): three corrections from the Chio scarcity economics analysis. (1) `sqrt(N)` cap reframed honestly as a cost-shifter, not a cost-reducer (section 5.4). (2) Newcomer-discount default lowered to `N = 8` epochs across sectors (section 6); the prior `N = 28` is retained as a high-assurance opt-in. (3) Observation-cost commitments are now REQUIRED by default for any subject class that the participant's ladder manifest declares `destructive: true` (section 7); the previous `cost_committed_only` flag survives as a way to opt non-destructive classes into the same requirement. Wire format unchanged: all v0.1 deposits remain valid; the changes affect default substrate behaviour and operator guidance, not the canonical bytes.
+**Revision history (pre-v1 drafting passes):**
+- First drafting pass (2026-05-04): initial wire freeze; sqrt(N) cap framed as a Sybil-cost reducer; newcomer-discount cybersec default `N = 28`; observation-cost commitments required only for `cost_committed_only` subject classes.
+- Second drafting pass (2026-05-04): three corrections from `docs/research/CHIODOS_SCARCITY_ECONOMICS.md`. (1) `sqrt(N)` cap reframed honestly as a cost-shifter, not a cost-reducer (section 5.4). (2) Newcomer-discount default lowered to `N = 8` epochs across sectors (section 6); the prior `N = 28` is retained as a high-assurance opt-in. (3) Observation-cost commitments are now REQUIRED by default for any subject class that the participant's ladder manifest declares `destructive: true` (section 7); the previous `cost_committed_only` flag survives as a way to opt non-destructive classes into the same requirement. Wire format unchanged across these passes; the changes affect default substrate behaviour and operator guidance, not the canonical bytes.
 
-This specification freezes the wire format for the Chio pheromone
-substrate, originally called out as gating work in the Chio concept design
-notes. No further code in
-`chio-federation`, `chio-market`, `chio-governance`, or `chio-workflow`
-may ship cross-trust pheromone surfaces until v0.2 is adopted;
-subsequent revisions remain backward-compatible per the additive rule
+This specification freezes the wire format for the chio-pheromone
+substrate called out as the gating spec in
+`docs/research/CHIODOS_CONCEPT.md` section 4.1. Cross-trust pheromone
+surfaces in `chio-federation`, `chio-market`, `chio-governance`, and
+`chio-workflow` ship against the v1 wire format defined here;
+post-v1 revisions remain backward-compatible per the additive rule
 in `PROTOCOL.md` section 2.
 
 The crate boundary is a new `chio-pheromone` workspace member depending
@@ -29,8 +29,8 @@ whitespace, exact-form numbers. Signed bodies are signed over the JCS
 encoding of the body with the `signature` field omitted.
 
 **Consistency model.** All pheromone deposits are intrinsically
-`crdt-commutative` in the Chio governance ladder sense: the merge operation is
-concentration accumulation, FIFO
+`crdt-commutative` in the sense defined by `spec/CHIODOS_LADDER.md`
+section 4.1: the merge operation is concentration accumulation, FIFO
 gossip with no supersession means partition-divergent peers converge
 automatically on reconnect, and exponential decay bounds the
 divergence window. A ladder manifest that classifies a pheromone-deposit
@@ -49,7 +49,6 @@ not the right substrate for those semantics.
 | `chio.pheromone-batch.v1` | Coalesced per-peer batch of gossip envelopes | 3 |
 | `chio.pheromone-concentration.v1` | Result of a concentration query at an anchored epoch | 4 |
 | `chio.pheromone-cost-commitment.v1` | Optional observation-cost reference attached to a deposit | 7 |
-| `chio.pheromone-scarcity-policy.v1` | Receiver-owned scarcity window and cost-verification policy | 5, 6, 7 |
 | `chio.pheromone-transit-policy.v1` | Receiver-owned relay authorization policy | 3 |
 
 Unknown schema ids MUST be rejected fail-closed (see `PROTOCOL.md` section
@@ -89,7 +88,7 @@ signature is computed over that body and reattached as the value of
 The `signature` field uses the self-describing encoding from
 `PROTOCOL.md` section 4.1. Hybrid prefixes (`hybrid:<classical>:<pq>:<alg_set>`)
 MUST be accepted by verifiers that already accept hybrid signatures elsewhere
-in the Chio stack; v0.1 substrates MAY decline hybrid material but MUST then
+in the Chio stack; v1 substrates MAY decline hybrid material but MUST then
 reject deposits that present it rather than silently downgrade.
 
 ### 2.2 Canonical JSON ordering
@@ -130,7 +129,7 @@ with `workflow_context_mismatch`.
 | `workflow_id` | string | Yes | Workflow id the deposit comments on |
 | `workflow_receipt_id` | string | Yes | Stable workflow receipt id |
 | `workflow_receipt_sha256` | string | Yes | SHA-256 of the canonical workflow receipt artifact |
-| `workflow_intersection_id` | string | Yes | Chio federation ladder-intersection artifact id; legacy signed artifacts may carry deprecated historical ids |
+| `workflow_intersection_id` | string | Yes | Chiodos workflow-intersection artifact id |
 | `workflow_intersection_sha256` | string | Yes | SHA-256 of the canonical workflow intersection artifact |
 | `step_index` | u64 | Yes | Workflow step index |
 | `tool_receipt_id` | string | Yes | Tool receipt id referenced by the step |
@@ -225,70 +224,32 @@ Frames within a batch are delivered in FIFO order. The substrate MUST NOT
 reorder by epoch or coalesce by deposit identity (contrast with the
 revocation-root case, where same-epoch coalescing is correct).
 
-### 3.2.1 Receive report and partial batches
-
-Live receive evaluates the batch envelope once, then evaluates each frame
-independently. A batch with the wrong schema, wrong recipient, or no frames is
-rejected before frame admission. Once the envelope is valid, a malformed frame
-MUST NOT prevent unrelated valid frames in the same batch from committing.
-
-`chio.pheromone.receive-report.v1` carries:
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `schema` | string | Yes | MUST be `"chio.pheromone.receive-report.v1"` |
-| `accepted` | boolean | Yes | True only when `batchOutcome` is `"accepted"` |
-| `batchOutcome` | string | Yes | One of `"accepted"`, `"partial"`, or `"rejected"` |
-| `acceptedFrameCount` | u64 | Yes | Count of frame reports with `accepted: true` |
-| `rejectedFrameCount` | u64 | Yes | Count of frame reports with `accepted: false` |
-| `batchSha256` | string | Yes | SHA-256 of the canonical batch document |
-| `recipientKernelId` | string | Yes | Receiver kernel id used for admission |
-| `authenticatedSenderKernelId` | string | Yes | Authenticated sender for this receive call |
-| `receivedAtUnixMs` | u64 | Yes | Receiver wall-clock used for admission |
-| `frames` | object[] | Yes | One report per evaluated frame, in frame order |
-
-A rejected frame consumes no replay nonce, scarcity bucket, pair bucket,
-passport cap, or passport first-seen state. A frame accepted before another
-frame rejects remains committed. Operators MUST inspect `frames` when
-`batchOutcome` is `"partial"` because top-level `accepted` is false for both
-partial and fully rejected batches.
-
 ### 3.3 Subscription scope
 
 Subscription is per-treaty: a peer subscribes to `(peer_kernel_id, treaty_id)`
 on the push queue. A deposit is enqueued for a peer iff the peer holds a
 subscription whose `treaty_id` is contained in the deposit's `treaty_scope`.
-Treaty handshake (out of scope here; owned by the Chio federation governance
-ladder manifest) defines the subject-class allowlist within a treaty.
+Treaty handshake (out of scope here; lives with the ladder manifest in
+`spec/CHIODOS_LADDER.md` to be written) defines the subject-class allowlist
+within a treaty.
 
 ### 3.4 Per-origin rate limit
 
-Every receiver enforces scarcity token buckets declared by
-`chio.pheromone-scarcity-policy.v1`. A scarcity bucket is keyed on
-`(reputation_epoch, window_id, treaty_id, subject_class_namespace,
-subject_class)`. Per-pair diversity and sqrt-N passport caps are separate
-fail-closed checks whose own counters include the same epoch, window, treaty,
-namespace, and class dimensions. Frames that exhaust the scarcity bucket MUST
-be dropped with `rate_limit_exhausted` (the deposit is not stored;
-concentration queries cannot reference it; the gossip layer MAY surface a
-metric).
-
-The scarcity policy is receiver-owned signed runtime-policy material. Each
-live policy MUST carry `runtimePolicySha256`, `policySha256`, and
-`activePeersEpoch`. `policySha256` is recomputed over the RFC 8785 canonical
-policy body with only `policySha256` excluded. `runtimePolicySha256` binds the
-policy to the receiver runtime policy hash, computed from the runtime policy
-body with embedded runtime-hash, policy-hash, and verifier-root issuer
-signature claims removed from the preimage. A mismatch is
-`scarcity_policy_invalid`, and no admission state is consumed.
+Every receiver enforces a token bucket keyed on
+`(origin_kernel_id, deposit.agent_passport_key_hash, treaty_id)`. The
+bucket capacity and refill rate are substrate configuration; defaults
+SHOULD be tuned so honest agents under steady load consume well below 50%
+of the bucket. Frames whose origin tuple has exhausted its bucket MUST be
+dropped with `rate_limit_exhausted` (the deposit is not stored; concentration
+queries cannot reference it; the gossip layer MAY surface a metric).
 
 ### 3.5 Catch-up
 
-V0.1 does not specify a catch-up protocol analogous to
+v1 does not specify a catch-up protocol analogous to
 `RevocationCatchupRequest`. Pheromones decay (section 8) and are not
 canonical state that diverges if missed; receivers recover via newer
-deposits. V0.2 MAY add bounded historical replay; v0.1 does not require
-it.
+deposits. Post-v1 revisions MAY add bounded historical replay; v1
+does not require it.
 
 ---
 
@@ -315,8 +276,9 @@ it.
 ### 4.2 `concentration_weighted` interface
 
 The reputation-weighted form takes a peer-weight closure injected by the
-Chio runtime. The substrate stays unaware of reputation; this preserves
-the no-cycle-into-`chio-reputation` design property.
+chiodos runtime. The substrate stays unaware of reputation; this preserves
+the "no cycle into chio-reputation" property called out in
+`docs/research/CHIODOS_CONCEPT.md` section 4.1.
 
 ```rust
 fn query_concentration_weighted(
@@ -390,9 +352,10 @@ the treaty during the window. Overruns reject the marginal deposit with
 the reputation epoch cadence so cap exhaustion and reputation snapshots
 turn over together.
 
-**Honest framing of what the cap does** (corrected in v0.2 from the
-v0.1 framing). The cap is a **cost-shifter, not a cost-reducer**. The
-Chio scarcity economics analysis
+**Honest framing of what the cap does** (corrected in a pre-v1
+drafting pass from earlier framing). The cap is a **cost-shifter, not
+a cost-reducer**. The
+quantitative analysis in `docs/research/CHIODOS_SCARCITY_ECONOMICS.md`
 shows that for a fixed dollar budget the `sqrt(N)` term cancels out of
 the closed-form attacker-budget expression: an adversary capped on
 passport keys per kernel is forced to provision more cover operator-orgs
@@ -416,7 +379,7 @@ The substrate-layer defenses that DO move the dollar-cost breakeven are
 the newcomer discount horizon `N` (section 6), the observation-cost
 commitment requirement (section 7), and the underlying passport-issuance
 cost `C` set by the participant's identity policy (hardware attestation
-versus software keys). See the Chio scarcity economics design notes for the
+versus software keys). See `CHIODOS_SCARCITY_ECONOMICS.md` for the
 numerical envelope per attacker class.
 
 ---
@@ -427,26 +390,24 @@ A passport's effective weight in concentration aggregation is
 `min(1.0, age_in_anchored_epochs(passport, reputation_epoch) / N)`,
 where the age is the count of chio-anchor epochs between the passport's
 first observation under the treaty and `reputation_epoch`, inclusive.
-`N` is the participant's `newcomer_horizon_epochs`, declared in the active
-scarcity policy. Live Chio receive MUST NOT infer this value from a library
-default; a missing scarcity policy or missing horizon rejects admission.
-Read-only historical verification MAY report the compatibility default below
-without accepting live traffic.
+`N` is the participant's `newcomer_discount_horizon`, declared in the
+ladder manifest.
 
-**Default**: `N = 8` epochs across all sectors (revised in v0.2 from
-the v0.1 cybersec default of `N = 28`). The Chio scarcity economics
-analysis shows `N = 8` is the breakeven point at which (a) the
-newcomer-discount linearly amortises the passport-issuance cost in the
-attacker-budget formula and (b) honest agents reach full weight within
-operationally reasonable onboarding (about a week at one epoch per day)
-without giving low-cost Sybil passports a useful fraction of weight
-before sanction can land. `N` MAY be raised (the v0.1 cybersec
-`N = 28` is retained as a high-assurance opt-in for sectors that are
-willing to trade onboarding latency for adversary-budget headroom)
+**Default**: `N = 8` epochs across all sectors (revised in a pre-v1
+drafting pass from the earlier cybersec default of `N = 28`). The
+`CHIODOS_SCARCITY_ECONOMICS` analysis shows `N = 8` is the breakeven
+point at which (a) the newcomer-discount linearly amortises the
+passport-issuance cost in the attacker-budget formula and (b) honest
+agents reach full weight within operationally reasonable onboarding
+(about a week at one epoch per day) without giving low-cost Sybil
+passports a useful fraction of weight before sanction can land.
+`N` MAY be raised (the pre-v1 cybersec `N = 28` is retained as a
+high-assurance opt-in for sectors that are willing to trade onboarding
+latency for adversary-budget headroom)
 and MAY be lowered for fast-churn sectors with strong out-of-band
 identity verification, but participants SHOULD NOT lower `N` below `4`
 without an explicit out-of-band roster issuer (see
-the Chio trust-anchor cost analysis for Tier 1 sectors).
+`docs/research/CHIODOS_TRUST_ANCHOR_COSTS.md` Tier 1 sectors).
 
 The discount mitigates whitewashing: a freshly minted passport from a
 sanctioned org carries no weight until it accumulates anchored history.
@@ -470,12 +431,13 @@ body carries a `chio.pheromone-cost-commitment.v1` object:
 | `chain_position_proof` | string | Yes | Chain inclusion proof (canonical JSON; depositor-defined shape) |
 | `observed_at_unix_ms` | u64 | Yes | Wall-clock at which the underlying observation was recorded |
 
-**When the substrate MUST require this field** (revised in v0.2):
+**When the substrate MUST require this field** (revised in a pre-v1
+drafting pass):
 
-1. **Always**, for any subject class that the participant's Chio federation
-   governance ladder manifest declares `destructive: true`.
-   This is the v0.2 default; the rationale follows the
-   Chio scarcity economics analysis showing observation-cost
+1. **Always**, for any subject class that the participant's ladder
+   manifest (`spec/CHIODOS_LADDER.md`) declares `destructive: true`.
+   This is the v1 default; the rationale follows the
+   `CHIODOS_SCARCITY_ECONOMICS` analysis showing observation-cost
    commitments add a multiplicative term `m_oc` to the attacker-budget
    formula that no passport-key-cap manipulation can offset, and
    destructive subject classes are exactly the ones whose poisoning
@@ -484,9 +446,9 @@ body carries a `chio.pheromone-cost-commitment.v1` object:
    with `observation_cost_commitment_required`.
 
 2. **Optionally**, for any subject class explicitly flagged
-   `cost_committed_only` in the ladder manifest. This was the v0.1
-   trigger (now widened in v0.2) and survives as the way to opt
-   non-destructive classes into the same requirement (e.g., a
+   `cost_committed_only` in the ladder manifest. This was the
+   earlier-drafting-pass trigger (now widened) and survives as the way
+   to opt non-destructive classes into the same requirement (e.g., a
    detection-deposit class whose downstream consumers run automated
    actions).
 
@@ -496,15 +458,15 @@ body carries a `chio.pheromone-cost-commitment.v1` object:
    lower as a matter of local reputation policy, but the substrate
    itself MUST NOT reject them.
 
-When `chio.pheromone-scarcity-policy.v1` declares
-`observationCostVerification = "required"`, the receiver MUST fail closed unless
-the commitment binds the subject namespace, subject class, exact deposit treaty
-scope, telemetry root, and verifier identity expected by the policy. Legacy
-commitments without these binding fields remain parseable, but they cannot
-satisfy a policy that requires verified observation-cost commitments.
+The substrate MUST NOT itself verify the chain inclusion proof; that
+is the responsibility of the chiodos runtime, which MAY weight or
+discount deposits whose commitments fail later verification (this
+preserves substrate simplicity and keeps the verification surface in
+the runtime where reputation lives).
 
-This field implements the verifiable observation-cost commitment requirement,
-which prevents a peer from co-signing without originating evidence.
+This field implements the "verifiable observation-cost commitment"
+requirement in `docs/research/CHIODOS_CONCEPT.md` section 4.1, which
+prevents a peer from co-signing without originating evidence.
 
 ---
 
@@ -594,20 +556,15 @@ canonical error envelope (see `spec/errors/`).
 | `replay_window_exceeded` | `(kernel_id, agent_passport_key_hash, nonce)` already seen within window |
 | `treaty_scope_violation` | Gossip frame's `treaty_id` not present in `deposit.treaty_scope` |
 | `unknown_treaty` | `treaty_id` is not currently subscribed |
-| `rate_limit_exhausted` | Scarcity token bucket exhausted for the relevant `(epoch, window, treaty, namespace, class)` |
-| `diversity_cap_exceeded` | Per-pair token bucket exhausted for the same epoch/window/treaty/namespace/class |
+| `rate_limit_exhausted` | Per-origin token bucket exhausted for the relevant `(origin, treaty)` |
+| `diversity_cap_exceeded` | Per-pair token bucket exhausted for the epoch |
 | `sqrt_n_passport_cap_exceeded` | Origin kernel has exceeded `ceil(sqrt(active_peers))` passports for the class |
 | `observation_cost_commitment_required` | Subject class is `cost_committed_only` and `cost_commitment` is absent |
-| `observation_cost_commitment_unverified` | Cost commitment does not bind the policy subject, treaty scope, telemetry root, or verifier |
-| `scarcity_policy_missing` | No active scarcity policy covers the deposit subject and treaty |
-| `scarcity_policy_invalid` | Scarcity policy is malformed or conflicts with subject-class admission material |
-| `scarcity_window_stale` | Scarcity policy window does not cover the receiver evaluation time |
-| `invalid_newcomer_horizon` | Scarcity policy declared a zero newcomer horizon |
 | `weight_out_of_range` | Reputation closure returned a value outside `[0.0, 1.0]` or non-finite |
 | `unknown_reputation_epoch` | `reputation_epoch` is not present in the local anchor view |
 | `confidence_out_of_range` | `confidence` is non-finite or outside `[0.0, 1.0]` |
 | `half_life_invalid` | `decay_half_life_secs` is non-finite, zero, or negative |
-| `unsupported_schema` | `schema` field does not match a known v0.1 identifier |
+| `unsupported_schema` | `schema` field does not match a known v1 identifier |
 | `subject_class_unknown` | Subject class not in the treaty's allowlist |
 
 Error envelopes follow the `chio.error.v1` shape used elsewhere in the
@@ -617,9 +574,10 @@ spec; see `spec/errors/README.md`.
 
 ## 11. Optional ZK Selective Disclosure (deferred to selective-disclosure spec)
 
-The selective-disclosure mechanism for Chio receipts, including pheromone
-deposits, is deferred to a Chio-native selective-disclosure spec. The
-high-level direction:
+The selective-disclosure mechanism for chiodos receipts (including
+pheromone deposits) is normatively specified in
+`spec/CHIODOS_SELECTIVE_DISCLOSURE.md` (v1). The high-level
+direction:
 
 - BBS+ projection over the deposit body (`bbs-2023` cryptosuite plus
   AnonCreds v2 `RangeStatement` predicates) enabling proofs of the
@@ -632,15 +590,16 @@ high-level direction:
   `member(merkle_root)`, AND-composed up to 8 clauses.
 - A zkVM (Risc0/SP1 + Groth16 wrap) escape hatch covers chained-receipt
   proofs and predicates over the Ed25519 signature itself; not in
-  v0.1 of the disclosure spec.
+  v1 of the disclosure spec.
 
 This pheromone spec does not freeze the BBS+ wire shape itself. The
 disclosure spec owns the `bbs_messages()` projection ordering, the
 disclosure envelope schema, and the verification algorithm.
 Implementations MAY emit BBS+ material under an experimental
 `bbs_v01_messages` field on a deposit; receivers MUST ignore unknown
-fields per the additive-fields rule. Once the disclosure spec exits
-draft, the field name MUST be updated to match.
+fields per the additive-fields rule. The field name tracks the
+disclosure-spec projection identifier and MUST be updated as that
+identifier evolves.
 
 ---
 
@@ -688,7 +647,7 @@ guard against silent format drift.
 
 ---
 
-## 13. Open Questions Deferred to v0.2
+## 13. Open Questions Deferred Post-v1
 
 - Catch-up replay (section 3.5).
 - BBS+ projection ordering and secondary-keypair binding (section 11).
@@ -696,14 +655,3 @@ guard against silent format drift.
   `subject_class_namespace` field is forward-compatible; translation
   rules live with the ladder manifest spec).
 - Hybrid-signature acceptance policy on the substrate side.
-- Archive restore drills are local operator evidence over relay alert
-  assurance packages. They do not change pheromone wire semantics and
-  do not authorize deletion, moving, uploading, notification delivery,
-  policy mutation, dynamic trust, new transports, settlement, hidden
-  predicates, VC Data Integrity BBS, zkVM, or FROST.
-- External retention review is local evidence aggregation over archive
-  package, restore drill, physical readback, and retention handoff
-  reports. It may say a selected generation set is ready for
-  operator-managed review, blocked, stale, insufficient, drifted, or
-  quarantined. It must not claim external custody or call retention
-  systems.

@@ -75,6 +75,8 @@ fn export_receipts(
             base_backoff_ms: 0,
             dlq_capacity: 100,
             rate_limit: None,
+            trusted_kernel_keys: std::collections::BTreeSet::new(),
+            read_context: chio_kernel::ReceiptReadContext::local_operator_admin_all(),
         })
         .expect("open ExporterManager");
         manager.add_exporter(Box::new(exporter));
@@ -111,7 +113,7 @@ fn hosted_mcp_receipts_flow_into_chio_siem_export() {
     assert_eq!(events.len(), 1, "one hosted receipt should be exported");
     assert_eq!(events[0].receipt.tool_name, "echo_json");
     assert_eq!(events[0].receipt.tool_server, "wrapped-http-mock");
-    assert!(matches!(events[0].receipt.decision, Decision::Allow));
+    assert!(matches!(events[0].receipt.decision, Some(Decision::Allow)));
     assert_eq!(manager.dlq_len(), 0, "successful export should not DLQ");
 }
 

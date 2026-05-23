@@ -328,10 +328,16 @@ fn receipt_body(kernel_key: PublicKey) -> ChioReceiptBody {
         tool_server: "s".to_string(),
         tool_name: "r".to_string(),
         action,
-        decision: Decision::Deny {
+        decision: Some(Decision::Deny {
             reason: "test".to_string(),
             guard: "kani".to_string(),
-        },
+        }),
+        receipt_kind: Default::default(),
+        boundary_class: Default::default(),
+        observation_outcome: None,
+        tool_origin: Default::default(),
+        redaction_mode: Default::default(),
+        actor_chain: Vec::new(),
         content_hash: "h".to_string(),
         policy_hash: "policy".to_string(),
         evidence: vec![],

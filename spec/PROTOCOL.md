@@ -20,11 +20,12 @@ In this repository it ships as:
   incomplete outcomes
 - trust-control services for authority, revocation, receipt, budget, and
   federation state
-- hosted MCP-compatible edges and adapters that keep the same trust contract
+- MCP-compatible edges and adapters only where the kernel owns dispatch and
+  receipt authority
 - machine-readable official-stack, extension-manifest, negotiation, and
-  qualification artifacts over Chio's named extension points
-- machine-readable web3 trust, anchoring, oracle, and settlement artifacts
-  for one official external rail stack
+  qualification artifacts that remain subordinate to the v1 receipt contract
+- machine-readable web3 trust, anchoring, oracle, and settlement artifacts that
+  remain evidence artifacts unless a kernel-mediated dispatch path is present
 - one bounded off-chain `chio-link` oracle runtime plus operator and
   qualification artifacts for conservative cross-currency budget enforcement
 - one bounded `chio-anchor` runtime plus discovery, proof-bundle, and
@@ -47,24 +48,33 @@ In this repository it ships as:
 This document describes the protocol and artifact contract that the code in
 this repository actually ships. It is intentionally narrower than the older
 research draft that described aspirational networking and deployment topology.
+When a later section names an adapter, bridge, external rail, hosted tool, or
+directory surface, that section is normative only for the bounded artifact or
+kernel-owned path it describes. It does not make trace-only provider activity,
+remote hosted execution, or advisory directory data into an authoritative Chio
+authorization receipt.
 
 ## 2. Scope And Compatibility
 
 The shipped v1 contract covers:
 
 - native capability and receipt validation
-- wrapped and hosted MCP mediation
+- wrapped MCP mediation only where Chio owns dispatch; hosted or remote
+  provider-executed activity is trace-only unless a later implementation proves
+  a live kernel-mediated dispatch boundary
 - trust-control HTTP APIs for authority, receipts, revocation, budgets,
   federation, reputation comparison, and certification
 - `did:chio`
 - Agent Passport artifacts and verifier-policy distribution
 - federated evidence export/import and cross-org delegation continuation
-- A2A v1.0.0 mediation through `chio-a2a-adapter`
+- A2A v1.0.0 consumption through `chio-a2a-adapter` only where receipt
+  authority is backed by a live kernel authorization receipt
 - signed certification checks plus operator-scoped registry and discovery-network
   surfaces
 - one machine-readable extension inventory plus an official Chio stack package,
   custom extension manifest contract, fail-closed negotiation report, and
-  extension qualification matrix
+  extension qualification matrix; extension data cannot widen signed Chio truth
+  or capability scope
 - one machine-readable web3 trust profile, contract package, chain
   configuration, anchor-proof, oracle-evidence, dispatch, settlement-receipt,
   and qualification artifact family for the official web3 rail
@@ -94,6 +104,15 @@ The shipped v1 contract covers:
 
 The shipped v1 contract does not claim:
 
+- OpenAI hosted-tool mediation, OpenAI remote MCP execution, Bedrock Lambda
+  mediation, voice execution, broad live-directory import, or any other adapter
+  execution before receipt semantics, durable commit, semantic authority, and
+  tenant read-boundary gates are merged and tested
+- OAuth authorization-server product status before a dedicated accepted ADR or
+  equivalent decision note defines scope, RAR grammar, telemetry, and
+  feature-gating posture
+- manifest event publish/consume actions before the current v1 manifest
+  planning work is accepted and implemented
 - multi-region consensus or Byzantine replication
 - a public certification marketplace
 - automatic SCIM provisioning lifecycle
@@ -658,8 +677,8 @@ unless and until they receive their own manifest entry and proof lane.
 
 ## 6. Receipt Contract
 
-The shipped receipt envelope is `ChioReceipt` from
-`crates/chio-core/src/receipt.rs`.
+The current pre-release v1 receipt envelope is `ChioReceipt` from
+`crates/chio-core-types/src/receipt.rs`.
 
 | Field | Meaning |
 | --- | --- |
@@ -669,13 +688,22 @@ The shipped receipt envelope is `ChioReceipt` from
 | `tool_server` | Target server id |
 | `tool_name` | Target tool |
 | `action` | Canonicalized tool parameters plus `parameter_hash` |
-| `decision` | `allow`, `deny`, `cancelled`, or `incomplete` |
+| `receipt_kind` | `mediated_decision`, `trace_observation`, or `advisory_evaluation` |
+| `boundary_class` | Runtime boundary: `prevent`, `detect_only`, or `advisory_only` |
+| `observation_outcome` | Trace/advisory outcome. Omitted for mediated decisions |
+| `tool_origin` | Where the tool effect executed relative to Chio |
+| `redaction_mode` | Signed redaction mode for receipt details |
+| `actor_chain` | Signed actor attribution chain |
+| `decision` | Present only for `mediated_decision` + `prevent` receipts |
 | `content_hash` | Hash of the evaluated content or outcome payload |
 | `policy_hash` | Hash of the policy material used |
 | `evidence` | Per-guard evidence |
 | `metadata` | Optional structured metadata |
-| `kernel_key` | Verifying public key |
-| `signature` | Ed25519 signature |
+| `trust_level` | `mediated`, `verified`, or `advisory`, coherent with `receipt_kind` |
+| `tenant_id` | Optional authenticated tenant id |
+| `kernel_key` | Verifying public key; bare 64-hex Ed25519, `p256:<130-hex>` SEC1 P-256, or `p384:<194-hex>` SEC1 P-384 |
+| `algorithm` | Optional envelope hint (`ed25519`, `p256`, or `p384`); verification dispatches off the signature prefix, not this field |
+| `signature` | Algorithm-aware hex signature over canonical JSON of `ChioReceiptSigningBody { id, body: ChioReceiptIdInput }`. The schema regex is `^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$`: bare 128-hex for Ed25519, `p256:<DER hex>` for P-256, or `p384:<DER hex>` for P-384 |
 
 ### Receipt Identity And DAG
 
@@ -695,8 +723,44 @@ The signature input is the typed wrapper:
 ChioReceiptSigningBody { id, body: ChioReceiptIdInput }
 ```
 
-Ad hoc byte concatenation is not a valid signing input. Verifiers reconstruct
-the typed wrapper and re-canonicalize it before signature verification.
+The producer canonicalizes that wrapper via RFC 8785 JCS and signs the
+resulting bytes with the kernel's identity key. Three signing
+algorithms are supported in v1, and verifiers dispatch off the
+`signature` field prefix rather than the optional `algorithm` envelope
+hint:
+
+- **Ed25519** (default): bare lowercase 128-hex (exactly 64 raw bytes);
+  the `kernel_key` is bare lowercase 64-hex (32 raw bytes).
+- **P-256 (ECDSA / SECP256R1)**: `p256:<DER hex>` over the same canonical
+  bytes; the `kernel_key` is `p256:<130-hex>` (uncompressed SEC1 point,
+  65 bytes, leading byte `0x04`).
+- **P-384 (ECDSA / SECP384R1)**: `p384:<DER hex>` over the same canonical
+  bytes; the `kernel_key` is `p384:<194-hex>` (uncompressed SEC1 point,
+  97 bytes, leading byte `0x04`).
+
+The wire pattern is fixed by
+`spec/schemas/chio-wire/v1/receipt/record.schema.json`:
+
+```text
+signature  -> ^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$
+kernel_key -> ^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$
+```
+
+The Ed25519 signature length is exactly 128 hex characters; the P-256
+and P-384 hex bodies hold variable-length DER-encoded ECDSA signatures
+(roughly 70-72 bytes for P-256 and 104-110 bytes for P-384) and are
+validated by length-aware decoders downstream of the schema regex. The
+optional `algorithm` envelope hint MAY be `ed25519`, `p256`, or `p384`;
+when present it MUST agree with the signature prefix and verifiers
+reject mismatches fail-closed. Hybrid post-quantum signatures use the
+self-describing prefix shape defined in section 4 and are not part of
+this `chio.receipt.v1` algorithm enumeration.
+
+Ad hoc byte concatenation is not a valid signing input. Verifiers
+reconstruct the typed wrapper, re-canonicalize it via JCS, dispatch off
+the signature prefix to select the correct verification algorithm, and
+only then verify the signature against the embedded `kernel_key` (which
+itself must agree with the same algorithm prefix).
 
 Replay and deduplication state keys exclusively on `id`. A tampered id cannot
 influence replay acceptance because verifiers recompute the id from canonical
@@ -715,9 +779,22 @@ parent set, every parent shares the same `chainId`, and
 `child.dagOrdinal > max(parent.dagOrdinal)`. This rejects cross-kernel cycles
 without relying on one global clock.
 
-### 6.1 Decisions
+### 6.1 Receipt Semantics And Decisions
 
-The decision enum is part of the contract:
+The v1 receipt shape makes authority structural:
+
+- `mediated_decision` receipts use `boundary_class = prevent`,
+  `trust_level = mediated`, and MUST carry a `decision`.
+- `trace_observation` receipts use `boundary_class = detect_only`,
+  `trust_level = verified`, and MUST omit `decision`.
+- `advisory_evaluation` receipts use `boundary_class = advisory_only`,
+  `trust_level = advisory`, and MUST omit `decision`.
+
+Only `mediated_decision` + `prevent` + `Allow` may be displayed or exported as
+authorization. Trace and advisory records can be evidence, but they are never
+authorization receipts.
+
+When present, the decision enum is:
 
 - `Allow`
 - `Deny { reason, guard }`
@@ -1120,7 +1197,9 @@ that currently covers:
 - tasks
 - progress notifications
 - nested sampling, elicitation, and roots callbacks
-- remote HTTP auth discovery and hosted authorization-server flows
+- remote HTTP auth discovery. Hosted OAuth authorization-server product work is
+  explicitly blocked until the OAuth AS ADR or equivalent decision note is
+  accepted.
 
 Compatibility claims are grounded in checked-in conformance scenarios, live JS
 and Python peers, and the release-qualification wave corpus.
@@ -1296,8 +1375,12 @@ delegated call-chain fields into independently verified upstream provenance,
 and `senderConstraint.delegatedCallChainBound` is reserved for observed or
 verified lineage only.
 
-Chio's hosted authorization edge now publishes and enforces the same bounded
-contract at request time. The published `chio_authorization_profile` includes:
+Chio does not claim OAuth authorization-server product status in this v1
+contract. The bounded OAuth authorization profile below is an accepted
+planning boundary for the feature-gated authorization edge, not a generally
+available product surface, and remains blocked for product use until a
+dedicated OAuth AS ADR or equivalent decision note is accepted. When enabled in
+local or operator-gated builds, the draft `chio_authorization_profile` includes:
 
 - one request-time contract naming `authorization_details` and
   `chio_transaction_context` as the only supported Chio request parameters and
@@ -1309,7 +1392,7 @@ contract at request time. The published `chio_authorization_profile` includes:
   authorization artifacts while approval tokens, Chio capabilities, and review
   evidence remain non-bearer artifacts
 
-At request time, Chio only accepts the bounded governed detail family
+In that gated path, Chio only accepts the bounded governed detail family
 `chio_governed_tool`, `chio_governed_commerce`, and
 `chio_governed_metered_billing`, and at least one governed-tool row must be
 present. Malformed transaction context, unsupported detail types, mismatched
@@ -1317,21 +1400,23 @@ resource indicators, stale identity assertions, mismatched verifier bindings,
 request-binding mismatches, or ambiguous approval/runtime-assurance/call-chain
 fragments fail closed before token issuance.
 
-Chio also supports one bounded sender-constrained continuation contract on that
-same hosted authorization path. The request may carry:
+The same gated path sketches one bounded sender-constrained continuation
+contract. The request may carry:
 
 - `chio_sender_dpop_public_key`
 - `chio_sender_mtls_thumbprint_sha256`
 - `chio_sender_attestation_sha256`
 
-If Chio approves the request, the resulting sender constraint is persisted on
-the authorization code and then projected into access tokens through `cnf`:
+If that gated path approves the request, the resulting sender constraint is
+persisted on the authorization code and then projected into access tokens
+through `cnf`:
 
 - `cnf.chioSenderKey`
 - `cnf["x5t#S256"]`
 - `cnf.chioAttestationSha256`
 
-Runtime admission then enforces the same bound sender proof continuity:
+Runtime admission for the gated path then enforces the same bound sender proof
+continuity:
 
 - DPoP-bound flows must present a valid proof during token exchange and again
   on protected-resource admission, including nonce, `jti`, `htm`, and `htu`
@@ -1348,8 +1433,8 @@ the same request. Missing, stale, replayed, or mismatched sender proof fails
 closed as `invalid_request`, `invalid_grant`, or bearer denial depending on
 where the mismatch occurs.
 
-The hosted edge now publishes the same profile through OAuth-family discovery
-documents:
+When the gated path is configured, the hosted edge may publish the same profile
+through OAuth-family discovery documents:
 
 - `/.well-known/oauth-protected-resource/mcp`
 - `/.well-known/oauth-authorization-server/{issuer-path}`
@@ -1841,7 +1926,7 @@ count is capped, and blocking negative events require corroboration when the
 policy says so. Shared clearing is still operator-local evaluation truth, not a
 universal oracle or automatic runtime admission.
 
-Chio runtime admission may consume pheromone concentration as evidence only
+Chiodos runtime admission may consume pheromone concentration as evidence only
 when a verifier-owned runtime policy explicitly enables it. The runtime policy,
 peer weights, runtime trust input, and trusted verifier keys are local verifier
 inputs. Request JSON may reference stable ids and hashes, but it cannot carry
@@ -1850,23 +1935,22 @@ metadata and cannot change the verdict. Enforced policy can allow, deny, or
 escalate before tool dispatch, but it does not issue leases, create governance
 receipts, mutate trust, settle payments, or perform peer discovery.
 
-Chio runtime proof-parity reports bind local admission output to structured
+Chiodos runtime proof-parity reports bind local admission output to structured
 step evidence before claiming proof regeneration success. A runtime workflow
 run report records per-step admission report hashes, tool receipt ids and
 hashes, output hashes, bilateral DSSE hashes, workflow step hashes,
 consistency anchors, destructive flags, and lease or governance ids where
 present. Runtime proof regeneration now also emits a runtime evidence manifest,
 a proof-regeneration input artifact, package-valid signed `ChioReceipt`
-artifacts, strict treaty-bound DSSE envelopes in the legacy predicate format, a
-signed `WorkflowReceipt v2`,
-`chio.attest.proof-package.v1`, verifier trust and context inputs, and the
-verifier report produced by the explicit historical verifier. A
-regeneration report may set `accepted=true` only when that verifier accepts the
-regenerated package and the report binds proof package, verifier report, and
-workflow receipt hashes. `runtime_proof_semantic_regeneration_pending` is a
-rejected gate state, not a successful runtime proof claim.
+artifacts, strict Chiodos DSSE envelopes, a signed `WorkflowReceipt v2`,
+`chio.chiodos.proof-package.v1`, verifier trust and context inputs, and the
+verifier report produced by the existing Chiodos verifier. A regeneration
+report may set `accepted=true` only when that verifier accepts the regenerated
+package and the report binds proof package, verifier report, and workflow
+receipt hashes. `runtime_proof_semantic_regeneration_pending` is a rejected
+gate state, not a successful runtime proof claim.
 
-Chio production local runtime orchestration wraps the same runtime admission
+Chiodos production local runtime orchestration wraps the same runtime admission
 and proof-regeneration evidence in verifier-owned local operating contracts.
 An orchestration profile and run contract bind the local kernel id, verifier id,
 expected workflow steps, admission ids, durable store id, evidence sink id, and
@@ -1881,7 +1965,7 @@ report hashes, and stable semantic fields. Drift is operator evidence only; it
 does not mutate policy, trust, leases, governance, settlement, pheromone state,
 or provider routing.
 
-Chio runtime operations hardening supervises local orchestration runs
+Chiodos runtime operations hardening supervises local orchestration runs
 without changing admission authority. A supervisor profile controls local run
 lease TTLs, stale-run windows, evidence health requirements, static provider
 binding checks, and dry-run retention posture. Scheduler tick reports claim
@@ -1894,7 +1978,7 @@ operator-owned bindings and must not discover, substitute, or widen providers.
 Retention plans are dry-run classifications only; they do not delete, move,
 compact, upload, or mutate runtime evidence.
 
-Chio treaty-bound provenance adds the first bounded cross-kernel admission
+Chiodos treaty-bound provenance adds the first bounded cross-kernel admission
 evidence lane. Governance ladder manifests declare action class mode,
 destructive posture, consistency model, co-sign requirement, and required
 evidence for one kernel. A treaty scope pins the participating kernels and the
@@ -1906,11 +1990,10 @@ only and must be denied when required treaty evidence is missing. Continuation
 and receipt-lineage statements keep `verified`, `observed`, `asserted`,
 `unverifiable`, and `rejected` evidence classes distinct. Buyer attestation
 packets may bind budget references, but they do not claim settlement. A buyer
-packet may produce a hash-only diagnostic report when the packet hashes match
-verified lineage, but that report remains unresolved and `accepted=false` until
-the full buyer-review path hydrates and verifies the treaty-bound DSSE bytes.
+packet is accepted only when the packet hashes match verified lineage and the
+lineage remains verified rather than asserted.
 
-Chio treaty-to-buyer review adds a local buyer-facing loop over the
+Chiodos treaty-to-buyer review adds a local buyer-facing loop over the
 treaty-bound evidence. A buyer review package binds the buyer packet, admission
 report, continuation, lineage bundle, bilateral invocation, workflow receipt,
 proof package, verifier report, and runtime run report by artifact role,
@@ -1921,17 +2004,17 @@ review loop is local evidence only: budget references remain non-settlement
 references, hidden predicates remain unsupported, and package-carried material
 does not become a trust root.
 
-Chio live treaty-to-buyer closure is the assurance gate that upgrades those
+Chiodos live treaty-to-buyer closure is the assurance gate that upgrades those
 local artifacts from fixture-shaped evidence to bounded runtime evidence. The
 closure requires verifier-owned treaty runtime state, pre-dispatch denial in
-the kernel, strict treaty-bound DSSE in the legacy predicate format with treaty
-binding references over real request, outcome, and receipt hashes, bounded
-lineage graph closure, and proof regeneration accepted by the explicit
-historical proof verifier. Hash-only self-attestation, copied static proof
-packages, compatibility-only bilateral predicates, and package-carried trust
-roots do not satisfy closure. The boundary remains local evidence only and does
-not add dynamic trust, settlement finality, hidden predicates, new transports,
-FROST, or pheromone-driven authority decisions.
+the kernel, strict Chiodos DSSE with treaty binding references over real
+request, outcome, and receipt hashes, bounded lineage graph closure, and proof
+regeneration accepted by the existing Chiodos proof verifier. Hash-only
+self-attestation, copied static proof packages, compatibility-only bilateral
+predicates, and package-carried trust roots do not satisfy closure. The
+boundary remains local evidence only and does not add dynamic trust, settlement
+finality, hidden predicates, new transports, FROST, or pheromone-driven
+authority decisions.
 
 `POST /v1/registry/market/fees/issue`,
 `POST /v1/registry/market/penalties/issue`, and
@@ -2572,7 +2655,7 @@ The profile is intentionally narrow:
 - Chio currently supports exactly one requested credential with format
   `application/dc+sd-jwt` and type
   `https://chio.dev/credentials/types/chio-passport-sd-jwt-vc/v1`
-- verifier trust bootstrap is one verifier metadata document plus one
+- verifier trust bootstrap is one Chio verifier metadata document plus one
   verifier `JWKS`
 - verifier or issuer key rotation may preserve active request and credential
   validation only when the rotated trusted keyset is still published through
@@ -2681,6 +2764,7 @@ The shipped cross-org artifact schemas now use Chio-primary identifiers:
 | Artifact | Schema |
 | --- | --- |
 | Evidence export manifest | `chio.evidence_export_manifest.v1` |
+| Evidence export disclosure notice | `chio.evidence_export_disclosure_notice.v1` |
 | Federation policy | `chio.federation-policy.v1` |
 | Federated evidence share | `chio.federated-evidence-share.v1` |
 | Federated delegation policy | `chio.federated-delegation-policy.v1` |
@@ -2695,6 +2779,10 @@ The supported contract includes:
   local delegation anchor
 - non-Chio evidence and delegation schema identifiers are rejected instead of
   treated as compatibility aliases
+- tenant-scoped evidence export manifests carry a structured disclosure
+  notice documenting which cross-tenant aggregate fields the signed
+  checkpoint set inherently reveals; admin-all manifests omit the notice
+  because the operator already requested cross-tenant visibility
 
 ### 10.3 Enterprise Identity Federation
 

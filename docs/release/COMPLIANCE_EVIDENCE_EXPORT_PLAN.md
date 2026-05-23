@@ -160,3 +160,56 @@ evidence-package/
 2. Add package verification tooling (`chio evidence verify`).
 3. Add signed package manifests for chain-of-custody workflows.
 4. Add compliance-specific report views on top of the exported package.
+
+## Tenant-Scoped Disclosure
+
+Tenant-scoped evidence exports (`chio evidence export --tenant <id>`) carry an
+explicit `disclosureNotice` field on the manifest with schema
+`chio.evidence_export_disclosure_notice.v1`. The notice documents which
+cross-tenant aggregate fields the exported checkpoint set inherently reveals.
+Admin-all exports do not attach the notice because the operator already
+requested cross-tenant visibility.
+
+### What is disclosed and why
+
+`KernelCheckpointBody` is signed by the kernel and covers the full per-batch
+Merkle tree. Inclusion-proof verification against the signed checkpoint root
+requires the body fields to remain authentic. As a result, even an export
+scoped to one tenant retains the following signed-body fields:
+
+- `batch_start_seq`, `batch_end_seq`: full batch seq range across all tenants
+- `tree_size`: number of leaves in the batch's Merkle tree (cross-tenant
+  count)
+- `merkle_root`: the signed root that authenticates the entire batch
+- `checkpoint_seq`, `issued_at`, `previous_checkpoint_sha256`: chain identity
+  and timing across the cross-tenant checkpoint stream
+
+`CheckpointPublication` records (`checkpoint-publications.ndjson`) mirror
+these fields as `entry_start_seq`, `entry_end_seq`, and `log_tree_size`.
+Verifiers re-derive them from the signed checkpoint body, so omitting the
+file would not narrow the disclosure surface; the published copies are kept
+for deterministic verifier ergonomics.
+
+### What is narrowed
+
+- `retention.liveDbSizeBytes` is omitted in tenant-scoped exports because the
+  live database aggregates all tenants. It is only populated in admin-all
+  exports.
+- `retention.oldestLiveReceiptTimestamp` is restricted to the requesting
+  tenant's receipts.
+
+### Why option (b) instead of option (a)
+
+A truly cross-tenant-isolated export would require protocol-level per-tenant
+subtree proofs (option (a)). The SQLite store does not currently track
+tenant-scoped subtree roots, so option (a) cannot be implemented without a
+schema and protocol change. Until that lands, tenant exports use option (b):
+narrow what is narrowable (retention metadata) and document the inherent
+disclosure boundary with a structured, verifiable notice.
+
+The verifier enforces that:
+
+- a tenant-scoped manifest MUST carry the disclosure notice
+- an admin-all manifest MUST NOT carry a tenant-scoped disclosure notice
+- the notice content MUST match the canonical disclosure boundary for the
+  current protocol version (tampering or selective omission is rejected)

@@ -48,15 +48,12 @@ type signingVectors struct {
 
 type receiptVectors struct {
 	Cases []struct {
-		Expected struct {
-			Decision           string `json:"decision"`
-			ParameterHashValid bool   `json:"parameter_hash_valid"`
-			SignatureValid     bool   `json:"signature_valid"`
-		} `json:"expected"`
-		ID                       string         `json:"id"`
-		Receipt                  map[string]any `json:"receipt"`
-		ReceiptBodyCanonicalJSON string         `json:"receipt_body_canonical_json"`
+		Expected                 invariants.ReceiptVerification `json:"expected"`
+		ID                       string                         `json:"id"`
+		Receipt                  map[string]any                 `json:"receipt"`
+		ReceiptBodyCanonicalJSON string                         `json:"receipt_body_canonical_json"`
 	} `json:"cases"`
+	SigningKeySeedHex string `json:"signing_key_seed_hex"`
 }
 
 type capabilityVectors struct {
@@ -179,15 +176,108 @@ func TestReceiptVectors(t *testing.T) {
 			if err != nil {
 				t.Fatalf("VerifyReceipt returned error: %v", err)
 			}
-			if verification != (invariants.ReceiptVerification{
-				Decision:           testCase.Expected.Decision,
-				ParameterHashValid: testCase.Expected.ParameterHashValid,
-				SignatureValid:     testCase.Expected.SignatureValid,
-			}) {
+			var verificationJSON map[string]any
+			verificationBytes, err := json.Marshal(verification)
+			if err != nil {
+				t.Fatalf("Marshal receipt verification returned error: %v", err)
+			}
+			if err := json.Unmarshal(verificationBytes, &verificationJSON); err != nil {
+				t.Fatalf("Unmarshal receipt verification returned error: %v", err)
+			}
+			if verificationJSON["trust_level"] != testCase.Receipt["trust_level"] {
+				t.Fatalf("unexpected receipt trust level: %#v", verificationJSON)
+			}
+			if verification != testCase.Expected {
 				t.Fatalf("unexpected receipt verification: %#v", verification)
 			}
 		})
 	}
+}
+
+func TestReceiptVectorsSupportTrustedSigners(t *testing.T) {
+	var vectors receiptVectors
+	loadVectorFile(t, filepath.Join(vectorRoot, "receipt", "v1.json"), &vectors)
+	for _, testCase := range vectors.Cases {
+		if testCase.ID != "allow_receipt" {
+			continue
+		}
+		kernelKey, ok := testCase.Receipt["kernel_key"].(string)
+		if !ok {
+			t.Fatalf("allow receipt missing kernel_key")
+		}
+		verification, err := invariants.VerifyReceiptWithTrustedSigners(testCase.Receipt, []string{kernelKey})
+		if err != nil {
+			t.Fatalf("VerifyReceiptWithTrustedSigners returned error: %v", err)
+		}
+		if !verification.SignerTrusted || !verification.Ok || !verification.Authorized {
+			t.Fatalf("trusted signer verification did not authorize: %#v", verification)
+		}
+		return
+	}
+	t.Fatalf("allow_receipt vector not found")
+}
+
+func TestReceiptSemanticsIgnoreLegacyMetadataPayloads(t *testing.T) {
+	var vectors receiptVectors
+	loadVectorFile(t, filepath.Join(vectorRoot, "receipt", "v1.json"), &vectors)
+	for _, testCase := range vectors.Cases {
+		if testCase.ID != "allow_receipt" {
+			continue
+		}
+		receipt := cloneMap(t, testCase.Receipt)
+		receipt["metadata"] = map[string]any{
+			"receipt_semantics": map[string]any{
+				"receiptKind":   "trace_observation",
+				"boundaryClass": "detect_only",
+			},
+		}
+		kernelKey, ok := receipt["kernel_key"].(string)
+		if !ok {
+			t.Fatalf("allow receipt missing kernel_key")
+		}
+		verification, err := invariants.VerifyReceiptWithTrustedSigners(receipt, []string{kernelKey})
+		if err != nil {
+			t.Fatalf("VerifyReceipt returned error: %v", err)
+		}
+		if verification.ReceiptKind != "mediated_decision" || verification.BoundaryClass != "prevent" {
+			t.Fatalf("legacy metadata semantics affected verification: %#v", verification)
+		}
+		if verification.ReceiptIDValid || verification.SignatureValid || verification.Authorized {
+			t.Fatalf("mutated signed metadata unexpectedly remained authoritative: %#v", verification)
+		}
+		return
+	}
+	t.Fatalf("allow_receipt vector not found")
+}
+
+func TestReceiptSignatureValidFailsWhenContentAddressedIDMismatches(t *testing.T) {
+	var vectors receiptVectors
+	loadVectorFile(t, filepath.Join(vectorRoot, "receipt", "v1.json"), &vectors)
+	for _, testCase := range vectors.Cases {
+		if testCase.ID != "allow_receipt" {
+			continue
+		}
+		receipt := cloneMap(t, testCase.Receipt)
+		receipt["id"] = "0000000000000000000000000000000000000000000000000000000000000000"
+		body, err := invariants.ReceiptSigningBodyCanonicalJSON(receipt)
+		if err != nil {
+			t.Fatalf("ReceiptSigningBodyCanonicalJSON returned error: %v", err)
+		}
+		signed, err := invariants.SignJSONStringEd25519(body, vectors.SigningKeySeedHex)
+		if err != nil {
+			t.Fatalf("SignJSONStringEd25519 returned error: %v", err)
+		}
+		receipt["signature"] = signed.SignatureHex
+		verification, err := invariants.VerifyReceipt(receipt)
+		if err != nil {
+			t.Fatalf("VerifyReceipt returned error: %v", err)
+		}
+		if verification.ReceiptIDValid || verification.SignatureValid || verification.Ok {
+			t.Fatalf("mismatched receipt id must invalidate signature status: %#v", verification)
+		}
+		return
+	}
+	t.Fatalf("allow_receipt vector not found")
 }
 
 func TestCapabilityVectors(t *testing.T) {
@@ -234,6 +324,19 @@ func TestManifestVectors(t *testing.T) {
 			}
 		})
 	}
+}
+
+func cloneMap(t *testing.T, input map[string]any) map[string]any {
+	t.Helper()
+	encoded, err := json.Marshal(input)
+	if err != nil {
+		t.Fatalf("failed to marshal clone input: %v", err)
+	}
+	var output map[string]any
+	if err := json.Unmarshal(encoded, &output); err != nil {
+		t.Fatalf("failed to unmarshal clone output: %v", err)
+	}
+	return output
 }
 
 func loadVectorFile(t *testing.T, path string, target any) {

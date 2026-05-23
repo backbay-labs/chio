@@ -1358,6 +1358,6 @@ mod tests {
         assert_eq!(receipt.transport, TransportKind::WebSocket);
         assert_eq!(receipt.event_type, EventType::TextStream);
         assert!(receipt.target.is_some());
-        assert!(receipt.verify().unwrap());
+        assert!(receipt.verify_embedded_signature().unwrap());
     }
 }

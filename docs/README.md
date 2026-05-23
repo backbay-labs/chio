@@ -7,7 +7,10 @@ Entry points and maps for the Chio protocol documentation.
 - [Progressive Tutorial](start-here/PROGRESSIVE_TUTORIAL.md) - walk through Chio from scratch
 - [Native Adoption Guide](start-here/NATIVE_ADOPTION_GUIDE.md) - how to adopt Chio in a production service
 - [Vision](start-here/VISION.md) - what Chio is for and why
-- [Migration Guide (v1 to v2)](start-here/MIGRATION_GUIDE_V2.md) - upgrade path from Chio v1 to v2
+
+## Historical notes
+
+- [Historical v2 Migration Draft](start-here/MIGRATION_GUIDE_V2.md) - archived internal draft notes, not current protocol guidance
 
 ## Reference
 
@@ -50,13 +53,13 @@ Entry points and maps for the Chio protocol documentation.
 
 ## Operations
 
-- [Roadmap](operations/ROADMAP.md) - canonical execution roadmap synthesized from protocol, guard, and research docs
-- [Strategic Roadmap](operations/STRATEGIC_ROADMAP.md) - milestone ladder and launch-hold context
-- [Execution Plan](operations/EXECUTION_PLAN.md) - ordering, parallelism, and sequencing for roadmap delivery
-- [Changelog](operations/CHANGELOG.md) - release notes across Chio versions
+- [Roadmap](operations/ROADMAP.md) - historical execution roadmap, not the current v1 protocol posture
+- [Strategic Roadmap](operations/STRATEGIC_ROADMAP.md) - historical internal milestone narrative
+- [Execution Plan](operations/EXECUTION_PLAN.md) - historical execution sequencing notes
+- [Changelog](operations/CHANGELOG.md) - internal pre-release milestone notes, not public protocol version history
 - [Conformance Harness Plan](operations/CONFORMANCE_HARNESS_PLAN.md) - cross-language conformance plan for JS, Python, and spec fixtures
 - [Distributed Control Plan](operations/DISTRIBUTED_CONTROL_PLAN.md) - shipped shared-control rewrite of the trust-plane architecture
-- [HA Control Auth Plan](operations/HA_CONTROL_AUTH_PLAN.md) - HA replication, shared budget, and hosted auth-server plan
+- [HA Control Auth Plan](operations/HA_CONTROL_AUTH_PLAN.md) - HA replication and shared budget plan; hosted auth-server work remains blocked pending OAuth AS ADR
 - [Bindings Core Plan](operations/BINDINGS_CORE_PLAN.md) - strategy for TypeScript, Python, and Go SDKs without a sprawling ABI
 - [SDK Parity Execution Roadmap](operations/SDK_PARITY_EXECUTION_ROADMAP.md) - short-horizon plan to make multi-language SDK parity real
 

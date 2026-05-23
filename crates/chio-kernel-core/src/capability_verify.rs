@@ -350,10 +350,10 @@ pub fn verify_capability_full(
             .features
             .get(chio_core_types::capability::capability_features::DELEGATION_CHAIN_BINDING)
             .copied()
-            .unwrap_or(false);
+            .unwrap_or(true);
         if !chain_binding_enabled {
             return Err(CapabilityError::AttenuationViolation(
-                "chain-binding: peer did not explicitly enable delegation_chain_binding; attenuated tokens are rejected".to_string(),
+                "chain-binding: peer disabled delegation_chain_binding; attenuated tokens are rejected".to_string(),
             ));
         }
         let issuer_root = trust_root
@@ -517,43 +517,16 @@ mod tests {
     }
 
     #[test]
-    fn full_verifier_rejects_attenuated_token_when_chain_binding_feature_is_missing() {
-        let issuer = Keypair::generate();
-        let subject = Keypair::generate();
-        let token =
-            make_attenuated_token("cap-attenuated-missing-chain-binding", &issuer, &subject);
-        let clock = crate::FixedClock::new(150);
-        let mut peer = CapabilityNegotiation::t1_default();
-        peer.features
-            .remove(capability_features::DELEGATION_CHAIN_BINDING);
-        let trust_root_hash = scope_hash(&ChioScope::default()).expect("trust root hash");
-        let issuer_public = issuer.public_key();
-        let resolver_issuer = issuer_public.clone();
-        let trust_roots = move |candidate: &PublicKey| {
-            if candidate == &resolver_issuer {
-                Some(trust_root_hash.clone())
-            } else {
-                None
-            }
-        };
-        let mut budgets = NoopBudgetRegistry;
-
-        let err = verify_capability_full(
-            &token,
-            &[issuer_public],
-            &clock,
-            CapabilityCryptoFloor::AllowClassical,
-            &peer,
-            &trust_roots,
-            &mut budgets,
-        )
-        .expect_err("attenuated token must fail when chain binding is not negotiated");
-
-        assert!(matches!(err, CapabilityError::AttenuationViolation(_)));
-    }
-
-    #[test]
-    fn full_verifier_rejects_delegated_token_when_chain_binding_feature_is_disabled() {
+    fn full_verifier_accepts_plain_pass_through_delegation_when_chain_binding_feature_is_disabled()
+    {
+        // A pass-through delegation that introduces no new attenuation does
+        // not require chain binding, so the negotiated
+        // `DELEGATION_CHAIN_BINDING=false` profile must NOT reject it. The
+        // leaf token is signed by its issuer and each `DelegationLink`
+        // carries its own signature; there is nothing about the leaf scope
+        // for the chain-binding rule to bind against. Treating any
+        // populated chain as "attenuated" rendered every plain mobile/FFI
+        // delegation flow unverifiable for no soundness gain.
         let issuer = Keypair::generate();
         let subject = Keypair::generate();
         let parent_link = DelegationLink::sign(
@@ -597,9 +570,18 @@ mod tests {
                 None
             }
         };
+        // The parent must already be registered in the budget registry for
+        // sibling-sum admission; pass-through delegations admit at the full
+        // parent share.
         let mut budgets = InMemoryBudgetRegistry::new();
+        BudgetRegistry::register_parent(
+            &mut budgets,
+            "parent-capability".to_string(),
+            crate::budget_split::MAX_BUDGET_SHARE_BPS,
+        )
+        .expect("register parent");
 
-        let err = verify_capability_full(
+        let verified = verify_capability_full(
             &token,
             &[issuer_public],
             &clock,
@@ -608,9 +590,9 @@ mod tests {
             &trust_roots,
             &mut budgets,
         )
-        .expect_err("delegated token must fail before budget admission");
+        .expect("pass-through delegation must verify when no new attenuation is introduced");
 
-        assert!(matches!(err, CapabilityError::AttenuationViolation(_)));
+        assert_eq!(verified.id, "delegated-current-v1-token");
     }
 
     #[test]

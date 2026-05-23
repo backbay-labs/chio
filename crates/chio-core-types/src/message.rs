@@ -138,7 +138,10 @@ mod tests {
         CapabilityToken, CapabilityTokenBody, ChioScope, Operation, ToolGrant,
     };
     use crate::crypto::Keypair;
-    use crate::receipt::{ChioReceipt, ChioReceiptBody, Decision, GuardEvidence, ToolCallAction};
+    use crate::receipt::{
+        BoundaryClass, ChioReceipt, ChioReceiptBody, Decision, GuardEvidence, ReceiptKind,
+        RedactionMode, ToolCallAction, ToolOrigin,
+    };
 
     fn make_token(kp: &Keypair) -> CapabilityToken {
         let body = CapabilityTokenBody {
@@ -173,7 +176,13 @@ mod tests {
             tool_server: "srv".to_string(),
             tool_name: "echo".to_string(),
             action: ToolCallAction::from_parameters(serde_json::json!({"text": "hello"})).unwrap(),
-            decision: Decision::Allow,
+            decision: Some(Decision::Allow),
+            receipt_kind: ReceiptKind::MediatedDecision,
+            boundary_class: BoundaryClass::Prevent,
+            observation_outcome: None,
+            tool_origin: ToolOrigin::CallerExecuted,
+            redaction_mode: RedactionMode::None,
+            actor_chain: Vec::new(),
             content_hash: crate::sha256_hex(br#"{"output":"world"}"#),
             policy_hash: "deadbeef".to_string(),
             evidence: vec![GuardEvidence {

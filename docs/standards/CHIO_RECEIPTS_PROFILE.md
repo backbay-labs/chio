@@ -2,8 +2,8 @@
 
 ## Purpose
 
-This document is the standards-submission draft for Chio receipts as shipped in
-this repository.
+This document is the standards-submission draft for Chio receipts in the
+current pre-release v1 branch.
 
 It defines the interoperable core for signed mediation evidence, not every
 possible deployment, analytics, or compliance extension.
@@ -45,7 +45,13 @@ The receipt envelope is the signed `ChioReceipt` body plus signature:
 - `tool_server`
 - `tool_name`
 - `action`
-- `decision`
+- optional `decision` for mediated decisions only
+- `receipt_kind`
+- `boundary_class`
+- optional `observation_outcome`
+- `tool_origin`
+- `redaction_mode`
+- `actor_chain`
 - `content_hash`
 - `policy_hash`
 - `evidence`
@@ -53,14 +59,20 @@ The receipt envelope is the signed `ChioReceipt` body plus signature:
 - `kernel_key`
 - `signature`
 
-`decision` is one of:
+`decision` is structurally present only for `mediated_decision` receipts at the
+`prevent` boundary. Trace observations and advisory evaluations omit
+`decision` entirely.
+
+When present, `decision` is one of:
 
 - `allow`
 - `deny`
 - `cancelled`
 - `incomplete`
 
-Implementations must preserve those distinct terminal states.
+Implementations must preserve those distinct terminal states. Only
+`mediated_decision` plus `prevent` plus `allow` may be displayed or exported as
+authorization.
 
 ## Security Properties
 
@@ -74,8 +86,8 @@ Implementations must preserve those distinct terminal states.
 ## Compatibility Rules
 
 - additive metadata is allowed
-- unknown top-level receipt fields must not invalidate an otherwise valid
-  signature check if canonical verification succeeds
+- unknown top-level receipt fields are outside the current v1 signed shape and
+  must be rejected unless an explicit public evolution decision adds them
 - unknown checkpoint schema identifiers must be rejected
 - consumers must not reinterpret `cancelled` or `incomplete` as `allow`
 

@@ -1,18 +1,22 @@
-# Chio v2.0 Migration Guide
+# Historical Internal Milestone Migration Draft
 
-This guide covers what changed between Chio v1.0 and v2.0 and how to update
-your deployment and code.
+> Historical internal draft. Chio is pre-release and current Chio-owned
+> protocol, schema, SDK, and runtime surfaces remain v1-only. Do not use this
+> document as current implementation or compatibility guidance.
+
+This archived draft described a pre-release internal milestone transition. It
+does not describe a released protocol migration, and it must not be used as
+current deployment or compatibility guidance.
 
 ---
 
 ## What Changed
 
-Chio v2.0 adds enforcement, compliance, and observability features on top of
-the v1.0 protocol. The core capability model, receipt format, and wire
-protocol are backward-compatible. New fields are optional in all structures.
-No existing API endpoints were removed.
+The internal milestone added enforcement, compliance, and observability ideas
+on top of earlier prototypes. Current Chio remains v1-only and may break
+pre-release artifacts without compatibility shims.
 
-### New in v2.0
+### Internal Milestone Additions
 
 | Feature | Crate | Summary |
 |---------|-------|---------|
@@ -57,14 +61,14 @@ without these fields continue to work exactly as before.
 ### Forward Compatibility
 
 Existing v1.0 capability tokens serialize and deserialize correctly with the
-v2.0 `ToolGrant` type. The new fields are tagged with
+internal milestone `ToolGrant` type. The new fields are tagged with
 `#[serde(default, skip_serializing_if = "Option::is_none")]`, so:
 
-- A v1.0 token deserialized by a v2.0 Kernel has all three new fields as
+- A current-shape token deserialized by the internal milestone Kernel has all three new fields as
   `None` and behaves identically to v1.0.
-- A v2.0 token with monetary fields is rejected by a v1.0 Kernel (unknown
+- An internal milestone token with monetary fields is rejected by an older current-shape Kernel (unknown
   fields trigger a deserialization error depending on serde configuration).
-  Do not issue v2.0 tokens with monetary fields to v1.0 Kernels.
+  Do not use this archived draft as current compatibility guidance.
 
 ---
 

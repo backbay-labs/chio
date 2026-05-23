@@ -4015,6 +4015,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 1.0.69",
+ "tracing",
 ]
 
 [[package]]
@@ -4124,6 +4125,7 @@ version = "0.1.0"
 dependencies = [
  "chio-core-types",
  "chio-egress-contract",
+ "chio-kernel",
  "chio-log-redact",
  "reqwest 0.13.2",
  "rusqlite",

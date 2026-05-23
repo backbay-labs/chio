@@ -6,12 +6,19 @@
  * ChioHttpRequest and returns an EvaluateResponse with a signed receipt.
  */
 
-import { CHIO_ERROR_CODES } from "./types.js";
+import {
+  CHIO_ERROR_CODES,
+  isAllowed,
+  isAuthoritativeVerification,
+  isAuthorizedHttpReceipt,
+  isVerifyReceiptResponse,
+} from "./types.js";
 import type {
   ChioConfig,
   ChioHttpRequest,
   EvaluateResponse,
   HttpReceipt,
+  VerifyReceiptResponse,
   Verdict,
 } from "./types.js";
 
@@ -89,6 +96,9 @@ export class ChioSidecarClient {
       }
 
       const result = (await response.json()) as EvaluateResponse;
+      if (isAllowShapedResult(result)) {
+        await this.assertAuthorizedAllowResult(result);
+      }
       return result;
     } catch (error) {
       if (error instanceof SidecarError) {
@@ -110,10 +120,9 @@ export class ChioSidecarClient {
   }
 
   /**
-   * Verify a receipt signature against the sidecar.
-   * Returns true if the receipt is valid.
+   * Verify a receipt against the sidecar's trusted kernel authority.
    */
-  async verifyReceipt(receipt: HttpReceipt): Promise<boolean> {
+  async verifyReceipt(receipt: HttpReceipt): Promise<VerifyReceiptResponse> {
     const url = `${this.baseUrl}/chio/verify`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
@@ -146,17 +155,12 @@ export class ChioSidecarClient {
           `failed to decode verify response: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
-      if (
-        typeof parsed === "object" &&
-        parsed !== null &&
-        "valid" in parsed &&
-        typeof (parsed as { valid: unknown }).valid === "boolean"
-      ) {
-        return (parsed as { valid: boolean }).valid;
+      if (isVerifyReceiptResponse(parsed)) {
+        return parsed;
       }
       throw new SidecarError(
         CHIO_ERROR_CODES.EVALUATION_FAILED,
-        "sidecar verify response missing boolean `valid` field",
+        "sidecar verify response missing structured authority fields",
       );
     } catch (error) {
       if (error instanceof SidecarError) {
@@ -174,6 +178,23 @@ export class ChioSidecarClient {
       );
     } finally {
       clearTimeout(timer);
+    }
+  }
+
+  private async assertAuthorizedAllowResult(result: EvaluateResponse): Promise<void> {
+    if (!isAllowed(result.verdict) || !isAuthorizedHttpReceipt(result.receipt)) {
+      throw new SidecarError(
+        CHIO_ERROR_CODES.INVALID_RECEIPT,
+        "sidecar returned an allow-shaped response without an authoritative Chio receipt",
+      );
+    }
+
+    const verification = await this.verifyReceipt(result.receipt);
+    if (!isAuthoritativeVerification(verification, result.receipt)) {
+      throw new SidecarError(
+        CHIO_ERROR_CODES.INVALID_RECEIPT,
+        "sidecar returned an unverified allow receipt",
+      );
     }
   }
 
@@ -197,6 +218,10 @@ export class ChioSidecarClient {
       clearTimeout(timer);
     }
   }
+}
+
+function isAllowShapedResult(result: EvaluateResponse): boolean {
+  return isAllowed(result.verdict) || isAllowed(result.receipt.verdict);
 }
 
 function isSidecarTransportFailure(statusCode: number): boolean {

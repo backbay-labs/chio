@@ -84,7 +84,7 @@ public class CallerIdentity
 public class Verdict
 {
     [JsonPropertyName("verdict")]
-    public string VerdictType { get; set; } = "allow";
+    public string VerdictType { get; set; } = "";
 
     [JsonPropertyName("reason")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -148,7 +148,27 @@ public class HttpReceipt
     public string? SessionId { get; set; }
 
     [JsonPropertyName("verdict")]
-    public Verdict Verdict { get; set; } = Verdict.Allow();
+    public Verdict Verdict { get; set; } = new();
+
+    [JsonPropertyName("receipt_kind")]
+    public string ReceiptKind { get; set; } = "";
+
+    [JsonPropertyName("boundary_class")]
+    public string BoundaryClass { get; set; } = "";
+
+    [JsonPropertyName("observation_outcome")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ObservationOutcome { get; set; }
+
+    [JsonPropertyName("tool_origin")]
+    public string ToolOrigin { get; set; } = "";
+
+    [JsonPropertyName("redaction_mode")]
+    public string RedactionMode { get; set; } = "";
+
+    [JsonPropertyName("actor_chain")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<Dictionary<string, object?>>? ActorChain { get; set; }
 
     [JsonPropertyName("evidence")]
     public List<GuardEvidence> Evidence { get; set; } = new();
@@ -165,6 +185,9 @@ public class HttpReceipt
     [JsonPropertyName("policy_hash")]
     public string PolicyHash { get; set; } = "";
 
+    [JsonPropertyName("trust_level")]
+    public string TrustLevel { get; set; } = "";
+
     [JsonPropertyName("capability_id")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? CapabilityId { get; set; }
@@ -178,6 +201,13 @@ public class HttpReceipt
 
     [JsonPropertyName("signature")]
     public string Signature { get; set; } = "";
+
+    public bool IsAuthorized() =>
+        ReceiptKind == "mediated_decision" &&
+        BoundaryClass == "prevent" &&
+        ObservationOutcome is null &&
+        TrustLevel == "mediated" &&
+        Verdict.IsAllowed();
 }
 
 /// <summary>
@@ -233,7 +263,7 @@ public class ChioHttpRequest
 public class EvaluateResponse
 {
     [JsonPropertyName("verdict")]
-    public Verdict Verdict { get; set; } = Verdict.Allow();
+    public Verdict Verdict { get; set; } = new();
 
     [JsonPropertyName("receipt")]
     public HttpReceipt Receipt { get; set; } = new();
@@ -243,7 +273,78 @@ public class EvaluateResponse
 }
 
 /// <summary>
-/// Explicit fail-open degraded state where no Chio receipt exists.
+/// Structured authority result returned by /chio/verify.
+/// </summary>
+public class VerifyReceiptResponse
+{
+    [JsonPropertyName("signature_valid")]
+    public bool SignatureValid { get; set; }
+
+    [JsonPropertyName("signer_trusted")]
+    public bool SignerTrusted { get; set; }
+
+    [JsonPropertyName("receipt_id_valid")]
+    public bool ReceiptIdValid { get; set; }
+
+    [JsonPropertyName("parameter_hash_valid")]
+    public bool ParameterHashValid { get; set; }
+
+    [JsonPropertyName("receipt_kind")]
+    public string ReceiptKind { get; set; } = "";
+
+    [JsonPropertyName("boundary_class")]
+    public string BoundaryClass { get; set; } = "";
+
+    [JsonPropertyName("trust_level")]
+    public string TrustLevel { get; set; } = "";
+
+    [JsonPropertyName("result")]
+    public string Result { get; set; } = "";
+
+    [JsonPropertyName("authorized")]
+    public bool Authorized { get; set; }
+
+    [JsonPropertyName("signer_key_hex")]
+    public string SignerKeyHex { get; set; } = "";
+
+    [JsonPropertyName("ok")]
+    public bool Ok { get; set; }
+
+    public bool Authorizes(HttpReceipt receipt) =>
+        Ok &&
+        Authorized &&
+        SignatureValid &&
+        SignerTrusted &&
+        ReceiptIdValid &&
+        ParameterHashValid &&
+        ReceiptKind == "mediated_decision" &&
+        BoundaryClass == "prevent" &&
+        TrustLevel == "mediated" &&
+        Result == "allow" &&
+        receipt.IsAuthorized() &&
+        IsLowerHex64(receipt.Id) &&
+        IsLowerHex64(receipt.ContentHash) &&
+        !string.IsNullOrWhiteSpace(receipt.Signature);
+
+    private static bool IsLowerHex64(string value)
+    {
+        if (value.Length != 64)
+        {
+            return false;
+        }
+        foreach (var ch in value)
+        {
+            if (!((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f')))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+}
+
+/// <summary>
+/// Legacy degraded state marker. Current v1 middleware always fails closed.
 /// </summary>
 public class ChioPassthrough
 {

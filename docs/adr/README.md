@@ -1,11 +1,14 @@
 # Architecture Decision Records
 
-These ADRs capture the blocking design decisions called out in [../EXECUTION_PLAN.md](../EXECUTION_PLAN.md).
+These ADRs capture the blocking design decisions called out in
+[../operations/EXECUTION_PLAN.md](../operations/EXECUTION_PLAN.md) and the
+current v1 protocol strategy review.
 
 Status legend:
 
 - `Proposed`: recommended, ready for implementation unless new evidence appears
 - `Accepted`: explicitly ratified and treated as baseline
+- `Implemented`: accepted and already reflected in the implementation
 - `Superseded`: replaced by a later ADR
 
 Current ADR set:

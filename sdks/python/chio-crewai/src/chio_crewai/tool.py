@@ -177,15 +177,20 @@ class ChioBaseTool(BaseTool):
         self._last_receipt = receipt
         self.last_receipt = receipt
 
-        if receipt.is_denied:
+        if not receipt.is_allowed:
+            decision = receipt.decision
             raise ChioToolError(
-                receipt.decision.reason or "denied by Chio kernel",
+                decision.reason
+                if decision is not None and decision.reason is not None
+                else "non-authorizing Chio receipt",
                 tool_name=self.name,
                 server_id=self.server_id,
-                guard=receipt.decision.guard,
-                reason=receipt.decision.reason,
+                guard=decision.guard if decision is not None else None,
+                reason=decision.reason if decision is not None else None,
                 receipt_id=receipt.id,
-                decision=receipt.decision.model_dump(exclude_none=True),
+                decision=decision.model_dump(exclude_none=True)
+                if decision is not None
+                else None,
             )
 
         return await self._invoke_executor(kwargs)

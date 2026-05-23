@@ -15,7 +15,7 @@ shape, not a new manifest-generation rollout.
 
 ## Decision
 
-There is no manifest schema-ceiling field or legacy compatibility path before
+There is no manifest schema limit field or legacy compatibility path before
 release. All Chio-owned runtime, schema, SDK, and docs surfaces expose the
 current v1 manifest shape only. A peer that cannot validate the current
 manifest semantics must fail closed.

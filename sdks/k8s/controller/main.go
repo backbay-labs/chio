@@ -119,21 +119,22 @@ func validatePod(req AdmissionRequest) AdmissionResponse {
 
 	annotations := pod.Metadata.Annotations
 
-	// Check for required Chio capability token annotation.
 	capToken := annotations[AnnotationCapabilityToken]
 	if capToken == "" {
-		// Check if this namespace has an ChioPolicy that exempts this pod.
-		if annotations[AnnotationExempt] == "true" {
-			return allowResponse("pod is exempt from Chio capability requirement")
-		}
 		return denyResponse(
 			"pod missing required annotation " + AnnotationCapabilityToken +
-				"; provide a valid Chio capability token or set " +
-				AnnotationExempt + ": \"true\" to exempt",
+				"; provide a valid Chio capability token issued by a configured trusted issuer",
 		)
 	}
 
-	requiredScopes, err := parseRequiredScopes(annotations[AnnotationRequiredScopes])
+	if annotations[AnnotationRequiredScopes] != "" {
+		return denyResponse(
+			"pod-supplied required scopes are not trusted; configure " + envRequiredScopes +
+				" on the admission controller",
+		)
+	}
+
+	requiredScopes, err := loadRequiredScopesFromEnv()
 	if err != nil {
 		return denyResponse(err.Error())
 	}

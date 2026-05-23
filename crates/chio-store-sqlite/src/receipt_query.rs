@@ -62,7 +62,13 @@ mod tests {
                 tool_server: tool_server.to_string(),
                 tool_name: tool_name.to_string(),
                 action: valid_tool_action(serde_json::json!({})),
-                decision,
+                decision: Some(decision),
+                receipt_kind: chio_core::ReceiptKind::MediatedDecision,
+                boundary_class: chio_core::BoundaryClass::Prevent,
+                observation_outcome: None,
+                tool_origin: chio_core::ToolOrigin::CallerExecuted,
+                redaction_mode: chio_core::RedactionMode::None,
+                actor_chain: Vec::new(),
                 content_hash: "content-hash".to_string(),
                 policy_hash: "policy-hash".to_string(),
                 evidence: Vec::new(),
@@ -132,6 +138,7 @@ mod tests {
         let result = store
             .query_receipts(&ReceiptQuery {
                 limit: 10,
+                read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
                 ..Default::default()
             })
             .unwrap();
@@ -190,6 +197,7 @@ mod tests {
             .query_receipts(&ReceiptQuery {
                 capability_id: Some("cap-A".to_string()),
                 limit: 10,
+                read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
                 ..Default::default()
             })
             .unwrap();
@@ -246,6 +254,7 @@ mod tests {
             .query_receipts(&ReceiptQuery {
                 tool_server: Some("shell".to_string()),
                 limit: 10,
+                read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
                 ..Default::default()
             })
             .unwrap();
@@ -302,6 +311,7 @@ mod tests {
             .query_receipts(&ReceiptQuery {
                 tool_name: Some("bash".to_string()),
                 limit: 10,
+                read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
                 ..Default::default()
             })
             .unwrap();
@@ -361,6 +371,7 @@ mod tests {
             .query_receipts(&ReceiptQuery {
                 outcome: Some("allow".to_string()),
                 limit: 10,
+                read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
                 ..Default::default()
             })
             .unwrap();
@@ -417,6 +428,7 @@ mod tests {
             .query_receipts(&ReceiptQuery {
                 since: Some(200),
                 limit: 10,
+                read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
                 ..Default::default()
             })
             .unwrap();
@@ -477,6 +489,7 @@ mod tests {
             .query_receipts(&ReceiptQuery {
                 until: Some(200),
                 limit: 10,
+                read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
                 ..Default::default()
             })
             .unwrap();
@@ -549,6 +562,7 @@ mod tests {
                 since: Some(200),
                 until: Some(300),
                 limit: 10,
+                read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
                 ..Default::default()
             })
             .unwrap();
@@ -608,6 +622,7 @@ mod tests {
             .query_receipts(&ReceiptQuery {
                 min_cost: Some(100),
                 limit: 10,
+                read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
                 ..Default::default()
             })
             .unwrap();
@@ -669,6 +684,7 @@ mod tests {
             .query_receipts(&ReceiptQuery {
                 max_cost: Some(100),
                 limit: 10,
+                read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
                 ..Default::default()
             })
             .unwrap();
@@ -739,6 +755,7 @@ mod tests {
                 min_cost: Some(75),
                 max_cost: Some(150),
                 limit: 10,
+                read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
                 ..Default::default()
             })
             .unwrap();
@@ -777,6 +794,7 @@ mod tests {
             .query_receipts(&ReceiptQuery {
                 cursor: None,
                 limit: 2,
+                read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
                 ..Default::default()
             })
             .unwrap();
@@ -789,6 +807,7 @@ mod tests {
             .query_receipts(&ReceiptQuery {
                 cursor: Some(cursor),
                 limit: 2,
+                read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
                 ..Default::default()
             })
             .unwrap();
@@ -833,6 +852,7 @@ mod tests {
                 .query_receipts(&ReceiptQuery {
                     cursor,
                     limit: 3,
+                    read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
                     ..Default::default()
                 })
                 .unwrap();
@@ -882,6 +902,7 @@ mod tests {
         let result = store
             .query_receipts(&ReceiptQuery {
                 limit: 3,
+                read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
                 ..Default::default()
             })
             .unwrap();
@@ -918,6 +939,7 @@ mod tests {
         let result = store
             .query_receipts(&ReceiptQuery {
                 limit: 5,
+                read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
                 ..Default::default()
             })
             .unwrap();
@@ -954,6 +976,7 @@ mod tests {
         let result = store
             .query_receipts(&ReceiptQuery {
                 limit: 3,
+                read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
                 ..Default::default()
             })
             .unwrap();
@@ -990,6 +1013,7 @@ mod tests {
         let result = store
             .query_receipts(&ReceiptQuery {
                 limit: MAX_QUERY_LIMIT + 100,
+                read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
                 ..Default::default()
             })
             .unwrap();
@@ -1093,6 +1117,7 @@ mod tests {
             .query_receipts(&ReceiptQuery {
                 agent_subject: Some(agent1_key),
                 limit: 10,
+                read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
                 ..Default::default()
             })
             .unwrap();
@@ -1195,6 +1220,7 @@ mod tests {
             .query_receipts(&ReceiptQuery {
                 agent_subject: None,
                 limit: 10,
+                read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
                 ..Default::default()
             })
             .unwrap();
@@ -1231,6 +1257,7 @@ mod tests {
             .query_receipts(&ReceiptQuery {
                 agent_subject: Some("deadbeef".to_string()),
                 limit: 10,
+                read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
                 ..Default::default()
             })
             .unwrap();
@@ -1312,6 +1339,7 @@ mod tests {
                 agent_subject: Some(agent_key),
                 outcome: Some("allow".to_string()),
                 limit: 10,
+                read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
                 ..Default::default()
             })
             .unwrap();
@@ -1393,6 +1421,7 @@ mod tests {
                     agent_subject: Some(agent_key.clone()),
                     cursor,
                     limit: 3,
+                    read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
                     ..Default::default()
                 })
                 .unwrap();
@@ -1446,6 +1475,7 @@ mod tests {
             .query_receipts(&ReceiptQuery {
                 cursor: Some(u64::MAX),
                 limit: 10,
+                read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
                 ..Default::default()
             })
             .unwrap();
@@ -1538,6 +1568,7 @@ mod tests {
                 outcome: Some("allow".to_string()),
                 since: Some(150),
                 limit: 10,
+                read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
                 ..Default::default()
             })
             .unwrap();

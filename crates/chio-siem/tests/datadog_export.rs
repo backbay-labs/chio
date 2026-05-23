@@ -22,7 +22,13 @@ fn allow_receipt(id: &str) -> ChioReceipt {
             tool_server: "shell".to_string(),
             tool_name: "bash".to_string(),
             action,
-            decision: Decision::Allow,
+            decision: Some(Decision::Allow),
+            receipt_kind: chio_core::ReceiptKind::MediatedDecision,
+            boundary_class: chio_core::BoundaryClass::Prevent,
+            observation_outcome: None,
+            tool_origin: chio_core::ToolOrigin::CallerExecuted,
+            redaction_mode: chio_core::RedactionMode::None,
+            actor_chain: Vec::new(),
             content_hash: "c1".to_string(),
             policy_hash: "p1".to_string(),
             evidence: Vec::new(),
@@ -48,10 +54,16 @@ fn deny_receipt(id: &str, guard: &str) -> ChioReceipt {
             tool_server: "shell".to_string(),
             tool_name: "bash".to_string(),
             action,
-            decision: Decision::Deny {
+            decision: Some(Decision::Deny {
                 reason: "file not permitted".to_string(),
                 guard: guard.to_string(),
-            },
+            }),
+            receipt_kind: chio_core::ReceiptKind::MediatedDecision,
+            boundary_class: chio_core::BoundaryClass::Prevent,
+            observation_outcome: None,
+            tool_origin: chio_core::ToolOrigin::CallerExecuted,
+            redaction_mode: chio_core::RedactionMode::None,
+            actor_chain: Vec::new(),
             content_hash: "c2".to_string(),
             policy_hash: "p2".to_string(),
             evidence: vec![GuardEvidence {
@@ -129,10 +141,20 @@ async fn datadog_posts_log_array_with_api_key_header() {
         .get("ddtags")
         .and_then(|v| v.as_str())
         .expect("ddtags str");
-    assert!(tags1.contains("outcome:deny"));
+    assert!(tags1.contains("outcome:mediated_decision"));
+    assert!(tags1.contains("receipt_kind:mediated_decision"));
+    assert!(tags1.contains("boundary_class:prevent"));
     assert!(tags1.contains("severity:high"));
     assert!(tags1.contains("guard:ForbiddenPathGuard"));
     assert!(tags1.contains("evidence_guard:ForbiddenPathGuard"));
+    assert_eq!(
+        arr[1].get("result").and_then(|v| v.as_str()),
+        Some("Denied")
+    );
+    assert_eq!(
+        arr[1].get("authorized").and_then(|v| v.as_bool()),
+        Some(false)
+    );
 }
 
 #[tokio::test]

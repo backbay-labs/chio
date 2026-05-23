@@ -12,7 +12,7 @@ Output: docs `07-` through `16-` on `research/protocol-strategy-2026`. Wave 1 do
 > - AGNTCY ACP is dead. `agntcy/acp-spec` was archived 2026-04-11 (the date doc 08 cited was the *archival* date, not a stabilization freeze). The bridge plan in Wave C is struck; only the consume-only `chio-directory` integration survives. See [17-agntcy-revisited.md](17-agntcy-revisited.md).
 > - The n8n priority-1 framing here originally referenced the Talos 686% abuse spike, which is **Chain D** (NOT blocked by Chio). The actually-blocked attack is **Chain C** (prompt-injection agent-to-webhook). See [11-n8n-threat-mapping.md](11-n8n-threat-mapping.md).
 > - Bench-stub coverage is broader than originally reported: not 4 stubs, but **11+** ([reviews/04-receipts-kernel-latency-review.md](reviews/04-receipts-kernel-latency-review.md)). Doc 16's `responses.rs:1506` citation is also a wrong file path; the function lives at `crates/chio-kernel/src/kernel/responses.rs:1459-1517`.
-> - Canonical type forms: `policy_hash` / `policy_digest` is hex `String` (matches existing code, RFC 8785 friendly); ADR-0010 folds `tool_origin` (`CallerExecuted | HostExecutedProviderReported | HostExecutedUnmediated`) and `redaction_mode` into the current v1 receipt shape as separate signed fields; `human_principal` is the typed enum on `CallerIdentity` (doc 14) referenced by the receipt extension (doc 15), not duplicated.
+> - Canonical type forms: the current signed receipt field is `policy_hash`, encoded as a hex or operator-pinned `String` (matches existing code, RFC 8785 friendly). Historical `policy_digest` references are per-engine digest sketches, not a current core receipt field. ADR-0010 folds `tool_origin` (`CallerExecuted | HostExecutedProviderReported | HostExecutedUnmediated`) and `redaction_mode` into the current v1 receipt shape as separate signed fields; `human_principal` is the typed enum on `CallerIdentity` (doc 14) referenced by historical extension sketches, not duplicated.
 > - `ActorRef` (the actor-chain element type formerly planned as a later receipt schema field) needs a concrete definition stub before receipt-kind work begins. Captured in doc 15.
 > - Follow-up grounding corrections from PR 652 review: doc 05's `policy_version` / `manifest_id` receipt fields and `args_schema` examples are design intent, not current code; doc 09's event-action plan is folded into current v1 manifest planning, not a new manifest-generation rollout.
 
@@ -20,7 +20,7 @@ Output: docs `07-` through `16-` on `research/protocol-strategy-2026`. Wave 1 do
 
 Two findings change the immediate priorities:
 
-1. **Every per-stage kernel bench is a `black_box(0_u64)` stub.** ([X2](16-latency-budget-audit.md), with wave-3 verification at [reviews/04](reviews/04-receipts-kernel-latency-review.md) expanding the list to 11+: `single_guard`, `cap_verify_ed25519`, `receipt_sign`, `guard_pipeline_5`, `scope_match`, `time_bound`, `revocation_lookup`, `budget_decrement`, `receipt_append`, `session_lookup`, `dispatch_deny`.) CI runs them at [`.github/workflows/bench-regression.yml:101-108`](../../../.github/workflows/bench-regression.yml#L101) without `required-features` gating, so PR regression checks are comparing stub-vs-stub for 10+ primitives. All wave-1 and wave-2 latency claims are currently unverifiable. **Fixing this is the highest-leverage first task in the build queue.**
+1. **Per-stage kernel benches were `black_box(0_u64)` stubs (resolved).** ([X2](16-latency-budget-audit.md), with wave-3 verification at [reviews/04](reviews/04-receipts-kernel-latency-review.md) expanding the list to 11+: `single_guard`, `cap_verify_ed25519`, `receipt_sign`, `guard_pipeline_5`, `scope_match`, `time_bound`, `revocation_lookup`, `budget_decrement`, `receipt_append`, `session_lookup`, `dispatch_deny`.) CI runs them at [`.github/workflows/bench-regression.yml:101-108`](../../../.github/workflows/bench-regression.yml#L101). The bench bodies now drive real dispatch through `dispatch_request_fixture` rather than constants, so wave-1 and wave-2 latency claims can be re-measured against the current bench tree.
 2. **`tool_origin` is a current v1 receipt field, separate from redaction.** It surfaced independently in E1 (OpenAI built-in tools) and E2 (Bedrock Lambda action groups). PR 652 review tightened the rule: execution origin and redaction stay orthogonal. The planning default is `CallerExecuted | HostExecutedProviderReported | HostExecutedUnmediated` plus a separate redaction mode.
 
 Everything else is incremental but coherent: Cedar, OpenAI Responses, Bedrock Agents, voice (LiveKit-first) all fit. AGNTCY ACP is dead but AGNTCY Directory + Identity consumption survives. n8n priority restricted to Chain C. OAuth AS stays live but blocked for product work until a dedicated ADR or equivalent decision note is accepted.
@@ -34,23 +34,23 @@ Everything else is incremental but coherent: Cedar, OpenAI Responses, Bedrock Ag
 | [09](09-event-action-schema.md) | R3 Event actions | Unified `EventDestination` / `EventSource` with `BrokerKind` enum, not per-broker variants. | Fold into current `chio.manifest.v1` planning once the receipt/read-boundary gates exist. No manifest-generation bump before release. |
 | [10](10-cedar-first-guard.md) | R4 Cedar first-guard | `McpToolGuard` ([`chio-guards/src/mcp_tool.rs`](../../../crates/chio-guards/src/mcp_tool.rs), 429 LOC) is the right port. Only ~6 of ~30 guards are pure list-and-branch; the rest are journal-stateful or ML/heuristic. | **Option A': greenfield + two flagship ports** (`McpToolGuard` and `EgressAllowlistGuard`). Not full migration. |
 | [11](11-n8n-threat-mapping.md) | R5 n8n threat map | Priority-1 is **partially justified**. Chio blocks Chain C (prompt-injection webhook exfil) cleanly; does NOT block Chain D (the 686% ingress-abuse spike, which is below Chio's layer). | Keep n8n in the priority list; restrict the value-prop framing to Chain C. |
-| [12](12-openai-responses-adapter.md) | E1 OpenAI Responses | New crate `chio-openai-responses-adapter`. **MVP: caller-executed `function` tools only over streaming SSE on non-reasoning models.** Refuses built-in-tool or reasoning requests. | Needs `tool_origin` execution-locus semantics plus an API refresh against official Responses docs before codegen. |
+| [12](12-openai-responses-adapter.md) | E1 OpenAI Responses | Future adapter research only. **Potential MVP: caller-executed `function` tools only over streaming SSE on non-reasoning models.** Refuses built-in-tool or reasoning requests. | Blocked until v1 receipt/read-boundary gates land, then needs an API refresh against official Responses docs before ticketing or codegen. |
 | [13](13-bedrock-agents-bridge.md) | E2 Bedrock Agents | New crate `chio-bedrock-agents-adapter`. **MVP: RETURN_CONTROL action groups full mediation**, Lambda actions receipt-logged only (AWS trust boundary). | Trace redaction default: `summary` (salted SHA-256 hashes preserving structural metadata). Opt-in `redacted` and `full` (full gated by separate IAM scope). |
-| [14](14-voice-agent-bridges.md) | E3 Voice agents | **MVP: `chio-livekit-py` Python middleware** (`@chio_function_tool` decorator wrapping LiveKit's `@function_tool`). Pipecat FrameProcessor second; paired Vapi+Retell HTTP shim third. Signing fits the budget; **durability writes (5-50ms) are the limiter**. | Sign synchronously, WAL-fsync before ack, then drain asynchronously with fail-closed bounded queue and sequence-numbered receipts. Needs current v1 async durability state (coordinate with X1). |
-| [15](15-receipt-kind-v1.md) | X1 Current v1 receipt-kind semantics | **Option D (hybrid candidate), folded into unreleased v1.** Promote a small core field set and route bridge / engine / surface-specific payloads through typed extensions. | Implement through ADR-0010: separate `tool_origin` and redaction, signed extension handling, `must_understand`, and hex `String` encoding for `policy_digest`. No receipt-generation bump before release. |
-| [16](16-latency-budget-audit.md) | X2 Latency audit | Estimated median verdict latency: **~2-4ms Ed25519-only, ~6-10ms hybrid**. Voice sub-200ms is **conditional**: yes with Ed25519 + in-process guards + async receipt write + per-bridge fast paths; no with hybrid + remote guards + sync SQLite. | Land bench stub bodies (urgent: 11+ stubs, not 4). Parallelize hybrid signing (~50-100us savings). HTTP path does 3 signatures + 1 verify per request: voice fast-path should skip outer sign. |
+| [14](14-voice-agent-bridges.md) | E3 Voice agents | **MVP: `chio-livekit-py` Python middleware** (`@chio_function_tool` decorator wrapping LiveKit's `@function_tool`). Pipecat FrameProcessor second; paired Vapi+Retell HTTP shim third. Signing fits the budget; **durability writes (5-50ms) are the limiter**. | Sign synchronously, write asynchronously, fail-closed bounded queue, sequence-numbered receipts. Needs current v1 async durability state (coordinate with X1). |
+| [15](15-receipt-kind-v1.md) | X1 Current v1 receipt-kind semantics | **Option D core fields, folded into unreleased v1.** Promote the security-critical semantic fields into the signed receipt body. | Implement through ADR-0010: separate `tool_origin` and redaction, structural receipt kinds, and current `policy_hash` encoding. Extension signing, `must_understand`, and extension hashes are deferred until a separate accepted extension-binding design lands. No receipt-generation bump before release. |
+| [16](16-latency-budget-audit.md) | X2 Latency audit | Estimated median verdict latency: **~2-4ms Ed25519-only, ~6-10ms hybrid**. Voice sub-200ms is **conditional**: yes with Ed25519 + in-process guards + async receipt write + per-bridge fast paths; no with hybrid + remote guards + sync SQLite. | Bench stub bodies replaced with real dispatch (resolved). Parallelize hybrid signing (~50-100us savings). HTTP path does 3 signatures + 1 verify per request: voice fast-path should skip outer sign. |
 
 ## Cross-cutting threads that emerged
 
 1. **`tool_origin` belongs on the current v1 receipt body, but redaction is orthogonal.** E1 and E2 both need execution-locus provenance. The planning default is `CallerExecuted | HostExecutedProviderReported | HostExecutedUnmediated`; Bedrock trace redaction is represented by a separate signed `redaction_mode` / `trace_redaction_mode`, not a fourth origin variant.
 
-2. **Async receipt write + sequence numbering is now load-bearing for voice.** E3 needs it; async durability must be WAL-backed before ack, with a fail-closed bounded queue and replayable sequence gaps. Do not frame this as bounded-loss-only durability. This needs a coordinated design across X1, X2, and E3 before E3 starts.
+2. **Async receipt write + sequence numbering is now load-bearing for voice.** E3 needs it; X1's extensions map can hold a `deferred_durability` flag with a bounded-loss SLO. This needs a coordinated design across X1, X2, and E3 before E3 starts.
 
-3. **Cedar looks plausible for selected guards, but latency is not proven.** R4 + X2 reconciliation estimated ~150us with entity cache, which would fit normal tiers if real workloads confirm it. The current bench stubs mean this is not yet a claim. Voice-tier planning still needs a **policy tier classification on guards**: voice-tier guards must declare in-process + async-durability.
+3. **Cedar looks plausible for selected guards, but latency is not proven.** R4 + X2 reconciliation estimated ~150us with entity cache, which would fit normal tiers if real workloads confirm it. The earlier bench-stub gap is resolved, so this can now be measured rather than asserted; voice-tier planning still needs a **policy tier classification on guards**: voice-tier guards must declare in-process + async-durability.
 
 4. **Double-gating is functionally free.** [`HttpEgressContract::enforce_url`](../../../crates/chio-egress-contract/src/lib.rs) is pure-Rust URL parse + allowlist (20-80us). Doc 05's double-gating recommendation stands without latency caveat.
 
-5. **Four new crates proposed** + one blocked existing-surface follow-up: `chio-directory` (consume-only), `chio-bedrock-agents-adapter`, `chio-openai-responses-adapter`, `chio-livekit-py`, plus a future OAuth AS posture ticket only after its ADR or equivalent decision note is accepted. The previously-counted `chio-bridge-agntcy` has been struck (see erratum block). Coherent footprint, no overlap. The `chio-bridge-*` prefix is not a workspace convention; existing pattern is `-edge` (expose) / `-adapter` (consume) / `-proxy` (variant).
+5. **Future crate sketches, not shipped surfaces** + one blocked existing-surface follow-up: `chio-directory` (consume-only), `chio-bedrock-agents-adapter`, a future OpenAI function-tools adapter name TBD, `chio-livekit-py`, plus a future OAuth AS posture ticket only after its ADR or equivalent decision note is accepted. The previously-counted `chio-bridge-agntcy` has been struck (see erratum block). Coherent footprint, no overlap. The `chio-bridge-*` prefix is not a workspace convention; existing pattern is `-edge` (expose) / `-adapter` (consume) / `-proxy` (variant).
 
 ## Naming-collision warning
 
@@ -72,11 +72,12 @@ or equivalent decision note is accepted.
 
 ### Wave A: foundation (close gaps, unblock everything else)
 
-- **Land real bench bodies in CI.** Drop `black_box(0_u64)` for the 11 stubs enumerated in TL;DR finding 1. Without this, the rest of Wave A and B is unmeasurable. Also gate benches with `required-features` per bench file. **Highest priority.** ([16](16-latency-budget-audit.md), [reviews/04](reviews/04-receipts-kernel-latency-review.md))
+- **Real bench bodies landed in CI (resolved).** The 11 per-stage kernel benches enumerated in TL;DR finding 1 now drive real dispatch through `dispatch_request_fixture` rather than `black_box(0_u64)`; the remaining work in this area is gating benches with `required-features` per bench file. ([16](16-latency-budget-audit.md), [reviews/04](reviews/04-receipts-kernel-latency-review.md))
 - **Current v1 receipt-kind semantic gate**: implement the accepted ADR-0010 decisions for
   `receipt_kind`, `boundary_class`, verifier behavior, `tool_origin`,
-  redaction, `ActorRef`, hex `policy_digest`, extension signing, and
-  `must_understand`. ([15](15-receipt-kind-v1.md), [18](18-decision-packet.md))
+  redaction, `ActorRef`, and current `policy_hash` handling. Extension
+  signing, extension hashes, and `must_understand` remain deferred until a
+  separate extension-binding ADR lands. ([15](15-receipt-kind-v1.md), [18](18-decision-packet.md))
 - **`EventPublish` / `EventConsume` ToolAction variants** in the current
   `chio.manifest.v1` planning shape, following the accepted ADR-0012 broker
   identity decisions. ([09](09-event-action-schema.md))
@@ -99,7 +100,7 @@ or equivalent decision note is accepted.
 
 ### Wave B: high-ROI new bridges
 
-- **`chio-openai-responses-adapter`**: function-tools-only MVP, refuses built-in / reasoning at boundary. ([12](12-openai-responses-adapter.md))
+- **Future OpenAI function-tools adapter**: function-tools-only MVP, refuses built-in / reasoning at boundary; blocked until v1 receipt/read-boundary gates and official-doc refresh. ([12](12-openai-responses-adapter.md))
 - **`chio-bedrock-agents-adapter`**: RETURN_CONTROL mediation, summary redaction default. ([13](13-bedrock-agents-bridge.md))
 - **Cedar `PolicyEngineProvider`** + port `McpToolGuard` + `EgressAllowlistGuard` as flagship references. ([10](10-cedar-first-guard.md))
 - **n8n orchestrator-egress, Chain C only**: prompt-injection agent-to-webhook exfiltration is the value-prop; do NOT cite the Talos 686% spike (Chain D is below Chio's layer). ([11](11-n8n-threat-mapping.md))
@@ -107,7 +108,7 @@ or equivalent decision note is accepted.
 ### Wave C: strategic expansions
 
 - **`chio-directory`** (consume-only): `DirectoryProvider` trait + `StaticAgntcyDirectoryProvider`. Read-only AGNTCY Directory + Identity consumption, mirroring Webex's production pattern. NO `chio-bridge-agntcy` (ACP is archived). ([17](17-agntcy-revisited.md))
-- **`chio-livekit-py`**: voice mediation, paired with WAL-backed async receipt write, sequence numbering, fail-closed queue saturation, and replayable gap detection. ([14](14-voice-agent-bridges.md))
+- **`chio-livekit-py`**: voice mediation, paired with async receipt write + sequence numbering + bounded-loss SLO. ([14](14-voice-agent-bridges.md))
 - **Per-bridge fast paths + voice-tier policy classification**: voice fast-path skips outer signature; voice-tier guards declare in-process. ([14](14-voice-agent-bridges.md), [16](16-latency-budget-audit.md))
 
 ### Wave D: defer
@@ -122,12 +123,14 @@ or equivalent decision note is accepted.
 ## Open questions
 
 1. **Voice-tier policy classification**: should guards declare a tier (`voice` | `standard` | `batch`) and the kernel refuse to compose incompatible chains? Decide before E3 lands.
-2. **`must_understand` extension registry**: who owns it? Probably `spec/PROTOCOL.md` plus a registry doc; needs a current v1 governance answer.
+2. **Extension-binding ADR**: define whether `must_understand`, extension
+   hashes, or inline extension signing belong in a future current-v1 update.
+   They are not current signed receipt fields.
 3. **AGNTCY Directory + Identity consumption details**: what's the production wire format Webex uses? Replaces the prior "zero-securitySchemes" question, which was specific to the now-dead ACP. See [17](17-agntcy-revisited.md).
-4. **Async receipt write WAL profile**: what is the per-tier fsync and replay budget, and which queues must deny on saturation?
-5. **Bench baseline citation policy**: after the bench-stub PR lands, latency
-   claims must cite the exact bench commit, feature set, and command that
-   produced the numbers.
+4. **Async receipt write bounded-loss SLO**: what's acceptable? 1 receipt per 10^6? Per-bridge or per-tier?
+5. **Bench baseline citation policy** (in force, post-bench-stub remediation):
+   latency claims must cite the exact bench commit, feature set, and command
+   that produced the numbers.
 
 ## Files
 

@@ -100,7 +100,10 @@ reconstruct the responsibility chain for any receipt:
 ### 3.3 Compliance value
 
 Because each receipt is individually signed and canonically serialized, a
-receipt database is by construction an append-only ledger. A compliance
+receipt database backed by the Chio SQLite store enforces append-only
+semantics through `BEFORE UPDATE` / `BEFORE DELETE` triggers on the receipt
+and checkpoint tables; equivalent guarantees on other backends depend on
+the operator wiring equivalent immutability controls. A compliance
 reviewer can:
 
 - Replay every signature offline with the issuer's public key.
@@ -109,10 +112,12 @@ reviewer can:
 - Export a verifiable package (see `chio evidence export`) that a partner can
   independently re-verify.
 
-Query receipts:
+Query receipts (local mode requires an explicit read boundary; pass
+`--tenant <id>` to scope to one tenant or `--admin-all` for a documented
+cross-tenant operator read):
 
 ```
-chio receipt list --capability <cap-id> --tool-server <server-id> \
+chio receipt list --tenant <tenant-id> --capability <cap-id> --tool-server <server-id> \
   --since <unix-ts> --until <unix-ts> --min-cost <minor-units>
 ```
 
@@ -508,10 +513,11 @@ evidence so that partner reviews never lose the verifiable substrate.
 2. Issue capabilities with `ToolGrant.max_total_cost` set.
 3. Ensure tool servers report cost per invocation (see
    `docs/TOOL_PRICING_GUIDE.md`).
-4. Query cumulative cost:
+4. Query cumulative cost (local mode requires `--tenant <id>` or
+   `--admin-all`):
 
 ```
-chio receipt list --capability <cap-id> --min-cost 0
+chio receipt list --tenant <tenant-id> --capability <cap-id> --min-cost 0
 ```
 
 Pipe the JSON-Lines output into any analytics pipeline.

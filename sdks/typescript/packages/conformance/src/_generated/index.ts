@@ -3,7 +3,7 @@
 // Source:     spec/schemas/chio-wire/v1/**/*.schema.json
 // Tool:       json-schema-to-typescript 15.0.4 (see xtask/codegen-tools.lock.toml)
 // Pin file:   sdks/typescript/scripts/package.json
-// Schema SHA: 22603208e9b3babb9f9b90034a91a5aacff34316d19962180ad18235fa5da9de
+// Schema SHA: f708700488c7ed8c88d37cfbd10ba1d687fc194f48b732bf6de844d7f3192c83
 //
 // The schema-sha above is sha256 of `<rel-path>\0<bytes>\0` for every
 // schema in lex order. It changes whenever any schema under
@@ -847,44 +847,7 @@ export namespace Kernel_ToolCallResponse {
                 detail: string;
               };
         };
-    receipt: {
-      id: string;
-      timestamp: number;
-      capability_id: string;
-      tool_server: string;
-      tool_name: string;
-      action: {
-        parameters: unknown;
-        parameter_hash: string;
-      };
-      decision:
-        | {
-            verdict: "allow";
-          }
-        | {
-            verdict: "deny";
-            reason: string;
-            guard: string;
-          }
-        | {
-            verdict: "cancelled";
-            reason: string;
-          }
-        | {
-            verdict: "incomplete";
-            reason: string;
-          };
-      content_hash: string;
-      policy_hash: string;
-      evidence?: {
-        guard_name: string;
-        verdict: boolean;
-        details?: string;
-      }[];
-      metadata?: unknown;
-      kernel_key: string;
-      signature: string;
-    };
+    receipt: Receipt_Record.ChioReceiptRecord;
   }
 }
 
@@ -1281,7 +1244,31 @@ export namespace Receipt_Record {
      */
     tool_name: string;
     action: ToolCallAction;
-    decision: Decision;
+    decision?: Decision;
+    /**
+     * Signed semantic class for this v1 receipt.
+     */
+    receipt_kind: "mediated_decision" | "trace_observation" | "advisory_evaluation";
+    /**
+     * Signed runtime boundary class. `cannot_see` is planning metadata only and is not valid on signed runtime receipts.
+     */
+    boundary_class: "prevent" | "detect_only" | "advisory_only";
+    /**
+     * Signed outcome for trace and advisory records. Omitted for mediated decisions.
+     */
+    observation_outcome?: "observed" | "evaluated" | "dropped";
+    /**
+     * Signed classification of where the tool effect executed relative to Chio.
+     */
+    tool_origin: "caller_executed" | "host_executed_provider_reported" | "host_executed_unmediated";
+    /**
+     * Signed redaction mode applied to receipt details.
+     */
+    redaction_mode: "none" | "summary" | "redacted";
+    /**
+     * Signed actor attribution chain. Omitted from the wire when empty.
+     */
+    actor_chain?: ActorRef[];
     /**
      * SHA-256 hex hash of the evaluated content for this receipt.
      */
@@ -1301,11 +1288,11 @@ export namespace Receipt_Record {
       [k: string]: unknown;
     };
     /**
-     * Strength of kernel mediation that produced this receipt. Defaults to mediated.
+     * Strength of kernel mediation that produced this receipt. Must cohere with receipt_kind: mediated_decision uses mediated, trace_observation uses verified, and advisory_evaluation uses advisory.
      */
-    trust_level?: "mediated" | "verified" | "advisory";
+    trust_level: "mediated" | "verified" | "advisory";
     /**
-     * Phase 1.5 multi-tenant receipt isolation: tenant identifier for multi-tenant deployments. Absent in single-tenant mode; derived from the authenticated session's enterprise identity context, never from caller-provided request fields. Omitted from the wire when unset so single-tenant receipts remain byte-identical.
+     * Tenant identifier for multi-tenant deployments. Absent in single-tenant mode; derived from the authenticated session's enterprise identity context, never from caller-provided request fields.
      */
     tenant_id?: string;
     /**
@@ -1313,7 +1300,7 @@ export namespace Receipt_Record {
      */
     kernel_key: string;
     /**
-     * Signing algorithm envelope hint. Omitted for legacy Ed25519 receipts to preserve byte-for-byte compatibility. Verification dispatches off the signature hex prefix, not this field.
+     * Signing algorithm envelope hint. Verification dispatches off the signature hex prefix, not this field.
      */
     algorithm?: "ed25519" | "p256" | "p384";
     /**
@@ -1336,6 +1323,10 @@ export namespace Receipt_Record {
      */
     parameter_hash: string;
   }
+  export interface ActorRef {
+    actor_id: string;
+    actor_kind?: string;
+  }
   /**
    * Evidence from a single guard's evaluation. Mirrors `GuardEvidence`.
    */
@@ -1352,6 +1343,60 @@ export namespace Receipt_Record {
      * Optional details about the guard's decision.
      */
     details?: string;
+  }
+
+  export function validateChioReceiptRecordSemantics(receipt: ChioReceiptRecord): string[] {
+    const errors: string[] = [];
+    if (receipt.receipt_kind === "mediated_decision") {
+      if (receipt.decision == null) {
+        errors.push("mediated_decision receipts must include decision");
+      }
+      if (receipt.boundary_class !== "prevent") {
+        errors.push("mediated_decision receipts must use boundary_class prevent");
+      }
+      if (receipt.trust_level !== "mediated") {
+        errors.push("mediated_decision receipts must use trust_level mediated");
+      }
+      if (receipt.observation_outcome != null) {
+        errors.push("mediated_decision receipts must omit observation_outcome");
+      }
+      return errors;
+    }
+
+    if (receipt.receipt_kind === "trace_observation") {
+      if (receipt.decision != null) {
+        errors.push("trace_observation receipts must omit decision");
+      }
+      if (receipt.boundary_class !== "detect_only") {
+        errors.push("trace_observation receipts must use boundary_class detect_only");
+      }
+      if (receipt.trust_level !== "verified") {
+        errors.push("trace_observation receipts must use trust_level verified");
+      }
+      if (receipt.observation_outcome == null) {
+        errors.push("trace_observation receipts must include observation_outcome");
+      }
+      return errors;
+    }
+
+    if (receipt.receipt_kind === "advisory_evaluation") {
+      if (receipt.decision != null) {
+        errors.push("advisory_evaluation receipts must omit decision");
+      }
+      if (receipt.boundary_class !== "advisory_only") {
+        errors.push("advisory_evaluation receipts must use boundary_class advisory_only");
+      }
+      if (receipt.trust_level !== "advisory") {
+        errors.push("advisory_evaluation receipts must use trust_level advisory");
+      }
+      if (receipt.observation_outcome == null) {
+        errors.push("advisory_evaluation receipts must include observation_outcome");
+      }
+      return errors;
+    }
+
+    errors.push("receipt_kind must be a current v1 receipt kind");
+    return errors;
   }
 }
 
