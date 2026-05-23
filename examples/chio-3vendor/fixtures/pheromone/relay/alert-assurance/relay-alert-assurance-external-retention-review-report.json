@@ -1,0 +1,40 @@
+{
+  "schema": "chio.pheromone.relay-alert-assurance-external-retention-review-report.v1",
+  "accepted": true,
+  "code": "accepted",
+  "localKernelId": "did:chio:buyer-kernel",
+  "generatedAtUnixMs": 1766000040000,
+  "sinceUnixMs": 1766000000000,
+  "untilUnixMs": 1766000120000,
+  "packageCount": 1,
+  "readyCount": 1,
+  "latestPackageGeneration": 1,
+  "quarantineCount": 0,
+  "driftCount": 0,
+  "insufficientSampleCount": 0,
+  "reviews": [
+    {
+      "packageId": "relay-archive-package-1",
+      "packageGeneration": 1,
+      "packageManifestSha256": "0000000000000000000000000000000000000000000000000000000000000001",
+      "packageReportSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "targetSystemAlias": "retention-vault",
+      "sampleCoverageBasisPoints": 2500,
+      "restoreStatus": "accepted",
+      "physicalReadbackStatus": "accepted",
+      "retentionHandoffStatus": "accepted",
+      "accepted": true,
+      "code": "accepted"
+    }
+  ],
+  "recommendations": [
+    { "code": "operator_external_retention_review", "severity": "info" }
+  ],
+  "checks": [
+    {
+      "code": "local_kernel",
+      "accepted": true,
+      "detail": "package report local kernel matches external retention profile"
+    }
+  ]
+}

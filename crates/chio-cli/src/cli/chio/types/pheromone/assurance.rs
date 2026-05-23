@@ -205,6 +205,50 @@ pub(crate) enum ChioPheromoneRelayAlertAssuranceRetentionCommands {
         #[arg(long, value_name = "PATH")]
         report: PathBuf,
     },
+    /// Review local-only retention handoff readiness evidence.
+    Handoff {
+        #[command(subcommand)]
+        command: ChioPheromoneRelayAlertAssuranceRetentionHandoffCommands,
+    },
+
+    /// Review local evidence for operator-managed external retention readiness.
+    ExternalReview {
+        /// Directory containing archive packages or archive package report JSON files.
+        #[arg(long, value_name = "DIR")]
+        package_dir: PathBuf,
+
+        /// Directory containing source archive, closeout, restore, physical, and handoff reports.
+        #[arg(long, value_name = "DIR")]
+        source_report_dir: PathBuf,
+
+        /// Trusted archive packager profile JSON.
+        #[arg(long, value_name = "PATH")]
+        trusted_packagers: PathBuf,
+
+        /// Trusted exporter profile JSON.
+        #[arg(long, value_name = "PATH")]
+        trusted_exporters: PathBuf,
+
+        /// External retention review profile JSON.
+        #[arg(long, value_name = "PATH")]
+        profile: PathBuf,
+
+        /// Start of review window in Unix milliseconds.
+        #[arg(long)]
+        since_unix_ms: u64,
+
+        /// End of review window in Unix milliseconds.
+        #[arg(long)]
+        until_unix_ms: u64,
+
+        /// Evaluation time in Unix milliseconds.
+        #[arg(long)]
+        now_unix_ms: u64,
+
+        /// Output path for external retention review report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
 }
 
 #[derive(Subcommand)]
@@ -235,6 +279,23 @@ pub(crate) enum ChioPheromoneRelayAlertAssuranceArchiveCommands {
         #[arg(long, value_name = "PATH")]
         report: PathBuf,
     },
+    /// Create, verify, or safely extract signed archive packages.
+    Package {
+        #[command(subcommand)]
+        command: ChioPheromoneRelayAlertAssuranceArchivePackageCommands,
+    },
+
+    /// Review operator-managed physical archive readback evidence.
+    PhysicalDrill {
+        #[command(subcommand)]
+        command: ChioPheromoneRelayAlertAssurancePhysicalDrillCommands,
+    },
+
+    /// Review multi-generation archive package restore evidence.
+    RestoreDrill {
+        #[command(subcommand)]
+        command: ChioPheromoneRelayAlertAssuranceArchiveRestoreDrillCommands,
+    },
 }
 
 #[derive(Subcommand)]
@@ -262,6 +323,208 @@ pub(crate) enum ChioPheromoneRelayAlertAssuranceCloseoutCommands {
         now_unix_ms: u64,
 
         /// Output path for relay alert assurance closeout report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+pub(crate) enum ChioPheromoneRelayAlertAssuranceArchivePackageCommands {
+    /// Create a signed local tar.gz archive package from export bundles.
+    Create {
+        /// Directory containing export bundle directories.
+        #[arg(long, value_name = "DIR")]
+        bundle_root: PathBuf,
+
+        /// Trusted exporter profile JSON.
+        #[arg(long, value_name = "PATH")]
+        trusted_exporters: PathBuf,
+
+        /// Source archive report JSON.
+        #[arg(long, value_name = "PATH")]
+        archive_report: PathBuf,
+
+        /// Source closeout report JSON.
+        #[arg(long, value_name = "PATH")]
+        closeout_report: PathBuf,
+
+        /// Local relay archive packager signing key JSON.
+        #[arg(long, value_name = "PATH")]
+        signing_key: PathBuf,
+
+        /// Archive package id.
+        #[arg(long, value_name = "ID")]
+        package_id: String,
+
+        /// Archive packager key id.
+        #[arg(long, default_value = "default")]
+        packager_key_id: String,
+
+        /// Archive package generation.
+        #[arg(long, default_value_t = 1)]
+        package_generation: u64,
+
+        /// Previous archive package report JSON. Required when generation is greater than 1.
+        #[arg(long, value_name = "PATH")]
+        previous_package_report: Option<PathBuf>,
+
+        /// Evaluation time in Unix milliseconds.
+        #[arg(long)]
+        now_unix_ms: u64,
+
+        /// Output tar.gz package path.
+        #[arg(long, value_name = "PATH")]
+        out: PathBuf,
+
+        /// Output path for archive package report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+
+    /// Verify a signed local tar.gz archive package without extracting it.
+    Verify {
+        /// Archive package tar.gz path.
+        #[arg(long, value_name = "PATH")]
+        package: PathBuf,
+
+        /// Trusted archive packager profile JSON.
+        #[arg(long, value_name = "PATH")]
+        trusted_packagers: PathBuf,
+
+        /// Trusted exporter profile JSON.
+        #[arg(long, value_name = "PATH")]
+        trusted_exporters: PathBuf,
+
+        /// Source archive report JSON.
+        #[arg(long, value_name = "PATH")]
+        archive_report: PathBuf,
+
+        /// Source closeout report JSON.
+        #[arg(long, value_name = "PATH")]
+        closeout_report: PathBuf,
+
+        /// Evaluation time in Unix milliseconds.
+        #[arg(long)]
+        now_unix_ms: u64,
+
+        /// Output path for archive package report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+
+    /// Verify then safely extract a signed archive package into a new path.
+    Extract {
+        /// Archive package tar.gz path.
+        #[arg(long, value_name = "PATH")]
+        package: PathBuf,
+
+        /// Trusted archive packager profile JSON.
+        #[arg(long, value_name = "PATH")]
+        trusted_packagers: PathBuf,
+
+        /// Trusted exporter profile JSON.
+        #[arg(long, value_name = "PATH")]
+        trusted_exporters: PathBuf,
+
+        /// Source archive report JSON.
+        #[arg(long, value_name = "PATH")]
+        archive_report: PathBuf,
+
+        /// Source closeout report JSON.
+        #[arg(long, value_name = "PATH")]
+        closeout_report: PathBuf,
+
+        /// Fresh output directory. The path must not exist.
+        #[arg(long, value_name = "DIR")]
+        out_dir: PathBuf,
+
+        /// Evaluation time in Unix milliseconds.
+        #[arg(long)]
+        now_unix_ms: u64,
+
+        /// Output path for archive extraction report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+pub(crate) enum ChioPheromoneRelayAlertAssurancePhysicalDrillCommands {
+    /// Review local physical archive readback evidence without media claims.
+    Review {
+        /// Physical archive evidence JSON.
+        #[arg(long, value_name = "PATH")]
+        evidence: PathBuf,
+
+        /// Expected archive package report JSON.
+        #[arg(long, value_name = "PATH")]
+        package_report: PathBuf,
+
+        /// Evaluation time in Unix milliseconds.
+        #[arg(long)]
+        now_unix_ms: u64,
+
+        /// Output path for physical archive drill report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+pub(crate) enum ChioPheromoneRelayAlertAssuranceArchiveRestoreDrillCommands {
+    /// Review local archive package generations and readback evidence.
+    Review {
+        /// Directory containing archive package report JSON files.
+        #[arg(long, value_name = "DIR")]
+        package_dir: PathBuf,
+
+        /// Directory containing physical drill and retention handoff reports.
+        #[arg(long, value_name = "DIR")]
+        source_report_dir: PathBuf,
+
+        /// Trusted archive packager profile JSON.
+        #[arg(long, value_name = "PATH")]
+        trusted_packagers: PathBuf,
+
+        /// Trusted exporter profile JSON.
+        #[arg(long, value_name = "PATH")]
+        trusted_exporters: PathBuf,
+
+        /// Archive restore profile JSON.
+        #[arg(long, value_name = "PATH")]
+        restore_profile: PathBuf,
+
+        /// Evaluation time in Unix milliseconds.
+        #[arg(long)]
+        now_unix_ms: u64,
+
+        /// Output path for archive restore drill report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+pub(crate) enum ChioPheromoneRelayAlertAssuranceRetentionHandoffCommands {
+    /// Review local evidence that is ready for external retention handoff.
+    Review {
+        /// Retention handoff evidence JSON.
+        #[arg(long, value_name = "PATH")]
+        evidence: PathBuf,
+
+        /// Retention handoff profile JSON.
+        #[arg(long, value_name = "PATH")]
+        profile: PathBuf,
+
+        /// Expected archive package report JSON.
+        #[arg(long, value_name = "PATH")]
+        package_report: PathBuf,
+
+        /// Evaluation time in Unix milliseconds.
+        #[arg(long)]
+        now_unix_ms: u64,
+
+        /// Output path for retention handoff report JSON.
         #[arg(long, value_name = "PATH")]
         report: PathBuf,
     },

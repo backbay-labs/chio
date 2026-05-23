@@ -1,0 +1,75 @@
+{
+  "schema": "chio.pheromone.relay-alert-assurance-archive-package-negative-fixture-corpus.v1",
+  "cases": [
+    {
+      "caseId": "untrusted_packager",
+      "expectedCode": "signature_invalid",
+      "description": "Package manifest signer is absent from caller-supplied trusted packagers."
+    },
+    {
+      "caseId": "path_traversal_member",
+      "expectedCode": "archive_package_invalid",
+      "description": "Package contains a traversal member path and must fail before extraction."
+    },
+    {
+      "caseId": "absolute_path_member",
+      "expectedCode": "archive_package_invalid",
+      "description": "Package contains an absolute member path."
+    },
+    {
+      "caseId": "backslash_path_member",
+      "expectedCode": "archive_package_invalid",
+      "description": "Package contains a Windows-style backslash path."
+    },
+    {
+      "caseId": "drive_colon_path_member",
+      "expectedCode": "archive_package_invalid",
+      "description": "Package contains a drive or prefix colon path."
+    },
+    {
+      "caseId": "duplicate_path_member",
+      "expectedCode": "archive_package_invalid",
+      "description": "Package contains duplicate member paths."
+    },
+    {
+      "caseId": "casefold_collision_member",
+      "expectedCode": "archive_package_invalid",
+      "description": "Package contains paths that collide after ASCII case folding."
+    },
+    {
+      "caseId": "symlink_member",
+      "expectedCode": "archive_package_invalid",
+      "description": "Package contains a symbolic link member."
+    },
+    {
+      "caseId": "hardlink_member",
+      "expectedCode": "archive_package_invalid",
+      "description": "Package contains a hard link member."
+    },
+    {
+      "caseId": "extra_member",
+      "expectedCode": "archive_package_invalid",
+      "description": "Package contains an extra member not listed in the signed manifest."
+    },
+    {
+      "caseId": "missing_member",
+      "expectedCode": "body_hash_mismatch",
+      "description": "Package is missing a member listed in the signed manifest."
+    },
+    {
+      "caseId": "hash_mismatch_member",
+      "expectedCode": "body_hash_mismatch",
+      "description": "Package member bytes do not match the signed manifest hash."
+    },
+    {
+      "caseId": "dynamic_retention_handoff_url",
+      "expectedCode": "archive_package_invalid",
+      "description": "Retention handoff evidence contains a dynamic URL instead of a bounded alias."
+    },
+    {
+      "caseId": "wrong_expected_code",
+      "expectedCode": "body_hash_mismatch",
+      "description": "Gate must fail if a negative case records the wrong expected stable code."
+    }
+  ]
+}

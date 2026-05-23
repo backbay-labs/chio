@@ -19,12 +19,19 @@ pub(crate) use self::alerts::{
     read_relay_alert_handoff_reports,
 };
 pub(crate) use self::assurance::{
+    cmd_chio_pheromone_relay_alert_assurance_archive_package_create,
+    cmd_chio_pheromone_relay_alert_assurance_archive_package_extract,
+    cmd_chio_pheromone_relay_alert_assurance_archive_package_verify,
     cmd_chio_pheromone_relay_alert_assurance_archive_plan,
+    cmd_chio_pheromone_relay_alert_assurance_archive_restore_drill_review,
     cmd_chio_pheromone_relay_alert_assurance_closeout_review,
+    cmd_chio_pheromone_relay_alert_assurance_physical_drill_review,
     cmd_chio_pheromone_relay_alert_assurance_export,
     cmd_chio_pheromone_relay_alert_assurance_package,
     cmd_chio_pheromone_relay_alert_assurance_recovery_drill,
     cmd_chio_pheromone_relay_alert_assurance_replay,
+    cmd_chio_pheromone_relay_alert_assurance_retention_external_review,
+    cmd_chio_pheromone_relay_alert_assurance_retention_handoff_review,
     cmd_chio_pheromone_relay_alert_assurance_retention_plan,
     cmd_chio_pheromone_relay_alert_assurance_verify,
 };

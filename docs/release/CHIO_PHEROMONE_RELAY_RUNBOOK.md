@@ -13,7 +13,7 @@ Profiles:
 
 Recommended deployment:
 
-1. Generate the relay observability report, relay alert report, relay trend report, relay handoff report, normalized downstream evidence, delivery import report, acknowledgement report, source-bound drift report, route review packet, assurance package, signed export, verification report, replay report, retention plan, recovery drill, archive plan, and closeout review before inspecting raw store rows.
+1. Generate the relay observability report, relay alert report, relay trend report, relay handoff report, normalized downstream evidence, delivery import report, acknowledgement report, source-bound drift report, route review packet, assurance package, signed export, verification report, replay report, retention plan, recovery drill, archive plan, closeout review, signed archive package report, extraction report, restore drill report, physical readback drill, retention handoff review, and external retention review before inspecting raw store rows.
 2. Terminate TLS at a reverse proxy owned by the same operator boundary as the relay.
 3. Pin the relay upstream path to `/v1/chio/pheromone`.
 4. Disable redirects on egress.
@@ -196,12 +196,17 @@ Production observability and metrics endpoints require `Authorization: Bearer <t
 9. Run `relay alert review` and read `relay-alert-route-review-packet.v1`.
 10. Run `relay alert assurance package` and read `relay-alert-assurance-package.v1`.
 11. Run `relay alert assurance export`, then `verify`, `replay`, `retention plan`, `recovery-drill`, `archive plan`, and `closeout review` to close the local incident bundle without deleting retained evidence.
-12. Use bounded event reports in `--report-dir` to inspect recent batch receive, catch-up, outbound delivery, and request rejection evidence.
-13. Use raw SQLite inspection only after alert, trend, handoff, normalization, delivery, acknowledgement, drift-window, route review, assurance, export, verify, replay, retention, recovery drill, archive plan, closeout review, observability, and bounded event reports have narrowed the incident.
-14. Export `relay metrics --format prometheus` for downstream Alertmanager routing. Labels are bounded to status, reason, notification route, service, severity, and downstream route aliases.
-15. Use the receipt dashboard relay cards as a view over the canonical reports. Missing relay reports render as `unknown` and do not block receipt workflows.
+12. Run `relay alert assurance archive package create`, `verify`, and `extract` only against selected export bundles and caller-supplied trusted packager and exporter roots. Extraction writes to a fresh output path through a verified plan.
+13. Run `relay alert assurance archive restore-drill review` against archive package generations, source reports, trusted packagers, trusted exporters, and restore profile inputs.
+14. Run `relay alert assurance archive physical-drill review` against local readback evidence. The report can say sampled package members match local evidence, but it must not claim Chio wrote to or controls physical media.
+15. Run `relay alert assurance retention handoff review` to produce local readiness evidence for operator-managed external retention. It must not claim upload, deletion, moving, notification delivery, policy mutation, dynamic trust, settlement, new transports, hidden predicates, VC DI BBS, zkVM, or FROST support.
+16. Run `relay alert assurance retention external-review` to aggregate local package, restore, readback, and handoff evidence into a bounded readiness report for the selected generation set.
+17. Use bounded event reports in `--report-dir` to inspect recent batch receive, catch-up, outbound delivery, and request rejection evidence.
+18. Use raw SQLite inspection only after alert, trend, handoff, normalization, delivery, acknowledgement, drift-window, route review, assurance, export, verify, replay, retention, recovery drill, archive plan, closeout review, archive package verify, extraction, restore drill, physical readback, retention handoff, external retention review, observability, and bounded event reports have narrowed the incident.
+19. Export `relay metrics --format prometheus` for downstream Alertmanager routing. Labels are bounded to status, reason, notification route, service, severity, and downstream route aliases.
+20. Use the receipt dashboard relay cards as a view over the canonical reports. Missing relay reports render as `unknown` and do not block receipt workflows.
 
-Chio produces alert handoff, delivery, review, assurance, export, replay, retention, recovery-drill, archive, and closeout evidence only. Downstream Alertmanager, PagerDuty, OpsGenie, Slack, email, webhook, and SIEM systems perform live notification delivery from their own credentialed configuration. The assurance package and export bundle may show downstream evidence present, missing, stale, delayed, failed, duplicated, drifted, retained, replayed, quarantined, or ready for operator-managed closeout, but they must not claim a human was notified.
+Chio produces alert handoff, delivery, review, assurance, export, replay, retention, recovery-drill, archive, closeout, archive package, extraction, restore drill, physical readback, retention handoff readiness, and external retention review evidence only. Downstream Alertmanager, PagerDuty, OpsGenie, Slack, email, webhook, SIEM, and retention systems perform live notification delivery or external retention from their own credentialed configuration. The assurance package, export bundle, archive package, restore drill report, and external retention review may show downstream evidence present, missing, stale, delayed, failed, duplicated, drifted, retained, replayed, quarantined, extracted, read back, generation-contiguous, or ready for operator-managed review, but they must not claim a human was notified or that Chio uploaded, deleted, moved, retained externally, or mutated evidence.
 
 ## Recovery Procedures
 

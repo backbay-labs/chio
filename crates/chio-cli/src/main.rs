@@ -14,6 +14,7 @@
 //   MCP-compatible edge over stdio for stock MCP clients.
 
 mod admin;
+mod archive;
 mod cert;
 mod commands {
     pub mod bind;
@@ -35,8 +36,12 @@ include!("cli/types.rs");
 mod chio_types;
 use chio_types::{
     ChioAuthorityCommands, ChioPheromoneCommands, ChioPheromoneRelayAlertAssuranceArchiveCommands,
+    ChioPheromoneRelayAlertAssuranceArchivePackageCommands,
+    ChioPheromoneRelayAlertAssuranceArchiveRestoreDrillCommands,
     ChioPheromoneRelayAlertAssuranceCloseoutCommands, ChioPheromoneRelayAlertAssuranceCommands,
-    ChioPheromoneRelayAlertAssuranceRetentionCommands, ChioPheromoneRelayAlertCommands,
+    ChioPheromoneRelayAlertAssurancePhysicalDrillCommands,
+    ChioPheromoneRelayAlertAssuranceRetentionCommands,
+    ChioPheromoneRelayAlertAssuranceRetentionHandoffCommands, ChioPheromoneRelayAlertCommands,
     ChioPheromoneRelayAlertDeliveryCommands, ChioPheromoneRelayCommands,
     ChioPheromoneRelayDirectoryCommands, ChioPheromoneRelaySupervisorCommands,
     ChioRuntimeCommands, ChioRuntimeOpsCommands, ChioRuntimeOpsRetentionCommands,
@@ -1360,7 +1365,11 @@ mod cli_entrypoint_tests {
         assert!(pheromone_dispatch.contains("ChioPheromoneRelayAlertAssuranceCommands::"));
         assert!(pheromone_dispatch.contains("ChioPheromoneRelayAlertAssuranceRetentionCommands::"));
         assert!(pheromone_dispatch.contains("ChioPheromoneRelayAlertAssuranceArchiveCommands::"));
+        assert!(pheromone_dispatch.contains("ChioPheromoneRelayAlertAssuranceArchivePackageCommands::"));
+        assert!(pheromone_dispatch.contains("ChioPheromoneRelayAlertAssuranceArchiveRestoreDrillCommands::"));
         assert!(pheromone_dispatch.contains("ChioPheromoneRelayAlertAssuranceCloseoutCommands::"));
+        assert!(pheromone_dispatch.contains("ChioPheromoneRelayAlertAssurancePhysicalDrillCommands::"));
+        assert!(pheromone_dispatch.contains("ChioPheromoneRelayAlertAssuranceRetentionHandoffCommands::"));
         assert!(pheromone_dispatch.contains("ChioPheromoneRelayDirectoryCommands::"));
         assert!(pheromone_dispatch.contains("ChioPheromoneRelaySupervisorCommands::"));
     }
@@ -1392,7 +1401,14 @@ mod cli_entrypoint_tests {
             "cmd_chio_pheromone_relay_alert_assurance_retention_plan(",
             "cmd_chio_pheromone_relay_alert_assurance_recovery_drill(",
             "cmd_chio_pheromone_relay_alert_assurance_archive_plan(",
+            "cmd_chio_pheromone_relay_alert_assurance_archive_package_create(",
+            "cmd_chio_pheromone_relay_alert_assurance_archive_package_verify(",
+            "cmd_chio_pheromone_relay_alert_assurance_archive_package_extract(",
+            "cmd_chio_pheromone_relay_alert_assurance_archive_restore_drill_review(",
             "cmd_chio_pheromone_relay_alert_assurance_closeout_review(",
+            "cmd_chio_pheromone_relay_alert_assurance_physical_drill_review(",
+            "cmd_chio_pheromone_relay_alert_assurance_retention_handoff_review(",
+            "cmd_chio_pheromone_relay_alert_assurance_retention_external_review(",
             "cmd_chio_pheromone_relay_directory_inspect(",
             "cmd_chio_pheromone_relay_directory_promote(",
             "cmd_chio_pheromone_relay_directory_reject(",

@@ -24,6 +24,10 @@ npm run build
   missing trend report renders `none` and must not hide a firing alert.
 - The relay primary route is selected from the highest-severity firing alert,
   not from report array order.
+- Relay alert assurance cards read archive package, extraction, restore drill,
+  physical readback, retention handoff, and external retention review reports
+  independently. Missing lifecycle reports render `unknown` and must not hide
+  firing alert, delivery, closeout, or restore state.
 
 ## Production notes
 

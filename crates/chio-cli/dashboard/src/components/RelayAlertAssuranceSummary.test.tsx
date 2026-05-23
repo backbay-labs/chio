@@ -166,6 +166,136 @@ function closeoutReport(overrides = {}) {
   }
 }
 
+function archivePackageReport(overrides = {}) {
+  return {
+    schema: 'chio.pheromone.relay-alert-assurance-archive-package-report.v1',
+    accepted: true,
+    code: 'accepted',
+    localKernelId: 'did:chio:buyer-kernel',
+    generatedAtUnixMs: 1_766_000_100_000,
+    packageId: 'relay-alert-assurance-archive-package-001',
+    packageGeneration: 2,
+    previousPackageManifestSha256: '6'.repeat(64),
+    packageManifestSha256: '7'.repeat(64),
+    sourceArchiveReportSha256: '8'.repeat(64),
+    sourceCloseoutReportSha256: '9'.repeat(64),
+    packageMemberCount: 13,
+    packageTotalByteCount: 4096,
+    bundleCount: 1,
+    trustedPackagerVerified: true,
+    nestedExporterVerified: true,
+    sourceReportsMatched: true,
+    closeoutReadyVerified: true,
+    totalByteCountMatched: true,
+    extractable: true,
+    checks: [],
+    ...overrides,
+  }
+}
+
+function extractionReport(overrides = {}) {
+  return {
+    schema: 'chio.pheromone.relay-alert-assurance-archive-extraction-report.v1',
+    accepted: true,
+    code: 'accepted',
+    localKernelId: 'did:chio:buyer-kernel',
+    generatedAtUnixMs: 1_766_000_100_000,
+    packageId: 'relay-alert-assurance-archive-package-001',
+    packageManifestSha256: '7'.repeat(64),
+    plannedMemberCount: 13,
+    extractedMemberCount: 13,
+    checks: [],
+    ...overrides,
+  }
+}
+
+function restoreReport(overrides = {}) {
+  return {
+    schema: 'chio.pheromone.relay-alert-assurance-archive-restore-drill-report.v1',
+    accepted: true,
+    code: 'accepted',
+    localKernelId: 'did:chio:buyer-kernel',
+    generatedAtUnixMs: 1_766_000_100_000,
+    packageCount: 2,
+    verifiedGenerationCount: 2,
+    latestPackageGeneration: 2,
+    quarantineCount: 0,
+    blockedCount: 0,
+    packages: [],
+    checks: [],
+    ...overrides,
+  }
+}
+
+function physicalArchiveReport(overrides = {}) {
+  return {
+    schema: 'chio.pheromone.relay-alert-assurance-physical-archive-drill-report.v1',
+    accepted: true,
+    code: 'accepted',
+    localKernelId: 'did:chio:buyer-kernel',
+    generatedAtUnixMs: 1_766_000_100_000,
+    evidenceId: 'physical-archive-evidence-001',
+    packageId: 'relay-alert-assurance-archive-package-001',
+    packageReportSha256: 'a'.repeat(64),
+    sampledMemberCount: 3,
+    checks: [],
+    ...overrides,
+  }
+}
+
+function retentionHandoffReport(overrides = {}) {
+  return {
+    schema: 'chio.pheromone.relay-alert-assurance-retention-handoff-report.v1',
+    accepted: true,
+    code: 'accepted',
+    localKernelId: 'did:chio:buyer-kernel',
+    generatedAtUnixMs: 1_766_000_100_000,
+    evidenceId: 'retention-handoff-evidence-001',
+    packageId: 'relay-alert-assurance-archive-package-001',
+    packageReportSha256: 'a'.repeat(64),
+    targetSystemAlias: 'records_vault',
+    readyForOperatorHandoff: true,
+    checks: [],
+    ...overrides,
+  }
+}
+
+function externalRetentionReport(overrides = {}) {
+  return {
+    schema: 'chio.pheromone.relay-alert-assurance-external-retention-review-report.v1',
+    accepted: false,
+    code: 'external_retention_blocked',
+    localKernelId: 'did:chio:buyer-kernel',
+    generatedAtUnixMs: 1_766_000_100_000,
+    sinceUnixMs: 1_766_000_000_000,
+    untilUnixMs: 1_766_000_100_000,
+    packageCount: 2,
+    readyCount: 1,
+    latestPackageGeneration: 2,
+    quarantineCount: 1,
+    driftCount: 1,
+    insufficientSampleCount: 1,
+    reviews: [
+      {
+        packageId: 'relay-alert-assurance-archive-package-001',
+        packageGeneration: 2,
+        packageManifestSha256: '7'.repeat(64),
+        packageReportSha256: '8'.repeat(64),
+        targetSystemAlias: 'records_vault',
+        sampleCoverageBasisPoints: 2500,
+        restoreStatus: 'accepted',
+        physicalReadbackStatus: 'accepted',
+        retentionHandoffStatus: 'ready',
+        accepted: false,
+        code: 'insufficient_sample_coverage',
+      },
+    ],
+    recommendations: [{ code: 'review_external_retention_evidence', severity: 'warning' }],
+    checks: [],
+    ...overrides,
+  }
+}
+
 function mockAssuranceFetch(overrides: {
   packageReport?: Record<string, unknown>
   exportReport?: Record<string, unknown>
@@ -173,6 +303,12 @@ function mockAssuranceFetch(overrides: {
   retentionReport?: Record<string, unknown>
   archiveReport?: Record<string, unknown>
   closeoutReport?: Record<string, unknown>
+  archivePackageReport?: Record<string, unknown>
+  extractionReport?: Record<string, unknown>
+  restoreReport?: Record<string, unknown>
+  physicalArchiveReport?: Record<string, unknown>
+  retentionHandoffReport?: Record<string, unknown>
+  externalRetentionReport?: Record<string, unknown>
 } = {}) {
   vi.stubGlobal(
     'fetch',
@@ -198,6 +334,42 @@ function mockAssuranceFetch(overrides: {
           json: async () => closeoutReport(overrides.closeoutReport),
         })
       }
+      if (url.endsWith('/archive-package')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => archivePackageReport(overrides.archivePackageReport),
+        })
+      }
+      if (url.endsWith('/archive-extraction')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => extractionReport(overrides.extractionReport),
+        })
+      }
+      if (url.endsWith('/archive-restore-drill')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => restoreReport(overrides.restoreReport),
+        })
+      }
+      if (url.endsWith('/physical-archive')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => physicalArchiveReport(overrides.physicalArchiveReport),
+        })
+      }
+      if (url.endsWith('/retention-handoff')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => retentionHandoffReport(overrides.retentionHandoffReport),
+        })
+      }
+      if (url.endsWith('/external-retention-review')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => externalRetentionReport(overrides.externalRetentionReport),
+        })
+      }
       return Promise.resolve({
         ok: true,
         json: async () => assurancePackage(overrides.packageReport),
@@ -220,6 +392,14 @@ describe('RelayAlertAssuranceSummary', () => {
     expect(container.textContent).toContain('retention 1 blocked')
     expect(container.textContent).toContain('Archive Closeout')
     expect(container.textContent).toContain('1 legal hold')
+    expect(container.textContent).toContain('Archive Package')
+    expect(container.textContent).toContain('extraction safe')
+    expect(container.textContent).toContain('generation 2')
+    expect(container.textContent).toContain('restore ready')
+    expect(container.textContent).toContain('handoff ready')
+    expect(container.textContent).toContain('External Retention')
+    expect(container.textContent).toContain('external_retention_blocked')
+    expect(container.textContent).toContain('1 insufficient sample')
   })
 
   it('renders unknown when the assurance report is missing', async () => {

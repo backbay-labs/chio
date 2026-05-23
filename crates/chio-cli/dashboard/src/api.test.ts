@@ -3,11 +3,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   fetchAgentCostSeries,
   fetchOperatorReport,
+  fetchRelayAlertAssuranceArchiveExtractionReport,
+  fetchRelayAlertAssuranceArchivePackageReport,
   fetchRelayAlertAssuranceArchiveReport,
+  fetchRelayAlertAssuranceArchiveRestoreDrillReport,
   fetchRelayAlertAssuranceCloseoutReport,
+  fetchRelayAlertAssuranceExternalRetentionReviewReport,
   fetchRelayAlertAssuranceExportReport,
   fetchRelayAlertAssurancePackage,
+  fetchRelayAlertAssurancePhysicalArchiveDrillReport,
   fetchRelayAlertAssuranceReplayReport,
+  fetchRelayAlertAssuranceRetentionHandoffReport,
   fetchRelayAlertAssuranceRetentionReport,
   fetchRelayAlertDeliveryReport,
   fetchRelayAlertHandoffReport,
@@ -492,6 +498,12 @@ describe('dashboard api helpers', () => {
     await fetchRelayAlertAssuranceRetentionReport()
     await fetchRelayAlertAssuranceArchiveReport()
     await fetchRelayAlertAssuranceCloseoutReport()
+    await fetchRelayAlertAssuranceArchivePackageReport()
+    await fetchRelayAlertAssuranceArchiveExtractionReport()
+    await fetchRelayAlertAssuranceArchiveRestoreDrillReport()
+    await fetchRelayAlertAssurancePhysicalArchiveDrillReport()
+    await fetchRelayAlertAssuranceRetentionHandoffReport()
+    await fetchRelayAlertAssuranceExternalRetentionReviewReport()
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
@@ -521,6 +533,36 @@ describe('dashboard api helpers', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(
       5,
       '/v1/chio/pheromone/alert-assurance/closeout',
+      expect.anything(),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      6,
+      '/v1/chiodos/pheromone/alert-assurance/archive-package',
+      expect.anything(),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      7,
+      '/v1/chiodos/pheromone/alert-assurance/archive-extraction',
+      expect.anything(),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      8,
+      '/v1/chiodos/pheromone/alert-assurance/archive-restore-drill',
+      expect.anything(),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      9,
+      '/v1/chiodos/pheromone/alert-assurance/physical-archive',
+      expect.anything(),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      10,
+      '/v1/chiodos/pheromone/alert-assurance/retention-handoff',
+      expect.anything(),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      11,
+      '/v1/chiodos/pheromone/alert-assurance/external-retention-review',
       expect.anything(),
     )
   })

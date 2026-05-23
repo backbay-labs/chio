@@ -10,8 +10,12 @@ mod treaty;
 pub(crate) use self::authority::{ChioAuthorityCommands, ChioTrustBundleCommands};
 pub(crate) use self::pheromone::{
     ChioPheromoneCommands, ChioPheromoneRelayAlertAssuranceArchiveCommands,
+    ChioPheromoneRelayAlertAssuranceArchivePackageCommands,
+    ChioPheromoneRelayAlertAssuranceArchiveRestoreDrillCommands,
     ChioPheromoneRelayAlertAssuranceCloseoutCommands, ChioPheromoneRelayAlertAssuranceCommands,
-    ChioPheromoneRelayAlertAssuranceRetentionCommands, ChioPheromoneRelayAlertCommands,
+    ChioPheromoneRelayAlertAssurancePhysicalDrillCommands,
+    ChioPheromoneRelayAlertAssuranceRetentionCommands,
+    ChioPheromoneRelayAlertAssuranceRetentionHandoffCommands, ChioPheromoneRelayAlertCommands,
     ChioPheromoneRelayAlertDeliveryCommands, ChioPheromoneRelayCommands,
     ChioPheromoneRelayDirectoryCommands, ChioPheromoneRelaySupervisorCommands,
 };
