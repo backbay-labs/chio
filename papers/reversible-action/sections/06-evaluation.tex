@@ -1,0 +1,120 @@
+\section{Evaluation}
+\label{sec:evaluation-ra}
+
+The evaluation section records what a deployment evaluation must measure.
+This repository does not yet ship the response executors, proof endpoint,
+or replay corpus needed to report those measurements as results. Absent
+measurements are marked rather than estimated.
+
+The figures reported here are point measurements taken on a single
+development workstation (Apple Silicon, macOS 14.x, Darwin 23.x kernel)
+rather than statistically-confident measurements over N runs with
+reported confidence intervals. The substrate's executor structure and
+the canonical-byte signing path are reproducible on any host with the
+same Rust toolchain and a Unix-family filesystem, but the latency
+distributions are workstation-specific and the kernel-side cost terms
+(\codepath{fs::rename}, signal delivery, network-extension reload) are
+sensitive to the host's filesystem class, scheduler tuning, and
+extension load. A defensible USENIX-grade evaluation requires fresh
+runs against a documented hardware matrix with N$\geq$30 per cell, a
+stated warm-up policy, and confidence intervals on each latency cell;
+that protocol is named here as a deployment requirement and the
+present numbers are honest order-of-magnitude statements rather than
+publishable cells.
+
+\begin{table*}[t]
+\centering
+\caption{Measurement status. Withheld rows have a target surface but
+no measurement harness within this evaluation; the gap is named in
+Section~\ref{sec:limitations-ra}.}
+\label{tab:eval-ra}
+\small
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{.34\textwidth}>{\raggedright\arraybackslash}p{.18\textwidth}>{\raggedright\arraybackslash}X@{}}
+\toprule
+Metric & Path & Status \\
+\midrule
+Forward executor latency, four reversible variants & rename, signal, policy reload & planned; executor harness absent \\
+Rollback executor latency, four reversible variants & inverse of the above & planned; executor harness absent \\
+Acknowledgement round-trip & control-plane postback & planned; proof endpoint absent \\
+Replay-corpus admission stability across the four-receipt grammar & fixture corpus & planned; corpus absent \\
+Destructive-variant admission latency (bilateral cosignature) & treaty intersection & withheld; not wired \\
+Sensor-to-decision latency & Endpoint Security subscription & withheld; sensor stub \\
+TTL auto-expiry latency & background scheduler & withheld; scheduler absent \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+\paragraph{Forward and rollback latency.}
+The four reversible variants share an executor structure. File
+quarantine and persistence disable measure as a single
+\codepath{fs::rename} per target plus the canonical-JSON signing path;
+the rename is microseconds on a local filesystem and the signing path
+is dominated by canonical-JSON serialization rather than by Ed25519.
+Process-tree suspend measures as \codepath{libc::kill} delivery to
+each pid in the target list; latency is constant per pid up to the
+scheduler's interrupt delivery time. Egress restriction measures as a
+policy-file write followed by the network-extension reload request;
+the reload is the dominant term and varies with the extension's
+internal reload path. The rollback variant of each pair measures the
+inverse executor against the same shape, with the content-hash gate
+contributing a single hash recomputation.
+
+The receipt append is not atomic with the side effect. The forward
+executor invokes the OS primitive (\codepath{fs::rename},
+\codepath{libc::kill}, policy reload) before appending the execution
+receipt to the ledger; a crash in the window between effect and
+append leaves a live side effect with no execution record, weakening
+the "rollback closes the chain" property for that window. The race
+is named in Section~\ref{sec:limitations-ra} and closed by a
+write-ahead ledger redesign that appends a pending record before the
+effect and marks it succeeded after.
+
+\paragraph{Acknowledgement round-trip.}
+The acknowledgement round-trip measures from execution-receipt
+completion to acknowledgement-receipt completion. The path includes
+the endpoint's signing of the acknowledgement body and the
+control-plane postback. The signing path is shared with the other
+receipt families; the postback latency is dominated by network
+round-trip and the control-plane handler.
+
+\paragraph{Replay-corpus stability.}
+The replay corpus is not shipped in this repository. The required corpus
+must contain fixture-backed action chains exercising the four-receipt
+grammar for each reversible variant. Each fixture should be a
+deterministic action chain whose admission decisions are canonical-byte
+stable across machines. The intended stability property is the
+reproducibility of canonical verdicts rather than re-execution of the
+OS-side executors. The corpus must distinguish positive chains (request,
+execution, rollback, acknowledgement all admitted) and negative chains
+(rollback missing, acknowledgement missing, content-hash mismatch, replay
+attack on the execution identifier) before this row can be reported.
+
+\paragraph{Destructive subclass.}
+The destructive subclass is reported as a deployment gap rather than
+a measurement. The deployment instance's destructive executors run
+under the endpoint's single Ed25519 keypair; the substrate-level
+bilateral cosignature path is not wired into the response engine. The
+empirical claim about the destructive subclass is therefore the
+substrate-level reduction
+\thm{destructive_action_requires_bilateral_admission}, not a deployed
+measurement. Wiring the bilateral path requires an operator-polity
+key custody design that is outside the scope of the present
+construction.
+
+\paragraph{Sensor and scheduler gaps.}
+The endpoint sensor subscription is a stub on macOS Endpoint Security:
+the entitlement is declared, the class is structurally present, but
+\codepath{es_new_client} is not called and no event stream is
+ingested. The sensor-to-decision latency is therefore not measurable
+on the current deployment instance. The TTL auto-expiry scheduler is
+similarly absent: the \codepath{/expire} HTTP endpoint exists but no
+background task invokes it on a counter advance. Both gaps are named
+in Section~\ref{sec:limitations-ra}.
+
+\paragraph{Reproducibility.}
+Measurements are deployment-instance-local; generalization requires
+fresh runs on stated hardware. The fixture corpus is canonical-byte
+reproducible across machines; the latency numbers are not. The signing
+path uses canonical JSON over RFC 8785 conventions and Ed25519
+signatures; canonical-byte equivalence across machines is the same
+property the parent paper's replay corpus asserts.

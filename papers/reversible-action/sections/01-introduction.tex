@@ -1,0 +1,76 @@
+\section{Introduction}
+
+A constitutional polity has two halves of authority. The first half is
+the admission predicate that decides whether an incoming receipt belongs
+to the polity's history; the second half is the positive enforcement act
+the polity issues when its constitution requires response to an admitted
+fact. The amendment lifecycle has been formalized on the first half: a
+candidate constitution becomes the active constitution only when the
+amendment witness carries a Lean term establishing that every receipt
+admitted by the new predicates was also admitted by the old. The
+response side has been left to the admission predicate, which means an
+enforcement act has had no positive type-level discipline of its own:
+the only thing the type system enforced was that the act admitted, not
+that the act terminated, reverted, or carried a counterparty's signature.
+
+The reversible-action discipline extends the type-level rule from
+amendment admission to enforcement response, for the class of actions
+whose effects are reversible by an inverse executor. A reversible
+executive action is a type whose constructor refuses to build a witness
+without a positive time-to-live duration and an action class tag; the
+inverse executor produces a rollback receipt that closes the action
+chain by referencing the original execution receipt and the executor key
+that signed the rollback. A destructive action, defined by the absence
+of an inverse executor, reduces admission to bilateral predicate
+intersection between a device polity that hosts the action and an
+operator polity that authorizes it; the reduction specializes the prior
+treaty intersection theorem \cite{programmableSovereigntyAnonymous} to
+the destructive class.
+
+The load-bearing composition claim relates the response side to the
+amendment side. A TTL-bounded amendment is a constitutional delta paired
+with a positive TTL duration: the new constitution is active inside the
+window, and the old constitution returns when the window expires. Such
+amendments form a chain when issued sequentially. Each chain step
+carries the same per-step backward-refinement witness the amendment
+lifecycle already requires. The composition theorem states that for any
+instant during the chain's lifetime, the active constitution refines the
+baseline at that instant, regardless of whether the instant falls inside
+or outside any given amendment's TTL window. The auto-reversion at TTL
+expiry is exactly the structural mechanism that keeps the chain's
+trajectory pinned to the baseline rather than drifting predicate-by-
+predicate into a ratchet.
+
+The contributions are four artifacts that follow the same falsifiability
+discipline as the prior substrate
+\cite{programmableSovereigntyAnonymous}.
+
+\begin{itemize}
+  \item A formal model relating the executive-action type, its TTL
+    invariant, its optional rollback receipt, and the TTL-bounded
+    amendment chain (Section~\ref{sec:model-ra}).
+  \item A load-bearing candidate theorem statement
+    \thm{ttl_bounded_amendment_chain_preserves_baseline} and a
+    supporting rollback-receipt admission statement
+    \thm{rollback_admission_composes_with_refinement}, with two
+    definitional bridges retained to anchor the type-level discipline
+    (Section~\ref{sec:model-ra}).
+  \item A proposed endpoint substrate instance in which four reversible
+    action variants would have inverse executors with content-hash-gated
+    rollback constructors and a four-receipt grammar (request, execution,
+    rollback, acknowledgement) records each step of the action chain
+    (Section~\ref{sec:substrate-ra}).
+  \item An evaluation plan that names the reversible-path harnesses,
+    fixture corpora, destructive class, missing TTL scheduler, and stub
+    endpoint sensor as gaps rather than reporting unshipped measurements
+    (Section~\ref{sec:evaluation-ra}).
+\end{itemize}
+
+The sovereignty claim is bounded. Sovereignty over reversible action
+covers the polity's receipt log, not the physical world; a rollback
+receipt is a statement about that log referencing an inverse executor's
+signed assertion that the OS operation completed. The receipt-log
+discipline is the falsifiable part; the physical reversibility is an
+empirical claim about specific executor pairs (rename and inverse
+rename, signal stop and signal continue) that the receipt schema
+records without itself proving.

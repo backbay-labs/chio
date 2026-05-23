@@ -1,0 +1,156 @@
+\section{The Formal Grammar: Bounded Executive Action with Typed Rollback Witnesses}
+\label{sec:grammar}
+
+\subsection{The construction}
+
+The grammar this Article proposes formalizes a four-component requirement for any delegated emergency authority.
+At the moment an authority is exercised, the exercising actor must specify four things:
+the substantive action to be performed,
+a duration after which the authority lapses,
+a witness that the prior state remains constructively recoverable,
+and a predicate naming the actors whose concurrence is required to admit the action into the polity's history.
+The four components correspond to the doctrinal categories of substantive action, sunset, reversibility,
+and authorization procedure as those categories appear in existing constitutional and administrative law.
+The grammar's contribution is not the invention of any of the four categories,
+each of which has a long doctrinal pedigree.
+The contribution is the requirement that all four be present, simultaneously and at the moment of admission,
+as conditions of an exercise of authority that the legal order will recognize.
+
+The framing is structural rather than substantive.
+The grammar does not specify what content any of the four components should have in any particular case.
+The substantive action, the duration, the form of the rollback witness, and the membership of the quorum
+are all matters of democratic political choice that the grammar takes as exogenous.
+What the grammar adds is the requirement that, whatever content the political process assigns to the four
+components, the assignment must occur at the moment of admission and must be type-checkable at that moment
+rather than deferred to a later audit, review, or lapse step.
+The first three components correspond to features for which the existing statutory record provides
+systematic instances; the fourth, the quorum predicate, is the component that captures the
+Ackerman-Sunstein structural-correction proposals on supermajority defaults for emergency-power continuation.
+
+With that legal framing in place, the formal expression of the grammar can be stated compactly.
+A bounded executive action is a four-tuple
+\[
+a = (\text{act}, \TTL, w, q)
+\]
+where $\text{act}$ is the action to be performed, $\TTL$ is the time-to-live bounding the action's
+period of effect, $w$ is a typed rollback witness, and $q$ is the quorum predicate specifying which actors
+must concur in the action's admission.
+The action $a$ is admissible into the polity's history only if the four-tuple is well-formed in the sense
+defined below.
+
+The typed rollback witness $w$ is the load-bearing component of the construction.
+A typed rollback witness for an action $\text{act}$ is a proof, constructible at the moment of admission of $a$,
+that the polity's state after the execution of $\text{act}$ admits a transformation back to its state before
+the execution of $\text{act}$,
+and that the inverse transformation is itself an action the polity is authorized to perform.
+The witness is not a promise to roll back, nor a procedure by which a later actor may request rollback.
+The witness is a proof that the rollback is constructible.
+
+The distinction between a promise and a proof matters.
+A promise is a statement about future action that is binding only insofar as the political process
+that enforces it operates as designed.
+A proof is a constructive object that, by its existence, demonstrates that the future action is available.
+A promise can be broken; a proof either exists or does not.
+An action admitted without a proof of its rollback's constructibility may turn out, at the moment rollback is required,
+to be irreversible.
+An action admitted with a proof of its rollback's constructibility is, by the construction of the proof,
+reversible by available means.
+
+The grammar makes the unconstructive case unconstructible.
+An action $a$ for which no rollback witness $w$ exists cannot be constructed as a bounded executive action.
+The exercise of an authority granting such an action fails to type-check.
+The failure is not at the audit step, after the action has been taken,
+but at the admission step, before the action has been taken.
+The typed-rollback discipline applies at construction time, not at execution time.
+
+\subsection{The discipline applied to the case studies}
+
+Each of the five case studies in Part~\ref{sec:cases} is, on the grammar's framing,
+a case in which one or more components of the four-tuple is absent from the statutory record.
+
+Weimar Article~48 supplied the substantive component ($\text{act}$), in the form of the authority to take
+``necessary measures.'' The article did not supply a typed rollback witness ($w$),
+and the time-to-live ($\TTL$) was implicit and politically determined rather than typed.
+The quorum predicate ($q$) was the Reichstag's authority to demand suspension,
+which was a post-hoc check rather than a precondition of admission.
+The grammar's reading of the article is that the action component was present but the other three components
+were either absent or unenforced at the type level.
+
+The DMCA Section~512 notice-and-takedown regime, operating alongside Section~230's liability shield
+for platform self-regulation, supplies $\text{act}$ (the removal) and an implicit $\TTL$
+(the action takes effect immediately and remains in effect until or unless restored).
+The witness $w$ is not required at construction time.
+The Section~512(g) counter-notice procedure is a post-hoc check, not a precondition of admission.
+The quorum $q$ is a single private actor, the platform's content-moderation function.
+
+GDPR Article~17 supplies $\text{act}$ and a procedural $q$ (the administrative process by which an erasure order
+is issued).
+The witness $w$ is, in practice, not constructible at the moment of admission because the erasure is, in the
+present technical and operational regime, irreversible by available means.
+The grammar's reading is that the construction of an Article~17 erasure order, on the present technical regime,
+fails the typed-rollback test by default.
+
+FISA Section~702 supplies $\text{act}$ (the surveillance authorization) and an implicit $q$ (Attorney General
+plus Director of National Intelligence).
+The witness $w$ is absent because the surveillance, once executed, produces a state of affairs --
+information in the holdings of the collecting agency -- for which no constructive rollback is statutorily
+required and, on the present technical regime, no constructive rollback is operationally available.
+
+The 2001 AUMF supplies $\text{act}$ (use of military force) and a $q$ (presidential determination of the
+target's covered status).
+The witness $w$ is absent.
+The $\TTL$ is absent in the statutory text.
+The grammar's reading of the AUMF is that three of the four components are either absent or absent at the
+type level, with only the action component present in statutory form.
+
+The grammar's prescription, in each case, is structural rather than substantive.
+The grammar does not specify what the substantive action should be, what the time-to-live should be,
+what the rollback witness should look like, or what the quorum should consist of.
+It specifies only that all four components must be present, constructible, and type-checked at the moment
+of admission.
+The substantive content of each component is a matter of democratic political determination,
+which the grammar deliberately leaves to the legislative process that enacts the underlying authority.
+
+\subsection{What the grammar does and does not claim}
+
+The grammar makes a structural claim.
+It does not make the substantive claim that any particular delegated emergency authority is desirable or undesirable.
+It does not specify which actions should be permissible under emergency authority,
+which time-to-live values are appropriate, what content a rollback witness should have, or which actors should
+be authorized to concur.
+These are questions of democratic political choice that the grammar takes as exogenous.
+
+The grammar also does not claim that the construction is operationally costless.
+Requiring the construction of a typed rollback witness at the moment of admission imposes a structural cost
+on the actor seeking admission.
+In some cases the cost will be small -- a platform that maintains versioned content storage can construct
+a rollback witness for a removal as a routine matter.
+In other cases the cost will be large -- a surveillance authority whose technical implementation does not
+permit constructive reversal of collection may not be able to exhibit a witness without substantial re-engineering
+of the underlying collection systems.
+The cost is a real consideration that any application of the grammar must address.
+
+What the grammar claims is the narrower observation that the cost is currently being shifted onto the polity
+rather than borne by the actor seeking admission.
+When an emergency authority is exercised without a typed rollback witness,
+the cost of the resulting irreversibility falls on the polity, not on the actor.
+The polity bears the cost in the form of permanent alterations to the state of affairs that the authority was
+intended to alter only temporarily.
+The grammar shifts the cost from the polity to the actor.
+The actor must, at admission, either construct the witness or refrain from seeking admission.
+The shift is, on the Ackerman-Sunstein structural-correction framing, the appropriate distribution of the cost,
+because the actor seeking admission is the actor in the best position to bear it.
+
+The grammar's relationship to the Schmittian objection -- that the content of the exception is not formalizable --
+is that the grammar formalizes only the wrapper.
+The substantive content of the action, the substantive determination of whether an exception obtains,
+the substantive question of what state of affairs the polity should return to: these are political determinations
+that the grammar takes as inputs.
+What the grammar provides is a structural skeleton within which those determinations are made.
+The skeleton is constructible even if the content is not.
+A Schmittian critic of the grammar would observe, correctly, that the most consequential element of an emergency
+authority is the determination that the exception obtains.
+The Article's response is that the determination is preserved as a political determination in the grammar;
+the grammar adds the requirement that the determination be accompanied by a typed witness for the path back.
+The witness does not prejudge the determination.
+The witness conditions only the form of the action that follows from the determination.

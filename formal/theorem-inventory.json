@@ -759,6 +759,105 @@
       "status": "assumed",
       "mapsTo": ["P4"],
       "notes": "Receipt content-addressed id: the kernel mints `ChioReceipt` whose `id` field equals H(canonical_jcs(ChioReceiptIdInput)) on the production hot path. The replay store keys exclusively on id. Status remains `assumed` because the Lean toolchain is not in CI."
+    },
+    {
+      "id": "proof.treaty_admission_iff_predicate_intersection",
+      "leanName": "Chio.Treaty.treaty_admission_iff_predicate_intersection",
+      "file": "formal/lean4/Chio/Chio/Treaty/Intersection.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P7"],
+      "notes": "Bounded treaty model showing bilateral treaty admission is equivalent to the intersection of treaty, left-polity, and right-polity predicates."
+    },
+    {
+      "id": "proof.treaty_admission_stable_under_ladder_floor",
+      "leanName": "Chio.Treaty.treaty_admission_stable_under_ladder_floor",
+      "file": "formal/lean4/Chio/Chio/Treaty/Intersection.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P7"],
+      "notes": "Bounded treaty model showing a satisfied quorum-required trust-ladder floor leaves treaty predicate intersection admission unchanged."
+    },
+    {
+      "id": "proof.amendment_admissible_iff_backward_refinement",
+      "leanName": "Chio.Treaty.amendment_admissible_iff_backward_refinement",
+      "file": "formal/lean4/Chio/Chio/Treaty/Intersection.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "Bounded amendment model tying enactable constitutional amendments to an explicit backward-refinement proof witness."
+    },
+    {
+      "id": "proof.amendment_without_refinement_rejected",
+      "leanName": "Chio.Treaty.amendment_without_refinement_rejected",
+      "file": "formal/lean4/Chio/Chio/Treaty/Intersection.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "Bounded amendment model showing a candidate with no backward-refinement proof witness is rejected."
+    },
+    {
+      "id": "proof.freestanding_accept_set_theorem",
+      "leanName": "Chio.Treaty.BilateralAccept.freestanding_accept_set_theorem",
+      "file": "formal/lean4/Chio/Chio/Treaty/BilateralAccept.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P7"],
+      "notes": "Bounded bilateral DSSE model showing verifier acceptance is exactly issuer-key trust, kernel-key trust, and scope-predicate satisfaction."
+    },
+    {
+      "id": "proof.essential_preserved_chain",
+      "leanName": "Chio.Treaty.PredicateLang.essential_preserved_chain",
+      "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "Bounded syntactic-constitution model showing essential admission preservation composes across amendment chains."
+    },
+    {
+      "id": "proof.containsPredicate_preserved_chain",
+      "leanName": "Chio.Treaty.PredicateLang.containsPredicate_preserved_chain",
+      "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "Bounded syntactic-constitution model showing designated non-amendable predicate presence is trajectory-invariant under preserving amendments."
+    },
+    {
+      "id": "proof.anchor_admission_iff_lane_quorum_satisfied",
+      "leanName": "Chio.Treaty.PredicateLang.anchor_admission_iff_lane_quorum_satisfied",
+      "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P7"],
+      "notes": "Bounded lane-quorum model showing anchor admission is exactly the deduplicated declared-lane quorum check with undeclared contributors rejected."
+    },
+    {
+      "id": "proof.anchor_admission_rejects_undeclared_lane",
+      "leanName": "Chio.Treaty.PredicateLang.anchor_admission_rejects_undeclared_lane",
+      "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P7"],
+      "notes": "Bounded lane-quorum model showing a witness with undeclared contributing lanes fails closed before quorum counting."
     }
   ]
 }

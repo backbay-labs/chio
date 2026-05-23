@@ -2,6 +2,16 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 
+pub use chio_attest_loopback::{
+    authority_issuance_request, authority_profile_document, authority_profile_json,
+    authority_signing_keys_document, disclosure_policy, fresh_proof_package, issuance_request_json,
+    package_json, peer_pins_document_for_package, peer_pins_json, report_json,
+    revocation_publication_request, revocation_publication_request_json, signing_keys_json,
+    verification_context, verification_context_json, verifier_trust_bundle_document_for_package,
+    verifier_trust_bundle_json, verify_package, write_signed_negative_case_inputs,
+    ChiodosPackageError as ChioPackageError, ChiodosProofPackage as ChioProofPackage,
+    ChiodosVerifierTrustBundle as ChioVerifierTrustBundle,
+};
 use chio_core_types::merkle::MerkleTree;
 use chio_core_types::receipt::SignedExportEnvelope;
 use chio_core_types::{canonical_json_bytes, sha256_hex, Keypair, SigningAlgorithm};
@@ -31,15 +41,6 @@ use chio_pheromone_runtime::{
     PeerWeightsDocument, PheromoneAdmissionPolicyDocument, PheromoneReceiver,
     PheromoneRuntimeStore, SqlitePheromoneRuntimeStore, StaticPeerWeightProvider,
     VerifiedChioWorkflowResolver, PHEROMONE_PEER_WEIGHTS_SCHEMA,
-};
-use chio_three_vendor_example::{
-    authority_issuance_request, authority_profile_document, authority_profile_json,
-    authority_signing_keys_document, disclosure_policy, fresh_proof_package, issuance_request_json,
-    package_json, peer_pins_document_for_package, peer_pins_json, report_json,
-    revocation_publication_request, revocation_publication_request_json, signing_keys_json,
-    verification_context, verification_context_json, verifier_trust_bundle_document_for_package,
-    verifier_trust_bundle_json, verify_package, write_signed_negative_case_inputs,
-    ChioPackageError, ChioVerifierTrustBundle,
 };
 
 fn main() {
@@ -164,7 +165,7 @@ fn run() -> Result<(), ChioPackageError> {
 }
 
 fn write_pheromone_fixtures(
-    package: &chio_three_vendor_example::ChioProofPackage,
+    package: &ChioProofPackage,
     dir: &PathBuf,
 ) -> Result<(), ChioPackageError> {
     fs::create_dir_all(dir).map_err(|error| ChioPackageError::Json(error.to_string()))?;

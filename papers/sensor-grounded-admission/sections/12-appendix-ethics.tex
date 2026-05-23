@@ -1,0 +1,73 @@
+\section{Ethics Considerations}
+\label{sec:ethics}
+
+This appendix describes the ethical posture of the work in the
+categories USENIX Security policy names for the Ethics Considerations
+section.
+
+\subsection{Human and animal subjects}
+
+No human-subjects research and no animal-subjects research were
+conducted. No IRB review or animal-care protocol was required. The
+empirical evaluation in Section~\ref{sec:evaluation} is over receipts
+produced by a software admission kernel; the measured artifacts are
+signed canonical-JSON records and verifier-side mutation outcomes, not
+data derived from human participants. No personally identifying
+information was collected, analyzed, or stored at any point in the
+construction or evaluation.
+
+\subsection{Responsible disclosure}
+
+The sensor-grounded admission construction does not introduce new
+vulnerabilities. The construction is a verifier-side admission
+discipline that consumes existing trusted-execution-environment
+attestation primitives whose security properties are inherited from
+the underlying substrate. No new attacks against attestation
+primitives, signing keys, sensing hardware, or cryptographic
+constructions are proposed.
+
+The TEE-compromise literature cited in Section~\ref{sec:limits}
+describes attacks that were disclosed by their original authors,
+assigned CVE identifiers, and (in most cases) mitigated by hardware
+vendors through microcode updates or successor generations:
+Plundervolt~\cite{murdockPlundervolt2020},
+Foreshadow~\cite{vanbulckForeshadow2018},
+Downfall~\cite{moghimiDownfall2024}, and
+Half-Double~\cite{koglerHalfDouble2022} are each cited in their
+published, peer-reviewed forms. The paper acknowledges that TEE
+compromise reduces the construction to single-key signing for the
+duration of a compromise window, and names this reduction as a known
+structural boundary rather than as a new finding. No
+responsible-disclosure timeline was triggered by this work, and no
+embargo applies to any artifact in the submission.
+
+\subsection{Dual-use considerations}
+
+The construction's primary beneficiary is the verifier, that is, the
+polity admitting receipts under a constitution. An attacker who
+controls the agent producing a receipt body gains nothing from the
+substrate attesting its own sensing posture: the attestation is
+adversarial information from the attacker's perspective, since it
+constrains rather than enables admission. Forging an attestation
+requires compromising the TEE-rooted attestation signing key, which
+is the threat-model boundary named in Section~\ref{sec:intro} and
+discussed in Section~\ref{sec:limits}.
+
+The marginal dual-use concern is observability: a verifier sees more
+about the signing kernel's substrate state than under the
+unstrengthened predicate, and an adversary positioned in the verifier
+role inherits that observability. This concern is intrinsic to any
+attested-system design that exposes substrate state to relying
+parties, and is not unique to the sensor-grounded construction. The
+construction does not introduce a novel attack surface, novel
+side-channel, or novel cryptographic primitive whose misuse would
+benefit an attacker.
+
+\subsection{Conflicts of interest}
+
+Following USENIX Security double-blind review policy, conflict-of-interest
+declarations are deferred to the camera-ready version. The authors
+will disclose any relationships requiring declaration under USENIX
+policy at that stage. The work does not benefit from any commercial
+relationship whose disclosure is foreclosed by the anonymous-review
+posture.

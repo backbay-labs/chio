@@ -1,0 +1,99 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{times}
+\usepackage{setspace}
+\usepackage{microtype}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{xurl}
+\usepackage{booktabs}
+\usepackage{titlesec}
+\usepackage{footmisc}
+\usepackage{amsmath}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  citecolor=black,
+  urlcolor=black,
+  pdftitle={Delegated Emergency Authority as Bounded Executive Action},
+}
+
+% Law-journal-flavored sectioning: roman numerals, smaller headers.
+\titleformat{\section}{\normalfont\large\bfseries}{\Roman{section}.}{0.6em}{}
+\titleformat{\subsection}{\normalfont\normalsize\bfseries}{\Alph{subsection}.}{0.6em}{}
+
+% Macro stubs (carried from parent paper for symbol consistency).
+\newcommand{\codepath}[1]{\texttt{#1}}
+\newcommand{\thm}[1]{\texttt{#1}}
+\newcommand{\TTL}{\mathrm{TTL}}
+\Urlmuskip=0mu plus 1mu
+
+\onehalfspacing
+
+\title{\large\bfseries Delegated Emergency Authority as Bounded Executive Action:\\
+A Formal Grammar for Time-Limited Constitutional Amendments}
+
+\author{Anonymous for external review\thanks{Draft circulating for legal-academy review.
+The substrate cited in Section~\ref{sec:substrate} is developed at length in a companion technical paper.
+Comments on the legal claims, particularly the case-study selection in Section~\ref{sec:cases},
+are welcomed at the address provided to the editors.}}
+
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+\noindent
+Delegated emergency authority has, across two thousand years of constitutional practice,
+exhibited a consistent failure mode: an authority granted as a time-bounded exception ratchets,
+through use and reuse, into a permanent feature of the legal order.
+The pattern recurs in regimes that have little in common doctrinally.
+Article~48 of the Weimar Constitution, intended for narrowly delimited emergency use,
+was invoked roughly 250 times in twelve years before being absorbed into the structure of the Nazi state.
+The Authorization for Use of Military Force enacted in September 2001 has, twenty-five years later,
+been cited as legal basis for armed action in at least eight countries.
+Statutory takedown regimes under Section~230 of the Communications Decency Act and Article~17 of the
+General Data Protection Regulation produce orders that are, in form, time-bounded executive acts;
+in practice the orders are irreversible by construction because no rollback path is statutorily required.
+The Foreign Intelligence Surveillance Act's emergency authorities, as documented in declassified
+FISC opinions and PCLOB reports, operate at a boundary of judicial review the original statute did not contemplate.
+
+This Article argues that the ratcheting pattern has a structural rather than merely political explanation.
+Each of these regimes shares a missing element at the level of statutory grammar:
+the authority is granted without a typed rollback obligation that must be constructed
+at the moment of authorization.
+A typed rollback witness, a formal-methods construct drawn from recent work on
+machine-checkable governance receipts, requires that an authority cannot be exercised unless,
+at the moment of exercise, the actor demonstrates a constructible path back to the prior state.
+The grammar renders the corresponding class of unbounded emergency authority \emph{unconstructible}
+rather than merely forbidden.
+The distinction matters because forbidden authority can be exercised against the prohibition;
+unconstructible authority cannot be exercised because the construction itself fails.
+
+The Article applies the grammar to five case studies, situates it within the Schmitt-Agamben
+tradition on the state of exception, and exhibits one implementation drawn from a Lean-attestable
+governance substrate.
+The implementation is offered as proof that the grammar is buildable, not as the centerpiece of the argument.
+The Article is structural; it does not defend any particular emergency authority on the merits.
+Its claim is not abolition or expansion of existing authority but reformulation:
+any future grant should be enacted with the four-component grammar this Article specifies.
+\end{abstract}
+
+\input{sections/01-introduction}
+\input{sections/02-pattern}
+\input{sections/03-cases}
+\input{sections/04-grammar}
+\input{sections/05-substrate}
+\input{sections/06-implementation}
+\input{sections/07-limits}
+\input{sections/08-conclusion}
+
+\bibliographystyle{plain}
+\bibliography{bib}
+
+\end{document}

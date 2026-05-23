@@ -1,0 +1,25 @@
+\section{Limitations}
+\label{sec:limitations}
+
+A substrate-layer construction has structural limits.
+
+\paragraph{Adoption is the binding constraint.}
+A substrate-layer guarantee holds only for deployments that route every tool call through the admission hook. Today, most agentic-AI deployments do not. The Model Context Protocol~\cite{anthropicMCP2024} and its analogues are passive dispatchers. Adopting admission-layer discipline requires the deployer to install an admission hook, classify each tool's methods, implement rollback executors for reversible-class methods, and route every call through the hook without side channels. None of these tasks is research; all of them are work. The structural argument is independent of adoption; the deployed safety property is not.
+
+\paragraph{Class registries are operator-trusted.}
+The grammar pushes method classification into the operator's class registry. A method whose effects are destructive but is mis-classified as reversible admits without bilateral cosignature; the substrate's discipline does not catch this. Strengthening this position with formal-methods discipline on the registry (a typed schema, a class-derivation tool, a per-method test that empirically verifies reversibility) is downstream work.
+
+\paragraph{Reversibility is empirical, not formal.}
+A rollback executor for a reversible-class method discharges the rollback obligation only if it actually inverts the method's effect. A file-quarantine rollback that fails because the file's parent directory was removed in the interim discharges nothing. The substrate's response is the failed-rollback amendment obligation~\cite{programmableSovereignty2026}, which converts the rollback failure into a publicly-witnessed event rather than a silent retry, but cannot synthesise a working rollback from a broken one. Reversibility is a property of the method-plus-environment, not of the typed envelope.
+
+\paragraph{Destructive-class calls happen and are sometimes correct.}
+The grammar does not refuse destructive calls. It admits them only under bilateral cosignature. A correctly-classified destructive call that both polities admit will execute. The substrate's discipline protects the case where one polity admits and the other does not, not the case where both agree. The construction cannot guarantee that the right destructive calls happen and the wrong ones do not; it guarantees only that destructive calls admitted by a single party do not execute. This is weaker than ``the substrate enforces correctness'', and it is the strongest claim the construction supports.
+
+\paragraph{No empirical evaluation.}
+This paper does not measure. The companion substrate~\cite{programmableSovereignty2026} carries a corpus evaluation in an EDR deployment instance; the present work is a position paper. A targeted empirical study, for example a benchmark of misaligned agent behaviours against substrate-admission-protected and unprotected deployments, is the natural follow-up. We expect that an evaluation will sharpen the construction (by exposing classification mistakes, executor bugs, and protocol-bypass paths) more than it will validate the headline claim.
+
+\paragraph{Residual attack categories the substrate-layer story does not close.}
+Five classes of attack against the construction admit no defence from the substrate alone. (1) \emph{Composition with side-channel leakage of the rollback witness}: each reversible atom is rollback-discharged, but the witness itself carries content a side channel may already have acted on; rolling back the substrate-visible effect does not unleak. (2) \emph{Time-of-check / time-of-use races against the TTL}: a call at $t_0 + T - \varepsilon$ depending on a prior call's un-lapsed provisional state interleaves with that call's settlement under an unspecified concurrency model. (3) \emph{Operator manipulation when the host polity also signs willingly}: bilateral cosignature requires concurrence, not manipulation-detection. (4) \emph{Admission-hook denial of service}: per-call verification cost grows linearly with call rate; at sufficient rate the hook drops, queues, or accepts under-verified, none benign. (5) \emph{Multi-agent collusion}: two model instances whose individual calls are individually rollback-witnessed may realise a destructive aggregate where each agent's rollback restores its own contribution but not the other's; the single-issuer cumulative-rollback argument does not lift. Closing these requires composition-aware admission predicates, a concurrency-bounded substrate model, and multi-agent admission protocols.
+
+\paragraph{Scope of the formal claim.}
+The headline structural theorems live in the companion substrate~\cite{programmableSovereignty2026}, not in this paper. The present paper proposes a reframing of agentic-AI safety as a layered construction; the load-bearing formal content is cited. Reviewers who want machine-checked claims about admission, capability attenuation, and amendment refinement should read the companion paper.

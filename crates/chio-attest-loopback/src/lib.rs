@@ -3,7 +3,7 @@
 use std::fs;
 use std::path::Path;
 
-pub use chio_chiodos::{
+pub use chio_attest_buyer_core::{
     package_json, proof_package_from_json, report_json, verification_context_from_json,
     verification_context_json, verifier_report_from_json, verifier_trust_bundle_from_json,
     verifier_trust_bundle_json, verify_package, ChiodosActionClassKind, ChiodosAuthorityStatus,
@@ -19,15 +19,6 @@ pub use chio_chiodos::{
     VERIFIER_TRUST_BUNDLE_SCHEMA, WORKFLOW_AGGREGATE_PUBLISH_ACTION_CLASS_ID,
     WORKFLOW_GRANT_ISSUE_ACTION_CLASS_ID, WORKFLOW_INTERSECTION_SCHEMA,
 };
-pub use chio_chiodos_authority::{
-    assemble_verifier_trust_bundle, authority_profile_json, issuance_request_json,
-    issue_authority_bundle, peer_pins_json, publish_revocation_checkpoint,
-    revocation_publication_request_json, signing_keys_json, AuthorityProfileDocument,
-    ChiodosIssuanceRequest, ChiodosIssuanceStepRequest, ChiodosRevocationAuthority,
-    LocalAuthoritySigningKeysDocument, NamedSeedHex, PeerPinsDocument,
-    RevocationPublicationRequest, AUTHORITY_PROFILE_SCHEMA, ISSUANCE_REQUEST_SCHEMA,
-    LOCAL_SIGNING_KEYS_SCHEMA, PEER_PINS_SCHEMA, REVOCATION_PUBLICATION_REQUEST_SCHEMA,
-};
 use chio_core_types::canonical::{canonical_json_bytes, canonical_json_string};
 use chio_core_types::capability::MonetaryAmount;
 use chio_core_types::crypto::{sha256_hex, Keypair};
@@ -36,9 +27,20 @@ use chio_core_types::receipt::{
     ToolCallAction, ToolOrigin, TrustLevel,
 };
 use chio_federation::{
-    sign_chiodos_dsse_envelope, BilateralPredicateExtensions, CapabilityLeaseRef, DsseEnvelope,
-    GovernanceReceiptRef, HashRecord, Keyid, LadderManifestRef, PolicyEvaluationSummary,
-    PolicyVerdict, PREDICATE_TYPE_CHIODOS_BILATERAL,
+    sign_chio_bilateral_dsse_envelope, BilateralPredicateExtensions, CapabilityLeaseRef,
+    DsseEnvelope, GovernanceReceiptRef, HashRecord, Keyid, LadderManifestRef,
+    PolicyEvaluationSummary, PolicyVerdict, PREDICATE_TYPE_CHIO_BILATERAL_INVOCATION,
+};
+pub use chio_federation_authority::{
+    assemble_verifier_trust_bundle, authority_profile_json, issuance_request_json,
+    issue_authority_bundle, peer_pins_json, publish_revocation_checkpoint,
+    revocation_publication_request_json, signing_keys_json, AuthorityProfileDocument,
+    ChioIssuanceRequest as ChiodosIssuanceRequest,
+    ChioIssuanceStepRequest as ChiodosIssuanceStepRequest,
+    ChioRevocationAuthority as ChiodosRevocationAuthority, LocalAuthoritySigningKeysDocument,
+    NamedSeedHex, PeerPinsDocument, RevocationPublicationRequest, AUTHORITY_PROFILE_SCHEMA,
+    ISSUANCE_REQUEST_SCHEMA, LOCAL_SIGNING_KEYS_SCHEMA, PEER_PINS_SCHEMA,
+    REVOCATION_PUBLICATION_REQUEST_SCHEMA,
 };
 use chio_governance::{
     CapabilityLeaseActionClass, GovernanceReceiptCaseKind, SignedCapabilityLease,
@@ -73,6 +75,7 @@ const BBS_KEY_INFO: &[u8] = b"chiodos";
 const BUYER_SEED: [u8; 32] = [11; 32];
 const GOVERNANCE_SEED: [u8; 32] = [12; 32];
 const REVOCATION_SEED: [u8; 32] = [13; 32];
+const RUNTIME_POLICY_SEED: [u8; 32] = [14; 32];
 const VENDOR_A_SEED: [u8; 32] = [21; 32];
 const VENDOR_B_SEED: [u8; 32] = [22; 32];
 const VENDOR_C_SEED: [u8; 32] = [23; 32];
@@ -358,6 +361,7 @@ pub fn authority_profile_document() -> Result<AuthorityProfileDocument, ChiodosP
     let buyer_key = Keypair::from_seed(&BUYER_SEED);
     let governance_key = Keypair::from_seed(&GOVERNANCE_SEED);
     let revocation_key = Keypair::from_seed(&REVOCATION_SEED);
+    let runtime_policy_key = Keypair::from_seed(&RUNTIME_POLICY_SEED);
     Ok(AuthorityProfileDocument {
         schema: AUTHORITY_PROFILE_SCHEMA.to_string(),
         trusted_bbs_issuers: trusted_bbs_issuers()?,
@@ -382,6 +386,7 @@ pub fn authority_profile_document() -> Result<AuthorityProfileDocument, ChiodosP
             status: Some(ChiodosAuthorityStatus::Active),
             allowed_case_kinds: vec![GovernanceReceiptCaseKind::DestructiveAuthorization],
         }],
+        runtime_policy_issuer_public_keys: vec![runtime_policy_key.public_key()],
         revocation_authority: ChiodosRevocationAuthority {
             authority_id: BUYER_KERNEL_ID.to_string(),
             key_id: key_id(&revocation_key.public_key()),
@@ -861,7 +866,7 @@ fn validate_runtime_artifact_for_issued_material(
     let (statement, _) = envelope
         .decode_statement()
         .map_err(|error| ChiodosPackageError::Federation(error.to_string()))?;
-    if statement.predicate_type != PREDICATE_TYPE_CHIODOS_BILATERAL {
+    if statement.predicate_type != PREDICATE_TYPE_CHIO_BILATERAL_INVOCATION {
         return Err(ChiodosPackageError::Federation(format!(
             "runtime step {} DSSE predicate type {} is not strict Chiodos",
             index, statement.predicate_type
@@ -1134,7 +1139,7 @@ fn build_proof_package_unchecked(
                     cross_org_visibility: None,
                     treaty_binding_ref: None,
                 };
-                let envelope = sign_chiodos_dsse_envelope(
+                let envelope = sign_chio_bilateral_dsse_envelope(
                     &receipt,
                     &buyer_key,
                     &vendor_key,

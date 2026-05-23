@@ -1,0 +1,33 @@
+[manifest]
+generated_at = "2026-05-18"
+paper = "Sensor-Grounded Admission: Polity Receipts with Attested Substrate State"
+target_venue = "USENIX Security 2027 Cycle 1"
+lean_toolchain = "leanprover/lean4:v4.28.0-rc1"
+
+[[theorems]]
+name = "admission_predicate_separates_healthy_and_degraded_witnesses"
+lean_module = "Chio.Treaty.SensorGroundedAdmission"
+lean_declaration = "Chio.Treaty.SensorAttestation.admission_predicate_separates_healthy_and_degraded_witnesses"
+paper_section = "Section 4 (Formal Model), headline existence theorem"
+axioms = ["propext", "Classical.choice", "Quot.sound"]
+
+[[theorems]]
+name = "partition_contingency_mode_iff_degraded_subset"
+lean_module = "Chio.Treaty.SensorGroundedAdmission"
+lean_declaration = "Chio.Treaty.SensorAttestation.partition_contingency_mode_iff_degraded_subset"
+paper_section = "Section 4 (Formal Model), partition-contingency biconditional"
+axioms = ["propext"]
+
+[[theorems]]
+name = "healthy_attestation_required_for_destructive_admission"
+lean_module = "Chio.Treaty.SensorGroundedAdmission"
+lean_declaration = "Chio.Treaty.SensorAttestation.healthy_attestation_required_for_destructive_admission"
+paper_section = "Section 4 (Formal Model), destructive-admission projection"
+axioms = ["propext"]
+
+[[theorems]]
+name = "degraded_sensor_admission_requires_re_admission_witness"
+lean_module = "Chio.Treaty.SensorGroundedAdmission"
+lean_declaration = "Chio.Treaty.SensorAttestation.degraded_sensor_admission_requires_re_admission_witness"
+paper_section = "Section 4 (Formal Model), amendment re-admission"
+axioms = ["propext", "Quot.sound"]

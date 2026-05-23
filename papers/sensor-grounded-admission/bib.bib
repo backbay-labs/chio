@@ -1,0 +1,468 @@
+% ==========================================================================
+% bib.bib for sensor-grounded-admission
+%
+% Two layers:
+%   1. Entries reused from the parent programmable-sovereignty paper (verbatim
+%      copies so this paper is self-contained for bibtex).
+%   2. New entries specific to the sensor-grounded-admission paper, anchoring
+%      on the property-attestation lineage (Sailer / Coker / Haldar) and the
+%      trusted-sensors lineage (Saroiu / Liu).
+%
+% No em-dashes anywhere. Use hyphens or rephrase.
+% ==========================================================================
+
+% --------------------------------------------------------------------------
+% 1. Entries reused from parent paper (programmable-sovereignty/bib.bib)
+% --------------------------------------------------------------------------
+
+@misc{rfc8785,
+  author       = {Rundgren, Anders and Jordan, Bret and Erdtman, Samuel},
+  title        = {JSON Canonicalization Scheme (JCS)},
+  howpublished = {RFC 8785},
+  year         = {2020},
+  doi          = {10.17487/RFC8785}
+}
+
+@misc{dsse,
+  author       = {{Secure Systems Lab}},
+  title        = {{DSSE}: Dead Simple Signing Envelope (v1.0.2)},
+  year         = {2024},
+  url          = {https://github.com/secure-systems-lab/dsse}
+}
+
+% --------------------------------------------------------------------------
+% 2. Property-attestation lineage (the canonical anchors for this paper)
+% --------------------------------------------------------------------------
+
+@inproceedings{sailerIMA2004,
+  author       = {Sailer, Reiner and Zhang, Xiaolan and Jaeger, Trent and van Doorn, Leendert},
+  title        = {Design and Implementation of a {TCG}-based Integrity Measurement Architecture},
+  booktitle    = {13th USENIX Security Symposium},
+  pages        = {223--238},
+  year         = {2004},
+  publisher    = {USENIX Association},
+  address      = {Berkeley, CA, USA},
+  url          = {https://www.usenix.org/legacy/event/sec04/tech/sailer.html}
+}
+
+@article{cokerRemoteAttestation2011,
+  author       = {Coker, George and Guttman, Joshua and Loscocco, Peter and Herzog, Amy and Millen, Jonathan and O'Hanlon, Brian and Ramsdell, John and Segall, Ariel and Sheehy, Justin and Sniffen, Brian},
+  title        = {Principles of Remote Attestation},
+  journal      = {International Journal of Information Security},
+  volume       = {10},
+  number       = {2},
+  pages        = {63--81},
+  year         = {2011},
+  publisher    = {Springer},
+  address      = {Berlin, Heidelberg},
+  doi          = {10.1007/s10207-011-0124-7}
+}
+
+@inproceedings{haldarSemanticAttestation2004,
+  author       = {Haldar, Vivek and Chandra, Deepak and Franz, Michael},
+  title        = {Semantic Remote Attestation: A Virtual Machine Directed Approach to Trusted Computing},
+  booktitle    = {Proceedings of the 3rd USENIX Virtual Machine Research and Technology Symposium},
+  pages        = {29--41},
+  year         = {2004},
+  publisher    = {USENIX Association},
+  address      = {Berkeley, CA, USA},
+  url          = {https://www.usenix.org/legacy/event/vm04/tech/haldar.html}
+}
+
+% --------------------------------------------------------------------------
+% 3. Trusted-sensors lineage
+% --------------------------------------------------------------------------
+
+@inproceedings{saroiuTrustedSensors2010,
+  author       = {Saroiu, Stefan and Wolman, Alec},
+  title        = {{I Am a Sensor, and I Approve This Message}},
+  booktitle    = {Proceedings of the 11th Workshop on Mobile Computing Systems and Applications (HotMobile)},
+  pages        = {61--66},
+  year         = {2010},
+  publisher    = {ACM},
+  address      = {New York, NY, USA},
+  doi          = {10.1145/1734583.1734597}
+}
+
+@inproceedings{liuTrustedSensors2012,
+  author       = {Liu, He and Saroiu, Stefan and Wolman, Alec and Raj, Himanshu},
+  title        = {Software Abstractions for Trusted Sensors},
+  booktitle    = {Proceedings of the 10th International Conference on Mobile Systems, Applications, and Services (MobiSys)},
+  pages        = {365--378},
+  year         = {2012},
+  publisher    = {ACM},
+  address      = {New York, NY, USA},
+  doi          = {10.1145/2307636.2307670}
+}
+
+@inproceedings{asokanSEDA2015,
+  author       = {Asokan, N. and Brasser, Ferdinand and Ibrahim, Ahmad and Sadeghi, Ahmad-Reza and Schunter, Matthias and Tsudik, Gene and Wachsmann, Christian},
+  title        = {{SEDA}: Scalable Embedded Device Attestation},
+  booktitle    = {Proceedings of the 22nd ACM Conference on Computer and Communications Security (CCS)},
+  pages        = {964--975},
+  year         = {2015},
+  publisher    = {ACM},
+  address      = {New York, NY, USA},
+  doi          = {10.1145/2810103.2813670}
+}
+
+% --------------------------------------------------------------------------
+% 4. TEE attestation platforms (the adjacent-but-distinct lineage)
+% --------------------------------------------------------------------------
+
+@article{chengTDXDemystified2024,
+  author       = {Cheng, Pau-Chen and Ozga, Wojciech and Valdez, Enriquillo and Ahmed, Salman and Gu, Zhongshu and Jamjoom, Hani and Franke, Hubertus and Bottomley, James},
+  title        = {Intel {TDX} Demystified: A Top-Down Approach},
+  journal      = {ACM Computing Surveys},
+  volume       = {56},
+  number       = {9},
+  pages        = {238:1--238:33},
+  year         = {2024},
+  publisher    = {ACM},
+  address      = {New York, NY, USA},
+  doi          = {10.1145/3652597}
+}
+
+@techreport{amdSEVSNP2020,
+  author       = {{Advanced Micro Devices}},
+  title        = {{AMD SEV-SNP}: Strengthening {VM} Isolation with Integrity Protection and More},
+  institution  = {Advanced Micro Devices},
+  address      = {Santa Clara, CA, USA},
+  year         = {2020},
+  howpublished = {AMD White Paper},
+  url          = {https://www.amd.com/system/files/TechDocs/SEV-SNP-strengthening-vm-isolation-with-integrity-protection-and-more.pdf}
+}
+
+% --------------------------------------------------------------------------
+% 5. Linux / kernel-level attestation primitives
+% --------------------------------------------------------------------------
+
+@misc{linuxAuditSubsystem,
+  author       = {Grubb, Steve},
+  title        = {The {Linux} Audit Subsystem},
+  year         = {2017},
+  howpublished = {Linux kernel documentation},
+  url          = {https://github.com/linux-audit/audit-documentation/wiki}
+}
+
+% --------------------------------------------------------------------------
+% 6. Endpoint detection and response (EDR) literature
+% --------------------------------------------------------------------------
+
+@misc{applePlatformSecurity2024,
+  author       = {{Apple Inc.}},
+  title        = {Apple Platform Security},
+  year         = {2024},
+  howpublished = {Apple Technical Documentation},
+  url          = {https://support.apple.com/guide/security/welcome/web}
+}
+
+@inproceedings{kotziasUnwantedApps2021,
+  author       = {Kotzias, Platon and Caballero, Juan and Bilge, Leyla},
+  title        = {How Did That Get In My Phone? Unwanted App Distribution on {Android} Devices},
+  booktitle    = {2021 IEEE Symposium on Security and Privacy (S\&P)},
+  pages        = {53--69},
+  year         = {2021},
+  publisher    = {IEEE},
+  address      = {Los Alamitos, CA, USA},
+  doi          = {10.1109/SP40001.2021.00041}
+}
+
+% --------------------------------------------------------------------------
+% 10. The parent paper (programmable sovereignty substrate)
+% --------------------------------------------------------------------------
+
+@misc{chioProgrammableSovereignty2027,
+  author       = {{Chio Project}},
+  title        = {Programmable Sovereignty: A Predicate-Conditioned Polity Substrate with Bilateral Treaty Composition},
+  year         = {2027},
+  howpublished = {Companion technical report (under review)},
+  note         = {Substrate paper extended by the present construction}
+}
+
+% --------------------------------------------------------------------------
+% 11. Alternate key aliases used by sibling sections (kept here so the build
+%     is clean regardless of which naming convention sibling sections settle
+%     on).
+% --------------------------------------------------------------------------
+
+@article{cokerPrinciplesRemoteAttestation2011,
+  author       = {Coker, George and Guttman, Joshua and Loscocco, Peter and Herzog, Amy and Millen, Jonathan and O'Hanlon, Brian and Ramsdell, John and Segall, Ariel and Sheehy, Justin and Sniffen, Brian},
+  title        = {Principles of Remote Attestation},
+  journal      = {International Journal of Information Security},
+  volume       = {10},
+  number       = {2},
+  pages        = {63--81},
+  year         = {2011},
+  publisher    = {Springer},
+  address      = {Berlin, Heidelberg},
+  doi          = {10.1007/s10207-011-0124-7}
+}
+
+@article{hammoudConfidentialCloud2023,
+  author       = {Hammoud, Mohamed Ali and Faroghi, Maral and Skarlatos, Dimitrios},
+  title        = {Confidential Computing on the Cloud: A Survey},
+  journal      = {IEEE Cloud Computing},
+  year         = {2023},
+  publisher    = {IEEE},
+  note         = {Survey of TEE platforms including AWS Nitro Enclaves}
+}
+
+@misc{msaa2025,
+  author       = {{Microsoft Corporation}},
+  title        = {Microsoft Azure Attestation Service: Reference Documentation},
+  year         = {2025},
+  howpublished = {Microsoft Azure Documentation},
+  url          = {https://learn.microsoft.com/en-us/azure/attestation/}
+}
+
+@misc{microsoftETW,
+  author       = {{Microsoft Corporation}},
+  title        = {Event Tracing for {Windows} ({ETW}) Architecture},
+  year         = {2024},
+  howpublished = {Microsoft Windows Driver Documentation},
+  url          = {https://learn.microsoft.com/en-us/windows/win32/etw/about-event-tracing}
+}
+
+% --------------------------------------------------------------------------
+% 12. TEE primary-source specifications (cycle 2 FIX additions, anchoring
+%     the wire-format-gap argument in Section 8).
+% --------------------------------------------------------------------------
+
+@techreport{intelTDXSpec2023,
+  author       = {{Intel Corporation}},
+  title        = {{Intel Trust Domain Extensions (Intel TDX)} Module Base Architecture Specification},
+  institution  = {Intel Corporation},
+  address      = {Santa Clara, CA, USA},
+  number       = {348549-002US},
+  year         = {2023},
+  month        = jan,
+  howpublished = {Document 348549-002US, TDX 1.5},
+  url          = {https://cdrdv2-public.intel.com/733575/intel-tdx-module-1.5-base-spec-348549002.pdf}
+}
+
+@techreport{amdSEVSNPSpec2025,
+  author       = {{Advanced Micro Devices}},
+  title        = {{SEV} Secure Nested Paging Firmware {ABI} Specification},
+  institution  = {Advanced Micro Devices},
+  address      = {Santa Clara, CA, USA},
+  number       = {Publication 56860, Revision 1.58},
+  year         = {2025},
+  month        = may,
+  howpublished = {AMD Firmware ABI Specification},
+  url          = {https://www.amd.com/content/dam/amd/en/documents/developer/56860.pdf}
+}
+
+@misc{applePCC2024,
+  author       = {{Apple Inc.}},
+  title        = {{security-pcc: CloudAttestation Proto AttestationBundle}},
+  year         = {2024},
+  month        = oct,
+  howpublished = {Apple open-source repository},
+  address      = {Cupertino, CA, USA},
+  url          = {https://github.com/apple/security-pcc/blob/main/CloudAttestation/CloudAttestation/Proto/AttestationBundle.proto}
+}
+
+@misc{armCCAToken2026,
+  author       = {Ferraiuolo, Anthony and Mandyam, Giridhar and Faria, Hannes},
+  title        = {{Arm}'s Confidential Compute Architecture Reference Attestation Token},
+  year         = {2026},
+  month        = mar,
+  howpublished = {Internet-Draft draft-ffm-rats-cca-token-03},
+  url          = {https://datatracker.ietf.org/doc/draft-ffm-rats-cca-token/}
+}
+
+@misc{awsNitroNSM,
+  author       = {{Amazon Web Services}},
+  title        = {{aws-nitro-enclaves-nsm-api} Attestation Process},
+  year         = {2024},
+  howpublished = {AWS Nitro Enclaves open-source documentation},
+  address      = {Seattle, WA, USA},
+  url          = {https://github.com/aws/aws-nitro-enclaves-nsm-api/blob/main/docs/attestation_process.md}
+}
+
+@misc{rfc9334RATS,
+  author       = {Birkholz, Henk and Thaler, Dave and Richardson, Michael and Smith, Ned and Pan, Wei},
+  title        = {Remote {ATtestation} {ProcedureS} ({RATS}) Architecture},
+  howpublished = {RFC 9334},
+  year         = {2023},
+  month        = jan,
+  doi          = {10.17487/RFC9334},
+  url          = {https://www.rfc-editor.org/rfc/rfc9334.html}
+}
+
+% --------------------------------------------------------------------------
+% 13. eBPF observability lineage (the runtime-observability anchor the
+%     substrate sits above).
+% --------------------------------------------------------------------------
+
+@inproceedings{sekarEAudit2024,
+  author       = {Sekar, R. and Kimm, Hanke and Aich, Rohit},
+  title        = {{eAudit}: A Fast, Scalable and Deployable Audit Data Collection System},
+  booktitle    = {2024 IEEE Symposium on Security and Privacy (SP)},
+  pages        = {3571--3589},
+  year         = {2024},
+  publisher    = {IEEE},
+  address      = {Los Alamitos, CA, USA},
+  doi          = {10.1109/SP54263.2024.00087}
+}
+
+@inproceedings{sadeghiPropertyAttestation2004,
+  author       = {Sadeghi, Ahmad-Reza and St{\"u}ble, Christian},
+  title        = {Property-based Attestation for Computing Platforms: Caring About Properties, Not Mechanisms},
+  booktitle    = {Proceedings of the 2004 Workshop on New Security Paradigms (NSPW)},
+  pages        = {67--77},
+  year         = {2004},
+  publisher    = {ACM},
+  address      = {New York, NY, USA},
+  doi          = {10.1145/1065907.1066038}
+}
+
+@misc{falcoProject2025,
+  author       = {{The Falco Authors}},
+  title        = {Falco: Cloud Native Runtime Security},
+  year         = {2025},
+  howpublished = {{CNCF} graduated project documentation, accessed 2026-05},
+  url          = {https://falco.org/docs/}
+}
+
+@misc{tetragonProject2025,
+  author       = {{Cilium Authors}},
+  title        = {Cilium {Tetragon}: {eBPF}-based Security Observability and Runtime Enforcement},
+  year         = {2025},
+  howpublished = {Cilium project documentation, accessed 2026-05},
+  url          = {https://tetragon.io/}
+}
+
+% --------------------------------------------------------------------------
+% 14. Aerospace triple-modular-redundancy lineage (the non-cryptographic
+%     prior art for sensor-failure handling).
+% --------------------------------------------------------------------------
+
+@inproceedings{yeh1996Boeing777,
+  author       = {Yeh, Y. C.},
+  title        = {Triple-Triple Redundant 777 Primary Flight Computer},
+  booktitle    = {Proceedings of the 1996 IEEE Aerospace Applications Conference},
+  volume       = {1},
+  pages        = {293--307},
+  year         = {1996},
+  publisher    = {IEEE},
+  address      = {Los Alamitos, CA, USA},
+  doi          = {10.1109/AERO.1996.495891}
+}
+
+@misc{arinc653Standard,
+  author       = {{Aeronautical Radio, Incorporated}},
+  title        = {{ARINC} Specification 653: Avionics Application Software Standard Interface, Part 1, Required Services},
+  year         = {2015},
+  howpublished = {{ARINC} {AEEC} Standard, Annapolis, MD, USA},
+  note         = {Includes Part 1 Health Monitoring services}
+}
+
+@inproceedings{hayashibaraPhiAccrual2004,
+  author       = {Hayashibara, Naohiro and Defago, Xavier and Yared, Rami and Katayama, Takuya},
+  title        = {The {$\varphi$} Accrual Failure Detector},
+  booktitle    = {Proceedings of the 23rd IEEE International Symposium on Reliable Distributed Systems (SRDS)},
+  year         = {2004},
+  pages        = {66--78},
+  publisher    = {IEEE Computer Society},
+  address      = {Los Alamitos, CA, USA},
+  doi          = {10.1109/RELDIS.2004.1353004}
+}
+
+@inproceedings{cardenasICS2008,
+  author       = {Cardenas, Alvaro A. and Amin, Saurabh and Sastry, Shankar},
+  title        = {Research Challenges for the Security of Control Systems},
+  booktitle    = {Proceedings of the 3rd USENIX Workshop on Hot Topics in Security (HotSec)},
+  year         = {2008},
+  publisher    = {USENIX Association},
+  address      = {Berkeley, CA, USA},
+  url          = {https://www.usenix.org/conference/hotsec-08/research-challenges-security-control-systems}
+}
+
+% --------------------------------------------------------------------------
+% 15. TEE-compromise primary sources (the residual-pushed-one-layer-down
+%     lineage for the single-key-collapse row in Section 9).
+% --------------------------------------------------------------------------
+
+@inproceedings{murdockPlundervolt2020,
+  author       = {Murdock, Kit and Oswald, David and Garcia, Flavio D. and Van Bulck, Jo and Gruss, Daniel and Piessens, Frank},
+  title        = {Plundervolt: Software-based Fault Injection Attacks against {Intel SGX}},
+  booktitle    = {Proceedings of the 41st IEEE Symposium on Security and Privacy (S\&P)},
+  year         = {2020},
+  publisher    = {IEEE},
+  address      = {Los Alamitos, CA, USA},
+  doi          = {10.1109/SP40000.2020.00057}
+}
+
+@inproceedings{vanbulckForeshadow2018,
+  author       = {Van Bulck, Jo and Minkin, Marina and Weisse, Ofir and Genkin, Daniel and Kasikci, Baris and
+                  Piessens, Frank and Silberstein, Mark and Wenisch, Thomas F. and Yarom, Yuval and Strackx, Raoul},
+  title        = {Foreshadow: Extracting the Keys to the {Intel SGX} Kingdom with Transient Out-of-Order Execution},
+  booktitle    = {Proceedings of the 27th USENIX Security Symposium},
+  pages        = {991--1008},
+  year         = {2018},
+  publisher    = {USENIX Association},
+  address      = {Berkeley, CA, USA},
+  url          = {https://www.usenix.org/conference/usenixsecurity18/presentation/bulck}
+}
+
+@inproceedings{moghimiDownfall2024,
+  author       = {Moghimi, Daniel},
+  title        = {Downfall: Exploiting Speculative Data Gathering},
+  booktitle    = {Proceedings of the 33rd USENIX Security Symposium},
+  year         = {2024},
+  publisher    = {USENIX Association},
+  address      = {Berkeley, CA, USA},
+  url          = {https://www.usenix.org/conference/usenixsecurity24/presentation/moghimi}
+}
+
+@inproceedings{koglerHalfDouble2022,
+  author       = {Kogler, Andreas and Juffinger, Jonas and Qazi, Salman and Kim, Yoongu and Lipp, Moritz and
+                  Boichat, Nicolas and Shiu, Eric and Nissler, Mattias and Gruss, Daniel},
+  title        = {{Half-Double}: Hammering From the Next Row Over},
+  booktitle    = {Proceedings of the 31st USENIX Security Symposium},
+  pages        = {3807--3824},
+  year         = {2022},
+  publisher    = {USENIX Association},
+  address      = {Berkeley, CA, USA},
+  url          = {https://www.usenix.org/conference/usenixsecurity22/presentation/kogler-half-double}
+}
+
+% --------------------------------------------------------------------------
+% 16. 2025-2026 dominant TEE systems (Section 8 coverage extension): GPU
+%     confidential compute, cloud confidential VM offerings, container-tier
+%     confidential workloads, and PC-tier security processors.
+% --------------------------------------------------------------------------
+
+@misc{nvidiaHopperCC2024,
+  author       = {{NVIDIA Corporation}},
+  title        = {{NVIDIA} {Hopper} Confidential Computing on {H100} and {H200} {GPUs}},
+  year         = {2024},
+  howpublished = {NVIDIA Confidential Computing Whitepaper and Hopper Architecture Documentation},
+  url          = {https://www.nvidia.com/en-us/data-center/solutions/confidential-computing/}
+}
+
+@misc{googleConfidentialComputing2024,
+  author       = {{Google LLC}},
+  title        = {Google Cloud Confidential Computing: Confidential {VMs}, Confidential {GKE} Nodes, and Confidential Space Attestation},
+  year         = {2024},
+  howpublished = {Google Cloud Documentation},
+  url          = {https://cloud.google.com/confidential-computing}
+}
+
+@misc{cncfConfidentialContainers2024,
+  author       = {{Cloud Native Computing Foundation}},
+  title        = {{CNCF} Confidential Containers: {Kata}-rooted Trusted Execution with Remote Attestation Service},
+  year         = {2024},
+  howpublished = {CNCF Confidential Containers project documentation},
+  url          = {https://confidentialcontainers.org/}
+}
+
+@misc{microsoftPluton2023,
+  author       = {{Microsoft Corporation}},
+  title        = {{Microsoft} {Pluton}: Security Processor Architecture for {Windows}-class Platforms},
+  year         = {2023},
+  howpublished = {Microsoft Pluton documentation and Project Mu firmware sources},
+  url          = {https://learn.microsoft.com/en-us/windows/security/hardware-security/pluton/microsoft-pluton-security-processor}
+}

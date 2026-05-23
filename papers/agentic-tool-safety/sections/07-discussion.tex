@@ -1,0 +1,39 @@
+\section{Discussion}
+\label{sec:discussion}
+
+The construction is best read as a structural complement to the existing alignment-research stack, not as a replacement.
+
+\paragraph{Constitutional AI and constitutional admission.}
+Constitutional AI~\cite{baiConstitutionalAI2022} encodes a constitution into the model's training signal: a list of principles is used to score candidate outputs, and the policy is shaped to prefer outputs the constitution endorses. The constitution lives inside the model, as preferences. An admission-layer construction encodes a constitution into the substrate's typed admission predicate: a list of structural commitments is enforced as preconditions for the substrate to execute a tool call. The constitution lives outside the model, as type checks. The two constitutions are not the same object and do not interfere; they discipline different points in the action pipeline. Constitutional AI cannot guarantee that a model never produces a destructive tool call; it shapes the prior. An admission-layer construction can guarantee that a destructive tool call is not executable without the typed witness.
+
+\paragraph{Verdict versus admission.}
+Debate~\cite{christianoDebate2018} and scalable oversight~\cite{leikeScalableOversight2018,bowmanScalableOversight2022} produce verdicts on candidate outputs that exceed the operator's direct capacity to judge. A verdict is a yes-or-no judgement about whether a given output is safe to act on. Admission is a different operation: it accepts or rejects an action envelope against a typed predicate. A verdict says ``the model's output is acceptable''. Admission says ``the substrate will execute this typed call''. The two operations can be stacked: a verdict-based oversight system can serve as a precondition on admission. The substrate does not require the verdict to exist for admission to be sound; admission is a structural check whose correctness does not depend on the oversight loop.
+
+\paragraph{Red-teaming and the substrate-layer dual.}
+Red-teaming~\cite{perezRedTeaming2022} elicits failure modes from the deployed model. A substrate that admits calls on structural grounds is the dual: where red-teaming asks ``what failure can we elicit from the model'', the substrate asks ``what failure does the typed envelope refuse to admit regardless of what the model produces''. A red-team that elicits a destructive irreversible tool call from a misaligned model finds a model-side failure; admission of that call would require a typed rollback witness or a bilateral cosignature the model cannot supply, so the operational consequence of the model-side failure is bounded by the structural refusal.
+
+\paragraph{RSP commitments and the runtime artifact.}
+Frontier-safety frameworks such as the Responsible Scaling Policy~\cite{anthropicRSP2023} commit to capability-gated deployment thresholds. These are pre-deployment instruments. They do not produce a runtime artifact an external party can replay to check what a deployed model actually did. A substrate that produces canonically-signed admission receipts gives the RSP commitment a post-deployment counterpart: the deployer can show that every destructive call admitted by the substrate carried the structural witnesses the threshold required, and an auditor can replay the receipt corpus to check the claim.
+
+\begin{figure}[t]
+\centering
+\small
+\setlength{\tabcolsep}{8pt}
+\renewcommand{\arraystretch}{1.6}
+\begin{tabular}{r|c|c|}
+\multicolumn{1}{r}{} & \multicolumn{1}{c}{\textbf{Training-layer passes}} & \multicolumn{1}{c}{\textbf{Training-layer fails}} \\
+\cline{2-3}
+\textbf{Admission-layer passes} & \cellcolor{green!12}\textbf{Execute} & \cellcolor{red!7}Reject \emph{(training caught)} \\
+\cline{2-3}
+\textbf{Admission-layer fails} & \cellcolor{red!7}Reject \emph{(admission caught)} & \cellcolor{red!7}Reject \emph{(both caught)} \\
+\cline{2-3}
+\end{tabular}
+\caption{The two safety layers compose as a logical conjunction. A tool call executes only when both layers pass it (upper-left cell). The second column is the load-bearing case: a misaligned model that evades the training-layer check still faces the admission-layer check at runtime. \textbf{Training-layer} interventions (Constitutional AI~\cite{baiConstitutionalAI2022}, RLHF~\cite{ouyangRLHF2022}, alignment-faking research~\cite{hubingerAlignmentFaking2024}, scalable oversight~\cite{leikeScalableOversight2018,christianoDebate2018}, debate) shape what the model wants to emit. \textbf{Admission-layer} constraints (positive TTL, typed rollback witness, bilateral cosignature, substrate-issued receipts) shape what the substrate is willing to execute. The two checks are orthogonal because they evaluate independent properties.}
+\label{fig:orthogonal-composition}
+\end{figure}
+
+\paragraph{Three composition pairs, named precisely.}
+The orthogonality claim is sharpest when the pairs are named (Figure~\ref{fig:orthogonal-composition}). First, Constitutional AI~\cite{baiConstitutionalAI2022} plus admission-layer: Constitutional AI constrains what the model wants to do; the admission layer constrains what the substrate is willing to execute. A tool call passes both filters or it does not run. The failure mode of Constitutional AI alone, subtle violations the constitution does not enumerate, is caught by admission's structural reversibility requirement, which is invariant to what the constitution names. Second, scalable oversight~\cite{leikeScalableOversight2018,christianoDebate2018,bowmanScalableOversight2022} plus admission-layer: scalable oversight extracts human-quality judgements from systems beyond direct human evaluation capability; the admission layer refuses tool calls whose rollback witness cannot be constructed regardless of the oversight verdict. Oversight is the right instrument where admission is too coarse, content correctness within the substrate-admitted set; admission catches the cases where oversight is unavailable, deployment without a competent reviewer, or where structural irreversibility makes a verdict moot. Third, RSP commitments~\cite{anthropicRSP2023} plus receipts: an RSP commits the developer to deployment conditions; receipts emit an auditable trail of which tool calls the substrate admitted under what conditions. The RSP defines policy; receipts make policy-conformance auditable.
+
+\paragraph{Composition is the headline.}
+Model-side safety and substrate-side safety are not competing programmes. They are orthogonal layers in a single safety construction. Naming the second layer produces a clearer specification of what each layer is responsible for: training shapes the model's preferences; admission refuses inadmissible envelopes; oversight produces verdicts on candidate outputs; the substrate produces receipts on executed actions. Each layer has a precise scope; the safety property of the system is the composition.

@@ -1,0 +1,136 @@
+\documentclass[11pt,letterpaper]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{xcolor}
+\usepackage{url}
+\usepackage[T1]{fontenc}
+\usepackage{underscore}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, shapes.geometric, calc, fit, decorations.pathreplacing}
+\usepackage{hyperref}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!50!black,
+  citecolor=blue!50!black,
+  urlcolor=blue!50!black,
+}
+
+% Macro stubs matching the parent paper's conventions. The parent
+% defines these against acmart; this paper uses article and supplies
+% lightweight definitions. The underscore package above makes plain
+% `_' a text character so long snake_case identifiers in arguments
+% set as expected and can break across lines. The emergency-stretch
+% budget plus a small character-break helper let long CamelCase and
+% URL-style arguments wrap at any character when necessary.
+\setlength{\emergencystretch}{3em}
+\makeatletter
+\newcommand{\bbBreakString}[1]{%
+  \begingroup\ttfamily
+  \@tfor\bbch:=#1\do{\bbch\penalty\z@}%
+  \endgroup}
+\makeatother
+\newcommand{\codepath}[1]{\bbBreakString{#1}}
+\newcommand{\thm}[1]{\bbBreakString{#1}}
+
+\title{Programmable Sovereignty Over Reversible Action}
+\author{Anonymous for external review}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Constitutional admission has been described as the test a polity applies
+to incoming receipts at the boundary of its own log. The amendment side
+of that lifecycle is conditioned at the type level on a backward-refinement
+witness, so a candidate constitution cannot be enacted in the well-typed
+runtime path unless the proof of refinement is supplied as data. The
+response side has been left to the admission predicate alone. The
+construction described here extends the discipline of the amendment
+side to enforcement actions whose effects are reversible by an inverse
+executor. An executive action is a type whose constructor refuses to
+build a witness without a positive time-to-live duration and an action
+class tag; reversible variants admit an optional rollback receipt that
+closes the action chain; destructive variants reduce admission to
+bilateral predicate intersection between a device polity and an operator
+polity. Subject to mechanized confirmation, the load-bearing claim is a
+composition theorem stating that a chain of time-bounded amendments,
+each carrying a per-step refinement witness, preserves the baseline
+constitution at every instant under the auto-reversion semantics of the
+TTL window. The empirical anchor is an endpoint substrate in which four
+reversible action variants have real OS executors with rollback
+constructors, with the file-class variants gated on content-hash parity
+against the recorded forward artifact and the process- and network-class
+variants gated on substrate-recorded inverse witnesses; the rollback
+inversion is checked at the receipt level by the same canonical-byte
+machinery that signs admission, and the bilateral-destructive variant
+is reported as a deployment obligation rather than a measurement.
+\end{abstract}
+
+\input{sections/01-introduction}
+\input{sections/02-background}
+\input{sections/03-substrate}
+\input{sections/04-model}
+\input{sections/05-implementation}
+\input{sections/06-evaluation}
+\input{sections/07-discussion}
+\input{sections/08-related-work}
+\input{sections/09-limitations}
+\input{sections/10-conclusion}
+
+\bibliographystyle{plain}
+\begin{thebibliography}{99}
+\bibitem{TODO_bea_bib}
+  Citation placeholder. A populated \texttt{bib.bib} is deferred.
+
+\bibitem{programmableSovereigntyAnonymous}
+Anonymous.
+\emph{Programmable Sovereignty: Lean-Attestable Constitutions Over
+Capability-Bounded Federated Receipts.}
+Submitted for review.
+
+\bibitem{bennett1973logical}
+C.~H. Bennett.
+\emph{Logical reversibility of computation.}
+IBM Journal of Research and Development, 17(6):525--532, 1973.
+
+\bibitem{vieri1999pendulum}
+C.~J. Vieri.
+\emph{Reversible computer engineering and architecture.}
+Ph.D. dissertation, Massachusetts Institute of Technology, 1999.
+
+\bibitem{yokoyama2007janus}
+T.~Yokoyama and R.~Gl\"uck.
+\emph{A reversible programming language and its invertible
+self-interpreter.}
+Proceedings of the 2007 ACM SIGPLAN Workshop on Partial Evaluation and
+Program Manipulation (PEPM), pages 144--153, 2007.
+
+\bibitem{leroy2009compcert}
+X.~Leroy.
+\emph{Formal verification of a realistic compiler.}
+Communications of the ACM, 52(7):107--115, 2009.
+
+\bibitem{klein2009sel4}
+G.~Klein, K.~Elphinstone, G.~Heiser, J.~Andronick, D.~Cock, P.~Derrin,
+D.~Elkaduwe, K.~Engelhardt, R.~Kolanski, M.~Norrish, T.~Sewell,
+H.~Tuch, and S.~Winwood.
+\emph{seL4: Formal verification of an OS kernel.}
+Proceedings of the 22nd ACM Symposium on Operating Systems Principles
+(SOSP), pages 207--220, 2009.
+
+\bibitem{hawblitzel2015ironfleet}
+C.~Hawblitzel, J.~Howell, M.~Kapritsos, J.~R. Lorch, B.~Parno,
+M.~L. Roberts, S.~Setty, and B.~Zill.
+\emph{IronFleet: Proving practical distributed systems correct.}
+Proceedings of the 25th ACM Symposium on Operating Systems Principles
+(SOSP), pages 1--17, 2015.
+\end{thebibliography}
+
+\end{document}

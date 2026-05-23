@@ -1,0 +1,22 @@
+\section{Introduction}
+\label{sec:intro}
+
+A tool call is an executive act. When an LLM agent reads a file, writes to a database, sends an email, executes a shell command, or pushes a commit, it takes an action on behalf of a user, against an external system, with consequences in the world. The agent receives delegated authority through a system prompt or developer credential; it dispatches that authority against a resource it does not own; it produces an effect that, if wrong, must be undone.
+
+The agentic-AI safety literature has converged on a particular framing. Safety is treated as a property of the model: how to make the model want the right thing, refuse the wrong thing, and behave consistently between evaluation and deployment. Constitutional AI~\cite{baiConstitutionalAI2022} and RLHF~\cite{ouyangRLHF2022} shape preferences at training time. Scalable oversight~\cite{leikeScalableOversight2018,bowmanScalableOversight2022} and debate~\cite{christianoDebate2018} extend supervision past the operator's direct capability. Alignment-faking~\cite{hubingerAlignmentFaking2024} and situational-awareness~\cite{berglundSituationalAwareness2023} work sharpen the threat model. Each thread treats the model as the object of safety analysis.
+
+We argue that safety is also, separately, a property of the substrate that admits the tool call. The substrate may decline to execute a tool call that does not carry a typed proof of reversibility, regardless of whether training-layer alignment has fully succeeded and regardless of whether the model has evaded its training signal. Admission-layer safety composes with training-layer safety rather than displacing it (Figure~\ref{fig:orthogonal-composition}): a model whose preferences are well-shaped by training will, in the typical case, issue admissible envelopes, and the substrate's role is to bound the operational consequence in the cases where training has not held. The grammar of admission is independent of the grammar of generation.
+
+The structural argument is short. A tool call has the shape of a delegated executive act: a typed envelope, an authorisation chain, a target, an effect, and (in the destructive case) a need for reversal. A substrate that requires every destructive tool call to be constructed only with a positive time-to-live (TTL) witness and a typed rollback receipt slot refuses tool calls that the model cannot, by construction, prove are reversible. The model may be misaligned; it cannot forge a rollback witness for an action whose effects it cannot undo. The substrate may be type-checked external to the model.
+
+\paragraph{Contributions.}
+This paper makes three contributions, all structural.
+\begin{itemize}
+\item We frame the agent tool call as a five-part executive act (authorisation chain, subject, effect, lifetime, reversal expectation), and we show that the same five components appear in adjacent formally analysed domains (endpoint security response, temporally bounded administrative orders).
+\item We name a substrate-layer safety property orthogonal to the training-layer, evaluation-layer, and interpretability-layer stack: typed admission with TTL by construction, rollback receipt slot, and bilateral cosignature on irreversible classes. We give the grammar and cite the formal substrate that discharges its load-bearing theorems~\cite{programmableSovereignty2026}.
+\item We identify the threat model that the substrate-layer guarantee survives: misaligned model, strategic composition across tool calls, alignment-faking, and operator manipulation. We name the bounds on the guarantee (mis-classified action, manipulable registry, bypassed dispatch).
+\end{itemize}
+
+The contribution is structural rather than empirical. The paper does not introduce a new training-time technique or a benchmark. It proposes that two safety layers exist, that they compose, and that the runtime-substrate layer holds under adversarial assumptions about the model that training-time interventions cannot match.
+
+The argument proceeds as follows. Section~\ref{sec:background} surveys the existing stack and identifies the gap. Section~\ref{sec:executive-acts} develops the executive-act framing. Section~\ref{sec:grammar} states the admission grammar. Section~\ref{sec:impl} gives a worked example. Section~\ref{sec:threat} states the threat model that survives. Section~\ref{sec:discussion} situates the construction next to existing alignment-research threads. Section~\ref{sec:limitations} names the bounds, and Section~\ref{sec:conclusion} concludes.

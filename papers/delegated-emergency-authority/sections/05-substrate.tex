@@ -1,0 +1,91 @@
+\section{The Lean Substrate}
+\label{sec:substrate}
+
+The grammar developed in Part~\ref{sec:grammar} is constructible.
+A companion technical paper \cite{TODO_chio_parent_paper} develops the substrate in detail.
+This Part sketches the substrate's relevant features without re-deriving them.
+The objective is to give the legal-academy reader enough familiarity with the formal machinery to assess
+whether the grammar is in fact buildable in the sense the Article claims,
+without reproducing the technical content that a separately published paper has already established.
+
+The substrate is a system in which a polity is represented as a triple
+$(T, C, K)$,
+where $T$ is a receipt-admission scope, $C$ is a Merkle-rooted citizenship roster of the actors authorized to seek
+admission of receipts into the polity's history, and $K$ is a finite list of predicates that the polity has
+adopted as its constitution.
+A receipt is admissible into the polity's history only if the predicates in $K$ accept it,
+and the polity's history is the totality of admitted receipts.
+
+The substrate provides four operations on this triple that are relevant to the grammar:
+admission, capability attenuation, treaty intersection, and constitutional amendment.
+Each operation is implemented in Rust and accompanied by Lean~4 proofs of its key properties.
+The properties most relevant to this Article's grammar are the following.
+
+\subsection{Admission as decidable predicate evaluation}
+
+A receipt $r$ is admissible into a polity $(T, C, K)$ if and only if $r \in T$ and $K(r) = \text{accept}$.
+The predicate evaluation $K(r)$ is decidable in the sense that the constitution $K$ is a finite list of
+predicates and each predicate is evaluable as a Boolean function over the receipt's canonical representation.
+The substrate's runtime kernel implements this evaluation as a fail-closed admission hook:
+a receipt for which any predicate returns reject is denied,
+and a receipt for which all predicates accept is admitted and signed.
+
+The grammar's typed-rollback witness corresponds, on the substrate, to a predicate in $K$ that requires the receipt
+to carry a rollback obligation.
+A receipt for a bounded executive action is constructed with fields for $\text{act}$, $\TTL$, $w$, and $q$,
+and the predicate in $K$ that gates admission of such receipts requires all four fields to be present and to type-check.
+A receipt that lacks a witness $w$, or that carries a witness that does not type-check against the substrate's
+witness specification,
+fails the predicate evaluation and is denied.
+
+\subsection{Capability attenuation and the executive authority}
+
+The substrate represents authority through capability tokens that are signed objects carrying rights.
+A capability for a bounded executive action carries the action's specification and is signed by the authority
+that granted it.
+The substrate's capability-attenuation operation permits the holder of a capability to derive a more restricted
+capability from the original,
+and a Lean theorem \cite{TODO_chio_parent_paper} establishes that the derived capability cannot grant rights
+that the original did not.
+
+The relevance to delegated emergency authority is that the structural relationship between a legislature granting
+an emergency authority to an executive officer is, on the substrate's framing, an instance of capability delegation
+with attenuation.
+The legislature is the original authority;
+the executive officer holds an attenuated capability whose scope is bounded by the legislature's grant.
+The attenuation theorem ensures that the executive officer cannot, by exercise of the delegated authority,
+acquire rights the legislature did not grant.
+The grammar's typed-rollback witness is an attenuation constraint at the capability level:
+the executive officer's capability is bounded by the requirement that any action taken under it
+carry a witness for the path back.
+
+\subsection{Constitutional amendment and backward refinement}
+
+The substrate's amendment operation transforms a polity from $(T, C, K)$ to $(T, C, K')$ where $K'$ is a
+candidate replacement constitution.
+The amendment is admissible only if $K'$ is a backward refinement of $K$:
+every receipt admitted under $K$ remains admissible under $K'$.
+A Lean theorem on the substrate establishes that the backward-refinement check is decidable and that the
+substrate's runtime kernel refuses amendment requests that do not exhibit a refinement witness
+\cite{TODO_chio_parent_paper}.
+
+The relevance to delegated emergency authority is that an emergency-amendment proposal --
+a proposal to modify the polity's constitution in response to an exceptional circumstance --
+is admissible only if it preserves backward refinement.
+The amendment cannot, by its own operation, retroactively un-admit a receipt that the polity has previously admitted.
+The grammar's typed-rollback witness operates at the action level rather than the amendment level,
+but the structural intuition is the same:
+admission of a receipt or amendment requires construction of a witness for compatibility with the polity's
+prior history.
+
+\subsection{The substrate's relationship to the legal claim}
+
+The substrate is not the Article's contribution.
+The substrate is cited as evidence that the grammar developed in Part~\ref{sec:grammar} is buildable.
+A legal-academy reader does not need to verify the Lean proofs to assess the Article's structural claim about
+delegated emergency authority.
+The reader needs only to accept that the grammar is, in principle, implementable on a substrate of the kind
+the companion paper describes.
+The substrate's existence answers the objection that the grammar is a theoretical construct without operational meaning.
+It does not answer the objection that the grammar may be inappropriate for the legal domain to which the Article applies it.
+That objection is the subject of Part~\ref{sec:limits}.

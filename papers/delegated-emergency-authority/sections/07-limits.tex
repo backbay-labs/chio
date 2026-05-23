@@ -1,0 +1,142 @@
+\section{Limits of the Formal Approach}
+\label{sec:limits}
+
+The Article's structural claim is bounded.
+This Part identifies the limits of the claim, the objections to which the Article's argument is most vulnerable,
+and the responses that are available against those objections.
+The Part is offered in the spirit of candor about cross-disciplinary work:
+a CS-flavored argument applied to legal-doctrinal domains should make its limits explicit,
+because the asymmetry of expertise between the author's home discipline and the target audience's home discipline
+is large and the failure modes of cross-disciplinary work are well-documented.
+
+\subsection{The Schmittian objection}
+
+Part~\ref{sec:pattern} acknowledged that for Schmitt the constitutive character of the sovereign decision
+is normatively defensible under conditions of genuine emergency, not merely descriptive of how legal orders
+are seen to fail, and that the structural argument this Article advances is incompatible with that
+normative view rather than orthogonal to it.
+This Part considers the implication for the Article's scope.
+
+The implication is that the Article's structural claim does not bind a reader who holds the strong Schmittian
+view.
+A reader for whom the constitutive sovereign decision is the normatively prior fact of political order
+will read the typed-rollback discipline as the Kelsenian-formalist disease the 1922 essay diagnosed,
+as Part~\ref{sec:pattern} conceded.
+The Article does not have a knockdown response to that reader.
+Its position is that the formal wrapper is a constraint on the exercise of authority distinct from a
+constraint on the decision to exercise it,
+and that constraints on the exercise are valuable to the readership for whom such constraints are
+in-principle available,
+even if the strong Schmittian holds that constraints on the decision are unavailable on conceptual grounds.
+
+The Article therefore concedes that its argument is addressed to a readership that does not share the strong
+Schmittian view.
+The readership it does address is the constitutional-law academy in its mainstream post-Weimar formation,
+for which the legitimacy of formal constraint on emergency authority is a contested but live question
+rather than a category mistake.
+A reader who finds the Article's structural claim unconvincing because the reader holds the strong
+Schmittian view is, on the Article's framing, holding a view that the Article does not purport to refute
+and against which the Article's argument is not addressed.
+The concession is offered not as evasion of the objection but as candor about the scope within which the
+structural claim is meant to do work.
+
+\subsection{The legal-realist objection}
+
+A related but distinct objection comes from the legal-realist tradition.
+On this view, the formal text of an authority is a poor predictor of how the authority will be exercised in practice.
+The actors who exercise the authority will, predictably, develop interpretive practices that bend the text to
+their operational needs.
+A typed-rollback discipline imposed by statute would be, on the legal-realist view, subject to the same bending.
+The witness $w$ would, in practice, become a pro forma artifact that satisfied the formal requirement without
+imposing any meaningful constraint on the action it accompanies.
+
+The legal-realist objection is substantial.
+The empirical record on procedural requirements in administrative law and constitutional law is mixed.
+Some procedural requirements have been highly effective in constraining the actions of officials
+(notice and comment in administrative rulemaking),
+and others have been substantially eroded through interpretive practice
+(the warrant requirement in Fourth Amendment doctrine, where the catalog of exceptions has grown over time).
+The grammar's typed-rollback witness might end up in either category.
+
+The Article's response is that the grammar's discipline differs in kind from procedural requirements in
+familiar legal-doctrinal frameworks.
+A typed-rollback witness is not a procedure;
+it is a construction that either type-checks or does not.
+The witness cannot be satisfied by going through the motions of construction without producing a valid object.
+The substrate's runtime kernel evaluates the witness mechanically and rejects ill-typed inputs.
+A pro forma witness that did not type-check would fail admission at the construction step,
+not at a later audit step.
+The discipline is mechanical in a way that traditional procedural requirements are not.
+
+This response has limits.
+The discipline is mechanical at the level of the substrate.
+It is not mechanical at the level of the substantive content of the witness.
+A witness for a file quarantine that specifies a constructive path back to the file's original state is type-checked
+at the substrate level;
+whether the constructive path is in fact a meaningful restoration of the prior state is a substantive question
+that the type system does not resolve.
+A pro forma witness for a more abstract action -- restoring the geopolitical state of a country to its
+pre-occupation condition, for example -- could in principle type-check while failing to provide any meaningful
+reversibility.
+The grammar provides a structural discipline at the wrapper level;
+it does not, by itself, prevent substantive mischief at the content level.
+
+\subsection{The doctrinal-fit objection}
+
+A third objection is that the grammar's vocabulary -- typed witnesses, type-checking, refinement --
+is alien to the legal-doctrinal vocabulary in which delegated emergency authority is debated.
+A legal-academy reader may legitimately wonder whether the structural claim is a genuine addition to the doctrinal
+discussion or a semantic relabeling of points that the existing doctrinal vocabulary already captures.
+Sunset clauses, periodic reauthorization requirements, supermajority defaults for continuation,
+and post-hoc review by independent bodies are all features of the existing doctrinal toolkit.
+Does the typed-rollback discipline add anything that these existing features do not?
+
+The Article's response is that the typed-rollback discipline adds something specific that the existing toolkit
+does not directly provide:
+the requirement is at the admission step rather than at the lapse step or the review step.
+A sunset clause operates at the lapse step:
+the authority lapses at a specified time unless extended.
+The actions taken under the authority are not, by virtue of the sunset, reversed when the authority lapses.
+A periodic reauthorization requirement operates at a review step:
+the authority is reviewed periodically and may be continued or terminated.
+The actions taken between reviews are not, by virtue of the review, reversed.
+A supermajority default for continuation operates at the extension step:
+the default is termination unless extended by supermajority.
+Again, the actions taken under the authority are not reversed by the operation of the default.
+
+The typed-rollback discipline differs from all three.
+It operates at the admission step.
+An action that cannot exhibit a constructive path back to the prior state cannot be admitted.
+The discipline addresses the irreversibility of the action itself, not the lapse, the review, or the continuation of the authority.
+This is, the Article argues, a genuine addition to the doctrinal toolkit rather than a relabeling of an existing feature.
+
+The argument is not knockdown.
+A legal-academy reader may reasonably observe that the doctrinal toolkit's mix of sunsets, reauthorizations,
+and supermajority defaults addresses the irreversibility problem indirectly,
+by making the authority itself less likely to persist long enough for irreversibility to matter.
+The typed-rollback discipline addresses the problem directly.
+Whether the direct address is preferable to the indirect address is a substantive question on which the Article
+does not need to take a position;
+the Article needs only the narrower claim that the direct address is structurally distinct from the indirect ones
+and is not a relabeling.
+
+\subsection{The cross-disciplinary asymmetry}
+
+A final limit is the cross-disciplinary asymmetry of expertise between the Article's home discipline (formal methods,
+applied to programmable governance) and the Article's target audience (legal academy, particularly constitutional law).
+The author is not a lawyer.
+The Article relies on legal historiography, doctrinal accounts, and case-study literatures that a constitutional-law
+scholar would treat with greater facility than a non-lawyer can.
+The Article has tried, in each case study and in the doctrinal framing, to defer to the secondary literature where
+the Article's claim depends on a doctrinal characterization,
+and to flag uncertainty where the doctrinal record is contested.
+
+The cross-disciplinary asymmetry is, on the author's view, a reason for the Article to be co-authored or extensively
+reviewed by a constitutional-law scholar before submission.
+The structural claim does not depend on getting any particular doctrinal claim exactly right;
+it depends on getting the structural pattern across the five case studies correct,
+which is a claim that survives reasonable variation in the doctrinal characterizations of any individual case.
+A reader who finds particular doctrinal claims in Part~\ref{sec:cases} unconvincing is invited to test the structural
+claim against the case studies that the reader finds most defensible.
+The grammar's claim is robust to the failure of any one or two case studies;
+the claim depends on the pattern across the five.

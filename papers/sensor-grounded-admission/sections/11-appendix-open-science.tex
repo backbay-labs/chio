@@ -1,0 +1,71 @@
+\section{Open Science}
+\label{sec:open-science}
+
+The artifacts behind the formal and empirical claims are released for
+public inspection. This appendix names what is available, how to
+rebuild it, and how a reviewer recovers each load-bearing statement
+from its primary source.
+
+\subsection{Artifact availability}
+\label{sec:open-science:availability}
+
+Three artifact classes accompany the paper. The Lean~4 mechanization
+that discharges the four theorems of Section~\ref{sec:model} is the
+central artifact: a single source module of 583 lines, packaged as a
+self-contained Lake project together with the substrate's Treaty
+modules on which it depends. The bibliography file lists primary-source
+citations to specifications, standards documents, and peer-reviewed
+papers. The paper text and the supplementary package are released under
+the same permissive license that governs the substrate's public
+artifacts. For double-blind review the artifacts are submitted in
+anonymized form; a public repository location is named in the
+camera-ready version.
+
+\subsection{Reproducing the Lean mechanization}
+\label{sec:open-science:lean}
+
+The Lake project pins a Lean toolchain through a checked-in
+\path{lean-toolchain} file and a \path{lakefile.lean} that declares the
+substrate dependency. A reviewer rebuilds the proof with two commands:
+
+\begin{verbatim}
+tar xzf lean-source.tar.gz
+cd chio-lean && lake build
+\end{verbatim}
+
+A cold cache builds in three to five minutes; the sensor-grounded
+module compiles at job ten of twenty-four in the dependency graph. The
+build produces no warnings and contains no \texttt{sorry}. The
+\texttt{\#print axioms} command run against each of the four theorems
+reports only the standard Lean kernel axioms \texttt{propext},
+\texttt{Classical.choice}, and \texttt{Quot.sound}. No project-local
+\texttt{axiom} declaration appears anywhere in the dependency tree.
+The supplementary package's \path{proof-manifest.toml} records the
+fully qualified theorem names, their source modules, and their axiom
+sets for tool consumption.
+
+\subsection{Reproducing the empirical claims}
+\label{sec:open-science:empirical}
+
+The empirical claims of Section~\ref{sec:evaluation} rest on the
+sensor-state attestation field carried by every signed receipt produced
+by the admission kernel described in Section~\ref{sec:implementation}.
+A reviewer reproduces the figures by exercising the kernel against the
+receipt corpus described in Section~\ref{sec:implementation},
+extracting each receipt's signed attestation block, and verifying both
+the attestation signature and the DSSE subject digest that binds
+attestation bytes to body bytes. The canonical-JSON parser and the
+provider-record schema are part of the released runtime package. The
+runtime's deployment identity is anonymized for review and named in
+the camera-ready version.
+
+\subsection{Bibliography accessibility}
+\label{sec:open-science:bib}
+
+Every load-bearing citation resolves to a primary source that is
+publicly retrievable. The bibliography includes vendor specifications
+(Intel TDX, AMD SEV-SNP, Apple Private Cloud Compute, Arm CCA, AWS
+Nitro), Internet standards (RFC~8785, RFC~9334), and peer-reviewed
+publications from USENIX, IEEE, and ACM venues. No paywalled
+proceeding or unavailable technical report carries a load-bearing
+claim.

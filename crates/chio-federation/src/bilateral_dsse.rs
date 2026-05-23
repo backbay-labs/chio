@@ -2449,7 +2449,8 @@ mod tests {
         let kp_b = Keypair::generate();
         let rogue_kp = Keypair::generate();
         let receipt = sample_receipt(&kp_b);
-        let rogue_receipt = sample_receipt(&rogue_kp);
+        let mut rogue_receipt = sample_receipt(&rogue_kp);
+        rogue_receipt.id = receipt.id.clone();
         let mut envelope = sign_dsse_envelope(
             &receipt,
             &kp_a,

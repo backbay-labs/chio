@@ -1,0 +1,14 @@
+# LaTeX intermediate build artifacts. Kept locally for incremental builds.
+# PDFs are kept under version control so reviewers can read without compiling.
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.synctex.gz
+*.toc
+
+# pdflatex run-mode metadata
+texput.log

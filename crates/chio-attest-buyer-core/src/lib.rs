@@ -6,11 +6,10 @@ use chio_core_types::canonical::{canonical_json_bytes, canonical_json_string};
 use chio_core_types::crypto::{sha256_hex, PublicKey};
 use chio_core_types::receipt::{ChioReceipt, SignedExportEnvelope};
 use chio_federation::{
-    verify_chiodos_bilateral_invocation, ActionClassKind, DsseEnvelope,
+    verify_chio_bilateral_invocation, ActionClassKind, ChioBilateralVerifierConfig, DsseEnvelope,
     InMemoryGovernanceReceiptStore, InMemoryLeaseRegistry, InMemoryReceiptStore, Keyid,
     LadderManifestRef, PeerPinSet, PinnedEpoch, PinnedPeer, ResolvedGovernanceReceipt,
-    ResolvedLease, RevocationOracle, StrictChiodosVerifierConfig, UnknownActionClassPolicy,
-    VerifierConfig,
+    ResolvedLease, RevocationOracle, UnknownActionClassPolicy, VerifierConfig,
 };
 use chio_governance::{
     verify_capability_lease, verify_destructive_authorization, verify_step_governance_boundary,
@@ -24,16 +23,34 @@ use chio_selective_disclosure::{
 use chio_workflow::receipt::{VendorSignatureRequirement, WorkflowReceipt};
 use serde::{Deserialize, Serialize};
 
-pub const PROOF_PACKAGE_SCHEMA: &str = "chio.chiodos.proof-package.v1";
-pub const VERIFIER_REPORT_SCHEMA: &str = "chio.chiodos.verifier-report.v1";
+pub const PROOF_PACKAGE_SCHEMA: &str = "chio.attest.proof-package.v1";
+pub const VERIFIER_REPORT_SCHEMA: &str = "chio.attest.verifier-report.v1";
 pub const TRUSTED_ISSUER_REGISTRY_SCHEMA: &str = "chio.chiodos.trusted-issuer-registry.v1";
-pub const VERIFIER_TRUST_BUNDLE_SCHEMA: &str = "chio.chiodos.verifier-trust-bundle.v1";
-pub const REVOCATION_CHECKPOINT_SCHEMA: &str = "chio.chiodos.revocation-checkpoint.v1";
-pub const VERIFICATION_CONTEXT_SCHEMA: &str = "chio.chiodos.verification-context.v1";
-pub const WORKFLOW_INTERSECTION_SCHEMA: &str = "chio.chiodos-workflow-intersection.v1";
-pub const LEASE_SCOPE_BINDING_SCHEMA: &str = "chio.chiodos-lease-scope-binding.v1";
+pub const VERIFIER_TRUST_BUNDLE_SCHEMA: &str = "chio.federation.verifier-trust-bundle.v1";
+pub const REVOCATION_CHECKPOINT_SCHEMA: &str = "chio.federation.revocation-checkpoint.v1";
+pub const VERIFICATION_CONTEXT_SCHEMA: &str = "chio.federation.verification-context.v1";
+pub const WORKFLOW_INTERSECTION_SCHEMA: &str = "chio.attest.workflow-intersection.v1";
+pub const LEASE_SCOPE_BINDING_SCHEMA: &str = "chio.federation.lease-scope-binding.v1";
+pub const CHIO_FEDERATION_VERIFIER_TRUST_BUNDLE_SCHEMA: &str = VERIFIER_TRUST_BUNDLE_SCHEMA;
+pub const CHIO_FEDERATION_REVOCATION_CHECKPOINT_SCHEMA_V1: &str = REVOCATION_CHECKPOINT_SCHEMA;
 pub const WORKFLOW_GRANT_ISSUE_ACTION_CLASS_ID: &str = "workflow.grant_issue";
 pub const WORKFLOW_AGGREGATE_PUBLISH_ACTION_CLASS_ID: &str = "workflow.aggregate_publish";
+
+pub type ChioAuthorityStatus = ChiodosAuthorityStatus;
+pub type ChioDisclosurePolicy = ChiodosDisclosurePolicy;
+pub type ChioPackageError = ChiodosPackageError;
+pub type ChioProofClaims = ChiodosProofClaims;
+pub type ChioProofPackage = ChiodosProofPackage;
+pub type ChioRevocationCheckpoint = ChiodosRevocationCheckpoint;
+pub type ChioRevocationMaterial = ChiodosRevocationMaterial;
+pub type ChioTrustedActionClass = ChiodosTrustedActionClass;
+pub type ChioTrustedGovernanceAuthority = ChiodosTrustedGovernanceAuthority;
+pub type ChioTrustedLeaseAuthority = ChiodosTrustedLeaseAuthority;
+pub type ChioTrustedWorkflowIntersection = ChiodosTrustedWorkflowIntersection;
+pub type ChioVerificationContext = ChiodosVerificationContext;
+pub type ChioVerifierTrustBundle = ChiodosVerifierTrustBundle;
+pub type ChioVerifierTrustBundleDocument = ChiodosVerifierTrustBundleDocument;
+pub type SignedChioRevocationCheckpoint = SignedChiodosRevocationCheckpoint;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -289,6 +306,8 @@ pub struct ChiodosVerifierTrustBundleDocument {
     pub action_classes: Vec<ChiodosTrustedActionClass>,
     pub workflow_intersections: Vec<ChiodosTrustedWorkflowIntersection>,
     #[serde(default)]
+    pub runtime_policy_issuer_public_keys: Vec<PublicKey>,
+    #[serde(default)]
     pub lease_authorities: Vec<ChiodosTrustedLeaseAuthority>,
     #[serde(default)]
     pub governance_authorities: Vec<ChiodosTrustedGovernanceAuthority>,
@@ -307,6 +326,7 @@ pub struct ChiodosVerifierTrustBundle {
     workflow_intersections: BTreeMap<String, String>,
     lease_authorities: BTreeMap<String, ChiodosTrustedLeaseAuthority>,
     governance_authorities: BTreeMap<String, ChiodosTrustedGovernanceAuthority>,
+    runtime_policy_issuer_public_keys: Vec<PublicKey>,
     disclosure_policy: ChiodosDisclosurePolicy,
     revocation: SignedChiodosRevocationCheckpoint,
     revoked_key_fingerprints: BTreeSet<String>,
@@ -316,6 +336,11 @@ impl ChiodosVerifierTrustBundle {
     #[must_use]
     pub fn document_sha256(&self) -> &str {
         &self.document_sha256
+    }
+
+    #[must_use]
+    pub fn runtime_policy_issuer_public_keys(&self) -> &[PublicKey] {
+        &self.runtime_policy_issuer_public_keys
     }
 
     pub fn from_document(
@@ -333,11 +358,12 @@ impl ChiodosVerifierTrustBundle {
             || document.vendors.is_empty()
             || document.action_classes.is_empty()
             || document.workflow_intersections.is_empty()
+            || document.runtime_policy_issuer_public_keys.is_empty()
             || document.lease_authorities.is_empty()
             || document.governance_authorities.is_empty()
         {
             return Err(ChiodosPackageError::TrustBundle(
-                "verifier trust bundle must contain issuers, peers, vendors, action classes, workflow intersections, lease authorities, and governance authorities"
+                "verifier trust bundle must contain issuers, peers, vendors, action classes, workflow intersections, runtime policy issuers, lease authorities, and governance authorities"
                     .to_string(),
             ));
         }
@@ -494,6 +520,7 @@ impl ChiodosVerifierTrustBundle {
             workflow_intersections,
             lease_authorities,
             governance_authorities,
+            runtime_policy_issuer_public_keys: document.runtime_policy_issuer_public_keys,
             disclosure_policy,
             revocation: *revocation,
             revoked_key_fingerprints,
@@ -1413,9 +1440,9 @@ fn verify_package_inner(
         unknown_action_class_policy: UnknownActionClassPolicy::Reject,
     };
     for envelope in &package.bilateral_envelopes {
-        verify_chiodos_bilateral_invocation(
+        verify_chio_bilateral_invocation(
             envelope,
-            &StrictChiodosVerifierConfig {
+            &ChioBilateralVerifierConfig {
                 base: &verifier_config,
             },
         )
@@ -2455,7 +2482,7 @@ mod tests {
 
     fn trust_bundle_document_from_fixture() -> ChiodosVerifierTrustBundleDocument {
         serde_json::from_str(include_str!(
-            "../../../examples/chiodos-3vendor/fixtures/verifier-trust-bundle.json"
+            "../../../examples/chio-3vendor/fixtures/verifier-trust-bundle.json"
         ))
         .expect("trust bundle fixture parses")
     }
@@ -2466,7 +2493,7 @@ mod tests {
 
     fn verification_context_from_fixture() -> ChiodosVerificationContext {
         verification_context_from_json(include_str!(
-            "../../../examples/chiodos-3vendor/fixtures/verification-context.json"
+            "../../../examples/chio-3vendor/fixtures/verification-context.json"
         ))
         .expect("verification context fixture parses")
     }
@@ -2501,7 +2528,7 @@ mod tests {
     #[test]
     fn committed_fixture_verifies_through_production_crate() {
         let package = proof_package_from_json(include_str!(
-            "../../../examples/chiodos-3vendor/fixtures/buyer-auditor-proof-package.json"
+            "../../../examples/chio-3vendor/fixtures/buyer-auditor-proof-package.json"
         ))
         .expect("package fixture parses");
         let trust_bundle = trust_bundle_from_fixture().expect("trust bundle parses");
@@ -2524,7 +2551,7 @@ mod tests {
     #[test]
     fn proof_package_parser_rejects_treaty_bilateral_side_channel() {
         let mut package: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../examples/chiodos-3vendor/fixtures/buyer-auditor-proof-package.json"
+            "../../../examples/chio-3vendor/fixtures/buyer-auditor-proof-package.json"
         ))
         .expect("package fixture parses as JSON");
         package["treatyBilateralEnvelopes"] = serde_json::json!([]);
@@ -2536,7 +2563,7 @@ mod tests {
     #[test]
     fn verifier_report_parses_through_production_api() {
         let report = verifier_report_from_json(include_str!(
-            "../../../examples/chiodos-3vendor/fixtures/verifier-report.json"
+            "../../../examples/chio-3vendor/fixtures/verifier-report.json"
         ))
         .expect("report fixture parses");
         assert!(report.accepted);
@@ -2548,7 +2575,7 @@ mod tests {
     #[test]
     fn verifier_trust_bundle_may_contain_unrelated_trust_roots() {
         let package = proof_package_from_json(include_str!(
-            "../../../examples/chiodos-3vendor/fixtures/buyer-auditor-proof-package.json"
+            "../../../examples/chio-3vendor/fixtures/buyer-auditor-proof-package.json"
         ))
         .expect("package fixture parses");
         let mut document = trust_bundle_document_from_fixture();
@@ -2601,7 +2628,7 @@ mod tests {
     #[test]
     fn revocation_checkpoint_must_cover_verifier_context() {
         let package = proof_package_from_json(include_str!(
-            "../../../examples/chiodos-3vendor/fixtures/buyer-auditor-proof-package.json"
+            "../../../examples/chio-3vendor/fixtures/buyer-auditor-proof-package.json"
         ))
         .expect("package fixture parses");
         let context = verification_context_from_fixture();
@@ -2627,7 +2654,7 @@ mod tests {
     #[test]
     fn revoked_trust_roots_fail_closed() {
         let package = proof_package_from_json(include_str!(
-            "../../../examples/chiodos-3vendor/fixtures/buyer-auditor-proof-package.json"
+            "../../../examples/chio-3vendor/fixtures/buyer-auditor-proof-package.json"
         ))
         .expect("package fixture parses");
         let context = verification_context_from_fixture();
@@ -2654,7 +2681,7 @@ mod tests {
     #[test]
     fn revoked_authority_roots_fail_closed() {
         let package = proof_package_from_json(include_str!(
-            "../../../examples/chiodos-3vendor/fixtures/buyer-auditor-proof-package.json"
+            "../../../examples/chio-3vendor/fixtures/buyer-auditor-proof-package.json"
         ))
         .expect("package fixture parses");
         let context = verification_context_from_fixture();
@@ -2675,7 +2702,7 @@ mod tests {
     #[test]
     fn authority_lifecycle_and_artifact_time_windows_fail_closed() {
         let package = proof_package_from_json(include_str!(
-            "../../../examples/chiodos-3vendor/fixtures/buyer-auditor-proof-package.json"
+            "../../../examples/chio-3vendor/fixtures/buyer-auditor-proof-package.json"
         ))
         .expect("package fixture parses");
         let context = verification_context_from_fixture();
@@ -2715,7 +2742,7 @@ mod tests {
     #[test]
     fn context_and_disclosure_contract_fail_closed() {
         let mut package = proof_package_from_json(include_str!(
-            "../../../examples/chiodos-3vendor/fixtures/buyer-auditor-proof-package.json"
+            "../../../examples/chio-3vendor/fixtures/buyer-auditor-proof-package.json"
         ))
         .expect("package fixture parses");
         let trust_bundle = trust_bundle_from_fixture().expect("trust bundle parses");
@@ -2731,7 +2758,7 @@ mod tests {
         assert!(error.to_string().contains("projection version"));
 
         let mut package = proof_package_from_json(include_str!(
-            "../../../examples/chiodos-3vendor/fixtures/buyer-auditor-proof-package.json"
+            "../../../examples/chio-3vendor/fixtures/buyer-auditor-proof-package.json"
         ))
         .expect("package fixture parses");
         package.selective_disclosure_proof.disclosed_indices.push(4);
@@ -2739,7 +2766,7 @@ mod tests {
         assert!(error.to_string().contains("duplicate disclosed index"));
 
         let mut package = proof_package_from_json(include_str!(
-            "../../../examples/chiodos-3vendor/fixtures/buyer-auditor-proof-package.json"
+            "../../../examples/chio-3vendor/fixtures/buyer-auditor-proof-package.json"
         ))
         .expect("package fixture parses");
         package.selective_disclosure_proof.ciphersuite = "unsupported".to_string();
@@ -2870,7 +2897,7 @@ mod tests {
     #[test]
     fn forged_lease_signer_fails_even_when_embedded_signature_is_valid() {
         let mut package = proof_package_from_json(include_str!(
-            "../../../examples/chiodos-3vendor/fixtures/buyer-auditor-proof-package.json"
+            "../../../examples/chio-3vendor/fixtures/buyer-auditor-proof-package.json"
         ))
         .expect("package fixture parses");
         let trust_bundle = trust_bundle_from_fixture().expect("trust bundle parses");
@@ -2887,7 +2914,7 @@ mod tests {
     #[test]
     fn forged_governance_signer_fails_even_when_embedded_signature_is_valid() {
         let mut package = proof_package_from_json(include_str!(
-            "../../../examples/chiodos-3vendor/fixtures/buyer-auditor-proof-package.json"
+            "../../../examples/chio-3vendor/fixtures/buyer-auditor-proof-package.json"
         ))
         .expect("package fixture parses");
         let trust_bundle = trust_bundle_from_fixture().expect("trust bundle parses");
@@ -2904,7 +2931,7 @@ mod tests {
     #[test]
     fn package_bbs_issuer_must_be_externally_trusted() {
         let package = proof_package_from_json(include_str!(
-            "../../../examples/chiodos-3vendor/fixtures/buyer-auditor-proof-package.json"
+            "../../../examples/chio-3vendor/fixtures/buyer-auditor-proof-package.json"
         ))
         .expect("package fixture parses");
         let mut document = trust_bundle_document_from_fixture();
@@ -2922,7 +2949,7 @@ mod tests {
     #[test]
     fn package_bbs_issuer_key_must_match_trusted_registry() {
         let package = proof_package_from_json(include_str!(
-            "../../../examples/chiodos-3vendor/fixtures/buyer-auditor-proof-package.json"
+            "../../../examples/chio-3vendor/fixtures/buyer-auditor-proof-package.json"
         ))
         .expect("package fixture parses");
         let mut document = trust_bundle_document_from_fixture();
@@ -2942,7 +2969,7 @@ mod tests {
     #[test]
     fn wrong_verifier_context_nonce_fails_and_report_keeps_prior_checks() {
         let package = proof_package_from_json(include_str!(
-            "../../../examples/chiodos-3vendor/fixtures/buyer-auditor-proof-package.json"
+            "../../../examples/chio-3vendor/fixtures/buyer-auditor-proof-package.json"
         ))
         .expect("package fixture parses");
         let trust_bundle = trust_bundle_from_fixture().expect("trust bundle parses");

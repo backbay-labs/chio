@@ -1,0 +1,57 @@
+\documentclass[sigconf,anonymous,review,nonacm]{acmart}
+
+\setcopyright{none}
+\settopmatter{printacmref=false}
+\renewcommand\footnotetextcopyrightpermission[1]{}
+\pagestyle{plain}
+
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{xurl}
+
+\usepackage{seqsplit}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, shapes.geometric, calc, fit, decorations.pathreplacing}
+\makeatletter
+% Allow line breaks inside code paths and theorem names by inserting
+% discretionary breaks after every character. \detokenize is expanded
+% inside an \edef so its character tokens reach \seqsplit.
+\newcommand{\codepath}[1]{\texttt{\bbsplit{#1}}}
+\newcommand{\thm}[1]{\texttt{\bbsplit{#1}}}
+\newcommand{\bbsplit}[1]{%
+  \begingroup
+    \edef\bb@arg{\detokenize{#1}}%
+    \expandafter\seqsplit\expandafter{\bb@arg}%
+  \endgroup
+}
+\makeatother
+\Urlmuskip=0mu plus 1mu
+
+\title{Bilateral Receipt Admission: Cross-Organizational Action Provenance with Treaty-Bound DSSE}
+
+\author{Anonymous for external review}
+\affiliation{\institution{Chio Project}}
+\email{anonymous@example.org}
+
+\begin{document}
+
+\begin{abstract}
+Existing supply-chain provenance attests how an artifact was built; cross-organizational agent invocations need provenance for how an action was admitted at the receiving kernel (the runtime admission engine inside each organization, not an OS kernel). SLSA, in-toto, Sigstore, and Rekor describe production; none attest that two parties jointly admitted an action under a treaty-bound predicate (the cross-organizational agreement that names participant identities, predicate scope, and lifetime) over identical canonical bytes including a continuation that links to receipt-graph state (the directed graph of admitted receipts and their causal links). We define a DSSE predicate type whose subject digest binds a tuple of treaty scope, ladder-intersection hash (the canonical hash of the joint mode-coverage table the two parties' constitutions agreed to), request and outcome digests, continuation hash (the linkage hash tying this admission to the prior receipt-graph state), and two receipt hashes under two named kernel keys, and a strict verifier with five rejection codes that distinguish noncanonical payloads, predicate-type mismatch, signer reuse, stale leases, and subject-digest mismatch. We implement the construction as a Rust runtime with a pre-dispatch admission hook that fails closed on federated-origin requests, with selective disclosure via BBS at presentation while Ed25519 remains authoritative for audit corpora. We demonstrate the construction with a three-vendor buyer-closure that replays both admitted and denied paths in the same canonical schema. The construction defeats sibling-treaty cross-receipt substitution, BBS stub-vs-real disambiguation, and error-message oracles by structural composition of the rejection codes with the canonical-bytes subject digest. The cryptographic primitive is self-standing: correctness rests on the conjunction of six gate predicates over canonical bytes, formalized in a Lean module whose only kernel axioms are propositional extensionality and choice. Broader polity, amendment, and refinement claims appear in the related polity-layer construction (anonymized for review, under separate submission) whose substrate this paper does not duplicate.
+\end{abstract}
+
+\maketitle
+
+\input{sections/01-introduction}
+\input{sections/02-receipt-admission-primitive}
+\input{sections/03-predicate-schema-verifier}
+\input{sections/04-formal-sketch}
+\input{sections/05-implementation}
+\input{sections/06-evaluation}
+\input{sections/07-attacks-defeated}
+\input{sections/08-related-work}
+\input{sections/09-limitations}
+
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{bib}
+
+\end{document}
