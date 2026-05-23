@@ -116,30 +116,28 @@ theorem accept_monotone_in_issuer_store
 
 /--
   Corollary 2: accept-set conjunction over scope predicates. If an
-  envelope with a scope of `conj p q` is accepted, then envelopes
-  rebound to scope `p` alone and scope `q` alone are each accepted
-  too (assuming the trust-store conjuncts are unchanged). This is the
-  structural decomposition the short paper uses to discuss treaty
-  intersection in the freestanding model.
+  envelope with a scope of `conj p q` is accepted, then the issuer
+  and kernel key conjuncts hold and both scope predicates denote true
+  for the same receipt id. This states the freestanding predicate
+  decomposition without pretending the original signatures can be
+  reused for a byte-distinct rebound envelope.
 -/
 theorem accept_conj_scope_decompose
     (store : TrustStore) (env : BilateralEnvelope)
     (p q : PredicateLang.Predicate)
     (hScope : env.scope = .conj p q)
     (hAccept : accept store env = true) :
-    accept store { env with scope := p } = true ∧
-    accept store { env with scope := q } = true := by
+    env.issuerSig.keyId ∈ store.issuerKeys ∧
+    env.kernelSig.keyId ∈ store.kernelKeys ∧
+    PredicateLang.denote p env.receiptId = true ∧
+    PredicateLang.denote q env.receiptId = true := by
   rw [freestanding_accept_set_theorem] at hAccept
   have hIssuer : env.issuerSig.keyId ∈ store.issuerKeys := hAccept.1
   have hKernel : env.kernelSig.keyId ∈ store.kernelKeys := hAccept.2.1
   rw [hScope] at hAccept
   have hConj : PredicateLang.denote (.conj p q) env.receiptId = true := hAccept.2.2
   simp [PredicateLang.denote] at hConj
-  refine ⟨?_, ?_⟩
-  · rw [freestanding_accept_set_theorem]
-    exact ⟨hIssuer, hKernel, hConj.1⟩
-  · rw [freestanding_accept_set_theorem]
-    exact ⟨hIssuer, hKernel, hConj.2⟩
+  exact ⟨hIssuer, hKernel, hConj.1, hConj.2⟩
 
 /--
   Corollary 3: rejection on missing issuer key. An envelope whose

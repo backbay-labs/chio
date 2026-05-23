@@ -135,7 +135,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 EOF
 
-if ! CARGO_TARGET_DIR="$TARGET_DIR" cargo run --manifest-path "$WORK_DIR/Cargo.toml" --offline > "$CSV" 2> "$LOG"; then
+if ! CARGO_TARGET_DIR="$TARGET_DIR" cargo run --manifest-path "$WORK_DIR/Cargo.toml" > "$CSV" 2> "$LOG"; then
   emit_unreported
   exit 1
 fi
