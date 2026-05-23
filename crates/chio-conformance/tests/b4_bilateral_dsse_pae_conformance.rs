@@ -80,6 +80,7 @@ fn full_extensions() -> BilateralPredicateExtensions {
         consistency_anchor: None,
         consistency_model: None,
         cross_org_visibility: None,
+        treaty_binding_ref: None,
     }
 }
 

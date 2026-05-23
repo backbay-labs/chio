@@ -21,6 +21,21 @@ from contextvars import ContextVar
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
+from chio_adapter_base.filters import (
+    filter_diff_output as _adapter_base_filter_diff_output,
+)
+from chio_adapter_base.filters import (
+    filter_directory_entries as _adapter_base_filter_directory_entries,
+)
+from chio_adapter_base.filters import (
+    filter_status_output as _adapter_base_filter_status_output,
+)
+from chio_adapter_base.filters import forbidden_path_filter
+from chio_adapter_base.security import ChioPathEscapeError
+from chio_adapter_base.security import (
+    reject_shell_argv_escape as _adapter_base_reject_shell_argv_escape,
+)
+
 from chio_hermes import executors as _exec
 
 if TYPE_CHECKING:
@@ -107,6 +122,122 @@ _LAST_RECEIPT_ID: ContextVar[str | None] = ContextVar(
 )
 
 
+class _RequiresApprovalSignal(Exception):
+    """Internal signal raised when a tool call needs HITL sign-off.
+
+    The `_wrap_envelope` wrapper catches this and emits the
+    `chio_requires_approval` envelope. Carries the metadata needed to
+    write the canonical envelope without re-querying the sidecar.
+    """
+
+    def __init__(
+        self,
+        *,
+        approval_id: str,
+        tool_name: str,
+        tool_server: str,
+        command: str,
+        expires_at: int | None = None,
+    ) -> None:
+        super().__init__(f"approval required: {approval_id}")
+        self.approval_id = approval_id
+        self.tool_name = tool_name
+        self.tool_server = tool_server
+        self.command = command
+        self.expires_at = expires_at
+
+
+def _shell_requires_approval(handle: RuntimeHandle, command: str) -> bool:
+    policy = handle.policy
+    if policy is None:
+        return False
+    try:
+        return bool(policy.check_shell(command))
+    except Exception:  # noqa: BLE001
+        # Conservative: when the policy raises, treat as not requiring
+        # approval and let the downstream call surface the real error.
+        return False
+
+
+async def _maybe_submit_for_approval(
+    handle: RuntimeHandle,
+    *,
+    tool_name: str,
+    tool_server: str,
+    command: str,
+    tool_args: dict[str, Any],
+    policy_check: str = "shell",
+) -> None:
+    """Submit `command` to the sidecar's HITL channel if the policy
+    flags it as approval-required, then raise `_RequiresApprovalSignal`.
+
+    `policy_check` selects between `policy.check_shell` (shell tools)
+    and the same callable for git tools, since both use
+    `check_shell` to evaluate the raw command string.
+    """
+    del policy_check  # both shell and git_run currently route through check_shell.
+    if not _shell_requires_approval(handle, command):
+        return
+
+    client = handle.chio_client
+    cap_id = handle.capability_id
+    if client is None or not cap_id:
+        # No client / capability means we cannot hold the call; fall
+        # through to the legacy deny so the model still gets a typed
+        # rejection.
+        return
+
+    summary = command if len(command) <= 200 else command[:200] + "..."
+    triggered_by = [
+        "shell.requires_approval"
+        if tool_server == "shell"
+        else "git.requires_approval"
+    ]
+    try:
+        approval_id = await client.submit_for_approval(
+            capability_id=cap_id,
+            tool_name=tool_name,
+            tool_args=tool_args,
+            tool_server=tool_server,
+            ttl_seconds=3600,
+            summary=summary,
+            triggered_by=triggered_by,
+        )
+    except Exception:
+        # Any sidecar error (unreachable, validation, store): bubble up
+        # so the envelope wrapper turns it into chio_sidecar_unreachable
+        # / chio_error rather than masking it as a deny.
+        raise
+
+    raise _RequiresApprovalSignal(
+        approval_id=approval_id,
+        tool_name=tool_name,
+        tool_server=tool_server,
+        command=command,
+    )
+
+
+def _requires_approval_envelope(signal: _RequiresApprovalSignal) -> str:
+    payload: dict[str, Any] = {
+        "status": "requires_approval",
+        "error": "chio_requires_approval",
+        "approval_id": signal.approval_id,
+        "command": signal.command,
+        "tool_name": signal.tool_name,
+        "tool_server": signal.tool_server,
+        "hint": (
+            f"Use `/chio approve {signal.approval_id}` in this session "
+            "or `hermes chio approvals respond "
+            f"{signal.approval_id} --approve` from another shell. "
+            "After approval, retry the original tool call (auto-resume "
+            "is v0.3 work)."
+        ),
+    }
+    if signal.expires_at is not None:
+        payload["expires_at"] = signal.expires_at
+    return _dumps(payload)
+
+
 def _wrap_envelope(
     handle: RuntimeHandle,
     tool_name: str,
@@ -143,6 +274,9 @@ def _wrap_envelope(
         token = _LAST_RECEIPT_ID.set(None)
         try:
             invocation = await inner(params)
+        except _RequiresApprovalSignal as signal:
+            _LAST_RECEIPT_ID.reset(token)
+            return _requires_approval_envelope(signal)
         except ChioCodeAgentDeniedError as exc:
             _LAST_RECEIPT_ID.reset(token)
             return _denied(
@@ -291,32 +425,21 @@ def _factory_file_list(handle: RuntimeHandle) -> ToolHandler:
 def _filter_directory_entries(
     handle: RuntimeHandle, listing_root: str, result: Any
 ) -> Any:
+    """Drop forbidden directory entries; delegates to chio-adapter-base.
+
+    Hermes-aware adapter over
+    :func:`chio_adapter_base.filters.filter_directory_entries`. Builds
+    an ``is_forbidden`` callable that runs ``handle.policy.check_read``
+    so the chio-adapter-base helper does not need a chio-code-agent
+    dependency.
+    """
     if not isinstance(result, dict):
         return result
-    entries = result.get("entries")
-    if not isinstance(entries, list):
-        return result
-    base = result.get("path") or listing_root
-    from pathlib import Path
-
-    base_path = Path(str(base))
-    kept: list[str] = []
-    dropped: list[str] = []
-    for entry in entries:
-        if not isinstance(entry, str):
-            kept.append(entry)
-            continue
-        child = str(base_path / entry)
-        if _is_read_forbidden(handle, child):
-            dropped.append(entry)
-            continue
-        kept.append(entry)
-    if not dropped:
-        return result
-    filtered = dict(result)
-    filtered["entries"] = kept
-    filtered["forbidden_paths_filtered"] = sorted(set(dropped))
-    return filtered
+    return _adapter_base_filter_directory_entries(
+        result,
+        is_forbidden=lambda child: _is_read_forbidden(handle, child),
+        listing_root=listing_root,
+    )
 
 
 def _factory_file_search(handle: RuntimeHandle) -> ToolHandler:
@@ -350,22 +473,28 @@ def _filter_search_matches(handle: RuntimeHandle, invocation: Any) -> Any:
 
 
 def _filter_matches(handle: RuntimeHandle, result: Any) -> Any:
+    """Drop forbidden search matches via chio-adapter-base.
+
+    Uses :func:`chio_adapter_base.filters.forbidden_path_filter` for
+    the policy-check loop and re-assembles the chio-hermes search
+    result envelope. Non-string match entries pass through untouched
+    (the chio-hermes 0.1.0 contract).
+    """
     if not isinstance(result, dict):
         return result
     matches = result.get("matches")
     if not isinstance(matches, list):
         return result
-    kept: list[Any] = []
-    dropped: list[str] = []
-    for match in matches:
-        if isinstance(match, str) and _is_read_forbidden(handle, match):
-            dropped.append(match)
-            continue
-        kept.append(match)
+    str_matches = [m for m in matches if isinstance(m, str)]
+    non_str = [m for m in matches if not isinstance(m, str)]
+    kept_strs, dropped = forbidden_path_filter(
+        str_matches,
+        is_forbidden=lambda path: _is_read_forbidden(handle, path),
+    )
     if not dropped:
         return result
     filtered = dict(result)
-    filtered["matches"] = kept
+    filtered["matches"] = [*kept_strs, *non_str]
     filtered["forbidden_paths_filtered"] = sorted(set(dropped))
     return filtered
 
@@ -392,10 +521,21 @@ def _factory_shell_run(handle: RuntimeHandle) -> ToolHandler:
         # Syntactic guardrail (not a sandbox): rejects `..` and
         # out-of-workspace absolute paths.
         _reject_shell_argv_escape(command, root=handle.cwd)
-        # `approved=False` hard-coded: there is no trusted human-in-the-
-        # loop channel and `approved` is not in the public JSON schema.
-        # Approval-required commands fall through to chio_code_agent's
-        # deny path.
+        # Approval-required commands now route through the sidecar's
+        # HITL channel instead of denying outright. The wrapper raises
+        # `_RequiresApprovalSignal` which the envelope wrapper turns
+        # into a `chio_requires_approval` JSON envelope.
+        await _maybe_submit_for_approval(
+            handle,
+            tool_name="chio_shell_run",
+            tool_server="shell",
+            command=command,
+            tool_args={"command": command},
+        )
+        # `approved=False` hard-coded: with the sidecar holding the
+        # call instead, the legacy `approved=True` path is dead code
+        # and would still be rejected because `approved` is not in the
+        # public JSON schema.
         return await _agent(handle).shell.run_command(
             command,
             approved=False,
@@ -406,42 +546,35 @@ def _factory_shell_run(handle: RuntimeHandle) -> ToolHandler:
 
 
 def _reject_shell_argv_escape(command: str, *, root: Any) -> None:
-    import shlex
-    from pathlib import Path
+    """Reject argv tokens that escape the workspace root.
 
+    Delegates to :func:`chio_adapter_base.security.reject_shell_argv_escape`
+    and translates its :class:`ChioPathEscapeError` into the
+    chio-hermes :class:`ChioCodeAgentDeniedError` so the surrounding
+    handler envelope renders the deny verdict with the historical
+    ``tool_name`` / ``reason`` / ``guard`` fields.
+    """
     from chio_code_agent.errors import ChioCodeAgentDeniedError
 
     try:
-        argv = shlex.split(command or "")
-    except ValueError:
-        # Malformed quoting: let the executor surface the syntax error
-        # rather than masking it as a path escape.
-        return
-    root_path = Path(str(root)).resolve() if root is not None else None
-    for token in argv:
-        normalised = token.replace("\\", "/")
-        segments = normalised.split("/")
-        if any(seg == ".." for seg in segments):
-            raise ChioCodeAgentDeniedError(
-                f"shell argv token {token!r} contains `..` (workspace escape)",
-                tool_name="run_command",
-                reason="path_escape",
-                guard="chio_path_escape",
+        _adapter_base_reject_shell_argv_escape(command, root=root)
+    except ChioPathEscapeError as exc:
+        if exc.reason == "dotdot_segment":
+            message = (
+                f"shell argv token {exc.token!r} contains `..` "
+                "(workspace escape)"
             )
-        if root_path is not None and normalised.startswith("/"):
-            try:
-                resolved = Path(token).resolve()
-            except OSError:
-                continue
-            try:
-                resolved.relative_to(root_path)
-            except ValueError:
-                raise ChioCodeAgentDeniedError(
-                    f"shell argv token {token!r} points outside the workspace root",
-                    tool_name="run_command",
-                    reason="path_escape",
-                    guard="chio_path_escape",
-                ) from None
+        else:
+            message = (
+                f"shell argv token {exc.token!r} points outside the "
+                "workspace root"
+            )
+        raise ChioCodeAgentDeniedError(
+            message,
+            tool_name="run_command",
+            reason="path_escape",
+            guard="chio_path_escape",
+        ) from None
 
 
 def _factory_git_status(handle: RuntimeHandle) -> ToolHandler:
@@ -470,44 +603,13 @@ def _filter_invocation_status(handle: RuntimeHandle, invocation: Any) -> Any:
 
 
 def _filter_status_output(handle: RuntimeHandle, result: Any) -> Any:
-    # Porcelain v1: `XY <path>` or rename `XY <old> -> <new>`. Drop the
-    # row when either side fails check_read.
+    """Drop porcelain rows for forbidden paths; delegates to chio-adapter-base."""
     if not isinstance(result, dict):
         return result
-    stdout = result.get("stdout")
-    if not isinstance(stdout, str) or not stdout:
-        return result
-    kept_lines: list[str] = []
-    dropped: list[str] = []
-    for raw_line in stdout.splitlines():
-        if len(raw_line) < 4:
-            kept_lines.append(raw_line)
-            continue
-        body = raw_line[3:]
-        if " -> " in body:
-            old, new = body.split(" -> ", 1)
-            paths = [_strip_quotes(old), _strip_quotes(new)]
-        else:
-            paths = [_strip_quotes(body)]
-        forbidden = [p for p in paths if _is_read_forbidden(handle, p)]
-        if forbidden:
-            dropped.extend(forbidden)
-            continue
-        kept_lines.append(raw_line)
-    if not dropped:
-        return result
-    filtered = dict(result)
-    filtered["stdout"] = "\n".join(kept_lines) + ("\n" if kept_lines else "")
-    filtered["forbidden_paths_filtered"] = sorted(set(dropped))
-    return filtered
-
-
-def _strip_quotes(path: str) -> str:
-    # Porcelain quotes paths with unusual chars; strip them.
-    text = path.strip()
-    if len(text) >= 2 and text[0] == '"' and text[-1] == '"':
-        return text[1:-1]
-    return text
+    return _adapter_base_filter_status_output(
+        result,
+        is_forbidden=lambda path: _is_read_forbidden(handle, path),
+    )
 
 
 def _factory_git_diff(handle: RuntimeHandle) -> ToolHandler:
@@ -537,61 +639,13 @@ def _filter_invocation_diff(handle: RuntimeHandle, invocation: Any) -> Any:
 
 
 def _filter_diff_output(handle: RuntimeHandle, result: Any) -> Any:
+    """Drop diff hunks for forbidden paths; delegates to chio-adapter-base."""
     if not isinstance(result, dict):
         return result
-    stdout = result.get("stdout")
-    if not isinstance(stdout, str) or not stdout:
-        return result
-    hunks = _split_git_diff_hunks(stdout)
-    if not hunks:
-        return result
-    kept: list[str] = []
-    dropped: list[str] = []
-    for path, body in hunks:
-        if path is not None and _is_read_forbidden(handle, path):
-            dropped.append(path)
-            continue
-        kept.append(body)
-    if not dropped:
-        return result
-    filtered = dict(result)
-    filtered["stdout"] = "".join(kept)
-    filtered["forbidden_paths_filtered"] = sorted(set(dropped))
-    return filtered
-
-
-def _split_git_diff_hunks(stdout: str) -> list[tuple[str | None, str]]:
-    # Returns (path, hunk_text); path is None on malformed header.
-    if "diff --git" not in stdout:
-        return []
-    hunks: list[tuple[str | None, str]] = []
-    current_path: str | None = None
-    current_lines: list[str] = []
-    for line in stdout.splitlines(keepends=True):
-        if line.startswith("diff --git "):
-            if current_lines:
-                hunks.append((current_path, "".join(current_lines)))
-            current_lines = [line]
-            current_path = _parse_diff_git_header(line)
-        else:
-            current_lines.append(line)
-    if current_lines:
-        hunks.append((current_path, "".join(current_lines)))
-    return hunks
-
-
-def _parse_diff_git_header(line: str) -> str | None:
-    # `diff --git a/<p> b/<p>` -> b path.
-    parts = line.strip().split()
-    if len(parts) < 4:
-        return None
-    a_path = parts[2]
-    b_path = parts[3]
-    if a_path.startswith("a/"):
-        a_path = a_path[2:]
-    if b_path.startswith("b/"):
-        b_path = b_path[2:]
-    return b_path or a_path or None
+    return _adapter_base_filter_diff_output(
+        result,
+        is_forbidden=lambda path: _is_read_forbidden(handle, path),
+    )
 
 
 def _factory_git_log(handle: RuntimeHandle) -> ToolHandler:
@@ -705,9 +759,16 @@ def _factory_git_commit(handle: RuntimeHandle) -> ToolHandler:
 def _factory_git_run(handle: RuntimeHandle) -> ToolHandler:
     async def inner(args: dict[str, Any]) -> Any:
         command = _require(args, "command")
-        # Custom policy enabling git/run must not accept a model-
-        # supplied approval channel; treat requires_approval as deny.
-        _require_git_run_approval_or_deny(handle, command)
+        # Approval-required git commands route through the sidecar's
+        # HITL channel (raises `_RequiresApprovalSignal`).
+        await _maybe_submit_for_approval(
+            handle,
+            tool_name="chio_git_run",
+            tool_server="git",
+            command=command,
+            tool_args={"command": command},
+            policy_check="git",
+        )
         # Reject flags that retarget git at a different worktree.
         _reject_git_run_flag_escape(command)
         return await _agent(handle).git.run(
@@ -715,23 +776,6 @@ def _factory_git_run(handle: RuntimeHandle) -> ToolHandler:
         )
 
     return _wrap_envelope(handle, "chio_git_run", inner)
-
-
-def _require_git_run_approval_or_deny(handle: RuntimeHandle, command: str) -> None:
-    # `policy.check_shell` returns True when approval is required; with
-    # no trusted approval channel, deny.
-    policy = handle.policy
-    if policy is None:
-        return
-    from chio_code_agent.errors import ChioCodeAgentDeniedError
-
-    if bool(policy.check_shell(command)):
-        raise ChioCodeAgentDeniedError(
-            f"git command {command!r} requires approval; no approval channel is configured",
-            tool_name="git_run",
-            reason="requires_approval",
-            guard="shell_command",
-        )
 
 
 def _reject_git_run_flag_escape(command: str) -> None:

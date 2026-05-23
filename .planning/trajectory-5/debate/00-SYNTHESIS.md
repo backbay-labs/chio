@@ -139,12 +139,12 @@ Champion's KB-MCP dogfood. One demo -- not two, not five.
 
 - **Two-kernel cross-org bilateral cosigned invocation** using existing
   `crates/chio-federation/src/bilateral.rs` (`CoSigningBody`,
-  `DualSignedReceipt`). Per `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §6.
+  `DualSignedReceipt`). Per `spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` §6.
 - **Capability lease + budget bond** via `chio-credit` `CREDIT_BOND_ARTIFACT_SCHEMA`.
 - **Anchored** through `crates/chio-anchor::Web3CheckpointStatement` (no new
   Web3 live deployment required; bounded claim).
 - **Selective-disclosure auditor view** behind `bbs-stub` Cargo feature flag. No
-  new spec ratification. Per `spec/CHIODOS_SELECTIVE_DISCLOSURE.md` §6.
+  new spec ratification. Per `spec/CHIO_SELECTIVE_DISCLOSURE.md` §6.
 - **Wrapped at the user surface** by `chio mcp serve --policy` against the
   local KB MCP stack at `ops/knowledge-base/`. The receipts produced by the
   bilateral invocation are dogfooded through `chio receipt explain`.
@@ -158,7 +158,7 @@ Champion's KB-MCP dogfood. One demo -- not two, not five.
 - Gravity-well surgery on `chio-core` / `chio-kernel`. Same reason.
 - Reqwest 0.12/0.13 unification, serde_yaml retirement. Push to trj6 unless a
   Lane A/B blocker.
-- New chiodos primitives beyond what Lane C consumes; no new normative drafts.
+- New chio primitives beyond what Lane C consumes; no new normative drafts.
 - `v2.71` Web3 live activation (gated on external credentials).
 - Mobile attestation production-hardening beyond Wave 6 of trj4 wave plan.
 - New milestone scope of any kind.

@@ -1,53 +1,9 @@
 """Terraform CLI wrapper with two-phase Chio capability enforcement.
 
-Call flow
----------
-
-::
-
-    chio-iac terraform plan
-            |
-            v
-    Chio evaluate  -- scope: infra:plan, tool: terraform:plan
-            |
-            | allow
-            v
-    terraform plan -out=tfplan
-            |
-            v
-    terraform show -json tfplan  -> plan.json
-
-
-    chio-iac terraform apply
-            |
-            v
-    PlanReviewGuard parses plan.json,
-    denies out-of-scope resource types
-            |
-            | allow
-            v
-    Chio evaluate  -- scope: infra:apply, tool: terraform:apply
-            |
-            | allow
-            v
-    terraform apply tfplan
-            |
-            v
-    Chio receipt stored via sidecar
-
-The plan / apply split maps directly to Chio's two-tier capability model:
-
-* ``infra:plan`` is low-privilege -- it reads configuration, queries
-  providers, and produces a plan file. It never mutates the cloud.
-* ``infra:apply`` is high-privilege -- it actually runs the plan against
-  the cloud. It must be accompanied by a plan-review guard that parses
-  the plan output and ensures every resource the plan touches is within
-  the granted scope.
-
-The wrapper is deliberately thin: it shells out to ``terraform`` as a
-subprocess and never links the Terraform Go binary. That keeps the
-Python side small and lets us mock the subprocess layer in tests without
-requiring a live Terraform install.
+``infra:plan`` (low-privilege, read-only) gates ``terraform plan``;
+``infra:apply`` (high-privilege, mutating) gates ``terraform apply`` /
+``destroy`` after a :class:`PlanReviewGuard` parses the plan JSON. The
+wrapper shells out to ``terraform``; tests mock ``_run_subprocess``.
 """
 
 from __future__ import annotations
@@ -62,6 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from chio_adapter_base.redact import RedactionPolicy, redact_args
 from chio_sdk.client import ChioClient
 from chio_sdk.errors import ChioDeniedError, ChioError
 from chio_sdk.models import ChioReceipt
@@ -73,68 +30,29 @@ from chio_iac.plan_review import (
     ResourceTypeDenylist,
 )
 
-# Any object that quacks like an :class:`chio_sdk.client.ChioClient` --
-# accepts the real client plus :class:`chio_sdk.testing.MockChioClient`.
+# Real ChioClient or :class:`chio_sdk.testing.MockChioClient`.
 ChioClientLike = Any
 
 
-#: Terraform subcommands the wrapper recognises. Each maps to the scope
-#: it enforces on the sidecar call. Subcommands not in this map are
-#: rejected with :class:`ChioIACConfigError`.
 _SUBCOMMAND_SCOPE: dict[str, str] = {
     "plan": "infra:plan",
     "apply": "infra:apply",
     "destroy": "infra:apply",
 }
 
-#: Default tool-name per subcommand. Kernel policies can key on this.
 _TOOL_NAME_FOR: dict[str, str] = {
     "plan": "terraform:plan",
     "apply": "terraform:apply",
     "destroy": "terraform:destroy",
 }
 
-#: Subcommands that require the plan-review guard to run before dispatch.
+# Subcommands that require the plan-review guard before dispatch.
 _APPLY_SUBCOMMANDS: frozenset[str] = frozenset({"apply", "destroy"})
-
-
-# ---------------------------------------------------------------------------
-# Data structures
-# ---------------------------------------------------------------------------
 
 
 @dataclass
 class TerraformResult:
-    """Return value of :func:`run_terraform`.
-
-    The result is returned only for the allow path; the deny path raises
-    :class:`ChioIACError` (or :class:`ChioIACPlanReviewError`) before
-    ``terraform`` is dispatched.
-
-    Attributes
-    ----------
-    subcommand:
-        The Terraform subcommand that was executed (``plan``,
-        ``apply``, ``destroy``).
-    returncode:
-        Process exit code from ``terraform``. ``0`` on success.
-    stdout / stderr:
-        Captured streams. Empty strings when ``capture_output`` was
-        False and the streams were forwarded to the parent TTY.
-    command:
-        Full argv actually dispatched -- useful for structured logs.
-    receipt:
-        :class:`ChioReceipt` the sidecar signed for the allow verdict.
-        ``None`` on the rare path where the wrapper was called with a
-        mock that returned a bare receipt id.
-    plan_path:
-        Absolute path of the saved plan file when the subcommand is
-        ``plan``. ``None`` for ``apply`` / ``destroy``.
-    resource_types:
-        Sorted list of mutating resource types surfaced by the
-        plan-review guard on ``apply`` / ``destroy``. ``[]`` for
-        ``plan``.
-    """
+    """Allow-path return value of :func:`run_terraform`."""
 
     subcommand: str
     returncode: int
@@ -146,18 +64,8 @@ class TerraformResult:
     resource_types: list[str] = field(default_factory=list)
 
 
-# ---------------------------------------------------------------------------
-# Terraform binary discovery and subprocess plumbing
-# ---------------------------------------------------------------------------
-
-
 def _resolve_terraform_binary(override: str | None) -> str:
-    """Return the path of the ``terraform`` binary to invoke.
-
-    ``override`` wins when set. Otherwise we consult ``$CHIO_IAC_TERRAFORM``
-    to let CI pin a version, and fall back to :func:`shutil.which`.
-    Raises :class:`ChioIACConfigError` when no binary can be located.
-    """
+    """Locate ``terraform``: explicit override > ``$CHIO_IAC_TERRAFORM`` > ``$PATH``."""
     candidate = override or os.environ.get("CHIO_IAC_TERRAFORM")
     if candidate:
         resolved = shutil.which(candidate) or candidate
@@ -183,12 +91,7 @@ def _run_subprocess(
     capture_output: bool,
     env: dict[str, str] | None,
 ) -> subprocess.CompletedProcess[str]:
-    """Subprocess wrapper the tests monkey-patch for deterministic runs.
-
-    Kept as a module-level function (rather than an inline call) so
-    tests can replace it with a recorder without touching
-    :mod:`subprocess` globals.
-    """
+    """Module-level subprocess wrapper so tests can monkey-patch it."""
     return subprocess.run(
         list(command),
         cwd=str(cwd) if cwd is not None else None,
@@ -199,11 +102,6 @@ def _run_subprocess(
     )
 
 
-# ---------------------------------------------------------------------------
-# Sidecar evaluation
-# ---------------------------------------------------------------------------
-
-
 async def _evaluate_sidecar(
     *,
     chio_client: ChioClientLike,
@@ -212,19 +110,22 @@ async def _evaluate_sidecar(
     tool_name: str,
     subcommand: str,
     parameters: dict[str, Any],
+    redaction_policy: RedactionPolicy,
 ) -> ChioReceipt:
-    """Call the sidecar ``/v1/evaluate`` endpoint and translate denies.
+    """Call ``/v1/evaluate``; both deny paths raise :class:`ChioIACError`.
 
-    Raises :class:`ChioIACError` on deny (both receipt-path and HTTP-403
-    paths). Transport / kernel errors propagate as :class:`ChioError` so
-    callers can retry without conflating them with policy denials.
+    Transport / kernel errors propagate as :class:`ChioError` so callers
+    can retry without confusing them with policy denials.
     """
+    redacted_parameters = redact_args(
+        tool_name, parameters, policy=redaction_policy
+    )
     try:
         receipt = await chio_client.evaluate_tool_call(
             capability_id=capability_id,
             tool_server=tool_server,
             tool_name=tool_name,
-            parameters=parameters,
+            parameters=redacted_parameters,
         )
     except ChioDeniedError as exc:
         raise ChioIACError(
@@ -256,11 +157,6 @@ async def _evaluate_sidecar(
     return receipt
 
 
-# ---------------------------------------------------------------------------
-# Core entry point
-# ---------------------------------------------------------------------------
-
-
 async def run_terraform(
     subcommand: str,
     args: Sequence[str] | None = None,
@@ -278,71 +174,15 @@ async def run_terraform(
     terraform_binary: str | None = None,
     env: dict[str, str] | None = None,
     capture_output: bool = True,
+    redaction_policy: RedactionPolicy | None = None,
 ) -> TerraformResult:
     """Run ``terraform <subcommand>`` with Chio capability enforcement.
 
-    Two-phase enforcement:
-
-    * ``plan`` -- evaluates the ``infra:plan`` scope on the sidecar,
-      then runs ``terraform plan -out=tfplan``. Safe by design: the
-      plan never mutates the cloud. On allow the wrapper also writes a
-      JSON dump (via ``terraform show -json``) to ``plan_path + ".json"``
-      so ``apply`` can review the plan without re-running
-      ``terraform show``.
-
-    * ``apply`` / ``destroy`` -- loads the plan JSON (from
-      ``plan_path + ".json"`` or ``plan_path`` when it is already a
-      ``*.json`` dump), runs the :class:`PlanReviewGuard` to check every
-      mutating resource type against the allowlist / denylist, then
-      evaluates the ``infra:apply`` scope on the sidecar. Only then is
-      ``terraform apply`` dispatched.
-
-    Parameters
-    ----------
-    subcommand:
-        ``plan``, ``apply``, or ``destroy``. Anything else raises
-        :class:`ChioIACConfigError`.
-    args:
-        Extra positional arguments to pass to ``terraform``. Appended
-        *after* the wrapper-managed flags (e.g. ``-out=tfplan``), so
-        they take precedence when duplicated.
-    capability_id:
-        Required. The pre-minted capability token id to evaluate.
-    tool_server:
-        Chio tool-server id used in the sidecar evaluation. Defaults to
-        ``"terraform"``.
-    working_dir:
-        Directory containing the Terraform configuration. Defaults to
-        the current process cwd.
-    plan_path:
-        Override for the Terraform plan file path. Defaults to
-        ``<working_dir>/tfplan`` for ``plan`` and
-        ``<working_dir>/tfplan`` for ``apply`` / ``destroy``. The JSON
-        dump used by the plan-review guard sits at ``<plan_path>.json``.
-    plan_review_guard:
-        Optional pre-built :class:`PlanReviewGuard`. When unset, the
-        wrapper constructs a guard from ``allowlist`` / ``denylist``
-        / ``allow_destroy``.
-    allowlist / denylist / allow_destroy:
-        Shortcut for constructing a :class:`PlanReviewGuard` when the
-        caller has not supplied one. Ignored when ``plan_review_guard``
-        is set.
-    chio_client / sidecar_url:
-        The :class:`chio_sdk.client.ChioClient` (or mock) to use. When
-        neither is provided, the wrapper mints a client pointing at
-        ``http://127.0.0.1:9090``.
-    terraform_binary:
-        Override for the ``terraform`` binary path (useful in CI where
-        a pinned version is needed). Falls back to ``$CHIO_IAC_TERRAFORM``
-        and then ``$PATH``.
-    env:
-        Extra environment variables merged into ``os.environ`` for the
-        ``terraform`` subprocess. Useful for provider credentials or
-        ``TF_LOG=debug``.
-    capture_output:
-        When True (default), stdout / stderr are captured and returned.
-        When False, the streams are forwarded to the parent terminal --
-        useful for interactive plans.
+    ``plan`` evaluates ``infra:plan`` then runs ``terraform plan -out=tfplan``
+    and writes a JSON dump to ``<plan_path>.json``. ``apply`` / ``destroy``
+    load that JSON, run :class:`PlanReviewGuard`, evaluate ``infra:apply``,
+    then dispatch. ``redaction_policy`` defaults to
+    :meth:`RedactionPolicy.chio_default`.
     """
     if subcommand not in _SUBCOMMAND_SCOPE:
         raise ChioIACConfigError(
@@ -378,6 +218,11 @@ async def run_terraform(
         denylist=denylist,
         allow_destroy=allow_destroy,
     )
+    effective_redaction_policy = (
+        redaction_policy
+        if redaction_policy is not None
+        else RedactionPolicy.chio_default()
+    )
 
     owner = _ChioClientOwner(client=chio_client, sidecar_url=sidecar_url)
     try:
@@ -395,6 +240,7 @@ async def run_terraform(
                 terraform_binary=resolved_binary,
                 env=resolved_env,
                 capture_output=capture_output,
+                redaction_policy=effective_redaction_policy,
             )
 
         return await _run_apply_or_destroy(
@@ -411,6 +257,7 @@ async def run_terraform(
             terraform_binary=resolved_binary,
             env=resolved_env,
             capture_output=capture_output,
+            redaction_policy=effective_redaction_policy,
         )
     finally:
         await owner.close()
@@ -424,7 +271,7 @@ def _resolve_plan_review_guard(
     denylist: ResourceTypeDenylist | None,
     allow_destroy: bool | None,
 ) -> PlanReviewGuard | None:
-    """Build (or reuse) the plan-review guard for apply-family subcommands."""
+    """Build the plan-review guard for apply-family subcommands."""
     if subcommand not in _APPLY_SUBCOMMANDS:
         return None
     if plan_review_guard is not None:
@@ -445,11 +292,6 @@ def _resolve_plan_review_guard(
     )
 
 
-# ---------------------------------------------------------------------------
-# ``terraform plan``
-# ---------------------------------------------------------------------------
-
-
 async def _run_plan(
     *,
     client: ChioClientLike,
@@ -463,13 +305,9 @@ async def _run_plan(
     terraform_binary: str,
     env: dict[str, str] | None,
     capture_output: bool,
+    redaction_policy: RedactionPolicy,
 ) -> TerraformResult:
-    """Evaluate ``infra:plan`` scope, then run ``terraform plan``.
-
-    On success the plan is written to ``plan_path`` (binary) and its
-    JSON dump to ``plan_path.json`` so a subsequent ``apply`` can review
-    the plan without re-shelling into ``terraform show``.
-    """
+    """Evaluate ``infra:plan``, run ``terraform plan``, dump JSON for apply."""
     receipt = await _evaluate_sidecar(
         chio_client=client,
         capability_id=capability_id,
@@ -483,6 +321,7 @@ async def _run_plan(
             "plan_path": str(plan_path),
             "args": extra_args,
         },
+        redaction_policy=redaction_policy,
     )
 
     command = [
@@ -500,9 +339,7 @@ async def _run_plan(
     )
 
     if completed.returncode == 0:
-        # Best-effort: dump the plan to JSON so apply can review it.
-        # ``terraform show`` failures are not fatal for plan; they just
-        # mean apply will have to re-run ``show`` itself.
+        # Best-effort JSON dump; ``show`` failures aren't fatal for plan.
         show_command = [terraform_binary, "show", "-json", str(plan_path)]
         show = await asyncio.to_thread(
             _run_subprocess,
@@ -531,11 +368,6 @@ async def _run_plan(
     )
 
 
-# ---------------------------------------------------------------------------
-# ``terraform apply`` / ``terraform destroy``
-# ---------------------------------------------------------------------------
-
-
 async def _run_apply_or_destroy(
     *,
     client: ChioClientLike,
@@ -551,15 +383,9 @@ async def _run_apply_or_destroy(
     terraform_binary: str,
     env: dict[str, str] | None,
     capture_output: bool,
+    redaction_policy: RedactionPolicy,
 ) -> TerraformResult:
-    """Run the plan-review guard, then evaluate ``infra:apply``, then apply.
-
-    The plan-review guard denies out-of-scope resource types before any
-    sidecar call so local operators get fast feedback on allowlist
-    violations. The sidecar is then evaluated with the scope_label and
-    the list of resource types the plan touches; the kernel can apply
-    additional guards (monetary budgets, environment checks, etc.).
-    """
+    """PlanReviewGuard first (fast local deny), then sidecar, then apply."""
     plan_json_path = plan_path.with_suffix(plan_path.suffix + ".json")
     plan_payload = await _load_plan_payload(
         plan_path=plan_path,
@@ -597,13 +423,13 @@ async def _run_apply_or_destroy(
             "resource_types": resource_types,
             "args": extra_args,
         },
+        redaction_policy=redaction_policy,
     )
 
     if subcommand == "apply":
         command = [terraform_binary, "apply", str(plan_path), *extra_args]
     else:
-        # ``terraform destroy`` does not accept a plan file; use
-        # ``-auto-approve`` only when the caller opted in.
+        # ``destroy`` does not accept a plan file.
         command = [terraform_binary, "destroy", *extra_args]
 
     completed = await asyncio.to_thread(
@@ -634,18 +460,7 @@ async def _load_plan_payload(
     working_dir: Path,
     env: dict[str, str] | None,
 ) -> dict[str, Any] | None:
-    """Load a plan JSON dict for the plan-review guard.
-
-    Tries three sources in order:
-
-    1. ``plan_json_path`` (the ``.json`` sidecar the plan phase writes).
-    2. ``plan_path`` itself when it already ends in ``.json`` -- useful
-       for callers who pre-render the plan via ``terraform show``.
-    3. ``terraform show -json plan_path`` as a last resort.
-
-    Returns ``None`` when the plan file does not exist; the caller
-    decides whether that is a fatal error.
-    """
+    """Load plan JSON: ``<plan>.json`` > ``plan_path`` (when ``.json``) > ``terraform show``."""
     if plan_json_path.exists():
         return json.loads(plan_json_path.read_text(encoding="utf-8"))
 
@@ -671,18 +486,8 @@ async def _load_plan_payload(
     return json.loads(completed.stdout)
 
 
-# ---------------------------------------------------------------------------
-# ChioClient ownership helper (mirrors chio-prefect)
-# ---------------------------------------------------------------------------
-
-
 class _ChioClientOwner:
-    """Owns a lazily-constructed :class:`ChioClient` for one wrapper call.
-
-    The wrapper may be called with an explicit client (from a test
-    fixture or a caller-managed session) or may need to mint a default.
-    We track ownership so we only close clients we created ourselves.
-    """
+    """Lazy :class:`ChioClient` owner; only closes clients it created itself."""
 
     __slots__ = ("_client", "_owns", "_sidecar_url")
 

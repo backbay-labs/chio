@@ -44,8 +44,8 @@ shipping artifact (`chio` binary, `chio-cli`, `chio-mcp-edge`, `chio-tower`,
 ### 1.2 Artifact B: Spec MUST citation
 
 For Lane B (protocol realization) and Lane C (forcing demo): a citation to
-`spec/PROTOCOL.md` (or `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` /
-`spec/CHIODOS_SELECTIVE_DISCLOSURE.md` for Lane C) of the form:
+`spec/PROTOCOL.md` (or `spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` /
+`spec/CHIO_SELECTIVE_DISCLOSURE.md` for Lane C) of the form:
 
 ```
 Spec MUST: spec/PROTOCOL.md section <N.M.K> lines <a>-<b>

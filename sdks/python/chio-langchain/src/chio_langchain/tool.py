@@ -20,14 +20,14 @@ Usage::
 from __future__ import annotations
 
 import json
-from typing import Any, Type
+from typing import Any
 
-from langchain_core.tools import BaseTool
-from pydantic import BaseModel, Field, create_model
-
+from chio_adapter_base.redact import RedactionPolicy, redact_args
 from chio_sdk.client import ChioClient
 from chio_sdk.errors import ChioDeniedError, ChioError
 from chio_sdk.models import ChioReceipt
+from langchain_core.tools import BaseTool
+from pydantic import BaseModel, Field, create_model
 
 
 class ChioTool(BaseTool):
@@ -46,6 +46,16 @@ class ChioTool(BaseTool):
     # Store the input schema JSON from the manifest
     input_schema_def: dict[str, Any] = Field(default_factory=dict)
 
+    # Per-tool argument redaction policy. Applied right before parameters
+    # are forwarded to the sidecar so secret-bearing fields (e.g. the
+    # ``content`` of ``chio_file_write``) never land in the receipt log.
+    # Defaults to :meth:`RedactionPolicy.chio_default`; pass a custom
+    # ``RedactionPolicy`` at construction time to extend with adapter or
+    # workspace-specific tool names.
+    redaction_policy: RedactionPolicy = Field(
+        default_factory=RedactionPolicy.chio_default, exclude=True
+    )
+
     # Last receipt from a tool invocation (for audit trail access)
     last_receipt: ChioReceipt | None = Field(default=None, exclude=True)
 
@@ -58,7 +68,7 @@ class ChioTool(BaseTool):
         if schema is not None:
             self.args_schema = schema  # type: ignore[assignment]
 
-    def get_input_schema(self) -> Type[BaseModel] | None:
+    def get_input_schema(self) -> type[BaseModel] | None:
         """Return the dynamically generated input schema, if any."""
         return _build_args_schema(self.name, self.input_schema_def)
 
@@ -74,13 +84,19 @@ class ChioTool(BaseTool):
         Returns the tool result as a JSON string. The signed receipt is
         stored in ``self.last_receipt``.
         """
+        # Redact body fields (e.g. chio_file_write.content) before they
+        # cross into the sidecar so the receipt log never carries the raw
+        # secret bytes. Path / message fields pass through unchanged.
+        recorded_args = redact_args(
+            self.name, kwargs, policy=self.redaction_policy
+        )
         async with ChioClient(self.sidecar_url) as client:
             try:
                 receipt = await client.evaluate_tool_call(
                     capability_id=self.capability_id,
                     tool_server=self.server_id,
                     tool_name=self.name,
-                    parameters=kwargs,
+                    parameters=recorded_args,
                 )
             except ChioDeniedError as exc:
                 return json.dumps({
@@ -126,9 +142,16 @@ class ChioToolkit:
         self,
         capability_id: str,
         sidecar_url: str = "http://127.0.0.1:9090",
+        *,
+        redaction_policy: RedactionPolicy | None = None,
     ) -> None:
         self._capability_id = capability_id
         self._sidecar_url = sidecar_url
+        self._redaction_policy = (
+            redaction_policy
+            if redaction_policy is not None
+            else RedactionPolicy.chio_default()
+        )
 
     async def get_tools(
         self,
@@ -159,6 +182,7 @@ class ChioToolkit:
                     capability_id=self._capability_id,
                     sidecar_url=self._sidecar_url,
                     input_schema_def=tool_def.get("input_schema", {}),
+                    redaction_policy=self._redaction_policy,
                 )
                 tools.append(tool)
 
@@ -184,12 +208,13 @@ class ChioToolkit:
             capability_id=self._capability_id,
             sidecar_url=self._sidecar_url,
             input_schema_def=input_schema or {},
+            redaction_policy=self._redaction_policy,
         )
 
 
 def _build_args_schema(
     tool_name: str, input_schema_def: dict[str, Any]
-) -> Type[BaseModel] | None:
+) -> type[BaseModel] | None:
     """Build a Pydantic model from a JSON Schema definition."""
     if not input_schema_def:
         return None

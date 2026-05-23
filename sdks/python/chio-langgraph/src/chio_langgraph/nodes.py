@@ -1,31 +1,11 @@
 """The :func:`chio_node` wrapper.
 
-``chio_node`` takes a LangGraph node callable (sync or async) plus an
-:class:`chio_sdk.ChioScope` and returns a node callable that -- before the
-wrapped body runs -- evaluates the node dispatch through the Chio sidecar.
-A deny verdict raises :class:`ChioLangGraphError`; an allow verdict lets
-the wrapped body run exactly as it would have otherwise.
-
-Design notes
-------------
-
-* LangGraph nodes may be either plain functions returning a state
-  update dict, or async coroutines. The wrapper preserves both shapes:
-  it inspects the wrapped callable with :func:`asyncio.iscoroutinefunction`
-  and returns the matching shape so LangGraph's state machine keeps
-  working.
-* The wrapper calls ``evaluate_tool_call`` on the :class:`chio_sdk.ChioClient`
-  using ``tool_server=<server_id>`` and ``tool_name=<node_name>``. From
-  the sidecar's perspective, a node dispatch is a tool call against a
-  virtual tool; scope enforcement, receipt signing, and delegation all
-  work the same way.
-* When the config carries a ``configurable["chio_capability_id"]``, that
-  id overrides the token resolved from the :class:`ChioGraphConfig`.
-  This lets supervisor nodes hand a narrower capability to a child
-  subgraph via LangGraph's standard config propagation.
-* The wrapper refuses to invoke a node whose scope is broader than the
-  parent graph's ceiling -- :func:`enforce_subgraph_ceiling` is called
-  at wrap time so configuration errors surface *before* any state moves.
+Wraps a LangGraph node so each dispatch is evaluated by the Chio
+sidecar before the body runs. The sidecar treats node dispatch as a
+tool call (``tool_name=<node_name>``); allow runs the body, deny raises
+:class:`ChioLangGraphError`. Subgraph ceiling is enforced at wrap time.
+A ``configurable["chio_capability_id"]`` in runtime config lets a
+supervisor hand a narrower token to a child node.
 """
 
 from __future__ import annotations
@@ -36,6 +16,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from chio_adapter_base.redact import RedactionPolicy, redact_args
 from chio_sdk.errors import ChioDeniedError, ChioError
 from chio_sdk.models import ChioReceipt, ChioScope
 
@@ -45,8 +26,7 @@ from chio_langgraph.scoping import ChioGraphConfig, enforce_subgraph_ceiling
 logger = logging.getLogger(__name__)
 
 
-# LangGraph node shapes: either ``fn(state)`` or ``fn(state, config)``,
-# sync or async. The wrapper auto-detects which by introspection.
+# Sync or async; ``fn(state)`` or ``fn(state, config)``. Auto-detected.
 NodeCallable = Callable[..., Any]
 NodeResult = Any
 
@@ -58,59 +38,30 @@ def chio_node(
     config: ChioGraphConfig,
     name: str | None = None,
     tool_server: str = "langgraph",
+    redaction_policy: RedactionPolicy | None = None,
 ) -> NodeCallable:
     """Wrap a LangGraph node with Chio capability enforcement.
 
-    Parameters
-    ----------
-    fn:
-        The underlying node callable. May be sync or async, and may
-        accept either ``(state)`` or ``(state, config)`` in the usual
-        LangGraph style. The wrapper preserves the original arity and
-        async contract.
-    scope:
-        The :class:`ChioScope` this node operates under. The scope must
-        be a subset of the parent graph's effective ceiling
-        (enforced at wrap time via
-        :func:`chio_langgraph.scoping.enforce_subgraph_ceiling`).
-    config:
-        The enclosing :class:`ChioGraphConfig`. The wrapper looks up the
-        capability token minted for ``name`` (falling back to the
-        workflow-level token) and sends each node dispatch through
-        ``config.chio_client``.
-    name:
-        Name under which to register the node. Defaults to
-        ``fn.__name__``. Also used as the ``tool_name`` sent to the
-        sidecar so receipts correlate with the graph topology.
-    tool_server:
-        Sidecar ``tool_server`` identifier. Defaults to
-        ``"langgraph"``; override when a single kernel fronts several
-        distinct graphs and needs per-graph receipt filtering.
-
-    Returns
-    -------
-    A new node callable that evaluates the dispatch via the sidecar
-    before invoking ``fn``.
-
-    Raises
-    ------
-    ChioLangGraphConfigError
-        If ``scope`` exceeds the graph ceiling.
+    ``scope`` must be a subset of the parent graph's ceiling (enforced
+    at wrap time). ``redaction_policy`` defaults to
+    :meth:`RedactionPolicy.chio_default`.
     """
     node_name: str = name or str(getattr(fn, "__name__", "node"))
 
-    # Enforce the ceiling at wrap time so the error surfaces during
-    # graph construction, not at first invocation. Also register the
-    # node scope on the config so provisioning picks it up.
+    # Enforce the ceiling at wrap time so config errors surface early.
     enforce_subgraph_ceiling(config, node_name, scope)
     config.node_scopes.setdefault(node_name, scope)
 
     is_async = asyncio.iscoroutinefunction(fn)
     sig = inspect.signature(fn) if callable(fn) else None
     takes_config = _node_accepts_config(sig)
+    effective_redaction_policy: RedactionPolicy = (
+        redaction_policy
+        if redaction_policy is not None
+        else RedactionPolicy.chio_default()
+    )
 
     async def _dispatch(state: Any, runtime_config: Any) -> NodeResult:
-        """Core Chio dispatch: evaluate, then call the wrapped node."""
         cap_id = _resolve_capability_id(
             config=config,
             node_name=node_name,
@@ -125,7 +76,11 @@ def chio_node(
                 tool_name=node_name,
                 reason="missing_capability",
             )
-        parameters = _state_to_parameters(state)
+        parameters = redact_args(
+            node_name,
+            _state_to_parameters(state),
+            policy=effective_redaction_policy,
+        )
         receipt = await _evaluate(
             chio_client=config.chio_client,
             capability_id=cap_id,
@@ -145,9 +100,7 @@ def chio_node(
                 decision=receipt.decision.model_dump(exclude_none=True),
             )
 
-        # Allow verdict: invoke the wrapped body preserving sync/async
-        # and arity. LangGraph inspects the returned value and treats
-        # it as the state update.
+        # Allow: invoke body preserving sync/async + arity.
         if takes_config:
             result = fn(state, runtime_config)
         else:
@@ -174,19 +127,13 @@ def chio_node(
             asyncio.get_running_loop()
         except RuntimeError:
             return asyncio.run(coro)
-        # Inside a running loop we *must* return the coroutine; LangGraph's
-        # async pipeline awaits it directly.
+        # Inside a running loop, return the coroutine for LangGraph to await.
         return coro
 
     _copy_metadata(fn, sync_wrapper, node_name)
     sync_wrapper.__chio_scope__ = scope  # type: ignore[attr-defined]
     sync_wrapper.__chio_node_name__ = node_name  # type: ignore[attr-defined]
     return sync_wrapper
-
-
-# ---------------------------------------------------------------------------
-# Internals
-# ---------------------------------------------------------------------------
 
 
 async def _evaluate(
@@ -197,7 +144,7 @@ async def _evaluate(
     tool_name: str,
     parameters: dict[str, Any],
 ) -> ChioReceipt:
-    """Send a sidecar evaluation and translate deny-on-wire errors."""
+    """Sidecar evaluate; translate HTTP-403 to :class:`ChioLangGraphError`."""
     try:
         return await chio_client.evaluate_tool_call(
             capability_id=capability_id,
@@ -224,16 +171,7 @@ def _resolve_capability_id(
     node_name: str,
     runtime_config: Any,
 ) -> str | None:
-    """Pick the capability id for this dispatch.
-
-    Priority order:
-
-    1. ``runtime_config["configurable"]["chio_capability_id"]`` -- lets a
-       supervisor node hand a narrower token to a child node via
-       standard LangGraph config propagation.
-    2. The token minted for ``node_name`` on the :class:`ChioGraphConfig`.
-    3. The workflow-level token, if one was minted.
-    """
+    """runtime override > node token > workflow token."""
     if isinstance(runtime_config, dict):
         configurable = runtime_config.get("configurable")
         if isinstance(configurable, dict):
@@ -250,14 +188,7 @@ def _resolve_capability_id(
 
 
 def _state_to_parameters(state: Any) -> dict[str, Any]:
-    """Render a LangGraph state into a params dict for the sidecar.
-
-    LangGraph states are typically ``TypedDict`` instances which are
-    regular dicts at runtime. Pydantic models also show up; for those
-    we emit the model dump. Anything else falls back to ``str(state)``
-    under a single ``state`` key so the sidecar always receives a
-    hashable payload.
-    """
+    """Render LangGraph state to a sidecar params dict (dict / pydantic / repr)."""
     if state is None:
         return {}
     if isinstance(state, dict):
@@ -271,7 +202,6 @@ def _state_to_parameters(state: Any) -> dict[str, Any]:
 
 
 def _node_accepts_config(sig: inspect.Signature | None) -> bool:
-    """Return True when the node callable wants a ``config`` argument."""
     if sig is None:
         return False
     params = [
@@ -287,7 +217,6 @@ def _node_accepts_config(sig: inspect.Signature | None) -> bool:
 
 
 def _copy_metadata(src: Any, dest: Any, node_name: str) -> None:
-    """Copy ``__name__``/``__doc__`` so LangGraph introspection works."""
     try:
         dest.__name__ = node_name
     except (AttributeError, TypeError):

@@ -1,43 +1,29 @@
 """Chio-governed Temporal Activity interceptor.
 
 :class:`ChioActivityInterceptor` plugs into a Temporal
-:class:`temporalio.worker.Worker`'s ``interceptors`` list. For every
-activity execution it:
-
-1. Looks up the :class:`chio_temporal.WorkflowGrant` registered for the
-   running activity's workflow_id (inheriting from the parent workflow
-   by default; explicit per-activity attenuated grants also supported).
-2. Evaluates the activity through the Chio sidecar with the grant's
-   capability_id.
-3. On ``allow`` -- records a :class:`chio_temporal.WorkflowStepReceipt`
-   on the workflow's :class:`chio_temporal.WorkflowReceipt` and delegates
-   to the next interceptor.
-4. On ``deny`` -- raises
-   :class:`temporalio.exceptions.ApplicationError` with
-   ``non_retryable=True`` so Temporal records the denial in workflow
-   history and does not retry. The denial receipt is also recorded on
-   the :class:`WorkflowReceipt`.
-
-The interceptor is safe to use without an active sidecar for unit
-tests: pass a :class:`chio_sdk.testing.MockChioClient` as ``chio_client``.
-
-.. note::
-   Human-in-the-loop approval support (pause Activity on a pending
-   approval guard, resume via Temporal Signal) is planned for v2 once
-   Phase 3.4 lands. This v1 only implements the synchronous allow/deny
-   path.
+:class:`temporalio.worker.Worker`'s ``interceptors`` list. Each
+activity is evaluated via the Chio sidecar; allow records a
+:class:`WorkflowStepReceipt` and delegates to the next interceptor;
+deny raises non-retryable
+:class:`temporalio.exceptions.ApplicationError` so Temporal records the
+denial in workflow history. HITL approval support is planned for v2.
 """
 
 from __future__ import annotations
 
-import logging
 import hashlib
 import json
+import logging
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from chio_adapter_base.redact import (
+    DEFAULT_TOOL_POSITIONAL_NAMES,
+    RedactionPolicy,
+    redact_args,
+)
 from chio_sdk.client import ChioClient
 from chio_sdk.errors import ChioDeniedError, ChioError
 from chio_sdk.models import ChioReceipt, Decision, ToolCallAction
@@ -55,26 +41,17 @@ from chio_temporal.receipt import WorkflowReceipt
 
 logger = logging.getLogger(__name__)
 
-#: Application error ``type`` used when an activity is denied. Matches
-#: the string documented in ``docs/protocols/TEMPORAL-INTEGRATION.md``
-#: so saga compensation can match on it.
+#: ``ApplicationError.type`` for denied activities. Saga compensation
+#: matches on this string -- see ``docs/protocols/TEMPORAL-INTEGRATION.md``.
 DENIED_ERROR_TYPE = "ChioCapabilityDenied"
 
-# Callable signature for a per-activity grant override hook. When an
-# override is registered for an activity type, it takes precedence over
-# the workflow-level grant. The hook receives the activity info and
-# must return a ``WorkflowGrant`` (or ``None`` to fall back to the
-# workflow grant).
+# Per-activity grant-override hook; ``None`` falls back to the workflow grant.
 ActivityGrantOverride = Callable[[activity.Info], "WorkflowGrant | None"]
 
 
 @dataclass
 class _WorkflowRunState:
-    """Per-(workflow_id, run_id) state held by the interceptor.
-
-    We keep a :class:`WorkflowReceipt` per run so concurrent workflows
-    executing on the same worker do not stomp each other's step lists.
-    """
+    """Per-(workflow_id, run_id) state; isolates concurrent runs on one worker."""
 
     receipt: WorkflowReceipt
     grant: WorkflowGrant
@@ -84,28 +61,8 @@ class _WorkflowRunState:
 class ChioActivityInterceptor(Interceptor):
     """Worker-level :class:`Interceptor` that gates every Activity on Chio.
 
-    Parameters
-    ----------
-    chio_client:
-        :class:`chio_sdk.ChioClient` or compatible mock used to call the
-        sidecar. When ``None``, the interceptor constructs a default
-        client pointing at ``sidecar_url``; in that mode the client is
-        owned by the interceptor and closed on :meth:`close`.
-    sidecar_url:
-        Base URL of the Chio sidecar. Only used when ``chio_client`` is
-        ``None``. Defaults to ``http://127.0.0.1:9090``.
-    default_tool_server:
-        Fallback ``tool_server`` id when an activity has no grant-level
-        override and no per-activity mapping. Activities map 1:1 to a
-        tool server in most deployments.
-    activity_tool_server_map:
-        Optional mapping from activity type -> Chio tool server id.
-        Overrides ``default_tool_server`` for matching activities.
-    receipt_sink:
-        Optional callable invoked with the finalised
-        :class:`WorkflowReceipt` envelope (a dict from
-        :meth:`WorkflowReceipt.to_envelope`). Fire-and-forget; exceptions
-        are logged and swallowed so sink failures do not fail workflows.
+    Redaction runs in the activity layer so workflow determinism is
+    unaffected. Receipt-sink failures are logged and swallowed.
     """
 
     def __init__(
@@ -116,6 +73,7 @@ class ChioActivityInterceptor(Interceptor):
         default_tool_server: str = "",
         activity_tool_server_map: dict[str, str] | None = None,
         receipt_sink: Callable[[dict[str, Any]], Awaitable[None] | None] | None = None,
+        redaction_policy: RedactionPolicy | None = None,
     ) -> None:
         self._chio_client = chio_client
         self._owns_client = chio_client is None
@@ -125,29 +83,22 @@ class ChioActivityInterceptor(Interceptor):
             activity_tool_server_map or {}
         )
         self._receipt_sink = receipt_sink
+        self._redaction_policy = (
+            redaction_policy
+            if redaction_policy is not None
+            else RedactionPolicy.chio_default()
+        )
         self._runs: dict[tuple[str, str], _WorkflowRunState] = {}
-        # Grants registered before the workflow runs. Keyed on
-        # workflow_id; a per-run state is materialised lazily on first
-        # activity execution.
+        # Pre-registered grants keyed on workflow_id; per-run state is
+        # materialised lazily on first activity execution.
         self._pending_grants: dict[str, WorkflowGrant] = {}
-        # Global activity-type -> grant-override hook. See
-        # :meth:`register_activity_grant_override`.
         self._override_hooks: dict[str, ActivityGrantOverride] = {}
-        # HITL approval is intentionally outside the v1 synchronous
-        # allow/deny path. A future version can resume activities from
-        # an approval Signal once that payload shape is stable.
-
-    # ------------------------------------------------------------------
-    # Grant registration
-    # ------------------------------------------------------------------
 
     def register_workflow_grant(self, grant: WorkflowGrant) -> None:
         """Register a :class:`WorkflowGrant` for ``grant.workflow_id``.
 
-        Call this *before* starting the workflow (e.g. immediately after
-        minting the capability via the Chio authority). Subsequent
-        activity executions for that workflow resolve their capability
-        through this grant.
+        Must be called before the workflow starts so subsequent activity
+        executions can resolve their capability.
         """
         if not isinstance(grant, WorkflowGrant):
             raise ChioTemporalConfigError(
@@ -160,32 +111,19 @@ class ChioActivityInterceptor(Interceptor):
         activity_type: str,
         hook: ActivityGrantOverride,
     ) -> None:
-        """Register a hook that returns an attenuated grant per activity.
-
-        The hook is invoked with the :class:`activity.Info` for each
-        execution of ``activity_type``. Returning ``None`` from the hook
-        falls back to the workflow-level grant.
-        """
+        """Register a per-activity grant-override hook (``None`` -> workflow grant)."""
         if not activity_type:
             raise ChioTemporalConfigError(
                 "activity_type must be a non-empty string"
             )
         self._override_hooks[activity_type] = hook
 
-    # ------------------------------------------------------------------
-    # Introspection
-    # ------------------------------------------------------------------
-
     def workflow_receipt(
         self,
         workflow_id: str,
         run_id: str | None = None,
     ) -> WorkflowReceipt | None:
-        """Return the in-flight :class:`WorkflowReceipt` for a run.
-
-        ``None`` is returned when no activity has executed for the
-        (workflow_id, run_id) pair yet.
-        """
+        """Return the in-flight :class:`WorkflowReceipt` (``None`` if nothing yet)."""
         key = self._run_key(workflow_id, run_id)
         state = self._runs.get(key)
         return state.receipt if state else None
@@ -198,12 +136,7 @@ class ChioActivityInterceptor(Interceptor):
         outcome: str = "success",
         completed_at: int | None = None,
     ) -> WorkflowReceipt | None:
-        """Finalise the workflow receipt for ``workflow_id`` / ``run_id``.
-
-        Call this from the workflow entry point in a ``try/finally``
-        block once the workflow completes. Returns the finalised
-        :class:`WorkflowReceipt` (or ``None`` when no activities ran).
-        """
+        """Finalise the workflow receipt; call from a ``try/finally`` at workflow exit."""
         key = self._run_key(workflow_id, run_id)
         state = self._runs.get(key)
         if state is None:
@@ -220,12 +153,7 @@ class ChioActivityInterceptor(Interceptor):
         workflow_id: str,
         run_id: str | None = None,
     ) -> dict[str, Any] | None:
-        """Drain the finalised receipt to the configured sink.
-
-        Returns the envelope dict that was forwarded (or ``None`` when
-        nothing was registered). Errors from the sink are logged and
-        swallowed.
-        """
+        """Drain the finalised receipt to the sink; sink errors are swallowed."""
         key = self._run_key(workflow_id, run_id)
         state = self._runs.pop(key, None)
         if state is None:
@@ -242,20 +170,11 @@ class ChioActivityInterceptor(Interceptor):
                 )
         return envelope
 
-    # ------------------------------------------------------------------
-    # Temporal Interceptor contract
-    # ------------------------------------------------------------------
-
     def intercept_activity(
         self,
         next: ActivityInboundInterceptor,
     ) -> ActivityInboundInterceptor:
-        """Return an :class:`ActivityInboundInterceptor` bound to this worker."""
         return _ChioInboundInterceptor(next, self)
-
-    # ------------------------------------------------------------------
-    # Lifecycle
-    # ------------------------------------------------------------------
 
     async def close(self) -> None:
         """Close the underlying :class:`ChioClient` if we own it."""
@@ -263,22 +182,13 @@ class ChioActivityInterceptor(Interceptor):
             await self._chio_client.close()
             self._chio_client = None
 
-    # ------------------------------------------------------------------
-    # Internal helpers (visible to the inbound interceptor)
-    # ------------------------------------------------------------------
-
     def _arc(self) -> ChioClientLike:
-        """Return (creating if needed) the Chio client to use."""
         if self._chio_client is None:
             self._chio_client = ChioClient(self._sidecar_url)
         return self._chio_client
 
     def _tool_server_for(self, info: activity.Info, grant: WorkflowGrant) -> str:
-        """Resolve the Chio tool server id for ``info``.
-
-        Precedence: explicit map entry > grant's ``tool_server`` >
-        interceptor default.
-        """
+        """Resolve tool server: explicit map > grant.tool_server > interceptor default."""
         explicit = self._activity_tool_server_map.get(info.activity_type)
         if explicit:
             return explicit
@@ -287,11 +197,7 @@ class ChioActivityInterceptor(Interceptor):
         return self._default_tool_server
 
     def _resolve_grant(self, info: activity.Info) -> WorkflowGrant:
-        """Resolve the :class:`WorkflowGrant` for an activity execution.
-
-        Materialises per-run state on first access so subsequent
-        activities on the same run share a :class:`WorkflowReceipt`.
-        """
+        """Resolve the :class:`WorkflowGrant`; lazily materialise per-run state."""
         workflow_id = info.workflow_id
         run_id = info.workflow_run_id
         if not workflow_id:
@@ -310,7 +216,6 @@ class ChioActivityInterceptor(Interceptor):
                     "call ChioActivityInterceptor.register_workflow_grant(...) before "
                     "starting the workflow"
                 )
-            # ``pending.matches`` enforces run_id pinning when set.
             if not pending.matches(workflow_id=workflow_id, run_id=run_id):
                 raise ChioTemporalConfigError(
                     f"WorkflowGrant for {workflow_id!r} is pinned to a different run_id "
@@ -330,7 +235,6 @@ class ChioActivityInterceptor(Interceptor):
             )
             self._runs[key] = state
 
-        # Per-activity override hook takes precedence.
         override_hook = self._override_hooks.get(info.activity_type)
         if override_hook is not None:
             override = override_hook(info)
@@ -350,13 +254,10 @@ class ChioActivityInterceptor(Interceptor):
         info: activity.Info,
         receipt: ChioReceipt,
     ) -> None:
-        """Append ``receipt`` to the workflow receipt for ``info``."""
         key = self._run_key(info.workflow_id, info.workflow_run_id)
         state = self._runs.get(key)
         if state is None:
-            # Should be unreachable -- _resolve_grant created the state
-            # before execution -- but we defensively no-op rather than
-            # raising from a receipt-recording path.
+            # Defensive no-op; _resolve_grant should have created state.
             logger.warning(
                 "chio-temporal: no run state for workflow_id=%s run_id=%s",
                 info.workflow_id,
@@ -374,7 +275,6 @@ class ChioActivityInterceptor(Interceptor):
     def _run_key(
         workflow_id: str | None, run_id: str | None
     ) -> tuple[str, str]:
-        """Canonicalise the (workflow_id, run_id) dict key."""
         return (workflow_id or "", run_id or "")
 
 
@@ -390,12 +290,15 @@ class _ChioInboundInterceptor(ActivityInboundInterceptor):
         self._parent = parent
 
     async def execute_activity(self, input: ExecuteActivityInput) -> Any:
-        """Evaluate via Chio, then delegate to the wrapped interceptor."""
         info = activity.info()
         grant = self._parent._resolve_grant(info)
         tool_server = self._parent._tool_server_for(info, grant)
 
-        parameters = _activity_parameters(input)
+        parameters = _activity_parameters(
+            input,
+            tool_name=info.activity_type,
+            policy=self._parent._redaction_policy,
+        )
 
         receipt = await self._evaluate(
             info=info,
@@ -418,13 +321,7 @@ class _ChioInboundInterceptor(ActivityInboundInterceptor):
         tool_server: str,
         parameters: dict[str, Any],
     ) -> ChioReceipt:
-        """Call the Chio sidecar to evaluate this activity invocation.
-
-        :class:`ChioDeniedError` (HTTP 403) is translated into a deny
-        :class:`ChioReceipt` so the caller's flow stays uniform: ``deny``
-        receipts flow through :meth:`_record_step` before being raised
-        as :class:`ApplicationError`.
-        """
+        """Evaluate via the sidecar; HTTP-403 becomes a synthetic deny receipt."""
         if not grant.capability_id:
             raise _denied_application_error_from_config(
                 info,
@@ -451,9 +348,7 @@ class _ChioInboundInterceptor(ActivityInboundInterceptor):
                 exc=exc,
             )
         except ChioError as exc:
-            # Sidecar/transport failure -- let Temporal retry per its
-            # retry policy. Callers can still inspect the underlying
-            # ChioError via __cause__.
+            # Transport failure: retryable; let Temporal apply its policy.
             raise ApplicationError(
                 f"Chio sidecar error: {exc}",
                 type="ChioSidecarError",
@@ -461,20 +356,59 @@ class _ChioInboundInterceptor(ActivityInboundInterceptor):
             ) from exc
 
 
-def _activity_parameters(input: ExecuteActivityInput) -> dict[str, Any]:
-    """Extract a parameter dict to send to the Chio sidecar.
+def _activity_parameters(
+    input: ExecuteActivityInput,
+    *,
+    tool_name: str | None = None,
+    policy: RedactionPolicy | None = None,
+) -> dict[str, Any]:
+    """Build the sidecar payload, redacting body fields where possible.
 
-    Temporal delivers activities with positional ``args``; the Chio
-    sidecar evaluates on a dict. We wrap the positional args under a
-    stable ``args`` key so the parameter hash remains deterministic.
+    The positional-name table consulted in shape 2 is
+    :data:`chio_adapter_base.redact.DEFAULT_TOOL_POSITIONAL_NAMES`
+    (centralised in chio-adapter-base 0.1.1). We do not delegate to
+    :func:`chio_adapter_base.redact.bind_and_redact` here because
+    temporal's wire shape lifts positional values into a single bound
+    dict (``parameters["args"] == [{"path": ..., "content": ...}]``)
+    while ``bind_and_redact`` preserves positional-as-positional. The
+    interceptor also has no direct access to the activity callable's
+    ``fn``, so signature-aware binding is unavailable on this path
+    regardless.
     """
-    return {"args": list(input.args)}
+    args_list = list(input.args)
+    if policy is None:
+        return {"args": args_list}
+
+    # Shape 1: single dict.
+    if len(args_list) == 1 and isinstance(args_list[0], dict):
+        args_list[0] = redact_args(tool_name, args_list[0], policy=policy)
+        return {"args": args_list}
+
+    # Shape 2: known chio-default tool with positional args. Activities
+    # declared as ``chio_file_write(path, content)`` are the documented
+    # shape, but a plausible extension such as
+    # ``chio_file_write(path, content, overwrite)`` still carries the
+    # protected ``content`` slot in position 1; redact the known prefix
+    # and forward any trailing extras raw. (See bot comment 3229196956.)
+    positional_names = DEFAULT_TOOL_POSITIONAL_NAMES.get(tool_name or "")
+    if (
+        positional_names is not None
+        and len(args_list) >= len(positional_names)
+        and tool_name in policy.body_fields
+    ):
+        prefix_count = len(positional_names)
+        bound = dict(zip(positional_names, args_list[:prefix_count], strict=True))
+        redacted_prefix = redact_args(tool_name, bound, policy=policy)
+        extras = args_list[prefix_count:]
+        return {"args": [redacted_prefix, *extras]}
+
+    # Shape 3: pass-through.
+    return {"args": args_list}
 
 
 def _denied_application_error(
     info: activity.Info, receipt: ChioReceipt
 ) -> ApplicationError:
-    """Build the non-retryable :class:`ApplicationError` for a deny receipt."""
     reason = receipt.decision.reason or "denied by Chio kernel"
     guard = receipt.decision.guard or "unknown"
     tool_error = ChioTemporalError(
@@ -504,7 +438,7 @@ def _deny_receipt_from_error(
     parameters: dict[str, Any],
     exc: ChioDeniedError,
 ) -> ChioReceipt:
-    """Materialize a deny receipt for sidecar 403 responses."""
+    """Synthesise a deny :class:`ChioReceipt` for HTTP-403 sidecar responses."""
     canonical_parameters = json.dumps(
         parameters,
         sort_keys=True,
@@ -549,7 +483,6 @@ def _deny_receipt_from_error(
 def _denied_application_error_from_config(
     info: activity.Info, *, reason: str, message: str
 ) -> ApplicationError:
-    """Build a config-error :class:`ApplicationError` (non-retryable)."""
     tool_error = ChioTemporalError(
         message,
         activity_type=info.activity_type,

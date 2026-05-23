@@ -92,12 +92,12 @@ Patches:
   CLAIM" gained items 13 (auditor view single-party local) and 14
   (selective disclosure deferral path).
 
-- **Finding 5a (chiodos-ladder primitive missing in code):**
+- **Finding 5a (chio-ladder primitive missing in code):**
   resolved. release work-C1.3 effort bumped from M to L; explicit
   acknowledgment that this is NEW Rust code; primitive lives in
   `examples/chiodome-bilateral/src/ladder.rs`. Bounded-claim text
   in `release-bar.md` and `architecture.md` notes "the
-  chiodos-ladder primitive used in the demo is an example-local
+  chio-ladder primitive used in the demo is an example-local
   minimal implementation; production primitive deferred to trj6".
 
 - **Finding 5b (policy YAML format mismatch):** resolved. Policy
@@ -311,7 +311,7 @@ parallel agents may have made coordinating changes:
    are appropriate for each dependency.
 
 2. **Spec line-range citations.** Several Lane C tickets cite
-   `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §6/§7 line ranges
+   `spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` §6/§7 line ranges
    as "lines to be filled in by audit-doc owner". Wave 4 fills in
    the specific line ranges from the spec files (currently
    referenced as e.g. "lines 338-353 (PAE)", "step 11-12

@@ -1,8 +1,8 @@
-# Chiodos 6.8 Live Pheromone Relay
+# Chio 6.8 Live Pheromone Relay
 
 Baseline: `main@fa34965bc5d3290cc851b2ee275c4752d87cd1de`
 
-Branch: `codex/chiodos-6-8-live-pheromone-relay`
+Branch: `codex/chio-6-8-live-pheromone-relay`
 
 ## Goal
 
@@ -27,13 +27,13 @@ Ship the first live pheromone relay surface while preserving the 6.7 local runti
 - `cargo test -p chio-pheromone-runtime`
 - `cargo test -p chio-federation pheromone`
 - `cargo test -p chio-pheromone`
-- `cargo test -p chio-cli chiodos`
-- `cargo test -p chiodos-three-vendor-example`
+- `cargo test -p chio-cli chio`
+- `cargo test -p chio-three-vendor-example`
 - `cargo test -p chio-spec-validate`
 - `cargo test -p chio-metrics-spec`
-- `bash scripts/check-chiodos-pheromone-relay.sh`
-- `bash scripts/check-chiodos-pheromone-relay.sh --schema-only`
-- `bash scripts/check-chiodos-pheromone-relay.sh --negative-only`
+- `bash scripts/check-chio-pheromone-relay.sh`
+- `bash scripts/check-chio-pheromone-relay.sh --schema-only`
+- `bash scripts/check-chio-pheromone-relay.sh --negative-only`
 - Existing transit, runtime, authority, proof package, bounded, and threat mutant gates.
 - `cargo fmt --all -- --check`
 - Targeted clippy for touched crates with `-D warnings`.

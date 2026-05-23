@@ -2,7 +2,7 @@
 
 This document is the deep dive for sub-lane B4. **B4 was added in Wave 3 per R4 BLOCKER 1**: the previously-proposed Lane C "Option A two-signature" framing did not use the DSSE PAE preimage. Promotion to a Lane B fourth primitive wires a bounded DSSE signature-slice profile with the same Evidence Gate discipline as B1, B2, B3.
 
-B4 is not strict `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` predicate conformance. The implemented profile is `chio.bilateral-signature-slice.v1`: it binds one Chio receipt subject, the two peer key fingerprints, and two DSSE PAE signatures. Strict CHIODOS section 5 predicate conformance remains future work.
+B4 is not strict `spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` predicate conformance. The implemented profile is `chio.bilateral-signature-slice.v1`: it binds one Chio receipt subject, the two peer key fingerprints, and two DSSE PAE signatures. Strict CHIO section 5 predicate conformance remains future work.
 
 ## What B4 changes
 
@@ -75,9 +75,9 @@ Replace `DualSignedReceipt::verify` with the DSSE-shaped verifier; remove the le
 
 ### Option 2: Cohabitation (CHOSEN for release work)
 
-The legacy `DualSignedReceipt::verify` at `bilateral.rs:108` stays as a compatibility adapter. The new module `bilateral_dsse.rs` exposes the `chio.bilateral-signature-slice.v1` envelope alongside it. The federation fixture path produces both artifacts. **Verifiers for this signature-slice profile MUST verify the DSSE envelope; they MUST NOT rely on `DualSignedReceipt::verify` for DSSE semantics.** Strict CHIODOS predicate conformance is not claimed here.
+The legacy `DualSignedReceipt::verify` at `bilateral.rs:108` stays as a compatibility adapter. The new module `bilateral_dsse.rs` exposes the `chio.bilateral-signature-slice.v1` envelope alongside it. The federation fixture path produces both artifacts. **Verifiers for this signature-slice profile MUST verify the DSSE envelope; they MUST NOT rely on `DualSignedReceipt::verify` for DSSE semantics.** Strict CHIO predicate conformance is not claimed here.
 
-This is the same pattern as B2: introduce a new signature-slice requirement without breaking existing callers; deprecate the legacy artifact in trj6 after a strict CHIODOS predicate implementation exists.
+This is the same pattern as B2: introduce a new signature-slice requirement without breaking existing callers; deprecate the legacy artifact in trj6 after a strict CHIO predicate implementation exists.
 
 ### Why this is NOT the structural-framing-without-wiring anti-pattern
 
@@ -87,14 +87,14 @@ The R4 finding rejected the prior "Option A two-signature" framing because it AL
 - The negative conformance fixture rejects attempts to treat the legacy preimage as the DSSE signature slice.
 - The Evidence Gate close bar requires the production federation hot path to call `sign_dsse_envelope` (not `DualSignedReceipt::sign`) when the dispatch claims signature-slice coverage.
 
-The cohabitation is bounded by the explicit compatibility-only disclaimer on `DualSignedReceipt`. Trj6 may collapse the two surfaces after a strict CHIODOS predicate implementation exists.
+The cohabitation is bounded by the explicit compatibility-only disclaimer on `DualSignedReceipt`. Trj6 may collapse the two surfaces after a strict CHIO predicate implementation exists.
 
 ## Relationship to `DualSignedReceipt`
 
 | Artifact | Preimage | Signature-slice status | Status |
 |---|---|---|---|
 | Legacy `DualSignedReceipt` (bilateral.rs:91-100) | `canonical_json_bytes(CoSigningBody)` | NO | retained for backward compatibility; explicitly NOT a DSSE signature-slice artifact |
-| DSSE envelope (`bilateral_dsse.rs`) | `"DSSEv1" SP LEN(...) SP ...` (DSSE PAE of canonical-JSON in-toto Statement) | YES for `chio.bilateral-signature-slice.v1` | bounded signature-slice artifact; not strict CHIODOS section 5 predicate conformance |
+| DSSE envelope (`bilateral_dsse.rs`) | `"DSSEv1" SP LEN(...) SP ...` (DSSE PAE of canonical-JSON in-toto Statement) | YES for `chio.bilateral-signature-slice.v1` | bounded signature-slice artifact; not strict CHIO section 5 predicate conformance |
 
 Both share the passport keypair (same `Keypair`), but the message bytes differ. Verifiers seeking signature-slice coverage MUST verify the DSSE envelope. The Lane C demo's release notes carry the explicit disclaimer that the legacy `DualSignedReceipt` is not a DSSE artifact.
 
@@ -111,7 +111,7 @@ The fixture follows the Lane B pattern (per `conformance-fixture-spec.md` §1-5)
 //! `chio.bilateral-signature-slice.v1` artifact; legacy `DualSignedReceipt`
 //! is NOT.
 //!
-//! Profile requirement: spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md §6 DSSE
+//! Profile requirement: spec/CHIO_BILATERAL_COSIGN_INVOCATION.md §6 DSSE
 //! PAE shape, scoped to `chio.bilateral-signature-slice.v1`.
 //!   (PAE encoding); §7 step 11-12 (signature verification).
 //! Enforced call site: crates/chio-federation/src/bilateral_dsse.rs (NEW per B4).
@@ -199,7 +199,7 @@ fn mismatched_payload_type_rejected() {
 ## Why this design satisfies the Evidence Gate
 
 - **Enforced call site**: `crates/chio-federation/src/bilateral_dsse.rs` (new module per B4). The fixture path emits the DSSE signature-slice envelope; the legacy `DualSignedReceipt` is retained but explicitly disclaimed as non-DSSE.
-- **Spec citation**: `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §6 lines 338-353 documents the DSSE PAE shape and §7 step 11-12 documents signature verification. B4 implements that signature-slice subset only.
+- **Spec citation**: `spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` §6 lines 338-353 documents the DSSE PAE shape and §7 step 11-12 documents signature verification. B4 implements that signature-slice subset only.
 - **Signed negative conformance test**: the fixture exercises `sign_dsse_envelope` and `verify_dsse_envelope`, asserts byte-level non-overlap with the legacy preimage, and FAILS when the fixture path stops emitting the DSSE signature-slice envelope.
 
 ## Why R4 BLOCKER 1 was a BLOCKER

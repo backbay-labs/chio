@@ -261,7 +261,7 @@ mod tests {
     }
 
     #[test]
-    fn signed_lineage_statement_upgrades_to_verified() {
+    fn signed_lineage_statement_upgrades_to_verified() -> Result<(), Box<dyn std::error::Error>> {
         use chio_core_types::crypto::Keypair;
         use chio_core_types::receipt::{
             ReceiptLineageEndpoints, ReceiptLineageRelationKind, ReceiptLineageStatementBody,
@@ -285,8 +285,7 @@ mod tests {
                 keypair.public_key(),
             ),
             &keypair,
-        )
-        .expect("sign lineage statement");
+        )?;
         let rows = vec![CorpusReceiptRow {
             receipt_id: "child".into(),
             parent_receipt_id: Some("parent".into()),
@@ -307,10 +306,12 @@ mod tests {
         if let Some(e) = edge {
             assert_eq!(e.evidence_class, EvidenceClass::Verified);
         }
+        Ok(())
     }
 
     #[test]
-    fn signed_lineage_statement_with_wrong_child_stays_observed() {
+    fn signed_lineage_statement_with_wrong_child_stays_observed(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         use chio_core_types::crypto::Keypair;
         use chio_core_types::receipt::{
             ReceiptLineageEndpoints, ReceiptLineageRelationKind, ReceiptLineageStatementBody,
@@ -334,8 +335,7 @@ mod tests {
                 keypair.public_key(),
             ),
             &keypair,
-        )
-        .expect("sign lineage statement");
+        )?;
         let rows = vec![CorpusReceiptRow {
             receipt_id: "child".into(),
             parent_receipt_id: Some("parent".into()),
@@ -352,8 +352,9 @@ mod tests {
             .edges
             .iter()
             .find(|e| e.kind == EdgeKind::ReceiptLineageParent)
-            .expect("lineage edge present");
+            .ok_or_else(|| std::io::Error::other("lineage edge present"))?;
         assert_eq!(edge.evidence_class, EvidenceClass::Observed);
+        Ok(())
     }
 
     #[test]

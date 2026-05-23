@@ -1,4 +1,4 @@
-# Chiodos 6.7 Tickets
+# Chio 6.7 Tickets
 
 ## C6.7-001 Integrator
 
@@ -11,7 +11,7 @@ Acceptance:
 - Branch starts from `main@edeb4ab87f9403f770b8f63ed36ebe5a94ecf6c5`.
 - Planning docs record baseline, scope, tickets, final gates, and the
   no-planning-metadata rule.
-- Chiodos 6.8 shadow planning tracks live relay orchestration only.
+- Chio 6.8 shadow planning tracks live relay orchestration only.
 
 ## C6.7-002 Federation Hardening
 
@@ -33,7 +33,7 @@ peer-weight, and stable error-code surfaces.
 
 Acceptance:
 
-- The crate depends on the pure pheromone crate, federation artifacts, Chiodos
+- The crate depends on the pure pheromone crate, federation artifacts, Chio
   verifier types, SQLite storage, serde, and error utilities.
 - Runtime errors expose stable machine-readable codes.
 - Reports serialize as product JSON without planning language.
@@ -51,11 +51,11 @@ Acceptance:
 
 ## C6.7-005 Workflow Resolver
 
-Resolve signed pheromone workflow context against verified Chiodos evidence.
+Resolve signed pheromone workflow context against verified Chio evidence.
 
 Acceptance:
 
-- Resolver verifies the proof package through existing Chiodos trust and
+- Resolver verifies the proof package through existing Chio trust and
   verification context inputs.
 - Evidence index checks workflow receipt hash, workflow intersection hash, step
   index, tool receipt id, DSSE hash, and consistency anchor.
@@ -85,7 +85,7 @@ Acceptance:
 
 ## C6.7-008 CLI
 
-Add local pheromone receive and query commands under `chio chiodos pheromone`.
+Add local pheromone receive and query commands under `chio pheromone`.
 
 Acceptance:
 
@@ -121,9 +121,9 @@ Wire gates, docs, CI triggers, PR review, and merge closeout.
 
 Acceptance:
 
-- `scripts/check-chiodos-pheromone-runtime.sh` supports default,
+- `scripts/check-chio-pheromone-runtime.sh` supports default,
   `--schema-only`, and `--negative-only` modes.
 - CI runs the runtime gate for runtime crate, CLI, fixtures, schemas, docs, and
   script changes.
 - PR review threads are queried and resolved before merge.
-- Final Chiodos gates pass on `main`.
+- Final Chio gates pass on `main`.

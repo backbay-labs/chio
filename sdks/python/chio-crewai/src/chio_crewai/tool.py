@@ -23,6 +23,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from chio_adapter_base.redact import RedactionPolicy, redact_args
 from chio_sdk.client import ChioClient
 from chio_sdk.errors import ChioDeniedError, ChioError
 from chio_sdk.models import ChioReceipt, ChioScope
@@ -70,6 +71,13 @@ class ChioBaseTool(BaseTool):
         Optional :class:`ChioScope` describing what the tool requires.
         Recorded on the tool for :class:`ChioCrew` scoping checks; not
         sent to the sidecar directly.
+    redaction_policy:
+        Per-tool argument redaction policy applied right before parameters
+        are forwarded to the sidecar so secret-bearing fields never land
+        in the receipt log. Defaults to
+        :meth:`RedactionPolicy.chio_default`; pass a custom
+        :class:`RedactionPolicy` to extend with adapter or workspace
+        specific tool names.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -85,6 +93,9 @@ class ChioBaseTool(BaseTool):
     _executor: ToolExecutor | None = PrivateAttr(default=None)
     _chio_client: ChioClientLike | None = PrivateAttr(default=None)
     _last_receipt: ChioReceipt | None = PrivateAttr(default=None)
+    _redaction_policy: RedactionPolicy = PrivateAttr(
+        default_factory=RedactionPolicy.chio_default
+    )
 
     # Captured at construction so mypy/Pydantic do not shadow the base
     # class default when callers inspect the field.
@@ -95,11 +106,14 @@ class ChioBaseTool(BaseTool):
         *,
         executor: ToolExecutor | None = None,
         chio_client: ChioClientLike | None = None,
+        redaction_policy: RedactionPolicy | None = None,
         **data: Any,
     ) -> None:
         super().__init__(**data)
         self._executor = executor
         self._chio_client = chio_client
+        if redaction_policy is not None:
+            self._redaction_policy = redaction_policy
 
     # ------------------------------------------------------------------
     # Introspection
@@ -152,7 +166,14 @@ class ChioBaseTool(BaseTool):
 
     async def _arun(self, **kwargs: Any) -> Any:
         """Evaluate the tool call with Chio and, on allow, run the body."""
-        receipt = await self._evaluate(kwargs)
+        # Redact body fields (e.g. chio_file_write.content) before they
+        # cross into the sidecar so the receipt log never carries the raw
+        # secret bytes. The underlying executor still receives the real
+        # kwargs via :meth:`_invoke_executor` below.
+        recorded_kwargs = redact_args(
+            self.name, kwargs, policy=self._redaction_policy
+        )
+        receipt = await self._evaluate(recorded_kwargs)
         self._last_receipt = receipt
         self.last_receipt = receipt
 

@@ -106,7 +106,7 @@ Wave 1 with eyes open:
    timeline.
 
 2. **B4 spec edit dependency**. bilateral DSSE signing item ticket assumes
-   `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §6 lines 338-353 and
+   `spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` §6 lines 338-353 and
    §7 step 11-12 already contain `MUST`. If Wave 1 spec audit shows
    they do not, B4.6 scope expands to include the spec edit. (W3 Lane
    B fix-log "Anything left for Wave 4" item 6.)

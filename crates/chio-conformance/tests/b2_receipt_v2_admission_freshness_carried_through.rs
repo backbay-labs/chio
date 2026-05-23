@@ -213,6 +213,7 @@ fn freshness_window_v2_capable_peer(
         established_at: now,
         rotation_due: now.saturating_add(expires_in_secs),
         capabilities,
+        ladder_manifest_ref: None,
     }
 }
 

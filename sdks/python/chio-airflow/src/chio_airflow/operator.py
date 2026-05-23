@@ -19,6 +19,16 @@ with whatever kwargs it needs, hands the instance to
 ``ChioOperator(inner_operator=...)``, and sets the Chio-facing options
 (``scope``, ``tool_name``, ``capability_id``, ``tool_server``) on the
 wrapper itself.
+
+Redaction scope
+---------------
+Argument redaction (``chio_adapter_base.redact.redact_args``) is wired
+only on the TaskFlow path (``chio_airflow.task_decorator.chio_task``).
+``ChioOperator`` records DAG / task / capability context fields in the
+sidecar payload rather than per-tool argument bodies because the
+wrapper does not introspect the inner operator's parameter signature;
+the inner operator's templated fields and ``op_kwargs`` are owned by
+the caller and remain outside the redaction surface here.
 """
 
 from __future__ import annotations

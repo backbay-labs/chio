@@ -420,6 +420,154 @@ export interface RelayAlertDeliveryReport {
   checks: RelayAlertCheck[]
 }
 
+export interface RelayAlertAssurancePackage {
+  schema: string
+  accepted: boolean
+  code: string
+  localKernelId: string
+  generatedAtUnixMs: number
+  sourceAlertReportSha256: string
+  sourceTrendReportSha256: string
+  sourceHandoffReportSha256: string
+  sourceNormalizationReportSha256: string
+  sourceDeliveryReportSha256: string
+  sourceAcknowledgementReportSha256: string
+  sourceDriftReportSha256: string
+  sourceReviewPacketSha256: string
+  firingAlertCount: number
+  criticalFiringAlertCount: number
+  normalizedCount: number
+  readyRouteCount: number
+  deliveryAttentionCount: number
+  acknowledgementPendingCount: number
+  driftCount: number
+  operatorActionCodes: string[]
+  checks: RelayAlertCheck[]
+}
+
+export interface RelayAlertAssuranceExportReport {
+  schema: string
+  accepted: boolean
+  code: string
+  localKernelId: string
+  generatedAtUnixMs: number
+  bundleId: string
+  manifestSha256: string
+  sourcePackageSha256: string
+  artifactCount: number
+  checks: RelayAlertCheck[]
+}
+
+export interface RelayAlertAssuranceReplayReport {
+  schema: string
+  accepted: boolean
+  code: string
+  localKernelId: string
+  generatedAtUnixMs: number
+  bundleId: string
+  sourcePackageSha256: string
+  replayedPackageSha256: string
+  mismatchCount: number
+  checks: RelayAlertCheck[]
+}
+
+export interface RelayAlertAssuranceRetentionReport {
+  schema: string
+  accepted: boolean
+  code: string
+  localKernelId: string
+  generatedAtUnixMs: number
+  retainedCount: number
+  expiringSoonCount: number
+  eligibleForDeleteCount: number
+  blockedCount: number
+  missingCount: number
+  quarantineCount: number
+  entries: Array<{
+    bundleId: string
+    artifactRole: string
+    path: string
+    state: string
+    retainUntilUnixMs: number | null
+    detail: string
+  }>
+  checks: RelayAlertCheck[]
+}
+
+export interface RelayAlertAssuranceArchiveReview {
+  bundleId: string
+  bundlePath: string
+  manifestSha256: string | null
+  sourcePackageSha256: string | null
+  artifactCount: number
+  state: 'archive_ready' | 'archive_blocked' | 'quarantine'
+  code: string
+  detail: string
+  trustedExporterVerified: boolean
+  replayMatched: boolean
+  recoveryDrillAccepted: boolean
+  routeReviewPresent: boolean
+  retainedCount: number
+  expiringSoonCount: number
+  eligibleForDeleteCount: number
+  legalHoldCount: number
+  missingCount: number
+  quarantineCount: number
+  checks: RelayAlertCheck[]
+}
+
+export interface RelayAlertAssuranceArchiveReport {
+  schema: string
+  accepted: boolean
+  code: string
+  localKernelId: string
+  generatedAtUnixMs: number
+  bundleCount: number
+  archiveReadyCount: number
+  archiveBlockedCount: number
+  quarantineCount: number
+  legalHoldCount: number
+  eligibleForDeleteCount: number
+  reviews: RelayAlertAssuranceArchiveReview[]
+  checks: RelayAlertCheck[]
+}
+
+export interface RelayAlertAssuranceCloseoutReview {
+  bundleId: string
+  bundlePath: string
+  manifestSha256: string | null
+  artifactCount: number
+  state: 'closeout_ready' | 'closeout_blocked' | 'quarantine'
+  code: string
+  detail: string
+  verifiedBundle: boolean
+  replayMatched: boolean
+  retentionSafe: boolean
+  recoveryDrillAccepted: boolean
+  routeReviewPresent: boolean
+  legalHoldCount: number
+  eligibleForDeleteCount: number
+  missingCount: number
+  quarantineCount: number
+  checks: RelayAlertCheck[]
+}
+
+export interface RelayAlertAssuranceCloseoutReport {
+  schema: string
+  accepted: boolean
+  code: string
+  localKernelId: string
+  generatedAtUnixMs: number
+  bundleCount: number
+  closeoutReadyCount: number
+  closeoutBlockedCount: number
+  quarantineCount: number
+  legalHoldCount: number
+  eligibleForDeleteCount: number
+  reviews: RelayAlertAssuranceCloseoutReview[]
+  checks: RelayAlertCheck[]
+}
+
 export interface PassportVerification {
   subject: string
   issuer?: string | null

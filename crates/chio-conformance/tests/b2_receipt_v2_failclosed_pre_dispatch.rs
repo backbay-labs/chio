@@ -181,6 +181,7 @@ fn stale_v2_capable_peer(remote_kernel_id: &str) -> FederationPeer {
         established_at: 1_700_000_000,
         rotation_due: 1_700_000_001,
         capabilities: chio_core::capability::CapabilityNegotiation::t1_default(),
+        ladder_manifest_ref: None,
     }
 }
 
@@ -197,6 +198,7 @@ fn fresh_v1_peer(remote_kernel_id: &str) -> FederationPeer {
         established_at: now.saturating_sub(1),
         rotation_due: now.saturating_add(300),
         capabilities: CapabilityNegotiation::v1_default(),
+        ladder_manifest_ref: None,
     }
 }
 

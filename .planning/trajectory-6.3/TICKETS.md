@@ -1,4 +1,4 @@
-# Chiodos 6.3 Tickets
+# Chio 6.3 Tickets
 
 ## C6.3-001 Integrator
 
@@ -33,7 +33,7 @@ Acceptance:
 
 ## C6.3-004 Lease Scope Binding
 
-Add `chio.chiodos-lease-scope-binding.v1` package artifacts and recompute lease scope digests from canonical preimages.
+Add `chio.federation.lease-scope-binding.v1` package artifacts and recompute lease scope digests from canonical preimages.
 
 Acceptance:
 
@@ -48,7 +48,7 @@ Enforce workflow step binding across step records, tool receipts, bilateral DSSE
 Acceptance:
 
 - Step receipt id, tool name, output hash, DSSE hash, parent hash, destructive flag, governance receipt id, and consistency anchor are checked.
-- Current fixture uses `chiodos:consistency:<workflow_id>:<step_index>`.
+- Current fixture uses `chio:consistency:<workflow_id>:<step_index>`.
 
 ## C6.3-006 Schemas
 
@@ -56,8 +56,8 @@ Add and register schemas for lease, governance receipt, lease scope binding, tru
 
 Acceptance:
 
-- Schema registry names all Chiodos 6.3 schemas.
-- Chiodos gate requires those schema files.
+- Schema registry names all Chio 6.3 schemas.
+- Chio gate requires those schema files.
 - Schema manifest is refreshed.
 
 ## C6.3-007 Fixtures And Negatives
@@ -71,10 +71,10 @@ Acceptance:
 
 ## C6.3-008 Assurance
 
-Wire the Chiodos gate into CI, run final verification, open PR, resolve all review threads, and merge.
+Wire the Chio gate into CI, run final verification, open PR, resolve all review threads, and merge.
 
 Acceptance:
 
-- `.github/workflows/chiodos-proof-package.yml` runs the Chiodos gate on PRs and pushes to main.
+- `.github/workflows/chio-proof-package.yml` runs the Chio gate on PRs and pushes to main.
 - Final gate checklist in `README.md` is run before merge.
 - PR review threads are queried and resolved before merge.

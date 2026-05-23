@@ -420,7 +420,8 @@ pub(crate) use kernel::{current_unix_timestamp, MatchingGrant, ReceiptContent};
 pub use kernel::{
     AgentId, CapabilityId, ChildReceiptLog, ChioKernel, Guard, GuardContext, HybridSigningConfig,
     KernelConfig, KernelError, KernelReceiptVersion, NegotiationDowngradeReason, PromptProvider,
-    ReceiptLog, ResourceProvider, ServerId, StructuredErrorReport, DEFAULT_CHECKPOINT_BATCH_SIZE,
+    ReceiptLog, ResourceProvider, RuntimeAdmissionContext, RuntimeAdmissionDecision,
+    RuntimeAdmissionHook, ServerId, StructuredErrorReport, DEFAULT_CHECKPOINT_BATCH_SIZE,
     DEFAULT_MAX_SIZE_BYTES, DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES,
     DEFAULT_RETENTION_DAYS, EMERGENCY_STOP_DENY_REASON,
 };

@@ -1,0 +1,15 @@
+{
+  "schema": "chio.pheromone.relay-alert-assurance-trusted-exporters.v1",
+  "localKernelId": "did:chio:dataco",
+  "minExportedAtUnixMs": 1766000000000,
+  "exporters": [
+    {
+      "exporterId": "relay-exporter",
+      "keyId": "default",
+      "publicKey": "6b734a8eff246fe734b38d4046c148eee5f04fe87b3a0a423955a77956de066b",
+      "validFromUnixMs": 1765999999000,
+      "validUntilUnixMs": 1766000900000,
+      "status": "active"
+    }
+  ]
+}
