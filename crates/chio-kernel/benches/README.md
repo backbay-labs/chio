@@ -3,8 +3,7 @@
 The `dispatch_allow` benchmark measures a real allow verdict through
 `ChioKernel::evaluate_tool_call`, capability validation, scope matching, guard
 pipeline dispatch, in-process tool-server invocation, and allow receipt
-construction. It must not use a synthetic counter or the previous
-`black_box(0_u64)` probe.
+construction. It must not use a synthetic zero-value probe.
 
 Reference runner:
 
@@ -23,3 +22,11 @@ Contract for future dispatch benches:
 - Errors fail closed by panicking the benchmark process.
 - New dispatch fixtures should live beside the bench that consumes them and
   should document any runner assumptions here.
+
+Contract for primitive benches:
+
+- Fixture setup happens outside the timed loop.
+- The timed loop calls the named capability, guard, receipt, budget, revocation,
+  or session operation.
+- Setup includes an assertion that the fixture exercises a valid path.
+- Deny-path benches assert that a denial reason is present.

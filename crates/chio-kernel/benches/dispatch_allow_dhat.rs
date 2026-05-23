@@ -1,5 +1,6 @@
 //! Allocation-count bench for the dispatch_allow baseline.
 
+#[path = "fixtures/dispatch_request_fixture.rs"]
 mod dispatch_request_fixture;
 
 use dispatch_request_fixture::DispatchAllowFixture;
