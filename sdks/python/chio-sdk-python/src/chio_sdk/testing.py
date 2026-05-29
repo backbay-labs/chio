@@ -145,6 +145,20 @@ def _sha256_hex(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+MOCK_PUBLIC_KEY = _sha256_hex(b"chio-sdk-python mock public key")
+MOCK_POLICY_HASH = _sha256_hex(b"chio-sdk-python mock policy")
+MOCK_CONTENT_HASH = _sha256_hex(b"chio-sdk-python mock content")
+MOCK_SIGNATURE = "c" * 128
+
+
+def _hex_or_hash(value: str) -> str:
+    if len(value) == 64 and all(char in "0123456789abcdef" for char in value):
+        return value
+    if value.startswith(("p256:", "p384:", "hybrid:")):
+        return value
+    return _sha256_hex(value.encode("utf-8"))
+
+
 def _normalize_verdict(result: MockVerdict | bool | None) -> MockVerdict:
     """Coerce a policy return value into a :class:`MockVerdict`."""
     if result is None:
@@ -194,15 +208,15 @@ class MockChioClient:
         policy: Policy | None = None,
         *,
         raise_on_deny: bool = True,
-        kernel_key: str = "mock-kernel-key",
-        policy_hash: str = "mock-policy-hash",
+        kernel_key: str = MOCK_PUBLIC_KEY,
+        policy_hash: str = MOCK_POLICY_HASH,
     ) -> None:
         self._policy: Policy = policy or (
             lambda _tool, _scope, _ctx: MockVerdict.allow_verdict()
         )
         self._raise_on_deny = raise_on_deny
-        self._kernel_key = kernel_key
-        self._policy_hash = policy_hash
+        self._kernel_key = _hex_or_hash(kernel_key)
+        self._policy_hash = _hex_or_hash(policy_hash)
         self._closed = False
         self.calls: list[RecordedCall] = []
 
@@ -264,12 +278,12 @@ class MockChioClient:
         now = int(time.time())
         token = CapabilityToken(
             id=f"mock-tok-{uuid.uuid4().hex[:8]}",
-            issuer="mock-issuer",
-            subject=subject,
+            issuer=self._kernel_key,
+            subject=_hex_or_hash(subject),
             scope=scope,
             issued_at=now,
             expires_at=now + ttl_seconds,
-            signature="mock-signature",
+            signature=MOCK_SIGNATURE,
         )
         self.calls.append(
             RecordedCall(
@@ -498,7 +512,7 @@ class MockChioClient:
             )
         )
         receipt = HttpReceipt(
-            id=f"mock-hr-{uuid.uuid4().hex[:8]}",
+            id=_sha256_hex(f"mock-hr-{uuid.uuid4().hex}".encode("utf-8")),
             request_id=request_id,
             route_pattern=route_pattern,
             method=method,
@@ -514,12 +528,12 @@ class MockChioClient:
             evidence=list(mock_verdict.evidence),
             response_status=200 if mock_verdict.allow else 403,
             timestamp=ts,
-            content_hash="mock-content-hash",
+            content_hash=MOCK_CONTENT_HASH,
             policy_hash=self._policy_hash,
             trust_level="mediated",
             capability_id=capability_id,
             kernel_key=self._kernel_key,
-            signature="mock-signature",
+            signature=MOCK_SIGNATURE,
         )
         return EvaluateResponse(
             verdict=verdict_model,
@@ -587,7 +601,7 @@ class MockChioClient:
             )
         resolved = getattr(self, "_resolved_approvals", {})
         if not hasattr(self, "_resolved_approvals"):
-            self._resolved_approvals: dict[str, Any] = resolved  # type: ignore[attr-defined]
+            self._resolved_approvals = resolved
         del approvals[approval_id]
         now = int(time.time())
         resolved[approval_id] = ResolvedApproval(
@@ -629,7 +643,7 @@ class MockChioClient:
             self, "_pending_approvals", {}
         )
         if not hasattr(self, "_pending_approvals"):
-            self._pending_approvals: dict[str, Any] = approvals  # type: ignore[attr-defined]
+            self._pending_approvals = approvals
         approval_id = f"mock-ap-{uuid.uuid4().hex[:8]}"
         param_hash = _sha256_hex(_canonical_json(tool_args))
         now = int(time.time())
@@ -697,7 +711,7 @@ class MockChioClient:
             )
         )
         return ChioReceipt(
-            id=f"mock-r-{uuid.uuid4().hex[:8]}",
+            id=_sha256_hex(f"mock-r-{uuid.uuid4().hex}".encode("utf-8")),
             timestamp=int(time.time()),
             capability_id=capability_id,
             tool_server=tool_server,
@@ -713,12 +727,12 @@ class MockChioClient:
             tool_origin="caller_executed",
             redaction_mode="none",
             actor_chain=[],
-            content_hash="mock-content-hash",
+            content_hash=MOCK_CONTENT_HASH,
             policy_hash=self._policy_hash,
             evidence=list(verdict.evidence),
             trust_level="mediated",
             kernel_key=self._kernel_key,
-            signature="mock-signature",
+            signature=MOCK_SIGNATURE,
         )
 
 

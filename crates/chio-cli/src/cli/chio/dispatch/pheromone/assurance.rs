@@ -797,35 +797,11 @@ fn read_archive_restore_package_reports(
                 read_archive_restore_package_report_sidecar(&path, &verified_report)?
                     .unwrap_or(verified_report);
             reports.push(report);
-        } else {
-            let value: serde_json::Value =
-                read_json_file(&path, "Chio relay alert assurance restore input report")?;
-            if value.get("schema").and_then(serde_json::Value::as_str)
-                == Some(
-                    chio_pheromone_relay::PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_PACKAGE_REPORT_SCHEMA,
-                )
-            {
-                let report: chio_pheromone_relay::RelayAlertAssuranceArchivePackageReport =
-                    serde_json::from_value(value).map_err(|error| {
-                        CliError::cli_json_error(format!(
-                            "Chio relay alert assurance archive package report: {error}"
-                        ))
-                    })?;
-                chio_pheromone_relay::validate_relay_alert_assurance_archive_package_report(
-                    &report,
-                )
-                .map_err(|error| {
-                    CliError::cli_other_error(format!(
-                        "Chio relay alert assurance archive package report: {error}"
-                    ))
-                })?;
-                reports.push(report);
-            }
         }
     }
     if reports.is_empty() {
         return Err(CliError::cli_other_error(format!(
-            "no archive package reports or tar.gz packages found in {}",
+            "no archive package tarballs found in {}",
             package_dir.display()
         )));
     }
@@ -833,20 +809,8 @@ fn read_archive_restore_package_reports(
 }
 
 fn retain_archive_restore_package_inputs(package_paths: &mut Vec<PathBuf>) {
-    let generated_sidecars: std::collections::BTreeSet<String> = package_paths
-        .iter()
-        .filter_map(|path| archive_restore_package_sidecar_report_name(path))
-        .collect();
     package_paths.retain(|path| {
-        if file_name_ends_with(path, ".tar.gz") || file_name_ends_with(path, ".tgz") {
-            return true;
-        }
-        if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
-            return false;
-        }
-        path.file_name()
-            .and_then(|name| name.to_str())
-            .is_some_and(|name| !generated_sidecars.contains(name))
+        file_name_ends_with(path, ".tar.gz") || file_name_ends_with(path, ".tgz")
     });
 }
 
@@ -1215,7 +1179,7 @@ mod archive_restore_input_tests {
     use super::*;
 
     #[test]
-    fn archive_restore_inputs_ignore_json_sidecars_when_tarballs_are_present() {
+    fn archive_restore_inputs_keep_only_tarballs_when_json_reports_are_present() {
         let mut paths = vec![
             PathBuf::from("relay-archive-package.tar.gz"),
             PathBuf::from("relay-archive-package-report.json"),
@@ -1227,15 +1191,12 @@ mod archive_restore_input_tests {
 
         assert_eq!(
             paths,
-            vec![
-                PathBuf::from("relay-archive-package.tar.gz"),
-                PathBuf::from("generation-2-package-report.json"),
-            ]
+            vec![PathBuf::from("relay-archive-package.tar.gz")]
         );
     }
 
     #[test]
-    fn archive_restore_inputs_accept_report_json_when_no_tarballs_are_present() {
+    fn archive_restore_inputs_drop_report_json_when_no_tarballs_are_present() {
         let mut paths = vec![
             PathBuf::from("relay-archive-package-report.json"),
             PathBuf::from("notes.txt"),
@@ -1243,9 +1204,58 @@ mod archive_restore_input_tests {
 
         retain_archive_restore_package_inputs(&mut paths);
 
-        assert_eq!(
-            paths,
-            vec![PathBuf::from("relay-archive-package-report.json")]
+        assert!(paths.is_empty());
+    }
+
+    #[test]
+    fn archive_restore_rejects_unverified_standalone_package_report_json() {
+        let temp = tempfile::tempdir().unwrap();
+        let package_dir = temp.path().join("packages");
+        let source_report_dir = temp.path().join("source-reports");
+        fs::create_dir_all(&package_dir).unwrap();
+        fs::create_dir_all(&source_report_dir).unwrap();
+        fs::write(
+            package_dir.join("generation-1-package-report.json"),
+            serde_json::to_vec(&archive_restore_package_report_for_test(10_000)).unwrap(),
+        )
+        .unwrap();
+        let trusted_packagers_path = temp.path().join("trusted-packagers.json");
+        fs::write(
+            &trusted_packagers_path,
+            serde_json::to_vec(&serde_json::json!({
+                "schema": chio_pheromone_relay::PHEROMONE_RELAY_ALERT_ASSURANCE_TRUSTED_ARCHIVE_PACKAGERS_SCHEMA,
+                "localKernelId": "did:chio:buyer-kernel",
+                "minCreatedAtUnixMs": 0,
+                "packagers": []
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let trusted_exporters_path = temp.path().join("trusted-exporters.json");
+        fs::write(
+            &trusted_exporters_path,
+            serde_json::to_vec(&serde_json::json!({
+                "schema": chio_pheromone_relay::PHEROMONE_RELAY_ALERT_ASSURANCE_TRUSTED_EXPORTERS_SCHEMA,
+                "localKernelId": "did:chio:buyer-kernel",
+                "minExportedAtUnixMs": 0,
+                "exporters": []
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let err = read_archive_restore_package_reports(
+            &package_dir,
+            &source_report_dir,
+            &trusted_packagers_path,
+            &trusted_exporters_path,
+            20_000,
+        )
+        .unwrap_err();
+
+        assert!(
+            err.to_string().contains("no archive package tarballs found"),
+            "{err}"
         );
     }
 

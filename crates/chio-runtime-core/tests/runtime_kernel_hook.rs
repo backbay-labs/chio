@@ -471,6 +471,46 @@ fn kernel_hook_denies_retired_runtime_context_instead_of_bypassing(
 }
 
 #[test]
+fn kernel_hook_denies_federated_origin_without_any_runtime_context(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let store = InMemoryRuntimeAdmissionStore::new();
+    let cap = capability("cap-live-1")?;
+    let request = ToolCallRequest {
+        request_id: "req-federated-no-context".to_string(),
+        capability: cap.clone(),
+        tool_name: "close_account".to_string(),
+        server_id: "vendor-ledger".to_string(),
+        agent_id: cap.subject.to_hex(),
+        arguments: serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
+        dpop_proof: None,
+        governed_intent: None,
+        approval_token: None,
+        model_metadata: None,
+        federated_origin_kernel_id: Some("kernel.buyer".to_string()),
+    };
+
+    let hook = allowing_policy_hook(store)?;
+    let decision = hook.evaluate(&RuntimeAdmissionContext {
+        request: &request,
+        now_unix_secs: 1_800_000_001,
+        now_unix_ms: 1_800_000_001_000,
+        matched_grant_index: Some(0),
+        local_kernel_id: "kernel.vendor-b".to_string(),
+    })?;
+
+    assert!(!decision.allowed, "{decision:#?}");
+    let metadata = decision
+        .metadata
+        .ok_or_else(|| io::Error::other("runtime metadata missing"))?;
+    assert_eq!(metadata["chio_runtime"]["accepted"], false);
+    assert_eq!(
+        metadata["chio_runtime"]["failure_code"],
+        "missing_chio_treaty_context"
+    );
+    Ok(())
+}
+
+#[test]
 fn kernel_hook_denies_federated_runtime_request_without_treaty_context(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let store = InMemoryRuntimeAdmissionStore::new();

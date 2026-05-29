@@ -813,8 +813,7 @@ def test_typeerror_fallback_arity_mismatch_keeps_alias_map() -> None:
     # the wrapper-named slot at args[1].
     assert args[0] == "/tmp/x"
     assert args[1] == {"omitted": True, "byte_count": len(b"PROD_SECRET")}
-    # The third positional has no slot in the signature; surfaces raw.
-    assert args[2] == "trailing"
+    assert args[2] == {"omitted": True, "byte_count": len(b"trailing")}
 
 
 def test_alias_map_redacts_kwarg_under_canonical_no_fallback() -> None:
@@ -1778,6 +1777,32 @@ def test_typeerror_fallback_kwonly_only_preserves_default_prefix() -> None:
     assert args[1] == {
         "omitted": True,
         "byte_count": len(b"PROD_SECRET_KWONLY_ONLY"),
+    }
+
+
+def test_empty_positional_table_does_not_invent_overflow_slot() -> None:
+    """No positional map means extra args stay raw.
+
+    Keyword redaction still applies by name, but the fallback must not
+    synthesize a protected positional slot when no positional mapping exists.
+    """
+
+    def proxy(**kwargs: object) -> None:
+        del kwargs
+
+    policy = RedactionPolicy(body_fields={"chio_file_write": ("content",)})
+    args, kwargs = bind_and_redact(
+        proxy,
+        ("PROD_SECRET_NO_POSITIONAL_SLOT",),
+        {"content": "KW_SECRET"},
+        tool_name="chio_file_write",
+        policy=policy,
+        positional_table={"chio_file_write": ()},
+    )
+    assert args == ["PROD_SECRET_NO_POSITIONAL_SLOT"]
+    assert kwargs["content"] == {
+        "omitted": True,
+        "byte_count": len(b"KW_SECRET"),
     }
 
 

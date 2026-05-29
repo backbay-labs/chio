@@ -190,6 +190,7 @@ pub const CHIO_RUNTIME_FAILURE_CODES: &[&str] = &[
     "chio_treaty_missing_participant",
     "chio_treaty_missing_required_evidence",
     "chio_treaty_missing_scope",
+    "chio_treaty_policy_denied",
     "chio_treaty_scope_hash_mismatch",
     "chio_treaty_stale",
     "chio_treaty_unverified_required_evidence",

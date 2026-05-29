@@ -332,7 +332,14 @@ mod tests {
     use chio_test_support::prelude::*;
 
     fn signed_capability_token_json(issuer: &Keypair, id: &str) -> String {
-        signed_capability_token_json_with_scope(issuer, id, ChioScope::default())
+        signed_capability_token_json_with_scope(
+            issuer,
+            id,
+            ChioScope {
+                grants: vec![chio_http_core::http_authority_tool_grant()],
+                ..ChioScope::default()
+            },
+        )
     }
 
     fn signed_capability_token_json_with_scope(

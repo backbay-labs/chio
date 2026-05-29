@@ -13,9 +13,10 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
+from chio_sdk.errors import ChioDeniedError
 from chio_sdk.models import (
-    ChioScope,
     CapabilityToken,
+    ChioScope,
     Operation,
     ToolGrant,
 )
@@ -35,7 +36,10 @@ from chio_temporal import (
 from chio_temporal.interceptor import (
     DENIED_ERROR_TYPE,
     _ChioInboundInterceptor,
+    _deny_receipt_from_error,
 )
+
+INVOKE_OPERATION = getattr(Operation, "INVOKE", Operation.invoke)
 
 # ---------------------------------------------------------------------------
 # Test doubles / helpers
@@ -47,7 +51,7 @@ def _scope_for_tools(*tool_names: str, server_id: str = "srv") -> ChioScope:
         ToolGrant(
             server_id=server_id,
             tool_name=name,
-            operations=[Operation.INVOKE],
+            operations=[INVOKE_OPERATION],
         )
         for name in tool_names
     ]
@@ -321,6 +325,26 @@ class TestDenyVerdict:
         assert receipt.allow_count == 0
         assert receipt.steps[0].receipt.is_denied
         assert receipt.steps[0].receipt.id
+
+    def test_deny_receipt_preserves_schema_valid_sidecar_receipt_id(self) -> None:
+        sidecar_receipt_id = "a" * 64
+        info = _default_info(activity_type="send_email")
+        receipt = _deny_receipt_from_error(
+            info=info,
+            capability_id="cap-1",
+            tool_server="srv",
+            parameters={"payload": "secret"},
+            exc=ChioDeniedError(
+                "denied",
+                guard="ScopeGuard",
+                reason="no write perms",
+                receipt_id=sidecar_receipt_id,
+            ),
+        )
+
+        assert receipt.id == sidecar_receipt_id
+        assert receipt.metadata["sidecar_receipt_id"] == sidecar_receipt_id
+        assert receipt.is_denied
 
     async def test_missing_workflow_grant_raises_config_error(self) -> None:
         """Activities with no registered grant must be refused before dispatch.

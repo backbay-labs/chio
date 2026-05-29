@@ -34,6 +34,12 @@ pub(super) fn verify_treaty_dsse_evidence(
             detail: "bilateral DSSE policy evaluation summary is invalid".to_string(),
         }
     })?;
+    if policy_summary.server_a_verdict.verdict != "allow" {
+        return rejected(
+            "chio_treaty_policy_denied",
+            "bilateral DSSE policy evaluation summary is not allow",
+        );
+    }
     let Some(treaty) = statement.predicate.treaty_binding_ref.as_ref() else {
         return rejected(
             "chio_treaty_unverified_required_evidence",

@@ -91,7 +91,17 @@ pub(crate) fn cmd_chio_federation_treaty_admit(
     .map_err(|error| CliError::cli_other_error(format!("Chio treaty admission: {error}")))?;
     let json = chio_federation::cross_boundary_admission_report_json(&admission)
         .map_err(|error| CliError::cli_other_error(format!("Chio treaty admission: {error}")))?;
-    write_json_string(report, &format!("{json}\n"))
+    write_json_string(report, &format!("{json}\n"))?;
+    if admission.accepted {
+        return Ok(());
+    }
+    Err(CliError::policy_error(format!(
+        "Chio treaty admission rejected request: {}",
+        admission
+            .failure_code
+            .as_deref()
+            .unwrap_or("unknown_treaty_admission_failure")
+    )))
 }
 
 pub(crate) fn cmd_chio_federation_treaty_verify_packet(
@@ -164,7 +174,17 @@ pub(crate) fn cmd_chio_attest_buyer_verify_packet(
         .map_err(|error| {
             CliError::cli_other_error(format!("Chio buyer attestation verification: {error}"))
         })?;
-    write_json_string(report, &format!("{json}\n"))
+    write_json_string(report, &format!("{json}\n"))?;
+    if verification.accepted {
+        return Ok(());
+    }
+    Err(CliError::cli_other_error(format!(
+        "Chio buyer attestation verification rejected proof package: {}",
+        verification
+            .failure_code
+            .as_deref()
+            .unwrap_or("unknown_buyer_attestation_failure")
+    )))
 }
 
 pub(crate) const BUYER_REVIEW_ARTIFACT_FILES: &[(&str, &str)] = &[
@@ -201,3 +221,109 @@ pub(crate) const BUYER_REVIEW_ARTIFACT_FILES: &[(&str, &str)] = &[
         "runtime-proof-regeneration-input.json",
     ),
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chio_core::crypto::Keypair;
+    use chio_federation::{
+        governance_ladder_manifest_sha256, ladder_intersection_sha256,
+        GovernanceLadderActionClass, GovernanceLadderManifest, TreatyScope,
+        CHIO_FEDERATION_GOVERNANCE_LADDER_MANIFEST_SCHEMA,
+        CHIO_FEDERATION_TREATY_SCOPE_SCHEMA,
+    };
+    use std::io;
+
+    #[test]
+    fn treaty_admit_returns_error_when_report_denies() -> Result<(), Box<dyn std::error::Error>> {
+        let manifest_a = treaty_manifest("kernel.buyer");
+        let manifest_b = treaty_manifest("kernel.vendor");
+        let scope = treaty_scope(&manifest_a, &manifest_b)?;
+        let intersection = chio_federation::compute_ladder_intersection(
+            &scope,
+            &[manifest_a.clone(), manifest_b.clone()],
+            1_800_000_001_000,
+        )?;
+        let expected_ladder_intersection_sha256 = ladder_intersection_sha256(&intersection)?;
+        let tempdir = tempfile::tempdir()?;
+        let scope_path = tempdir.path().join("treaty-scope.json");
+        let intersection_path = tempdir.path().join("intersection.json");
+        let report_path = tempdir.path().join("admission-report.json");
+        std::fs::write(&scope_path, serde_json::to_string(&scope)?)?;
+        std::fs::write(&intersection_path, serde_json::to_string(&intersection)?)?;
+
+        let result = cmd_chio_federation_treaty_admit(
+            &scope_path,
+            &intersection_path,
+            &expected_ladder_intersection_sha256,
+            "workflow.destructive.vendor_call",
+            &[],
+            1_800_000_002_000,
+            &report_path,
+        );
+        let Err(error) = result else {
+            return Err(io::Error::other("denied treaty admission must return an error").into());
+        };
+        let error_text = error.to_string();
+        assert!(
+            error_text.contains("chio_federation_treaty_missing_required_evidence"),
+            "error should include denial reason: {error_text}"
+        );
+        let report_json = std::fs::read_to_string(&report_path)?;
+        let report: chio_federation::CrossBoundaryAdmissionReport =
+            serde_json::from_str(&report_json)?;
+        assert!(!report.accepted);
+        assert_eq!(
+            report.failure_code.as_deref(),
+            Some("chio_federation_treaty_missing_required_evidence")
+        );
+
+        Ok(())
+    }
+
+    fn treaty_manifest(kernel_id: &str) -> GovernanceLadderManifest {
+        GovernanceLadderManifest {
+            schema: CHIO_FEDERATION_GOVERNANCE_LADDER_MANIFEST_SCHEMA.to_string(),
+            manifest_id: format!("ladder-{kernel_id}"),
+            kernel_id: kernel_id.to_string(),
+            issuer: format!("did:chio:{kernel_id}"),
+            key_id: "ladder-key-1".to_string(),
+            issued_at_unix_ms: 1_800_000_000_000,
+            expires_at_unix_ms: 1_800_003_600_000,
+            destructive_floor: "receipt_backed".to_string(),
+            default_unknown_mode: "deny".to_string(),
+            action_classes: vec![GovernanceLadderActionClass {
+                action_class_id: "workflow.destructive.vendor_call".to_string(),
+                mode: "receipt_backed".to_string(),
+                destructive: false,
+                consistency_model: "totally_ordered".to_string(),
+                co_sign: "bilateral_required".to_string(),
+                evidence_required: vec!["receipt_lineage".to_string()],
+                aliases: Vec::new(),
+            }],
+        }
+    }
+
+    fn treaty_scope(
+        manifest_a: &GovernanceLadderManifest,
+        manifest_b: &GovernanceLadderManifest,
+    ) -> Result<TreatyScope, Box<dyn std::error::Error>> {
+        let buyer_key = Keypair::generate();
+        let vendor_key = Keypair::generate();
+        Ok(TreatyScope {
+            schema: CHIO_FEDERATION_TREATY_SCOPE_SCHEMA.to_string(),
+            treaty_id: "treaty-buyer-vendor".to_string(),
+            participant_kernel_ids: vec![manifest_a.kernel_id.clone(), manifest_b.kernel_id.clone()],
+            participant_public_keys: vec![buyer_key.public_key(), vendor_key.public_key()],
+            ladder_manifest_sha256s: vec![
+                governance_ladder_manifest_sha256(manifest_a)?,
+                governance_ladder_manifest_sha256(manifest_b)?,
+            ],
+            allowed_action_classes: vec!["workflow.destructive.vendor_call".to_string()],
+            issued_at_unix_ms: 1_800_000_000_000,
+            expires_at_unix_ms: 1_800_003_600_000,
+            revocation_epoch_sha256: "c".repeat(64),
+            trust_bundle_sha256: "b".repeat(64),
+        })
+    }
+}

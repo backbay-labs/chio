@@ -92,6 +92,14 @@ where
         let admission_ref = match admission_ref_from_request(context.request) {
             Ok(reference) => reference,
             Err(_) if !request_has_chio_runtime_context(context.request) => {
+                if context.request.federated_origin_kernel_id.is_some() {
+                    return Ok(KernelRuntimeAdmissionDecision::deny(
+                        "chio treaty-bound runtime admission context missing",
+                        Some(runtime_context_denial_metadata(
+                            "missing_chio_treaty_context",
+                        )),
+                    ));
+                }
                 return Ok(KernelRuntimeAdmissionDecision::allow(None));
             }
             Err(code) => {

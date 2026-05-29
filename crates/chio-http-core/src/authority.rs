@@ -24,9 +24,73 @@ use crate::{
     HttpMethod, HttpReceipt, HttpReceiptBody, Verdict, CHIO_KERNEL_RECEIPT_ID_KEY,
 };
 
-const HTTP_AUTHORITY_SERVER_ID: &str = "chio_http_authority";
-const HTTP_AUTHORITY_TOOL_NAME: &str = "authorize_http_request";
+/// Tool server id for HTTP-sidecar capability grants.
+pub const HTTP_AUTHORITY_SERVER_ID: &str = "chio_http_authority";
+/// Tool name for HTTP-sidecar capability grants.
+pub const HTTP_AUTHORITY_TOOL_NAME: &str = "authorize_http_request";
 const HTTP_AUTHORITY_TTL_SECS: u64 = 60;
+
+#[must_use]
+pub fn http_authority_tool_grant() -> ToolGrant {
+    ToolGrant {
+        server_id: HTTP_AUTHORITY_SERVER_ID.to_string(),
+        tool_name: HTTP_AUTHORITY_TOOL_NAME.to_string(),
+        operations: vec![Operation::Invoke],
+        constraints: Vec::new(),
+        max_invocations: None,
+        max_cost_per_invocation: None,
+        max_total_cost: None,
+        dpop_required: None,
+    }
+}
+
+fn deny_by_default_capability_binding(
+    input: &HttpAuthorityInput<'_>,
+    caller_identity_hash: &str,
+) -> (Option<String>, Option<String>, Option<Value>) {
+    if input.policy != HttpAuthorityPolicy::DenyByDefault {
+        return (
+            input.requested_tool_server.map(str::to_owned),
+            input.requested_tool_name.map(str::to_owned),
+            input.requested_arguments.cloned(),
+        );
+    }
+
+    match (input.requested_tool_server, input.requested_tool_name) {
+        (Some(server_id), Some(tool_name)) => (
+            Some(server_id.to_string()),
+            Some(tool_name.to_string()),
+            input.requested_arguments.cloned(),
+        ),
+        (None, None) => {
+            let arguments = serde_json::to_value(HttpKernelAuthorizationRequest {
+                request_id: input.request_id.clone(),
+                method: input.method,
+                route_pattern: input.route_pattern.clone(),
+                path: input.path.to_string(),
+                content_hash: input.body_hash.clone().unwrap_or_default(),
+                caller_identity_hash: caller_identity_hash.to_string(),
+                session_id: input.session_id.clone(),
+                policy: input.policy,
+                capability: HttpKernelCapabilityState {
+                    id: None,
+                    invalid_reason: None,
+                },
+            })
+            .unwrap_or(Value::Null);
+            (
+                Some(HTTP_AUTHORITY_SERVER_ID.to_string()),
+                Some(HTTP_AUTHORITY_TOOL_NAME.to_string()),
+                Some(arguments),
+            )
+        }
+        _ => (
+            input.requested_tool_server.map(str::to_owned),
+            input.requested_tool_name.map(str::to_owned),
+            input.requested_arguments.cloned(),
+        ),
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -343,19 +407,21 @@ impl HttpAuthority {
         &self,
         input: HttpAuthorityInput<'_>,
     ) -> Result<PreparedHttpEvaluation, HttpAuthorityError> {
-        let presented_capability = validate_presented_capability(
-            input.capability_id_hint,
-            input.presented_capability,
-            self.trusted_capability_issuers(),
-            input.requested_tool_server,
-            input.requested_tool_name,
-            input.requested_arguments,
-            input.model_metadata,
-        );
         let caller_identity_hash = input
             .caller
             .identity_hash()
             .map_err(|e| HttpAuthorityError::CallerIdentity(e.to_string()))?;
+        let (requested_tool_server, requested_tool_name, requested_arguments) =
+            deny_by_default_capability_binding(&input, &caller_identity_hash);
+        let presented_capability = validate_presented_capability(
+            input.capability_id_hint,
+            input.presented_capability,
+            self.trusted_capability_issuers(),
+            requested_tool_server.as_deref(),
+            requested_tool_name.as_deref(),
+            requested_arguments.as_ref(),
+            input.model_metadata,
+        );
 
         let chio_request = ChioHttpRequest {
             request_id: input.request_id.clone(),
@@ -369,9 +435,9 @@ impl HttpAuthority {
             body_length: input.body_length,
             session_id: input.session_id.clone(),
             capability_id: presented_capability.capability_id.clone(),
-            tool_server: input.requested_tool_server.map(str::to_owned),
-            tool_name: input.requested_tool_name.map(str::to_owned),
-            arguments: input.requested_arguments.cloned(),
+            tool_server: requested_tool_server.clone(),
+            tool_name: requested_tool_name.clone(),
+            arguments: requested_arguments.clone(),
             model_metadata: input.model_metadata.cloned(),
             timestamp: chrono::Utc::now().timestamp() as u64,
         };
@@ -934,7 +1000,14 @@ mod tests {
     use chio_test_support::prelude::*;
 
     fn signed_capability_token_json(issuer: &Keypair, id: &str) -> String {
-        signed_capability_token_json_with_scope(issuer, id, ChioScope::default())
+        signed_capability_token_json_with_scope(
+            issuer,
+            id,
+            ChioScope {
+                grants: vec![http_authority_tool_grant()],
+                ..ChioScope::default()
+            },
+        )
     }
 
     fn signed_capability_token_json_with_scope(
@@ -1378,6 +1451,59 @@ mod tests {
                 .as_deref(),
             Some("ap-structured")
         );
+    }
+
+    #[test]
+    fn deny_by_default_proxy_path_requires_http_authority_grant() {
+        let query = HashMap::new();
+        let (authority, issuer) = authority_with_issuer();
+        let capability = signed_capability_token_json_with_scope(
+            &issuer,
+            "cap-math-only",
+            ChioScope {
+                grants: vec![ToolGrant {
+                    server_id: "math".to_string(),
+                    tool_name: "double".to_string(),
+                    operations: vec![Operation::Invoke],
+                    constraints: Vec::new(),
+                    max_invocations: None,
+                    max_cost_per_invocation: None,
+                    max_total_cost: None,
+                    dpop_required: None,
+                }],
+                ..ChioScope::default()
+            },
+        );
+
+        let result = authority
+            .evaluate(HttpAuthorityInput {
+                request_id: "req-proxy-scope".to_string(),
+                method: HttpMethod::Post,
+                route_pattern: "/pets".to_string(),
+                path: "/pets",
+                query: &query,
+                caller: caller(),
+                body_hash: Some("abc".to_string()),
+                body_length: 3,
+                session_id: None,
+                capability_id_hint: None,
+                presented_capability: Some(&capability),
+                requested_tool_server: None,
+                requested_tool_name: None,
+                requested_arguments: None,
+                model_metadata: None,
+                policy: HttpAuthorityPolicy::DenyByDefault,
+            })
+            .test_unwrap();
+
+        assert!(result.verdict.is_denied());
+        assert!(result.receipt.capability_id.is_none());
+        assert!(result.receipt.evidence[0]
+            .details
+            .as_deref()
+            .is_some_and(|details| {
+                details.contains("capability does not authorize tool authorize_http_request")
+            }));
     }
 
     #[test]

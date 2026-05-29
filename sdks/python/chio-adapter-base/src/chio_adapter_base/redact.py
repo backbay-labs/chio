@@ -587,7 +587,10 @@ def bind_and_redact(
                     kwonly_protected_set.add(p.name)
 
             var_positional_protected_slot: str | None = None
+            has_var_positional = False
             for p in sig.parameters.values():
+                if p.kind is inspect.Parameter.VAR_POSITIONAL:
+                    has_var_positional = True
                 if (
                     p.kind is inspect.Parameter.VAR_POSITIONAL
                     and p.name in protected_fields_for_tool_pre
@@ -628,6 +631,33 @@ def bind_and_redact(
                 extended_positional_names = extended_positional_names + (
                     var_positional_protected_slot,
                 ) * pad_count
+
+            if (
+                not has_var_positional
+                and allow_ambiguous_cycling
+                and protected_fields_for_tool_pre
+                and extended_positional_names
+                and len(bind_args) > len(extended_positional_names)
+            ):
+                base_alias = build_alias_map(
+                    extended_positional_names,
+                    table.get(tool_name, ()),
+                    protected_fields_for_tool_pre,
+                    allow_ambiguous_cycling=allow_ambiguous_cycling,
+                )
+                overflow_slot = next(
+                    (
+                        slot
+                        for slot in reversed(extended_positional_names)
+                        if base_alias.get(slot, slot)
+                        in protected_fields_for_tool_pre
+                    ),
+                    protected_fields_for_tool_pre[0],
+                )
+                overflow_count = len(bind_args) - len(extended_positional_names)
+                extended_positional_names = extended_positional_names + (
+                    overflow_slot,
+                ) * overflow_count
 
             if extended_positional_names:
                 # Signature-derived names take precedence so wrappers that

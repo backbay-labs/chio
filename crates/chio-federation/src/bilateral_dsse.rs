@@ -297,6 +297,20 @@ pub fn validate_policy_evaluation_summary(
     Ok(())
 }
 
+/// Admission paths require unanimous `allow`. Cryptographic bilateral
+/// verification may still attest `deny` for audit and dispute review.
+pub fn require_policy_evaluation_allow_admission(
+    summary: &PolicyEvaluationSummary,
+) -> Result<(), BilateralCoSigningError> {
+    validate_policy_evaluation_summary(summary)?;
+    if summary.server_a_verdict.verdict != "allow" {
+        return Err(BilateralCoSigningError::CanonicalJson(
+            "policy_evaluation_summary requires allow verdict for admission".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 fn validate_policy_verdict(
     verdict: &PolicyVerdict,
     field: &str,

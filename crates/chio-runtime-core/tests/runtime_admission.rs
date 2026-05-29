@@ -1105,6 +1105,66 @@ fn kernel_hook_uses_configured_runtime_policy_to_deny() -> Result<(), Box<dyn st
 }
 
 #[test]
+fn kernel_hook_rejects_treaty_dsse_unanimous_deny() -> Result<(), Box<dyn std::error::Error>> {
+    let store = InMemoryRuntimeAdmissionStore::new();
+    let args = serde_json::json!({"record": "vendor-ledger-7", "value": "closed"});
+    let fixture = treaty_runtime_fixture_with_policy(unanimous_deny_policy_evaluation_summary())?;
+    let mut bundle = bundle();
+    bundle.binding.tool_args_sha256 = tool_args_sha256(&args)?;
+    let bundle_hash = runtime_admission_bundle_sha256(&bundle)?;
+    store.insert_bundle(bundle)?;
+    store.insert_treaty_runtime_artifact(
+        "treaty_scope",
+        &fixture.treaty_scope.treaty_id,
+        &fixture.treaty_scope,
+    )?;
+    store.insert_treaty_runtime_artifact(
+        "ladder_intersection",
+        &fixture.ladder_intersection.intersection_id,
+        &fixture.ladder_intersection,
+    )?;
+    store.insert_treaty_runtime_artifact(
+        "cross_kernel_continuation",
+        &fixture.continuation.continuation_id,
+        &fixture.continuation,
+    )?;
+    store.insert_treaty_runtime_artifact(
+        "receipt_lineage_bundle",
+        &fixture.lineage_bundle.bundle_id,
+        &fixture.lineage_bundle,
+    )?;
+    store.insert_treaty_runtime_artifact(
+        "bilateral_invocation",
+        &fixture.bilateral_invocation.invocation_id,
+        &fixture.bilateral_invocation,
+    )?;
+    store.insert_treaty_runtime_artifact(
+        "bilateral_dsse_envelope",
+        &fixture.bilateral_dsse_id,
+        &fixture.bilateral_dsse,
+    )?;
+    let request = treaty_runtime_request(args, bundle_hash, treaty_runtime_context(&fixture))?;
+    let hook = allowing_chio_policy_hook(store)?;
+    let decision = hook.evaluate(&RuntimeAdmissionContext {
+        request: &request,
+        now_unix_secs: 1_800_000_001,
+        now_unix_ms: 1_800_000_001_000,
+        matched_grant_index: Some(0),
+        local_kernel_id: "kernel.vendor-b".to_string(),
+    })?;
+
+    assert!(!decision.allowed);
+    let metadata = decision
+        .metadata
+        .ok_or_else(|| io::Error::other("runtime metadata missing"))?;
+    assert_eq!(
+        metadata["chio_runtime"]["failure_code"],
+        "chio_treaty_policy_denied"
+    );
+    Ok(())
+}
+
+#[test]
 fn kernel_hook_rejects_treaty_dsse_policy_verdict_disagreement(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let store = InMemoryRuntimeAdmissionStore::new();
@@ -1186,7 +1246,49 @@ struct TreatyRuntimeFixture {
     bilateral_dsse_sha256: String,
 }
 
+fn allow_policy_evaluation_summary() -> PolicyEvaluationSummary {
+    PolicyEvaluationSummary {
+        server_a_verdict: PolicyVerdict {
+            verdict: "allow".to_string(),
+            policy_id: "policy-buyer".to_string(),
+            policy_version: "v1".to_string(),
+            rationale_code: None,
+        },
+        server_b_verdict: PolicyVerdict {
+            verdict: "allow".to_string(),
+            policy_id: "policy-vendor".to_string(),
+            policy_version: "v1".to_string(),
+            rationale_code: None,
+        },
+        joint_disposition: Some("allow".to_string()),
+    }
+}
+
+fn unanimous_deny_policy_evaluation_summary() -> PolicyEvaluationSummary {
+    PolicyEvaluationSummary {
+        server_a_verdict: PolicyVerdict {
+            verdict: "deny".to_string(),
+            policy_id: "policy-buyer".to_string(),
+            policy_version: "v1".to_string(),
+            rationale_code: Some("high_risk".to_string()),
+        },
+        server_b_verdict: PolicyVerdict {
+            verdict: "deny".to_string(),
+            policy_id: "policy-vendor".to_string(),
+            policy_version: "v1".to_string(),
+            rationale_code: Some("high_risk".to_string()),
+        },
+        joint_disposition: Some("deny".to_string()),
+    }
+}
+
 fn treaty_runtime_fixture() -> Result<TreatyRuntimeFixture, Box<dyn std::error::Error>> {
+    treaty_runtime_fixture_with_policy(allow_policy_evaluation_summary())
+}
+
+fn treaty_runtime_fixture_with_policy(
+    policy_evaluation_summary: PolicyEvaluationSummary,
+) -> Result<TreatyRuntimeFixture, Box<dyn std::error::Error>> {
     let buyer = treaty_manifest(
         "kernel.buyer",
         treaty_action_class(
@@ -1337,21 +1439,7 @@ fn treaty_runtime_fixture() -> Result<TreatyRuntimeFixture, Box<dyn std::error::
                 expires_at_unix_ms: 1_800_003_600_000,
                 scope_digest: None,
             }),
-            policy_evaluation_summary: Some(PolicyEvaluationSummary {
-                server_a_verdict: PolicyVerdict {
-                    verdict: "allow".to_string(),
-                    policy_id: "policy-buyer".to_string(),
-                    policy_version: "v1".to_string(),
-                    rationale_code: None,
-                },
-                server_b_verdict: PolicyVerdict {
-                    verdict: "allow".to_string(),
-                    policy_id: "policy-vendor".to_string(),
-                    policy_version: "v1".to_string(),
-                    rationale_code: None,
-                },
-                joint_disposition: Some("allow".to_string()),
-            }),
+            policy_evaluation_summary: Some(policy_evaluation_summary),
             governance_receipt_ref: Some(GovernanceReceiptRef {
                 receipt_id: "gov-live-1".to_string(),
                 kernel_id: bilateral_invocation.signer_kernel_ids[1].clone(),

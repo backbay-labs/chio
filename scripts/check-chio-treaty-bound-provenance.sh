@@ -386,13 +386,16 @@ run_provenance_binding_flow() {
   write_packet_for_admission "$tmpdir/admission.json"
   validate_schema "$federation_schema_dir/bilateral-invocation.schema.json" "$tmpdir/bilateral.json"
   validate_schema "$attest_schema_dir/buyer-attestation-packet.schema.json" "$tmpdir/packet.json"
-  cargo run -p chio-cli -- federation treaty verify-packet \
+  if cargo run -p chio-cli -- federation treaty verify-packet \
     --packet "$tmpdir/packet.json" \
     --lineage-statement "$tmpdir/lineage.json" \
     --continuation "$tmpdir/continuation.json" \
     --admission-report "$tmpdir/admission.json" \
     --bilateral-invocation "$tmpdir/bilateral.json" \
-    --report "$tmpdir/packet-report.json" >/dev/null
+    --report "$tmpdir/packet-report.json" >/dev/null; then
+    echo "expected unresolved proof package verification to reject" >&2
+    exit 1
+  fi
   validate_schema "$attest_schema_dir/buyer-attestation-verification-report.schema.json" "$tmpdir/packet-report.json"
   grep -q '"verificationState": "unresolved"' "$tmpdir/packet-report.json"
   grep -q '"accepted": false' "$tmpdir/packet-report.json"
@@ -415,14 +418,17 @@ run_negative_flow() {
   bilateral_invocation_hash="$(printf '%s\n' "$rebind_output" | sed -n '1p')"
   local lineage_hash
   lineage_hash="$(printf '%s\n' "$rebind_output" | sed -n '2p')"
-  cargo run -p chio-cli -- federation treaty admit \
+  if cargo run -p chio-cli -- federation treaty admit \
     --treaty-scope "$tmpdir/treaty-scope.json" \
     --ladder-intersection "$tmpdir/intersection.json" \
     --expected-ladder-intersection-sha256 "$intersection_hash" \
     --action-class-id "workflow.destructive.vendor_call" \
     --evidence governance_receipt=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd \
     --now-unix-ms 1800000010000 \
-    --report "$tmpdir/admission-negative.json" >/dev/null
+    --report "$tmpdir/admission-negative.json" >/dev/null; then
+    echo "expected incomplete treaty admission to reject" >&2
+    exit 1
+  fi
   validate_schema "$federation_schema_dir/cross-boundary-admission-report.schema.json" "$tmpdir/admission-negative.json"
   grep -q '"accepted": false' "$tmpdir/admission-negative.json"
   grep -q '"failureCode": "chio_federation_treaty_missing_required_evidence"' "$tmpdir/admission-negative.json"
@@ -437,13 +443,16 @@ run_negative_flow() {
     --now-unix-ms 1800000010000 \
     --report "$tmpdir/admission.json" >/dev/null
   write_packet_for_admission "$tmpdir/admission.json"
-  cargo run -p chio-cli -- federation treaty verify-packet \
+  if cargo run -p chio-cli -- federation treaty verify-packet \
     --packet "$tmpdir/packet.json" \
     --lineage-statement "$tmpdir/lineage-asserted.json" \
     --continuation "$tmpdir/continuation.json" \
     --admission-report "$tmpdir/admission.json" \
     --bilateral-invocation "$tmpdir/bilateral.json" \
-    --report "$tmpdir/packet-negative.json" >/dev/null
+    --report "$tmpdir/packet-negative.json" >/dev/null; then
+    echo "expected asserted lineage proof package verification to reject" >&2
+    exit 1
+  fi
   validate_schema "$attest_schema_dir/buyer-attestation-verification-report.schema.json" "$tmpdir/packet-negative.json"
   grep -q '"accepted": false' "$tmpdir/packet-negative.json"
   grep -q '"failureCode": "chio_attest_buyer_packet_lineage_not_verified"' "$tmpdir/packet-negative.json"

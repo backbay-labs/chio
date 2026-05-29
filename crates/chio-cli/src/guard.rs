@@ -15,7 +15,6 @@ use chio_wasm_guards::blocklist::{E_GUARD_DIGEST_BLOCKLISTED, GuardDigestBlockli
 use chio_wasm_guards::manifest::GuardManifest;
 use chio_wasm_guards::runtime::wasmtime_backend::WasmtimeBackend;
 use flate2::Compression;
-use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use serde::Deserialize;
 
@@ -829,12 +828,16 @@ fn registry_credentials(username: Option<&str>, password: Option<&str>) -> Regis
     }
 }
 
-pub(crate) fn cmd_guard_install(archive_path: &Path, target_dir: &Path) -> Result<(), CliError> {
-    let file = fs::File::open(archive_path)
-        .map_err(|e| guard_io_error(format!("failed to open {}: {e}", archive_path.display())))?;
-    let dec = GzDecoder::new(file);
-    let mut archive = tar::Archive::new(dec);
+const GUARD_INSTALL_ARCHIVE_LIMITS: crate::archive::SafeArchiveLimits =
+    crate::archive::SafeArchiveLimits {
+        max_compressed_bytes: 64 * 1024 * 1024,
+        max_member_bytes: 32 * 1024 * 1024,
+        max_total_bytes: 64 * 1024 * 1024,
+        max_member_count: 32,
+        max_decompression_ratio: 200,
+    };
 
+pub(crate) fn cmd_guard_install(archive_path: &Path, target_dir: &Path) -> Result<(), CliError> {
     // Extract to a temporary directory first, then determine guard name from
     // manifest. The temp dir name carries a unique suffix derived from the
     // archive filename.
@@ -862,17 +865,12 @@ pub(crate) fn cmd_guard_install(archive_path: &Path, target_dir: &Path) -> Resul
         ))
     })?;
 
-    // Collect entries into the temp directory
-    for entry_result in archive
-        .entries()
-        .map_err(|e| guard_io_error(format!("failed to read archive entries: {e}")))?
-    {
-        let mut entry = entry_result
-            .map_err(|e| guard_io_error(format!("failed to read archive entry: {e}")))?;
-        entry
-            .unpack_in(&tmp_path)
-            .map_err(|e| guard_io_error(format!("failed to extract archive entry: {e}")))?;
-    }
+    let entries = crate::archive::read_tar_gz_file(
+        archive_path,
+        "Chio guard archive",
+        GUARD_INSTALL_ARCHIVE_LIMITS,
+    )?;
+    crate::archive::write_entries_to_existing_dir(&tmp_path, "Chio guard archive", &entries)?;
 
     // Read the manifest from the temp directory to determine the guard name
     let tmp_manifest_path = tmp_path.join("guard-manifest.yaml");
@@ -1513,6 +1511,35 @@ wasm_sha256: "deadbeef"
         );
         assert_registry_error(&err, "urn:chio:error:cli:io", "cli");
         let msg = err.to_string();
-        assert!(msg.contains("failed to open"), "{msg}");
+        assert!(msg.contains("failed to inspect"), "{msg}");
+    }
+
+    #[test]
+    fn guard_install_rejects_symlink_member() {
+        let temp = tempfile::tempdir().unwrap();
+        let archive = temp.path().join("evil.arcguard");
+        let file = fs::File::create(&archive).unwrap();
+        let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+        let mut builder = tar::Builder::new(encoder);
+        let mut header = tar::Header::new_gnu();
+        header.set_entry_type(tar::EntryType::Symlink);
+        header.set_size(0);
+        header.set_mode(0o777);
+        header.set_link_name("../escape").unwrap();
+        header.set_cksum();
+        builder
+            .append_data(&mut header, "guard-manifest.yaml", std::io::empty())
+            .unwrap();
+        builder.finish().unwrap();
+        let encoder = builder.into_inner().unwrap();
+        encoder.finish().unwrap();
+
+        let install_dir = tempfile::tempdir().unwrap();
+        let err = must_cli_err(
+            cmd_guard_install(&archive, install_dir.path()),
+            "install symlink archive",
+        );
+        let msg = err.to_string();
+        assert!(msg.contains("non-regular"), "{msg}");
     }
 }

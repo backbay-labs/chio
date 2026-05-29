@@ -12,16 +12,19 @@ denial in workflow history. HITL approval support is planned for v2.
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import logging
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
 from chio_adapter_base.redact import (
     DEFAULT_TOOL_POSITIONAL_NAMES,
     RedactionPolicy,
+    bind_and_redact,
+    build_alias_map,
     redact_args,
 )
 from chio_sdk.client import ChioClient
@@ -47,6 +50,10 @@ DENIED_ERROR_TYPE = "ChioCapabilityDenied"
 
 # Per-activity grant-override hook; ``None`` falls back to the workflow grant.
 ActivityGrantOverride = Callable[[activity.Info], "WorkflowGrant | None"]
+
+
+def _is_sha256_hex(value: str) -> bool:
+    return len(value) == 64 and all(char in "0123456789abcdef" for char in value)
 
 
 @dataclass
@@ -356,6 +363,59 @@ class _ChioInboundInterceptor(ActivityInboundInterceptor):
             ) from exc
 
 
+def _fixed_positional_param_names(fn: Callable[..., Any] | None) -> tuple[str, ...]:
+    """Return fixed positional parameter names from ``fn``, if introspectable."""
+    if fn is None:
+        return ()
+    try:
+        sig = inspect.signature(fn)
+    except (TypeError, ValueError):
+        return ()
+    return tuple(
+        param.name
+        for param in sig.parameters.values()
+        if param.kind
+        in (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        )
+    )
+
+
+def _temporal_dict_lift(
+    fn: Callable[..., Any] | None,
+    *,
+    tool_name: str,
+    redacted_args: Sequence[Any],
+    table_slots: tuple[str, ...],
+    policy: RedactionPolicy,
+) -> list[Any] | None:
+    """Lift redacted positional values into Temporal's dict wire shape."""
+    sig_names = _fixed_positional_param_names(fn)
+    if sig_names:
+        alias_map = build_alias_map(
+            sig_names,
+            table_slots,
+            policy.body_fields.get(tool_name) or (),
+            allow_ambiguous_cycling=tool_name in DEFAULT_TOOL_POSITIONAL_NAMES,
+        )
+        canonical_dict: dict[str, Any] = {}
+        for idx, sig_name in enumerate(sig_names):
+            if idx >= len(redacted_args):
+                break
+            canonical_name = alias_map.get(sig_name, sig_name)
+            canonical_dict[canonical_name] = redacted_args[idx]
+        extras = list(redacted_args[len(sig_names) :])
+        return [canonical_dict, *extras]
+
+    if len(redacted_args) >= len(table_slots):
+        prefix_count = len(table_slots)
+        bound = dict(zip(table_slots, redacted_args[:prefix_count], strict=True))
+        extras = list(redacted_args[prefix_count:])
+        return [bound, *extras]
+    return None
+
+
 def _activity_parameters(
     input: ExecuteActivityInput,
     *,
@@ -364,16 +424,10 @@ def _activity_parameters(
 ) -> dict[str, Any]:
     """Build the sidecar payload, redacting body fields where possible.
 
-    The positional-name table consulted in shape 2 is
-    :data:`chio_adapter_base.redact.DEFAULT_TOOL_POSITIONAL_NAMES`
-    (centralised in chio-adapter-base 0.1.1). We do not delegate to
-    :func:`chio_adapter_base.redact.bind_and_redact` here because
-    temporal's wire shape lifts positional values into a single bound
-    dict (``parameters["args"] == [{"path": ..., "content": ...}]``)
-    while ``bind_and_redact`` preserves positional-as-positional. The
-    interceptor also has no direct access to the activity callable's
-    ``fn``, so signature-aware binding is unavailable on this path
-    regardless.
+    Positional activities delegate to
+    :func:`chio_adapter_base.redact.bind_and_redact` using the activity
+    callable supplied by the Temporal worker, then lift the redacted result
+    into Temporal's dict wire shape.
     """
     args_list = list(input.args)
     if policy is None:
@@ -384,26 +438,34 @@ def _activity_parameters(
         args_list[0] = redact_args(tool_name, args_list[0], policy=policy)
         return {"args": args_list}
 
-    # Shape 2: known chio-default tool with positional args. Activities
-    # declared as ``chio_file_write(path, content)`` are the documented
-    # shape, but a plausible extension such as
-    # ``chio_file_write(path, content, overwrite)`` still carries the
-    # protected ``content`` slot in position 1; redact the known prefix
-    # and forward any trailing extras raw.
-    positional_names = DEFAULT_TOOL_POSITIONAL_NAMES.get(tool_name or "")
-    if (
-        positional_names is not None
-        and len(args_list) >= len(positional_names)
-        and tool_name in policy.body_fields
-    ):
-        prefix_count = len(positional_names)
-        bound = dict(zip(positional_names, args_list[:prefix_count], strict=True))
-        redacted_prefix = redact_args(tool_name, bound, policy=policy)
-        extras = args_list[prefix_count:]
-        return {"args": [redacted_prefix, *extras]}
+    effective_tool_name = tool_name or ""
+    redacted_args, redacted_kwargs = bind_and_redact(
+        input.fn,
+        args_list,
+        {},
+        tool_name=effective_tool_name,
+        policy=policy,
+    )
+    if redacted_kwargs:
+        return {"args": list(redacted_args), "kwargs": redacted_kwargs}
 
-    # Shape 3: pass-through.
-    return {"args": args_list}
+    table_slots = DEFAULT_TOOL_POSITIONAL_NAMES.get(effective_tool_name)
+    if (
+        table_slots is not None
+        and effective_tool_name in policy.body_fields
+        and redacted_args
+    ):
+        lifted = _temporal_dict_lift(
+            input.fn,
+            tool_name=effective_tool_name,
+            redacted_args=redacted_args,
+            table_slots=table_slots,
+            policy=policy,
+        )
+        if lifted is not None:
+            return {"args": lifted}
+
+    return {"args": list(redacted_args)}
 
 
 def _denied_application_error(
@@ -446,9 +508,28 @@ def _deny_receipt_from_error(
         ensure_ascii=True,
     ).encode("utf-8")
     parameter_hash = hashlib.sha256(canonical_parameters).hexdigest()
-    receipt_id = exc.receipt_id or (
+    fallback_receipt_id = (
         f"chio-temporal-deny-{info.workflow_id}-{info.activity_id}-{int(time.time())}"
     )
+    receipt_id_source = exc.receipt_id or fallback_receipt_id
+    if exc.receipt_id and _is_sha256_hex(exc.receipt_id):
+        receipt_id = exc.receipt_id
+    else:
+        receipt_id = hashlib.sha256(receipt_id_source.encode("utf-8")).hexdigest()
+    synthetic_hash = hashlib.sha256(
+        f"synthetic-deny-receipt:{receipt_id_source}".encode()
+    ).hexdigest()
+    metadata = {
+        "synthetic": True,
+        "reason_code": exc.reason_code,
+        "requested_action": exc.requested_action,
+        "required_scope": exc.required_scope,
+        "granted_scope": exc.granted_scope,
+        "hint": exc.hint,
+        "docs_url": exc.docs_url,
+    }
+    if exc.receipt_id:
+        metadata["sidecar_receipt_id"] = exc.receipt_id
     return ChioReceipt(
         id=receipt_id,
         timestamp=int(time.time()),
@@ -463,18 +544,17 @@ def _deny_receipt_from_error(
             reason=exc.reason or exc.message or "Chio capability denied",
             guard=exc.guard or "ChioDeniedError",
         ),
-        content_hash="synthetic-deny-receipt",
-        policy_hash="synthetic-deny-receipt",
+        receipt_kind="mediated_decision",
+        boundary_class="prevent",
+        observation_outcome=None,
+        tool_origin="caller_executed",
+        redaction_mode="none",
+        actor_chain=[],
+        content_hash=synthetic_hash,
+        policy_hash=synthetic_hash,
         evidence=[],
-        metadata={
-            "synthetic": True,
-            "reason_code": exc.reason_code,
-            "requested_action": exc.requested_action,
-            "required_scope": exc.required_scope,
-            "granted_scope": exc.granted_scope,
-            "hint": exc.hint,
-            "docs_url": exc.docs_url,
-        },
+        trust_level="mediated",
+        metadata=metadata,
         kernel_key="0" * 64,
         signature="0" * 128,
     )

@@ -265,7 +265,7 @@ impl ChioKernel {
         matched_grant_index: Option<usize>,
     ) -> RuntimeAdmissionDecision {
         let Some(hook) = self.runtime_admission_hook.as_ref() else {
-            if request
+            let has_runtime_context = request
                 .governed_intent
                 .as_ref()
                 .and_then(|intent| intent.context.as_ref())
@@ -276,14 +276,25 @@ impl ChioKernel {
                         || context.get("chioTreaty").is_some()
                         || context.get(retired_admission_key.as_str()).is_some()
                         || context.get(retired_treaty_key.as_str()).is_some()
-                })
-            {
+                });
+            if has_runtime_context {
                 return RuntimeAdmissionDecision::deny(
                     "chio runtime admission hook is required for governed runtime requests",
                     Some(serde_json::json!({
                         "chio_runtime": {
                             "accepted": false,
                             "failure_code": "runtime_admission_hook_missing"
+                        }
+                    })),
+                );
+            }
+            if request.federated_origin_kernel_id.is_some() {
+                return RuntimeAdmissionDecision::deny(
+                    "chio treaty-bound runtime admission context missing",
+                    Some(serde_json::json!({
+                        "chio_runtime": {
+                            "accepted": false,
+                            "failure_code": "missing_chio_treaty_context"
                         }
                     })),
                 );

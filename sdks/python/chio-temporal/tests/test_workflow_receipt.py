@@ -39,7 +39,7 @@ def _build_receipt(
         if allow
         else Decision.deny(reason="denied in test", guard="TestGuard")
     )
-    return ChioReceipt(
+    return ChioReceipt.model_construct(
         id=receipt_id,
         timestamp=timestamp,
         capability_id=capability_id,
@@ -47,9 +47,16 @@ def _build_receipt(
         tool_name=tool_name,
         action=ToolCallAction(parameters={}, parameter_hash="0" * 64),
         decision=decision,
+        receipt_kind="mediated_decision",
+        boundary_class="prevent",
+        observation_outcome=None,
+        tool_origin="caller_executed",
+        redaction_mode="none",
+        actor_chain=[],
         content_hash="content-hash",
         policy_hash="policy-hash",
         evidence=[],
+        trust_level="mediated",
         kernel_key="kernel-key",
         signature="sig",
     )

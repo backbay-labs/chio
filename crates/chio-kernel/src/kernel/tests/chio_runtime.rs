@@ -679,6 +679,68 @@ fn chio_runtime_admission_hook_denies_federated_call_before_dispatch_or_cosign(
 }
 
 #[test]
+fn federated_origin_without_runtime_hook_or_context_fails_closed(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let origin_kp = Keypair::generate();
+    let origin_kernel_id = "kernel.chio-buyer";
+    let tool_host_kernel_id = "kernel.chio-vendor";
+
+    let mut kernel = make_kernel(make_config());
+    kernel.set_federation_local_kernel_id(tool_host_kernel_id);
+    let path = unique_receipt_db_path("federated-no-hook-no-context");
+    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path)?));
+
+    let invocations = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(SideEffectServer::new(
+        "srv-chio-runtime",
+        vec!["destructive_update"],
+        std::sync::Arc::clone(&invocations),
+    )));
+
+    let trust = KernelTrustExchange::new(tool_host_kernel_id, kernel.config.keypair.clone())
+        .with_trusted_peer(origin_kernel_id, origin_kp.public_key());
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())?;
+    let peer = handshake_and_pin(&trust, origin_kernel_id, &origin_kp, now);
+    let kernel = kernel.with_federation_peers(vec![peer]);
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant(
+            "srv-chio-runtime",
+            "destructive_update",
+        )]),
+        300,
+    );
+    let mut request = make_request_with_arguments(
+        "req-federated-no-hook-no-context",
+        &cap,
+        "destructive_update",
+        "srv-chio-runtime",
+        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
+    );
+    request.federated_origin_kernel_id = Some(origin_kernel_id.to_string());
+
+    let response = kernel.evaluate_tool_call_blocking(&request)?;
+
+    assert_eq!(response.verdict, Verdict::Deny);
+    assert_eq!(invocations.load(Ordering::SeqCst), 0);
+    let metadata = response
+        .receipt
+        .metadata
+        .ok_or_else(|| std::io::Error::other("deny metadata missing"))?;
+    assert_eq!(metadata["chio_runtime"]["accepted"], false);
+    assert_eq!(
+        metadata["chio_runtime"]["failure_code"],
+        "missing_chio_treaty_context"
+    );
+    Ok(())
+}
+
+#[test]
 fn chio_runtime_admission_hook_allows_dispatch_and_records_metadata(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut kernel = make_kernel(make_config());

@@ -440,6 +440,64 @@ class TestChioScope:
         )
         assert child.is_subset_of(parent)
 
+    def test_resource_grant_prefix_pattern_subset(self) -> None:
+        parent = ChioScope(
+            resource_grants=[
+                ResourceGrant(
+                    uri_pattern="file:///tenant/*",
+                    operations=[Operation.READ, Operation.SUBSCRIBE],
+                )
+            ]
+        )
+        child = ChioScope(
+            resource_grants=[
+                ResourceGrant(
+                    uri_pattern="file:///tenant/a", operations=[Operation.READ]
+                )
+            ]
+        )
+        outside = ChioScope(
+            resource_grants=[
+                ResourceGrant(
+                    uri_pattern="file:///other/a", operations=[Operation.READ]
+                )
+            ]
+        )
+        assert child.is_subset_of(parent)
+        assert not outside.is_subset_of(parent)
+
+    def test_prompt_grant_name_and_operation_subset(self) -> None:
+        parent = ChioScope(
+            prompt_grants=[
+                PromptGrant(
+                    prompt_name="*",
+                    operations=[Operation.GET, Operation.DELEGATE],
+                )
+            ]
+        )
+        child = ChioScope(
+            prompt_grants=[
+                PromptGrant(prompt_name="welcome", operations=[Operation.GET])
+            ]
+        )
+        overbroad = ChioScope(
+            prompt_grants=[
+                PromptGrant(
+                    prompt_name="welcome",
+                    operations=[Operation.GET, Operation.DELEGATE],
+                )
+            ]
+        )
+        assert child.is_subset_of(parent)
+        assert overbroad.is_subset_of(parent)
+
+        read_only_parent = ChioScope(
+            prompt_grants=[
+                PromptGrant(prompt_name="welcome", operations=[Operation.GET])
+            ]
+        )
+        assert not overbroad.is_subset_of(read_only_parent)
+
 
 # ---------------------------------------------------------------------------
 # CapabilityToken
@@ -451,12 +509,12 @@ class TestCapabilityToken:
         now = int(time.time())
         token = CapabilityToken(
             id="tok-1",
-            issuer="aabbcc",
-            subject="ddeeff",
+            issuer="a" * 64,
+            subject="b" * 64,
             scope=ChioScope(),
             issued_at=now - 60,
             expires_at=now + 3600,
-            signature="sig",
+            signature="c" * 128,
         )
         assert token.is_valid_at(now)
         assert not token.is_expired_at(now)
@@ -466,23 +524,24 @@ class TestCapabilityToken:
     def test_body_extraction(self) -> None:
         token = CapabilityToken(
             id="tok-2",
-            issuer="aa",
-            subject="bb",
+            issuer="a" * 64,
+            subject="b" * 64,
             scope=ChioScope(),
             issued_at=100,
             expires_at=200,
-            signature="sig",
+            signature="c" * 128,
         )
         body = token.body()
         assert isinstance(body, CapabilityTokenBody)
         assert body.id == "tok-2"
-        assert body.issuer == "aa"
+        assert body.issuer == "a" * 64
+        assert body.delegation_chain == []
 
     def test_serde_roundtrip(self) -> None:
         token = CapabilityToken(
             id="tok-3",
-            issuer="aa",
-            subject="bb",
+            issuer="a" * 64,
+            subject="b" * 64,
             scope=ChioScope(
                 grants=[
                     ToolGrant(
@@ -494,9 +553,9 @@ class TestCapabilityToken:
             ),
             issued_at=100,
             expires_at=200,
-            signature="sig123",
+            signature="c" * 128,
         )
-        data = json.loads(token.model_dump_json())
+        data = json.loads(token.model_dump_json(by_alias=True))
         token2 = CapabilityToken.model_validate(data)
         assert token2.id == token.id
         assert len(token2.scope.grants) == 1
@@ -567,14 +626,14 @@ class TestGuardEvidence:
 class TestChioReceipt:
     def test_allowed_receipt(self) -> None:
         receipt = ChioReceipt(
-            id="r-1",
+            id="1" * 64,
             timestamp=1700000000,
             capability_id="cap-1",
             tool_server="srv",
             tool_name="read_file",
             action=ToolCallAction(
                 parameters={"path": "/tmp/f"},
-                parameter_hash="abc",
+                parameter_hash="a" * 64,
             ),
             decision=Decision.allow(),
             receipt_kind="mediated_decision",
@@ -582,40 +641,45 @@ class TestChioReceipt:
             tool_origin="caller_executed",
             redaction_mode="none",
             trust_level="mediated",
-            content_hash="deadbeef",
+            content_hash="d" * 64,
             policy_hash="cafebabe",
-            kernel_key="kernelkey",
-            signature="sig",
+            kernel_key="b" * 64,
+            signature="c" * 128,
         )
         assert receipt.is_allowed
         assert not receipt.is_denied
 
     def test_denied_receipt(self) -> None:
         receipt = ChioReceipt(
-            id="r-2",
+            id="2" * 64,
             timestamp=1700000000,
             capability_id="cap-1",
             tool_server="srv",
             tool_name="write_file",
-            action=ToolCallAction(parameters={}, parameter_hash="x"),
+            action=ToolCallAction(parameters={}, parameter_hash="a" * 64),
             decision=Decision.deny("forbidden", "PathGuard"),
             receipt_kind="mediated_decision",
             boundary_class="prevent",
             tool_origin="caller_executed",
             redaction_mode="none",
             trust_level="mediated",
-            content_hash="aa",
+            content_hash="d" * 64,
             policy_hash="bb",
             evidence=[
                 GuardEvidence(
                     guard_name="PathGuard", verdict=False, details="denied"
                 )
             ],
-            kernel_key="k",
-            signature="s",
+            kernel_key="b" * 64,
+            signature="c" * 128,
         )
         assert receipt.is_denied
         assert len(receipt.evidence) == 1
+
+    def test_missing_decision_receipt_is_not_allowed_or_denied(self) -> None:
+        receipt = ChioReceipt.model_construct(decision=None)
+        assert not receipt.is_allowed
+        assert not receipt.is_denied
 
 
 # ---------------------------------------------------------------------------
@@ -696,10 +760,11 @@ class TestDelegationLink:
     def test_construction(self) -> None:
         dl = DelegationLink(
             capability_id="cap-1",
-            delegator="aabb",
-            delegatee="ccdd",
+            delegator="a" * 64,
+            delegatee="b" * 64,
             timestamp=1000,
-            signature="sig",
+            signature="c" * 128,
+            scope_hash="d" * 64,
         )
-        assert dl.delegator == "aabb"
-        assert len(dl.attenuations) == 0
+        assert dl.delegator == "a" * 64
+        assert len(dl.attenuations or []) == 0

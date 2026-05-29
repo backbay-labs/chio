@@ -151,7 +151,10 @@ paths:
                 id: id.to_string(),
                 issuer: issuer.public_key(),
                 subject: issuer.public_key(),
-                scope: ChioScope::default(),
+                scope: ChioScope {
+                    grants: vec![chio_http_core::http_authority_tool_grant()],
+                    ..ChioScope::default()
+                },
                 issued_at: now.saturating_sub(60),
                 expires_at: now + 3600,
                 delegation_chain: Vec::new(),
