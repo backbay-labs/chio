@@ -5,8 +5,8 @@
   "localKernelId": "did:chio:dataco",
   "generatedAtUnixMs": 1766000100000,
   "bundleId": "relay-alert-assurance-export",
-  "manifestSha256": "b52e1800d070d6445d024dcb2e3d44fb7aef5415ba346dbc1b43049d4f49aa59",
-  "sourcePackageSha256": "a5b4ac0db9f924dc89b60aed12bfd3b6883162f40cd44610c05791710feab928",
+  "manifestSha256": "8448028fcc6799b60c4ddd923e65b488821ecf1b910aa177fde96eb417ed545b",
+  "sourcePackageSha256": "b1c7b86889bbe933a4d44f605da452d819bae714a470d00ebef9643bcb240afd",
   "artifactCount": 13,
   "checks": [
     {

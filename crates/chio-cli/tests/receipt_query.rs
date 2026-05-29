@@ -98,6 +98,18 @@ const TEST_REPUTATION_RECEIPT_TARGET: u64 = 100;
 const LARGE_RECEIPT_HISTORY_LEN: u64 = 128;
 const CAPITAL_ALLOCATION_QUEUE_HISTORY_LEN: u64 = 240;
 
+/// Fixed Ed25519 seed for the kernel that signs receipt fixtures. The trust
+/// service spawned by `spawn_trust_service` derives its trusted-kernel-key set
+/// from this same seed (written to an `--authority-seed-file`), so receipts
+/// signed here pass `chio-reputation::receipt_integrity_valid` instead of being
+/// filtered as unsigned. See `spawn_trust_service` and `test_kernel_keypair`.
+const TEST_KERNEL_SEED_HEX: &str =
+    "1111111111111111111111111111111111111111111111111111111111111111";
+
+fn test_kernel_keypair() -> Keypair {
+    Keypair::from_seed_hex(TEST_KERNEL_SEED_HEX).expect("test kernel keypair")
+}
+
 fn unix_now_secs() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -278,6 +290,21 @@ extensions:
     policy_path
 }
 
+/// Path of the authority seed file that `spawn_trust_service` writes alongside a
+/// receipt database. The seed encodes `test_kernel_keypair`, so both the service
+/// and any CLI invocation pointed at this path derive the same signing identity
+/// and trusted-kernel-key set.
+fn trust_service_authority_seed_path(receipt_db_path: &Path) -> PathBuf {
+    receipt_db_path.with_file_name("authority-seed.hex")
+}
+
+fn write_trust_service_authority_seed(receipt_db_path: &Path) -> PathBuf {
+    let authority_seed_path = trust_service_authority_seed_path(receipt_db_path);
+    std::fs::write(&authority_seed_path, test_kernel_keypair().seed_hex())
+        .expect("write authority seed file");
+    authority_seed_path
+}
+
 fn spawn_trust_service(
     listen: std::net::SocketAddr,
     service_token: &str,
@@ -288,6 +315,13 @@ fn spawn_trust_service(
 ) -> ServerGuard {
     let service_lock = trust_service_test_lock();
     let policy_path = write_test_reputation_policy(receipt_db_path);
+    // Derive the service's capability authority (and therefore its trusted
+    // kernel key set) from the same fixed seed used to sign receipt fixtures.
+    // `--authority-seed-file` and `--authority-db` are mutually exclusive, so
+    // the seed file replaces the db path here; reports and credit scoring read
+    // the receipt-db directly and do not need a persistent SqliteCapabilityAuthority.
+    let _ = authority_db_path;
+    let authority_seed_path = write_trust_service_authority_seed(receipt_db_path);
     let child = Command::new(env!("CARGO_BIN_EXE_chio"))
         .current_dir(workspace_root())
         .args([
@@ -295,8 +329,10 @@ fn spawn_trust_service(
             receipt_db_path.to_str().expect("receipt db path"),
             "--revocation-db",
             revocation_db_path.to_str().expect("revocation db path"),
-            "--authority-db",
-            authority_db_path.to_str().expect("authority db path"),
+            "--authority-seed-file",
+            authority_seed_path
+                .to_str()
+                .expect("authority seed file path"),
             "--budget-db",
             budget_db_path.to_str().expect("budget db path"),
             "trust",
@@ -702,7 +738,38 @@ fn make_financial_receipt(
     root_budget_holder: &str,
     delegation_depth: u32,
 ) -> ChioReceipt {
-    let keypair = Keypair::generate();
+    make_financial_receipt_signed_by(
+        &Keypair::generate(),
+        id,
+        capability_id,
+        subject_key,
+        issuer_key,
+        tool_server,
+        tool_name,
+        decision,
+        timestamp,
+        cost_charged,
+        attempted_cost,
+        root_budget_holder,
+        delegation_depth,
+    )
+}
+
+fn make_financial_receipt_signed_by(
+    signing_key: &Keypair,
+    id: &str,
+    capability_id: &str,
+    subject_key: Option<&str>,
+    issuer_key: &str,
+    tool_server: &str,
+    tool_name: &str,
+    decision: Decision,
+    timestamp: u64,
+    cost_charged: u64,
+    attempted_cost: Option<u64>,
+    root_budget_holder: &str,
+    delegation_depth: u32,
+) -> ChioReceipt {
     let budget_authority = FinancialBudgetAuthorityReceiptMetadata {
         guarantee_level: "ha_quorum_commit".to_string(),
         authority_profile: "authoritative_hold_event".to_string(),
@@ -781,9 +848,9 @@ fn make_financial_receipt(
             metadata: Some(metadata),
             trust_level: chio_core::TrustLevel::default(),
             tenant_id: None,
-            kernel_key: keypair.public_key(),
+            kernel_key: signing_key.public_key(),
         },
-        &keypair,
+        signing_key,
     )
     .unwrap()
 }
@@ -963,7 +1030,8 @@ fn make_financial_receipt_with_settlement_status(
     .unwrap()
 }
 
-fn make_governed_financial_receipt(
+fn make_governed_financial_receipt_signed_by(
+    signing_key: &Keypair,
     id: &str,
     capability_id: &str,
     subject_key: &str,
@@ -974,7 +1042,6 @@ fn make_governed_financial_receipt(
     cost_charged: u64,
     root_budget_holder: &str,
 ) -> ChioReceipt {
-    let keypair = Keypair::generate();
     let metadata = serde_json::json!({
         "attribution": ReceiptAttributionMetadata {
             subject_key: subject_key.to_string(),
@@ -1043,9 +1110,9 @@ fn make_governed_financial_receipt(
             metadata: Some(metadata),
             trust_level: chio_core::TrustLevel::default(),
             tenant_id: None,
-            kernel_key: keypair.public_key(),
+            kernel_key: signing_key.public_key(),
         },
-        &keypair,
+        signing_key,
     )
     .unwrap()
 }
@@ -1198,7 +1265,7 @@ fn make_governed_authorization_receipt_with_runtime_profile(
     runtime_verifier: &str,
     runtime_evidence_sha256: &str,
 ) -> ChioReceipt {
-    let keypair = Keypair::generate();
+    let keypair = test_kernel_keypair();
     let metadata = serde_json::json!({
         "attribution": ReceiptAttributionMetadata {
             subject_key: subject_key.to_string(),
@@ -1345,7 +1412,7 @@ fn make_credit_history_receipt(
     exposure_currency: &str,
     include_runtime_assurance: bool,
 ) -> ChioReceipt {
-    let keypair = Keypair::generate();
+    let keypair = test_kernel_keypair();
     let metadata = serde_json::json!({
         "attribution": ReceiptAttributionMetadata {
             subject_key: subject_key.to_string(),
@@ -1439,7 +1506,7 @@ fn make_governed_authorization_receipt_without_runtime_assurance(
     currency: &str,
     units: u64,
 ) -> ChioReceipt {
-    let keypair = Keypair::generate();
+    let keypair = test_kernel_keypair();
     let metadata = serde_json::json!({
         "attribution": ReceiptAttributionMetadata {
             subject_key: subject_key.to_string(),
@@ -1522,7 +1589,7 @@ fn make_underwriting_simulation_receipt(
     timestamp: u64,
     runtime_tier: RuntimeAssuranceTier,
 ) -> ChioReceipt {
-    let keypair = Keypair::generate();
+    let keypair = test_kernel_keypair();
     let metadata = serde_json::json!({
         "attribution": ReceiptAttributionMetadata {
             subject_key: subject_key.to_string(),
@@ -3143,6 +3210,21 @@ fn test_operator_report_endpoint() {
     )
     .expect("sign child capability");
 
+    let rc_op_1 = make_financial_receipt_signed_by(
+        &checkpoint_kp,
+        "rc-op-1",
+        "cap-op-child",
+        Some(&leaf_hex),
+        &issuer_hex,
+        "shell",
+        "bash",
+        Decision::Allow,
+        3_000,
+        850,
+        None,
+        &root_hex,
+        1,
+    );
     {
         let store = SqliteReceiptStore::open(&receipt_db_path).expect("open receipt store");
         store
@@ -3153,20 +3235,7 @@ fn test_operator_report_endpoint() {
             .expect("record child lineage");
 
         let seq = store
-            .append_chio_receipt_returning_seq(&make_financial_receipt(
-                "rc-op-1",
-                "cap-op-child",
-                Some(&leaf_hex),
-                &issuer_hex,
-                "shell",
-                "bash",
-                Decision::Allow,
-                3_000,
-                850,
-                None,
-                &root_hex,
-                1,
-            ))
+            .append_chio_receipt_returning_seq(&rc_op_1)
             .expect("append checkpointed receipt");
         store
             .append_chio_receipt(&make_financial_receipt(
@@ -3331,7 +3400,7 @@ fn test_operator_report_endpoint() {
         .as_array()
         .expect("cost attribution receipts")
         .iter()
-        .find(|row| row["receiptId"] == "rc-op-1")
+        .find(|row| row["receiptId"] == rc_op_1.id.as_str())
         .expect("operator attribution row");
     assert_eq!(
         attribution_row["budgetAuthority"]["guarantee_level"].as_str(),
@@ -3354,19 +3423,20 @@ fn test_settlement_reconciliation_report_and_action_endpoint() {
     let authority_db_path = dir.join("authority.sqlite3");
     let budget_db_path = dir.join("budgets.sqlite3");
 
+    let rc_settle_pending = make_financial_receipt_with_settlement_status(
+        "rc-settle-pending",
+        "cap-settlement-1",
+        "payments",
+        "checkout",
+        4_000,
+        125,
+        SettlementStatus::Pending,
+        Some("hold-pending-1"),
+    );
     {
         let store = SqliteReceiptStore::open(&receipt_db_path).expect("open receipt store");
         store
-            .append_chio_receipt(&make_financial_receipt_with_settlement_status(
-                "rc-settle-pending",
-                "cap-settlement-1",
-                "payments",
-                "checkout",
-                4_000,
-                125,
-                SettlementStatus::Pending,
-                Some("hold-pending-1"),
-            ))
+            .append_chio_receipt(&rc_settle_pending)
             .expect("append pending settlement receipt");
         store
             .append_chio_receipt(&make_financial_receipt_with_settlement_status(
@@ -3445,7 +3515,7 @@ fn test_settlement_reconciliation_report_and_action_endpoint() {
             format!("Bearer {service_token}"),
         )
         .json(&serde_json::json!({
-            "receiptId": "rc-settle-pending",
+            "receiptId": rc_settle_pending.id.as_str(),
             "reconciliationState": "reconciled",
             "note": "confirmed externally"
         }))
@@ -3454,7 +3524,7 @@ fn test_settlement_reconciliation_report_and_action_endpoint() {
 
     assert_eq!(reconcile.status(), reqwest::StatusCode::OK);
     let reconcile_body: serde_json::Value = reconcile.json().expect("parse reconcile response");
-    assert_eq!(reconcile_body["receiptId"], "rc-settle-pending");
+    assert_eq!(reconcile_body["receiptId"], rc_settle_pending.id.as_str());
     assert_eq!(reconcile_body["reconciliationState"], "reconciled");
     assert_eq!(reconcile_body["note"], "confirmed externally");
     assert!(reconcile_body["updatedAt"].as_u64().is_some());
@@ -3486,7 +3556,7 @@ fn test_settlement_reconciliation_report_and_action_endpoint() {
         .as_array()
         .expect("settlement receipts array")
         .iter()
-        .find(|row| row["receiptId"] == "rc-settle-pending")
+        .find(|row| row["receiptId"] == rc_settle_pending.id.as_str())
         .expect("pending receipt should still be present");
     assert_eq!(reconciled_row["reconciliationState"], "reconciled");
     assert_eq!(reconciled_row["note"], "confirmed externally");
@@ -3537,6 +3607,17 @@ fn test_metered_billing_reconciliation_report_and_action_endpoint() {
     let subject_kp = Keypair::generate();
     let issuer_kp = Keypair::generate();
 
+    let rc_metered_1 =
+        make_governed_receipt("rc-metered-1", "cap-metered-1", "shell", "bash", 6_000);
+    let rc_metered_2 =
+        make_governed_receipt("rc-metered-2", "cap-metered-1", "shell", "bash", 6_001);
+    let rc_metered_non_governed = make_governed_x402_receipt(
+        "rc-metered-non-governed",
+        "cap-metered-2",
+        "shell",
+        "bash",
+        6_002,
+    );
     {
         let mut store = SqliteReceiptStore::open(&receipt_db_path).expect("open receipt store");
         record_test_capability_snapshot(
@@ -3549,31 +3630,13 @@ fn test_metered_billing_reconciliation_report_and_action_endpoint() {
             Some(true),
         );
         store
-            .append_chio_receipt(&make_governed_receipt(
-                "rc-metered-1",
-                "cap-metered-1",
-                "shell",
-                "bash",
-                6_000,
-            ))
+            .append_chio_receipt(&rc_metered_1)
             .expect("append first metered governed receipt");
         store
-            .append_chio_receipt(&make_governed_receipt(
-                "rc-metered-2",
-                "cap-metered-1",
-                "shell",
-                "bash",
-                6_001,
-            ))
+            .append_chio_receipt(&rc_metered_2)
             .expect("append second metered governed receipt");
         store
-            .append_chio_receipt(&make_governed_x402_receipt(
-                "rc-metered-non-governed",
-                "cap-metered-2",
-                "shell",
-                "bash",
-                6_002,
-            ))
+            .append_chio_receipt(&rc_metered_non_governed)
             .expect("append non-metered governed receipt");
     }
 
@@ -3629,7 +3692,7 @@ fn test_metered_billing_reconciliation_report_and_action_endpoint() {
             format!("Bearer {service_token}"),
         )
         .json(&serde_json::json!({
-            "receiptId": "rc-metered-1",
+            "receiptId": rc_metered_1.id.as_str(),
             "adapterKind": "manual_meter",
             "evidenceId": "usage-chio-1",
             "observedUnits": 17,
@@ -3647,7 +3710,7 @@ fn test_metered_billing_reconciliation_report_and_action_endpoint() {
 
     assert_eq!(reconcile.status(), reqwest::StatusCode::OK);
     let reconcile_body: serde_json::Value = reconcile.json().expect("parse metered response");
-    assert_eq!(reconcile_body["receiptId"], "rc-metered-1");
+    assert_eq!(reconcile_body["receiptId"], rc_metered_1.id.as_str());
     assert_eq!(reconcile_body["reconciliationState"], "reconciled");
     assert_eq!(
         reconcile_body["evidence"]["usageEvidence"]["evidenceKind"],
@@ -3666,7 +3729,7 @@ fn test_metered_billing_reconciliation_report_and_action_endpoint() {
             format!("Bearer {service_token}"),
         )
         .json(&serde_json::json!({
-            "receiptId": "rc-metered-2",
+            "receiptId": rc_metered_2.id.as_str(),
             "adapterKind": "manual_meter",
             "evidenceId": "usage-chio-1",
             "observedUnits": 10,
@@ -3688,7 +3751,7 @@ fn test_metered_billing_reconciliation_report_and_action_endpoint() {
             format!("Bearer {service_token}"),
         )
         .json(&serde_json::json!({
-            "receiptId": "rc-metered-non-governed",
+            "receiptId": rc_metered_non_governed.id.as_str(),
             "adapterKind": "manual_meter",
             "evidenceId": "usage-chio-2",
             "observedUnits": 8,
@@ -3742,7 +3805,7 @@ fn test_metered_billing_reconciliation_report_and_action_endpoint() {
         .as_array()
         .expect("metered billing receipts array")
         .iter()
-        .find(|row| row["receiptId"] == "rc-metered-1")
+        .find(|row| row["receiptId"] == rc_metered_1.id.as_str())
         .expect("first metered receipt row");
     assert_eq!(
         reconciled_row["evidence"]["usageEvidence"]["evidenceId"],
@@ -3807,7 +3870,7 @@ fn test_metered_billing_reconciliation_report_and_action_endpoint() {
         .body
         .receipts
         .iter()
-        .find(|row| row.receipt_id == "rc-metered-1")
+        .find(|row| row.receipt_id == rc_metered_1.id)
         .expect("metered feed row");
     assert!(metered_feed_row.governed.is_some());
     assert_eq!(
@@ -3850,7 +3913,7 @@ fn test_metered_billing_reconciliation_report_and_action_endpoint() {
         .as_array()
         .expect("receipts array")
         .iter()
-        .find(|row| row["id"] == "rc-metered-1")
+        .find(|row| row["id"] == rc_metered_1.id.as_str())
         .expect("queried metered receipt");
     assert!(
         queried_receipt["metadata"]["governed_transaction"]["metered_billing"]["usageEvidence"]
@@ -3874,6 +3937,15 @@ fn test_authorization_context_report_and_cli() {
     let subject_hex = subject_kp.public_key().to_hex();
     let issuer_hex = issuer_kp.public_key().to_hex();
 
+    let rc_auth_1 = make_governed_authorization_receipt(
+        "rc-auth-1",
+        "cap-auth-1",
+        &subject_hex,
+        &issuer_hex,
+        "shell",
+        "bash",
+        7_000,
+    );
     {
         let mut store = SqliteReceiptStore::open(&receipt_db_path).expect("open receipt store");
         record_test_capability_snapshot(
@@ -3886,15 +3958,7 @@ fn test_authorization_context_report_and_cli() {
             Some(true),
         );
         store
-            .append_chio_receipt(&make_governed_authorization_receipt(
-                "rc-auth-1",
-                "cap-auth-1",
-                &subject_hex,
-                &issuer_hex,
-                "shell",
-                "bash",
-                7_000,
-            ))
+            .append_chio_receipt(&rc_auth_1)
             .expect("append authorization receipt");
         store
             .append_chio_receipt(&make_governed_x402_receipt(
@@ -3995,7 +4059,7 @@ fn test_authorization_context_report_and_cli() {
         .as_array()
         .expect("authorization receipts array")
         .iter()
-        .find(|row| row["receiptId"] == "rc-auth-1")
+        .find(|row| row["receiptId"] == rc_auth_1.id.as_str())
         .expect("authorization receipt row");
     let detail_types = auth_row["authorizationDetails"]
         .as_array()
@@ -4138,7 +4202,7 @@ fn test_authorization_context_report_and_cli() {
     let cli_row = cli_report
         .receipts
         .iter()
-        .find(|row| row.receipt_id == "rc-auth-1")
+        .find(|row| row.receipt_id == rc_auth_1.id)
         .expect("authorization CLI row");
     assert_eq!(
         cli_row
@@ -4190,6 +4254,15 @@ fn authorization_context_report_does_not_mark_asserted_call_chain_as_sender_boun
     let subject_hex = subject_kp.public_key().to_hex();
     let issuer_hex = issuer_kp.public_key().to_hex();
 
+    let rc_auth_asserted = make_governed_authorization_receipt(
+        "rc-auth-asserted",
+        "cap-auth-asserted",
+        &subject_hex,
+        &issuer_hex,
+        "shell",
+        "bash",
+        7_050,
+    );
     {
         let mut store = SqliteReceiptStore::open(&receipt_db_path).expect("open receipt store");
         record_test_capability_snapshot(
@@ -4202,15 +4275,7 @@ fn authorization_context_report_does_not_mark_asserted_call_chain_as_sender_boun
             Some(true),
         );
         store
-            .append_chio_receipt(&make_governed_authorization_receipt(
-                "rc-auth-asserted",
-                "cap-auth-asserted",
-                &subject_hex,
-                &issuer_hex,
-                "shell",
-                "bash",
-                7_050,
-            ))
+            .append_chio_receipt(&rc_auth_asserted)
             .expect("append asserted authorization receipt");
     }
 
@@ -4252,7 +4317,7 @@ fn authorization_context_report_does_not_mark_asserted_call_chain_as_sender_boun
         .as_array()
         .expect("authorization receipts array")
         .iter()
-        .find(|row| row["receiptId"] == "rc-auth-asserted")
+        .find(|row| row["receiptId"] == rc_auth_asserted.id.as_str())
         .expect("asserted authorization receipt row");
     assert_eq!(
         auth_row["transactionContext"]["callChain"]["evidenceClass"].as_str(),
@@ -4280,6 +4345,15 @@ fn test_authorization_metadata_and_review_pack_surfaces() {
     let subject_hex = subject_kp.public_key().to_hex();
     let issuer_hex = issuer_kp.public_key().to_hex();
 
+    let rc_auth_pack_1 = make_governed_authorization_receipt(
+        "rc-auth-pack-1",
+        "cap-auth-pack-1",
+        &subject_hex,
+        &issuer_hex,
+        "shell",
+        "bash",
+        7_100,
+    );
     {
         let mut store = SqliteReceiptStore::open(&receipt_db_path).expect("open receipt store");
         record_test_capability_snapshot(
@@ -4292,15 +4366,7 @@ fn test_authorization_metadata_and_review_pack_surfaces() {
             Some(true),
         );
         store
-            .append_chio_receipt(&make_governed_authorization_receipt(
-                "rc-auth-pack-1",
-                "cap-auth-pack-1",
-                &subject_hex,
-                &issuer_hex,
-                "shell",
-                "bash",
-                7_100,
-            ))
+            .append_chio_receipt(&rc_auth_pack_1)
             .expect("append authorization receipt");
         store
             .append_chio_receipt(&make_governed_x402_receipt(
@@ -4465,7 +4531,7 @@ fn test_authorization_metadata_and_review_pack_surfaces() {
         .as_array()
         .expect("authorization review pack records")
         .iter()
-        .find(|row| row["receiptId"] == "rc-auth-pack-1")
+        .find(|row| row["receiptId"] == rc_auth_pack_1.id.as_str())
         .expect("review-pack record for first governed receipt");
     assert_eq!(
         review_record["authorizationContext"]["senderConstraint"]["subjectKey"].as_str(),
@@ -4481,7 +4547,7 @@ fn test_authorization_metadata_and_review_pack_surfaces() {
     );
     assert_eq!(
         review_record["signedReceipt"]["id"].as_str(),
-        Some("rc-auth-pack-1")
+        Some(rc_auth_pack_1.id.as_str())
     );
 
     let cli_metadata_output = Command::new(env!("CARGO_BIN_EXE_chio"))
@@ -5254,7 +5320,8 @@ fn test_shared_evidence_reporting_surfaces() {
             .expect("record remote lineage bridge");
 
         let seq = store
-            .append_chio_receipt_returning_seq(&make_financial_receipt(
+            .append_chio_receipt_returning_seq(&make_financial_receipt_signed_by(
+                &checkpoint_kp,
                 "rc-local-1",
                 "cap-local-child",
                 Some(&local_leaf_hex),
@@ -5492,6 +5559,16 @@ fn test_behavioral_feed_export_surfaces() {
     )
     .expect("sign child capability");
 
+    let rc_risk_2 = make_financial_receipt_with_settlement_status(
+        "rc-risk-2",
+        "cap-risk-child",
+        "shell",
+        "bash",
+        5_001,
+        200,
+        SettlementStatus::Pending,
+        Some("payment-risk-2"),
+    );
     {
         let store = SqliteReceiptStore::open(&receipt_db_path).expect("open receipt store");
         store
@@ -5502,7 +5579,8 @@ fn test_behavioral_feed_export_surfaces() {
             .expect("record child lineage");
 
         let seq = store
-            .append_chio_receipt_returning_seq(&make_governed_financial_receipt(
+            .append_chio_receipt_returning_seq(&make_governed_financial_receipt_signed_by(
+                &checkpoint_kp,
                 "rc-risk-1",
                 "cap-risk-child",
                 &leaf_hex,
@@ -5515,16 +5593,7 @@ fn test_behavioral_feed_export_surfaces() {
             ))
             .expect("append governed receipt");
         store
-            .append_chio_receipt(&make_financial_receipt_with_settlement_status(
-                "rc-risk-2",
-                "cap-risk-child",
-                "shell",
-                "bash",
-                5_001,
-                200,
-                SettlementStatus::Pending,
-                Some("payment-risk-2"),
-            ))
+            .append_chio_receipt(&rc_risk_2)
             .expect("append pending receipt");
 
         let bytes = store
@@ -5616,7 +5685,7 @@ fn test_behavioral_feed_export_surfaces() {
         .body
         .receipts
         .iter()
-        .find(|row| row.receipt_id == "rc-risk-2")
+        .find(|row| row.receipt_id == rc_risk_2.id)
         .expect("budget authority feed row");
     assert_eq!(
         budget_authority_row
@@ -5635,6 +5704,9 @@ fn test_behavioral_feed_export_surfaces() {
         "budget-hold:rc-risk-2:capability:0"
     );
 
+    // Sign the CLI export with the same authority the trust service uses so the
+    // signer keys match below.
+    let authority_seed_path = trust_service_authority_seed_path(&receipt_db_path);
     let cli_output = Command::new(env!("CARGO_BIN_EXE_chio"))
         .current_dir(workspace_root())
         .args([
@@ -5643,8 +5715,10 @@ fn test_behavioral_feed_export_surfaces() {
             receipt_db_path.to_str().expect("receipt db path"),
             "--budget-db",
             budget_db_path.to_str().expect("budget db path"),
-            "--authority-db",
-            authority_db_path.to_str().expect("authority db path"),
+            "--authority-seed-file",
+            authority_seed_path
+                .to_str()
+                .expect("authority seed file path"),
             "trust",
             "behavioral-feed",
             "export",
@@ -9844,23 +9918,24 @@ fn test_provider_risk_package_export_surfaces() {
         .json()
         .expect("parse issued provider facility");
 
+    let rc_risk_loss_1 = make_credit_history_receipt(
+        "rc-risk-loss-1",
+        "cap-risk-loss-1",
+        subject_key,
+        issuer_key,
+        "ledger",
+        "transfer",
+        now.saturating_sub(60),
+        SettlementStatus::Failed,
+        "USD",
+        8_500,
+        "USD",
+        true,
+    );
     {
         let store = SqliteReceiptStore::open(&receipt_db_path).expect("reopen receipt store");
         store
-            .append_chio_receipt(&make_credit_history_receipt(
-                "rc-risk-loss-1",
-                "cap-risk-loss-1",
-                subject_key,
-                issuer_key,
-                "ledger",
-                "transfer",
-                now.saturating_sub(60),
-                SettlementStatus::Failed,
-                "USD",
-                8_500,
-                "USD",
-                true,
-            ))
+            .append_chio_receipt(&rc_risk_loss_1)
             .expect("append provider risk loss receipt");
     }
 
@@ -9899,7 +9974,7 @@ fn test_provider_risk_package_export_surfaces() {
     assert!(report.body.recent_loss_history.summary.returned_loss_events >= 1);
     assert_eq!(
         report.body.recent_loss_history.entries[0].receipt_id,
-        "rc-risk-loss-1"
+        rc_risk_loss_1.id
     );
     assert_eq!(
         report.body.recent_loss_history.entries[0].settlement_status,
@@ -10593,14 +10668,19 @@ fn test_capital_instruction_issue_surfaces() {
         serde_json::to_vec_pretty(&request_json).expect("serialize capital instruction request"),
     )
     .expect("write capital instruction request");
+    // Build the reserve book against the trusted bond/scorecard by scoring with
+    // the same authority the trust service uses.
+    let authority_seed_path = trust_service_authority_seed_path(&receipt_db_path);
     let cli_output = Command::new(env!("CARGO_BIN_EXE_chio"))
         .current_dir(workspace_root())
         .args([
             "--json",
             "--receipt-db",
             receipt_db_path.to_str().expect("receipt db path"),
-            "--authority-db",
-            authority_db_path.to_str().expect("authority db path"),
+            "--authority-seed-file",
+            authority_seed_path
+                .to_str()
+                .expect("authority seed file path"),
             "trust",
             "capital-instruction",
             "issue",
@@ -10925,25 +11005,26 @@ fn test_capital_allocation_issue_surfaces() {
         .json()
         .expect("parse issued capital allocation facility");
 
-    let governed_receipt_id = "rc-capital-allocation-pending-1";
+    let rc_capital_allocation_pending_1 = make_governed_authorization_receipt_with_options(
+        "rc-capital-allocation-pending-1",
+        "cap-capital-allocation-pending-1",
+        subject_key,
+        issuer_key,
+        "ledger",
+        "transfer",
+        now.saturating_sub(120),
+        SettlementStatus::Pending,
+        "USD",
+        30_000,
+        "USD",
+        false,
+        false,
+    );
+    let governed_receipt_id = rc_capital_allocation_pending_1.id.as_str();
     {
         let store = SqliteReceiptStore::open(&receipt_db_path).expect("reopen receipt store");
         store
-            .append_chio_receipt(&make_governed_authorization_receipt_with_options(
-                governed_receipt_id,
-                "cap-capital-allocation-pending-1",
-                subject_key,
-                issuer_key,
-                "ledger",
-                "transfer",
-                now.saturating_sub(120),
-                SettlementStatus::Pending,
-                "USD",
-                30_000,
-                "USD",
-                false,
-                false,
-            ))
+            .append_chio_receipt(&rc_capital_allocation_pending_1)
             .expect("append governed pending receipt");
     }
 
@@ -11049,6 +11130,10 @@ fn test_capital_allocation_issue_surfaces() {
         serde_json::to_vec_pretty(&request_json).expect("serialize capital allocation request"),
     )
     .expect("write capital allocation request");
+    // Score and sign the CLI allocation with the same authority the trust
+    // service uses so seeded receipts pass reputation integrity validation and
+    // the signer key matches.
+    let authority_seed_path = trust_service_authority_seed_path(&receipt_db_path);
     let cli_output = Command::new(env!("CARGO_BIN_EXE_chio"))
         .current_dir(workspace_root())
         .args([
@@ -11057,8 +11142,10 @@ fn test_capital_allocation_issue_surfaces() {
             receipt_db_path.to_str().expect("receipt db path"),
             "--budget-db",
             budget_db_path.to_str().expect("budget db path"),
-            "--authority-db",
-            authority_db_path.to_str().expect("authority db path"),
+            "--authority-seed-file",
+            authority_seed_path
+                .to_str()
+                .expect("authority seed file path"),
             "trust",
             "capital-allocation",
             "issue",
@@ -11193,24 +11280,40 @@ fn test_capital_allocation_issue_fail_closed_and_boundary_outcomes() {
         assert_eq!(facility_issue.status(), reqwest::StatusCode::OK);
     }
 
+    let rc_capital_allocation_manual_pending_1 = make_governed_authorization_receipt_with_options(
+        "rc-capital-allocation-manual-pending-1",
+        "cap-capital-allocation-manual-pending-1",
+        manual_subject,
+        issuer_key,
+        "ledger",
+        "transfer",
+        now.saturating_sub(120),
+        SettlementStatus::Pending,
+        "USD",
+        30_000,
+        "USD",
+        false,
+        false,
+    );
+    let rc_capital_allocation_queue_pending_2 = make_governed_authorization_receipt_with_options(
+        "rc-capital-allocation-queue-pending-2",
+        "cap-capital-allocation-queue-pending-2",
+        queue_subject,
+        issuer_key,
+        "ledger",
+        "transfer",
+        now.saturating_sub(60),
+        SettlementStatus::Pending,
+        "USD",
+        5_000,
+        "USD",
+        false,
+        false,
+    );
     {
         let store = SqliteReceiptStore::open(&receipt_db_path).expect("reopen receipt store");
         store
-            .append_chio_receipt(&make_governed_authorization_receipt_with_options(
-                "rc-capital-allocation-manual-pending-1",
-                "cap-capital-allocation-manual-pending-1",
-                manual_subject,
-                issuer_key,
-                "ledger",
-                "transfer",
-                now.saturating_sub(120),
-                SettlementStatus::Pending,
-                "USD",
-                30_000,
-                "USD",
-                false,
-                false,
-            ))
+            .append_chio_receipt(&rc_capital_allocation_manual_pending_1)
             .expect("append manual pending governed receipt");
         store
             .append_chio_receipt(&make_governed_authorization_receipt_with_options(
@@ -11230,21 +11333,7 @@ fn test_capital_allocation_issue_fail_closed_and_boundary_outcomes() {
             ))
             .expect("append first queue pending receipt");
         store
-            .append_chio_receipt(&make_governed_authorization_receipt_with_options(
-                "rc-capital-allocation-queue-pending-2",
-                "cap-capital-allocation-queue-pending-2",
-                queue_subject,
-                issuer_key,
-                "ledger",
-                "transfer",
-                now.saturating_sub(60),
-                SettlementStatus::Pending,
-                "USD",
-                5_000,
-                "USD",
-                false,
-                false,
-            ))
+            .append_chio_receipt(&rc_capital_allocation_queue_pending_2)
             .expect("append second queue pending receipt");
     }
 
@@ -11279,7 +11368,7 @@ fn test_capital_allocation_issue_fail_closed_and_boundary_outcomes() {
                 "bondLimit": 10,
                 "lossEventLimit": 10
             },
-            "receiptId": "rc-capital-allocation-manual-pending-1",
+            "receiptId": rc_capital_allocation_manual_pending_1.id.as_str(),
             "authorityChain": [
                 {
                     "role": "operator_treasury",
@@ -11384,7 +11473,7 @@ fn test_capital_allocation_issue_fail_closed_and_boundary_outcomes() {
                 "bondLimit": 10,
                 "lossEventLimit": 10
             },
-            "receiptId": "rc-capital-allocation-queue-pending-2",
+            "receiptId": rc_capital_allocation_queue_pending_2.id.as_str(),
             "authorityChain": [
                 {
                     "role": "operator_treasury",
@@ -13329,25 +13418,30 @@ fn test_liability_claim_workflow_surfaces_inner() {
     let subject_key = "subject-liability-claims-1";
     let issuer_key = "issuer-liability-claims-1";
     let now = unix_now_secs();
+    let mut rc_liability_claims_0_id = String::new();
     {
         let store = SqliteReceiptStore::open(&receipt_db_path).expect("open receipt store");
         for day in 0..LARGE_RECEIPT_HISTORY_LEN {
+            let receipt = make_governed_authorization_receipt_with_options(
+                &format!("rc-liability-claims-{day}"),
+                &format!("cap-liability-claims-{day}"),
+                subject_key,
+                issuer_key,
+                "ledger",
+                "transfer",
+                now.saturating_sub((day + 2) * 86_400),
+                SettlementStatus::Settled,
+                "USD",
+                4_000,
+                "USD",
+                false,
+                false,
+            );
+            if day == 0 {
+                rc_liability_claims_0_id = receipt.id.clone();
+            }
             store
-                .append_chio_receipt(&make_governed_authorization_receipt_with_options(
-                    &format!("rc-liability-claims-{day}"),
-                    &format!("cap-liability-claims-{day}"),
-                    subject_key,
-                    issuer_key,
-                    "ledger",
-                    "transfer",
-                    now.saturating_sub((day + 2) * 86_400),
-                    SettlementStatus::Settled,
-                    "USD",
-                    4_000,
-                    "USD",
-                    false,
-                    false,
-                ))
+                .append_chio_receipt(&receipt)
                 .expect("append liability claim receipt");
         }
     }
@@ -13451,23 +13545,24 @@ fn test_liability_claim_workflow_surfaces_inner() {
     assert_eq!(bond_issue.status(), reqwest::StatusCode::OK);
     let bond: SignedCreditBond = bond_issue.json().expect("parse issued bond");
 
+    let rc_liability_claims_failed_1 = make_credit_history_receipt(
+        "rc-liability-claims-failed-1",
+        "cap-liability-claims-failed-1",
+        subject_key,
+        issuer_key,
+        "ledger",
+        "transfer",
+        unix_now_secs().saturating_sub(60),
+        SettlementStatus::Failed,
+        "USD",
+        8_500,
+        "USD",
+        true,
+    );
     {
         let store = SqliteReceiptStore::open(&receipt_db_path).expect("reopen receipt store");
         store
-            .append_chio_receipt(&make_credit_history_receipt(
-                "rc-liability-claims-failed-1",
-                "cap-liability-claims-failed-1",
-                subject_key,
-                issuer_key,
-                "ledger",
-                "transfer",
-                unix_now_secs().saturating_sub(60),
-                SettlementStatus::Failed,
-                "USD",
-                8_500,
-                "USD",
-                true,
-            ))
+            .append_chio_receipt(&rc_liability_claims_failed_1)
             .expect("append failed claim receipt");
     }
 
@@ -13667,7 +13762,7 @@ fn test_liability_claim_workflow_surfaces_inner() {
             "claimAmount": { "units": 20000, "currency": "USD" },
             "claimRef": "CLAIM-1",
             "narrative": "tool execution loss package",
-            "receiptIds": ["rc-liability-claims-0", "rc-liability-claims-failed-1"]
+            "receiptIds": [rc_liability_claims_0_id, rc_liability_claims_failed_1.id]
         }))
         .send()
         .expect("issue liability claim");
@@ -13773,25 +13868,26 @@ fn test_liability_claim_workflow_surfaces_inner() {
         String::from_utf8(adjudication_output.stdout).expect("adjudication CLI json");
     assert!(adjudication_json.contains("\"adjudicationId\""));
 
-    let governed_receipt_id = "rc-liability-claims-payout-1";
+    let rc_liability_claims_payout_1 = make_governed_authorization_receipt_with_options(
+        "rc-liability-claims-payout-1",
+        "cap-liability-claims-payout-1",
+        subject_key,
+        issuer_key,
+        "ledger",
+        "transfer",
+        unix_now_secs().saturating_sub(30),
+        SettlementStatus::Settled,
+        "USD",
+        18_000,
+        "USD",
+        false,
+        false,
+    );
+    let governed_receipt_id = rc_liability_claims_payout_1.id.as_str();
     {
         let store = SqliteReceiptStore::open(&receipt_db_path).expect("reopen receipt store");
         store
-            .append_chio_receipt(&make_governed_authorization_receipt_with_options(
-                governed_receipt_id,
-                "cap-liability-claims-payout-1",
-                subject_key,
-                issuer_key,
-                "ledger",
-                "transfer",
-                unix_now_secs().saturating_sub(30),
-                SettlementStatus::Settled,
-                "USD",
-                18_000,
-                "USD",
-                false,
-                false,
-            ))
+            .append_chio_receipt(&rc_liability_claims_payout_1)
             .expect("append settled payout governed receipt");
     }
 
@@ -13840,14 +13936,19 @@ fn test_liability_claim_workflow_surfaces_inner() {
     )
     .expect("write payout capital instruction");
 
+    // Bind the governed receipt against the trusted exposure ledger by scoring
+    // with the same authority the trust service uses.
+    let authority_seed_path = trust_service_authority_seed_path(&receipt_db_path);
     let capital_instruction_output = Command::new(env!("CARGO_BIN_EXE_chio"))
         .current_dir(workspace_root())
         .args([
             "--json",
             "--receipt-db",
             receipt_db_path.to_str().expect("receipt db path"),
-            "--authority-db",
-            authority_db_path.to_str().expect("authority db path"),
+            "--authority-seed-file",
+            authority_seed_path
+                .to_str()
+                .expect("authority seed file path"),
             "trust",
             "capital-instruction",
             "issue",
@@ -14193,24 +14294,29 @@ fn test_liability_claim_rejects_oversized_claims_and_invalid_disputes() {
     let subject_key = "subject-liability-claims-negative-1";
     let issuer_key = "issuer-liability-claims-negative-1";
     let now = unix_now_secs();
+    let mut rc_liability_claims_negative_1_id = String::new();
     {
         let store = SqliteReceiptStore::open(&receipt_db_path).expect("open receipt store");
         for day in 0..100_u64 {
+            let receipt = make_credit_history_receipt(
+                &format!("rc-liability-claims-negative-{day}"),
+                &format!("cap-liability-claims-negative-{day}"),
+                subject_key,
+                issuer_key,
+                "ledger",
+                "transfer",
+                now.saturating_sub((day + 2) * 86_400),
+                SettlementStatus::Settled,
+                "USD",
+                4_000,
+                "USD",
+                true,
+            );
+            if day == 1 {
+                rc_liability_claims_negative_1_id = receipt.id.clone();
+            }
             store
-                .append_chio_receipt(&make_credit_history_receipt(
-                    &format!("rc-liability-claims-negative-{day}"),
-                    &format!("cap-liability-claims-negative-{day}"),
-                    subject_key,
-                    issuer_key,
-                    "ledger",
-                    "transfer",
-                    now.saturating_sub((day + 2) * 86_400),
-                    SettlementStatus::Settled,
-                    "USD",
-                    4_000,
-                    "USD",
-                    true,
-                ))
+                .append_chio_receipt(&receipt)
                 .expect("append negative liability claim receipt");
         }
     }
@@ -14302,23 +14408,24 @@ fn test_liability_claim_rejects_oversized_claims_and_invalid_disputes() {
     assert_eq!(bond_issue.status(), reqwest::StatusCode::OK);
     let bond: SignedCreditBond = bond_issue.json().expect("parse negative bond");
 
+    let rc_liability_claims_negative_failed_1 = make_credit_history_receipt(
+        "rc-liability-claims-negative-failed-1",
+        "cap-liability-claims-negative-failed-1",
+        subject_key,
+        issuer_key,
+        "ledger",
+        "transfer",
+        unix_now_secs().saturating_sub(60),
+        SettlementStatus::Failed,
+        "USD",
+        7_500,
+        "USD",
+        true,
+    );
     {
         let store = SqliteReceiptStore::open(&receipt_db_path).expect("reopen receipt store");
         store
-            .append_chio_receipt(&make_credit_history_receipt(
-                "rc-liability-claims-negative-failed-1",
-                "cap-liability-claims-negative-failed-1",
-                subject_key,
-                issuer_key,
-                "ledger",
-                "transfer",
-                unix_now_secs().saturating_sub(60),
-                SettlementStatus::Failed,
-                "USD",
-                7_500,
-                "USD",
-                true,
-            ))
+            .append_chio_receipt(&rc_liability_claims_negative_failed_1)
             .expect("append negative failed receipt");
     }
 
@@ -14524,7 +14631,10 @@ fn test_liability_claim_rejects_oversized_claims_and_invalid_disputes() {
             "claimAmount": { "units": 10000, "currency": "USD" },
             "claimRef": "CLAIM-NEG-VALID",
             "narrative": "valid claim for dispute-state test",
-            "receiptIds": ["rc-liability-claims-negative-1", "rc-liability-claims-negative-failed-1"]
+            "receiptIds": [
+                rc_liability_claims_negative_1_id,
+                rc_liability_claims_negative_failed_1.id
+            ]
         }))
         .send()
         .expect("issue valid negative claim");
@@ -14676,6 +14786,9 @@ fn test_underwriting_policy_input_export_surfaces() {
     );
     assert!(reasons.contains(&chio_core::underwriting::UnderwritingReasonCode::DelegatedCallChain));
 
+    // Sign the CLI export with the same authority the trust service uses so the
+    // signer keys match below.
+    let authority_seed_path = trust_service_authority_seed_path(&receipt_db_path);
     let cli_output = Command::new(env!("CARGO_BIN_EXE_chio"))
         .current_dir(workspace_root())
         .args([
@@ -14684,8 +14797,10 @@ fn test_underwriting_policy_input_export_surfaces() {
             receipt_db_path.to_str().expect("receipt db path"),
             "--budget-db",
             budget_db_path.to_str().expect("budget db path"),
-            "--authority-db",
-            authority_db_path.to_str().expect("authority db path"),
+            "--authority-seed-file",
+            authority_seed_path
+                .to_str()
+                .expect("authority seed file path"),
             "trust",
             "underwriting-input",
             "export",
@@ -14754,18 +14869,19 @@ fn test_underwriting_decision_report_surfaces() {
     let subject_key = "subject-underwrite-decision-1";
     let issuer_key = "issuer-underwrite-decision-1";
     let timestamp = unix_now_secs().saturating_sub(60);
+    let rc_decision_1 = make_governed_authorization_receipt(
+        "rc-decision-1",
+        "cap-decision-1",
+        subject_key,
+        issuer_key,
+        "ledger",
+        "transfer",
+        timestamp,
+    );
     {
         let store = SqliteReceiptStore::open(&receipt_db_path).expect("open receipt store");
         store
-            .append_chio_receipt(&make_governed_authorization_receipt(
-                "rc-decision-1",
-                "cap-decision-1",
-                subject_key,
-                issuer_key,
-                "ledger",
-                "transfer",
-                timestamp,
-            ))
+            .append_chio_receipt(&rc_decision_1)
             .expect("append governed underwriting decision receipt");
     }
 
@@ -14826,9 +14942,12 @@ fn test_underwriting_decision_report_surfaces() {
     assert!(!call_chain_finding.evidence_refs.is_empty());
     assert_eq!(
         call_chain_finding.evidence_refs[0].reference_id,
-        "rc-decision-1"
+        rc_decision_1.id
     );
 
+    // Score the CLI evaluation against the same trusted kernel key as the
+    // service so the seeded receipt is visible and outcomes match.
+    let authority_seed_path = trust_service_authority_seed_path(&receipt_db_path);
     let cli_output = Command::new(env!("CARGO_BIN_EXE_chio"))
         .current_dir(workspace_root())
         .args([
@@ -14837,6 +14956,10 @@ fn test_underwriting_decision_report_surfaces() {
             receipt_db_path.to_str().expect("receipt db path"),
             "--budget-db",
             budget_db_path.to_str().expect("budget db path"),
+            "--authority-seed-file",
+            authority_seed_path
+                .to_str()
+                .expect("authority seed file path"),
             "trust",
             "underwriting-decision",
             "evaluate",
@@ -14967,24 +15090,25 @@ fn test_underwriting_decision_links_failed_settlement_evidence() {
     let authority_db_path = dir.join("authority.sqlite3");
     let budget_db_path = dir.join("budgets.sqlite3");
 
+    let rc_failed_settlement_1 = make_governed_authorization_receipt_with_options(
+        "rc-failed-settlement-1",
+        "cap-failed-settlement-1",
+        "subject-failed-settlement-1",
+        "issuer-failed-settlement-1",
+        "ledger",
+        "transfer",
+        unix_now_secs().saturating_sub(60),
+        SettlementStatus::Failed,
+        "USD",
+        4_200,
+        "USD",
+        false,
+        false,
+    );
     {
         let store = SqliteReceiptStore::open(&receipt_db_path).expect("open receipt store");
         store
-            .append_chio_receipt(&make_governed_authorization_receipt_with_options(
-                "rc-failed-settlement-1",
-                "cap-failed-settlement-1",
-                "subject-failed-settlement-1",
-                "issuer-failed-settlement-1",
-                "ledger",
-                "transfer",
-                unix_now_secs().saturating_sub(60),
-                SettlementStatus::Failed,
-                "USD",
-                4_200,
-                "USD",
-                false,
-                false,
-            ))
+            .append_chio_receipt(&rc_failed_settlement_1)
             .expect("append failed settlement underwriting receipt");
     }
 
@@ -15031,7 +15155,7 @@ fn test_underwriting_decision_links_failed_settlement_evidence() {
     );
     assert_eq!(
         failed_settlement_finding.evidence_refs[0].reference_id,
-        "rc-failed-settlement-1"
+        rc_failed_settlement_1.id
     );
 
     let _ = std::fs::remove_dir_all(&dir);
@@ -15127,6 +15251,9 @@ fn test_underwriting_simulation_report_surfaces() {
         .added_reasons
         .contains(&"insufficient_receipt_history".to_string()));
 
+    // Score the CLI simulation against the same trusted kernel key as the
+    // service so the seeded receipts pass reputation integrity validation.
+    let authority_seed_path = trust_service_authority_seed_path(&receipt_db_path);
     let cli_output = Command::new(env!("CARGO_BIN_EXE_chio"))
         .current_dir(workspace_root())
         .args([
@@ -15135,6 +15262,10 @@ fn test_underwriting_simulation_report_surfaces() {
             receipt_db_path.to_str().expect("receipt db path"),
             "--budget-db",
             budget_db_path.to_str().expect("budget db path"),
+            "--authority-seed-file",
+            authority_seed_path
+                .to_str()
+                .expect("authority seed file path"),
             "trust",
             "underwriting-decision",
             "simulate",

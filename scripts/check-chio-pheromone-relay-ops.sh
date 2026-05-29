@@ -128,7 +128,7 @@ PY
 cargo test -p chio-pheromone-relay signed_peer_directory_bundle_verifies_trust_and_rejects_rollback
 cargo test -p chio-pheromone-relay relay_profiles_reject_unsafe_production_endpoints
 cargo test -p chio-pheromone-relay relay_tick_delivers_leased_batches_with_real_request_signature
-cargo test -p chio-cli --bin chio_pheromone
+cargo test -p chio-cli --bin chio chio_pheromone
 
 cargo run -p chio-cli --bin chio -- pheromone relay tick \
   --store "$tmpdir/relay.sqlite3" \

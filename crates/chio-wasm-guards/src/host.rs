@@ -259,10 +259,10 @@ where
         .map_err(|e| WasmGuardError::HostFunction(e.to_string()))
 }
 
-/// Register legacy raw-ABI core-module imports.
+/// Register raw-ABI core-module imports (used by modules that predate the Component Model ABI).
 ///
-/// Component guards use [`register_component_host_functions`]. This path remains
-/// for older core modules and is implemented without the old linker shortcut.
+/// Component guards use [`register_component_host_functions`]; this path is
+/// for core-module guards.
 pub fn register_host_functions(
     linker: &mut CoreLinker<WasmHostState>,
 ) -> Result<(), WasmGuardError> {
@@ -273,7 +273,7 @@ pub fn register_host_functions(
             "chio",
             "log",
             FuncType::new(&engine, [ValType::I32, ValType::I32, ValType::I32], []),
-            legacy_log,
+            core_module_log,
         )
         .map_err(|e| WasmGuardError::HostFunction(e.to_string()))?;
 
@@ -286,7 +286,7 @@ pub fn register_host_functions(
                 [ValType::I32, ValType::I32, ValType::I32, ValType::I32],
                 [ValType::I32],
             ),
-            legacy_get_config,
+            core_module_get_config,
         )
         .map_err(|e| WasmGuardError::HostFunction(e.to_string()))?;
 
@@ -295,7 +295,7 @@ pub fn register_host_functions(
             "chio",
             "get_time_unix_secs",
             FuncType::new(&engine, [], [ValType::I64]),
-            legacy_get_time_unix_secs,
+            core_module_get_time_unix_secs,
         )
         .map_err(|e| WasmGuardError::HostFunction(e.to_string()))?;
 
@@ -329,7 +329,7 @@ fn set_i64_result(results: &mut [Val], value: i64) -> wasmtime::Result<()> {
     }
 }
 
-fn legacy_log(
+fn core_module_log(
     mut caller: Caller<'_, WasmHostState>,
     params: &[Val],
     _results: &mut [Val],
@@ -365,7 +365,7 @@ fn legacy_log(
     Ok(())
 }
 
-fn legacy_get_config(
+fn core_module_get_config(
     mut caller: Caller<'_, WasmHostState>,
     params: &[Val],
     results: &mut [Val],
@@ -419,7 +419,7 @@ fn legacy_get_config(
     set_i32_result(results, actual_len)
 }
 
-fn legacy_get_time_unix_secs(
+fn core_module_get_time_unix_secs(
     _caller: Caller<'_, WasmHostState>,
     _params: &[Val],
     results: &mut [Val],

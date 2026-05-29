@@ -1,6 +1,6 @@
 # chio-conformance
 
-Cross-language conformance harness for the Chio (formerly ARC) agent
+Cross-language conformance harness for the Chio agent
 protocol. The crate exposes a Rust library plus a small bin set that loads
 JSON scenario descriptors, drives peer implementations against the Chio
 HTTP edge, and renders a Markdown compatibility report.
@@ -24,8 +24,7 @@ chio-conformance-runner \
 ```
 
 A higher-level workflow (peer binary fetch, JSON report shape, scenario
-selectors) is exposed through the `chio` CLI in milestone P4 follow-up
-tickets:
+selectors) is exposed through the `chio` CLI:
 
 ```bash
 chio conformance fetch-peers
@@ -49,8 +48,8 @@ The crate ships with the same fixture tree it exercises in CI. The Cargo
   `--peer js` mode.
 
 The C++ and Go peers are built from sources outside the crate (the C++
-peer lives under `packages/sdk/chio-cpp/`, the Go peer under
-`packages/sdk/chio-go/`) and are only available when the crate is consumed
+peer lives under `sdks/cpp/chio-cpp/`, the Go peer under
+`sdks/go/chio-go/`) and are only available when the crate is consumed
 in-repo. External consumers should drive their own peer binaries via the
 `ConformanceRunOptions` API or the upcoming `chio conformance fetch-peers`
 subcommand.
@@ -61,10 +60,10 @@ subcommand.
 | ------- | ------------- | ---------------------------------------------------------------- |
 | Python  | bundled       | Reference peer at `tests/conformance/peers/python/`              |
 | Node.js | bundled       | Reference peer at `tests/conformance/peers/js/`                  |
-| C++     | in-repo only  | Built from `packages/sdk/chio-cpp/` via `chio-cpp-kernel-ffi`    |
-| Go      | in-repo only  | Built from `packages/sdk/chio-go/`                               |
+| C++     | in-repo only  | Built from `sdks/cpp/chio-cpp/` via `chio-cpp-kernel-ffi`    |
+| Go      | in-repo only  | Built from `sdks/go/chio-go/`                               |
 
-C++ P0 scenario coverage (`mcp_core` and `auth`) is gated by the
+C++ P0 scenario coverage (`mcp_core` and `auth`) is covered by the
 `cpp_peer_p0` integration test in `crates/chio-conformance/tests/`.
 
 ## Feature flags
@@ -104,5 +103,3 @@ Licensed under Apache-2.0. See `LICENSE` in the repository root.
 
 - `docs/conformance.md` - standalone consumer flow.
 - `spec/PROTOCOL.md` - normative wire-level protocol specification.
-- `.planning/trajectory/01-spec-codegen-conformance.md` - milestone scope
-  and phase breakdown that drives this packaging work.

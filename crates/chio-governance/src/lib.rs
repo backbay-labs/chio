@@ -1,3 +1,16 @@
+//! Generic governance charters and case evaluation for the Chio protocol.
+//!
+//! This crate is used to author and evaluate governance charters and to
+//! authorize governed actions against a signed lease. It defines the
+//! capability-lease artifacts and action classes (scoped observation,
+//! delegated action, narrow destructive), governance-receipt artifacts, and
+//! verification helpers such as [`verify_capability_lease`],
+//! [`verify_destructive_authorization`], and
+//! [`verify_step_governance_boundary`]. It builds on the listing surface in
+//! `chio-listing`.
+
+#![forbid(unsafe_code)]
+
 pub use chio_core_types::{canonical_json_bytes, crypto, receipt};
 pub use chio_listing as listing;
 
@@ -1073,34 +1086,7 @@ mod tests {
         GENERIC_LISTING_ARTIFACT_SCHEMA, GENERIC_NAMESPACE_ARTIFACT_SCHEMA,
     };
 
-    trait TestResultOk<T, E> {
-        fn test_expect(self, context: &'static str) -> T;
-    }
-
-    impl<T, E> TestResultOk<T, E> for Result<T, E>
-    where
-        E: std::fmt::Debug,
-    {
-        fn test_expect(self, context: &'static str) -> T {
-            self.unwrap_or_else(|error| panic!("{context}: {error:?}"))
-        }
-    }
-
-    trait TestResultErr<T, E> {
-        fn test_expect_err(self, context: &'static str) -> E;
-    }
-
-    impl<T, E> TestResultErr<T, E> for Result<T, E>
-    where
-        T: std::fmt::Debug,
-    {
-        fn test_expect_err(self, context: &'static str) -> E {
-            match self {
-                Ok(value) => panic!("{context} unexpectedly succeeded: {value:?}"),
-                Err(error) => error,
-            }
-        }
-    }
+    use chio_test_support::prelude::*;
 
     fn sample_namespace(owner_id: &str, signing_keypair: &Keypair) -> GenericNamespaceArtifact {
         GenericNamespaceArtifact {

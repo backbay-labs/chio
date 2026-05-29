@@ -26,6 +26,9 @@ pub const URN_CREDENTIAL_REVOKED: &str = "urn:chio:error:custody:credential-revo
 pub const URN_USER_VERIFICATION_REQUIRED: &str =
     "urn:chio:error:custody:user-verification-required";
 
+/// Stable URN for "issuance denied because the subject exceeded its rate budget".
+pub const URN_RATE_LIMITED: &str = "urn:chio:error:custody:rate-limited";
+
 /// Stable URN for "custody surface failed to canonicalize, encode, or decode".
 ///
 /// Distinct from [`URN_ASSERTION_REJECTED`] so HTTP / JSON-RPC translation
@@ -75,6 +78,16 @@ pub enum CustodyError {
     #[error("custody: user verification required (UV bit not set on assertion)")]
     UserVerificationRequired,
 
+    /// The subject exceeded its issuance rate budget. Fail-closed: the
+    /// mint is denied before the revocation oracle, nonce store, or
+    /// signing backend are consulted. Distinct from a credential being
+    /// invalid; the caller may retry after the rate window elapses.
+    #[error("custody: issuance rate limit exceeded for subject {subject}")]
+    RateLimited {
+        /// Base64url-encoded WebAuthn credential id that exceeded its budget.
+        subject: String,
+    },
+
     /// Internal serialization or canonical-JSON encoding failure. Fail-closed.
     ///
     /// Maps to [`URN_INTERNAL_ENCODING`], not [`URN_ASSERTION_REJECTED`]:
@@ -88,8 +101,8 @@ pub enum CustodyError {
 impl CustodyError {
     /// Stable `urn:chio:error:custody:*` code for this error variant.
     ///
-    /// Consumed by HTTP / JSON-RPC translation layers; the legacy string
-    /// codes still live in `spec/errors/registry.yaml` for transport.
+    /// Consumed by HTTP / JSON-RPC translation layers; the string codes are
+    /// defined in `spec/errors/registry.yaml`.
     #[must_use]
     pub fn urn(&self) -> &'static str {
         match self {
@@ -99,6 +112,7 @@ impl CustodyError {
             Self::CapabilityExpired => URN_CAPABILITY_EXPIRED,
             Self::CredentialRevoked => URN_CREDENTIAL_REVOKED,
             Self::UserVerificationRequired => URN_USER_VERIFICATION_REQUIRED,
+            Self::RateLimited { .. } => URN_RATE_LIMITED,
             Self::Encoding(_) => URN_INTERNAL_ENCODING,
         }
     }
@@ -137,6 +151,7 @@ mod tests {
             URN_USER_VERIFICATION_REQUIRED,
             "urn:chio:error:custody:user-verification-required"
         );
+        assert_eq!(URN_RATE_LIMITED, "urn:chio:error:custody:rate-limited");
         assert_eq!(
             URN_INTERNAL_ENCODING,
             "urn:chio:error:custody:internal-encoding"
@@ -171,6 +186,13 @@ mod tests {
         assert_eq!(
             CustodyError::UserVerificationRequired.urn(),
             URN_USER_VERIFICATION_REQUIRED
+        );
+        assert_eq!(
+            CustodyError::RateLimited {
+                subject: "cid".into()
+            }
+            .urn(),
+            URN_RATE_LIMITED
         );
         assert_eq!(
             CustodyError::Encoding("boom".into()).urn(),

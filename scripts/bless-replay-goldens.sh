@@ -119,10 +119,9 @@ PORCELAIN="$(git status --porcelain=v1 --untracked-files=normal)"
 # Helper: extract every path referenced by porcelain output.
 #
 # Each porcelain line is "XY <path>" or, for renames/copies,
-# "XY <old> -> <new>". For renames we want BOTH paths so the allowlist
-# check cannot be bypassed by renaming a file from inside the allowlist
-# to outside (or vice versa). The previous implementation only captured
-# the first token after the status code, missing the rename destination.
+# "XY <old> -> <new>". Both paths of a rename are captured so the
+# allowlist check cannot be bypassed by renaming a file from inside the
+# allowlist to outside (or vice versa).
 porcelain_paths() {
   printf '%s\n' "$PORCELAIN" | awk '
     NF {

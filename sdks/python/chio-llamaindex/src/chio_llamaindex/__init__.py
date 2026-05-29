@@ -8,7 +8,7 @@ authorization, guard enforcement, and signed receipts.
 Public surface:
 
 * :class:`ChioFunctionTool` -- :class:`FunctionTool` subclass that gates
-  ``call`` / ``acall`` on an Chio allow verdict.
+  ``call`` / ``acall`` on a Chio allow verdict.
 * :class:`ChioQueryEngineTool` -- :class:`QueryEngineTool` subclass that
   additionally scopes which vector collection may be queried.
 * :class:`ChioAgentRunner` -- helper that binds a per-agent capability

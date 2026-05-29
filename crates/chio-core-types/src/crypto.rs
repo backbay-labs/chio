@@ -19,12 +19,12 @@
 //! [`P256Backend`] or [`P384Backend`] and pass it to any Chio signing helper
 //! that accepts `&dyn SigningBackend`.
 //!
-//! # Backward Compatibility
+//! # Wire Encoding
 //!
-//! Ed25519 artifacts serialize byte-for-byte identically to the historical
+//! Ed25519 artifacts serialize byte-for-byte identically to the standard
 //! format: a 64-character lowercase hex string for the public key and a
 //! 128-character hex string for the signature. FIPS-algorithm artifacts use a
-//! self-describing hex prefix (e.g. `p256:`, `p384:`, or `hybrid:`) so older
+//! self-describing hex prefix (e.g. `p256:`, `p384:`, or `hybrid:`) so
 //! verifiers that only understand bare hex recognise that the material is
 //! non-Ed25519 and can reject with a clear error rather than misinterpreting
 //! bytes.
@@ -84,8 +84,7 @@ pub const ML_DSA_65_SIGNATURE_LEN: usize = 3309;
 /// This enum serializes as a short lowercase identifier:
 /// `"ed25519"`, `"p256"`, `"p384"`, or `"hybrid"`. When absent from an
 /// artifact's envelope, consumers MUST treat the algorithm as
-/// [`SigningAlgorithm::Ed25519`] for backward compatibility with artifacts
-/// produced before this module existed.
+/// [`SigningAlgorithm::Ed25519`] (the default algorithm).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum SigningAlgorithm {
@@ -130,9 +129,9 @@ pub fn is_default_algorithm(alg: &SigningAlgorithm) -> bool {
     alg.is_default()
 }
 
-/// Returns `true` when the optional algorithm is either absent or equal to the
-/// default (Ed25519). Used by `#[serde(skip_serializing_if)]` on envelope
-/// fields so that legacy Ed25519 artifacts remain byte-identical on the wire.
+/// Returns `true` when the optional algorithm is absent or is the default
+/// (Ed25519). Used by `#[serde(skip_serializing_if)]` on envelope fields to
+/// omit the algorithm field for standard Ed25519 artifacts.
 #[must_use]
 pub fn is_default_optional_algorithm(alg: &Option<SigningAlgorithm>) -> bool {
     match alg {
@@ -402,8 +401,7 @@ impl PublicKey {
     /// Create from hex-encoded bytes (with optional `0x` prefix).
     ///
     /// The string may carry a `p256:` or `p384:` prefix to select an ECDSA
-    /// key. A bare hex string is interpreted as Ed25519 for backward
-    /// compatibility with existing artifacts.
+    /// key. Bare hex strings are interpreted as Ed25519 (the default algorithm).
     pub fn from_hex(hex_str: &str) -> Result<Self> {
         if let Some(rest) = hex_str.strip_prefix("p256:") {
             let rest = rest.strip_prefix("0x").unwrap_or(rest);
@@ -569,11 +567,11 @@ impl PublicKey {
 // Signature
 // ---------------------------------------------------------------------------
 
-/// Signature produced by an Chio [`SigningBackend`].
+/// Signature produced by a Chio [`SigningBackend`].
 ///
-/// Historically this type wrapped a 64-byte Ed25519 signature. It now carries
-/// an algorithm-tagged payload internally while preserving byte-identical
-/// serialization and construction helpers for the Ed25519 case.
+/// Algorithm-tagged signature type. Preserves byte-identical serialization
+/// and construction helpers for the Ed25519 case; non-Ed25519 paths use
+/// the same outer API.
 #[derive(Clone, Debug)]
 pub struct Signature {
     material: SignatureMaterial,
@@ -690,8 +688,8 @@ impl Signature {
 
     /// Create from hex-encoded bytes (with optional `0x` prefix).
     ///
-    /// A bare hex string is interpreted as an Ed25519 signature (64 bytes)
-    /// for backward compatibility. A `p256:` or `p384:` prefix selects ECDSA.
+    /// Bare hex strings are interpreted as Ed25519 (the default algorithm).
+    /// A `p256:` or `p384:` prefix selects ECDSA.
     pub fn from_hex(hex_str: &str) -> Result<Self> {
         if let Some(rest) = hex_str.strip_prefix("p256:") {
             let rest = rest.strip_prefix("0x").unwrap_or(rest);

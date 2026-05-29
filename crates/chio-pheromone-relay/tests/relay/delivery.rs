@@ -102,7 +102,7 @@ fn relay_alert_delivery_rejects_secrets_unbounded_labels_and_mismatches() {
     let err = evaluate_relay_alert_delivery(RelayAlertDeliveryInput {
         handoff_report: &handoff_report,
         delivery_profile: &profile,
-        evidence: &[evidence.clone()],
+        evidence: std::slice::from_ref(&evidence),
         now_unix_ms: NOW + 70_000,
     })
     .unwrap_err();

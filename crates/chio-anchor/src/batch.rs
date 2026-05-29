@@ -88,43 +88,7 @@ impl AnchorBatch {
         {
             return Ok(true);
         }
-        if self.body.witness_state != WitnessState::Pending {
-            return Ok(false);
-        }
-        let legacy = LegacyAnchorBatchBody::from_body(&self.body);
-        self.body
-            .signer_key
-            .verify_canonical(&legacy, &self.signature)
-            .map_err(|error| AnchorError::Verification(error.to_string()))
-    }
-}
-
-/// Canonical signing view for v1 batches produced before `witnessState`
-/// was added to the body. Deserialization still defaults the field to
-/// `Pending`; verification falls back to this view only for that state.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct LegacyAnchorBatchBody<'a> {
-    schema: &'a str,
-    tree_root: &'a Hash,
-    checkpoint_ids: &'a [String],
-    inclusions: &'a [AnchorBatchInclusion],
-    witness: &'a AnchorBatchWitness,
-    issued_at: u64,
-    signer_key: &'a PublicKey,
-}
-
-impl<'a> LegacyAnchorBatchBody<'a> {
-    fn from_body(body: &'a AnchorBatchBody) -> Self {
-        Self {
-            schema: &body.schema,
-            tree_root: &body.tree_root,
-            checkpoint_ids: &body.checkpoint_ids,
-            inclusions: &body.inclusions,
-            witness: &body.witness,
-            issued_at: body.issued_at,
-            signer_key: &body.signer_key,
-        }
+        Ok(false)
     }
 }
 
@@ -373,28 +337,5 @@ mod tests {
         let mut impersonated = batch;
         impersonated.body.witness.root = Hash::zero();
         assert!(verify_anchor_batch(&impersonated).is_err());
-    }
-
-    #[test]
-    fn verifies_legacy_signature_that_omitted_pending_witness_state() {
-        let kp = Keypair::generate();
-        let witness = AnchorBatchWitness {
-            kind: AnchorBatchWitnessKind::Rekor,
-            witness_id: "rekor:legacy".to_string(),
-            root: Hash::zero(),
-            observed_at: Some(1710000000),
-        };
-        let body = build_anchor_batch_body(
-            vec!["checkpoint-legacy".to_string()],
-            witness,
-            1710000000,
-            kp.public_key(),
-        )
-        .unwrap();
-        let legacy_view = LegacyAnchorBatchBody::from_body(&body);
-        let (signature, _) = kp.sign_canonical(&legacy_view).unwrap();
-        let batch = AnchorBatch { body, signature };
-
-        verify_anchor_batch(&batch).expect("legacy omitted witnessState signature verifies");
     }
 }

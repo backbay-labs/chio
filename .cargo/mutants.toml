@@ -1,6 +1,4 @@
-# cargo-mutants workspace config
-#
-# Decision 12: cargo-mutants pinned at 25.x; do not float.
+# cargo-mutants workspace config. Pinned at 25.x; do not float.
 #
 # THIS IS THE ONLY mutants.toml CARGO-MUTANTS LOADS.
 # cargo-mutants 25.x reads its configuration exclusively from the workspace-root
@@ -45,9 +43,8 @@
 additional_cargo_test_args = ["--workspace", "--exclude", "chio-cpp-kernel-ffi"]
 
 # cargo-mutants reruns the full test suite once per generated mutant.
-# A 3x multiplier on the baseline test wall-clock is the documented guard
-# against slow-test flakes masquerading as surviving mutants. Tuned per
-# the "Mutation-testing CI shape" section of the source doc.
+# A 3x multiplier on the baseline test wall-clock guards against slow-test
+# flakes masquerading as surviving mutants.
 timeout_multiplier = 3.0
 
 # Floor on per-mutant test timeout in seconds. Prevents the multiplier
@@ -57,7 +54,7 @@ minimum_test_timeout = 60
 
 # Trust-boundary modules to mutate, by crate. Globs are workspace-rooted.
 #
-# Scope priority (from source doc Phase 3 deliverable):
+# Scope priority (trust-boundary modules, in order):
 #   1. chio-kernel-core (capability validation, guard pipeline, receipts)
 #   2. chio-policy      (HushSpec parse/compile, evaluator)
 #   3. chio-guards      (native guard set including ShellCommandGuard)

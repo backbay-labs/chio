@@ -1,7 +1,7 @@
 /*
  * docs/demo banner-snapshot Playwright test.
  *
- * The engineering-output banner MUST be present and visible without scrolling
+ * The demo-notice banner MUST be present and visible without scrolling
  * on a 1080p viewport. This test serves the built `dist/` directory via
  * Playwright's webServer, asserts the banner DOM contract, and verifies that
  * the banner is positioned within the first 1080 viewport pixels.
@@ -16,14 +16,14 @@
 import { test, expect } from '@playwright/test';
 
 const EXPECTED_BANNER_TEXT = [
-  'This page is engineering output, not a release.',
-  'It demonstrates the',
-  '@chio-protocol/browser verify path against a fixture from the M04 replay',
-  'corpus.',
-  'It is not a substitute for an audited release of the SDK.',
+  'This is an interactive demonstration.',
+  'It runs the',
+  '@chio-protocol/browser verify path against a bundled sample receipt',
+  'entirely in your browser,',
+  'and is not a substitute for an audited release of the SDK.',
 ];
 
-test.describe('docs/demo engineering-output banner', () => {
+test.describe('docs/demo demo-notice banner', () => {
   test.use({ viewport: { width: 1920, height: 1080 } });
 
   test('banner is present, visible, and above the fold on 1080p', async ({ page }) => {

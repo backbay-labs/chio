@@ -1,4 +1,4 @@
-module github.com/backbay/chio/sdks/go/chio-go-http
+module github.com/backbay-labs/chio/sdks/go/chio-go-http
 
 go 1.21
 

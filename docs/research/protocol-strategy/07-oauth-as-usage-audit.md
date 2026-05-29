@@ -71,7 +71,7 @@ The AS is documented as a public capability in multiple operator-facing places:
 - `docs/operations/HA_CONTROL_AUTH_PLAN.md:89-106, 190-199` lists the hosted AS as a shipped deliverable.
 - `docs/release/OPERATIONS_RUNBOOK.md:75` documents `--auth-server-seed-file` for operators.
 - `docs/research/01-current-state.md:154` says Chio "crossed the 'real hosted auth server' threshold".
-- `docs/epics/E7-trust-plane-and-remote-runtime.md:53` lists "richer external identity-provider and federation support around the hosted authorization server" as planned work.
+- `docs/archive/epics/E7-trust-plane-and-remote-runtime.md:53` lists "richer external identity-provider and federation support around the hosted authorization server" as planned work.
 
 Unambiguously a public, normative product surface.
 

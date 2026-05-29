@@ -4,13 +4,9 @@
 # Chains off release-qualification.yml: auto-appends a row to
 # tests/replay/release_compat_matrix.toml and opens a PR for human review.
 #
-# Why a PR (not a direct commit)? The bundle_sha256 emitted here is a
-# deterministic placeholder ("pending-${tag}" hashed). A reviewer must:
-#   1. Replace the bundle_sha256 with the real digest from
-#      release-qualification.yml's artifact list.
-#   2. Set supported_until per the ratchet rule (current tag + 5 minor).
-#   3. Decide compat (default "supported"; flip to "best_effort" if the
-#      diff against the previous bundle exceeds threshold).
+# Why a PR (not a direct commit)? The workflow pins the released replay bundle
+# digest from the published release asset, then asks a reviewer to set the
+# support window and compatibility classification.
 
 name: release-tagged
 
@@ -24,6 +20,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  GH_TOKEN: ${{ github.token }}
 
 jobs:
   append-compat-row:
@@ -60,7 +57,7 @@ jobs:
           # runner clock only if the event payload omits the field.
           if [ -n "${RELEASE_PUBLISHED_AT:-}" ]; then
             released_at="$(printf '%s' "${RELEASE_PUBLISHED_AT}" | cut -c1-10)"
-            # Re-validate the slice as YYYY-MM-DD to be safe.
+            # Reject a slice that is not YYYY-MM-DD; fall back to the runner clock.
             if ! printf '%s' "${released_at}" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
               released_at="$(date -u +%Y-%m-%d)"
             fi
@@ -68,11 +65,14 @@ jobs:
             released_at="$(date -u +%Y-%m-%d)"
           fi
           bundle_url="https://github.com/${REPO_FULL_NAME}/releases/download/${RELEASE_TAG}/replay-bundle.tgz"
-          # release-qualification.yml publishes the real digest as a workflow
-          # artifact. Until this workflow learns to fetch that artifact, emit
-          # a deterministic placeholder so the PR diff is reviewable; the
-          # human reviewer replaces it before merging.
-          bundle_sha256="$(printf 'pending-%s' "${RELEASE_TAG}" | sha256sum | awk '{print $1}')"
+          asset_dir="${RUNNER_TEMP}/release-assets"
+          rm -rf "${asset_dir}"
+          mkdir -p "${asset_dir}"
+          gh release download "${RELEASE_TAG}" \
+            --repo "${REPO_FULL_NAME}" \
+            --pattern replay-bundle.tgz \
+            --dir "${asset_dir}"
+          bundle_sha256="$(sha256sum "${asset_dir}/replay-bundle.tgz" | awk '{print $1}')"
           # Reject duplicate tag entries to keep the matrix idempotent across
           # republished or re-tagged releases.
           if [ -f tests/replay/release_compat_matrix.toml ]; then
@@ -131,8 +131,7 @@ jobs:
 
             Reviewer must:
             1. Verify the bundle URL is reachable.
-            2. Replace the `bundle_sha256` placeholder with the real digest from
-               `release-qualification.yml`'s artifact list.
+            2. Confirm the `bundle_sha256` matches the published release asset.
             3. Set `supported_until` per the ratchet rule (current tag + 5 minor).
             4. Decide `compat` (default `supported`; flip to `best_effort` if
                the diff against the previous bundle exceeds threshold).

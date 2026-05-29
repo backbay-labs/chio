@@ -2,18 +2,15 @@
 // Groups material changes by drift class: allow/deny flip, guard delta,
 // and reason delta. Human output is the default; `--json` uses `diff/json.rs`.
 
-mod replay_diff_json {
-    use super::*;
-    include!("diff/json.rs");
-}
+use super::*;
 
-mod replay_diff_human {
-    use super::*;
-    include!("diff/human.rs");
-}
+#[path = "diff/json.rs"]
+mod replay_diff_json;
+#[path = "diff/human.rs"]
+mod replay_diff_human;
 
 pub use replay_diff_human::render_traffic_diff_human;
-pub use replay_diff_json::{render_traffic_diff_json, render_traffic_diff_json_string};
+pub use replay_diff_json::render_traffic_diff_json;
 
 /// Stable schema identifier for `chio replay traffic --against --json`.
 pub const TRAFFIC_DIFF_SCHEMA_ID: &str = "chio.replay.traffic-diff/v1";

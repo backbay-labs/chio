@@ -2,13 +2,22 @@
 //! through the Chio kernel. Pinned upstream API version: `2025-04` (see
 //! [`transport::OLLAMA_API_VERSION`]).
 //!
-//! Ollama surfaces tool calls as `tool_calls` entries on the assistant
-//! `message` (mirroring the OpenAI `chat/completions` shape). Tool results
-//! travel back as `tool` role messages on the next user turn. The adapter's
-//! [`lift_batch`](OllamaAdapter::lift_batch) lifts every `tool_calls` entry
-//! into a [`chio_tool_call_fabric::ToolInvocation`] and
-//! [`lower_tool_message`](OllamaAdapter::lower_tool_message) lowers a kernel
-//! verdict back into a [`ToolResultMessage`].
+//! Ollama runs as a local HTTP daemon (default `http://localhost:11434`) and
+//! surfaces tool calls as `tool_calls` entries on the assistant `message`
+//! (mirroring the OpenAI `chat/completions` shape). Tool results travel back as
+//! `tool` role messages on the next user turn.
+//!
+//! The adapter forwards a native `/api/chat` request to the daemon through the
+//! shared [`chio_provider_adapter_core::http`] transport, then:
+//!
+//! - [`chat`](OllamaAdapter::chat) posts a non-streaming request and lifts every
+//!   `tool_calls` entry into a [`chio_tool_call_fabric::ToolInvocation`];
+//! - [`chat_stream`](OllamaAdapter::chat_stream) posts a streaming request and
+//!   gates the NDJSON tool-call frames behind a kernel verdict;
+//! - [`lift_batch`](OllamaAdapter::lift_batch) lifts tool calls from bytes that
+//!   were captured out of band;
+//! - [`lower_tool_message`](OllamaAdapter::lower_tool_message) lowers a kernel
+//!   verdict back into a [`ToolResultMessage`].
 
 #![forbid(unsafe_code)]
 
@@ -21,6 +30,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use chio_core::canonical::canonical_json_bytes;
+use chio_provider_adapter_core::http::{map_http_status, map_transport_error};
 use chio_tool_call_fabric::{
     DenyReason, Principal, ProvenanceStamp, ProviderError, ProviderId, ProviderRequest, Redaction,
     ToolInvocation, ToolResult, VerdictResult,
@@ -29,8 +39,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use thiserror::Error;
 
+use crate::streaming::GatedNdjsonStream;
+use crate::transport::OLLAMA_CHAT_PATH;
+
 pub use native::{ToolCallFunction, ToolCallPart, ToolResultMessage};
 pub use transport::{Transport, OLLAMA_API_VERSION, OLLAMA_CHAT_HOST};
+
+/// Provider label used when classifying upstream transport failures.
+const PROVIDER_LABEL: &str = "Ollama";
 
 /// Configuration for the Ollama adapter.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -45,10 +61,9 @@ pub struct OllamaAdapterConfig {
     pub public_key: String,
     /// Pinned upstream API version, always [`OLLAMA_API_VERSION`].
     pub api_version: String,
-    /// Local-trust-edge org identifier. Ollama is a localhost daemon and has
-    /// no upstream IAM principal; the adapter reuses the `OpenAiOrg` slot in
-    /// the fabric `Principal` taxonomy with a `local_*` prefix so receipts
-    /// remain provenance-stable.
+    /// Ollama host or instance label. Ollama is a local daemon with no upstream
+    /// identity provider, so the host is the stable provenance handle stamped
+    /// into the [`Principal::OllamaHost`] slot.
     pub org_id: String,
 }
 
@@ -106,6 +121,47 @@ impl OllamaAdapter {
         &self.transport
     }
 
+    /// Post a non-streaming `/api/chat` request to the Ollama daemon and lift
+    /// every `tool_calls` entry from the response.
+    ///
+    /// `request_body` is the raw native request JSON (model, messages, tools,
+    /// and `stream: false`). The response body is buffered and run through
+    /// [`lift_batch`](OllamaAdapter::lift_batch). Transport-layer failures are
+    /// classified into the fabric [`ProviderError`] taxonomy and fail closed.
+    pub async fn chat(&self, request_body: &[u8]) -> Result<Vec<ToolInvocation>, ProviderError> {
+        let response = self
+            .transport
+            .post_json(OLLAMA_CHAT_PATH, request_body)
+            .await
+            .map_err(|error| map_transport_error(PROVIDER_LABEL, error))?;
+        if let Some(error) = map_http_status(PROVIDER_LABEL, response.status, &response.body) {
+            return Err(error);
+        }
+        self.lift_batch(ProviderRequest(response.body))
+    }
+
+    /// Post a streaming `/api/chat` request and gate its NDJSON tool-call frames.
+    ///
+    /// Ollama streams `/api/chat` as newline-delimited JSON. The buffered body
+    /// is run through [`gate_sse_stream`](OllamaAdapter::gate_sse_stream): each
+    /// `tool_calls` entry is evaluated by `evaluate` before its enclosing line
+    /// is admitted to the forwarded byte stream.
+    pub async fn chat_stream<F>(
+        &self,
+        request_body: &[u8],
+        evaluate: F,
+    ) -> Result<GatedNdjsonStream, ProviderError>
+    where
+        F: FnMut(&ToolInvocation) -> Result<VerdictResult, ProviderError>,
+    {
+        let body = self
+            .transport
+            .post_ndjson(OLLAMA_CHAT_PATH, request_body)
+            .await
+            .map_err(|error| map_transport_error(PROVIDER_LABEL, error))?;
+        self.gate_sse_stream(&body, evaluate)
+    }
+
     /// Lift every Ollama `tool_calls` entry in a non-streaming `/api/chat`
     /// response payload.
     pub fn lift_batch(&self, raw: ProviderRequest) -> Result<Vec<ToolInvocation>, ProviderError> {
@@ -142,8 +198,8 @@ impl OllamaAdapter {
                 provider: ProviderId::Ollama,
                 request_id: synthesised_request_id(&call.function.name, index),
                 api_version: self.config.api_version.clone(),
-                principal: Principal::OpenAiOrg {
-                    org_id: self.config.org_id.clone(),
+                principal: Principal::OllamaHost {
+                    host: self.config.org_id.clone(),
                 },
                 received_at: SystemTime::now(),
             },
@@ -200,12 +256,12 @@ impl chio_provider_adapter_core::Provider for OllamaAdapter {
 /// Adapter-local error taxonomy.
 #[derive(Debug, Error)]
 pub enum OllamaAdapterError {
-    /// Placeholder for call sites not yet implemented.
-    #[error("ollama adapter call site is not implemented: {0}")]
-    NotImplemented(&'static str),
-    /// Bubbled up from the transport layer.
+    /// A lift/lower or payload-shape failure surfaced by the fabric.
     #[error(transparent)]
-    Transport(#[from] transport::TransportError),
+    Provider(#[from] ProviderError),
+    /// An outbound `/api/chat` call failed at the transport layer.
+    #[error(transparent)]
+    Transport(#[from] chio_provider_adapter_core::http::HttpTransportError),
 }
 
 fn tool_calls(raw: ProviderRequest) -> Result<Vec<ToolCallPart>, ProviderError> {
@@ -338,6 +394,14 @@ mod tests {
         )
     }
 
+    fn mock() -> Arc<transport::MockTransport> {
+        Arc::new(transport::MockTransport::new("mock://ollama"))
+    }
+
+    fn adapter() -> OllamaAdapter {
+        OllamaAdapter::new(config(), mock())
+    }
+
     #[test]
     fn config_pins_api_version() {
         let cfg = config();
@@ -347,17 +411,95 @@ mod tests {
 
     #[test]
     fn adapter_reports_provider_and_pin() {
-        let cfg = config();
-        let transport = transport::MockTransport::new();
-        let adapter = OllamaAdapter::new(cfg, Arc::new(transport));
+        let adapter = adapter();
         assert_eq!(adapter.provider(), ProviderId::Ollama);
         assert_eq!(adapter.api_version(), "2025-04");
     }
 
+    #[tokio::test]
+    async fn chat_posts_to_api_chat_and_lifts_tool_calls() {
+        let response = json!({
+            "model": "llama3.2:1b",
+            "done": true,
+            "message": {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {"function": {"name": "get_weather", "arguments": {"city": "Paris"}}}
+                ]
+            }
+        });
+        let mock = mock();
+        mock.push_json_response(serde_json::to_vec(&response).unwrap());
+        let adapter = OllamaAdapter::new(config(), mock.clone());
+
+        let request = serde_json::to_vec(&json!({
+            "model": "llama3.2:1b",
+            "stream": false,
+            "messages": [{"role": "user", "content": "weather in Paris?"}]
+        }))
+        .unwrap();
+        let invocations = adapter.chat(&request).await.unwrap();
+        assert_eq!(invocations.len(), 1);
+        assert_eq!(invocations[0].tool_name, "get_weather");
+        assert_eq!(invocations[0].provider, ProviderId::Ollama);
+
+        let calls = mock.calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].path, transport::OLLAMA_CHAT_PATH);
+        assert_eq!(calls[0].body, request);
+    }
+
+    #[tokio::test]
+    async fn chat_maps_upstream_5xx_to_provider_error() {
+        let mock = mock();
+        mock.push_response(chio_provider_adapter_core::http::HttpResponse::new(
+            503,
+            b"model not loaded".to_vec(),
+            Some("application/json".to_string()),
+        ));
+        let adapter = OllamaAdapter::new(config(), mock);
+        let error = adapter.chat(b"{}").await.unwrap_err();
+        assert!(matches!(
+            error,
+            ProviderError::Upstream5xx { status: 503, .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn chat_stream_gates_ndjson_tool_calls() {
+        let ndjson = concat!(
+            "{\"model\":\"llama3.2:1b\",\"message\":{\"role\":\"assistant\",\"content\":\"\"}}\n",
+            "{\"model\":\"llama3.2:1b\",\"done\":true,\"message\":{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"function\":{\"name\":\"get_weather\",\"arguments\":{\"city\":\"Paris\"}}}]}}\n"
+        );
+        let mock = mock();
+        mock.push_response(chio_provider_adapter_core::http::HttpResponse::new(
+            200,
+            ndjson.as_bytes().to_vec(),
+            Some("application/x-ndjson".to_string()),
+        ));
+        let adapter = OllamaAdapter::new(config(), mock.clone());
+
+        let gated = adapter
+            .chat_stream(b"{\"stream\":true}", |_invocation| {
+                Ok(VerdictResult::Allow {
+                    redactions: vec![],
+                    receipt_id: chio_tool_call_fabric::ReceiptId("rcpt_stream".into()),
+                })
+            })
+            .await
+            .unwrap();
+        assert_eq!(gated.invocations.len(), 1);
+        assert_eq!(gated.verdicts.len(), 1);
+        assert_eq!(
+            mock.calls()[0].kind,
+            chio_provider_adapter_core::http::CallKind::Ndjson
+        );
+    }
+
     #[test]
     fn lift_batch_extracts_tool_calls() {
-        let cfg = config();
-        let adapter = OllamaAdapter::new(cfg, Arc::new(transport::MockTransport::new()));
+        let adapter = adapter();
         let payload = json!({
             "message": {
                 "role": "assistant",
@@ -375,8 +517,7 @@ mod tests {
 
     #[test]
     fn lift_batch_rejects_payload_without_tool_calls() {
-        let cfg = config();
-        let adapter = OllamaAdapter::new(cfg, Arc::new(transport::MockTransport::new()));
+        let adapter = adapter();
         let payload = json!({"message": {"role": "assistant", "content": "no tools"}});
         let raw = ProviderRequest(serde_json::to_vec(&payload).unwrap());
         let err = adapter.lift_batch(raw).unwrap_err();
@@ -388,8 +529,7 @@ mod tests {
 
     #[test]
     fn lower_tool_message_allow() {
-        let cfg = config();
-        let adapter = OllamaAdapter::new(cfg, Arc::new(transport::MockTransport::new()));
+        let adapter = adapter();
         let verdict = VerdictResult::Allow {
             redactions: vec![],
             receipt_id: chio_tool_call_fabric::ReceiptId("rcpt_demo".into()),
@@ -405,10 +545,19 @@ mod tests {
 
     #[test]
     fn error_display_is_em_dash_free() {
-        let cases = vec![OllamaAdapterError::NotImplemented("/api/chat")];
+        let cases = vec![
+            OllamaAdapterError::Provider(ProviderError::Malformed(
+                "Ollama /api/chat payload was not JSON".to_string(),
+            )),
+            OllamaAdapterError::Transport(
+                chio_provider_adapter_core::http::HttpTransportError::MockExhausted {
+                    path: OLLAMA_CHAT_PATH.to_string(),
+                },
+            ),
+        ];
         for err in cases {
             let s = err.to_string();
-            assert!(!s.contains('\u{2014}'));
+            assert!(!s.contains('\u{2014}'), "em dash in {s}");
         }
     }
 }

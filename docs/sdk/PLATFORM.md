@@ -117,35 +117,35 @@ pod deployment time and optionally injects the Chio sidecar container.
 ### Validating Webhook
 
 The validating webhook rejects pods that lack the required
-`chio.protocol/capability-token` annotation, unless the pod carries an
-explicit `chio.backbay.io/exempt: "true"` exemption. Presented tokens are
+`chio.world/capability-token` annotation, unless the pod carries an
+explicit `chio.world/exempt: "true"` exemption. Presented tokens are
 parsed as Chio capability tokens, verified cryptographically, checked for time
 validity, and matched against any required scopes before the pod is allowed.
 The controller only trusts issuers configured through
 `CHIO_TRUSTED_ISSUER_KEY` or `CHIO_TRUSTED_ISSUER_KEYS` (comma-separated for key
 rotation). If neither is configured, non-exempt pods fail closed.
 
-The webhook is scoped to namespaces with the `chio.backbay.io/enforce: "true"`
+The webhook is scoped to namespaces with the `chio.world/enforce: "true"`
 label. It runs on pod CREATE and UPDATE operations.
 
 ### Mutating Webhook
 
 The mutating webhook injects an `chio-sidecar` container when a pod has the
-`chio.backbay.io/inject: "true"` annotation. The sidecar runs `chio api protect`
+`chio.world/inject: "true"` annotation. The sidecar runs `chio api protect`
 and proxies HTTP traffic through the Chio kernel on port 9090.
 
 ### Pod Annotations
 
 | Annotation | Required | Description |
 |------------|----------|-------------|
-| `chio.protocol/capability-token` | Yes (unless exempt) | Chio capability token for the workload, signed by a controller-trusted Chio issuer |
-| `chio.backbay.io/required-scopes` | No | Comma-separated required Chio scopes using the grammar below |
-| `chio.backbay.io/exempt` | No | Set to `"true"` to skip capability validation |
-| `chio.backbay.io/inject` | No | Set to `"true"` to trigger sidecar injection |
-| `chio.backbay.io/sidecar-image` | No | Override the default sidecar image (default: `ghcr.io/backbay/chio-sidecar:latest`) |
-| `chio.backbay.io/upstream` | No | Upstream URL the sidecar proxies to (default: `http://127.0.0.1:8080`) |
-| `chio.backbay.io/spec-path` | No | Path to the OpenAPI spec file inside the pod |
-| `chio.backbay.io/receipt-store` | No | Receipt storage backend URI |
+| `chio.world/capability-token` | Yes (unless exempt) | Chio capability token for the workload, signed by a controller-trusted Chio issuer |
+| `chio.world/required-scopes` | No | Comma-separated required Chio scopes using the grammar below |
+| `chio.world/exempt` | No | Set to `"true"` to skip capability validation |
+| `chio.world/inject` | No | Set to `"true"` to trigger sidecar injection |
+| `chio.world/sidecar-image` | No | Override the default sidecar image (default: `ghcr.io/backbay-labs/chio-sidecar:latest`) |
+| `chio.world/upstream` | No | Upstream URL the sidecar proxies to (default: `http://127.0.0.1:8080`) |
+| `chio.world/spec-path` | No | Path to the OpenAPI spec file inside the pod |
+| `chio.world/receipt-store` | No | Receipt storage backend URI |
 
 ### Required Scope Grammar
 
@@ -177,7 +177,7 @@ If both are present, the controller trusts the union of those keys.
 The `ChioPolicy` custom resource defines namespace-level capability requirements:
 
 ```yaml
-apiVersion: chio.backbay.io/v1alpha1
+apiVersion: chio.world/v1alpha1
 kind: ChioPolicy
 metadata:
   name: production-policy
@@ -191,7 +191,7 @@ spec:
       app: my-service
   enforcement: enforce   # enforce | audit | disabled
   sidecarConfig:
-    image: ghcr.io/backbay/chio-sidecar:v1.0
+    image: ghcr.io/backbay-labs/chio-sidecar:v1.0
     upstream: http://127.0.0.1:8080
     autoInject: true
 ```
@@ -206,8 +206,8 @@ kubectl apply -f sdks/k8s/crds/
 kubectl apply -f sdks/k8s/webhooks/
 
 # Label namespaces for enforcement
-kubectl label namespace my-app chio.backbay.io/enforce=true
-kubectl label namespace my-app chio.backbay.io/inject=true
+kubectl label namespace my-app chio.world/enforce=true
+kubectl label namespace my-app chio.world/inject=true
 ```
 
 ---
@@ -281,7 +281,7 @@ No `@Bean` declarations are needed in application code.
 ```kotlin
 // build.gradle.kts
 dependencies {
-    implementation("io.backbay:chio-spring-boot:1.0")
+    implementation("world.chio:chio-spring-boot:1.0")
 }
 
 // application.properties
@@ -365,7 +365,7 @@ app.Run();
 
 ## 5. C++ Drogon (chio-drogon)
 
-**Location:** `packages/sdk/chio-drogon/`
+**Location:** `sdks/cpp/chio-drogon/`
 
 C++17 middleware for Drogon applications. The package exports
 `ChioDrogon::chio_drogon` when CMake can find both `Drogon::Drogon` and the
@@ -380,7 +380,7 @@ target_link_libraries(app PRIVATE ChioDrogon::chio_drogon)
 ```
 
 For in-repo examples, [`examples/hello-drogon/`](../../examples/hello-drogon/)
-adds `packages/sdk/chio-drogon` as a subdirectory and skips clearly when
+adds `sdks/cpp/chio-drogon` as a subdirectory and skips clearly when
 Drogon is not installed locally.
 
 ### Minimal Example

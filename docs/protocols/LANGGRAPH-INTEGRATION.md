@@ -18,7 +18,7 @@ orchestration layer. LangGraph adds:
 - **Checkpointing** -- graph state persisted across invocations
 
 Each of these creates a natural Chio enforcement point. A node transition
-is a capability boundary. A human-in-the-loop interrupt maps to an Chio
+is a capability boundary. A human-in-the-loop interrupt maps to a Chio
 approval guard. A supervisor dispatching to workers is a capability
 delegation chain.
 

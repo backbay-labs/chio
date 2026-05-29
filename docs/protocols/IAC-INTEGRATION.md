@@ -77,7 +77,7 @@ State file + Receipt = complete provenance
 ### 2.2 Module-Level Capability Scoping
 
 Terraform modules are the natural capability boundary. Each module maps
-to an Chio scope:
+to a Chio scope:
 
 ```
 Modules                          Chio Scopes
@@ -326,7 +326,7 @@ capabilities before delegating to the real provider:
 terraform {
   required_providers {
     chio = {
-      source = "backbay/chio"
+      source = "backbay-labs/chio"
       version = "~> 0.1"
     }
   }
@@ -393,7 +393,7 @@ class ChioDriftDetector:
             drift_resources = self._extract_drift(plan)
 
             for resource in drift_resources:
-                # Check if this change has an Chio receipt
+                # Check if this change has a Chio receipt
                 receipts = await self.chio.find_receipts(
                     meta={
                         "tf_resource_id": resource["id"],
@@ -574,7 +574,7 @@ directly to the existing K8s integration:
 
 ```yaml
 # ChioJobGrant for a Crossplane Composition
-apiVersion: chio.protocol/v1alpha1
+apiVersion: chio.world/v1alpha1
 kind: ChioJobGrant
 metadata:
   name: crossplane-database-grant
@@ -584,7 +584,7 @@ spec:
   jobSelector:
     matchLabels:
       crossplane.io/claim-name: agent-database
-      chio.protocol/governed: "true"
+      chio.world/governed: "true"
 
   capability:
     scopes:
@@ -654,8 +654,8 @@ func (v *ChioValidator) handleCrossplaneClaim(
 
     // Mutate: inject receipt ID as annotation
     claim.SetAnnotations(mergeMaps(claim.GetAnnotations(), map[string]string{
-        "chio.protocol/receipt-id": verdict.ReceiptID,
-        "chio.protocol/grant":     grant.Name,
+        "chio.world/receipt-id": verdict.ReceiptID,
+        "chio.world/grant":     grant.Name,
     }))
 
     return admission.Patched("Chio approved", claim)
@@ -801,7 +801,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Chio Evaluate Plan
-        uses: backbay/chio-action@v1
+        uses: backbay-labs/chio-action@v1
         with:
           tool: terraform:plan
           scope: infra:plan
@@ -812,7 +812,7 @@ jobs:
         run: terraform plan -out=tfplan -json > plan.json
 
       - name: Chio Plan Review Guard
-        uses: backbay/chio-action@v1
+        uses: backbay-labs/chio-action@v1
         with:
           tool: terraform:plan-review
           scope: infra:plan
@@ -825,7 +825,7 @@ jobs:
     environment: production  # Requires GitHub environment approval
     steps:
       - name: Chio Evaluate Apply
-        uses: backbay/chio-action@v1
+        uses: backbay-labs/chio-action@v1
         with:
           tool: terraform:apply
           scope: infra:apply
@@ -837,7 +837,7 @@ jobs:
         run: terraform apply tfplan
 
       - name: Record Chio Receipt
-        uses: backbay/chio-action@v1
+        uses: backbay-labs/chio-action@v1
         with:
           action: record
           state-file: terraform.tfstate

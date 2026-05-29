@@ -2,7 +2,7 @@
 
 use thiserror::Error;
 
-/// Errors produced while translating an Envoy `CheckRequest` into an Chio
+/// Errors produced while translating an Envoy `CheckRequest` into a Chio
 /// [`crate::translate::ToolCallRequest`].
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum TranslateError {

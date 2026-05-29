@@ -1,6 +1,6 @@
 # Example Surface Matrix
 
-This matrix maps each example in [`examples/`](./) to the Chio surface it teaches.
+This matrix maps the examples in [`examples/`](./) to the Chio surface each one teaches. The first table covers the core teaching examples (flagships, the `hello-*` family, and the guard examples); the [Specialized and integration examples](#specialized-and-integration-examples) table below it covers the narrower demos and integration references.
 
 Support directories such as [`_shared/`](./_shared/), [`policies/`](./policies/), and [`run-hello-smokes.sh`](./run-hello-smokes.sh) are intentionally excluded because they are scaffolding rather than teaching examples.
 
@@ -25,12 +25,27 @@ Support directories such as [`_shared/`](./_shared/), [`policies/`](./policies/)
 | [`hello-chi/`](./hello-chi/) | HTTP framework | `chio-go-http` | Go `chi` integration with Chio HTTP enforcement | [`smoke.sh`](./hello-chi/smoke.sh) |
 | [`hello-spring-boot/`](./hello-spring-boot/) | HTTP framework | `chio-spring-boot` | JVM/Spring Boot Chio filter chain on safe and governed routes | [`smoke.sh`](./hello-spring-boot/smoke.sh) |
 | [`hello-dotnet/`](./hello-dotnet/) | HTTP framework | `ChioMiddleware` | ASP.NET Chio middleware for allow/deny and receipt-bearing responses | [`smoke.sh`](./hello-dotnet/smoke.sh) |
-| [`hello-drogon/`](./hello-drogon/) | HTTP framework | `packages/sdk/chio-drogon` | C++ Drogon middleware using `chio::drogon::ChioMiddleware`; local smoke skips when CMake or Drogon is unavailable | [`smoke.sh`](./hello-drogon/smoke.sh) |
+| [`hello-drogon/`](./hello-drogon/) | HTTP framework | `sdks/cpp/chio-drogon` | C++ Drogon middleware using `chio::drogon::ChioMiddleware`; local smoke skips when CMake or Drogon is unavailable | [`smoke.sh`](./hello-drogon/smoke.sh) |
 | [`hello-mcp/`](./hello-mcp/) | Protocol edge | MCP edge runtime | Authoritative MCP request handling over JSON-RPC with Chio semantics | [`smoke.sh`](./hello-mcp/smoke.sh) |
 | [`hello-a2a/`](./hello-a2a/) | Protocol edge | A2A edge runtime | Authoritative A2A send plus deferred task lifecycle through Chio | [`smoke.sh`](./hello-a2a/smoke.sh) |
 | [`hello-acp/`](./hello-acp/) | Protocol edge | ACP edge runtime | ACP invoke plus deferred stream/resume lifecycle through Chio | [`smoke.sh`](./hello-acp/smoke.sh) |
 | [`guards/tool-gate/`](./guards/tool-gate/) | Guard example | `chio-guard-sdk` basic verdict logic | Tool-name-based allow/deny policy in a tiny WASM guard | [`src/lib.rs`](./guards/tool-gate/src/lib.rs) |
 | [`guards/enriched-inspector/`](./guards/enriched-inspector/) | Guard example | `chio-guard-sdk` enriched fields + host functions | Enriched request inspection and host-function-based path blocking in a WASM guard | [`src/lib.rs`](./guards/enriched-inspector/src/lib.rs) |
+
+## Specialized And Integration Examples
+
+These examples are narrower than the core set above: they target a single integration point, a federation slice, or an evidence-format handoff, and most run as a one-shot fixture or packaging check rather than a long-lived service.
+
+| Example | Kind | Chio surfaces taught | What it demonstrates | Primary run path |
+| --- | --- | --- | --- | --- |
+| [`bilateral-invocation/`](./bilateral-invocation/) | Federation demo | Bilateral cosign, DSSE signature-slice envelope, partial local verifier | Local end-to-end bilateral cosigned invocation between two `did:chio` kernels, printing the verdict, lease, and wire envelope | [`src/main.rs`](./bilateral-invocation/src/main.rs) |
+| [`chio-3vendor/`](./chio-3vendor/) | Federation demo | `chio-attest-loopback` proof packages, selective disclosure, pheromone relay fixtures | Deterministic three-vendor (buyer, two providers, auditor) attestation and bilateral-cosign fixture flow | [`README.md`](./chio-3vendor/README.md) |
+| [`chiodome-bilateral/`](./chiodome-bilateral/) | Federation demo | `chio_federation::bilateral_dsse`, Web3 checkpoint statement, `chio mcp serve` policy wrapper | Cross-org refund cosign envelope plus an `mcp-remote` stdio-to-HTTP bridge around a local KB MCP | [`README.md`](./chiodome-bilateral/README.md) |
+| [`cross-provider-policy/`](./cross-provider-policy/) | Policy demo | One Chio policy evaluated across eight native provider adapters | Byte-equal verdicts for semantically equivalent tool calls across OpenAI, Anthropic, Bedrock, Gemini, Mistral, Groq, Ollama, and Cohere fixtures, with no live credentials | [`README.md`](./cross-provider-policy/README.md) |
+| [`eval-receipt-ingest/`](./eval-receipt-ingest/) | Evidence handoff | `chio.eval-report.bundle.v1`, eval-receipt sign and verify | Packages verdict-matrix receipt fixtures into a signed eval-report bundle and round-trips it through `chio-eval-receipt verify-fixture` | [`metr/README.md`](./eval-receipt-ingest/metr/README.md) |
+| [`istio-ext-authz/`](./istio-ext-authz/) | Mesh integration | `chio-envoy-ext-authz` gRPC adapter, Istio `AuthorizationPolicy` CUSTOM action | Routing Istio ext_authz checks through the Chio adapter so passing responses carry an `x-chio-receipt-id` header | [`README.md`](./istio-ext-authz/README.md) |
+| [`otel-genai/`](./otel-genai/) | Observability integration | OTel GenAI contract, receipt and span bidirectional lookup | Looking up a GenAI tool-call span by receipt id and a signed receipt by span id through the OTLP export path | [`README.md`](./otel-genai/README.md) |
+| [`tee-sidecar/`](./tee-sidecar/) | Packaging smoke | `chio-tee` container packaging, sidecar TOML, spool volume | Building and wiring the TEE sidecar container next to an application container | [`README.md`](./tee-sidecar/README.md) |
 
 ## Suggested Learning Order
 

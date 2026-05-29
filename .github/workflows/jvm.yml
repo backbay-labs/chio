@@ -1,0 +1,41 @@
+name: JVM SDK
+
+# Path-scoped JVM SDK build. Extracted from ci.yml so the core PR gate stays
+# Rust-only and fast; the JVM lane runs only when the JVM SDK (or this
+# workflow) changes. Reported check context name is unchanged ("JVM build").
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "sdks/jvm/**"
+      - ".github/workflows/jvm.yml"
+  pull_request:
+    paths:
+      - "sdks/jvm/**"
+      - ".github/workflows/jvm.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jvm-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  jvm-build:
+    name: JVM build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a
+      - name: Check JVM formatting
+        working-directory: sdks/jvm
+        run: ./gradlew spotlessCheck --no-daemon
+      - name: Build JVM modules
+        working-directory: sdks/jvm
+        run: ./gradlew build --no-daemon

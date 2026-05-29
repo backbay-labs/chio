@@ -39,7 +39,10 @@ fn cold_adapter() -> OllamaAdapter {
         "deadbeef",
         "local_chio_latency",
     );
-    OllamaAdapter::new(config, Arc::new(transport::MockTransport::new()))
+    OllamaAdapter::new(
+        config,
+        Arc::new(transport::MockTransport::new("mock://ollama")),
+    )
 }
 
 fn allow_verdict() -> VerdictResult {

@@ -97,7 +97,8 @@ mod kernel_shim {
 
 #[test]
 fn passkey_to_capability_to_kernel_call_then_revoke_within_m04_epoch() {
-    // Stage 1: assemble the issuer with all three P2 surfaces.
+    // Stage 1: assemble the issuer with all three security surfaces
+    // (signer, replay nonce store, revocation cascade).
     let backend = Ed25519Backend::new(Keypair::from_seed(&[71u8; 32]));
     let issuer_public = backend.public_key();
     let signer: Arc<dyn SigningBackend> = Arc::new(backend);
@@ -131,14 +132,14 @@ fn passkey_to_capability_to_kernel_call_then_revoke_within_m04_epoch() {
     }
 
     // Stage 4: operator revokes the WebAuthn credential through the
-    // M04 cascade.
+    // revocation cascade.
     let post_root = match oracle.revoke_credential(cred, 1_000) {
         Ok(r) => r,
         Err(e) => panic!("revoke: {e}"),
     };
     assert!(
         post_root.epoch > pre_root.epoch,
-        "M04 epoch MUST advance on revocation"
+        "revocation oracle epoch MUST advance on revocation"
     );
 
     // Stage 5: a subsequent mint within the new epoch is denied
@@ -155,9 +156,9 @@ fn passkey_to_capability_to_kernel_call_then_revoke_within_m04_epoch() {
     // cryptographically valid because the kernel-side verifier does
     // NOT reach into the custody oracle (the cascade is on the issuer
     // mint path; the kernel checks the capability's own bindings).
-    // This is the documented split of responsibility from the M10
-    // narrative: revocation prevents NEW capabilities, not in-flight
-    // ones whose lifetime is bounded to 5 minutes.
+    // This is the documented split of responsibility: revocation
+    // prevents NEW capabilities, not in-flight ones whose lifetime is
+    // bounded to 5 minutes.
     if let Err(e) = kernel.verify(&cap, fixed_now()) {
         panic!("kernel MUST keep accepting the previously-minted capability: {e}");
     }

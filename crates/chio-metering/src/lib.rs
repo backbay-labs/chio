@@ -13,6 +13,7 @@
 //!   organizational scopes (org -> department -> team -> agent)
 //! - [`export`] -- Billing-export-compatible cost records
 
+#![forbid(unsafe_code)]
 #![cfg_attr(test, allow(clippy::expect_used, clippy::unwrap_used))]
 
 pub mod budget;

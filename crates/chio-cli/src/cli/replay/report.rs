@@ -453,9 +453,8 @@ mod replay_report_tests {
         render_json(&mut buf, &report).unwrap();
         let text = std::str::from_utf8(&buf).unwrap();
         assert!(text.ends_with('\n'), "trailing newline required: {text:?}");
-        // Exactly one newline (the trailing one): no internal newlines
-        // would creep in if a future refactor switched to
-        // to_writer_pretty.
+        // Exactly one newline (the trailing one): the report must stay
+        // single-line JSON, not to_writer_pretty output.
         assert_eq!(
             text.matches('\n').count(),
             1,

@@ -1,8 +1,6 @@
 //! ComputerUseGuard - coarse gate for Computer Use Agent (CUA) actions.
 //!
-//! Roadmap phase 5.1.  Ported from ClawdStrike's
-//! `guards/computer_use.rs` and adapted to Chio's synchronous
-//! [`chio_kernel::Guard`] trait.
+//! Implements Chio's synchronous [`chio_kernel::Guard`] trait.
 //!
 //! The guard is a coarse-grained allowlist for CUA action types.  It
 //! recognises three surfaces that arrive on the kernel:
@@ -43,8 +41,8 @@ use crate::external::TokenBucket;
 
 /// Default allowlist of CUA action-type strings.
 ///
-/// Mirrors the ClawdStrike default set so upstream policy taxonomies
-/// continue to work without translation.
+/// Covers the common remote-session and input action taxonomy so existing
+/// policies continue to work without translation.
 pub fn default_allowed_action_types() -> Vec<String> {
     vec![
         "remote.session.connect".to_string(),

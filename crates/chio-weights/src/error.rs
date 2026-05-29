@@ -1,7 +1,7 @@
 //! Typed model-card surface errors.
 //!
 //! Each variant is bound to a stable `urn:chio:error:weights:*` URN from the
-//! M01 registry. Every `Err(_)` returned from this crate carries one of these
+//! workspace error-code registry. Every `Err(_)` returned from this crate carries one of these
 //! variants; there is no untyped `String` error path. Variants are
 //! non-exhaustive so callers cannot pattern-match past a future variant and
 //! silently accept.
@@ -69,7 +69,7 @@ pub enum WeightsError {
 }
 
 impl WeightsError {
-    /// Stable URN for this error. Consumed by the M01 LSP-driven typed-enum
+    /// Stable URN for this error. Consumed by the LSP-driven typed-enum
     /// codegen and audit log surfaces.
     #[must_use]
     pub fn urn(&self) -> &'static str {

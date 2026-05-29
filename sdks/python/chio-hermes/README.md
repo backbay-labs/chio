@@ -1,6 +1,6 @@
 # chio-hermes
 
-Hermes Agent plugin for the [Chio](https://github.com/bb-connor/chio)
+Hermes Agent plugin for the [Chio](https://github.com/backbay-labs/chio)
 protocol. Routes Hermes file/shell/git tools through a capability-scoped
 Chio sidecar so every call is policy-checked, signed, and audited.
 

@@ -1,6 +1,6 @@
 # Hermes Integration
 
-Chio (formerly ARC) is a first-class tool surface for the
+Chio is a first-class tool surface for the
 [Hermes Agent](https://github.com/NousResearch/hermes-agent) the same
 way it is for Claude Code, Cursor, Codex, and OpenClaw. Two integration
 paths are supported. Path A wires Chio into Hermes as an MCP server
@@ -353,8 +353,7 @@ against Anthropic in the comprehensive dogfood pass: every advertised
 guard (env sanitization, output capping at `CHIO_SUBPROCESS_MAX_BYTES`,
 forbidden-path filters, `chio_path_escape`, `--no-verify` injection,
 `_redact_args` body redaction) fired against bait files and bait env
-vars without leaking. See `.planning/chio-hermes/DOGFOOD-COMPREHENSIVE.md`
-for the test matrix.
+vars without leaking.
 
 ## 3. Path A vs Path B: when to pick which
 

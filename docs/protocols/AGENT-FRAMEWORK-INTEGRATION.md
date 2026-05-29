@@ -436,7 +436,7 @@ level:
 from llama_index.core.tools import FunctionTool, ToolOutput
 from chio_llamaindex import ChioFunctionTool
 
-# Wrap a function as an Chio-secured LlamaIndex tool
+# Wrap a function as a Chio-secured LlamaIndex tool
 search_tool = ChioFunctionTool.from_defaults(
     fn=search_documents,
     name="search_documents",

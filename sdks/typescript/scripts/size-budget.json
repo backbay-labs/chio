@@ -27,10 +27,10 @@
       "rationale": "Deno Deploy isolate limit is 50 MB; ceiling kept at 400 KB to bound cold-start cost rather than fit a hard limit."
     },
     "passkey": {
-      "package": "@chio/passkey",
+      "package": "@chio-protocol/passkey",
       "wasm_path": "sdks/typescript/packages/passkey/dist",
       "gzipped_kb": 30,
-      "rationale": "M10.P3.T5: thin call site (navigator.credentials.get + fetch + parseCapabilityToken). The package ships zero wasm; the gate measures the gzipped TypeScript build output to bound cold-start cost. 30 KB sits well inside the trajectory-1 M08 cross-package ceilings (300 KB browser / 350 KB workers) so the budget fires cleanly without bumping totals. If this entry trips, the package is doing too much."
+      "rationale": "Thin call site (navigator.credentials.get + fetch + parseCapabilityToken). The package ships zero wasm; the gate measures the gzipped TypeScript build output to bound cold-start cost. 30 KB sits well inside the cross-package ceilings (300 KB browser / 350 KB workers) so the budget fires cleanly without bumping totals. If this entry trips, the package is doing too much."
     }
   }
 }

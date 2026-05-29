@@ -6,10 +6,10 @@ extraction, Kani harnesses, Rust formal-verification glue, and the nightly
 liveness lane). It lives next to the formal artifacts under `formal/` so
 ownership stays close to the code being proved.
 
-Under the current single-owner trajectory, both slots resolve to
+Under the current single-owner model, both slots resolve to
 `@bb-connor`. The literal `TBD-primary` and `TBD-backup` placeholders are
 preserved in the rows below so external contributors fill them in when
-they arrive (and so the M03 P1 gate-check grep for those tokens
+they arrive (and so the gate-check grep for those tokens
 continues to pass).
 
 ## Ownership
@@ -21,8 +21,7 @@ continues to pass).
 
 When the project staffs up, replace `TBD-primary` and `TBD-backup` with
 real GitHub handles (for example `@alice` and `@bob`) and update
-`.planning/trajectory/OWNERS.toml` plus the generated `CODEOWNERS` so the
-formal-verification paths route to the new humans.
+`CODEOWNERS` so the formal-verification paths route to the new humans.
 
 ## Responsibilities
 
@@ -59,8 +58,6 @@ co-signed by the kernel-core owner listed in `CODEOWNERS`.
 
 ## Related files
 
-- `CODEOWNERS` (generated) - routing for the `formal/**` glob.
-- `.planning/trajectory/OWNERS.toml` - source of truth that generates
-  `CODEOWNERS`.
+- `CODEOWNERS` - routing for the `formal/**` glob (maintained manually).
 - `formal/proof-manifest.toml` - inventory of proofs and their status.
 - `formal/theorem-inventory.json` - machine-readable theorem index.

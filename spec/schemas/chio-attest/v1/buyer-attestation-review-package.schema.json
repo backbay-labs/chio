@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://chio.dev/schemas/chio-attest/v1/buyer-attestation-review-package.schema.json",
+  "$id": "https://chio.world/schemas/chio-attest/v1/buyer-attestation-review-package.schema.json",
   "title": "Chio Buyer Attestation Review Package",
   "type": "object",
   "additionalProperties": false,

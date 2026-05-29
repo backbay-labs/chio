@@ -78,4 +78,4 @@ PR #679 is the source-of-truth commit that bundles:
 - Integration overview and per-adapter pin matrix:
   [`docs/integrations/CHIO-ADAPTER-BASE.md`](CHIO-ADAPTER-BASE.md)
 - Helper hardening + prefect canary collapse PR:
-  [PR #679](https://github.com/bb-connor/arc/pull/679)
+  [PR #679](https://github.com/backbay-labs/chio/pull/679)

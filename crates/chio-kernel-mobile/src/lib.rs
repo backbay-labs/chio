@@ -165,10 +165,10 @@ struct VerifyCapabilityRequest {
     /// [`MobileClock`].
     #[serde(default)]
     now_secs: Option<i64>,
-    /// Optional W1.3 peer-negotiated profile.
+    /// Optional peer-negotiated profile.
     #[serde(default)]
     peer_capabilities: Option<CapabilityNegotiation>,
-    /// Optional W1.1 chain-binding trust roots, keyed by issuer hex.
+    /// Optional chain-binding trust roots, keyed by issuer hex.
     #[serde(default)]
     capability_trust_roots: std::collections::BTreeMap<String, ScopeHash>,
     /// Optional parent-budget snapshots used to seed sibling-sum

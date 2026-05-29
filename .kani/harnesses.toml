@@ -17,7 +17,7 @@ schema = "chio.kani.multi-crate.v1"
 # This file is the source of truth for the multi-crate sweep. The
 # legacy `formal/rust-verification/kani-public-harnesses.toml` retains
 # the v1 chio-kernel-core schema for backwards-compatible consumers
-# (`scripts/check-kani-public-core.sh` and the M06 evidence bundle
+# (`scripts/check-kani-public-core.sh` and the formal-evidence bundle
 # expect `[lanes.pr]`); the entries below for chio-kernel-core mirror
 # that lane so there is exactly one place to extend the sweep.
 #

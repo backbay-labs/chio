@@ -299,10 +299,9 @@ fn emit_anchor_statement(
 
     // The `Web3CheckpointStatement` body is unsigned by construction (the
     // signature field carries the kernel's signature over a kernel-checkpoint
-    // body whose canonical layout includes these fields). For the demo we
-    // sign over the canonical bytes of the body fields directly so the
-    // emitted statement is self-consistent under the same key that signed
-    // the receipt.
+    // body whose canonical layout includes these fields). Signing over the
+    // canonical bytes of the body fields directly keeps the emitted statement
+    // self-consistent under the same key that signed the receipt.
     let unsigned = UnsignedCheckpointBody {
         schema: CHIO_CHECKPOINT_STATEMENT_SCHEMA,
         checkpoint_seq: 1,

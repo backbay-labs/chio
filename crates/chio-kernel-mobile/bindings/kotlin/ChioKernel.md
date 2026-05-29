@@ -98,45 +98,44 @@ fun verifyPassport(
 ): PortablePassportMetadata
 ```
 
-Verifies a portable passport envelope (Phase 20.1 wire format). Pass
+Verifies a portable passport envelope (v1 wire format). Pass
 `nowSecs <= 0` to fall back to the device wall-clock.
 
-### `attestAppAttest` (M07 P1)
+### `attestAppAttest`
 
 ```kotlin
 @Throws(ChioMobileException::class)
 fun attestAppAttest(keyId: String, challengeHex: String): String
 ```
 
-M07 P1 shell for the iOS-compatible App Attest evidence shape. The Kotlin
-surface keeps the name for cross-platform parity; the shell validates
-`challengeHex` and returns `ChioMobileException.AttestationUnavailable` until
-M07 P2 wires the platform verifier.
+Produces the iOS-compatible App Attest evidence shape. The Kotlin surface
+keeps the name for cross-platform parity; the function validates
+`challengeHex` and returns `ChioMobileException.AttestationUnavailable`; the
+platform verifier is not yet wired.
 
-### `attestPlayIntegrity` (M07 P1)
+### `attestPlayIntegrity`
 
 ```kotlin
 @Throws(ChioMobileException::class)
 fun attestPlayIntegrity(nonceHex: String): String
 ```
 
-M07 P1 shell for producing a Play Integrity evidence envelope bound to an
-issuer nonce. The shell validates `nonceHex` and returns
-`ChioMobileException.AttestationUnavailable` until M07 P3 wires the platform
-verifier.
+Produces a Play Integrity evidence envelope bound to an issuer nonce. The
+function validates `nonceHex` and returns
+`ChioMobileException.AttestationUnavailable`; the platform verifier is not
+yet wired.
 
-### `verifyMobileReceipt` (M07 P1)
+### `verifyMobileReceipt`
 
 ```kotlin
 @Throws(ChioMobileException::class)
 fun verifyMobileReceipt(receiptJson: String, evidenceJson: String): String
 ```
 
-M07 P1 shell for verifying a mobile receipt against App Attest or Play
-Integrity evidence before forwarding it to the hosted oracle. The shell
-validates both JSON envelopes and returns
-`ChioMobileException.AttestationUnavailable` until M07 P4 wires the
-receipt-chain verifier.
+Verifies a mobile receipt against App Attest or Play Integrity evidence before
+forwarding it to the hosted oracle. The function validates both JSON envelopes
+and returns `ChioMobileException.AttestationUnavailable`; the receipt-chain
+verifier is not yet wired.
 
 ## Records
 
@@ -208,6 +207,6 @@ val responseJson = evaluate(requestJson = requestJson)
 ## Offline sync
 
 See `bindings/README.md` for the offline evaluate + signReceipt +
-queue + sync pattern the Phase 14.3 acceptance criterion calls out.
+queue + sync pattern for offline mobile clients.
 The FFI exposes primitives only; the queue, keystore, and sync layer
 are owned by the app-side integration.

@@ -5,7 +5,7 @@
 # three policies:
 #
 #   1. chio-tool-authorization     -- opts workloads labelled
-#                                    `chio.protocol/secured=true` in the
+#                                    `chio.world/secured=true` in the
 #                                    `agent-tools` namespace into Chio
 #                                    evaluation, with a header-driven filter
 #                                    so only capability-bearing requests pay
@@ -34,7 +34,7 @@ spec:
   # Apply only to workloads that opted in by labelling themselves.
   selector:
     matchLabels:
-      chio.protocol/secured: "true"
+      chio.world/secured: "true"
   action: CUSTOM
   provider:
     name: chio-ext-authz
@@ -80,7 +80,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      chio.protocol/secured: "true"
+      chio.world/secured: "true"
   action: DENY
   rules:
     # Anything hitting /tools/* without either header is denied before it
@@ -105,7 +105,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      chio.protocol/secured: "true"
+      chio.world/secured: "true"
   action: ALLOW
   rules:
     - to:

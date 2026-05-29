@@ -77,6 +77,7 @@ jobs:
   publish-typescript:
     steps:
       - checkout
+      - cd sdks/typescript
       - npm ci --workspaces
       - npm test --workspaces
       - npm publish --workspace packages/node-http --access public
@@ -285,7 +286,7 @@ This is blocked on section 1 (package publishing). Until then, the quickstart
 uses a git-based install:
 
 ```bash
-pip install "chio-sdk-python @ git+https://github.com/backbay/chio.git#subdirectory=sdks/python/chio-sdk-python"
+pip install "chio-sdk-python @ git+https://github.com/backbay-labs/chio.git#subdirectory=sdks/python/chio-sdk-python"
 ```
 
 ### 3.3 Step 2: Start the Sidecar
@@ -295,7 +296,7 @@ Four distribution channels, ordered by ease of use:
 **Option A: Docker (zero install)**
 
 ```bash
-docker run -p 9090:9090 ghcr.io/backbay/chio-sidecar:latest
+docker run -p 9090:9090 ghcr.io/backbay-labs/chio-sidecar:latest
 ```
 
 The container bundles the `chio` binary with a permissive default policy. It
@@ -539,7 +540,7 @@ The demo script that goes on the landing page and in every conference talk:
 # Terminal 1: start the sidecar with coding agent policy
 # NOTE: --policy takes a file path. The Docker image bundles a default
 # policy at /etc/chio/code-agent-policy.yaml for the demo.
-docker run -p 9090:9090 ghcr.io/backbay/chio-sidecar:latest --policy /etc/chio/code-agent-policy.yaml
+docker run -p 9090:9090 ghcr.io/backbay-labs/chio-sidecar:latest --policy /etc/chio/code-agent-policy.yaml
 
 # Terminal 2: try safe and unsafe operations
 python -c "

@@ -18,7 +18,7 @@
 //! Build the Python guard before running these tests:
 //!
 //! ```bash
-//! cd packages/sdk/chio-guard-py && ./scripts/build-guard.sh
+//! cd sdks/guard/chio-guard-py && ./scripts/build-guard.sh
 //! ```
 
 #![cfg(feature = "wasmtime-runtime")]
@@ -51,13 +51,13 @@ const PY_MAX_MEMORY: usize = 64 * 1024 * 1024;
 /// Load the Python-compiled tool-gate guard WASM binary.
 fn load_py_guard_wasm() -> Vec<u8> {
     let path = format!(
-        "{}/../../packages/sdk/chio-guard-py/dist/tool-gate.wasm",
+        "{}/../../sdks/guard/chio-guard-py/dist/tool-gate.wasm",
         env!("CARGO_MANIFEST_DIR"),
     );
     std::fs::read(&path).unwrap_or_else(|e| {
         panic!(
             "Missing .wasm at {path}: {e}. Build with: \
-             cd packages/sdk/chio-guard-py && ./scripts/build-guard.sh"
+             cd sdks/guard/chio-guard-py && ./scripts/build-guard.sh"
         )
     })
 }

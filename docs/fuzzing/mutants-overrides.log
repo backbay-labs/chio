@@ -1,8 +1,7 @@
-# mutants-overrides.log - audit trail for M02.P3.T2 escape hatch.
+# mutants-overrides.log - audit trail for the mutation-gate escape hatch.
 #
-# Source: .planning/trajectory/02-fuzzing-post-pr13.md
-#   "Mutation-testing CI shape (Phase 3) > Override paragraph"
-# Ticket: .planning/trajectory/tickets/M02/P3.yml#M02.P3.T2.
+# The mutation-testing CI shape and override paragraph are documented in
+# docs/fuzzing/continuous.md and docs/fuzzing/triage.md.
 #
 # Append-only log. scripts/mutants-gate.sh writes one row each time
 # MUTANTS_GATE_OVERRIDE_REASON is set and the gate would otherwise block.

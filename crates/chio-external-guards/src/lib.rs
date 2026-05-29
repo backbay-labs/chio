@@ -4,6 +4,7 @@
 //! need an HTTP transport dependency. The generic async adapter, retry,
 //! caching, and circuit-breaker infrastructure remains in `chio-guards`.
 
+#![forbid(unsafe_code)]
 #![cfg_attr(test, allow(clippy::expect_used, clippy::unwrap_used))]
 
 use std::future::Future;
@@ -129,6 +130,9 @@ impl<E: ExternalGuard> Guard for ScopedAsyncGuard<E> {
     }
 
     fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
+        // By design: a tool-scoped guard returns Allow for traffic outside
+        // its scope. The deny-by-default contract is enforced by the
+        // composing authority layer, not by this single scoped guard.
         if !self.matches_tool(&ctx.request.tool_name) {
             return Ok(Verdict::Allow);
         }

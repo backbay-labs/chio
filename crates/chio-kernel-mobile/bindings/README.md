@@ -34,9 +34,9 @@ toolchain from `src/chio_kernel_mobile.udl`.
   the Android NDK (r25+) with a `cargo-ndk` wrapper or hand-rolled
   linker config pointing at the NDK-supplied clang.
 
-## One-command qualification
+## One-command verification
 
-Run the repo-local qualification lane from the workspace root:
+Run the repo-local verification suite from the workspace root:
 
 ```bash
 ./scripts/qualify-mobile-kernel.sh
@@ -68,30 +68,30 @@ does not by itself qualify the mobile target surface.
 
 The UDL exports seven functions. The first four are the portable kernel
 surface: `evaluate`, `sign_receipt`, `verify_capability`, and
-`verify_passport`. M07 P1 adds three mobile-attestation entries:
+`verify_passport`. The remaining three are mobile-attestation entries:
 
 - `attest_app_attest(key_id, challenge_hex)`: produce an App Attest evidence
-  envelope bound to a server challenge. Until the M07 P2 platform verifier
+  envelope bound to a server challenge. Until the platform verifier
   lands, this validates inputs and returns
   `ChioMobileError.AttestationUnavailable`.
 - `attest_play_integrity(nonce_hex)`: produce a Play Integrity evidence
-  envelope bound to an issuer nonce. Until the M07 P3 platform verifier
+  envelope bound to an issuer nonce. Until the platform verifier
   lands, this validates inputs and returns
   `ChioMobileError.AttestationUnavailable`.
 - `verify_mobile_receipt(receipt_json, evidence_json)`: verify a mobile
   receipt against device-attestation evidence before it is handed to the
-  hosted oracle. Until the M07 P4 receipt-chain verifier lands, this
+  hosted oracle. Until the receipt-chain verifier lands, this
   validates JSON inputs and returns `ChioMobileError.AttestationUnavailable`.
 
 ## Generating the Swift bindings
 
 ```bash
 # 1. Build the static library for every iOS architecture you ship for.
-CARGO_TARGET_DIR=target/wave3k-mobile cargo build \
+CARGO_TARGET_DIR=target/mobile cargo build \
     --release --target aarch64-apple-ios -p chio-kernel-mobile
-CARGO_TARGET_DIR=target/wave3k-mobile cargo build \
+CARGO_TARGET_DIR=target/mobile cargo build \
     --release --target aarch64-apple-ios-sim -p chio-kernel-mobile
-CARGO_TARGET_DIR=target/wave3k-mobile cargo build \
+CARGO_TARGET_DIR=target/mobile cargo build \
     --release --target x86_64-apple-ios -p chio-kernel-mobile
 
 # 2. Emit the Swift bindings.
@@ -116,7 +116,7 @@ static libraries (`libchio_kernel_mobile.a`) from step 1.
 4. Call the entry points directly -- `try evaluate(requestJson:)`,
    `try signReceipt(bodyJson:signingSeedHex:)`,
    `try verifyCapability(tokenJson:authorityPubHex:)`,
-   `try verifyPassport(envelopeJson:issuerPubHex:nowSecs:)`. M07 P1 adds
+   `try verifyPassport(envelopeJson:issuerPubHex:nowSecs:)`. The mobile-attestation entries add
    `try attestAppAttest(keyId:challengeHex:)`,
    `try attestPlayIntegrity(nonceHex:)`, and
    `try verifyMobileReceipt(receiptJson:evidenceJson:)`.
@@ -127,7 +127,7 @@ static libraries (`libchio_kernel_mobile.a`) from step 1.
 # 1. Build the shared library for every Android ABI you ship for. Use
 #    cargo-ndk (`cargo install cargo-ndk`) to hand the correct linker
 #    to rustc automatically.
-CARGO_TARGET_DIR=target/wave3k-mobile cargo ndk \
+CARGO_TARGET_DIR=target/mobile cargo ndk \
     --target aarch64-linux-android --target armv7-linux-androideabi \
     --target x86_64-linux-android --target i686-linux-android \
     -o android/jniLibs build --release -p chio-kernel-mobile
@@ -154,18 +154,17 @@ into `src/main/jniLibs/<abi>/` alongside the module's resources.
 4. Call the entry points directly -- `evaluate(requestJson)`,
    `signReceipt(bodyJson, signingSeedHex)`,
    `verifyCapability(tokenJson, authorityPubHex)`,
-   `verifyPassport(envelopeJson, issuerPubHex, nowSecs)`. M07 P1 adds
+   `verifyPassport(envelopeJson, issuerPubHex, nowSecs)`. The mobile-attestation entries add
    `attestAppAttest(keyId, challengeHex)`,
    `attestPlayIntegrity(nonceHex)`, and
    `verifyMobileReceipt(receiptJson, evidenceJson)`.
 
 ## Offline receipt sync pattern
 
-The Phase 14.3 acceptance criterion calls out an offline-first
-workflow: an app caches a capability, evaluates tool calls locally
-while disconnected, and syncs the resulting receipts to a backend
-when connectivity returns. The FFI exposes the primitives for all
-three halves:
+The offline-first workflow caches a capability, evaluates tool calls
+locally while disconnected, and syncs the resulting receipts to a
+backend when connectivity returns. The FFI exposes the primitives for
+all three halves:
 
 1. **Cache** a capability token (JSON) to the device keystore
    (`KeychainService` on iOS, `EncryptedSharedPreferences` on Android).

@@ -1,4 +1,6 @@
-fn cmd_run(
+use super::*;
+
+pub(crate) fn cmd_run(
     policy_path: &Path,
     command: &[String],
     json_output: bool,
@@ -142,7 +144,7 @@ fn cmd_run(
     }
 }
 
-fn cmd_api_protect(
+pub(crate) fn cmd_api_protect(
     upstream: &str,
     spec_path: Option<&Path>,
     listen_addr: &str,
@@ -190,16 +192,16 @@ fn cmd_api_protect(
 /// non-`/v1/*` requests will fail loud at the egress contract instead
 /// of silently succeeding. This is the intended behaviour for the
 /// sidecar-only deployment shape.
-const CHIO_START_STUB_OPENAPI_SPEC: &str = r#"openapi: 3.1.0
+pub(crate) const CHIO_START_STUB_OPENAPI_SPEC: &str = r#"openapi: 3.1.0
 info:
   title: chio-start-sidecar
   version: 0.0.0
 paths: {}
 "#;
 
-const CHIO_START_NO_UPSTREAM_URL: &str = "http://127.0.0.1:1";
+pub(crate) const CHIO_START_NO_UPSTREAM_URL: &str = "http://127.0.0.1:1";
 
-fn cmd_start(
+pub(crate) fn cmd_start(
     listen_addr: &str,
     receipt_store: Option<&Path>,
     authority_seed_path: Option<&Path>,
@@ -264,7 +266,7 @@ fn cmd_start(
     })
 }
 
-fn parse_trusted_capability_issuers_from_env() -> Result<Vec<chio_core::PublicKey>, CliError> {
+pub(crate) fn parse_trusted_capability_issuers_from_env() -> Result<Vec<chio_core::PublicKey>, CliError> {
     let mut issuers = Vec::new();
 
     if let Ok(single_issuer) = std::env::var("CHIO_TRUSTED_ISSUER_KEY") {
@@ -300,7 +302,7 @@ fn parse_trusted_capability_issuers_from_env() -> Result<Vec<chio_core::PublicKe
     Ok(issuers)
 }
 
-fn cmd_check(
+pub(crate) fn cmd_check(
     policy_path: &Path,
     tool: &str,
     params_str: &str,
@@ -438,7 +440,7 @@ fn cmd_check(
     }
 }
 
-fn verdict_label(verdict: chio_kernel::Verdict) -> &'static str {
+pub(crate) fn verdict_label(verdict: chio_kernel::Verdict) -> &'static str {
     match verdict {
         chio_kernel::Verdict::Allow => "ALLOW",
         chio_kernel::Verdict::Deny => "DENY",
@@ -446,7 +448,7 @@ fn verdict_label(verdict: chio_kernel::Verdict) -> &'static str {
     }
 }
 
-fn cmd_mcp_serve(
+pub(crate) fn cmd_mcp_serve(
     policy_path: Option<&Path>,
     preset: Option<&str>,
     server_id: &str,
@@ -599,7 +601,7 @@ fn cmd_mcp_serve(
     Ok(())
 }
 
-fn cmd_mcp_serve_http(
+pub(crate) fn cmd_mcp_serve_http(
     policy_path: &Path,
     server_id: &str,
     server_name: Option<&str>,
@@ -717,7 +719,7 @@ fn cmd_mcp_serve_http(
     })
 }
 
-fn remote_mcp_auth_egress_contract(
+pub(crate) fn remote_mcp_auth_egress_contract(
     server_id: &str,
     auth_jwt_discovery_url: Option<&str>,
     auth_introspection_url: Option<&str>,
@@ -806,7 +808,7 @@ fn remote_mcp_auth_egress_contract(
     Ok(Some(contract))
 }
 
-fn cli_normalized_url_authority(url: &url::Url) -> Result<String, CliError> {
+pub(crate) fn cli_normalized_url_authority(url: &url::Url) -> Result<String, CliError> {
     let host = url.host_str().ok_or_else(|| {
         CliError::cli_other_error(format!(
             "remote MCP auth egress URL `{url}` is missing an authority"
@@ -823,21 +825,21 @@ fn cli_normalized_url_authority(url: &url::Url) -> Result<String, CliError> {
     })
 }
 
-fn is_cli_ipv6_unicast_link_local(address: &std::net::Ipv6Addr) -> bool {
+pub(crate) fn is_cli_ipv6_unicast_link_local(address: &std::net::Ipv6Addr) -> bool {
     (address.segments()[0] & 0xffc0) == 0xfe80
 }
 
-fn is_cli_ipv6_unique_local(address: &std::net::Ipv6Addr) -> bool {
+pub(crate) fn is_cli_ipv6_unique_local(address: &std::net::Ipv6Addr) -> bool {
     (address.segments()[0] & 0xfe00) == 0xfc00
 }
 
-fn optional_secret_with_env_fallback(value: Option<&str>, fallback_env: &str) -> Option<String> {
+pub(crate) fn optional_secret_with_env_fallback(value: Option<&str>, fallback_env: &str) -> Option<String> {
     value
         .map(ToOwned::to_owned)
         .or_else(|| std::env::var(fallback_env).ok().filter(|value| !value.is_empty()))
 }
 
-fn require_revocation_db_path(revocation_db_path: Option<&Path>) -> Result<&Path, CliError> {
+pub(crate) fn require_revocation_db_path(revocation_db_path: Option<&Path>) -> Result<&Path, CliError> {
     revocation_db_path.ok_or_else(|| {
         CliError::cli_other_error(
             "trust commands require --revocation-db <path> so persisted trust state is explicit"
@@ -846,7 +848,7 @@ fn require_revocation_db_path(revocation_db_path: Option<&Path>) -> Result<&Path
     })
 }
 
-fn require_receipt_db_path(receipt_db_path: Option<&Path>) -> Result<&Path, CliError> {
+pub(crate) fn require_receipt_db_path(receipt_db_path: Option<&Path>) -> Result<&Path, CliError> {
     receipt_db_path.ok_or_else(|| {
         CliError::cli_other_error(
             "shared evidence commands require --receipt-db <path> when --control-url is not set"
@@ -855,7 +857,7 @@ fn require_receipt_db_path(receipt_db_path: Option<&Path>) -> Result<&Path, CliE
     })
 }
 
-fn cmd_trust_serve(
+pub(crate) fn cmd_trust_serve(
     listen: SocketAddr,
     service_token: &str,
     tenant_read_tokens: &[String],
@@ -928,7 +930,7 @@ fn cmd_trust_serve(
     })
 }
 
-fn parse_tenant_read_tokens(specs: &[String]) -> Result<std::collections::BTreeMap<String, String>, CliError> {
+pub(crate) fn parse_tenant_read_tokens(specs: &[String]) -> Result<std::collections::BTreeMap<String, String>, CliError> {
     let mut parsed = std::collections::BTreeMap::new();
     for spec in specs {
         let (tenant, token) = spec.split_once('=').ok_or_else(|| {
@@ -952,7 +954,7 @@ fn parse_tenant_read_tokens(specs: &[String]) -> Result<std::collections::BTreeM
     Ok(parsed)
 }
 
-fn cmd_trust_revoke(
+pub(crate) fn cmd_trust_revoke(
     capability_id: &str,
     json_output: bool,
     revocation_db_path: Option<&std::path::Path>,
@@ -990,7 +992,7 @@ fn cmd_trust_revoke(
     Ok(())
 }
 
-fn cmd_trust_status(
+pub(crate) fn cmd_trust_status(
     capability_id: &str,
     json_output: bool,
     revocation_db_path: Option<&std::path::Path>,
@@ -1031,107 +1033,107 @@ fn cmd_trust_status(
     Ok(())
 }
 
-struct SharedEvidenceListArgs<'a> {
-    capability_id: Option<&'a str>,
-    agent_subject: Option<&'a str>,
-    tool_server: Option<&'a str>,
-    tool_name: Option<&'a str>,
-    since: Option<u64>,
-    until: Option<u64>,
-    issuer: Option<&'a str>,
-    partner: Option<&'a str>,
-    limit: usize,
+pub(crate) struct SharedEvidenceListArgs<'a> {
+    pub(crate) capability_id: Option<&'a str>,
+    pub(crate) agent_subject: Option<&'a str>,
+    pub(crate) tool_server: Option<&'a str>,
+    pub(crate) tool_name: Option<&'a str>,
+    pub(crate) since: Option<u64>,
+    pub(crate) until: Option<u64>,
+    pub(crate) issuer: Option<&'a str>,
+    pub(crate) partner: Option<&'a str>,
+    pub(crate) limit: usize,
 }
 
-struct AuthorizationContextListArgs<'a> {
-    capability_id: Option<&'a str>,
-    agent_subject: Option<&'a str>,
-    tool_server: Option<&'a str>,
-    tool_name: Option<&'a str>,
-    since: Option<u64>,
-    until: Option<u64>,
-    limit: usize,
+pub(crate) struct AuthorizationContextListArgs<'a> {
+    pub(crate) capability_id: Option<&'a str>,
+    pub(crate) agent_subject: Option<&'a str>,
+    pub(crate) tool_server: Option<&'a str>,
+    pub(crate) tool_name: Option<&'a str>,
+    pub(crate) since: Option<u64>,
+    pub(crate) until: Option<u64>,
+    pub(crate) limit: usize,
 }
 
-struct BehavioralFeedExportArgs<'a> {
-    capability_id: Option<&'a str>,
-    agent_subject: Option<&'a str>,
-    tool_server: Option<&'a str>,
-    tool_name: Option<&'a str>,
-    since: Option<u64>,
-    until: Option<u64>,
-    receipt_limit: usize,
+pub(crate) struct BehavioralFeedExportArgs<'a> {
+    pub(crate) capability_id: Option<&'a str>,
+    pub(crate) agent_subject: Option<&'a str>,
+    pub(crate) tool_server: Option<&'a str>,
+    pub(crate) tool_name: Option<&'a str>,
+    pub(crate) since: Option<u64>,
+    pub(crate) until: Option<u64>,
+    pub(crate) receipt_limit: usize,
 }
 
-struct ExposureLedgerQueryArgs<'a> {
-    capability_id: Option<&'a str>,
-    agent_subject: Option<&'a str>,
-    tool_server: Option<&'a str>,
-    tool_name: Option<&'a str>,
-    since: Option<u64>,
-    until: Option<u64>,
-    receipt_limit: usize,
-    decision_limit: usize,
+pub(crate) struct ExposureLedgerQueryArgs<'a> {
+    pub(crate) capability_id: Option<&'a str>,
+    pub(crate) agent_subject: Option<&'a str>,
+    pub(crate) tool_server: Option<&'a str>,
+    pub(crate) tool_name: Option<&'a str>,
+    pub(crate) since: Option<u64>,
+    pub(crate) until: Option<u64>,
+    pub(crate) receipt_limit: usize,
+    pub(crate) decision_limit: usize,
 }
 
-struct AgentExposureLedgerQueryArgs<'a> {
-    agent_subject: &'a str,
-    capability_id: Option<&'a str>,
-    tool_server: Option<&'a str>,
-    tool_name: Option<&'a str>,
-    since: Option<u64>,
-    until: Option<u64>,
-    receipt_limit: usize,
-    decision_limit: usize,
+pub(crate) struct AgentExposureLedgerQueryArgs<'a> {
+    pub(crate) agent_subject: &'a str,
+    pub(crate) capability_id: Option<&'a str>,
+    pub(crate) tool_server: Option<&'a str>,
+    pub(crate) tool_name: Option<&'a str>,
+    pub(crate) since: Option<u64>,
+    pub(crate) until: Option<u64>,
+    pub(crate) receipt_limit: usize,
+    pub(crate) decision_limit: usize,
 }
 
-struct CapitalBookExportArgs<'a> {
-    agent_subject: &'a str,
-    capability_id: Option<&'a str>,
-    tool_server: Option<&'a str>,
-    tool_name: Option<&'a str>,
-    since: Option<u64>,
-    until: Option<u64>,
-    receipt_limit: usize,
-    facility_limit: usize,
-    bond_limit: usize,
-    loss_event_limit: usize,
+pub(crate) struct CapitalBookExportArgs<'a> {
+    pub(crate) agent_subject: &'a str,
+    pub(crate) capability_id: Option<&'a str>,
+    pub(crate) tool_server: Option<&'a str>,
+    pub(crate) tool_name: Option<&'a str>,
+    pub(crate) since: Option<u64>,
+    pub(crate) until: Option<u64>,
+    pub(crate) receipt_limit: usize,
+    pub(crate) facility_limit: usize,
+    pub(crate) bond_limit: usize,
+    pub(crate) loss_event_limit: usize,
 }
 
-struct CreditFacilityIssueArgs<'a> {
-    query: AgentExposureLedgerQueryArgs<'a>,
-    supersedes_facility_id: Option<&'a str>,
+pub(crate) struct CreditFacilityIssueArgs<'a> {
+    pub(crate) query: AgentExposureLedgerQueryArgs<'a>,
+    pub(crate) supersedes_facility_id: Option<&'a str>,
 }
 
-struct CreditFacilityListArgs<'a> {
-    facility_id: Option<&'a str>,
-    capability_id: Option<&'a str>,
-    agent_subject: Option<&'a str>,
-    tool_server: Option<&'a str>,
-    tool_name: Option<&'a str>,
-    disposition: Option<&'a str>,
-    lifecycle_state: Option<&'a str>,
-    limit: usize,
+pub(crate) struct CreditFacilityListArgs<'a> {
+    pub(crate) facility_id: Option<&'a str>,
+    pub(crate) capability_id: Option<&'a str>,
+    pub(crate) agent_subject: Option<&'a str>,
+    pub(crate) tool_server: Option<&'a str>,
+    pub(crate) tool_name: Option<&'a str>,
+    pub(crate) disposition: Option<&'a str>,
+    pub(crate) lifecycle_state: Option<&'a str>,
+    pub(crate) limit: usize,
 }
 
-struct CreditBondIssueArgs<'a> {
-    query: AgentExposureLedgerQueryArgs<'a>,
-    supersedes_bond_id: Option<&'a str>,
+pub(crate) struct CreditBondIssueArgs<'a> {
+    pub(crate) query: AgentExposureLedgerQueryArgs<'a>,
+    pub(crate) supersedes_bond_id: Option<&'a str>,
 }
 
-struct CreditBondListArgs<'a> {
-    bond_id: Option<&'a str>,
-    facility_id: Option<&'a str>,
-    capability_id: Option<&'a str>,
-    agent_subject: Option<&'a str>,
-    tool_server: Option<&'a str>,
-    tool_name: Option<&'a str>,
-    disposition: Option<&'a str>,
-    lifecycle_state: Option<&'a str>,
-    limit: usize,
+pub(crate) struct CreditBondListArgs<'a> {
+    pub(crate) bond_id: Option<&'a str>,
+    pub(crate) facility_id: Option<&'a str>,
+    pub(crate) capability_id: Option<&'a str>,
+    pub(crate) agent_subject: Option<&'a str>,
+    pub(crate) tool_server: Option<&'a str>,
+    pub(crate) tool_name: Option<&'a str>,
+    pub(crate) disposition: Option<&'a str>,
+    pub(crate) lifecycle_state: Option<&'a str>,
+    pub(crate) limit: usize,
 }
 
-fn build_exposure_ledger_query(
+pub(crate) fn build_exposure_ledger_query(
     args: &ExposureLedgerQueryArgs<'_>,
 ) -> chio_kernel::ExposureLedgerQuery {
     chio_kernel::ExposureLedgerQuery {
@@ -1146,7 +1148,7 @@ fn build_exposure_ledger_query(
     }
 }
 
-fn build_agent_exposure_ledger_query(
+pub(crate) fn build_agent_exposure_ledger_query(
     args: &AgentExposureLedgerQueryArgs<'_>,
 ) -> chio_kernel::ExposureLedgerQuery {
     chio_kernel::ExposureLedgerQuery {
@@ -1161,7 +1163,7 @@ fn build_agent_exposure_ledger_query(
     }
 }
 
-fn cmd_trust_evidence_share_list(
+pub(crate) fn cmd_trust_evidence_share_list(
     args: SharedEvidenceListArgs<'_>,
     backend: QueryBackend<'_>,
 ) -> Result<(), CliError> {
@@ -1228,7 +1230,7 @@ fn cmd_trust_evidence_share_list(
     Ok(())
 }
 
-fn cmd_trust_authorization_context_metadata(
+pub(crate) fn cmd_trust_authorization_context_metadata(
     json_output: bool,
     receipt_db_path: Option<&Path>,
     control_url: Option<&str>,
@@ -1279,7 +1281,7 @@ fn cmd_trust_authorization_context_metadata(
     Ok(())
 }
 
-fn cmd_trust_authorization_context_list(
+pub(crate) fn cmd_trust_authorization_context_list(
     args: AuthorizationContextListArgs<'_>,
     backend: QueryBackend<'_>,
 ) -> Result<(), CliError> {
@@ -1374,7 +1376,7 @@ fn cmd_trust_authorization_context_list(
     Ok(())
 }
 
-fn cmd_trust_authorization_context_review_pack(
+pub(crate) fn cmd_trust_authorization_context_review_pack(
     args: AuthorizationContextListArgs<'_>,
     backend: QueryBackend<'_>,
 ) -> Result<(), CliError> {
@@ -1446,7 +1448,7 @@ fn cmd_trust_authorization_context_review_pack(
     Ok(())
 }
 
-fn cmd_trust_behavioral_feed_export(
+pub(crate) fn cmd_trust_behavioral_feed_export(
     args: BehavioralFeedExportArgs<'_>,
     backend: SignedQueryBackend<'_>,
 ) -> Result<(), CliError> {
@@ -1520,7 +1522,7 @@ fn cmd_trust_behavioral_feed_export(
     Ok(())
 }
 
-fn cmd_trust_exposure_ledger_export(
+pub(crate) fn cmd_trust_exposure_ledger_export(
     args: ExposureLedgerQueryArgs<'_>,
     backend: SignedQueryBackend<'_>,
 ) -> Result<(), CliError> {
@@ -1589,7 +1591,7 @@ fn cmd_trust_exposure_ledger_export(
     Ok(())
 }
 
-fn cmd_trust_credit_scorecard_export(
+pub(crate) fn cmd_trust_credit_scorecard_export(
     agent_subject: &str,
     args: ExposureLedgerQueryArgs<'_>,
     backend: SignedQueryBackend<'_>,
@@ -1652,7 +1654,7 @@ fn cmd_trust_credit_scorecard_export(
     Ok(())
 }
 
-fn cmd_trust_capital_book_export(
+pub(crate) fn cmd_trust_capital_book_export(
     args: CapitalBookExportArgs<'_>,
     backend: SignedQueryBackend<'_>,
 ) -> Result<(), CliError> {
@@ -1730,7 +1732,7 @@ fn cmd_trust_capital_book_export(
     Ok(())
 }
 
-fn cmd_trust_capital_instruction_issue(
+pub(crate) fn cmd_trust_capital_instruction_issue(
     input_file: &Path,
     json_output: bool,
     receipt_db_path: Option<&Path>,
@@ -1784,7 +1786,7 @@ fn cmd_trust_capital_instruction_issue(
     Ok(())
 }
 
-fn cmd_trust_capital_allocation_issue(
+pub(crate) fn cmd_trust_capital_allocation_issue(
     input_file: &Path,
     backend: SignedQueryBackend<'_>,
 ) -> Result<(), CliError> {
@@ -1836,7 +1838,7 @@ fn cmd_trust_capital_allocation_issue(
     Ok(())
 }
 
-fn cmd_trust_credit_facility_evaluate(
+pub(crate) fn cmd_trust_credit_facility_evaluate(
     args: AgentExposureLedgerQueryArgs<'_>,
     backend: SignedQueryBackend<'_>,
 ) -> Result<(), CliError> {
@@ -1893,7 +1895,7 @@ fn cmd_trust_credit_facility_evaluate(
     Ok(())
 }
 
-fn cmd_trust_credit_facility_issue(
+pub(crate) fn cmd_trust_credit_facility_issue(
     args: CreditFacilityIssueArgs<'_>,
     backend: SignedQueryBackend<'_>,
 ) -> Result<(), CliError> {
@@ -1945,7 +1947,7 @@ fn cmd_trust_credit_facility_issue(
     Ok(())
 }
 
-fn cmd_trust_credit_facility_list(
+pub(crate) fn cmd_trust_credit_facility_list(
     args: CreditFacilityListArgs<'_>,
     backend: QueryBackend<'_>,
 ) -> Result<(), CliError> {
@@ -2011,7 +2013,7 @@ fn cmd_trust_credit_facility_list(
     Ok(())
 }
 
-fn cmd_trust_credit_bond_evaluate(
+pub(crate) fn cmd_trust_credit_bond_evaluate(
     args: AgentExposureLedgerQueryArgs<'_>,
     backend: SignedQueryBackend<'_>,
 ) -> Result<(), CliError> {
@@ -2068,7 +2070,7 @@ fn cmd_trust_credit_bond_evaluate(
     Ok(())
 }
 
-fn cmd_trust_credit_bond_issue(
+pub(crate) fn cmd_trust_credit_bond_issue(
     args: CreditBondIssueArgs<'_>,
     backend: SignedQueryBackend<'_>,
 ) -> Result<(), CliError> {
@@ -2114,7 +2116,7 @@ fn cmd_trust_credit_bond_issue(
     Ok(())
 }
 
-fn cmd_trust_credit_bond_simulate(
+pub(crate) fn cmd_trust_credit_bond_simulate(
     bond_id: &str,
     autonomy_tier: &str,
     runtime_assurance_tier: &str,
@@ -2176,7 +2178,7 @@ fn cmd_trust_credit_bond_simulate(
     Ok(())
 }
 
-fn cmd_trust_credit_bond_list(
+pub(crate) fn cmd_trust_credit_bond_list(
     args: CreditBondListArgs<'_>,
     backend: QueryBackend<'_>,
 ) -> Result<(), CliError> {
@@ -2230,7 +2232,7 @@ fn cmd_trust_credit_bond_list(
     Ok(())
 }
 
-fn build_credit_loss_lifecycle_query(
+pub(crate) fn build_credit_loss_lifecycle_query(
     bond_id: &str,
     event_kind: &str,
     amount_units: Option<u64>,

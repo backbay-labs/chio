@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/backbay/chio/spec/security/tenant-policy.schema.json",
+  "$id": "https://github.com/backbay-labs/chio/spec/security/tenant-policy.schema.json",
   "title": "Chio TenantPolicy",
-  "description": "Per-tenant ExpectedIdentity policy file (M05.P4.T1). TOML on disk, canonical JSON for signing. Single source of truth: `crates/chio-attest-verify/src/policy.rs`. Trajectory-2 M03 fills in `pq_identity_regexps` once ML-DSA cert identities stabilise.",
+  "description": "Per-tenant ExpectedIdentity policy file. TOML on disk, canonical JSON for signing. Single source of truth: `crates/chio-attest-verify/src/policy.rs`. The `pq_identity_regexps` field is filled in once ML-DSA cert identities stabilise.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -50,7 +50,7 @@
       "type": "array",
       "default": [],
       "items": { "type": "string", "minLength": 1 },
-      "description": "Reserved for trajectory-2 M03 ML-DSA cert identities. Empty until M03 lands. Adding entries before M03 lands is a no-op until the loader recognises ML-DSA cert families."
+      "description": "Reserved for ML-DSA cert identities. Empty until ML-DSA cert support lands. Adding entries beforehand is a no-op until the loader recognises ML-DSA cert families."
     }
   }
 }

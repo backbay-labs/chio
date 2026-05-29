@@ -6,7 +6,7 @@ template: next-ai-sdk-receipts
 runtime: edge
 description: |
   Next.js (App Router) + Vercel AI SDK middleware + receipts viewer.
-  Verdict gating runs at the tool-use boundary through @chio/next.
+  Verdict gating runs at the tool-use boundary through @chio-protocol/next.
 
 # First-run telemetry-free contract: no outbound network calls except
 # to upstream providers the user explicitly configures via env vars.

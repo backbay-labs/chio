@@ -9,7 +9,7 @@ description = "Python wrapper for Chio-governed Amazon Bedrock calls"
 license = "Apache-2.0"
 requires-python = ">=3.11"
 authors = [
-    { name = "Backbay Industries" },
+    { name = "Backbay Labs", email = "security@backbay.io" },
 ]
 keywords = ["chio", "bedrock", "aws", "receipts", "marketplace"]
 classifiers = [

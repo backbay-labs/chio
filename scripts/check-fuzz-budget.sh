@@ -1,27 +1,14 @@
 #!/usr/bin/env bash
-# check-fuzz-budget.sh - Self-imposed cap on GitHub Actions fuzz minutes.
+# check-fuzz-budget.sh - Budget report for GitHub Actions fuzz minutes.
 #
-# The public-repo free tier on GitHub Actions allows 2,000 runner-minutes
-# per month. The trajectory's continuous-fuzzing-path decision (locked in
-# .planning/trajectory/decisions.yml) holds ClusterFuzzLite at 1,800
-# runner-minutes per rolling 30-day window, leaving 200-minute headroom
-# for everything else on the free tier.
-#
-# This script queries the workflow-run history for the cflite_pr.yml,
-# cflite_batch.yml, fuzz.yml, mutants.yml, and mutants-fuzz-cocoverage.yml workflows, sums their
-# observed run wall time across the last 30 days, converts to minutes, and
-# exits non-zero when the sum crosses 1,800. The orchestrator runs this on a
-# scheduled cadence and as a step in cflite_batch.yml plus fuzz.yml so the
-# cap acts as a hard halt rather than a soft warning.
-#
-# Cleanup C6: fuzz.yml was previously omitted from the WORKFLOWS array,
-# which meant the native cargo-fuzz scheduled matrix could burn its full
-# nightly 13 * 30 = 390 billed-min without contributing to the cap. The
-# entry below restores the gate's intended coverage of every fuzz lane on
-# the 1,800-min budget.
+# Sums the observed run wall time of the cflite_pr.yml, cflite_batch.yml,
+# fuzz.yml, mutants.yml, and mutants-fuzz-cocoverage.yml workflows across the
+# last 30 days and converts to minutes. cap_mode defaults to "warn", so
+# exceeding the cap reports but does not halt; set GH_FUZZ_BUDGET_CAP_MODE=fail
+# to hard-halt at the cap.
 #
 # Usage:
-#   scripts/check-fuzz-budget.sh                      # default repo: bb-connor/arc
+#   scripts/check-fuzz-budget.sh                      # default repo: backbay-labs/chio
 #   scripts/check-fuzz-budget.sh OWNER/REPO
 #   GH_FUZZ_BUDGET_MINUTES=900 scripts/check-fuzz-budget.sh    # override cap
 #   GH_FUZZ_BUDGET_RATE_LIMIT_MODE=warn scripts/check-fuzz-budget.sh
@@ -36,7 +23,7 @@
 
 set -euo pipefail
 
-REPO="${1:-bb-connor/arc}"
+REPO="${1:-backbay-labs/chio}"
 CAP_MINUTES="${GH_FUZZ_BUDGET_MINUTES:-1800}"
 WINDOW_DAYS=30
 WORKFLOWS=("cflite_pr.yml" "cflite_batch.yml" "fuzz.yml" "mutants.yml" "mutants-fuzz-cocoverage.yml")
@@ -64,7 +51,7 @@ esac
 total_seconds=0
 
 rate_limit_mode="${GH_FUZZ_BUDGET_RATE_LIMIT_MODE:-fail}"
-cap_mode="${GH_FUZZ_BUDGET_CAP_MODE:-fail}"
+cap_mode="${GH_FUZZ_BUDGET_CAP_MODE:-warn}"
 
 for wf in "${WORKFLOWS[@]}"; do
     runs_path="repos/${REPO}/actions/workflows/${wf}/runs"

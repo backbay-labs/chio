@@ -149,14 +149,14 @@ ${body_with_marker}"
     # Find the most recent existing comment that carries this sticky marker.
     local existing_id
     existing_id="$(gh api \
-        "repos/${GITHUB_REPOSITORY:-bb-connor/arc}/issues/${PR_NUMBER}/comments?per_page=100" \
+        "repos/${GITHUB_REPOSITORY:-backbay-labs/chio}/issues/${PR_NUMBER}/comments?per_page=100" \
         --paginate \
         --jq ".[] | select(.body | contains(\"${sticky_marker}\")) | .id" \
         2>/dev/null | tail -n 1 || true)"
 
     if [[ -n "${existing_id}" ]]; then
         gh api --method PATCH \
-            "repos/${GITHUB_REPOSITORY:-bb-connor/arc}/issues/comments/${existing_id}" \
+            "repos/${GITHUB_REPOSITORY:-backbay-labs/chio}/issues/comments/${existing_id}" \
             -f "body=${body_with_marker}" >/dev/null
     else
         gh pr comment "${PR_NUMBER}" --body "${body_with_marker}"

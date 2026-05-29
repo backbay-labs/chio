@@ -3,12 +3,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::SystemTime;
 
 use chio_guard_registry::{
-    expected_identity_from_config, load_guard_with_policy, verify_dual_mode, AttestError,
-    AttestVerifier, ExpectedIdentity, GuardCache, GuardCacheArtifact, GuardLoadEvent,
-    GuardLoadEventResult, GuardLoadSource, GuardNetworkState, GuardOfflineLoadError,
-    GuardOfflineLoadRequest, GuardRegistryError, GuardSigstoreVerifier, GuardVerificationKind,
-    GuardVerificationReport, GuardVerifiedSignature, Sha256Digest, VerifiedAttestation,
-    CHIO_GUARD_VERIFY_EVENT,
+    load_guard_with_policy, verify_dual_mode, AttestError, AttestVerifier, ExpectedIdentity,
+    GuardCache, GuardCacheArtifact, GuardLoadEvent, GuardLoadEventResult, GuardLoadSource,
+    GuardNetworkState, GuardOfflineLoadError, GuardOfflineLoadRequest, GuardRegistryError,
+    GuardSigstoreVerifier, GuardVerificationKind, GuardVerificationReport, GuardVerifiedSignature,
+    Sha256Digest, VerifiedAttestation, CHIO_GUARD_VERIFY_EVENT,
 };
 
 const DIGEST: &str = "sha256:3333333333333333333333333333333333333333333333333333333333333333";
@@ -473,8 +472,8 @@ fn expected_identity() -> ExpectedIdentity
 where
     ExpectedIdentity: Sized,
 {
-    expected_identity_from_config(
-        "https://github\\.com/backbay/chio/\\.github/workflows/release-binaries\\.yml@refs/tags/v.*",
+    ExpectedIdentity::doc_hidden_inline(
+        "https://github\\.com/backbay-labs/chio/\\.github/workflows/release-binaries\\.yml@refs/tags/v.*",
         "https://token.actions.githubusercontent.com",
     )
 }

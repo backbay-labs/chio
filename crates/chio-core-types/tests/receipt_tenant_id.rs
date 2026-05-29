@@ -1,4 +1,4 @@
-//! Phase 1.5 Multi-Tenant Receipt Isolation -- serde contract for the
+//! Multi-tenant receipt isolation -- serde contract for the
 //! `tenant_id` field added to `ChioReceipt` / `ChioReceiptBody`.
 //!
 //! These tests anchor two invariants:
@@ -55,7 +55,7 @@ fn tenant_id_serde_roundtrip_present() {
 
     let json = serde_json::to_string(&receipt).unwrap();
     // ChioReceipt serializes with snake_case field names (no rename_all
-    // on the struct), so the Phase 1.5 tag is emitted as `tenant_id`.
+    // on the struct), so the multi-tenant tag is emitted as `tenant_id`.
     assert!(
         json.contains("\"tenant_id\":\"tenant-a\""),
         "expected tenant_id in serialized receipt, got: {json}"
@@ -113,7 +113,7 @@ fn receipt_body_serde_emits_tenant_id_when_set() {
 
 #[test]
 fn deserializing_legacy_receipt_without_tenant_id_works() {
-    // Legacy receipts issued before Phase 1.5 have no tenant_id field.
+    // Legacy receipts issued before multi-tenant support have no tenant_id field.
     // They must deserialize cleanly with tenant_id defaulting to None.
     let kp = Keypair::generate();
     let receipt = ChioReceipt::sign(body_with(&kp, None), &kp).unwrap();

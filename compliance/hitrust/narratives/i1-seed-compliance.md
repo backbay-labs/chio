@@ -1,9 +1,11 @@
 # Compliance Narrative
 
-The compliance family is owned by M09. The SSP, scope boundary, RFP,
-audit doc, MyCSF portal configuration, and readiness questionnaire form
-the initial evidence set. P2 and P3 will add evidence-pack automation
-and uploaded bundle receipts.
+The compliance evidence set is the self-assessment material in this
+directory: the SSP (`compliance/hitrust/ssp.md`), the scope boundary,
+the RFP template, the planned MyCSF portal configuration, and the
+readiness questionnaire. This family is self-assessed as partial because
+it is internal self-assessment material only; no external assessment has
+been performed.
 
-Fail-closed note: a control row is not ready until the assessor can tie
-it to a source artifact.
+Fail-closed note: a control row is not satisfied until it can be tied to
+a real source artifact and an owner.

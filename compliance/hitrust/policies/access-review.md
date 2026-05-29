@@ -1,23 +1,25 @@
 # HITRUST Access Review Policy
 
-**Milestone:** M09.P2.T2
-**Scope:** Chio v3.18 healthcare design-partner deployment
+**Scope:** Chio healthcare design-partner deployment (this assessed release)
 **Cadence:** quarterly
-**Owner:** Chio evidence owner and Backbay access administrator
+**Owner:** Chio evidence owner and the deployment access administrator
+
+> **Status:** policy is documented; first-cycle execution evidence has
+> not yet been produced and is an open gap.
 
 ## Purpose
 
-This policy closes the P1 access-review gap by defining a quarterly
-human access-review cadence for the HITRUST i1 assessment scope. It
-complements Chio protocol access control, which is enforced through
-capability validation, sender constraints, revocation, and fail-closed
-kernel admission.
+This policy defines a quarterly human access-review cadence for the
+intended HITRUST i1 scope. It complements Chio protocol access control,
+which is enforced in code through capability validation, sender
+constraints, revocation, and fail-closed kernel admission.
 
 ## Quarterly review requirements
 
-Each quarter, the evidence owner must review:
+Each quarter, the evidence owner reviews:
 
-- MyCSF assessor portal users and download permissions.
+- Assessor portal users and download permissions (if a MyCSF object
+  exists; none does today).
 - Production deployment operator access for the assessed tenant.
 - Capability authority administrative roles.
 - Audit-log export and receipt-log access roles.
@@ -27,14 +29,14 @@ Each quarter, the evidence owner must review:
 
 | Item | Evidence source | Status |
 |------|-----------------|--------|
-| Portal user roster | MyCSF export or screenshot hash | P3 private evidence upload |
-| Operator access roster | design-partner tenant access export | P3 private evidence upload |
-| Capability authority admins | deployment access-control record | P3 private evidence upload |
-| Break-glass grants | incident and access-review log | none active at P2 |
-| Exceptions | accepted-risk register | none beyond private HR evidence channel |
+| Portal user roster | MyCSF export or screenshot hash | not produced; no portal exists |
+| Operator access roster | design-partner tenant access export | out-of-tree; not produced |
+| Capability authority admins | deployment access-control record | out-of-tree; not produced |
+| Break-glass grants | incident and access-review log | none active |
+| Exceptions | accepted-risk register | out-of-tree HR evidence only |
 
 ## Fail-closed review rule
 
 If a user, service principal, or assessor account cannot be mapped to a
-named owner and business need, access is removed or suspended before the
-row can be marked ready for HITRUST.
+named owner and a business need, access is removed or suspended before
+the row can be considered evidenced for HITRUST.

@@ -1,12 +1,12 @@
-//! M09 P4.T3 reputation-weighted credit limit helper.
+//! Reputation-weighted credit limit helper.
 //!
 //! `chio-underwriting` already models the underwriting decision shape.
-//! M09 P4 reuses `UnderwritingDecisionOutcome` (Approve / ReduceCeiling
+//! This helper reuses `UnderwritingDecisionOutcome` (Approve / ReduceCeiling
 //! / StepUp / Deny) by emitting a thin marketplace credit limit
 //! decision the CLI surfaces in `arc guard market info`. The helper
 //! is deterministic and storage-agnostic.
 //!
-//! Soft-dep: trajectory-2 M04 revocation oracle revokes guard publisher
+//! Soft-dep: the revocation oracle revokes guard publisher
 //! credentials on the same sparse-Merkle root that revokes capabilities.
 //! When a revocation signal is provided, the helper denies regardless
 //! of reputation tier (fail-closed). Without a revocation signal the
@@ -50,7 +50,7 @@ pub struct MarketplaceCreditLimitRequest {
     pub reputation_tier: MarketplaceLimitTier,
     /// ISO 4217 currency code applied to the limit ceiling.
     pub currency: String,
-    /// Whether the M04 revocation oracle currently lists the publisher
+    /// Whether the revocation oracle currently lists the publisher
     /// or any of the publisher's credentials as revoked. Fail-closed:
     /// `true` denies the limit regardless of tier.
     pub publisher_revoked: bool,
@@ -76,7 +76,7 @@ pub struct MarketplaceCreditLimitDecision {
 
 /// Compute the marketplace credit limit for a tenant.
 ///
-/// Soft-dep on M04 revocation oracle: if `publisher_revoked` is true,
+/// Soft-dep on the revocation oracle: if `publisher_revoked` is true,
 /// the helper rejects with `outcome = Rejected` regardless of tier.
 /// Otherwise the limit is the tier ceiling.
 #[must_use]

@@ -6,7 +6,7 @@
 //! `ServerCapabilitiesSnapshot` contract. The full
 //! `tower_lsp::LspService` stdio dance lives behind a `#[ignore]`d
 //! integration smoke harness; this file asserts the contract surface
-//! that downstream P4 tickets depend on (cache shape + capabilities).
+//! (cache shape + capabilities).
 
 use chio_lsp::{ChioLanguageServer, DocumentCache, DocumentLanguage};
 use tower_lsp::lsp_types::Url;
@@ -18,7 +18,7 @@ fn server_advertises_text_document_sync_full() {
         snap.text_document_sync_full,
         "P4.T1 negotiates FULL text document sync"
     );
-    // P4.T1 lights up definition; T3 lights up completion.
+    // Definition and completion are advertised in the capability snapshot.
     assert!(snap.definition);
 }
 

@@ -1,7 +1,7 @@
 //! ContentReviewGuard -- pre-invocation review of outbound content for
 //! SaaS / communication / payment tool calls.
 //!
-//! Roadmap phase 11.1.  The guard inspects
+//! The guard inspects
 //! [`ToolAction::ExternalApiCall`] requests to services like Slack,
 //! SendGrid, Twilio, and Stripe, applying:
 //!

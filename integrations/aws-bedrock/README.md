@@ -12,8 +12,7 @@ The listing is scoped to AWS Marketplace SaaS contract in the AI Agents
 and Tools category. It wraps the existing
 `crates/chio-bedrock-converse-adapter` Rust substrate for distribution and
 keeps the adapter source unchanged. The listed region is `us-east-1` only;
-multi-region support is recorded as a trajectory-4 candidate in
-`REGIONS.md`.
+multi-region support is recorded as a future candidate in `REGIONS.md`.
 
 ## Quick Launch
 
@@ -58,4 +57,4 @@ lookup, IAM principal binding, guard evaluation, receipt issuance, or
 metering preparation fails, Chio denies the request before unmetered
 Bedrock traffic is released.
 
-Support: `support@chio.dev`. Security contact: `security@chio.dev`.
+Support: `support@chio.world`. Security contact: `security@chio.world`.

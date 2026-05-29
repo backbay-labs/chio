@@ -1,15 +1,15 @@
 //! Store binding for IOU envelopes.
 //!
-//! M09 P1.T3 introduces a small abstraction over the durable store
-//! that persists IOU envelopes minted by [`CreditEvaluatorHook`].
+//! A small abstraction over the durable store that persists IOU
+//! envelopes minted by [`CreditEvaluatorHook`].
 //! The binding lives in `chio-credit` so the trait surface stays
 //! economic-crate-owned: the SQLite implementation lives in
 //! `chio-store-sqlite::iou_store`.
 //!
 //! The binding is deliberately narrow: it does not expose query or
 //! lifecycle methods, only the idempotent insert and a single
-//! lookup keyed by `receipt_id`. P2 settlement activation will
-//! layer a richer lifecycle surface on top.
+//! lookup keyed by `receipt_id`. A richer lifecycle surface can be
+//! layered on top.
 
 use thiserror::Error;
 

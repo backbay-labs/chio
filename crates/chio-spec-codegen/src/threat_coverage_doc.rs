@@ -183,8 +183,8 @@ pub fn render_threat_coverage_doc(
         "**Status: {status_label}.** {covered_count}/{total_count} \
          threat-model rows are fully covered (`Covered`); \
          {partial_count}/{total_count} are partially covered (`Partial`) \
-         with deferred sub-vectors ({partial_ids}), tracked through \
-         follow-up milestones. Release notes that reference \
+         with deferred sub-vectors ({partial_ids}), tracked as \
+         follow-up work. Release notes that reference \
          this page MUST NOT claim full threat closure while any \
          `Partial`, `Pending`, or `Weak Coverage` rows remain; the \
          closure language is reserved for the release that retires those \

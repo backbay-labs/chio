@@ -1,16 +1,42 @@
 # Chio Documentation
 
-Entry points and maps for the Chio protocol documentation.
+Entry points and maps for the Chio protocol documentation. The canonical
+normative specification lives at [spec/PROTOCOL.md](../spec/PROTOCOL.md);
+everything in this tree is supporting material organized by audience.
 
 ## Start here
 
 - [Progressive Tutorial](start-here/PROGRESSIVE_TUTORIAL.md) - walk through Chio from scratch
 - [Native Adoption Guide](start-here/NATIVE_ADOPTION_GUIDE.md) - how to adopt Chio in a production service
 - [Vision](start-here/VISION.md) - what Chio is for and why
-
-## Historical notes
-
 - [Historical v2 Migration Draft](start-here/MIGRATION_GUIDE_V2.md) - archived internal draft notes, not current protocol guidance
+
+## Install and distribution
+
+- [Install guide](install/README.md) - how to obtain and run Chio
+- [Binary Distribution](install/BINARY_DISTRIBUTION.md) - prebuilt binary channels
+- [Homebrew](install/homebrew.md) - Homebrew tap and formula
+- [Publishing](install/PUBLISHING.md) - release publishing workflow
+- [Verify](install/VERIFY.md) - verifying downloaded artifacts
+
+## Release
+
+The primary live release documents. Auditors and operators start here.
+
+- [Qualification](release/QUALIFICATION.md) - what the release qualifies and the evidence behind it
+- [Release Audit](release/RELEASE_AUDIT.md) - audit of release claims against evidence
+- [Release Candidate](release/RELEASE_CANDIDATE.md) - release-candidate gate checklist
+- [GA Checklist](release/GA_CHECKLIST.md) - general-availability readiness
+- [Partner Proof](release/PARTNER_PROOF.md) - partner-facing proof of capability
+- [Risk Register](release/RISK_REGISTER.md) - tracked release risks
+- [Operations Runbook](release/OPERATIONS_RUNBOOK.md) - bounded-release operating procedures
+- [Observability](release/OBSERVABILITY.md) - metrics, logs, and alerting surface
+- [Compliance Evidence Export Plan](release/COMPLIANCE_EVIDENCE_EXPORT_PLAN.md)
+- [Chio Rename Migration](release/CHIO_RENAME_MIGRATION.md) - operator guidance for the ARC-to-Chio rename
+- Comptroller runbooks and proofs: [Operator Runbook](release/CHIO_COMPTROLLER_OPERATOR_RUNBOOK.md), [Partner Contracts](release/CHIO_COMPTROLLER_PARTNER_CONTRACTS.md), [Federated Proof](release/CHIO_COMPTROLLER_FEDERATED_PROOF.md), [Market Position Proof](release/CHIO_COMPTROLLER_MARKET_POSITION_PROOF.md)
+- Universal control plane: [Runbook](release/CHIO_UNIVERSAL_CONTROL_PLANE_RUNBOOK.md), [Partner Proof](release/CHIO_UNIVERSAL_CONTROL_PLANE_PARTNER_PROOF.md)
+- Web3 release set: [Interop Runbook](release/CHIO_WEB3_INTEROP_RUNBOOK.md), [Operations Runbook](release/CHIO_WEB3_OPERATIONS_RUNBOOK.md), [Deployment Promotion](release/CHIO_WEB3_DEPLOYMENT_PROMOTION.md), [Mainnet Cutover Checklist](release/CHIO_WEB3_MAINNET_CUTOVER_CHECKLIST.md), [Partner Proof](release/CHIO_WEB3_PARTNER_PROOF.md), [Readiness Audit](release/CHIO_WEB3_READINESS_AUDIT.md)
+- Service runbooks: [Anchor](release/CHIO_ANCHOR_RUNBOOK.md), [Link](release/CHIO_LINK_RUNBOOK.md), [Settle](release/CHIO_SETTLE_RUNBOOK.md), [Pheromone Relay](release/CHIO_PHEROMONE_RELAY_RUNBOOK.md)
 
 ## Reference
 
@@ -51,15 +77,47 @@ Entry points and maps for the Chio protocol documentation.
 - [Agent Reputation](reference/AGENT_REPUTATION.md) - local scoring, issuance gating, and reputation surfaces
 - [Competitive Landscape](reference/COMPETITIVE_LANDSCAPE.md) - agent protocols, payment rails, and identity standards in the surrounding space
 
-## Operations
+## Protocol and architecture
+
+- Canonical spec: [spec/PROTOCOL.md](../spec/PROTOCOL.md)
+- [Architecture notes](architecture/) - [Final Architecture](architecture/CHIO_FINAL_ARCHITECTURE.md), [Runtime Boundaries](architecture/CHIO_RUNTIME_BOUNDARIES.md), [Workspace Structure](architecture/WORKSPACE_STRUCTURE.md)
+- [Architecture Decision Records](adr/README.md) - numbered ADRs (ADR-0001 through ADR-0013)
+- [Protocol integration notes](protocols/) - framework, transport, and ecosystem integration designs (Temporal, LangGraph, Envoy, AWS Lambda, K8s, and more), plus the [Strategic Vision](protocols/STRATEGIC-VISION.md) and [Trust Model and Key Management](protocols/TRUST-MODEL-AND-KEY-MANAGEMENT.md)
+- [Standards profiles](standards/) - qualification profiles and JSON conformance matrices (anchor, federation, automation, extension, bounded operational profile, cross-protocol matrix)
+
+## Guards
+
+- [Guards design set](guards/) - guard system landscape, WASM runtime plan, absorption plans per guard family, hot reload, and the [0.1 to 0.2 migration](guards/MIGRATION-0.1-to-0.2.md)
+
+## Security
+
+- [Threat coverage](security/threat-coverage.md) - mapped threats and mitigations
+- [Expected identity migration](security/expected-identity-migration.md) - migrating expected-identity assertions
+- [Public witness semantics](security/public-witness-semantics.md)
+- [Corpus minimization](security/corpus-minimization.md)
+
+## Compliance
+
+- [Compliance mappings](compliance/) - control mappings for [NIST AI RMF](compliance/nist-ai-rmf.md), [ISO 42001](compliance/iso-42001.md), [EU AI Act Article 19](compliance/eu-ai-act-article-19.md), [OWASP LLM Top 10](compliance/owasp-llm-top-10.md), [PCI DSS v4](compliance/pci-dss-v4.md), and [Colorado SB 24-205](compliance/colorado-sb-24-205.md)
+
+## Operator runbooks
+
+- [Operator runbook index](operator-runbook/index.md) - tenant-shaped operating rules layered on the bounded release runbook
+- Topics: [onboarding](operator-runbook/onboarding.md), [incidents](operator-runbook/incidents.md), [rotations](operator-runbook/rotations.md), [quota](operator-runbook/quota.md), [SLO](operator-runbook/slo.md), [topology](operator-runbook/topology.md), [PagerDuty](operator-runbook/pagerduty.md), [PHI policy](operator-runbook/phi-policy.md), [bounded profile](operator-runbook/bounded-profile.md)
+
+## Products built on Chio
+
+- [Chio-Wall documentation suite](chio-wall/README.md) - companion product recording tool-boundary control evidence for information-domain separation
+
+## Operations and planning
 
 - [Roadmap](operations/ROADMAP.md) - historical execution roadmap, not the current v1 protocol posture
-- [Strategic Roadmap](operations/STRATEGIC_ROADMAP.md) - historical internal milestone narrative
+- [Strategic Roadmap](operations/STRATEGIC_ROADMAP.md) - historical strategic narrative
 - [Execution Plan](operations/EXECUTION_PLAN.md) - historical execution sequencing notes
-- [Changelog](operations/CHANGELOG.md) - internal pre-release milestone notes, not public protocol version history
+- [Changelog](operations/CHANGELOG.md) - internal pre-release notes, not public protocol version history
 - [Conformance Harness Plan](operations/CONFORMANCE_HARNESS_PLAN.md) - cross-language conformance plan for JS, Python, and spec fixtures
 - [Distributed Control Plan](operations/DISTRIBUTED_CONTROL_PLAN.md) - shipped shared-control rewrite of the trust-plane architecture
-- [HA Control Auth Plan](operations/HA_CONTROL_AUTH_PLAN.md) - HA replication and shared budget plan; hosted auth-server work remains blocked pending OAuth AS ADR
+- [HA Control Auth Plan](operations/HA_CONTROL_AUTH_PLAN.md) - HA replication and shared budget plan
 - [Bindings Core Plan](operations/BINDINGS_CORE_PLAN.md) - strategy for TypeScript, Python, and Go SDKs without a sprawling ABI
 - [SDK Parity Execution Roadmap](operations/SDK_PARITY_EXECUTION_ROADMAP.md) - short-horizon plan to make multi-language SDK parity real
 
@@ -72,37 +130,56 @@ Entry points and maps for the Chio protocol documentation.
 ## Integrations
 
 - [Hermes Integration](integrations/HERMES.md) - wire Chio into the Hermes Agent via MCP server (Path A) or the native `chio-hermes` plugin (Path B)
-- [chio-adapter-base Integration](integrations/CHIO-ADAPTER-BASE.md) - shared security and receipt primitives that every Chio Python adapter depends on; pre-evaluation vs post-tool-call redaction reconciliation, per-adapter pin matrix
-- [Choosing the Redaction Boundary](integrations/CHOOSING_REDACTION_BOUNDARY.md) - decision tree for picking between pre-evaluation and post-tool-call redaction (and the matching helper)
-- [Adapter Migration Guide](integrations/MIGRATION_GUIDE.md) - docs-tree mirror of the in-package adapter-author migration recipe for `chio-adapter-base 0.1.x` -> `0.2.0`
-- [chio-adapter-base 0.2.0 Release Notes](integrations/RELEASE_NOTES_v0.2.0.md) - what shipped in `bind_and_redact` shape hardening + 6-axis coverage matrix
+- [chio-adapter-base Integration](integrations/CHIO-ADAPTER-BASE.md) - shared security and receipt primitives every Chio Python adapter depends on
+- [Choosing the Redaction Boundary](integrations/CHOOSING_REDACTION_BOUNDARY.md) - decision tree for pre-evaluation vs post-tool-call redaction
+- [Adapter Migration Guide](integrations/MIGRATION_GUIDE.md) - adapter-author migration recipe for `chio-adapter-base 0.1.x` to `0.2.0`
+- [chio-adapter-base 0.2.0 Release Notes](integrations/RELEASE_NOTES_v0.2.0.md)
 
-## Conformance
+## Conformance and replay
 
-- [Conformance Suite (Standalone Consumer Guide)](conformance.md) - external-implementer flow for the Chio cross-language conformance harness (`cargo install chio-conformance`, `chio conformance fetch-peers`, `chio conformance run`)
+- [Conformance Suite (Standalone Consumer Guide)](conformance.md) - external-implementer flow for the Chio cross-language conformance harness
+- [Verdict matrix](conformance/verdict-matrix.md) - expected verdicts across conformance scenarios
+- [Replay CLI](replay-cli.md) - replaying recorded sessions from the command line
+- [Replay compatibility](replay-compat.md) - replay format compatibility across versions
+- [Release evidence](release-evidence.md) - how release evidence is collected and signed
+
+## CLI
+
+- [Arena](cli/arena.md) - the `chio arena` subcommand
+- [Replay](cli/replay.md) - the `chio replay` subcommand
+
+## Migrations
+
+- [Delegation migration](migrations/delegation-migration.md)
+- [Async kernel migration](migrations/async-kernel-migration.md)
+- [Attest-verify migration](coordination/attest-verify-migration.md)
+
+## Custody and weights
+
+- [Passkey issuer](custody/passkey-issuer.md) - hardware-backed passkey issuance for custody
+- [Model cards](weights/model-cards.md) - model card records for governed weights
+
+## Trust boundary
+
+- [Trust boundary: browser signing](trust-boundary-browser-signing.md) - where signing happens for browser-originated requests
 
 ## Fuzzing
 
-- [Continuous Fuzzing Runbook](fuzzing/continuous.md) - layered strategy (in-tree `cargo +nightly fuzz` matrix, ClusterFuzzLite bridge, OSS-Fuzz primary), GHA budget enforcement, target inventory, local-dev and triage flow
-- [Fuzz Crash Triage Runbook](fuzzing/triage.md) - severity bands (Critical, High, Medium, Low), dedupe rules (sha256 plus crash-type/target/call-site), time-to-fix SLOs (24h ack, 7d Critical, 14d High, 30d Medium), promotion to regression test, regression-deletion guard
-
-## Protocol and architecture
-
-- Canonical spec: [spec/PROTOCOL.md](../spec/PROTOCOL.md)
-- [Architecture](architecture/)
-- [ADRs](adr/)
-- [Standards](standards/)
-- [Protocols](protocols/)
-- [Guards](guards/)
-- [Compliance](compliance/)
-
-## Research
-
-- [Research notes](research/) - exploratory work and prior-art surveys
+- [Continuous Fuzzing Runbook](fuzzing/continuous.md) - layered fuzzing strategy (in-tree matrix, ClusterFuzzLite bridge, OSS-Fuzz primary), CI budget enforcement, target inventory
+- [Fuzz Crash Triage Runbook](fuzzing/triage.md) - severity bands, dedupe rules, time-to-fix SLOs, promotion to regression test
+- [Mutation testing](fuzzing/mutants.md) - mutation-testing runbook
 
 ## SDKs
 
-- [SDK docs](sdk/) - deep dives per language (Go, Python, TypeScript, Platform)
+- [SDK deep dives](sdk/) - per-language references: [Go](sdk/GO.md), [Python](sdk/PYTHON.md), [TypeScript](sdk/TYPESCRIPT.md), [Platform](sdk/PLATFORM.md), [C++ SDK roadmap](sdk/CPP_SDK_ROADMAP.md)
+
+## CI and billing
+
+- [CI billing runbook](runbooks/ci-billing.md) - CI cost accounting and budget controls
+
+## Research
+
+- [Research notes](research/README.md) - exploratory work, prior-art surveys, and protocol-strategy packets (written when the project was named ARC; Chio is the current name)
 
 ## Archive
 

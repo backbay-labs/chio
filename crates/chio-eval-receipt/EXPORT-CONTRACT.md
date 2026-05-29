@@ -1,16 +1,13 @@
 # Eval-Receipt Evidence Export Contract
 
 **Schema id:** `chio.eval-report.bundle.v1`
-**Milestone:** M02
-**Phase:** P2
 **Partner:** METR
 
 This contract defines how a `verdict_matrix` scenario run becomes an
-unsigned eval-report bundle before P3 adds schema validation and outer
-signature verification. The source verdict-matrix manifest remains
-read-only in M02.P2. The `m02-m04-verdict-matrix-coupling` freeze opens
-with M02.P2.T1 so M04 does not move the shared matrix while M02 is
-building the bundle/export surface.
+unsigned eval-report bundle before schema validation and outer signature
+verification land. The source verdict-matrix manifest remains read-only
+while the bundle/export surface is being built, so the shared matrix is
+not moved underneath it.
 
 ## Inputs
 
@@ -39,14 +36,14 @@ The exporter produces an unsigned bundle with these top-level fields:
 | Bundle field | Source field | Notes |
 |--------------|--------------|-------|
 | `eval_run.run_id` | Partner pipeline run id | Stable across retry of the same eval run. |
-| `eval_run.partner` | M02 partner identity | `METR`. |
-| `eval_run.partner_slug` | M02 partner slug | `metr`. |
+| `eval_run.partner` | Partner identity | `METR`. |
+| `eval_run.partner_slug` | Partner slug | `metr`. |
 | `eval_run.pipeline` | Partner pipeline output | `vivaria-trace-postprocess` for the first sample. |
-| `eval_run.pipeline_language` | M02.P1 Q&A | `python`. |
+| `eval_run.pipeline_language` | Partner pipeline Q&A | `python`. |
 | `eval_run.model_under_eval` | Partner pipeline output | Partner-owned model label. |
 | `eval_run.scorer_name` | Partner pipeline output | Rubric or scorer name. |
 | `eval_run.scorer_version` | Partner pipeline output | Rubric or scorer version. |
-| `corpus.scenario_count` | verdict_matrix manifest | Must be 48 for the M02 corpus. |
+| `corpus.scenario_count` | verdict_matrix manifest | Must be 48 for the reference corpus. |
 | `corpus.corpus_sha256` | verdict_matrix manifest | Must match `47e8d5394c807196d9567d97515e786cb1abfb0c7676e54db269ca82c735422f`. |
 | `receipts[].scenario_id` | Scenario file `id` | Copied from the scenario JSON. |
 | `receipts[].category` | Scenario file category or tag | Normalized to the manifest category id. |

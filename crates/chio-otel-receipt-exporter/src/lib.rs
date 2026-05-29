@@ -5,6 +5,8 @@
 //! exposes the high-cardinality attribute deny-list used before forwarding
 //! span attributes to Prometheus-shaped sinks.
 
+#![forbid(unsafe_code)]
+
 #[cfg(not(loom))]
 pub mod denylist;
 #[cfg(not(loom))]

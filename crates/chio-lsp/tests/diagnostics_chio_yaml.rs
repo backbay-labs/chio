@@ -2,7 +2,7 @@
 //!
 //! Drives the diagnostic provider directly so the test stays
 //! deterministic and stdio-free. The full publish pipeline is
-//! exercised by the lifecycle test in P4.T1.
+//! exercised by the lifecycle test.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use chio_lsp::diagnostics::chio_yaml::{validate, URN_CHIO_YAML_INVALID};

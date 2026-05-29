@@ -241,12 +241,11 @@ points are semantic:
      schema `chio.dpop_proof.v1` (line 45). Binds capability_id +
      tool_server + tool_name + action_hash + nonce + issued_at.
    - RFC 9449 JWT DPoP at the HTTP edge - **not yet implemented.** Doc
-     03 line 28-30, 130 confirms the gap; the remediation memo at
-     `docs/review/06-authentication-dpop-remediation.md` is the action
-     plan. Doc 16's mention is correct but should explicitly say "the
-     chio-native one ships; RFC 9449 is end-state A in the remediation
-     memo." Without that, the reader can't square doc 03's "needs adding"
-     with doc 16's "already exists."
+     03 line 28-30, 130 confirms the gap; the DPoP boundary contract in
+     `spec/PROTOCOL.md` is the action plan. Doc 16's mention is correct
+     but should explicitly say "the chio-native one ships; RFC 9449 is
+     the HTTP-edge end state." Without that, the reader can't square doc
+     03's "needs adding" with doc 16's "already exists."
 
 10. **Extensions map well-typedness for verify-without-understand.** Doc 15
     line 351 has `ExtensionPayload::Unknown(serde_json::Value)` as the

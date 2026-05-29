@@ -182,7 +182,7 @@ fn write_scenario(dir: &Path, id: &str) {
   "peerRoles": ["client_to_chio_server"],
   "deploymentModes": ["wrapped_stdio"],
   "requiredCapabilities": {{"server": [], "client": []}},
-  "tags": ["wave1"],
+  "tags": ["core"],
   "expected": "pass"
 }}"#
         ),
@@ -2935,7 +2935,7 @@ fn certify_open_market_fee_schedules_and_slashing_require_explicit_bounded_autho
 }
 
 #[test]
-#[ignore = "flaky on CI: aggregated.reachable_count comes back as 1 vs expected 2 under timing pressure; tracked as Wave 3 follow-up"]
+#[ignore = "flaky on CI: aggregated.reachable_count comes back as 1 vs expected 2 under timing pressure; tracked as a follow-up"]
 fn certify_adversarial_multi_operator_open_market_preserves_visibility_without_trust() {
     let scenarios_dir = unique_path("chio-adversarial-open-market-scenarios", "");
     let results_dir = unique_path("chio-adversarial-open-market-results", "");

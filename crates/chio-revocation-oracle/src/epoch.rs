@@ -3,7 +3,10 @@ use std::sync::{Mutex, PoisonError};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{signer::EpochRootSigner, EpochRoot, Result, RevocationOracleError, RootSignature};
+use crate::{
+    signer::{EpochRootSigner, EpochRootVerifier},
+    EpochRoot, Result, RevocationOracleError, RootSignature,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SignedEpochRoot {
@@ -12,13 +15,21 @@ pub struct SignedEpochRoot {
 }
 
 impl SignedEpochRoot {
+    /// Sign `root` with the oracle's [`EpochRootSigner`], pairing the resulting
+    /// [`RootSignature`] with the root.
     pub fn sign(root: EpochRoot, signer: &impl EpochRootSigner) -> Result<Self> {
         let signature = signer.sign_epoch_root(&root)?;
         Ok(Self { root, signature })
     }
 
-    pub fn verify(&self, signer: &impl EpochRootSigner) -> Result<()> {
-        signer.verify_epoch_root(&self.root, &self.signature)
+    /// Verify the carried signature against a pinned [`EpochRootVerifier`].
+    ///
+    /// This is the trust-anchor check a federation receiver runs before merging
+    /// the carried [`EpochRoot`]. The verifier holds only the signer's public
+    /// key, so a successful verification never implies the ability to forge the
+    /// root. Any mismatch or decode failure denies fail-closed.
+    pub fn verify(&self, verifier: &impl EpochRootVerifier) -> Result<()> {
+        verifier.verify_epoch_root(&self.root, &self.signature)
     }
 }
 
@@ -121,7 +132,14 @@ where
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use crate::{DigestRootSigner, EpochRoot};
+    use crate::{Ed25519RootSigner, EpochRoot};
+
+    const SIGNER_SEED: &str = "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a";
+
+    fn signer(signer_id: &str) -> Ed25519RootSigner {
+        Ed25519RootSigner::from_signing_key(signer_id, SIGNER_SEED)
+            .expect("fixed seed is valid Ed25519 material")
+    }
 
     fn epoch_root(epoch: u64) -> EpochRoot {
         EpochRoot {
@@ -141,7 +159,7 @@ mod tests {
     #[test]
     fn in_memory_broadcaster_drains_in_fifo_order() {
         let broadcaster = InMemoryEpochBroadcaster::new(4).unwrap();
-        let signer = DigestRootSigner::new("oracle-a", b"secret".to_vec());
+        let signer = signer("oracle-a");
         for epoch in 1..=3 {
             broadcaster
                 .publish(SignedEpochRoot::sign(epoch_root(epoch), &signer).unwrap())
@@ -158,7 +176,7 @@ mod tests {
     #[test]
     fn in_memory_broadcaster_drops_oldest_when_full() {
         let broadcaster = InMemoryEpochBroadcaster::new(2).unwrap();
-        let signer = DigestRootSigner::new("oracle-a", b"secret".to_vec());
+        let signer = signer("oracle-a");
         for epoch in 1..=4 {
             broadcaster
                 .publish(SignedEpochRoot::sign(epoch_root(epoch), &signer).unwrap())
@@ -175,7 +193,7 @@ mod tests {
     fn tick_and_broadcast_publishes_to_every_subscriber() {
         let broadcaster_a = InMemoryEpochBroadcaster::new(8).unwrap();
         let broadcaster_b = InMemoryEpochBroadcaster::new(8).unwrap();
-        let signer = DigestRootSigner::new("oracle-a", b"secret".to_vec());
+        let signer = signer("oracle-a");
         let signed =
             tick_and_broadcast(epoch_root(7), &signer, &[&broadcaster_a, &broadcaster_b]).unwrap();
         assert_eq!(signed.root.epoch, 7);
@@ -195,7 +213,7 @@ mod tests {
                 Err(RevocationOracleError::SignerRejected)
             }
         }
-        let signer = DigestRootSigner::new("oracle-a", b"secret".to_vec());
+        let signer = signer("oracle-a");
         let result = tick_and_broadcast(epoch_root(1), &signer, &[&AlwaysFail]);
         assert_eq!(result, Err(RevocationOracleError::SignerRejected));
     }

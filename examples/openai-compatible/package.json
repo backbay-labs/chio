@@ -6,7 +6,7 @@
     "node": ">=22"
   },
   "dependencies": {
-    "@chio-protocol/sdk": "file:../../packages/sdk/chio-ts",
+    "@chio-protocol/sdk": "file:../../sdks/typescript/chio-ts",
     "openai": "^6.34.0"
   }
 }

@@ -1,4 +1,4 @@
-//! Integration coverage for `arc arena evolve`.
+//! Integration coverage for `chio arena evolve`.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 

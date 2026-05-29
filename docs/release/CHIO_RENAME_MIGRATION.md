@@ -1,6 +1,6 @@
 # Chio Rename Migration Guide
 
-**Status:** Phase 31 cutover update
+**Status:** cutover update
 **Date:** 2026-03-25
 
 ## Goal
@@ -49,17 +49,17 @@ The post-sweep contract is:
 ## Rollout Order
 
 1. **Inventory and contract**
-   Finish Phase 29 before renaming code or packages.
+   Finish the inventory and contract step before renaming code or packages.
 
 2. **Workspace and packaging**
-   Rename repo metadata, crates, CLI, and SDK package surfaces in Phase 30.
+   Rename repo metadata, crates, CLI, and SDK package surfaces.
 
 3. **Protocol and identity**
-   Apply schema and DID transition work in Phase 31 after verifiers/importers
+   Apply schema and DID transition work after verifiers/importers
    are ready for Chio-only identifiers.
 
 4. **Docs and qualification**
-   Rewrite public/operator docs and run full Chio qualification in Phase 32.
+   Rewrite public/operator docs and run full Chio qualification.
 
 ## Operator Notes
 
@@ -70,6 +70,6 @@ The post-sweep contract is:
 
 ## SDK Consumer Notes
 
-- expect package rename guidance per ecosystem in Phase 30
+- expect package rename guidance per ecosystem during the packaging step
 - prefer Chio-branded imports/examples once they ship
 - do not rely on deprecated import aliases

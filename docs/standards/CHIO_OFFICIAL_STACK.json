@@ -19,7 +19,7 @@
       "extension_point_ids": [
         "chio.kernel.capability_authority"
       ],
-      "crate_path": "crates/chio-cli/src/trust_control.rs::RemoteCapabilityAuthority",
+      "crate_path": "crates/chio-control-plane/src/trust_control.rs::RemoteCapabilityAuthority",
       "implementation_source": "first_party"
     },
     {
@@ -37,7 +37,7 @@
       "extension_point_ids": [
         "chio.kernel.receipt_store"
       ],
-      "crate_path": "crates/chio-cli/src/trust_control.rs::RemoteReceiptStore",
+      "crate_path": "crates/chio-control-plane/src/trust_control.rs::RemoteReceiptStore",
       "implementation_source": "first_party"
     },
     {
@@ -55,7 +55,7 @@
       "extension_point_ids": [
         "chio.kernel.revocation_store"
       ],
-      "crate_path": "crates/chio-cli/src/trust_control.rs::RemoteRevocationStore",
+      "crate_path": "crates/chio-control-plane/src/trust_control.rs::RemoteRevocationStore",
       "implementation_source": "first_party"
     },
     {
@@ -73,7 +73,7 @@
       "extension_point_ids": [
         "chio.kernel.budget_store"
       ],
-      "crate_path": "crates/chio-cli/src/trust_control.rs::RemoteBudgetStore",
+      "crate_path": "crates/chio-control-plane/src/trust_control.rs::RemoteBudgetStore",
       "implementation_source": "first_party"
     },
     {

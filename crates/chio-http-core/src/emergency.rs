@@ -1,4 +1,4 @@
-//! Phase 1.4 emergency kill-switch HTTP surface.
+//! Emergency kill-switch HTTP surface.
 //!
 //! This module is intentionally substrate-agnostic -- `chio-http-core`
 //! does not embed an HTTP server. It exposes:

@@ -35,12 +35,12 @@ pub fn canonical_json_mutate(data: &mut [u8], size: usize, max_size: usize, seed
         Err(_) => return min(size, max_size),
     };
 
-    // Cleanup C6: reject mutations that would not fit. Truncating valid
-    // JSON to `max_size` produces invalid JSON in nearly every case, and
-    // libFuzzer would then store that broken entry as corpus seed; the
-    // next iteration would parse-fail and skip every structure-aware
-    // mutation. Returning `size` unchanged keeps the previous (parseable)
-    // input alive and lets libFuzzer try a different `seed` next call.
+    // Reject mutations that would not fit. Truncating valid JSON to
+    // `max_size` produces invalid JSON in nearly every case, and libFuzzer
+    // would then store that broken entry as a corpus seed; the next
+    // iteration would parse-fail and skip every structure-aware mutation.
+    // Returning `size` unchanged keeps the parseable input alive and lets
+    // libFuzzer try a different `seed` next call.
     if bytes.len() > max_size || bytes.len() > data.len() {
         return min(size, max_size);
     }
@@ -151,15 +151,9 @@ fn swap_array_elements(value: &mut Value, seed: u32) {
             return;
         }
         let len = arr.len();
-        // Cleanup C6: the previous implementation widened `seed` to
-        // `usize` BEFORE the multiply and used `wrapping_mul`, which on
-        // 64-bit targets meant the wrap step never fired (the product of
-        // two 32-bit values always fits in `usize`). The result was that
-        // `j` collapsed into a deterministic function of `i` for every
-        // common array length, frequently making `i == j`. Two
-        // independent mixed sub-seeds give the swap two genuinely
-        // independent indices; we additionally bump `j` until it differs
-        // from `i` so the swap is never a no-op on a 2+ element array.
+        // Two independent mixed sub-seeds give the swap genuinely independent
+        // indices; `j` is then bumped until it differs from `i` so the swap is
+        // never a no-op on a 2+ element array.
         let i = (mix_index(seed) as usize) % len;
         let j_seed = mix_depth(seed);
         let mut j = (j_seed as usize) % len;
@@ -454,13 +448,13 @@ mod tests {
 
     #[test]
     fn oversize_mutation_is_rejected_keeping_valid_input() {
-        // Cleanup C6: when the mutator would emit bytes beyond
-        // `max_size` it must NOT truncate (truncating valid JSON
-        // produces invalid JSON, which would poison the corpus). Instead
-        // it returns `size` unchanged so the original (valid) input
-        // survives. This test pins that behaviour: feed a JSON object
-        // and a tiny `max_size` cap, then assert the returned bytes
-        // either equal the original or still parse as JSON.
+        // When the mutator would emit bytes beyond `max_size` it must NOT
+        // truncate (truncating valid JSON produces invalid JSON, which
+        // would poison the corpus). Instead it returns `size` unchanged so
+        // the original (valid) input survives. This test pins that
+        // behaviour: feed a JSON object and a tiny `max_size` cap, then
+        // assert the returned bytes either equal the original or still
+        // parse as JSON.
         let input = br#"{"a":1,"b":2,"c":3}"#;
         let mut buf = vec![0u8; 4096];
         buf[..input.len()].copy_from_slice(input);
@@ -476,11 +470,7 @@ mod tests {
 
     #[test]
     fn swap_picks_distinct_indices_for_two_element_array() {
-        // Cleanup C6: previously the swap derivation collapsed `i == j`
-        // for many `seed` values (the prior `wrapping_mul` widened to
-        // `usize` before multiplying, defeating the wrap step). With
-        // independent mixers AND a fall-back bump when `j == i`, every
-        // seed now produces a real swap on a 2-element array.
+        // Every seed must produce a real swap on a 2-element array.
         let input = br#"["alpha","beta"]"#;
         for seed in 0..256u32 {
             let out = run(input, seed);
@@ -500,11 +490,10 @@ mod tests {
 
     #[test]
     fn mutation_choice_uses_decorrelated_seed_axes() {
-        // Cleanup C6: assert the decorrelation mixers actually produce
-        // distinct outputs for adjacent seeds. If `mix_choice`,
-        // `mix_depth`, and `mix_index` collapsed to the identity (a
-        // refactor regression risk) we would see the choice and depth
-        // axes line up again.
+        // Assert the decorrelation mixers actually produce distinct
+        // outputs for adjacent seeds. If `mix_choice`, `mix_depth`, and
+        // `mix_index` collapsed to the identity, the choice and depth axes
+        // would line up again.
         let mut distinct_choices = std::collections::HashSet::new();
         let mut distinct_depths = std::collections::HashSet::new();
         let mut distinct_indices = std::collections::HashSet::new();

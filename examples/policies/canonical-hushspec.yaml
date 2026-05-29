@@ -45,7 +45,7 @@ rules:
       - add
       - commit
 
-  # velocity: first-class, Wave 1.6. Compiles to VelocityGuard +
+  # velocity: first-class feature. Compiles to VelocityGuard +
   # AgentVelocityGuard. Integer `max_spend_per_window` is minor units
   # (e.g. cents). Uncomment to rate-limit invocations or spend.
   # velocity:
@@ -55,7 +55,7 @@ rules:
   #   window_secs: 60
   #   burst_factor: 1.0
 
-  # human_in_loop: first-class, Wave 1.6. Compiles to
+  # human_in_loop: first-class feature. Compiles to
   # Constraint::RequireApprovalAbove { threshold_units } on tool grants.
   # `approve_above` is minor units (integer); tools matching a
   # `require_confirmation` glob collapse to threshold 0 (approval always).

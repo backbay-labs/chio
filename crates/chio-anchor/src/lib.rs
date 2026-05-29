@@ -1,13 +1,13 @@
 //! Chio anchoring runtime and multi-lane proof normalization.
 //!
-//! This crate realizes the bounded `chio-anchor` milestone over the frozen
-//! checkpoint and web3 artifact family:
+//! This crate anchors the frozen checkpoint and web3 artifact family:
 //!
 //! - direct EVM root-registry publication requests plus confirmation helpers
 //! - checkpoint-to-Bitcoin super-root aggregation and OTS linkage
 //! - canonical Solana memo publication records
 //! - fail-closed multi-lane proof bundle verification
 
+#![forbid(unsafe_code)]
 #![cfg(feature = "web3")]
 
 mod automation;
@@ -339,54 +339,7 @@ mod tests {
         SolanaMemoAnchorRecord, CHIO_ANCHOR_RUNTIME_REPORT_SCHEMA,
     };
 
-    trait TestResultOk<T, E> {
-        fn test_expect(self, context: &'static str) -> T;
-        fn test_unwrap(self) -> T;
-    }
-
-    impl<T, E> TestResultOk<T, E> for Result<T, E>
-    where
-        E: std::fmt::Debug,
-    {
-        fn test_expect(self, context: &'static str) -> T {
-            self.unwrap_or_else(|error| panic!("{context}: {error:?}"))
-        }
-
-        fn test_unwrap(self) -> T {
-            self.unwrap_or_else(|error| panic!("expected Ok result: {error:?}"))
-        }
-    }
-
-    trait TestResultErr<T, E> {
-        fn test_unwrap_err(self) -> E;
-    }
-
-    impl<T, E> TestResultErr<T, E> for Result<T, E>
-    where
-        T: std::fmt::Debug,
-    {
-        fn test_unwrap_err(self) -> E {
-            match self {
-                Ok(value) => panic!("expected Err result, got Ok: {value:?}"),
-                Err(error) => error,
-            }
-        }
-    }
-
-    trait TestOptionExt<T> {
-        fn test_expect(self, context: &'static str) -> T;
-        fn test_unwrap(self) -> T;
-    }
-
-    impl<T> TestOptionExt<T> for Option<T> {
-        fn test_expect(self, context: &'static str) -> T {
-            self.unwrap_or_else(|| panic!("{context}"))
-        }
-
-        fn test_unwrap(self) -> T {
-            self.unwrap_or_else(|| panic!("expected Some value"))
-        }
-    }
+    use chio_test_support::prelude::*;
 
     fn sample_primary_proof() -> AnchorInclusionProof {
         serde_json::from_str(include_str!(

@@ -1,25 +1,23 @@
 # GitHub Actions Billing Runbook
 
-**Owner:** @bb-connor
-**Trajectory:** trajectory-3
-**Milestone:** M03
+**Owner:** Chio maintainers
 **Last updated:** 2026-05-02
 
 ## Purpose
 
 This runbook prevents a repeat of the 2026-04-26T23:00Z GitHub
-Actions billing or spending-limit trip that forced the trajectory-2
+Actions billing or spending-limit trip that forced an earlier
 admin-merge bypass window.
 
 ## Cap value
 
 Cap value: set the GitHub Actions paid spending limit to at least
-$2,500 per month for the account that owns `bb-connor/arc`.
+$2,500 per month for the account that owns `backbay-labs/chio`.
 
 Rationale:
 
 - Expected full CI sweep: $3-$5 per PR.
-- Busy trajectory-3 cadence: roughly 10 PRs per day.
+- Busy development cadence: roughly 10 PRs per day.
 - Expected daily burn: $30-$50.
 - 50% headroom floor: $75 per day.
 - Monthly cap floor at 31 days: $2,325.
@@ -41,7 +39,7 @@ limit annotation:
 4. Re-run one lightweight workflow on `main`:
 
 ```bash
-gh workflow run m05-freeze-guard.yml --ref main
+gh workflow run audit-log-schema-lint.yml --ref main
 ```
 
 5. Re-run the main CI workflow when the lightweight workflow starts:
@@ -50,8 +48,8 @@ gh workflow run m05-freeze-guard.yml --ref main
 gh workflow run ci.yml --ref main
 ```
 
-6. Record the run URLs in
-   `.planning/trajectory-3/audits/M03-ci-restoration.md`.
+6. Record the run URLs in the incident log under `compliance/hitrust/`
+   (see `compliance/hitrust/control-mapping.csv` for the relevant control entries).
 
 ## Verification
 
@@ -65,17 +63,17 @@ Minimum restoration signal:
 Full release signal:
 
 - Required checks are green on the final stabilization branch.
-- Every PR listed in `.planning/trajectory-3/work/CI-DEBT.md` has been
-  replayed or covered by a later green main run.
+- Every PR in the recorded CI-debt backlog has been replayed or covered
+  by a later green main run.
 
 ## Escalation
 
 Do not silently admin-merge because of a billing or spending-limit
-failure after M03 closes. If the spending limit trips again:
+failure. If the spending limit trips again:
 
 - Raise the cap or reduce workflow fan-out.
 - Document the action in this runbook.
-- Record the incident in the M03 audit doc.
+- Record the incident in the audit doc.
 - Treat a repeated trip during final stabilization as a release-gate
   blocker until a clean hosted CI run exists.
 
@@ -87,4 +85,4 @@ failure after M03 closes. If the spending limit trips again:
 - Quarantine known flaky tests by ticket and audit-doc entry rather
   than repeatedly rerunning whole matrices.
 - Prefer `gh workflow run <workflow> --ref <branch>` for targeted
-  probes during M03.P2.
+  probes.

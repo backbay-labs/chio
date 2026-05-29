@@ -14,7 +14,7 @@ That ordering is intentional.
 - `hello-fastapi` is second because it adds `chio-asgi` and `chio-fastapi` on top
   of the same local sidecar model.
 - `hello-drogon` is a C++ follow-on that uses
-  `packages/sdk/chio-drogon` and `chio::drogon::ChioMiddleware`. Its local
+  `sdks/cpp/chio-drogon` and `chio::drogon::ChioMiddleware`. Its local
   scripts skip clearly when CMake or Drogon is not available.
 
 ## Shared Verification Flow

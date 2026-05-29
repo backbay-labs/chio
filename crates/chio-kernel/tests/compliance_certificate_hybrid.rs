@@ -17,7 +17,7 @@ use chio_kernel::compliance_certificate::{
 use chio_kernel::KernelCryptoFloor;
 
 fn fixture_pq_seed() -> [u8; 32] {
-    let raw = b"chio-m03-p2-t4-compliance-cert-x";
+    let raw = b"chio-compliance-cert-hybrid-seed";
     let mut out = [0u8; 32];
     out.copy_from_slice(raw);
     out

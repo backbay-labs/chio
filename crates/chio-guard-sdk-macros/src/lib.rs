@@ -29,7 +29,7 @@ use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{parse_macro_input, ItemFn};
 
-/// Attribute macro that generates the full ABI surface for an Chio WASM guard.
+/// Attribute macro that generates the full ABI surface for a Chio WASM guard.
 ///
 /// Annotate a function `fn evaluate(req: GuardRequest) -> GuardVerdict` with
 /// `#[chio_guard]` to produce:

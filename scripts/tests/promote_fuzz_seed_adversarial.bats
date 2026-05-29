@@ -7,14 +7,14 @@
 # cleanly into a triage-pending case under
 # `crates/chio-adversarial-suite/cases/<class>/<sha>.json`. The placeholder
 # `expected_verdict` is `DENY` and `pending` is `true` until a human triager
-# confirms the verdict and strips the flag (see M05 P2.T1 + M05 P5.T6).
+# confirms the verdict and strips the flag.
 #
 # Each test runs in a sandboxed temporary repo so it can mutate
 # fuzz/corpus, fuzz/owners.toml, and crates/chio-adversarial-suite/cases
 # without touching the live tree.
 #
 # This file is dual-runnable: `bats <file>` runs it as a Bats test suite,
-# and the M05.P2.T1 gate `bash <file>` re-execs itself under `bats` so
+# and the CI gate `bash <file>` re-execs itself under `bats` so
 # the gate stays a simple `bash` invocation.
 
 # When invoked under `bash` rather than `bats`, re-exec under bats and

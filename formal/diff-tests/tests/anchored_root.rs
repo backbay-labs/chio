@@ -1,6 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-//! Differential anchored-root tuple harness for M04 Phase 6.
+//! Differential anchored-root tuple harness.
 //!
 //! This Cargo-recognized integration test emits the Rust-side
 //! `(receipt_id, leaf_hash, inclusion_proof, root)` tuple shape for the
@@ -118,6 +118,10 @@ fn rust_anchored_root_tuples_emit_in_deterministic_order() -> Result<(), String>
 #[test]
 fn rust_and_typescript_anchored_root_tuples_match_by_root_bytes_and_proof_structure(
 ) -> Result<(), String> {
+    if !command_available("bun", "--version") {
+        eprintln!("skipping TypeScript anchored-root differential; bun not on PATH");
+        return Ok(());
+    }
     let fixtures_root = workspace_root().join("tests/replay/fixtures");
     let rust_tuples = emit_anchored_root_tuples_from(&fixtures_root)?;
     let typescript_tuples = emit_typescript_anchored_root_tuples_from(&fixtures_root)?;
@@ -198,6 +202,16 @@ fn emit_anchored_root_tuples_from(root: &Path) -> Result<Vec<AnchoredRootTuple>,
             build_tuple_from_manifest(&manifest)
         })
         .collect()
+}
+
+fn command_available(program: &str, version_arg: &str) -> bool {
+    Command::new(program)
+        .arg(version_arg)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
 }
 
 fn emit_typescript_anchored_root_tuples_from(

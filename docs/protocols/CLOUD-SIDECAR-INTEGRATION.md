@@ -394,7 +394,7 @@ request arrives after a cold start:
 # Reference Terraform module for deploying Chio-governed services
 
 module "chio_cloud_run" {
-  source = "github.com/backbay/chio//terraform/modules/cloud-run-sidecar"
+  source = "github.com/backbay-labs/chio//terraform/modules/cloud-run-sidecar"
 
   project_id    = var.project_id
   region        = var.region
@@ -457,7 +457,7 @@ deploy/
    "evaluate once at startup" use cases.
 
 2. **Service mesh interaction.** If the platform already runs a service
-   mesh sidecar (Envoy/Istio), adding an Chio sidecar is a third container.
+   mesh sidecar (Envoy/Istio), adding a Chio sidecar is a third container.
    Should Chio integrate as an Envoy external authorization filter instead?
 
 3. **Multi-region.** For global deployments (Cloud Run multi-region, ECS

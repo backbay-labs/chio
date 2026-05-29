@@ -1,6 +1,6 @@
 //! Chio model-card surface.
 //!
-//! M10 phase 4 introduces signed model cards that bind a provider's
+//! Signed model cards bind a provider's
 //! `(weights_hash, allowed_capability_set, banned_tools, training_data_class)`
 //! to a cosign-signed envelope. The kernel refuses to bind a provider whose
 //! loaded weights or requested scopes do not match the card.
@@ -11,7 +11,7 @@
 //! satisfied the named precondition fully. There is no path through this
 //! crate that returns `Ok(_)` on a partial verification: bad inputs return
 //! typed error variants that carry stable `urn:chio:error:weights:*` codes
-//! from the M01 registry.
+//! from the workspace error-code registry.
 //!
 //! # Crate surface
 //!

@@ -7,6 +7,6 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.88.0",
-    "@chio-protocol/sdk": "file:../../packages/sdk/chio-ts"
+    "@chio-protocol/sdk": "file:../../sdks/typescript/chio-ts"
   }
 }

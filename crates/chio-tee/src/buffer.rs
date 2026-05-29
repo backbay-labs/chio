@@ -1,7 +1,7 @@
-//! Raw-payload buffer with zeroize-on-drop semantics (M10 Phase 1 Task 6).
+//! Raw-payload buffer with zeroize-on-drop semantics.
 //!
-//! The trajectory doc (`.planning/trajectory/10-tee-replay-harness.md`,
-//! line 21 and line 566) requires that raw, pre-redaction payloads
+//! The normative spec (`spec/PROTOCOL.md`) requires that raw,
+//! pre-redaction payloads
 //! observed by the tee never reach disk and never outlive the redactor
 //! pass. [`RawPayloadBuffer`] is the in-memory carrier: a thin wrapper
 //! around `Vec<u8>` that derives [`zeroize::Zeroize`] and

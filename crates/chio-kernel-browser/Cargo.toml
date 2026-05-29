@@ -16,7 +16,7 @@ name = "chio_kernel_browser"
 # the non-wasm-gated helpers and so `cargo doc` works.
 crate-type = ["cdylib", "rlib"]
 
-# Phase 14.2 browser bindings.
+# Browser bindings.
 #
 # This crate is the wasm-bindgen facade over `chio-kernel-core`. It imports
 # every portable surface (`evaluate`, `sign_receipt`, `verify_capability`,
@@ -64,6 +64,5 @@ wasm-bindgen-test = "0.3"
 # the wasm artifact and browser tests instead of failing in wasm-opt validation.
 wasm-opt = false
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

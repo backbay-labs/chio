@@ -17,7 +17,7 @@ repositories {
 
 dependencies {
     implementation(platform("org.springframework.boot:spring-boot-dependencies:3.2.2"))
-    implementation("io.backbay.chio:chio-spring-boot:0.1.0")
+    implementation("world.chio:chio-spring-boot:0.1.0")
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("org.jetbrains.kotlin:kotlin-reflect")

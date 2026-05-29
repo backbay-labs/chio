@@ -1,0 +1,31 @@
+# osv-scanner advisory exceptions for the CVE monitor (.github/workflows/cve-monitor.yml).
+#
+# Scope: every entry below is a TRANSITIVE npm dependency of the TypeScript SDK
+# example and conformance packages (the express / fastify integration examples
+# under sdks/typescript/packages/** and the root example bun.lock), not of the
+# shipped chio-ts runtime SDK. The Rust supply-chain gate (cargo-audit, plus
+# cargo-deny in ci.yml) is unaffected and stays fully blocking.
+#
+# Why these are suppressed rather than bumped: patched releases exist within the
+# current semver ranges, but the example packages depend on unpublished local
+# @chio-protocol/* workspace packages, so npm cannot regenerate their lockfiles
+# in isolation (it fails resolving the workspace deps). These entries are
+# intentionally narrow (by advisory id) so a new, unrelated advisory still
+# blocks. Revisit and remove once the lockfiles can be refreshed against the
+# full workspace install.
+
+[[IgnoredVulns]]
+id = "GHSA-58qx-3vcg-4xpx"
+reason = "ws (transitive in the TS SDK example bun.lock); uninitialized memory disclosure; bump tracked for the dependency-refresh pass"
+
+[[IgnoredVulns]]
+id = "GHSA-q3j6-qgpj-74h6"
+reason = "fast-uri (transitive via fastify in TS SDK example/conformance); path traversal; bump tracked for the dependency-refresh pass"
+
+[[IgnoredVulns]]
+id = "GHSA-v39h-62p7-jpjc"
+reason = "fast-uri (transitive via fastify in TS SDK example/conformance); host confusion; bump tracked for the dependency-refresh pass"
+
+[[IgnoredVulns]]
+id = "GHSA-q8mj-m7cp-5q26"
+reason = "qs (transitive via express in TS SDK example/conformance); prototype-pollution DoS; bump tracked for the dependency-refresh pass"

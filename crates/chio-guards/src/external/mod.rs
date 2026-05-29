@@ -17,7 +17,7 @@
 //!   open. Default is [`CircuitOpenVerdict::Deny`] (fail-closed).
 //! * [`RateLimitedVerdict`] -- what the adapter returns when the rate
 //!   limiter rejects a call. Default is [`RateLimitedVerdict::Deny`]
-//!   (fail-closed, per the phase-13.1 acceptance criteria).
+//!   (fail-closed by design).
 //!
 //! # Example
 //!
@@ -151,8 +151,8 @@ impl CircuitOpenVerdict {
 /// Verdict returned when the token bucket rejects a call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RateLimitedVerdict {
-    /// Fail-closed: deny the request when we exceed the guard's QPS budget
-    /// (default for phase 13.1).
+    /// Fail-closed: deny the request when we exceed the guard's QPS budget.
+    /// This is the default.
     #[default]
     Deny,
     /// Fail-open: allow the request when rate limited. Useful for advisory

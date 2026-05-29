@@ -6,6 +6,7 @@ use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction}
 use chio_siem::event::SiemEvent;
 use chio_siem::exporters::sumo_logic::{SumoLogicConfig, SumoLogicExporter, SumoLogicFormat};
 use chio_siem::Exporter;
+use std::collections::BTreeSet;
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -38,6 +39,11 @@ fn sample_receipt(id: &str) -> ChioReceipt {
         &keypair,
     )
     .expect("sign")
+}
+
+fn trusted_event(receipt: ChioReceipt) -> SiemEvent {
+    let trusted_kernel_keys = BTreeSet::from([receipt.kernel_key.to_hex()]);
+    SiemEvent::from_receipt_with_trusted_kernel_keys(receipt, Some(&trusted_kernel_keys))
 }
 
 #[tokio::test]
@@ -107,7 +113,7 @@ async fn sumo_keyvalue_emits_kv_lines() {
     let exporter = SumoLogicExporter::new_plaintext_for_tests(config).expect("builds");
     let receipt = sample_receipt("sumo-kv-1");
     let receipt_id = receipt.id.clone();
-    let events = vec![SiemEvent::from_receipt(receipt)];
+    let events = vec![trusted_event(receipt)];
     let _ = exporter.export_batch(&events).await.expect("ok");
 
     let received = server.received_requests().await.unwrap();

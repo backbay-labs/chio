@@ -1,4 +1,4 @@
-//! W1.2 negative conformance test: sibling-sum budget enforcement.
+//! Negative conformance test: sibling-sum budget enforcement.
 //!
 //! Threat: a parent capability with `budget_share_bps = 5000` can mint
 //! two children with `budget_share_bps = 4000` each. Per-token

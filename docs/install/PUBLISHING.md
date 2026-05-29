@@ -62,6 +62,7 @@ Published under the listed distribution name:
 | Slug | Distribution | Directory |
 |---|---|---|
 | `chio-sdk-python` | `chio-sdk-python` | `sdks/python/chio-sdk-python` |
+| `chio-adapter-base` | `chio-adapter-base` | `sdks/python/chio-adapter-base` |
 | `chio-asgi` | `chio-asgi` | `sdks/python/chio-asgi` |
 | `chio-django` | `chio-django` | `sdks/python/chio-django` |
 | `chio-fastapi` | `chio-fastapi` | `sdks/python/chio-fastapi` |
@@ -79,12 +80,14 @@ Published under the listed distribution name:
 | `chio-observability` | `chio-observability` | `sdks/python/chio-observability` |
 | `chio-langgraph` | `chio-langgraph` | `sdks/python/chio-langgraph` |
 | `chio-code-agent` | `chio-code-agent` | `sdks/python/chio-code-agent` |
+| `chio-hermes` | `chio-hermes` | `sdks/python/chio-hermes` |
 | `chio-lambda-python` | `chio-lambda-python` | `sdks/lambda/chio-lambda-python` |
 
 ### TypeScript (npm)
 
 | Slug | Distribution | Directory |
 |---|---|---|
+| `chio-ts` | `@chio-protocol/sdk` | `sdks/typescript/chio-ts` |
 | `node-http` | `@chio-protocol/node-http` | `sdks/typescript/packages/node-http` |
 | `express` | `@chio-protocol/express` | `sdks/typescript/packages/express` |
 | `fastify` | `@chio-protocol/fastify` | `sdks/typescript/packages/fastify` |
@@ -127,7 +130,7 @@ npm provenance requires the workflow to run with
 for the npm package to opt in to Trusted Publishing:
 
 1. Log in to https://www.npmjs.com as an org admin of `@chio-protocol`.
-2. For each package (`node-http`, `express`, `fastify`, `elysia`,
+2. For each package (`chio-ts`, `node-http`, `express`, `fastify`, `elysia`,
    `ai-sdk`), go to **Settings** -> **Trusted Publishers** -> **Add**
    and register:
    - GitHub org: `backbay-industries`
@@ -254,8 +257,8 @@ emits two complementary supply-chain artifacts in addition to the
 
 | Artifact | Producer | Where to find it |
 |---|---|---|
-| Embedded `auditable` dependency graph | `cargo auditable build` (cargo-auditable v0.7.4, M09.P2.T1) | Inside the `chio` binary itself; read with `cargo audit -f <binary>`. |
-| CycloneDX 1.6 JSON SBOM | `syft` v1.18.1 with [`infra/sbom/syft.yaml`](../../infra/sbom/syft.yaml) (M09.P2.T2) | GitHub Actions artifact `sbom-<target>` (90-day retention). One file per matrix leg, named `chio-<target>.cyclonedx.json`. |
+| Embedded `auditable` dependency graph | `cargo auditable build` (cargo-auditable v0.7.4) | Inside the `chio` binary itself; read with `cargo audit -f <binary>`. |
+| CycloneDX 1.6 JSON SBOM | `syft` v1.18.1 with [`infra/sbom/syft.yaml`](../../infra/sbom/syft.yaml) | GitHub Actions artifact `sbom-<target>` (90-day retention). One file per matrix leg, named `chio-<target>.cyclonedx.json`. |
 
 Both artifacts are produced per matrix leg, so each of the five
 release targets (linux x86_64 / aarch64, macOS x86_64 / aarch64,
@@ -267,16 +270,15 @@ upload; a missing or malformed SBOM fails the workflow rather than
 silently publishing without one.
 
 Cosign keyless signing of every `release-binaries.yml` archive
-landed in M09.P3.T3; the consumer verification recipe lives below
+ships today; the consumer verification recipe lives below
 in [Release-binaries archive signing](#release-binaries-archive-signing).
-See `.planning/trajectory/09-supply-chain-attestation.md` for the
-broader attestation roadmap.
+See `spec/PROTOCOL.md` for the broader attestation contract.
 
 ---
 
 ## Sidecar image signing
 
-Owned by M09 (M09.P3.T2). The multi-arch sidecar OCI image built by
+Owned by the release toolchain. The multi-arch sidecar OCI image built by
 [`.github/workflows/sidecar-image.yml`](../../.github/workflows/sidecar-image.yml)
 is keyless-signed with [Sigstore cosign](https://docs.sigstore.dev/cosign/)
 immediately after the `docker/build-push-action@v6` push step. The
@@ -343,7 +345,7 @@ and reject `main`-branch images at deploy time.
 In-tree code MUST go through `chio_attest_verify::AttestVerifier`
 rather than calling `sigstore-rs` directly. The trait surface is
 documented in [`crates/chio-attest-verify/README.md`](../../crates/chio-attest-verify/README.md)
-(landed in M09.P3.T1) and exposes `verify_blob`, `verify_bytes`, and
+and exposes `verify_blob`, `verify_bytes`, and
 `verify_bundle` with a single canonical `ExpectedIdentity`
 (`certificate_identity_regexp`, `certificate_oidc_issuer`). The
 sidecar-image workflow's signing identity matches that surface
@@ -362,7 +364,7 @@ landed via a CODEOWNERS-reviewed PR.
 
 ## Release-binaries archive signing
 
-Owned by M09 (M09.P3.T3). Every per-target archive built by
+Owned by the release toolchain. Every per-target archive built by
 [`.github/workflows/release-binaries.yml`](../../.github/workflows/release-binaries.yml)
 (five legs: linux x86_64 / aarch64, macOS x86_64 / aarch64, windows
 x86_64) is keyless-signed with [Sigstore cosign](https://docs.sigstore.dev/cosign/)
@@ -448,7 +450,7 @@ release archives, even if they are attached to a release name.
 In-tree code MUST go through `chio_attest_verify::AttestVerifier`
 rather than calling `sigstore-rs` directly. The trait surface is
 documented in [`crates/chio-attest-verify/README.md`](../../crates/chio-attest-verify/README.md)
-(landed in M09.P3.T1) and exposes `verify_blob`, `verify_bytes`, and
+and exposes `verify_blob`, `verify_bytes`, and
 `verify_bundle` with a single canonical `ExpectedIdentity`
 (`certificate_identity_regexp`, `certificate_oidc_issuer`). The
 release-binaries workflow's signing identity matches that surface
@@ -467,8 +469,7 @@ run via Rekor; there is no long-lived key to rotate.
 
 ## SLSA L2 provenance
 
-[`.github/workflows/slsa.yml`](../../.github/workflows/slsa.yml)
-(M09.P2.T3) wires the upstream
+[`.github/workflows/slsa.yml`](../../.github/workflows/slsa.yml) wires the upstream
 [`slsa-framework/slsa-github-generator`](https://github.com/slsa-framework/slsa-github-generator)
 reusable workflow at the pinned tag `v2.1.0` to produce a signed
 [SLSA](https://slsa.dev) Level 2 provenance attestation for every

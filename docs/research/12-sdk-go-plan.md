@@ -1,5 +1,8 @@
 # Go SDK Plan
 
+> Historical, pre-rename design note. Paths and names below (for example `packages/sdk/arc-go`) reflect the original ARC-era plan and are kept as a record; they are not current.
+> The Go SDK shipped as `chio-go` at `sdks/go/chio-go`, with the wire client `chio-go-http` at `sdks/go/chio-go-http`.
+
 ## Goal
 
 Build a Go SDK that is installable and usable for remote-edge interaction without requiring CGO, while leaving room for a narrow optional native bridge later.
@@ -22,8 +25,8 @@ It should not optimize first for:
 Local evidence:
 
 - there is no Go peer yet in the ARC repo
-- the current interop harness exercises JS and Python peers only: [docs/epics/E8-migration-conformance-and-sdks.md](../epics/E8-migration-conformance-and-sdks.md)
-- `arc-core` is intentionally free of runtime dependencies and already documents itself as suitable for embedded and WASM-style environments: [crates/arc-core/src/lib.rs](../../crates/arc-core/src/lib.rs)
+- the current interop harness exercises JS and Python peers only: [docs/archive/epics/E8-migration-conformance-and-sdks.md](../archive/epics/E8-migration-conformance-and-sdks.md)
+- `arc-core` is intentionally free of runtime dependencies and already documents itself as suitable for embedded and WASM-style environments: [crates/arc-core/src/lib.rs](../../crates/chio-core/src/lib.rs)
 
 Implication:
 
@@ -415,9 +418,9 @@ Mitigation:
 
 Local:
 
-- [../BINDINGS_CORE_PLAN.md](../BINDINGS_CORE_PLAN.md)
-- [../epics/E8-migration-conformance-and-sdks.md](../epics/E8-migration-conformance-and-sdks.md)
-- [crates/arc-core/src/lib.rs](../../crates/arc-core/src/lib.rs)
+- [../BINDINGS_CORE_PLAN.md](../operations/BINDINGS_CORE_PLAN.md)
+- [../archive/epics/E8-migration-conformance-and-sdks.md](../archive/epics/E8-migration-conformance-and-sdks.md)
+- [crates/arc-core/src/lib.rs](../../crates/chio-core/src/lib.rs)
 
 External:
 

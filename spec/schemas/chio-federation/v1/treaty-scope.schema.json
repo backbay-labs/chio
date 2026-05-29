@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://chio.dev/schemas/chio-federation/v1/treaty-scope.schema.json",
+  "$id": "https://chio.world/schemas/chio-federation/v1/treaty-scope.schema.json",
   "title": "Chio Federation Treaty Scope",
   "type": "object",
   "additionalProperties": false,

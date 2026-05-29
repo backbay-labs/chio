@@ -92,12 +92,11 @@ enum ProviderKind {
     OpenAi,
     Anthropic,
     Bedrock,
-    /// Providers added in M07 trajectory-2 P3 / P4 (Gemini, Mistral, Groq,
-    /// Ollama, Cohere). The deep adapter replay (`replay_<provider>_fixture`)
-    /// is not exposed on chio-provider-conformance for these providers; the
-    /// demo loads the NDJSON capture directly and asserts policy equivalence
-    /// from the kernel verdict bytes, mirroring the cross_provider_equality
-    /// oracle path the M07.P4.T5 matrix flip enforces.
+    /// Providers using the NDJSON capture path (Gemini, Mistral, Groq, Ollama,
+    /// Cohere). The deep adapter replay (`replay_<provider>_fixture`) is not
+    /// exposed on chio-provider-conformance for these providers; the demo
+    /// loads the NDJSON capture directly and asserts policy equivalence from
+    /// the kernel verdict bytes, mirroring the cross_provider_equality oracle.
     Capture,
 }
 
@@ -183,10 +182,9 @@ fn main() -> Result<(), DemoError> {
 
     for receipt in &receipts {
         println!("{}", serde_json::to_string_pretty(receipt)?);
-        // M07.P4.T6 marker: one `provenance.provider` line per receipt so
-        // the gate_check (`grep -c 'provenance.provider'`) reads exactly N
-        // for an N-provider matrix. The marker tracks the receipt count
-        // verbatim and stays cardinality-independent.
+        // One `provenance.provider` line per receipt so the gate_check
+        // (`grep -c 'provenance.provider'`) reads exactly N for an
+        // N-provider matrix. The count is cardinality-independent.
         let provider_string = serde_json::to_string(&receipt.body.provenance.provider)?;
         println!("provenance.provider: {provider_string}");
     }
@@ -298,9 +296,9 @@ fn replay_case(kind: ProviderKind, path: &Path) -> Result<Option<ReplayOutcome>,
         ProviderKind::OpenAi => replay_openai_fixture(path).map(Some),
         ProviderKind::Anthropic => replay_anthropic_fixture(path).map(Some),
         ProviderKind::Bedrock => replay_bedrock_fixture(path).map(Some),
-        // The deep adapter replay path is not exposed for the M07
-        // trajectory-2 P3/P4 providers. The cross_provider_equality oracle
-        // verifies kernel verdict bytes from the NDJSON capture directly.
+        // The deep adapter replay path is not exposed for NDJSON capture
+        // providers. The cross_provider_equality oracle verifies kernel
+        // verdict bytes from the NDJSON capture directly.
         ProviderKind::Capture => Ok(None),
     }
 }

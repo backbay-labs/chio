@@ -1,4 +1,4 @@
-# Chiodos Selective Disclosure Over Chio Receipts
+# Chio Selective Disclosure Over Chio Receipts
 
 **Status:** v1 wire format with a real-BBS implementation slice.
 **Date:** 2026-05-04
@@ -9,17 +9,16 @@ contract for **selective-disclosure proofs over chio receipts and
 workflow receipts**. The repository now includes
 `chio-selective-disclosure` with an opt-in `bbs` feature that signs
 receipt, workflow, and step projections and verifies reveal-set BBS
-proof packages. The older `chio-federation` `bbs-stub` projection
-remains a legacy placeholder and cannot satisfy Chiodos conformance. Hidden
+proof packages. The `chio-federation` `bbs-stub` projection is a SHA-256 commitment placeholder; it cannot satisfy Chio conformance and is not compatible with BBS+ reveal proofs. Hidden
 range predicates, VC Data Integrity interop, and zkVM proofs are still
 deferred.
 
 The v1 contract closes Hard Problem #4 from
-[CHIODOS_CONCEPT.md](../docs/research/CHIODOS_CONCEPT.md) v1.1 section 7
+[CHIO_CONCEPT.md](../docs/research/CHIO_CONCEPT.md) v1.1 section 7
 ("Privacy and selective disclosure"), turning the BBS+ direction set in
 that document into a normative wire format, and it stands as the
 v1 normative version of the Pattern C dual-commitment route sketched
-in [ARC_ZK_RECEIPT_PROOFS_MEMO.md](../docs/research/ARC_ZK_RECEIPT_PROOFS_MEMO.md)
+in [CHIO_ZK_RECEIPT_PROOFS_MEMO.md](../docs/research/CHIO_ZK_RECEIPT_PROOFS_MEMO.md)
 section 1.3 (signed canonical-JSON receipts remain authoritative; a
 secondary commitment is added for proving efficiency).
 
@@ -32,7 +31,7 @@ insignificant whitespace, exact-form numbers.
 
 ## 1. Motivation
 
-The three CHIODOS_CONCEPT v1.1 use cases are structurally identical:
+The three CHIO_CONCEPT v1.1 use cases are structurally identical:
 a cybersec peer proves a detection meets a confidence threshold
 without revealing the indicator; a finance counterparty proves a
 settlement falls within an amount cap without disclosing amount or
@@ -41,7 +40,7 @@ a floor without revealing tier or evidence. All reduce to one
 primitive: **a verifier wants a predicate over a signed chio receipt
 body without learning the body.**
 
-The 3-vendor cross-vendor fixture (CHIODOS_CONCEPT v1.1 section 9)
+The 3-vendor cross-vendor fixture (CHIO_CONCEPT v1.1 section 9)
 exercises the same primitive at the workflow layer: a buyer auditor
 verifies "the refund step transferred no more than $250 to a customer
 at KYC tier 2 or higher" without learning customer, exact amount, or
@@ -122,15 +121,15 @@ once IRTF and W3C documents stabilise.
 
 ## 4. Cross-Spec Consistency
 
-- [CHIODOS_PHEROMONE.md](./CHIODOS_PHEROMONE.md) section 11 reserves a
+- [CHIO_PHEROMONE.md](./CHIO_PHEROMONE.md) section 11 reserves a
   future BBS+ projection over the pheromone deposit body; when it lands,
   its ordering rule MUST follow the same canonical-ordering principle
   (5.1) used here.
-- [CHIODOS_LADDER.md](./CHIODOS_LADDER.md) section 9 lists "BBS+
+- [CHIO_LADDER.md](./CHIO_LADDER.md) section 9 lists "BBS+
   projection of the manifest body" as open; once specified, the
   manifest projection inherits this spec's predicate language and
   envelope schema by reference.
-- [CHIODOS_BILATERAL_COSIGN_INVOCATION.md](./CHIODOS_BILATERAL_COSIGN_INVOCATION.md):
+- [CHIO_BILATERAL_COSIGN_INVOCATION.md](./CHIO_BILATERAL_COSIGN_INVOCATION.md):
   a disclosure proof MAY bind to a bilateral-cosign invocation by
   referencing the invocation's `subject.digest.sha256` in the
   envelope's `subject_receipt_sha256` field. The disclosure proof
@@ -271,9 +270,9 @@ padded to scalar):
 | 7 | `cost` | H |
 | 8 | `output_hash` | Opt<S> |
 
-Chiodos workflow receipts include optional `StepRecord` fields for bilateral
+Chio workflow receipts include optional `StepRecord` fields for bilateral
 DSSE linkage, governance receipt id, parent receipt hash, consistency anchor,
-and destructive-step status. Those fields are verified by the offline Chiodos
+and destructive-step status. Those fields are verified by the offline Chio
 package verifier. They are not part of `chio.bbs-projection.step.v1`; adding
 them to the BBS projection would require a future projection profile.
 
@@ -282,7 +281,7 @@ them to the BBS projection would require a future projection profile.
 | 9  | `bilateral_dsse_sha256` | Hx |
 | 10 | `governance_receipt_id` | Opt<S> |
 | 11 | `parent_receipt_sha256` | Hx |
-| 12 | `consistency_anchor` | S (CHIODOS_LADDER 4.2 enum) |
+| 12 | `consistency_anchor` | S (CHIO_LADDER 4.2 enum) |
 | 13 | `destructive` | B |
 
 Until then, `step.v1` stops at index 8 and verifiers MUST reject
@@ -513,8 +512,7 @@ v1 does not specify a proof-carrying-receipt mode.
 The implemented slice lives in
 [`chio-selective-disclosure`](../crates/chio-selective-disclosure/src/lib.rs).
 It is outside the default build and enabled with the crate's `bbs`
-feature. The legacy `chio-federation` `bbs-stub` feature remains a
-SHA-256 commitment placeholder for older projection tests only.
+feature. The `chio-federation` `bbs-stub` feature is a SHA-256 commitment placeholder; it is not compatible with v1 BBS+ proofs.
 
 The implementation uses `affinidi-bbs = 0.1.0`, pinned because
 `affinidi-bbs = 0.1.1` requires Rust 1.94 while this workspace is pinned
@@ -588,7 +586,7 @@ its own `tests/fixtures/` directory:
 
 CI MUST regenerate each fixture and diff against checked-in canonical
 JSON to guard against silent format drift, mirroring
-[CHIODOS_PHEROMONE.md](./CHIODOS_PHEROMONE.md) section 12.
+[CHIO_PHEROMONE.md](./CHIO_PHEROMONE.md) section 12.
 
 ---
 
@@ -651,7 +649,7 @@ a public input. Proof-bytes wire format is **not** specified here.
 ## 14. Open Questions for v1 Review
 
 1. **Canonical ordering rule.** This spec picks alphabetical (5.1);
-   [CHIODOS_PHEROMONE.md](./CHIODOS_PHEROMONE.md) section 11 has not
+   [CHIO_PHEROMONE.md](./CHIO_PHEROMONE.md) section 11 has not
    committed. Review SHOULD confirm alphabetical for both or flag the
    divergence.
 2. **Per-kernel BBS keypair separate from Ed25519 signing key.** 5.5

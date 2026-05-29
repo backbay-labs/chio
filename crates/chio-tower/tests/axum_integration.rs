@@ -3,6 +3,9 @@
 //! Verifies that the ChioLayer correctly integrates with Axum's router,
 //! producing signed receipts for allowed requests and denying requests
 //! without capability tokens.
+//!
+//! These tests drive the kernel's async tool dispatch through Chio's sync
+//! bridge, which requires a multi-thread Tokio runtime.
 
 use axum::{body::Body, routing::get, routing::post, Router};
 use bytes::Bytes;
@@ -137,7 +140,7 @@ async fn get_pet(axum::extract::Path(pet_id): axum::extract::Path<String>) -> St
     format!(r#"{{"id":{},"name":"Buddy"}}"#, pet_id)
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn axum_get_allowed_with_receipt() {
     let keypair = Keypair::generate();
     let app = build_app(keypair);
@@ -182,7 +185,7 @@ async fn axum_get_allowed_with_receipt() {
     assert!(body_str.contains("Fido"));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn axum_post_denied_without_capability() {
     let keypair = Keypair::generate();
     let app = build_app(keypair);
@@ -212,7 +215,7 @@ async fn axum_post_denied_without_capability() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn axum_post_allowed_with_capability() {
     let keypair = Keypair::generate();
     let app = build_app(keypair.clone());
@@ -256,7 +259,7 @@ async fn axum_post_allowed_with_capability() {
     assert_eq!(body_str, payload);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn axum_path_parameter_with_receipt() {
     let keypair = Keypair::generate();
     let app = build_app(keypair);
@@ -285,7 +288,7 @@ async fn axum_path_parameter_with_receipt() {
     assert!(body_str.contains("42"));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn axum_bearer_identity_in_receipt() {
     let keypair = Keypair::generate();
     let app = build_app(keypair);

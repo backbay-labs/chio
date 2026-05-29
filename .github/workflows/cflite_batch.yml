@@ -4,7 +4,7 @@
 # in fuzz/target-map.toml, 30 minutes per run. Budget-checked against the
 # 1,800 min/30d cap before each rotation step.
 #
-# Storage backend: bb-connor/arc-fuzz-corpus sibling private repo, wired as a
+# Storage backend: backbay-labs/chio-fuzz-corpus sibling private repo, wired as a
 # FUZZ_CORPUS_PAT-backed `storage-repo` action input when the secret is
 # available. No GCS.
 
@@ -47,11 +47,9 @@ jobs:
           GH_FUZZ_BUDGET_CAP_MODE: warn
         run: |
           set -euo pipefail
-          # Cap is advisory: the cflite_batch cron itself contributes to
-          # the trailing 30-day window, so a hard halt becomes
-          # self-perpetuating once breached and pins the workflow red.
-          # The script still emits used/cap/remaining for visibility.
-          # Matches the `mutants-nightly` knob added in PR #519.
+          # Cap is advisory (CAP_MODE=warn): this cron's own runs count
+          # toward the trailing 30-day window, so a hard halt would not
+          # clear on its own. The script emits used/cap/remaining.
           scripts/check-fuzz-budget.sh "${{ github.repository }}"
 
   rotate:
@@ -122,7 +120,7 @@ jobs:
           language: rust
           sanitizer: address
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          storage-repo: https://${{ secrets.FUZZ_CORPUS_PAT }}@github.com/bb-connor/arc-fuzz-corpus.git
+          storage-repo: https://${{ secrets.FUZZ_CORPUS_PAT }}@github.com/backbay-labs/chio-fuzz-corpus.git
 
       - name: Build ClusterFuzzLite batch fuzzer without corpus storage
         if: steps.corpus.outputs.enabled != 'true'
@@ -148,7 +146,7 @@ jobs:
           # storage-repo is an action input (not a project.yaml field) per
           # ClusterFuzzLite docs. The PAT-backed URL is required because
           # GITHUB_TOKEN cannot write the sibling private corpus repo.
-          storage-repo: https://${{ secrets.FUZZ_CORPUS_PAT }}@github.com/bb-connor/arc-fuzz-corpus.git
+          storage-repo: https://${{ secrets.FUZZ_CORPUS_PAT }}@github.com/backbay-labs/chio-fuzz-corpus.git
           report-unreproducible-crashes: true
 
       - name: Run ClusterFuzzLite batch without corpus storage

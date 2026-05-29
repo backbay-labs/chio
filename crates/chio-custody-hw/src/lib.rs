@@ -1,9 +1,13 @@
 //! Chio hardware custody surface.
 //!
-//! M10 phase 1 lands the WebAuthn assertion verifier surface, the
+//! The crate lands the WebAuthn assertion verifier surface, the
 //! audience-pinned `PasskeyCapability` envelope, and an issuer service
-//! skeleton that returns a stub (unsigned) capability. P2 wires the M03
-//! `HybridBackend` so the issuer signs capabilities.
+//! that signs every capability it mints through its signing backend
+//! (`Ed25519Backend`, the FIPS P-256/P-384 backends, or `HybridBackend`
+//! under the `pq` feature). The issuer fails closed if no signing backend
+//! is wired: it never emits an unsigned capability. Issuance is gated by a
+//! per-subject rate limiter, a per-credential replay nonce store, and the
+//! revocation cascade, all consulted before a signature is produced.
 //!
 //! # Trust boundary
 //!
@@ -11,7 +15,7 @@
 //! satisfied the named precondition fully. There is no path through this
 //! crate that returns `Ok(_)` on a partial verification: bad inputs return
 //! [`error::CustodyError`] variants that carry stable
-//! `urn:chio:error:custody:*` codes from the M01 registry.
+//! `urn:chio:error:custody:*` codes from the canonical error registry.
 //!
 //! Browser clients MUST NOT hold root capability or issuer signing material;
 //! they present a WebAuthn assertion to the issuer surface in
@@ -35,6 +39,7 @@ pub mod error;
 pub mod issuer;
 pub mod mint;
 pub mod nonce_store;
+pub mod rate_limit;
 pub mod revocation;
 pub mod verifier;
 
@@ -52,6 +57,10 @@ pub use mint::{sign_capability, signing_message};
 pub use nonce_store::SqlitePasskeyNonceStore;
 pub use nonce_store::{
     InMemoryPasskeyNonceStore, PasskeyNonceStore, RecordOutcome, DEFAULT_CLOCK_SKEW_SECONDS,
+};
+pub use rate_limit::{
+    IssuanceRateLimiter, RateLimitOutcome, RateLimiter, DEFAULT_MAX_PER_WINDOW,
+    DEFAULT_WINDOW_SECONDS,
 };
 pub use revocation::{
     credential_revocation_nonce, CredentialRevocationOracle, InMemoryCredentialRevocationOracle,

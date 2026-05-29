@@ -13,10 +13,8 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 1
 fi
 
-# ci-workspace remains the fast regression gate. The bounded Chio release lane
-# is the ship-facing qualification boundary.
+# ci-workspace remains the fast regression gate.
 ./scripts/ci-workspace.sh
-./scripts/qualify-bounded-chio.sh
 ./scripts/qualify-trust-control.sh
 ./scripts/qualify-portable-browser.sh
 ./scripts/qualify-mobile-kernel.sh

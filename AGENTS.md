@@ -14,7 +14,7 @@ Chio is a protocol for secure, attested tool access in AI agent systems. It repl
 
 ## Crate Map
 
-The workspace ships ~65 crates. The table below lists representative crates per group; see `Cargo.toml` for the full list.
+The workspace ships ~105 crates. The table below lists representative crates per group; see `Cargo.toml` for the full list.
 
 | Group | Representative crates | Purpose |
 |-------|-----------------------|---------|
@@ -27,7 +27,7 @@ The workspace ships ~65 crates. The table below lists representative crates per 
 | Observability | `chio-siem`, `chio-metering` | SIEM event export and metering for billing and audit. |
 | Control Plane & Storage | `chio-control-plane`, `chio-store-sqlite`, `chio-manifest` | Runtime wiring, persistent stores, signed tool manifests. |
 | HTTP & Session | `chio-http-core`, `chio-http-session` | Shared HTTP primitives and session lifecycle. |
-| Products | `chio-cli`, `chio-wall`, `chio-mercury`, `chio-api-protect` | End-user binaries and product surfaces built on the protocol. |
+| Products | `chio-cli`, `chio-wall`, `chio-api-protect` | End-user binaries and product surfaces built on the protocol. |
 
 ## Build and Test
 

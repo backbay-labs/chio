@@ -2,7 +2,7 @@
 
 Snapshot date: `2026-04-25`
 
-These fixtures are deterministic conformance captures for the OpenAI Responses API shape supported by `crates/chio-openai` as of the pinned snapshot. They are authored from the in-repo adapter and milestone corpus shapes. They do not claim live network capture.
+These fixtures are deterministic conformance captures for the OpenAI Responses API shape supported by `crates/chio-openai` as of the pinned snapshot. They are authored from the in-repo adapter and conformance corpus shapes. They do not claim live network capture.
 
 ## Files
 

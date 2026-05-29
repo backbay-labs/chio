@@ -1,4 +1,4 @@
-// Per-tool capability scope inference for `arc mcp wrap`.
+// Per-tool capability scope inference for `chio mcp wrap`.
 //
 // The MCP `tools/list` response carries a free-form JSON Schema and
 // (optionally) a set of annotations such as `readOnlyHint` and

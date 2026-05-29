@@ -41,6 +41,5 @@ fixtures-groq = ["dep:chio-groq-tools-adapter"]
 fixtures-mistral = ["dep:chio-mistral-tools-adapter"]
 fixtures-ollama = ["dep:chio-ollama-tools-adapter"]
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

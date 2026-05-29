@@ -12,9 +12,8 @@ use chio_policy::{CryptoFloor, CryptoFloorLoadError};
 
 #[test]
 fn allow_classical_loads_without_pq_key() {
-    // Default deployments (no PQ key provisioned) MUST keep working under
-    // `allow_classical`. This is the legacy backwards-compatibility
-    // contract.
+    // Default deployments (no PQ key provisioned) MUST load successfully
+    // under `allow_classical`.
     assert!(CryptoFloor::AllowClassical
         .validate_with_pq_key(false)
         .is_ok());

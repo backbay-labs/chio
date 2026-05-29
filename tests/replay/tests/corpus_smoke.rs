@@ -52,7 +52,7 @@ const EXPECTED_FAMILY_COUNTS: &[(&str, usize)] = &[
 ];
 
 /// Required top-level keys on every manifest. Missing any of these is a
-/// hard failure: the M04 gate refuses to run a corpus with an
+/// hard failure: the replay gate refuses to run a corpus with an
 /// underspecified manifest, and the smoke test enforces the contract.
 const REQUIRED_MANIFEST_KEYS: &[&str] = &[
     "schema_version",
@@ -150,10 +150,10 @@ fn all_50_fixtures_load_and_run() {
 
         let summary = run_scenario(&manifest, manifest_path, &scenario_dir);
 
-        // Writer-output sanity checks. These are not byte-equivalence
-        // (Phase 2's job) but they catch any silent regression in the
-        // staging / commit dance that would otherwise let a Phase-2
-        // gate run with empty or malformed goldens.
+        // Writer-output checks. These are not byte-equivalence (the
+        // golden_byte_equivalence test covers that) but they catch any
+        // silent regression in the staging / commit dance that would
+        // otherwise let the gate run with empty or malformed goldens.
         assert!(
             summary.receipt_count >= 1,
             "scenario {} produced no receipts",
@@ -281,7 +281,7 @@ fn fixtures_root() -> PathBuf {
 
 /// Recursively enumerate every `.json` manifest under `root`, sorted
 /// lexicographically by raw byte order. Delegates to
-/// [`fs_iter::walk_files_sorted`] (T7) so this test and any future
+/// [`fs_iter::walk_files_sorted`] so this test and any future
 /// Scenario-loader code use the same canonicalization. Symlinks and
 /// special files are filtered out fail-closed by the walker.
 fn enumerate_manifests(root: &Path) -> Vec<PathBuf> {

@@ -286,7 +286,7 @@ fn dpop_nonce_replay_within_ttl_rejected() {
     // Large TTL so the nonce stays live between calls.
     let store = DpopNonceStore::new(config.nonce_store_capacity, Duration::from_secs(3600));
 
-    // First invocation -- different nonce each time to be safe.
+    // First invocation -- different nonce each time.
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()

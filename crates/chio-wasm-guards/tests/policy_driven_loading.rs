@@ -1,6 +1,6 @@
-//! Integration tests for Phase 5.6 policy-driven WASM guard loading.
+//! Integration tests for policy-driven WASM guard loading.
 //!
-//! Covers the full round trip specified in the roadmap acceptance list:
+//! Covers the full round trip specified in the acceptance list:
 //!
 //! - Loading a signed WASM guard module declared by policy (happy path).
 //! - Rejecting modules with an invalid signature sidecar.

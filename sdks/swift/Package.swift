@@ -2,7 +2,7 @@
 
 import PackageDescription
 
-// TRAJECTORY-4: the local ChioKernel xcframework is produced by
+// The local ChioKernel xcframework is produced by
 // `scripts/build-ios-framework.sh` and committed under Frameworks/.
 
 let package = Package(

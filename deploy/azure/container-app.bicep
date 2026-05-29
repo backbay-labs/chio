@@ -2,7 +2,7 @@
 //
 // Placeholders:
 //   APP_IMAGE_PLACEHOLDER          -- replace with your application image
-//   ghcr.io/backbay/chio-sidecar    -- replace with the sidecar image you pushed
+//   ghcr.io/backbay-labs/chio-sidecar    -- replace with the sidecar image you pushed
 //   Key Vault secrets must be created before deploy; the Container Apps
 //   environment's managed identity needs GET on those secrets.
 //
@@ -31,7 +31,7 @@ param managedEnvironmentId string
 param appImage string = 'APP_IMAGE_PLACEHOLDER'
 
 @description('Chio sidecar container image.')
-param chioSidecarImage string = 'ghcr.io/backbay/chio-sidecar:latest'
+param chioSidecarImage string = 'ghcr.io/backbay-labs/chio-sidecar:latest'
 
 @description('Key Vault URI that holds the Chio signing key secret.')
 param chioSigningKeySecretUri string

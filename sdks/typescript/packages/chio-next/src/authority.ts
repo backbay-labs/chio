@@ -22,12 +22,7 @@ export function isAuthorizedEvaluation(
     && evaluation.boundary_class === "prevent"
     && evaluation.observation_outcome == null
     && evaluation.trust_level === "mediated"
-    && (
-      evaluation.result === "allow"
-      || evaluation.result === "Allow"
-      || evaluation.result === "authorized"
-      || evaluation.result === "Authorized"
-    )
+    && evaluation.result === "allow"
     && evaluation.authorized === true
     && evaluation.ok === true
     && evaluation.signer_trusted === true

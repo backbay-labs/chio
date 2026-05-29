@@ -1,7 +1,6 @@
 //! Round-trip property invariants for `chio-tee-frame.v1`.
 //!
-//! Two named invariants from `.planning/trajectory/10-tee-replay-harness.md`
-//! Phase 1 task 3:
+//! Two named invariants (see `spec/PROTOCOL.md` for the normative spec):
 //!
 //! 1. [`canonicalize_parse_round_trips`] -- `parse(canonicalize(frame)) == frame`.
 //! 2. [`canonicalize_is_idempotent`]    -- `canonicalize(parse(canonicalize(frame))) == canonicalize(frame)`.

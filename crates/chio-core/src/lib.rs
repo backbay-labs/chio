@@ -8,9 +8,11 @@
 //! data-and-crypto crate suitable for use in WASM, embedded, and no-std
 //! (with alloc) environments.
 //!
-//! The shared substrate now lives in `chio-core-types`, and the heavier domain
-//! implementations now live in dedicated crates. This crate preserves the
-//! historical `chio_core::*` surface by re-exporting those extracted crates.
+//! This crate re-exports `chio-core-types` and the dedicated domain crates
+//! (`chio-appraisal`, `chio-autonomy`, `chio-credit`, etc.) under a single
+//! `chio_core::*` import surface for consumers that prefer a unified entry point.
+
+#![forbid(unsafe_code)]
 
 pub use chio_appraisal as appraisal;
 pub use chio_autonomy as autonomy;

@@ -8,8 +8,7 @@
 //! - [`Mode::Enforce`]: replay decisions and reject when the TEE-side replay
 //!   disagrees with the kernel verdict (fail-closed).
 //!
-//! Mode selection follows the precedence specified in
-//! `.planning/trajectory/10-tee-replay-harness.md` lines 42-62:
+//! Mode selection follows the precedence specified in `spec/PROTOCOL.md`:
 //!
 //! 1. Process env `CHIO_TEE_MODE` (highest)
 //! 2. Sidecar TOML config under `[tee] mode = "..."`

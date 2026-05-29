@@ -190,18 +190,7 @@ mod tests {
         AnchorAutomationExecutionOutcome, EvmAnchorTarget,
     };
 
-    trait TestResultOk<T, E> {
-        fn test_unwrap(self) -> T;
-    }
-
-    impl<T, E> TestResultOk<T, E> for Result<T, E> {
-        fn test_unwrap(self) -> T {
-            match self {
-                Ok(value) => value,
-                Err(_) => panic!("expected Ok result"),
-            }
-        }
-    }
+    use chio_test_support::prelude::*;
 
     fn sample_binding() -> SignedWeb3IdentityBinding {
         let keypair = Keypair::generate();

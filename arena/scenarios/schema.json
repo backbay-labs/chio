@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.chio.dev/arena/scenario/v1/schema.json",
+  "$id": "https://schemas.chio.world/arena/scenario/v1/schema.json",
   "title": "Chio Arena Scenario",
   "type": "object",
   "additionalProperties": false,

@@ -1,13 +1,13 @@
 #[test]
-fn chio_pheromone_does_not_export_legacy_chio_schema_constants() {
+fn chio_pheromone_does_not_reexport_chio_schema_constants() {
     let lib = include_str!("../src/lib.rs");
-    let legacy_schema_exports = lib
+    let reexported_schema_constants = lib
         .lines()
         .filter(|line| line.contains("pub const CHIO_") && line.contains("_SCHEMA"))
         .collect::<Vec<_>>();
 
     assert!(
-        legacy_schema_exports.is_empty(),
-        "chio-pheromone public API must expose Chio schema constants only: {legacy_schema_exports:#?}"
+        reexported_schema_constants.is_empty(),
+        "chio-pheromone public API must not re-export CHIO_*_SCHEMA constants (they are owned by their defining crate): {reexported_schema_constants:#?}"
     );
 }

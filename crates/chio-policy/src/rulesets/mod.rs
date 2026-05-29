@@ -5,9 +5,8 @@
 //! can extend from (e.g. `extends: chio:strict`) without shipping YAML files
 //! alongside their deployment.
 //!
-//! The set is ported from ClawdStrike's `vendor/hushspec/rulesets/` directory
-//! so operators with existing ClawdStrike policies can migrate without
-//! rewriting their base rulesets.
+//! The set provides curated base rulesets so operators can adopt a sensible
+//! starting policy without authoring one from scratch.
 
 use crate::compiler::{compile_policy, CompileError, CompiledPolicy};
 use crate::models::HushSpec;

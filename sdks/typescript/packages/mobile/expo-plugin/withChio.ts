@@ -1,9 +1,14 @@
 import { type ConfigPlugin, withPlugins } from '@expo/config-plugins';
 
+import type { ChioPluginProps } from './props.js';
 import { withChioAndroid } from './withChioAndroid.js';
 import { withChioIos } from './withChioIos.js';
 
-export const withChio: ConfigPlugin = (config) =>
-  withPlugins(config, [withChioIos, withChioAndroid]);
+export type { ChioPluginProps } from './props.js';
+
+export const withChio: ConfigPlugin<ChioPluginProps | undefined> = (
+  config,
+  props,
+) => withPlugins(config, [[withChioIos, props], withChioAndroid]);
 
 export default withChio;

@@ -263,7 +263,7 @@ even more accurate now: Webex never used ACP). Delete or update
 references to `chio-bridge-acp` / `chio-bridge-agntcy`.
 
 **Doc 00-overview-v2
-([00-overview-v2.md](00-overview-v2.md)), Wave C line:**
+([00-overview-v2.md](00-overview-v2.md)), Phase C line:**
 
 > `chio-bridge-agntcy` + `chio-directory` - DirectoryProvider trait +
 > StaticAgntcyDirectoryProvider + AGNTCY ACP bridge.

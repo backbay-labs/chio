@@ -5,7 +5,7 @@
 #
 #   [mutants]
 #   target_catch_ratio_percent = 80
-#   activation_threshold_percent_per_crate = 65 # optional D08 floor
+#   activation_threshold_percent_per_crate = 65 # optional per-crate floor
 #   required_consecutive_nightly_successes = 2
 #   observed_consecutive_nightly_successes = 0
 #   cycle_end_tag = ""             # filled in after evidence and release
@@ -56,9 +56,9 @@
 # nightly successes, so this script exits 0. The evidence-gated
 # release-binaries activation starts enforcing without a workflow edit only
 # after releases.toml records the two-consecutive-nightly >= 80 percent
-# evidence streak and the release PR writes cycle_end_tag. D08 honest-floor
-# activation records activation_threshold_percent_per_crate separately from
-# the 80 percent target.
+# evidence streak and the release PR writes cycle_end_tag. The per-crate
+# floor activation records activation_threshold_percent_per_crate separately
+# from the 80 percent target.
 
 set -euo pipefail
 

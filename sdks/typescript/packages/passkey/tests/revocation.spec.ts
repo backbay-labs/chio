@@ -14,14 +14,14 @@
 //   2. navigator.credentials.get -> assertion.
 //   3. Browser POST /mint -> issuer-minted PasskeyCapability (signature
 //      slot empty in the demo test-double; the kernel test-double does
-//      not verify the signature - the M04 cascade is the contract under
-//      test here).
+//      not verify the signature - the revocation cascade is the contract
+//      under test here).
 //   4. Browser calls the kernel; kernel allows (credential is fresh).
 //   5. Operator revokes the credential at the issuer; the issuer pushes a
-//      revocation entry to the M04 oracle (modelled here by the
+//      revocation entry to the revocation oracle (modelled here by the
 //      RevocationState set, which is the test-double of
 //      crates/chio-revocation-oracle).
-//   6. The M04 epoch ticks (one second in the test config; here we
+//   6. The revocation epoch ticks (one second in the test config; here we
 //      advance a virtual clock so the test runs deterministically).
 //   7. Browser re-calls the kernel with the same capability; kernel
 //      denies fail-closed with urn:chio:error:custody:credential-revoked.
@@ -44,7 +44,7 @@ const AUDIENCE = 'urn:chio:audience:kernel';
 const ISSUER = 'https://issuer.local';
 const KERNEL = 'https://kernel.local';
 
-// One-second epoch matches the M04 test config (the kernel-side test
+// One-second epoch matches the revocation test config (the kernel-side test
 // uses the same value). We model the epoch as a counter so the test is
 // fully deterministic and not bound to wall-clock sleep.
 const EPOCH_TICK_MS = 1000;
@@ -75,7 +75,7 @@ function ensureNavigator(): void {
   }
 }
 
-describe('@chio/passkey revocation cascade', () => {
+describe('@chio-protocol/passkey revocation cascade', () => {
   let state: RevocationState;
   let originalFetch: typeof fetch;
   let clock: Clock;
@@ -93,7 +93,7 @@ describe('@chio/passkey revocation cascade', () => {
     });
   });
 
-  test('revoking the credential denies the next kernel call within one M04 epoch', async () => {
+  test('revoking the credential denies the next kernel call within one revocation epoch', async () => {
     const cap = await requestCapability({
       rpId: 'localhost',
       audience: AUDIENCE,
@@ -108,10 +108,10 @@ describe('@chio/passkey revocation cascade', () => {
     expect(fresh.errorCode).toBeUndefined();
 
     // Operator revokes at the issuer; the issuer pushes the revocation
-    // through the M04 oracle (modelled by the RevocationState set).
+    // through the revocation oracle (modelled by the RevocationState set).
     simulateRevocation(state, cap.credential_id);
 
-    // Advance the virtual clock by one M04 epoch tick. The cascade is
+    // Advance the virtual clock by one revocation epoch tick. The cascade is
     // synchronous from the kernel verdict's point of view (it consults
     // the oracle on every call), so the deny appears immediately at the
     // next epoch boundary regardless of wall-clock sleep.

@@ -1,5 +1,7 @@
 //! Selective disclosure projections and proof packages for Chio receipts.
 
+#![forbid(unsafe_code)]
+
 use chio_core_types::canonical::canonical_json_bytes;
 use chio_core_types::receipt::{ChioReceiptBody, TrustLevel};
 use chio_workflow::receipt::{StepRecord, WorkflowReceiptBody};

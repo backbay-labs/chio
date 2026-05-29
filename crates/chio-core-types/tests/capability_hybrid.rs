@@ -187,16 +187,15 @@ fn floor_rejection_fires_before_crypto_check() {
 }
 
 #[test]
-fn legacy_verify_signature_unchanged_on_classical() {
-    // Byte-equivalence regression: the legacy `verify_signature` entry
-    // point continues to work on a classical token without observing the
-    // floor.
+fn classical_verify_signature_works_on_classical_token() {
+    // Byte-equivalence regression: `verify_signature` continues to work on
+    // a classical token without observing the floor.
     let cap = classical_token();
     assert!(cap.verify_signature().unwrap());
 }
 
 #[test]
-fn legacy_verify_signature_works_on_hybrid_token() {
+fn classical_verify_signature_works_on_hybrid_token() {
     // Sanity: verify_signature continues to dispatch correctly on a
     // hybrid token (no floor enforcement; pure cryptographic check).
     let cap = hybrid_token();

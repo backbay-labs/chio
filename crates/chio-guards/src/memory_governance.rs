@@ -2,8 +2,8 @@
 //! TTL ceilings, and per-session memory-entry counts on
 //! [`ToolAction::MemoryWrite`] and [`ToolAction::MemoryRead`] actions.
 //!
-//! Roadmap phase 18.1 (see `docs/protocols/STRUCTURAL-SECURITY-FIXES.md`
-//! section 3).  The guard sources its policy from two places:
+//! See `docs/protocols/STRUCTURAL-SECURITY-FIXES.md` section 3. The guard
+//! sources its policy from two places:
 //!
 //! 1. **Capability constraints** on the matched grant
 //!    ([`Constraint::MemoryStoreAllowlist`]): when present, writes and
@@ -105,7 +105,7 @@ impl Default for MemoryGovernanceConfig {
 /// Session key used for per-session memory-entry counting.
 type SessionKey = (String, String); // (agent_id, capability_id)
 
-/// Guard implementing memory governance (phase 18.1).
+/// Guard implementing memory governance.
 pub struct MemoryGovernanceGuard {
     enabled: bool,
     store_allowlist: Vec<String>,

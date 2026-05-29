@@ -71,10 +71,10 @@ spec:
       containers:
         - name: chio-sidecar
           # This example needs a dedicated Envoy ext_authz adapter image.
-          # The generic ghcr.io/backbay/chio-sidecar image is the HTTP sidecar
+          # The generic ghcr.io/backbay-labs/chio-sidecar image is the HTTP sidecar
           # and does not expose the gRPC Authorization/Check service on :9091.
           # Replace this placeholder with the image you built for the adapter.
-          image: ghcr.io/backbay/chio-ext-authz:latest
+          image: ghcr.io/backbay-labs/chio-ext-authz:latest
           imagePullPolicy: IfNotPresent
           ports:
             - name: grpc-ext-authz

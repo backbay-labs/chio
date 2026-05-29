@@ -25,6 +25,5 @@ thiserror = { workspace = true }
 regex = "1"
 arbitrary = { version = "1", features = ["derive"], optional = true }
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

@@ -67,10 +67,10 @@ can change the policy, but the default package is conservative. Fail-closed
 behavior is the product shape, not an optional hardening mode.
 
 The healthcare design-partner pilot is the first customer outcome behind this
-distribution package. The M01 audit record reports a 30-day bounded-operation
-observation window with zero P0 incidents, zero P1 incidents, one P2
-receipt-export queue delay, 18 minute MTTR for that P2, and no PHI leak in
-sampled CEF and OCSF audit exports. The public draft intentionally omits the
+distribution package. The pilot audit record reports a 30-day
+bounded-operation observation window with zero P0 incidents, zero P1 incidents,
+one P2 receipt-export queue delay, 18 minute MTTR for that P2, and no PHI leak
+in sampled CEF and OCSF audit exports. The public draft intentionally omits the
 partner identity, but it keeps the operational signal: Chio held the bounded
 profile under the design-partner deployment, retained redaction status and
 policy hash in export records, and closed the audit-handoff freezes consumed by
@@ -82,9 +82,8 @@ Operationally, the listing is designed for teams that already have AWS incident
 response, change management, and audit review processes. The support SLA in the
 listing package gives customers a direct support route, while the Chio audit
 records identify the provenance inputs that reviewers normally request:
-reproducible build evidence from M03, SBOM and cargo-vet evidence from M06,
-the single-region Bedrock scope from M10, and the design-partner operational
-record from M01. That matters because agent governance projects often fail when
+reproducible build evidence, SBOM and cargo-vet evidence, the single-region
+Bedrock scope, and the design-partner operational record. That matters because agent governance projects often fail when
 the application demo looks strong but the operational evidence is scattered
 across private notes. Chio keeps the evidence close to the deployable package.
 The customer can inspect the CloudFormation template, the IAM policy, the
@@ -117,9 +116,9 @@ the same receipt-backed boundary should cover more internal tools. That is the
 right adoption path for agent systems that need to move from experimentation to
 controlled operation.
 
-The AI-lab evaluation milestone adds a second distribution signal. M02 closed
-the evaluation bundle and conformance memo that explain how external reviewers
-can consume Chio evidence without trusting a private dashboard. The Bedrock
+The AI-lab evaluation adds a second distribution signal. The evaluation bundle
+and conformance memo explain how external reviewers can consume Chio evidence
+without trusting a private dashboard. The Bedrock
 listing cross-links that memo because marketplace buyers often ask two
 questions at once: whether the integration is easy to deploy, and whether the
 governance evidence is portable enough for a third party to inspect. Chio's
@@ -131,13 +130,12 @@ surfaces.
 This draft is submitted for AWS Solutions Architect review and APN technical
 content review before public posting. Publication may follow later, because
 co-authored AWS content often has an editorial queue after the technical review
-is complete. The closure condition for trajectory-3 is therefore the submitted
+is complete. The closure condition for this milestone is therefore the submitted
 draft plus SA review, not a live blog URL. The live listing URL, MCP registry
 entry, conformance pass count, support SLA, Standard Contract for AWS
 Marketplace posture, Quick Launch template, and post-listing smoke test are the
-artifacts customers can inspect now. Future follow-up work can cite the M08
-third-party audit report after it publishes, but this draft does not depend on
-that later vendor calendar.
+artifacts customers can inspect now. Future follow-up work can cite the third-party audit report after it
+publishes, but this draft does not depend on that later vendor calendar.
 
 The next customer step is deliberately simple. Subscribe, launch the template,
 attach the generated role to the tenant record, run the smoke path, and export

@@ -1,6 +1,6 @@
 # Chio sidecar deployment references
 
-Reference deployment manifests for running the Chio (Chio) kernel as a sidecar
+Reference deployment manifests for running the Chio kernel as a sidecar
 alongside an application container on managed multi-container platforms.
 
 All manifests assume the sidecar listens on `:9090` and exposes `GET /chio/health`.
@@ -26,7 +26,7 @@ Search and replace the following before applying:
 | Placeholder | Meaning |
 |-------------|---------|
 | `APP_IMAGE_PLACEHOLDER` | Your application container image |
-| `ghcr.io/backbay/chio-sidecar:latest` | Chio sidecar image you have built and pushed |
+| `ghcr.io/backbay-labs/chio-sidecar:latest` | Chio sidecar image you have built and pushed |
 | `PROJECT_ID`, `REGION` | GCP project and region (Cloud Run) |
 | `ACCOUNT_ID` | AWS account ID (ECS) |
 | `EFS_FILESYSTEM_ID` | ECS EFS volume containing `/chio-config/kernel.yaml` and `/chio-config/spec/openapi.yaml` |
@@ -102,6 +102,6 @@ az deployment group create \
 ### Sidecar image
 
 ```bash
-docker build -f deploy/sidecar/Dockerfile -t ghcr.io/backbay/chio-sidecar:latest .
-docker push ghcr.io/backbay/chio-sidecar:latest
+docker build -f deploy/sidecar/Dockerfile -t ghcr.io/backbay-labs/chio-sidecar:latest .
+docker push ghcr.io/backbay-labs/chio-sidecar:latest
 ```

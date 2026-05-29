@@ -1,6 +1,6 @@
 # Healthcare Pilot SLO
 
-This page defines the Chio mediation-edge service objectives for the M01
+This page defines the Chio mediation-edge service objectives for the
 healthcare design-partner pilot. The design-partner API keeps its own upstream
 SLOs; this page covers only Chio-owned mediation, receipt, export, and alerting
 surfaces.

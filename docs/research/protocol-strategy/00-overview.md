@@ -6,9 +6,9 @@ Six parallel research agents investigated whether Chio should expand its protoco
 
 Branch: `research/protocol-strategy-2026` off `main` at `14b4de625`. Companion docs in this directory.
 
-> **Plan-of-record note (PR 652 review):** This wave-1 overview is retained as historical context. Use [00-overview-v2.md](00-overview-v2.md) as the current synthesis and [18-decision-packet.md](18-decision-packet.md) as the architecture decision packet before implementation tickets.
+> **Plan-of-record note (PR 652 review):** This round-1 overview is retained as historical context. Use [00-overview-v2.md](00-overview-v2.md) as the current synthesis and [18-decision-packet.md](18-decision-packet.md) as the architecture decision packet before implementation tickets.
 
-> **Erratum (wave 3 + wave 4)**: AGNTCY ACP is dead. The `agntcy/acp-spec` repo was archived 2026-04-11 and absorbed into A2A. The AGNTCY ACP bridge bullet in Wave C below is struck; only consume-only Directory + Identity integration via the `DirectoryProvider` seam survives. See [17-agntcy-revisited.md](17-agntcy-revisited.md). Also: the n8n priority-1 framing originally cited the Talos 686% spike (which is Chain D, not blocked by Chio); the actually-blocked attack chain is Chain C (prompt-injection agent-to-webhook). See [11-n8n-threat-mapping.md](11-n8n-threat-mapping.md).
+> **Erratum**: AGNTCY ACP is dead. The `agntcy/acp-spec` repo was archived 2026-04-11 and absorbed into A2A. The AGNTCY ACP bridge bullet in Phase C below is struck; only consume-only Directory + Identity integration via the `DirectoryProvider` seam survives. See [17-agntcy-revisited.md](17-agntcy-revisited.md). Also: the n8n priority-1 framing originally cited the Talos 686% spike (which is Chain D, not blocked by Chio); the actually-blocked attack chain is Chain C (prompt-injection agent-to-webhook). See [11-n8n-threat-mapping.md](11-n8n-threat-mapping.md).
 
 ## TL;DR
 
@@ -28,19 +28,19 @@ Audit revealed more existing coverage than the prior memo assumed. Five surprise
 
 ## Recommended build queue
 
-### Wave A: close gaps in what we already have
+### Phase A: close gaps in what we already have
 
 - **Add `EventPublish` / `EventConsume` variants** to `ToolAction` ([`chio-guards/src/action.rs:16`](../../../crates/chio-guards/src/action.rs#L16)) and add manifest constraints for topics/subjects/ARNs in `chio-manifest`. This makes Rust kernel policy speak the same vocabulary as the Python `chio-streaming` SDK. Without this, the SDK enforces but the kernel can't replay or audit. ([01](01-pubsub-coverage-audit.md))
 - **Consolidate OAuth consumer/verifier posture**: extend `CallerIdentity` ([`chio-http-core/src/identity.rs:44`](../../../crates/chio-http-core/src/identity.rs#L44)) with OAuth shape, add RFC 9449 JWT DPoP at the HTTP boundary, add actor-chain validation per the IETF agent-OBO draft, emit RFC 9470 step-up challenges from policy guards. ([03](03-oauth-oidc-issuer.md))
 - **Rename and scope-clamp the existing AS** to "Chio Governed Authorization Bridge": mint tokens for the Chio MCP edge only when no upstream AS understands governed RAR. Do not compete with WorkOS / Stytch / Scalekit / Aembit as an enterprise IdP. ([03](03-oauth-oidc-issuer.md))
 
-### Wave B: high-ROI new bridges
+### Phase B: high-ROI new bridges
 
 - **n8n orchestrator-egress mediation (Chain C only)**. The 686% Talos abuse spike is Chain D (ingress webhook abuse, NOT blocked by Chio: below our layer). The actually-blocked chain is Chain C (prompt-injection agent-to-webhook exfiltration), where workflow-ID allowlist + typed input constraints + `HttpEgressContract` authority pinning + loopback/link-local/ULA denial give end-to-end coverage; receipts add chain-of-custody. ([05](05-workflow-orchestrator-mediation.md), [11](11-n8n-threat-mapping.md))
 - **Zapier + Make.com paired adapter** (priority 2). Identical webhook wire shape, one adapter, highest agent-webhook volume. ([05](05-workflow-orchestrator-mediation.md))
 - **Cedar `PolicyEngineProvider`**: new trait in `chio-external-guards` (`engine() -> &'static str`, `policy_digest() -> String` hex, `evaluate() -> EngineDecision`), blanket-adapted as `ExternalGuard`. Engine ID + policy digest feed into `ChioReceiptBody.policy_hash` and `GuardEvidence` ([`chio-core-types/src/receipt.rs:159`](../../../crates/chio-core-types/src/receipt.rs#L159)) for replay. Cedar first because Rust-native, formally analyzable, no sidecar, matches the fail-closed stance from CLAUDE.md. ([04](04-policy-engine-collaborators.md))
 
-### Wave C: strategic expansions
+### Phase C: strategic expansions
 
 - **`DirectoryProvider` seam** for read-only consumption of NANDA and AGNTCY directories (no peer participation, no auto-imported capabilities, no widening of local trust). This is the pattern that lets Chio benefit from decentralized agent indexes without becoming one. Lives in `chio-directory`. Mirrors Webex (the only documented production AGNTCY consumer) which uses Identity + Directory and never touched ACP. ([02](02-decentralized-agent-networks.md), [17](17-agntcy-revisited.md))
 - **GitHub Actions `workflow_dispatch` egress mediation** (priority 3 in the orchestrator wave). GitHub's current Agent Workflow Firewall / `gh-aw` coverage and naming need official refresh before ticketing; Chio's likely gap is outside-in agent attribution. ([05](05-workflow-orchestrator-mediation.md))
@@ -48,9 +48,9 @@ Audit revealed more existing coverage than the prior memo assumed. Five surprise
 
 > ~~AGNTCY ACP bridge~~ (`chio-bridge-acp`): **STRUCK**. ACP archived 2026-04-11; absorbed into A2A. See [17-agntcy-revisited.md](17-agntcy-revisited.md).
 
-### Wave D: coverage gaps to close in the streaming SDK
+### Phase D: coverage gaps to close in the streaming SDK
 
-- **AMQP / RabbitMQ, AWS SNS+SQS, and WebSub** have zero coverage in either `chio-streaming` or any Rust crate. Add them once Wave A vocabulary lands. ([01](01-pubsub-coverage-audit.md))
+- **AMQP / RabbitMQ, AWS SNS+SQS, and WebSub** have zero coverage in either `chio-streaming` or any Rust crate. Add them once Phase A vocabulary lands. ([01](01-pubsub-coverage-audit.md))
 
 ### Defer or hard skip
 
@@ -81,11 +81,11 @@ The `chio-acp-*` namespace is owned by Zed's ACP. Do not propose other crates wi
 
 ## Open questions for product owner
 
-1. Is the existing OAuth AS in `chio-mcp-remote` actively used or stale? (Wave 2 partial answer: live but opt-in scaffolding; see [07](07-oauth-as-usage-audit.md). Outcome: feature flag + rename + scope-clamp.)
-2. Are `chio-temporal` and `chio-airflow` production-deployed or speculative? Affects whether to deprioritize dedicated orchestrator bridges with confidence. (Wave 3 partial answer: both exist with real LOC counts and clean activity-level interceptor patterns; production deployment unknown without telemetry.)
-3. Should `DirectoryProvider` be a new crate or live in `chio-federation`? (Wave 2 answer: new `chio-directory` leaf crate; see [08](08-agntcy-acp-bridge-spec.md) and [17](17-agntcy-revisited.md).)
-4. Cedar adoption: greenfield-only first guard, or migrate an existing guard as proof? (Wave 2 answer: Option A' = greenfield + two flagship ports `McpToolGuard` and `EgressAllowlistGuard`; see [10](10-cedar-first-guard.md).)
-5. Wave A vocabulary changes (`EventPublish` / `EventConsume`) are now folded into current `chio.manifest.v1` planning because Chio is unreleased. (Wave 2 follow-up: keep fail-closed validation, remove pre-release compatibility negotiation, and use [09](09-event-action-schema.md) plus [18](18-decision-packet.md) only as historical inputs.)
+1. Is the existing OAuth AS in `chio-mcp-remote` actively used or stale? (Answered in [07](07-oauth-as-usage-audit.md): live but opt-in scaffolding. Outcome: feature flag + rename + scope-clamp.)
+2. Are `chio-temporal` and `chio-airflow` production-deployed or speculative? Affects whether to deprioritize dedicated orchestrator bridges with confidence. (Both exist with real LOC counts and clean activity-level interceptor patterns; production deployment unknown without telemetry.)
+3. Should `DirectoryProvider` be a new crate or live in `chio-federation`? (Answered: new `chio-directory` leaf crate; see [08](08-agntcy-acp-bridge-spec.md) and [17](17-agntcy-revisited.md).)
+4. Cedar adoption: greenfield-only first guard, or migrate an existing guard as proof? (Answered: Option A' = greenfield + two flagship ports `McpToolGuard` and `EgressAllowlistGuard`; see [10](10-cedar-first-guard.md).)
+5. Vocabulary changes (`EventPublish` / `EventConsume`) are now folded into current `chio.manifest.v1` planning because Chio is unreleased. (Keep fail-closed validation, remove pre-release compatibility negotiation, and use [09](09-event-action-schema.md) plus [18](18-decision-packet.md) only as historical inputs.)
 
 ## Files
 
@@ -95,4 +95,4 @@ The `chio-acp-*` namespace is owned by Zed's ACP. Do not propose other crates wi
 - [04-policy-engine-collaborators.md](04-policy-engine-collaborators.md)
 - [05-workflow-orchestrator-mediation.md](05-workflow-orchestrator-mediation.md)
 - [06-below-l7-mediation.md](06-below-l7-mediation.md)
-- See also: [00-overview-v2.md](00-overview-v2.md) (wave 2 synthesis), [reviews/](reviews/) (wave 3 audit), [17-agntcy-revisited.md](17-agntcy-revisited.md) (wave 4 AGNTCY follow-up), [18-decision-packet.md](18-decision-packet.md) (PR 652 decision packet)
+- See also: [00-overview-v2.md](00-overview-v2.md) (extended synthesis), [reviews/](reviews/) (audit reviews), [17-agntcy-revisited.md](17-agntcy-revisited.md) (AGNTCY follow-up), [18-decision-packet.md](18-decision-packet.md) (PR 652 decision packet)

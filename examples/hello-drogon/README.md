@@ -1,6 +1,6 @@
 # hello-drogon
 
-Minimal C++ Drogon example using [`packages/sdk/chio-drogon`](../../packages/sdk/chio-drogon/).
+Minimal C++ Drogon example using [`sdks/cpp/chio-drogon`](../../sdks/cpp/chio-drogon/).
 
 ## What It Demonstrates
 

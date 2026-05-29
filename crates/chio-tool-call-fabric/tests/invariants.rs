@@ -10,7 +10,7 @@
 //!   (f) `ProviderError` Display is em-dash-free.
 //!   (g) `ProvenanceStamp.received_at` round-trips through canonical JSON
 //!       without precision loss above ms granularity.
-//!   (h) Schema subsumption (gated on the `m01-schema-subsumption` feature;
+//!   (h) Schema subsumption (gated on the `schema-subsumption` feature;
 //!       runs as a structural self-check over the canonical-JSON pipeline
 //!       when the schema is not present).
 //!
@@ -71,6 +71,11 @@ fn arb_principal() -> impl Strategy<Value = Principal> {
                     assumed_role_session_arn,
                 }
             }),
+        "[a-zA-Z0-9_]{1,16}".prop_map(|project_id| Principal::GeminiProject { project_id }),
+        "[a-zA-Z0-9_]{1,16}".prop_map(|project_id| Principal::GroqProject { project_id }),
+        "[a-zA-Z0-9_]{1,16}".prop_map(|project_id| Principal::MistralProject { project_id }),
+        "[a-zA-Z0-9_]{1,16}".prop_map(|org_id| Principal::CohereOrg { org_id }),
+        "https?://[a-z0-9.:-]{1,24}".prop_map(|host| Principal::OllamaHost { host }),
     ]
 }
 
@@ -228,13 +233,13 @@ proptest! {
 
     /// (d) lift then lower preserves invocation identity.
     ///
-    /// Phase 1 has no provider adapters wired yet, so we model the lift/lower
-    /// pair at the fabric level: take the invocation to canonical-JSON bytes
-    /// (the on-the-wire shape adapters will produce), parse those bytes back
-    /// (the inverse adapters will consume), and assert byte-for-byte
-    /// stability of every field including the canonicalized arguments
-    /// payload. Phase 2-4 adapter conformance tests will tighten this to a
-    /// real `lift(lower(x)) == x` round-trip.
+    /// No provider adapters are wired yet, so the lift/lower pair is
+    /// modelled at the fabric level: take the invocation to canonical-JSON
+    /// bytes (the on-the-wire shape adapters will produce), parse those
+    /// bytes back (the inverse adapters will consume), and assert
+    /// byte-for-byte stability of every field including the canonicalized
+    /// arguments payload. Adapter conformance tests will later tighten this
+    /// to a real `lift(lower(x)) == x` round-trip.
     #[test]
     fn invariant_d_lift_lower_preserves_invocation_identity(
         inv in arb_tool_invocation(),
@@ -307,7 +312,7 @@ proptest! {
     /// We sample timestamps at whole-ms granularity (see
     /// `arb_system_time_ms`) and assert that the round-tripped stamp's
     /// `received_at` matches the input within ms tolerance. This pins the
-    /// wire-precision contract: M07 surfaces ms-precision timestamps; any
+    /// wire-precision contract: the wire surfaces ms-precision timestamps; any
     /// future drift to second-only precision will fail this property.
     #[test]
     fn invariant_g_received_at_round_trips_within_ms(stamp in arb_provenance_stamp()) {
@@ -333,18 +338,17 @@ proptest! {
         prop_assert!(delta <= 1, "received_at drifted {}ms (>1ms)", delta);
     }
 
-    /// (h) Schema subsumption against the M01 capability schema.
+    /// (h) Schema subsumption against the canonical capability schema.
     ///
-    /// Soft-dep: the canonical `chio-tool-call-fabric.v1` schema is part of
-    /// M01 and is not yet vendored into the workspace. Until it is, this
-    /// property runs as a structural self-check: every arbitrary
-    /// `ToolInvocation` must canonicalise to a JSON object with the four
-    /// load-bearing fields (`provider`, `tool_name`, `arguments`,
-    /// `provenance`), and the `provenance` sub-object must carry the five
-    /// load-bearing fields (`provider`, `request_id`, `api_version`,
-    /// `principal`, `received_at`). When the M01 schema lands the test will
-    /// be promoted to a real jsonschema validation behind the
-    /// `m01-schema-subsumption` cargo feature.
+    /// Schema note: the canonical `chio-tool-call-fabric.v1` schema is not yet
+    /// vendored into the workspace. Until it is, this property runs as a
+    /// structural self-check: every arbitrary `ToolInvocation` must canonicalise
+    /// to a JSON object with the four load-bearing fields (`provider`,
+    /// `tool_name`, `arguments`, `provenance`), and the `provenance` sub-object
+    /// must carry the five load-bearing fields (`provider`, `request_id`,
+    /// `api_version`, `principal`, `received_at`). When the schema is vendored
+    /// the test can be promoted to real jsonschema validation behind the
+    /// `schema-subsumption` cargo feature.
     #[test]
     fn invariant_h_schema_subsumption_self_check(inv in arb_tool_invocation()) {
         let bytes = canonical_json_bytes(&inv).expect("invocation canonicalises");
@@ -376,15 +380,11 @@ proptest! {
             );
         }
 
-        // When the M01 capability schema is vendored, this branch tightens
-        // the property into a real jsonschema validation. The feature gate
-        // keeps the default build green until the schema lands.
-        #[cfg(feature = "m01-schema-subsumption")]
+        // Schema-subsumption gate: wires full jsonschema validation against
+        // `spec/schemas/chio-tool-call-fabric/v1.json` once that file exists.
+        // Currently a compile-only type-check assertion.
+        #[cfg(feature = "schema-subsumption")]
         {
-            // Intentionally minimal stub: the actual schema path will be
-            // wired here once `spec/schemas/chio-tool-call-fabric/v1.json`
-            // exists. Until then enabling the feature is a compile-only
-            // assertion that the property still type-checks.
             let _ = bytes;
         }
     }

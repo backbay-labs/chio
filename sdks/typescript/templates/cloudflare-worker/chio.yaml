@@ -6,7 +6,7 @@ template: cloudflare-worker
 runtime: workers
 description: |
   Cloudflare Worker consuming @chio-protocol/workers and
-  @chio/ai-sdk-middleware. Receipts persist to a local KV namespace by
+  @chio-protocol/ai-sdk-middleware. Receipts persist to a local KV namespace by
   default; production rebinds RECEIPTS_KV to a durable namespace.
 
 telemetry_free: true

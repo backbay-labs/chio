@@ -14,34 +14,7 @@ use chio_reputation::{
     ReliabilityMetrics, ResourceStewardshipMetrics, SpecializationMetrics,
 };
 
-trait TestUnwrap<T> {
-    fn test_unwrap(self, context: &str) -> T;
-}
-
-impl<T, E> TestUnwrap<T> for Result<T, E>
-where
-    E: std::fmt::Display,
-{
-    fn test_unwrap(self, context: &str) -> T {
-        self.unwrap_or_else(|error| panic!("{context}: {error}"))
-    }
-}
-
-trait TestUnwrapErr<E> {
-    fn test_unwrap_err(self, context: &str) -> E;
-}
-
-impl<T, E> TestUnwrapErr<E> for Result<T, E>
-where
-    T: std::fmt::Debug,
-{
-    fn test_unwrap_err(self, context: &str) -> E {
-        match self {
-            Ok(value) => panic!("{context}: unexpected Ok({value:?})"),
-            Err(error) => error,
-        }
-    }
-}
+use chio_test_support::ctx::{TestUnwrap, TestUnwrapErr};
 
 fn did_from_public_key(public_key: chio_core::PublicKey) -> DidChio {
     DidChio::from_public_key(public_key).test_unwrap("ed25519 key")

@@ -1,6 +1,6 @@
 //! Integration tests for hierarchical budget governance.
 //!
-//! These tests validate the roadmap acceptance criteria for Phase 16.2:
+//! These tests validate the acceptance criteria for hierarchical budgets:
 //! tree-structured budget policies where parent caps bound every child,
 //! and aggregate spend rolls up from leaf to root.
 

@@ -3,7 +3,7 @@
 // Source:     spec/schemas/chio-wire/v1/**/*.schema.json
 // Tool:       json-schema-to-typescript 15.0.4 (see xtask/codegen-tools.lock.toml)
 // Pin file:   sdks/typescript/scripts/package.json
-// Schema SHA: f708700488c7ed8c88d37cfbd10ba1d687fc194f48b732bf6de844d7f3192c83
+// Schema SHA: c0024fe4ef15a6bc0d17983e84a0f0ff0a7c5c4dab6c23f4289591511978979d
 //
 // The schema-sha above is sha256 of `<rel-path>\0<bytes>\0` for every
 // schema in lex order. It changes whenever any schema under
@@ -514,7 +514,7 @@ export namespace Federation_BilateralSignatureSliceEnvelope {
 // Source: spec/schemas/chio-wire/v1/federation/bilateral-signature-slice.schema.json
 export namespace Federation_BilateralSignatureSlice {
   /**
-   * Bounded in-toto Statement payload for Chio bilateral DSSE signature slices. This is not the strict CHIODOS bilateral cosign invocation predicate.
+   * Bounded in-toto Statement payload for Chio bilateral DSSE signature slices. This is not the strict treaty-bound bilateral invocation predicate.
    */
   export interface ChioBilateralDSSESignatureSliceStatement {
     _type: "https://in-toto.io/Statement/v1";
@@ -796,6 +796,130 @@ export namespace Kernel_ToolCallChunk {
 // -----------------------------------------------------------------------------
 // Source: spec/schemas/chio-wire/v1/kernel/tool_call_response.schema.json
 export namespace Kernel_ToolCallResponse {
+  /**
+   * A signed Chio receipt: proof that a tool call was evaluated by the Kernel. The receipt id is the authoritative content-addressed SHA-256 hash over the canonical ChioReceiptIdInput.
+   */
+  export type ChioReceiptRecord = {
+    [k: string]: unknown;
+  } & {
+    /**
+     * Authoritative content-addressed receipt id.
+     */
+    id: string;
+    /**
+     * Unix timestamp (seconds) when the receipt was created.
+     */
+    timestamp: number;
+    /**
+     * ID of the capability token that was exercised (or presented).
+     */
+    capability_id: string;
+    /**
+     * Tool server that handled the invocation.
+     */
+    tool_server: string;
+    /**
+     * Tool that was invoked (or attempted).
+     */
+    tool_name: string;
+    action: ToolCallAction;
+    decision?: Decision;
+    /**
+     * Signed semantic class for this v1 receipt.
+     */
+    receipt_kind: "mediated_decision" | "trace_observation" | "advisory_evaluation";
+    /**
+     * Signed runtime boundary class. `cannot_see` is planning metadata only and is not valid on signed runtime receipts.
+     */
+    boundary_class: "prevent" | "detect_only" | "advisory_only";
+    /**
+     * Signed outcome for trace and advisory records. Omitted for mediated decisions.
+     */
+    observation_outcome?: "observed" | "evaluated" | "dropped";
+    /**
+     * Signed classification of where the tool effect executed relative to Chio.
+     */
+    tool_origin: "caller_executed" | "host_executed_provider_reported" | "host_executed_unmediated";
+    /**
+     * Signed redaction mode applied to receipt details.
+     */
+    redaction_mode: "none" | "summary" | "redacted";
+    /**
+     * Signed actor attribution chain. Omitted from the wire when empty.
+     */
+    actor_chain?: ActorRef[];
+    /**
+     * SHA-256 hex hash of the evaluated content for this receipt.
+     */
+    content_hash: string;
+    /**
+     * SHA-256 hash (or symbolic identifier) of the policy that was applied. Mirrors the `String` shape on `ChioReceipt::policy_hash` rather than enforcing a hex pattern, since some deployments embed a symbolic version id (e.g. `policy-bindings-v1`) rather than a raw digest.
+     */
+    policy_hash: string;
+    /**
+     * Per-guard evidence collected during evaluation. Omitted from the wire when empty (matches `#[serde(skip_serializing_if = "Vec::is_empty")]`).
+     */
+    evidence?: GuardEvidence[];
+    /**
+     * Optional receipt metadata for stream/accounting/financial details. Schema-less by design (mirrors `Option<serde_json::Value>`).
+     */
+    metadata?: {
+      [k: string]: unknown;
+    };
+    /**
+     * Strength of kernel mediation that produced this receipt. Must cohere with receipt_kind: mediated_decision uses mediated, trace_observation uses verified, and advisory_evaluation uses advisory.
+     */
+    trust_level: "mediated" | "verified" | "advisory";
+    /**
+     * Tenant identifier for multi-tenant deployments. Absent in single-tenant mode; derived from the authenticated session's enterprise identity context, never from caller-provided request fields.
+     */
+    tenant_id?: string;
+    /**
+     * Kernel public key (for verification without out-of-band lookup). Bare 64-char lowercase hex string for Ed25519, `p256:<130-char hex>` for uncompressed SEC1 P-256 (65 bytes; leading byte `0x04`), or `p384:<194-char hex>` for uncompressed SEC1 P-384 (97 bytes; leading byte `0x04`). Anything outside these length classes is rejected at decode time by `PublicKey::from_hex` in `crates/chio-core-types/src/crypto.rs`.
+     */
+    kernel_key: string;
+    /**
+     * Signing algorithm envelope hint. Verification dispatches off the signature hex prefix, not this field.
+     */
+    algorithm?: "ed25519" | "p256" | "p384";
+    /**
+     * Hex-encoded signature over canonical JSON of ChioReceiptSigningBody { id, body: ChioReceiptIdInput }. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.
+     */
+    signature: string;
+  };
+  /**
+   * The Kernel's verdict on the tool call. Internally tagged enum mirroring `Decision` in `chio-core-types` (`#[serde(tag = "verdict", rename_all = "snake_case")]`).
+   */
+  export type Decision =
+    | {
+        verdict: "allow";
+      }
+    | {
+        verdict: "deny";
+        /**
+         * Human-readable reason for the denial.
+         */
+        reason: string;
+        /**
+         * The guard or validation step that triggered the denial.
+         */
+        guard: string;
+      }
+    | {
+        verdict: "cancelled";
+        /**
+         * Human-readable reason for the cancellation.
+         */
+        reason: string;
+      }
+    | {
+        verdict: "incomplete";
+        /**
+         * Human-readable reason for the incomplete terminal state.
+         */
+        reason: string;
+      };
+
   export interface ChioKernelMessageToolCallResponse {
     type: "tool_call_response";
     id: string;
@@ -847,7 +971,43 @@ export namespace Kernel_ToolCallResponse {
                 detail: string;
               };
         };
-    receipt: Receipt_Record.ChioReceiptRecord;
+    receipt: ChioReceiptRecord;
+  }
+  /**
+   * Describes the tool call that was evaluated. Mirrors `ToolCallAction`.
+   */
+  export interface ToolCallAction {
+    /**
+     * The parameters that were passed to the tool (or attempted). Free-form JSON value (mirrors `serde_json::Value`).
+     */
+    parameters: {
+      [k: string]: unknown;
+    };
+    /**
+     * SHA-256 hex hash of the canonical JSON of `parameters`.
+     */
+    parameter_hash: string;
+  }
+  export interface ActorRef {
+    actor_id: string;
+    actor_kind?: string;
+  }
+  /**
+   * Evidence from a single guard's evaluation. Mirrors `GuardEvidence`.
+   */
+  export interface GuardEvidence {
+    /**
+     * Name of the guard (e.g. `ForbiddenPathGuard`).
+     */
+    guard_name: string;
+    /**
+     * Whether the guard passed (true) or denied (false).
+     */
+    verdict: boolean;
+    /**
+     * Optional details about the guard's decision.
+     */
+    details?: string;
   }
 }
 
@@ -1044,7 +1204,7 @@ export namespace Provenance_Stamp {
    */
   export interface ChioProvenanceStamp {
     /**
-     * Stable identifier of the upstream provider adapter that handled the tool call (for example `openai`, `anthropic`, `google-vertex`). M07 owns the canonical adapter identifier registry.
+     * Stable identifier of the upstream provider adapter that handled the tool call (for example `openai`, `anthropic`, `google-vertex`).
      */
     provider: string;
     /**
@@ -1060,7 +1220,7 @@ export namespace Provenance_Stamp {
      */
     principal: string;
     /**
-     * Unix timestamp (seconds) at which Chio observed the provider response. Monotonic with respect to receipts emitted from the same kernel; M07 fails closed if the value is in the future relative to the kernel clock.
+     * Unix timestamp (seconds) at which Chio observed the provider response. Monotonic with respect to receipts emitted from the same kernel; Chio fails closed if the value is in the future relative to the kernel clock.
      */
     received_at: number;
   }
@@ -1070,7 +1230,7 @@ export namespace Provenance_Stamp {
 // Source: spec/schemas/chio-wire/v1/provenance/verdict-link.schema.json
 export namespace Provenance_VerdictLink {
   /**
-   * One link binding a Chio policy verdict to the provenance graph. The link names the `verdict` decision that Chio's policy engine returned (`allow`, `deny`, `cancel`, `incomplete`), the `requestId` and optional `receiptId` the verdict applies to, and the `chainId` that ties the verdict back to a delegated call-chain context. Verdict-specific required fields are enforced via `oneOf` so the wire shape stays in lock-step with the HTTP verdict union in `spec/schemas/chio-http/v1/verdict.schema.json`: `deny` requires both `reason` and `guard`; `cancel` and `incomplete` require `reason`; `allow` rejects either. The verdict vocabulary mirrors the HTTP verdict tagged union and the per-step verdict family `StepVerdictKind` in `crates/chio-core-types/src/plan.rs` (lines 110-138). NOTE: there is no live `VerdictLink` Rust struct on this branch; the link is drafted as the wire form of the verdict-to-provenance edge that M07's tool-call fabric and the M01 receipt-record schema reference indirectly today. The dedicated Rust struct is expected to land alongside the M07 phase that wires the tool-call fabric to the provenance graph and the schema will be re-pinned to that serde shape at that time. Field names are camelCase to match the `GovernedCallChainContext` family this link binds to.
+   * One link binding a Chio policy verdict to the provenance graph. The link names the `verdict` decision that Chio's policy engine returned (`allow`, `deny`, `cancel`, `incomplete`), the `requestId` and optional `receiptId` the verdict applies to, and the `chainId` that ties the verdict back to a delegated call-chain context. Verdict-specific required fields are enforced via `oneOf` so the wire shape stays in lock-step with the HTTP verdict union in `spec/schemas/chio-http/v1/verdict.schema.json`: `deny` requires both `reason` and `guard`; `cancel` and `incomplete` require `reason`; `allow` rejects either. The verdict vocabulary mirrors the HTTP verdict tagged union. Field names are camelCase to match the governed call-chain context family this link binds to.
    */
   export type ChioProvenanceVerdictLink = {
     /**
@@ -1137,7 +1297,7 @@ export namespace Provenance_VerdictLink {
 // Source: spec/schemas/chio-wire/v1/receipt/inclusion-proof.schema.json
 export namespace Receipt_InclusionProof {
   /**
-   * Merkle inclusion proof for a single receipt leaf in a receipt-log Merkle tree. Mirrors the serde shape of `MerkleProof` in `crates/chio-core-types/src/merkle.rs`. The proof allows an auditor, holding only the published Merkle root and the original leaf bytes, to verify that the leaf was included in a tree of the given size at the given position. The audit path is the ordered list of sibling hashes encountered when walking from the leaf up to the root; siblings whose subtree was carried upward without pairing (the right-edge of an unbalanced level) are omitted. M04 deterministic-replay consumes this schema as the contract for golden-bundle inclusion artifacts under `tests/replay/goldens/<family>/<name>/`.
+   * Merkle inclusion proof for a single receipt leaf in a receipt-log Merkle tree. Mirrors the serde shape of `MerkleProof` in `crates/chio-core-types/src/merkle.rs`. The proof allows an auditor, holding only the published Merkle root and the original leaf bytes, to verify that the leaf was included in a tree of the given size at the given position. The audit path is the ordered list of sibling hashes encountered when walking from the leaf up to the root; siblings whose subtree was carried upward without pairing (the right-edge of an unbalanced level) are omitted. Deterministic-replay consumes this schema as the contract for golden-bundle inclusion artifacts under `tests/replay/goldens/<family>/<name>/`.
    */
   export interface ChioReceiptMerkleInclusionProof {
     /**
@@ -1187,42 +1347,11 @@ export namespace Receipt_LineageStatement {
 // Source: spec/schemas/chio-wire/v1/receipt/record.schema.json
 export namespace Receipt_Record {
   /**
-   * The Kernel's verdict on the tool call. Internally tagged enum mirroring `Decision` in `chio-core-types` (`#[serde(tag = "verdict", rename_all = "snake_case")]`).
+   * A signed Chio receipt: proof that a tool call was evaluated by the Kernel. The receipt id is the authoritative content-addressed SHA-256 hash over the canonical ChioReceiptIdInput.
    */
-  export type Decision =
-    | {
-        verdict: "allow";
-      }
-    | {
-        verdict: "deny";
-        /**
-         * Human-readable reason for the denial.
-         */
-        reason: string;
-        /**
-         * The guard or validation step that triggered the denial.
-         */
-        guard: string;
-      }
-    | {
-        verdict: "cancelled";
-        /**
-         * Human-readable reason for the cancellation.
-         */
-        reason: string;
-      }
-    | {
-        verdict: "incomplete";
-        /**
-         * Human-readable reason for the incomplete terminal state.
-         */
-        reason: string;
-      };
-
-  /**
-   * A signed Chio receipt: proof that a tool call was evaluated by the Kernel. The receipt id is the authoritative content-addressed SHA-256 hash over the canonical receipt body excluding id, algorithm, and signature.
-   */
-  export interface ChioReceiptRecord {
+  export type ChioReceiptRecord = {
+    [k: string]: unknown;
+  } & {
     /**
      * Authoritative content-addressed receipt id.
      */
@@ -1304,10 +1433,43 @@ export namespace Receipt_Record {
      */
     algorithm?: "ed25519" | "p256" | "p384";
     /**
-     * Hex-encoded signature over the canonical JSON of the receipt body. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.
+     * Hex-encoded signature over canonical JSON of ChioReceiptSigningBody { id, body: ChioReceiptIdInput }. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.
      */
     signature: string;
-  }
+  };
+  /**
+   * The Kernel's verdict on the tool call. Internally tagged enum mirroring `Decision` in `chio-core-types` (`#[serde(tag = "verdict", rename_all = "snake_case")]`).
+   */
+  export type Decision =
+    | {
+        verdict: "allow";
+      }
+    | {
+        verdict: "deny";
+        /**
+         * Human-readable reason for the denial.
+         */
+        reason: string;
+        /**
+         * The guard or validation step that triggered the denial.
+         */
+        guard: string;
+      }
+    | {
+        verdict: "cancelled";
+        /**
+         * Human-readable reason for the cancellation.
+         */
+        reason: string;
+      }
+    | {
+        verdict: "incomplete";
+        /**
+         * Human-readable reason for the incomplete terminal state.
+         */
+        reason: string;
+      };
+
   /**
    * Describes the tool call that was evaluated. Mirrors `ToolCallAction`.
    */
@@ -1343,60 +1505,6 @@ export namespace Receipt_Record {
      * Optional details about the guard's decision.
      */
     details?: string;
-  }
-
-  export function validateChioReceiptRecordSemantics(receipt: ChioReceiptRecord): string[] {
-    const errors: string[] = [];
-    if (receipt.receipt_kind === "mediated_decision") {
-      if (receipt.decision == null) {
-        errors.push("mediated_decision receipts must include decision");
-      }
-      if (receipt.boundary_class !== "prevent") {
-        errors.push("mediated_decision receipts must use boundary_class prevent");
-      }
-      if (receipt.trust_level !== "mediated") {
-        errors.push("mediated_decision receipts must use trust_level mediated");
-      }
-      if (receipt.observation_outcome != null) {
-        errors.push("mediated_decision receipts must omit observation_outcome");
-      }
-      return errors;
-    }
-
-    if (receipt.receipt_kind === "trace_observation") {
-      if (receipt.decision != null) {
-        errors.push("trace_observation receipts must omit decision");
-      }
-      if (receipt.boundary_class !== "detect_only") {
-        errors.push("trace_observation receipts must use boundary_class detect_only");
-      }
-      if (receipt.trust_level !== "verified") {
-        errors.push("trace_observation receipts must use trust_level verified");
-      }
-      if (receipt.observation_outcome == null) {
-        errors.push("trace_observation receipts must include observation_outcome");
-      }
-      return errors;
-    }
-
-    if (receipt.receipt_kind === "advisory_evaluation") {
-      if (receipt.decision != null) {
-        errors.push("advisory_evaluation receipts must omit decision");
-      }
-      if (receipt.boundary_class !== "advisory_only") {
-        errors.push("advisory_evaluation receipts must use boundary_class advisory_only");
-      }
-      if (receipt.trust_level !== "advisory") {
-        errors.push("advisory_evaluation receipts must use trust_level advisory");
-      }
-      if (receipt.observation_outcome == null) {
-        errors.push("advisory_evaluation receipts must include observation_outcome");
-      }
-      return errors;
-    }
-
-    errors.push("receipt_kind must be a current v1 receipt kind");
-    return errors;
   }
 }
 
@@ -1545,7 +1653,7 @@ export namespace TrustControl_Attestation {
 // Source: spec/schemas/chio-wire/v1/trust-control/heartbeat.schema.json
 export namespace TrustControl_Heartbeat {
   /**
-   * One trust-control heartbeat used to refresh a held authority lease before it expires. The heartbeat names the lease being refreshed (`leaseId` plus `leaseEpoch`), the leader URL claiming continued ownership, and the unix-millisecond observation timestamp at which the heartbeat was issued. Drafted from `spec/PROTOCOL.md` section 9 prose around `/v1/internal/cluster/status` and the cluster lease lifecycle described in `crates/chio-cli/src/trust_control/cluster_and_reports.rs` (lines 832-877). NOTE: this schema is drafted from prose plus the `ClusterAuthorityLeaseView` shape; there is no dedicated `LeaseHeartbeatRequest` Rust struct in the live trust-control surface yet, so wire field names follow the same `serde(rename_all = camelCase)` convention used by the lease projection. The dedicated request/response struct is expected to land alongside the cluster RPC formalization in M09 P3.
+   * One trust-control heartbeat used to refresh a held authority lease before it expires. The heartbeat names the lease being refreshed (`leaseId` plus `leaseEpoch`), the leader URL claiming continued ownership, and the unix-millisecond observation timestamp at which the heartbeat was issued. The contract is anchored by `spec/PROTOCOL.md` section 9 (the `/v1/internal/cluster/status` cluster lease lifecycle). Wire field names are camelCase to match the lease projection.
    */
   export interface ChioTrustControlLeaseHeartbeat {
     /**
@@ -1575,7 +1683,7 @@ export namespace TrustControl_Heartbeat {
 // Source: spec/schemas/chio-wire/v1/trust-control/lease.schema.json
 export namespace TrustControl_Lease {
   /**
-   * One operator-visible authority lease projection emitted by the trust-control service over `/v1/internal/cluster/status` and the budget-write authority block. A lease names the leader URL that currently holds the trust-control authority, the cluster election term that minted it, the lease identifier and epoch that scope subsequent budget and revocation writes, and the unix-second expiry plus configured TTL that bound the lease's continued validity. Mirrors the `ClusterAuthorityLeaseView` serde shape in `crates/chio-cli/src/trust_control/service_types.rs` (lines 1837-1848). The view uses `serde(rename_all = camelCase)` so wire field names are camelCase. The shape is constructed in `crates/chio-cli/src/trust_control/cluster_and_reports.rs` (`cluster_authority_lease_view_locked`, lines 841-862) from the live cluster consensus view; `leaseValid` is true only when the cluster has quorum and `leaseExpiresAt` is still in the future. NOTE: `leaseExpiresAt` and `termStartedAt` are unix **seconds** (computed in `cluster_and_reports.rs` lines 1580-1606 as `unix_timestamp_now() + lease_ttl_ms / 1000`), even though `leaseTtlMs` itself is in milliseconds. The asymmetry mirrors the live runtime shape and is preserved on the wire so consumers do not have to re-scale by 1000.
+   * One operator-visible authority lease projection emitted by the trust-control service over `/v1/internal/cluster/status` and the budget-write authority block. A lease names the leader URL that currently holds the trust-control authority, the cluster election term that minted it, the lease identifier and epoch that scope subsequent budget and revocation writes, and the unix-second expiry plus configured TTL that bound the lease's continued validity. Wire field names are camelCase. `leaseValid` is true only when the cluster has quorum and `leaseExpiresAt` is still in the future. NOTE: `leaseExpiresAt` and `termStartedAt` are unix seconds (`unix_timestamp_now() + leaseTtlMs / 1000`), even though `leaseTtlMs` itself is in milliseconds. The asymmetry mirrors the live runtime shape and is preserved on the wire so consumers do not have to re-scale by 1000.
    */
   export interface ChioTrustControlAuthorityLease {
     /**
@@ -1599,15 +1707,15 @@ export namespace TrustControl_Lease {
      */
     leaseEpoch: number;
     /**
-     * Optional unix-second timestamp at which the current term began on this leader. Captured via `unix_timestamp_now()` in `cluster_and_reports.rs` line 1603. Omitted via `serde(skip_serializing_if = Option::is_none)` when unknown (no quorum or no leader).
+     * Optional unix-second timestamp at which the current term began on this leader. Omitted when unknown (no quorum or no leader).
      */
     termStartedAt?: number;
     /**
-     * Unix-second timestamp at which the lease expires if not renewed. Computed as `unix_timestamp_now() + lease_ttl_ms / 1000` in `cluster_and_reports.rs` lines 1580-1606. The unit is seconds (not milliseconds) even though the configured TTL is expressed in milliseconds; downstream consumers MUST treat this field as a unix-second timestamp.
+     * Unix-second timestamp at which the lease expires if not renewed. Computed as `unix_timestamp_now() + leaseTtlMs / 1000`. The unit is seconds (not milliseconds) even though the configured TTL is expressed in milliseconds; downstream consumers MUST treat this field as a unix-second timestamp.
      */
     leaseExpiresAt: number;
     /**
-     * Configured lease time-to-live in milliseconds. Bounded between 500ms and 5000ms by `authority_lease_ttl` (cluster_and_reports.rs lines 832-839). NOTE: this field is the only millisecond-denominated quantity in the lease projection; `termStartedAt` and `leaseExpiresAt` are unix seconds.
+     * Configured lease time-to-live in milliseconds. Bounded between 500ms and 5000ms. NOTE: this field is the only millisecond-denominated quantity in the lease projection; `termStartedAt` and `leaseExpiresAt` are unix seconds.
      */
     leaseTtlMs: number;
     /**
@@ -1621,7 +1729,7 @@ export namespace TrustControl_Lease {
 // Source: spec/schemas/chio-wire/v1/trust-control/terminate.schema.json
 export namespace TrustControl_Terminate {
   /**
-   * One trust-control termination request that voluntarily releases a held authority lease before its TTL expires. Termination names the lease being released (`leaseId` plus `leaseEpoch`), the leader URL releasing it, and a typed `reason` so operators can distinguish leader handoff from quorum loss or operator-initiated stepdown. Drafted from `spec/PROTOCOL.md` section 9 prose plus the lease invalidation paths in `crates/chio-cli/src/trust_control/cluster_and_reports.rs` (lines 1595-1611) where loss of quorum or a leader change clears `lease_expires_at` and bumps the election term. NOTE: this schema is drafted from prose; there is no dedicated `LeaseTerminateRequest` Rust struct in the live trust-control surface yet. The dedicated request/response struct is expected to land alongside the cluster RPC formalization in M09 P3. Wire field names follow the `serde(rename_all = camelCase)` convention used by the sibling lease projection so the families stay consistent on the wire.
+   * One trust-control termination request that voluntarily releases a held authority lease before its TTL expires. Termination names the lease being released (`leaseId` plus `leaseEpoch`), the leader URL releasing it, and a typed `reason` so operators can distinguish leader handoff from quorum loss or operator-initiated stepdown. The contract is anchored by `spec/PROTOCOL.md` section 9, where loss of quorum or a leader change clears the lease expiry and bumps the election term. Wire field names are camelCase to match the sibling lease projection so the families stay consistent on the wire.
    */
   export interface ChioTrustControlLeaseTermination {
     /**

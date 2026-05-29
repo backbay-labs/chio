@@ -153,7 +153,7 @@ fn unsupported_passport_schema_variants_fail_closed_before_signature_checks() {
         "chio.agent-passport.v1 ",
         " chio.agent-passport.v1",
         "CHIO.AGENT-PASSPORT.V1",
-        "https://chio.dev/schemas/agent-passport.v1",
+        "https://chio.world/schemas/agent-passport.v1",
     ];
 
     for schema in bad_schemas {

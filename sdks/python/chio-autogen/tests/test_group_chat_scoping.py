@@ -1,11 +1,9 @@
 """Integration tests for per-role capability scoping on ChioGroupChat.
 
-Acceptance (roadmap phase 6.2): *An AutoGen GroupChat where registered
-functions are Chio-governed. Nested chat spawns get attenuated
-capability tokens.*
-
-These tests set up exactly that situation against a mocked sidecar and
-assert the verdicts end-to-end without needing an actual LLM.
+An AutoGen GroupChat where registered functions are Chio-governed and
+nested chat spawns get attenuated capability tokens. These tests set up
+that situation against a mocked sidecar and assert the verdicts
+end-to-end without needing an actual LLM.
 """
 
 from __future__ import annotations

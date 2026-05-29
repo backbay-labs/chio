@@ -1,43 +1,50 @@
 # Chio HITRUST i1 Readiness Package
 
-> **Disclaimer:** This is a HITRUST i1 readiness package, not an issued certificate. No HITRUST-authorized External Assessor (e.g., A-LIGN, Coalfire, Schellman) has performed an audit. Real HITRUST i1 certification is a trajectory-4 deliverable (M09-followup).
+> **Status: internal self-assessment / readiness.** This is a HITRUST i1
+> readiness package, not an issued certificate. No HITRUST-authorized
+> External Assessor (e.g., A-LIGN, Coalfire, Schellman) has performed an
+> audit. No assessor is engaged. No MyCSF object exists. Real HITRUST i1
+> certification is future work.
 
 **Status:** readiness-draft (no External Assessor engaged)
 **Target assessment type:** HITRUST Implemented, 1-year (i1) Validated Assessment
-**Framework:** HITRUST CSF v11.7 i1
-**Control population:** 182 i1 controls
-**Subject system:** Backbay Labs, Chio v3.18 design-partner deployment
-**Target external assessor:** TODO(trajectory-4.M09-followup): pending External Assessor engagement (A-LIGN, Coalfire, Schellman, etc.)
-**Target issuer:** HITRUST Services LLC
-**Issuance date:** TODO(trajectory-4.M09-followup): pending real audit
-**Expiration date:** TODO(trajectory-4.M09-followup): pending real audit
-**MyCSF object:** TODO(trajectory-4.M09-followup): pending MyCSF tenant creation
-**Results distribution record:** TODO(trajectory-4.M09-followup): pending MyCSF results-distribution record
-**Public landing page:** docs/external-attestation/hitrust-i1/index.md
+**Framework target:** HITRUST CSF v11.7 i1
+**Control population:** the i1 control set (count fixed by HITRUST at MyCSF object creation)
+**Subject system:** Chio design-partner deployment (this assessed release)
+**Target external assessor:** none engaged
+**Issuance date:** none (no assessment performed)
+**Expiration date:** none (no assessment performed)
+**MyCSF object:** none (no object created)
 
-## Bound Scope
+## Bound scope
 
-This readiness-package record binds only the Chio v3.18 deployment used by
-the M01 healthcare design-partner tenant. It excludes M07 mobile
-surfaces, M10 AWS Bedrock and MCP marketplace surfaces, other Chio
-tenants, other Backbay systems, and Chio versions before or after
-v3.18. The bound scope remains the same once a real External Assessor
-engagement begins under trajectory-4.M09-followup.
+This readiness record binds only the assessed Chio deployment used by a
+single healthcare design-partner tenant. It excludes mobile patient-app
+surfaces, AWS Bedrock and MCP marketplace surfaces, other Chio tenants,
+other operator systems, and other Chio releases. The bound scope would
+remain the same if a real External Assessor engagement begins.
 
-## Repository Evidence
+## Repository evidence
 
-| Evidence | Path or reference |
-|----------|-------------------|
-| Assessor evidence bundle | `compliance/hitrust/evidence-bundles/2026-05-02/` |
-| Evidence bundle manifest hash | `f2cb0757ada4d1192918b68cc85f35d06d7c9d58c16113eacc43b39bdf22c949` |
-| Draft report hash | `6834849e9e4d13d58073a0737e9c630f2ac8d0cf4cfc0eae7c82a3e8fe557907` |
-| Internal QA receipt (self-authored) | `M09-P5-readiness-pass-2026-05-02` |
-| Internal readiness receipt (self-authored) | `M09-P5-readiness-record-2026-05-02` |
-| Real HITRUST QA receipt | `TODO(trajectory-4.M09-followup): pending real audit` |
-| Real HITRUST certificate receipt | `TODO(trajectory-4.M09-followup): pending real audit` |
-| Private certificate scan reference | `TODO(trajectory-4.M09-followup): real HITRUST cert URL pending External Assessor engagement` |
+The readiness posture is grounded in artifacts that actually exist in
+this repository. There is no frozen evidence bundle and no draft report;
+prior versions referenced a fabricated bundle and have been removed.
 
-No signed external certificate scan exists yet. This repository file
-is the public, reviewable readiness-package record used by
-trajectory-3 release activation; it does not assert an issued HITRUST
-certificate.
+| Evidence | Path (exists in repo) |
+|----------|-----------------------|
+| Control mapping | `compliance/hitrust/control-mapping.csv` |
+| System security plan | `compliance/hitrust/ssp.md` |
+| Scope boundary | `compliance/hitrust/scope-boundary.md` |
+| Gap report | `compliance/hitrust/gap-report/gap-report.md` |
+| Incident runbook | `compliance/hitrust/ir-runbook.md` |
+| Formal evidence | `formal/MAPPING.md`, `formal/proof-manifest.toml` |
+| Supply-chain evidence | `supply-chain/audits.toml`, `supply-chain/imports.lock` |
+| Threat coverage | `docs/security/threat-coverage.md` |
+
+## Certification status
+
+No external HITRUST certificate exists. No QA receipt, certificate
+receipt, or certificate scan exists, because no assessment has been
+performed. This file is the public, reviewable readiness record; it does
+not assert an issued HITRUST certificate and never represents a future
+engagement as having occurred.

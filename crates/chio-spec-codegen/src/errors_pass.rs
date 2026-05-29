@@ -46,7 +46,7 @@ struct RegistryCode {
     severity: String,
     summary: String,
     help: String,
-    legacy_string_code: String,
+    string_code: String,
     jsonrpc_code: Option<i32>,
     since: String,
     stability: String,
@@ -70,7 +70,7 @@ struct CodeBuilder {
     severity: Option<String>,
     summary: Option<String>,
     help: Option<String>,
-    legacy_string_code: Option<String>,
+    string_code: Option<String>,
     jsonrpc_code: Option<i32>,
     since: Option<String>,
     stability: Option<String>,
@@ -440,13 +440,13 @@ fn set_code_field(
                 parse_scalar(path, line_number, value)?,
             )
         }
-        "legacy_string_code" => {
+        "string_code" => {
             *reading_consumed_by = false;
             set_string_field(
                 path,
                 line_number,
-                "legacy_string_code",
-                &mut builder.legacy_string_code,
+                "string_code",
+                &mut builder.string_code,
                 parse_scalar(path, line_number, value)?,
             )
         }
@@ -520,12 +520,7 @@ fn finish_code(path: &Path, builder: CodeBuilder) -> Result<RegistryCode> {
         severity: required_string(path, line, "severity", builder.severity)?,
         summary: required_string(path, line, "summary", builder.summary)?,
         help: required_string(path, line, "help", builder.help)?,
-        legacy_string_code: required_string(
-            path,
-            line,
-            "legacy_string_code",
-            builder.legacy_string_code,
-        )?,
+        string_code: required_string(path, line, "string_code", builder.string_code)?,
         jsonrpc_code: builder.jsonrpc_code,
         since: required_string(path, line, "since", builder.since)?,
         stability: required_string(path, line, "stability", builder.stability)?,
@@ -657,7 +652,7 @@ fn validate_registry(path: &Path, registry: &ErrorRegistry) -> Result<()> {
         }
         if code.summary.trim().is_empty()
             || code.help.trim().is_empty()
-            || code.legacy_string_code.trim().is_empty()
+            || code.string_code.trim().is_empty()
             || code.since.trim().is_empty()
         {
             return Err(registry_error(
@@ -697,7 +692,7 @@ fn render_error_registry(path: &Path, registry: &ErrorRegistry) -> Result<String
     body.push_str("    pub severity: Severity,\n");
     body.push_str("    pub summary: &'static str,\n");
     body.push_str("    pub help: &'static str,\n");
-    body.push_str("    pub legacy_string_code: &'static str,\n");
+    body.push_str("    pub string_code: &'static str,\n");
     body.push_str("    pub jsonrpc_code: Option<i32>,\n");
     body.push_str("    pub since: &'static str,\n");
     body.push_str("    pub stability: &'static str,\n");
@@ -739,7 +734,7 @@ fn render_error_registry(path: &Path, registry: &ErrorRegistry) -> Result<String
         body.push_str(",\n");
         push_struct_str_field(&mut body, "summary", &code.summary);
         push_struct_str_field(&mut body, "help", &code.help);
-        push_struct_str_field(&mut body, "legacy_string_code", &code.legacy_string_code);
+        push_struct_str_field(&mut body, "string_code", &code.string_code);
         match code.jsonrpc_code {
             Some(jsonrpc_code) => {
                 body.push_str("    jsonrpc_code: Some(");
@@ -775,10 +770,8 @@ fn render_error_registry(path: &Path, registry: &ErrorRegistry) -> Result<String
     body.push_str("    ERROR_CODES.iter().find(|entry| entry.urn == urn)\n");
     body.push_str("}\n\n");
     body.push_str("#[must_use]\n");
-    body.push_str(
-        "pub fn lookup_legacy_string_code(code: &str) -> Option<&'static ErrorCodeSpec> {\n",
-    );
-    body.push_str("    let mut matches = lookup_legacy_string_code_matches(code);\n");
+    body.push_str("pub fn lookup_string_code(code: &str) -> Option<&'static ErrorCodeSpec> {\n");
+    body.push_str("    let mut matches = lookup_string_code_matches(code);\n");
     body.push_str("    let first = matches.next()?;\n");
     body.push_str("    if matches.next().is_some() {\n");
     body.push_str("        None\n");
@@ -787,11 +780,11 @@ fn render_error_registry(path: &Path, registry: &ErrorRegistry) -> Result<String
     body.push_str("    }\n");
     body.push_str("}\n\n");
     body.push_str(
-        "pub fn lookup_legacy_string_code_matches(\n    code: &str,\n) -> impl Iterator<Item = &'static ErrorCodeSpec> + '_ {\n",
+        "pub fn lookup_string_code_matches(\n    code: &str,\n) -> impl Iterator<Item = &'static ErrorCodeSpec> + '_ {\n",
     );
     body.push_str("    ERROR_CODES\n");
     body.push_str("        .iter()\n");
-    body.push_str("        .filter(move |entry| entry.legacy_string_code == code)\n");
+    body.push_str("        .filter(move |entry| entry.string_code == code)\n");
     body.push_str("}\n\n");
     body.push_str("#[must_use]\n");
     body.push_str("pub fn lookup_jsonrpc_code(code: i32) -> Option<&'static ErrorCodeSpec> {\n");
@@ -918,6 +911,7 @@ fn domain_variant(value: &str) -> Option<&'static str> {
         "lineage" => Some("Lineage"),
         "custody" => Some("Custody"),
         "weights" => Some("Weights"),
+        "mobile" => Some("Mobile"),
         _ => None,
     }
 }

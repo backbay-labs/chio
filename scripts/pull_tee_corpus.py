@@ -23,7 +23,7 @@ import tomllib
 DEFAULT_PINS = Path("tests/replay/corpus_pins.toml")
 DEFAULT_OUT = Path("target/tee-corpus")
 DEFAULT_PUBLIC_KEY = Path("tests/replay/keys/chio-tee-corpus.pub")
-DEFAULT_REPO = "bb-connor/arc"
+DEFAULT_REPO = "backbay-labs/chio"
 GITHUB_API = "https://api.github.com"
 RELEASE_TAG_RE = re.compile(r"^tee-corpus-[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")

@@ -40,7 +40,7 @@ expect_verdict = "allow"
 [[adversaries]]
 class = "prompt-injection"
 population = "default"
-seed_ref = "fuzz/artifacts/m02"
+seed_ref = "fuzz/artifacts"
 "#
 }
 

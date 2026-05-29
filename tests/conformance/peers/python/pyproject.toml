@@ -1,7 +1,7 @@
 [project]
 name = "chio-conformance-python-peer"
 version = "0.1.0"
-description = "Python peer scaffold for the Chio conformance harness"
+description = "Python peer for the Chio conformance harness"
 requires-python = ">=3.11"
 dependencies = ["httpx>=0.28,<1"]
 

@@ -34,7 +34,7 @@ expect_verdict = "allow"
 }
 
 #[test]
-fn writes_m04_bundle_and_arena_manifest() -> Result<(), Box<dyn std::error::Error>> {
+fn writes_bundle_and_arena_manifest() -> Result<(), Box<dyn std::error::Error>> {
     let scenario = parse_scenario_str(scenario_toml())?;
     let run = ArenaRun {
         scenario_id: scenario.id.clone(),

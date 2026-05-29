@@ -3,23 +3,25 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Chio Browser SDK demo (engineering output)</title>
+    <title>Chio Browser SDK demo</title>
     <meta
       name="description"
-      content="Engineering demo: verifies an M04 receipt fixture in the browser via @chio-protocol/browser."
+      content="Interactive demo: verifies a signed Chio receipt entirely in the browser via @chio-protocol/browser."
     />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <!--
-      Banner contract: see .planning/trajectory/08-browser-edge-sdk.md, "Demo
-      path lock". Text and DOM shape are normative; do not paraphrase. Playwright
-      asserts the banner is visible above the fold on a 1080p viewport.
+      Demo notice banner. The data-testid and DOM shape are a test contract
+      (the banner must be the first body child and visible above the fold on a
+      1080p viewport); keep them stable. The banner text is asserted by
+      tests/banner.spec.ts, so update both together.
     -->
     <div role="note" class="engineering-output-banner" data-testid="engineering-output-banner">
-      This page is engineering output, not a release. It demonstrates the
-      @chio-protocol/browser verify path against a fixture from the M04 replay
-      corpus. It is not a substitute for an audited release of the SDK.
+      This is an interactive demonstration. It runs the
+      @chio-protocol/browser verify path against a bundled sample receipt
+      entirely in your browser, and is not a substitute for an audited release
+      of the SDK.
     </div>
 
     <main class="demo">
@@ -57,8 +59,8 @@
       <footer>
         <p class="footnote">
           Source:
-          <a href="https://github.com/bb-connor/arc/tree/main/docs/demo">docs/demo/</a>.
-          Wasm artifact: <code>@chio-protocol/browser</code> (M08 Phase 1).
+          <a href="https://github.com/backbay-labs/chio/tree/main/docs/demo">docs/demo/</a>.
+          Wasm artifact: <code>@chio-protocol/browser</code>.
         </p>
       </footer>
     </main>

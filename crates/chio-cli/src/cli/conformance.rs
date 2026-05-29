@@ -1,7 +1,9 @@
 // Conformance subcommand handlers for the `chio` CLI.
 
+use super::*;
+
 /// Dispatch entry-point for `chio conformance run`.
-fn cmd_conformance_run(
+pub(crate) fn cmd_conformance_run(
     peer: &str,
     report: Option<&str>,
     scenario: Option<&str>,
@@ -38,7 +40,7 @@ fn cmd_conformance_run(
 /// Validate `--report` early so users do not wait through a live harness run
 /// before learning they typed an invalid value. Returns whether the report
 /// should be JSON-shaped.
-fn parse_report_format(report: Option<&str>) -> Result<bool, CliError> {
+pub(crate) fn parse_report_format(report: Option<&str>) -> Result<bool, CliError> {
     match report {
         None => Ok(false),
         Some(value) => {
@@ -55,7 +57,7 @@ fn parse_report_format(report: Option<&str>) -> Result<bool, CliError> {
     }
 }
 
-fn parse_peer_selection(peer: &str) -> Result<Vec<chio_conformance::PeerTarget>, CliError> {
+pub(crate) fn parse_peer_selection(peer: &str) -> Result<Vec<chio_conformance::PeerTarget>, CliError> {
     match peer {
         "all" => Ok(vec![
             chio_conformance::PeerTarget::Js,
@@ -73,7 +75,7 @@ fn parse_peer_selection(peer: &str) -> Result<Vec<chio_conformance::PeerTarget>,
     }
 }
 
-fn write_json_report(
+pub(crate) fn write_json_report(
     summary: &chio_conformance::ConformanceRunSummary,
     scenarios: &[chio_conformance::ScenarioDescriptor],
     results: &[chio_conformance::ScenarioResult],
@@ -125,7 +127,7 @@ fn write_json_report(
     Ok(())
 }
 
-fn write_human_report(
+pub(crate) fn write_human_report(
     summary: &chio_conformance::ConformanceRunSummary,
     results: &[chio_conformance::ScenarioResult],
     scenario_filter: Option<&str>,
@@ -181,11 +183,11 @@ fn write_human_report(
 
 /// HTTP timeout for peer-binary downloads. Without a timeout a stalled mirror
 /// can hang the CLI indefinitely.
-const FETCH_PEERS_HTTP_TIMEOUT_SECS: u64 = 120;
+pub(crate) const FETCH_PEERS_HTTP_TIMEOUT_SECS: u64 = 120;
 
 /// Resolve the path to `peers.lock.toml`, honouring the `--lockfile`
 /// override first and falling back to the layered runtime resolver.
-fn resolve_peers_lock_path(explicit: Option<&Path>) -> PathBuf {
+pub(crate) fn resolve_peers_lock_path(explicit: Option<&Path>) -> PathBuf {
     if let Some(path) = explicit {
         return path.to_path_buf();
     }
@@ -199,7 +201,7 @@ fn resolve_peers_lock_path(explicit: Option<&Path>) -> PathBuf {
 /// extracted under `out/`. The `language` filter restricts the loop to
 /// entries matching that adapter. Entries flagged `published = false` are
 /// skipped with a clear message.
-fn cmd_conformance_fetch_peers(
+pub(crate) fn cmd_conformance_fetch_peers(
     check: bool,
     out: &Path,
     language: Option<&str>,
@@ -313,7 +315,7 @@ fn cmd_conformance_fetch_peers(
     Ok(())
 }
 
-fn download_and_verify(
+pub(crate) fn download_and_verify(
     client: &reqwest::blocking::Client,
     entry: &chio_conformance::PeerEntry,
     out: &Path,
@@ -370,7 +372,7 @@ fn download_and_verify(
 /// Extract `.tar.gz` (or `.tgz`) bundles into the per-target directory.
 /// `.zip` is recognised by extension but not yet implemented; unknown archive
 /// formats are preserved on disk with a warning rather than failing fatally.
-fn extract_archive(archive: &Path, dest: &Path, source_url: &str) -> Result<(), CliError> {
+pub(crate) fn extract_archive(archive: &Path, dest: &Path, source_url: &str) -> Result<(), CliError> {
     let lower = archive
         .file_name()
         .and_then(|name| name.to_str())

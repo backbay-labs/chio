@@ -1,4 +1,4 @@
-//! Phase 19.1 -- HTTP integration tests for `POST /compliance/score`.
+//! HTTP integration tests for `POST /compliance/score`.
 //!
 //! These tests wire a stubbed `ComplianceSource` into the handler to
 //! verify the wire contract: the response carries a 0..=1000 score and

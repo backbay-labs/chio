@@ -10,7 +10,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-SDK_PYTHON_SRC = Path(__file__).resolve().parents[4] / "packages" / "sdk" / "chio-py" / "src"
+SDK_PYTHON_SRC = Path(__file__).resolve().parents[4] / "sdks" / "python" / "chio-py" / "src"
 if str(SDK_PYTHON_SRC) not in sys.path:
     sys.path.insert(0, str(SDK_PYTHON_SRC))
 

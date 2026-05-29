@@ -17,11 +17,8 @@ use super::*;
 const SESSION_ID_ENTROPY_BYTES: usize = 16;
 
 /// Mint a fresh URL-safe session identifier from the operating system's
-/// CSPRNG. Sequential identifiers were previously derived from a global
-/// counter, which let an external observer enumerate active tenants over the
-/// MCP HTTP transport. Using an unguessable random handle closes that
-/// information-disclosure path and removes the session-fixation/forgery
-/// surface that came with predictable IDs.
+/// CSPRNG. Random handles prevent external enumeration of active tenants and
+/// close the session-fixation surface that sequential ids carry.
 fn generate_random_session_id() -> SessionId {
     let mut bytes = [0u8; SESSION_ID_ENTROPY_BYTES];
     OsRng.fill_bytes(&mut bytes);
@@ -706,13 +703,13 @@ impl ChioKernel {
         context: &OperationContext,
         operation: &SessionOperation,
     ) -> Result<SessionOperationResponse, KernelError> {
-        // Phase 1.5: install tenant_id scope for the duration of this
-        // session-scoped evaluation so every receipt signed here (tool
-        // call, resource read deny, etc.) is tagged with the session's
-        // tenant. The ToolCall branch also installs a scope via its
-        // sync_with_session_context path; the nested scope is a no-op
-        // because the value matches, but it keeps non-tool-call branches
-        // (e.g. evaluate_resource_read) covered.
+        // Install tenant_id scope for the duration of this session-scoped
+        // evaluation so every receipt signed here (tool call, resource read
+        // deny, etc.) is tagged with the session's tenant. The ToolCall
+        // branch also installs a scope via its sync_with_session_context
+        // path; the nested scope is a no-op because the value matches, but
+        // it keeps non-tool-call branches (e.g. evaluate_resource_read)
+        // covered.
         let tenant_id = self.resolve_tenant_id_for_session(Some(&context.session_id));
         let _tenant_request_scope = self
             .scope_receipt_tenant_id_for_request(context.request_id.as_str(), tenant_id.clone());
@@ -756,9 +753,9 @@ impl ChioKernel {
                 let session_roots =
                     self.session_enforceable_filesystem_root_paths_owned(&context.session_id)?;
 
-                // Phase 1.5: pass the session_id so the evaluate path can
-                // resolve tenant_id from session.auth_context for every
-                // receipt signed during this tool call.
+                // Pass the session_id so the evaluate path can resolve
+                // tenant_id from session.auth_context for every receipt
+                // signed during this tool call.
                 self.evaluate_tool_call_sync_with_session_context(
                     &request,
                     Some(session_roots.as_slice()),

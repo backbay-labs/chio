@@ -12,7 +12,7 @@
 //! 2. POSTs `body_hash` to the configured calendar URL,
 //! 3. parses the returned blob through the existing
 //!    `opentimestamps` crate (already a chio-anchor dependency for
-//!    the legacy super-root path),
+//!    the bitcoin super-root path),
 //! 4. preserves the returned OTS blob as advisory timestamp material.
 //!
 //! Important: a local OTS parse plus a Bitcoin attestation marker is
@@ -21,11 +21,6 @@
 //! independently verified calendar commitment, this client can return
 //! advisory receipts from `publish`, but `verify_inclusion` fails
 //! closed for load-bearing public-witness policy.
-//!
-//! W2.3 step 3 also moves the legacy `verify_*` helpers from
-//! `chio-anchor/src/bitcoin.rs` to take an `&AnchorBatch` rather
-//! than a free super-root digest. The legacy helpers remain so
-//! existing checkpoint super-root code keeps working.
 
 use std::time::Duration;
 
@@ -75,6 +70,9 @@ impl OtsClient {
                 "max_witness_age_seconds must be non-negative".to_string(),
             ));
         }
+        // CHIO_EGRESS_LINT_ALLOW_DIRECT_REQWEST: OpenTimestamps calendar
+        // witness lane; threading an HttpEgressContract through OtsClient::new
+        // is a dedicated refactor, not yet wired here.
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(20))
             .https_only(false)
@@ -96,8 +94,7 @@ impl OtsClient {
 #[async_trait::async_trait]
 impl AnchorWitnessClient for OtsClient {
     async fn publish(&self, batch: &AnchorBatch) -> Result<WitnessReceipt, AnchorWitnessError> {
-        // P2 fix (PR #594 round-2 review, codex): hash the
-        // witness-state-excluded BatchHashInput view, not the full
+        // Hash the witness-state-excluded BatchHashInput view, not the full
         // body. Hashing the full body creates a circular reference
         // through `witness_state` (the receipt embeds the body_hash
         // and the body embeds the receipt). The Rekor lane already
@@ -111,6 +108,7 @@ impl AnchorWitnessClient for OtsClient {
             .post(self.digest_url())
             .header("Content-Type", "application/octet-stream")
             .body(body_hash_bytes.clone())
+            // CHIO_EGRESS_LINT_ALLOW_DIRECT_REQWEST: paired with builder above.
             .send()
             .await
             .map_err(|error| AnchorWitnessError::Network(error.to_string()))?;

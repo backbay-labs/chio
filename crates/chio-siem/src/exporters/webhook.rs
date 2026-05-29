@@ -11,10 +11,8 @@
 //! - Optional severity / guard allow-lists so noisy or low-signal events can
 //!   be dropped before hitting the wire.
 //!
-//! Port of ClawdStrike's `hushd/src/siem/exporters/webhooks.rs` trimmed to
-//! the generic webhook path. The Slack and Teams block-kit payload variants
-//! live in ClawdStrike's version; they are not part of the 12.1 acceptance
-//! criteria and can be added later as thin adapters on top of this exporter.
+//! This is the generic webhook path. Slack and Teams block-kit payload
+//! variants can be added later as thin adapters on top of this exporter.
 
 use std::collections::HashMap;
 use std::time::Duration;

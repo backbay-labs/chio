@@ -22,6 +22,9 @@ impl PheromoneRelayClient {
         now_unix_ms: u64,
         freshness_window_ms: u64,
     ) -> Result<Self, PheromoneRelayError> {
+        // CHIO_EGRESS_LINT_ALLOW_DIRECT_REQWEST: relay peer endpoints come
+        // from a signed PeerDirectory; threading an HttpEgressContract
+        // through PeerDirectoryEntry is a dedicated refactor, not yet wired.
         let client = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .timeout(Duration::from_millis(freshness_window_ms.max(1)))
@@ -60,6 +63,7 @@ impl PheromoneRelayClient {
             .client
             .post(url)
             .json(&request)
+            // CHIO_EGRESS_LINT_ALLOW_DIRECT_REQWEST: paired with builder above.
             .send()
             .await
             .map_err(|error| PheromoneRelayError::TransportError(error.to_string()))?;

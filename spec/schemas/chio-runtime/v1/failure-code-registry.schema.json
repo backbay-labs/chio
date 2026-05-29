@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://chio.dev/schemas/chio-runtime/v1/failure-code-registry.schema.json",
+  "$id": "https://chio.world/schemas/chio-runtime/v1/failure-code-registry.schema.json",
   "title": "Chio Runtime Failure Code Registry",
   "type": "object",
   "additionalProperties": false,

@@ -1,8 +1,7 @@
 //! Egress allowlist guard -- controls network egress by domain.
 //!
-//! Adapted from ClawdStrike's `guards/egress_allowlist.rs`.  The domain
-//! matching logic is reimplemented here without the `hush_proxy::DomainPolicy`
-//! dependency, using simple glob matching instead.
+//! Controls outbound network egress by matching the target domain against a
+//! configured allowlist using simple glob matching.
 
 use glob::Pattern;
 

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://chio.dev/schemas/chio-runtime/v1/ops-negative-fixture-corpus.schema.json",
+  "$id": "https://chio.world/schemas/chio-runtime/v1/ops-negative-fixture-corpus.schema.json",
   "title": "Chio Runtime Ops Negative Fixture Corpus",
   "type": "object",
   "additionalProperties": false,

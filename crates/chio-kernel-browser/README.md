@@ -1,11 +1,11 @@
 # chio-kernel-browser
 
 Browser (`wasm-bindgen`) bindings over the portable [`chio-kernel-core`]
-surface. Phase 14.2 of the Chio roadmap.
+surface.
 
 ## What this is
 
-The `chio-kernel-core` crate extracted in Phase 14.1 is a pure
+The `chio-kernel-core` crate is a pure
 `no_std + alloc` library: verdict evaluation, capability verification,
 and receipt signing run with no async runtime, no filesystem, and no
 network. `chio-kernel-browser` wraps that surface with `wasm-bindgen`
@@ -48,19 +48,19 @@ dependencies are gated on `cfg(target_arch = "wasm32")` so host builds
 do not need any wasm toolchain.
 
 ```bash
-CARGO_TARGET_DIR=target/wave3k-browser cargo test -p chio-kernel-browser
+CARGO_TARGET_DIR=target/browser cargo test -p chio-kernel-browser
 ```
 
 ### `wasm32-unknown-unknown` (raw)
 
 ```bash
-CARGO_TARGET_DIR=target/wave3k-browser cargo build \
+CARGO_TARGET_DIR=target/browser cargo build \
   --target wasm32-unknown-unknown \
   -p chio-kernel-browser \
   --release
 ```
 
-This produces `target/wave3k-browser/wasm32-unknown-unknown/release/chio_kernel_browser.wasm`.
+This produces `target/browser/wasm32-unknown-unknown/release/chio_kernel_browser.wasm`.
 
 ### `wasm-pack` (browser-ready bundle)
 
@@ -80,8 +80,8 @@ wasm-pack build --target web --release crates/chio-kernel-browser
 
 ### Artifact size targets
 
-The Phase 14.1 acceptance floor was < 1 MB stripped for the core
-library. Phase 14.2 carries the wasm-bindgen glue plus
+The core library targets < 1 MB stripped. This crate carries the
+wasm-bindgen glue plus
 `serde-wasm-bindgen`, so the browser bundle is expected to be modestly
 larger. Actual values on Apple Silicon running stable Rust 1.93:
 
@@ -183,13 +183,13 @@ Error codes used by this crate: `invalid_json_input`,
 
 ## Acceptance checks
 
-Phase 14.2 acceptance, verbatim from `docs/ROADMAP.md`:
+Acceptance criteria for the browser bindings:
 
 > A browser page loads the WASM module via `wasm-bindgen`.
 > `evaluate()` returns a verdict in <5ms. Receipt signing works using
 > Web Crypto for entropy.
 
-The repo-local qualification lane for this crate is:
+The repo-local verification suite for this crate is:
 
 ```bash
 ./scripts/qualify-portable-browser.sh

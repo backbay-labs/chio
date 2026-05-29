@@ -1,4 +1,4 @@
-// Phase 3.4-3.6 HITL kernel-level flow tests.
+// HITL kernel-level flow tests.
 //
 // Included by `src/kernel/tests.rs`; the test module imports from the
 // surrounding `kernel::tests` scope via `super::*`. Helpers such as

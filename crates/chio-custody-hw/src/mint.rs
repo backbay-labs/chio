@@ -41,17 +41,14 @@ use crate::error::CustodyError;
 ///
 /// Fail-closed: any encoding or signing failure returns
 /// [`CustodyError::Encoding`]. The function refuses to return `Ok(_)` if the
-/// produced signature is empty (defence-in-depth against a future backend
-/// regression that returns a zero-length signature).
+/// backend produces an empty signature.
 pub fn sign_capability(
     capability: &mut PasskeyCapability,
     backend: &dyn SigningBackend,
 ) -> Result<(), CustodyError> {
-    // Canonical bytes are computed over the unsigned envelope. The
-    // capability arrives here with `signature = ""` from
-    // `IssuerService::mint_capability`. We re-clear the slot here for
-    // defence-in-depth so resigning a previously-signed capability does
-    // not silently embed the old signature in the message.
+    // Canonical bytes are computed over the unsigned envelope. Clearing the
+    // signature slot ensures resigning a previously-signed capability does
+    // not embed the old signature in the message.
     capability.signature = String::new();
     let canonical = capability.to_canonical_json()?;
 

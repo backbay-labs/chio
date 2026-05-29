@@ -49,8 +49,11 @@ pub async fn read_sequencer_status(
     let Some(feed_address) = chain.sequencer_uptime_feed.as_ref() else {
         return Ok(None);
     };
+    // Policy check only; the pinned ContractDnsResolver (contract_backed_provider)
+    // enforces hostname address-class at connect, so this does not resolve DNS
+    // here (a config-time lookup would be redundant and offline-fragile).
     egress_contract
-        .enforce_url_with_dns(&chain.rpc_endpoint, 0)
+        .enforce_url(&chain.rpc_endpoint, 0)
         .map_err(|err| {
             PriceOracleError::InvalidConfiguration(format!(
                 "HttpEgressContract rejects sequencer RPC endpoint: {err}"
@@ -231,7 +234,7 @@ mod tests {
 
         let message = error.to_string();
         assert!(
-            message.contains("rpc.example") && message.contains("dispatch failed"),
+            message.contains("rpc.example") && message.contains("oracle backend unavailable"),
             "unexpected sequencer hostname dispatch error: {message}"
         );
     }

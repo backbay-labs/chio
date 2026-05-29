@@ -1,8 +1,7 @@
 //! `rules.human_in_loop` first-class variant tests.
 //!
-//! Wave 1.6 added `Rules::human_in_loop`, compiling to
+//! `Rules::human_in_loop` compiles to
 //! `Constraint::RequireApprovalAbove { threshold_units }` on tool grants.
-//! Wave 5.0.1 re-lands these tests against the renamed `chio-policy` crate.
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 

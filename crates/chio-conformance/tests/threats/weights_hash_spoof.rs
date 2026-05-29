@@ -2,8 +2,8 @@
 //
 // Surfaces: kernel_to_tool, native_chio.
 //
-// Owner: M05.P1.T3. The test exercises the loaded-weight recomputation
-// contract added by M05.P1.T1/T2: a matching recomputed digest can bind,
+// The test exercises the loaded-weight recomputation
+// contract: a matching recomputed digest can bind,
 // a spoofed digest rejects, and an unavailable loaded-weight surface
 // rejects fail-closed.
 //

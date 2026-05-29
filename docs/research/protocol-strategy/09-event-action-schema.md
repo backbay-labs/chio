@@ -2,7 +2,7 @@
 
 > **Historical research note (PR 652):** Use [00-overview-v2.md](00-overview-v2.md) and [18-decision-packet.md](18-decision-packet.md) for planning. This file remains research input, not an implementation ticket. Mentions of later manifest or receipt generations, schema compatibility limits, negotiation, or pre-release compatibility paths are historical sketches. The accepted current plan folds Chio-owned pre-release schema work into v1 only.
 >
-> Wave A, item R3 from `00-overview.md`. Builds on `01-pubsub-coverage-audit.md`.
+> Phase A, item R3 from `00-overview.md`. Builds on `01-pubsub-coverage-audit.md`.
 > Code paths are cited repo-relative.
 
 ## TL;DR
@@ -28,7 +28,7 @@
 - `ToolManifest` (line 25) with `schema: String` pinned to `chio.manifest.v1` (line 20). `validate_manifest()` rejects any other value with `UnsupportedSchema` (line 237-239).
 - `ToolDefinition` (line 115) carries `input_schema: serde_json::Value` (line 123) - free-form JSON Schema. There is no typed constraint vocabulary like "HTTP host allowlist" or "filesystem path prefix" inside the manifest; those live in guards and `chio-egress-contract`.
 - `RequiredPermissions` (line 165) has `read_paths`, `write_paths`, `network_hosts`, `environment_variables`. **There is no `event_subjects` or `broker_targets` field.** This is the most direct gap. Compare with `HttpEgressContract` (`crates/chio-egress-contract/src/lib.rs:14-39`) which has `tenant_egress_namespace`, `allowed_schemes`, `allowed_authority_set` - typed and constrained. Brokers have no analogue.
-- The pattern for adding constraints is therefore split across two crates: a typed contract in a sibling crate (egress-contract style), referenced indirectly from manifest input/output schemas. Wave A wants to bring broker constraints up to the same first-class level by adding them under `RequiredPermissions` plus a new sibling crate `chio-broker-contract` (parallel to `chio-egress-contract`).
+- The pattern for adding constraints is therefore split across two crates: a typed contract in a sibling crate (egress-contract style), referenced indirectly from manifest input/output schemas. The goal is to bring broker constraints up to the same first-class level by adding them under `RequiredPermissions` plus a new sibling crate `chio-broker-contract` (parallel to `chio-egress-contract`).
 
 Schema posture: `spec/PROTOCOL.md:305-329` describes capability compatibility negotiation, but PR 652 now treats Chio-owned pre-release manifest work as current v1 evolution. Manifest compatibility negotiation is not implemented today and should not be added before release. A peer that cannot validate the current v1 manifest shape fails closed instead of accepting event-publish permissions it cannot enforce.
 

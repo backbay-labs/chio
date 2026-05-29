@@ -87,9 +87,8 @@ jobs:
   measure:
     name: dudect-measure (${{ matrix.harness.name }})
     runs-on: ubuntu-latest
-    # 30 minutes is generous for a single dudect-bencher harness running
-    # in `--release`; the bench iteration cap is wired into the harness
-    # itself via `ctbench_main!`. Belt-and-braces.
+    # The bench iteration cap is wired into the harness itself via
+    # `ctbench_main!`; this timeout is an outer bound on a `--release` run.
     timeout-minutes: 30
     continue-on-error: true
     strategy:

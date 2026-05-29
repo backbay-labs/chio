@@ -1,11 +1,11 @@
-//! Phase 18.2: Memory entry provenance.
+//! Memory-entry provenance.
 //!
 //! Structural security gap #3 in `docs/protocols/STRUCTURAL-SECURITY-FIXES.md`
 //! points out that agent memory writes (vector DBs, conversation history,
 //! scratchpads) normally happen outside Chio's guard pipeline, which lets a
 //! compromised or confused agent plant cross-session prompt-injection
-//! payloads with no attribution. Phase 18.1 governs the writes at the
-//! guard layer; Phase 18.2 is the **evidence** side of that story: every
+//! payloads with no attribution. The guard layer governs the writes at the
+//! guard layer; this module is the **evidence** side of that story: every
 //! governed write appends an entry to an append-only, hash-chained
 //! provenance log that ties the write to the capability and receipt that
 //! authorized it. On read, the kernel looks up the latest provenance

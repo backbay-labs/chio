@@ -12,9 +12,9 @@ The new blocking question is:
 
 This plan assumes the current repo state described in:
 
-- [research/01-current-state.md](research/01-current-state.md)
-- [research/03-gap-analysis.md](research/03-gap-analysis.md)
-- [EXECUTION_PLAN.md](EXECUTION_PLAN.md)
+- [research/01-current-state.md](../research/01-current-state.md)
+- [research/03-gap-analysis.md](../research/03-gap-analysis.md)
+- [EXECUTION_PLAN.md](../operations/EXECUTION_PLAN.md)
 - [epics/README.md](epics/README.md)
 
 ## What The Review Confirmed
@@ -77,18 +77,18 @@ Issue-ready specs for `E9` through `E14` live in [epics/README.md](epics/README.
 
 ## Recommended Execution Order
 
-### Wave 1: regain determinism and complete the missing boundary
+### Batch 1: regain determinism and complete the missing boundary
 
 - `E9` first, because full-workspace reliability is a gating problem
 - `E12` design can begin in parallel, but enforcement should land only after root semantics are frozen
 
-### Wave 2: harden hosted and async behavior
+### Batch 2: harden hosted and async behavior
 
 - `E10` and `E11` should overlap once `E9` has stabilized trust/control assumptions
 - `E10` owns remote transport and hosted-runtime lifecycle
 - `E11` owns task, stream, cancellation, and async-completion semantics across all transports
 
-### Wave 3: simplify what operators and adopters actually touch
+### Batch 3: simplify what operators and adopters actually touch
 
 - `E13` should converge policy, docs, examples, and authoring ergonomics after the runtime and security semantics above are stable enough
 

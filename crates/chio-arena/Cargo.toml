@@ -28,6 +28,5 @@ toml = { workspace = true }
 [dev-dependencies]
 tempfile = { workspace = true }
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

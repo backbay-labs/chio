@@ -1,25 +1,30 @@
-# HITRUST P2 Control Remediation Summary
+# HITRUST Control Remediation Summary
 
-**Milestone:** M09.P2.T1
-**Scope:** Chio v3.18 healthcare design-partner deployment
-**Status:** Sev-1 and Sev-2 readiness gaps mapped to P2 artifacts
+> **Status: internal self-assessment / readiness.** This maps each
+> self-identified gap to the in-repository artifact that addresses it.
+> "documented" means a policy or narrative exists in the repository;
+> "gap" means evidence is still missing. No external remediation has been
+> validated by any assessor.
 
-## Remediation closure
+**Scope:** Chio healthcare design-partner deployment (this assessed release)
+
+## Gap-to-artifact map
 
 | Gap | Closure artifact | Status |
 |-----|------------------|--------|
-| BAA private evidence channel | audit doc P2 remediation log | accepted-risk until private upload |
-| HIPAA breach-notification runbook | `compliance/hitrust/ir-runbook.md` | ready |
-| Minimum-necessary posture | `compliance/hitrust/policies/de-identification.md` | ready |
-| Telemetry de-identification posture | `compliance/hitrust/policies/de-identification.md` | ready |
-| Quarterly access review | `compliance/hitrust/policies/access-review.md` | ready |
-| Key rotation | `compliance/hitrust/policies/key-rotation.md` | ready |
-| Formal evidence bridge | `compliance/hitrust/narratives/formal-evidence-bridge.md` | ready |
-| Cloud-provider inheritance | `compliance/hitrust/evidence-bundles/encryption-at-rest.md` | accepted-risk until provider receipt upload |
+| BAA private evidence | out-of-tree legal artifact | gap (not in repository) |
+| HIPAA breach-notification runbook | `compliance/hitrust/ir-runbook.md` | documented |
+| Minimum-necessary posture | `compliance/hitrust/policies/de-identification.md` | documented |
+| Telemetry de-identification posture | `compliance/hitrust/policies/de-identification.md` | documented |
+| Quarterly access review | `compliance/hitrust/policies/access-review.md` | documented (first-cycle execution is a gap) |
+| Key rotation | `compliance/hitrust/policies/key-rotation.md` | documented (execution evidence is a gap) |
+| Formal evidence bridge | `compliance/hitrust/narratives/formal-evidence-bridge.md` | documented |
+| Cloud-provider inheritance | `compliance/hitrust/encryption-at-rest.md` | gap (provider evidence not collected) |
+| Operational samples | `compliance/hitrust/operational-samples.md` | gap (samples not pulled) |
 
 ## Narrative rule
 
-Every control narrative cites a source artifact and an owner. Rows that
-depend on out-of-tree legal, HR, design-partner DR, or cloud-provider
-attestation evidence use `accepted-risk` until the private evidence
-channel uploads the signed reference.
+Every control narrative cites a real source artifact and an owner. Rows
+that depend on out-of-tree legal, HR, design-partner DR, or
+cloud-provider attestation evidence remain gaps until that evidence
+exists; they are never marked satisfied on the basis of a plan.

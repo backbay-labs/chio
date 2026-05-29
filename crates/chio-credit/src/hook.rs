@@ -1,8 +1,8 @@
 //! Credit evaluator hook trait routing signed receipts to IOU envelopes.
 //!
-//! M09 P1.T1 wires the dormant `chio-credit` crate to the kernel
-//! evaluator's post-dispatch observer slot (trajectory-1 M05 async
-//! kernel). The hook receives a fully signed [`ChioReceipt`] after
+//! This wires the `chio-credit` crate to the kernel evaluator's
+//! post-dispatch observer slot (the async-kernel observer). The hook
+//! receives a fully signed [`ChioReceipt`] after
 //! receipt finalization and returns either zero or one
 //! [`IouEnvelope`]. Fail-closed semantics: signature-invalid or
 //! malformed receipts mint nothing.
@@ -95,8 +95,7 @@ pub struct IouEnvelope {
     /// Body that was signed.
     #[serde(flatten)]
     pub body: IouEnvelopeBody,
-    /// Signing algorithm used for `signature`. Absent means Ed25519
-    /// for backward compatibility.
+    /// Signing algorithm used for `signature`; absent defaults to Ed25519.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub algorithm: Option<SigningAlgorithm>,
     /// Detached signature over canonical JSON of `body`.

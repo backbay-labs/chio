@@ -1,6 +1,6 @@
 [package]
 name = "chio-revocation-oracle"
-description = "Chio revocation oracle scaffold"
+description = "Chio revocation oracle: signed sparse-Merkle epoch roots, freshness windows, and passport-bridge revocation lookups"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -12,6 +12,7 @@ publish = false
 name = "chio_revocation_oracle"
 
 [dependencies]
+chio-core-types = { path = "../chio-core-types" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -20,7 +21,7 @@ sha2 = { workspace = true }
 
 [features]
 default = []
-# M04 P5.T1 acceptance gate: enables the 3-tier swarm e2e test which
+# Acceptance gate: enables the 3-tier swarm e2e test which
 # wires this crate's signed-epoch-root path through the federation
 # gossip push queue into a `chio-kernel-core::RevocationView` cache.
 # The feature is dev-only (no library-side surface changes); it gates
@@ -29,6 +30,7 @@ default = []
 delegation = []
 
 [dev-dependencies]
+chio-test-support = { path = "../chio-test-support" }
 criterion = { workspace = true }
 proptest = { workspace = true }
 chio-federation = { path = "../chio-federation" }
@@ -38,22 +40,21 @@ chio-kernel-core = { path = "../chio-kernel-core" }
 name = "oracle_throughput"
 harness = false
 
-# M04.P5.T1 swarm acceptance test target. Runs only with
+# Swarm acceptance test target. Runs only with
 # `--features delegation` so the trust-boundary surface stays gated.
 [[test]]
 name = "swarm_revocation_e2e"
 path = "tests/swarm_revocation_e2e.rs"
 required-features = ["delegation"]
 
-# M04.P5.T2 receipt-chain proof target. Walks the JSONL receipt log
+# Receipt-chain proof target. Walks the JSONL receipt log
 # emitted by an in-process re-run of the swarm fixture and asserts
-# the trajectory-1 M03 NoAllowAfterRevoke invariant on the real
+# the NoAllowAfterRevoke invariant on the real
 # receipts: every allow has seen_epoch < revoke_epoch.
 [[test]]
 name = "receipt_chain_proof"
 path = "tests/receipt_chain_proof.rs"
 required-features = ["delegation"]
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

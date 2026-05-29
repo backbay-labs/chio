@@ -73,7 +73,7 @@ pub struct CompiledPolicy {
     pub default_scope: ChioScope,
     /// Ordered list of guard names emitted by compilation.
     ///
-    /// The acceptance criteria for phase 5.5 requires the compiler to emit a
+    /// The compiler is required to emit a
     /// `Vec<Box<dyn Guard>>` containing all 12 guard types; because
     /// [`GuardPipeline`] does not publicly expose its contained guards,
     /// this sidecar records the `Guard::name()` of each guard added to the
@@ -163,10 +163,10 @@ fn compile_rule_guards(
             if fp.patterns.is_empty() {
                 builder.add(ForbiddenPathGuard::new());
             } else {
-                builder.add(ForbiddenPathGuard::with_patterns(
-                    fp.patterns.clone(),
-                    fp.exceptions.clone(),
-                ));
+                builder.add(
+                    ForbiddenPathGuard::with_patterns(fp.patterns.clone(), fp.exceptions.clone())
+                        .map_err(|error| CompileError::Invalid(error.to_string()))?,
+                );
             }
         }
     }
@@ -175,7 +175,6 @@ fn compile_rule_guards(
     //
     // Inserted between ForbiddenPathGuard and ShellCommandGuard so that
     // rate-limit denials are observed before any shell semantics fire.
-    // Wave 1.6 design; re-landed in Wave 5.0.1 after the Chio rename.
     if let Some(v) = &rules.velocity {
         if v.enabled {
             let (velocity_cfg, agent_cfg) = compile_velocity_rule(v);
@@ -207,8 +206,8 @@ fn compile_rule_guards(
     //
     // When the policy opts into egress control we also add an internal-
     // network guard that blocks RFC1918 / cloud-metadata endpoints. This
-    // matches ClawdStrike's layered defense where the allowlist catches
-    // unknown domains and the internal-network guard catches raw IPs.
+    // provides a layered defense: the allowlist catches unknown domains and
+    // the internal-network guard catches raw IPs.
     if let Some(eg) = &rules.egress {
         if eg.enabled {
             if eg.allow.is_empty() && eg.block.is_empty() {
@@ -486,9 +485,9 @@ fn jailbreak_config_from(jb: &JailbreakDetection) -> Result<JailbreakGuardConfig
 
     if let Some(block) = jb.block_threshold {
         // HushSpec expresses thresholds as integer percentages (0-100 in
-        // practice; ClawdStrike used 0-255). Map that onto the `[0.0, 1.0]`
-        // jailbreak-guard space, capping at 1.0 so out-of-range values
-        // fail closed rather than produce an unreachable threshold.
+        // practice). Map that onto the `[0.0, 1.0]` jailbreak-guard space,
+        // capping at 1.0 so out-of-range values fail closed rather than
+        // produce an unreachable threshold.
         let capped = u32::try_from(block).unwrap_or(0).min(100);
         config.threshold = (capped as f32) / 100.0;
     }
@@ -498,8 +497,7 @@ fn jailbreak_config_from(jb: &JailbreakDetection) -> Result<JailbreakGuardConfig
     // thresholds. We accept the HushSpec value for schema compatibility but
     // do not wire it in here -- if the warn value would exceed the configured
     // block threshold we conservatively ignore it rather than fail closed,
-    // matching the ClawdStrike `compile_detection` semantics that clamp
-    // partial overlays on merge.
+    // clamping partial overlays on merge.
     let _ = jb.warn_threshold;
 
     if let Some(max_bytes) = jb.max_input_bytes {
@@ -612,7 +610,7 @@ fn compile_budget_guards(
 }
 
 // ---------------------------------------------------------------------------
-// Scope compilation (unchanged from phase 5.0)
+// Scope compilation
 // ---------------------------------------------------------------------------
 
 /// Build a default ChioScope from the policy's tool_access rules.
@@ -734,9 +732,6 @@ fn compile_tool_constraints(
     // top-level `rules.human_in_loop` with `require_confirmation` globs that
     // match this tool does the same. Otherwise, if `human_in_loop` is
     // enabled and declares an `approve_above` threshold, use that threshold.
-    //
-    // Wave 1.6 behaviour, re-landed in Wave 5.0.1 after the Chio rename
-    // rename.
     let mut approval_threshold: Option<u64> = None;
     if confirmation_overlap(tool_pattern, &rule.require_confirmation)? {
         approval_threshold = Some(0);
@@ -768,7 +763,7 @@ fn compile_tool_constraints(
 /// Translate a `VelocityRule` into optional `VelocityConfig` +
 /// `AgentVelocityConfig`. If no invocation / spend / agent / session limit
 /// is set, returns `(None, None)` - i.e. the guard is effectively a no-op
-/// and no guard is pushed onto the pipeline. Wave 1.6 semantics.
+/// and no guard is pushed onto the pipeline.
 fn compile_velocity_rule(
     rule: &VelocityRule,
 ) -> (Option<VelocityConfig>, Option<AgentVelocityConfig>) {

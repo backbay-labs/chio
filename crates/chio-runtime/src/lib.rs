@@ -1,9 +1,10 @@
 //! Chio runtime admission and orchestration boundary.
 //!
-//! The historical implementation still lives in `chio-runtime-core` while
-//! the public crate boundary moves to Chio names. This facade intentionally
-//! exposes only the runtime admission, trust-floor, orchestration, operations,
-//! and proof-regeneration APIs needed by Chio runtime callers.
+//! Facade over `chio-runtime-core`. It intentionally exposes only the
+//! runtime admission, trust-floor, orchestration, operations, and
+//! proof-regeneration APIs needed by Chio runtime callers.
+
+#![forbid(unsafe_code)]
 
 use serde::Serialize;
 use std::{fmt, path::Path};

@@ -1,7 +1,7 @@
 # SIEM and Observability Completion Plan
 
 This document describes the current state of Chio's SIEM integration, the
-remaining exporters to port from ClawdStrike, and the new observability
+remaining exporters to port from the upstream guard suite, and the new observability
 surfaces needed to complete the picture: OCSF format, cloud audit log
 integration, LangSmith/LangFuse bridging, and real-time receipt streaming.
 
@@ -59,10 +59,10 @@ duplicates idempotently.
 
 ---
 
-## 2. Missing Exporters from ClawdStrike
+## 2. Missing Exporters from the upstream guard suite
 
-ClawdStrike's `hushd` service has four additional exporters that have not
-been ported to `chio-siem`. Each is production-tested in ClawdStrike and
+The upstream `hushd` service has four additional exporters that have not
+been ported to `chio-siem`. Each is production-tested in the upstream guard suite and
 implements the same exporter trait pattern.
 
 ### 2.1 Datadog (`exporters/datadog.rs`)
@@ -76,12 +76,12 @@ and by guard name, enabling Datadog dashboards and monitors out of the box.
 
 **Porting plan.**
 
-- Adapt from ClawdStrike's `SecurityEvent` to Chio's `SiemEvent`.
+- Adapt from the upstream `SecurityEvent` to Chio's `SiemEvent`.
 - Replace `async_trait` with `Pin<Box<dyn Future>>` to match chio-siem's
   dyn-compatible `Exporter` trait.
-- Change the default service/source from `clawdstrike` to `chio`.
+- Change the default service/source to `chio`.
 - Map Chio `Decision` (Allow/Deny) and `GuardEvidence` to Datadog tags.
-- Metric prefix becomes `chio.siem` instead of `clawdstrike`.
+- Metric prefix becomes `chio.siem` instead of the legacy source name.
 - Retain configurable DD site, API key, tags, and TLS settings.
 
 ### 2.2 Sumo Logic (`exporters/sumo_logic.rs`)
@@ -94,7 +94,7 @@ configurable format (JSON, plaintext, key-value). Supports gzip compression
 **Porting plan.**
 
 - Adapt from `SecurityEvent` to `SiemEvent`.
-- Change default source category from `security/clawdstrike` to
+- Change default source category from `security/legacy` to
   `security/chio`.
 - Preserve the three format modes. JSON is the default and should serialize
   the full `ChioReceipt` payload.
@@ -112,7 +112,7 @@ Handlebars-style template engine for custom payload rendering.
 **Porting plan.**
 
 - Adapt from `SecurityEvent` to `SiemEvent`.
-- Replace ClawdStrike-branded message strings ("Clawdstrike security event")
+- Replace legacy-branded message strings ("legacy security event")
   with Chio-branded equivalents.
 - Map Chio `Decision` and `GuardEvidence` into the Slack block and Teams
   MessageCard payloads so analysts see which guard fired and why.
@@ -135,7 +135,7 @@ and OpsGenie (Alerts API v2). Features:
 **Porting plan.**
 
 - Adapt from `SecurityEvent` to `SiemEvent`.
-- Replace ClawdStrike branding in alert summaries and source fields.
+- Replace legacy branding in alert summaries and source fields.
 - Map Chio `GuardEvidence` into PagerDuty `custom_details` and OpsGenie
   `details` so on-call engineers see the full guard context.
 - The background task pattern (auto-resolve, heartbeat) ports directly
@@ -149,7 +149,7 @@ All four exporters follow the same structural pattern:
 2. Implement a `FooExporter` struct holding `config` and `reqwest::Client`.
 3. Implement `Exporter` for `FooExporter`.
 
-The primary adaptation is the event type: ClawdStrike uses
+The primary adaptation is the event type: The upstream suite uses
 `SecurityEvent` (rich structured type with `AgentInfo`, `SessionInfo`,
 `ThreatInfo`, `DecisionInfo`, `ResourceInfo`). Chio uses `SiemEvent`
 (wrapping `ChioReceipt`).
@@ -161,7 +161,7 @@ from `SiemEvent.receipt` (tool_name, decision, evidence, timestamp) and
 serializes in the backend-native format. Simple, no shared abstraction.
 
 **Option B: Enriched SiemEvent.** Extend `SiemEvent` with optional fields
-that parallel ClawdStrike's `SecurityEvent` structure (severity, guard_name,
+that parallel the upstream `SecurityEvent` structure (severity, guard_name,
 resource_type, threat indicators). Populate these from `GuardEvidence` and
 receipt metadata at construction time. Exporters work against the enriched
 type.
@@ -234,7 +234,7 @@ with `_ocsf` index, Elasticsearch with OCSF-schema index templates, AWS
 Security Lake ingestion). The exporter calls the mapper before serialization
 rather than building OCSF inline.
 
-ClawdStrike already has a `SchemaFormat` enum with an `Ocsf` variant. Port
+The upstream suite already has a `SchemaFormat` enum with an `Ocsf` variant. Port
 this concept: let exporters declare their schema preference, and the manager
 applies the appropriate transform before calling `export_batch`.
 
@@ -283,7 +283,7 @@ Storage.
 
 ### 4.4 Priority
 
-Cloud audit log exporters are lower priority than the four ClawdStrike
+Cloud audit log exporters are lower priority than the four upstream
 ports. They require cloud-specific SDK dependencies and IAM configuration
 that varies per deployment. Ship as optional features behind Cargo feature
 flags (`feature = "cloudtrail"`, `feature = "gcp-audit"`, etc.) to avoid
@@ -409,7 +409,7 @@ first), while alerting exporters flush immediately on notification.
 
 ### 7.1 The Problem
 
-As Chio absorbs more guard types (WASM guards, ClawdStrike-adapted guards,
+As Chio absorbs more guard types (WASM guards, upstream-adapted guards,
 cross-protocol guards), the `GuardEvidence` array on each receipt grows
 richer. Each guard produces structured details:
 
@@ -499,9 +499,9 @@ Adding a new exporter requires:
 No changes to the manager, DLQ, or rate limiter. The exporter is isolated
 behind the trait boundary.
 
-### 8.3 Extensions from ClawdStrike's Trait
+### 8.3 Extensions from the upstream guard suite's Trait
 
-ClawdStrike's exporter trait has two additional methods not present in
+The upstream exporter trait has two additional methods not present in
 chio-siem's:
 
 ```rust
@@ -558,7 +558,7 @@ pub trait Exporter: Send + Sync {
 | 11 | Cloud audit log exporters (CloudTrail, GCP, Azure) | Phase 1 |
 
 Phases 1-5 are the critical path. They bring Chio to feature parity with
-ClawdStrike's SIEM capabilities. Phases 6-7 add schema normalization.
+The upstream SIEM capabilities. Phases 6-7 add schema normalization.
 Phase 8 eliminates polling latency. Phases 9-11 are new capabilities that
 extend Chio's reach into agent observability and cloud compliance surfaces.
 
@@ -566,10 +566,10 @@ extend Chio's reach into agent observability and cloud compliance surfaces.
 
 ## 10. Open Questions
 
-1. **Event type unification.** Should chio-siem adopt ClawdStrike's
+1. **Event type unification.** Should chio-siem adopt the upstream suite
    `SecurityEvent` type wholesale as an intermediate representation, or
    build a leaner Chio-native enrichment? The former maximizes code reuse;
-   the latter avoids importing ClawdStrike's audit-event ontology into Chio's
+   the latter avoids importing the upstream audit-event ontology into Chio's
    core abstractions.
 
 2. **Cursor persistence.** The current design re-exports all receipts on

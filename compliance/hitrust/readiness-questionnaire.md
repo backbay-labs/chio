@@ -1,52 +1,55 @@
-# Chio HITRUST i1 Readiness Questionnaire
+# Chio HITRUST i1 Readiness Questionnaire (Internal Self-Assessment)
 
-**Trajectory:** trajectory-3
-**Milestone:** M09.P1
-**Framework:** HITRUST CSF v11.7 i1
-**Scope:** Chio v3.18, one healthcare design-partner tenant, one deployment environment
-**Status:** completed for P1 gap-assessment intake
+> **Status: internal self-assessment / readiness.** No external HITRUST
+> assessment has been performed and no assessor is engaged. These are
+> Chio's own answers to the scope and readiness questions a future i1
+> engagement would ask, grounded in repository evidence.
+
+**Framework target:** HITRUST CSF v11.7 i1
+**Scope:** Chio (this assessed release), one healthcare design-partner tenant, one deployment environment
 
 ## Scope answers
 
 | Question | Answer | Evidence |
 |----------|--------|----------|
-| Which product is assessed? | Chio v3.18 only. | `compliance/hitrust/scope-boundary.md` |
-| Which tenant is assessed? | One healthcare design-partner tenant; identity is not bound in public docs. | M01 audit lane |
-| Which environment is assessed? | One production deployment environment. | SSP boundary |
-| Are mobile surfaces included? | No. M07 is explicitly excluded from this i1 scope. | Scope boundary |
-| Are AWS Bedrock and MCP marketplace surfaces included? | No. M10 is explicitly excluded from this i1 scope. | Scope boundary |
-| Are other Backbay systems included? | No. Non-Chio workspace systems are out of scope. | Scope boundary |
+| Which product is assessed? | This assessed Chio release only. | `compliance/hitrust/scope-boundary.md` |
+| Which tenant is in scope? | One healthcare design-partner tenant; identity is not bound in public docs. | scope boundary |
+| Which environment is in scope? | One production deployment environment. | `compliance/hitrust/ssp.md` |
+| Are mobile surfaces included? | No. Mobile patient-app is explicitly excluded. | scope boundary |
+| Are AWS Bedrock and MCP marketplace surfaces included? | No. Explicitly excluded. | scope boundary |
+| Are other operator systems included? | No. Non-Chio systems are out of scope. | scope boundary |
 
-## Readiness summary by family
+## Self-assessed readiness by family
 
-| Family | P1 posture | Evidence state | P2 action |
-|--------|------------|----------------|-----------|
-| Information Security Management Program | partially ready | trajectory-3 governance docs exist | bind owner evidence and review cadence |
-| Access Control | ready with inherited evidence | capability algebra, sender constraints, revocation | control-row mapping and sample receipts |
-| Human Resources Security | gap | out-of-tree HR corpus needed | collect HR policy reference |
-| Risk Management | ready with inherited evidence | M05 threat model and coverage | link gap rows to risk register |
-| Security Policy | ready with inherited evidence | `spec/SECURITY.md` and docs security corpus | assessor review for wording precision |
-| Organization of Information Security | partially ready | trust-boundary freezes and owner review | attach security reviewer evidence |
-| Compliance | partially ready | SSP, scope boundary, audit doc | evidence-pack script and portal records |
-| Asset Management | partially ready | M06 SBOM and cargo-vet evidence | final MyCSF row mapping |
-| Physical and Environmental Security | gap | cloud-provider inheritance needed | provider evidence reference |
-| Communications and Operations Management | partially ready | M01 runbook, CI, receipt pipeline | sample-control mapping |
-| Systems Acquisition, Development, and Maintenance | partially ready | M03 provenance, M06 supply chain, formal evidence | plain-English formal evidence bridge |
-| Incident Management | gap | P2 runbook pending | author HIPAA breach-notification runbook |
-| Business Continuity Management | gap | design-partner DR posture out of tree | collect DR reference |
-| Privacy Practices | gap | PHI boundary and telemetry posture pending | author minimum-necessary and de-id policies |
+| Family | Self-assessed posture | Evidence state |
+|--------|-----------------------|----------------|
+| Information Security Management Program | partial | governance documented; review cadence is a gap |
+| Access Control | implemented | capability algebra, sender constraints, revocation (kernel crates, formal proofs) |
+| Human Resources Security | gap | out-of-tree HR corpus needed |
+| Risk Management | implemented | threat model and coverage |
+| Security Policy | implemented | `spec/SECURITY.md` and docs security corpus |
+| Organization of Information Security | partial | ownership documented for formal evidence only |
+| Compliance | partial | self-assessment only |
+| Asset Management | implemented | SBOM and cargo-vet evidence |
+| Physical and Environmental Security | gap | cloud-provider inheritance not collected |
+| Communications and Operations Management | partial | schema, CI, receipt pipeline exist; production samples are a gap |
+| Systems Acquisition, Development, and Maintenance | implemented | provenance, supply chain, formal evidence |
+| Incident Management | partial | runbook documented; first-cycle execution is a gap |
+| Business Continuity Management | gap | DR posture out of tree |
+| Privacy Practices | partial | redaction implemented and de-id policy documented; BAA/PHI out of tree |
 
 ## BAA and PHI answers
 
-- P1 does not upload PHI-bearing samples to MyCSF.
-- BAA chain references remain out-of-tree legal artifacts.
-- If the assessor treats the BAA chain as insufficient for readiness,
-  classify the item as halt 14 candidate and stop promotion to P2.
-- The minimum-necessary policy, telemetry de-identification policy,
-  and breach-notification runbook are P2 deliverables.
+- This package uploads no PHI-bearing samples anywhere.
+- BAA chain references are out-of-tree legal artifacts and are not held
+  in this repository.
+- The minimum-necessary and telemetry de-identification posture is
+  documented in `compliance/hitrust/policies/de-identification.md`.
+- The breach-notification runbook is `compliance/hitrust/ir-runbook.md`.
 
 ## Fail-closed readiness rule
 
-A family can move to `ready` only when it has a source artifact, an
-owner, a control-row mapping, and no unresolved BAA or scope exception.
-Otherwise it remains a gap for the P1 report.
+A family is marked `implemented` only when it has a real source artifact
+in the repository and an owner. Otherwise it is `partial` or `gap`. No
+family is promoted on the basis of an assessor interaction, because none
+has occurred.

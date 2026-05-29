@@ -11,9 +11,6 @@ names so simple consumers can write::
 without grepping for the submodule. New names should be added to the
 submodule first; promote to the top-level only when there are at least
 two adapter call sites that justify the convenience.
-
-See ``.planning/chio-adapter-base/PLAN.md`` (in the chio repo) for the
-extraction plan and ``README.md`` for the migration story.
 """
 
 from __future__ import annotations

@@ -16,9 +16,12 @@
 //! - `challenge_nonce` is the WebAuthn challenge bound to this assertion.
 //!   The issuer's nonce store keys on `(credential_id, challenge_nonce)`
 //!   to detect replay.
-//! - `signature` is empty in the unsigned-stub variant; the signed mint
-//!   path wires `HybridBackend::sign` and reuses the hybrid envelope
-//!   shape.
+//! - `signature` is a detached signature over the canonical-JSON encoding
+//!   of every other field, produced by the issuer's signing backend
+//!   (`Ed25519Backend`, the FIPS P-256/P-384 backends, or `HybridBackend`
+//!   under the `pq` feature). It is empty ONLY in the pre-signing
+//!   canonical form (the message the signature covers); the issuer always
+//!   fills it before returning a capability.
 //!
 //! Capabilities with empty signatures never verify against a kernel
 //! verifier; the kernel rejects any `PasskeyCapability` whose `signature`
@@ -31,9 +34,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::CustodyError;
 
-/// Fixed capability lifetime. The M10 narrative pins this to five minutes
-/// to keep the audience-pinned envelope short-lived enough that revocation
-/// cascade through the M04 oracle is operationally sufficient.
+/// Fixed capability lifetime, pinned to five minutes to keep the
+/// audience-pinned envelope short-lived enough that revocation cascade
+/// through the revocation oracle is operationally sufficient.
 pub const CAPABILITY_LIFETIME_SECONDS: i64 = 300;
 
 /// Sorted set of capability scopes. Encoded as a JSON array of unique
@@ -107,18 +110,21 @@ pub struct PasskeyCapability {
     pub exp: DateTime<Utc>,
     /// Base64url-no-pad WebAuthn challenge nonce. Keyed for replay detection.
     pub challenge_nonce: String,
-    /// Base64url-no-pad detached signature over the canonical-JSON encoding
-    /// of every other field. Empty string in P1 (stub); P2 wires
-    /// `HybridBackend::sign`.
+    /// Hex-encoded detached signature over the canonical-JSON encoding of
+    /// every other field. Empty only in the pre-signing canonical form
+    /// (the signed message); the issuer always populates it via its
+    /// signing backend before returning the capability.
     pub signature: String,
 }
 
 impl PasskeyCapability {
-    /// Build a fresh stub capability (P1: unsigned).
+    /// Build the unsigned capability envelope (the pre-signing form).
     ///
     /// `iat` is the verifier's current UTC instant; `exp = iat + 5 minutes`.
-    /// `signature` is the empty string. P2 replaces this entry point with
-    /// a `HybridBackend`-backed minter.
+    /// `signature` is the empty string: this is the exact byte sequence the
+    /// issuer's signing backend signs over. [`crate::mint::sign_capability`]
+    /// consumes the envelope produced here and fills the `signature` slot;
+    /// no caller ships the output of this constructor without signing it.
     #[must_use]
     pub fn new_stub_unsigned(
         audience: impl Into<String>,
@@ -150,8 +156,8 @@ impl PasskeyCapability {
     /// Deterministic: identical inputs produce byte-identical outputs across
     /// any RFC 8785 compliant implementation. Object keys are sorted by
     /// UTF-16 code units, so the byte layout does not depend on the serde
-    /// struct field declaration order. P2 signatures are taken over these
-    /// bytes.
+    /// struct field declaration order. The issuer signature is taken over
+    /// these bytes.
     pub fn to_canonical_json(&self) -> Result<Vec<u8>, CustodyError> {
         chio_core_types::canonical::canonical_json_bytes(self)
             .map_err(|err| CustodyError::Encoding(format!("canonical-json encode: {err}")))
@@ -223,7 +229,9 @@ mod tests {
     }
 
     #[test]
-    fn signature_is_empty_in_p1() {
+    fn unsigned_envelope_constructor_leaves_signature_empty() {
+        // The pre-signing envelope carries an empty signature slot; this
+        // is the message `sign_capability` signs over.
         let cap = fixture_cap();
         assert_eq!(cap.signature, "");
     }

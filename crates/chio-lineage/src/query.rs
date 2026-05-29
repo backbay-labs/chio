@@ -1,4 +1,4 @@
-//! Lineage query layer (M09 P5.T4).
+//! Lineage query layer.
 //!
 //! Forward queries walk downstream edges from a seed (capability +
 //! optional tenant + time window) to receipt nodes. Reverse queries walk

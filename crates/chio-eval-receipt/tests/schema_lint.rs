@@ -13,7 +13,7 @@ fn eval_receipt_schema_is_pinned() -> Result<(), Box<dyn Error>> {
 
     assert_eq!(
         schema.get("$id").and_then(Value::as_str),
-        Some("https://chio.dev/spec/eval/receipt-format.v1.json")
+        Some("https://chio.world/spec/eval/receipt-format.v1.json")
     );
     assert_eq!(
         schema

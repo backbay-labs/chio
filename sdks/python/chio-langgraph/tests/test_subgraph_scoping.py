@@ -1,9 +1,7 @@
 """Tests for subgraph scope-ceiling enforcement.
 
-Roadmap acceptance (phase 10.3): *Subgraph nodes cannot exceed the
-parent graph's scope ceiling.*
-
-We exercise three cases:
+Subgraph nodes cannot exceed the parent graph's scope ceiling. Three
+cases:
 
 1. A subgraph whose node scopes fit under the parent ceiling succeeds
    and its nodes dispatch normally.

@@ -445,7 +445,7 @@ spec:
   # Apply to all tool server workloads in this namespace
   selector:
     matchLabels:
-      chio.protocol/secured: "true"
+      chio.world/secured: "true"
   action: CUSTOM
   provider:
     name: chio-ext-authz
@@ -459,7 +459,7 @@ spec:
 
 ### 6.4 Per-Workload Opt-In
 
-Not every service needs Chio. The `chio.protocol/secured: "true"` label
+Not every service needs Chio. The `chio.world/secured: "true"` label
 gates which workloads are evaluated. Services without the label use
 standard Istio RBAC only.
 
@@ -474,10 +474,10 @@ spec:
     metadata:
       labels:
         app: code-execution-tool
-        chio.protocol/secured: "true"  # Opt into Chio evaluation
+        chio.world/secured: "true"  # Opt into Chio evaluation
       annotations:
-        chio.protocol/policy: "high-risk-tool"
-        chio.protocol/fail-mode: "closed"
+        chio.world/policy: "high-risk-tool"
+        chio.world/fail-mode: "closed"
 ```
 
 ## 7. Consul Connect Integration

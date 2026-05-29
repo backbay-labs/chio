@@ -9,7 +9,7 @@ The signature scheme is identical across channels: a detached
 [cosign](https://github.com/sigstore/cosign) signature plus a Fulcio
 short-lived certificate. The Rust verification crate
 [`crates/chio-attest-verify`](../../crates/chio-attest-verify/README.md)
-(milestone M09.P3.T1) consumes the same trust root and identity
+consumes the same trust root and identity
 contract; CLI consumers can fall back to `cosign verify-blob` directly.
 
 ## What you need
@@ -216,9 +216,8 @@ verification meaningless.
 
 Native release archive (`release-binaries.yml`), sidecar OCI image
 (`sidecar-image.yml`), and SLSA L2 provenance (`slsa.yml`)
-verification recipes land alongside their respective signing wires
-under M09 phase 3 and phase 4 (see
-`.planning/trajectory/09-supply-chain-attestation.md`).
+verification recipes land alongside their respective signing wires.
+See `spec/PROTOCOL.md` for the supply-chain attestation contract.
 
 ## See also
 
@@ -226,7 +225,5 @@ under M09 phase 3 and phase 4 (see
   trust root, OIDC issuer regex contract, integration test inventory.
 - `docs/install/PUBLISHING.md` -- operator-facing release runbook for
   PyPI and npm, including OIDC trusted publisher setup.
-- `.planning/trajectory/09-supply-chain-attestation.md` -- supply
-  chain attestation milestone, including the consumer-facing
-  five-command recipe for native release archives (verbatim under
-  Phase 4).
+- `spec/PROTOCOL.md` -- supply-chain attestation contract, including
+  the consumer-facing verification recipe for native release archives.

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://chio.dev/schemas/chio-pheromone/v1/concentration.schema.json",
+  "$id": "https://chio.world/schemas/chio-pheromone/v1/concentration.schema.json",
   "title": "Chio Pheromone Concentration",
   "type": "object",
   "additionalProperties": false,

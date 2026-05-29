@@ -29,7 +29,7 @@
         "ts": {
           "status": "package_backed",
           "evidence": [
-            "npm --prefix packages/sdk/chio-ts test",
+            "npm --prefix sdks/typescript/chio-ts test",
             "./scripts/check-bindings-parity.sh"
           ]
         },
@@ -61,7 +61,7 @@
         "ts": {
           "status": "conformance_green",
           "evidence": [
-            "npm --prefix packages/sdk/chio-ts test",
+            "npm --prefix sdks/typescript/chio-ts test",
             "cargo test -p chio-conformance --test mcp_core_live -- --nocapture"
           ]
         },
@@ -95,7 +95,7 @@
         "ts": {
           "status": "conformance_green",
           "evidence": [
-            "npm --prefix packages/sdk/chio-ts test",
+            "npm --prefix sdks/typescript/chio-ts test",
             "cargo test -p chio-conformance --test mcp_core_live -- --nocapture"
           ]
         },
@@ -129,7 +129,7 @@
         "ts": {
           "status": "conformance_green",
           "evidence": [
-            "npm --prefix packages/sdk/chio-ts test",
+            "npm --prefix sdks/typescript/chio-ts test",
             "cargo test -p chio-conformance --test notifications_live -- --nocapture"
           ]
         },
@@ -163,7 +163,7 @@
         "ts": {
           "status": "conformance_green",
           "evidence": [
-            "npm --prefix packages/sdk/chio-ts test",
+            "npm --prefix sdks/typescript/chio-ts test",
             "cargo test -p chio-conformance --test tasks_live -- --nocapture"
           ]
         },
@@ -197,7 +197,7 @@
         "ts": {
           "status": "conformance_green",
           "evidence": [
-            "npm --prefix packages/sdk/chio-ts test",
+            "npm --prefix sdks/typescript/chio-ts test",
             "cargo test -p chio-conformance --test auth_live -- --nocapture"
           ]
         },
@@ -231,7 +231,7 @@
         "ts": {
           "status": "conformance_green",
           "evidence": [
-            "npm --prefix packages/sdk/chio-ts test",
+            "npm --prefix sdks/typescript/chio-ts test",
             "cargo test -p chio-conformance --test nested_callbacks_live -- --nocapture"
           ]
         },

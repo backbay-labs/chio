@@ -185,7 +185,7 @@ class ChioActivityInterceptor:
 
 ### 3.4 Receipt Integration with Workflow History
 
-Each Activity completion carries an Chio receipt ID. The workflow receipt
+Each Activity completion carries a Chio receipt ID. The workflow receipt
 aggregates all step receipts into a single `WorkflowReceipt` on completion:
 
 ```python
@@ -279,7 +279,7 @@ Temporal's visibility API and Chio's receipt log should cross-reference:
 # Find all Chio receipts for a Temporal workflow
 chio receipt list --meta temporal.workflow_id=<wf-id>
 
-# Find the Temporal workflow for an Chio receipt
+# Find the Temporal workflow for a Chio receipt
 temporal workflow show --workflow-id $(chio receipt get <receipt-id> --field meta.temporal.workflow_id)
 ```
 

@@ -69,7 +69,7 @@ fn every_escalation_denied() -> Result<(), Box<dyn std::error::Error>> {
         assert_eq!(evaluation.verdict, ScenarioVerdict::Deny);
         assert_eq!(evaluation.reason, REASON);
         // Every action carries a delegated_scope array that escapes the
-        // issued scope; the M03 scope-monotone property is what makes it
+        // issued scope; the scope-monotone property is what makes it
         // fail-closed.
         let delegated = action
             .mutated_step

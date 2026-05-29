@@ -38,7 +38,7 @@ AgentRunnerLike = Any
 
 
 class ChioAgentRunner:
-    """Attach an Chio capability to every tool on a LlamaIndex agent runner.
+    """Attach a Chio capability to every tool on a LlamaIndex agent runner.
 
     Parameters
     ----------

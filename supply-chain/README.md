@@ -5,9 +5,8 @@
 This directory holds the cargo-vet supply-chain audit metadata for the Chio
 workspace. It records which crate versions have been reviewed, which upstream
 audit feeds we trust, and the exemptions we tolerate while the audit set is
-still being built out. Ownership lives with M09 (supply-chain hardening); the
-audit set is the source of truth that `cargo vet --locked` checks against in
-CI.
+still being built out. The audit set is the source of truth that `cargo vet
+--locked` checks against in CI.
 
 ## Layout
 

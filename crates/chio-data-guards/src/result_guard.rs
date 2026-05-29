@@ -1,4 +1,4 @@
-//! Post-invocation query result guard (roadmap phase 7.4).
+//! Post-invocation query result guard.
 //!
 //! The `QueryResultGuard` inspects the *response* of a database-shaped
 //! tool call and reshapes it before it reaches the agent:

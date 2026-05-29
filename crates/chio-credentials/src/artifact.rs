@@ -36,7 +36,7 @@ pub enum CredentialError {
     #[error("passport must contain at least one credential")]
     EmptyPassport,
 
-    #[error("passport schema must be {PASSPORT_SCHEMA} or legacy {LEGACY_PASSPORT_SCHEMA}")]
+    #[error("passport schema must be {PASSPORT_SCHEMA}")]
     InvalidPassportSchema,
 
     #[error("passport subject does not match credential subject {0}")]
@@ -54,7 +54,7 @@ pub enum CredentialError {
     #[error("verifier policy threshold for {field} must be within [0.0, 1.0], got {value}")]
     InvalidVerifierThreshold { field: &'static str, value: f64 },
 
-    #[error("signed verifier policy schema must be {PASSPORT_VERIFIER_POLICY_SCHEMA} or legacy {LEGACY_PASSPORT_VERIFIER_POLICY_SCHEMA}")]
+    #[error("signed verifier policy schema must be {PASSPORT_VERIFIER_POLICY_SCHEMA}")]
     InvalidSignedVerifierPolicySchema,
 
     #[error("signed verifier policy created_at must be before or equal to expires_at")]
@@ -87,7 +87,7 @@ pub enum CredentialError {
     #[error("public discovery document has expired")]
     PublicDiscoveryExpired,
 
-    #[error("challenge schema must be {PASSPORT_PRESENTATION_CHALLENGE_SCHEMA} or legacy {LEGACY_PASSPORT_PRESENTATION_CHALLENGE_SCHEMA}")]
+    #[error("challenge schema must be {PASSPORT_PRESENTATION_CHALLENGE_SCHEMA}")]
     InvalidChallengeSchema,
 
     #[error("challenge issuance date must be before or equal to expiration date")]
@@ -99,7 +99,7 @@ pub enum CredentialError {
     #[error("challenge has expired")]
     ChallengeExpired,
 
-    #[error("presentation schema must be {PASSPORT_PRESENTATION_RESPONSE_SCHEMA} or legacy {LEGACY_PASSPORT_PRESENTATION_RESPONSE_SCHEMA}")]
+    #[error("presentation schema must be {PASSPORT_PRESENTATION_RESPONSE_SCHEMA}")]
     InvalidPresentationSchema,
 
     #[error("presentation holder key does not match passport subject")]

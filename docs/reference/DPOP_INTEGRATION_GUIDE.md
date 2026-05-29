@@ -17,7 +17,7 @@ pub struct ToolGrant {
 
 ## Proof Format
 
-A DPoP proof is an Chio-native structure using Ed25519 and RFC 8785 canonical
+A DPoP proof is a Chio-native structure using Ed25519 and RFC 8785 canonical
 JSON. It is not a JWT.
 
 ### DpopProofBody
@@ -106,4 +106,4 @@ Attach `proof` to the `ToolCallRequest.dpop_proof` field before sending.
 
 See `docs/SDK_TYPESCRIPT_REFERENCE.md` for the `signDpopProof` function. The
 TypeScript implementation emits Chio schema identifiers. Verifiers reject legacy
-legacy pre-Chio proof schemas instead of treating them as aliases.
+pre-Chio proof schemas instead of treating them as aliases.

@@ -85,10 +85,9 @@ impl PasskeyCapabilityVerifier {
         capability: &PasskeyCapability,
         now: DateTime<Utc>,
     ) -> Result<(), CustodyError> {
-        // Gate 1: empty signatures NEVER verify. This is defence in
-        // depth for the legacy P1 unsigned-stub envelope; the kernel
-        // refuses to admit it even if the audience and clock would
-        // otherwise let it through.
+        // Gate 1: empty signatures NEVER verify. The kernel
+        // refuses to admit an unsigned envelope even if the audience and clock
+        // would otherwise let it through.
         if capability.signature.is_empty() {
             return Err(CustodyError::AssertionRejected(
                 "PasskeyCapability presented with empty signature".into(),

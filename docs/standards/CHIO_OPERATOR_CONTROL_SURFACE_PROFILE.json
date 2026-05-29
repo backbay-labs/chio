@@ -12,7 +12,7 @@
       "authority": "trust_control_service",
       "witnesses": [
         "crates/chio-kernel/src/operator_report.rs",
-        "crates/chio-cli/src/trust_control/http_handlers_b.rs",
+        "crates/chio-control-plane/src/trust_control/receipt_handlers.rs",
         "crates/chio-cli/tests/receipt_query.rs"
       ]
     },
@@ -22,7 +22,7 @@
       "transport": "http",
       "authority": "trust_control_service",
       "witnesses": [
-        "crates/chio-cli/src/trust_control/http_handlers_b.rs",
+        "crates/chio-control-plane/src/trust_control/receipt_handlers.rs",
         "crates/chio-cli/tests/receipt_query.rs"
       ]
     },
@@ -32,7 +32,7 @@
       "transport": "http",
       "authority": "trust_control_service",
       "witnesses": [
-        "crates/chio-cli/src/trust_control/http_handlers_b.rs",
+        "crates/chio-control-plane/src/trust_control/receipt_handlers.rs",
         "crates/chio-cli/tests/receipt_query.rs"
       ]
     },
@@ -56,7 +56,7 @@
         "crates/chio-credit/src/lib.rs",
         "crates/chio-market/src/lib.rs",
         "crates/chio-open-market/src/lib.rs",
-        "crates/chio-cli/src/trust_control/capital_and_liability.rs"
+        "crates/chio-control-plane/src/trust_control/capital_and_liability.rs"
       ]
     }
   ],

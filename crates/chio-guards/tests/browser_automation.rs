@@ -1,4 +1,4 @@
-//! Integration tests for Phase 8.2 BrowserAutomationGuard.
+//! Integration tests for BrowserAutomationGuard.
 //!
 //! Acceptance criteria:
 //!

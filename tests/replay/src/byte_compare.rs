@@ -1,4 +1,4 @@
-//! Raw byte-comparison harness for the M04 deterministic-replay
+//! Raw byte-comparison harness for the deterministic-replay
 //! gate.
 //!
 //! The replay gate's load-bearing property is BYTE EQUIVALENCE

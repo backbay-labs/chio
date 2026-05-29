@@ -1,28 +1,29 @@
 schema = "chio.verdict-matrix.typescript.prep.v1"
-status = "prepared-blocked-by-m02-pr-352"
-blocked_on = "M02.P5.T2 TypeScript verdict driver shape, tracked by PR #352"
+status = "transport-client"
 tuple_fields = ["verdict", "reason_code", "scope_set"]
 
 # Both drivers compose the @chio-protocol/node-http transport-client driver
-# from M02.P5.T2 (drivers/typescript/run_scenarios.ts). They activate once
-# M02.P5.T2 lands; until then they ship as prepared registrations so
-# orchestrator manifests and matrix tooling can enumerate the future
-# verdict-tuple emitters.
+# (drivers/typescript/run_scenarios.ts). Each is a wired transport client:
+# it issues a real per-scenario evaluation through its framework package and
+# the underlying node-http sidecar client. Active execution gates on an
+# operator-supplied Chio sidecar URL (CHIO_VERDICT_MATRIX_SIDECAR_URL with
+# CHIO_SIDECAR_URL fallback); without a sidecar every scenario is reported as
+# unsupported.
 
 [[drivers]]
 id = "typescript-ai-sdk-middleware"
-package = "@chio/ai-sdk-middleware"
+package = "@chio-protocol/ai-sdk-middleware"
 entrypoint = "ai_sdk_middleware.ts"
 transport = "node-http-sidecar"
-status = "prepared"
+status = "transport-client"
 matrix_role = "framework-wrapper"
 underlying_driver = "typescript-node-http"
 
 [[drivers]]
 id = "typescript-chio-next"
-package = "@chio/next"
+package = "@chio-protocol/next"
 entrypoint = "chio_next.ts"
 transport = "node-http-sidecar"
-status = "prepared"
+status = "transport-client"
 matrix_role = "framework-wrapper"
 underlying_driver = "typescript-node-http"

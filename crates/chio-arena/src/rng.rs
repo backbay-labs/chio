@@ -1,7 +1,7 @@
 //! Seeded RNG plumbing for the arena.
 //!
-//! All randomness consumed by the arena (and the adversary populations
-//! introduced in `P3`) is keyed by the scenario's `rng_seed`. The root
+//! All randomness consumed by the arena (and the adversary populations)
+//! is keyed by the scenario's `rng_seed`. The root
 //! [`ChaCha20Rng`] is seeded from the scenario value; per-agent sub-streams are
 //! derived through `SeedableRng::seed_from_u64` over a stable hash of the
 //! agent id so two runs of the same scenario observe the same byte sequence.

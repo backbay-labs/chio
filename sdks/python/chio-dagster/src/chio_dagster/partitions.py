@@ -21,7 +21,7 @@ from typing import Any
 
 
 def extract_partition_info(context: Any) -> dict[str, Any]:
-    """Return a partition-info dict for an Chio evaluation payload.
+    """Return a partition-info dict for a Chio evaluation payload.
 
     Recognises the ``has_partition_key`` / ``partition_key`` protocol that
     Dagster exposes on :class:`dagster.AssetExecutionContext`,

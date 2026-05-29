@@ -10,6 +10,6 @@ cargo run -p cross-provider-policy --quiet -- --dry-run
 
 The dry run loads `policy.yaml`, evaluates the deterministic single-weather-tool fixtures, and emits eight normalized receipt bodies (OpenAI, Anthropic, Bedrock, Gemini, Mistral, Groq, Ollama, Cohere). The receipts keep provider provenance (`provider`, `request_id`, `api_version`, `principal`, `received_at`) intact, while the policy id, tool name, arguments, and verdict are asserted byte-equal after canonical JSON normalization.
 
-The trajectory-1 providers (OpenAI, Anthropic, Bedrock) round-trip through the deep adapter replay harness; the trajectory-2 providers (Gemini, Mistral, Groq, Ollama, Cohere) ride the NDJSON capture path that backs the M07.P4.T5 cross-provider verdict-equality oracle.
+The deep adapter replay harness covers the OpenAI, Anthropic, and Bedrock providers. The Gemini, Mistral, Groq, Ollama, and Cohere providers use the NDJSON capture path that backs the cross-provider verdict-equality oracle.
 
 The command is offline-only. It reads the fixture corpus under `crates/chio-provider-conformance/fixtures/{openai,anthropic,bedrock,gemini,mistral,groq,ollama,cohere}` and does not require any upstream credentials.

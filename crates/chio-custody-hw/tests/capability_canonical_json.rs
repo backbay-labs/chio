@@ -56,7 +56,7 @@ fn canonical_json_field_order_locked() {
     // RFC 8785 sorts top-level object keys by UTF-16 code unit comparison.
     // Lexicographic order of the seven envelope keys: audience,
     // challenge_nonce, credential_id, exp, iat, scope_set, signature.
-    // Locking this order keeps signatures (wired in P2) bit-stable against
+    // Locking this order keeps the issuer signature bit-stable against
     // any compliant RFC 8785 implementation.
     let audience_at = s.find("\"audience\"");
     let nonce_at = s.find("\"challenge_nonce\"");
@@ -98,7 +98,13 @@ fn scope_set_serialised_in_canonical_sorted_order() {
 }
 
 #[test]
-fn signature_field_empty_in_p1() {
+fn unsigned_envelope_encodes_empty_signature_slot() {
+    // The canonical-JSON encoding of the pre-signing envelope (signature
+    // slot empty) MUST render `"signature":""`. This is the exact byte
+    // sequence `sign_capability` signs over and the kernel verifier
+    // reconstructs by clearing the slot, so the empty-string rendering is
+    // a load-bearing canonicalisation invariant (not a claim that issued
+    // capabilities are unsigned: the issuer always fills this slot).
     let cap = fixture_capability();
     let bytes = match cap.to_canonical_json() {
         Ok(b) => b,
@@ -110,7 +116,7 @@ fn signature_field_empty_in_p1() {
     };
     assert!(
         s.contains("\"signature\":\"\""),
-        "P1 capabilities are unsigned; signature MUST be the empty string. got: {s}"
+        "the unsigned envelope MUST encode the signature slot as the empty string. got: {s}"
     );
 }
 

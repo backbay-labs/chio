@@ -107,7 +107,7 @@ fn unsigned_frame() -> Frame {
         verdict: Verdict::Allow,
         deny_reason: None,
         would_have_blocked: false,
-        // Placeholder while we compute the canonical signing payload.
+        // Zero-filled signature; overwritten by `signed_frame()` before any signature-validation path is exercised.
         tenant_sig: format!(
             "ed25519:{}",
             base64::engine::general_purpose::STANDARD.encode([0u8; 64])

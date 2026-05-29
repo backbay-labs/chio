@@ -34,7 +34,7 @@ fn chio_cli_binary() -> PathBuf {
 
 #[test]
 fn preset_yaml_is_shipped_in_crate_source() {
-    // Ensures Phase 4.2's bundled YAML stays reachable from the crate
+    // Ensures the bundled YAML stays reachable from the crate
     // source tree; the Python SDK's default_policy.yaml must stay
     // byte-identical with this file.
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -177,9 +177,12 @@ fn write_preset_to_temp() -> tempfile::NamedTempFile {
 #[test]
 fn preset_denies_dotenv_write_via_chio_check() {
     let preset = write_preset_to_temp();
+    let receipt_db = tempfile::NamedTempFile::new().expect("receipt-db tempfile");
     let output = Command::new(chio_cli_binary())
         .args(["--format", "json", "check", "--policy"])
         .arg(preset.path())
+        .arg("--receipt-db")
+        .arg(receipt_db.path())
         .args([
             "--server",
             "fs",
@@ -214,9 +217,12 @@ fn preset_denies_dotenv_write_via_chio_check() {
 #[test]
 fn preset_allows_safe_file_read_via_chio_check() {
     let preset = write_preset_to_temp();
+    let receipt_db = tempfile::NamedTempFile::new().expect("receipt-db tempfile");
     let output = Command::new(chio_cli_binary())
         .args(["--format", "json", "check", "--policy"])
         .arg(preset.path())
+        .arg("--receipt-db")
+        .arg(receipt_db.path())
         .args([
             "--server",
             "fs",

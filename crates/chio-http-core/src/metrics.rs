@@ -1,6 +1,6 @@
 //! HTTP-core verdict-edge metrics surfaced through the workspace
-//! `chio-metrics-spec` registry. Wave 2.4 of the trj4 closeout wires the
-//! HTTP edge into the workspace registry: every authority dispatch through
+//! `chio-metrics-spec` registry. The HTTP edge is wired into the workspace
+//! registry: every authority dispatch through
 //! `HttpAuthority::evaluate` increments
 //! [`CHIO_GUARD_EVALUATIONS_TOTAL`] with a `(guard, outcome)` label
 //! pair and observes the dispatch latency under

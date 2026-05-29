@@ -62,7 +62,7 @@ ENV CHIO_HOME=/var/lib/chio \
 LABEL org.opencontainers.image.title="chio-tee" \
       org.opencontainers.image.description="Chio TEE sidecar runtime" \
       org.opencontainers.image.licenses="Apache-2.0" \
-      org.opencontainers.image.source="https://github.com/backbay/chio"
+      org.opencontainers.image.source="https://github.com/backbay-labs/chio"
 
 ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/chio-tee"]
 CMD ["--help"]

@@ -1,8 +1,7 @@
 # Chio Android Kernel Mobile
 
-This module packages `chio-kernel-mobile` as an Android AAR for the
-trajectory-3 M07 mobile MVP. It is private GitHub Packages Maven
-distribution by default.
+This module packages `chio-kernel-mobile` as an Android AAR. It is
+distributed through GitHub Packages Maven by default.
 
 ## Platform
 

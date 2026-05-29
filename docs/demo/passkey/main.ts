@@ -1,5 +1,5 @@
 /*
- * Chio @chio/passkey demo.
+ * Chio @chio-protocol/passkey demo.
  *
  * Drives the full passkey-to-capability flow against an in-page issuer
  * test-double:
@@ -33,7 +33,7 @@ import {
   requestCapability,
   RequestCapabilityError,
   type PasskeyCapability,
-} from '@chio/passkey';
+} from '@chio-protocol/passkey';
 import { installIssuerTestDouble, simulateRevocation, simulateKernelCall, RevocationState } from './test-double.js';
 
 const AUDIENCE = 'urn:chio:audience:kernel';
@@ -115,7 +115,7 @@ async function revokeAndReplay(): Promise<void> {
   const verdict = await simulateKernelCall(KERNEL_URL, lastCapability, revocationState);
   setText(
     'verdict-revoked',
-    verdict.allowed ? 'allow' : 'deny (within M04 epoch)',
+    verdict.allowed ? 'allow' : 'deny (revoked)',
     verdict.allowed ? 'ok' : 'fail',
   );
   setText('revocation-urn', verdict.errorCode ?? '(none)', verdict.allowed ? 'info' : 'fail');

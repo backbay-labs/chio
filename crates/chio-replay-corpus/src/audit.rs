@@ -8,7 +8,7 @@ use chio_core::{canonical_json_bytes, Keypair, PublicKey, Signature};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-/// Event name pinned by the M10 bless-graduation runbook.
+/// Event name pinned by the bless-graduation runbook.
 pub const TEE_BLESS_EVENT: &str = "tee.bless";
 /// Capability required by `chio replay --bless`.
 pub const TEE_BLESS_CAPABILITY: &str = "chio:tee/bless@1";
@@ -43,9 +43,9 @@ pub struct BlessCapture {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BlessFixture {
-    /// M04 fixture family.
+    /// Replay-corpus fixture family.
     pub family: String,
-    /// M04 fixture scenario name.
+    /// Replay-corpus fixture scenario name.
     pub name: String,
     /// Fixture path as recorded by the operator.
     pub path: String,
@@ -65,7 +65,7 @@ pub struct TeeBlessAuditBody {
     pub operator: BlessOperator,
     /// Source capture details.
     pub capture: BlessCapture,
-    /// Graduated M04 fixture details.
+    /// Graduated replay-corpus fixture details.
     pub fixture: BlessFixture,
     /// Redaction pass used for the blessed fixture.
     pub redaction_pass_id: String,

@@ -11,6 +11,8 @@
 //    a [`TrafficFrameOutcome`] under `replay:<run_id>:<frame_id>`.
 // 5. Aggregate into a [`TrafficReplayReport`] for the diff renderer.
 
+use super::*;
+
 /// Per-frame outcome: replay-receipt id, recomputed verdict, and the
 /// captured verdict from the source frame, plus guard/reason attribution.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
@@ -54,9 +56,7 @@ impl TrafficFrameOutcome {
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct TrafficReplayReport {
     /// Run-id of the replay partition (mirrors `<run_id>` in receipt
-    /// ids). Empty string when the dispatcher ran in production-mode
-    /// for some reason; T2 always allocates a replay partition so this
-    /// is non-empty in practice.
+    /// ids). Empty string only when the partition was unexpectedly production-flagged; the replay dispatcher always allocates a `Replay` partition.
     pub run_id: String,
     /// `--against` argument verbatim.
     pub against_label: String,
@@ -149,8 +149,7 @@ pub fn run_traffic_replay(
     // 5. Build the ephemeral kernel.
     let kernel_kp = chio_core::crypto::Keypair::generate();
     let mut kernel = build_kernel(loaded_policy, &kernel_kp);
-    // Register a stub tool server so capability evaluation has a
-    // server-id target. This mirrors the pattern in cli::runtime::cmd_check.
+    // Register a stub tool server so capability evaluation has a server-id target.
     kernel.register_tool_server(Box::new(StubToolServer {
         id: REPLAY_STUB_SERVER_ID.to_string(),
     }));
@@ -476,7 +475,7 @@ mod replay_execute_tests {
             },
             request_blob_sha256: "a".repeat(64),
             response_blob_sha256: "b".repeat(64),
-            redaction_pass_id: "m06-redactors@1.4.0+default".to_string(),
+            redaction_pass_id: "redactors@1.4.0+default".to_string(),
             verdict: chio_tee_frame::Verdict::Allow,
             deny_reason: None,
             would_have_blocked: false,
@@ -711,7 +710,7 @@ capabilities: {}
     #[test]
     fn frame_replay_outcome_serializes_namespace_under_replay_prefix() {
         // Stable wire-shape check: the JSON encoding carries the
-        // `replay_receipt_id` field with the milestone-pinned prefix.
+        // `replay_receipt_id` field with the `replay:` namespace prefix.
         let outcome = TrafficFrameOutcome {
             line: 1,
             frame_id: "frame-x".to_string(),

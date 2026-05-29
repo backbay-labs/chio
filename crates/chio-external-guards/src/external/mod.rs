@@ -11,15 +11,10 @@ pub use endpoint_security::{
     validate_external_guard_url_with_resolver, validate_external_guard_url_without_dns,
 };
 
-#[path = "../../../chio-guards/src/external/azure_content_safety.rs"]
 pub mod azure_content_safety;
-#[path = "../../../chio-guards/src/external/bedrock.rs"]
 pub mod bedrock;
-#[path = "../../../chio-guards/src/external/http_egress.rs"]
 pub(crate) mod http_egress;
-#[path = "../../../chio-guards/src/external/threat_intel/mod.rs"]
 pub mod threat_intel;
-#[path = "../../../chio-guards/src/external/vertex_safety.rs"]
 pub mod vertex_safety;
 
 pub use azure_content_safety::{

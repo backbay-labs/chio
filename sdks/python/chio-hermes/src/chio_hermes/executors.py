@@ -26,7 +26,7 @@ from chio_adapter_base.security import (
 
 # The seven security primitives below are now sourced from
 # :mod:`chio_adapter_base.security`. The chio-hermes module-level
-# names are kept as backwards-compat shims (deprecated; see PR #656)
+# names are kept as backwards-compat shims (deprecated)
 # so external consumers that imported
 # ``chio_hermes.executors._sanitised_env`` etc. keep working for one
 # release. Internal call sites here use the canonical imports.

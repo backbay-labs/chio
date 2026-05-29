@@ -1,14 +1,14 @@
-//! Phase 0.5 integration coverage for the `Verdict::Deny` enrichment.
+//! Integration coverage for the `Verdict::Deny` enrichment.
 //!
 //! These tests verify three properties end-to-end at the HTTP-layer boundary:
 //!
 //! 1. A deny populated with structured context serializes every field and
 //!    round-trips through serde without loss.
-//! 2. A legacy pre-0.5 wire payload (no `details` object) still deserializes
-//!    into a valid [`Verdict::Deny`], so existing sidecar responses keep
-//!    working with the enriched type.
+//! 2. A `Verdict::Deny` without a `details` key deserializes to an empty
+//!    `DenyDetails` block. This is the current serde behavior for all
+//!    `Verdict::deny()` callers (authority.rs, receipt.rs, etc.).
 //! 3. The bare-bones `Verdict::deny` constructor used throughout the crate
-//!    emits JSON with no `details` key, preserving the 0.4 wire shape.
+//!    emits JSON with no `details` key (compact wire form, details omitted when empty).
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
@@ -74,10 +74,10 @@ fn populated_deny_roundtrips_through_serde() {
 }
 
 #[test]
-fn legacy_wire_payload_without_details_still_parses() {
-    // A 0.4 sidecar response only carries reason, guard, and (optionally)
-    // http_status. The enriched Verdict must deserialize it and surface an
-    // empty DenyDetails block.
+fn deny_without_details_deserializes_to_empty_deny_details() {
+    // A Deny payload without a `details` key deserializes to an empty
+    // DenyDetails block. This is the current serde behavior: `Verdict::deny`
+    // callers omit the field entirely, and the `default` attribute fills it in.
     let json = r#"{
         "verdict": "deny",
         "reason": "no capability token provided",
@@ -85,7 +85,7 @@ fn legacy_wire_payload_without_details_still_parses() {
         "http_status": 401
     }"#;
 
-    let v: Verdict = serde_json::from_str(json).expect("legacy payload deserializes");
+    let v: Verdict = serde_json::from_str(json).expect("payload deserializes");
     let Verdict::Deny {
         reason,
         guard,
@@ -101,14 +101,14 @@ fn legacy_wire_payload_without_details_still_parses() {
     assert_eq!(http_status, 401);
     assert!(
         details.is_empty(),
-        "legacy payload should yield empty DenyDetails, got {details:?}"
+        "payload without details key should yield empty DenyDetails, got {details:?}"
     );
 }
 
 #[test]
-fn bare_deny_emits_pre_05_wire_shape() {
-    // Ensure call sites that still use `Verdict::deny` produce a payload
-    // indistinguishable from the 0.4 shape so pre-0.5 SDKs keep parsing.
+fn deny_without_details_omits_details_key() {
+    // Ensure call sites that still use `Verdict::deny` produce a compact
+    // payload with the details key omitted when empty.
     let v = Verdict::deny("side-effect route requires a capability", "CapabilityGuard");
     let json = serde_json::to_string(&v).expect("serializes");
 

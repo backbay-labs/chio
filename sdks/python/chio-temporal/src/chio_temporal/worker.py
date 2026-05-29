@@ -1,4 +1,4 @@
-"""Convenience builder for an Chio-governed Temporal worker.
+"""Convenience builder for a Chio-governed Temporal worker.
 
 :func:`build_chio_worker` wires the standard pieces together:
 

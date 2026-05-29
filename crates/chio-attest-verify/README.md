@@ -1,15 +1,15 @@
 # chio-attest-verify
 
-Single source of truth for Sigstore verification across the chio workspace.
-M09 (release-archive verification), M06 (WASM guard signing), and M02 (fuzz
-target for the verifier) all consume this crate; no other crate is permitted
-to call `sigstore-rs` directly.
+Single source of truth for Sigstore verification across the Chio workspace.
+Release-archive verification, WASM guard signing, and the verifier fuzz
+target all consume this crate; no other crate is permitted to call
+`sigstore-rs` directly.
 
 ## Trait surface
 
 The crate exposes a single `AttestVerifier` trait and one production impl,
-`SigstoreVerifier`. The trait surface is fixed and consumed verbatim by
-M06's guard registry and M02's fuzz harness:
+`SigstoreVerifier`. The trait surface is fixed and consumed verbatim by the
+guard registry and the verifier fuzz harness:
 
 ```rust
 use chio_attest_verify::{AttestVerifier, ExpectedIdentity, SigstoreVerifier};
@@ -17,7 +17,7 @@ use chio_attest_verify::{AttestVerifier, ExpectedIdentity, SigstoreVerifier};
 let verifier = SigstoreVerifier::with_embedded_root()?;
 let expected = ExpectedIdentity {
     certificate_identity_regexp:
-        r"https://github\.com/backbay/chio/\.github/workflows/release-binaries\.yml@refs/tags/v.*"
+        r"https://github\.com/backbay-labs/chio/\.github/workflows/release-binaries\.yml@refs/tags/v.*"
             .into(),
     certificate_oidc_issuer: "https://token.actions.githubusercontent.com".into(),
 };
@@ -53,9 +53,8 @@ The crate ships the Sigstore Public Good Instance trust root in tree under
 - `trusted_root.json` is the runtime artifact consumed via `include_bytes!`.
 
 `build.rs` fails the compile if either file is missing. The quarterly
-CODEOWNERS-reviewed re-bake job described in
-`.planning/trajectory/09-supply-chain-attestation.md` refreshes both files
-in lockstep via `scripts/tuf-rebake.sh --write`; `scripts/tuf-rebake.sh --check`
+CODEOWNERS-reviewed re-bake job refreshes both files in lockstep via
+`scripts/tuf-rebake.sh --write`; `scripts/tuf-rebake.sh --check`
 fails closed when the checked-in materials are missing, malformed, or stale.
 
 ## OIDC issuer regex
@@ -65,7 +64,7 @@ For chio's GitHub-hosted release workflows the canonical
 
 - `certificate_oidc_issuer = "https://token.actions.githubusercontent.com"`
 - `certificate_identity_regexp =
-  "https://github\.com/backbay/chio/\.github/workflows/release-binaries\.yml@refs/tags/v.*"`
+  "https://github\.com/backbay-labs/chio/\.github/workflows/release-binaries\.yml@refs/tags/v.*"`
 
 The verifier anchors the regex with `^...$` internally; callers may omit
 or include their own anchors without behavioural difference.
@@ -91,8 +90,8 @@ contract on every trait method:
 
 The positive end-to-end keyless flow requires a Fulcio-issued certificate
 from a real OIDC workflow run, which is not hermetically reproducible
-inside `cargo test`. The M09 release-binaries CI workflow exercises that
-path online via `cosign verify-blob` against published release archives.
+inside `cargo test`. The release-binaries CI workflow exercises that path
+online via `cosign verify-blob` against published release archives.
 
 ## Forbidden constructs
 

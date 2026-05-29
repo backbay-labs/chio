@@ -1,10 +1,10 @@
 #![allow(dead_code)]
-//! Shared on-disk receipt log used by `swarm_revocation_e2e` (T1) and
-//! `receipt_chain_proof` (T2).
+//! Shared on-disk receipt log used by `swarm_revocation_e2e` (the writer)
+//! and `receipt_chain_proof` (the reader).
 //!
-//! T1 emits one JSONL line per consult (`allow` or `deny`) plus
-//! header / per-trial summary / footer lines. T2 walks the file and
-//! asserts the receipt-chain invariant `seen_epoch < revoke_epoch` on
+//! The writer emits one JSONL line per consult (`allow` or `deny`) plus
+//! header / per-trial summary / footer lines. The reader walks the file
+//! and asserts the receipt-chain invariant `seen_epoch < revoke_epoch` on
 //! every allow line.
 //!
 //! The schema is intentionally tiny and self-describing so the file
@@ -17,8 +17,8 @@ use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 
-/// Top-of-file header. Records the trial budget so T2 can assert it
-/// matches the value its own gate runs against.
+/// Top-of-file header. Records the trial budget so the reader can assert
+/// it matches the value its own gate runs against.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReceiptHeader {
@@ -28,7 +28,7 @@ pub struct ReceiptHeader {
 }
 
 /// One consult event. Emitted by every iteration of the per-child
-/// tight loop in T1.
+/// tight loop in the writer test.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReceiptRecord {
@@ -50,8 +50,8 @@ pub struct TrialSummary {
     pub revoke_to_deny_ms: u128,
 }
 
-/// Footer line. Records the run's median latency so T2 can sanity-
-/// check the file is from a complete run, not a partial one.
+/// Footer line. Records the run's median latency so the reader can
+/// confirm the file is from a complete run, not a partial one.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReceiptFooter {
@@ -137,7 +137,7 @@ fn write_json_line<T: Serialize>(writer: &Arc<Mutex<File>>, value: &T) {
     }
 }
 
-/// Read a JSONL receipt log into typed records. Used by the T2 proof
+/// Read a JSONL receipt log into typed records. Used by the proof
 /// test. Returns the header, every trial summary, every consult
 /// receipt, and the footer.
 pub struct ReadbackLog {

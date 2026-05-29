@@ -1,5 +1,7 @@
 //! Chio-Wall core contracts layered on Chio receipt and guard truth.
 
+#![forbid(unsafe_code)]
+
 pub mod control_path;
 
 pub use control_path::{

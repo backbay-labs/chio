@@ -3,7 +3,7 @@
 # Default mode is changed-target sampling. Diffs the PR against its
 # merge base, looks up which fuzz targets each changed source-path glob in
 # fuzz/target-map.toml triggers, and runs only those targets at 60 seconds
-# each. Budget-capped against the 2,000 min/month free tier.
+# each.
 #
 # Opt-in PR label `fuzz: full` switches the run to a full-corpus sweep at
 # 120 seconds per target. The label is honored only if the trailing-30d

@@ -1,8 +1,6 @@
-# OSS-Fuzz builder image for Chio (formerly ARC).
+# OSS-Fuzz builder image for Chio.
 #
-# Source-of-truth: .planning/trajectory/02-fuzzing-post-pr13.md
-# (OSS-Fuzz application steps section). Companion docs in
-# docs/fuzzing/continuous.md (OSS-Fuzz integration section).
+# Companion docs in docs/fuzzing/continuous.md (OSS-Fuzz integration section).
 
 FROM gcr.io/oss-fuzz-base/base-builder-rust
 
@@ -34,8 +32,8 @@ ENV OPENSSL_INCLUDE_DIR=/opt/openssl-3/include
 ENV OPENSSL_LIB_DIR=/opt/openssl-3/lib64
 ENV PKG_CONFIG_PATH=/opt/openssl-3/lib64/pkgconfig
 
-RUN git clone --depth 1 https://github.com/bb-connor/arc /src/arc
-WORKDIR $SRC/arc
+RUN git clone --depth 1 https://github.com/backbay-labs/chio /src/chio
+WORKDIR $SRC/chio
 
 COPY build.sh $SRC/build.sh
 RUN chmod +x $SRC/build.sh

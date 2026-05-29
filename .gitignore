@@ -2,16 +2,26 @@
 /target/
 /target-shared/
 **/*.rs.bk
+# Nested cargo/qualification output dirs at any depth (not the workspace root /target/).
+**/target/
+# Standalone shim crate: its lib Cargo.lock is regenerated on build, not tracked.
+sdks/rust/chio-guard-sdk-compat/Cargo.lock
+
+# Transient SQLite journal files must never be committed (only the .sqlite3
+# fixture itself is tracked, never its write-ahead log or shared-memory file).
+*.sqlite3-wal
+*.sqlite3-shm
 
 # Release SBOM evidence is committed under supply-chain/sbom/v{tag}/.
 !supply-chain/sbom/
 !supply-chain/sbom/**
 
-# Orchestrator runtime state
+# Local planning / orchestration state (not part of the published project)
 .worktrees/
-.planning/trajectory/*.bak
-.planning/trajectory/tool-versions.lock
-.planning/trajectory/EXECUTION-LOG.[0-9]*.ndjson
+.planning/
+
+# Local cleanup-audit working notes
+.cleanup-audit/
 
 # Editor files
 *.swp
@@ -52,7 +62,6 @@ examples/openai-compatible/node_modules/
 examples/langchain/*.egg-info/
 examples/langchain/.venv/
 sdks/python/**/.venv/
-packages/sdk/**/.venv/
 
 # Generated JVM and .NET build artifacts
 examples/**/.gradle/
@@ -61,6 +70,12 @@ examples/**/bin/
 examples/**/obj/
 sdks/dotnet/**/bin/
 sdks/dotnet/**/obj/
+# verdict-matrix deployment-shape driver build outputs (dotnet / jvm / go)
+crates/chio-conformance/verdict_matrix/drivers/**/bin/
+crates/chio-conformance/verdict_matrix/drivers/**/obj/
+crates/chio-conformance/verdict_matrix/drivers/**/build/
+crates/chio-conformance/verdict_matrix/drivers/**/.gradle/
+crates/chio-conformance/verdict_matrix/drivers/k8s/k8s
 
 # Generated coverage artifacts
 /coverage/*
@@ -83,10 +98,10 @@ formal/rust-verification/creusot-core/target/
 formal/rust-verification/creusot-core/verif/
 
 # Build outputs (flagged by scripts/check-release-inputs.sh)
-packages/sdk/chio-ts/dist/
-packages/sdk/chio-ts/node_modules/
-packages/sdk/chio-py/build/
-packages/sdk/chio-py/src/*.egg-info/
+sdks/typescript/chio-ts/dist/
+sdks/typescript/chio-ts/node_modules/
+sdks/python/chio-py/build/
+sdks/python/chio-py/src/*.egg-info/
 crates/chio-cli/dashboard/dist/
 crates/chio-cli/dashboard/node_modules/
 tests/conformance/results/generated/

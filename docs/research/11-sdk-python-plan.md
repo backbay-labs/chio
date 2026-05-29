@@ -1,5 +1,8 @@
 # Python SDK Plan
 
+> Historical, pre-rename design note. Paths and names below (for example `packages/sdk/arc-py`) reflect the original ARC-era plan and are kept as a record; they are not current.
+> The Python SDK shipped as `chio-sdk` (module `chio`) at `sdks/python/chio-py`.
+
 ## Goal
 
 Build a Python SDK that is strong enough to replace the current Python conformance peer and later serve as the maintained Python client for the ARC edge.
@@ -23,7 +26,7 @@ Local evidence:
 
 - the current Python peer is hand-rolled in one file and already covers session init, auth, remote HTTP, SSE-style response parsing, nested callbacks, and transcript production: [tests/conformance/peers/python/client.py](../../tests/conformance/peers/python/client.py)
 - the current peer requires Python 3.11+: [tests/conformance/peers/python/pyproject.toml](../../tests/conformance/peers/python/pyproject.toml)
-- the repo already plans a narrow Rust bindings core rather than a giant FFI layer: [../BINDINGS_CORE_PLAN.md](../BINDINGS_CORE_PLAN.md)
+- the repo already plans a narrow Rust bindings core rather than a giant FFI layer: [../BINDINGS_CORE_PLAN.md](../operations/BINDINGS_CORE_PLAN.md)
 
 Implication:
 
@@ -484,7 +487,7 @@ Local:
 
 - [tests/conformance/peers/python/client.py](../../tests/conformance/peers/python/client.py)
 - [tests/conformance/peers/python/pyproject.toml](../../tests/conformance/peers/python/pyproject.toml)
-- [../BINDINGS_CORE_PLAN.md](../BINDINGS_CORE_PLAN.md)
+- [../BINDINGS_CORE_PLAN.md](../operations/BINDINGS_CORE_PLAN.md)
 
 External:
 

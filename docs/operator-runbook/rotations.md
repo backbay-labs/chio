@@ -1,7 +1,7 @@
 # On-Call Rotation and Escalation
 
-This page records the weekly support rotation for the M01 healthcare
-design-partner pilot.
+This page records the weekly support rotation for the healthcare design-partner
+pilot.
 
 ## Roles
 

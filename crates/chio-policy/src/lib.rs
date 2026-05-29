@@ -17,6 +17,7 @@
 //! - [`receipt`] -- Decision receipts with timing and hashing
 //! - [`rulesets`] -- Built-in HushSpec rulesets embedded at compile time
 
+#![forbid(unsafe_code)]
 #![cfg_attr(test, allow(clippy::expect_used, clippy::unwrap_used))]
 
 pub mod compiler;

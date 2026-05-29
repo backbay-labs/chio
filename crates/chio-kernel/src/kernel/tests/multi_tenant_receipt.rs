@@ -1,4 +1,4 @@
-// Phase 1.5 multi-tenant receipt isolation tests.
+// Multi-tenant receipt isolation tests.
 //
 // Included by `src/kernel/tests.rs`. Shares helper items from
 // `tests/all.rs` via the surrounding `tests.rs` `include!`s.

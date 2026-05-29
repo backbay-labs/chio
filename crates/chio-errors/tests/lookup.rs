@@ -1,6 +1,5 @@
 use chio_errors::{
-    diagnostic, error, lookup_legacy_string_code, lookup_legacy_string_code_matches, Code, Domain,
-    Severity,
+    diagnostic, error, lookup_string_code, lookup_string_code_matches, Code, Domain, Severity,
 };
 
 #[test]
@@ -24,6 +23,7 @@ fn all_domain_slugs_round_trip() {
         "lineage",
         "custody",
         "weights",
+        "mobile",
     ];
 
     assert_eq!(Domain::ALL.len(), expected.len());
@@ -100,12 +100,12 @@ fn error_helper_builds_chio_error() {
 }
 
 #[test]
-fn duplicate_legacy_string_codes_are_not_silently_first_matched() {
-    let matches: Vec<_> = lookup_legacy_string_code_matches("CHIO-CLI-JSON").collect();
+fn duplicate_string_codes_are_not_silently_first_matched() {
+    let matches: Vec<_> = lookup_string_code_matches("CHIO-CLI-JSON").collect();
 
     assert!(
         matches.len() > 1,
         "registry fixture must keep a duplicate legacy code"
     );
-    assert_eq!(lookup_legacy_string_code("CHIO-CLI-JSON"), None);
+    assert_eq!(lookup_string_code("CHIO-CLI-JSON"), None);
 }

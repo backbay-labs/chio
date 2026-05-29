@@ -16,6 +16,7 @@ name = "chio_mcp_edge"
 async-trait = { workspace = true }
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
 chio-cross-protocol = { path = "../chio-cross-protocol" }
+chio-edge-metrics = { path = "../chio-edge-metrics" }
 chio-kernel = { path = "../chio-kernel" }
 chio-manifest = { path = "../chio-manifest" }
 chio-metrics-spec = { workspace = true }
@@ -38,6 +39,5 @@ otel = ["chio-kernel/otel"]
 # never pull in `arbitrary` and never expose `fuzz` symbols.
 fuzz = ["dep:arbitrary"]
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

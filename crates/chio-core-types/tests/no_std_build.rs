@@ -16,7 +16,7 @@
 //! ```
 //!
 //! These commands exercise the `no_std + alloc` path that unblocks
-//! `chio-kernel-core` on wasm32-unknown-unknown (Phases 14.2 / 14.3 / 20.1).
+//! `chio-kernel-core` on wasm32-unknown-unknown and other embedded targets.
 
 extern crate alloc;
 

@@ -3,10 +3,10 @@
 # chio-weights is NOT one of the six canonical trust-boundary crates
 # enumerated in `releases.toml [trust_boundary_crates]` (those are
 # chio-policy, chio-credentials, chio-attest-verify, chio-kernel-core,
-# chio-guards, chio-anchor). The crate is the M10 phase 4 model-card
+# chio-guards, chio-anchor). The crate is the model-card trust-boundary
 # surface (signed weights cards, cosign bundle helper, kernel binding
-# refusal, arc bind --card) and IS a trust-boundary surface for the
-# purposes of release work-A1: a malformed `weights_hash`, an out-of-set
+# refusal, arc bind --card) and IS a trust-boundary surface: a malformed
+# `weights_hash`, an out-of-set
 # capability scope, or a banned tool intersection MUST cause the
 # kernel to refuse a provider bind. Mutation kill on this crate is
 # therefore the right honest signal even though the crate is not in
@@ -19,7 +19,7 @@
 #     (`kernel_capability_checker_rejects_untrusted_and_tampered_tokens`
 #     asserts `verdict.reason.contains("signature") || ...("untrusted")`,
 #     but the runtime now returns `"trusted CA"` wording). That failure
-#     is on `main` at SHA 708c7bb33 and is out of scope for the A1
+#     is on `main` at SHA 708c7bb33 and is out of scope for this
 #     mutation baseline. Without this scope override, every mutant on
 #     chio-weights would register as caught regardless of whether the
 #     mutation actually changed chio-weights behavior, producing a

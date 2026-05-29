@@ -1,4 +1,4 @@
-//! Integration test for Phase 1.3 WASM guard module signing.
+//! Integration test for WASM guard module signing.
 //!
 //! Covers:
 //!

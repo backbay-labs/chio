@@ -28,11 +28,14 @@ env:
 jobs:
   codegen-no-diff:
     name: codegen-no-diff (rust+python+ts+go)
-    # owner: M01
+    # owner: Chio maintainers
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
 
       - name: Assert Chio-owned schemas stay v1-only before release
         run: bash scripts/check-chio-owned-v1-only.sh
@@ -64,12 +67,9 @@ jobs:
       - name: Assert no drift in generated files
         run: |
           set -euo pipefail
-          # `cargo xtask codegen --lang <lang> --check` already exits non-zero
-          # on byte drift, so reaching this step means each lane saw the
-          # committed bytes match a fresh regeneration. We additionally run
           # `git diff --exit-code` over the four `_generated/` trees plus the
-          # checked-in Go file to catch any side-effect writes (for example,
-          # `npm ci` mutating package-lock.json).
+          # checked-in Go file catches side-effect writes that the per-lane
+          # `--check` does not (for example, `npm ci` mutating package-lock.json).
           git diff --exit-code \
             crates/chio-core-types/src/_generated \
             sdks/python/chio-sdk-python/src/chio_sdk/_generated \
@@ -79,12 +79,10 @@ jobs:
       - name: Assert no untracked files in generated trees
         run: |
           set -euo pipefail
-          # Defense in depth: `git diff --exit-code` only reports changes to
-          # tracked files. If a codegen lane accidentally creates a NEW file
-          # under any `_generated/` tree (or alongside the checked-in Go
-          # file), `git diff` will not flag it. Use `git ls-files --others
-          # --exclude-standard` to list untracked files; fail if any land in
-          # a path the codegen lanes write to.
+          # `git diff --exit-code` only reports changes to tracked files, so a
+          # NEW file a codegen lane creates under any `_generated/` tree (or
+          # alongside the checked-in Go file) would not be flagged. List
+          # untracked files and fail if any land in a path the lanes write to.
           untracked=$(git ls-files --others --exclude-standard -- \
             crates/chio-core-types/src/_generated \
             sdks/python/chio-sdk-python/src/chio_sdk/_generated \
@@ -98,7 +96,7 @@ jobs:
 
   header-stamp-untouched:
     name: header-stamp-untouched (do-not-edit grep gate)
-    # owner: M01
+    # owner: Chio maintainers
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -162,7 +160,7 @@ jobs:
 
   vectors-byte-stable:
     name: vectors-byte-stable (freeze-vectors --check)
-    # owner: M01
+    # owner: Chio maintainers
     # Re-runs `cargo xtask freeze-vectors --check` on every PR so a hand-edit
     # to a vector payload or MANIFEST.sha256 cannot land without a fresh
     # regeneration.
@@ -190,10 +188,8 @@ jobs:
       - name: Assert no drift in committed vectors or manifest
         run: |
           set -euo pipefail
-          # Defense in depth: if `freeze-vectors --check` passed but a side
-          # effect mutated tests/bindings/vectors/, fail the job rather than
-          # silently absorb the drift. The xtask is supposed to be idempotent
-          # under --check, so this should always be a no-op on green runs.
+          # Fail if a side effect mutated tests/bindings/vectors/ even though
+          # `freeze-vectors --check` passed.
           git diff --exit-code tests/bindings/vectors
 
       - name: Assert no untracked files in vectors tree
@@ -213,7 +209,7 @@ jobs:
 
   schema-coverage:
     name: schema-coverage (vectors_schema_pair)
-    # owner: M01
+    # owner: Chio maintainers
     # Runs the vectors_schema_pair test: asserts every wire schema in
     # spec/schemas/ has at least one paired vector under tests/bindings/vectors/,
     # and conversely that every vector references a known schema.
@@ -240,7 +236,7 @@ jobs:
 
   cross-lang-bytes:
     name: cross-lang-bytes (canonical_json_diff proptest)
-    # owner: M01
+    # owner: Chio maintainers
     # Runs the canonical_json_diff proptest, which property-checks the Rust
     # canonicalizer against RFC 8785 invariants (key ordering, string escapes,
     # number normalization). The Rust proptest is the gate until Python and
@@ -267,23 +263,3 @@ jobs:
         run: |
           cargo test -p chio-formal-diff-tests \
             --test canonical_json_diff
-        # Deferred SDK byte-equivalence invocations.
-        #
-        # Once sdks/python/chio-sdk-python and
-        # sdks/typescript/packages/conformance ship a canonicalize-byte-
-        # equivalence test (paired against the Rust canonicalizer over a
-        # shared corpus), add steps here. The expected shape is:
-        #
-        #   - name: Python canonicalize byte-equivalence
-        #     run: |
-        #       cd sdks/python/chio-sdk-python
-        #       uv run pytest tests/test_canonical_byte_equiv.py
-        #
-        #   - name: TypeScript canonicalize byte-equivalence
-        #     run: |
-        #       cd sdks/typescript/packages/conformance
-        #       npm ci && npm test -- canonical-byte-equiv
-        #
-        # Until those harnesses land, the Rust proptest is the
-        # cross-lang-bytes gate (see PROTOCOL.md
-        # "RFC 8785 canonicalization").

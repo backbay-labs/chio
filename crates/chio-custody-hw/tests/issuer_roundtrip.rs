@@ -2,8 +2,12 @@
 //!
 //! Drives the [`IssuerService::mint_capability`] entry point with a
 //! verified-assertion fixture and asserts that the resulting capability is
-//! audience-pinned, scope-pinned, lifetime-pinned, and unsigned (P1 stub).
+//! audience-pinned, scope-pinned, lifetime-pinned, and signed (the issuer
+//! never emits an unsigned capability).
 
+use std::sync::Arc;
+
+use chio_core_types::crypto::{Ed25519Backend, Keypair, SigningBackend};
 use chio_custody_hw::capability::{PasskeyCapability, ScopeSet, CAPABILITY_LIFETIME_SECONDS};
 use chio_custody_hw::error::CustodyError;
 use chio_custody_hw::issuer::{IssuerService, MintRequest};
@@ -17,6 +21,14 @@ fn fixed_now() -> chrono::DateTime<Utc> {
     }
 }
 
+fn signer() -> Arc<dyn SigningBackend> {
+    Arc::new(Ed25519Backend::new(Keypair::from_seed(&[29u8; 32])))
+}
+
+fn issuer(audience: &str) -> IssuerService {
+    IssuerService::with_signer(audience, signer())
+}
+
 fn fixture_assertion() -> VerifiedAssertion {
     VerifiedAssertion {
         credential_id_b64: "AAAA-credential-id".into(),
@@ -26,7 +38,7 @@ fn fixture_assertion() -> VerifiedAssertion {
 
 #[test]
 fn round_trip_mint_then_verify_audience_and_lifetime() {
-    let svc = IssuerService::new("urn:chio:audience:kernel");
+    let svc = issuer("urn:chio:audience:kernel");
     let req = MintRequest {
         audience: "urn:chio:audience:kernel".into(),
         scope_set: ScopeSet::new(["tool:read", "tool:write"]),
@@ -67,7 +79,7 @@ fn round_trip_mint_then_verify_audience_and_lifetime() {
 
 #[test]
 fn round_trip_canonical_json_survives_mint() {
-    let svc = IssuerService::new("urn:chio:audience:kernel");
+    let svc = issuer("urn:chio:audience:kernel");
     let req = MintRequest {
         audience: "urn:chio:audience:kernel".into(),
         scope_set: ScopeSet::new(["tool:read"]),
@@ -90,7 +102,7 @@ fn round_trip_canonical_json_survives_mint() {
 
 #[test]
 fn issuer_rejects_audience_mismatch_in_request() {
-    let svc = IssuerService::new("urn:chio:audience:kernel");
+    let svc = issuer("urn:chio:audience:kernel");
     let req = MintRequest {
         audience: "urn:chio:audience:other".into(),
         scope_set: ScopeSet::new(["tool:read"]),
@@ -106,8 +118,8 @@ fn issuer_rejects_audience_mismatch_in_request() {
 }
 
 #[test]
-fn p1_capability_has_empty_signature() {
-    let svc = IssuerService::new("urn:chio:audience:kernel");
+fn minted_capability_is_always_signed() {
+    let svc = issuer("urn:chio:audience:kernel");
     let req = MintRequest {
         audience: "urn:chio:audience:kernel".into(),
         scope_set: ScopeSet::new(["tool:read"]),
@@ -117,8 +129,8 @@ fn p1_capability_has_empty_signature() {
         Ok(r) => r,
         Err(e) => panic!("mint must succeed: {e}"),
     };
-    assert_eq!(
-        resp.capability.signature, "",
-        "P1 issuer is the unsigned-stub path; P2 wires HybridBackend"
+    assert!(
+        !resp.capability.signature.is_empty(),
+        "the issuer signs every capability; an unsigned capability is impossible"
     );
 }

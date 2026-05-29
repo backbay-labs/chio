@@ -1,8 +1,8 @@
 # Healthcare Pilot Topology
 
-This runbook pins the M01.P0 deployment topology for the healthcare
+This runbook pins the deployment topology for the healthcare
 design-partner pilot. It intentionally omits the partner identity and records
-only the trust-boundary shape that downstream M07 and M09 work consume.
+only the trust-boundary shape that downstream work consumes.
 
 ## Deployment Shape
 
@@ -84,7 +84,7 @@ The topology is fail-closed.
 
 Production cutover requires these checks:
 
-1. Contract memo and BAA chain sign-off recorded in the M01 audit doc.
+1. Contract memo and BAA chain sign-off recorded in the pilot audit doc.
 2. Sidecar and trust-control health checks pass in tenant staging.
 3. Synthetic allow and deny receipts persist locally.
 4. SOC export accepts a synthetic audit row.

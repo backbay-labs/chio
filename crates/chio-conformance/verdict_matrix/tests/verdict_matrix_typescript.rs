@@ -2,14 +2,16 @@
 #![forbid(clippy::expect_used)]
 
 //! Cross-SDK verdict-matrix driver registration test for the TypeScript
-//! framework wrappers (`@chio/ai-sdk-middleware`, `@chio/next`).
+//! framework wrappers (`@chio-protocol/ai-sdk-middleware`, `@chio-protocol/next`).
 //!
-//! The wrappers do not embed kernel evaluation; they delegate to the
-//! `typescript-node-http` transport-client driver. This test validates
-//! the manifest registration shape: the main matrix manifest enumerates
-//! both framework drivers, the typescript subdir manifest enumerates
-//! them with the same ids, and the driver TypeScript files exist with
-//! the expected exports.
+//! The wrappers do not embed kernel evaluation; they are wired transport
+//! clients that delegate to the `typescript-node-http` transport-client
+//! driver, which issues a real per-scenario evaluation against an
+//! operator-supplied Chio sidecar. This test validates the manifest
+//! registration shape: the main matrix manifest enumerates both framework
+//! drivers as `transport-client`, the typescript subdir manifest enumerates
+//! them with the same ids, and the driver TypeScript files exist with the
+//! expected exports.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -56,8 +58,9 @@ fn main_manifest_registers_both_framework_drivers() {
             );
         };
         assert_eq!(
-            driver.status, "prepared",
-            "framework driver `{id}` must ship as `prepared`; got `{}`",
+            driver.status, "transport-client",
+            "framework driver `{id}` is a wired transport client that gates \
+             on an operator-supplied sidecar; got `{}`",
             driver.status,
         );
         assert!(
@@ -130,6 +133,16 @@ fn driver_files_exist_and_export_a_driver_constant() {
         assert!(
             raw.contains("framework-wrapper"),
             "{} must declare its matrix role as a framework wrapper",
+            path.display()
+        );
+        assert!(
+            raw.contains("status: \"transport-client\""),
+            "{} must declare the wired transport-client status",
+            path.display()
+        );
+        assert!(
+            !raw.contains("prepared"),
+            "{} must not carry stale `prepared` registration language",
             path.display()
         );
     }

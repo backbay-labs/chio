@@ -39,23 +39,10 @@
 name: mutants
 
 on:
-  pull_request:
-    paths:
-      - "crates/chio-kernel-core/src/**"
-      - "crates/chio-policy/src/**"
-      - "crates/chio-guards/src/**"
-      - "crates/chio-credentials/src/**"
-      - "crates/chio-attest-verify/src/**"
-      - "crates/chio-anchor/src/**"
-      - "**/mutants.toml"
-      - ".github/workflows/mutants.yml"
-      - ".github/ISSUE_TEMPLATE/mutants_survivor.yml"
-      - "scripts/mutants-comment.sh"
-      - "scripts/mutants-autofile-issue.sh"
-      - "scripts/mutants-gate.sh"
-      - "scripts/check-mutants-rationale.sh"
-      - "docs/fuzzing/mutants.md"
-      - "releases.toml"
+  # Mutation testing is heavy (cargo-mutants rebuilds per mutant), so it runs
+  # nightly and on manual dispatch, not as a per-PR gate. The mutants-pr job
+  # below is still gated on `github.event_name == 'pull_request'`, so without a
+  # pull_request trigger it stays inert; only mutants-nightly runs on schedule.
   schedule:
     # 05:00 UTC nightly. Sits after fuzz.yml (03:23) and the existing
     # nightly proptest lane (04:23) so the GHA runner pool is not

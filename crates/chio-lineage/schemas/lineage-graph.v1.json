@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "chio.lineage.graph/v1",
   "title": "Chio lineage DAG (v1)",
-  "description": "M09 P5.T1 schema. Graph rows are projections over signed receipts, request lineage, capability lineage, and signed receipt-lineage statements. Evidence-class is mandatory per node and edge. Truncation marker is required on bounded query results that exceed the documented depth or row caps.",
+  "description": "Graph rows are projections over signed receipts, request lineage, capability lineage, and signed receipt-lineage statements. Evidence-class is mandatory per node and edge. Truncation marker is required on bounded query results that exceed the documented depth or row caps.",
   "type": "object",
   "required": ["schema_version", "nodes", "edges"],
   "additionalProperties": true,

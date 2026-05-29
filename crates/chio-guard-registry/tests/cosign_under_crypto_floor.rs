@@ -16,8 +16,7 @@ use std::path::Path;
 use std::time::SystemTime;
 
 use chio_guard_registry::{
-    expected_identity_from_config, AttestError, AttestVerifier, ExpectedIdentity,
-    GuardSigstoreVerifier, VerifiedAttestation,
+    AttestError, AttestVerifier, ExpectedIdentity, GuardSigstoreVerifier, VerifiedAttestation,
 };
 
 /// Mirror of the kernel-side `KernelCryptoFloor` enum, defined locally so
@@ -95,8 +94,7 @@ impl AttestVerifier for AlwaysOkBundleVerifier {
 }
 
 fn make_expected() -> ExpectedIdentity {
-    // doc-hidden return type
-    expected_identity_from_config(
+    ExpectedIdentity::doc_hidden_inline(
         "https://github.com/test/repo/.github/workflows/.*",
         "https://token.actions.githubusercontent.com",
     )

@@ -1,9 +1,10 @@
 //! Batch lift/lower support for Bedrock Runtime Converse tool blocks.
 //!
-//! The implementation stays offline and fixture-backed: it parses raw
-//! Converse JSON envelopes, lifts `toolUse` content blocks into the shared
-//! Chio fabric shape, and lowers verdicts back into Bedrock `toolResult`
-//! content blocks. Transport dispatch remains outside this module.
+//! This module parses Converse JSON response envelopes, lifts `toolUse`
+//! content blocks into the shared Chio fabric shape, and lowers verdicts back
+//! into Bedrock `toolResult` content blocks. The live Converse call that
+//! produces those envelopes is driven by [`crate::transport`]; `lift_batch`
+//! consumes whatever bytes the transport returns.
 
 #[path = "streaming.rs"]
 pub mod streaming;

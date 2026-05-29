@@ -1,5 +1,5 @@
 // Typed-enum surface tests for the urn:chio:error:custody:* codes
-// consumed by @chio/passkey.
+// consumed by @chio-protocol/passkey.
 //
 // The constant CHIO_CUSTODY_ERROR_CODES is the exhaustive set. The tests
 // here pin the contract:

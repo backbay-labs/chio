@@ -13,6 +13,5 @@ name = "chio_metrics_spec"
 
 [dependencies]
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

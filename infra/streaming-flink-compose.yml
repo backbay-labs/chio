@@ -15,9 +15,7 @@
 #
 # The Flink integration test (`test_flink_kafka_integration.py`) runs
 # PyFlink in-process via `LocalStreamEnvironment`, so no dockerised
-# JobManager / TaskManager is required. A real Flink cluster would also
-# force a Python version match between host and container, which is
-# brittle for CI; submitting jobs to a remote JM is out of scope here.
+# JobManager / TaskManager is required.
 
 name: chio-streaming-flink-it
 

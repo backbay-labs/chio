@@ -15,6 +15,50 @@ use std::collections::HashMap;
 /// Maximum allowed nesting depth for compound conditions.
 const MAX_NESTING_DEPTH: usize = 8;
 
+/// Rule-block names a condition may gate. Must stay in sync with the fields
+/// of `models::Rules` and the match arms in `apply_conditions`.
+/// `validate_condition_keys` rejects any condition key outside this set so a
+/// misspelled key cannot silently leave a rule active.
+pub const CONDITIONABLE_RULE_BLOCKS: [&str; 14] = [
+    "forbidden_paths",
+    "path_allowlist",
+    "egress",
+    "secret_patterns",
+    "patch_integrity",
+    "shell_commands",
+    "tool_access",
+    "computer_use",
+    "remote_desktop_channels",
+    "input_injection",
+    "browser_automation",
+    "code_execution",
+    "velocity",
+    "human_in_loop",
+];
+
+/// Reject condition maps whose keys are not known rule-block names. The
+/// reference evaluator calls this at the start of `evaluate_with_context`;
+/// callers that assemble condition maps elsewhere should also validate at load
+/// time, so a misspelled key fails closed instead of silently no-oping the rule
+/// it was meant to gate.
+///
+/// # Errors
+///
+/// Returns the offending key when a condition references a block name outside
+/// `CONDITIONABLE_RULE_BLOCKS`.
+pub fn validate_condition_keys(conditions: &HashMap<String, Condition>) -> Result<(), String> {
+    for block_name in conditions.keys() {
+        if !CONDITIONABLE_RULE_BLOCKS.contains(&block_name.as_str()) {
+            return Err(format!(
+                "condition key `{block_name}` is not a known rule-block name; \
+                 valid blocks: {}",
+                CONDITIONABLE_RULE_BLOCKS.join(", ")
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// A condition that gates whether a rule block is active.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -343,6 +387,28 @@ fn match_value(actual: &Option<serde_json::Value>, expected: &serde_json::Value)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn validate_condition_keys_rejects_unknown_block_name() {
+        let conditions = HashMap::from([("egres".to_string(), Condition::default())]); // typo
+        let err = validate_condition_keys(&conditions)
+            .expect_err("a misspelled condition key must be rejected");
+        assert!(
+            err.contains("`egres`"),
+            "error should name the offending key, got: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_condition_keys_accepts_every_known_block() {
+        for block in CONDITIONABLE_RULE_BLOCKS {
+            let conditions = HashMap::from([(block.to_string(), Condition::default())]);
+            assert!(
+                validate_condition_keys(&conditions).is_ok(),
+                "known block `{block}` must validate"
+            );
+        }
+    }
 
     fn context_at(current_time: &str) -> RuntimeContext {
         RuntimeContext {

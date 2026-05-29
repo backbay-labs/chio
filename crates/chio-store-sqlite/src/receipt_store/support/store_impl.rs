@@ -1,0 +1,605 @@
+use super::*;
+
+impl SqliteReceiptStore {
+    pub fn record_session_anchor_record(
+        &self,
+        session_id: &str,
+        anchor_id: &str,
+        auth_context_fingerprint: &str,
+        issued_at: u64,
+        supersedes_anchor_id: Option<&str>,
+        anchor_json: &serde_json::Value,
+    ) -> Result<(), ReceiptStoreError> {
+        let mut connection = self.connection()?;
+        let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        persist_session_anchor_tx(
+            &tx,
+            session_id,
+            anchor_id,
+            auth_context_fingerprint,
+            issued_at,
+            supersedes_anchor_id,
+            SESSION_ANCHOR_SOURCE_KIND,
+            anchor_json,
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn record_request_lineage_record(
+        &self,
+        session_id: &str,
+        request_id: &str,
+        parent_request_id: Option<&str>,
+        session_anchor_id: Option<&str>,
+        recorded_at: u64,
+        request_fingerprint: Option<&str>,
+        lineage_json: &serde_json::Value,
+    ) -> Result<(), ReceiptStoreError> {
+        let mut connection = self.connection()?;
+        let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        persist_request_lineage_tx(
+            &tx,
+            session_id,
+            request_id,
+            parent_request_id,
+            session_anchor_id,
+            recorded_at,
+            request_fingerprint,
+            REQUEST_LINEAGE_SOURCE_KIND,
+            lineage_json,
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn record_receipt_lineage_statement_record(
+        &self,
+        child_receipt_id: &str,
+        request_id: Option<&str>,
+        session_id: Option<&str>,
+        session_anchor_id: Option<&str>,
+        parent_request_id: Option<&str>,
+        parent_receipt_id: Option<&str>,
+        chain_id: Option<&str>,
+        recorded_at: u64,
+        statement_json: &serde_json::Value,
+    ) -> Result<(), ReceiptStoreError> {
+        let mut connection = self.connection()?;
+        let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        persist_receipt_lineage_statement_tx(
+            &tx,
+            child_receipt_id,
+            request_id,
+            session_id,
+            session_anchor_id,
+            parent_request_id,
+            parent_receipt_id,
+            chain_id,
+            recorded_at,
+            RECEIPT_LINEAGE_SOURCE_KIND,
+            statement_json,
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn list_receipt_lineage_statement_links(
+        &self,
+        receipt_id: &str,
+    ) -> Result<Vec<ReceiptLineageStatementLink>, ReceiptStoreError> {
+        let mut connection = self.connection()?;
+        let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        ensure_receipt_lineage_statement_for_receipt_id_tx(&tx, receipt_id)?;
+        refresh_receipt_lineage_rows_for_parent_receipt_tx(&tx, receipt_id)?;
+        let links = load_receipt_lineage_statement_links(&tx, receipt_id)?;
+        tx.commit()?;
+        Ok(links)
+    }
+
+    pub fn receipt_lineage_verification(
+        &self,
+        receipt_id: &str,
+    ) -> Result<Option<ReceiptLineageVerification>, ReceiptStoreError> {
+        let mut connection = self.connection()?;
+        let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        ensure_receipt_lineage_statement_for_receipt_id_tx(&tx, receipt_id)?;
+        let verification = load_receipt_lineage_verification(&tx, receipt_id)?;
+        tx.commit()?;
+        Ok(verification)
+    }
+
+    pub fn append_child_receipt_record(
+        &self,
+        receipt: &ChildRequestReceipt,
+    ) -> Result<u64, ReceiptStoreError> {
+        ensure_child_receipt_verified(receipt)?;
+        let raw_json = serde_json::to_string(receipt)?;
+        let mut connection = self.connection()?;
+        ensure_checkpoint_transparency_guards(&connection)?;
+        validate_claim_receipt_log_entries(&connection)?;
+        let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        verify_latest_checkpoint_integrity(&tx)?;
+        let inserted = tx.execute(
+            r#"
+            INSERT INTO chio_child_receipts (
+                receipt_id,
+                timestamp,
+                session_id,
+                parent_request_id,
+                request_id,
+                operation_kind,
+                terminal_state,
+                policy_hash,
+                outcome_hash,
+                raw_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(receipt_id) DO NOTHING
+            "#,
+            params![
+                receipt.id,
+                sqlite_i64(receipt.timestamp, "child receipt timestamp")?,
+                receipt.session_id.as_str(),
+                receipt.parent_request_id.as_str(),
+                receipt.request_id.as_str(),
+                receipt.operation_kind.as_str(),
+                terminal_state_kind(&receipt.terminal_state),
+                receipt.policy_hash,
+                receipt.outcome_hash,
+                &raw_json,
+            ],
+        )?;
+        if inserted == 0 {
+            let (existing_source_seq, existing_raw_json) = tx.query_row(
+                "SELECT seq, raw_json FROM chio_child_receipts WHERE receipt_id = ?1",
+                params![receipt.id.as_str()],
+                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+            )?;
+            if existing_raw_json != raw_json {
+                return Err(ReceiptStoreError::Conflict(format!(
+                    "child receipt `{}` already exists with different content",
+                    receipt.id
+                )));
+            }
+            let existing_source_seq =
+                sqlite_positive_u64(existing_source_seq, "child receipt source_seq")?;
+            let entry_seq =
+                claim_log_entry_seq_for_source_tx(&tx, "child_receipt", existing_source_seq)?;
+            tx.commit()?;
+            return Ok(entry_seq);
+        }
+        let source_seq = tx.query_row(
+            "SELECT seq FROM chio_child_receipts WHERE receipt_id = ?1",
+            params![receipt.id.as_str()],
+            |row| row.get::<_, i64>(0),
+        )?;
+        let source_seq = sqlite_positive_u64(source_seq, "child receipt source_seq")?;
+        let entry_seq = claim_log_entry_seq_for_source_tx(&tx, "child_receipt", source_seq)?;
+        persist_request_lineage_tx(
+            &tx,
+            receipt.session_id.as_str(),
+            receipt.request_id.as_str(),
+            Some(receipt.parent_request_id.as_str()),
+            None,
+            receipt.timestamp,
+            None,
+            CHILD_RECEIPT_BACKFILL_SOURCE_KIND,
+            &serde_json::from_str::<serde_json::Value>(&raw_json)?,
+        )?;
+        tx.commit()?;
+        Ok(entry_seq)
+    }
+}
+
+impl ReceiptStore for SqliteReceiptStore {
+    fn append_chio_receipt(&self, receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
+        self.append_chio_receipt_returning_seq(receipt).map(|_| ())
+    }
+
+    fn load_chio_receipt(
+        &self,
+        receipt_id: &str,
+    ) -> Result<Option<ChioReceipt>, ReceiptStoreError> {
+        let connection = self.connection()?;
+        ensure_checkpoint_transparency_guards(&connection)?;
+        verify_latest_checkpoint_integrity(&connection)?;
+        connection
+            .query_row(
+                "SELECT seq, raw_json FROM chio_tool_receipts WHERE receipt_id = ?1",
+                params![receipt_id],
+                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+            )
+            .optional()?
+            .map(|(seq, raw_json)| {
+                decode_verified_chio_receipt(
+                    &raw_json,
+                    "persisted tool receipt",
+                    Some(seq.max(0) as u64),
+                )
+            })
+            .transpose()
+    }
+
+    fn append_chio_receipt_canonical(
+        &self,
+        _receipt: &ChioReceipt,
+        canonical: &CanonicalBytes,
+    ) -> Result<(), ReceiptStoreError> {
+        let decoded = decode_canonical_chio_receipt(canonical)?;
+        let connection = self.connection()?;
+        ensure_checkpoint_transparency_guards(&connection)?;
+        verify_latest_checkpoint_integrity(&connection)?;
+        let raw_json = canonical_receipt_json(canonical)?;
+        self.append_verified_chio_receipt_record(&decoded, raw_json)?;
+        let mut connection = self.connection()?;
+        let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        ensure_receipt_lineage_statement_for_receipt_id_tx(&tx, &decoded.id)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    fn append_chio_receipt_returning_seq(
+        &self,
+        receipt: &ChioReceipt,
+    ) -> Result<Option<u64>, ReceiptStoreError> {
+        let connection = self.connection()?;
+        ensure_checkpoint_transparency_guards(&connection)?;
+        verify_latest_checkpoint_integrity(&connection)?;
+        let seq = SqliteReceiptStore::append_chio_receipt_returning_seq(self, receipt)?;
+        let mut connection = self.connection()?;
+        let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        ensure_receipt_lineage_statement_for_receipt_id_tx(&tx, &receipt.id)?;
+        tx.commit()?;
+        Ok(Some(seq))
+    }
+
+    fn append_chio_receipt_consuming_authorization(
+        &self,
+        receipt: &ChioReceipt,
+        consumption: &AuthorizationReceiptConsumption,
+    ) -> Result<(), ReceiptStoreError> {
+        SqliteReceiptStore::append_chio_receipt_consuming_authorization(self, receipt, consumption)
+    }
+
+    fn receipts_canonical_bytes_range(
+        &self,
+        start_seq: u64,
+        end_seq: u64,
+    ) -> Result<Vec<(u64, Vec<u8>)>, ReceiptStoreError> {
+        SqliteReceiptStore::receipts_canonical_bytes_range(self, start_seq, end_seq)
+    }
+
+    fn flush_receipt_writes(&self) -> Result<ReceiptFlushReport, ReceiptStoreError> {
+        SqliteReceiptStore::flush_receipt_writes(self)
+    }
+
+    fn flush_receipt_writes_with_timeout(
+        &self,
+        timeout: std::time::Duration,
+    ) -> Result<ReceiptFlushReport, ReceiptStoreError> {
+        SqliteReceiptStore::flush_receipt_writes_with_timeout(self, timeout)
+    }
+
+    fn receipt_store_health(&self) -> Result<ReceiptStoreHealthReport, ReceiptStoreError> {
+        SqliteReceiptStore::receipt_store_health(self)
+    }
+
+    fn latest_committed_entry_seq(&self) -> Result<u64, ReceiptStoreError> {
+        SqliteReceiptStore::latest_committed_entry_seq(self)
+    }
+
+    fn latest_checkpointed_entry_seq(&self) -> Result<u64, ReceiptStoreError> {
+        SqliteReceiptStore::latest_checkpointed_entry_seq(self)
+    }
+
+    fn next_checkpoint_range(
+        &self,
+        max_batch: u64,
+    ) -> Result<Option<ReceiptCheckpointRange>, ReceiptStoreError> {
+        SqliteReceiptStore::next_checkpoint_range(self, max_batch)
+    }
+
+    fn receipt_checkpoint_status(
+        &self,
+        max_batch: Option<u64>,
+    ) -> Result<ReceiptCheckpointStatusReport, ReceiptStoreError> {
+        SqliteReceiptStore::receipt_checkpoint_status(self, max_batch)
+    }
+
+    fn store_checkpoint(&self, checkpoint: &KernelCheckpoint) -> Result<(), ReceiptStoreError> {
+        let mut connection = self.connection()?;
+        store_kernel_checkpoint_atomic(&mut connection, checkpoint)
+    }
+
+    fn create_next_receipt_checkpoint(
+        &self,
+        max_batch: u64,
+        keypair: &Keypair,
+    ) -> Result<ReceiptCheckpointCreateReport, ReceiptStoreError> {
+        SqliteReceiptStore::create_next_receipt_checkpoint(self, max_batch, keypair)
+    }
+
+    fn load_checkpoint_by_seq(
+        &self,
+        checkpoint_seq: u64,
+    ) -> Result<Option<KernelCheckpoint>, ReceiptStoreError> {
+        SqliteReceiptStore::load_checkpoint_by_seq(self, checkpoint_seq)
+    }
+
+    fn load_latest_checkpoint(&self) -> Result<Option<KernelCheckpoint>, ReceiptStoreError> {
+        let connection = self.connection()?;
+        ensure_checkpoint_transparency_guards(&connection)?;
+        verify_checkpoint_chain_integrity(&connection)?;
+        load_latest_persisted_checkpoint_row(&connection)?
+            .map(parse_persisted_checkpoint_row)
+            .transpose()
+    }
+
+    fn supports_kernel_signed_checkpoints(&self) -> bool {
+        true
+    }
+
+    fn record_capability_snapshot(
+        &self,
+        token: &CapabilityToken,
+        parent_capability_id: Option<&str>,
+    ) -> Result<(), ReceiptStoreError> {
+        SqliteReceiptStore::record_capability_snapshot(self, token, parent_capability_id).map_err(
+            |error| match error {
+                chio_kernel::CapabilityLineageError::ReceiptStore(error) => error,
+                chio_kernel::CapabilityLineageError::Sqlite(error) => {
+                    ReceiptStoreError::Sqlite(error)
+                }
+                chio_kernel::CapabilityLineageError::Json(error) => ReceiptStoreError::Json(error),
+            },
+        )
+    }
+
+    fn get_capability_snapshot(
+        &self,
+        capability_id: &str,
+    ) -> Result<Option<chio_kernel::CapabilitySnapshot>, ReceiptStoreError> {
+        SqliteReceiptStore::get_lineage(self, capability_id).map_err(|error| match error {
+            chio_kernel::CapabilityLineageError::ReceiptStore(error) => error,
+            chio_kernel::CapabilityLineageError::Sqlite(error) => ReceiptStoreError::Sqlite(error),
+            chio_kernel::CapabilityLineageError::Json(error) => ReceiptStoreError::Json(error),
+        })
+    }
+
+    fn get_capability_delegation_chain(
+        &self,
+        capability_id: &str,
+    ) -> Result<Vec<chio_kernel::CapabilitySnapshot>, ReceiptStoreError> {
+        SqliteReceiptStore::get_delegation_chain(self, capability_id).map_err(|error| match error {
+            chio_kernel::CapabilityLineageError::ReceiptStore(error) => error,
+            chio_kernel::CapabilityLineageError::Sqlite(error) => ReceiptStoreError::Sqlite(error),
+            chio_kernel::CapabilityLineageError::Json(error) => ReceiptStoreError::Json(error),
+        })
+    }
+
+    fn record_session_anchor(
+        &self,
+        session_id: &str,
+        anchor_id: &str,
+        auth_context_fingerprint: &str,
+        issued_at: u64,
+        supersedes_anchor_id: Option<&str>,
+        anchor_json: &serde_json::Value,
+    ) -> Result<(), ReceiptStoreError> {
+        self.record_session_anchor_record(
+            session_id,
+            anchor_id,
+            auth_context_fingerprint,
+            issued_at,
+            supersedes_anchor_id,
+            anchor_json,
+        )
+    }
+
+    fn record_request_lineage(
+        &self,
+        session_id: &str,
+        request_id: &str,
+        parent_request_id: Option<&str>,
+        session_anchor_id: Option<&str>,
+        recorded_at: u64,
+        request_fingerprint: Option<&str>,
+        lineage_json: &serde_json::Value,
+    ) -> Result<(), ReceiptStoreError> {
+        self.record_request_lineage_record(
+            session_id,
+            request_id,
+            parent_request_id,
+            session_anchor_id,
+            recorded_at,
+            request_fingerprint,
+            lineage_json,
+        )
+    }
+
+    fn record_receipt_lineage_statement(
+        &self,
+        child_receipt_id: &str,
+        request_id: Option<&str>,
+        session_id: Option<&str>,
+        session_anchor_id: Option<&str>,
+        parent_request_id: Option<&str>,
+        parent_receipt_id: Option<&str>,
+        chain_id: Option<&str>,
+        recorded_at: u64,
+        statement_json: &serde_json::Value,
+    ) -> Result<(), ReceiptStoreError> {
+        self.record_receipt_lineage_statement_record(
+            child_receipt_id,
+            request_id,
+            session_id,
+            session_anchor_id,
+            parent_request_id,
+            parent_receipt_id,
+            chain_id,
+            recorded_at,
+            statement_json,
+        )
+    }
+
+    fn get_receipt_lineage_verification(
+        &self,
+        receipt_id: &str,
+    ) -> Result<Option<ReceiptLineageVerification>, ReceiptStoreError> {
+        self.receipt_lineage_verification(receipt_id)
+    }
+
+    fn list_receipt_lineage_statement_links(
+        &self,
+        receipt_id: &str,
+    ) -> Result<Vec<ReceiptLineageStatementLink>, ReceiptStoreError> {
+        SqliteReceiptStore::list_receipt_lineage_statement_links(self, receipt_id)
+    }
+
+    fn as_any_mut(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    fn resolve_credit_bond(
+        &self,
+        bond_id: &str,
+    ) -> Result<Option<CreditBondRow>, ReceiptStoreError> {
+        self.query_credit_bonds(&CreditBondListQuery {
+            bond_id: Some(bond_id.to_string()),
+            facility_id: None,
+            capability_id: None,
+            agent_subject: None,
+            tool_server: None,
+            tool_name: None,
+            disposition: None,
+            lifecycle_state: None,
+            limit: Some(1),
+        })
+        .map(|report| report.bonds.into_iter().next())
+    }
+
+    fn append_child_receipt(&self, receipt: &ChildRequestReceipt) -> Result<(), ReceiptStoreError> {
+        let connection = self.connection()?;
+        ensure_checkpoint_transparency_guards(&connection)?;
+        verify_latest_checkpoint_integrity(&connection)?;
+        SqliteReceiptStore::append_child_receipt_record(self, receipt).map(|_| ())
+    }
+
+    fn append_child_receipt_returning_seq(
+        &self,
+        receipt: &ChildRequestReceipt,
+    ) -> Result<Option<u64>, ReceiptStoreError> {
+        let connection = self.connection()?;
+        ensure_checkpoint_transparency_guards(&connection)?;
+        verify_latest_checkpoint_integrity(&connection)?;
+        SqliteReceiptStore::append_child_receipt_record(self, receipt).map(Some)
+    }
+}
+
+impl SqliteReceiptStore {
+    pub fn record_checkpoint_publication_trust_anchor_binding(
+        &mut self,
+        checkpoint_seq: u64,
+        binding: &chio_core::receipt::CheckpointPublicationTrustAnchorBinding,
+    ) -> Result<(), ReceiptStoreError> {
+        binding
+            .validate()
+            .map_err(|error| ReceiptStoreError::Conflict(error.to_string()))?;
+        let checkpoint = self
+            .load_checkpoint_by_seq(checkpoint_seq)?
+            .ok_or_else(|| {
+                ReceiptStoreError::NotFound(format!(
+                    "checkpoint {} does not exist for publication binding",
+                    checkpoint_seq
+                ))
+            })?;
+        let publication = chio_kernel::checkpoint::build_trust_anchored_checkpoint_publication(
+            &checkpoint,
+            binding.clone(),
+        )
+        .map_err(checkpoint_error_to_receipt_store)?;
+        let normalized_binding = publication.trust_anchor_binding.ok_or_else(|| {
+            ReceiptStoreError::Conflict(format!(
+                "checkpoint {} trust-anchor binding was not preserved during validation",
+                checkpoint_seq
+            ))
+        })?;
+
+        let connection = self.connection()?;
+        ensure_checkpoint_transparency_guards(&connection)?;
+        ensure_transparency_projection_guards(&connection)?;
+
+        let existing = connection
+            .query_row(
+                r#"
+                SELECT binding_json
+                FROM checkpoint_publication_trust_anchor_bindings
+                WHERE checkpoint_seq = ?1
+                "#,
+                params![sqlite_i64(checkpoint_seq, "checkpoint_seq")?],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        match existing {
+            Some(binding_json) => {
+                let existing_binding: chio_core::receipt::CheckpointPublicationTrustAnchorBinding =
+                    serde_json::from_str(&binding_json)?;
+                if existing_binding == normalized_binding {
+                    return Ok(());
+                }
+                Err(ReceiptStoreError::Conflict(format!(
+                    "checkpoint {} already has a different trust-anchor publication binding",
+                    checkpoint_seq
+                )))
+            }
+            None => {
+                connection.execute(
+                    r#"
+                    INSERT INTO checkpoint_publication_trust_anchor_bindings (
+                        checkpoint_seq,
+                        binding_json
+                    ) VALUES (?1, ?2)
+                    "#,
+                    params![
+                        sqlite_i64(checkpoint_seq, "checkpoint_seq")?,
+                        serde_json::to_string(&normalized_binding)?,
+                    ],
+                )?;
+                Ok(())
+            }
+        }
+    }
+}
+
+pub(crate) fn decision_kind(decision: Option<&Decision>) -> &'static str {
+    match decision {
+        Some(Decision::Allow) => "allow",
+        Some(Decision::Deny { .. }) => "deny",
+        Some(Decision::Cancelled { .. }) => "cancelled",
+        Some(Decision::Incomplete { .. }) => "incomplete",
+        None => "none",
+    }
+}
+
+pub(crate) fn receipt_decision_kind(receipt: &ChioReceipt) -> &'static str {
+    let semantics = receipt.semantic_fields();
+    if !semantics.is_authorized(receipt.decision.as_ref())
+        && matches!(&receipt.decision, Some(Decision::Allow))
+    {
+        return semantics.receipt_kind.as_str();
+    }
+    match receipt.decision.as_ref() {
+        Some(decision) => decision_kind(Some(decision)),
+        None => semantics.receipt_kind.as_str(),
+    }
+}
+
+pub(crate) fn terminal_state_kind(state: &OperationTerminalState) -> &'static str {
+    match state {
+        OperationTerminalState::Completed => "completed",
+        OperationTerminalState::Cancelled { .. } => "cancelled",
+        OperationTerminalState::Incomplete { .. } => "incomplete",
+    }
+}

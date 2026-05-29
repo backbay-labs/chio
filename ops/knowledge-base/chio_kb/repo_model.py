@@ -17,13 +17,11 @@ SOURCE_ROOTS = (
     "docs",
     "spec",
     "examples",
-    "packages",
     "sdks",
     "integrations",
     "tests",
     "formal",
     "bench",
-    ".planning",
 )
 
 INCLUDED_PATTERNS = [
@@ -49,20 +47,6 @@ INCLUDED_PATTERNS = [
     "examples/**/*.yml",
     "examples/**/*.toml",
     "examples/**/*.md",
-    "packages/**/*.rs",
-    "packages/**/*.py",
-    "packages/**/*.ts",
-    "packages/**/*.tsx",
-    "packages/**/*.js",
-    "packages/**/*.json",
-    "packages/**/*.yaml",
-    "packages/**/*.yml",
-    "packages/**/*.toml",
-    "packages/**/*.md",
-    "packages/**/*.cpp",
-    "packages/**/*.hpp",
-    "packages/**/*.h",
-    "packages/**/*.cc",
     "sdks/**/*.rs",
     "sdks/**/*.py",
     "sdks/**/*.ts",
@@ -99,10 +83,6 @@ INCLUDED_PATTERNS = [
     "bench/**/*.rs",
     "bench/**/*.toml",
     "bench/**/*.md",
-    ".planning/**/*.md",
-    ".planning/**/*.json",
-    ".planning/**/*.yaml",
-    ".planning/**/*.yml",
 ]
 
 EXCLUDED_PATTERNS = [
@@ -122,8 +102,6 @@ EXCLUDED_PATTERNS = [
     "examples/**/.artifacts/**",
     "examples/**/artifacts/live/**",
     "output/playwright/**",
-    ".planning/**/EXECUTION-LOG*.ndjson",
-    ".planning/**/raw/**",
     ".env",
     ".env.*",
 ]
@@ -442,8 +420,6 @@ def kind_for_path(path: str) -> str:
         if len(parts) > 1 and parts[1] == "standards":
             return "standard"
         return "doc"
-    if parts and parts[0] == ".planning":
-        return "plan"
     if suffix in DOC_SUFFIXES:
         return "doc"
     if suffix in CONFIG_SUFFIXES:
@@ -464,8 +440,6 @@ def crate_for_path(path: str) -> str:
 
 def package_for_path(path: str) -> str:
     parts = pathlib.PurePath(path).parts
-    if len(parts) >= 3 and parts[0] == "packages":
-        return "/".join(parts[:3])
     if len(parts) >= 2 and parts[0] == "sdks":
         return "/".join(parts[:2])
     return ""
@@ -482,8 +456,6 @@ def nearest_manifest_for_path(path: str) -> str:
         return f"tests/{parts[1]}/Cargo.toml"
     if len(parts) >= 2 and parts[0] in {"examples", "bench", "integrations", "formal"}:
         return f"{parts[0]}/{parts[1]}/Cargo.toml"
-    if len(parts) >= 3 and parts[0] == "packages":
-        return f"{parts[0]}/{parts[1]}/{parts[2]}/package.json"
     if len(parts) >= 2 and parts[0] == "sdks":
         return f"{parts[0]}/{parts[1]}"
     return ""
@@ -512,8 +484,6 @@ def canonicality_for_path(path: str) -> str:
         return "canonical"
     if len(parts) >= 3 and parts[0] == "crates" and parts[-1].lower() == "readme.md":
         return "canonical"
-    if parts and parts[0] == ".planning":
-        return "planning"
     if norm.startswith("docs/research/") or norm.startswith("docs/review/"):
         return "planning"
     if kind_for_path(norm) == "test":
@@ -531,9 +501,9 @@ def validation_command_for_path(path: str) -> str:
         return f"cargo test --manifest-path tests/{parts[1]}/Cargo.toml"
     if norm.startswith("spec/") or norm.startswith("docs/conformance/"):
         return "cargo test -p chio-conformance"
-    if norm.startswith("docs/") or norm.startswith(".planning/"):
+    if norm.startswith("docs/"):
         return "make kb-eval"
-    if norm.startswith("sdks/typescript/") or norm.startswith("packages/"):
+    if norm.startswith("sdks/typescript/"):
         return "npm test"
     if norm.startswith("sdks/python/"):
         return "pytest"
@@ -580,7 +550,7 @@ def should_llm_extract(path: str) -> bool:
     parts = pure.parts
     if pure.name.lower() == "readme.md" and parts and parts[0] == "crates":
         return True
-    return bool(parts and parts[0] in {"docs", "spec", ".planning"} and pure.suffix.lower() in DOC_SUFFIXES)
+    return bool(parts and parts[0] in {"docs", "spec"} and pure.suffix.lower() in DOC_SUFFIXES)
 
 
 def load_cargo_manifest(text: str) -> dict[str, Any]:

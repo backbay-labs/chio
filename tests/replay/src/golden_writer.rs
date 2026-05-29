@@ -1,11 +1,11 @@
-//! Golden writer for the M04 deterministic-replay gate.
+//! Golden writer for the deterministic-replay gate.
 //!
 //! Each replay-gate scenario produces three on-disk artifacts under
 //! `tests/replay/goldens/<family>/<name>/`:
 //!
 //! - `receipts.ndjson`: one canonical-JSON object per line, newline
 //!   (`0x0a`) terminated, including the final line. NDJSON keeps the
-//!   M10 tee streams byte-compatible with the goldens.
+//!   tee streams byte-compatible with the goldens.
 //! - `checkpoint.json`: a single canonical-JSON object describing the
 //!   scenario's anchor checkpoint. No leading or trailing whitespace.
 //! - `root.hex`: the 32-byte Merkle root encoded as exactly 64
@@ -33,9 +33,9 @@
 //! files on any failure to keep the partial state inspectable but
 //! never mistakable for a successful bless.
 //!
-//! T3 lands the writer only. T4 will add the byte-comparison reader
-//! that consumes these files as raw `Vec<u8>` (no serde round-trip),
-//! and T5/T6 wire the writer into actual fixture execution.
+//! The byte-comparison reader in [`crate::golden_reader`] consumes
+//! these files as raw `Vec<u8>` (no serde round-trip) so the
+//! byte-level drift this writer locks down stays observable.
 
 use std::fs;
 use std::io;
@@ -376,7 +376,7 @@ mod tests {
     //! directly and exercise the on-disk write/commit dance through a
     //! temporary directory. The byte-stable invariants asserted here
     //! (key order, NDJSON terminator, root.hex shape) are exactly the
-    //! invariants the M04 replay gate diffs against, so a regression
+    //! invariants the replay gate diffs against, so a regression
     //! in any one of them surfaces here before the gate ever runs.
     #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -396,8 +396,7 @@ mod tests {
         fs::read_to_string(path).expect("read of just-committed goldens must succeed")
     }
 
-    // The previous revision of this module hand-rolled a BTreeMap
-    // canonicaliser; the writer now delegates to the workspace-wide
+    // The writer delegates canonicalization to the workspace-wide
     // `chio_core_types::canonical::canonicalize` (RFC 8785 / JCS) via
     // `crate::golden_format::canonical_json_bytes`. The tests below
     // assert the byte-level invariants the writer relies on (sorted

@@ -1,0 +1,101 @@
+name: Chio Runtime
+
+# Consolidated runtime gate family. Each matrix leg runs one per-capability
+# script under scripts/check-chio-runtime-*.sh.
+#
+# The GitHub branch ruleset must require the matrix-leg check contexts (e.g.
+# "Chio Runtime / runtime (spine)"), not a single top-level workflow check.
+#
+# Path-scoping trade-off: a single matrix workflow has one `on:` block and
+# cannot express per-matrix-entry path filters, so the union `on.paths` below
+# over-triggers - a change matching any one leg's paths runs all five legs,
+# some redundantly. The pheromone workflows stay separate to avoid exactly this
+# (see .github/workflows/README.md "Why not one matrix workflow"); the runtime
+# family tolerates the redundant legs, which are cheap and fail-fast.
+
+on:
+  pull_request:
+    paths:
+      - "crates/chio-attest-buyer/**"
+      - "crates/chio-attest-buyer-core/**"
+      - "crates/chio-attest-loopback/**"
+      - "crates/chio-runtime-core/**"
+      - "crates/chio-runtime-harness/**"
+      - "crates/chio-cli/**"
+      - "crates/chio-federation/**"
+      - "crates/chio-kernel/**"
+      - "crates/chio-runtime/**"
+      - "crates/chio-spec-validate/**"
+      - "examples/chio-3vendor/**"
+      - "spec/schemas/chio-attest/**"
+      - "spec/schemas/chio-federation/**"
+      - "spec/schemas/chio-runtime/**"
+      - "spec/schemas/registry.json"
+      - "spec/schemas/MANIFEST.sha256"
+      - "scripts/check-chio-runtime-ops-hardening.sh"
+      - "scripts/check-chio-runtime-orchestration.sh"
+      - "scripts/check-chio-runtime-policy.sh"
+      - "scripts/check-chio-runtime-proof-parity.sh"
+      - "scripts/check-chio-runtime-spine.sh"
+      - "scripts/check-chio-runtime-spine-fixtures.sh"
+      - "scripts/check-chio-treaty-buyer-hero-loop.sh"
+      - ".github/workflows/chio-runtime.yml"
+  push:
+    branches: [main]
+    paths:
+      - "crates/chio-attest-buyer/**"
+      - "crates/chio-attest-buyer-core/**"
+      - "crates/chio-attest-loopback/**"
+      - "crates/chio-runtime-core/**"
+      - "crates/chio-runtime-harness/**"
+      - "crates/chio-cli/**"
+      - "crates/chio-federation/**"
+      - "crates/chio-kernel/**"
+      - "crates/chio-runtime/**"
+      - "crates/chio-spec-validate/**"
+      - "examples/chio-3vendor/**"
+      - "spec/schemas/chio-attest/**"
+      - "spec/schemas/chio-federation/**"
+      - "spec/schemas/chio-runtime/**"
+      - "spec/schemas/registry.json"
+      - "spec/schemas/MANIFEST.sha256"
+      - "scripts/check-chio-runtime-ops-hardening.sh"
+      - "scripts/check-chio-runtime-orchestration.sh"
+      - "scripts/check-chio-runtime-policy.sh"
+      - "scripts/check-chio-runtime-proof-parity.sh"
+      - "scripts/check-chio-runtime-spine.sh"
+      - "scripts/check-chio-runtime-spine-fixtures.sh"
+      - "scripts/check-chio-treaty-buyer-hero-loop.sh"
+      - ".github/workflows/chio-runtime.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chio-runtime-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  runtime:
+    name: runtime (${{ matrix.capability }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        capability:
+          - ops-hardening
+          - orchestration
+          - policy
+          - proof-parity
+          - spine
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+      - name: Run Chio runtime ${{ matrix.capability }} gate
+        run: bash scripts/check-chio-runtime-${{ matrix.capability }}.sh

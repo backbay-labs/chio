@@ -5,7 +5,7 @@ npx create-chio-app next-ai-sdk-receipts
 ```
 
 Next.js (App Router) + Vercel AI SDK + Chio receipts viewer template. The
-chat Route Handler is wrapped with `withChio` from `@chio/next`. The
+chat Route Handler is wrapped with `withChio` from `@chio-protocol/next`. The
 receipts viewer reads from a local in-memory sink only; no outbound
 network calls run during the first-run TTFRH bench.
 
@@ -15,7 +15,7 @@ network calls run during the first-run TTFRH bench.
 |----------------------------|---------------------------------------------------|
 | `app/layout.tsx`           | App Router root layout                            |
 | `app/page.tsx`             | Home with a link into the receipts viewer         |
-| `app/api/chat/route.ts`    | Edge Route Handler wrapped with `@chio/next`      |
+| `app/api/chat/route.ts`    | Edge Route Handler wrapped with `@chio-protocol/next` |
 | `app/receipts/page.tsx`    | Local-only receipts viewer reading the in-memory sink |
 | `lib/local-sink.ts`        | Telemetry-free in-memory ChioReceiptSink          |
 | `lib/evaluator.ts`         | Static allow evaluator that records receipts      |

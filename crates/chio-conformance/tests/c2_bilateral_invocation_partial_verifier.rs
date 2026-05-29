@@ -193,7 +193,7 @@ fn run_invocation_with(
     };
     // Strict-default regression coverage: positive helpers must run under
     // the strict fail-closed default `Reject` so they actually prove
-    // the new default. Tests that don't pass a custom class for `TOOL`
+    // that default. Tests that don't pass a custom class for `TOOL`
     // get a `Routine` registration here so the assertion still proves
     // the *non-step-15* code path; tests that exercise step 15 (the
     // `step_15_*` cases) pass their own `ReceiptBacked` mapping which
@@ -898,48 +898,4 @@ fn step_16_totally_ordered_with_bare_anchor_still_fails_without_reconciliation()
         err,
         "consistency_model \"totally-ordered\" is not supported",
     );
-}
-
-// ---------------------------------------------------------------------------
-// Strict-default regression coverage: legacy DefaultRoutine fallback regression.
-// All other positive tests in this file run under the strict `Reject`
-// default. This test (and only this test) explicitly opts into the
-// legacy `DefaultRoutine` behavior so the legacy bootstrap path is
-// still covered by the conformance suite. If the legacy variant is
-// ever removed, this test should be deleted with it.
-// ---------------------------------------------------------------------------
-
-#[test]
-fn bilateral_verifier_legacy_default_routine_fallback() {
-    let setup = setup();
-    // No `action_classes` registration for `TOOL`; the request must
-    // still pass because legacy `DefaultRoutine` silently treats the
-    // unknown tool as `Routine` (no governance receipt required).
-    let request = LocalBilateralInvocationFixtureRequest {
-        origin_kernel_id: ORG_A,
-        origin_keypair: &setup.kp_a,
-        tool_host_kernel_id: ORG_B,
-        tool_host_keypair: &setup.kp_b,
-        receipt: setup.receipt.clone(),
-        tool_name: TOOL,
-        timestamp_unix_ms: now_ms(),
-        predicate_extensions: happy_extensions(),
-        cosigner: &setup.cosigner as &dyn BilateralCoSigningProtocol,
-    };
-    let config = VerifierConfig {
-        peer_pin_set: &setup.peer_pin_set,
-        receipt_store: &setup.receipt_store,
-        lease_registry: &setup.lease_registry,
-        governance_receipt_store: &setup.governance_store,
-        revocation_oracle: &setup.revocation_oracle,
-        pinned_epoch: PinnedEpoch {
-            now_unix_ms: now_ms(),
-            epoch_height: 0,
-        },
-        action_classes: BTreeMap::new(),
-        unknown_action_class_policy: chio_federation::UnknownActionClassPolicy::DefaultRoutine,
-    };
-    let outcome = execute_local_bilateral_invocation_fixture(request, &config)
-        .unwrap_or_else(|e| panic!("legacy DefaultRoutine fallback path failed: {e:?}"));
-    assert_eq!(outcome.verified.joint_verdict, "allow");
 }

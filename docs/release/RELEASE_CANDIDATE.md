@@ -153,8 +153,8 @@ kernel/browser/mobile qualification lanes.
   trust-control health and registry surfaces
 - portable trust ships as `did:chio`, Chio-primary passport and verifier-policy
   schemas, challenge/response presentation, evidence export/import, and
-  parent-bound federated delegation continuation, with legacy pre-Chio schemas rejected
-  artifacts still accepted
+  parent-bound federated delegation continuation, with legacy pre-Chio
+  artifacts still accepted for verification
 - Chio now ships one qualified portable credential family over
   OID4VCI-compatible issuer metadata, with a native `AgentPassport` response,
   projected `application/dc+sd-jwt` and `jwt_vc_json` responses, portable
@@ -416,9 +416,9 @@ kernel/browser/mobile qualification lanes.
 | default streamed tool total-byte limit | `256 MiB` | `crates/chio-kernel/src/lib.rs` |
 | default MCP page size | `50` | `crates/chio-mcp-adapter/src/edge.rs` |
 | background-task progression per edge tick | `8 tasks` | `crates/chio-mcp-adapter/src/edge.rs`, `crates/chio-mcp-adapter/src/transport.rs` |
-| remote session idle expiry | `15 min` | `crates/chio-cli/src/remote_mcp.rs` |
-| remote session drain grace | `5 s` | `crates/chio-cli/src/remote_mcp.rs` |
-| remote session tombstone retention | `30 min` | `crates/chio-cli/src/remote_mcp.rs` |
+| remote session idle expiry | `15 min` | `crates/chio-mcp-remote/src/remote_mcp/` |
+| remote session drain grace | `5 s` | `crates/chio-mcp-remote/src/remote_mcp/` |
+| remote session tombstone retention | `30 min` | `crates/chio-mcp-remote/src/remote_mcp/` |
 
 Release qualification depends on those defaults being covered by tests and on
 stricter user-provided values continuing to fail closed.
@@ -487,9 +487,9 @@ The current Chio candidate does not claim:
   anchor, while the bounded public identity profile may also name `did:web`,
   `did:key`, and `did:jwk` as compatibility inputs
 - portable trust and cross-org workflows start from
-  [AGENT_PASSPORT_GUIDE.md](../AGENT_PASSPORT_GUIDE.md) and
-  [IDENTITY_FEDERATION_GUIDE.md](../IDENTITY_FEDERATION_GUIDE.md)
-- A2A integrations start from [A2A_ADAPTER_GUIDE.md](../A2A_ADAPTER_GUIDE.md)
+  [AGENT_PASSPORT_GUIDE.md](../reference/AGENT_PASSPORT_GUIDE.md) and
+  [IDENTITY_FEDERATION_GUIDE.md](../reference/IDENTITY_FEDERATION_GUIDE.md)
+- A2A integrations start from [A2A_ADAPTER_GUIDE.md](../reference/A2A_ADAPTER_GUIDE.md)
 
 ## Operator And Release Guidance
 
@@ -497,12 +497,12 @@ The current Chio candidate does not claim:
 - use `./scripts/qualify-release.sh` before treating a branch as a production
   candidate
 - use [QUALIFICATION.md](QUALIFICATION.md) as the release-proof matrix
-- use [ECONOMIC_INTEROP_GUIDE.md](../ECONOMIC_INTEROP_GUIDE.md) when IAM,
+- use [ECONOMIC_INTEROP_GUIDE.md](../reference/ECONOMIC_INTEROP_GUIDE.md) when IAM,
   finance, or partner reviewers need the focused economic-context walkthrough
 - use `chio trust credit-backtest export` and
   `chio trust provider-risk-package export` when capital reviewers need replay
   evidence or one signed provider-facing credit package
-- use [CREDENTIAL_INTEROP_GUIDE.md](../CREDENTIAL_INTEROP_GUIDE.md) when a
+- use [CREDENTIAL_INTEROP_GUIDE.md](../reference/CREDENTIAL_INTEROP_GUIDE.md) when a
   verifier, wallet, or standards reviewer needs the focused portable
   credential interop boundary, portable lifecycle semantics, and raw-HTTP
   proof lane

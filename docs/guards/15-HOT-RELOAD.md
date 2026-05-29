@@ -7,8 +7,8 @@ the new epoch.
 
 ## Rollback Watchdog
 
-Each accepted reload can attach a post-swap watchdog. The default M06 policy
-rolls back after 5 consecutive error-class verdicts within 60 seconds. Error
+Each accepted reload can attach a post-swap watchdog. The default policy rolls
+back after 5 consecutive error-class verdicts within 60 seconds. Error
 classes include traps, fuel exhaustion, serialization failures, and other
 fail-closed backend errors.
 

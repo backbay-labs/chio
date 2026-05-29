@@ -49,8 +49,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WeightsCardRequired {
-    /// No model-card check. Default; preserves the legacy provider bind
-    /// path for deployments that have not adopted model-card binding.
+    /// No model-card check. Default for deployments that have not adopted
+    /// model-card binding.
     Disabled,
     /// Provider bind MUST present a signed model card whose `weights_hash`
     /// matches the loaded weights. Any cosign bundle the configured

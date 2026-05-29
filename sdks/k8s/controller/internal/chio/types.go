@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// CapabilityToken is an Chio capability token minted by the sidecar.
+// CapabilityToken is a Chio capability token minted by the sidecar.
 //
 // The wire format matches the canonical Chio capability token JSON shape.
 // The controller additionally keeps the raw serialized token bytes so the
@@ -183,7 +183,7 @@ const AdvisoryPodAnnotationSource = "pod_annotation_unverified"
 const AdvisoryPodAnnotationMaxBytes = 32 * 1024
 
 // AdvisoryPodAnnotation wraps the bytes the controller harvested from a
-// pod's `chio.protocol/receipt` annotation.
+// pod's `chio.world/receipt` annotation.
 //
 // Trust model: the wrapping payload, including every field below, is
 // user-owned content. Any actor with create-pod rights in the governed
@@ -225,7 +225,7 @@ type StepReceipt struct {
 	// Controller-owned.
 	Phase string `json:"phase"`
 	// AdvisoryPodAnnotation carries any payload the workload wrote to its
-	// own `chio.protocol/receipt` annotation. The contents are
+	// own `chio.world/receipt` annotation. The contents are
 	// user-controlled and MUST be treated as advisory only; see the
 	// AdvisoryPodAnnotation doc-comment. Nil when the pod did not set a
 	// receipt annotation.

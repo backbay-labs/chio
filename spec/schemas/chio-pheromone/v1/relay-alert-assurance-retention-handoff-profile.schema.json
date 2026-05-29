@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-alert-assurance-retention-handoff-profile.schema.json",
+  "$id": "https://chio.world/schemas/chio-pheromone/v1/relay-alert-assurance-retention-handoff-profile.schema.json",
   "title": "Chio Pheromone Relay Alert Assurance Retention Handoff Profile",
   "type": "object",
   "additionalProperties": false,

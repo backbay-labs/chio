@@ -31,8 +31,8 @@
 //! ```
 //!
 //! The single-file emission keeps downstream consumers pointing at one
-//! well-known file. The file can be split into per-group modules once the
-//! `no_std + alloc` story for the generated types is settled.
+//! well-known file; per-group module splitting waits on the `no_std + alloc`
+//! story for the generated types.
 //!
 //! # Header policy
 //!
@@ -55,6 +55,8 @@
 //! - All errors are surfaced as [`CodegenError`]; the crate never panics on
 //!   malformed input.
 //! - No em dashes (U+2014); use `-` or parentheses.
+
+#![forbid(unsafe_code)]
 
 use std::collections::BTreeSet;
 use std::ffi::OsStr;
@@ -219,10 +221,9 @@ pub fn codegen_rust(schemas_dir: &Path, out_dir: &Path) -> Result<()> {
     let out_path = out_dir.join(CHIO_WIRE_V1_OUTPUT);
     write_if_changed(&out_path, body.as_bytes())?;
 
-    // Refresh the placeholder mod.rs so the header check passes even when
-    // `_generated/` is otherwise empty (e.g. on a fresh clone). The mod.rs
-    // intentionally does NOT pull in `chio_wire_v1` yet; downstream tickets
-    // will gate it behind a feature flag once the no_std story is settled.
+    // Refresh the placeholder mod.rs so the header check passes on a fresh clone.
+    // mod.rs intentionally does not re-export `chio_wire_v1`; wire it behind a
+    // feature flag once the no_std story for generated types is settled.
     let mod_body = format!(
         "{GENERATED_HEADER}\n\
          //! Placeholder module for the chio-wire/v1 generated types.\n\
@@ -653,7 +654,7 @@ mod tests {
         let workspace_root = manifest_dir
             .parent()
             .and_then(Path::parent)
-            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "missing workspace"))?;
+            .ok_or_else(|| std::io::Error::other("missing workspace"))?;
         let schemas_dir = workspace_root.join("spec/schemas/chio-wire/v1");
 
         let rendered = render_chio_wire_v1(&schemas_dir)?;

@@ -1,7 +1,7 @@
 //! Chio adapter for Envoy's [`ext_authz`][ext-authz] gRPC filter.
 //!
 //! This crate implements `envoy.service.auth.v3.Authorization/Check` as a thin
-//! shim that translates each Envoy `CheckRequest` into an Chio
+//! shim that translates each Envoy `CheckRequest` into a Chio
 //! [`translate::ToolCallRequest`], hands it to an [`EnvoyKernel`] implementation,
 //! and maps the returned [`translate::Verdict`] onto a compliant
 //! `CheckResponse`.
@@ -10,8 +10,7 @@
 //! can be linked into any Envoy-fronted service without pulling in the rest
 //! of the Chio substrate. The [`EnvoyKernel`] trait exists precisely so real
 //! deployments can plug `chio-kernel` (or `chio-http-core`'s `HttpAuthority`)
-//! into this service without this crate depending on them. A doc example is
-//! sketched below.
+//! into this service without this crate depending on them.
 //!
 //! # Example wiring
 //!
@@ -49,6 +48,7 @@
 //!
 //! [ext-authz]: https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/ext_authz_filter
 
+#![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
 pub mod error;

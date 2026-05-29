@@ -77,7 +77,7 @@ impl SettlementHook for RecordingHook {
 fn build_receipt(index: u64, kp: &Keypair) -> (ChioReceipt, String) {
     let metadata = serde_json::json!({
         "financial": {
-            "approved_max": {"units": 100 + index, "currency": "USD"}
+            "cost_charged": 100 + index, "currency": "USD"
         }
     });
     let action = ToolCallAction::from_parameters(serde_json::json!({"i": index}))
@@ -108,12 +108,13 @@ fn build_receipt(index: u64, kp: &Keypair) -> (ChioReceipt, String) {
         tenant_id: None,
         kernel_key: kp.public_key(),
     };
-    // Pre-compute the content-addressed id so the caller knows ahead of
-    // time what id the signed receipt will carry. `ChioReceipt::sign`
-    // rewrites `body.id` to this same canonical hash before signing.
+    // Seed the body id, then sign. `ChioReceipt::sign` binds the canonical
+    // signing nonce into metadata and recomputes the content-addressed id over
+    // that nonce-augmented input, so the authoritative id is the one carried by
+    // the signed receipt; read it back rather than recomputing it here.
     body.id = chio_receipt_id(&body).expect("canonical receipt id computes");
-    let canonical_id = body.id.clone();
     let receipt = ChioReceipt::sign(body, kp).expect("test receipt signs");
+    let canonical_id = receipt.id.clone();
     (receipt, canonical_id)
 }
 
@@ -138,7 +139,7 @@ fn ten_receipts_produce_ten_settlements_with_byte_identical_receipts() {
         statuses.push(settlement_observer::run_observer(
             Some(&hook_handle),
             receipt,
-            &[receipt.kernel_key.clone()],
+            std::slice::from_ref(&receipt.kernel_key),
         ));
     }
 
@@ -197,7 +198,7 @@ fn no_settlement_baseline_matches_with_settlement_canonical_bytes() {
     // Drive the same ten receipts through TWO kernels: one with a
     // recording hook, one with no hook. The receipt bytes must match
     // pairwise. This is the "byte-equivalent of the no-settlement
-    // baseline" assertion in P2.T4.
+    // baseline" assertion.
     let kp = Keypair::generate();
     let receipts_no_hook: Vec<ChioReceipt> = (0..10).map(|i| build_receipt(i, &kp).0).collect();
     let receipts_with_hook: Vec<ChioReceipt> = (0..10).map(|i| build_receipt(i, &kp).0).collect();
@@ -206,8 +207,11 @@ fn no_settlement_baseline_matches_with_settlement_canonical_bytes() {
 
     // Run the observer for the with-hook variant only.
     for receipt in &receipts_with_hook {
-        let _status =
-            settlement_observer::run_observer(Some(&hook), receipt, &[receipt.kernel_key.clone()]);
+        let _status = settlement_observer::run_observer(
+            Some(&hook),
+            receipt,
+            std::slice::from_ref(&receipt.kernel_key),
+        );
     }
 
     for (no_hook, with_hook) in receipts_no_hook.iter().zip(receipts_with_hook.iter()) {

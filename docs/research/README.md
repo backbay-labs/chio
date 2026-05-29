@@ -1,6 +1,10 @@
-# ARC Research Notes
+# Chio Research Notes
 
-This folder collects working research for turning ARC from a promising security kernel into a true MCP replacement.
+> These notes were written when the project was named ARC. Chio is the current
+> name; treat "ARC" and references to `arc-*` crates throughout this folder as
+> the historical names for Chio and its `chio-*` crates.
+
+This folder collects working research for turning Chio from a promising security kernel into a true MCP replacement.
 
 Read in this order:
 
@@ -11,20 +15,20 @@ Read in this order:
 5. [05-v1-principles.md](05-v1-principles.md)
 6. [06-proposed-architecture.md](06-proposed-architecture.md)
 7. [07-implementation-details.md](07-implementation-details.md)
-8. [../ROADMAP_V1.md](../ROADMAP_V1.md)
-9. [../EXECUTION_PLAN.md](../EXECUTION_PLAN.md)
-10. [../DISTRIBUTED_CONTROL_PLAN.md](../DISTRIBUTED_CONTROL_PLAN.md)
-11. [../HA_CONTROL_AUTH_PLAN.md](../HA_CONTROL_AUTH_PLAN.md)
+8. [../ROADMAP_V1.md](../archive/ROADMAP_V1.md)
+9. [../EXECUTION_PLAN.md](../operations/EXECUTION_PLAN.md)
+10. [../DISTRIBUTED_CONTROL_PLAN.md](../operations/DISTRIBUTED_CONTROL_PLAN.md)
+11. [../HA_CONTROL_AUTH_PLAN.md](../operations/HA_CONTROL_AUTH_PLAN.md)
 12. [../adr/README.md](../adr/README.md)
-13. [../epics/README.md](../epics/README.md)
+13. [../archive/epics/README.md](../archive/epics/README.md)
 14. [08-conformance-harness-research.md](08-conformance-harness-research.md)
 15. [09-compatibility-matrix-design.md](09-compatibility-matrix-design.md)
 16. [10-sdk-typescript-plan.md](10-sdk-typescript-plan.md)
 17. [11-sdk-python-plan.md](11-sdk-python-plan.md)
 18. [12-sdk-go-plan.md](12-sdk-go-plan.md)
-19. [../BINDINGS_CORE_PLAN.md](../BINDINGS_CORE_PLAN.md)
-20. [../SDK_PARITY_EXECUTION_ROADMAP.md](../SDK_PARITY_EXECUTION_ROADMAP.md)
-21. [../POST_REVIEW_EXECUTION_PLAN.md](../POST_REVIEW_EXECUTION_PLAN.md)
+19. [../BINDINGS_CORE_PLAN.md](../operations/BINDINGS_CORE_PLAN.md)
+20. [../SDK_PARITY_EXECUTION_ROADMAP.md](../operations/SDK_PARITY_EXECUTION_ROADMAP.md)
+21. [../POST_REVIEW_EXECUTION_PLAN.md](../archive/POST_REVIEW_EXECUTION_PLAN.md)
 
 Short version:
 
@@ -54,8 +58,8 @@ Primary external references used in this research:
 Primary local references used in this research:
 
 - [spec/PROTOCOL.md](../../spec/PROTOCOL.md)
-- [crates/arc-core/src/message.rs](../../crates/arc-core/src/message.rs)
-- [crates/arc-kernel/src/transport.rs](../../crates/arc-kernel/src/transport.rs)
-- [crates/arc-mcp-adapter/src/lib.rs](../../crates/arc-mcp-adapter/src/lib.rs)
-- [crates/arc-policy/src/compiler.rs](../../crates/arc-policy/src/compiler.rs)
-- [crates/arc-cli/src/policy.rs](../../crates/arc-cli/src/policy.rs)
+- [crates/arc-core/src/message.rs](../../crates/chio-core-types/src/message.rs)
+- [crates/arc-kernel/src/transport.rs](../../crates/chio-kernel/src/transport.rs)
+- [crates/arc-mcp-adapter/src/lib.rs](../../crates/chio-mcp-adapter/src/lib.rs)
+- [crates/arc-policy/src/compiler.rs](../../crates/chio-policy/src/compiler.rs)
+- [crates/chio-control-plane/src/policy.rs](../../crates/chio-control-plane/src/policy.rs)

@@ -1,8 +1,9 @@
 {
   "name": "@chio-protocol/ai-sdk",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "type": "module",
   "description": "Chio protocol wrapper for the Vercel AI SDK -- streaming-safe chioTool()",
+  "license": "Apache-2.0",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -34,5 +35,8 @@
     "typescript": "~5.7.0",
     "vitest": "^3.0.0",
     "zod": "^3.23.8"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

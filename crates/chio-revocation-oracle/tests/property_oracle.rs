@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 
 use chio_revocation_oracle::{
-    DigestRootSigner, EpochNonce, InMemoryRevocationOracle, RevocationKey, RevocationOracle,
+    Ed25519RootSigner, EpochNonce, InMemoryRevocationOracle, RevocationKey, RevocationOracle,
     SubjectId,
 };
 use proptest::collection::vec;
@@ -78,7 +78,12 @@ proptest! {
     fn root_signature_verification(subject in "[a-z0-9]{1,24}", nonce in 0_u64..10_000) {
         let mut oracle = InMemoryRevocationOracle::new();
         let key = key(subject, nonce);
-        let signer = DigestRootSigner::new("m04-property", b"secret".to_vec());
+        let signer = Ed25519RootSigner::from_signing_key(
+            "m04-property",
+            "0404040404040404040404040404040404040404040404040404040404040404",
+        )
+        .map_err(|err| TestCaseError::fail(format!("signer init failed: {err}")))?;
+        let verifier = signer.verifier();
         oracle
             .insert(key, 10)
             .map_err(|err| TestCaseError::fail(format!("insert failed: {err}")))?;
@@ -87,9 +92,9 @@ proptest! {
             .signed_epoch_root(&signer)
             .map_err(|err| TestCaseError::fail(format!("sign failed: {err}")))?;
 
-        prop_assert!(signed.verify(&signer).is_ok());
+        prop_assert!(signed.verify(&verifier).is_ok());
         signed.signature.signature_bytes.push(0);
-        prop_assert!(signed.verify(&signer).is_err());
+        prop_assert!(signed.verify(&verifier).is_err());
     }
 
     #[test]

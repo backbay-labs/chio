@@ -35,7 +35,7 @@ env:
 jobs:
   vectors-byte-stable:
     name: vectors-byte-stable (freeze-vectors --check nightly)
-    # owner: M01
+    # owner: Chio maintainers
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -55,19 +55,16 @@ jobs:
       - name: Assert no drift in MANIFEST.sha256 or vectors tree
         run: |
           set -euo pipefail
-          # `cargo xtask freeze-vectors --check` already exits non-zero
-          # on byte drift between the committed MANIFEST and a fresh
-          # regeneration. The git-diff guard catches any side-effect
-          # writes (e.g. trailing newline normalisation by an editor
-          # plugin if a developer re-commits the manifest after a
-          # local edit).
+          # Catches side-effect writes the per-lane `--check` does not (e.g.
+          # trailing-newline normalisation from an editor plugin on a
+          # re-committed manifest).
           git diff --exit-code \
             tests/bindings/vectors/MANIFEST.sha256 \
             tests/bindings/vectors
 
   external-consumer-smoke:
     name: external-consumer-smoke (published-crate flow on fresh runner)
-    # owner: M01
+    # owner: Chio maintainers
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -112,7 +109,7 @@ jobs:
 
   notify-on-failure:
     name: notify-on-failure (alarm-policy issue opener)
-    # owner: M01
+    # owner: Chio maintainers
     needs: [vectors-byte-stable, external-consumer-smoke]
     if: failure() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest

@@ -88,7 +88,7 @@ depend on any single unverified number or third-party marketing claim.
 - MPP enables platforms to manage fund flows between agents acting on behalf of different principals.
 - Tempo blockchain integration: Stripe's proprietary settlement layer for sub-second finality on agent microtransactions. Built on a permissioned L2 anchored to Ethereum. USDC-denominated.
 - Key design: agents carry a "Stripe Agent Wallet" with a spending policy defined by the human principal. Each tool invocation can trigger a payment authorization. If the tool's price exceeds the agent's remaining budget, the call is denied.
-- Relevance to ARC: Stripe's spending policy is analogous to a ARC capability scope. The agent wallet's authorization check mirrors ARC's guard pipeline. But Stripe's model is payment-centric -- it does not attest to what the agent did, only what it paid. Receipts fill this gap.
+- Relevance to ARC: Stripe's spending policy is analogous to an ARC capability scope. The agent wallet's authorization check mirrors ARC's guard pipeline. But Stripe's model is payment-centric -- it does not attest to what the agent did, only what it paid. Receipts fill this gap.
 
 ### Coinbase x402
 

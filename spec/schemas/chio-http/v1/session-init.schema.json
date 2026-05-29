@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Chio HTTP Session Init",
-  "description": "Initial session-establishment payload exchanged over the chio-http edge when a remote MCP client begins a Streamable-HTTP session. NOTE: As of M01 there is no single serde-derived `SessionInit` struct; the wire shape is assembled inline by the edge from the JSON-RPC `initialize` request (`crates/chio-mcp-edge/src/runtime.rs` around the `negotiate_protocol_version` and initialize-result paths near lines 287-1077) and the in-process construction value object `RemoteSessionInit` in `crates/chio-cli/src/remote_mcp/session_core.rs` lines 497-517 (no serde derive; not on the wire). This schema captures the externally-observable fields the edge accepts at session creation time. Re-pinning is expected once M07/M10 lock the cross-cluster session contract.",
+  "description": "Initial session-establishment payload exchanged over the chio-http edge when a remote MCP client begins a Streamable-HTTP session. The wire shape is assembled by the edge from the JSON-RPC `initialize` request (`crates/chio-mcp-edge/src/runtime.rs`, via `negotiate_protocol_version` and the initialize-result paths) and the in-process construction value object `RemoteSessionInit` in `crates/chio-mcp-remote/src/remote_mcp/session_core.rs` (no serde derive; not on the wire). This schema captures the externally-observable fields the edge accepts at session creation time.",
   "type": "object",
   "additionalProperties": false,
   "required": ["session_id", "agent_id", "auth_context", "initialize_params"],
@@ -32,7 +32,7 @@
       "type": "string",
       "enum": ["dedicated_per_session", "shared_hosted_owner_compatibility"],
       "default": "dedicated_per_session",
-      "description": "Hosted-isolation mode for the session. Mirrors the serde-rename_all=snake_case enum `RemoteHostedIsolationMode` in `crates/chio-cli/src/remote_mcp/session_core.rs` lines 366-372."
+      "description": "Hosted-isolation mode for the session. Mirrors the snake_case enum `RemoteHostedIsolationMode` in `crates/chio-mcp-remote/src/remote_mcp/session_core.rs`."
     },
     "protocol_version": {
       "type": ["string", "null"],

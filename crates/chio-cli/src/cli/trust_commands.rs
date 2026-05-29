@@ -1,15 +1,17 @@
-struct QueryBackend<'a> {
-    json_output: bool,
-    receipt_db_path: Option<&'a Path>,
-    control_url: Option<&'a str>,
-    control_token: Option<&'a str>,
+use super::*;
+
+pub(crate) struct QueryBackend<'a> {
+    pub(crate) json_output: bool,
+    pub(crate) receipt_db_path: Option<&'a Path>,
+    pub(crate) control_url: Option<&'a str>,
+    pub(crate) control_token: Option<&'a str>,
 }
 
 /// Derive a trusted-kernel-key list from an authority seed file. Returns the
 /// loaded public key (so locally signed receipts can pass reputation integrity
 /// validation) or an empty vec when no seed file is configured. See
 /// `chio-reputation::receipt_integrity_valid`.
-fn trusted_kernel_keys_from_authority(
+pub(crate) fn trusted_kernel_keys_from_authority(
     authority_seed_path: Option<&Path>,
 ) -> Result<Vec<String>, CliError> {
     let Some(path) = authority_seed_path else {
@@ -19,166 +21,163 @@ fn trusted_kernel_keys_from_authority(
     Ok(vec![keypair.public_key().to_hex()])
 }
 
-struct BudgetQueryBackend<'a> {
-    query: QueryBackend<'a>,
-    budget_db_path: Option<&'a Path>,
-    certification_registry_file: Option<&'a Path>,
+pub(crate) struct BudgetQueryBackend<'a> {
+    pub(crate) query: QueryBackend<'a>,
+    pub(crate) budget_db_path: Option<&'a Path>,
+    pub(crate) certification_registry_file: Option<&'a Path>,
     /// Optional authority seed file used to derive the trusted kernel key
     /// for local reputation scoring. Plumbing this through means receipts
     /// signed by the local kernel are not silently filtered out as unsigned.
     /// See `chio-reputation::receipt_integrity_valid`.
-    authority_seed_path: Option<&'a Path>,
+    pub(crate) authority_seed_path: Option<&'a Path>,
 }
 
-struct SignedQueryBackend<'a> {
-    query: QueryBackend<'a>,
-    budget_db_path: Option<&'a Path>,
-    authority_seed_path: Option<&'a Path>,
-    authority_db_path: Option<&'a Path>,
-    certification_registry_file: Option<&'a Path>,
+pub(crate) struct SignedQueryBackend<'a> {
+    pub(crate) query: QueryBackend<'a>,
+    pub(crate) budget_db_path: Option<&'a Path>,
+    pub(crate) authority_seed_path: Option<&'a Path>,
+    pub(crate) authority_db_path: Option<&'a Path>,
+    pub(crate) certification_registry_file: Option<&'a Path>,
 }
 
-struct CreditLossLifecycleListArgs<'a> {
-    event_id: Option<&'a str>,
-    bond_id: Option<&'a str>,
-    facility_id: Option<&'a str>,
-    capability_id: Option<&'a str>,
-    agent_subject: Option<&'a str>,
-    tool_server: Option<&'a str>,
-    tool_name: Option<&'a str>,
-    event_kind: Option<&'a str>,
-    limit: usize,
+pub(crate) struct CreditLossLifecycleListArgs<'a> {
+    pub(crate) event_id: Option<&'a str>,
+    pub(crate) bond_id: Option<&'a str>,
+    pub(crate) facility_id: Option<&'a str>,
+    pub(crate) capability_id: Option<&'a str>,
+    pub(crate) agent_subject: Option<&'a str>,
+    pub(crate) tool_server: Option<&'a str>,
+    pub(crate) tool_name: Option<&'a str>,
+    pub(crate) event_kind: Option<&'a str>,
+    pub(crate) limit: usize,
 }
 
-struct CreditBacktestExportArgs<'a> {
-    agent_subject: &'a str,
-    capability_id: Option<&'a str>,
-    tool_server: Option<&'a str>,
-    tool_name: Option<&'a str>,
-    since: Option<u64>,
-    until: Option<u64>,
-    receipt_limit: usize,
-    decision_limit: usize,
-    window_seconds: u64,
-    window_count: usize,
-    stale_after_seconds: u64,
+pub(crate) struct CreditBacktestExportArgs<'a> {
+    pub(crate) agent_subject: &'a str,
+    pub(crate) capability_id: Option<&'a str>,
+    pub(crate) tool_server: Option<&'a str>,
+    pub(crate) tool_name: Option<&'a str>,
+    pub(crate) since: Option<u64>,
+    pub(crate) until: Option<u64>,
+    pub(crate) receipt_limit: usize,
+    pub(crate) decision_limit: usize,
+    pub(crate) window_seconds: u64,
+    pub(crate) window_count: usize,
+    pub(crate) stale_after_seconds: u64,
 }
 
-struct ProviderRiskPackageExportArgs<'a> {
-    agent_subject: &'a str,
-    capability_id: Option<&'a str>,
-    tool_server: Option<&'a str>,
-    tool_name: Option<&'a str>,
-    since: Option<u64>,
-    until: Option<u64>,
-    receipt_limit: usize,
-    decision_limit: usize,
-    recent_loss_limit: usize,
+pub(crate) struct ProviderRiskPackageExportArgs<'a> {
+    pub(crate) agent_subject: &'a str,
+    pub(crate) capability_id: Option<&'a str>,
+    pub(crate) tool_server: Option<&'a str>,
+    pub(crate) tool_name: Option<&'a str>,
+    pub(crate) since: Option<u64>,
+    pub(crate) until: Option<u64>,
+    pub(crate) receipt_limit: usize,
+    pub(crate) decision_limit: usize,
+    pub(crate) recent_loss_limit: usize,
 }
 
-struct LiabilityMarketListArgs<'a> {
-    quote_request_id: Option<&'a str>,
-    provider_id: Option<&'a str>,
-    agent_subject: Option<&'a str>,
-    jurisdiction: Option<&'a str>,
-    coverage_class: Option<&'a str>,
-    currency: Option<&'a str>,
-    limit: usize,
+pub(crate) struct LiabilityMarketListArgs<'a> {
+    pub(crate) quote_request_id: Option<&'a str>,
+    pub(crate) provider_id: Option<&'a str>,
+    pub(crate) agent_subject: Option<&'a str>,
+    pub(crate) jurisdiction: Option<&'a str>,
+    pub(crate) coverage_class: Option<&'a str>,
+    pub(crate) currency: Option<&'a str>,
+    pub(crate) limit: usize,
 }
 
-struct LiabilityClaimsListArgs<'a> {
-    claim_id: Option<&'a str>,
-    provider_id: Option<&'a str>,
-    agent_subject: Option<&'a str>,
-    jurisdiction: Option<&'a str>,
-    policy_number: Option<&'a str>,
-    limit: usize,
+pub(crate) struct LiabilityClaimsListArgs<'a> {
+    pub(crate) claim_id: Option<&'a str>,
+    pub(crate) provider_id: Option<&'a str>,
+    pub(crate) agent_subject: Option<&'a str>,
+    pub(crate) jurisdiction: Option<&'a str>,
+    pub(crate) policy_number: Option<&'a str>,
+    pub(crate) limit: usize,
 }
 
-struct UnderwritingPolicyInputArgs<'a> {
-    capability_id: Option<&'a str>,
-    agent_subject: Option<&'a str>,
-    tool_server: Option<&'a str>,
-    tool_name: Option<&'a str>,
-    since: Option<u64>,
-    until: Option<u64>,
-    receipt_limit: usize,
+pub(crate) struct UnderwritingPolicyInputArgs<'a> {
+    pub(crate) capability_id: Option<&'a str>,
+    pub(crate) agent_subject: Option<&'a str>,
+    pub(crate) tool_server: Option<&'a str>,
+    pub(crate) tool_name: Option<&'a str>,
+    pub(crate) since: Option<u64>,
+    pub(crate) until: Option<u64>,
+    pub(crate) receipt_limit: usize,
 }
 
-struct UnderwritingDecisionSimulateArgs<'a> {
-    input: UnderwritingPolicyInputArgs<'a>,
-    policy_file: &'a Path,
+pub(crate) struct UnderwritingDecisionSimulateArgs<'a> {
+    pub(crate) input: UnderwritingPolicyInputArgs<'a>,
+    pub(crate) policy_file: &'a Path,
 }
 
-struct UnderwritingDecisionIssueArgs<'a> {
-    input: UnderwritingPolicyInputArgs<'a>,
-    supersedes_decision_id: Option<&'a str>,
+pub(crate) struct UnderwritingDecisionIssueArgs<'a> {
+    pub(crate) input: UnderwritingPolicyInputArgs<'a>,
+    pub(crate) supersedes_decision_id: Option<&'a str>,
 }
 
-struct UnderwritingDecisionListArgs<'a> {
-    decision_id: Option<&'a str>,
-    capability_id: Option<&'a str>,
-    agent_subject: Option<&'a str>,
-    tool_server: Option<&'a str>,
-    tool_name: Option<&'a str>,
-    outcome: Option<&'a str>,
-    lifecycle_state: Option<&'a str>,
-    appeal_status: Option<&'a str>,
-    limit: usize,
+pub(crate) struct UnderwritingDecisionListArgs<'a> {
+    pub(crate) decision_id: Option<&'a str>,
+    pub(crate) capability_id: Option<&'a str>,
+    pub(crate) agent_subject: Option<&'a str>,
+    pub(crate) tool_server: Option<&'a str>,
+    pub(crate) tool_name: Option<&'a str>,
+    pub(crate) outcome: Option<&'a str>,
+    pub(crate) lifecycle_state: Option<&'a str>,
+    pub(crate) appeal_status: Option<&'a str>,
+    pub(crate) limit: usize,
 }
 
-struct UnderwritingAppealResolveArgs<'a> {
-    appeal_id: &'a str,
-    resolution: &'a str,
-    resolved_by: &'a str,
-    note: Option<&'a str>,
-    replacement_decision_id: Option<&'a str>,
+pub(crate) struct UnderwritingAppealResolveArgs<'a> {
+    pub(crate) appeal_id: &'a str,
+    pub(crate) resolution: &'a str,
+    pub(crate) resolved_by: &'a str,
+    pub(crate) note: Option<&'a str>,
+    pub(crate) replacement_decision_id: Option<&'a str>,
 }
 
-struct ReceiptListArgs<'a> {
-    capability: Option<&'a str>,
-    tool_server: Option<&'a str>,
-    tool_name: Option<&'a str>,
-    outcome: Option<&'a str>,
-    since: Option<u64>,
-    until: Option<u64>,
-    min_cost: Option<u64>,
-    max_cost: Option<u64>,
-    limit: usize,
-    cursor: Option<u64>,
-    tenant: Option<&'a str>,
-    admin_all: bool,
+pub(crate) struct ReceiptListArgs<'a> {
+    pub(crate) capability: Option<&'a str>,
+    pub(crate) tool_server: Option<&'a str>,
+    pub(crate) tool_name: Option<&'a str>,
+    pub(crate) outcome: Option<&'a str>,
+    pub(crate) since: Option<u64>,
+    pub(crate) until: Option<u64>,
+    pub(crate) min_cost: Option<u64>,
+    pub(crate) max_cost: Option<u64>,
+    pub(crate) limit: usize,
+    pub(crate) cursor: Option<u64>,
+    pub(crate) tenant: Option<&'a str>,
+    pub(crate) admin_all: bool,
 }
 
-struct ReceiptExplainArgs<'a> {
-    receipt_id: &'a str,
-    input_file: Option<&'a Path>,
-    depth: usize,
-    fanout_limit: usize,
-    /// Renamed from `explain_bilateral` because the previous output
-    /// labelled itself a "full-verifier trace" while the CLI does
-    /// not carry the org A / org B passport public keys and could not
-    /// perform real Ed25519 verification. The trace is now an
-    /// `inspect` output (structural / schema checks only). The legacy
-    /// CLI flag spelling is preserved as a `clap` alias on the parent
-    /// enum.
-    inspect_bilateral: bool,
-    tenant: Option<&'a str>,
-    admin_all: bool,
+pub(crate) struct ReceiptExplainArgs<'a> {
+    pub(crate) receipt_id: &'a str,
+    pub(crate) input_file: Option<&'a Path>,
+    pub(crate) depth: usize,
+    pub(crate) fanout_limit: usize,
+    /// Inspect-only: the CLI does not carry the org A / org B passport
+    /// public keys and cannot perform real Ed25519 verification, so the
+    /// trace reports structural / schema checks only. The legacy CLI flag
+    /// spelling is preserved as a `clap` alias on the parent enum.
+    pub(crate) inspect_bilateral: bool,
+    pub(crate) tenant: Option<&'a str>,
+    pub(crate) admin_all: bool,
 }
 
-const CHIO_CLI_RECEIPT_HEALTH_SCHEMA: &str = "chio.cli.receipt.health.v1";
-const CHIO_CLI_RECEIPT_FLUSH_SCHEMA: &str = "chio.cli.receipt.flush.v1";
-const CHIO_CLI_RECEIPT_CHECKPOINT_STATUS_SCHEMA: &str =
+pub(crate) const CHIO_CLI_RECEIPT_HEALTH_SCHEMA: &str = "chio.cli.receipt.health.v1";
+pub(crate) const CHIO_CLI_RECEIPT_FLUSH_SCHEMA: &str = "chio.cli.receipt.flush.v1";
+pub(crate) const CHIO_CLI_RECEIPT_CHECKPOINT_STATUS_SCHEMA: &str =
     "chio.cli.receipt.checkpoint_status.v1";
-const CHIO_CLI_RECEIPT_CHECKPOINT_CREATE_SCHEMA: &str =
+pub(crate) const CHIO_CLI_RECEIPT_CHECKPOINT_CREATE_SCHEMA: &str =
     "chio.cli.receipt.checkpoint_create.v1";
-const CHIO_CLI_RECEIPT_CHECKPOINT_VERIFY_SCHEMA: &str =
+pub(crate) const CHIO_CLI_RECEIPT_CHECKPOINT_VERIFY_SCHEMA: &str =
     "chio.cli.receipt.checkpoint_verify.v1";
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ReceiptOperatorJsonEnvelope<'a, T>
+pub(crate) struct ReceiptOperatorJsonEnvelope<'a, T>
 where
     T: serde::Serialize + ?Sized,
 {
@@ -186,7 +185,7 @@ where
     report: &'a T,
 }
 
-fn receipt_operator_json_value<T>(
+pub(crate) fn receipt_operator_json_value<T>(
     schema: &'static str,
     report: &T,
 ) -> Result<serde_json::Value, CliError>
@@ -199,7 +198,7 @@ where
     })?)
 }
 
-fn print_receipt_operator_json<T>(
+pub(crate) fn print_receipt_operator_json<T>(
     schema: &'static str,
     report: &T,
 ) -> Result<(), CliError>
@@ -213,13 +212,13 @@ where
     Ok(())
 }
 
-fn optional_u64(value: Option<u64>) -> String {
+pub(crate) fn optional_u64(value: Option<u64>) -> String {
     value
         .map(|value| value.to_string())
         .unwrap_or_else(|| "none".to_string())
 }
 
-fn push_writer_counters_human(
+pub(crate) fn push_writer_counters_human(
     lines: &mut Vec<String>,
     writer: &chio_kernel::ReceiptWriterCounters,
 ) {
@@ -238,7 +237,7 @@ fn push_writer_counters_human(
     ));
 }
 
-fn render_receipt_health_human(report: &chio_kernel::ReceiptStoreHealthReport) -> String {
+pub(crate) fn render_receipt_health_human(report: &chio_kernel::ReceiptStoreHealthReport) -> String {
     let mut lines = vec![
         format!(
             "status: {}",
@@ -272,7 +271,7 @@ fn render_receipt_health_human(report: &chio_kernel::ReceiptStoreHealthReport) -
     lines.join("\n") + "\n"
 }
 
-fn render_receipt_flush_human(report: &chio_kernel::ReceiptFlushReport) -> String {
+pub(crate) fn render_receipt_flush_human(report: &chio_kernel::ReceiptFlushReport) -> String {
     let mut lines = vec![
         "flushed: true".to_string(),
         format!("committed_entry_seq: {}", report.latest_committed_entry_seq),
@@ -308,7 +307,7 @@ fn render_receipt_flush_human(report: &chio_kernel::ReceiptFlushReport) -> Strin
     lines.join("\n") + "\n"
 }
 
-fn render_receipt_checkpoint_status_human(
+pub(crate) fn render_receipt_checkpoint_status_human(
     report: &chio_kernel::ReceiptCheckpointStatusReport,
 ) -> String {
     let mut lines = vec![
@@ -338,7 +337,7 @@ fn render_receipt_checkpoint_status_human(
     lines.join("\n") + "\n"
 }
 
-fn render_receipt_checkpoint_create_human(
+pub(crate) fn render_receipt_checkpoint_create_human(
     report: &chio_kernel::ReceiptCheckpointCreateReport,
 ) -> String {
     let mut lines = vec![
@@ -361,7 +360,7 @@ fn render_receipt_checkpoint_create_human(
     lines.join("\n") + "\n"
 }
 
-fn receipt_checkpoint_report_error(
+pub(crate) fn receipt_checkpoint_report_error(
     report: &chio_kernel::ReceiptCheckpointStatusReport,
 ) -> CliError {
     CliError::cli_other_error(
@@ -373,7 +372,7 @@ fn receipt_checkpoint_report_error(
     )
 }
 
-fn receipt_health_report_error(report: &chio_kernel::ReceiptStoreHealthReport) -> CliError {
+pub(crate) fn receipt_health_report_error(report: &chio_kernel::ReceiptStoreHealthReport) -> CliError {
     CliError::cli_other_error(
         report
             .checkpoint_error
@@ -383,7 +382,7 @@ fn receipt_health_report_error(report: &chio_kernel::ReceiptStoreHealthReport) -
     )
 }
 
-fn build_underwriting_policy_input_query(
+pub(crate) fn build_underwriting_policy_input_query(
     args: &UnderwritingPolicyInputArgs<'_>,
 ) -> chio_kernel::UnderwritingPolicyInputQuery {
     chio_kernel::UnderwritingPolicyInputQuery {
@@ -397,7 +396,7 @@ fn build_underwriting_policy_input_query(
     }
 }
 
-fn cmd_trust_credit_loss_lifecycle_evaluate(
+pub(crate) fn cmd_trust_credit_loss_lifecycle_evaluate(
     bond_id: &str,
     event_kind: &str,
     amount_units: Option<u64>,
@@ -455,7 +454,7 @@ fn cmd_trust_credit_loss_lifecycle_evaluate(
     Ok(())
 }
 
-fn cmd_trust_credit_loss_lifecycle_issue(
+pub(crate) fn cmd_trust_credit_loss_lifecycle_issue(
     bond_id: &str,
     event_kind: &str,
     amount_units: Option<u64>,
@@ -532,7 +531,7 @@ fn cmd_trust_credit_loss_lifecycle_issue(
     Ok(())
 }
 
-fn cmd_trust_credit_loss_lifecycle_list(
+pub(crate) fn cmd_trust_credit_loss_lifecycle_list(
     args: CreditLossLifecycleListArgs<'_>,
     backend: QueryBackend<'_>,
 ) -> Result<(), CliError> {
@@ -609,7 +608,7 @@ fn cmd_trust_credit_loss_lifecycle_list(
     Ok(())
 }
 
-fn cmd_trust_credit_backtest_export(
+pub(crate) fn cmd_trust_credit_backtest_export(
     args: CreditBacktestExportArgs<'_>,
     backend: BudgetQueryBackend<'_>,
 ) -> Result<(), CliError> {
@@ -673,7 +672,7 @@ fn cmd_trust_credit_backtest_export(
     Ok(())
 }
 
-fn cmd_trust_provider_risk_package_export(
+pub(crate) fn cmd_trust_provider_risk_package_export(
     args: ProviderRiskPackageExportArgs<'_>,
     backend: SignedQueryBackend<'_>,
 ) -> Result<(), CliError> {
@@ -734,7 +733,7 @@ fn cmd_trust_provider_risk_package_export(
     Ok(())
 }
 
-fn cmd_trust_liability_provider_issue(
+pub(crate) fn cmd_trust_liability_provider_issue(
     input_file: &Path,
     supersedes_provider_record_id: Option<&str>,
     json_output: bool,
@@ -780,7 +779,7 @@ fn cmd_trust_liability_provider_issue(
     Ok(())
 }
 
-fn cmd_trust_liability_provider_list(
+pub(crate) fn cmd_trust_liability_provider_list(
     provider_id: Option<&str>,
     jurisdiction: Option<&str>,
     coverage_class: Option<&str>,
@@ -835,7 +834,7 @@ fn cmd_trust_liability_provider_list(
     Ok(())
 }
 
-fn cmd_trust_liability_provider_resolve(
+pub(crate) fn cmd_trust_liability_provider_resolve(
     provider_id: &str,
     jurisdiction: &str,
     coverage_class: &str,
@@ -890,7 +889,7 @@ fn cmd_trust_liability_provider_resolve(
     Ok(())
 }
 
-fn cmd_trust_liability_quote_request_issue(
+pub(crate) fn cmd_trust_liability_quote_request_issue(
     input_file: &Path,
     json_output: bool,
     receipt_db_path: Option<&Path>,
@@ -942,7 +941,7 @@ fn cmd_trust_liability_quote_request_issue(
     Ok(())
 }
 
-fn cmd_trust_liability_quote_response_issue(
+pub(crate) fn cmd_trust_liability_quote_response_issue(
     input_file: &Path,
     json_output: bool,
     receipt_db_path: Option<&Path>,
@@ -990,7 +989,7 @@ fn cmd_trust_liability_quote_response_issue(
     Ok(())
 }
 
-fn cmd_trust_liability_pricing_authority_issue(
+pub(crate) fn cmd_trust_liability_pricing_authority_issue(
     input_file: &Path,
     json_output: bool,
     receipt_db_path: Option<&Path>,
@@ -1036,7 +1035,7 @@ fn cmd_trust_liability_pricing_authority_issue(
     Ok(())
 }
 
-fn cmd_trust_liability_placement_issue(
+pub(crate) fn cmd_trust_liability_placement_issue(
     input_file: &Path,
     json_output: bool,
     receipt_db_path: Option<&Path>,
@@ -1079,7 +1078,7 @@ fn cmd_trust_liability_placement_issue(
     Ok(())
 }
 
-fn cmd_trust_liability_bound_coverage_issue(
+pub(crate) fn cmd_trust_liability_bound_coverage_issue(
     input_file: &Path,
     json_output: bool,
     receipt_db_path: Option<&Path>,
@@ -1121,7 +1120,7 @@ fn cmd_trust_liability_bound_coverage_issue(
     Ok(())
 }
 
-fn cmd_trust_liability_auto_bind_issue(
+pub(crate) fn cmd_trust_liability_auto_bind_issue(
     input_file: &Path,
     json_output: bool,
     receipt_db_path: Option<&Path>,
@@ -1181,7 +1180,7 @@ fn cmd_trust_liability_auto_bind_issue(
     Ok(())
 }
 
-fn cmd_trust_liability_claim_issue(
+pub(crate) fn cmd_trust_liability_claim_issue(
     input_file: &Path,
     json_output: bool,
     receipt_db_path: Option<&Path>,
@@ -1223,7 +1222,7 @@ fn cmd_trust_liability_claim_issue(
     Ok(())
 }
 
-fn cmd_trust_liability_claim_response_issue(
+pub(crate) fn cmd_trust_liability_claim_response_issue(
     input_file: &Path,
     json_output: bool,
     receipt_db_path: Option<&Path>,
@@ -1265,7 +1264,7 @@ fn cmd_trust_liability_claim_response_issue(
     Ok(())
 }
 
-fn cmd_trust_liability_claim_dispute_issue(
+pub(crate) fn cmd_trust_liability_claim_dispute_issue(
     input_file: &Path,
     json_output: bool,
     receipt_db_path: Option<&Path>,
@@ -1307,7 +1306,7 @@ fn cmd_trust_liability_claim_dispute_issue(
     Ok(())
 }
 
-fn cmd_trust_liability_claim_adjudication_issue(
+pub(crate) fn cmd_trust_liability_claim_adjudication_issue(
     input_file: &Path,
     json_output: bool,
     receipt_db_path: Option<&Path>,
@@ -1352,7 +1351,7 @@ fn cmd_trust_liability_claim_adjudication_issue(
     Ok(())
 }
 
-fn cmd_trust_liability_claim_payout_instruction_issue(
+pub(crate) fn cmd_trust_liability_claim_payout_instruction_issue(
     input_file: &Path,
     json_output: bool,
     receipt_db_path: Option<&Path>,
@@ -1405,7 +1404,7 @@ fn cmd_trust_liability_claim_payout_instruction_issue(
     Ok(())
 }
 
-fn cmd_trust_liability_claim_payout_receipt_issue(
+pub(crate) fn cmd_trust_liability_claim_payout_receipt_issue(
     input_file: &Path,
     json_output: bool,
     receipt_db_path: Option<&Path>,
@@ -1457,7 +1456,7 @@ fn cmd_trust_liability_claim_payout_receipt_issue(
     Ok(())
 }
 
-fn cmd_trust_liability_claim_settlement_instruction_issue(
+pub(crate) fn cmd_trust_liability_claim_settlement_instruction_issue(
     input_file: &Path,
     json_output: bool,
     receipt_db_path: Option<&Path>,
@@ -1510,7 +1509,7 @@ fn cmd_trust_liability_claim_settlement_instruction_issue(
     Ok(())
 }
 
-fn cmd_trust_liability_claim_settlement_receipt_issue(
+pub(crate) fn cmd_trust_liability_claim_settlement_receipt_issue(
     input_file: &Path,
     json_output: bool,
     receipt_db_path: Option<&Path>,
@@ -1563,7 +1562,7 @@ fn cmd_trust_liability_claim_settlement_receipt_issue(
     Ok(())
 }
 
-fn cmd_trust_liability_market_list(
+pub(crate) fn cmd_trust_liability_market_list(
     args: LiabilityMarketListArgs<'_>,
     backend: QueryBackend<'_>,
 ) -> Result<(), CliError> {
@@ -1656,7 +1655,7 @@ fn cmd_trust_liability_market_list(
     Ok(())
 }
 
-fn cmd_trust_liability_claims_list(
+pub(crate) fn cmd_trust_liability_claims_list(
     args: LiabilityClaimsListArgs<'_>,
     backend: QueryBackend<'_>,
 ) -> Result<(), CliError> {
@@ -1771,7 +1770,7 @@ fn cmd_trust_liability_claims_list(
     Ok(())
 }
 
-fn cmd_trust_underwriting_input_export(
+pub(crate) fn cmd_trust_underwriting_input_export(
     args: UnderwritingPolicyInputArgs<'_>,
     backend: SignedQueryBackend<'_>,
 ) -> Result<(), CliError> {
@@ -1839,7 +1838,7 @@ fn cmd_trust_underwriting_input_export(
     Ok(())
 }
 
-fn cmd_trust_underwriting_decision_evaluate(
+pub(crate) fn cmd_trust_underwriting_decision_evaluate(
     args: UnderwritingPolicyInputArgs<'_>,
     backend: BudgetQueryBackend<'_>,
 ) -> Result<(), CliError> {
@@ -1892,7 +1891,7 @@ fn cmd_trust_underwriting_decision_evaluate(
     Ok(())
 }
 
-fn cmd_trust_underwriting_decision_simulate(
+pub(crate) fn cmd_trust_underwriting_decision_simulate(
     args: UnderwritingDecisionSimulateArgs<'_>,
     backend: BudgetQueryBackend<'_>,
 ) -> Result<(), CliError> {
@@ -1956,7 +1955,7 @@ fn cmd_trust_underwriting_decision_simulate(
     Ok(())
 }
 
-fn parse_underwriting_decision_outcome(
+pub(crate) fn parse_underwriting_decision_outcome(
     value: &str,
 ) -> Result<chio_kernel::UnderwritingDecisionOutcome, CliError> {
     serde_json::from_str(&format!("\"{value}\""))
@@ -1981,35 +1980,35 @@ mod trust_command_error_classification_tests {
     }
 }
 
-fn parse_credit_facility_disposition(
+pub(crate) fn parse_credit_facility_disposition(
     value: &str,
 ) -> Result<chio_kernel::CreditFacilityDisposition, CliError> {
     serde_json::from_str(&format!("\"{value}\""))
         .map_err(|_| CliError::policy_constraint_error(format!("invalid credit facility disposition `{value}`")))
 }
 
-fn parse_credit_facility_lifecycle_state(
+pub(crate) fn parse_credit_facility_lifecycle_state(
     value: &str,
 ) -> Result<chio_kernel::CreditFacilityLifecycleState, CliError> {
     serde_json::from_str(&format!("\"{value}\""))
         .map_err(|_| CliError::policy_constraint_error(format!("invalid credit facility lifecycle state `{value}`")))
 }
 
-fn parse_credit_bond_disposition(
+pub(crate) fn parse_credit_bond_disposition(
     value: &str,
 ) -> Result<chio_kernel::CreditBondDisposition, CliError> {
     serde_json::from_str(&format!("\"{value}\""))
         .map_err(|_| CliError::policy_constraint_error(format!("invalid credit bond disposition `{value}`")))
 }
 
-fn parse_credit_bond_lifecycle_state(
+pub(crate) fn parse_credit_bond_lifecycle_state(
     value: &str,
 ) -> Result<chio_kernel::CreditBondLifecycleState, CliError> {
     serde_json::from_str(&format!("\"{value}\""))
         .map_err(|_| CliError::policy_constraint_error(format!("invalid credit bond lifecycle state `{value}`")))
 }
 
-fn parse_credit_loss_lifecycle_event_kind(
+pub(crate) fn parse_credit_loss_lifecycle_event_kind(
     value: &str,
 ) -> Result<chio_kernel::CreditLossLifecycleEventKind, CliError> {
     serde_json::from_str(&format!("\"{value}\"")).map_err(|_| {
@@ -2019,28 +2018,28 @@ fn parse_credit_loss_lifecycle_event_kind(
     })
 }
 
-fn parse_underwriting_lifecycle_state(
+pub(crate) fn parse_underwriting_lifecycle_state(
     value: &str,
 ) -> Result<chio_kernel::UnderwritingDecisionLifecycleState, CliError> {
     serde_json::from_str(&format!("\"{value}\""))
         .map_err(|_| CliError::policy_constraint_error(format!("invalid underwriting lifecycle state `{value}`")))
 }
 
-fn parse_underwriting_appeal_status(
+pub(crate) fn parse_underwriting_appeal_status(
     value: &str,
 ) -> Result<chio_kernel::UnderwritingAppealStatus, CliError> {
     serde_json::from_str(&format!("\"{value}\""))
         .map_err(|_| CliError::policy_constraint_error(format!("invalid underwriting appeal status `{value}`")))
 }
 
-fn parse_underwriting_appeal_resolution(
+pub(crate) fn parse_underwriting_appeal_resolution(
     value: &str,
 ) -> Result<chio_kernel::UnderwritingAppealResolution, CliError> {
     serde_json::from_str(&format!("\"{value}\""))
         .map_err(|_| CliError::policy_constraint_error(format!("invalid underwriting appeal resolution `{value}`")))
 }
 
-fn load_underwriting_decision_policy(
+pub(crate) fn load_underwriting_decision_policy(
     path: &Path,
 ) -> Result<chio_kernel::UnderwritingDecisionPolicy, CliError> {
     let contents = fs::read_to_string(path)?;
@@ -2057,7 +2056,7 @@ fn load_underwriting_decision_policy(
     }
 }
 
-fn load_json_or_yaml<T: DeserializeOwned>(path: &Path) -> Result<T, CliError> {
+pub(crate) fn load_json_or_yaml<T: DeserializeOwned>(path: &Path) -> Result<T, CliError> {
     let contents = fs::read_to_string(path)?;
     if path
         .extension()
@@ -2072,7 +2071,7 @@ fn load_json_or_yaml<T: DeserializeOwned>(path: &Path) -> Result<T, CliError> {
     }
 }
 
-fn load_credit_bonded_execution_control_policy(
+pub(crate) fn load_credit_bonded_execution_control_policy(
     path: &Path,
 ) -> Result<chio_kernel::CreditBondedExecutionControlPolicy, CliError> {
     let contents = fs::read_to_string(path)?;
@@ -2089,104 +2088,104 @@ fn load_credit_bonded_execution_control_policy(
     }
 }
 
-fn load_liability_provider_report(
+pub(crate) fn load_liability_provider_report(
     path: &Path,
 ) -> Result<chio_kernel::LiabilityProviderReport, CliError> {
     load_json_or_yaml(path)
 }
 
-fn load_liability_quote_request_issue_request(
+pub(crate) fn load_liability_quote_request_issue_request(
     path: &Path,
 ) -> Result<trust_control::LiabilityQuoteRequestIssueRequest, CliError> {
     load_json_or_yaml(path)
 }
 
-fn load_liability_quote_response_issue_request(
+pub(crate) fn load_liability_quote_response_issue_request(
     path: &Path,
 ) -> Result<trust_control::LiabilityQuoteResponseIssueRequest, CliError> {
     load_json_or_yaml(path)
 }
 
-fn load_liability_pricing_authority_issue_request(
+pub(crate) fn load_liability_pricing_authority_issue_request(
     path: &Path,
 ) -> Result<trust_control::LiabilityPricingAuthorityIssueRequest, CliError> {
     load_json_or_yaml(path)
 }
 
-fn load_liability_placement_issue_request(
+pub(crate) fn load_liability_placement_issue_request(
     path: &Path,
 ) -> Result<trust_control::LiabilityPlacementIssueRequest, CliError> {
     load_json_or_yaml(path)
 }
 
-fn load_liability_bound_coverage_issue_request(
+pub(crate) fn load_liability_bound_coverage_issue_request(
     path: &Path,
 ) -> Result<trust_control::LiabilityBoundCoverageIssueRequest, CliError> {
     load_json_or_yaml(path)
 }
 
-fn load_liability_auto_bind_issue_request(
+pub(crate) fn load_liability_auto_bind_issue_request(
     path: &Path,
 ) -> Result<trust_control::LiabilityAutoBindIssueRequest, CliError> {
     load_json_or_yaml(path)
 }
 
-fn load_liability_claim_issue_request(
+pub(crate) fn load_liability_claim_issue_request(
     path: &Path,
 ) -> Result<trust_control::LiabilityClaimPackageIssueRequest, CliError> {
     load_json_or_yaml(path)
 }
 
-fn load_liability_claim_response_issue_request(
+pub(crate) fn load_liability_claim_response_issue_request(
     path: &Path,
 ) -> Result<trust_control::LiabilityClaimResponseIssueRequest, CliError> {
     load_json_or_yaml(path)
 }
 
-fn load_liability_claim_dispute_issue_request(
+pub(crate) fn load_liability_claim_dispute_issue_request(
     path: &Path,
 ) -> Result<trust_control::LiabilityClaimDisputeIssueRequest, CliError> {
     load_json_or_yaml(path)
 }
 
-fn load_liability_claim_adjudication_issue_request(
+pub(crate) fn load_liability_claim_adjudication_issue_request(
     path: &Path,
 ) -> Result<trust_control::LiabilityClaimAdjudicationIssueRequest, CliError> {
     load_json_or_yaml(path)
 }
 
-fn load_liability_claim_payout_instruction_issue_request(
+pub(crate) fn load_liability_claim_payout_instruction_issue_request(
     path: &Path,
 ) -> Result<trust_control::LiabilityClaimPayoutInstructionIssueRequest, CliError> {
     load_json_or_yaml(path)
 }
 
-fn load_liability_claim_payout_receipt_issue_request(
+pub(crate) fn load_liability_claim_payout_receipt_issue_request(
     path: &Path,
 ) -> Result<trust_control::LiabilityClaimPayoutReceiptIssueRequest, CliError> {
     load_json_or_yaml(path)
 }
 
-fn load_liability_claim_settlement_instruction_issue_request(
+pub(crate) fn load_liability_claim_settlement_instruction_issue_request(
     path: &Path,
 ) -> Result<trust_control::LiabilityClaimSettlementInstructionIssueRequest, CliError> {
     load_json_or_yaml(path)
 }
 
-fn load_liability_claim_settlement_receipt_issue_request(
+pub(crate) fn load_liability_claim_settlement_receipt_issue_request(
     path: &Path,
 ) -> Result<trust_control::LiabilityClaimSettlementReceiptIssueRequest, CliError> {
     load_json_or_yaml(path)
 }
 
-fn parse_liability_coverage_class(
+pub(crate) fn parse_liability_coverage_class(
     value: &str,
 ) -> Result<chio_kernel::LiabilityCoverageClass, CliError> {
     serde_json::from_str(&format!("\"{value}\""))
         .map_err(|_| CliError::policy_constraint_error(format!("invalid liability coverage class `{value}`")))
 }
 
-fn parse_liability_provider_lifecycle_state(
+pub(crate) fn parse_liability_provider_lifecycle_state(
     value: &str,
 ) -> Result<chio_kernel::LiabilityProviderLifecycleState, CliError> {
     serde_json::from_str(&format!("\"{value}\"")).map_err(|_| {
@@ -2196,17 +2195,17 @@ fn parse_liability_provider_lifecycle_state(
     })
 }
 
-fn parse_governed_autonomy_tier(value: &str) -> Result<GovernedAutonomyTier, CliError> {
+pub(crate) fn parse_governed_autonomy_tier(value: &str) -> Result<GovernedAutonomyTier, CliError> {
     serde_json::from_str(&format!("\"{value}\""))
         .map_err(|_| CliError::policy_constraint_error(format!("invalid governed autonomy tier `{value}`")))
 }
 
-fn parse_runtime_assurance_tier(value: &str) -> Result<RuntimeAssuranceTier, CliError> {
+pub(crate) fn parse_runtime_assurance_tier(value: &str) -> Result<RuntimeAssuranceTier, CliError> {
     serde_json::from_str(&format!("\"{value}\""))
         .map_err(|_| CliError::policy_constraint_error(format!("invalid runtime assurance tier `{value}`")))
 }
 
-fn load_runtime_attestation_evidence(path: &Path) -> Result<RuntimeAttestationEvidence, CliError> {
+pub(crate) fn load_runtime_attestation_evidence(path: &Path) -> Result<RuntimeAttestationEvidence, CliError> {
     let contents = fs::read_to_string(path)?;
     if path
         .extension()
@@ -2221,19 +2220,19 @@ fn load_runtime_attestation_evidence(path: &Path) -> Result<RuntimeAttestationEv
     }
 }
 
-fn load_signed_runtime_attestation_appraisal_result(
+pub(crate) fn load_signed_runtime_attestation_appraisal_result(
     path: &Path,
 ) -> Result<SignedRuntimeAttestationAppraisalResult, CliError> {
     load_json_or_yaml(path)
 }
 
-fn load_runtime_attestation_import_policy(
+pub(crate) fn load_runtime_attestation_import_policy(
     path: &Path,
 ) -> Result<RuntimeAttestationImportedAppraisalPolicy, CliError> {
     load_json_or_yaml(path)
 }
 
-fn cmd_trust_runtime_attestation_appraisal_export(
+pub(crate) fn cmd_trust_runtime_attestation_appraisal_export(
     input_path: &Path,
     policy_file: Option<&Path>,
     json_output: bool,
@@ -2305,7 +2304,7 @@ fn cmd_trust_runtime_attestation_appraisal_export(
     Ok(())
 }
 
-fn cmd_trust_runtime_attestation_appraisal_result_export(
+pub(crate) fn cmd_trust_runtime_attestation_appraisal_result_export(
     issuer: &str,
     input_path: &Path,
     policy_file: Option<&Path>,
@@ -2365,7 +2364,7 @@ fn cmd_trust_runtime_attestation_appraisal_result_export(
     Ok(())
 }
 
-fn cmd_trust_runtime_attestation_appraisal_import(
+pub(crate) fn cmd_trust_runtime_attestation_appraisal_import(
     input_path: &Path,
     policy_path: &Path,
     json_output: bool,
@@ -2414,7 +2413,7 @@ fn cmd_trust_runtime_attestation_appraisal_import(
     Ok(())
 }
 
-fn cmd_trust_underwriting_decision_issue(
+pub(crate) fn cmd_trust_underwriting_decision_issue(
     args: UnderwritingDecisionIssueArgs<'_>,
     backend: SignedQueryBackend<'_>,
 ) -> Result<(), CliError> {
@@ -2463,7 +2462,7 @@ fn cmd_trust_underwriting_decision_issue(
     Ok(())
 }
 
-fn cmd_trust_underwriting_decision_list(
+pub(crate) fn cmd_trust_underwriting_decision_list(
     args: UnderwritingDecisionListArgs<'_>,
     backend: QueryBackend<'_>,
 ) -> Result<(), CliError> {
@@ -2527,7 +2526,7 @@ fn cmd_trust_underwriting_decision_list(
     Ok(())
 }
 
-fn cmd_trust_underwriting_appeal_create(
+pub(crate) fn cmd_trust_underwriting_appeal_create(
     decision_id: &str,
     requested_by: &str,
     reason: &str,
@@ -2567,7 +2566,7 @@ fn cmd_trust_underwriting_appeal_create(
     Ok(())
 }
 
-fn cmd_trust_underwriting_appeal_resolve(
+pub(crate) fn cmd_trust_underwriting_appeal_resolve(
     args: UnderwritingAppealResolveArgs<'_>,
     backend: QueryBackend<'_>,
 ) -> Result<(), CliError> {
@@ -2604,7 +2603,7 @@ fn cmd_trust_underwriting_appeal_resolve(
     Ok(())
 }
 
-fn cmd_receipt_list(
+pub(crate) fn cmd_receipt_list(
     args: ReceiptListArgs<'_>,
     backend: QueryBackend<'_>,
 ) -> Result<(), CliError> {
@@ -2693,7 +2692,7 @@ fn cmd_receipt_list(
 /// `--tenant` flag, so the both-set case is rejected at parse time.
 /// This function still defends against the both-set state in case any
 /// caller bypasses the clap surface.
-fn local_receipt_read_context(
+pub(crate) fn local_receipt_read_context(
     tenant: Option<&str>,
     admin_all: bool,
 ) -> Result<chio_kernel::ReceiptReadContext, CliError> {
@@ -2711,7 +2710,7 @@ fn local_receipt_read_context(
     }
 }
 
-fn local_receipt_store(
+pub(crate) fn local_receipt_store(
     backend: &QueryBackend<'_>,
     command_name: &str,
 ) -> Result<chio_store_sqlite::SqliteReceiptStore, CliError> {
@@ -2732,7 +2731,7 @@ fn local_receipt_store(
     chio_store_sqlite::SqliteReceiptStore::open_existing(path).map_err(CliError::from)
 }
 
-fn load_existing_kernel_checkpoint_keypair(path: &Path) -> Result<chio_core::Keypair, CliError> {
+pub(crate) fn load_existing_kernel_checkpoint_keypair(path: &Path) -> Result<chio_core::Keypair, CliError> {
     let seed_hex = std::fs::read_to_string(path).map_err(|error| {
         if error.kind() == std::io::ErrorKind::NotFound {
             CliError::cli_other_error(format!(
@@ -2746,7 +2745,7 @@ fn load_existing_kernel_checkpoint_keypair(path: &Path) -> Result<chio_core::Key
     chio_core::Keypair::from_seed_hex(seed_hex.trim()).map_err(CliError::from)
 }
 
-fn cmd_receipt_health(backend: QueryBackend<'_>) -> Result<(), CliError> {
+pub(crate) fn cmd_receipt_health(backend: QueryBackend<'_>) -> Result<(), CliError> {
     let store = local_receipt_store(&backend, "receipt health")?;
     let report = store.receipt_store_health()?;
     if backend.json_output {
@@ -2761,7 +2760,7 @@ fn cmd_receipt_health(backend: QueryBackend<'_>) -> Result<(), CliError> {
     }
 }
 
-fn cmd_receipt_flush(
+pub(crate) fn cmd_receipt_flush(
     timeout_ms: u64,
     backend: QueryBackend<'_>,
 ) -> Result<(), CliError> {
@@ -2776,7 +2775,7 @@ fn cmd_receipt_flush(
     Ok(())
 }
 
-fn cmd_receipt_checkpoint_status(
+pub(crate) fn cmd_receipt_checkpoint_status(
     max_batch: u64,
     backend: QueryBackend<'_>,
 ) -> Result<(), CliError> {
@@ -2794,7 +2793,7 @@ fn cmd_receipt_checkpoint_status(
     }
 }
 
-fn cmd_receipt_checkpoint_create(
+pub(crate) fn cmd_receipt_checkpoint_create(
     kernel_seed_file: &Path,
     max_batch: u64,
     backend: QueryBackend<'_>,
@@ -2810,7 +2809,7 @@ fn cmd_receipt_checkpoint_create(
     Ok(())
 }
 
-fn cmd_receipt_checkpoint_verify(backend: QueryBackend<'_>) -> Result<(), CliError> {
+pub(crate) fn cmd_receipt_checkpoint_verify(backend: QueryBackend<'_>) -> Result<(), CliError> {
     let store = local_receipt_store(&backend, "receipt checkpoint verify")?;
     let report = store.receipt_checkpoint_status(Some(1))?;
     if backend.json_output {
@@ -2825,7 +2824,7 @@ fn cmd_receipt_checkpoint_verify(backend: QueryBackend<'_>) -> Result<(), CliErr
     }
 }
 
-fn cmd_receipt_explain(
+pub(crate) fn cmd_receipt_explain(
     args: ReceiptExplainArgs<'_>,
     backend: QueryBackend<'_>,
 ) -> Result<(), CliError> {
@@ -2876,7 +2875,7 @@ fn cmd_receipt_explain(
 }
 
 
-fn is_bilateral_artifacts_value(value: &serde_json::Value) -> bool {
+pub(crate) fn is_bilateral_artifacts_value(value: &serde_json::Value) -> bool {
     let Some(obj) = value.as_object() else {
         return false;
     };
@@ -2885,7 +2884,7 @@ fn is_bilateral_artifacts_value(value: &serde_json::Value) -> bool {
     has_dual && has_dsse
 }
 
-fn bilateral_field<'a>(
+pub(crate) fn bilateral_field<'a>(
     value: &'a serde_json::Value,
     snake: &str,
     camel: &str,
@@ -2893,7 +2892,7 @@ fn bilateral_field<'a>(
     value.get(snake).or_else(|| value.get(camel))
 }
 
-fn render_bilateral_explain(
+pub(crate) fn render_bilateral_explain(
     value: &serde_json::Value,
     args: &ReceiptExplainArgs<'_>,
     backend: &QueryBackend<'_>,
@@ -2940,7 +2939,7 @@ fn render_bilateral_explain(
     Ok(())
 }
 
-fn explain_dual_signed_receipt(
+pub(crate) fn explain_dual_signed_receipt(
     dual: &serde_json::Value,
 ) -> Result<serde_json::Value, CliError> {
     let body = dual.get("body").cloned().unwrap_or(serde_json::Value::Null);
@@ -2977,11 +2976,11 @@ fn explain_dual_signed_receipt(
         "org_b_kernel_id": org_b,
         "org_a_signature": org_a_sig,
         "org_b_signature": org_b_sig,
-        "non_section6_disclaimer": "DualSignedReceipt signs canonical JSON of CoSigningBody, not the DSSE PAE preimage required by the treaty-bound bilateral invocation profile section 6. This artifact is retained for backward compatibility with pre-B4 federation transport callers and is explicitly not section-6 conformant. Verifiers seeking section-6 conformance must use the dsse_envelope section.",
+        "non_section6_disclaimer": "DualSignedReceipt signs canonical JSON of CoSigningBody, not the DSSE PAE preimage required by section 6. This section is NOT section-6 conformant. For section-6 conformance use the dsse_envelope section.",
     }))
 }
 
-fn explain_dsse_envelope(dsse: &serde_json::Value) -> Result<serde_json::Value, CliError> {
+pub(crate) fn explain_dsse_envelope(dsse: &serde_json::Value) -> Result<serde_json::Value, CliError> {
     // DsseEnvelope is `serde(rename_all = "camelCase")` so wire keys are
     // camelCase: `payloadType`, `payload`, `signatures`, optional `schema`.
     let payload_type = dsse
@@ -3029,16 +3028,14 @@ fn explain_dsse_envelope(dsse: &serde_json::Value) -> Result<serde_json::Value, 
     }))
 }
 
-/// Renamed from `explain_bilateral_seventeen_step_trace`. The previous
-/// name implied this was a section-7 full-verifier trace, but most steps
-/// were marked `bounded` because the CLI does not have the org A / org
-/// B passport public keys in scope and cannot perform real Ed25519
-/// verification. The function now produces an INSPECTION trace
-/// (structural / schema / fingerprint-presence checks only) and the
-/// emitted JSON labels itself accordingly. Real verification belongs
-/// in `chio_federation::bilateral_dsse::verify_dsse_envelope` against
+/// Produces an INSPECTION trace (structural / schema /
+/// fingerprint-presence checks only); the CLI does not have the org A /
+/// org B passport public keys in scope and cannot perform real Ed25519
+/// verification, and the emitted JSON labels itself accordingly. Real
+/// verification belongs in
+/// `chio_federation::bilateral_dsse::verify_dsse_envelope` against
 /// pinned passport keys.
-fn inspect_bilateral_envelope_trace(
+pub(crate) fn inspect_bilateral_envelope_trace(
     dual: &serde_json::Value,
     dsse: &serde_json::Value,
 ) -> Result<serde_json::Value, CliError> {
@@ -3368,13 +3365,13 @@ fn inspect_bilateral_envelope_trace(
     }))
 }
 
-fn print_bilateral_human(report: &serde_json::Value, with_trace: bool) {
+pub(crate) fn print_bilateral_human(report: &serde_json::Value, with_trace: bool) {
     println!("=== bilateral co-sign artifacts ===");
     println!("schema: {}", report["schema"].as_str().unwrap_or("?"));
     println!("shape:  {}", report["shape"].as_str().unwrap_or("?"));
     println!();
 
-    println!("--- DualSignedReceipt (legacy, NON-SECTION-6-CONFORMANT) ---");
+    println!("--- DualSignedReceipt (NON-SECTION-6-CONFORMANT) ---");
     let dual = &report["dual_signed_receipt"];
     println!(
         "  receipt_id:       {}",
@@ -3465,7 +3462,7 @@ fn print_bilateral_human(report: &serde_json::Value, with_trace: bool) {
     }
 }
 
-fn load_receipt_for_explain(
+pub(crate) fn load_receipt_for_explain(
     receipt_id: &str,
     tenant: Option<&str>,
     admin_all: bool,
@@ -3572,7 +3569,7 @@ fn load_receipt_for_explain(
 }
 
 #[cfg(test)]
-fn select_receipt_for_explain(
+pub(crate) fn select_receipt_for_explain(
     receipt_id: &str,
     receipts: Vec<serde_json::Value>,
     source: &str,
@@ -3582,7 +3579,7 @@ fn select_receipt_for_explain(
     finish_receipt_for_explain(receipt_id, matches, source)
 }
 
-fn push_receipt_explain_matches(
+pub(crate) fn push_receipt_explain_matches(
     receipt_id: &str,
     receipts: Vec<serde_json::Value>,
     matches: &mut Vec<serde_json::Value>,
@@ -3600,7 +3597,7 @@ fn push_receipt_explain_matches(
     Ok(())
 }
 
-fn finish_receipt_for_explain(
+pub(crate) fn finish_receipt_for_explain(
     receipt_id: &str,
     mut matches: Vec<serde_json::Value>,
     source: &str,
@@ -3613,7 +3610,7 @@ fn finish_receipt_for_explain(
     )))
 }
 
-fn receipt_value_matches_id(value: &serde_json::Value, receipt_id: &str) -> bool {
+pub(crate) fn receipt_value_matches_id(value: &serde_json::Value, receipt_id: &str) -> bool {
     let candidate_paths = [
         ["id"].as_slice(),
         ["receipt_id"].as_slice(),
@@ -3628,7 +3625,7 @@ fn receipt_value_matches_id(value: &serde_json::Value, receipt_id: &str) -> bool
         .any(|candidate| candidate == receipt_id)
 }
 
-fn json_path_str<'a>(value: &'a serde_json::Value, path: &[&str]) -> Option<&'a str> {
+pub(crate) fn json_path_str<'a>(value: &'a serde_json::Value, path: &[&str]) -> Option<&'a str> {
     let mut current = value;
     for segment in path {
         current = current.get(*segment)?;
@@ -3636,7 +3633,7 @@ fn json_path_str<'a>(value: &'a serde_json::Value, path: &[&str]) -> Option<&'a 
     current.as_str()
 }
 
-fn explain_receipt_value(
+pub(crate) fn explain_receipt_value(
     requested_id: &str,
     value: serde_json::Value,
     depth: usize,
@@ -3712,7 +3709,7 @@ fn explain_receipt_value(
     }))
 }
 
-fn explain_decision_label(decision: Option<&chio_core::receipt::Decision>) -> &'static str {
+pub(crate) fn explain_decision_label(decision: Option<&chio_core::receipt::Decision>) -> &'static str {
     match decision {
         Some(chio_core::receipt::Decision::Allow) => "allow",
         Some(chio_core::receipt::Decision::Deny { .. }) => "deny",
@@ -3722,7 +3719,7 @@ fn explain_decision_label(decision: Option<&chio_core::receipt::Decision>) -> &'
     }
 }
 
-fn decision_details(
+pub(crate) fn decision_details(
     decision: Option<&chio_core::receipt::Decision>,
 ) -> (Option<&str>, Option<&str>) {
     match decision {
@@ -3737,7 +3734,7 @@ fn decision_details(
     }
 }
 
-fn repair_hint(decision: Option<&chio_core::receipt::Decision>) -> Option<&'static str> {
+pub(crate) fn repair_hint(decision: Option<&chio_core::receipt::Decision>) -> Option<&'static str> {
     match decision {
         Some(chio_core::receipt::Decision::Deny { .. }) => {
             Some("inspect the guard and policy_hash, then mint or narrow a matching capability")
@@ -3807,8 +3804,8 @@ mod receipt_explain_tests {
     }
 
     #[test]
-    fn receipt_value_matches_legacy_and_v2_ids() {
-        let legacy = serde_json::json!({
+    fn receipt_value_matches_flat_and_nested_ids() {
+        let flat = serde_json::json!({
             "id": "receipt-legacy",
             "decision": {"type": "allow"}
         });
@@ -3818,9 +3815,9 @@ mod receipt_explain_tests {
             }
         });
 
-        assert!(receipt_value_matches_id(&legacy, "receipt-legacy"));
+        assert!(receipt_value_matches_id(&flat, "receipt-legacy"));
         assert!(receipt_value_matches_id(&nested, "nested-receipt"));
-        assert!(!receipt_value_matches_id(&legacy, "missing"));
+        assert!(!receipt_value_matches_id(&flat, "missing"));
     }
 
     #[test]
@@ -3952,7 +3949,7 @@ mod receipt_operator_tests {
                 tenant_id: None,
                 kernel_key: keypair.public_key(),
             },
-            &keypair,
+            keypair,
         )
     }
 

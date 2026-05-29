@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://chio.dev/spec/eval/receipt-format.v1.json",
+  "$id": "https://chio.world/spec/eval/receipt-format.v1.json",
   "title": "Chio eval-report receipt bundle v1",
   "description": "Schema chio.eval-report.bundle.v1. The outer signature covers the bundle with signatures removed and the remaining JSON canonicalized as rfc8785.",
   "type": "object",
@@ -266,7 +266,7 @@
       "properties": {
         "kind": {
           "type": "string",
-          "description": "Closed allow-list. Trajectory-3.1 retracted real partner cryptographic attestation, so the chio-eval-receipt verifier accepts only the local self-generated test sample (`test-sha256`). Vendor labels (`sigstore-cosign`, `pgp-detached`) are deferred to trajectory-4 (M02-followup) and rejected fail-closed by the parser today; they will be re-added here when their verification lanes land.",
+          "description": "Closed allow-list. Real partner cryptographic attestation is not yet claimed, so the chio-eval-receipt verifier accepts only the local self-generated test sample (`test-sha256`). Vendor labels (`sigstore-cosign`, `pgp-detached`) are backlog work and rejected fail-closed by the parser today; they will be re-added here when their verification lanes land.",
           "enum": [
             "test-sha256"
           ]

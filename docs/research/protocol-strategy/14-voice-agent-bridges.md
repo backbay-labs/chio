@@ -6,7 +6,7 @@
 > call-context receipt fields, and with X2 (latency audit) on the sub-200ms
 > verdict budget. Code paths are cited repo-relative.
 
-> **Erratum (wave 3):** `human_principal` is canonically defined as a typed `HumanPrincipal` enum on `CallerIdentity` here (this doc, around the "Identity" section). Doc 15's receipt extension references it by canonical encoding rather than redefining it as `Option<String>`. The two should agree: one definition, one home. See [reviews/01-identity-credentials-review.md](reviews/01-identity-credentials-review.md).
+> **Erratum:** `human_principal` is canonically defined as a typed `HumanPrincipal` enum on `CallerIdentity` here (this doc, around the "Identity" section). Doc 15's receipt extension references it by canonical encoding rather than redefining it as `Option<String>`. The two should agree: one definition, one home. See [reviews/01-identity-credentials-review.md](reviews/01-identity-credentials-review.md).
 
 ## TL;DR
 

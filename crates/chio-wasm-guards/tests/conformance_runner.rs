@@ -102,7 +102,7 @@ fn try_load_rust_guard() -> Option<GuardEntry> {
 
 fn try_load_ts_guard() -> Option<GuardEntry> {
     let path = format!(
-        "{}/../../packages/sdk/chio-guard-ts/dist/tool-gate.wasm",
+        "{}/../../sdks/guard/chio-guard-ts/dist/tool-gate.wasm",
         env!("CARGO_MANIFEST_DIR"),
     );
     match std::fs::read(&path) {
@@ -117,7 +117,7 @@ fn try_load_ts_guard() -> Option<GuardEntry> {
 
 fn try_load_py_guard() -> Option<GuardEntry> {
     let path = format!(
-        "{}/../../packages/sdk/chio-guard-py/dist/tool-gate.wasm",
+        "{}/../../sdks/guard/chio-guard-py/dist/tool-gate.wasm",
         env!("CARGO_MANIFEST_DIR"),
     );
     match std::fs::read(&path) {
@@ -132,7 +132,7 @@ fn try_load_py_guard() -> Option<GuardEntry> {
 
 fn try_load_go_guard() -> Option<GuardEntry> {
     let path = format!(
-        "{}/../../packages/sdk/chio-guard-go/dist/tool-gate.wasm",
+        "{}/../../sdks/guard/chio-guard-go/dist/tool-gate.wasm",
         env!("CARGO_MANIFEST_DIR"),
     );
     match std::fs::read(&path) {
@@ -256,8 +256,7 @@ fn print_fuel_summary(records: &[FuelRecord], fixtures: &[TestFixture]) {
 /// Fuel parity threshold: maximum allowed ratio between the most expensive
 /// and cheapest guard for the same fixture.
 ///
-/// The plan specified 2x, but real-world SDK fuel profiles differ by 15-90x
-/// across execution tiers:
+/// Real-world SDK fuel profiles differ by 15-90x across execution tiers:
 ///   - Rust core modules: ~8-13K fuel (direct WASM, no overhead)
 ///   - Python Component Model: ~46-53K fuel (CPython interpreter embedded)
 ///   - TypeScript Component Model: ~750-800K fuel (SpiderMonkey JS engine embedded)

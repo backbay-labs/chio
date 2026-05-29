@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-IMG ?= ghcr.io/backbay/chio-k8s-controller:latest
+IMG ?= ghcr.io/backbay-labs/chio-k8s-controller:latest
 GO  ?= go
 
 .PHONY: all

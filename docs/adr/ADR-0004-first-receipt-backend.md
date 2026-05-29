@@ -2,7 +2,7 @@
 
 - Status: Implemented
 - Decision owner: trust lane
-- Related plan item: `D4` in [../EXECUTION_PLAN.md](../EXECUTION_PLAN.md)
+- Related plan item: `D4` in [../EXECUTION_PLAN.md](../operations/EXECUTION_PLAN.md)
 
 ## Context
 

@@ -1,8 +1,8 @@
-//! Lineage anchoring for published model cards (M10 P5.T1).
+//! Lineage anchoring for published model cards.
 //!
 //! Publishing a [`crate::bundle::VerifiedModelCard`] to the public registry
 //! emits a lineage anchor proof; consumers verify the proof through the
-//! existing [`chio_lineage::anchor`] surface. M10 P5.T1 does not fork the
+//! existing [`chio_lineage::anchor`] surface. This does not fork the
 //! anchor surface; it derives a frontier-shaped digest from a verified
 //! model card and packages it as a [`ModelCardLineageAnchor`] artifact whose
 //! SHA-256 digest format and signing-state plumbing match
@@ -28,11 +28,11 @@
 //!
 //! `chio-lineage`'s [`SigningState`] enum records hybrid-signing presence.
 //! When the caller passes `Some(algorithm)` (i.e. a signer was named but
-//! M03 hybrid signing has not produced a payload yet), the anchor records
+//! hybrid signing has not produced a payload yet), the anchor records
 //! [`SigningState::UnsignedSignerStubbed`] so verifiers fail-closed; when
 //! the caller passes `None`, the anchor records
 //! [`SigningState::UnsignedSoftDepAbsent`]. Neither variant impersonates
-//! [`SigningState::Signed`]. M10 P5.T1 anchors never construct
+//! [`SigningState::Signed`]. These anchors never construct
 //! [`SigningState::Signed`], and imported signed anchors are rejected until
 //! a local verifier can authenticate the signature against a trusted key.
 
@@ -70,7 +70,7 @@ pub struct ModelCardLineageAnchor {
     /// Frontier-shaped digest: SHA-256 over the canonical projection bytes.
     pub digest: FrontierDigest,
     /// PQ-hybrid signing state placeholder. Mirrors the lineage anchor
-    /// soft-dep slot; M03 hybrid signing populates this when wired.
+    /// soft-dep slot; hybrid signing populates this when wired.
     pub signing: SigningState,
     /// Lowercase hexadecimal SHA-256 of the canonical-JSON model card
     /// bytes. Pinned in the artifact so consumers can correlate without
@@ -153,7 +153,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
 /// was signed over (i.e. the same bytes passed to
 /// [`crate::bundle::verify_model_card_bundle`]). `signer_hint` records the
 /// PQ-hybrid signing state in the same shape used by
-/// [`chio_lineage::anchor::pin_frontier`]; pass `None` when M03 hybrid
+/// [`chio_lineage::anchor::pin_frontier`]; pass `None` when hybrid
 /// signing is absent.
 ///
 /// Fail-closed: rejects when `card_bytes` does not decode to the same
@@ -175,12 +175,12 @@ pub fn anchor_model_card(
     let projection = anchor_projection_bytes(card_bytes, &verified.attestation)?;
     let digest_hex = sha256_hex(&projection);
 
-    // Fail-closed: M10 P5.T1 never has a real signature payload to record,
+    // Fail-closed: this helper never has a real signature payload to record,
     // so we MUST NOT construct `SigningState::Signed { signature_hex: "" }`
     // here. Doing so would let a verifier matching `SigningState::Signed
-    // { .. }` treat the anchor as authenticated even though no M03 hybrid
-    // signature exists. Until M03 plumbs a real payload through this
-    // helper, a signer hint produces `UnsignedSignerStubbed` so verifiers
+    // { .. }` treat the anchor as authenticated even though no hybrid
+    // signature exists. Until hybrid signing plumbs a real payload through
+    // this helper, a signer hint produces `UnsignedSignerStubbed` so verifiers
     // see an explicit unsigned variant.
     let signing = match signer_hint {
         Some(algorithm) => SigningState::UnsignedSignerStubbed {

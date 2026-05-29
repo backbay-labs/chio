@@ -30,16 +30,16 @@ Phases are ordered by dependency. Within a phase, stories can generally
 be parallelized unless noted. Some phases can overlap with others where
 there are no hard dependencies.
 
-Phase headers marked `[SHIPPED <sha>]` are complete on `project/full-roadmap`.
-Headers marked `[PARTIAL <sha>]` shipped the core feature but have one or
-more follow-up gaps noted in the phase body. Headers with no marker are
+Phase headers marked `[SHIPPED <sha>]` are complete on the implementation
+branch. Headers marked `[PARTIAL <sha>]` shipped the core feature but have one
+or more follow-up gaps noted in the phase body. Headers with no marker are
 unstarted or in-flight.
 
 ---
 
 ## Shipment Status (2026-04-16)
 
-**73 of 73 numbered phases shipped** on `project/full-roadmap`. 🎉 Entire roadmap executed end-to-end. Every phase group complete - Phase 0 (DX), Phase 1 (structural security), Phase 2 (types), Phase 3 (content safety + HITL), Phase 4 (code agent), Phase 5 (guard absorption), Phase 6 (framework SDKs), Phase 7 (data guards), Phase 8 (code exec), Phase 9 (service mesh), Phase 10 (orchestration), Phase 11 (content/streaming/iac), Phase 12 (observability), Phase 13 (external guards), Phase 14 (portable kernel), Phase 15 (compliance), Phase 16 (economics), Phase 17 (workflow orchestrators), Phase 18 (memory), Phase 19 (regulatory), Phase 20 (capstone). Plus adjacent
+**73 of 73 numbered phases shipped** on the implementation branch. The entire roadmap was executed end-to-end. Every phase group is complete: Phase 0 (DX), Phase 1 (structural security), Phase 2 (types), Phase 3 (content safety + HITL), Phase 4 (code agent), Phase 5 (guard absorption), Phase 6 (framework SDKs), Phase 7 (data guards), Phase 8 (code exec), Phase 9 (service mesh), Phase 10 (orchestration), Phase 11 (content/streaming/iac), Phase 12 (observability), Phase 13 (external guards), Phase 14 (portable kernel), Phase 15 (compliance), Phase 16 (economics), Phase 17 (workflow orchestrators), Phase 18 (memory), Phase 19 (regulatory), Phase 20 (capstone). Plus adjacent
 TEE attested-checkpoint-binding scope work (`ed2614f`) that is not a numbered
 roadmap phase.
 
@@ -67,7 +67,7 @@ roadmap phase.
 | 19 (Regulatory) | 19.1, 19.2, 19.3 | -- | -- |
 | 20 (Capstone) | 20.1, 20.2, 20.3, 20.4 | -- | -- |
 
-**Wave 3a + 3b + 3c complete**. Phases 2 (types), 6 (SDKs), 9 (service mesh), 15 (compliance) fully shipped. Wave 3d next: 3.4-3.6 HITL cluster, 1.1 execution nonces, 1.5 multi-tenant receipt, 3.3 sanitizer, 4.x code-agent, 5.x guard absorption, 8.x exec guards, 10.3 langgraph (blocked on 3.4), 11.x content/streaming/iac, 12.3 langsmith, 13.2-13.3 cloud/threat-intel, 14.x WASM kernel, 17.1-17.4 workflow, 18.x memory, 19.x regulatory, 20.x capstones.
+All phase groups in the table above are fully shipped.
 
 ---
 
@@ -135,7 +135,7 @@ don't need the Rust toolchain.
 
 **Refs**: `docs/protocols/DX-AND-ADOPTION-ROADMAP.md` section 3
 
-**Acceptance**: `brew install chio` or `docker run ghcr.io/backbay/chio-sidecar:latest` works without Rust installed.
+**Acceptance**: `brew install chio` or `docker run ghcr.io/backbay-labs/chio-sidecar:latest` works without Rust installed.
 
 ### 0.5 Error Message Improvements [SHIPPED 224a05c]
 
@@ -325,9 +325,9 @@ and guards, returns per-step verdicts before any execute.
 > **Refs**: `docs/guards/06-CONTENT-SAFETY-ABSORPTION.md`,
 > `docs/protocols/HUMAN-IN-THE-LOOP-PROTOCOL.md`
 
-### 3.1 PromptInjectionGuard (Port from ClawdStrike) [SHIPPED 3d55e18]
+### 3.1 PromptInjectionGuard (port from the prior internal guard library) [SHIPPED 3d55e18]
 
-**What**: Port ClawdStrike's 6-signal prompt injection detector to Chio's
+**What**: Port the prior internal guard library's 6-signal prompt injection detector to Chio's
 sync Guard trait. Includes text canonicalization and fingerprint dedup.
 
 **Files**:
@@ -335,13 +335,13 @@ sync Guard trait. Includes text canonicalization and fingerprint dedup.
 - `crates/chio-guards/src/text_utils.rs` (new: canonicalization, shared with jailbreak)
 - `crates/chio-guards/src/lib.rs` (register)
 
-**Source**: `../clawdstrike/crates/libs/clawdstrike/src/guards/prompt_injection.rs`
+**Source**: the prior internal guard library
 **Refs**: `docs/guards/06-CONTENT-SAFETY-ABSORPTION.md` section 1.2, 5.2
 
 **Acceptance**: Guard detects "ignore previous instructions" patterns and
 returns Deny. Existing guards unaffected.
 
-### 3.2 JailbreakGuard (Port from ClawdStrike) [SHIPPED 2da8f19]
+### 3.2 JailbreakGuard (port from the prior internal guard library) [SHIPPED 2da8f19]
 
 **What**: Port the 4-layer jailbreak detector (heuristic, statistical, ML
 scoring, optional LLM judge). LLM judge deferred to host function in v2.
@@ -350,8 +350,7 @@ scoring, optional LLM judge). LLM judge deferred to host function in v2.
 - `crates/chio-guards/src/jailbreak.rs` (new)
 - `crates/chio-guards/src/jailbreak_detector.rs` (new: ML scoring layer)
 
-**Source**: `../clawdstrike/crates/libs/clawdstrike/src/guards/jailbreak.rs`,
-`../clawdstrike/crates/libs/clawdstrike/src/jailbreak.rs`
+**Source**: the prior internal guard library
 **Refs**: `docs/guards/06-CONTENT-SAFETY-ABSORPTION.md` section 1.1, 5.1
 
 **Acceptance**: Guard detects multi-layer jailbreak attempts. Configurable
@@ -359,7 +358,7 @@ threshold for sensitivity.
 
 ### 3.3 Output Sanitizer Completion [SHIPPED 8d0cbb1]
 
-**What**: Complete the partial port of ClawdStrike's output sanitizer.
+**What**: Complete the partial port of the prior internal guard library's output sanitizer.
 Add secret detection, entropy scanning, Luhn validation, allowlist/denylist,
 overlap resolution, and full redaction strategy support.
 
@@ -367,7 +366,7 @@ overlap resolution, and full redaction strategy support.
 - `crates/chio-guards/src/response_sanitization.rs` (extend existing)
 - `crates/chio-guards/src/post_invocation.rs` (extend pipeline)
 
-**Source**: `../clawdstrike/crates/libs/clawdstrike/src/output_sanitizer.rs`
+**Source**: the prior internal guard library
 **Refs**: `docs/guards/07-OUTPUT-SANITIZER-ABSORPTION.md`
 
 **Acceptance**: Post-invocation guard redacts SSNs, credit cards (Luhn-validated),
@@ -478,9 +477,9 @@ guide in <5 minutes and have Chio protecting their tool calls.
 
 ---
 
-## Phase 5: ClawdStrike Guard Absorption (Remaining)
+## Phase 5: Guard Absorption (Remaining)
 
-> **Goal**: Port the remaining 4 guards and 2 subsystems from ClawdStrike.
+> **Goal**: Port the remaining 4 guards and 2 subsystems from the prior internal guard library.
 > **Depends on**: Phase 2 (ToolAction variants for CUA).
 > **Refs**: `docs/guards/08-DESKTOP-CUA-GUARD-ABSORPTION.md`,
 > `docs/guards/09-POLICY-ENGINE-ABSORPTION.md`,
@@ -493,7 +492,7 @@ guide in <5 minutes and have Chio protecting their tool calls.
 **Files**:
 - `crates/chio-guards/src/computer_use.rs` (new)
 
-**Source**: `../clawdstrike/crates/libs/clawdstrike/src/guards/computer_use.rs`
+**Source**: the prior internal guard library
 **Refs**: `docs/guards/08-DESKTOP-CUA-GUARD-ABSORPTION.md` section 1.1
 
 **Acceptance**: BrowserAction::Navigate to a blocked domain returns Deny.
@@ -506,7 +505,7 @@ Screenshot actions respect rate limits.
 **Files**:
 - `crates/chio-guards/src/input_injection.rs` (new)
 
-**Source**: `../clawdstrike/crates/libs/clawdstrike/src/guards/input_injection_capability.rs`
+**Source**: the prior internal guard library
 **Refs**: `docs/guards/08-DESKTOP-CUA-GUARD-ABSORPTION.md` section 1.2
 
 **Acceptance**: Keyboard input injection denied when input type not in
@@ -519,7 +518,7 @@ allowlist. Actions without postcondition probes denied in strict mode.
 **Files**:
 - `crates/chio-guards/src/remote_desktop.rs` (new)
 
-**Source**: `../clawdstrike/crates/libs/clawdstrike/src/guards/remote_desktop_side_channel.rs`
+**Source**: the prior internal guard library
 **Refs**: `docs/guards/08-DESKTOP-CUA-GUARD-ABSORPTION.md` section 1.3
 
 **Acceptance**: Clipboard transfer denied when clipboard channel disabled.
@@ -535,7 +534,7 @@ pre-computed pattern database.
 - `crates/chio-guards/src/spider_sense.rs` (new)
 - `crates/chio-guards/data/spider_sense_patterns.json` (new: pattern DB)
 
-**Source**: `../clawdstrike/crates/libs/clawdstrike/src/spider_sense.rs`
+**Source**: the prior internal guard library
 **Refs**: `docs/guards/06-CONTENT-SAFETY-ABSORPTION.md` section 1.3, 4.1
 
 **Acceptance**: Tool call arguments with high cosine similarity to known
@@ -544,16 +543,15 @@ return Allow. Pattern database loads from JSON at guard init.
 
 ### 5.5 Policy Engine: Guard Compilation [SHIPPED b595653]
 
-**What**: Port ClawdStrike's policy-to-guard compiler. HushSpec YAML compiles
+**What**: Port the prior internal guard library's policy-to-guard compiler. HushSpec YAML compiles
 to guard instances registered on the kernel. Complete the 5 missing guard
 types in the compilation pipeline.
 
 **Files**:
 - `crates/chio-policy/src/compiler.rs` (extend: add missing guard types)
-- `crates/chio-policy/src/rulesets/` (new: port 7 built-in rulesets from ClawdStrike)
+- `crates/chio-policy/src/rulesets/` (new: port 7 built-in rulesets from the prior internal guard library)
 
-**Source**: `../clawdstrike/crates/libs/clawdstrike/src/hushspec_compiler.rs`,
-`../clawdstrike/rulesets/`
+**Source**: the prior internal guard library
 **Refs**: `docs/guards/09-POLICY-ENGINE-ABSORPTION.md` sections 1-6
 
 **Acceptance**: `compile_policy(yaml)` produces a Vec<Box<dyn Guard>>
@@ -568,7 +566,7 @@ env vars in guard config. Capability intersection on load.
 - `crates/chio-wasm-guards/src/runtime.rs` (add `load_guards_from_policy()`)
 - `crates/chio-wasm-guards/src/placeholders.rs` (new: `resolve_placeholders()`)
 
-**Source**: `../clawdstrike/crates/libs/clawdstrike/src/guards/custom.rs`
+**Source**: the prior internal guard library
 **Refs**: `docs/guards/12-SELECTIVE-ABSORPTION-PLAN.md` section 1
 
 **Acceptance**: A policy YAML with a `custom_guards` section loads a WASM
@@ -912,7 +910,7 @@ Resource types outside granted scopes are denied.
 ### 12.1 Missing SIEM Exporters [SHIPPED 4c8472b]
 
 **What**: Port Datadog, Sumo Logic, webhook, and alerting exporters from
-ClawdStrike.
+the prior internal guard library.
 
 **Files**:
 - `crates/chio-siem/src/exporters/datadog.rs` (new)
@@ -920,7 +918,7 @@ ClawdStrike.
 - `crates/chio-siem/src/exporters/webhook.rs` (new)
 - `crates/chio-siem/src/alerting.rs` (new)
 
-**Source**: `../clawdstrike/crates/services/hushd/src/siem/exporters/`
+**Source**: the prior internal guard library
 **Refs**: `docs/guards/11-SIEM-OBSERVABILITY-COMPLETION.md` section 2
 
 **Acceptance**: All four exporters implement the `Exporter` trait.
@@ -1006,7 +1004,7 @@ verdict captured as `GuardEvidence` in receipt.
 - `crates/chio-guards/src/external/threat_intel/safe_browsing.rs` (new)
 - `crates/chio-guards/src/external/threat_intel/snyk.rs` (new)
 
-**Source**: `../clawdstrike/crates/libs/clawdstrike/src/async_guards/threat_intel/`
+**Source**: the prior internal guard library
 **Refs**: `docs/guards/12-SELECTIVE-ABSORPTION-PLAN.md` section 3
 
 **Acceptance**: Each threat intel guard implements `ExternalGuard`, is
@@ -1267,7 +1265,7 @@ methods. Calls outside granted scope are denied.
 **Files**: `sdks/k8s/controller/job_reconciler.go` (new)
 **Refs**: `docs/protocols/K8S-JOBS-INTEGRATION.md`
 
-**Acceptance**: A K8s Job with `chio.protocol/governed: "true"` label gets
+**Acceptance**: A K8s Job with `chio.world/governed: "true"` label gets
 a capability grant at creation and release on completion.
 
 ### 17.6 Cloud Run / ECS Sidecar Reference Patterns [SHIPPED 8a0b933]
@@ -1495,7 +1493,7 @@ Phase 2 (Core Type Evolution) ────────────────�
                │                                              │
 Phase 3 (Content Safety + HITL) ──── depends on 2             │
 Phase 4 (chio-code-agent) ────────── depends on 0              │
-Phase 5 (ClawdStrike Guards) ────── depends on 2              │
+Phase 5 (Guard Absorption) ────── depends on 2              │
 Phase 6 (Framework SDKs) ───────── depends on 0, 2            │
 Phase 7 (Data Layer Guards) ─────── depends on 2              │
 Phase 8 (Code Execution Guards) ─── depends on 2              │
@@ -1517,7 +1515,7 @@ Phase 20 (Medium-Term Moats) ──────── per-item (see stories)  �
 
 These phase groups can execute concurrently:
 
-**Wave 1** (immediate, no dependencies):
+**Group 1** (immediate, no dependencies):
 - Phase 0: DX Foundation
 - Phase 1: Structural Security
 - Phase 2: Core Type Evolution
@@ -1527,27 +1525,27 @@ These phase groups can execute concurrently:
 - Phase 16: Economic Docs + Gaps
 - Phase 19: Near-Term Moats (depends only on shipped receipts/metering)
 
-**Wave 2** (after Wave 1 core types land):
+**Group 2** (after Group 1 core types land):
 - Phase 3: Content Safety + HITL
 - Phase 4: chio-code-agent
-- Phase 5: ClawdStrike Guards
+- Phase 5: Guard Absorption
 - Phase 6: Framework SDKs
 - Phase 7: Data Layer Guards
 - Phase 8: Code Execution Guards
 - Phase 10: Orchestration
 
-**Wave 3** (after Wave 2):
+**Group 3** (after Group 2):
 - Phase 11: SaaS + Streaming
 - Phase 13: Async Guards
 - Phase 14: WASM Kernel
 - Phase 17: Pipeline Integrations
 - Phase 18: Memory Governance
 
-**Wave 4** (per-item dependencies, NOT gated on Wave 3 as a whole):
-- 20.4 Capability Marketplace: independent, can start in Wave 1
-- 20.2 Agent Insurance: needs 16 (Wave 1) + 19.1/19.2 (Wave 1) -- can start in Wave 2
-- 20.1 Agent Passport: needs 14 (Wave 3) + 19.1/19.2 (Wave 1)  -- starts when WASM lands
-- 20.3 Cross-Kernel Federation: needs 1 (Wave 1) + 20.1 -- starts after passport
+**Group 4** (per-item dependencies, NOT gated on Group 3 as a whole):
+- 20.4 Capability Marketplace: independent, can start in Group 1
+- 20.2 Agent Insurance: needs 16 (Group 1) + 19.1/19.2 (Group 1) -- can start in Group 2
+- 20.1 Agent Passport: needs 14 (Group 3) + 19.1/19.2 (Group 1) -- starts when WASM lands
+- 20.3 Cross-Kernel Federation: needs 1 (Group 1) + 20.1 -- starts after passport
 
 ---
 

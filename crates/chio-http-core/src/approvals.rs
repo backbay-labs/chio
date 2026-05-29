@@ -1,4 +1,4 @@
-//! Phase 3.4-3.6 HITL approval HTTP surface.
+//! HITL approval HTTP surface.
 //!
 //! Substrate-agnostic handlers for the four approval endpoints:
 //!

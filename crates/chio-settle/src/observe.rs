@@ -402,39 +402,7 @@ mod tests {
 
     use super::*;
 
-    trait TestResultOk<T, E> {
-        fn test_expect(self, context: &'static str) -> T;
-        fn test_unwrap(self) -> T;
-    }
-
-    impl<T, E> TestResultOk<T, E> for Result<T, E> {
-        fn test_expect(self, context: &'static str) -> T {
-            match self {
-                Ok(value) => value,
-                Err(_) => panic!("{context}"),
-            }
-        }
-
-        fn test_unwrap(self) -> T {
-            match self {
-                Ok(value) => value,
-                Err(_) => panic!("expected Ok result"),
-            }
-        }
-    }
-
-    trait TestResultErr<T, E> {
-        fn test_expect_err(self, context: &'static str) -> E;
-    }
-
-    impl<T, E> TestResultErr<T, E> for Result<T, E> {
-        fn test_expect_err(self, context: &'static str) -> E {
-            match self {
-                Ok(_) => panic!("{context} unexpectedly succeeded"),
-                Err(error) => error,
-            }
-        }
-    }
+    use chio_test_support::prelude::*;
 
     struct MockJsonRpcServer {
         base_url: String,

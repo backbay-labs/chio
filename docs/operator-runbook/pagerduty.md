@@ -1,6 +1,6 @@
 # PagerDuty Integration
 
-This page records the M01 PagerDuty operating contract for the healthcare
+This page records the PagerDuty operating contract for the healthcare
 design-partner pilot.
 
 ## Service
@@ -13,13 +13,13 @@ design-partner pilot.
 - Heartbeat cadence: weekly
 
 The deployment configuration file is
-`deployments/healthcare-design-partner/chio-siem-overrides.yaml`.
+`deploy/healthcare-design-partner/chio-siem-overrides.yaml`.
 
 ## Source Contract
 
 `crates/chio-siem/src/alerting.rs` provides `PagerDutyBackend`, posts Events
-API v2 payloads, and maps Chio severity into PagerDuty severity strings. M01
-does not edit that source in P1.
+API v2 payloads, and maps Chio severity into PagerDuty severity strings. The
+pilot does not edit that source in P1.
 
 The alert payload includes:
 

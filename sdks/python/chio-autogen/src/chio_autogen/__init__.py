@@ -8,7 +8,7 @@ signed receipts.
 Public surface:
 
 * :class:`ChioFunctionRegistry` -- per-agent registry that wraps each
-  registered function with an Chio allow gate.
+  registered function with a Chio allow gate.
 * :class:`ChioGroupChat` / :class:`ChioGroupChatManager` -- subclasses
   of :class:`autogen.GroupChat` / :class:`autogen.GroupChatManager`
   that accept a per-role ``capability_scope`` mapping.

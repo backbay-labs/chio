@@ -1,5 +1,5 @@
 {
-  "id": "rcpt-c-refund-demo-0001",
+  "id": "2dec95432d242e10546c66648caa0e6845932544a61347078083783adabcf1eb",
   "timestamp": 1730000000,
   "capability_id": "cap-org-a-refund-demo",
   "tool_server": "srv-org-b-payments",
@@ -16,9 +16,24 @@
   "decision": {
     "verdict": "allow"
   },
+  "receipt_kind": "mediated_decision",
+  "boundary_class": "prevent",
+  "tool_origin": "caller_executed",
+  "redaction_mode": "none",
+  "actor_chain": [
+    {
+      "actor_id": "user:tenant-org-a/owner",
+      "actor_kind": "user"
+    },
+    {
+      "actor_id": "agent:org-a/refund-bot",
+      "actor_kind": "agent"
+    }
+  ],
   "content_hash": "c0ca94d9b70f9a9dc129fac407c0da835fe8b0c2363b1173c77edb718a2fc69f",
   "policy_hash": "policy-c-demo",
   "metadata": {
+    "chio_receipt_signing_nonce": "rcpt-c-refund-demo-0001",
     "financial": {
       "budget_remaining": 95000,
       "budget_total": 100000,
@@ -31,7 +46,8 @@
       "settlement_status": "pending"
     }
   },
+  "trust_level": "mediated",
   "tenant_id": "tenant-org-a",
   "kernel_key": "e08a8e8decf2772e856c02ca9ae61fb6954118b1025bd5bad574ead68ef043a7",
-  "signature": "cc5fb34ac46b864fd477e290d0c1da0b3eb0e46a86c51d91354bc672ece647252c503931a020ddab8b0aecbce6d414022117dc3f96cd70e324e3df139abb780f"
+  "signature": "955744590ca047a10c18b20ebcab14f17e1e1f0b1bba8242d72895dc71c026e81805db6075f42362090b5d207372b4770a10202f765e520e8d24b0784b914c04"
 }

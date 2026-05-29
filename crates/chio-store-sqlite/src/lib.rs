@@ -1,3 +1,29 @@
+//! SQLite-backed persistence, query, and report layer for the Chio protocol.
+//!
+//! This crate is the concrete persistent backend for the kernel's receipt log
+//! and its supporting state. It implements the receipt store and query path,
+//! budget and approval stores, capability-lineage and revocation stores, an
+//! execution-nonce store, an encrypted-blob store, IOU and dead-letter stores,
+//! and evidence-export queries. The store traits it implements are defined by
+//! `chio-kernel` and `chio-core`. Reader-heavy receipt queries use a
+//! connection pool (eight readers by default); writes are serialized through a
+//! group-commit actor onto a single writer connection.
+//!
+//! # Modules
+//!
+//! - [`receipt_store`] / [`receipt_query`] -- receipt persistence and the
+//!   query path.
+//! - [`budget_store`] -- durable budget state.
+//! - [`approval_store`] / [`batch_approval_store`] -- human-approval state.
+//! - [`capability_lineage`] / [`revocation_store`] -- capability provenance and
+//!   revocation.
+//! - [`execution_nonce_store`] / [`dead_letters`] / [`iou_store`] -- nonce
+//!   replay guard, settlement dead letters, and IOU envelopes.
+//! - [`encrypted_blob`] / [`memory_provenance_store`] / [`evidence_export`] --
+//!   encrypted payloads, memory provenance, and evidence export.
+
+#![forbid(unsafe_code)]
+
 pub mod approval_store;
 pub mod authority;
 pub mod batch_approval_store;

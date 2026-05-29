@@ -38,11 +38,11 @@ pub const EMERGENCY_RESUME_PATH: &str = "/emergency-resume";
 /// `GET /emergency-status` -- report current kill-switch state.
 pub const EMERGENCY_STATUS_PATH: &str = "/emergency-status";
 
-/// `POST /evaluate-plan` -- Phase 2.4 plan-level pre-flight evaluation.
+/// `POST /evaluate-plan` - plan-level pre-flight evaluation.
 pub const EVALUATE_PLAN_PATH: &str = "/evaluate-plan";
 
-/// `GET /approvals/pending` -- Phase 3.4-3.6 list of outstanding HITL
-/// approvals, optionally filtered by query parameters.
+/// `GET /approvals/pending` - list outstanding HITL approvals,
+/// optionally filtered by query parameters.
 pub const APPROVALS_PENDING_PATH: &str = "/approvals/pending";
 
 /// `GET /approvals/{id}` -- fetch one approval (pending or resolved).
@@ -128,7 +128,7 @@ pub const fn emergency_route_registrations() -> [EmergencyRouteRegistration; 3] 
 }
 
 // ---------------------------------------------------------------------------
-// Phase 19.1 -- compliance score endpoint.
+// Compliance score endpoint.
 // ---------------------------------------------------------------------------
 
 /// `POST /compliance/score` -- compute a 0..=1000 compliance score for
@@ -137,7 +137,7 @@ pub const fn emergency_route_registrations() -> [EmergencyRouteRegistration; 3] 
 pub const COMPLIANCE_SCORE_PATH: &str = "/compliance/score";
 
 // ---------------------------------------------------------------------------
-// Phase 19.3 -- regulatory receipt export endpoint.
+// Regulatory receipt export endpoint.
 // ---------------------------------------------------------------------------
 
 /// `GET /regulatory/receipts` -- read-only signed export of receipts
@@ -150,8 +150,8 @@ pub const REGULATORY_RECEIPTS_PATH: &str = "/regulatory/receipts";
 /// closed when the caller identity is missing.
 pub const REGULATORY_TOKEN_HEADER: &str = "X-Regulatory-Token";
 
-/// Route descriptors for the regulatory API. Appended here (do not
-/// reorder existing registrations) per the phase-19 bundle contract.
+/// Route descriptors for the regulatory API. Appended after the
+/// emergency and approval registrations; do not reorder existing entries.
 #[must_use]
 pub const fn regulatory_route_registrations() -> [EmergencyRouteRegistration; 2] {
     [

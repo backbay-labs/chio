@@ -186,8 +186,10 @@ mod tests {
     #[test]
     fn verify_valid_receipt_with_trusted_signer_is_ok() -> crate::Result<()> {
         let receipt = sample_receipt()?;
-        let verification =
-            super::verify_receipt_with_trusted_signers(&receipt, &[receipt.kernel_key.clone()])?;
+        let verification = super::verify_receipt_with_trusted_signers(
+            &receipt,
+            std::slice::from_ref(&receipt.kernel_key),
+        )?;
         assert!(verification.signer_trusted);
         assert!(verification.ok);
         assert!(verification.authorized);
@@ -198,8 +200,10 @@ mod tests {
     fn verify_receipt_reports_mismatched_content_addressed_id() -> crate::Result<()> {
         let mut receipt = sample_receipt()?;
         receipt.id = "rcpt-symbolic-invalid".to_string();
-        let verification =
-            super::verify_receipt_with_trusted_signers(&receipt, &[receipt.kernel_key.clone()])?;
+        let verification = super::verify_receipt_with_trusted_signers(
+            &receipt,
+            std::slice::from_ref(&receipt.kernel_key),
+        )?;
         assert!(!verification.receipt_id_valid);
         assert!(!verification.signature_valid);
         assert!(!verification.ok);

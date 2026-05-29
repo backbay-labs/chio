@@ -2,7 +2,7 @@
 
 The IaC wrapper surfaces three error classes:
 
-* :class:`ChioIACError` -- an Chio-governed IaC operation (``terraform plan``,
+* :class:`ChioIACError` -- a Chio-governed IaC operation (``terraform plan``,
   ``terraform apply``, a Pulumi program run, or a plan-review check) was
   denied or failed by the Chio sidecar. Carries the structured verdict so
   tooling can inspect the guard that denied and the reason.

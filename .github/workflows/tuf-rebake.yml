@@ -1,4 +1,4 @@
-# tuf-rebake.yml - Quarterly TUF trust-root re-bake (M09-owned).
+# tuf-rebake.yml - Quarterly TUF trust-root re-bake.
 
 name: tuf-rebake
 
@@ -18,7 +18,7 @@ concurrency:
 jobs:
   rebake:
     name: tuf-rebake
-    # owner: M09
+    # owner: Chio maintainers
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

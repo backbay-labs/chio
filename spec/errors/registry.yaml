@@ -64,14 +64,14 @@ domains:
     description: "Hardware custody, WebAuthn assertion, and audience-pinned capability envelope failures."
   - id: weights
     class: core
-    description: "Model-card, weight hash, capability scope binding, and artifact integrity failures (M10 P4)."
+    description: "Model-card, weight hash, capability scope binding, and artifact integrity failures."
 codes:
   - urn: "urn:chio:error:capability:scope-exceeded"
     domain: capability
     severity: error
     summary: "Capability scope does not allow the requested tool, resource, or prompt."
     help: "Issue a capability that explicitly grants the requested scope, or change the request to fit the granted scope."
-    legacy_string_code: "CHIO-KERNEL-OUT-OF-SCOPE-TOOL"
+    string_code: "CHIO-KERNEL-OUT-OF-SCOPE-TOOL"
     jsonrpc_code: 2100
     since: "0.1.0"
     stability: stable
@@ -84,7 +84,7 @@ codes:
     severity: error
     summary: "Capability token expired before the kernel evaluated the request."
     help: "Obtain or issue a fresh time-bounded capability before retrying the operation."
-    legacy_string_code: "CHIO-KERNEL-CAPABILITY-EXPIRED"
+    string_code: "CHIO-KERNEL-CAPABILITY-EXPIRED"
     jsonrpc_code: 2101
     since: "0.1.0"
     stability: stable
@@ -97,7 +97,7 @@ codes:
     severity: error
     summary: "Capability token was revoked and must not be retried."
     help: "Resolve the revocation reason and request a newly issued capability."
-    legacy_string_code: "CHIO-KERNEL-CAPABILITY-REVOKED"
+    string_code: "CHIO-KERNEL-CAPABILITY-REVOKED"
     jsonrpc_code: 2102
     since: "0.1.0"
     stability: stable
@@ -110,7 +110,7 @@ codes:
     severity: error
     summary: "Capability token is not valid at the current evaluation time."
     help: "Retry after the not-before timestamp or issue a capability with the intended validity window."
-    legacy_string_code: "CHIO-KERNEL-CAPABILITY-NOT-YET-VALID"
+    string_code: "CHIO-KERNEL-CAPABILITY-NOT-YET-VALID"
     since: "0.1.0"
     stability: stable
     consumed_by:
@@ -121,7 +121,7 @@ codes:
     severity: error
     summary: "Capability subject does not match the requesting actor."
     help: "Bind the capability to the correct subject DID or use credentials for the subject named by the token."
-    legacy_string_code: "CHIO-KERNEL-SUBJECT-MISMATCH"
+    string_code: "CHIO-KERNEL-SUBJECT-MISMATCH"
     since: "0.1.0"
     stability: stable
     consumed_by:
@@ -132,7 +132,7 @@ codes:
     severity: fatal
     summary: "Capability signature verification failed."
     help: "Reject the capability, verify issuer trust, and reissue the token with canonical JSON signing."
-    legacy_string_code: "CHIO-KERNEL-INVALID-SIGNATURE"
+    string_code: "CHIO-KERNEL-INVALID-SIGNATURE"
     since: "0.1.0"
     stability: stable
     consumed_by:
@@ -143,7 +143,7 @@ codes:
     severity: error
     summary: "Policy evaluation denied the requested action."
     help: "Inspect the policy rule path and update the request or policy inputs before retrying."
-    legacy_string_code: "CHIO-CLI-POLICY"
+    string_code: "CHIO-CLI-POLICY"
     since: "0.1.0"
     stability: stable
     consumed_by:
@@ -155,7 +155,7 @@ codes:
     severity: error
     summary: "Policy document failed to compile."
     help: "Fix the policy syntax or schema issue reported by the compiler and reload the policy."
-    legacy_string_code: "CHIO-CLI-POLICY"
+    string_code: "CHIO-CLI-POLICY"
     since: "0.1.0"
     stability: stable
     consumed_by:
@@ -166,7 +166,7 @@ codes:
     severity: error
     summary: "Policy constraint was syntactically valid but semantically invalid."
     help: "Regenerate or edit the constraint so every referenced scope, resource, and operator is supported."
-    legacy_string_code: "CHIO-KERNEL-INVALID-CONSTRAINT"
+    string_code: "CHIO-KERNEL-INVALID-CONSTRAINT"
     since: "0.1.0"
     stability: stable
     consumed_by:
@@ -177,7 +177,7 @@ codes:
     severity: error
     summary: "Governance policy denied a governed transaction."
     help: "Follow the governance approval path or remove the governed operation from the request."
-    legacy_string_code: "CHIO-KERNEL-GOVERNED-TRANSACTION-DENIED"
+    string_code: "CHIO-KERNEL-GOVERNED-TRANSACTION-DENIED"
     since: "0.1.0"
     stability: stable
     consumed_by:
@@ -188,7 +188,7 @@ codes:
     severity: error
     summary: "Guard pipeline denied the request or response."
     help: "Inspect the guard verdict and adjust the prompt, tool input, policy, or output before retrying."
-    legacy_string_code: "CHIO-KERNEL-GUARD-DENIED"
+    string_code: "CHIO-KERNEL-GUARD-DENIED"
     jsonrpc_code: 3100
     since: "0.1.0"
     stability: stable
@@ -201,7 +201,7 @@ codes:
     severity: warning
     summary: "Guard redacted sensitive input before it crossed a trust boundary."
     help: "Review the redaction receipt and provide lower-risk input if the tool requires the removed field."
-    legacy_string_code: "CHIO-GUARD-INPUT-REDACTED"
+    string_code: "CHIO-GUARD-INPUT-REDACTED"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -212,7 +212,7 @@ codes:
     severity: warning
     summary: "Guard redacted sensitive output before it crossed a trust boundary."
     help: "Review the guard receipt and update the downstream consumer to handle redacted fields."
-    legacy_string_code: "CHIO-GUARD-OUTPUT-REDACTED"
+    string_code: "CHIO-GUARD-OUTPUT-REDACTED"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -223,7 +223,7 @@ codes:
     severity: fatal
     summary: "WASM guard trapped during evaluation."
     help: "Fail closed, inspect the guard bundle, and republish a guard that completes deterministically."
-    legacy_string_code: "CHIO-GUARD-WASM-TRAP"
+    string_code: "CHIO-GUARD-WASM-TRAP"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -234,7 +234,7 @@ codes:
     severity: fatal
     summary: "Kernel could not sign the receipt for a decision or tool call."
     help: "Treat the operation as failed and repair the signing key, key store, or canonical payload."
-    legacy_string_code: "CHIO-KERNEL-RECEIPT-SIGNING-FAILED"
+    string_code: "CHIO-KERNEL-RECEIPT-SIGNING-FAILED"
     since: "0.1.0"
     stability: stable
     consumed_by:
@@ -245,7 +245,7 @@ codes:
     severity: fatal
     summary: "TEE quote verification failed."
     help: "Reject the attestation and refresh the quote or verifier trust roots before retrying."
-    legacy_string_code: "CHIO-ATTEST-QUOTE-VERIFICATION-FAILED"
+    string_code: "CHIO-ATTEST-QUOTE-VERIFICATION-FAILED"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -256,7 +256,7 @@ codes:
     severity: error
     summary: "Required provenance evidence was missing from the receipt context."
     help: "Regenerate the evidence bundle and include provenance before submitting the operation."
-    legacy_string_code: "CHIO-ATTEST-PROVENANCE-MISSING"
+    string_code: "CHIO-ATTEST-PROVENANCE-MISSING"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -267,7 +267,7 @@ codes:
     severity: error
     summary: "Replay trace could not be found."
     help: "Check the replay corpus path and regenerate the trace if it was not archived."
-    legacy_string_code: "CHIO-REPLAY-TRACE-NOT-FOUND"
+    string_code: "CHIO-REPLAY-TRACE-NOT-FOUND"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -278,7 +278,7 @@ codes:
     severity: error
     summary: "Replay produced a deterministic output mismatch."
     help: "Compare the recorded receipt, model fixture, and guard bundle versions before accepting the replay."
-    legacy_string_code: "CHIO-REPLAY-DETERMINISTIC-MISMATCH"
+    string_code: "CHIO-REPLAY-DETERMINISTIC-MISMATCH"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -289,7 +289,7 @@ codes:
     severity: warning
     summary: "Replay fixture no longer matches the registry or schema it was recorded against."
     help: "Regenerate the fixture from the current registry and rerun replay validation."
-    legacy_string_code: "CHIO-REPLAY-FIXTURE-DRIFT"
+    string_code: "CHIO-REPLAY-FIXTURE-DRIFT"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -300,7 +300,7 @@ codes:
     severity: error
     summary: "Tool server returned an adapter or execution error."
     help: "Retry with bounded backoff only when the provider marks the failure as transient."
-    legacy_string_code: "CHIO-KERNEL-TOOL-SERVER"
+    string_code: "CHIO-KERNEL-TOOL-SERVER"
     jsonrpc_code: 5100
     since: "0.1.0"
     stability: stable
@@ -313,7 +313,7 @@ codes:
     severity: error
     summary: "OpenAI provider adapter returned a normalized provider error."
     help: "Inspect the provider error details and retry only when the adapter marks the failure transient."
-    legacy_string_code: "CHIO-PROVIDER-OPENAI"
+    string_code: "CHIO-PROVIDER-OPENAI"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -324,7 +324,7 @@ codes:
     severity: error
     summary: "Anthropic provider adapter returned a normalized provider error."
     help: "Inspect the provider error details and retry only when the adapter marks the failure transient."
-    legacy_string_code: "CHIO-PROVIDER-ANTHROPIC"
+    string_code: "CHIO-PROVIDER-ANTHROPIC"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -335,7 +335,7 @@ codes:
     severity: error
     summary: "Bedrock Converse provider adapter returned a normalized provider error."
     help: "Inspect the provider error details and retry only when the adapter marks the failure transient."
-    legacy_string_code: "CHIO-PROVIDER-BEDROCK"
+    string_code: "CHIO-PROVIDER-BEDROCK"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -346,7 +346,7 @@ codes:
     severity: error
     summary: "Manifest did not validate against the expected schema."
     help: "Fix the manifest shape and rerun schema validation before loading it."
-    legacy_string_code: "CHIO-CLI-YAML"
+    string_code: "CHIO-CLI-YAML"
     since: "0.1.0"
     stability: stable
     consumed_by:
@@ -358,7 +358,7 @@ codes:
     severity: fatal
     summary: "Manifest signature verification failed."
     help: "Reject the manifest and republish it with the expected signing key and canonical payload."
-    legacy_string_code: "CHIO-MANIFEST-SIGNATURE-INVALID"
+    string_code: "CHIO-MANIFEST-SIGNATURE-INVALID"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -369,7 +369,7 @@ codes:
     severity: error
     summary: "Requested tool is not registered in the active manifest."
     help: "Register the tool in the manifest or request a tool that is present."
-    legacy_string_code: "CHIO-KERNEL-TOOL-NOT-REGISTERED"
+    string_code: "CHIO-KERNEL-TOOL-NOT-REGISTERED"
     since: "0.1.0"
     stability: stable
     consumed_by:
@@ -380,7 +380,7 @@ codes:
     severity: error
     summary: "Requested resource root is not allowed by the manifest."
     help: "Grant the resource root in the manifest or request a resource under an allowed root."
-    legacy_string_code: "CHIO-KERNEL-RESOURCE-ROOT-DENIED"
+    string_code: "CHIO-KERNEL-RESOURCE-ROOT-DENIED"
     since: "0.1.0"
     stability: stable
     consumed_by:
@@ -391,7 +391,7 @@ codes:
     severity: fatal
     summary: "Kernel hit an internal error while evaluating the request."
     help: "Retry with bounded backoff only after preserving the receipt and diagnostic context."
-    legacy_string_code: "CHIO-KERNEL-INTERNAL"
+    string_code: "CHIO-KERNEL-INTERNAL"
     jsonrpc_code: 6100
     since: "0.1.0"
     stability: stable
@@ -403,7 +403,7 @@ codes:
     severity: error
     summary: "Request arrived before the session was initialized."
     help: "Open a new session and complete initialization before retrying the operation."
-    legacy_string_code: "CHIO-KERNEL-UNKNOWN-SESSION"
+    string_code: "CHIO-KERNEL-UNKNOWN-SESSION"
     jsonrpc_code: 1001
     since: "0.1.0"
     stability: stable
@@ -415,7 +415,7 @@ codes:
     severity: error
     summary: "Session creation attempted to reuse an existing session identifier."
     help: "Choose a new session identifier or attach to the existing session."
-    legacy_string_code: "CHIO-KERNEL-SESSION-ALREADY-EXISTS"
+    string_code: "CHIO-KERNEL-SESSION-ALREADY-EXISTS"
     since: "0.1.0"
     stability: stable
     consumed_by:
@@ -426,7 +426,7 @@ codes:
     severity: error
     summary: "Kernel request is missing required fields."
     help: "Provide every required request field before dispatching the operation."
-    legacy_string_code: "CHIO-KERNEL-REQUEST-INCOMPLETE"
+    string_code: "CHIO-KERNEL-REQUEST-INCOMPLETE"
     since: "0.1.0"
     stability: stable
     consumed_by:
@@ -437,7 +437,7 @@ codes:
     severity: warning
     summary: "Kernel request was cancelled before completion."
     help: "Treat any partial tool output as invalid and retry with a new request if work is still required."
-    legacy_string_code: "CHIO-KERNEL-REQUEST-CANCELLED"
+    string_code: "CHIO-KERNEL-REQUEST-CANCELLED"
     since: "0.1.0"
     stability: stable
     consumed_by:
@@ -448,7 +448,7 @@ codes:
     severity: error
     summary: "Kernel budget for the requested operation was exhausted."
     help: "Retry only after replenishing the budget, widening the grant, or reconciling billing state."
-    legacy_string_code: "CHIO-KERNEL-BUDGET-EXHAUSTED"
+    string_code: "CHIO-KERNEL-BUDGET-EXHAUSTED"
     jsonrpc_code: 4100
     since: "0.1.0"
     stability: stable
@@ -461,7 +461,7 @@ codes:
     severity: error
     summary: "Peer requested an unsupported protocol version."
     help: "Negotiate a supported Chio protocol version before retrying."
-    legacy_string_code: "CHIO-CLI-TRANSPORT"
+    string_code: "CHIO-CLI-TRANSPORT"
     jsonrpc_code: 1000
     since: "0.1.0"
     stability: stable
@@ -474,7 +474,7 @@ codes:
     severity: error
     summary: "Request payload did not match the expected wire shape."
     help: "Correct the JSON-RPC or HTTP request shape before retrying."
-    legacy_string_code: "CHIO-CLI-JSON"
+    string_code: "CHIO-CLI-JSON"
     jsonrpc_code: 1002
     since: "0.1.0"
     stability: stable
@@ -486,7 +486,7 @@ codes:
     severity: error
     summary: "Transport authentication was missing, expired, or invalid."
     help: "Refresh credentials and resend the request with valid transport authentication."
-    legacy_string_code: "CHIO-CLI-CREDENTIAL"
+    string_code: "CHIO-CLI-CREDENTIAL"
     jsonrpc_code: 1100
     since: "0.1.0"
     stability: stable
@@ -498,7 +498,7 @@ codes:
     severity: error
     summary: "HTTP transport failed before the kernel could evaluate the request."
     help: "Check endpoint reachability, TLS configuration, and response body diagnostics before retrying."
-    legacy_string_code: "CHIO-CLI-HTTP"
+    string_code: "CHIO-CLI-HTTP"
     since: "0.1.0"
     stability: stable
     consumed_by:
@@ -509,18 +509,38 @@ codes:
     severity: fatal
     summary: "DPoP proof verification failed."
     help: "Reject the request and require a fresh proof bound to the correct method, URI, and key."
-    legacy_string_code: "CHIO-KERNEL-DPOP-VERIFICATION-FAILED"
+    string_code: "CHIO-KERNEL-DPOP-VERIFICATION-FAILED"
     since: "0.1.0"
     stability: stable
     consumed_by:
       - chio-kernel
       - chio-http-core
+  - urn: "urn:chio:error:transport:upstream-failure"
+    domain: transport
+    severity: error
+    summary: "Wrapped upstream MCP server returned an error while handling a relayed tool call or listing."
+    help: "Inspect the upstream MCP server response; retry only when the upstream marks the failure transient."
+    string_code: "CHIO-TRANSPORT-UPSTREAM-FAILURE"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-cli
+  - urn: "urn:chio:error:transport:method-not-found"
+    domain: transport
+    severity: error
+    summary: "JSON-RPC method is not supported by the Chio MCP wrapper."
+    help: "Call a recognized method; the MCP wrapper supports tools/list, tools/call, initialize, ping, and JSON-RPC notifications."
+    string_code: "CHIO-TRANSPORT-METHOD-NOT-FOUND"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-cli
   - urn: "urn:chio:error:cli:io"
     domain: cli
     severity: error
     summary: "CLI failed while reading or writing local data."
     help: "Check the path, permissions, and filesystem state before retrying."
-    legacy_string_code: "CHIO-CLI-IO"
+    string_code: "CHIO-CLI-IO"
     since: "0.1.0"
     stability: stable
     consumed_by:
@@ -531,7 +551,7 @@ codes:
     severity: error
     summary: "CLI failed to parse or render JSON."
     help: "Fix the JSON payload or output template and rerun the command."
-    legacy_string_code: "CHIO-CLI-JSON"
+    string_code: "CHIO-CLI-JSON"
     since: "0.1.0"
     stability: stable
     consumed_by:
@@ -542,7 +562,7 @@ codes:
     severity: error
     summary: "CLI failed to parse or render YAML."
     help: "Fix the YAML document and rerun the command."
-    legacy_string_code: "CHIO-CLI-YAML"
+    string_code: "CHIO-CLI-YAML"
     since: "0.1.0"
     stability: stable
     consumed_by:
@@ -553,7 +573,7 @@ codes:
     severity: error
     summary: "CLI SQLite store operation failed."
     help: "Check the database path, schema version, and write permissions before retrying."
-    legacy_string_code: "CHIO-CLI-SQLITE"
+    string_code: "CHIO-CLI-SQLITE"
     since: "0.1.0"
     stability: stable
     consumed_by:
@@ -564,7 +584,7 @@ codes:
     severity: error
     summary: "CLI returned an uncategorized compatibility error."
     help: "Preserve the original message and migrate the call site to a specific registry code when touched."
-    legacy_string_code: "CHIO-CLI-OTHER"
+    string_code: "CHIO-CLI-OTHER"
     since: "0.1.0"
     stability: deprecated
     consumed_by:
@@ -575,7 +595,7 @@ codes:
     severity: error
     summary: "chio doctor toolchain probe found a Rust toolchain mismatch."
     help: "Install the workspace MSRV (or the version pinned in rust-toolchain.toml) and rerun chio doctor."
-    legacy_string_code: "CHIO-CLI-DOCTOR-TOOLCHAIN-MISMATCH"
+    string_code: "CHIO-CLI-DOCTOR-TOOLCHAIN-MISMATCH"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -585,7 +605,7 @@ codes:
     severity: warning
     summary: "chio doctor OCI registry reachability probe could not reach the configured registry."
     help: "Verify the registry URL, network egress, and credentials, or run with CHIO_DOCTOR_SKIP_NETWORK=1 to bypass."
-    legacy_string_code: "CHIO-CLI-DOCTOR-OCI-UNREACHABLE"
+    string_code: "CHIO-CLI-DOCTOR-OCI-UNREACHABLE"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -596,7 +616,7 @@ codes:
     severity: warning
     summary: "chio doctor cosign freshness probe found a stale or unverifiable guard-bundle signature."
     help: "Re-pull the guard bundle and verify its sigstore signature against the trusted identity set."
-    legacy_string_code: "CHIO-CLI-DOCTOR-COSIGN-STALE"
+    string_code: "CHIO-CLI-DOCTOR-COSIGN-STALE"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -607,7 +627,7 @@ codes:
     severity: warning
     summary: "chio doctor OTEL probe could not resolve the OTLP endpoint or kernel runtime metrics."
     help: "Set OTEL_EXPORTER_OTLP_ENDPOINT and ensure the chio-tower /metrics endpoint exposes chio_kernel_dispatch_inflight."
-    legacy_string_code: "CHIO-CLI-DOCTOR-OTEL-UNRESOLVED"
+    string_code: "CHIO-CLI-DOCTOR-OTEL-UNRESOLVED"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -617,7 +637,7 @@ codes:
     severity: error
     summary: "chio doctor schema probe found chio.yaml validation errors."
     help: "Repair the document at the reported line and column and rerun chio doctor."
-    legacy_string_code: "CHIO-CLI-DOCTOR-CHIO-YAML-INVALID"
+    string_code: "CHIO-CLI-DOCTOR-CHIO-YAML-INVALID"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -627,7 +647,7 @@ codes:
     severity: error
     summary: "chio doctor reported one or more failing probes."
     help: "Inspect the per-probe diagnostics, fix the reported issues, and rerun chio doctor."
-    legacy_string_code: "CHIO-CLI-DOCTOR-PROBE-FAILED"
+    string_code: "CHIO-CLI-DOCTOR-PROBE-FAILED"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -637,7 +657,7 @@ codes:
     severity: error
     summary: "Delegation chain includes a revoked link."
     help: "Rebuild the chain from non-revoked grants before retrying delegated execution."
-    legacy_string_code: "CHIO-KERNEL-DELEGATION-CHAIN-REVOKED"
+    string_code: "CHIO-KERNEL-DELEGATION-CHAIN-REVOKED"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -648,7 +668,7 @@ codes:
     severity: fatal
     summary: "Adversarial suite detected an escape from the intended guard boundary."
     help: "Fail the run, preserve artifacts, and tighten the guard or sandbox before rerunning."
-    legacy_string_code: "CHIO-ADVERSARIAL-ESCAPE-DETECTED"
+    string_code: "CHIO-ADVERSARIAL-ESCAPE-DETECTED"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -659,7 +679,7 @@ codes:
     severity: warning
     summary: "Threat model coverage check found an uncovered failure mode."
     help: "Add a mapped test, fixture, or documented deferral before closing the coverage finding."
-    legacy_string_code: "CHIO-THREAT-COVERAGE-GAP"
+    string_code: "CHIO-THREAT-COVERAGE-GAP"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -670,7 +690,7 @@ codes:
     severity: error
     summary: "Arena replay produced a verdict divergence."
     help: "Compare the replay receipt, policy, guard bundle, and provider fixture before accepting the run."
-    legacy_string_code: "CHIO-ARENA-REPLAY-DIVERGENCE"
+    string_code: "CHIO-ARENA-REPLAY-DIVERGENCE"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -681,7 +701,7 @@ codes:
     severity: error
     summary: "Metering or balance state was unavailable for an economic decision."
     help: "Retry after the metering backend or settlement ledger is reachable and current."
-    legacy_string_code: "CHIO-ECONOMY-METERING-UNAVAILABLE"
+    string_code: "CHIO-ECONOMY-METERING-UNAVAILABLE"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -693,7 +713,7 @@ codes:
     severity: error
     summary: "Lineage graph references an ancestor that cannot be resolved."
     help: "Repair the lineage edge or import the missing receipt before accepting the graph."
-    legacy_string_code: "CHIO-LINEAGE-ANCESTOR-MISSING"
+    string_code: "CHIO-LINEAGE-ANCESTOR-MISSING"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -704,7 +724,7 @@ codes:
     severity: fatal
     summary: "Required hardware custody key was unavailable."
     help: "Do not fall back to a software key; restore the custody key path and retry."
-    legacy_string_code: "CHIO-CUSTODY-HARDWARE-KEY-UNAVAILABLE"
+    string_code: "CHIO-CUSTODY-HARDWARE-KEY-UNAVAILABLE"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -715,7 +735,7 @@ codes:
     severity: error
     summary: "WebAuthn assertion failed structural or signature verification."
     help: "Treat the assertion as untrusted; do not retry without a fresh challenge from the issuer."
-    legacy_string_code: "CHIO-CUSTODY-ASSERTION-REJECTED"
+    string_code: "CHIO-CUSTODY-ASSERTION-REJECTED"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -726,7 +746,7 @@ codes:
     severity: error
     summary: "Hosted oracle rejected a mobile receipt after a successful network POST."
     help: "Preserve the queued receipt, surface the oracle response, and do not retry until the tenant, signature, or capability binding is repaired."
-    legacy_string_code: "CHIO-MOBILE-RECEIPT-POST-REJECTED"
+    string_code: "CHIO-MOBILE-RECEIPT-POST-REJECTED"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -735,9 +755,9 @@ codes:
   - urn: "urn:chio:error:mobile:receipt-schema-invalid"
     domain: mobile
     severity: error
-    summary: "Mobile receipt export did not validate against the M01 audit-log export schema."
+    summary: "Mobile receipt export did not validate against the audit-log export schema."
     help: "Keep the receipt in the offline queue and regenerate the export envelope against spec/audit-log/export-schema.v1.json before retrying."
-    legacy_string_code: "CHIO-MOBILE-RECEIPT-SCHEMA-INVALID"
+    string_code: "CHIO-MOBILE-RECEIPT-SCHEMA-INVALID"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -748,7 +768,7 @@ codes:
     severity: warning
     summary: "Mobile SDK could not reach the hosted receipt oracle within the retry budget."
     help: "Keep the receipt in the encrypted offline queue and retry with bounded backoff after connectivity returns."
-    legacy_string_code: "CHIO-MOBILE-ORACLE-UNREACHABLE"
+    string_code: "CHIO-MOBILE-ORACLE-UNREACHABLE"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -759,7 +779,7 @@ codes:
     severity: error
     summary: "Capability presented to a different audience than it was minted for."
     help: "Issue or request a capability whose audience pin matches the verifier identity."
-    legacy_string_code: "CHIO-CUSTODY-AUDIENCE-MISMATCH"
+    string_code: "CHIO-CUSTODY-AUDIENCE-MISMATCH"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -770,7 +790,7 @@ codes:
     severity: error
     summary: "WebAuthn challenge nonce was previously redeemed for this credential."
     help: "Obtain a fresh challenge from the issuer; replayed assertions are denied fail-closed."
-    legacy_string_code: "CHIO-CUSTODY-REPLAY-DETECTED"
+    string_code: "CHIO-CUSTODY-REPLAY-DETECTED"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -781,7 +801,7 @@ codes:
     severity: error
     summary: "Passkey capability expired before the verifier evaluated the request."
     help: "Mint a fresh capability; passkey capabilities are pinned to a five-minute lifetime."
-    legacy_string_code: "CHIO-CUSTODY-CAPABILITY-EXPIRED"
+    string_code: "CHIO-CUSTODY-CAPABILITY-EXPIRED"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -792,7 +812,7 @@ codes:
     severity: error
     summary: "WebAuthn credential bound to this capability has been revoked."
     help: "Re-enroll the user's authenticator and request a freshly-issued capability."
-    legacy_string_code: "CHIO-CUSTODY-CREDENTIAL-REVOKED"
+    string_code: "CHIO-CUSTODY-CREDENTIAL-REVOKED"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -804,7 +824,7 @@ codes:
     severity: error
     summary: "WebAuthn assertion verified cryptographically but did not report user verification."
     help: "Re-attempt the ceremony with a user-verifying gesture (PIN, biometric); custody issuance requires UV."
-    legacy_string_code: "CHIO-CUSTODY-USER-VERIFICATION-REQUIRED"
+    string_code: "CHIO-CUSTODY-USER-VERIFICATION-REQUIRED"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -815,17 +835,148 @@ codes:
     severity: fatal
     summary: "Custody surface failed to canonicalize, encode, or decode an envelope."
     help: "Treat as an internal error; do not retry until the encoding bug is resolved. No fresh challenge will help."
-    legacy_string_code: "CHIO-CUSTODY-INTERNAL-ENCODING"
+    string_code: "CHIO-CUSTODY-INTERNAL-ENCODING"
     since: "0.1.0"
     stability: unstable
     consumed_by:
       - chio-custody-hw
+  - urn: "urn:chio:error:custody:rate-limited"
+    domain: custody
+    severity: error
+    summary: "Capability issuance was denied because the subject exceeded its rate budget."
+    help: "Retry after the rate window elapses; the mint is denied fail-closed before the revocation oracle, nonce store, or signing backend are consulted."
+    string_code: "CHIO-CUSTODY-RATE-LIMITED"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-custody-hw
+  - urn: "urn:chio:error:custody:app-attest-invalid-cbor"
+    domain: custody
+    severity: error
+    summary: "Apple App Attest statement failed to decode as valid CBOR or was missing a required field."
+    help: "Reject the attestation; do not retry without a freshly generated App Attest statement from the device."
+    string_code: "CHIO-CUSTODY-APP-ATTEST-INVALID-CBOR"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-custody-hw
+      - chio-kernel-mobile
+  - urn: "urn:chio:error:custody:app-attest-invalid-root"
+    domain: custody
+    severity: error
+    summary: "Apple App Attest certificate chain did not anchor to the pinned Apple App Attestation root."
+    help: "Reject the attestation; verify the device produced a genuine Apple App Attest statement and that the pinned root is current."
+    string_code: "CHIO-CUSTODY-APP-ATTEST-INVALID-ROOT"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-custody-hw
+      - chio-kernel-mobile
+  - urn: "urn:chio:error:custody:app-attest-app-mismatch"
+    domain: custody
+    severity: error
+    summary: "Apple App Attest app-identifier hash did not match the expected application identity."
+    help: "Reject the attestation; the statement was minted for a different app identifier than the verifier expects."
+    string_code: "CHIO-CUSTODY-APP-ATTEST-APP-MISMATCH"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-custody-hw
+      - chio-kernel-mobile
+  - urn: "urn:chio:error:custody:app-attest-challenge-mismatch"
+    domain: custody
+    severity: error
+    summary: "Apple App Attest challenge hash did not match the issued challenge."
+    help: "Reject the attestation and reissue a fresh challenge; replayed or mismatched challenges are denied fail-closed."
+    string_code: "CHIO-CUSTODY-APP-ATTEST-CHALLENGE-MISMATCH"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-custody-hw
+      - chio-kernel-mobile
+  - urn: "urn:chio:error:custody:app-attest-key-mismatch"
+    domain: custody
+    severity: error
+    summary: "Apple App Attest key identifier did not match the credential bound to this capability."
+    help: "Reject the attestation; the statement was produced by a different hardware key than the one enrolled."
+    string_code: "CHIO-CUSTODY-APP-ATTEST-KEY-MISMATCH"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-custody-hw
+      - chio-kernel-mobile
+  - urn: "urn:chio:error:custody:app-attest-counter-rollback"
+    domain: custody
+    severity: error
+    summary: "Apple App Attest assertion counter went backwards relative to the last accepted value."
+    help: "Reject the assertion; a counter rollback indicates replay or a cloned key and is denied fail-closed."
+    string_code: "CHIO-CUSTODY-APP-ATTEST-COUNTER-ROLLBACK"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-custody-hw
+      - chio-kernel-mobile
+  - urn: "urn:chio:error:custody:app-attest-cert-chain-invalid"
+    domain: custody
+    severity: error
+    summary: "Apple App Attest certificate chain failed signature or structural verification."
+    help: "Reject the attestation; the certificate chain did not verify against the pinned Apple roots."
+    string_code: "CHIO-CUSTODY-APP-ATTEST-CERT-CHAIN-INVALID"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-custody-hw
+      - chio-kernel-mobile
+  - urn: "urn:chio:error:custody:play-integrity-invalid-token"
+    domain: custody
+    severity: error
+    summary: "Google Play Integrity token failed to decode or verify."
+    help: "Reject the attestation; do not retry without a freshly minted Play Integrity token from the device."
+    string_code: "CHIO-CUSTODY-PLAY-INTEGRITY-INVALID-TOKEN"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-custody-hw
+      - chio-kernel-mobile
+  - urn: "urn:chio:error:custody:play-integrity-nonce-mismatch"
+    domain: custody
+    severity: error
+    summary: "Google Play Integrity token nonce did not match the issued challenge."
+    help: "Reject the attestation and reissue a fresh nonce; replayed or mismatched nonces are denied fail-closed."
+    string_code: "CHIO-CUSTODY-PLAY-INTEGRITY-NONCE-MISMATCH"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-custody-hw
+      - chio-kernel-mobile
+  - urn: "urn:chio:error:custody:play-integrity-app-rejected"
+    domain: custody
+    severity: error
+    summary: "Google Play Integrity verdict rejected the application (unrecognized or tampered package)."
+    help: "Reject the attestation; the Play Integrity verdict did not recognize the app as a genuine, unmodified install."
+    string_code: "CHIO-CUSTODY-PLAY-INTEGRITY-APP-REJECTED"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-custody-hw
+      - chio-kernel-mobile
+  - urn: "urn:chio:error:custody:play-integrity-device-rejected"
+    domain: custody
+    severity: error
+    summary: "Google Play Integrity verdict rejected the device integrity signal."
+    help: "Reject the attestation; the Play Integrity verdict did not attest a trustworthy device."
+    string_code: "CHIO-CUSTODY-PLAY-INTEGRITY-DEVICE-REJECTED"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-custody-hw
+      - chio-kernel-mobile
   - urn: "urn:chio:error:weights:model-card-missing"
     domain: weights
     severity: error
     summary: "Model weights or runtime artifact lacks a required model card."
     help: "Attach the signed model card and verify its hash before running the workload."
-    legacy_string_code: "CHIO-WEIGHTS-MODEL-CARD-MISSING"
+    string_code: "CHIO-WEIGHTS-MODEL-CARD-MISSING"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -836,7 +987,7 @@ codes:
     severity: error
     summary: "Provider's loaded weights_hash does not match the signed model card."
     help: "Re-sign a card whose weights_hash matches the loaded weights blob, or rebind the provider with the correct weights."
-    legacy_string_code: "CHIO-WEIGHTS-CARD-MISMATCH"
+    string_code: "CHIO-WEIGHTS-CARD-MISMATCH"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -848,7 +999,7 @@ codes:
     severity: error
     summary: "Requested capability scope set is not a subset of the model card's allowed_capability_set."
     help: "Bind under a card whose allowed_capability_set covers the requested scope, or narrow the request."
-    legacy_string_code: "CHIO-WEIGHTS-SCOPE-NOT-SUBSET"
+    string_code: "CHIO-WEIGHTS-SCOPE-NOT-SUBSET"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -860,7 +1011,7 @@ codes:
     severity: error
     summary: "Requested tool intersects the model card's banned_tools."
     help: "The card explicitly forbids the requested tool. Bind under a card that does not list the tool as banned, or remove the tool from the request."
-    legacy_string_code: "CHIO-WEIGHTS-TOOL-BANNED"
+    string_code: "CHIO-WEIGHTS-TOOL-BANNED"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -872,7 +1023,7 @@ codes:
     severity: error
     summary: "Model card expired before the verifier evaluated it."
     help: "Mint a fresh card; cards bind to issued_at / expires_at and the kernel rejects past expiry."
-    legacy_string_code: "CHIO-WEIGHTS-CARD-EXPIRED"
+    string_code: "CHIO-WEIGHTS-CARD-EXPIRED"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -883,7 +1034,7 @@ codes:
     severity: error
     summary: "Cosign bundle for the model card failed cryptographic verification."
     help: "Treat the card as untrusted; do not rebind without a fresh, correctly-signed cosign bundle."
-    legacy_string_code: "CHIO-WEIGHTS-BUNDLE-REJECTED"
+    string_code: "CHIO-WEIGHTS-BUNDLE-REJECTED"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -895,7 +1046,7 @@ codes:
     severity: error
     summary: "Model card structural validation failed (bad weights_hash, missing required field, or invalid issued_at / expires_at window)."
     help: "Re-mint the card with a valid v1 schema; check weights_hash is 64 lowercase hex chars and expires_at >= issued_at."
-    legacy_string_code: "CHIO-WEIGHTS-SCHEMA-REJECTED"
+    string_code: "CHIO-WEIGHTS-SCHEMA-REJECTED"
     since: "0.1.0"
     stability: unstable
     consumed_by:
@@ -905,7 +1056,7 @@ codes:
     severity: fatal
     summary: "Model card surface failed to canonicalize, encode, or decode an envelope."
     help: "Treat as an internal error; do not retry until the encoding bug is resolved. No fresh challenge will help."
-    legacy_string_code: "CHIO-WEIGHTS-INTERNAL-ENCODING"
+    string_code: "CHIO-WEIGHTS-INTERNAL-ENCODING"
     since: "0.1.0"
     stability: unstable
     consumed_by:

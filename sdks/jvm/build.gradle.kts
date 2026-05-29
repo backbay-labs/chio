@@ -6,7 +6,7 @@ plugins {
 }
 
 allprojects {
-    group = "io.backbay.chio"
+    group = "world.chio"
     version = "0.1.0"
     repositories { mavenCentral() }
 }

@@ -419,7 +419,7 @@ mod tests {
     fn runtime_action_class_id_allows_wildcard_or_tool_scoped_policy_rules() {
         let wildcard =
             resolve_runtime_action_class_id(&request_binding(), Some(&policy_body("*")), None)
-                .expect("wildcard policy should keep legacy tool-name fallback");
+                .expect("wildcard policy should return None action class id");
         assert!(wildcard.is_none());
 
         let tool_scoped = resolve_runtime_action_class_id(
@@ -427,7 +427,7 @@ mod tests {
             Some(&policy_body("vendor.write_refund")),
             None,
         )
-        .expect("tool-scoped policy should keep legacy tool-name fallback");
+        .expect("tool-scoped policy should return None action class id");
         assert!(tool_scoped.is_none());
     }
 }

@@ -1269,9 +1269,7 @@ mod tests {
 
     #[test]
     fn execution_ids_do_not_collide_within_a_single_second() {
-        // Regression: `begin()` previously formatted the id as `wf-<now>`
-        // with second resolution. Two `begin()` calls in the same second on
-        // the same authority would collide and produce shadowed receipts.
+        // Regression guard: `begin()` MUST use sub-second resolution so two calls in the same second produce distinct ids; second-resolution ids collide and produce shadowed receipts.
         let manifest = make_manifest();
         let grant = make_grant();
         let authority = WorkflowAuthority::new(Keypair::generate());
@@ -1316,13 +1314,11 @@ mod tests {
 
     #[test]
     fn rapid_begin_calls_produce_distinct_ids_for_same_agent() {
-        // Regression: with the previous fix, the id mixed in `execution_count`
-        // (only incremented in `finalize()`) plus the agent id. Two back-to-
-        // back `begin()` calls for the same agent within one second, with no
-        // intervening `finalize()`, would still collide because both `now`
-        // and `execution_count` were unchanged. The atomic per-call counter
-        // ensures every `begin()` produces a fresh id regardless of finalize
-        // ordering.
+        // Two back-to-back `begin()` calls for the same agent within one
+        // second, with no intervening `finalize()`, must not collide: `now`
+        // and `execution_count` (incremented only in `finalize()`) are both
+        // unchanged across the pair. The atomic per-call counter ensures
+        // every `begin()` produces a fresh id regardless of finalize ordering.
         let manifest = make_manifest();
         let grant = make_grant();
         let authority = WorkflowAuthority::new(Keypair::generate());

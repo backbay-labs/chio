@@ -37,12 +37,12 @@ fi
 # liveness invariants for RevocationPropagation. We require: any whitelisted name
 # that is *defined* in the .tla file (top-level `<Name> ==`) must appear as
 # a row in MAPPING.md. Whitelisted-but-undefined is fine; that is just
-# "future work" (e.g. RevocationEventuallySeen lands at T3, not yet).
+# "future work" (e.g. RevocationEventuallySeen is not yet landed).
 #
 # Helper definitions like DomainsOK, States, Verdicts, ProcSet, CapSet,
 # DEPTH_MAX, Init, Next, Spec, vars, Receipt, Message, Attenuate, Revoke,
 # Propagate, Evaluate, and the aggregate SafetyInv are intentionally NOT
-# enforced: they are not the named invariants the trajectory doc and the
+# enforced: they are not the named invariants the formal mapping doc and the
 # Apalache .cfg cite. The aggregate SafetyInv is the conjunction the .cfg
 # checks; the leaf-named invariants below are the unit of cross-reference.
 named_tla_invariants=(
@@ -139,8 +139,7 @@ done
 
 unmapped_kani=()
 # bash 3.2 / `set -u` rejects expansion of empty arrays via `${arr[@]}`.
-# Guard the loop so an empty harness list does not crash the script
-# (which previously surfaced as "unbound variable: kani_harnesses[@]").
+# Guard the loop so an empty harness list does not crash the script.
 if [[ "${#kani_harnesses[@]}" -gt 0 ]]; then
   for name in "${kani_harnesses[@]}"; do
     # Skip empty entries that can arise if the file has no harnesses.

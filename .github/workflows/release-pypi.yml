@@ -205,13 +205,11 @@ jobs:
         run: |
           set -euo pipefail
           semver_re='(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?(\+([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?'
-          # Extract version with a non-greedy leading strip so
-          # pre-release tags whose suffix contains the letter "v" (e.g.
-          # py/v1.2.3-dev1, py/v1.0.0-preview.1) round-trip correctly.
-          # The previous `${REF_NAME##*v}` stripped up to the LAST `v`
-          # in the string, yielding `1` instead of `1.2.3-dev1` for
-          # `py/v1.2.3-dev1` and breaking legitimate pre-release
-          # publishes. Match release-binaries.yml's `${tag#v}` shape.
+          # Extract version with a non-greedy leading strip so pre-release
+          # tags whose suffix contains the letter "v" (e.g. py/v1.2.3-dev1,
+          # py/v1.0.0-preview.1) round-trip correctly: a greedy strip to the
+          # LAST `v` would yield `1` instead of `1.2.3-dev1`. Matches
+          # release-binaries.yml's `${tag#v}` shape.
           if [[ "$REF_NAME" =~ ^py/v(${semver_re})$ ]]; then
             tag_version="${BASH_REMATCH[1]}"
           elif [[ "$REF_NAME" =~ ^py/$SLUG-v(${semver_re})$ ]]; then
@@ -300,7 +298,7 @@ jobs:
       - name: Install cosign
         # Pinned to a tagged release of sigstore/cosign-installer so the
         # signing-side toolchain version is auditable. The Renovate config
-        # in .github/renovate.json (M09 NEW sub-task) tracks upstream
+        # in .github/renovate.json tracks upstream
         # cosign-installer releases for review.
         uses: sigstore/cosign-installer@1aa8e0f2454b781fbf0fbf306a4c9533a0c57409
         with:

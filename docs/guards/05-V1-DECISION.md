@@ -220,16 +220,16 @@ revisit the per-call fresh-Store model (consider instance pooling).
 
 ---
 
-## Relationship to HushSpec and ClawdStrike
+## Relationship to HushSpec and the policy engine
 
 **HushSpec first, WASM for what YAML can't say.**
 
 - HushSpec (via `chio-policy`) handles the standard declarative rules: path
   blocking, egress allowlists, secret detection, shell command blocking, tool
   access control, patch integrity.
-- ClawdStrike is the reference engine. `chio-guards` adapts its guard
-  implementations to Chio's `Guard` trait. `chio-policy::compiler` bridges
-  HushSpec rules to configured `chio-guards` instances.
+- The HushSpec policy engine is the reference engine. `chio-guards` adapts the
+  upstream guard implementations to Chio's `Guard` trait. `chio-policy::compiler`
+  bridges HushSpec rules to configured `chio-guards` instances.
 - WASM guards handle the custom tail: semantic argument inspection,
   org-specific compliance, complex pattern matching, custom secret detection.
 

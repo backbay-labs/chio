@@ -429,6 +429,15 @@ fn capability_with_id(id: &str, subject: &Keypair, issuer: &Keypair) -> Capabili
 
 fn receipt_with_ts(id: &str, capability_id: &str, timestamp: u64) -> ChioReceipt {
     let keypair = Keypair::generate();
+    receipt_with_keypair(id, capability_id, timestamp, &keypair)
+}
+
+fn receipt_with_keypair(
+    id: &str,
+    capability_id: &str,
+    timestamp: u64,
+    keypair: &Keypair,
+) -> ChioReceipt {
     ChioReceipt::sign(
         ChioReceiptBody {
             id: id.to_string(),
@@ -455,7 +464,7 @@ fn receipt_with_ts(id: &str, capability_id: &str, timestamp: u64) -> ChioReceipt
             tenant_id: None,
             kernel_key: keypair.public_key(),
         },
-        &keypair,
+        keypair,
     )
     .expect("sign receipt")
 }
@@ -650,10 +659,20 @@ fn passport_create_verify_and_present_roundtrip() {
             .record_capability_snapshot(&capability, None)
             .expect("record capability snapshot");
         let seq1 = store
-            .append_chio_receipt_returning_seq(&receipt_with_ts("rcpt-1", "cap-passport", 101))
+            .append_chio_receipt_returning_seq(&receipt_with_keypair(
+                "rcpt-1",
+                "cap-passport",
+                101,
+                &issuer,
+            ))
             .expect("append receipt");
         let seq2 = store
-            .append_chio_receipt_returning_seq(&receipt_with_ts("rcpt-2", "cap-passport", 102))
+            .append_chio_receipt_returning_seq(&receipt_with_keypair(
+                "rcpt-2",
+                "cap-passport",
+                102,
+                &issuer,
+            ))
             .expect("append receipt");
         let canonical = store
             .receipts_canonical_bytes_range(seq1, seq2)
@@ -988,10 +1007,11 @@ fn passport_create_and_verify_surface_enterprise_identity_provenance() {
             .record_capability_snapshot(&capability, None)
             .expect("record capability snapshot");
         let seq = store
-            .append_chio_receipt_returning_seq(&receipt_with_ts(
+            .append_chio_receipt_returning_seq(&receipt_with_keypair(
                 "rcpt-enterprise-1",
                 "cap-passport-enterprise",
                 101,
+                &issuer,
             ))
             .expect("append receipt");
         let canonical = store
@@ -1545,17 +1565,19 @@ fn passport_policy_reference_flow_is_replay_safe_locally() {
             .record_capability_snapshot(&capability, None)
             .expect("record capability snapshot");
         let seq1 = store
-            .append_chio_receipt_returning_seq(&receipt_with_ts(
+            .append_chio_receipt_returning_seq(&receipt_with_keypair(
                 "rcpt-ref-1",
                 "cap-passport-ref",
                 101,
+                &issuer,
             ))
             .expect("append receipt");
         let seq2 = store
-            .append_chio_receipt_returning_seq(&receipt_with_ts(
+            .append_chio_receipt_returning_seq(&receipt_with_keypair(
                 "rcpt-ref-2",
                 "cap-passport-ref",
                 102,
+                &issuer,
             ))
             .expect("append receipt");
         let canonical = store

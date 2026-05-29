@@ -18,10 +18,10 @@
 //!
 //!   - Rust:        `crates/chio-binding-helpers/tests/vector_fixtures.rs`
 //!     `receipt_fixture_cases_round_trip_through_public_api`
-//!   - Python:      `packages/sdk/chio-py/tests/test_vectors.py`
+//!   - Python:      `sdks/python/chio-py/tests/test_vectors.py`
 //!     compares `receipt_body_canonical_json(receipt)` against the
 //!     `receipt_body_canonical_json` field of every case.
-//!   - TypeScript:  `packages/sdk/chio-ts/test/vectors.test.ts`
+//!   - TypeScript:  `sdks/typescript/chio-ts/test/vectors.test.ts`
 //!     compares `receiptBodyCanonicalJson(receipt)` against the same field.
 //!
 //! Because the vectors are continuously triple-blessed by Rust, Python, and
@@ -100,9 +100,13 @@ fn read_receipt_vectors() -> Value {
 fn rust_canonical_receipt_body_matches_blessed_vector_bytes() {
     let fixture = read_receipt_vectors();
     let cases = fixture["cases"].as_array().expect("cases array");
+    // Floor matches the checked-in corpus size (the cross-language oracle at
+    // tests/bindings/vectors/receipt/v1.json carries 14 cases). It guards
+    // against the corpus being accidentally emptied; the byte-equality loop
+    // below is the substantive cross-language assertion.
     assert!(
-        cases.len() >= 20,
-        "expected at least 20 receipt vectors; found {}",
+        cases.len() >= 14,
+        "expected at least 14 receipt vectors; found {}",
         cases.len()
     );
 
@@ -497,10 +501,10 @@ fn live_ts_encoder_matches_rust() {
     let receipt_json = serde_json::to_string(&receipt).expect("serialize receipt to json");
     let expected = canonical_json_string(&receipt.body()).expect("rust canonical body");
 
-    let sdk_dist = workspace_root().join("packages/sdk/chio-ts/dist");
+    let sdk_dist = workspace_root().join("sdks/typescript/chio-ts/dist");
     if !sdk_dist.exists() {
         eprintln!(
-            "skipping live typescript differential; {} not built (run npm run build under packages/sdk/chio-ts first)",
+            "skipping live typescript differential; {} not built (run npm run build under sdks/typescript/chio-ts first)",
             sdk_dist.display()
         );
         return;

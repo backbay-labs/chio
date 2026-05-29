@@ -16,34 +16,7 @@ use chio_open_market::{
     ACCEPTED_BID_SCHEMA, ASK_RESPONSE_SCHEMA, BID_REQUEST_SCHEMA,
 };
 
-trait TestResultOk<T, E> {
-    fn test_expect(self, context: &'static str) -> T;
-}
-
-impl<T, E> TestResultOk<T, E> for Result<T, E>
-where
-    E: std::fmt::Debug,
-{
-    fn test_expect(self, context: &'static str) -> T {
-        self.unwrap_or_else(|error| panic!("{context}: {error:?}"))
-    }
-}
-
-trait TestResultErr<T, E> {
-    fn test_expect_err(self, context: &'static str) -> E;
-}
-
-impl<T, E> TestResultErr<T, E> for Result<T, E>
-where
-    T: std::fmt::Debug,
-{
-    fn test_expect_err(self, context: &'static str) -> E {
-        match self {
-            Ok(value) => panic!("{context} unexpectedly succeeded: {value:?}"),
-            Err(error) => error,
-        }
-    }
-}
+use chio_test_support::prelude::*;
 
 fn namespace(keypair: &Keypair) -> GenericNamespaceOwnership {
     GenericNamespaceOwnership {

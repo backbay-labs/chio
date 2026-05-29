@@ -24,8 +24,7 @@ proptest = { workspace = true }
 # this feature turns invariant (h) "schema subsumption" into a hard assertion
 # via the `jsonschema` crate. Without it the property runs as a structural
 # self-check over the canonical-JSON pipeline.
-m01-schema-subsumption = []
+schema-subsumption = []
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

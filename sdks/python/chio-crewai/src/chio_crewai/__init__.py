@@ -7,7 +7,7 @@ capability-scoped authorization and signed receipts.
 Public surface:
 
 * :class:`ChioBaseTool` -- :class:`crewai.tools.BaseTool` subclass that
-  gates ``_run`` on an Chio allow verdict.
+  gates ``_run`` on a Chio allow verdict.
 * :class:`ChioCrew` -- :class:`crewai.Crew` subclass that accepts a
   per-role ``capability_scope`` mapping and mints scoped tokens.
 * :class:`ChioToolError` / :class:`ChioCrewConfigError` -- error types.

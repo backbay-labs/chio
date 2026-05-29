@@ -50,9 +50,9 @@ Aerospace handled sensor flapping with redundancy + voting, not attestation:
 
 The structural answer in aerospace is: trust the hardware redundancy, vote, fail safe, never let a single sensor's flapping reach the controller. There is no published *cryptographic* attestation analog. The sensor-grounded paper's move (sign the flapping as a first-class field) is therefore novel relative to aerospace literature, though the obvious next paper would compose the two: a TMR-voted sensor produces a single signed reading whose voting record is part of the attestation.
 
-## The "structural distinguishability under measurement noise" question — verdict
+## The "structural distinguishability under measurement noise" question - verdict
 
-The paper claims `admission_under_degraded_state_distinguishable_from_healthy`: there exists a body and two attestations producing opposite admission verdicts. The adversarial-review concern (finding 6) is that the categorical healthy / degraded state collapses real-world flapping into a single bit and the attestation thus carries less information than the threat model assumes.
+The paper claims `admission_under_degraded_state_distinguishable_from_healthy`: there exists a body and two attestations producing opposite admission verdicts. The concern is that the categorical healthy / degraded state collapses real-world flapping into a single bit and the attestation thus carries less information than the threat model assumes.
 
 The verdict: **the theorem survives, the model description does not.** The theorem is a Σ-type existence claim and is trivially true for any provider taxonomy that contains at least one provider with at least two distinguishable states. What does *not* survive without patching is the implicit prose claim that the categorical state faithfully represents the kernel's posture over the decision window.
 

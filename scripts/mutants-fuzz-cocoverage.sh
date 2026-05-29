@@ -281,10 +281,8 @@ replay_one_mutant() {
 }
 
 # Walk outcomes.json. cargo-mutants 25.x marks survivors with
-# .summary == "MissedMutant" (confirmed in scripts/mutants-comment.sh)
-# and exposes .scenario.mutant.source_file as an OBJECT with a `.path`
-# sub-field; this script previously consumed it as a bare string,
-# producing garbled paths like {"path":"crates/foo/src/lib.rs"}.
+# .summary == "MissedMutant" and exposes .scenario.mutant.source_file as an
+# OBJECT with a `.path` sub-field, not a bare string.
 surviving_count=0
 attempted_count=0
 caught_count=0

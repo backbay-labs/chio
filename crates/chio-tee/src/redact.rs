@@ -1,24 +1,22 @@
-//! Mandatory M06 redactor pass for the tee shadow runner (M10 Phase 1
-//! Task 6).
+//! Mandatory redactor pass for the tee shadow runner.
 //!
-//! The trajectory doc (`.planning/trajectory/10-tee-replay-harness.md`)
-//! pins three normative behaviours wired by this module:
+//! The normative spec (`spec/PROTOCOL.md`) pins three normative behaviours
+//! wired by this module:
 //!
 //! 1. Every captured payload runs through the `chio:guards/redact@0.1.0`
-//!    host call before any frame is buffered (line 21, line 235).
+//!    host call before any frame is buffered.
 //! 2. The pass is fail-closed: an `Err(_)` from the redactor MUST cause
 //!    the tee to refuse persistence and write `tee.redact_failed` to
-//!    the receipt log (line 452).
+//!    the receipt log.
 //! 3. Under `--paranoid`, frames whose manifest reports zero matches on
 //!    a payload longer than 256 bytes are quarantined as a defensive
-//!    heuristic against a misconfigured redactor (line 21, line 566).
+//!    heuristic against a misconfigured redactor.
 //!
-//! The wasm host-call wiring (calling into the actual wasm guest via
-//! wasmtime) is deferred. T6 wires the **native-Rust placeholder**
-//! redactor from `chio-data-guards/redactors/default/` so the M10
-//! pipeline integrates fail-closed semantics today; the wasm bridge is
-//! mechanical because the native types mirror the WIT records 1:1
-//! (default redactor crate docs).
+//! The shipping pass runs the native-Rust redactor from
+//! `chio-data-guards/redactors/default/` in-process with fail-closed
+//! semantics. The [`Redactor`] trait is the backend seam: an alternative
+//! wasmtime-hosted guest can be slotted in without touching call sites
+//! because the native types mirror the WIT records 1:1.
 
 use chio_data_guards_redactors_default::{
     redact_payload as default_redact_payload, RedactClass as DefaultRedactClass,
@@ -45,8 +43,9 @@ pub type RedactionManifest = DefaultRedactionManifest;
 pub type RedactedPayload = DefaultRedactedPayload;
 
 /// Threshold above which a zero-match manifest under `--paranoid` is
-/// treated as redactor misconfiguration. Sourced from the trajectory
-/// doc line 21 (>256 bytes).
+/// treated as redactor misconfiguration. Empirically chosen: a payload
+/// longer than 256 bytes with zero redaction matches is treated as a
+/// likely redactor misconfiguration.
 pub const PARANOID_ZERO_MATCH_THRESHOLD: usize = 256;
 
 /// Trait abstracting the redactor surface so the tee can run against
@@ -76,10 +75,11 @@ pub enum RedactorError {
 
 /// In-process [`Redactor`] backed by the default-redactor crate.
 ///
-/// This is the placeholder while the wasm host-call wiring is deferred
-/// (see module-level docs). Production deployments will swap this for
-/// a wasmtime-driven implementation; the [`RedactPass`] code path is
-/// trait-objected so the swap is mechanical.
+/// This is the redactor the shadow runner uses by default: a real,
+/// fail-closed native-Rust pass. Deployments that prefer a sandboxed
+/// guest can supply an alternative [`Redactor`] (e.g. a wasmtime-driven
+/// one) to [`RedactPass::new`]; the code path is trait-objected so the
+/// swap is mechanical.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct DefaultRedactor;
 
@@ -121,12 +121,11 @@ impl RedactPass {
     ///
     /// On `Err(_)` from the redactor: returns
     /// [`RedactError::FailClosed`]. The caller MUST write
-    /// `tee.redact_failed` to the receipt log and refuse persistence
-    /// (trajectory doc line 452).
+    /// `tee.redact_failed` to the receipt log and refuse persistence.
     ///
     /// On `Ok(_)` with a zero-match manifest, payload length > 256
     /// bytes, and `paranoid == true`: returns
-    /// [`RedactError::ParanoidRefusal`] (trajectory doc line 21).
+    /// [`RedactError::ParanoidRefusal`].
     ///
     /// On `Ok(_)` otherwise: returns the [`RedactedPayload`].
     ///

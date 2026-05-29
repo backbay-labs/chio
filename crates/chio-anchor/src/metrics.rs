@@ -1,6 +1,6 @@
 //! Anchor publish metrics surfaced through the workspace
-//! `chio-metrics-spec` registry. Wave 2.4 of the trj4 closeout wires the
-//! anchor publish boundary into the workspace registry: every
+//! `chio-metrics-spec` registry. The anchor publish boundary is wired into
+//! the workspace registry: every
 //! [`build_anchor_batch`](crate::build_anchor_batch) call observes
 //! [`CHIO_ANCHOR_ROUND_LATENCY_SECONDS`].
 //!

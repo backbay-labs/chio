@@ -1,4 +1,4 @@
-module github.com/backbay/chio-k8s-controller
+module github.com/backbay-labs/chio-k8s-controller
 
 go 1.22.0
 

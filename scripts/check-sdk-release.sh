@@ -115,7 +115,7 @@ PY
 
 case "${lang}" in
   cpp)
-    sdk_dir="${repo_root}/packages/sdk/chio-cpp"
+    sdk_dir="${repo_root}/sdks/cpp/chio-cpp"
 
     "${repo_root}/scripts/check-chio-cpp.sh"
     chio_cpp_packager_smoke "${sdk_dir}" "chio-cpp"
@@ -124,7 +124,7 @@ case "${lang}" in
     ;;
 
   cpp-kernel)
-    sdk_dir="${repo_root}/packages/sdk/chio-cpp-kernel"
+    sdk_dir="${repo_root}/sdks/cpp/chio-cpp-kernel"
 
     "${sdk_dir}/scripts/check-with-ffi.sh"
     chio_cpp_packager_smoke "${sdk_dir}" "chio-cpp-kernel"
@@ -133,7 +133,7 @@ case "${lang}" in
     ;;
 
   guard-cpp)
-    sdk_dir="${repo_root}/packages/sdk/chio-guard-cpp"
+    sdk_dir="${repo_root}/sdks/guard/chio-guard-cpp"
 
     "${sdk_dir}/scripts/check-native.sh"
     chio_cpp_packager_smoke "${sdk_dir}" "chio-guard-cpp"
@@ -142,8 +142,8 @@ case "${lang}" in
     ;;
 
   drogon)
-    sdk_dir="${repo_root}/packages/sdk/chio-drogon"
-    chio_cpp_dir="${repo_root}/packages/sdk/chio-cpp"
+    sdk_dir="${repo_root}/sdks/cpp/chio-drogon"
+    chio_cpp_dir="${repo_root}/sdks/cpp/chio-cpp"
 
     "${repo_root}/scripts/check-chio-drogon.sh"
     chio_cpp_packager_smoke "${sdk_dir}" "chio-drogon" "${chio_cpp_dir}"
@@ -152,7 +152,7 @@ case "${lang}" in
     ;;
 
   go)
-    sdk_dir="${repo_root}/packages/sdk/chio-go"
+    sdk_dir="${repo_root}/sdks/go/chio-go"
     consumer_dir="${work_dir}/consumer"
     bin_dir="${work_dir}/bin"
 
@@ -192,9 +192,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/backbay/chio/packages/sdk/chio-go/auth"
-	"github.com/backbay/chio/packages/sdk/chio-go/client"
-	"github.com/backbay/chio/packages/sdk/chio-go/version"
+	"github.com/backbay-labs/chio/sdks/go/chio-go/auth"
+	"github.com/backbay-labs/chio/sdks/go/chio-go/client"
+	"github.com/backbay-labs/chio/sdks/go/chio-go/version"
 )
 
 func main() {
@@ -211,8 +211,8 @@ EOF
     (
       cd "${consumer_dir}"
       go mod init example.com/chio-go-release-smoke
-      go mod edit -require=github.com/backbay/chio/packages/sdk/chio-go@"${release_version}"
-      go mod edit -replace=github.com/backbay/chio/packages/sdk/chio-go="${sdk_dir}"
+      go mod edit -require=github.com/backbay-labs/chio/sdks/go/chio-go@"${release_version}"
+      go mod edit -replace=github.com/backbay-labs/chio/sdks/go/chio-go="${sdk_dir}"
       CGO_ENABLED=0 go mod tidy
       CGO_ENABLED=0 go build ./...
     )
@@ -233,20 +233,20 @@ EOF
 
     cd "${repo_root}"
 
-    rm -rf packages/sdk/chio-py/build packages/sdk/chio-py/dist
-    find packages/sdk/chio-py/src -maxdepth 1 -type d -name '*.egg-info' -prune -exec rm -rf {} +
-    find packages/sdk/chio-py -type d -name '__pycache__' -prune -exec rm -rf {} +
+    rm -rf sdks/python/chio-py/build sdks/python/chio-py/dist
+    find sdks/python/chio-py/src -maxdepth 1 -type d -name '*.egg-info' -prune -exec rm -rf {} +
+    find sdks/python/chio-py -type d -name '__pycache__' -prune -exec rm -rf {} +
 
     python3 - <<'PY'
 from pathlib import Path
 import tomllib
 
-pyproject = tomllib.loads(Path("packages/sdk/chio-py/pyproject.toml").read_text())
+pyproject = tomllib.loads(Path("sdks/python/chio-py/pyproject.toml").read_text())
 declared_version = pyproject["project"]["version"]
 declared_name = pyproject["project"]["name"]
 
 version_ns = {}
-exec(Path("packages/sdk/chio-py/src/chio/version.py").read_text(), version_ns)
+exec(Path("sdks/python/chio-py/src/chio/version.py").read_text(), version_ns)
 module_version = version_ns["__version__"]
 
 if declared_name != "chio-sdk":
@@ -261,7 +261,7 @@ PY
     python3 -m venv "${builder_venv}"
     . "${builder_venv}/bin/activate"
     python -m pip install --quiet --upgrade pip build twine
-    python -m build packages/sdk/chio-py --sdist --wheel --outdir "${dist_dir}"
+    python -m build sdks/python/chio-py --sdist --wheel --outdir "${dist_dir}"
     python -m twine check "${dist_dir}"/*
     python - "${dist_dir}" <<'PY'
 from pathlib import Path
@@ -328,9 +328,9 @@ PY
     ;;
 
   ts)
-    source_dir="${repo_root}/packages/sdk/chio-ts"
+    source_dir="${repo_root}/sdks/typescript/chio-ts"
     repo_copy_dir="${work_dir}/repo"
-    sdk_dir="${repo_copy_dir}/packages/sdk/chio-ts"
+    sdk_dir="${repo_copy_dir}/sdks/typescript/chio-ts"
     consumer_dir="${work_dir}/consumer"
 
     if ! command -v npm >/dev/null 2>&1; then
@@ -338,7 +338,7 @@ PY
       exit 1
     fi
 
-    mkdir -p "${repo_copy_dir}/packages/sdk" "${repo_copy_dir}/tests"
+    mkdir -p "${repo_copy_dir}/sdks/typescript" "${repo_copy_dir}/tests"
     cp -R "${source_dir}" "${sdk_dir}"
     rm -rf "${sdk_dir}/node_modules" "${sdk_dir}/dist"
     cp -R "${repo_root}/tests/bindings" "${repo_copy_dir}/tests/bindings"

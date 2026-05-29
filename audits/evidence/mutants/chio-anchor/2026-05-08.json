@@ -27,7 +27,7 @@
     "decision": "non_release_deferred",
     "claim_scope": "not_release_blocking",
     "strict_gate_effect": "accept_recast",
-    "approved_by": "trajectory-5.2-active-lane",
+    "approved_by": "chio-maintainers",
     "recast_at": "2026-05-10",
     "followup": "hosted-nightly-mutation-or-reviewed-sampling-contract",
     "rationale": "Partial mutation evidence is retained as advisory evidence and excluded from the active bounded release claim."

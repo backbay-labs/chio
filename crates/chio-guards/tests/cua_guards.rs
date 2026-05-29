@@ -1,16 +1,16 @@
-//! Integration tests for the Phase 5.1-5.4 CUA + SpiderSense guards.
+//! Integration tests for the CUA + SpiderSense guards.
 //!
 //! Exercises each guard through the real [`chio_kernel::Guard`] trait with
-//! a realistic [`GuardContext`].  The tests verify the roadmap acceptance
+//! a realistic [`GuardContext`].  The tests verify the acceptance
 //! criteria:
 //!
-//! * 5.1 ComputerUseGuard - blocked-domain navigation denies; screenshot
+//! * ComputerUseGuard - blocked-domain navigation denies; screenshot
 //!   rate-limit enforced; Observe mode records but allows.
-//! * 5.2 InputInjectionCapabilityGuard - non-allowlisted input type
+//! * InputInjectionCapabilityGuard - non-allowlisted input type
 //!   denies; missing postcondition probe denies in strict mode.
-//! * 5.3 RemoteDesktopSideChannelGuard - disabled clipboard denies;
+//! * RemoteDesktopSideChannelGuard - disabled clipboard denies;
 //!   oversized transfer denies; unknown channel denies (fail-closed).
-//! * 5.4 SpiderSenseGuard - embedding above upper bound denies; below
+//! * SpiderSenseGuard - embedding above upper bound denies; below
 //!   lower bound allows; threshold configurable.
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
@@ -77,7 +77,7 @@ fn eval<G: Guard>(guard: &G, tool: &str, args: serde_json::Value) -> Verdict {
     guard.evaluate(&ctx).expect("guard evaluate")
 }
 
-// Phase 5.1: ComputerUseGuard
+// ComputerUseGuard
 
 #[test]
 fn computer_use_denies_navigation_to_blocked_domain() {
@@ -185,7 +185,7 @@ fn computer_use_guardrail_allows_warning_only() {
     assert!(matches!(v, Verdict::Allow));
 }
 
-// Phase 5.2: InputInjectionCapabilityGuard
+// InputInjectionCapabilityGuard
 
 #[test]
 fn input_injection_denies_non_allowlisted_input_type() {
@@ -277,7 +277,7 @@ fn input_injection_detects_injection_via_action_type_arg() {
     assert!(matches!(v, Verdict::Deny), "expected Deny, got {v:?}");
 }
 
-// Phase 5.3: RemoteDesktopSideChannelGuard
+// RemoteDesktopSideChannelGuard
 
 #[test]
 fn remote_desktop_denies_when_clipboard_disabled() {
@@ -375,7 +375,7 @@ fn remote_desktop_denies_invalid_transfer_size_type() {
     assert!(matches!(v, Verdict::Deny), "expected Deny, got {v:?}");
 }
 
-// Phase 5.4: SpiderSenseGuard
+// SpiderSenseGuard
 
 fn bundled_pattern_json() -> String {
     std::fs::read_to_string(concat!(
@@ -391,9 +391,9 @@ fn spider_sense_bundled_pattern_db_loads() {
         SpiderSenseGuard::from_json(&bundled_pattern_json()).expect("bundled DB must parse");
     assert!(
         guard.pattern_count() >= 9,
-        "expected 10-20 entries from clawdstrike DB"
+        "expected 10-20 entries from the bundled DB"
     );
-    assert_eq!(guard.dim(), 6, "clawdstrike DB uses 6-dim embeddings");
+    assert_eq!(guard.dim(), 6, "the bundled DB uses 6-dim embeddings");
 }
 
 #[test]

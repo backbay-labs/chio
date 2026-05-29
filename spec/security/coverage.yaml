@@ -1,7 +1,7 @@
 # Threat-model coverage map.
 #
 # Source of truth: spec/security/chio-threat-model.v1.json.
-# File shape pinned by trajectory-2 M05 P5.T1 (chio-threat-model.schema.json
+# File shape pinned by M05 P5.T1 (chio-threat-model.schema.json
 # coverage_state enum = {covered, partial, pending}).
 #
 # CI gate: scripts/check-threat-coverage.sh treats `covered` as PASS,
@@ -16,7 +16,7 @@ schema: chio.security.coverage/v1
 updated_at: "2026-05-03"
 
 threats:
-  # Trajectory-1 register (six initial IDs) is owned by M05 P5.T3 test
+  # The initial threat register (six initial IDs) is owned by M05 P5.T3 test
   # bodies and is not surfaced here until the chio-conformance threat
   # tests land. The gate evaluates any ID present in the threat-model
   # JSON; missing entries surface as `pending` without `deferred_to`
@@ -99,7 +99,7 @@ threats:
       - crates/chio-kernel/tests/pq_key_load_after_self_quote.rs
       - crates/chio-conformance/tests/threats/tee_quote_forgery.rs
 
-  # M05 closes the trajectory-1 register threats via chio-conformance threat
+  # M05 closes the initial register threats via chio-conformance threat
   # tests + chio-adversarial-suite cases. coveredBy mirrors the JSON
   # source-of-truth in spec/security/chio-threat-model.v1.json.
   - id: capability_token_theft
@@ -191,54 +191,54 @@ threats:
 
   - id: mobile_attestation_replay
     coverage_state: pending
-    deferred_to: trajectory-4.M07.real-attestation
-    owned_by: trajectory-4
+    deferred_to: backlog.M07.real-attestation
+    owned_by: backlog
     deferred_reason: "No conformance threat test exists for replayed App Attest assertions or Play Integrity tokens; mobile C-ABI entry points still return AttestationUnavailable."
 
   - id: device_key_extraction
     coverage_state: pending
-    deferred_to: trajectory-4.M07.real-attestation
-    owned_by: trajectory-4
+    deferred_to: backlog.M07.real-attestation
+    owned_by: backlog
     deferred_reason: "No conformance threat test proves hardware-bound mobile key custody; real-device attestation and receipt validation are deferred."
 
   - id: play_integrity_token_replay
     coverage_state: pending
-    deferred_to: trajectory-4.M07.real-attestation
-    owned_by: trajectory-4
+    deferred_to: backlog.M07.real-attestation
+    owned_by: backlog
     deferred_reason: "No conformance threat test proves Play Integrity nonce consumption or stale-token rejection; Google JWKS validation is deferred."
 
   - id: ssrf_via_http_substrate
     coverage_state: pending
-    deferred_to: trajectory-4.hosted-http-egress-hardening
-    owned_by: trajectory-4
+    deferred_to: backlog.hosted-http-egress-hardening
+    owned_by: backlog
     deferred_reason: "Deployment-specific HTTP egress hardening needs live hosted-substrate policy and redirect controls."
 
   - id: pii_phi_exposure
     coverage_state: pending
-    deferred_to: trajectory-4.healthcare-phi-data-guard-validation
-    owned_by: trajectory-4
+    deferred_to: backlog.healthcare-phi-data-guard-validation
+    owned_by: backlog
     deferred_reason: "Regex guard coverage exists, but healthcare PHI validation requires deployment-specific patterns and binary response scope."
 
   - id: agent_velocity_abuse
     coverage_state: pending
-    deferred_to: trajectory-4.distributed-rate-limit-store
-    owned_by: trajectory-4
+    deferred_to: backlog.distributed-rate-limit-store
+    owned_by: backlog
     deferred_reason: "Process-local rate limits do not close multi-identity or distributed quota abuse."
 
   - id: cumulative_data_exfiltration
     coverage_state: pending
-    deferred_to: trajectory-4.cross-session-data-flow-accounting
-    owned_by: trajectory-4
-    deferred_reason: "Cross-session and semantic information-density accounting are outside the trajectory-3 threat closure."
+    deferred_to: backlog.cross-session-data-flow-accounting
+    owned_by: backlog
+    deferred_reason: "Cross-session and semantic information-density accounting are outside the current threat closure."
 
   - id: behavioral_sequence_attack
     coverage_state: pending
-    deferred_to: trajectory-4.behavioral-policy-compiler
-    owned_by: trajectory-4
+    deferred_to: backlog.behavioral-policy-compiler
+    owned_by: backlog
     deferred_reason: "Deployment-specific forbidden-transition policies need a policy compiler and non-adjacent sequence coverage."
 
   - id: wasm_guard_resource_exhaustion
     coverage_state: pending
-    deferred_to: trajectory-4.wasm-runtime-quota-hardening
-    owned_by: trajectory-4
+    deferred_to: backlog.wasm-runtime-quota-hardening
+    owned_by: backlog
     deferred_reason: "Fuel metering exists, but compile-time CPU and linear-memory pressure need runtime quota hardening."

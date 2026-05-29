@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://chio.dev/schemas/receipt-provenance-v1.json",
+  "$id": "https://chio.world/schemas/receipt-provenance-v1.json",
   "title": "Chio receipt provenance v1",
   "type": "object",
   "additionalProperties": false,

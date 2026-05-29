@@ -1,4 +1,4 @@
-//! Warehouse cost guard (roadmap phase 7.3).
+//! Warehouse cost guard.
 //!
 //! `WarehouseCostGuard` enforces *pre-execution* cost limits on queries
 //! sent to large-scale analytical warehouses (BigQuery, Snowflake,
@@ -26,12 +26,9 @@
 //!   bound on the dry-run's estimated monetary cost.
 //!
 //! Both limits sit on the guard config rather than on the capability
-//! scope: adding `Constraint` variants would touch hot
-//! `chio-core-types` (phase 2.2 territory) and is deferred per the
-//! roadmap.  Kernel integrations can populate the guard config from
+//! scope. Kernel integrations populate the guard config from
 //! `Constraint::Custom("max_bytes_scanned", ...)` /
-//! `Constraint::Custom("max_cost_per_query_usd", ...)` today, and switch
-//! to first-class variants in a later phase.
+//! `Constraint::Custom("max_cost_per_query_usd", ...)`.
 //!
 //! The guard emits a [`CostDimension::WarehouseQuery`] on every *allowed*
 //! query via [`WarehouseCostGuard::record_cost`] so callers can attach
@@ -243,7 +240,7 @@ impl DryRunEstimate {
 // Guard
 // ---------------------------------------------------------------------------
 
-/// Warehouse cost guard (roadmap phase 7.3).
+/// Warehouse cost guard.
 pub struct WarehouseCostGuard {
     config: WarehouseCostGuardConfig,
 }
@@ -358,14 +355,8 @@ impl chio_kernel::Guard for WarehouseCostGuard {
         };
 
         // Non-warehouse traffic always short-circuits to Allow regardless of
-        // `allow_all`. The old `!allow_all && !looks_like_warehouse` gating
-        // accidentally inverted the bypass intent: enabling `allow_all`
-        // caused every tool call (including unrelated non-warehouse ones)
-        // to fall through into `extract_estimate`, which then denied any
-        // call without `dry_run` metadata. The fix keeps the "not a
-        // warehouse" branch as the primary short-circuit and reserves
-        // `allow_all` for enforcement-disable semantics on the warehouse
-        // path only.
+        // `allow_all`; `allow_all` only disables enforcement on the warehouse
+        // path.
         if !self.config.looks_like_warehouse(&database, tool) {
             return Ok(Verdict::Allow);
         }

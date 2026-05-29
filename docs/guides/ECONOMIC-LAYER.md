@@ -30,10 +30,9 @@ The layer exists to answer five developer-facing questions:
    a verifier policy.
 
 Each question maps to a small set of signed artifacts and a small set of CLI
-subcommands under the unified `chio` binary (with `chio-mercury` for
-partner-facing evidence bundles). You do not need to understand the full
-stack to use any one piece: metering works without settlement, reputation
-works without passports, passports work without on-chain anchoring.
+subcommands under the unified `chio` binary. You do not need to understand
+the full stack to use any one piece: metering works without settlement,
+reputation works without passports, passports work without on-chain anchoring.
 
 Source-of-truth locations:
 
@@ -147,7 +146,7 @@ was committed to every lane that matters to the relying party.
 
 | Lane | Module | Purpose |
 |------|--------|---------|
-| EVM root registry | `crates/chio-anchor/src/evm.rs` | Direct publish of the Merkle root to an ChioRootRegistry contract (`prepare_root_publication`, `confirm_root_publication`). |
+| EVM root registry | `crates/chio-anchor/src/evm.rs` | Direct publish of the Merkle root to a ChioRootRegistry contract (`prepare_root_publication`, `confirm_root_publication`). |
 | Bitcoin via OTS | `crates/chio-anchor/src/bitcoin.rs` | Super-root aggregation timestamped via OpenTimestamps (`prepare_ots_submission`, `verify_ots_proof_for_submission`). |
 | Solana memo | `crates/chio-anchor/src/solana.rs` | Canonical memo publication (`prepare_solana_memo_publication`, `verify_solana_anchor`). |
 | Chainlink Functions | `crates/chio-anchor/src/functions.rs` | Off-chain attestation verification path with fallback assessment. |
@@ -482,26 +481,6 @@ coverage workflows. The provider-risk package exported via
 `chio trust provider-risk-package ...` is the signed evidence bundle sent
 to underwriters.
 
-### 8.6 Mercury evidence bundles
-
-`chio-mercury` is a separate binary for partner-facing evidence packaging.
-Core commands (`crates/chio-mercury/src/main.rs:19`):
-
-- `chio-mercury proof export` -- wrap a verified Chio evidence package.
-- `chio-mercury inquiry export` -- build an inquiry package from a proof.
-- `chio-mercury verify` -- verify a proof or inquiry package.
-- Workflow-specific lanes: `pilot`, `supervised-live`, `downstream-review`,
-  `governance-workbench`, `assurance-suite`, `embedded-oem`,
-  `trust-network`, `release-readiness`, `controlled-adoption`,
-  `reference-distribution`, `broader-distribution`,
-  `selective-account-activation`, `delivery-continuity`,
-  `renewal-qualification`, `second-account-expansion`,
-  `portfolio-program`, `second-portfolio-program`, `third-program`,
-  `program-family`, `portfolio-revenue-boundary`.
-
-Each lane produces a `MercuryPackage` bound to the underlying Chio receipt
-evidence so that partner reviews never lose the verifiable substrate.
-
 ---
 
 ## 9. Developer Recipes
@@ -596,9 +575,8 @@ See `crates/chio-cli/src/cli/types.rs:667` for the full option set.
 
 ## 10. CLI Reference
 
-The economic layer surfaces through three binaries: `chio` (core CLI),
-`chio-mercury` (partner evidence bundles), and programmatic access via the
-Rust crates for code paths that are not yet wrapped.
+The economic layer surfaces through the `chio` CLI binary and programmatic
+access via the Rust crates for code paths that are not yet wrapped.
 
 ### 10.1 `chio` core economic subcommands
 
@@ -650,28 +628,7 @@ Rust crates for code paths that are not yet wrapped.
 | `chio trust federated-delegation-policy-create` | Signed federated delegation policy. | `crates/chio-cli/src/cli/types.rs:694` |
 | `chio trust serve` | Shared trust-control HTTP service. | `crates/chio-cli/src/cli/types.rs:467` |
 
-### 10.3 `chio-mercury` partner evidence subcommands
-
-Core:
-
-- `chio-mercury proof export | verify`
-- `chio-mercury inquiry export`
-- `chio-mercury verify`
-
-Workflow lanes (each has `export` and typically `validate`):
-
-- `pilot`, `supervised-live`, `downstream-review`, `governance-workbench`,
-  `assurance-suite`, `embedded-oem`, `trust-network`, `release-readiness`,
-  `controlled-adoption`, `reference-distribution`, `broader-distribution`,
-  `selective-account-activation`, `delivery-continuity`,
-  `renewal-qualification`, `second-account-expansion`,
-  `portfolio-program`, `second-portfolio-program`, `third-program`,
-  `program-family`, `portfolio-revenue-boundary`.
-
-See `crates/chio-mercury/src/main.rs:19` for the enum and
-`crates/chio-mercury/src/commands.rs` for the implementations.
-
-### 10.4 Anchor and settle surfaces
+### 10.3 Anchor and settle surfaces
 
 Anchoring and settlement currently expose programmatic APIs rather than
 first-class `chio` subcommands. The relevant entry points:

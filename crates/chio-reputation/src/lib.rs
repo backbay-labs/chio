@@ -6,6 +6,8 @@
 //! on `chio-kernel`, which keeps the scoring model reusable and avoids a future
 //! dependency cycle when kernel-side issuance hooks begin consuming it.
 
+#![forbid(unsafe_code)]
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 

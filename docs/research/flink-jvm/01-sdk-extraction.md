@@ -10,13 +10,13 @@ surface to match `chio_sdk.client.ChioClient` unblocks Flink without
 regressing the Spring starter. Stack: **Kotlin 2.3** on **JDK 21**,
 **`java.net.http.HttpClient`** (no OkHttp/Ktor), **Jackson** with
 `ORDER_MAP_ENTRIES_BY_KEYS` + `ESCAPE_NON_ASCII` for canonical JSON,
-**JUnit 5 + `kotlin-test-junit5`**, package `io.backbay.chio.sdk`, and
+**JUnit 5 + `kotlin-test-junit5`**, package `world.chio.sdk`, and
 a **multi-project Gradle** root at `sdks/jvm/` where `chio-spring-boot`
 declares `api(project(":chio-sdk-jvm"))`.
 
 ## 1. Should we extract?
 
-Yes. A file-by-file read of `sdks/jvm/chio-spring-boot/src/main/kotlin/io/backbay/chio/`
+Yes. A file-by-file read of `sdks/jvm/chio-spring-boot/src/main/kotlin/world/chio/`
 shows the seam is already drawn:
 
 - `ChioSidecarClient.kt` lines 9-17 import only `com.fasterxml.jackson.*`
@@ -168,18 +168,18 @@ sdks/jvm/
   settings.gradle.kts                    # new: include both subprojects
   build.gradle.kts                       # new: empty root
   chio-sdk-jvm/                          # new subproject
-    src/main/kotlin/io/backbay/chio/sdk/
+    src/main/kotlin/world/chio/sdk/
       ChioClient.kt                      # widened from ChioSidecarClient.kt
       ChioTypes.kt                       # moved verbatim
       ChioReceipt.kt, Decision.kt, ToolCallAction.kt  # new
       CanonicalJson.kt                   # sorted-keys mapper + sha256Hex
       errors/{ChioError,Connection,Timeout,Denied,Validation}.kt   # new
       capabilities/{CapabilityToken,ChioScope,*Grant,...}.kt       # new
-    src/test/kotlin/io/backbay/chio/sdk/
+    src/test/kotlin/world/chio/sdk/
       ChioTypesTest.kt (moved), CanonicalJsonTest.kt, ChioClientTest.kt
   chio-spring-boot/                      # existing module, thinned
     build.gradle.kts                     # api(project(":chio-sdk-jvm"))
-    src/main/kotlin/io/backbay/chio/
+    src/main/kotlin/world/chio/
       ChioFilter.kt, CachedBodyHttpServletRequest.kt,
       ChioAutoConfiguration.kt, ChioIdentityExtractor.kt (filter-specific)
     src/main/resources/META-INF/spring.factories
@@ -187,11 +187,11 @@ sdks/jvm/
 
 - **Location**: `sdks/jvm/chio-sdk-jvm/` alongside `chio-spring-boot/`;
   a future `chio-flink/` sits next to them under the same root build.
-- **Package**: `io.backbay.chio.sdk`. Spring types keep `io.backbay.chio`
+- **Package**: `world.chio.sdk`. Spring types keep `world.chio`
   so chio-spring-boot users see no class-name churn; moved types get
   `typealias` re-exports in the old package for one release cycle. The
   `.sdk` suffix mirrors Python's `chio_sdk` and leaves
-  `io.backbay.chio.flink` / `.spring` as peer namespaces.
+  `world.chio.flink` / `.spring` as peer namespaces.
 - **Gradle topology**: multi-project with a single settings file at
   `sdks/jvm/settings.gradle.kts` (`include("chio-sdk-jvm",
   "chio-spring-boot")`). Today's `chio-spring-boot/settings.gradle.kts`
@@ -202,8 +202,8 @@ sdks/jvm/
   `api(project(":chio-sdk-jvm"))`. The `spring-boot-starter-web` on
   today's `build.gradle.kts` line 20 stays on the Spring subproject;
   `chio-sdk-jvm` has zero Spring deps.
-- **Artifact coords**: `io.backbay.chio:chio-sdk-jvm:0.1.0`, and
-  `io.backbay.chio:chio-spring-boot:0.1.0` continues to point at the
+- **Artifact coords**: `world.chio:chio-sdk-jvm:0.1.0`, and
+  `world.chio:chio-spring-boot:0.1.0` continues to point at the
   thinned Spring starter.
 
 ## 7. Testing library
@@ -240,7 +240,7 @@ WireMock. MockK is not needed; seams are small. Keep
    contract; `Map<String, Any?>` is Java-friendlier. Decide before
    freezing.
 5. **Publishing coords.** README (`chio-spring-boot/README.md` lines 24,
-   34) already advertises `io.backbay.chio:chio-spring-boot:0.1.0`. If
+   34) already advertises `world.chio:chio-spring-boot:0.1.0`. If
    SDK 0.1.0 ships first, does Spring bump to 0.2.0 alongside or stay
    at 0.1.0 with a bumped dependency?
 6. **Deny-body wire shape.** Python's `ChioDeniedError.from_wire`

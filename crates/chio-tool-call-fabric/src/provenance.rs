@@ -1,9 +1,9 @@
 //! Stand-alone signed provenance helper.
 //!
-//! Today the Chio receipt is signed end-to-end, but the provenance stamp
-//! itself is not separately attestable. M07 adds a small helper so downstream
-//! auditors can verify the upstream identity (provider, request id, principal)
-//! without pulling the surrounding receipt.
+//! The Chio receipt is signed end-to-end, but the provenance stamp itself is
+//! not separately attestable from the receipt alone. This small helper lets
+//! downstream auditors verify the upstream identity (provider, request id,
+//! principal) without pulling the surrounding receipt.
 //!
 //! The construction is intentionally narrow: a [`SignedProvenance`] envelope
 //! carries the canonical-JSON bytes of the [`ProvenanceStamp`], the producing

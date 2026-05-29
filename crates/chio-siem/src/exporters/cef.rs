@@ -1,9 +1,8 @@
 //! CEF formatter for Chio receipt audit events.
 //!
-//! The M01 healthcare design-partner pilot ships CEF as the first text SIEM
-//! format alongside the existing OCSF JSON mapper. This module formats one
-//! CEF v0 event per receipt. Transport remains owned by existing webhook or
-//! collector-specific exporters.
+//! CEF is the text SIEM format shipped alongside the OCSF JSON mapper.
+//! This module formats one CEF v0 event per receipt. Transport remains
+//! owned by existing webhook or collector-specific exporters.
 
 use crate::event::SiemEvent;
 use crate::exporter::{ExportError, ExportFuture, Exporter};
@@ -19,7 +18,7 @@ pub struct CefExporterConfig {
 impl Default for CefExporterConfig {
     fn default() -> Self {
         Self {
-            device_vendor: "Backbay Industries".to_string(),
+            device_vendor: "Backbay Labs".to_string(),
             device_product: "Chio".to_string(),
             device_version: env!("CARGO_PKG_VERSION").to_string(),
         }
@@ -236,6 +235,7 @@ mod tests {
     use chio_core::receipt::{
         ChioReceipt, ChioReceiptBody, Decision, ReceiptSemanticFields, ToolCallAction, TrustLevel,
     };
+    use chio_test_support::prelude::*;
 
     #[test]
     fn escapes_header_separator() {
@@ -256,7 +256,7 @@ mod tests {
         ));
         let cef = CefExporter::default()
             .format_event(&event)
-            .expect("format trace CEF");
+            .test_expect("format trace CEF");
 
         assert!(cef.contains("receiptKind=trace_observation"));
         assert!(cef.contains("boundaryClass=detect_only"));
@@ -279,7 +279,7 @@ mod tests {
         let event = SiemEvent::from_receipt(receipt);
         let cef = CefExporter::default()
             .format_event(&event)
-            .expect("format CEF");
+            .test_expect("format CEF");
 
         assert!(cef.contains("cs5=single-tenant"));
         assert!(!cef.contains("metadata-tenant"));
@@ -294,7 +294,7 @@ mod tests {
         let action = ToolCallAction::from_parameters(serde_json::json!({
             "path": "/etc/passwd"
         }))
-        .expect("hash test receipt parameters");
+        .test_expect("hash test receipt parameters");
         let decision = if semantics.receipt_kind == chio_core::ReceiptKind::MediatedDecision {
             Some(decision)
         } else {
@@ -325,6 +325,6 @@ mod tests {
             },
             &kp,
         )
-        .expect("sign test receipt")
+        .test_expect("sign test receipt")
     }
 }

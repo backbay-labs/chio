@@ -146,10 +146,10 @@ def scope_from_spec(spec: str | ChioScope, *, server_id: str = "") -> ChioScope:
       human-friendly string. Multiple scopes may be comma-separated
       (``"tools:search,tools:browse"``).
 
-    The string form is the ergonomic path the roadmap acceptance test
-    exercises (``@ChioActor.requires("tools:search")``); the
-    :class:`ChioScope` form is for callers who already know the full
-    :class:`ToolGrant` shape.
+    The string form is the ergonomic path
+    (``@ChioActor.requires("tools:search")``); the :class:`ChioScope`
+    form is for callers who already know the full :class:`ToolGrant`
+    shape.
     """
     if isinstance(spec, ChioScope):
         return spec

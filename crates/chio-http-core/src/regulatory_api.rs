@@ -1,4 +1,4 @@
-//! Phase 19.3 -- read-only regulatory API over the receipt store.
+//! Read-only regulatory API over the receipt store.
 //!
 //! This module exposes a substrate-agnostic handler that accepts a
 //! filter description, pulls receipts from a pluggable store, and

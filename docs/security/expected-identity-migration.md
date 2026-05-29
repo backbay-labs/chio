@@ -1,18 +1,18 @@
-# Expected-Identity Migration Audit (M05 Phase 4)
+# Expected-Identity Migration Audit
 
-Source-of-truth design: `.planning/trajectory-2/05-adversarial-escape-threat-model.md`
-(Phase 4). This document is the M05.P4.T4 deliverable and is updated whenever
-a new `ExpectedIdentity` call site lands in the workspace.
+Source-of-truth design: the adversarial-escape threat model in
+`spec/PROTOCOL.md`. This document is
+updated whenever a new `ExpectedIdentity` call site lands in the workspace.
 
 ## Summary
 
-Before M05.P4: every workspace caller that needed to verify a Sigstore-signed
+Before the migration: every workspace caller that needed to verify a Sigstore-signed
 artifact constructed an `ExpectedIdentity { certificate_identity_regexp,
 certificate_oidc_issuer }` value inline at the call site. There was no signed
 audit trail of what regex an operator had decided to trust, and rotating the
 trusted identity required a code change rather than a configuration change.
 
-After M05.P4: production callers resolve a tenant identifier into an
+After the migration: production callers resolve a tenant identifier into an
 `ExpectedIdentity` through `TenantPolicyResolver::expected_for_tenant`. The
 `ExpectedIdentity` value flows from a Sigstore-signed per-tenant policy file
 (`crates/chio-attest-verify/src/policy.rs`) loaded once at startup with a
@@ -25,8 +25,8 @@ keeps every remaining inline site visible to reviewers.
 
 ## Per-call-site before / after
 
-The following table enumerates every workspace call site of `ExpectedIdentity`
-at M05.P4 close. Bootstrap policies are at
+The following table enumerates every workspace call site of `ExpectedIdentity`.
+Bootstrap policies are at
 `crates/chio-attest-verify/tests/fixtures/policies/bootstrap.toml`; production
 deployments override the placeholder signature with one signed by their
 release identity.
@@ -104,7 +104,7 @@ Before:
 fn expected_identity() -> ExpectedIdentity {
     ExpectedIdentity {
         certificate_identity_regexp:
-            "https://github\\.com/backbay/chio/\\.github/workflows/iam\\.yml@refs/heads/main"
+            "https://github\\.com/backbay-labs/chio/\\.github/workflows/iam\\.yml@refs/heads/main"
                 .to_string(),
         certificate_oidc_issuer: "https://token.actions.githubusercontent.com".to_string(),
     }
@@ -116,7 +116,7 @@ After:
 ```rust
 fn expected_identity() -> ExpectedIdentity { // doc-hidden return type
     ExpectedIdentity::doc_hidden_inline(
-        "https://github\\.com/backbay/chio/\\.github/workflows/iam\\.yml@refs/heads/main",
+        "https://github\\.com/backbay-labs/chio/\\.github/workflows/iam\\.yml@refs/heads/main",
         "https://token.actions.githubusercontent.com",
     )
 }
@@ -144,17 +144,17 @@ so even a placeholder bootstrap is rejected after 2026-06-30 unless rotated.
 
 The bootstrap signing identity is the workspace release identity:
 
-- `certificate_identity_regexp`: `https://github\.com/backbay/chio/\.github/workflows/release-binaries\.yml@refs/tags/v.*`
+- `certificate_identity_regexp`: `https://github\.com/backbay-labs/chio/\.github/workflows/release-binaries\.yml@refs/tags/v.*`
 - `certificate_oidc_issuer`: `https://token.actions.githubusercontent.com`
 
-This is the same identity M06 uses for binary releases. The bootstrap policy
-file hash is recorded in this audit doc on every milestone close so reviewers
+This is the same identity used for binary releases. The bootstrap policy
+file hash is recorded in this audit doc on every release close so reviewers
 can detect tampering between rotations.
 
 ## Call sites migrated
 
 The four entries above are the complete enumeration of workspace
-`ExpectedIdentity` call sites at M05.P4 close:
+`ExpectedIdentity` call sites:
 
 | #   | Path                                                                   | Kind        | Migration                                  |
 | --- | ---------------------------------------------------------------------- | ----------- | ------------------------------------------ |
@@ -169,17 +169,17 @@ Adding a new call site:
 2. For test code that genuinely needs a fixed-shape identity, call
    `ExpectedIdentity::doc_hidden_inline` and add an entry to this table in
    the same PR.
-3. The grep gate at `M05.P4.T3` (`! grep -rE 'ExpectedIdentity\s*\{' ...`) is
+3. The workspace grep gate (`! grep -rE 'ExpectedIdentity\s*\{' ...`) is
    load-bearing; CI fails if a new inline struct literal lands without the
    `doc-hidden` exemption.
 
 ## Future work
 
-- **trajectory-2 M03**: when ML-DSA cert identities ship, the
+- **Post-quantum identities**: when ML-DSA cert identities ship, the
   `pq_identity_regexps` reserved field on `TenantPolicy` becomes load-bearing
-  and the resolver gains a `pq_expected_for_tenant` accessor. The M03 PR
+  and the resolver gains a `pq_expected_for_tenant` accessor. That work
   updates this audit doc with the new accessor's call sites.
 - **Per-tenant rotation tooling**: an `xtask` job that re-signs each tenant
   policy on a 90-day rolling window, scheduled by the same cadence as the
-  Sigstore TUF root re-bake job, lives outside the M05 trust boundary and is
+  Sigstore TUF root re-bake job, lives outside this trust boundary and is
   tracked separately.

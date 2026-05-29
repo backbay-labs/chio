@@ -521,8 +521,7 @@ def _factory_shell_run(handle: RuntimeHandle) -> ToolHandler:
         # Syntactic guardrail (not a sandbox): rejects `..` and
         # out-of-workspace absolute paths.
         _reject_shell_argv_escape(command, root=handle.cwd)
-        # Approval-required commands now route through the sidecar's
-        # HITL channel instead of denying outright. The wrapper raises
+        # Approval-required commands route through the sidecar's HITL channel. The wrapper raises
         # `_RequiresApprovalSignal` which the envelope wrapper turns
         # into a `chio_requires_approval` JSON envelope.
         await _maybe_submit_for_approval(

@@ -15,26 +15,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use chio_kernel::ExecutionNonceStore;
 use chio_store_sqlite::SqliteExecutionNonceStore;
 
-trait TestResultOk<T, E> {
-    fn test_expect(self, context: &'static str) -> T;
-    fn test_unwrap(self) -> T;
-}
-
-impl<T, E> TestResultOk<T, E> for Result<T, E> {
-    fn test_expect(self, context: &'static str) -> T {
-        match self {
-            Ok(value) => value,
-            Err(_) => panic!("{context}"),
-        }
-    }
-
-    fn test_unwrap(self) -> T {
-        match self {
-            Ok(value) => value,
-            Err(_) => panic!("expected Ok result"),
-        }
-    }
-}
+use chio_test_support::prelude::*;
 
 fn unique_db_path(prefix: &str) -> std::path::PathBuf {
     let nonce = SystemTime::now()

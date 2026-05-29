@@ -156,10 +156,7 @@ impl ReplayPartition {
     }
 }
 
-/// Free-function variant of [`ReplayPartition::replay_receipt_id`] for
-/// call sites that have already extracted a `run_id`. Kept for symmetry
-/// with the milestone doc's prose, which describes the namespace as a
-/// pure function `(run_id, frame_id) -> id`.
+/// Namespace an extracted run_id as `(run_id, frame_id) -> id`.
 pub fn replay_receipt_id(run_id: &str, frame_id: &str) -> String {
     format!("replay:{run_id}:{frame_id}")
 }

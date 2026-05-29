@@ -7,6 +7,8 @@
 // `Write` is already brought in by `cli/types.rs`; this file is
 // `include!`-d into the same module so no additional `use` is needed.
 
+use super::*;
+
 use crate::doctor::{DoctorRun, DoctorRunner, ProbeConfig, ProbeReport, ProbeSeverity};
 
 /// Arguments for `chio doctor`.
@@ -71,7 +73,7 @@ pub fn cmd_doctor(args: &DoctorArgs, json_output: bool) -> Result<(), CliError> 
     }
 }
 
-fn render_doctor_json(writer: &mut impl Write, run: &DoctorRun) -> std::io::Result<()> {
+pub(crate) fn render_doctor_json(writer: &mut impl Write, run: &DoctorRun) -> std::io::Result<()> {
     let payload = serde_json::json!({
         "schema": "chio.doctor.v1",
         "worst": run.worst,
@@ -82,7 +84,7 @@ fn render_doctor_json(writer: &mut impl Write, run: &DoctorRun) -> std::io::Resu
     writeln!(writer)
 }
 
-fn render_doctor_human(writer: &mut impl Write, run: &DoctorRun) -> std::io::Result<()> {
+pub(crate) fn render_doctor_human(writer: &mut impl Write, run: &DoctorRun) -> std::io::Result<()> {
     writeln!(writer, "chio doctor")?;
     for report in &run.reports {
         write_doctor_report(writer, report)?;
@@ -96,7 +98,7 @@ fn render_doctor_human(writer: &mut impl Write, run: &DoctorRun) -> std::io::Res
     )
 }
 
-fn write_doctor_report(writer: &mut impl Write, report: &ProbeReport) -> std::io::Result<()> {
+pub(crate) fn write_doctor_report(writer: &mut impl Write, report: &ProbeReport) -> std::io::Result<()> {
     let marker = match report.severity {
         ProbeSeverity::Ok => "[ok]",
         ProbeSeverity::Info => "[info]",

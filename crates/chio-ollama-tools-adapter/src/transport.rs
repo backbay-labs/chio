@@ -1,8 +1,19 @@
-//! Ollama `/api/chat` transport scaffold.
+//! Ollama `/api/chat` transport.
+//!
+//! Ollama runs as a local HTTP daemon (default `http://localhost:11434`) and
+//! exposes `/api/chat`. A non-streaming call returns a single JSON object; a
+//! streaming call returns NDJSON (one JSON object per line) terminated by an
+//! object carrying `done: true`. The real outbound plumbing (the reqwest
+//! client, headers, timeouts, and failure classification) lives in
+//! [`chio_provider_adapter_core::http`]; this module wires Ollama's defaults
+//! onto it and re-exports the shared transport contract.
 
-use std::sync::Mutex;
+use std::sync::Arc;
+use std::time::Duration;
 
-use thiserror::Error;
+use chio_provider_adapter_core::http::{
+    AuthScheme, HttpTransport, HttpTransportConfig, HttpTransportError, DEFAULT_TIMEOUT,
+};
 
 /// Pinned Ollama API version. Bumping requires re-recording conformance fixtures.
 pub const OLLAMA_API_VERSION: &str = "2025-04";
@@ -10,61 +21,98 @@ pub const OLLAMA_API_VERSION: &str = "2025-04";
 /// Default Ollama daemon host (localhost only by default).
 pub const OLLAMA_CHAT_HOST: &str = "http://localhost:11434";
 
-/// Wire-level transport errors.
-#[derive(Debug, Error)]
-pub enum TransportError {
-    /// The mock transport has no scripted response for this endpoint.
-    #[error("mock transport has no scripted response for `{endpoint}`")]
-    MockExhausted { endpoint: String },
-    /// Placeholder for the real HTTP transport path.
-    #[error("ollama transport HTTP path is not implemented: {0}")]
-    NotImplemented(&'static str),
+/// Request path for the Ollama chat endpoint.
+pub const OLLAMA_CHAT_PATH: &str = "/api/chat";
+
+/// Environment variable that overrides the default Ollama host.
+pub const OLLAMA_HOST_ENV: &str = "OLLAMA_HOST";
+
+/// Environment variable that, when set, supplies a bearer token for a remote
+/// Ollama gateway sitting in front of the daemon.
+pub const OLLAMA_API_KEY_ENV: &str = "OLLAMA_API_KEY";
+
+/// The transport contract every Ollama transport implements.
+///
+/// It is the shared
+/// [`ProviderHttpTransport`](chio_provider_adapter_core::http::ProviderHttpTransport)
+/// from the adapter core: an adapter holds `Arc<dyn Transport>` and posts native
+/// `/api/chat` bytes through it, then feeds the response to its lift/gate code.
+/// In production this is an [`HttpTransport`]; in tests it is a [`MockTransport`].
+pub use chio_provider_adapter_core::http::ProviderHttpTransport as Transport;
+
+/// In-memory transport used by hermetic adapter tests.
+///
+/// This re-exports the shared
+/// [`MockHttpTransport`](chio_provider_adapter_core::http::MockHttpTransport),
+/// which records every outbound call and returns scripted responses, failing
+/// closed when the script is exhausted.
+pub use chio_provider_adapter_core::http::MockHttpTransport as MockTransport;
+
+/// Build the [`HttpTransportConfig`] for a localhost (or `OLLAMA_HOST`) daemon.
+///
+/// The base URL defaults to [`OLLAMA_CHAT_HOST`] and is overridden by the
+/// `OLLAMA_HOST` environment variable when it is set and non-empty. Ollama needs
+/// no authentication on localhost, so [`AuthScheme::None`] is used unless
+/// `OLLAMA_API_KEY` is set, in which case a bearer token is attached for a
+/// remote gateway.
+pub fn host_config() -> Result<HttpTransportConfig, HttpTransportError> {
+    let host = std::env::var(OLLAMA_HOST_ENV).ok();
+    let api_key = std::env::var(OLLAMA_API_KEY_ENV).ok();
+    Ok(resolve_config(host.as_deref(), api_key.as_deref()))
 }
 
-/// Wire-level transport contract.
-pub trait Transport: Send + Sync {
-    fn api_version(&self) -> &str {
-        OLLAMA_API_VERSION
-    }
-
-    fn endpoint(&self) -> &str {
-        OLLAMA_CHAT_HOST
-    }
-}
-
-/// In-memory transport that records every call placed against it.
-#[derive(Default)]
-pub struct MockTransport {
-    /// Captured `(endpoint, raw-body-bytes)` tuples in order of issue.
-    calls: Mutex<Vec<(String, Vec<u8>)>>,
-}
-
-impl MockTransport {
-    /// Construct an empty mock transport.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Record a placed call.
-    pub fn record(&self, endpoint: &str, body: &[u8]) {
-        if let Ok(mut guard) = self.calls.lock() {
-            guard.push((endpoint.to_string(), body.to_vec()));
-        }
-    }
-
-    /// Snapshot the recorded calls for assertions.
-    pub fn calls(&self) -> Vec<(String, Vec<u8>)> {
-        self.calls
-            .lock()
-            .map(|guard| guard.clone())
-            .unwrap_or_default()
+/// Resolve a [`HttpTransportConfig`] from explicit host and API-key values.
+///
+/// `host` falls back to [`OLLAMA_CHAT_HOST`] when [`None`] or blank; `api_key`
+/// attaches a bearer token when present and non-blank, otherwise the transport
+/// uses [`AuthScheme::None`]. Kept free of process-environment access so the
+/// resolution is deterministic and testable.
+fn resolve_config(host: Option<&str>, api_key: Option<&str>) -> HttpTransportConfig {
+    let base_url = match host {
+        Some(value) if !value.trim().is_empty() => value.to_string(),
+        _ => OLLAMA_CHAT_HOST.to_string(),
+    };
+    let auth = match api_key {
+        Some(value) if !value.trim().is_empty() => AuthScheme::Bearer(value.to_string()),
+        _ => AuthScheme::None,
+    };
+    HttpTransportConfig {
+        base_url,
+        auth,
+        extra_headers: Vec::new(),
+        timeout: DEFAULT_TIMEOUT,
     }
 }
 
-impl Transport for MockTransport {
-    fn endpoint(&self) -> &str {
-        "mock://ollama"
-    }
+/// Construct a live [`HttpTransport`] against the configured Ollama daemon.
+///
+/// Reads `OLLAMA_HOST` (falling back to [`OLLAMA_CHAT_HOST`]) and an optional
+/// `OLLAMA_API_KEY` bearer token, then builds a reqwest-backed transport. Use
+/// [`live_transport_with_timeout`] to override the default request timeout.
+pub fn live_transport() -> Result<Arc<dyn Transport>, HttpTransportError> {
+    let transport = HttpTransport::new(host_config()?)?;
+    Ok(Arc::new(transport))
+}
+
+/// Construct a live [`HttpTransport`] with an explicit request timeout.
+pub fn live_transport_with_timeout(
+    timeout: Duration,
+) -> Result<Arc<dyn Transport>, HttpTransportError> {
+    let config = host_config()?.with_timeout(timeout);
+    let transport = HttpTransport::new(config)?;
+    Ok(Arc::new(transport))
+}
+
+/// Construct a live transport bound to an explicit base URL (no env lookup).
+///
+/// Useful when a caller already resolved the daemon address out of band, or for
+/// driving the adapter against a fixed test server.
+pub fn live_transport_for(
+    base_url: impl Into<String>,
+) -> Result<Arc<dyn Transport>, HttpTransportError> {
+    let config = HttpTransportConfig::new(base_url).with_auth(AuthScheme::None);
+    let transport = HttpTransport::new(config)?;
+    Ok(Arc::new(transport))
 }
 
 #[cfg(test)]
@@ -76,34 +124,47 @@ mod tests {
     fn pinned_constants_are_correct() {
         assert_eq!(OLLAMA_API_VERSION, "2025-04");
         assert_eq!(OLLAMA_CHAT_HOST, "http://localhost:11434");
+        assert_eq!(OLLAMA_CHAT_PATH, "/api/chat");
     }
 
     #[test]
-    fn mock_transport_records_calls() {
-        let mock = MockTransport::new();
-        mock.record("/api/chat", b"{\"foo\":1}");
+    fn resolve_config_defaults_to_localhost_without_auth() {
+        let config = resolve_config(None, None);
+        assert_eq!(config.base_url, OLLAMA_CHAT_HOST);
+        assert_eq!(config.auth, AuthScheme::None);
+    }
+
+    #[test]
+    fn resolve_config_treats_blank_values_as_unset() {
+        let config = resolve_config(Some("   "), Some(""));
+        assert_eq!(config.base_url, OLLAMA_CHAT_HOST);
+        assert_eq!(config.auth, AuthScheme::None);
+    }
+
+    #[test]
+    fn resolve_config_honors_host_override_and_bearer() {
+        let config = resolve_config(Some("http://remote-ollama:11434"), Some("gateway-token"));
+        assert_eq!(config.base_url, "http://remote-ollama:11434");
+        assert_eq!(config.auth, AuthScheme::Bearer("gateway-token".to_string()));
+    }
+
+    #[tokio::test]
+    async fn mock_transport_records_calls() {
+        let mock = MockTransport::new("mock://ollama");
+        mock.push_json_response(b"{\"done\":true}".to_vec());
+        let response = mock
+            .post_json(OLLAMA_CHAT_PATH, b"{\"model\":\"x\"}")
+            .await
+            .unwrap();
+        assert_eq!(response.status, 200);
         let calls = mock.calls();
         assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].path, OLLAMA_CHAT_PATH);
     }
 
     #[test]
-    fn mock_transport_advertises_pin() {
-        let mock = MockTransport::new();
-        assert_eq!(mock.api_version(), OLLAMA_API_VERSION);
-        assert_eq!(mock.endpoint(), "mock://ollama");
-    }
-
-    #[test]
-    fn transport_error_display_is_em_dash_free() {
-        let cases = vec![
-            TransportError::MockExhausted {
-                endpoint: "/api/chat".to_string(),
-            },
-            TransportError::NotImplemented("chat"),
-        ];
-        for err in cases {
-            let s = err.to_string();
-            assert!(!s.contains('\u{2014}'), "em dash in {s}");
-        }
+    fn mock_transport_advertises_base_url() {
+        let mock = MockTransport::new("mock://ollama");
+        assert_eq!(mock.base_url(), "mock://ollama");
     }
 }

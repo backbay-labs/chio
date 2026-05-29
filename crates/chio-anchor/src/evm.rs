@@ -546,7 +546,12 @@ fn validate_rpc_egress_contract(
                 "invalid anchor EVM RPC HttpEgressContract: {error}"
             ))
         })?;
-    contract.enforce_url_with_dns(rpc_url, 0).map_err(|error| {
+    // Validate scheme/authority and reject IP-literal loopback/link-local hosts
+    // here. Hostname address-class is enforced at connect time by the contract's
+    // pinned ContractDnsResolver (see client_builder_with_contract), so this does
+    // not resolve DNS itself: a config-time lookup would be redundant, fail
+    // offline, and be open to TOCTOU drift.
+    contract.enforce_url(rpc_url, 0).map_err(|error| {
         AnchorError::Rpc(format!(
             "anchor EVM RPC URL is not allowed by HttpEgressContract: {error}"
         ))
@@ -649,31 +654,7 @@ mod tests {
         EvmPublicationReceipt, HttpEgressContract,
     };
 
-    trait TestResultOk<T, E> {
-        fn test_expect(self, context: &'static str) -> T;
-    }
-
-    impl<T, E> TestResultOk<T, E> for Result<T, E> {
-        fn test_expect(self, context: &'static str) -> T {
-            match self {
-                Ok(value) => value,
-                Err(_) => panic!("{context}"),
-            }
-        }
-    }
-
-    trait TestResultErr<T, E> {
-        fn test_expect_err(self, context: &'static str) -> E;
-    }
-
-    impl<T, E> TestResultErr<T, E> for Result<T, E> {
-        fn test_expect_err(self, context: &'static str) -> E {
-            match self {
-                Ok(_) => panic!("{context} unexpectedly succeeded"),
-                Err(error) => error,
-            }
-        }
-    }
+    use chio_test_support::prelude::*;
 
     fn bind_mock_json_rpc_listener() -> Option<TcpListener> {
         match TcpListener::bind("127.0.0.1:0") {

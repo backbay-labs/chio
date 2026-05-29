@@ -69,7 +69,7 @@ name = "v318_migration"
 path = "tests/v318_migration.rs"
 required-features = ["pq"]
 
-# M03.P5.T2: end-to-end PQ migration suite. Drives the v3.18 bundle through
+# End-to-end PQ migration suite. Drives the v3.18 bundle through
 # allow_classical -> allow_hybrid -> pq_required with a PQ key roll between
 # stages 2 and 3, pinned against tests/fixtures/migration/key_roll_state.json.
 # Threat-model row pq_signature_downgrade is the surface guarded.

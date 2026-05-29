@@ -1,4 +1,4 @@
-//! `arc bind <provider> --card <path>` subcommand.
+//! `chio bind <provider> --card <path>` subcommand.
 //!
 //! Loads a model card from disk, optionally verifies the cosign bundle
 //! through `chio_attest_verify::SigstoreVerifier::verify_bundle`, and
@@ -9,7 +9,7 @@
 //! # CLI shape
 //!
 //! ```text
-//! arc bind <provider> --card <path>
+//! chio bind <provider> --card <path>
 //!     [--bundle <path>] [--issuer-san-regex <regex>] [--issuer-oidc <url>]
 //! ```
 //!
@@ -56,7 +56,7 @@ use chrono::Utc;
 
 use crate::CliError;
 
-/// Entry point for `arc bind <provider> --card <path>`.
+/// Entry point for `chio bind <provider> --card <path>`.
 ///
 /// Returns `Ok(())` only when the card loads cleanly. When `bundle_path`
 /// is supplied, also verifies the cosign bundle through `chio-attest-verify`

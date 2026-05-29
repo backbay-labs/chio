@@ -38,8 +38,8 @@
     },
     {
       "path": "receipts.ndjson",
-      "sha256": "ed0f7eabacc9598913474582a0a2121c0145be018bba1a94372538e36bb0f0d1",
-      "bytes": 5300
+      "sha256": "aecc0fb9f1a0b8614f93ad67aa0a797efbb036b5a685e9ddd6192a5128d411a9",
+      "bytes": 6015
     },
     {
       "path": "child-receipts.ndjson",

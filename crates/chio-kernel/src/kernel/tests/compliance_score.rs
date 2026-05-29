@@ -1,10 +1,10 @@
-// Phase 19.1 roadmap acceptance tests for the compliance scoring model.
+// Compliance-score acceptance tests.
 //
 // Included by `src/kernel/tests.rs`, which already pulled in `super::*`
 // and helpers from `tests/all.rs`. We only need items that are not in
 // scope yet.
 //
-// Acceptance criteria (roadmap 19.1):
+// Acceptance criteria:
 //   * zero denies in 1000 calls -> score > 900
 //   * revoked capability        -> score < 500
 

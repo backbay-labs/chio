@@ -1003,8 +1003,7 @@ pub fn verify_budget_checked_add_no_overflow() {
         }
         Err(ModelBudgetError::Overflow) => {
             // (a) The load-bearing arm: overflow MUST leave the
-            // pre-state untouched. This is the property the ticket
-            // exists to prove.
+            // pre-state untouched.
             assert_eq!(overflow_post, overflow_current);
             // Witness: overflow only fires when delta exceeds the
             // remaining headroom (`u64::MAX - current = tail`).

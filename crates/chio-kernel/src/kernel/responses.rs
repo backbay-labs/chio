@@ -1279,11 +1279,11 @@ impl ChioKernel {
         };
         let receipt_content = receipt_content_for_output(Some(&output), expected_chunks)?;
 
-        // Phase 18.2: classify the call against the memory-provenance
-        // action conventions and, for reads, look up the latest chain
-        // entry BEFORE the receipt is signed so the provenance evidence
-        // rides in the signed metadata. Writes append AFTER signing
-        // (see below) because the chain entry needs the receipt id.
+        // Classify the call against the memory-provenance action conventions
+        // and, for reads, look up the latest chain entry BEFORE the receipt
+        // is signed so the provenance evidence rides in the signed metadata.
+        // Writes append AFTER signing (see below) because the chain entry
+        // needs the receipt id.
         let memory_action_kind = crate::memory_provenance::classify_memory_action(
             &request.tool_name,
             &request.arguments,
@@ -1340,10 +1340,10 @@ impl ChioKernel {
             "tool call allowed"
         );
 
-        // Phase 18.2: for governed writes, append an entry to the
-        // provenance chain once the receipt is signed. A failure here
-        // is fatal (fail-closed): we do not want to acknowledge the
-        // write to the caller while silently dropping provenance.
+        // For governed writes, append an entry to the provenance chain once
+        // the receipt is signed. A failure here is fatal (fail-closed): we
+        // do not want to acknowledge the write to the caller while silently
+        // dropping provenance.
         if let Some(crate::memory_provenance::MemoryActionKind::Write { store, key }) =
             memory_action_kind.as_ref()
         {
@@ -1356,9 +1356,8 @@ impl ChioKernel {
             )?;
         }
 
-        // Phase 1.1: mint a short-lived, single-use execution nonce bound
-        // to this allow verdict so tool servers can verify the kernel
-        // authorized this exact invocation. Opt-in; when no config is
+        // Mint a short-lived, single-use execution nonce bound to this allow
+        // verdict; opt-in via ExecutionNonceConfig. When no config is
         // installed the field remains `None` for backward compatibility.
         let execution_nonce = self.mint_execution_nonce_for_allow(request, cap, &receipt)?;
 
@@ -1373,8 +1372,8 @@ impl ChioKernel {
         })
     }
 
-    /// Phase 18.2: build receipt metadata describing the provenance
-    /// record that governs the memory read identified by `(store, key)`.
+    /// Build receipt metadata describing the provenance record that governs
+    /// the memory read identified by `(store, key)`.
     ///
     /// Returns `None` when no provenance store has been installed
     /// (backward-compatible no-op), and returns an `unverified` metadata
@@ -1456,9 +1455,8 @@ impl ChioKernel {
         }
     }
 
-    /// Phase 18.2: append a provenance entry for a governed memory write
-    /// once the allow receipt is signed. Fails closed on chain-store
-    /// errors.
+    /// Append a provenance entry for a governed memory write once the allow
+    /// receipt is signed. Fails closed on chain-store errors.
     fn append_memory_provenance_for_write(
         &self,
         store: &str,
@@ -1491,8 +1489,8 @@ impl ChioKernel {
         &self,
         params: ReceiptParams<'_>,
     ) -> Result<ChioReceipt, KernelError> {
-        // Phase 1.5 multi-tenant receipt isolation: resolve tenant_id for
-        // this receipt. Precedence:
+        // Multi-tenant receipt isolation: resolve tenant_id for this receipt.
+        // Precedence:
         //   1. An explicit override on `ReceiptParams` (currently unused).
         //   2. The request-keyed tenant context set by the evaluate path.
         //   3. The active scoped tenant context set by the evaluate path
@@ -1539,10 +1537,10 @@ impl ChioKernel {
             kernel_key: self.config.keypair.public_key(),
         };
 
-        // Phase 14.1: delegate the pure signing step to chio-kernel-core so the
-        // portable TCB stays in one place. The full kernel still owns body
-        // construction (tenant scope resolution, policy_hash injection,
-        // evidence assembly) because those are std/tokio-aware concerns.
+        // Delegate the pure signing step to chio-kernel-core so the portable
+        // TCB stays in one place. The full kernel still owns body construction
+        // (tenant scope resolution, policy_hash injection, evidence assembly)
+        // because those are std/tokio-aware concerns.
         //
         // Verified-core boundary note:
         // `formal/proof-manifest.toml` includes this shell method only for the
@@ -1562,8 +1560,8 @@ impl ChioKernel {
         })
     }
 
-    /// Phase 20.3: record the receipt AND drive the bilateral co-signing
-    /// hook when the request crosses a federation boundary.
+    /// Record the receipt and drive the bilateral co-signing hook when the
+    /// request crosses a federation boundary.
     ///
     /// Local durability happens before remote co-signing. A co-sign
     /// failure can abort the caller's response path, but it must never
@@ -1618,7 +1616,7 @@ impl ChioKernel {
         _request: &crate::runtime::ToolCallRequest,
         receipt: &ChioReceipt,
     ) -> Result<(), KernelError> {
-        // PR 682 v1 receipt shape: persist the v1 deny receipt locally and
+        // Persist the v1 deny receipt locally and
         // deliberately stop before the federation co-signature hook. The
         // runtime-admission deny path does not co-sign because the deny
         // decision is locally authoritative and may have been triggered
@@ -1742,8 +1740,8 @@ impl ChioKernel {
     }
 }
 
-/// Phase 18.2 helper: produce the canonical `memory_provenance`
-/// metadata object that signals an unverified read.
+/// Produce the canonical `memory_provenance` metadata object that signals
+/// an unverified read.
 ///
 /// Kept as a free function so both the pre-sign metadata resolver and
 /// the fallback paths share a single serialisation shape.

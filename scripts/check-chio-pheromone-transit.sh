@@ -196,5 +196,3 @@ cargo run -p chio-three-vendor-example --bin generate-chio-three-vendor-fixtures
 for filename in deposit.json gossip-batch.json transit-policy.json concentration.json negative-cases.json; do
   cmp "$FIXTURE_DIR/$filename" "$tmpdir/pheromone/$filename"
 done
-
-bash "$ROOT/scripts/check-chio-authority-issuance.sh"

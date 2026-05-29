@@ -1,138 +1,193 @@
 {
-  "schema": "chio.web3-settlement-execution-receipt.v1",
-  "execution_receipt_id": "receipt-web3-1",
-  "issued_at": 1743292860,
   "dispatch": {
-    "schema": "chio.web3-settlement-dispatch.v1",
-    "dispatch_id": "dispatch-web3-1",
-    "issued_at": 1743292800,
-    "trust_profile_id": "chio.official-web3-stack",
-    "contract_package_id": "chio.official-web3-contracts",
-    "chain_id": "eip155:8453",
+    "beneficiary_address": "0x2222222222222222222222222222222222222222",
+    "bond_vault_contract": "0x1000000000000000000000000000000000000003",
     "capital_instruction": {
       "body": {
-        "schema": "chio.credit.capital-instruction.v1",
-        "instructionId": "cei-web3-1",
-        "issuedAt": 1743292800,
-        "query": {
-          "agentSubject": "subject-1",
-          "receiptLimit": 100,
-          "facilityLimit": 10,
-          "bondLimit": 10,
-          "lossEventLimit": 25
-        },
-        "subjectKey": "subject-1",
-        "sourceId": "capital-source:facility:facility-1",
-        "sourceKind": "facility_commitment",
-        "governedReceiptId": "rcpt-web3-1",
-        "completionFlowRowId": "economic-completion-flow:rcpt-web3-1",
         "action": "transfer_funds",
-        "ownerRole": "operator_treasury",
-        "counterpartyRole": "agent_counterparty",
-        "counterpartyId": "subject-1",
         "amount": {
-          "units": 150,
-          "currency": "USD"
+          "currency": "USD",
+          "units": 150
         },
         "authorityChain": [
           {
-            "role": "operator_treasury",
-            "principalId": "treasury-1",
             "approvedAt": 1743292790,
             "expiresAt": 1743293800,
-            "note": "governed release"
+            "note": "governed release",
+            "principalId": "treasury-1",
+            "role": "operator_treasury"
           },
           {
-            "role": "custodian",
-            "principalId": "custodian-base-main",
             "approvedAt": 1743292795,
             "expiresAt": 1743293800,
-            "note": "official web3 stack"
+            "note": "official web3 stack",
+            "principalId": "custodian-base-main",
+            "role": "custodian"
           }
         ],
-        "executionWindow": {
-          "notBefore": 1743292800,
-          "notAfter": 1743293800
-        },
-        "rail": {
-          "kind": "web3",
-          "railId": "base-mainnet-usdc",
-          "custodyProviderId": "custodian-base-main",
-          "sourceAccountRef": "vault:facility-main",
-          "destinationAccountRef": "0x2222222222222222222222222222222222222222",
-          "jurisdiction": "US"
-        },
-        "intendedState": "pending_execution",
-        "reconciledState": "not_observed",
-        "supportBoundary": {
-          "capitalBookAuthoritative": true,
-          "externalExecutionAuthoritative": false,
-          "automaticDispatchSupported": true,
-          "custodyNeutralInstructionSupported": false
-        },
+        "completionFlowRowId": "economic-completion-flow:rcpt-web3-1",
+        "counterpartyId": "subject-1",
+        "counterpartyRole": "agent_counterparty",
+        "description": "release escrow over the official web3 rail",
         "evidenceRefs": [
           {
             "kind": "receipt",
-            "referenceId": "rcpt-web3-1",
+            "locator": "receipt:rcpt-web3-1",
             "observedAt": 1743292800,
-            "locator": "receipt:rcpt-web3-1"
+            "referenceId": "rcpt-web3-1"
           }
         ],
-        "description": "release escrow over the official web3 rail"
+        "executionWindow": {
+          "notAfter": 1743293800,
+          "notBefore": 1743292800
+        },
+        "governedReceiptId": "rcpt-web3-1",
+        "instructionId": "cei-web3-1",
+        "intendedState": "pending_execution",
+        "issuedAt": 1743292800,
+        "ownerRole": "operator_treasury",
+        "query": {
+          "agentSubject": "subject-1",
+          "bondLimit": 10,
+          "facilityLimit": 10,
+          "lossEventLimit": 25,
+          "receiptLimit": 100
+        },
+        "rail": {
+          "custodyProviderId": "custodian-base-main",
+          "destinationAccountRef": "0x2222222222222222222222222222222222222222",
+          "jurisdiction": "US",
+          "kind": "web3",
+          "railId": "base-mainnet-usdc",
+          "sourceAccountRef": "vault:facility-main"
+        },
+        "reconciledState": "not_observed",
+        "schema": "chio.credit.capital-instruction.v1",
+        "sourceId": "capital-source:facility:facility-1",
+        "sourceKind": "facility_commitment",
+        "subjectKey": "subject-1",
+        "supportBoundary": {
+          "automaticDispatchSupported": true,
+          "capitalBookAuthoritative": true,
+          "custodyNeutralInstructionSupported": false,
+          "externalExecutionAuthoritative": false
+        }
       },
-      "signerKey": "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618",
-      "signature": "ffa1cb9483335fdc0470da1c8651532efe18ba98860fda29f42c0cea46bfb142f18108c72d415878373dcbd38ffc48c631defd5c07ca584ce8f7c4c2f34e6102"
+      "signature": "ffa1cb9483335fdc0470da1c8651532efe18ba98860fda29f42c0cea46bfb142f18108c72d415878373dcbd38ffc48c631defd5c07ca584ce8f7c4c2f34e6102",
+      "signerKey": "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618"
+    },
+    "chain_id": "eip155:8453",
+    "contract_package_id": "chio.official-web3-contracts",
+    "dispatch_id": "dispatch-web3-1",
+    "escrow_contract": "0x1000000000000000000000000000000000000002",
+    "escrow_id": "escrow-web3-1",
+    "issued_at": 1743292800,
+    "note": "Dispatches one governed escrow release over the official Base-first contract stack.",
+    "schema": "chio.web3-settlement-dispatch.v1",
+    "settlement_amount": {
+      "currency": "USD",
+      "units": 150
     },
     "settlement_path": "merkle_proof",
-    "settlement_amount": {
-      "units": 150,
-      "currency": "USD"
-    },
-    "escrow_id": "escrow-web3-1",
-    "escrow_contract": "0x1000000000000000000000000000000000000002",
-    "bond_vault_contract": "0x1000000000000000000000000000000000000003",
-    "beneficiary_address": "0x2222222222222222222222222222222222222222",
     "support_boundary": {
-      "real_dispatch_supported": true,
       "anchor_proof_required": true,
-      "oracle_evidence_required_for_fx": true,
       "custody_boundary_explicit": true,
+      "oracle_evidence_required_for_fx": true,
+      "real_dispatch_supported": true,
       "reversal_supported": true
     },
-    "note": "Dispatches one governed escrow release over the official Base-first contract stack."
+    "trust_profile_id": "chio.official-web3-stack"
   },
-  "observed_execution": {
-    "observedAt": 1743292860,
-    "externalReferenceId": "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-    "amount": {
-      "units": 150,
-      "currency": "USD"
-    }
-  },
+  "execution_receipt_id": "receipt-web3-1",
+  "issued_at": 1743292860,
   "lifecycle_state": "settled",
-  "settlement_reference": "settlement-web3-1",
+  "note": "Settled against an anchored receipt root and retained oracle provenance for the FX conversion.",
+  "observed_execution": {
+    "amount": {
+      "currency": "USD",
+      "units": 150
+    },
+    "externalReferenceId": "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "observedAt": 1743292860
+  },
+  "oracle_evidence": {
+    "authority": "chio_link_runtime_v1",
+    "base": "ETH",
+    "cache_age_seconds": 45,
+    "converted_cost_units": 300,
+    "feed_address": "0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612",
+    "grant_currency": "USD",
+    "max_age_seconds": 3600,
+    "original_cost_units": 100000000000000,
+    "original_currency": "ETH",
+    "quote": "USD",
+    "rate_denominator": 100,
+    "rate_numerator": 300000,
+    "schema": "chio.oracle-conversion-evidence.v1",
+    "source": "chainlink",
+    "updated_at": 1743292740
+  },
   "reconciled_anchor_proof": {
-    "schema": "chio.anchor-inclusion-proof.v1",
+    "chain_anchor": {
+      "anchored_checkpoint_seq": 1042,
+      "anchored_merkle_root": "0x7957ab2da3ec75f08ced4377529cbd734388429ff60bbed4dae520308f017381",
+      "block_hash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "block_number": 12345678,
+      "chain_id": "eip155:8453",
+      "contract_address": "0x1000000000000000000000000000000000000001",
+      "operator_address": "0x1111111111111111111111111111111111111111",
+      "tx_hash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "checkpoint_statement": {
+      "batch_end_seq": 104200,
+      "batch_start_seq": 104101,
+      "checkpoint_seq": 1042,
+      "issued_at": 1743292800,
+      "kernel_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+      "merkle_root": "0x7957ab2da3ec75f08ced4377529cbd734388429ff60bbed4dae520308f017381",
+      "schema": "chio.checkpoint_statement.v1",
+      "signature": "c743917754608cf80da923fb215811dcde4468af989cb553307de33f9a5e3359029b82f5c9f8967cea16f218bd75efed389536f9f9077c16bc52126cb1474800",
+      "tree_size": 1
+    },
+    "key_binding_certificate": {
+      "certificate": {
+        "chain_scope": [
+          "eip155:8453",
+          "eip155:42161"
+        ],
+        "chio_identity": "did:chio:ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+        "chio_public_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+        "expires_at": 1774828800,
+        "issued_at": 1743292800,
+        "nonce": "0123456789abcdef0123456789abcdef",
+        "purpose": [
+          "anchor",
+          "settle"
+        ],
+        "schema": "chio.key-binding-certificate.v1",
+        "settlement_address": "0x1111111111111111111111111111111111111111"
+      },
+      "signature": "66c566b5ed17f4b1b23a18ef073d3ed331f43d9e420bafc7edbd676c71e45e26285b5d35ad8fce99488968a368bb231fa8a83a6664f8979c725e4481143acd03"
+    },
     "receipt": {
-      "id": "rcpt-web3-1",
-      "timestamp": 1743292800,
-      "capability_id": "cap-web3-1",
-      "tool_server": "chio-settle",
-      "tool_name": "release_escrow",
       "action": {
+        "parameter_hash": "46f33e98c10f37a46625ba93402c262878b694af71ea1d2f35ab89b53404e127",
         "parameters": {
           "amount": 150,
           "currency": "USDC",
           "to": "0x2222222222222222222222222222222222222222"
-        },
-        "parameter_hash": "46f33e98c10f37a46625ba93402c262878b694af71ea1d2f35ab89b53404e127"
+        }
       },
+      "boundary_class": "prevent",
+      "capability_id": "cap-web3-1",
+      "content_hash": "1ff0dfe4513af263d73d4cc9dedae5aeb7ecc223cb42529f23c436601403afe5",
       "decision": {
         "verdict": "allow"
       },
-      "content_hash": "1ff0dfe4513af263d73d4cc9dedae5aeb7ecc223cb42529f23c436601403afe5",
-      "policy_hash": "dc6d6cc7acce9b97eb353f08426fefba0b54cc98f38d794dab4f6770252f50df",
+      "id": "041758766741b1c43902e603ce805304e3d7cc1d435b0f0c54cacda2c32131a4",
+      "kernel_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
       "metadata": {
+        "chio_receipt_signing_nonce": "rcpt-web3-1",
         "financial": {
           "budget_remaining": 850,
           "budget_total": 1000,
@@ -162,80 +217,31 @@
           "settlement_status": "pending"
         }
       },
-      "kernel_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
-      "signature": "8eb9e2aa3290e69362a270ce61ea9ab1269705bb62732746560c992b649ee5f3df400e9c4856644c73dbd021b9bbaf49fc57933deda3ef8d0280fa5a2484a600"
+      "policy_hash": "dc6d6cc7acce9b97eb353f08426fefba0b54cc98f38d794dab4f6770252f50df",
+      "receipt_kind": "mediated_decision",
+      "redaction_mode": "none",
+      "signature": "c99f3bc3cadd4a0af01cb2f24cc8d4afa7b7c8c3adcd7c5cdce38f5d20d91d0f71893de0eba0c552182bced5db96039ee1d91e2a5d42518f3b48787cfcc17504",
+      "timestamp": 1743292800,
+      "tool_name": "release_escrow",
+      "tool_origin": "caller_executed",
+      "tool_server": "chio-settle",
+      "trust_level": "mediated"
     },
     "receipt_inclusion": {
       "checkpoint_seq": 1042,
-      "merkle_root": "0x2485929637d87c02824ba6ba507637b16b71ed85a5a76b19d889790559b71d67",
+      "merkle_root": "0x7957ab2da3ec75f08ced4377529cbd734388429ff60bbed4dae520308f017381",
       "proof": {
-        "tree_size": 1,
+        "audit_path": [],
         "leaf_index": 0,
-        "audit_path": []
+        "tree_size": 1
       }
     },
-    "checkpoint_statement": {
-      "schema": "chio.checkpoint_statement.v1",
-      "checkpoint_seq": 1042,
-      "batch_start_seq": 104101,
-      "batch_end_seq": 104200,
-      "tree_size": 1,
-      "merkle_root": "0x2485929637d87c02824ba6ba507637b16b71ed85a5a76b19d889790559b71d67",
-      "issued_at": 1743292800,
-      "kernel_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
-      "signature": "91ef6c1f7e1789491d77fec62448d70a1b2c850ff5e29f9db7b1d8cf29034328483448ebc747826bfecbe8293c2fc74bbadd66cc61d1339a6c52ae2282b7c40a"
-    },
-    "chain_anchor": {
-      "chain_id": "eip155:8453",
-      "contract_address": "0x1000000000000000000000000000000000000001",
-      "operator_address": "0x1111111111111111111111111111111111111111",
-      "tx_hash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "block_number": 12345678,
-      "block_hash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-      "anchored_merkle_root": "0x2485929637d87c02824ba6ba507637b16b71ed85a5a76b19d889790559b71d67",
-      "anchored_checkpoint_seq": 1042
-    },
-    "key_binding_certificate": {
-      "certificate": {
-        "schema": "chio.key-binding-certificate.v1",
-        "chio_identity": "did:chio:ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
-        "chio_public_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
-        "chain_scope": [
-          "eip155:8453",
-          "eip155:42161"
-        ],
-        "purpose": [
-          "anchor",
-          "settle"
-        ],
-        "settlement_address": "0x1111111111111111111111111111111111111111",
-        "issued_at": 1743292800,
-        "expires_at": 1774828800,
-        "nonce": "0123456789abcdef0123456789abcdef"
-      },
-      "signature": "66c566b5ed17f4b1b23a18ef073d3ed331f43d9e420bafc7edbd676c71e45e26285b5d35ad8fce99488968a368bb231fa8a83a6664f8979c725e4481143acd03"
-    }
+    "schema": "chio.anchor-inclusion-proof.v1"
   },
-  "oracle_evidence": {
-    "schema": "chio.oracle-conversion-evidence.v1",
-    "base": "ETH",
-    "quote": "USD",
-    "authority": "chio_link_runtime_v1",
-    "rate_numerator": 300000,
-    "rate_denominator": 100,
-    "source": "chainlink",
-    "feed_address": "0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612",
-    "updated_at": 1743292740,
-    "max_age_seconds": 3600,
-    "cache_age_seconds": 45,
-    "converted_cost_units": 300,
-    "original_cost_units": 100000000000000,
-    "original_currency": "ETH",
-    "grant_currency": "USD"
-  },
+  "schema": "chio.web3-settlement-execution-receipt.v1",
   "settled_amount": {
-    "units": 150,
-    "currency": "USD"
+    "currency": "USD",
+    "units": 150
   },
-  "note": "Settled against an anchored receipt root and retained oracle provenance for the FX conversion."
+  "settlement_reference": "settlement-web3-1"
 }

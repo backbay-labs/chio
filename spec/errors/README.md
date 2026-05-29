@@ -11,7 +11,7 @@ Each entry carries:
 - `domain`: one of the eighteen seed domains
 - `severity`: `info`, `warning`, `error`, or `fatal`
 - `summary` and `help`: user-facing diagnostic text
-- `legacy_string_code`: compatibility code for existing `CHIO-*` surfaces
+- `string_code`: machine-readable string error code for existing `CHIO-*` surfaces
 - `jsonrpc_code`: optional pointer to `chio-error-registry.v1.json`
 - `since`: semver tag for the registry entry
 - `stability`: `stable`, `unstable`, or `deprecated`

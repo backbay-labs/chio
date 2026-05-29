@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://chio.dev/schemas/editors/snippet.schema.json",
+    "$id": "https://chio.world/schemas/editors/snippet.schema.json",
     "title": "Chio editor snippet",
     "description": "Tool-neutral snippet source consumed by both editors/vscode-chio and editors/zed-chio. The xtask `snippets regen` pass renders one of these documents into each editor's native snippet format at install time.",
     "type": "object",

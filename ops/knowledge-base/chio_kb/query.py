@@ -31,14 +31,12 @@ QUERY_INTENTS = {
     "sdk-conformance",
     "release-qualification",
     "compliance-certificate",
-    "mercury-product",
     "planning-history",
     "generic",
 }
 
 QUERY_INTENT_PRIORITY = [
     "planning-history",
-    "mercury-product",
     "release-qualification",
     "compliance-certificate",
     "revocation",
@@ -78,7 +76,6 @@ GENERATED_TERMS = {"generated", "schema", "schemas", "bindings", "codegen", "wir
 NOISY_GRAPH_KINDS = {"folder"}
 NOISY_GRAPH_PATHS = {"", "."}
 NOISY_CONTEXT_DOC_PREFIXES = (
-    ".planning/",
     "docs/archive/",
     "docs/operations/ROADMAP",
     "docs/scratchpad/",
@@ -246,25 +243,6 @@ DOMAIN_DOC_HINTS: list[tuple[set[str], list[str]]] = [
     ),
 ]
 
-MERCURY_DOC_HINTS: list[tuple[set[str], list[str]]] = [
-    (
-        {"mercury"},
-        [
-            "docs/mercury/README.md",
-            "docs/mercury/RELEASE_READINESS.md",
-            "docs/mercury/RELEASE_READINESS_OPERATIONS.md",
-            "docs/mercury/RELEASE_READINESS_VALIDATION_PACKAGE.md",
-            "docs/mercury/ASSURANCE_SUITE.md",
-            "docs/mercury/ASSURANCE_SUITE_OPERATIONS.md",
-            "docs/mercury/ASSURANCE_SUITE_VALIDATION_PACKAGE.md",
-            "docs/mercury/RENEWAL_QUALIFICATION.md",
-            "docs/mercury/RENEWAL_QUALIFICATION_OPERATIONS.md",
-            "docs/mercury/RENEWAL_QUALIFICATION_VALIDATION_PACKAGE.md",
-            "docs/mercury/CROSS_PRODUCT_RELEASE_MATRIX.md",
-        ],
-    ),
-]
-
 DOMAIN_TEST_HINTS: list[tuple[set[str], list[str]]] = [
     (
         {"revocation"},
@@ -337,27 +315,6 @@ DOMAIN_TEST_HINTS: list[tuple[set[str], list[str]]] = [
             "crates/chio-conformance/tests/mcp_core_cpp_live.rs",
             "crates/chio-conformance/verdict_matrix/tests/verdict_matrix_cross_language.rs",
             "sdks/typescript/packages/conformance/test/verdict_matrix.test.ts",
-        ],
-    ),
-    (
-        {"mercury"},
-        [
-            "crates/chio-mercury/tests/cli.rs",
-            "crates/chio-mercury-core/tests/integration_smoke.rs",
-        ],
-    ),
-    (
-        {"renewal", "qualification"},
-        [
-            "crates/chio-mercury/tests/cli.rs",
-            "crates/chio-mercury-core/tests/integration_smoke.rs",
-        ],
-    ),
-    (
-        {"assurance", "release"},
-        [
-            "crates/chio-mercury/tests/cli.rs",
-            "crates/chio-mercury-core/tests/integration_smoke.rs",
         ],
     ),
 ]
@@ -457,8 +414,6 @@ def detect_query_intents(query: str, explicit: str | None = "auto") -> list[str]
     intents: list[str] = []
     if terms & PLANNING_TERMS:
         intents.append("planning-history")
-    if "mercury" in terms or "assurance" in terms or "renewal" in terms:
-        intents.append("mercury-product")
     if "release" in terms and terms & {"qualification", "candidate", "audit", "gate", "gates", "conformance", "evidence", "compliance"}:
         intents.append("release-qualification")
     if {"compliance", "certificate"} <= terms or {"certificate", "signed"} <= terms:
@@ -553,16 +508,6 @@ def _single_query_plan(intent: str, feature_or_task: str) -> QueryPlan:
             graph_query="spec/COMPLIANCE-CERTIFICATE.md",
             memory_query="compliance certificate evidence release truth boundary",
         )
-    if intent == "mercury-product":
-        return QueryPlan(
-            intent=intent,
-            intents=(intent,),
-            code_query=feature_or_task,
-            docs_query="Mercury product release assurance renewal qualification",
-            tests_query="Mercury cli assurance renewal qualification",
-            graph_query="chio-mercury",
-            memory_query="Mercury product release workflow",
-        )
     if intent == "capability":
         return QueryPlan(
             intent=intent,
@@ -610,7 +555,6 @@ def _query_plan(feature_or_task: str, explicit_intent: str | None = "auto") -> Q
         "sdk-conformance",
         "release-qualification",
         "compliance-certificate",
-        "mercury-product",
     }
     code_plans = [plan for plan in plans if plan.intent in implementation_intents]
     if not code_plans:
@@ -743,9 +687,6 @@ def _code_rank(row: dict[str, Any], query: str, filters: Mapping[str, Any] | Non
     if row.get("is_generated") and not _wants_generated(query):
         components["generated_penalty"] = -0.12
         why.append("generated source down-ranked")
-    if intent in {"release-qualification", "compliance-certificate"} and "chio-mercury" in path:
-        components["product_release_penalty"] = -1.10
-        why.append("Mercury product release code down-ranked for protocol qualification query")
     if {"evidence", "export"} <= terms and path in EVIDENCE_EXPORT_PATHS:
         components["evidence_export_anchor"] = 1.20
         why.append("evidence export implementation anchor")
@@ -758,9 +699,6 @@ def _code_rank(row: dict[str, Any], query: str, filters: Mapping[str, Any] | Non
     if intent == "compliance-certificate" and path == "crates/chio-kernel/src/compliance_certificate.rs":
         components["compliance_certificate_anchor"] = 0.45
         why.append("compliance certificate implementation anchor")
-    if intent == "mercury-product" and "chio-mercury" in path:
-        components["mercury_product"] = 0.28
-        why.append("Mercury product query")
     if filters:
         for key, value in filters.items():
             if value and str(value).lower() in str(row.get(key, "")).lower():
@@ -820,15 +758,6 @@ def _doc_rank(row: dict[str, Any], query: str, filters: Mapping[str, Any] | None
     if row.get("canonicality") == "planning" and not _wants_planning(query):
         components["planning_penalty"] = -0.70
         why.append("planning source down-ranked")
-    if intent in {"release-qualification", "compliance-certificate"} and "docs/mercury/" in path:
-        components["product_release_penalty"] = -0.50
-        why.append("Mercury product docs down-ranked for protocol qualification query")
-    if intent == "mercury-product" and path.startswith("docs/release/"):
-        components["protocol_release_penalty"] = -0.35
-        why.append("protocol release docs down-ranked for Mercury product query")
-    if intent == "mercury-product" and "mercury" in path:
-        components["mercury_product"] = 0.22
-        why.append("Mercury product query")
     if filters:
         for key, value in filters.items():
             if value and str(value).lower() in str(row.get(key, "")).lower():
@@ -919,7 +848,7 @@ async def _code_hint_rows(query: str, filters: Mapping[str, Any] | None) -> list
 
 
 async def _doc_hint_rows(query: str, filters: Mapping[str, Any] | None) -> list[dict[str, Any]]:
-    hints = MERCURY_DOC_HINTS if detect_query_intent(query) == "mercury-product" else DOMAIN_DOC_HINTS
+    hints = DOMAIN_DOC_HINTS
     paths = _domain_hint_paths(query, hints)
     if not paths or filters:
         return []
@@ -961,7 +890,6 @@ def _use_fast_doc_hints(query: str, filters: Mapping[str, Any] | None, hint_rows
         {"compliance", "certificate"},
         {"security", "revocation"},
         {"capability", "revocation"},
-        {"mercury"},
     )
     enough_hints = len(hint_rows) >= min(_limit(limit), 4)
     return enough_hints and any(required.issubset(terms) for required in high_confidence_terms)
@@ -1063,8 +991,6 @@ def _salient_test_queries(value: str) -> list[str]:
         queries.extend(["mcp adapter", "transport round trip", "mcp conformance suite"])
     if "conformance" in terms:
         queries.extend(["verdict matrix", "conformance peers", "cross language conformance"])
-    if terms & {"mercury", "assurance", "renewal"}:
-        queries.extend(["Mercury CLI", "Mercury assurance release", "Mercury renewal qualification"])
     out: list[str] = []
     seen: set[str] = set()
     for query_text in queries:
@@ -1116,9 +1042,6 @@ async def _test_hint_rows(value: str, limit: int) -> list[dict[str, Any]]:
             if path.startswith("tests/conformance/native/scenarios/"):
                 score -= 0.18
                 why.append("scenario fixture placed after Rust revocation tests")
-        if "mercury" in terms or terms & {"assurance", "renewal"}:
-            score += 0.60
-            why.append("Mercury product test preferred for Mercury query")
         if terms & {"guard", "redaction", "redact", "output"} and path.endswith("output_sanitization.rs"):
             score += 0.45
             why.append("output sanitization test preferred for redaction query")
@@ -1271,9 +1194,6 @@ async def find_tests(path_or_symbol: str, limit: int = 12) -> list[dict[str, Any
                 item["score"] = float(item.get("score", 0.0)) + 0.20
                 item.setdefault("why", []).append(f"salient subquery `{query_text}`")
             _merge_ranked(merged, item)
-        if detect_query_intent(path_or_symbol) == "mercury-product" and merged:
-            ranked = sorted(merged.values(), key=lambda item: float(item.get("score", 0.0)), reverse=True)
-            return ranked[:limit_value]
     for query_text in salient_queries[:4]:
         for item in await _with_budget(search_code(f"tests for {query_text}", limit=max(limit_value * 2, 20), filters={"kind": "test"})):
             path = repo_model.normalize_path(item["file_path"])
@@ -1451,7 +1371,7 @@ def _graph_bucket(row: Mapping[str, Any]) -> str:
         return "doc"
     if kind == "crate":
         return "owner"
-    if kind in {"symbol", "file"} or path.startswith(("crates/", "integrations/", "packages/", "sdks/", "examples/")):
+    if kind in {"symbol", "file"} or path.startswith(("crates/", "integrations/", "sdks/", "examples/")):
         return "implementation"
     if kind in GLOBAL_HUB_KINDS or str(row.get("concept_scope") or "") == "scoped":
         return "concept"
@@ -1722,8 +1642,6 @@ def _path_entity(path: str) -> dict[str, Any]:
 def _context_focus_query(value: str) -> str:
     normalized = repo_model.normalize_path(value)
     terms = _terms(value)
-    if "mercury" in terms or "chio-mercury" in normalized:
-        return "Mercury product assurance release renewal workflow"
     if {"compliance", "certificate"} <= terms or "compliance_certificate" in normalized:
         return "compliance certificate evidence export signed receipts"
     if "evidence_export" in normalized:
@@ -2194,34 +2112,9 @@ def _graphiti_item_text(item: Any) -> str:
 def _sanitize_memory_for_plan(memory: dict[str, Any] | None, plan: QueryPlan) -> dict[str, Any] | None:
     if not isinstance(memory, dict) or memory.get("error"):
         return memory
-    if "mercury-product" in plan.intents:
-        return memory
     if not ({"release-qualification", "compliance-certificate"} & set(plan.intents)):
         return memory
-
-    forbidden_terms = ("mercury", "chio-mercury", "docs/mercury")
-    sanitized = dict(memory)
-    removed = False
-    for key in ("facts", "nodes", "episodes"):
-        values = memory.get(key)
-        if not isinstance(values, list):
-            continue
-        filtered = []
-        for item in values:
-            text = _graphiti_item_text(item).lower()
-            if any(term in text for term in forbidden_terms):
-                removed = True
-                continue
-            filtered.append(item)
-        sanitized[key] = filtered
-    if removed:
-        sanitized["summary"] = _memory_summary(
-            sanitized.get("facts", []),
-            sanitized.get("nodes", []),
-            sanitized.get("episodes", []),
-        )
-        sanitized["filtered_for_intent"] = "mercury product memory omitted from protocol release brief"
-    return sanitized
+    return memory
 
 
 async def _graphiti_mcp_call(payload: dict[str, Any], timeout: float = 60.0) -> dict[str, Any]:
@@ -2389,17 +2282,6 @@ async def brief_feature(
         _memory_or_error(),
     )
     memory = _sanitize_memory_for_plan(memory, plan)
-    if "planning-history" not in plan.intents:
-        docs = [
-            item
-            for item in docs
-            if not repo_model.normalize_path(item.get("normalized_path") or item.get("file_path") or "").startswith(".planning/")
-        ]
-        related_docs = [
-            item
-            for item in related_docs
-            if not repo_model.normalize_path(item.get("normalized_path") or item.get("path") or "").startswith(".planning/")
-        ]
 
     commands: list[str] = []
     for item in [*code, *docs, *tests, *related_docs]:
@@ -2411,7 +2293,6 @@ async def brief_feature(
         "implementation_files": bool(code),
         "canonical_docs": any(
             item.get("canonicality") == "canonical"
-            or ("mercury-product" in plan.intents and repo_model.normalize_path(item.get("normalized_path") or item.get("file_path") or "").startswith("docs/mercury/"))
             for item in docs
         ),
         "related_tests": bool(tests),

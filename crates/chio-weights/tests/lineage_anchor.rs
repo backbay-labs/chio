@@ -1,8 +1,8 @@
-//! Integration test: model card lineage anchor proof (M10 P5.T1).
+//! Integration test: model card lineage anchor proof.
 //!
 //! Asserts the published-card lineage anchor produced by
 //! [`chio_weights::anchor_model_card`] verifies through the model-card
-//! anchor surface and degrades cleanly when M03 hybrid signing is absent.
+//! anchor surface and degrades cleanly when hybrid signing is absent.
 //! The anchor digest format matches the lineage-anchor frontier digest so
 //! consumers route both through one verifier.
 
@@ -111,7 +111,7 @@ fn anchor_carries_signed_state_when_signer_present() {
     // Signer hint is present but no signature payload was supplied, so
     // the anchor records `UnsignedSignerStubbed`. Constructing
     // `SigningState::Signed { signature_hex: "" }` here would expose the
-    // P0 forgery vector documented on the lineage `SigningState` enum:
+    // forgery vector documented on the lineage `SigningState` enum:
     // verifiers matching `Signed { .. }` alone would treat an unsigned
     // anchor as authenticated.
     match anchor.signing {

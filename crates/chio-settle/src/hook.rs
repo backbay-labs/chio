@@ -1,12 +1,12 @@
 //! Settlement hook trait routing finalized Chio receipts through the
 //! existing `chio-settle/ops.rs` pipeline.
 //!
-//! M09 P2.T1 wakes the dormant `chio-settle` crate by exposing a
-//! kernel-evaluator observer surface (trajectory-1 M05 async-kernel
-//! post-dispatch slot). The hook is invoked once a receipt has been
+//! This exposes a kernel-evaluator observer surface for the
+//! `chio-settle` crate (the async-kernel post-dispatch slot). The hook
+//! is invoked once a receipt has been
 //! signed and durably stored; failure-to-settle never blocks dispatch
 //! (the kernel observer slot consumes the [`SettlementHookError`] and
-//! routes it to the retry/dead-letter machinery introduced by P2.T3).
+//! routes it to the retry/dead-letter machinery).
 //!
 //! Settlement ordering is deterministic: implementers MUST process
 //! observations sorted first by [`SettlementObservation::finalized_at`]
@@ -38,7 +38,7 @@ pub const SETTLEMENT_OUTCOME_SCHEMA: &str = "chio.settle.outcome.v1";
 ///
 /// The kernel sets [`finalized_at`] to the receipt timestamp so a hook
 /// implementation can sort by `(finalized_at, receipt_id)` to guarantee
-/// the deterministic ordering the integration test in P2.T4 enforces.
+/// the deterministic ordering the integration tests enforce.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct SettlementObservation {

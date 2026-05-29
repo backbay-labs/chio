@@ -6,10 +6,10 @@ build-backend = "hatchling.build"
 name = "chio-temporal"
 version = "0.1.1"
 description = "Temporal integration for the Chio protocol -- per-Activity capability checks, WorkflowGrant, WorkflowReceipt aggregation"
-license = "MIT"
+license = "Apache-2.0"
 requires-python = ">=3.11"
 authors = [
-    { name = "Backbay Industries" },
+    { name = "Backbay Labs", email = "security@backbay.io" },
 ]
 keywords = ["chio", "temporal", "temporalio", "workflow", "activity", "security", "capability"]
 classifiers = [
@@ -24,7 +24,7 @@ classifiers = [
 
 dependencies = [
     "chio-sdk-python>=0.1.0",
-    "chio-adapter-base>=0.1.1,<0.2",
+    "chio-adapter-base>=0.2.0,<0.3",
     "temporalio>=1.7,<2",
     "pydantic>=2.5,<3",
 ]

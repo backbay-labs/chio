@@ -29,7 +29,6 @@ pub enum ReceiptReadContextSource {
     LocalOperator,
     AdminService,
     AuthenticatedTenant,
-    LegacyCompat,
 }
 
 /// Fully resolved receipt read context. Remote/control-plane callers must
@@ -39,10 +38,11 @@ pub enum ReceiptReadContextSource {
 pub struct ReceiptReadContext {
     pub boundary: ReceiptReadBoundary,
     pub source: ReceiptReadContextSource,
-    /// Explicit local compatibility switch for legacy NULL-tenant rows. Tenant
-    /// scoped remote reads keep this false so NULL tenant rows stay hidden.
+    /// Explicit switch for including untenanted (NULL tenant_id) rows.
+    /// Local-operator reads set this true; tenant-scoped remote reads
+    /// keep it false so NULL tenant rows stay hidden.
     #[serde(default)]
-    pub legacy_null_mode: bool,
+    pub include_null_tenant: bool,
 }
 
 impl ReceiptReadContext {
@@ -51,7 +51,7 @@ impl ReceiptReadContext {
         Self {
             boundary: ReceiptReadBoundary::AdminAll,
             source: ReceiptReadContextSource::LocalOperator,
-            legacy_null_mode: true,
+            include_null_tenant: true,
         }
     }
 
@@ -60,7 +60,7 @@ impl ReceiptReadContext {
         Self {
             boundary: ReceiptReadBoundary::AdminAll,
             source: ReceiptReadContextSource::AdminService,
-            legacy_null_mode: false,
+            include_null_tenant: false,
         }
     }
 
@@ -69,25 +69,16 @@ impl ReceiptReadContext {
         Self {
             boundary: ReceiptReadBoundary::tenant_scoped(tenant),
             source: ReceiptReadContextSource::AuthenticatedTenant,
-            legacy_null_mode: false,
+            include_null_tenant: false,
         }
     }
 
     #[must_use]
-    pub fn local_operator_tenant_compat(tenant: impl Into<String>) -> Self {
+    pub fn local_operator_tenant(tenant: impl Into<String>) -> Self {
         Self {
             boundary: ReceiptReadBoundary::tenant_scoped(tenant),
             source: ReceiptReadContextSource::LocalOperator,
-            legacy_null_mode: true,
-        }
-    }
-
-    #[must_use]
-    pub fn legacy_compat_admin_all() -> Self {
-        Self {
-            boundary: ReceiptReadBoundary::AdminAll,
-            source: ReceiptReadContextSource::LegacyCompat,
-            legacy_null_mode: true,
+            include_null_tenant: true,
         }
     }
 }
@@ -95,7 +86,7 @@ impl ReceiptReadContext {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EffectiveReceiptReadScope {
     pub tenant: Option<String>,
-    pub include_legacy_null_tenant: bool,
+    pub include_null_tenant: bool,
     pub is_admin_all: bool,
 }
 
@@ -166,7 +157,7 @@ impl ReceiptQuery {
                     }
                     Ok(EffectiveReceiptReadScope {
                         tenant: tenant.map(ToOwned::to_owned),
-                        include_legacy_null_tenant: tenant.is_none() && context.legacy_null_mode,
+                        include_null_tenant: tenant.is_none() && context.include_null_tenant,
                         is_admin_all: true,
                     })
                 }
@@ -189,7 +180,7 @@ impl ReceiptQuery {
                     }
                     Ok(EffectiveReceiptReadScope {
                         tenant: Some(tenant.to_string()),
-                        include_legacy_null_tenant: context.legacy_null_mode,
+                        include_null_tenant: context.include_null_tenant,
                         is_admin_all: false,
                     })
                 }
@@ -249,7 +240,7 @@ mod tests {
             .expect("admin tenant filter should narrow the query");
 
         assert_eq!(scope.tenant.as_deref(), Some("tenant-a"));
-        assert!(!scope.include_legacy_null_tenant);
+        assert!(!scope.include_null_tenant);
         assert!(scope.is_admin_all);
     }
 }

@@ -1,4 +1,4 @@
-//! Phase 3.4-3.6 end-to-end tests for the HITL HTTP handlers.
+//! End-to-end tests for the HITL HTTP handlers.
 //!
 //! Exercises the four substrate-independent handlers through an
 //! `ApprovalAdmin` bound to an in-memory approval store. No HTTP

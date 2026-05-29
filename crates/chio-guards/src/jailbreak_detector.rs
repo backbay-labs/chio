@@ -5,9 +5,8 @@
 //! Chio request shapes; callers pass in a canonicalized `&str` and receive a
 //! [`Detection`].  Three layers run in sequence:
 //!
-//! 1. **Heuristic** -- fast regex patterns lifted from the ClawdStrike
-//!    jailbreak port.  Each pattern fires a stable signal ID and contributes
-//!    its weight to the heuristic layer score.
+//! 1. **Heuristic** -- fast regex patterns.  Each pattern fires a stable
+//!    signal ID and contributes its weight to the heuristic layer score.
 //! 2. **Statistical** -- cheap numerical signals over the canonicalized text:
 //!    punctuation ratio, Shannon entropy of non-whitespace ASCII, presence of
 //!    long unbroken symbol runs, shingle-uniqueness (repetition detector),
@@ -16,8 +15,8 @@
 //!    layer-1 + layer-2 feature flags.  The weights are configurable so
 //!    operators can tune sensitivity without recompiling.
 //!
-//! The LLM-as-judge layer is intentionally deferred to v2.  See the
-//! [`LlmJudgeStub`] type and the `ml_score` function for the extension point.
+//! The LLM-as-judge layer is intentionally deferred.  See the
+//! `ml_score` function for the extension point.
 //!
 //! All thresholds and weights live on [`DetectorConfig`] and [`LayerWeights`].
 //! There are no magic numbers on the hot path; defaults are defined in this
@@ -60,8 +59,8 @@ pub const DEFAULT_SHINGLE_UNIQUENESS_THRESHOLD: f32 = 0.35;
 /// or above this threshold trip a deny verdict in [`crate::jailbreak::JailbreakGuard`].
 pub const DEFAULT_DENY_THRESHOLD: f32 = 0.75;
 
-/// Jailbreak category taxonomy, carried forward from the ClawdStrike port so
-/// log-analysis tools that know the upstream IDs continue to work.
+/// Jailbreak category taxonomy.  The category names form a stable taxonomy so
+/// log-analysis tools that key off the IDs continue to work.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum JailbreakCategory {
@@ -83,7 +82,7 @@ pub enum JailbreakCategory {
 /// should only emit the `id` so the detector does not leak user content.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Signal {
-    /// Stable identifier (matches upstream ClawdStrike IDs where applicable).
+    /// Stable identifier for the signal, safe to emit in logs and metrics.
     pub id: String,
     /// Logical category for taxonomy / metrics.
     pub category: JailbreakCategory,
@@ -190,10 +189,9 @@ pub struct LinearModel {
 
 impl Default for LinearModel {
     fn default() -> Self {
-        // Carried over from the ClawdStrike linear model with three additive
-        // Chio-specific weights (developer-mode flag, shingle-uniqueness
-        // penalty, zero-width-obfuscation penalty).  Bias of -2.0 keeps
-        // sigmoid output near zero for benign input.
+        // Linear model with additive weights for the developer-mode flag,
+        // shingle-uniqueness penalty, and zero-width-obfuscation penalty.
+        // Bias of -2.0 keeps sigmoid output near zero for benign input.
         Self {
             bias: -2.0,
             w_ignore_policy: 2.5,
@@ -371,14 +369,6 @@ impl JailbreakDetector {
             + model.w_zero_width * x_zw;
         let ml_score = sigmoid(z).clamp(0.0, 1.0);
 
-        // Deferred host-function-driven judge layer: a fourth layer would hand
-        // `canonical` to a caller-provided async judge returning a `[0.0,1.0]`
-        // score we then blend into the final verdict. The Chio `Guard` trait is
-        // synchronous today, so this requires either a host-function reactor
-        // (see chio-wasm-guards) or an async trait adapter through
-        // `AsyncGuardAdapter`. The `LlmJudgeStub` type below documents the
-        // intended shape.
-
         // ---- Blend the three layers ----
         let weights = self.config.layer_weights;
         let h_div = weights.heuristic_divisor.max(f32::EPSILON);
@@ -407,15 +397,6 @@ impl Default for JailbreakDetector {
         Self::new()
     }
 }
-
-/// Placeholder type documenting the future LLM-judge extension point.
-///
-/// In v2 this will become an async trait that a caller can implement to
-/// plug a host-provided LLM into the detection pipeline as a fourth layer.
-/// Carrying the shape as a unit struct keeps the signature stable for the
-/// eventual wiring without forcing any dependency today.
-#[doc(hidden)]
-pub struct LlmJudgeStub;
 
 /// Logistic sigmoid.
 fn sigmoid(x: f32) -> f32 {

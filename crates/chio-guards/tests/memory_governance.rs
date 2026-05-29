@@ -1,4 +1,4 @@
-//! Integration tests for Phase 18.1 MemoryGovernanceGuard.
+//! Integration tests for MemoryGovernanceGuard.
 //!
 //! Acceptance criteria:
 //!

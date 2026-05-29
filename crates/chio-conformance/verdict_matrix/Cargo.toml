@@ -1,17 +1,32 @@
 [package]
 name = "chio-conformance-verdict-matrix"
-description = "Scenario format scaffold for Chio cross-SDK verdict comparison"
+description = "Scenario corpus and drivers for Chio cross-SDK verdict comparison"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.93"
 license = "Apache-2.0"
-repository = "https://github.com/backbay/chio"
+repository = "https://github.com/backbay-labs/chio"
 publish = false
 
 [lib]
 name = "chio_conformance_verdict_matrix"
 path = "src/lib.rs"
 
+# This crate is intentionally NOT a member of the root workspace.
+#
+# Reason: the parent chio-conformance registers five [[test]] targets that
+# use `#[path]` to compile source files from this directory directly. Those
+# tests run in the chio-conformance package context. At the same time,
+# verdict_matrix can be checked or built standalone (e.g. for a separate SDK
+# deployment audit). Declaring `[workspace]` here roots this directory as its
+# own workspace so that `cargo check --manifest-path verdict_matrix/Cargo.toml`
+# resolves all dependencies, including async-trait, without relying on
+# transitive visibility from the parent workspace.
+#
+# A crate cannot be a member of two workspaces simultaneously, so this crate
+# cannot also appear in the root Cargo.toml members list. The lambda driver
+# sub-crate (drivers/lambda) IS a root workspace member because it does not
+# carry its own [workspace] declaration.
 [workspace]
 
 [dependencies]
@@ -23,12 +38,6 @@ serde_json = "1"
 serde_yaml = "0.9"
 thiserror = "1"
 toml = "0.8"
-# The driver in src/driver.rs uses `#[async_trait::async_trait]`
-# on its `ToolServerConnection` impl, so the standalone crate must
-# declare the macro in its own dependencies (the parent workspace's
-# transitive copy is not visible to a standalone `cargo check
-# --manifest-path` run because `verdict_matrix/Cargo.toml` declares
-# `[workspace]` to root itself at this directory).
 async-trait = "0.1"
 
 [lints.clippy]

@@ -6,7 +6,7 @@
 // Tests:
 //   1. monetary_amount_serde_roundtrip
 //   2. tool_grant_with_monetary_fields_roundtrip
-//   3. tool_grant_without_monetary_fields_backward_compat
+//   3. tool_grant_without_monetary_fields_defaults_to_none
 //   4. monetary_fields_skip_when_none
 //   5. attenuation_reduce_cost_per_invocation_roundtrip
 //   6. attenuation_reduce_total_cost_roundtrip
@@ -110,11 +110,11 @@ fn tool_grant_with_monetary_fields_roundtrip() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 3: tool_grant_without_monetary_fields_backward_compat
+// Test 3: tool_grant_without_monetary_fields_defaults_to_none
 // ---------------------------------------------------------------------------
 #[test]
-fn tool_grant_without_monetary_fields_backward_compat() {
-    // Simulate a v1.0 ToolGrant JSON (no monetary keys)
+fn tool_grant_without_monetary_fields_defaults_to_none() {
+    // Verify that a ToolGrant JSON without monetary keys deserializes correctly
     let v1_json = r#"{
         "server_id": "srv-a",
         "tool_name": "file_read",

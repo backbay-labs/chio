@@ -1,10 +1,9 @@
 //! `extensions.chio` tests.
 //!
-//! Wave 1.6 introduced a `chio` slot on `Extensions` to carry chio-specific
-//! semantics (market hours, signing, k8s namespaces, rollback, expression-
-//! based approval) that the Chio kernel does not interpret directly.
-//! The kernel accepts the block as passthrough; chio-bridge interprets it.
-//! Wave 5.0.1 re-lands these tests against the renamed `chio-policy` crate.
+//! The `chio` slot on `Extensions` carries chio-specific semantics (market
+//! hours, signing, k8s namespaces, rollback, expression-based approval) that
+//! the Chio kernel does not interpret directly. The kernel accepts the block
+//! as passthrough; chio-bridge interprets it.
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 

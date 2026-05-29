@@ -1,6 +1,6 @@
 //! Tenant-scoped encrypted BLOB persistence for tee capture payloads.
 //!
-//! The M10 tee stores redacted request and response bodies as opaque
+//! The tee stores redacted request and response bodies as opaque
 //! binary payloads. This module keeps those payloads encrypted at rest
 //! with a tenant-provided 32-byte key and a per-blob ChaCha20-Poly1305
 //! nonce. Authentication failures on read are surfaced as errors and do

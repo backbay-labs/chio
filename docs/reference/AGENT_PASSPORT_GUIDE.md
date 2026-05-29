@@ -66,7 +66,7 @@ passport creation; verification recomputes the passport-level provenance from
 the embedded credentials and fails closed if the aggregate is tampered.
 
 Chio issuance and verification use these schema identifiers and reject legacy
-legacy pre-Chio passport artifacts:
+pre-Chio passport artifacts:
 
 - `chio.agent-passport.v1`
 - `chio.passport-verifier-policy.v1`

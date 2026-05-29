@@ -1,4 +1,4 @@
-# threat-model-coverage.yml - M05.P5.T4 CI gate.
+# threat-model-coverage.yml - threat-coverage CI gate.
 #
 # Two complementary gates run in this workflow:
 #
@@ -12,18 +12,17 @@
 #      weak_coverage` in the threat-model JSON.
 #
 #   2. `scripts/check-threat-coverage-mutants.sh` (per-row mutation-
-#      testing gate, trajectory-4 wave-0 / E0.4): for each
+#      testing gate): for each
 #      `covered` row, asserts the existence of an evidence file at
 #      `audits/evidence/threats/<id>.json` recording at least one
 #      caught mutant. Rows whose evidence is missing or zero-kills
 #      get a `WEAK: <id>` downgrade hint. Bootstrap placeholders
 #      (`needs_real_run: true`) are reported as informational and
-#      do not fail the build, so the per-row gate can be wired in
-#      ahead of trajectory-4 wave 4 backfilling real evidence.
+#      do not fail the build.
 #
-# Pending vectors auto-promoted by the M05.P2 fuzz-seed promoter
-# (D14) live in the corpus, not the threat list, and are excluded
-# from this gate by construction.
+# Pending vectors auto-promoted by the fuzz-seed promoter live in
+# the corpus, not the threat list, and are excluded from this gate
+# by construction.
 #
 # Required status check name: threat-model-coverage / coverage-gate
 
@@ -60,18 +59,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Set up Python (json parser)
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.x"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
 
       - name: Cache cargo registry and target
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
 
       - name: Run threat-model coverage gate (file-existence)
         run: bash scripts/check-threat-coverage.sh

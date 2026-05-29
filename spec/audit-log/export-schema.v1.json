@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://chio.dev/spec/audit-log/export-schema.v1.json",
+  "$id": "https://chio.world/spec/audit-log/export-schema.v1.json",
   "title": "Chio Audit Log Export Schema v1",
   "type": "object",
   "additionalProperties": false,
@@ -103,7 +103,7 @@
           "const": "CEF:0"
         },
         "device_vendor": {
-          "const": "Backbay Industries"
+          "const": "Backbay Labs"
         },
         "device_product": {
           "const": "Chio"
@@ -129,7 +129,7 @@
           "required": ["rt", "msg", "cs1Label", "cs1", "cs2Label", "cs2", "cs3Label", "cs3", "cs4Label", "cs4"]
         }
       },
-      "description": "CEF v1 export profile selected over LEEF for M01 because the design-partner SOC preference is ArcSight-compatible CEF."
+      "description": "CEF v1 export profile. The design-partner SOC preference is ArcSight-compatible CEF; LEEF is reserved for QRadar deployments."
     },
     "splunk_hec": {
       "type": "object",
@@ -139,7 +139,7 @@
     "leef": {
       "type": "object",
       "additionalProperties": true,
-      "description": "Reserved for QRadar-shaped deployments. M01 v1 ships CEF, not LEEF."
+      "description": "Reserved for QRadar-shaped deployments. v1 ships CEF, not LEEF."
     }
   }
 }

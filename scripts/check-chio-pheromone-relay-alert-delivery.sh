@@ -206,7 +206,7 @@ print("OK generated relay alert delivery reports")
 PY
 
 cargo test -p chio-pheromone-relay alert_delivery --test relay
-cargo test -p chio-cli --bin chio_pheromone
+cargo test -p chio-cli --bin chio chio_pheromone
 
 if [[ "$MODE" == "negative-only" ]]; then
   exit 0

@@ -16,6 +16,8 @@
 //!    in `session/update` notifications. These can be promoted to signed
 //!    Chio receipts by a downstream component with key material.
 
+#![forbid(unsafe_code)]
+
 use chio_core::crypto::PublicKey;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

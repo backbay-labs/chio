@@ -80,18 +80,19 @@ struct SidecarConfig {
 /// `deny_unknown_fields` catches typos in the operator-supplied config
 /// (e.g. `Mode = "enforce"` instead of `mode = "enforce"`) at load time
 /// rather than silently treating the table as empty and defaulting to
-/// `verdict-only`. The non-`mode` fields below are accepted but not
-/// consumed by the resolver today; they are pinned here so the example
-/// sidecar TOML in `examples/tee-sidecar/chio-tee.toml` continues to
-/// load while the deployment-shape fields are wired up in later tasks.
+/// `verdict-only`. The non-`mode` deployment-shape fields below are part
+/// of the sidecar config surface but are resolved by the binary from
+/// environment variables (see `src/main.rs`), not by the mode resolver;
+/// they are pinned here so the example sidecar TOML in
+/// `examples/tee-sidecar/chio-tee.toml` loads under `deny_unknown_fields`.
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SidecarTeeSection {
     #[serde(default)]
     mode: Option<String>,
-    /// Reserved: runtime working directory (consumed by the not-yet-
-    /// implemented main; documented in the example). Held to keep the
-    /// example sidecar TOML loadable under `deny_unknown_fields`.
+    /// Runtime working directory. The binary takes this from
+    /// `CHIO_TEE_RUNTIME_DIR`; the TOML mirror is accepted for documentation
+    /// parity and kept loadable under `deny_unknown_fields`.
     #[serde(default)]
     #[allow(dead_code)]
     runtime_dir: Option<String>,

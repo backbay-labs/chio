@@ -1,7 +1,7 @@
 //! MCP tool guard -- restricts which MCP tools an agent may invoke.
 //!
-//! Adapted from ClawdStrike's `guards/mcp_tool.rs`. The guard supports
-//! allow/block lists, a default action, and a maximum argument size limit.
+//! The guard supports allow/block lists, a default action, and a maximum
+//! argument size limit.
 
 use std::collections::HashSet;
 use std::io;

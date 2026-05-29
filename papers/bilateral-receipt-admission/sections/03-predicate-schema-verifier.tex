@@ -79,7 +79,7 @@ and let $E$ be a bilateral envelope. The verifier accepts iff six gates hold in 
 \begin{align*}
   \mathit{accept}(\mathcal{S},E) \iff{}
   & \textsf{(G1)}\;\mathit{canonical}(E.\mathit{payload}) \;\wedge \\
-  & \textsf{(G2)}\;E.\mathit{predicateType} = \mathit{ChiodosBilateralV1} \;\wedge \\
+  & \textsf{(G2)}\;E.\mathit{predicateType} = \mathit{ChioBilateralV1} \;\wedge \\
   & \textsf{(G3)}\;\bigl(|E.\mathit{sigs}|=2 \;\wedge \\
   & \qquad\;\; E.\mathit{sig}_1.\mathit{kid} \ne E.\mathit{sig}_2.\mathit{kid}\bigr) \;\wedge \\
   & \textsf{(G4)}\;\bigl(E.\mathit{sig}_1.\mathit{kid} \in \mathit{IssuerKeys}\;\wedge \\
@@ -88,7 +88,7 @@ and let $E$ be a bilateral envelope. The verifier accepts iff six gates hold in 
   & \textsf{(G6)}\;E.\mathit{subjectDigest} = \\
   & \qquad\;\; H(\mathit{canonical}(E.\mathit{payload}.\mathit{bindingTuple})).
 \end{align*}
-Each verified signature is over the same canonical payload bytes; the verifier never reaches (G1)-(G6) until both bytes-level signatures verify under the keyids declared in the signature slices. The predicate is the conjunction of six gates (G1)-(G6), evaluated left-to-right. Figure~\ref{fig:gates} renders the verifier gate sequence and the five rejection codes. Five of the six gates produce uniquely-named rejection codes; the trust-store-membership gate (G4) is bundled with predicate-type-mismatch in the deployed verifier, because a signer outside both allowlists fails (G2) before (G4) is reached whenever the predicate type is the strict Chiodos profile and the trust store enumerates only Chiodos-issuing keys.
+Each verified signature is over the same canonical payload bytes; the verifier never reaches (G1)-(G6) until both bytes-level signatures verify under the keyids declared in the signature slices. The predicate is the conjunction of six gates (G1)-(G6), evaluated left-to-right. Figure~\ref{fig:gates} renders the verifier gate sequence and the five rejection codes. Five of the six gates produce uniquely-named rejection codes; the trust-store-membership gate (G4) is bundled with predicate-type-mismatch in the deployed verifier, because a signer outside both allowlists fails (G2) before (G4) is reached whenever the predicate type is the strict Chio profile and the trust store enumerates only Chio-issuing keys.
 
 \begin{figure}[t]
 \centering
@@ -102,7 +102,7 @@ Each verified signature is over the same canonical payload bytes; the verifier n
   rejarrow/.style={->, >=Stealth, dashed, red!70!black},
 ]
 \node[gate] (g1) {(G1) canonical(payload)};
-\node[gate, below=of g1] (g2) {(G2) predicateType = ChiodosBilateralV1};
+\node[gate, below=of g1] (g2) {(G2) predicateType = ChioBilateralV1};
 \node[gate, below=of g2] (g3) {(G3) $|$sigs$|=2 \;\wedge\;$ kids distinct};
 \node[gate, below=of g3] (g4) {(G4) kid$_1 \in$ IssuerKeys $\wedge$ kid$_2 \in$ KernelKeys};
 \node[gate, below=of g4] (g5) {(G5) lease.epoch $\geq$ S.LeaseEpoch};

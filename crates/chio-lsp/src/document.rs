@@ -10,9 +10,7 @@ use std::sync::Arc;
 use dashmap::DashMap;
 use tower_lsp::lsp_types::Url;
 
-/// Coarse language classification used to dispatch to the right
-/// diagnostics provider. Matches the language IDs the VSCode and Zed
-/// extensions in P5 register.
+/// Coarse language classification used to dispatch to the right diagnostics provider.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DocumentLanguage {
     /// Top-level project config (`chio.yaml`).

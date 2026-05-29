@@ -43,31 +43,7 @@ use serde_json::{json, Value};
 const OPERATOR_PRIVATE_KEY: &str =
     "0x1000000000000000000000000000000000000000000000000000000000000002";
 
-trait TestResultOk<T, E> {
-    fn test_expect(self, context: &'static str) -> T;
-}
-
-impl<T, E> TestResultOk<T, E> for Result<T, E> {
-    fn test_expect(self, context: &'static str) -> T {
-        match self {
-            Ok(value) => value,
-            Err(_) => panic!("{context}"),
-        }
-    }
-}
-
-trait TestResultErr<T, E> {
-    fn test_expect_err(self, context: &'static str) -> E;
-}
-
-impl<T, E> TestResultErr<T, E> for Result<T, E> {
-    fn test_expect_err(self, context: &'static str) -> E {
-        match self {
-            Ok(_) => panic!("{context} unexpectedly succeeded"),
-            Err(error) => error,
-        }
-    }
-}
+use chio_test_support::prelude::*;
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))

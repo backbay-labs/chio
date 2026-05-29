@@ -10,7 +10,7 @@
  *   - POST /challenge: returns a deterministic base64url challenge.
  *   - POST /mint: minimally validates audience + scope_set, then returns
  *     a fixture PasskeyCapability. The signature slot is empty (this is
- *     fixture material, not a real M03 hybrid envelope); the kernel
+ *     fixture material, not a real hybrid envelope); the kernel
  *     test-double similarly does not verify the signature - it only
  *     checks the credential id against the revocation state to demonstrate
  *     the cascade.
@@ -142,11 +142,11 @@ export function simulateRevocation(state: RevocationState, credentialId: string)
 }
 
 /**
- * Simulate a kernel call against the M04 epoch. Returns allow when the
- * credential is fresh; otherwise returns deny with
- * urn:chio:error:custody:credential-revoked. The test config sets the M04
- * epoch to one second so the cascade is observable in the demo without
- * waiting on a wall-clock tick.
+ * Simulate a kernel call against the revocation oracle. Returns allow when
+ * the credential is fresh; otherwise returns deny with
+ * urn:chio:error:custody:credential-revoked. The oracle is consulted on
+ * every call so the cascade is observable in the demo without waiting on a
+ * wall-clock tick.
  */
 export async function simulateKernelCall(
   _kernelUrl: string,

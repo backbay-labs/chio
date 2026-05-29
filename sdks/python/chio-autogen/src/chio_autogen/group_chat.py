@@ -135,7 +135,7 @@ class ChioGroupChatManager(GroupChatManager):
     ) -> None:
         if not isinstance(groupchat, ChioGroupChat):
             raise ChioAutogenConfigError(
-                "groupchat must be an ChioGroupChat instance"
+                "groupchat must be a ChioGroupChat instance"
             )
         super().__init__(groupchat=groupchat, **manager_kwargs)
         self._chio_client: ChioClientLike = chio_client
@@ -170,7 +170,7 @@ class ChioGroupChatManager(GroupChatManager):
         """Mint a capability token per role and bind agent registries.
 
         Returns the mapping from role to :class:`CapabilityToken`.
-        Registries previously attached to each agent via
+        Registries attached to each agent via
         :func:`chio_autogen.functions.attach_registry` are updated in
         place so that subsequent invocations go through the Chio sidecar
         with the correct token.
@@ -227,9 +227,9 @@ class ChioGroupChatManager(GroupChatManager):
     def ensure_function_in_scope(self, role: str, function_name: str) -> None:
         """Assert ``function_name`` is within the scope granted to ``role``.
 
-        Used for defence in depth: even if the LLM hallucinates a call
-        into a cross-role function map, this local check refuses the
-        dispatch before the Chio sidecar is bothered.
+        Even if the LLM hallucinates a call into a cross-role function
+        map, this local check refuses the dispatch before the Chio
+        sidecar is reached.
 
         Raises :class:`chio_autogen.ChioAutogenConfigError` when the role
         is not configured at all, and

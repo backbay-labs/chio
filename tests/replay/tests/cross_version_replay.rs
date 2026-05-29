@@ -4,7 +4,7 @@
 //!
 //! 1. Load `release_compat_matrix.toml` via [`CompatMatrix::load`].
 //! 2. For every `[[entry]]` at [`CompatLevel::Supported`]: fetch the
-//!    bundle (T3 layer), reverify it, and assert the root matches and
+//!    bundle, reverify it, and assert the root matches and
 //!    no receipt signatures failed.
 //! 3. For every `[[entry]]` at [`CompatLevel::BestEffort`]: best-effort
 //!    fetch + reverify; failures are logged via `eprintln!` and do NOT
@@ -14,7 +14,7 @@
 //!
 //! The full-matrix test is `#[ignore]`d because it depends on:
 //!
-//! - Live HTTPS to the release CDN (currently `github.com/bb-connor/...`).
+//! - Live HTTPS to the release CDN (currently `github.com/backbay-labs/chio/...`).
 //! - Historical tagged-release bundles existing at the URLs the matrix
 //!   pins. The placeholder entries in the matrix today (zero / one
 //!   sha256, `example`-style URLs) will surface as fetch failures
@@ -27,8 +27,8 @@
 //! ```
 //!
 //! The non-ignored test in this file (`matrix_loads_and_has_at_least_two_entries`)
-//! is a fast sanity check that always runs; it asserts the matrix file
-//! parses and contains at least the v0.1.0 + v2.0 rows authored in T1.
+//! always runs; it asserts the matrix file parses and contains at least
+//! the v0.1.0 + v2.0 rows.
 
 use std::path::Path;
 

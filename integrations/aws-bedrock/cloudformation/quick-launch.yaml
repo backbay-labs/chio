@@ -67,7 +67,7 @@ Resources:
 
 Outputs:
   SupportedRegion:
-    Description: "The trajectory-3 listing region."
+    Description: "The listing region."
     Value: "us-east-1"
   IntegrationRoleArn:
     Condition: IsSupportedRegion

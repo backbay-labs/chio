@@ -572,8 +572,7 @@ mod tests {
         Ok(())
     }
 
-    // (Actual signing tests live in crypto.rs; this just confirms the output
-    // is deterministic.)
+    // Signing tests live in crypto.rs.
 
     #[test]
     fn deterministic_output() {

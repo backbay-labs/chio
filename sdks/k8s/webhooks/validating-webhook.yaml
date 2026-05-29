@@ -6,7 +6,7 @@ metadata:
     app.kubernetes.io/name: chio-admission-controller
     app.kubernetes.io/component: validating-webhook
 webhooks:
-  - name: validate.chio.backbay.io
+  - name: validate.chio.world
     admissionReviewVersions:
       - v1
     clientConfig:
@@ -28,4 +28,4 @@ webhooks:
     timeoutSeconds: 10
     namespaceSelector:
       matchLabels:
-        chio.backbay.io/enforce: "true"
+        chio.world/enforce: "true"

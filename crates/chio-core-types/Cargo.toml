@@ -22,7 +22,8 @@ name = "chio_core_types"
 # workspace-level dep entries do not pin `default-features`, which would
 # cause `default-features = false` here to be ignored.
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
-serde_json = { version = "1", default-features = false, features = ["alloc"] }
+# float_roundtrip: exact f64 parse for canonical-signature stability (see workspace dep).
+serde_json = { version = "1", default-features = false, features = ["alloc", "float_roundtrip"] }
 ed25519-dalek = { version = "2", default-features = false, features = ["rand_core", "zeroize", "alloc"] }
 rand_core = { version = "0.6", default-features = false, features = ["getrandom"] }
 hex = { version = "0.4", default-features = false, features = ["alloc"] }
@@ -71,7 +72,7 @@ std = [
 fips = ["dep:aws-lc-rs", "std"]
 pq = ["dep:fips204"]
 # Recursive-delegation primitive retained as a compatibility feature name.
-# The T1.1 wire primitive is now always available, including no-default
+# The recursive-delegation wire primitive is now always available, including no-default
 # builds; this feature is a no-op for downstream manifests that still enable it.
 delegation = []
 # Backward-compatibility alias for the legacy `delegation_v2` feature name.
@@ -81,6 +82,7 @@ delegation = []
 delegation_v2 = ["delegation"]
 
 [dev-dependencies]
+chio-test-support = { path = "../chio-test-support" }
 jsonschema = { version = "0.46.0", default-features = false }
 proptest = { workspace = true }
 # Pulled in by the `_generated_check` integration test so the canonical
@@ -89,6 +91,5 @@ proptest = { workspace = true }
 # only its first line.
 chio-spec-codegen = { path = "../chio-spec-codegen" }
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

@@ -1,0 +1,80 @@
+name: SDK Parity
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "crates/chio-api-protect/**"
+      - "crates/chio-core-types/**"
+      - "crates/chio-http-core/**"
+      - "crates/chio-kernel/**"
+      - "crates/chio-kernel-core/**"
+      - "crates/chio-conformance/**"
+      - "sdks/**"
+      - "scripts/check-sdk-parity.sh"
+      - "scripts/check-bindings-parity.sh"
+      - "scripts/check-chio-py.sh"
+      - "scripts/check-chio-go.sh"
+      - "scripts/check-chio-cpp.sh"
+      - "scripts/check-chio-drogon.sh"
+      - "tests/bindings/**"
+      - ".github/workflows/sdk-parity.yml"
+  push:
+    branches: ["main"]
+    paths:
+      - "crates/chio-api-protect/**"
+      - "crates/chio-core-types/**"
+      - "crates/chio-http-core/**"
+      - "crates/chio-kernel/**"
+      - "crates/chio-kernel-core/**"
+      - "crates/chio-conformance/**"
+      - "sdks/**"
+      - "scripts/check-sdk-parity.sh"
+      - "scripts/check-bindings-parity.sh"
+      - "scripts/check-chio-py.sh"
+      - "scripts/check-chio-go.sh"
+      - "scripts/check-chio-cpp.sh"
+      - "scripts/check-chio-drogon.sh"
+      - "tests/bindings/**"
+      - ".github/workflows/sdk-parity.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('pr-{0}-sdk-parity', github.ref) || format('main-{0}-sdk-parity', github.sha) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  sdk-parity:
+    name: SDK parity contract lane
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: "1.23.0"
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+
+      - name: Install parity dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler cmake build-essential libcurl4-openssl-dev
+
+      - name: Run SDK parity
+        run: ./scripts/check-sdk-parity.sh

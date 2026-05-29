@@ -1,7 +1,7 @@
 //! In-memory `LocalCreditAccount` IOU mint path.
 //!
-//! M09 P1.T2 implements the credit evaluator hook against an
-//! in-memory account that signs IOU envelopes with a [`SigningBackend`].
+//! Implements the credit evaluator hook against an in-memory account
+//! that signs IOU envelopes with a [`SigningBackend`].
 //! The mint rule is deterministic and pure over `(receipt, pricing_context)`:
 //!
 //! - The receipt's signature, content-addressed id, and action hash
@@ -12,7 +12,7 @@
 //! - The price is read from the receipt's
 //!   [`FinancialReceiptMetadata`]. If the metadata is absent or the
 //!   `cost_charged` is zero, the result is `Ok(None)`. This is the
-//!   manifest-price-zero / legacy-receipt fallback.
+//!   manifest-price-zero / no-financial-metadata path (trace, advisory).
 //! - When all preconditions hold, exactly one [`IouEnvelope`] is
 //!   produced. The envelope `iou_id` is derived deterministically
 //!   from `receipt_id` so re-evaluating the same receipt yields a
@@ -30,7 +30,7 @@ use crate::receipt::{chio_receipt_id, ChioReceipt};
 /// Deterministic IOU id derivation from the originating receipt id.
 ///
 /// Using a SHA-256 of the receipt id keeps the IOU id stable across
-/// re-evaluation, which the property test in P1.T4 depends on.
+/// re-evaluation, which a property test depends on.
 fn derive_iou_id(receipt_id: &str) -> String {
     format!("iou-{}", &sha256_hex(receipt_id.as_bytes())[..32])
 }
@@ -118,15 +118,15 @@ impl<B: SigningBackend> CreditEvaluatorHook for LocalCreditAccount<B> {
         }
 
         // Only mediated/prevent allow receipts are eligible. Trace or
-        // advisory observations may preserve a legacy-shaped decision slot,
-        // but they must never mint IOUs.
+        // advisory observations use a non-mediated decision slot and
+        // must never mint IOUs.
         if !receipt.is_allowed() {
             return Ok(None);
         }
 
         // Pricing context comes from the receipt's typed financial
-        // metadata. Receipts without financial metadata are legacy
-        // (no manifest price) and mint zero IOUs.
+        // metadata. Receipts without financial metadata (trace, advisory)
+        // carry no manifest price and mint zero IOUs.
         let Some(financial) = receipt.financial_metadata() else {
             return Ok(None);
         };

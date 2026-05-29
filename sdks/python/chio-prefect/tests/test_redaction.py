@@ -615,8 +615,8 @@ class TestForwardingTablePassthroughHelper:
     def test_pure_var_positional_signature_redacts_via_tool_table(
         self,
     ) -> None:
-        # Regression: pure *args wrappers previously bypassed the
-        # forwarding-table helper and leaked the body field.
+        # Pure *args wrappers must route through the forwarding-table
+        # helper so the body field is redacted, not leaked.
         from typing import Any
 
         from chio_prefect.decorators import _task_parameters
@@ -859,7 +859,7 @@ class TestPositionalOnlyVarKeywordSpillover:
 
 
 class TestVarPositionalNamedAfterBodyField:
-    """Regression for #672 comment 3228939863.
+    """Variadic parameter named after a protected body field.
 
     ``def write_file(*content, path)`` puts the positional secret in the
     VAR_POSITIONAL bucket whose declared name is ``content`` (one of the
@@ -934,19 +934,15 @@ class TestVarPositionalNamedAfterBodyField:
 
 
 class TestArityOverflowFailClosed:
-    """Regression for PR #679 P2 3231181763.
+    """Regression:
 
     A fixed-signature wrapper (no VAR_POSITIONAL) invoked with MORE
     positional values than the signature accepts triggers
     ``bind_partial`` TypeError. The bare ``bind_and_redact`` fallback
     table redacts only up to the wrapper's last named slot and forwards
-    the rest raw. Pre-v0.3 prefect's ``_task_parameters`` instead
-    dropped the overflow positionals so an arity-invalid call could
-    never silently leak. The interval-3 shim delegated to
-    ``bind_and_redact`` and lost that fail-closed behaviour. This
-    re-establishes it: overflow values are redacted under each
-    protected canonical so the receipt audit log records "a secret was
-    attempted at position N" without crossing the wire.
+    the rest raw. Fail-closed contract: overflow values are redacted
+    under each protected canonical so the receipt audit log records
+    "a secret was attempted at position N" without crossing the wire.
     """
 
     def test_arity_overflow_positional_redacted_via_table(self) -> None:
@@ -985,9 +981,9 @@ class TestArityOverflowFailClosed:
     def test_arity_overflow_with_var_positional_passes_through(
         self,
     ) -> None:
-        # Sanity check: a VAR_POSITIONAL wrapper is NOT treated as
-        # arity-overflow because all extras land in *args by design.
-        # Existing pass-through semantics are preserved.
+        # A VAR_POSITIONAL wrapper is NOT treated as arity-overflow
+        # because all extras land in *args by design. Existing
+        # pass-through semantics are preserved.
         from typing import Any
 
         from chio_prefect.decorators import _task_parameters
@@ -1016,7 +1012,6 @@ class TestArityOverflowFailClosed:
         Re-redacting feeds the stub dict's ``repr()`` to ``redact_args``
         as the new "value", overwriting ``byte_count`` with the length
         of the stub repr (34) instead of the original secret length (7).
-        Closes PR #680 CursorM 3231239987 / P2 3231244182.
         """
         from chio_prefect.decorators import _task_parameters
 
@@ -1046,16 +1041,15 @@ class TestArityOverflowFailClosed:
         )
 
     def test_user_dict_with_omitted_key_still_redacted(self) -> None:
-        """Regression for PR #679 P2 3231314233.
+        """Regression:
 
-        The interval-5 stub-skip guard checked only
-        ``isinstance(value, dict) and value.get("omitted") is True`` so
-        a user-supplied dict that happened to carry an ``omitted: True``
-        flag plus real secrets slipped through the overflow loop
-        unredacted. Tighten the guard to match the exact stub
-        fingerprint (``omitted is True`` AND a numeric ``byte_count`` AND
-        no other keys); user dicts with extra keys must continue to be
-        redacted via the protected canonical.
+        The stub-skip guard must match the exact stub fingerprint
+        (``omitted is True`` AND a numeric ``byte_count`` AND no other
+        keys). A looser check (``isinstance(value, dict) and
+        value.get("omitted") is True``) lets a user-supplied dict that
+        carries an ``omitted: True`` flag plus real secrets slip through
+        the overflow loop unredacted; user dicts with extra keys must
+        continue to be redacted via the protected canonical.
         """
         from chio_prefect.decorators import _task_parameters
 

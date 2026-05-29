@@ -41,6 +41,8 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 tower = { workspace = true, optional = true }
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[dev-dependencies]
+chio-test-support = { path = "../chio-test-support" }
+
+[lints]
+workspace = true

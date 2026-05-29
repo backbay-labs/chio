@@ -5,8 +5,8 @@
 > labeled (measured) come from existing benches; the rest are engineering
 > estimates from primitive costs and code structure.
 
-> **Erratum (wave 3, resolved in-tree):**
-> - **Bench-stub coverage was broader than reported below.** Wave 3 verification ([reviews/04-receipts-kernel-latency-review.md](reviews/04-receipts-kernel-latency-review.md)) confirmed **11+ stubs**, not 4: `single_guard`, `cap_verify_ed25519`, `receipt_sign`, `guard_pipeline_5`, `scope_match`, `time_bound`, `revocation_lookup`, `budget_decrement`, `receipt_append`, `session_lookup`, `dispatch_deny` were all `b.iter(|| black_box(0_u64))`. The bench bodies now drive real dispatch through `dispatch_request_fixture` rather than constants. The hybrid family (`hybrid_receipt_sign`, `canonical_bytes_hybrid`, `pq_key_load_after_self_quote`, `compliance_certificate_hybrid`) is still wired as tests, not live Criterion benches; do not cite those names as benchmark evidence until they are added to the bench target set. The remaining open work in this area is gating benches with `required-features` per bench file.
+> **Erratum (resolved in-tree):**
+> - **Bench-stub coverage was broader than reported below.** A subsequent verification pass ([reviews/04-receipts-kernel-latency-review.md](reviews/04-receipts-kernel-latency-review.md)) confirmed **11+ stubs**, not 4: `single_guard`, `cap_verify_ed25519`, `receipt_sign`, `guard_pipeline_5`, `scope_match`, `time_bound`, `revocation_lookup`, `budget_decrement`, `receipt_append`, `session_lookup`, `dispatch_deny` were all `b.iter(|| black_box(0_u64))`. The bench bodies now drive real dispatch through `dispatch_request_fixture` rather than constants. The hybrid family (`hybrid_receipt_sign`, `canonical_bytes_hybrid`, `pq_key_load_after_self_quote`, `compliance_certificate_hybrid`) is still wired as tests, not live Criterion benches; do not cite those names as benchmark evidence until they are added to the bench target set. The remaining open work in this area is gating benches with `required-features` per bench file.
 > - **`build_and_sign_receipt` path was wrong.** Below this doc cites `crates/chio-http-core/src/responses.rs:1506-1507`; the actual location is [`crates/chio-kernel/src/kernel/responses.rs:1459-1517`](../../../crates/chio-kernel/src/kernel/responses.rs#L1459). Several other `responses.rs` references in this doc omit the `chio-kernel/src/kernel/` crate qualifier.
 
 ## TL;DR
@@ -17,8 +17,8 @@ self-issued inner capability, kernel receipt sign, outer HttpReceipt sign),
 two canonical-JSON passes, and a projection guard. Best estimate for
 Ed25519-only path: **median ~2-4 ms, p99 ~10-20 ms** with no external guards.
 The shipped pilot SLO is p50 < 75 ms / p95 < 250 ms / p99 < 1 s
-(`docs/operator-runbook/slo.md:32-36`) and the M06 sustained nightly probe
-warns at p99 = 50 ms (`crates/chio-kernel/benches/sustained_p99_30min.rs:14`).
+(`docs/operator-runbook/slo.md:32-36`) and the sustained nightly probe warns at
+p99 = 50 ms (`crates/chio-kernel/benches/sustained_p99_30min.rs:14`).
 Voice integration at sub-200ms is **conditional**: feasible with Ed25519-only,
 in-process guards (Cedar), and async receipt write; infeasible with hybrid
 Ed25519+ML-DSA-65 plus OpenFGA Check plus synchronous SQLite persistence in
@@ -103,7 +103,8 @@ capability. None of the placeholder benches measure this.
   queue+exporter loop with `P99_WARN_MICROS = 50_000` (50 ms)
   (`sustained_p99_30min.rs:14, 48-50`). It does not drive `evaluate_tool_call`.
 - `bench/healthcare-pilot-capacity/` is a CapacityReport scaffold, not a
-  runtime measurement. `bench/ttfrh/` is reserved scaffolding for M07.
+  runtime measurement. `bench/ttfrh/` is reserved scaffolding for a future
+  provider latency study.
 
 In-process histogram buckets in `chio-http-core/src/metrics.rs:67-76` are
 25 / 50 / 75 / 100 / 250 / 500 / 1000 / 2500 ms, consistent with the pilot

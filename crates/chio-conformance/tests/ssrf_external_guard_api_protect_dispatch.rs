@@ -1,7 +1,7 @@
 //! SSRF negative-conformance tests for production reqwest dispatchers.
 //!
 //! These tests drive real external-guard and api-protect forwarding paths so
-//! raw reqwest bypasses fail the suite instead of only direct contract probes.
+//! so that raw reqwest-level bypasses also fail, not only direct contract probes.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use std::net::{SocketAddr, TcpListener};
@@ -175,7 +175,11 @@ fn reserve_loopback_addr() -> SocketAddr {
     listener.local_addr().expect("reserved local addr")
 }
 
-#[tokio::test]
+// The api-protect upstream proxy reaches the kernel through Chio's sync
+// tool-dispatch bridge, which requires a multi-thread runtime (the documented
+// host requirement); a current-thread runtime cannot drive the async tool
+// server and the proxy returns a 500 instead of the expected 502.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn api_protect_upstream_proxy_rejects_redirect_to_link_local() {
     let (upstream_addr, upstream_handle) = spawn_single_response_server(|request| {
         let location = Header::from_bytes(&b"Location"[..], &b"http://169.254.169.254/latest"[..])
@@ -221,7 +225,7 @@ async fn api_protect_upstream_proxy_rejects_redirect_to_link_local() {
     let _ = upstream_handle.join();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn api_protect_upstream_proxy_rejects_redirect_to_loopback_authority() {
     let (target_addr, target_seen_rx, target_handle) = spawn_forbidden_target_server();
     let (upstream_addr, upstream_handle) = spawn_single_response_server(move |request| {
@@ -280,7 +284,7 @@ async fn api_protect_upstream_proxy_rejects_redirect_to_loopback_authority() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn api_protect_upstream_proxy_rejects_oversized_response() {
     let (upstream_addr, upstream_handle) = spawn_single_response_server(|request| {
         let body = vec![b'x'; API_PROTECT_MAX_RESPONSE_BYTES + 1];

@@ -5,7 +5,7 @@
 //! runs of the same scenario observe the same `virtual_now` sequence.
 //!
 //! `VirtualClock` is the only authority for time inside `ArenaRuntime`. The
-//! determinism gate (`P2.T6`) greps `runtime.rs` and `clock.rs` for any
+//! determinism gate greps `runtime.rs` and `clock.rs` for any
 //! wall-clock readers and fails the build if it finds one.
 
 use std::time::Duration;

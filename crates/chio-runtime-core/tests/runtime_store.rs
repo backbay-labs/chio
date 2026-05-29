@@ -1,10 +1,9 @@
 use chio_core_types::crypto::Keypair;
 use chio_runtime_core::{
-    ChioRuntimeError, InMemoryRuntimeAdmissionStore, JsonRuntimeAdmissionStore,
-    RuntimeAdmissionBundle, RuntimeAdmissionStore, RuntimeEvidenceManifestEntry,
-    RuntimeOrchestrationProfile, RuntimeRequestBinding, RuntimeTrustFloorEntry,
-    SqliteRuntimeOrchestrationStore, TreatyScope, CHIO_RUNTIME_ADMISSION_BUNDLE_SCHEMA,
-    CHIO_RUNTIME_ADMISSION_STORE_SCHEMA, CHIO_RUNTIME_ORCHESTRATION_PROFILE_SCHEMA,
+    ChioRuntimeError, InMemoryRuntimeAdmissionStore, RuntimeAdmissionBundle, RuntimeAdmissionStore,
+    RuntimeEvidenceManifestEntry, RuntimeOrchestrationProfile, RuntimeRequestBinding,
+    RuntimeTrustFloorEntry, SqliteRuntimeOrchestrationStore, TreatyScope,
+    CHIO_RUNTIME_ADMISSION_BUNDLE_SCHEMA, CHIO_RUNTIME_ORCHESTRATION_PROFILE_SCHEMA,
     CHIO_TREATY_SCOPE_SCHEMA,
 };
 
@@ -92,43 +91,6 @@ fn in_memory_runtime_admission_store_insert_bundle_is_idempotent(
             Ok(())
         }
     }
-}
-
-#[test]
-fn json_runtime_admission_store_writes_chio_schema_and_reads_legacy(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let dir = tempfile::tempdir()?;
-    let path = dir.path().join("runtime-admission-store.json");
-    {
-        let store = JsonRuntimeAdmissionStore::open(&path)?;
-        store.insert_bundle(bundle())?;
-    }
-
-    let persisted: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path)?)?;
-    assert_eq!(
-        persisted["schema"].as_str(),
-        Some("chio.runtime.admission-store.v1")
-    );
-
-    let legacy_path = dir.path().join("legacy-runtime-admission-store.json");
-    let mut legacy = persisted;
-    legacy["schema"] = serde_json::Value::String(CHIO_RUNTIME_ADMISSION_STORE_SCHEMA.to_string());
-    std::fs::write(
-        &legacy_path,
-        format!("{}\n", serde_json::to_string_pretty(&legacy)?),
-    )?;
-    let reopened = JsonRuntimeAdmissionStore::open(&legacy_path)?;
-    assert!(reopened.bundle("adm-live-1")?.is_some());
-    let mut second = bundle();
-    second.admission_id = "adm-live-legacy-upgrade".to_string();
-    reopened.insert_bundle(second)?;
-    let upgraded: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&legacy_path)?)?;
-    assert_eq!(
-        upgraded["schema"].as_str(),
-        Some("chio.runtime.admission-store.v1")
-    );
-    Ok(())
 }
 
 #[test]

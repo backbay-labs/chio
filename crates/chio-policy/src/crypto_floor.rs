@@ -7,8 +7,8 @@
 //!
 //! ## Variants
 //!
-//! - [`CryptoFloor::AllowClassical`] -- accept legacy classical-only
-//!   envelopes (Ed25519, P-256, P-384). Default. PQ keys are NOT required.
+//! - [`CryptoFloor::AllowClassical`] -- accept classical-only envelopes
+//!   (Ed25519, P-256, P-384). Default. PQ keys are NOT required.
 //! - [`CryptoFloor::AllowHybrid`] -- accept either classical-only or hybrid
 //!   classical-plus-ML-DSA-65 envelopes. Operators that opt in to hybrid
 //!   signing MUST provision a PQ key.
@@ -43,7 +43,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CryptoFloor {
-    /// Accept legacy classical-only envelopes. Default.
+    /// Accept classical-only envelopes (no post-quantum key required). Default.
     AllowClassical,
     /// Accept either classical-only or hybrid classical-plus-ML-DSA-65
     /// envelopes. Requires a PQ key to be provisioned.
@@ -56,9 +56,8 @@ pub enum CryptoFloor {
 impl Default for CryptoFloor {
     /// Default crypto floor is [`CryptoFloor::AllowClassical`].
     ///
-    /// The default preserves the legacy classical-only signing path so
-    /// deployments that have not provisioned a PQ key continue to operate
-    /// without an explicit policy update.
+    /// The default is `AllowClassical` so deployments that have not
+    /// provisioned a PQ key operate without an explicit policy update.
     fn default() -> Self {
         Self::AllowClassical
     }

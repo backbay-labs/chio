@@ -189,7 +189,7 @@ impl ReceiptAuthorityFields {
     }
 }
 
-/// Convert an Chio receipt into an OTel-compatible span.
+/// Convert a Chio receipt into an OTel-compatible span.
 ///
 /// Pass `Some(&trusted_kernel_keys)` with the operator-pinned signer set to mark
 /// receipts as authorized in the resulting span. Pass `None` for trustless callers
@@ -214,7 +214,7 @@ pub fn receipt_to_span(
     receipt_to_span_with_authority(receipt, session_trace_id, &authority)
 }
 
-/// Convert an Chio receipt into an OTel-compatible span using a
+/// Convert a Chio receipt into an OTel-compatible span using a
 /// pre-computed authority struct, skipping the per-call crypto.
 ///
 /// Callers that already know the receipt is signature-, id-, and

@@ -88,7 +88,7 @@ Formal boundary artifacts:
 - [`../../formal/proof-manifest.toml`](../../formal/proof-manifest.toml)
 - [`../../formal/assumptions.toml`](../../formal/assumptions.toml)
 - [`../../formal/theorem-inventory.json`](../../formal/theorem-inventory.json)
-- [../CLAIM_REGISTRY.md](../CLAIM_REGISTRY.md)
+- [../CLAIM_REGISTRY.md](../reference/CLAIM_REGISTRY.md)
 
 ## Decision
 
@@ -249,9 +249,9 @@ Primary release docs:
 - [PARTNER_PROOF.md](PARTNER_PROOF.md)
 - [CHIO_WEB3_READINESS_AUDIT.md](CHIO_WEB3_READINESS_AUDIT.md)
 - [CHIO_WEB3_PARTNER_PROOF.md](CHIO_WEB3_PARTNER_PROOF.md)
-- [ECONOMIC_INTEROP_GUIDE.md](../ECONOMIC_INTEROP_GUIDE.md)
-- [CREDENTIAL_INTEROP_GUIDE.md](../CREDENTIAL_INTEROP_GUIDE.md)
-- [WORKLOAD_IDENTITY_RUNBOOK.md](../WORKLOAD_IDENTITY_RUNBOOK.md)
+- [ECONOMIC_INTEROP_GUIDE.md](../reference/ECONOMIC_INTEROP_GUIDE.md)
+- [CREDENTIAL_INTEROP_GUIDE.md](../reference/CREDENTIAL_INTEROP_GUIDE.md)
+- [WORKLOAD_IDENTITY_RUNBOOK.md](../reference/WORKLOAD_IDENTITY_RUNBOOK.md)
 - [RISK_REGISTER.md](RISK_REGISTER.md)
 - [CHIO_RECEIPTS_PROFILE.md](../standards/CHIO_RECEIPTS_PROFILE.md)
 - [CHIO_PORTABLE_TRUST_PROFILE.md](../standards/CHIO_PORTABLE_TRUST_PROFILE.md)

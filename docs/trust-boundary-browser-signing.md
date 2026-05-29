@@ -1,14 +1,14 @@
 # Trust-boundary review: browser-side delegated subkey signing
 
 Status: rejected
-Approver: @bb-connor
+Approver: Chio maintainers
 Date: 2026-04-27
 
 ## 1. Scope of delegated subkeys
 
-Verdict: rejected for M08.
+Verdict: rejected.
 
-- Audience binding: no browser-resident delegated subkey audience is approved for M08.
+- Audience binding: no browser-resident delegated subkey audience is approved.
 - Time bounds: no maximum lifetime is accepted because no provisioning and revocation model has been approved.
 - Scope narrowing: root, mint, and delegate scopes remain forbidden in any browser, Worker, Edge function, or user-reachable JavaScript runtime.
 - Quantitative limits: no per-session signing budget, per-minute rate, or per-origin cap is accepted without a signed server-side issuance and revocation design.
@@ -26,11 +26,11 @@ Required evidence before reconsideration:
 - A receipt-visible delegation chain shaped like `root -> intermediate -> browser-subkey`.
 - A verifier path that proves every browser-signed receipt traces back to a server-side root without trusting browser-held root material.
 
-The current M08 trajectory may continue to ship verify-only browser capability and receipt verification. Delegated signing is moved to a follow-on milestone after stronger evidence is written, reviewed, and approved.
+The current trajectory may continue to ship verify-only browser capability and receipt verification. Delegated signing is moved to a follow-on milestone after stronger evidence is written, reviewed, and approved.
 
 ## 3. Revocation surface
 
-No revocation surface is approved for browser-resident delegated subkeys in M08.
+No revocation surface is approved for browser-resident delegated subkeys.
 
 Required evidence before reconsideration:
 
@@ -56,7 +56,7 @@ These risks are acceptable for verification-only surfaces because public verific
 ## 5. Decision
 
 - [ ] Approved. Phase 3 may proceed with the constraints above.
-- [x] Rejected. M08 ships at Phase 2 as verify-only; delegated signing is not pursued in this trajectory, and rationale is recorded here.
+- [x] Rejected. Verify-only at Phase 2; delegated signing is not pursued in this trajectory, and rationale is recorded here.
 
 Follow-on milestone criteria:
 

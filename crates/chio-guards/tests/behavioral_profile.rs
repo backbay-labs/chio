@@ -1,6 +1,6 @@
-//! Phase 19.2 behavioral-profile integration tests.
+//! Behavioral-profile integration tests.
 //!
-//! These tests confirm the roadmap acceptance criteria:
+//! These tests confirm the acceptance criteria:
 //!   1. EMA baseline stabilizes under a steady sample.
 //!   2. A 50x spike in call rate triggers an advisory signal.
 //!   3. The guard reads from chio-store-sqlite receipt queries
@@ -67,10 +67,9 @@ fn make_receipt(id: &str, capability_id: &str, timestamp: u64, decision: Decisio
 }
 
 /// Adapter that exposes an chio-store-sqlite `SqliteReceiptStore` as
-/// a `ReceiptFeedSource`. Agent identity is resolved by reading the
-/// capability-id prefix here to keep the test self-contained; a real
-/// deployment would join through the capability_lineage table via
-/// `ReceiptQuery::agent_subject`.
+/// a `ReceiptFeedSource`. Agent identity is resolved from the
+/// capability-id prefix rather than via `ReceiptQuery::agent_subject`
+/// (which requires the capability_lineage table).
 struct SqliteFeed {
     store: Mutex<SqliteReceiptStore>,
     agent_capabilities: Vec<(String, String)>,
@@ -162,6 +161,11 @@ fn ema_baseline_stabilizes_under_steady_calls() {
 fn in_memory_receipt_feed_persists_and_filters_by_agent_and_window() -> Result<(), KernelError> {
     let feed = InMemoryReceiptFeed::new();
     let receipt = make_receipt("r-feed-1", "cap-feed", 1_700_000_010, Decision::Allow);
+    // `ChioReceipt::sign` folds the caller-supplied `body.id` ("r-feed-1")
+    // into the signing nonce and overwrites `.id` with the content-addressed
+    // hash, so the feed round-trips that computed id rather than the label.
+    // Capture it before the receipt is moved into the feed.
+    let expected_id = receipt.id.clone();
 
     assert_eq!(feed.len()?, 0);
     assert!(feed.is_empty()?);
@@ -172,7 +176,7 @@ fn in_memory_receipt_feed_persists_and_filters_by_agent_and_window() -> Result<(
 
     let matching = feed.receipts_for_agent("agent-feed", 1_700_000_000, 1_700_000_020)?;
     assert_eq!(matching.len(), 1);
-    assert_eq!(matching[0].id, "r-feed-1");
+    assert_eq!(matching[0].id, expected_id);
 
     let wrong_agent = feed.receipts_for_agent("agent-other", 1_700_000_000, 1_700_000_020)?;
     assert!(wrong_agent.is_empty());

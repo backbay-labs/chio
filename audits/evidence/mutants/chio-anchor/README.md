@@ -266,14 +266,14 @@ authoritative post-merge number; this 69.44% is the pre-B3/A3 seed.
 - `mutants.out/missed.txt` - 50 lines, one per missed mutant.
 - `mutants.out/timeout.txt` - 5 lines.
 - `mutants.out/unviable.txt` - 34 lines.
-- `mutants.out/mutants.json` - 262-entry mutant catalogue (full surface).
 - `mutants.out/outcomes.json` - per-mutant outcome record (214 entries).
   Intentionally not committed; regenerate locally when argv-level replay
   evidence is needed.
 - `mutants.out/lock.json` - run start time + tool version. Intentionally
   not committed because cargo-mutants records local process metadata in this file.
-- `mutants.out/diff/*.diff` - per-mutant source diff (one per evaluated
-  mutant).
+- `mutants.out/diff/*.diff` and `mutants.out/mutants.json` - per-mutant
+  source diffs and mutant catalogue. These are produced per-run and
+  published as release artifacts rather than committed to the repository.
 
 The `mutants.out/log/` and `mutants.out/debug.log` are NOT committed
 per `audits/evidence/mutants/.gitignore` (29MB+ per crate, contain
@@ -285,7 +285,9 @@ absolute paths).
 omitted by `audits/evidence/mutants/.gitignore`: cargo-mutants records
 local process metadata and per-mutant console transcripts in those files. The committed evidence is
 the dated JSON summary plus `caught.txt`, `missed.txt`, `timeout.txt`,
-`unviable.txt`, `mutants.json`, and per-mutant `diff/` patches.
+`unviable.txt`. The per-mutant `diff/` patches and `mutants.json` catalogue
+are produced per-run and published as release artifacts rather than
+committed to the repository.
 
 To regenerate the omitted files locally, rerun:
 

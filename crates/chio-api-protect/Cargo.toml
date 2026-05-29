@@ -34,9 +34,9 @@ rusqlite = { workspace = true }
 subtle = "2.6"
 
 [dev-dependencies]
+chio-test-support = { path = "../chio-test-support" }
 tokio = { workspace = true, features = ["test-util"] }
 tower = { version = "0.5", features = ["util"] }
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

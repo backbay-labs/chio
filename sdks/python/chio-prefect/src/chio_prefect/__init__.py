@@ -10,7 +10,7 @@ the flow-run timeline.
 Public surface:
 
 * :func:`chio_task` -- decorator that wraps a Python function as a
-  Prefect :func:`prefect.task` gated on an Chio capability check.
+  Prefect :func:`prefect.task` gated on a Chio capability check.
 * :func:`chio_flow` -- decorator that wraps a Python function as a
   Prefect :func:`prefect.flow` with a flow-level capability that
   bounds every enclosed task's scope via attenuation.

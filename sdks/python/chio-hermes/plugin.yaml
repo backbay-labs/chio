@@ -4,7 +4,7 @@ description: >-
   Chio capability-scoped file, shell, and git tools with signed receipts.
   Routes every Hermes tool call through the Chio sidecar kernel for
   policy enforcement and append-only audit.
-author: Backbay Industries
+author: Backbay Labs
 kind: standalone
 
 # Dict-form requires_env so `hermes setup` can prompt with masking on

@@ -1,5 +1,5 @@
 // Cloudflare Worker template consuming @chio-protocol/workers and
-// @chio/ai-sdk-middleware. The Worker exposes a /chat endpoint that
+// @chio-protocol/ai-sdk-middleware. The Worker exposes a /chat endpoint that
 // runs the Chio middleware before forwarding to the downstream model
 // and persists receipts into a local KV namespace.
 

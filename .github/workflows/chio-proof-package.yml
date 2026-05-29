@@ -1,28 +1,30 @@
 name: Chio Proof Package
 
 on:
+  # Re-issues a federation authority bundle and compares it against the
+  # committed examples/chio-3vendor proof package, verifier trust bundle, and
+  # verification context.
   pull_request:
     paths:
-      - "crates/chio-attest-buyer/**"
-      - "crates/chio-attest-buyer-core/**"
-      - "crates/chio-federation-authority/**"
-      - "crates/chio-cli/**"
-      - "crates/chio-federation/**"
-      - "crates/chio-governance/**"
-      - "crates/chio-workflow/**"
-      - "crates/chio-selective-disclosure/**"
-      - "crates/chio-conformance/**"
-      - "crates/chio-spec-validate/**"
+      - "crates/chio-attest-*/**"
+      - "crates/chio-federation*/**"
       - "examples/chio-3vendor/**"
-      - "scripts/check-chio-authority-issuance.sh"
       - "scripts/check-chio-proof-package.sh"
       - "spec/schemas/chio-attest/**"
       - "spec/schemas/chio-federation/**"
-      - "spec/schemas/registry.json"
       - ".github/workflows/chio-proof-package.yml"
   push:
-    branches:
-      - main
+    branches: ["main"]
+    paths:
+      - "crates/chio-attest-*/**"
+      - "crates/chio-federation*/**"
+      - "examples/chio-3vendor/**"
+      - "scripts/check-chio-proof-package.sh"
+      - "spec/schemas/chio-attest/**"
+      - "spec/schemas/chio-federation/**"
+      - ".github/workflows/chio-proof-package.yml"
+  schedule:
+    - cron: "17 7 * * *"
   workflow_dispatch:
 
 permissions:
@@ -42,13 +44,13 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
 
       - name: Cache cargo registry and target
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
 
       - name: Run Chio proof-package gate
         run: bash scripts/check-chio-proof-package.sh

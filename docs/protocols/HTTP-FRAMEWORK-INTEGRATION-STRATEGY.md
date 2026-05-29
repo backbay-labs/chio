@@ -218,7 +218,7 @@ const app = new Elysia()
 
 Go (net/http):
 ```go
-import chio "github.com/backbay/chio/sdks/go/chio-go-http"
+import chio "github.com/backbay-labs/chio/sdks/go/chio-go-http"
 
 mux := http.NewServeMux()
 handler := chio.Protect(mux, chio.ConfigFile("chio.yaml"))

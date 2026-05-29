@@ -93,7 +93,7 @@ const REPLAY_FIXTURE_DRIFT_GUARD_SENTINEL: &str = "drift-marker";
 
 /// Re-derive the verdict for a single receipt against the current build.
 ///
-/// The legacy receipt log does not carry enough context to reconstruct a live
+/// The positional receipt log does not carry enough context to reconstruct a live
 /// kernel evaluation, so this function refuses to mark ordinary receipts clean.
 /// Replay callers must use a richer replay surface for actual drift checks.
 ///
@@ -292,6 +292,10 @@ mod replay_verdict_tests {
                 guard: REPLAY_FIXTURE_DRIFT_GUARD_SENTINEL.to_string(),
             },
         );
+        // ChioReceipt::sign content-addresses body.id (the supplied label
+        // survives only as the signing nonce), so the drift error reports the
+        // real receipt id, not the label.
+        let expected_id = receipt.id.clone();
         let err = rederive_verdict(&receipt).unwrap_err();
         match err {
             VerdictError::Drift {
@@ -299,7 +303,7 @@ mod replay_verdict_tests {
                 stored,
                 current,
             } => {
-                assert_eq!(receipt_id, "rcpt-drift-marker-0001");
+                assert_eq!(receipt_id, expected_id);
                 assert_eq!(stored, "deny");
                 assert_eq!(current, "allow");
             }

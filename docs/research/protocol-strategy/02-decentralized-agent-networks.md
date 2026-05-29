@@ -2,7 +2,7 @@
 
 Status: draft, May 2026. Supersedes the earlier "reject as out-of-scope" memo.
 
-> **Erratum (wave 4):** AGNTCY ACP was archived on 2026-04-11. The "build `chio-bridge-acp` first" framing in sections 2 and 5 below is obsolete; only the consume-only `DirectoryProvider` seam survives. See [17-agntcy-revisited.md](17-agntcy-revisited.md). Additionally per the wave-3 bridge review: the `chio-bridge-*` prefix is not a workspace convention (existing pattern is `-edge` / `-adapter` / `-proxy`), so even had ACP survived, the crate would be `superseded AGNTCY ACP adapter name`, not `chio-bridge-acp`. The body of this doc is preserved as historical context.
+> **Erratum:** AGNTCY ACP was archived on 2026-04-11. The "build `chio-bridge-acp` first" framing in sections 2 and 5 below is obsolete; only the consume-only `DirectoryProvider` seam survives. See [17-agntcy-revisited.md](17-agntcy-revisited.md). Additionally per the bridge review: the `chio-bridge-*` prefix is not a workspace convention (existing pattern is `-edge` / `-adapter` / `-proxy`), so even had ACP survived, the crate would be `superseded AGNTCY ACP adapter name`, not `chio-bridge-acp`. The body of this doc is preserved as historical context.
 
 ## TL;DR
 

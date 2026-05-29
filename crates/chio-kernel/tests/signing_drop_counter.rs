@@ -13,6 +13,7 @@ use std::time::Duration;
 use chio_core::crypto::{sha256_hex, Keypair};
 use chio_core::receipt::{
     chio_receipt_id, ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
+    CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY,
 };
 use chio_kernel::KernelError;
 use serde_json::json;
@@ -57,11 +58,12 @@ fn make_body(n: usize, kernel_key: &Keypair) -> Result<ChioReceiptBody, String> 
     .map_err(|error| format!("payload canonicalisation failed: {error}"))?;
     let content_hash = sha256_hex(action.parameter_hash.as_bytes());
     let policy_hash = sha256_hex(format!("policy:{nonce}").as_bytes());
-    // Pre-compute the content-addressed id so the test fixture matches the
-    // canonical id `sign_one_with_backend` rewrites into the signed
-    // receipt. Without this the test would compare the user-supplied label
-    // (e.g. `rcpt-block-counter-0001`) against the post-signing canonical
-    // hash and fail.
+    // The input body carries the producer's pre-binding id.
+    // `sign_one_with_backend` (via `chio_kernel_core::sign_receipt`) binds the
+    // `chio_receipt_signing_nonce` metadata key to this id and recomputes the
+    // canonical id over the nonce-bound body before signing, so the emitted id
+    // differs from this one. Post-sign assertions reconstruct the expected
+    // post-binding id via `expected_signed_id`.
     let mut body = ChioReceiptBody {
         id: format!("rcpt-{nonce}"),
         timestamp: 1_700_200_000 + (n as u64),
@@ -89,6 +91,42 @@ fn make_body(n: usize, kernel_key: &Keypair) -> Result<ChioReceiptBody, String> 
     Ok(body)
 }
 
+/// Bind the `chio_receipt_signing_nonce` metadata key to the pre-binding
+/// receipt id, mirroring `chio_core_types::receipt::bind_receipt_signing_nonce`
+/// (the private step `chio_kernel_core::sign_receipt` runs before computing the
+/// content-addressed id). The nonce is the trimmed pre-binding `body.id`; an
+/// existing non-object metadata value is preserved under `original_metadata`.
+fn bind_signing_nonce(body: &mut ChioReceiptBody) {
+    let nonce = body.id.trim();
+    if nonce.is_empty() {
+        return;
+    }
+    let mut metadata = match body.metadata.take() {
+        Some(serde_json::Value::Object(map)) => map,
+        Some(value) => {
+            let mut map = serde_json::Map::new();
+            map.insert("original_metadata".to_string(), value);
+            map
+        }
+        None => serde_json::Map::new(),
+    };
+    metadata.insert(
+        CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY.to_string(),
+        serde_json::Value::String(nonce.to_string()),
+    );
+    body.metadata = Some(serde_json::Value::Object(metadata));
+}
+
+/// The authoritative receipt id the signing pipeline emits for `body`:
+/// bind the signing nonce, then recompute `chio_receipt_id` over the
+/// nonce-bound body (the exact transform `sign_receipt` applies before
+/// signing).
+fn expected_signed_id(body: &ChioReceiptBody) -> Result<String, String> {
+    let mut bound = body.clone();
+    bind_signing_nonce(&mut bound);
+    chio_receipt_id(&bound).map_err(|error| format!("canonical receipt id failed: {error}"))
+}
+
 fn rendered_signing_queue_block_total() -> Result<u64, String> {
     let body = metrics::render_guard_metrics_prometheus();
     body.lines()
@@ -108,18 +146,18 @@ async fn full_signing_queue_increments_block_counter_without_dropping() -> Resul
     let handle = signing_task::SigningTaskHandle::with_capacity(keypair.clone(), 1);
 
     let queued_body = make_body(1, &keypair)?;
-    // `make_body` pre-computes the content-addressed id so the body's id
-    // already matches what the signing task will emit. Capture both ids
-    // for the post-sign assertions below so the test does not need to
-    // hardcode the SHA-256 hash of the fixture.
-    let queued_expected_id = queued_body.id.clone();
+    // The signer binds the signing nonce and recomputes the id before
+    // signing, so capture the expected post-binding id (not `body.id`) for the
+    // post-sign assertions below. This keeps the test from hardcoding the
+    // SHA-256 hash of the fixture.
+    let queued_expected_id = expected_signed_id(&queued_body)?;
     let queued = handle
         .try_sign(queued_body)
         .map_err(|_| "first request should queue before spawned task runs".to_string())?;
     let before = rendered_signing_queue_block_total()?;
 
     let blocked_body = make_body(2, &keypair)?;
-    let blocked_expected_id = blocked_body.id.clone();
+    let blocked_expected_id = expected_signed_id(&blocked_body)?;
     let mut blocked = Box::pin(handle.sign(blocked_body));
     let waker = noop_waker();
     let mut context = Context::from_waker(&waker);

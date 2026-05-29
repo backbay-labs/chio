@@ -94,7 +94,7 @@ if [[ "$MODE" == "schema-only" ]]; then
 fi
 
 cargo test -p chio-pheromone-relay observability
-cargo test -p chio-cli --bin chio_pheromone
+cargo test -p chio-cli --bin chio chio_pheromone
 cargo test -p chio-metrics-spec
 bash "$ROOT/scripts/check-sre-metrics-registry.sh"
 

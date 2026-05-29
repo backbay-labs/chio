@@ -1,4 +1,4 @@
-//! Phase 19.2 -- guard-integrated behavioral profiling.
+//! Guard-integrated behavioral profiling.
 //!
 //! Productizes [`chio_kernel::operator_report::BehavioralFeedReport`] and
 //! the EMA helpers in `chio_kernel::operator_report` into a synchronous
@@ -30,9 +30,9 @@
 //!
 //! # Why synchronous
 //!
-//! The roadmap requires this to be a sync `Guard`. The feed source
-//! does one bounded read per evaluation and caches the baseline, so
-//! the cost sits well under a millisecond in typical deployments.
+//! This is a synchronous `Guard`. The feed source does one bounded
+//! read per evaluation and caches the baseline, so the cost sits well
+//! under a millisecond in typical deployments.
 
 use std::collections::HashMap;
 use std::sync::Mutex;

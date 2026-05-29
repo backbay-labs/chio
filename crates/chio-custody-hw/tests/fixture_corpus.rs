@@ -1,13 +1,13 @@
 //! Pinned WebAuthn fixture corpus integration test.
 //!
-//! P1 ships JSON descriptors that pin the failure-mode taxonomy required
-//! by M10. P2 will replace these with byte-pinned `PublicKeyCredential`
-//! assertion bytes captured from real authenticators; the descriptor
-//! schema is forward compatible.
-//!
-//! TODO(security): the byte-pinned assertion path lands in P2. This P1
-//! corpus validates only the corpus shape, ID uniqueness, and the
-//! negative-case URN coverage required by the registry.
+//! The corpus is a set of JSON descriptors that pin the custody
+//! failure-mode taxonomy: four positive cases and four negative cases,
+//! each negative case bound to a `urn:chio:error:custody:*` code. These
+//! tests validate the corpus shape, descriptor id uniqueness, and the
+//! negative-case URN coverage the error registry requires. The descriptor
+//! schema carries an optional `description` slot so a deployment can pin
+//! byte-level `PublicKeyCredential` assertion captures alongside a
+//! descriptor without changing this schema.
 
 use serde::Deserialize;
 use std::path::{Path, PathBuf};

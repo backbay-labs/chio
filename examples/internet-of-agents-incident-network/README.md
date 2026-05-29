@@ -25,7 +25,7 @@ orchestrate.py                      agent orchestrator (entry point)
 
 Agents use the OpenAI Agents SDK (`Agent`, `Runner`, `FunctionTool`) or
 Anthropic SDK for tool-use loops. Each MCP tool call is wrapped as a
-`FunctionTool` backed by an Chio MCP endpoint.
+`FunctionTool` backed by a Chio MCP endpoint.
 
 ## Running
 

@@ -1,4 +1,4 @@
-//! Phase 1.1: Execution Nonces (TOCTOU fix).
+//! Execution nonces prevent TOCTOU races between capability evaluation and tool-server dispatch.
 //!
 //! An `ExecutionNonce` is a short-lived, single-use token that the kernel
 //! attaches to every `Verdict::Allow` response. Tool servers MUST present

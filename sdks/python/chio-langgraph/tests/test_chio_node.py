@@ -1,8 +1,8 @@
 """Unit tests for :func:`chio_langgraph.chio_node`.
 
-Roadmap acceptance (phase 10.3): *A LangGraph state graph with
-``chio_node`` wrappers where each node operates under a scoped
-capability.* These tests validate the three branches of the wrapper:
+A LangGraph state graph with ``chio_node`` wrappers where each node
+operates under a scoped capability. These tests validate the three
+branches of the wrapper:
 
 * allow verdict runs the wrapped body and preserves the state update;
 * deny verdict raises :class:`ChioLangGraphError` without running the body;

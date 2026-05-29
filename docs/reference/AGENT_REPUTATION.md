@@ -1,6 +1,6 @@
 # Agent Reputation System
 
-**Status:** Design proposal with Phase 1 local scoring, issuance gating, `did:chio`, and Agent Passport alpha implemented in the current pre-release v1 branch
+**Status:** Design proposal with local scoring, issuance gating, `did:chio`, and Agent Passport alpha implemented in the current pre-release v1 branch
 **Date:** 2026-03-23
 **Authors:** Chio Protocol Team
 
@@ -21,7 +21,7 @@ signed Merkle checkpoints and inclusion proofs.
 Every capability token records its scope, delegation chain, time bounds, and
 invocation budget.
 
-Those Phase 1 local persistence prerequisites are present in the current
+Those local persistence prerequisites are present in the current
 pre-release v1 branch:
 
 1. A capability lineage index keyed by `capability_id`, so receipts can be
@@ -30,7 +30,7 @@ pre-release v1 branch:
 2. Deterministic receipt-side attribution metadata, so a receipt can be joined
    to the matched grant and acting subject without inference.
 
-These are local storage changes, not new external telemetry. Phase 1 scoring
+These are local storage changes, not new external telemetry. Local scoring
 can therefore be computed reproducibly from persisted local state.
 
 Three properties make this uniquely valuable:
@@ -280,8 +280,8 @@ log provides:
 3. The `policy_hash` showing which policy was in effect
 4. The `evidence[]` array showing which guards ran and their verdicts
 
-Incident correlation is a manual/semi-automated process in Phase 1, becoming
-automated in Phase 3 when cross-organizational aggregation enables pattern
+Incident correlation is a manual/semi-automated process in the local stage,
+becoming automated once cross-organizational aggregation enables pattern
 detection across operators.
 
 ---
@@ -321,7 +321,7 @@ composite_score(agent) =
 where stewardship_fit = 1 - abs(resource_stewardship - target_utilization)
 ```
 
-**Phase 1 scoring rule:** unavailable metrics are `unknown`, not `0.0`.
+**Local scoring rule:** unavailable metrics are `unknown`, not `0.0`.
 When a metric cannot yet be computed because the required local join path is
 missing or the agent lacks enough history, weights are renormalized across the
 available metrics:
@@ -494,7 +494,7 @@ A receipt-derived reputation attestation maps to a W3C Verifiable Credential
 
 | VC Field | Chio Source |
 |----------|-----------------|
-| `@context` | `["https://www.w3.org/2018/credentials/v1", "https://chio.dev/credentials/v1"]` |
+| `@context` | `["https://www.w3.org/2018/credentials/v1", "https://chio.world/credentials/v1"]` |
 | `type` | `["VerifiableCredential", "ChioReputationAttestation"]` |
 | `issuer` | Kernel or authority key that computed the attestation |
 | `issuanceDate` | Attestation issuance time |
@@ -507,8 +507,9 @@ A receipt-derived reputation attestation maps to a W3C Verifiable Credential
 ### 5.2 Agent Passport
 
 An Agent Passport is a wallet-held bundle of one or more reputation
-attestations. Phase 2 can ship with single-issuer passports. Phase 3 expands
-them into richer cross-organizational bundles and composite attestations.
+attestations. The portable-credential stage can ship with single-issuer
+passports. The cross-organizational stage expands them into richer
+cross-organizational bundles and composite attestations.
 
 ```
 AgentPassport {
@@ -587,10 +588,11 @@ Agents may not want to reveal their full reputation history to every relying
 party. Selective disclosure allows an agent to prove specific claims without
 revealing the underlying data.
 
-**Baseline (Phase 2):** The agent presents a subset of VCs from its passport.
-Each VC contains aggregated metrics for a time period, not individual receipts.
+**Baseline (portable-credential stage):** The agent presents a subset of VCs
+from its passport. Each VC contains aggregated metrics for a time period, not
+individual receipts.
 
-**Advanced (Phase 3):** Zero-knowledge proofs over the Merkle tree allow the
+**Advanced (cross-organizational stage):** Zero-knowledge proofs over the Merkle tree allow the
 agent to prove statements like "my deny ratio is below 5% over the last 90
 days" without revealing which tools were used or which policies were in effect.
 See Section 8.2.
@@ -882,7 +884,7 @@ forced to reveal their full operational history).
 
 ### 8.1 Baseline: Aggregated Statistics Only
 
-In Phase 1, reputation is computed locally by each Kernel operator. Only
+In the local stage, reputation is computed locally by each Kernel operator. Only
 aggregated statistics are shared:
 
 - Composite score (single number)
@@ -896,9 +898,9 @@ Tier 2 somewhere?").
 
 ### 8.2 Advanced: ZK Proofs over Receipt Merkle Tree
 
-In Phase 3, zero-knowledge proofs enable privacy-preserving reputation
-verification. The Merkle tree structure of the receipt log is the proof
-substrate.
+In the cross-organizational stage, zero-knowledge proofs enable
+privacy-preserving reputation verification. The Merkle tree structure of the
+receipt log is the proof substrate.
 
 **Example provable statements:**
 
@@ -957,7 +959,7 @@ disclosure in the VC layer).
          v                          v                          v
 +--------+----------------------------------------------------+----------+
 |                                                                         |
-|                      Reputation Aggregator (Phase 3)                    |
+|                      Reputation Aggregator (cross-org)                  |
 |                                                                         |
 |  - Collects VCs from participating Kernels                              |
 |  - Computes cross-org composite scores                                  |
@@ -986,9 +988,9 @@ disclosure in the VC layer).
 
 1. Each Kernel produces receipts and commits them to its local Merkle tree
 2. Local reputation is computed from receipts plus local capability-lineage and
-   budget joins (Phase 1 -- no cross-org deps)
+   budget joins (local stage -- no cross-org deps)
 3. Kernels publish aggregated metrics and Merkle roots to the Reputation
-   Aggregator (Phase 3)
+   Aggregator (cross-organizational stage)
 4. The Aggregator validates proofs, computes cross-org scores, detects Sybil
    patterns
 5. The Aggregator issues VCs that agents collect into passports
@@ -1021,13 +1023,13 @@ validation:
 
 ### 10.2 Revenue Streams
 
-| Revenue Source | Description | Phase |
+| Revenue Source | Description | Stage |
 |---------------|-------------|-------|
-| Cross-org reputation queries | Per-query fee for composite score lookups | Phase 3 |
-| VC issuance | Fee per Verifiable Credential issued to agents | Phase 2 |
-| Compliance audits | Receipt log analysis for regulatory compliance | Phase 1 |
-| Premium analytics | Detailed behavioral analytics for Kernel operators | Phase 2 |
-| Reputation insurance | Coverage against losses from agents with good scores | Phase 3 |
+| Cross-org reputation queries | Per-query fee for composite score lookups | Cross-org |
+| VC issuance | Fee per Verifiable Credential issued to agents | Portable credentials |
+| Compliance audits | Receipt log analysis for regulatory compliance | Local |
+| Premium analytics | Detailed behavioral analytics for Kernel operators | Portable credentials |
+| Reputation insurance | Coverage against losses from agents with good scores | Cross-org |
 
 ### 10.3 Potential Network Effects
 
@@ -1048,12 +1050,12 @@ issuance, switching protocols also means rebuilding the integration.
 
 ---
 
-## 11. Implementation Phases
+## 11. Implementation Stages
 
-### Phase 1: Internal Reputation Computation
+### Internal Reputation Computation (local stage)
 
-**Timeline:** Ready to begin on top of the current local data substrate. Phase
-1 does not require cross-organizational coordination; it builds directly on
+**Timeline:** Ready to begin on top of the current local data substrate. This
+stage does not require cross-organizational coordination; it builds directly on
 the capability lineage index and receipt attribution path described in Section
 1.
 
@@ -1081,13 +1083,13 @@ the capability lineage index and receipt attribution path described in Section
   `chio reputation history <agent-id>`
 - Unit tests for all metric computations and tier transitions
 
-**Non-goals for Phase 1:**
+**Non-goals for this stage:**
 - No cross-organizational data sharing
 - No VC issuance
 - No DID method registration
 - No ZK proofs
 
-### Phase 2: Portable Credentials
+### Portable Credentials (portable-credential stage)
 
 **Timeline:** Active. `did:chio`, single-issuer passport creation, verification,
 filtered presentation, challenge-bound presentation, and local-versus-portable
@@ -1100,7 +1102,7 @@ distribution flows remain open.
 - Agent Passport data structure and serialization
 - VC issuance endpoint on the Kernel
 - Selective disclosure (present subset of VCs)
-- Single-issuer passports first; multi-issuer aggregation can remain a Phase 3 concern
+- Single-issuer passports first; multi-issuer aggregation can remain a cross-organizational-stage concern
 
 **Deliverables:**
 - `did:chio` method specification document
@@ -1112,12 +1114,12 @@ distribution flows remain open.
 - VC verification library for relying parties
 
 **Dependencies:**
-- Phase 1 must be stable (reputation metrics are the VC payload)
+- The local stage must be stable (reputation metrics are the VC payload)
 - Ed25519 key management must support key rotation (for DID updates)
 
-### Phase 3: Cross-Organizational Aggregation
+### Cross-Organizational Aggregation (cross-organizational stage)
 
-**Timeline:** After Phase 2 adoption
+**Timeline:** After portable-credential adoption
 
 **Scope:**
 - Reputation Aggregator service (receives VCs from multiple Kernels)
@@ -1134,6 +1136,6 @@ distribution flows remain open.
 - Compliance audit tooling
 
 **Dependencies:**
-- Phase 2 must be adopted by multiple organizations (need real cross-org data)
+- The portable-credential stage must be adopted by multiple organizations (need real cross-org data)
 - ZK proof toolchain selection (Groth16, Plonk, or Bulletproofs)
 - Legal framework for cross-organizational data sharing

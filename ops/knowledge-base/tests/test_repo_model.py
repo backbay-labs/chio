@@ -32,17 +32,17 @@ def test_file_info_classifies_crate_metadata() -> None:
 
 
 def test_file_info_classifies_package_metadata() -> None:
-    info = repo_model.file_info("packages/sdk/chio-cpp/src/client.cpp")
-    assert info.source_root == "packages"
-    assert info.package == "packages/sdk/chio-cpp"
+    info = repo_model.file_info("sdks/cpp/chio-cpp/src/client.cpp")
+    assert info.source_root == "sdks"
+    assert info.package == "sdks/cpp"
     assert info.language == "cpp"
-    assert info.validation_command == "npm test"
+    assert info.validation_command == ""
 
 
 def test_canonicality_and_generation() -> None:
     assert repo_model.file_info("spec/PROTOCOL.md").canonicality == "canonical"
     assert repo_model.file_info("docs/conformance/verdict-matrix.md").canonicality == "canonical"
-    assert repo_model.file_info(".planning/v3.14-MILESTONE-AUDIT.md").canonicality == "planning"
+    assert repo_model.file_info("docs/research/milestone-audit.md").canonicality == "planning"
     generated = repo_model.file_info("crates/chio-core-types/src/_generated/chio_wire_v1.rs")
     assert generated.is_generated is True
     assert generated.canonicality == "generated"

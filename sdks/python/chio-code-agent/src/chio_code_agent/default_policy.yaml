@@ -1,4 +1,4 @@
-# Chio code-agent default policy (Phase 4.1 / 4.2)
+# Chio code-agent default policy
 #
 # Zero-config policy for coding agents (Claude Code, Cursor, MCP clients).
 # Fail-closed: anything not explicitly allowed is denied.

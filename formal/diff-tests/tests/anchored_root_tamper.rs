@@ -1,6 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-//! Anchored-root tamper regression for M04 Phase 6.
+//! Anchored-root tamper regression.
 //!
 //! The canary replay fixture is used to build the same
 //! `(receipt_id, leaf_hash, inclusion_proof, root)` tuple shape as the
@@ -105,12 +105,17 @@ mod formal {
         use chio_anchor::AnchorError;
 
         use crate::{
-            build_rust_anchored_root_path, byte_diff_count, mutate_one_leaf_byte,
-            run_typescript_leaf_tamper, verify_rust_anchored_root_path, CANARY_RECEIPT_ID,
+            build_rust_anchored_root_path, byte_diff_count, command_available,
+            mutate_one_leaf_byte, run_typescript_leaf_tamper, verify_rust_anchored_root_path,
+            CANARY_RECEIPT_ID,
         };
 
         #[test]
         fn single_byte_flip_fails_closed_on_both() -> Result<(), String> {
+            if !command_available("bun", "--version") {
+                eprintln!("skipping TypeScript anchored-root tamper differential; bun not on PATH");
+                return Ok(());
+            }
             let path = build_rust_anchored_root_path()?;
             let tampered_leaf_bytes = mutate_one_leaf_byte(&path.leaf_bytes)?;
             assert_eq!(
@@ -189,6 +194,16 @@ fn verify_rust_anchored_root_path(
             "receipt inclusion Merkle proof verification failed".to_string(),
         ))
     }
+}
+
+fn command_available(program: &str, version_arg: &str) -> bool {
+    Command::new(program)
+        .arg(version_arg)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
 }
 
 fn run_typescript_leaf_tamper(receipt_id: &str) -> Result<TypeScriptTamperError, String> {

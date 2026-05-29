@@ -1,4 +1,4 @@
-//! Integration tests for the full output sanitizer (Phase 3.3).
+//! Integration tests for the full output sanitizer.
 //!
 //! These tests exercise every detector, Luhn validation (including false
 //! positives), allowlist / denylist, overlap resolution, each redaction
@@ -624,8 +624,8 @@ fn sanitize_json_helper_aggregates_findings() {
 
 #[test]
 fn acceptance_post_invocation_guard_redacts_everything() {
-    // Roadmap acceptance: "Post-invocation guard redacts SSNs, credit cards
-    // (Luhn-validated), API keys, and high-entropy strings from tool
+    // Acceptance criterion: "Post-invocation guard redacts SSNs, credit
+    // cards (Luhn-validated), API keys, and high-entropy strings from tool
     // results."
     let mut pipeline = PostInvocationPipeline::new();
     pipeline.add(Box::new(SanitizerHook::new()));

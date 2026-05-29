@@ -51,7 +51,7 @@ The builder creates one service value that:
 
 Advanced users can still drop to the lower-level kernel traits directly for custom streaming, resource templates, or transport-specific behavior.
 
-When you expose a native service through an Chio edge, the runtime contract does
+When you expose a native service through a Chio edge, the runtime contract does
 not change:
 
 - stdio and hosted edges still require `initialize` followed by `notifications/initialized`

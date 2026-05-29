@@ -1,4 +1,4 @@
-// IDE config emit targets for `arc mcp wrap`.
+// IDE config emit targets for `chio mcp wrap`.
 //
 // The four supported IDEs each have their own configuration shape; we
 // model the target as a `clap::ValueEnum` so the CLI surface is

@@ -5,7 +5,7 @@
 # does not duplicate logic. Source of truth for codegen stays in
 # `xtask/src/main.rs` and `xtask/codegen-tools.lock.toml`.
 #
-# Owner: M01 (single-owner trajectory, see EXECUTION-BOARD.md section 5).
+# Owner: see CODEOWNERS.
 
 .PHONY: codegen-check codegen-check-rust codegen-check-python codegen-check-ts codegen-check-go ts-codegen-deps kb-lock-check kb-up kb-down kb-reset kb-reseed kb-update kb-live kb-status kb-smoke kb-eval kb-seed-memory kb-dogfood
 
@@ -17,12 +17,12 @@ KB_DIR ?= ops/knowledge-base
 #     invokes `uv tool run --from datamodel-code-generator==<pin>`.
 #   - go (golang.org/dl) for the go lane; the regen script bundles schemas
 #     and feeds them to `oapi-codegen v2.4.1`.
-#   - npm (Node 18+) for the ts lane; we install the pinned
+#   - npm (Node 20+) for the ts lane; we install the pinned
 #     `json-schema-to-typescript@15.0.4` into
 #     `sdks/typescript/scripts/node_modules/` via `npm ci` automatically.
 # If any of uv / go is missing the per-language `cargo xtask codegen --lang
-# <lang> --check` step exits non-zero with a clear error message; we let
-# that surface rather than re-implementing the check here.
+# <lang> --check` step exits non-zero with a clear error message; that error
+# surfaces directly rather than being re-implemented here.
 
 # Aggregator target: runs all four codegen --check lanes in series and fails
 # if any one drifts from committed bytes. Used by the spec-drift CI workflow
@@ -37,8 +37,8 @@ codegen-check-python:
 	cargo xtask codegen --lang python --check
 
 # The ts lane needs the pinned `json-schema-to-typescript` install under
-# `sdks/typescript/scripts/node_modules/`. We run `npm ci` first as a
-# prerequisite so the gate is self-contained on a clean checkout.
+# `sdks/typescript/scripts/node_modules/`, so `npm ci` runs first as a
+# prerequisite (works from a clean checkout).
 codegen-check-ts: ts-codegen-deps
 	cargo xtask codegen --lang ts --check
 

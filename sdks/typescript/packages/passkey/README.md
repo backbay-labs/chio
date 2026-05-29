@@ -1,4 +1,4 @@
-# @chio/passkey
+# @chio-protocol/passkey
 
 Browser helper for the Chio hardware-custody flow.
 
@@ -13,7 +13,7 @@ The browser holds **zero** key material. The only crypto primitive touched
 here is `navigator.credentials.get`, which is platform-side and never
 returns a private key to the page. No envelope is signed in the browser;
 the reviewer-visible verdict at
-[`docs/trust-boundary-browser-signing.md`](../../../../../../docs/trust-boundary-browser-signing.md)
+[`docs/trust-boundary-browser-signing.md`](../../../../docs/trust-boundary-browser-signing.md)
 (status: `rejected`, 2026-04-27) explicitly forbids browser-side signing.
 The hardware-custody design satisfies that verdict by issuing
 audience-pinned capabilities server-side; this package is the thin call

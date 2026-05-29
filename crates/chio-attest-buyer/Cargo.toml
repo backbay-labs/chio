@@ -20,6 +20,5 @@ serde_json = { workspace = true }
 [dev-dependencies]
 chio-core-types = { path = "../chio-core-types" }
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

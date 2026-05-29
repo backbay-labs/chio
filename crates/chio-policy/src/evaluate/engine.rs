@@ -39,9 +39,11 @@ pub fn evaluate(spec: &HushSpec, action: &EvaluationAction) -> EvaluationResult 
         "computer_use" => evaluate_computer_use(spec, action, posture, origin_profile_id),
         "input_inject" => evaluate_input_injection(spec, action, posture, origin_profile_id),
         _ => EvaluationResult {
-            decision: Decision::Allow,
+            decision: Decision::Deny,
             matched_rule: None,
-            reason: Some("no reference evaluator rule for this action type".to_string()),
+            reason: Some(
+                "no reference evaluator rule for this action type; denying fail-closed".to_string(),
+            ),
             origin_profile: origin_profile_id,
             posture,
         },
@@ -71,6 +73,21 @@ pub fn evaluate_with_context(
 
     if let Some(denied) = posture_capability_guard(action, &posture, spec, &origin_profile_id) {
         return denied;
+    }
+
+    // Reject condition maps that reference unknown rule-block names before
+    // filtering, so a misspelled key fails closed instead of silently leaving
+    // its target rule active (which apply_conditions would otherwise no-op).
+    if let Err(reason) = validate_condition_keys(conditions) {
+        return EvaluationResult {
+            decision: Decision::Deny,
+            matched_rule: None,
+            reason: Some(format!(
+                "invalid policy condition keys; denying fail-closed: {reason}"
+            )),
+            origin_profile: None,
+            posture: None,
+        };
     }
 
     let effective_spec = apply_conditions(spec, context, conditions);
@@ -125,9 +142,11 @@ pub fn evaluate_with_context(
             evaluate_input_injection(&effective_spec, action, posture, origin_profile_id)
         }
         _ => EvaluationResult {
-            decision: Decision::Allow,
+            decision: Decision::Deny,
             matched_rule: None,
-            reason: Some("no reference evaluator rule for this action type".to_string()),
+            reason: Some(
+                "no reference evaluator rule for this action type; denying fail-closed".to_string(),
+            ),
             origin_profile: origin_profile_id,
             posture,
         },

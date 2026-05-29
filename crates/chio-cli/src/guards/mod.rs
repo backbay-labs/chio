@@ -1,6 +1,6 @@
 //! CLI subcommands for WASM guard module signing and verification.
 //!
-//! Phase 1.3 (WASM Guard Module Signing): requires Ed25519 signatures on
+//! WASM Guard Module Signing: requires Ed25519 signatures on
 //! `.wasm` guard binaries. This module provides:
 //!
 //! - `chio guard sign <wasm> --key <seed-file>` -- produce a `.wasm.sig` sidecar

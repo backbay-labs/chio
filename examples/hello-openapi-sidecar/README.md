@@ -9,7 +9,7 @@ framework-specific integrations.
 
 ## What It Demonstrates
 
-- `GET /hello` is allowed through the sidecar and returns an Chio receipt header
+- `GET /hello` is allowed through the sidecar and returns a Chio receipt header
 - `POST /echo` is denied by the sidecar without a capability token
 - `POST /echo` succeeds with a trust-issued capability token
 - the app itself is a plain Python HTTP server with no Chio coupling

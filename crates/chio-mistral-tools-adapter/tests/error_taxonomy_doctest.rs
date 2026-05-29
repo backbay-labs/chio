@@ -18,7 +18,7 @@ struct TaxonomyRow {
 fn adapter() -> MistralAdapter {
     let config = MistralAdapterConfig::new(
         "mistral-1",
-        "Mistral generateContent",
+        "Mistral chat/completions",
         "0.1.0",
         "deadbeef",
         "org_chio_demo",
@@ -40,14 +40,19 @@ fn allow_verdict() -> VerdictResult {
 }
 
 fn malformed_stream() -> Vec<u8> {
-    br#"data: {"event": "content_block_delta", "frame": "missing-functionCall"}
+    // A well-formed Mistral chunk whose delta carries plain content and no
+    // tool_calls: there is nothing to gate, so this frame is forwarded as-is.
+    br#"data: {"object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "thinking"}}]}
 
 "#
     .to_vec()
 }
 
 fn function_call_stream() -> Vec<u8> {
-    br#"data: {"candidates": [{"content": {"parts": [{"functionCall": {"name": "get_weather", "args": {"city": "Paris"}}}]}}]}
+    // Mistral is OpenAI-compatible: a streaming chunk carries the tool call at
+    // choices[].delta.tool_calls[] with `function.arguments` as a JSON-encoded
+    // string.
+    br#"data: {"id": "chatcmpl_taxonomy", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"id": "call_weather_1", "type": "function", "function": {"name": "get_weather", "arguments": "{\"city\":\"Paris\"}"}}]}}]}
 
 "#
     .to_vec()
@@ -97,22 +102,32 @@ fn current_adapter_paths_match_documented_classes() -> Result<(), String> {
 
     let adapter = adapter();
 
+    // Mistral is OpenAI-compatible. When `tool_calls[].function.arguments` is a
+    // non-string, non-object scalar the adapter refuses it: it cannot canonicalize
+    // into the JSON object the kernel requires, so it fails closed as BadToolArgs.
     let bad_args = adapter.lift_batch(raw(json!({
-        "candidates": [{
-            "content": {
-                "parts": [
-                    {"functionCall": {"name": "get_weather", "args": "not-an-object"}}
-                ]
-            }
+        "id": "chatcmpl_bad_args",
+        "object": "chat.completion",
+        "choices": [{
+            "index": 0,
+            "message": {
+                "role": "assistant",
+                "tool_calls": [{
+                    "id": "call_bad_args_1",
+                    "type": "function",
+                    "function": {"name": "get_weather", "arguments": 42}
+                }]
+            },
+            "finish_reason": "tool_calls"
         }]
     }))?);
     require_provider_error(bad_args, "BadToolArgs")?;
 
     let malformed = adapter.gate_sse_stream(&malformed_stream(), |_invocation| Ok(allow_verdict()));
-    // The stub stream contains no functionCall parts, so gating succeeds; we
+    // The content-only chunk carries no tool_calls, so gating succeeds; we
     // separately confirm an actually malformed JSON SSE produces Malformed.
     if malformed.is_err() {
-        // Acceptable; the unsupported event field path returns Malformed.
+        // Acceptable; an unparseable frame returns Malformed.
     } else {
         let _ = malformed;
     }

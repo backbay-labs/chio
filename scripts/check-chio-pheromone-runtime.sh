@@ -201,7 +201,7 @@ if [[ "$MODE" == "negative-only" ]]; then
 fi
 
 cargo test -p chio-pheromone-runtime
-cargo test -p chio-cli --bin chio_pheromone
+cargo test -p chio-cli --bin chio chio_pheromone
 
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT

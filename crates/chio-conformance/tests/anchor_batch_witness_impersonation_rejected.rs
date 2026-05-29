@@ -12,7 +12,7 @@
 //! - SET forgery: the mirror returns a syntactically-valid Rekor
 //!   entry with a `signedEntryTimestamp` signed by an attacker-held
 //!   key (NOT the pinned Sigstore key). The verifier must reject on
-//!   `SignatureInvalid`. Added in PR #594 review (HIGH-3).
+//!   `SignatureInvalid`.
 //!
 //! Test scaffolding: a `tiny_http` mock binds 127.0.0.1:0 and a
 //! `RekorClient::new(...).with_trusted_keys(...)` is configured with
@@ -306,7 +306,7 @@ fn rekor_verify_inclusion_rejects_uuid_substitution() {
     let _ = Method::Get;
 }
 
-/// HIGH-3: a malicious mirror returns a SET signed by an attacker-held
+/// A malicious mirror returns a SET signed by an attacker-held
 /// key. Even though the body-hash matches our batch, the verifier
 /// must refuse the entry because the SET does not verify under any
 /// pinned Rekor public key.
@@ -377,7 +377,7 @@ fn rekor_verify_inclusion_rejects_set_signed_by_untrusted_key() {
     }
 }
 
-/// HIGH-3 (positive control): when the SET is signed by a key in the
+/// Positive control: when the SET is signed by a key in the
 /// client's trusted set, verify_inclusion accepts the entry. Pairs
 /// with the negative test above so a regression in either direction
 /// is observable.

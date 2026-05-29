@@ -54,7 +54,7 @@
         "crates/chio-adversarial-suite/cases/scope_superset/scope-superset-003.json",
         "crates/chio-adversarial-suite/cases/scope_superset/scope-superset-005.json"
       ],
-      "deferred_to": "trajectory-5.1 strict threat-mutants evidence backfill: row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
+      "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
     },
     {
       "id": "kernel_impersonation",
@@ -92,7 +92,7 @@
         "crates/chio-adversarial-suite/cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-003.json",
         "crates/chio-adversarial-suite/cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-005.json"
       ],
-      "deferred_to": "trajectory-5.1 strict threat-mutants evidence backfill: row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
+      "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
     },
     {
       "id": "tool_server_escape",
@@ -116,7 +116,7 @@
       ],
       "residualRisk": "Chio mediation does not by itself sandbox arbitrary tool-server code; a compromised tool process can still abuse whatever host privileges the operator granted it.",
       "coverage_state": "pending",
-      "deferred_to": "trajectory-5.1 strict threat-mutants evidence backfill: row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed; previous deferred scope: future milestone (kernel-side tool-server dispatch sandbox-escape coverage; current tests close the wasm-guard host-import + fuel paths only, see audits/evidence/threats/tool_server_escape.json::deferred_follow_up)",
+      "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed; previous deferred scope: future milestone (kernel-side tool-server dispatch sandbox-escape coverage; current tests close the wasm-guard host-import + fuel paths only, see audits/evidence/threats/tool_server_escape.json::deferred_follow_up)",
       "coveredBy": [
         "crates/chio-conformance/tests/threats/tool_server_escape.rs",
         "crates/chio-adversarial-suite/cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-004.json",
@@ -159,7 +159,7 @@
         "crates/chio-adversarial-suite/cases/replayed_nonce/replayed-nonce-003.json",
         "crates/chio-adversarial-suite/cases/revocation_rollback/revocation-rollback-003.json"
       ],
-      "deferred_to": "trajectory-5.1 strict threat-mutants evidence backfill: row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
+      "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
     },
     {
       "id": "resource_exhaustion_dos",
@@ -193,7 +193,7 @@
         "crates/chio-wasm-guards/tests/escape/deep_recursion.rs",
         "crates/chio-wasm-guards/tests/escape/table_grow.rs"
       ],
-      "deferred_to": "trajectory-5.1 strict threat-mutants evidence backfill: row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
+      "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
     },
     {
       "id": "delegation_chain_abuse",
@@ -233,7 +233,7 @@
         "crates/chio-adversarial-suite/cases/scope_superset/scope-superset-002.json",
         "crates/chio-adversarial-suite/cases/scope_superset/scope-superset-004.json"
       ],
-      "deferred_to": "trajectory-5.1 strict threat-mutants evidence backfill: row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
+      "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
     },
     {
       "id": "ssrf_via_http_substrate",
@@ -262,7 +262,7 @@
         "crates/chio-http-core/tests/http_egress_contract.rs",
         "crates/chio-conformance/tests/threats/ssrf_via_http_substrate.rs"
       ],
-      "deferred_to": "trajectory-5.1 strict threat-mutants evidence backfill: row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
+      "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
     },
     {
       "id": "pii_phi_exposure",
@@ -289,7 +289,7 @@
       "coveredBy": [
         "crates/chio-conformance/tests/threats/pii_phi_exposure.rs"
       ],
-      "deferred_to": "trajectory-5.1 strict threat-mutants evidence backfill: row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
+      "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
     },
     {
       "id": "agent_velocity_abuse",
@@ -319,7 +319,7 @@
       "coveredBy": [
         "crates/chio-conformance/tests/threats/agent_velocity_abuse.rs"
       ],
-      "deferred_to": "trajectory-5.1 strict threat-mutants evidence backfill: row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
+      "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
     },
     {
       "id": "cumulative_data_exfiltration",
@@ -346,7 +346,7 @@
       "coveredBy": [
         "crates/chio-conformance/tests/threats/cumulative_data_exfiltration.rs"
       ],
-      "deferred_to": "trajectory-5.1 strict threat-mutants evidence backfill: row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
+      "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
     },
     {
       "id": "behavioral_sequence_attack",
@@ -373,7 +373,7 @@
       "coveredBy": [
         "crates/chio-conformance/tests/threats/behavioral_sequence_attack.rs"
       ],
-      "deferred_to": "trajectory-5.1 strict threat-mutants evidence backfill: row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
+      "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
     },
     {
       "id": "wasm_guard_resource_exhaustion",
@@ -400,7 +400,7 @@
       "coveredBy": [
         "crates/chio-conformance/tests/threats/wasm_guard_resource_exhaustion.rs"
       ],
-      "deferred_to": "trajectory-5.1 strict threat-mutants evidence backfill: row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
+      "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
     },
     {
       "id": "pq_signature_downgrade",
@@ -426,7 +426,7 @@
       ],
       "residualRisk": "Until hybrid signature verification and cryptographic-floor enforcement ship, operators must treat post-quantum protection as planned rather than available.",
       "coverage_state": "pending",
-      "deferred_to": "trajectory-5.1 strict threat-mutants evidence backfill: row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed; previous deferred scope: future milestone (hybrid-PQ artifact downgrade vector; current test closes the classical-only verifier-side rejection path only, see audits/evidence/threats/pq_signature_downgrade.json::deferred_follow_up)",
+      "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed; previous deferred scope: future milestone (hybrid-PQ artifact downgrade vector; current test closes the classical-only verifier-side rejection path only, see audits/evidence/threats/pq_signature_downgrade.json::deferred_follow_up)",
       "covered_by_tests": [
         "crates/chio-attest-verify/tests/migration.rs::end_to_end_migration_walks_three_stages",
         "crates/chio-attest-verify/tests/migration.rs::stage3_pq_required_accepts_rolled_hybrid_and_rejects_v318_bundle",
@@ -467,7 +467,7 @@
         "crates/chio-attest-verify/tests/nitro_root_rotation.rs",
         "crates/chio-kernel/tests/pq_key_load_after_self_quote.rs::allow_hybrid_loads_pq_only_after_verified_self_quote"
       ],
-      "deferred_to": "trajectory-5.1 strict threat-mutants evidence backfill: row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
+      "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
     },
     {
       "id": "passkey_credential_theft",
@@ -502,7 +502,7 @@
         "crates/chio-custody-hw/tests/end_to_end.rs",
         "crates/chio-conformance/tests/threats/passkey_credential_theft.rs"
       ],
-      "deferred_to": "trajectory-5.1 strict threat-mutants evidence backfill: row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
+      "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
     },
     {
       "id": "audience_confusion",
@@ -533,7 +533,7 @@
         "crates/chio-custody-hw/tests/audience_confusion.rs",
         "crates/chio-conformance/tests/threats/audience_confusion.rs"
       ],
-      "deferred_to": "trajectory-5.1 strict threat-mutants evidence backfill: row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
+      "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
     },
     {
       "id": "weights_hash_spoof",
@@ -568,7 +568,7 @@
         "crates/chio-weights/tests/lineage_anchor.rs",
         "crates/chio-weights/tests/equivalence.rs"
       ],
-      "deferred_to": "trajectory-5.1 strict threat-mutants evidence backfill: row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
+      "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
     },
     {
       "id": "mobile_attestation_replay",
@@ -599,7 +599,7 @@
         "crates/chio-custody-hw/tests/attestation_app_attest.rs",
         "crates/chio-custody-hw/tests/attestation_play_integrity.rs"
       ],
-      "deferred_to": "trajectory-5.1 strict threat-mutants evidence backfill: row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
+      "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
     },
     {
       "id": "device_key_extraction",
@@ -623,14 +623,14 @@
           "control": "The issued capability must carry a trust-level marker so downgraded Android API 26-27 devices cannot claim StrongBox-backed custody."
         }
       ],
-      "residualRisk": "A fully compromised mobile OS can still interfere with UI and request timing; M07 only prevents export of the device-bound signing key from being treated as normal custody.",
+      "residualRisk": "A fully compromised mobile OS can still interfere with UI and request timing; this control only prevents export of the device-bound signing key from being treated as normal custody.",
       "coverage_state": "pending",
       "coveredBy": [
         "crates/chio-conformance/tests/threats/device_key_extraction.rs",
         "crates/chio-custody-hw/tests/attestation_app_attest.rs",
         "crates/chio-custody-hw/tests/attestation_play_integrity.rs"
       ],
-      "deferred_to": "trajectory-5.1 strict threat-mutants evidence backfill: row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
+      "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
     },
     {
       "id": "play_integrity_token_replay",
@@ -659,7 +659,7 @@
         "crates/chio-conformance/tests/threats/play_integrity_token_replay.rs",
         "crates/chio-custody-hw/tests/attestation_play_integrity.rs"
       ],
-      "deferred_to": "trajectory-5.1 strict threat-mutants evidence backfill: row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
+      "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
     }
   ],
   "transportRequirements": {

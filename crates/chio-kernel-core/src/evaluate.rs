@@ -375,7 +375,7 @@ pub fn evaluate_with_full_floor(
     trust_root: &dyn TrustRootResolver,
     budgets: &mut dyn BudgetRegistry,
 ) -> EvaluationVerdict {
-    // Step 1: capability verification with all Wave 1 defenses except
+    // Step 1: capability verification with all defenses except
     // persistent sibling-sum admission. Admission mutates the supplied
     // registry, so defer it until subject, scope, and guard checks have
     // passed. Otherwise a validly signed token for the wrong request can

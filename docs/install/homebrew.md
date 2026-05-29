@@ -3,7 +3,7 @@
 ## One-line install
 
 ```bash
-curl -fsSL -o /tmp/chio.rb https://github.com/bb-connor/chio/releases/latest/download/chio.rb
+curl -fsSL -o /tmp/chio.rb https://github.com/backbay-labs/chio/releases/latest/download/chio.rb
 brew install --formula /tmp/chio.rb
 ```
 
@@ -16,7 +16,7 @@ result as the `chio.rb` release asset alongside the platform archives.
 ## Upgrading
 
 ```bash
-curl -fsSL -o /tmp/chio.rb https://github.com/bb-connor/chio/releases/latest/download/chio.rb
+curl -fsSL -o /tmp/chio.rb https://github.com/backbay-labs/chio/releases/latest/download/chio.rb
 brew upgrade --formula /tmp/chio.rb
 ```
 

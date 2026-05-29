@@ -9,8 +9,7 @@
 //!   * Empty parent pool, zero generations, and zero fitness rounds are
 //!     fail-closed.
 //!   * Determinism: same witness produces byte-identical traces (this is
-//!     also covered exhaustively by `coevolve_determinism.rs`, which is
-//!     P4.T6).
+//!     also covered exhaustively by `coevolve_determinism.rs`).
 
 use std::time::Duration;
 

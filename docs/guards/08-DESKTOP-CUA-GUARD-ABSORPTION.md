@@ -1,18 +1,18 @@
 # Desktop and CUA Guard Absorption
 
-This document specifies how the three ClawdStrike desktop/CUA guards will be
+This document specifies how the three upstream desktop/CUA guards will be
 absorbed into the Chio kernel as first-class action types, native guards, and
 WASM guard extension points. Chio currently has zero coverage for desktop agent,
-browser extension, and computer use surfaces. ClawdStrike has three guards that
+browser extension, and computer use surfaces. The upstream suite has three guards that
 cover this surface completely.
 
 ---
 
-## 1. ClawdStrike Guards: What They Do
+## 1. Upstream Guards: What They Do
 
 ### 1.1 `ComputerUseGuard`
 
-**File:** `clawdstrike/src/guards/computer_use.rs`
+**File:** the upstream `computer_use` guard module
 
 The top-level gatekeeper for all CUA actions. Handles any `GuardAction::Custom`
 where the custom type starts with `"remote."` or `"input."`. Operates in three
@@ -40,7 +40,7 @@ the specialized guards below inspect the details.
 
 ### 1.2 `InputInjectionCapabilityGuard`
 
-**File:** `clawdstrike/src/guards/input_injection_capability.rs`
+**File:** the upstream `input_injection_capability` guard module
 
 Specialized guard for `input.inject` actions. Validates two things:
 
@@ -62,7 +62,7 @@ hash ties input injection to the screen capture verification loop.
 
 ### 1.3 `RemoteDesktopSideChannelGuard`
 
-**File:** `clawdstrike/src/guards/remote_desktop_side_channel.rs`
+**File:** the upstream `remote_desktop_side_channel` guard module
 
 Controls six named side channels on remote desktop sessions. Each channel has
 an independent enable/disable toggle:
@@ -90,7 +90,7 @@ and fail-closed handling of unknown channels.
 
 ### 1.4 Guard Interaction Model
 
-The three guards form a layered pipeline in ClawdStrike:
+The three guards form a layered pipeline in the upstream guard suite:
 
 ```
   ComputerUseGuard          (coarse gate: is this CUA action type permitted?)
@@ -105,7 +105,7 @@ The three guards form a layered pipeline in ClawdStrike:
 The `ComputerUseGuard` uses prefix matching (`remote.*`, `input.*`) to claim
 all CUA actions. The two specialized guards claim specific action subtypes.
 When all three are registered, the coarse gate runs first (because
-ClawdStrike's pipeline processes guards in registration order). If it denies,
+The upstream pipeline processes guards in registration order). If it denies,
 the specialized guards never run. If it allows, the specialized guard for the
 specific action type gets a second pass with deeper inspection.
 
@@ -299,15 +299,15 @@ They invoke tools like `navigate`, `click_element`, `type_text`, `screenshot`.
 | `BrowserInputGuard` (new) | `BrowserAction(Type\|Click\|FormSubmit, _)` | Credential detection in type actions, form submission control |
 | `ScreenCaptureGuard` | `ScreenCapture(*)` | Page screenshot control, OCR for sensitive content detection |
 
-Browser agents need guards that ClawdStrike does not have: domain allowlisting
+Browser agents need guards that the upstream suite does not have: domain allowlisting
 for navigation (preventing the agent from visiting arbitrary sites) and
 credential detection in form fields (preventing the agent from typing passwords
 into phishing pages).
 
 ### 3.3 Computer use (Anthropic CUA, remote desktop control)
 
-This is the original ClawdStrike deployment target. The agent controls a remote
-desktop session via RDP/VNC/etc. All three ClawdStrike guards apply directly.
+This is the original upstream deployment target. The agent controls a remote
+desktop session via RDP/VNC/etc. All three upstream guards apply directly.
 
 | Guard | Action types handled | Platform behavior |
 |-------|---------------------|-------------------|
@@ -320,14 +320,14 @@ desktop session via RDP/VNC/etc. All three ClawdStrike guards apply directly.
 
 ## 4. Refactoring Plan for Chio's Sync Guard Trait
 
-ClawdStrike's `Guard` trait is async (`async fn check`). Chio's kernel `Guard`
+The upstream `Guard` trait is async (`async fn check`). Chio's kernel `Guard`
 trait is synchronous (`fn evaluate`). The existing absorption path from
-ClawdStrike to Chio (`chio-guards` crate) wraps async guards in sync
+The upstream-to-Chio adapter (`chio-guards` crate) wraps async guards in sync
 implementations. The CUA guards need the same treatment.
 
 ### 4.1 Current state
 
-**ClawdStrike:**
+**Upstream:**
 ```rust
 #[async_trait]
 pub trait Guard: Send + Sync {
@@ -352,13 +352,13 @@ Key differences:
 2. **No `GuardAction` dispatch in Chio.** Chio uses `ToolAction` (extracted by
    the host from `ToolCallRequest` fields), not a `GuardAction` enum passed
    to the guard.
-3. **Sync vs async.** All three ClawdStrike CUA guards perform no I/O in their
+3. **Sync vs async.** All three upstream CUA guards perform no I/O in their
    `check` methods -- they do pure in-memory allowlist lookups. The sync
    constraint is not a blocker.
 
 ### 4.2 Absorption strategy
 
-Each ClawdStrike guard becomes an Chio guard that:
+Each upstream guard becomes a Chio guard that:
 
 1. Calls `extract_action(ctx.request.tool_name, ctx.request.arguments)` to get
    a `ToolAction`.
@@ -391,7 +391,7 @@ impl Guard for ComputerUseGuard {
 
 ### 4.3 Mapping table
 
-| ClawdStrike guard | Chio guard name | `ToolAction` variants consumed |
+| upstream guard | Chio guard name | `ToolAction` variants consumed |
 |------------------|----------------|-------------------------------|
 | `ComputerUseGuard` | `ComputerUseGuard` | `DesktopAction(*, _)` |
 | `InputInjectionCapabilityGuard` | `InputInjectionGuard` | `DesktopAction(KeyboardInput\|MouseInput\|TouchInput, _)` |
@@ -440,7 +440,7 @@ browser_navigation:
 ### 5.2 Action-type restrictions
 
 `ComputerUseGuard` restricts which `DesktopActionType` variants are permitted.
-This is the direct port of ClawdStrike's `allowed_actions` set. Configuration:
+This is the direct port of the upstream `allowed_actions` set. Configuration:
 
 ```rust
 pub struct ComputerUseConfig {
@@ -450,7 +450,7 @@ pub struct ComputerUseConfig {
 }
 ```
 
-The `EnforcementMode` enum mirrors ClawdStrike's `ComputerUseMode`:
+The `EnforcementMode` enum mirrors the upstream `ComputerUseMode`:
 - `Observe`: log all actions, never deny
 - `Guardrail`: allow known actions, warn on unknown (default)
 - `FailClosed`: allow known actions, deny on unknown
@@ -514,7 +514,7 @@ This prevents an agent from exfiltrating screen content at high frequency.
 
 The native guards (section 4) handle the standard 80% of CUA policy. The WASM
 guard system handles the custom 20% -- the same split described in
-[04-HUSHSPEC-CLAWDSTRIKE-INTEGRATION.md](04-HUSHSPEC-CLAWDSTRIKE-INTEGRATION.md).
+[04-HUSHSPEC-POLICY-INTEGRATION.md](04-HUSHSPEC-POLICY-INTEGRATION.md).
 
 Custom CUA policies as WASM guards:
 
@@ -592,7 +592,7 @@ This follows the same pattern as the example guards in
 ## 7. Priority Ordering
 
 CUA guards slot into the existing pipeline ordering defined in
-[04-HUSHSPEC-CLAWDSTRIKE-INTEGRATION.md](04-HUSHSPEC-CLAWDSTRIKE-INTEGRATION.md):
+[04-HUSHSPEC-POLICY-INTEGRATION.md](04-HUSHSPEC-POLICY-INTEGRATION.md):
 
 ```
 1. HushSpec-compiled guards          (native Rust, fast, standard policy)
@@ -634,11 +634,11 @@ Rationale:
 - Add `target_url` and `desktop_target` accessors
 - Unit tests for all new extraction paths
 
-### Phase 2: Core CUA guards (direct ClawdStrike port)
+### Phase 2: Core CUA guards (direct upstream port)
 
-- `ComputerUseGuard` -- port from ClawdStrike, adapt to sync `Guard` trait
-- `InputInjectionGuard` -- port from ClawdStrike, map to `DesktopAction` subtypes
-- `SideChannelGuard` -- port from ClawdStrike, map to `DesktopAction` subtypes
+- `ComputerUseGuard` -- port from the upstream guard suite, adapt to sync `Guard` trait
+- `InputInjectionGuard` -- port from the upstream guard suite, map to `DesktopAction` subtypes
+- `SideChannelGuard` -- port from the upstream guard suite, map to `DesktopAction` subtypes
 - Integration tests with `GuardPipeline`
 
 ### Phase 3: Browser and screen guards (new)
@@ -684,7 +684,7 @@ Rationale:
    separate crate might be cleaner. Counter-argument: all guards should live
    together for a unified pipeline.
 
-2. **Postcondition probe verification.** ClawdStrike checks for the *presence*
+2. **Postcondition probe verification.** The upstream suite checks for the *presence*
    of a `postcondition_probe_hash` but does not verify it against anything. In
    Chio, should the kernel verify the hash against the receipt log (proving the
    agent actually captured and processed a screenshot)?

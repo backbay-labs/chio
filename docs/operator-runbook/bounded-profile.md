@@ -1,7 +1,7 @@
 # Bounded Operational Profile
 
 This page imports the bounded release claim from
-`docs/release/OPERATIONS_RUNBOOK.md` lines 13-26 and applies it to the M01
+`docs/release/OPERATIONS_RUNBOOK.md` lines 13-26 and applies it to the
 healthcare design-partner pilot. The constant name for this release gate is
 BOUNDED_OPERATIONAL_PROFILE.
 
@@ -19,7 +19,7 @@ The current ship boundary is:
 - **receipts and checkpoints:** signed local audit evidence with checkpoint
   export and inclusion-proof material; not public transparency-log semantics
 
-## M01 Interpretation
+## Pilot Interpretation
 
 For this pilot, the imported boundary means:
 
@@ -46,10 +46,10 @@ The pilot does not claim:
 - Public transparency-log inclusion.
 - Consensus-backed trust-control availability.
 - Distributed-linearizable monetary budgets.
-- HIPAA certification by M01 alone.
+- HIPAA certification by this pilot alone.
 
-These are outside the M01 release boundary. HITRUST i1 evidence is owned by
-M09 and consumes this runbook only after M01 closure.
+These are outside the current release boundary. HITRUST i1 evidence consumes
+this runbook only after the pilot closes.
 
 ## Operating Rules
 

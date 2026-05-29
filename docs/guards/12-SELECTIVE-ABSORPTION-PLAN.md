@@ -1,7 +1,7 @@
 # Selective Absorption: Async Runtime, Threat Intel, Custom Registry, DPoP
 
 This document closes the three documentation gaps identified in the
-ClawdStrike-to-Chio porting audit. Docs 06-11 cover the "absorb now" items
+upstream-to-Chio porting audit. Docs 06-11 cover the "absorb now" items
 (6 guards, 3 subsystems, data layer). This doc covers the "absorb
 selectively" items -- components where we take the pattern but refactor
 for Chio's architecture rather than copying code.
@@ -10,14 +10,14 @@ Also closes the partial gap on WASM guard registry unification.
 
 ---
 
-## 1. Custom Guard Registry: Merging ClawdStrike's `custom.rs` with `chio-wasm-guards`
+## 1. Custom Guard Registry: Merging the upstream `custom.rs` with `chio-wasm-guards`
 
-### 1.1 What ClawdStrike Has
+### 1.1 What the Upstream Suite Has
 
 `guards/custom.rs` (605 lines) implements dynamic guard loading:
 
 ```rust
-// ClawdStrike types
+// upstream types
 trait CustomGuardFactory: Send + Sync {
     fn build(&self, config: Value) -> Result<Box<dyn Guard>>;
 }
@@ -53,15 +53,15 @@ config (`resolve_placeholders_in_json`), and returns `Vec<Chio<dyn AsyncGuard>>`
 
 ### 1.3 Unification Plan
 
-Chio's WASM runtime is more mature than ClawdStrike's plugin loader. The
+Chio's WASM runtime is more mature than the upstream plugin loader. The
 merge direction is: keep `chio-wasm-guards` as the runtime, absorb
-ClawdStrike's registry and policy-driven instantiation patterns.
+The upstream registry and policy-driven instantiation patterns.
 
-**What to take from ClawdStrike:**
+**What to take from the upstream guard suite:**
 
 1. **Policy-driven guard declaration.** The policy YAML should declare
    which WASM guards to load and their config (already planned in doc 09,
-   section 5). ClawdStrike's `build_async_guards()` pattern of reading
+   section 5). The upstream `build_async_guards()` pattern of reading
    policy config and instantiating guards is the model.
 
 2. **Placeholder resolution.** `resolve_placeholders_in_json()` substitutes
@@ -69,19 +69,19 @@ ClawdStrike's registry and policy-driven instantiation patterns.
    values. Useful for API keys in threat intel guard configs. Port this
    as a utility in `chio-wasm-guards`.
 
-3. **Package name registry.** ClawdStrike maps package name strings to
+3. **Package name registry.** The upstream suite maps package name strings to
    guard constructors. Chio should use WASM module paths (from manifest)
    as the registry key, not package names. The manifest already declares
    the module path.
 
-4. **Capability intersection.** ClawdStrike intersects requested
+4. **Capability intersection.** The upstream suite intersects requested
    capabilities with granted capabilities before loading a plugin. Chio's
    WASM runtime should do the same: the manifest declares what host
    functions the guard needs; the runtime grants only those.
 
 **What to drop:**
 
-- ClawdStrike's `CustomGuardFactory` trait -- Chio uses the WASM ABI
+- the upstream `CustomGuardFactory` trait -- Chio uses the WASM ABI
   (`evaluate(ptr, len) -> i32`) instead of dynamic Rust trait objects.
 - Async guard trait -- WASM guards in Chio are synchronous (v1 decision,
   doc 05). Async WASM is a v2 concern.
@@ -101,7 +101,7 @@ pub fn load_guards_from_policy(
     for spec in &policy.custom_guards {
         let module_path = manifest_dir.join(&spec.module);
 
-        // Path traversal protection (from ClawdStrike)
+        // Path traversal protection (from the upstream guard suite)
         let canonical = module_path.canonicalize()
             .map_err(|_| WasmGuardError::PathTraversal)?;
         if !canonical.starts_with(manifest_dir) {
@@ -134,7 +134,7 @@ pub fn load_guards_from_policy(
 
 ## 2. Async Guard Runtime: Resilience Patterns for Chio
 
-### 2.1 What ClawdStrike Has
+### 2.1 What the Upstream Suite Has
 
 `async_guards/runtime.rs` is a substantial async orchestration layer:
 
@@ -189,7 +189,7 @@ pipeline.
 
 Chio should NOT make the core guard trait async. Instead, provide an
 optional `AsyncGuardAdapter` that wraps external-calling guards with
-ClawdStrike's resilience patterns:
+The upstream resilience patterns:
 
 ```rust
 /// Async guard adapter that wraps an external-calling guard with
@@ -283,7 +283,7 @@ impl<G: ExternalGuard> Guard for AsyncGuardAdapter<G> {
 }
 ```
 
-### 2.4 Supporting Types (Port from ClawdStrike)
+### 2.4 Supporting Types (Port from the upstream guard suite)
 
 ```rust
 /// Circuit breaker state machine.
@@ -357,9 +357,9 @@ precision; the external adapter needs a simpler per-guard bucket).
 
 ### 2.6 Execution Modes
 
-ClawdStrike's three execution modes map to Chio's pipeline as follows:
+The upstream three execution modes map to Chio's pipeline as follows:
 
-| ClawdStrike Mode | Chio Equivalent |
+| Upstream Mode | Chio Equivalent |
 |------------------|----------------|
 | Sequential | Default: guards run in `Vec<Box<dyn Guard>>` order |
 | Parallel | Future: parallel guard evaluation (requires kernel change) |
@@ -373,7 +373,7 @@ optimization.
 
 ## 3. Threat Intelligence: External API Guards
 
-### 3.1 What ClawdStrike Has
+### 3.1 What the Upstream Suite Has
 
 Four threat intel guards in `async_guards/threat_intel/`:
 
@@ -517,9 +517,9 @@ unless using remote embedding APIs).
 - `verify_dpop_proof()` -- 6-step verification: schema check, sender
   constraint, binding fields, freshness, signature, replay detection
 
-### 4.2 What ClawdStrike Has
+### 4.2 What the Upstream Suite Has
 
-`clawdstrike-broker-protocol/src/lib.rs` defines proof containers:
+The upstream broker-protocol crate defines proof containers:
 
 ```rust
 enum ProofBindingMode { Loopback, Dpop, Mtls, Spiffe }
@@ -545,8 +545,8 @@ optional fields.
 
 ### 4.3 Assessment: Nothing to Port
 
-Chio's DPoP implementation is **more complete** than ClawdStrike's. The
-gap is inverted -- ClawdStrike has container types but no verification
+Chio's DPoP implementation is **more complete** than the upstream suite. The
+gap is inverted -- the upstream suite has container types but no verification
 logic. Chio has full verification with replay detection.
 
 **Action items (small):**
@@ -558,25 +558,25 @@ logic. Chio has full verification with replay detection.
    Adding a `ProofBindingMode` enum that unifies DPoP, mTLS, and SPIFFE
    proof types would make the proof model extensible.
 
-2. **Binding hash.** ClawdStrike's `binding_sha256` field on
+2. **Binding hash.** The upstream `binding_sha256` field on
    `ProofBinding` links a capability to its proof binding via hash. Chio's
    `DpopProofBody` already has `capability_id` and `action_hash` which
    serve the same purpose. No change needed.
 
-3. **Key thumbprint.** ClawdStrike's `key_thumbprint` field provides a
+3. **Key thumbprint.** The upstream `key_thumbprint` field provides a
    compact key identifier. Chio uses the full `agent_key` (hex-encoded
    public key) in the proof body. Adding a thumbprint utility (SHA-256 of
    the public key) would be useful for log correlation but is not blocking.
 
-**Verdict: no port needed.** Chio's DPoP is ahead of ClawdStrike's. The
-broker service itself (where these types are used) stays in ClawdStrike
+**Verdict: no port needed.** Chio's DPoP is ahead of the upstream suite. The
+broker service itself (where these types are used) stays in the upstream guard suite
 as deployment infrastructure.
 
 ---
 
 ## 5. Summary: Porting Completeness
 
-After this document, the full ClawdStrike absorption plan is documented:
+After this document, the full upstream porting plan is documented:
 
 | Item | Doc | Status |
 |------|-----|--------|

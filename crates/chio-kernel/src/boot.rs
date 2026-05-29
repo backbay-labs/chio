@@ -1,7 +1,7 @@
 //! Kernel boot path: gate the PQ signing key load on a self-quote.
 //!
-//! M03.P5.T1 closes the trust loop opened by M03.P3 (`expect_report_data`)
-//! and M03.P2 (hybrid signing). Boot order now reads:
+//! This closes the trust loop opened by the `expect_report_data` and
+//! hybrid-signing paths. Boot order:
 //!
 //! 1. The kernel comes up with its classical Ed25519 keypair already
 //!    materialized. No PQ key has been touched.
@@ -54,8 +54,8 @@ use crate::receipt_support::{
 ///
 /// The first signed receipt advances the root, but the genesis-quote
 /// binds to the empty tree so the chain has a fixed cryptographic anchor
-/// independent of the first receipt's contents (per M03.P5.T1 success
-/// criterion in `03-pq-hybrid-and-tee-quote-verifier.md`).
+/// independent of the first receipt's contents (per the self-quote
+/// boot-gate contract).
 pub const RECEIPT_ROOT_GENESIS: [u8; 32] = [0u8; 32];
 
 /// Outcome reported by a [`KernelSelfQuoteVerifier`].
@@ -200,7 +200,7 @@ pub fn load_kernel_signing_backend_after_self_quote(
 
     // Non-classical floor: ALWAYS consult the verifier before deriving
     // any PQ material. The classical public key is the gating identity
-    // every backend must commit into report_data per M03.P3.T3.
+    // every backend must commit into report_data.
     let classical_pk = classical_keypair.public_key();
     let outcome = verifier.verify_self_quote(quote_bytes, &classical_pk);
     if !outcome.verified {
@@ -211,7 +211,7 @@ pub fn load_kernel_signing_backend_after_self_quote(
 
     // Verifier said yes: materialize the hybrid backend through the
     // shared boot helper so the resulting backend is bit-identical to
-    // the one M03.P2.T2 already wires through the legacy path.
+    // the one the classical-only path already wires through.
     Ok(kernel_signing_backend(
         crypto_floor,
         classical_keypair,

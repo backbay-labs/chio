@@ -2,21 +2,17 @@
 //!
 //! These mirror the wire shapes documented in the Anthropic Messages API
 //! reference (`messages.create` request and response bodies, version
-//! `2023-06-01`). The fabric never inspects native bytes directly: T2 lifts
-//! a [`ToolUseBlock`] into a [`chio_tool_call_fabric::ToolInvocation`] and
-//! T3 lowers a [`chio_tool_call_fabric::VerdictResult`] back into a
+//! `2023-06-01`). The fabric never inspects native bytes directly: the adapter
+//! lifts a [`ToolUseBlock`] into a [`chio_tool_call_fabric::ToolInvocation`]
+//! and lowers a [`chio_tool_call_fabric::VerdictResult`] back into a
 //! [`ToolResultBlock`] for the next request.
-//!
-//! T1 ships only the structural shapes; the lift/lower implementations
-//! land in T2.
 //!
 //! ## Server-tool variants
 //!
-//! [`ServerToolName`] and [`server_tools_allowed`] are gated behind the
-//! `computer-use` cargo feature. Default builds compile without them so
-//! production traffic cannot accidentally request a beta server tool. T4
-//! adds the matching `chio-manifest` `server_tools` allowlist that the
-//! adapter consults at lift time.
+//! [`ServerToolName`] is gated behind the `computer-use` cargo feature. Default
+//! builds compile without it so production traffic cannot accidentally request
+//! a beta server tool. The matching `chio-manifest` `server_tools` allowlist is
+//! consulted at lift time.
 
 use serde::{Deserialize, Serialize};
 
@@ -29,8 +25,8 @@ use serde::{Deserialize, Serialize};
 /// ```
 ///
 /// `id` becomes [`chio_tool_call_fabric::ProvenanceStamp::request_id`] when
-/// T2 lifts the block. `input` is the canonical-JSON arguments object the
-/// kernel evaluates.
+/// the adapter lifts the block. `input` is the canonical-JSON arguments object
+/// the kernel evaluates.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ToolUseBlock {
     /// Block discriminator. Always `"tool_use"`.
@@ -46,8 +42,6 @@ pub struct ToolUseBlock {
 
 impl ToolUseBlock {
     /// Construct a freshly-typed tool-use block.
-    ///
-    /// T1 helper used by tests; T2 will use it from the lift implementation.
     pub fn new(id: impl Into<String>, name: impl Into<String>, input: serde_json::Value) -> Self {
         Self {
             block_type: "tool_use".to_string(),
@@ -66,8 +60,8 @@ impl ToolUseBlock {
 /// { "type": "tool_result", "tool_use_id": "toolu_01...", "content": [...], "is_error": false }
 /// ```
 ///
-/// T2 builds these from the kernel verdict and the executed tool result;
-/// `is_error: true` carries the deny reason on the deny path.
+/// The adapter builds these from the kernel verdict and the executed tool
+/// result; `is_error: true` carries the deny reason on the deny path.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ToolResultBlock {
     /// Block discriminator. Always `"tool_result"`.
@@ -94,8 +88,8 @@ impl ToolResultBlock {
     }
 
     /// Construct a `Deny`-path tool result. Carries `is_error: true` and a
-    /// content payload describing the deny reason; T2 fills in the exact
-    /// text from [`chio_tool_call_fabric::DenyReason`].
+    /// content payload describing the deny reason; the adapter fills in the
+    /// exact text from [`chio_tool_call_fabric::DenyReason`].
     pub fn deny(tool_use_id: impl Into<String>, content: serde_json::Value) -> Self {
         Self {
             block_type: "tool_result".to_string(),
@@ -112,8 +106,8 @@ impl ToolResultBlock {
 /// cargo feature exposes the three server-tool names that ship under the
 /// `anthropic-beta: computer-use-2025-01-24` header. The corresponding
 /// [`ToolUseBlock::name`] strings are the exact wire identifiers Anthropic
-/// uses; lifting any of them in T2 requires the operator's manifest to
-/// list the tool in its `server_tools` allowlist (T4).
+/// uses; lifting any of them requires the operator's manifest to list the tool
+/// in its `server_tools` allowlist.
 #[cfg(feature = "computer-use")]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]

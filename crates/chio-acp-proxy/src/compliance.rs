@@ -197,39 +197,28 @@ pub struct ComplianceCertificateBody {
     /// Schema identifier.
     pub schema: String,
     /// Session ID the certificate covers.
-    #[serde(alias = "sessionId")]
     pub session_id: String,
     /// Unix timestamp when the certificate was generated.
-    #[serde(alias = "issuedAt")]
     pub issued_at: u64,
     /// Number of receipts examined.
-    #[serde(alias = "receiptCount")]
     pub receipt_count: u64,
     /// First receipt timestamp in the session.
-    #[serde(alias = "firstReceiptAt")]
     pub first_receipt_at: u64,
     /// Last receipt timestamp in the session.
-    #[serde(alias = "lastReceiptAt")]
     pub last_receipt_at: u64,
     /// Whether all receipts passed signature verification.
-    #[serde(alias = "allSignaturesValid")]
     pub all_signatures_valid: bool,
     /// Whether the receipt chain is continuous (no gaps).
-    #[serde(alias = "chainContinuous")]
     pub chain_continuous: bool,
     /// Whether all receipts are within authorized scope.
-    #[serde(alias = "scopeCompliant")]
     pub scope_compliant: bool,
     /// Whether the invocation budget was respected.
-    #[serde(alias = "budgetCompliant")]
     pub budget_compliant: bool,
     /// Whether all required guards have evidence in every receipt.
-    #[serde(alias = "guardsCompliant")]
     pub guards_compliant: bool,
     /// Summary of any anomalies detected (empty if fully compliant).
     pub anomalies: Vec<String>,
     /// The kernel public key that signed the session receipts.
-    #[serde(alias = "kernelKey")]
     pub kernel_key: PublicKey,
 }
 
@@ -239,7 +228,6 @@ pub struct ComplianceCertificate {
     /// The unsigned body.
     pub body: ComplianceCertificateBody,
     /// Public key that signed the certificate.
-    #[serde(alias = "signerKey")]
     pub signer_key: PublicKey,
     /// Ed25519 signature over canonical JSON of `body`.
     pub signature: Signature,

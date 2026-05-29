@@ -49,9 +49,8 @@ impl Budget {
     }
 
     pub fn default_60s() -> Self {
-        // Hard-coded constants are within the accepted envelope so
-        // construction cannot fail; clippy denies unwrap so we return a
-        // raw struct here.
+        // Hard-coded constants are within the accepted envelope, so the
+        // struct is constructed directly without the fallible validator.
         Self {
             budget_ms: DEFAULT_BUDGET_MS,
             buffer_pct: DEFAULT_BUFFER_PCT,

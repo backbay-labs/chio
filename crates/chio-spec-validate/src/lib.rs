@@ -2,8 +2,8 @@
 //!
 //! Loads a JSON Schema from disk, compiles it via the `jsonschema` crate, and
 //! validates a target document against it. Used by `cargo xtask
-//! validate-scenarios` and by downstream M04+ goldens to confirm that wire
-//! artifacts conform to the published `spec/schemas/` definitions.
+//! validate-scenarios` and by downstream conformance goldens to confirm that
+//! wire artifacts conform to the published `spec/schemas/` definitions.
 //!
 //! All errors are surfaced via [`ValidateError`]; the crate never panics on
 //! malformed input. The workspace clippy lints (`unwrap_used`, `expect_used`)
@@ -28,6 +28,8 @@
 //! with `Unknown scheme` or "feature is required" rather than reaching the
 //! network. This is verified by the `http_ref_in_schema_does_not_fetch_network`
 //! test.
+
+#![forbid(unsafe_code)]
 
 use std::fmt;
 use std::fs;
@@ -183,7 +185,7 @@ impl Retrieve for LocalSchemaRetriever {
         uri: &Uri<String>,
     ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
         match uri.scheme().as_str() {
-            "https" if uri.as_str().starts_with("https://chio.dev/schemas/") => {
+            "https" if uri.as_str().starts_with("https://chio.world/schemas/") => {
                 let relative = uri
                     .path()
                     .as_str()
@@ -293,7 +295,7 @@ mod tests {
             &schema_path,
             serde_json::to_vec_pretty(&json!({
                 "$schema": "https://json-schema.org/draft/2020-12/schema",
-                "$id": "https://chio.dev/schemas/test/v1/root.schema.json",
+                "$id": "https://chio.world/schemas/test/v1/root.schema.json",
                 "type": "object",
                 "additionalProperties": false,
                 "required": ["name"],
@@ -310,7 +312,7 @@ mod tests {
             &sibling_path,
             serde_json::to_vec_pretty(&json!({
                 "$schema": "https://json-schema.org/draft/2020-12/schema",
-                "$id": "https://chio.dev/schemas/test/v1/sibling.schema.json",
+                "$id": "https://chio.world/schemas/test/v1/sibling.schema.json",
                 "$defs": {
                     "name": {
                         "type": "string",

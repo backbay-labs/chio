@@ -20,8 +20,8 @@ dynamically-trusted coordination across organisational kernels. It is
 not a host the swarm lives inside; it is the discipline kernels follow
 when they coordinate across trust boundaries. It sits above
 [chio](../../README.md) (the trust-primitive layer) and orthogonal to
-runtime projects like [Swarm Team Six](../../../../../swarm-team-six)
-(the in-production reference shape for one chio participant). The
+runtime projects like Swarm Team Six
+(an in-production reference shape for one chio participant). The
 hero use case is **cross-vendor agent action attestation**: when
 Vendor A's agent invokes Vendor B's tool on a buyer's behalf, both
 kernels produce a jointly-verifiable receipt the buyer's auditor can

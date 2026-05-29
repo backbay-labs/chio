@@ -38,9 +38,9 @@ reqwest-egress = ["chio-egress-contract/reqwest-egress"]
 
 [dev-dependencies]
 chio-core = { path = "../chio-core" }
+chio-test-support = { path = "../chio-test-support" }
 tokio = { workspace = true }
 reqwest = { workspace = true, default-features = false, features = ["rustls"] }
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

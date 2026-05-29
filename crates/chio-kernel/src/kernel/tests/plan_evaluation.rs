@@ -1,4 +1,4 @@
-// Phase 2.4 plan-level evaluation tests.
+// Plan-level evaluation tests.
 //
 // Included by `src/kernel/tests.rs`. Inherits `super::*` plus the
 // helpers defined at the top of `tests/all.rs` (`make_config`,
@@ -94,9 +94,9 @@ fn plan_evaluation_all_steps_allowed() {
 /// returns `PartiallyDenied` with the middle step flagged denied and
 /// the other two allowed.
 ///
-/// This is the roadmap acceptance test, shifted to `step 2` (index 1)
-/// rather than `step 3` so both preceding and succeeding steps are
-/// exercised; the HTTP end-to-end test covers the literal step-3 case.
+/// The out-of-scope step is `step 2` (index 1) rather than `step 3` so
+/// both preceding and succeeding steps are exercised; the HTTP
+/// end-to-end test covers the literal step-3 case.
 #[test]
 fn plan_evaluation_middle_step_out_of_scope() {
     let mut kernel = make_kernel(make_config());

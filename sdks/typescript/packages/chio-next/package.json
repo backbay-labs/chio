@@ -1,5 +1,5 @@
 {
-  "name": "@chio/next",
+  "name": "@chio-protocol/next",
   "version": "0.1.0",
   "type": "module",
   "description": "Chio App Router route-handler and server-action wrappers for Next.js. Streaming-friendly on Allow, typed denial response on Deny. App Router only.",

@@ -15,7 +15,7 @@
 #     panics before any chio-anchor mutation can register an effect.
 #
 # Both deviations are methodology fixes, not test fixes. The
-# pre-existing failures are out of scope for the A1 mutation baseline.
+# pre-existing failures are out of scope for this mutation baseline.
 # The CI hosted-nightly remains the authoritative workspace-scope
 # measurement once those failures are resolved.
 #

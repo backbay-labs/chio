@@ -38,7 +38,7 @@ expect_verdict = "allow"
 [[adversaries]]
 class = "prompt-injection"
 population = "default-injection"
-seed_ref = "fuzz/artifacts/m02"
+seed_ref = "fuzz/artifacts/prompt-injection"
 
 [adversaries.params]
 patterns = ["ignore-previous-instructions", "system-prompt-leak", "tool-name-spoof"]

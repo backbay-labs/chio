@@ -357,9 +357,9 @@ class TestChioActorRedaction:
         }
 
     def test_var_keyword_method_redacts_content(self) -> None:
-        # Regression: bind_partial does NOT raise for **kwargs; absorbing
-        # `content="SECRET"` into `{"kw": {...}}` previously bypassed the
-        # redactor entirely.
+        # bind_partial does NOT raise for **kwargs; `content="SECRET"`
+        # absorbed into `{"kw": {...}}` must still pass through the
+        # redactor rather than bypass it.
         chio = allow_all()
         scope = _scope_for_tools("chio_file_write", server_id="srv")
         token = _local_token(scope)

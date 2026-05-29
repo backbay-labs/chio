@@ -1,19 +1,12 @@
-//! Integration test entry point for chio-spec-codegen threat-model
-//! stubs.
+//! Integration test entry point for populated chio-spec-codegen threat-model
+//! regressions.
 //!
-//! Owner: M05.P5.T3.
+//! Each `mod` declaration below names a threat ID with a populated test body.
+//! The threat-model coverage gate validates that the generated inventory and
+//! the compiled regression set stay aligned.
 //!
-//! Each `mod` declaration below names a threat ID whose test body has
-//! been populated. The stub files `tests/threats/<id>.rs` for threat
-//! IDs that are not yet covered remain on disk with `unimplemented!()`
-//! bodies (see M05.P5.T2) but are intentionally NOT pulled into this
-//! integration test, so they neither compile nor run until a follow-up
-//! ticket fills the body in. The threat-model-coverage CI gate
-//! (M05.P5.T4) inspects the on-disk file set for `unimplemented!`
-//! markers to decide which threat IDs still need tests.
-//!
-//! Covered threat IDs cited in the M05 success criteria and M05.P4
-//! advisory reclassification:
+//! Covered threat IDs cited in the threat-model success criteria and
+//! the advisory reclassification:
 //!
 //! - capability_token_theft
 //! - kernel_impersonation

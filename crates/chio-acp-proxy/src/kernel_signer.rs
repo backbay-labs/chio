@@ -39,9 +39,7 @@ pub struct KernelSignerCheckpointHealth {
 /// append has committed the receipt, a subsequent checkpoint failure
 /// is recorded into `checkpoint_health` and logged at WARN, but the
 /// caller still observes the signed receipt and the ACP message flow
-/// is not blocked. This matches the pre-rebase behaviour where
-/// "blocking receipt issuance on a checkpoint error would be
-/// disproportionate", while still surfacing the failure to operators.
+/// is not blocked.
 pub struct KernelReceiptSigner {
     keypair: Keypair,
     // Kept for receipt-provenance parity once signer metadata is surfaced.
@@ -585,7 +583,6 @@ impl ReceiptSigner for KernelReceiptSigner {
             kernel_key: self.keypair.public_key(),
         };
 
-        // Sign the receipt.
         let receipt = ChioReceipt::sign(body, &self.keypair)
             .map_err(|e| ReceiptSignError::SigningFailed(format!("Ed25519 signing failed: {e}")))?;
 

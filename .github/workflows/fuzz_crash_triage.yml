@@ -16,7 +16,7 @@
 #   6. Posts a back-reference comment on the upstream PR (when the failed
 #      run was triggered by a `pull_request` event).
 #
-# Triage SLOs (handled by the runbook in docs/fuzzing/triage.md, M02 P4 T5):
+# Triage SLOs (handled by the runbook in docs/fuzzing/triage.md):
 #   - Critical / High: 1 business day to first triage comment.
 #   - Medium: 3 business days.
 #   - Low: best-effort.

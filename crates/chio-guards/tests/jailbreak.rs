@@ -1,4 +1,4 @@
-//! Integration tests for [`chio_guards::JailbreakGuard`] (roadmap phase 3.2).
+//! Integration tests for [`chio_guards::JailbreakGuard`].
 //!
 //! Exercises the full [`chio_kernel::Guard`] entrypoint with a realistic
 //! [`GuardContext`], plus direct `scan`/`evaluate_text` helpers where we

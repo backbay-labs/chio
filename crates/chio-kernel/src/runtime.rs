@@ -17,14 +17,13 @@ use crate::{AgentId, KernelError, ServerId};
 /// The kernel uses this internally; it maps to `chio_core::Decision` when
 /// building receipts.
 ///
-/// Phase 3.4 introduced the `PendingApproval` variant. The variant is a
-/// marker: the payload (`ApprovalRequest`) is returned separately via
-/// [`crate::approval::HitlVerdict`] so existing call sites that pattern-
-/// match on `Verdict` and rely on its `Copy` semantics keep compiling
-/// without change. The public contract therefore remains: `Allow`,
-/// `Deny`, and `PendingApproval` are the three possible outcomes of
-/// guard evaluation, and callers receive the full approval request via
-/// the richer HITL API surface when they need it.
+/// The `PendingApproval` variant is a marker: the payload (`ApprovalRequest`)
+/// is returned separately via [`crate::approval::HitlVerdict`] so existing
+/// call sites that pattern-match on `Verdict` and rely on its `Copy` semantics
+/// keep compiling without change. The public contract is: `Allow`, `Deny`, and
+/// `PendingApproval` are the three possible outcomes of guard evaluation, and
+/// callers receive the full approval request via the richer HITL API surface
+/// when they need it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verdict {
     /// The action is allowed.
@@ -63,11 +62,11 @@ pub struct ToolCallRequest {
     /// Absent in legacy callers; when the matched grant carries a
     /// `ModelConstraint` with any requirement, the call is denied.
     pub model_metadata: Option<ModelMetadata>,
-    /// Phase 20.3: identifier of the origin kernel when this request
-    /// crosses a federation boundary (agent in Org A invoking a tool in
-    /// Org B). When set, the local (tool-host) kernel persists the
-    /// signed receipt locally before requesting bilateral co-signing from
-    /// the origin kernel. Absent for intra-org calls.
+    /// Identifier of the origin kernel when this request crosses a federation
+    /// boundary (agent in Org A invoking a tool in Org B). When set, the
+    /// local (tool-host) kernel persists the signed receipt locally before
+    /// requesting bilateral co-signing from the origin kernel. Absent for
+    /// intra-org calls.
     ///
     /// The field is skipped from wire serialization when `None` so the
     /// legacy wire format stays byte-identical.
@@ -76,11 +75,11 @@ pub struct ToolCallRequest {
 
 /// The kernel's response to a tool call request.
 ///
-/// Phase 1.1 added `execution_nonce` as a sibling field so the `Verdict`
-/// enum can keep its `Copy` semantics. The nonce is only populated for
-/// `Verdict::Allow` and only when the kernel has an `ExecutionNonceConfig`
-/// installed; non-allow responses and nonce-disabled deployments continue
-/// to carry `None` here.
+/// The `execution_nonce` field is a sibling so the `Verdict` enum can keep
+/// its `Copy` semantics. The nonce is only populated for `Verdict::Allow`
+/// and only when the kernel has an `ExecutionNonceConfig` installed;
+/// non-allow responses and nonce-disabled deployments continue to carry
+/// `None` here.
 #[derive(Debug)]
 pub struct ToolCallResponse {
     /// Correlation identifier (matches the request).
@@ -95,10 +94,10 @@ pub struct ToolCallResponse {
     pub terminal_state: OperationTerminalState,
     /// Signed receipt attesting to this decision.
     pub receipt: ChioReceipt,
-    /// Phase 1.1: short-lived, single-use execution nonce bound to this
-    /// allow verdict. Populated only on `Verdict::Allow` when an
-    /// `ExecutionNonceConfig` is installed on the kernel. Legacy
-    /// deployments without a config leave this `None` and keep working.
+    /// Short-lived, single-use execution nonce bound to this allow verdict.
+    /// Populated only on `Verdict::Allow` when an `ExecutionNonceConfig` is
+    /// installed on the kernel. Deployments without a config leave this
+    /// `None` and keep working.
     ///
     /// Boxed so the deny/cancel/incomplete hot paths (which all carry
     /// `None`) don't widen the `SessionOperationResponse::ToolCall`

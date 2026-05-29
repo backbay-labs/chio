@@ -57,9 +57,9 @@ pub struct CoevolutionBudget {
 
 impl Default for CoevolutionBudget {
     fn default() -> Self {
-        // The M08 narrative pins the canonical defaults: 200 generations
-        // and 30 minutes wall clock. CI overrides to 5 minutes for PR
-        // lanes via `with_wall_clock_seconds`; nightly uses the default.
+        // Canonical defaults: 200 generations and 30 minutes wall clock.
+        // CI overrides to 5 minutes for PR lanes via
+        // `with_wall_clock_seconds`; nightly uses the default.
         Self {
             max_generations: 200,
             max_wall_clock: Duration::from_secs(30 * 60),
@@ -243,8 +243,8 @@ pub struct CoevolutionInputs<'a> {
     pub issued_scope: &'a IssuedScope,
     /// Initial parent blueprints.
     pub parents: Vec<PopulationBlueprint>,
-    /// Seed corpus (used only for its fingerprint at this milestone; the
-    /// downstream P5 promote pipeline consumes the artifacts directly).
+    /// Seed corpus (used here only for its fingerprint; the downstream
+    /// promote pipeline consumes the artifacts directly).
     pub seed_corpus: &'a SeedCorpus,
     /// Driver configuration.
     pub config: CoevolutionConfig,

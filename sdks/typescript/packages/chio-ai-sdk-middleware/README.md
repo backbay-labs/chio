@@ -1,9 +1,9 @@
-# @chio/ai-sdk-middleware
+# @chio-protocol/ai-sdk-middleware
 
 Structural Vercel AI SDK language-model middleware for Chio verdict gating.
 
 ```ts
-import { wrapWithChio } from "@chio/ai-sdk-middleware";
+import { wrapWithChio } from "@chio-protocol/ai-sdk-middleware";
 
 const model = wrapWithChio(baseModel, {
   provider: "openai",

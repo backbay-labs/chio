@@ -4,7 +4,7 @@ JSON Schema validator for the Chio protocol. Provides both a library
 (`chio_spec_validate::validate`) and a CLI binary (`chio-spec-validate`)
 that compile a schema from `spec/schemas/` and check that a target
 document conforms. Used by `cargo xtask validate-scenarios` to gate the
-conformance scenarios under `tests/conformance/scenarios/` and by M04+
+conformance scenarios under `tests/conformance/scenarios/` and by the
 goldens that emit signed wire artifacts.
 
 ## CLI

@@ -12,7 +12,7 @@
 //!     (everything except the wall-clock-derived `receipt_id` field on each
 //!     step entry; the kernel's signed receipts hold a `Uuid::now_v7()`-keyed
 //!     id whose byte pattern is intentionally non-replayable here, and is
-//!     covered separately by the replay-gate against the M04 fixture
+//!     covered separately by the replay-gate against the fixture
 //!     sub-shape).
 //!
 //! The Linux-only CI workflow `chio-arena-determinism.yml` runs this test

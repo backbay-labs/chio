@@ -5,8 +5,8 @@
   "description": "Chio-governed MCP server exposing receipt-backed, policy-mediated tool calls.",
   "transport": {
     "type": "streamable-http",
-    "endpoint": "https://mcp.chio.dev/mcp",
-    "protected_resource_metadata": "https://mcp.chio.dev/.well-known/oauth-protected-resource"
+    "endpoint": "https://mcp.chio.world/mcp",
+    "protected_resource_metadata": "https://mcp.chio.world/.well-known/oauth-protected-resource"
   },
   "oauth_scopes": [
     "tools.call",

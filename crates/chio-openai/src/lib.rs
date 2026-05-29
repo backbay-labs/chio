@@ -10,6 +10,8 @@
 //!
 //! Every function call produces a signed receipt. Guards fail closed by default.
 
+#![forbid(unsafe_code)]
+
 use std::collections::BTreeMap;
 
 use chio_core::capability::{
@@ -34,6 +36,15 @@ pub use adapter::{
 
 #[cfg(feature = "provider-adapter")]
 pub mod streaming;
+
+#[cfg(feature = "provider-adapter")]
+pub mod transport;
+
+#[cfg(feature = "provider-adapter")]
+pub use transport::{
+    ChatCompletionsOutcome, OpenAiTransport, OPENAI_API_BASE_URL, OPENAI_API_KEY_ENV,
+    OPENAI_CHAT_COMPLETIONS_PATH, OPENAI_RESPONSES_PATH,
+};
 
 /// Errors produced by the OpenAI adapter.
 #[derive(Debug, thiserror::Error)]

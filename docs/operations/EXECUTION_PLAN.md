@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document turns [ROADMAP_V1.md](ROADMAP_V1.md) into an execution plan.
+This document turns [ROADMAP_V1.md](../archive/ROADMAP_V1.md) into an execution plan.
 
 It answers:
 
@@ -18,9 +18,9 @@ This plan describes execution order, dependency management, and deliverable boun
 
 Initial execution artifacts:
 
-- ADRs: [adr/README.md](adr/README.md)
-- issue-ready epics: [epics/README.md](epics/README.md)
-- post-review closing plan: [POST_REVIEW_EXECUTION_PLAN.md](POST_REVIEW_EXECUTION_PLAN.md)
+- ADRs: [adr/README.md](../adr/README.md)
+- issue-ready epics: [epics/README.md](../archive/epics/README.md)
+- post-review closing plan: [POST_REVIEW_EXECUTION_PLAN.md](../archive/POST_REVIEW_EXECUTION_PLAN.md)
 
 ## Planning Assumptions
 
@@ -74,7 +74,7 @@ Post-review closing work is now split into focused epics:
 > implementation milestones, not Chio-owned protocol, schema, SDK, or runtime
 > versions. Current protocol posture is v1-only.
 
-See [POST_REVIEW_EXECUTION_PLAN.md](POST_REVIEW_EXECUTION_PLAN.md) and the new epic specs in [epics/README.md](epics/README.md).
+See [POST_REVIEW_EXECUTION_PLAN.md](../archive/POST_REVIEW_EXECUTION_PLAN.md) and the new epic specs in [epics/README.md](../archive/epics/README.md).
 
 ## Pre-Release v1 Implemented Features
 
@@ -84,19 +84,19 @@ are not public v2 protocol features. References to them as "planned" or
 
 ### Monetary budgets (implemented in current v1)
 
-`MonetaryAmount`, `max_cost_per_invocation`, and `max_total_cost` on `ToolGrant` are implemented in `crates/chio-core/src/capability.rs`. `BudgetStore::try_charge_cost` enforces atomic monetary limits in `crates/chio-kernel/src/budget_store.rs`. `FinancialReceiptMetadata` is embedded in the receipt `metadata` field for every monetized invocation. See [AGENT_ECONOMY.md](AGENT_ECONOMY.md) for the full design; Phase 1 of that document is now implemented. Operator guide: [MONETARY_BUDGETS_GUIDE.md](MONETARY_BUDGETS_GUIDE.md).
+`MonetaryAmount`, `max_cost_per_invocation`, and `max_total_cost` on `ToolGrant` are implemented in `crates/chio-core/src/capability.rs`. `BudgetStore::try_charge_cost` enforces atomic monetary limits in `crates/chio-kernel/src/budget_store.rs`. `FinancialReceiptMetadata` is embedded in the receipt `metadata` field for every monetized invocation. See [AGENT_ECONOMY.md](../reference/AGENT_ECONOMY.md) for the full design; Phase 1 of that document is now implemented. Operator guide: [MONETARY_BUDGETS_GUIDE.md](../reference/MONETARY_BUDGETS_GUIDE.md).
 
 ### DPoP proof-of-possession (implemented in current v1)
 
-`ToolGrant.dpop_required` enables per-grant DPoP enforcement. The kernel validates `chio.dpop_proof.v1` proofs with nonce replay prevention. Implementation is in `crates/chio-kernel/src/dpop.rs`. Operator guide: [DPOP_INTEGRATION_GUIDE.md](DPOP_INTEGRATION_GUIDE.md).
+`ToolGrant.dpop_required` enables per-grant DPoP enforcement. The kernel validates `chio.dpop_proof.v1` proofs with nonce replay prevention. Implementation is in `crates/chio-kernel/src/dpop.rs`. Operator guide: [DPOP_INTEGRATION_GUIDE.md](../reference/DPOP_INTEGRATION_GUIDE.md).
 
 ### Receipt query API (implemented in current v1)
 
-`GET /v1/receipts/query` on the trust-control service supports eight filter dimensions and cursor-based pagination. The CLI exposes `chio receipt list` with equivalent filters. Capability lineage JOINs (`/v1/lineage/{capability_id}/chain`, `GET /v1/agents/{subject_key}/receipts`) are also available. See `crates/chio-kernel/src/receipt_query.rs` and `crates/chio-kernel/src/capability_lineage.rs`. Operator guide: [RECEIPT_QUERY_API.md](RECEIPT_QUERY_API.md).
+`GET /v1/receipts/query` on the trust-control service supports eight filter dimensions and cursor-based pagination. The CLI exposes `chio receipt list` with equivalent filters. Capability lineage JOINs (`/v1/lineage/{capability_id}/chain`, `GET /v1/agents/{subject_key}/receipts`) are also available. See `crates/chio-kernel/src/receipt_query.rs` and `crates/chio-kernel/src/capability_lineage.rs`. Operator guide: [RECEIPT_QUERY_API.md](../reference/RECEIPT_QUERY_API.md).
 
 ### Velocity guard (implemented in current v1)
 
-`VelocityGuard` token-bucket rate limiting per `(capability_id, grant_index)` is in `crates/chio-guards/src/velocity.rs`. It runs in the standard guard pipeline before any tool server invocation. Operator guide: [VELOCITY_GUARDS.md](VELOCITY_GUARDS.md).
+`VelocityGuard` token-bucket rate limiting per `(capability_id, grant_index)` is in `crates/chio-guards/src/velocity.rs`. It runs in the standard guard pipeline before any tool server invocation. Operator guide: [VELOCITY_GUARDS.md](../reference/VELOCITY_GUARDS.md).
 
 ### Merkle-committed receipt batches (implemented in current v1)
 
@@ -112,7 +112,7 @@ Splunk HEC and Elasticsearch bulk exporters with a bounded dead-letter queue shi
 
 ### TypeScript SDK (implemented in current v1)
 
-`@chio-protocol/sdk` v1.0.0 ships in `packages/sdk/chio-ts/`. It covers capability invariants, receipt verification, DPoP proof construction, a receipt query client, and Streamable HTTP session management.
+`@chio-protocol/sdk` v1.0.0 ships in `sdks/typescript/chio-ts/`. It covers capability invariants, receipt verification, DPoP proof construction, a receipt query client, and Streamable HTTP session management.
 
 ### Compliance documents (implemented in current v1)
 
@@ -698,7 +698,7 @@ Make the clustered trust-control path deterministic enough for repeated full-sui
 
 ### Primary repo areas
 
-- `crates/chio-cli/src/trust_control.rs`
+- `crates/chio-control-plane/src/trust_control.rs`
 - `crates/chio-kernel/src/budget_store.rs`
 - authority, receipt, and revocation store implementations
 - clustered trust-control tests
@@ -744,7 +744,7 @@ Turn the authenticated remote MCP edge into a reconnect-safe, deployment-hard ru
 
 ### Primary repo areas
 
-- `crates/chio-cli/src/remote_mcp.rs`
+- `crates/chio-mcp-remote/src/remote_mcp/`
 - `crates/chio-mcp-adapter`
 - `crates/chio-core`
 - `crates/chio-kernel`
@@ -793,7 +793,7 @@ Finish one coherent ownership model for tasks, streams, cancellation, and async 
 - `crates/chio-core`
 - `crates/chio-kernel`
 - `crates/chio-mcp-adapter`
-- `crates/chio-cli/src/remote_mcp.rs`
+- `crates/chio-mcp-remote/src/remote_mcp/`
 - conformance and integration tests
 
 ### Deliverables
@@ -1011,7 +1011,7 @@ These tasks should not run ahead of prerequisites:
 
 The 30/60/90-day sections below capture the original bootstrap sequence for E0 through E5.
 
-For the current next-phase execution order after the latest review, use [POST_REVIEW_EXECUTION_PLAN.md](POST_REVIEW_EXECUTION_PLAN.md) plus epic specs `E9` through `E13`.
+For the current next-phase execution order after the latest review, use [POST_REVIEW_EXECUTION_PLAN.md](../archive/POST_REVIEW_EXECUTION_PLAN.md) plus epic specs `E9` through `E13`.
 
 ### Primary target
 

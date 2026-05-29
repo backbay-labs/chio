@@ -10,7 +10,7 @@
 
 //! Aggregator for the threat-model codegen stubs.
 //!
-//! Owner: M05.P5.T2. The chio-conformance test crate does NOT
+//! The chio-conformance test crate does NOT
 //! pull this module into its `lib.rs`; each per-threat `.rs` file
 //! under this directory is its own integration test. The module
 //! aggregator is emitted for documentation purposes only.

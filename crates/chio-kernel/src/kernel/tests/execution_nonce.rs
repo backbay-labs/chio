@@ -1,12 +1,11 @@
-// Phase 1.1 execution-nonce integration tests.
+// Execution-nonce integration tests.
 //
 // Included by `src/kernel/tests.rs`, which already imported `super::*`
 // and all helper items from `tests/all.rs` (`make_config`, `make_scope`,
 // `make_grant`, `make_keypair`, `make_capability`, `make_request`,
 // `EchoServer`).
 //
-// The tests cover the six acceptance checks called out in the Phase 1.1
-// plan:
+// The tests cover six acceptance checks:
 //   (a) a fresh nonce on Allow verifies
 //   (b) a stale nonce (>TTL) is rejected
 //   (c) a replayed nonce is rejected
@@ -193,7 +192,7 @@ fn disabled_mode_allows_tool_calls_without_nonce() {
     let agent_kp = make_keypair();
     let scope = make_scope(vec![make_grant("srv-a", "read_file")]);
     let cap = make_capability(&kernel, &agent_kp, scope, 300);
-    let request = make_request("req-legacy", &cap, "read_file", "srv-a");
+    let request = make_request("req-no-nonce-config", &cap, "read_file", "srv-a");
 
     let response = kernel.evaluate_tool_call_blocking(&request).unwrap();
     assert_eq!(response.verdict, Verdict::Allow);

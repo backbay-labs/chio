@@ -1,4 +1,4 @@
-// Phase 2.2 constraint-variant tests.
+// Constraint-variant tests.
 //
 // Included by `src/kernel/tests.rs`, so this file inherits the outer
 // `use super::*;` environment along with the helpers defined at the
@@ -67,8 +67,7 @@ fn kernel_denies_memory_write_to_disallowed_store() {
 }
 
 /// `AudienceAllowlist` should not affect tool calls whose arguments do
-/// not carry a recipient-style key, demonstrating the additive and
-/// non-regressing nature of the new variant.
+/// not carry a recipient-style key.
 #[test]
 fn kernel_allows_action_when_unaffected_by_new_constraint() {
     let mut kernel = make_kernel(make_config());
@@ -158,7 +157,7 @@ fn kernel_records_constraint_and_defers_to_data_guard() {
     );
 }
 
-// ---- Phase 2.3: ModelConstraint evaluation -------------------------------
+// ---- ModelConstraint evaluation -----------------------------------------
 
 /// A model listed in `allowed_model_ids` is admitted.
 #[test]
@@ -373,7 +372,7 @@ fn kernel_allows_tool_call_without_model_metadata_when_grant_has_no_model_constr
     let cap = make_capability(&kernel, &agent_kp, scope, 300);
 
     let request = make_request_with_arguments(
-        "req-legacy",
+        "req-no-model-metadata",
         &cap,
         "invoke",
         "srv",

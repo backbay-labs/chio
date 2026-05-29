@@ -736,6 +736,9 @@ impl Exporter for AlertingExporter {
 
             for event in events {
                 if !self.should_alert(event) {
+                    // Counts toward the processed total returned on success
+                    // (consistent with the alerting-disabled path returning
+                    // events.len()); only threshold-meeting events are alerted.
                     dispatched += 1;
                     continue;
                 }

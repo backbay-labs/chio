@@ -16,9 +16,9 @@ class ChioAirflowError(ChioError):
     :class:`chio_airflow.ChioOperator` wrapper and the
     :func:`chio_airflow.chio_task` decorator translate this into an
     :class:`airflow.exceptions.AirflowException` whose ``__cause__`` is
-    a :class:`PermissionError` so the roadmap's
-    ``except PermissionError`` idiom keeps working even though Airflow
-    re-raises the scheduler-facing exception type.
+    a :class:`PermissionError` so the ``except PermissionError`` idiom
+    keeps working even though Airflow re-raises the scheduler-facing
+    exception type.
     """
 
     def __init__(

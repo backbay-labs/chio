@@ -7,10 +7,10 @@
   arr/.style={-Latex, line width=.4pt}
 ]
 \node[box] (req) {Tool call\\request};
-\node[decision, right=of req] (parse) {Chiodos\\context\\parseable?};
+\node[decision, right=of req] (parse) {Chio\\context\\parseable?};
 \node[denyterm, above right=of parse] (denyparse) {Deny:\\malformed\\context};
-\node[decision, below right=of parse] (fed) {Chiodos\\context\\present?};
-\node[allowterm, right=of fed, yshift=0.9cm] (plain) {Non-Chiodos\\allow path};
+\node[decision, below right=of parse] (fed) {Chio\\context\\present?};
+\node[allowterm, right=of fed, yshift=0.9cm] (plain) {Non-Chio\\allow path};
 \node[decision, below right=of fed] (treaty) {Treaty ref\\valid?};
 \node[denyterm, below=of treaty] (denytreaty) {Deny:\\missing or\\invalid treaty};
 \node[box, right=of treaty] (store) {Verifier-owned\\artifact store};

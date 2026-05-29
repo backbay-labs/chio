@@ -4,11 +4,21 @@ import {
   withInfoPlist,
 } from '@expo/config-plugins';
 
-export const withChioIos: ConfigPlugin = (config) => {
+import type { ChioPluginProps } from './props.js';
+
+// On-device verification is the default: the bundled ChioKernel.xcframework
+// validates receipts locally and does not call out to a remote service.
+const DEFAULT_RECEIPT_ORACLE = 'local';
+
+export const withChioIos: ConfigPlugin<ChioPluginProps | undefined> = (
+  config,
+  props,
+) => {
+  const receiptOracle = props?.receiptOracle ?? DEFAULT_RECEIPT_ORACLE;
   const withInfo = withInfoPlist(config, (mod) => {
     mod.modResults.ChioKernelMobile = {
       framework: 'ChioKernel.xcframework',
-      receiptOracle: 'M01',
+      receiptOracle,
     };
     return mod;
   });

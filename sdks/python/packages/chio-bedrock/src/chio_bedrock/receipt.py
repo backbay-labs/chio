@@ -353,11 +353,9 @@ def verify_trusted_receipt(
     4. The receipt's `kernel_key` (hex ed25519 public key) is a member of
        the trusted-kernel-key set.
 
-    This verifier only requires public keys: production callers configure
-    a set of trusted kernel public keys and never hold the kernel's
-    private signing secret. ed25519 dispatch is inline for now. A TODO in
-    chio-py tracks centralising algorithm-aware dispatch when additional
-    receipt-signing algorithms come online.
+    This verifier only requires public keys: callers configure a set of
+    trusted kernel public keys and never hold the kernel's private
+    signing secret. Signature verification is ed25519.
     """
 
     reasons: list[str] = []

@@ -55,9 +55,9 @@ fn runtime_orchestration_input_documents_accept_chio_native_schemas() -> Result<
     };
     validate_runtime_run_contract(&contract)?;
 
-    let mut legacy_profile = profile;
-    legacy_profile.schema = CHIO_RUNTIME_ORCHESTRATION_PROFILE_SCHEMA.to_string();
-    validate_runtime_orchestration_profile(&legacy_profile)?;
+    let mut const_schema_profile = profile;
+    const_schema_profile.schema = CHIO_RUNTIME_ORCHESTRATION_PROFILE_SCHEMA.to_string();
+    validate_runtime_orchestration_profile(&const_schema_profile)?;
     Ok(())
 }
 

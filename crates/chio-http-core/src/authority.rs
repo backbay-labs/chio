@@ -931,27 +931,7 @@ mod tests {
         CapabilityTokenBody, ChioScope, Operation, ToolGrant,
     };
 
-    trait TestUnwrap<T> {
-        fn test_unwrap(self) -> T;
-    }
-
-    impl<T, E: std::fmt::Debug> TestUnwrap<T> for Result<T, E> {
-        fn test_unwrap(self) -> T {
-            match self {
-                Ok(value) => value,
-                Err(error) => panic!("expected Ok(..), got Err({error:?})"),
-            }
-        }
-    }
-
-    impl<T> TestUnwrap<T> for Option<T> {
-        fn test_unwrap(self) -> T {
-            match self {
-                Some(value) => value,
-                None => panic!("expected Some(..), got None"),
-            }
-        }
-    }
+    use chio_test_support::prelude::*;
 
     fn signed_capability_token_json(issuer: &Keypair, id: &str) -> String {
         signed_capability_token_json_with_scope(issuer, id, ChioScope::default())

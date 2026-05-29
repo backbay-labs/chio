@@ -1,4 +1,4 @@
-//! Integration test for M09 P5.T6 anchor pinning.
+//! Integration test for anchor pinning.
 
 use chio_core_types::crypto::Keypair;
 use chio_lineage::anchor::{
@@ -16,7 +16,6 @@ fn fixture_graph() -> chio_lineage::schema::LineageGraph {
         tool_name: Some("fs.read".into()),
         tenant_id: None,
         recorded_at: Some(1),
-        has_signed_lineage_statement: true,
         signed_lineage_statement: None,
     }])
 }
@@ -31,14 +30,14 @@ fn deterministic_frontier_hash_through_canonical_bytes() {
 }
 
 #[test]
-fn missing_m03_signer_records_unsigned_state_and_exits_cleanly() {
+fn missing_hybrid_signer_records_unsigned_state_and_exits_cleanly() {
     let g = fixture_graph();
     let pinned = pin_frontier(&g, None);
     assert!(matches!(
         pinned.signing,
         SigningState::UnsignedSoftDepAbsent
     ));
-    // Equivalence shim is the documented soft-dep fallback for M06.
+    // Equivalence shim is the documented soft-dep fallback for canonical bytes.
     assert!(matches!(
         pinned.canonical_source,
         CanonicalSource::EquivalenceShim

@@ -729,7 +729,6 @@ impl StdioMcpTransport {
                     continue;
                 }
 
-                // Check that the id matches.
                 if response["id"] != request_id {
                     debug!("MCP response id mismatch (expected {id}): {response}");
                     service_active_request_runtime(
@@ -741,7 +740,6 @@ impl StdioMcpTransport {
                     continue;
                 }
 
-                // Check for JSON-RPC error.
                 if let Some(err) = response.get("error") {
                     return Err(adapter_jsonrpc_error(err));
                 }
@@ -1624,8 +1622,7 @@ mod tests {
     /// from stdin and writes canned responses to stdout.
     #[test]
     fn stdio_transport_with_mock_server() {
-        // Write a small Python script that acts as a minimal MCP server.
-        // We use Python because it is widely available and handles JSON easily.
+        // A small Python script that acts as a minimal MCP server.
         let script = r#"
 import sys, json
 
@@ -1717,13 +1714,11 @@ for line in sys.stdin:
             StdioMcpTransport::spawn("python3", &[script_path.to_str().expect("path to str")])
                 .expect("spawn mock server");
 
-        // list_tools
         let tools = transport.list_tools().expect("list_tools");
         assert_eq!(tools.len(), 1);
         assert_eq!(tools[0].name, "echo");
         assert_eq!(tools[0].description.as_deref(), Some("Echoes input"));
 
-        // call_tool
         let result = transport
             .call_tool("echo", json!({"text": "hello"}))
             .expect("call_tool");
@@ -1733,7 +1728,6 @@ for line in sys.stdin:
 
         transport.shutdown().expect("shutdown");
 
-        // Cleanup.
         let _ = std::fs::remove_file(&script_path);
     }
 

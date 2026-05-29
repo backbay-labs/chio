@@ -1,13 +1,13 @@
-# Content Safety Guard Absorption: ClawdStrike to Chio
+# Content Safety Guard Capability and Porting Plan
 
-This document covers porting the four content safety modules from ClawdStrike
+This document covers porting the four content safety modules from the upstream guard suite
 into Chio's `chio-guards` crate. These represent the P0 gap in Chio's guard
 coverage: the existing 15 guards handle filesystem, network, rate-limiting,
 data-flow, and advisory signals, but nothing screens the actual content of
 agent inputs for jailbreak, prompt injection, or instruction hierarchy
 violations.
 
-Source modules in ClawdStrike (`crates/libs/clawdstrike/src/`):
+Source modules in the upstream guard suite:
 
 | Module | Guard | Lines | Depends on |
 |--------|-------|-------|------------|
@@ -25,7 +25,7 @@ Source modules in ClawdStrike (`crates/libs/clawdstrike/src/`):
 ### 1.1 JailbreakGuard + JailbreakDetector
 
 **Guard layer** (`guards/jailbreak.rs`): Wraps `JailbreakDetector` behind
-ClawdStrike's async `Guard` trait. Handles `GuardAction::Custom("user_input",
+The upstream async `Guard` trait. Handles `GuardAction::Custom("user_input",
 ...)` and `GuardAction::Custom("hushclaw.user_input", ...)`. Parses the
 payload as either a raw string or `{"text": "..."}` object. Returns block,
 warn, or allow based on the detector's `risk_score` against configurable
@@ -80,7 +80,7 @@ canonical text, not original text.
 ### 1.2 PromptInjectionGuard + hygiene.rs
 
 **Guard layer** (`guards/prompt_injection.rs`): Wraps
-`detect_prompt_injection_with_limit` behind ClawdStrike's async `Guard` trait.
+`detect_prompt_injection_with_limit` behind the upstream async `Guard` trait.
 Handles `GuardAction::Custom("untrusted_text", ...)` -- scans external/tool
 content for injection attempts. Parses `{"text": "...", "source": "..."}` or
 a bare string. Configurable `warn_at_or_above` (default `Suspicious`) and
@@ -182,7 +182,7 @@ pub trait Guard: Send + Sync {
 
 ### 2.1 Async removal
 
-ClawdStrike guards use `#[async_trait] impl Guard` with `async fn check(...)`.
+Upstream guards use `#[async_trait] impl Guard` with `async fn check(...)`.
 The actual detection logic is already sync:
 
 - `JailbreakDetector::detect_base_sync()` is the core pipeline. The async
@@ -199,7 +199,7 @@ host-function extensions (see section 4).
 
 ### 2.2 Action model mapping
 
-ClawdStrike uses `GuardAction::Custom(kind, payload)` to route content to the
+The upstream suite uses `GuardAction::Custom(kind, payload)` to route content to the
 right guard. Chio has no `GuardAction` -- guards receive `GuardContext` with
 `ToolCallRequest.arguments`.
 
@@ -226,7 +226,7 @@ does not apply to this tool call).
 
 ### 2.3 Verdict mapping
 
-ClawdStrike's `GuardResult` has `allow`, `warn`, and `block` constructors plus
+The upstream `GuardResult` has `allow`, `warn`, and `block` constructors plus
 `details: Option<serde_json::Value>`. Chio's `Verdict` is binary
 (Allow/Deny).
 
@@ -278,7 +278,7 @@ receipt's evidence field. The warn threshold becomes a separate
 | `LlmJudge` trait + `OpenAiLlmJudge` | **Defer to host function** | Requires async HTTP; should be a WASM host function or separate guard |
 | `SessionStore` trait (async persistence) | **Defer** | Chio uses `SessionJournal` from `chio-http-session`; adapt to that |
 | `GuardAction::Custom` dispatch | **Drop** | Replaced by `scan_keys` argument inspection |
-| ClawdStrike `GuardResult` / `Severity` types | **Drop** | Replaced by `Verdict` + `AdvisorySignal` |
+| Upstream `GuardResult` / `Severity` types | **Drop** | Replaced by `Verdict` + `AdvisorySignal` |
 | `hush_core::sha256` dependency | **Replace** | Use `chio-core`'s SHA-256 (already exists) |
 | `feature = "full"` conditional compilation | **Drop** | All sync code in Chio; async extensions are separate crates |
 | Instruction hierarchy `MarkerFormat::Xml` / `Json` rendering | **Defer** | Low priority; keep `Delimited` only for v1 |
@@ -287,7 +287,7 @@ receipt's evidence field. The warn threshold becomes a separate
 
 ### 3.3 Dependencies to vendor or adapt
 
-| ClawdStrike dep | Chio equivalent |
+| Upstream dep | Chio equivalent |
 |-----------------|----------------|
 | `hush_core::sha256` / `hush_core::Hash` | `chio_core::crypto::sha256` (or add if missing) |
 | `crate::text_utils::canonicalize_for_detection` | New `chio-guards/src/text_canonicalization.rs` module |
@@ -424,7 +424,7 @@ impl Guard for JailbreakGuard {
 }
 ```
 
-`JailbreakDetector` is ported directly from ClawdStrike's `jailbreak.rs` with
+`JailbreakDetector` is ported directly from the upstream guard suite's `jailbreak.rs` with
 all async code removed. The `detect_sync()` method becomes the sole
 `detect()` method. Session aggregation is retained using an internal
 `Mutex<HashMap<String, SessionAgg>>` keyed by `ctx.request.agent_id` (or a
@@ -546,7 +546,7 @@ SpiderSense pattern database, which is optional and user-provided.
 ### 6.1 Text canonicalization module
 
 A new shared module `chio-guards/src/text_canonicalization.rs` is needed,
-porting these functions from ClawdStrike's `text_utils.rs`:
+porting these functions from the upstream `text_utils.rs`:
 
 - `canonicalize_for_detection(text: &str) -> (String, CanonicalizationStats)` -- NFKC, casefold, zero-width strip, whitespace collapse
 - `truncate_to_char_boundary(text: &str, max_bytes: usize) -> (&str, bool)`
@@ -619,14 +619,14 @@ crates/chio-guards/src/
 Each module is self-contained with its own `#[cfg(test)] mod tests`. The
 detection logic (regex patterns, statistical features, linear model) lives
 in the same file as the guard, not in a separate detection crate. This avoids
-the ClawdStrike pattern of splitting guard wrappers from detection engines
+The upstream guard suite pattern of splitting guard wrappers from detection engines
 across multiple modules when the detection logic is small enough to inline.
 
 ---
 
 ## 9. Open Questions
 
-1. **Session key extraction**: ClawdStrike uses `GuardContext.session_id` for
+1. **Session key extraction**: The upstream suite uses `GuardContext.session_id` for
    session aggregation. Chio's `GuardContext` has no explicit session ID field.
    Options: (a) derive from `agent_id`, (b) add `session_id` to
    `GuardContext`, (c) extract from `ToolCallRequest` metadata.

@@ -214,7 +214,6 @@ fn token_with_unknown_fields_accepted() {
 fn receipt_with_unknown_fields_accepted() {
     let kp = Keypair::generate();
     let body = make_receipt_body(&kp);
-    let original_id = body.id.clone();
     let receipt = ChioReceipt::sign(body, &kp).unwrap();
 
     let mut value: serde_json::Value = serde_json::to_value(&receipt).unwrap();
@@ -237,7 +236,7 @@ fn receipt_with_unknown_fields_accepted() {
     let restored: ChioReceipt =
         serde_json::from_str(&json_with_unknowns).expect("ChioReceipt must accept unknown fields");
 
-    assert_eq!(original_id, restored.id);
+    assert_eq!(receipt.id, restored.id);
     assert_eq!(receipt.capability_id, restored.capability_id);
     assert_eq!(receipt.tool_name, restored.tool_name);
     assert_eq!(receipt.content_hash, restored.content_hash);

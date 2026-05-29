@@ -1,4 +1,4 @@
-import { withChio } from "@chio/next";
+import { withChio } from "@chio-protocol/next";
 import { localChatEvaluator } from "../../../lib/evaluator.js";
 
 export const runtime = "edge";

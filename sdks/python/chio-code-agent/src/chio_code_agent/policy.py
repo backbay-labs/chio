@@ -8,10 +8,9 @@ This module exposes the zero-config policy shipped with
   ``chio mcp serve --preset code-agent`` runs the same policy.
 * :data:`DEFAULT_POLICY` -- a parsed :class:`CodeAgentPolicy` dataclass
   used by the Python pre-flight checks (``FileTool``, ``ShellTool``,
-  ``GitTool``). The pre-flight rejects calls locally for the cases the
-  acceptance test exercises (``.env`` writes, absolute paths outside
-  cwd, ``git push --force``) so the SDK works even without a running
-  sidecar.
+  ``GitTool``). The pre-flight rejects calls locally for cases such as
+  ``.env`` writes, absolute paths outside cwd, and ``git push --force``
+  so the SDK works even without a running sidecar.
 
 The policy is fail-closed: anything not explicitly allowed is denied.
 """

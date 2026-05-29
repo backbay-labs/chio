@@ -1,9 +1,7 @@
 //! RemoteDesktopSideChannelGuard - per-channel enable/disable with
 //! transfer-size limits for remote desktop / RDP / VNC style sessions.
 //!
-//! Roadmap phase 5.3.  Ported from ClawdStrike's
-//! `guards/remote_desktop_side_channel.rs` and adapted to Chio's
-//! synchronous [`chio_kernel::Guard`] trait.
+//! Implements Chio's synchronous [`chio_kernel::Guard`] trait.
 //!
 //! Handles six named side channels, each with an independent toggle:
 //!

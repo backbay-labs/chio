@@ -5,18 +5,7 @@ use chio_core_types::receipt::{
 };
 use serde_json::json;
 
-trait TestUnwrap<T> {
-    fn test_unwrap(self, context: &str) -> T;
-}
-
-impl<T, E> TestUnwrap<T> for Result<T, E>
-where
-    E: std::fmt::Display,
-{
-    fn test_unwrap(self, context: &str) -> T {
-        self.unwrap_or_else(|error| panic!("{context}: {error}"))
-    }
-}
+use chio_test_support::ctx::TestUnwrap;
 
 fn receipt_body(keypair: &Keypair) -> ChioReceiptBody {
     ChioReceiptBody {

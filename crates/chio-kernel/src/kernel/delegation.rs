@@ -35,7 +35,7 @@ const DEFAULT_REVOCATION_VIEW_MAX_STALENESS_MS: u64 = 500;
 
 /// Consult the installed [`RevocationView`] for every link in the
 /// capability's delegation chain plus the leaf id itself. Returns
-/// `Ok(())` when no view is installed (legacy path) or when no link is
+/// `Ok(())` when no view is installed (no-view-installed path) or when no link is
 /// revoked.
 ///
 /// Performance: the `RevocationView` is arc-swap-backed; a single

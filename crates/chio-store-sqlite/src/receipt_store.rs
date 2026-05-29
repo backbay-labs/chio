@@ -99,11 +99,11 @@ use rusqlite::{params, Connection, OptionalExtension};
 pub struct SqliteReceiptStore {
     pub(crate) pool: Pool<SqliteConnectionManager>,
     receipt_commit_actor: ReceiptCommitActor,
-    /// Phase 1.5 multi-tenant receipt isolation: when true, tenant-
+    /// Multi-tenant receipt isolation: when true, tenant-
     /// scoped queries exclude the pre-multitenant NULL-tagged set. When
     /// false, queries with `tenant_filter = Some(id)` return rows where
-    /// `tenant_id = id OR tenant_id IS NULL`, which keeps legacy
-    /// (pre-1.5) receipts visible during explicit compatibility mode.
+    /// `tenant_id = id OR tenant_id IS NULL`, which keeps pre-multitenant
+    /// (NULL-tagged) receipts visible during explicit compatibility mode.
     pub(crate) strict_tenant_isolation: std::sync::atomic::AtomicBool,
 }
 
@@ -489,17 +489,17 @@ impl SqliteReceiptStore {
             .map_err(|error| ReceiptStoreError::Pool(error.to_string()))
     }
 
-    /// Phase 1.5 multi-tenant receipt isolation: toggle strict-isolation
+    /// Multi-tenant receipt isolation: toggle strict-isolation
     /// mode on tenant-scoped queries.
     ///
     /// When `strict = true`, a `tenant_filter = Some(id)` query returns
-    /// ONLY rows whose `tenant_id = id`. Legacy pre-1.5 receipts with
+    /// ONLY rows whose `tenant_id = id`. Pre-multitenant receipts with
     /// `tenant_id IS NULL` are excluded.
     ///
     /// When `strict = false`, the same query also includes rows where
     /// `tenant_id IS NULL` -- the pre-multitenant "public" fallback
-    /// set -- so legacy receipts remain visible during an explicit
-    /// compatibility window.
+    /// set -- so pre-multitenant (NULL-tagged) receipts remain visible during
+    /// an explicit compatibility window.
     ///
     /// A `tenant_filter = None` admin / compat query always returns
     /// every row regardless of this setting.

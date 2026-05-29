@@ -19,8 +19,7 @@ chio-core = { path = "../chio-core" }
 chio-manifest = { path = "../chio-manifest" }
 
 [dev-dependencies]
-serde_json = { workspace = true }
+chio-test-support = { path = "../chio-test-support" }
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

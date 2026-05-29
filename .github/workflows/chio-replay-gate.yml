@@ -110,18 +110,10 @@ jobs:
         # initial bless lands; skip-on-missing keeps the gate green while
         # still wiring the invocation.
         #
-        # Fail-closed contract: the previous form was
-        #
-        #     if cargo test ... --no-run --quiet 2>/dev/null; then
-        #       cargo test ...
-        #     else
-        #       echo "skipping"
-        #     fi
-        #
-        # which silently swallowed real compile errors in the test target
-        # (or any transitive workspace dependency) by routing them into
-        # the skip branch. The gate failed open. The shape below splits
-        # the two concerns:
+        # Fail-closed contract: a compile error in the test target (or any
+        # transitive workspace dependency) must NOT be mistaken for a missing
+        # target and routed into the skip branch. The shape below splits the
+        # two concerns:
         #
         #   1. Target-presence probe: a plain file-existence check on the
         #      test source by Cargo convention

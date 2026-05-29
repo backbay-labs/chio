@@ -1,4 +1,4 @@
-//! `arc settle status` CLI surface.
+//! `chio settle status` CLI surface.
 //!
 //! Surfaces the local settlement lifecycle for operator review. The
 //! command opens an existing chio-store-sqlite database read-only and
@@ -29,7 +29,7 @@ use serde::{Deserialize, Serialize};
 /// Schema string emitted on the wire for status reports.
 pub const SETTLE_STATUS_REPORT_SCHEMA: &str = "chio.settle.status-report.v1";
 
-/// Errors surfaced by the `arc settle status` command.
+/// Errors surfaced by the `chio settle status` command.
 #[derive(Debug, thiserror::Error)]
 pub enum SettleStatusError {
     #[error("settle status backend error: {0}")]
@@ -216,7 +216,7 @@ fn list_pending(conn: &Connection) -> Result<Vec<PendingRow>, SettleStatusError>
 fn list_settled(conn: &Connection) -> Result<Vec<SettledRow>, SettleStatusError> {
     // The documented CLI ordering contract is
     // `(finalized_at, receipt_id)` across all three sections of
-    // `arc settle status`. The
+    // `chio settle status`. The
     // `settlement_reconciliations` table only carries `updated_at`
     // (the time the reconciliation row was last modified, which can
     // drift from the receipt's finalized timestamp on retry/restage),
@@ -282,7 +282,7 @@ fn list_dead_lettered(conn: &Connection) -> Result<Vec<DeadLetteredRow>, SettleS
     Ok(out)
 }
 
-/// Run `arc settle status`. Wires the report into the CLI dispatch
+/// Run `chio settle status`. Wires the report into the CLI dispatch
 /// surface; callers control output format via `json`.
 pub fn cmd_settle_status(store_path: &Path, json: bool) -> Result<i32, SettleStatusError> {
     // Defensive: verify the file is at least readable before opening.

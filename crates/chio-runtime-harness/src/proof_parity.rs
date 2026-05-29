@@ -474,7 +474,7 @@ mod tests {
 
     fn predicate_binding() -> BilateralDssePredicateParityBinding {
         BilateralDssePredicateParityBinding {
-            predicate_type: "https://chio.dev/predicate/chio-bilateral/v1".to_string(),
+            predicate_type: "https://chio.world/predicate/chio-bilateral/v1".to_string(),
             tool_server_a: "did:chio:buyer-kernel".to_string(),
             tool_server_b: "did:chio:vendor-kernel".to_string(),
             tool_name: "vendor.receipt".to_string(),

@@ -183,7 +183,7 @@ print("OK generated relay alert and trend reports")
 PY
 
 cargo test -p chio-pheromone-relay alert
-cargo test -p chio-cli --bin chio_pheromone
+cargo test -p chio-cli --bin chio chio_pheromone
 cargo test -p chio-metrics-spec
 bash "$ROOT/scripts/check-sre-metrics-registry.sh"
 

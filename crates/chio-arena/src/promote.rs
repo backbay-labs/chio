@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use chio_core::canonical_json_bytes;
 use chio_core::crypto::sha256_hex;
-use chio_replay_corpus::{write_m04_fixture, M04ByteSizes, M04WriterError};
+use chio_replay_corpus::{write_fixture, ByteSizes, WriterError};
 use chio_tee_frame::{Frame, FrameError, FrameInputs, Otel, Provenance, Upstream, UpstreamSystem};
 use serde::{Deserialize, Serialize};
 
@@ -17,13 +17,13 @@ use crate::scenario::{DeterminismWitness, Scenario, ScenarioVerdict};
 /// Arena manifest filename.
 pub const ARENA_MANIFEST_FILENAME: &str = "arena.json";
 const ARENA_BUNDLE_SCHEMA: &str = "chio.arena.bundle/v1";
-/// Schema marker used by auto-promoted M04 fixture descriptors.
-pub const ARENA_M04_FIXTURE_SCHEMA: &str = "chio.arena.m04-fixture/v1";
+/// Schema marker used by auto-promoted fixture descriptors.
+pub const ARENA_FIXTURE_SCHEMA: &str = "chio.arena.fixture/v1";
 /// Schema marker used by auto-promoted adversarial-suite cases.
 pub const ARENA_ADVERSARIAL_CASE_SCHEMA: &str = "chio.arena.adversarial-case/v1";
-/// Default per-run cap on auto-promoted M04 fixtures (matches the M04
+/// Default per-run cap on auto-promoted fixtures (matches the
 /// CHIO_BLESS gate per-PR cap of 5).
-pub const ARENA_M04_PROMOTE_CAP_DEFAULT: usize = 5;
+pub const ARENA_PROMOTE_CAP_DEFAULT: usize = 5;
 
 /// Summary returned by [`write_arena_bundle`].
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,17 +32,17 @@ pub struct ArenaBundleSummary {
     pub dir: PathBuf,
     /// Scenario id.
     pub scenario_id: String,
-    /// M04 replay root.
+    /// Replay root.
     pub root_hex: String,
     /// Number of receipts written.
     pub receipt_count: usize,
-    /// M04 byte sizes.
-    pub m04_byte_sizes: M04ByteSizes,
+    /// Byte sizes.
+    pub byte_sizes: ByteSizes,
     /// Arena manifest path.
     pub manifest_path: PathBuf,
 }
 
-/// Arena manifest written next to M04 bundle files.
+/// Arena manifest written next to bundle files.
 pub type ArenaBundleManifest = ArenaManifestBundle;
 
 /// Arena manifest body.
@@ -54,7 +54,7 @@ pub struct ArenaManifestBundle {
     pub scenario_id: String,
     /// Determinism witness.
     pub witness: DeterminismWitness,
-    /// M04 root.
+    /// Replay root.
     pub root_hex: String,
     /// Number of signed receipts.
     pub receipt_count: usize,
@@ -117,9 +117,9 @@ pub enum PromoteError {
     /// TEE frame build failed.
     #[error("arena frame failed validation: {0}")]
     Frame(#[from] FrameError),
-    /// M04 writer failed.
-    #[error("M04 fixture write failed: {0}")]
-    M04(#[from] M04WriterError),
+    /// Fixture writer failed.
+    #[error("fixture write failed: {0}")]
+    Writer(#[from] WriterError),
     /// I/O failed.
     #[error("I/O error at {path}: {source}")]
     Io {
@@ -140,7 +140,7 @@ pub enum PromoteError {
     ZeroCap,
 }
 
-/// Write an M04-compatible bundle plus `arena.json`.
+/// Write a replay-compatible bundle plus `arena.json`.
 pub fn write_arena_bundle(
     dir: impl AsRef<Path>,
     scenario: &Scenario,
@@ -164,13 +164,13 @@ pub fn write_arena_bundle(
         .enumerate()
         .map(|(index, receipt)| frame_from_receipt(index, scenario, receipt))
         .collect::<Result<Vec<_>, _>>()?;
-    let m04 = write_m04_fixture(dir, frames)?;
+    let fixture = write_fixture(dir, frames)?;
     let manifest = ArenaManifestBundle {
         schema_version: ARENA_BUNDLE_SCHEMA.to_string(),
         scenario_id: scenario.id.clone(),
         witness: scenario.determinism_witness(),
-        root_hex: m04.root_hex.clone(),
-        receipt_count: m04.receipt_count,
+        root_hex: fixture.root_hex.clone(),
+        receipt_count: fixture.receipt_count,
         steps: run
             .receipts
             .iter()
@@ -186,11 +186,11 @@ pub fn write_arena_bundle(
     write_canonical_manifest(&manifest_path, &manifest)?;
 
     Ok(ArenaBundleSummary {
-        dir: m04.dir,
+        dir: fixture.dir,
         scenario_id: scenario.id.clone(),
-        root_hex: m04.root_hex,
-        receipt_count: m04.receipt_count,
-        m04_byte_sizes: m04.byte_sizes,
+        root_hex: fixture.root_hex,
+        receipt_count: fixture.receipt_count,
+        byte_sizes: fixture.byte_sizes,
         manifest_path,
     })
 }
@@ -209,7 +209,7 @@ fn frame_from_receipt(
         "receipt_id": receipt.receipt.id,
     });
     Frame::build(FrameInputs {
-        event_id: format!("01M08ARENA{index:016}"),
+        event_id: format!("01ARENA000{index:016}"),
         ts: scenario.virtual_clock_start.clone(),
         tee_id: "arena-p1".to_string(),
         upstream: Upstream {
@@ -227,7 +227,7 @@ fn frame_from_receipt(
         },
         request_blob_sha256: sha256_hex(&receipt_bytes),
         response_blob_sha256: sha256_hex(&arena_receipt_bytes),
-        redaction_pass_id: "m08-arena@0.1.0+p1".to_string(),
+        redaction_pass_id: "arena-redaction@0.1.0+p1".to_string(),
         verdict: frame_verdict(receipt.verdict),
         deny_reason: frame_deny_reason(receipt),
         would_have_blocked: receipt.verdict != ScenarioVerdict::Allow,
@@ -303,9 +303,9 @@ impl BlessEnv for ProcessBlessEnv {
     }
 }
 
-/// Outcome reported by [`promote_to_m04_fixtures`].
+/// Outcome reported by [`promote_to_fixtures`].
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct M04PromotionSummary {
+pub struct ArenaPromotionSummary {
     /// Promoted fixture paths.
     pub fixtures: Vec<PathBuf>,
     /// Effective `BLESS_REASON` recorded.
@@ -332,11 +332,11 @@ pub struct AdversarialSuiteSummary {
     pub root: PathBuf,
 }
 
-/// Soft-gate inputs for the auto-promotion path. The M04 CHIO_BLESS
+/// Soft-gate inputs for the auto-promotion path. The CHIO_BLESS
 /// gate is reused unchanged; this checks the env vars locally so arena
 /// callers do not need to invoke the bless script.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct M04PromotionGate {
+pub struct ArenaPromotionGate {
     /// Effective `CHIO_BLESS`.
     pub chio_bless: String,
     /// Effective `BLESS_REASON`.
@@ -345,7 +345,7 @@ pub struct M04PromotionGate {
     pub ci: bool,
 }
 
-impl M04PromotionGate {
+impl ArenaPromotionGate {
     /// Read the gate inputs from the supplied environment.
     pub fn read(env: &dyn BlessEnv) -> Result<Self, PromoteError> {
         let chio_bless = env.var("CHIO_BLESS").unwrap_or_default();
@@ -399,26 +399,26 @@ fn adversarial_class_dirname(class: &str) -> String {
         .collect()
 }
 
-/// Auto-promote failing arena scenarios to the M04 fixture corpus under
+/// Auto-promote failing arena scenarios to the fixture corpus under
 /// `tests/replay/fixtures/arena/<class>/<hash>.json`.
 ///
-/// This function honours the M04 CHIO_BLESS gate clauses: `CHIO_BLESS`
+/// This function honours the CHIO_BLESS gate clauses: `CHIO_BLESS`
 /// must be exactly `"1"`, `BLESS_REASON` must start with
 /// `arena:<scenario-id>`, and `CI` must be unset / falsy. The per-run
-/// cap (default 5, matching the M04 per-PR cap) clamps how many
+/// cap (default 5, matching the per-PR cap) clamps how many
 /// fixtures land in one call.
 ///
 /// Only [`ScenarioVerdict::Deny`] receipts (the failures the arena is meant to
 /// graduate) are written. Allowed and rewritten steps are skipped.
-pub fn promote_to_m04_fixtures(
+pub fn promote_to_fixtures(
     scenario: &Scenario,
     run: &ArenaRun,
     fixtures_root: &Path,
     class: &str,
     cap: usize,
     env: &dyn BlessEnv,
-) -> Result<M04PromotionSummary, PromoteError> {
-    let gate = M04PromotionGate::read(env)?;
+) -> Result<ArenaPromotionSummary, PromoteError> {
+    let gate = ArenaPromotionGate::read(env)?;
     let expected_reason = format!("arena:{}", scenario.id);
     if gate.bless_reason != expected_reason {
         return Err(PromoteError::BlessGate {
@@ -449,7 +449,7 @@ pub fn promote_to_m04_fixtures(
     let mut fixtures = Vec::new();
     let mut skipped_cap = 0;
     // Match the documented contract: only `Deny` receipts are graduated to
-    // M04 fixtures. `Allow` and `Rewrite` are skipped so downstream M04
+    // fixtures. `Allow` and `Rewrite` are skipped so downstream
     // replay consumers do not receive unexpected fixture types.
     for receipt in run
         .receipts
@@ -460,7 +460,7 @@ pub fn promote_to_m04_fixtures(
             skipped_cap += 1;
             continue;
         }
-        let fixture = build_m04_fixture(scenario, receipt, class, &gate)?;
+        let fixture = build_fixture(scenario, receipt, class, &gate)?;
         let bytes = canonical_json_bytes(&fixture)?;
         let hash = sha256_hex(&bytes);
         let path = class_dir.join(format!("{}.json", &hash[..16]));
@@ -471,7 +471,7 @@ pub fn promote_to_m04_fixtures(
         fixtures.push(path);
     }
 
-    Ok(M04PromotionSummary {
+    Ok(ArenaPromotionSummary {
         fixtures,
         bless_reason: gate.bless_reason,
         family,
@@ -484,10 +484,9 @@ pub fn promote_to_m04_fixtures(
 /// Auto-promote failing scenarios to the chio-adversarial-suite
 /// per-class corpus.
 ///
-/// When the suite scaffold has not landed yet (signalled by the absence
-/// of `crates/chio-adversarial-suite/cases/`), the writer falls back to
-/// `target/arena/promote-pending/`. The returned summary records which
-/// target was chosen.
+/// When `crates/chio-adversarial-suite/cases/` is absent, the writer
+/// falls back to `target/arena/promote-pending/`. The returned summary
+/// records which target was chosen.
 pub fn promote_to_adversarial_suite(
     scenario: &Scenario,
     run: &ArenaRun,
@@ -548,7 +547,7 @@ pub fn promote_to_adversarial_suite(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-struct M04Fixture {
+struct ArenaFixture {
     schema_version: String,
     family: String,
     name: String,
@@ -559,11 +558,11 @@ struct M04Fixture {
     fixed_nonce_seed_index: u64,
     tags: Vec<String>,
     bless_reason: String,
-    arena: M04FixtureArena,
+    arena: ArenaFixtureBody,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-struct M04FixtureArena {
+struct ArenaFixtureBody {
     scenario_id: String,
     step_id: String,
     request_id: String,
@@ -574,12 +573,12 @@ struct M04FixtureArena {
     receipt_sha256: String,
 }
 
-fn build_m04_fixture(
+fn build_fixture(
     scenario: &Scenario,
     receipt: &ArenaReceipt,
     class: &str,
-    gate: &M04PromotionGate,
-) -> Result<M04Fixture, PromoteError> {
+    gate: &ArenaPromotionGate,
+) -> Result<ArenaFixture, PromoteError> {
     let receipt_bytes = canonical_json_bytes(&receipt.receipt)?;
     let family = adversarial_class_dirname(class);
     let name = format!("arena/{family}/{}", receipt.step_id);
@@ -588,8 +587,8 @@ fn build_m04_fixture(
         ScenarioVerdict::Deny => "deny",
         ScenarioVerdict::Rewrite => "rewrite",
     };
-    Ok(M04Fixture {
-        schema_version: ARENA_M04_FIXTURE_SCHEMA.to_string(),
+    Ok(ArenaFixture {
+        schema_version: ARENA_FIXTURE_SCHEMA.to_string(),
         family: format!("arena/{family}"),
         name,
         intent: format!(
@@ -605,7 +604,7 @@ fn build_m04_fixture(
         fixed_nonce_seed_index: scenario.rng_seed,
         tags: vec!["arena".to_string(), class.to_string()],
         bless_reason: gate.bless_reason.clone(),
-        arena: M04FixtureArena {
+        arena: ArenaFixtureBody {
             scenario_id: scenario.id.clone(),
             step_id: receipt.step_id.clone(),
             request_id: receipt.request_id.clone(),
@@ -641,7 +640,7 @@ fn build_adversarial_case(
     // Propagate canonical-JSON serialisation failure instead of silently
     // hashing the empty byte string, which would emit an
     // attacker-friendly "all-zeros" `receipt_sha256` while still claiming
-    // the case promoted successfully. The analogous `build_m04_fixture`
+    // the case promoted successfully. The analogous `build_fixture`
     // already propagates this error.
     let receipt_bytes = canonical_json_bytes(&receipt.receipt)?;
     let mut metadata = BTreeMap::new();

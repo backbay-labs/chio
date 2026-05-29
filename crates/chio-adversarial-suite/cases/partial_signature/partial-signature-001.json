@@ -16,7 +16,7 @@
     },
     "signature": {
       "algorithm": "ed25519",
-      "key_id": "did:chio:authority:m05#signing",
+      "key_id": "did:chio:authority:home#signing",
       "bytes": "ed25519:truncated"
     }
   },

@@ -1,6 +1,6 @@
 # LangChain Tool Example
 
-This example wraps an Chio-governed hosted-edge tool as a LangChain
+This example wraps a Chio-governed hosted-edge tool as a LangChain
 `StructuredTool` while the hosted session itself is managed by `chio-sdk`.
 
 ## What it does
@@ -19,7 +19,7 @@ From this directory:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e ../../packages/sdk/chio-py -e .
+pip install -e ../../sdks/python/chio-py -e .
 ```
 
 ## Run
@@ -46,5 +46,5 @@ Optional environment variables:
 
 See also:
 
-- [docs/PROGRESSIVE_TUTORIAL.md](../../docs/PROGRESSIVE_TUTORIAL.md)
+- [docs/start-here/PROGRESSIVE_TUTORIAL.md](../../docs/start-here/PROGRESSIVE_TUTORIAL.md)
 - [examples/docker/README.md](../docker/README.md)

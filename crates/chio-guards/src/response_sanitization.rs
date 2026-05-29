@@ -5,9 +5,9 @@
 //!
 //! - A simple, backwards-compatible [`ResponseSanitizationGuard`] that uses a
 //!   small fixed pattern set and Block/Redact binary actions.
-//! - A full-featured [`OutputSanitizer`] that ports the ClawdStrike output
-//!   sanitizer: secret detectors (AWS, GitHub, Slack, GCP service-account
-//!   JSON, passwords, PEM private keys, JWTs, OAuth bearer tokens),
+//! - A full-featured [`OutputSanitizer`] with secret detectors (AWS, GitHub,
+//!   Slack, GCP service-account JSON, passwords, PEM private keys, JWTs,
+//!   OAuth bearer tokens),
 //!   credit-card numbers with Luhn validation, US SSNs, Shannon-entropy
 //!   high-entropy token detection, configurable allowlist/denylist,
 //!   deterministic overlap resolution (longest-match-wins with strategy
@@ -64,71 +64,80 @@ pub enum SanitizationAction {
 }
 
 fn default_patterns() -> Vec<SensitivePattern> {
-    let mut patterns = Vec::new();
+    // (regex, name, level, redaction) for each built-in PII/PHI detector.
+    let specs: [(&str, &str, SensitivityLevel, &str); 7] = [
+        (
+            r"\b\d{3}-\d{2}-\d{4}\b",
+            "SSN",
+            SensitivityLevel::High,
+            "[SSN REDACTED]",
+        ),
+        (
+            r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b",
+            "email",
+            SensitivityLevel::Medium,
+            "[EMAIL REDACTED]",
+        ),
+        (
+            r"\b(?:\(\d{3}\)\s*|\d{3}[-.])\d{3}[-.]?\d{4}\b",
+            "phone",
+            SensitivityLevel::Low,
+            "[PHONE REDACTED]",
+        ),
+        (
+            r"\b(?:\d{4}[-\s]?){3}\d{4}\b",
+            "credit-card",
+            SensitivityLevel::High,
+            "[CARD REDACTED]",
+        ),
+        (
+            r"\b(?:\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2})\b",
+            "date-of-birth",
+            SensitivityLevel::Low,
+            "[DATE REDACTED]",
+        ),
+        (
+            r"\bMRN[:\s#]*\d{6,12}\b",
+            "MRN",
+            SensitivityLevel::High,
+            "[MRN REDACTED]",
+        ),
+        (
+            r"\b[A-Z]\d{2}(?:\.\d{1,4})?\b",
+            "ICD-10",
+            SensitivityLevel::Medium,
+            "[ICD REDACTED]",
+        ),
+    ];
 
-    if let Ok(regex) = Regex::new(r"\b\d{3}-\d{2}-\d{4}\b") {
-        patterns.push(SensitivePattern {
-            name: "SSN".to_string(),
-            regex,
-            level: SensitivityLevel::High,
-            redaction: "[SSN REDACTED]".to_string(),
-        });
+    let mut patterns = Vec::with_capacity(specs.len());
+    for (pattern, name, level, redaction) in specs {
+        match compile_required_pattern(pattern) {
+            Ok(regex) => patterns.push(SensitivePattern {
+                name: name.to_string(),
+                regex,
+                level,
+                redaction: redaction.to_string(),
+            }),
+            Err(_) => {
+                // Fail closed: a built-in constant pattern failed to compile.
+                // Shipping the reduced set would let that PII/PHI category
+                // through, so redact every response instead (the simple-guard
+                // analogue of the OutputSanitizer fail-closed path). The
+                // catch-all is itself a constant, so its fallback is
+                // unreachable in practice.
+                if let Ok(catch_all) = compile_required_pattern(r"[\s\S]+") {
+                    return vec![SensitivePattern {
+                        name: "redaction_unavailable_fail_closed".to_string(),
+                        regex: catch_all,
+                        level: SensitivityLevel::High,
+                        redaction: "[REDACTED]".to_string(),
+                    }];
+                }
+                return patterns;
+            }
+        }
     }
-
-    if let Ok(regex) = Regex::new(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b") {
-        patterns.push(SensitivePattern {
-            name: "email".to_string(),
-            regex,
-            level: SensitivityLevel::Medium,
-            redaction: "[EMAIL REDACTED]".to_string(),
-        });
-    }
-
-    if let Ok(regex) = Regex::new(r"\b(?:\(\d{3}\)\s*|\d{3}[-.])\d{3}[-.]?\d{4}\b") {
-        patterns.push(SensitivePattern {
-            name: "phone".to_string(),
-            regex,
-            level: SensitivityLevel::Low,
-            redaction: "[PHONE REDACTED]".to_string(),
-        });
-    }
-
-    if let Ok(regex) = Regex::new(r"\b(?:\d{4}[-\s]?){3}\d{4}\b") {
-        patterns.push(SensitivePattern {
-            name: "credit-card".to_string(),
-            regex,
-            level: SensitivityLevel::High,
-            redaction: "[CARD REDACTED]".to_string(),
-        });
-    }
-
-    if let Ok(regex) = Regex::new(r"\b(?:\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2})\b") {
-        patterns.push(SensitivePattern {
-            name: "date-of-birth".to_string(),
-            regex,
-            level: SensitivityLevel::Low,
-            redaction: "[DATE REDACTED]".to_string(),
-        });
-    }
-
-    if let Ok(regex) = Regex::new(r"\bMRN[:\s#]*\d{6,12}\b") {
-        patterns.push(SensitivePattern {
-            name: "MRN".to_string(),
-            regex,
-            level: SensitivityLevel::High,
-            redaction: "[MRN REDACTED]".to_string(),
-        });
-    }
-
-    if let Ok(regex) = Regex::new(r"\b[A-Z]\d{2}(?:\.\d{1,4})?\b") {
-        patterns.push(SensitivePattern {
-            name: "ICD-10".to_string(),
-            regex,
-            level: SensitivityLevel::Medium,
-            redaction: "[ICD REDACTED]".to_string(),
-        });
-    }
-
     patterns
 }
 
@@ -465,192 +474,216 @@ struct CompiledPattern {
     validator: Option<fn(&str) -> bool>,
 }
 
-fn compile_or_nomatch(pattern: &'static str) -> Regex {
-    match Regex::new(pattern) {
-        Ok(re) => re,
-        Err(err) => {
-            tracing::error!(error = %err, %pattern, "failed to compile hardcoded regex");
-            // Fallback to a never-matching regex. `\A\z` is always valid and
-            // matches only empty strings (which we never pass in).
-            match Regex::new(r"\A\z") {
-                Ok(re) => re,
-                Err(_) => match Regex::new("") {
-                    Ok(re) => re,
-                    Err(_) => {
-                        // Last resort: recompile the original pattern and let
-                        // any runtime caller observe the empty-regex fallback
-                        // without crashing.
-                        #[allow(clippy::unwrap_used)]
-                        {
-                            Regex::new("").unwrap()
-                        }
-                    }
-                },
-            }
-        }
+/// Compile a built-in (compile-time-constant) redaction pattern.
+///
+/// These patterns are unit-tested constants, so a failure here is a build
+/// regression, not a runtime input condition. We must NOT degrade to a
+/// never-matching regex on failure: that silently disables an entire
+/// redaction class and lets the matching content pass through unredacted,
+/// which is fail-open. Instead we surface the error so the sanitizer refuses
+/// to construct (see `OutputSanitizer::with_config`) and the runtime
+/// detectors fail closed by redacting the whole input. This mirrors
+/// `chio-log-redact`, which substitutes `[REDACTION-FAILED]` rather than ever
+/// emitting the original value when redaction cannot run.
+fn compile_required_pattern(pattern: &'static str) -> Result<Regex, regex::Error> {
+    Regex::new(pattern).inspect_err(|err| {
+        tracing::error!(error = %err, %pattern, "failed to compile hardcoded redaction regex");
+    })
+}
+
+/// Pattern used by the high-entropy secret detector.
+const HIGH_ENTROPY_TOKEN_PATTERN: &str = r"[A-Za-z0-9+/=_-]{16,}";
+
+/// Fail-closed finding that drops the entire scanned input.
+///
+/// Used when a constant detector pattern cannot be compiled at runtime, a
+/// state `OutputSanitizer::with_config` already refuses to construct. Rather
+/// than let any content through unredacted, we redact everything: the
+/// response-sanitization analogue of `chio-log-redact`'s `[REDACTION-FAILED]`
+/// substitution. The strategy is `Drop` (not `Mask`) because `resolve_overlaps`
+/// honors `Drop` unconditionally, so a per-category strategy override cannot
+/// downgrade this fail-closed finding to `Keep`.
+fn redact_all_finding(limited: &str) -> SensitiveDataFinding {
+    SensitiveDataFinding {
+        id: "redaction_unavailable_fail_closed".to_string(),
+        category: SensitiveCategory::Secret,
+        data_type: "redaction_unavailable".to_string(),
+        confidence: 1.0,
+        span: Span {
+            start: 0,
+            end: limited.len(),
+        },
+        preview: String::new(),
+        detector: "fail_closed".to_string(),
+        recommended_action: RedactionStrategy::Drop,
     }
 }
 
-fn compiled_patterns() -> &'static [CompiledPattern] {
-    static PATS: OnceLock<Vec<CompiledPattern>> = OnceLock::new();
-    PATS.get_or_init(|| {
-        vec![
-            // ---- Secrets ----
-            CompiledPattern {
-                id: "secret_aws_access_key_id",
-                category: SensitiveCategory::Secret,
-                data_type: "aws_access_key_id",
-                confidence: 0.99,
-                recommended: RedactionStrategy::Mask,
-                regex: compile_or_nomatch(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"),
-                validator: None,
-            },
-            CompiledPattern {
-                id: "secret_aws_secret_access_key",
-                category: SensitiveCategory::Secret,
-                data_type: "aws_secret_access_key",
-                confidence: 0.9,
-                recommended: RedactionStrategy::Mask,
-                regex: compile_or_nomatch(
-                    r"(?i)aws_secret_access_key\s*[:=]\s*[A-Za-z0-9/+=]{40}",
-                ),
-                validator: None,
-            },
-            CompiledPattern {
-                id: "secret_github_token",
-                category: SensitiveCategory::Secret,
-                data_type: "github_token",
-                confidence: 0.99,
-                recommended: RedactionStrategy::Mask,
-                regex: compile_or_nomatch(r"\bgh[pousr]_[A-Za-z0-9]{36,255}\b"),
-                validator: None,
-            },
-            CompiledPattern {
-                id: "secret_slack_token",
-                category: SensitiveCategory::Secret,
-                data_type: "slack_token",
-                confidence: 0.99,
-                recommended: RedactionStrategy::Mask,
-                regex: compile_or_nomatch(r"\bxox[abopsr]-[A-Za-z0-9-]{10,}\b"),
-                validator: None,
-            },
-            CompiledPattern {
-                id: "secret_slack_webhook",
-                category: SensitiveCategory::Secret,
-                data_type: "slack_webhook",
-                confidence: 0.95,
-                recommended: RedactionStrategy::Mask,
-                regex: compile_or_nomatch(
-                    r"https://hooks\.slack\.com/services/T[A-Z0-9]+/B[A-Z0-9]+/[A-Za-z0-9]+",
-                ),
-                validator: None,
-            },
-            CompiledPattern {
-                id: "secret_gcp_service_account",
-                category: SensitiveCategory::Secret,
-                data_type: "gcp_service_account_json",
-                confidence: 0.97,
-                recommended: RedactionStrategy::Drop,
-                regex: compile_or_nomatch(r#""type"\s*:\s*"service_account""#),
-                validator: None,
-            },
-            CompiledPattern {
-                id: "secret_pem_private_key",
-                category: SensitiveCategory::Secret,
-                data_type: "pem_private_key",
-                confidence: 0.99,
-                recommended: RedactionStrategy::Mask,
-                regex: compile_or_nomatch(
-                    r"-----BEGIN (?:RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----",
-                ),
-                validator: None,
-            },
-            CompiledPattern {
-                id: "secret_jwt",
-                category: SensitiveCategory::Secret,
-                data_type: "jwt",
-                confidence: 0.85,
-                recommended: RedactionStrategy::Mask,
-                regex: compile_or_nomatch(
-                    r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b",
-                ),
-                validator: None,
-            },
-            CompiledPattern {
-                id: "secret_oauth_bearer",
-                category: SensitiveCategory::Secret,
-                data_type: "oauth_bearer",
-                confidence: 0.85,
-                recommended: RedactionStrategy::Mask,
-                regex: compile_or_nomatch(
-                    r"(?i)\b(?:authorization|auth)\s*:\s*bearer\s+[A-Za-z0-9._~+/=-]{16,}",
-                ),
-                validator: None,
-            },
-            CompiledPattern {
-                id: "secret_password_assignment",
-                category: SensitiveCategory::Secret,
-                data_type: "password",
-                confidence: 0.7,
-                recommended: RedactionStrategy::Mask,
-                regex: compile_or_nomatch(
-                    r"(?i)\b(?:password|passwd|pwd|secret)\s*[:=]\s*\S{6,}",
-                ),
-                validator: None,
-            },
-            // ---- PII ----
-            CompiledPattern {
-                id: "pii_ssn",
-                category: SensitiveCategory::Pii,
-                data_type: "ssn",
-                confidence: 0.9,
-                recommended: RedactionStrategy::Mask,
-                regex: compile_or_nomatch(r"\b\d{3}-\d{2}-\d{4}\b"),
-                validator: Some(is_valid_ssn_fragments),
-            },
-            CompiledPattern {
-                id: "pii_ssn_compact",
-                category: SensitiveCategory::Pii,
-                data_type: "ssn",
-                confidence: 0.7,
-                recommended: RedactionStrategy::Mask,
-                regex: compile_or_nomatch(r"(?:^|[^0-9])(\d{9})(?:$|[^0-9])"),
-                validator: Some(is_valid_ssn_compact),
-            },
-            CompiledPattern {
-                id: "pii_credit_card",
-                category: SensitiveCategory::Pii,
-                data_type: "credit_card",
-                confidence: 0.9,
-                recommended: RedactionStrategy::Mask,
-                regex: compile_or_nomatch(r"\b(?:\d[ -]*?){13,19}\b"),
-                validator: Some(is_luhn_valid_card_number),
-            },
-            CompiledPattern {
-                id: "pii_email",
-                category: SensitiveCategory::Pii,
-                data_type: "email",
-                confidence: 0.95,
-                recommended: RedactionStrategy::Partial,
-                regex: compile_or_nomatch(
-                    r"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b",
-                ),
-                validator: None,
-            },
-            // ---- Internal ----
-            CompiledPattern {
-                id: "internal_private_ip",
-                category: SensitiveCategory::Internal,
-                data_type: "internal_ip",
-                confidence: 0.8,
-                recommended: RedactionStrategy::TypeLabel,
-                regex: compile_or_nomatch(
-                    r"\b(?:10|192\.168|172\.(?:1[6-9]|2[0-9]|3[0-1]))\.[0-9]{1,3}\.[0-9]{1,3}\b",
-                ),
-                validator: None,
-            },
-        ]
-    })
+/// Returns the built-in detector registry, or an error if any
+/// compile-time-constant pattern fails to compile. Computed once per process.
+fn compiled_patterns() -> Result<&'static [CompiledPattern], &'static str> {
+    static PATS: OnceLock<Result<Vec<CompiledPattern>, String>> = OnceLock::new();
+    match PATS.get_or_init(|| build_compiled_patterns().map_err(|err| err.to_string())) {
+        Ok(patterns) => Ok(patterns.as_slice()),
+        Err(message) => Err(message.as_str()),
+    }
+}
+
+fn build_compiled_patterns() -> Result<Vec<CompiledPattern>, regex::Error> {
+    Ok(vec![
+        // ---- Secrets ----
+        CompiledPattern {
+            id: "secret_aws_access_key_id",
+            category: SensitiveCategory::Secret,
+            data_type: "aws_access_key_id",
+            confidence: 0.99,
+            recommended: RedactionStrategy::Mask,
+            regex: compile_required_pattern(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b")?,
+            validator: None,
+        },
+        CompiledPattern {
+            id: "secret_aws_secret_access_key",
+            category: SensitiveCategory::Secret,
+            data_type: "aws_secret_access_key",
+            confidence: 0.9,
+            recommended: RedactionStrategy::Mask,
+            regex: compile_required_pattern(
+                r"(?i)aws_secret_access_key\s*[:=]\s*[A-Za-z0-9/+=]{40}",
+            )?,
+            validator: None,
+        },
+        CompiledPattern {
+            id: "secret_github_token",
+            category: SensitiveCategory::Secret,
+            data_type: "github_token",
+            confidence: 0.99,
+            recommended: RedactionStrategy::Mask,
+            regex: compile_required_pattern(r"\bgh[pousr]_[A-Za-z0-9]{36,255}\b")?,
+            validator: None,
+        },
+        CompiledPattern {
+            id: "secret_slack_token",
+            category: SensitiveCategory::Secret,
+            data_type: "slack_token",
+            confidence: 0.99,
+            recommended: RedactionStrategy::Mask,
+            regex: compile_required_pattern(r"\bxox[abopsr]-[A-Za-z0-9-]{10,}\b")?,
+            validator: None,
+        },
+        CompiledPattern {
+            id: "secret_slack_webhook",
+            category: SensitiveCategory::Secret,
+            data_type: "slack_webhook",
+            confidence: 0.95,
+            recommended: RedactionStrategy::Mask,
+            regex: compile_required_pattern(
+                r"https://hooks\.slack\.com/services/T[A-Z0-9]+/B[A-Z0-9]+/[A-Za-z0-9]+",
+            )?,
+            validator: None,
+        },
+        CompiledPattern {
+            id: "secret_gcp_service_account",
+            category: SensitiveCategory::Secret,
+            data_type: "gcp_service_account_json",
+            confidence: 0.97,
+            recommended: RedactionStrategy::Drop,
+            regex: compile_required_pattern(r#""type"\s*:\s*"service_account""#)?,
+            validator: None,
+        },
+        CompiledPattern {
+            id: "secret_pem_private_key",
+            category: SensitiveCategory::Secret,
+            data_type: "pem_private_key",
+            confidence: 0.99,
+            recommended: RedactionStrategy::Mask,
+            regex: compile_required_pattern(
+                r"-----BEGIN (?:RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----",
+            )?,
+            validator: None,
+        },
+        CompiledPattern {
+            id: "secret_jwt",
+            category: SensitiveCategory::Secret,
+            data_type: "jwt",
+            confidence: 0.85,
+            recommended: RedactionStrategy::Mask,
+            regex: compile_required_pattern(
+                r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b",
+            )?,
+            validator: None,
+        },
+        CompiledPattern {
+            id: "secret_oauth_bearer",
+            category: SensitiveCategory::Secret,
+            data_type: "oauth_bearer",
+            confidence: 0.85,
+            recommended: RedactionStrategy::Mask,
+            regex: compile_required_pattern(
+                r"(?i)\b(?:authorization|auth)\s*:\s*bearer\s+[A-Za-z0-9._~+/=-]{16,}",
+            )?,
+            validator: None,
+        },
+        CompiledPattern {
+            id: "secret_password_assignment",
+            category: SensitiveCategory::Secret,
+            data_type: "password",
+            confidence: 0.7,
+            recommended: RedactionStrategy::Mask,
+            regex: compile_required_pattern(
+                r"(?i)\b(?:password|passwd|pwd|secret)\s*[:=]\s*\S{6,}",
+            )?,
+            validator: None,
+        },
+        // ---- PII ----
+        CompiledPattern {
+            id: "pii_ssn",
+            category: SensitiveCategory::Pii,
+            data_type: "ssn",
+            confidence: 0.9,
+            recommended: RedactionStrategy::Mask,
+            regex: compile_required_pattern(r"\b\d{3}-\d{2}-\d{4}\b")?,
+            validator: Some(is_valid_ssn_fragments),
+        },
+        CompiledPattern {
+            id: "pii_ssn_compact",
+            category: SensitiveCategory::Pii,
+            data_type: "ssn",
+            confidence: 0.7,
+            recommended: RedactionStrategy::Mask,
+            regex: compile_required_pattern(r"(?:^|[^0-9])(\d{9})(?:$|[^0-9])")?,
+            validator: Some(is_valid_ssn_compact),
+        },
+        CompiledPattern {
+            id: "pii_credit_card",
+            category: SensitiveCategory::Pii,
+            data_type: "credit_card",
+            confidence: 0.9,
+            recommended: RedactionStrategy::Mask,
+            regex: compile_required_pattern(r"\b(?:\d[ -]*?){13,19}\b")?,
+            validator: Some(is_luhn_valid_card_number),
+        },
+        CompiledPattern {
+            id: "pii_email",
+            category: SensitiveCategory::Pii,
+            data_type: "email",
+            confidence: 0.95,
+            recommended: RedactionStrategy::Partial,
+            regex: compile_required_pattern(r"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b")?,
+            validator: None,
+        },
+        // ---- Internal ----
+        CompiledPattern {
+            id: "internal_private_ip",
+            category: SensitiveCategory::Internal,
+            data_type: "internal_ip",
+            confidence: 0.8,
+            recommended: RedactionStrategy::TypeLabel,
+            regex: compile_required_pattern(
+                r"\b(?:10|192\.168|172\.(?:1[6-9]|2[0-9]|3[0-1]))\.[0-9]{1,3}\.[0-9]{1,3}\b",
+            )?,
+            validator: None,
+        },
+    ])
 }
 
 // ---------------------------------------------------------------------------
@@ -884,6 +917,22 @@ impl OutputSanitizer {
     }
 
     pub fn with_config(config: OutputSanitizerConfig) -> Result<Self, OutputSanitizerConfigError> {
+        // Fail closed: refuse to construct a sanitizer whose constant detector
+        // patterns do not compile. Otherwise a malformed built-in pattern would
+        // silently disable an entire redaction class (fail-open). This mirrors
+        // chio-log-redact validating the default redactor before use.
+        build_compiled_patterns().map_err(|source| OutputSanitizerConfigError::InvalidPattern {
+            list_name: "built-in",
+            pattern: "<built-in>".to_string(),
+            source,
+        })?;
+        compile_required_pattern(HIGH_ENTROPY_TOKEN_PATTERN).map_err(|source| {
+            OutputSanitizerConfigError::InvalidPattern {
+                list_name: "high-entropy-token",
+                pattern: HIGH_ENTROPY_TOKEN_PATTERN.to_string(),
+                source,
+            }
+        })?;
         let allowlist_patterns = config
             .allowlist
             .patterns
@@ -983,8 +1032,21 @@ impl OutputSanitizer {
             }
         }
 
-        // Built-in detectors.
-        for p in compiled_patterns() {
+        // Built-in detectors. If the constant registry failed to compile we
+        // fail closed by redacting the whole input rather than scanning with a
+        // degraded (matching nothing) detector set.
+        let builtin_patterns: &[CompiledPattern] = match compiled_patterns() {
+            Ok(patterns) => patterns,
+            Err(message) => {
+                tracing::error!(
+                    error = %message,
+                    "built-in redaction patterns unavailable; redacting entire output"
+                );
+                findings.push(redact_all_finding(limited));
+                &[]
+            }
+        };
+        for p in builtin_patterns {
             let enabled = match p.category {
                 SensitiveCategory::Secret => self.config.categories.secrets,
                 SensitiveCategory::Pii => self.config.categories.pii,
@@ -1039,41 +1101,54 @@ impl OutputSanitizer {
             }
         }
 
-        // High-entropy detector.
+        // High-entropy detector. If the token pattern cannot be compiled we
+        // fail closed by redacting the whole input rather than skipping the
+        // detector (which would let high-entropy secrets through).
         if self.config.categories.secrets && self.config.entropy.enabled {
-            static TOKEN_RE: OnceLock<Regex> = OnceLock::new();
-            let token_re = TOKEN_RE.get_or_init(|| compile_or_nomatch(r"[A-Za-z0-9+/=_-]{16,}"));
-            for m in token_re.find_iter(limited) {
-                let token = m.as_str();
-                if token.len() < self.config.entropy.min_token_len {
-                    continue;
+            static TOKEN_RE: OnceLock<Option<Regex>> = OnceLock::new();
+            let token_re =
+                TOKEN_RE.get_or_init(|| compile_required_pattern(HIGH_ENTROPY_TOKEN_PATTERN).ok());
+            match token_re {
+                None => {
+                    tracing::error!(
+                        "high-entropy token pattern unavailable; redacting entire output"
+                    );
+                    findings.push(redact_all_finding(limited));
                 }
-                if self.is_allowlisted(token) {
-                    continue;
+                Some(token_re) => {
+                    for m in token_re.find_iter(limited) {
+                        let token = m.as_str();
+                        if token.len() < self.config.entropy.min_token_len {
+                            continue;
+                        }
+                        if self.is_allowlisted(token) {
+                            continue;
+                        }
+                        if !is_candidate_secret_token(token) {
+                            continue;
+                        }
+                        let ent = match shannon_entropy_ascii(token) {
+                            Some(e) => e,
+                            None => continue,
+                        };
+                        if ent < self.config.entropy.threshold {
+                            continue;
+                        }
+                        findings.push(SensitiveDataFinding {
+                            id: "secret_high_entropy_token".to_string(),
+                            category: SensitiveCategory::Secret,
+                            data_type: "high_entropy_token".to_string(),
+                            confidence: 0.6,
+                            span: Span {
+                                start: m.start(),
+                                end: m.end(),
+                            },
+                            preview: preview_redacted(token),
+                            detector: "entropy".to_string(),
+                            recommended_action: RedactionStrategy::Mask,
+                        });
+                    }
                 }
-                if !is_candidate_secret_token(token) {
-                    continue;
-                }
-                let ent = match shannon_entropy_ascii(token) {
-                    Some(e) => e,
-                    None => continue,
-                };
-                if ent < self.config.entropy.threshold {
-                    continue;
-                }
-                findings.push(SensitiveDataFinding {
-                    id: "secret_high_entropy_token".to_string(),
-                    category: SensitiveCategory::Secret,
-                    data_type: "high_entropy_token".to_string(),
-                    confidence: 0.6,
-                    span: Span {
-                        start: m.start(),
-                        end: m.end(),
-                    },
-                    preview: preview_redacted(token),
-                    detector: "entropy".to_string(),
-                    recommended_action: RedactionStrategy::Mask,
-                });
             }
         }
 
@@ -1360,7 +1435,15 @@ fn detect_service_account_object(
 mod tests {
     use super::*;
 
-    // ---- Legacy API tests ----
+    #[test]
+    fn default_patterns_compile_to_full_set() {
+        // Every built-in constant pattern must compile; a regression that
+        // breaks one must fail CI here rather than silently shrink the
+        // detector set at runtime.
+        assert_eq!(default_patterns().len(), 7);
+    }
+
+    // ---- Simple (backwards-compatible) API tests ----
 
     #[test]
     fn guard_name() {

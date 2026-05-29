@@ -5,7 +5,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
-use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -36,7 +36,7 @@ fn unique_test_dir() -> TestDir {
     let guard = TEST_LOCK
         .get_or_init(|| Mutex::new(()))
         .lock()
-        .expect("mcp_serve test lock poisoned");
+        .unwrap_or_else(PoisonError::into_inner);
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("system time before unix epoch")
@@ -1320,6 +1320,7 @@ fn write_policy(dir: &Path) -> PathBuf {
 kernel:
   max_capability_ttl: 3600
   delegation_depth_limit: 5
+  allow_ephemeral_receipt_log: true
 capabilities:
   default:
     tools:
@@ -1339,6 +1340,7 @@ fn write_context_policy(dir: &Path) -> PathBuf {
 kernel:
   max_capability_ttl: 3600
   delegation_depth_limit: 5
+  allow_ephemeral_receipt_log: true
 capabilities:
   default:
     tools:
@@ -1366,6 +1368,7 @@ fn write_resource_notification_policy(dir: &Path) -> PathBuf {
 kernel:
   max_capability_ttl: 3600
   delegation_depth_limit: 5
+  allow_ephemeral_receipt_log: true
 capabilities:
   default:
     tools:
@@ -1397,6 +1400,7 @@ fn write_filesystem_resource_policy(dir: &Path) -> PathBuf {
 kernel:
   max_capability_ttl: 3600
   delegation_depth_limit: 5
+  allow_ephemeral_receipt_log: true
 capabilities:
   default:
     resources:
@@ -1418,6 +1422,7 @@ fn write_incomplete_tool_policy(dir: &Path) -> PathBuf {
 kernel:
   max_capability_ttl: 3600
   delegation_depth_limit: 5
+  allow_ephemeral_receipt_log: true
 capabilities:
   default:
     tools:
@@ -1439,6 +1444,7 @@ kernel:
   delegation_depth_limit: 5
   allow_sampling: true
   allow_elicitation: true
+  allow_ephemeral_receipt_log: true
 capabilities:
   default:
     tools:

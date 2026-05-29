@@ -1,6 +1,6 @@
 """Tests for Chio SDK error types.
 
-Covers the Phase 0.5 enrichment of ``ChioDeniedError``: the error surfaces
+Covers the structured-context enrichment of ``ChioDeniedError``: the error surfaces
 structured deny context (tool name, scopes, guard, reason code, hint) and
 the human-readable ``str(err)`` output includes every populated field.
 Back-compat for the single-argument constructor is verified explicitly so

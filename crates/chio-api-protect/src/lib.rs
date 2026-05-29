@@ -5,6 +5,8 @@
 //! signed `HttpReceipt`. Side-effect routes (POST/PUT/PATCH/DELETE) require
 //! a capability token; safe routes (GET/HEAD/OPTIONS) pass with audit receipts.
 
+#![forbid(unsafe_code)]
+
 mod error;
 mod evaluator;
 mod proxy;

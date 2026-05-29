@@ -25,7 +25,7 @@ use crate::config::{SqlGuardConfig, SqlOperation};
 use crate::error::SqlGuardDenyReason;
 use crate::sql_parser::{self, SqlAnalysis};
 
-/// Built-in SQL query guard (roadmap phase 7.1).
+/// Built-in SQL query guard.
 pub struct SqlQueryGuard {
     config: SqlGuardConfig,
     denylist_regex: Vec<(String, Regex)>,

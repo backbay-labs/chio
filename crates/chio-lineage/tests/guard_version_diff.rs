@@ -1,7 +1,7 @@
-//! Integration test for M09 P5.T5 differential mode.
+//! Integration test for differential mode.
 //!
 //! Two guard versions producing slightly different lineage shapes against
-//! the same M04 corpus must yield a stable JSON diff plus a stable text
+//! the same replay corpus must yield a stable JSON diff plus a stable text
 //! summary; revoking a guard publisher cascades through the diff.
 
 use chio_lineage::diff::{diff, render_text};
@@ -16,7 +16,6 @@ fn corpus_v1() -> Vec<CorpusReceiptRow> {
         tool_name: Some("pii-mask".into()),
         tenant_id: Some("tenant".into()),
         recorded_at: Some(1),
-        has_signed_lineage_statement: true,
         signed_lineage_statement: None,
     }]
 }
@@ -32,9 +31,6 @@ fn corpus_v2() -> Vec<CorpusReceiptRow> {
         tool_name: Some("pii-mask".into()),
         tenant_id: Some("tenant".into()),
         recorded_at: Some(1),
-        // v2 strips the signed lineage statement so the cascade
-        // surfaces as an evidence downgrade in the diff.
-        has_signed_lineage_statement: false,
         signed_lineage_statement: None,
     }]
 }

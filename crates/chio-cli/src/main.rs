@@ -31,7 +31,59 @@ mod policies;
 mod scaffold;
 mod settle;
 
-include!("cli/types.rs");
+// Shared imports for the CLI module tree. These live at the crate root so the
+// `cli/*` submodules (which each begin with `use super::*;`) inherit them,
+// matching the single coherent `#[path] mod` strategy. The `pub use`
+// re-exports keep `crate::CliError`, `crate::policy`, and the sibling
+// control-plane modules reachable from the standalone `src/*.rs` command
+// modules.
+pub use chio_control_plane::{
+    CliError, authority_public_key_from_seed_file, build_kernel, certify, configure_budget_store,
+    configure_capability_authority, configure_receipt_store, configure_revocation_store,
+    enterprise_federation, evidence_export, federation_policy, issuance,
+    issue_default_capabilities, load_or_create_authority_keypair, passport_verifier, policy,
+    reputation, require_control_token, rotate_authority_keypair, scim_lifecycle, trust_control,
+};
+pub use chio_mcp_remote as remote_mcp;
+
+use std::fs;
+use std::io::Write;
+use std::net::SocketAddr;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+
+use clap::{Parser, Subcommand};
+use serde::de::DeserializeOwned;
+use tracing::{debug, error, info, warn};
+
+use chio_api_protect::{ProtectConfig, ProtectProxy};
+use chio_core::appraisal::{
+    RuntimeAttestationAppraisalImportRequest, RuntimeAttestationAppraisalRequest,
+    RuntimeAttestationAppraisalResultExportRequest, RuntimeAttestationImportedAppraisalPolicy,
+    SignedRuntimeAttestationAppraisalResult,
+};
+use chio_core::capability::{
+    ChioScope, GovernedAutonomyTier, MonetaryAmount, RuntimeAssuranceTier,
+    RuntimeAttestationEvidence,
+};
+use chio_core::crypto::Keypair;
+use chio_core::message::{AgentMessage, KernelMessage, ToolCallError, ToolCallResult};
+use chio_core::session::{
+    OperationContext, OperationTerminalState, RequestId, SessionId, SessionOperation,
+    ToolCallOperation,
+};
+use chio_kernel::transport::{ChioTransport, TransportError};
+use chio_kernel::{
+    ChioKernel, RevocationStore, SessionOperationResponse, ToolCallOutput,
+    ToolCallRequest as KernelToolCallRequest, ToolCallStream,
+};
+use chio_mcp_adapter::{AdaptedMcpServer, ChioMcpEdge, McpAdapterConfig, McpEdgeConfig};
+
+use crate::policy::load_policy;
+
+#[path = "cli/types.rs"]
+mod types_cli;
+pub(crate) use types_cli::*;
 #[path = "cli/chio/types.rs"]
 mod chio_types;
 use chio_types::{
@@ -48,34 +100,41 @@ use chio_types::{
     ChioRuntimeOrchestrateCommands, ChioRuntimePeerWeightsCommands, ChioRuntimePheromoneCommands,
     ChioRuntimePolicyCommands, ChioTreatyCommands, ChioTrustBundleCommands,
 };
-include!("cli/doctor.rs");
-include!("cli/dispatch.rs");
+#[path = "cli/doctor.rs"]
+mod doctor_cli;
+pub(crate) use doctor_cli::*;
+#[path = "cli/dispatch.rs"]
+mod dispatch_cli;
+#[cfg(test)]
+pub(crate) use dispatch_cli::{cmd_chio_attest_runtime_quote_verify, write_cli_error};
 #[path = "cli/chio/dispatch.rs"]
 mod chio_dispatch;
 use chio_dispatch::*;
-include!("cli/runtime.rs");
-include!("cli/trust_commands.rs");
-include!("cli/session.rs");
-include!("cli/conformance.rs");
-include!("cli/mcp.rs");
-include!("cli/replay.rs");
-include!("cli/replay/reader.rs");
-include!("cli/replay/verify.rs");
-include!("cli/replay/merkle.rs");
-include!("cli/replay/verdict.rs");
-include!("cli/replay/report.rs");
-include!("cli/replay/ndjson.rs");
-include!("cli/replay/validate.rs");
-include!("cli/replay/schema_gate.rs");
-include!("cli/replay/policy_ref.rs");
-include!("cli/replay/receipt_partition.rs");
-include!("cli/replay/execute.rs");
-include!("cli/replay/diff.rs");
-include!("cli/replay/traffic.rs");
-include!("cli/replay/bless/strip.rs");
-include!("cli/replay/bless/fixture_layout.rs");
-include!("cli/replay/bless.rs");
-include!("cli/arena.rs");
+
+fn main() {
+    dispatch_cli::run();
+}
+#[path = "cli/runtime.rs"]
+mod runtime_cli;
+pub(crate) use runtime_cli::*;
+#[path = "cli/trust_commands.rs"]
+mod trust_commands_cli;
+pub(crate) use trust_commands_cli::*;
+#[path = "cli/session.rs"]
+mod session_cli;
+pub(crate) use session_cli::*;
+#[path = "cli/conformance.rs"]
+mod conformance_cli;
+pub(crate) use conformance_cli::*;
+#[path = "cli/mcp.rs"]
+mod mcp_cli;
+pub(crate) use mcp_cli::*;
+#[path = "cli/replay.rs"]
+mod replay_cli;
+pub(crate) use replay_cli::{cmd_replay, load_trusted_kernel_pubkey};
+#[path = "cli/arena.rs"]
+mod arena_cli;
+pub(crate) use arena_cli::{cmd_arena_evolve, cmd_arena_replay, cmd_arena_run};
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
@@ -86,15 +145,42 @@ mod cli_entrypoint_tests {
 
     use super::*;
 
+    /// Parse a `chio` argv into [`Cli`] on a thread with an 8 MiB stack.
+    ///
+    /// The release binary parses argv on the process main thread, whose
+    /// default stack is 8 MiB. The libtest harness runs each `#[test]` on a
+    /// worker thread with a ~2 MiB default stack, and the monomorphised clap
+    /// parser for the 24-variant `Commands` enum needs more than that to
+    /// build, overflowing the worker stack with a SIGABRT. Driving the parse
+    /// through an explicit 8 MiB worker mirrors the production main-thread
+    /// stack so the tests exercise the same parser the binary does without
+    /// changing the CLI surface.
+    ///
+    /// Accepts any iterator of string-likes and collects to owned `Vec<String>`
+    /// so borrowed argv (slices, cloned vecs) can move across the thread.
+    fn parse_cli<I, S>(argv: I) -> clap::error::Result<Cli>
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        let argv: Vec<String> = argv.into_iter().map(Into::into).collect();
+        std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(move || Cli::try_parse_from(argv))
+            .expect("spawn 8 MiB parse thread")
+            .join()
+            .expect("parse thread must not panic")
+    }
+
     #[test]
     fn format_json_flag_enables_json_output() {
-        let cli = Cli::try_parse_from(["chio", "--format", "json", "init", "demo"]).unwrap();
+        let cli = parse_cli(["chio", "--format", "json", "init", "demo"]).unwrap();
         assert!(cli.json_output());
     }
 
     #[test]
-    fn legacy_json_flag_still_enables_json_output() {
-        let cli = Cli::try_parse_from(["chio", "--json", "init", "demo"]).unwrap();
+    fn json_shorthand_flag_enables_json_output() {
+        let cli = parse_cli(["chio", "--json", "init", "demo"]).unwrap();
         assert!(cli.json_output());
     }
 
@@ -166,7 +252,7 @@ mod cli_entrypoint_tests {
 
     #[test]
     fn api_protect_subcommand_parses() {
-        let cli = Cli::try_parse_from([
+        let cli = parse_cli([
             "chio",
             "api",
             "protect",
@@ -196,7 +282,7 @@ mod cli_entrypoint_tests {
 
     #[test]
     fn receipt_flush_subcommand_parses() {
-        let cli = Cli::try_parse_from([
+        let cli = parse_cli([
             "chio",
             "--receipt-db",
             "receipts.sqlite3",
@@ -220,7 +306,7 @@ mod cli_entrypoint_tests {
 
     #[test]
     fn receipt_flush_rejects_zero_timeout() {
-        let result = Cli::try_parse_from([
+        let result = parse_cli([
             "chio",
             "--receipt-db",
             "receipts.sqlite3",
@@ -235,7 +321,7 @@ mod cli_entrypoint_tests {
 
     #[test]
     fn receipt_checkpoint_create_subcommand_parses() {
-        let cli = Cli::try_parse_from([
+        let cli = parse_cli([
             "chio",
             "--receipt-db",
             "receipts.sqlite3",
@@ -269,7 +355,7 @@ mod cli_entrypoint_tests {
 
     #[test]
     fn receipt_checkpoint_rejects_zero_max_batch() {
-        let create = Cli::try_parse_from([
+        let create = parse_cli([
             "chio",
             "--receipt-db",
             "receipts.sqlite3",
@@ -281,7 +367,7 @@ mod cli_entrypoint_tests {
             "--max-batch",
             "0",
         ]);
-        let status = Cli::try_parse_from([
+        let status = parse_cli([
             "chio",
             "--receipt-db",
             "receipts.sqlite3",
@@ -332,7 +418,7 @@ mod cli_entrypoint_tests {
 
     #[test]
     fn mcp_wrap_subcommand_parses() {
-        let cli = Cli::try_parse_from([
+        let cli = parse_cli([
             "chio",
             "mcp",
             "wrap",
@@ -577,7 +663,7 @@ mod cli_entrypoint_tests {
         ];
 
         for args in commands {
-            Cli::try_parse_from(args.clone()).unwrap_or_else(|error| {
+            parse_cli(args.clone()).unwrap_or_else(|error| {
                 panic!("expected native Chio command to parse: {args:?}: {error}")
             });
         }
@@ -585,7 +671,7 @@ mod cli_entrypoint_tests {
 
     #[test]
     fn chio_native_command_surfaces_preserve_required_arguments() {
-        let relay_enqueue = Cli::try_parse_from([
+        let relay_enqueue = parse_cli([
             "chio",
             "pheromone",
             "relay",
@@ -606,7 +692,7 @@ mod cli_entrypoint_tests {
             clap::error::ErrorKind::MissingRequiredArgument
         );
 
-        let buyer_verify = Cli::try_parse_from([
+        let buyer_verify = parse_cli([
             "chio",
             "attest",
             "buyer",
@@ -642,7 +728,7 @@ mod cli_entrypoint_tests {
 
     #[test]
     fn hidden_chio_attest_verify_shortcut_is_rejected() {
-        let error = match Cli::try_parse_from([
+        let error = match parse_cli([
             "chio",
             "attest",
             "verify",
@@ -665,7 +751,7 @@ mod cli_entrypoint_tests {
 
 
     fn rendered_help(args: &[&str]) -> String {
-        let error = match Cli::try_parse_from(args) {
+        let error = match parse_cli(args.iter().copied()) {
             Ok(_) => panic!("help exits before parsing command values"),
             Err(error) => error,
         };
@@ -688,7 +774,7 @@ mod cli_entrypoint_tests {
 
     #[test]
     fn chio_attest_buyer_packet_surface_parses() {
-        let cli = Cli::try_parse_from([
+        let cli = parse_cli([
             "chio",
             "attest",
             "buyer",
@@ -762,7 +848,7 @@ mod cli_entrypoint_tests {
 
     #[test]
     fn chio_attest_buyer_verify_packet_surface_parses() {
-        let cli = Cli::try_parse_from([
+        let cli = parse_cli([
             "chio",
             "attest",
             "buyer",
@@ -813,7 +899,7 @@ mod cli_entrypoint_tests {
 
     #[test]
     fn chio_attest_supply_chain_verify_surface_parses() {
-        let cli = Cli::try_parse_from([
+        let cli = parse_cli([
             "chio",
             "attest",
             "supply-chain",
@@ -860,7 +946,7 @@ mod cli_entrypoint_tests {
 
     #[test]
     fn chio_attest_runtime_quote_verify_surface_parses() {
-        let cli = Cli::try_parse_from([
+        let cli = parse_cli([
             "chio",
             "attest",
             "runtime-quote",
@@ -984,7 +1070,7 @@ mod cli_entrypoint_tests {
 
     #[test]
     fn chio_native_federation_treaty_surface_parses() {
-        let cli = Cli::try_parse_from([
+        let cli = parse_cli([
             "chio",
             "federation",
             "treaty",
@@ -1035,7 +1121,7 @@ mod cli_entrypoint_tests {
 
     #[test]
     fn chio_native_runtime_surface_parses() {
-        let cli = Cli::try_parse_from([
+        let cli = parse_cli([
             "chio",
             "runtime",
             "sign-trust-input",
@@ -1073,7 +1159,7 @@ mod cli_entrypoint_tests {
 
     #[test]
     fn chio_native_pheromone_surface_parses() {
-        let cli = Cli::try_parse_from([
+        let cli = parse_cli([
             "chio",
             "pheromone",
             "query",
@@ -1119,7 +1205,7 @@ mod cli_entrypoint_tests {
 
     #[test]
     fn chio_native_surfaces_remain_native_command_variants() {
-        let runtime = Cli::try_parse_from([
+        let runtime = parse_cli([
             "chio",
             "runtime",
             "sign-trust-input",
@@ -1134,7 +1220,7 @@ mod cli_entrypoint_tests {
         .command;
         assert!(matches!(runtime, Commands::Runtime { .. }));
 
-        let pheromone = Cli::try_parse_from([
+        let pheromone = parse_cli([
             "chio",
             "pheromone",
             "query",
@@ -1155,7 +1241,7 @@ mod cli_entrypoint_tests {
         .command;
         assert!(matches!(pheromone, Commands::Pheromone { .. }));
 
-        let federation = Cli::try_parse_from([
+        let federation = parse_cli([
             "chio",
             "federation",
             "treaty",
@@ -1173,7 +1259,7 @@ mod cli_entrypoint_tests {
         .command;
         assert!(matches!(federation, Commands::Federation { .. }));
 
-        let attest = Cli::try_parse_from([
+        let attest = parse_cli([
             "chio",
             "attest",
             "buyer",
@@ -1645,7 +1731,7 @@ mod cli_entrypoint_tests {
 
 
     #[test]
-    fn chio_attest_buyer_dispatch_owns_legacy_replay_boundary() {
+    fn chio_attest_buyer_dispatch_uses_canonical_crate_names() {
         let buyer_dispatch = include_str!("cli/chio/dispatch/buyer.rs");
 
         assert!(buyer_dispatch.contains("chio_attest_buyer::"));

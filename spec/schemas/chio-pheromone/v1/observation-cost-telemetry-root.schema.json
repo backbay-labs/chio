@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://chio.dev/schemas/chio-pheromone/v1/observation-cost-telemetry-root.schema.json",
+  "$id": "https://chio.world/schemas/chio-pheromone/v1/observation-cost-telemetry-root.schema.json",
   "title": "Chio Pheromone Observation Cost Telemetry Root",
   "type": "object",
   "allOf": [{ "$ref": "cost-commitment.schema.json#/$defs/telemetryRoot" }]

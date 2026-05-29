@@ -3,13 +3,11 @@ const MAX_SSE_EVENT_BYTES: usize = 256 * 1024;
 const MAX_SSE_TOTAL_BYTES: usize = 1024 * 1024;
 const MAX_SSE_CHUNKS: usize = 1024;
 
-// HttpEgressContract: this file holds the SSE parser; the typed egress
+// `HttpEgressContract`: this file holds the SSE parser; the typed egress
 // contract is applied at the upstream dispatch sites in `auth.rs`
 // (`fetch_json`, `delete_empty`, `get_sse`, `post_json`, `post_form_json`,
 // `post_sse_json`) before any byte is sent. The `A2aTransportConfig` carrier
 // is defined in `config.rs` and includes `HttpEgressContract`.
-#[allow(dead_code)]
-const _A2A_TRANSPORT_EGRESS_CONTRACT_ANCHOR: &str = "HttpEgressContract";
 
 #[cfg(any(test, feature = "fuzz"))]
 fn parse_sse_stream<R: Read, F>(

@@ -6,9 +6,9 @@
 > pipeline)
 
 These are the first guards designed natively for Chio. Every previous guard
-was ported from ClawdStrike. ClawdStrike has no database guards because it
-was built for filesystem/shell/network governance. Data layer governance
-is new ground.
+was ported from the prior async-guard suite, which had no database guards
+because it was built for filesystem/shell/network governance. Data layer
+governance is new ground.
 
 ---
 

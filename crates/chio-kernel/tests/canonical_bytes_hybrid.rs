@@ -1,9 +1,8 @@
-//! Receipt path consumes `CanonicalBytes` for hybrid signing (M03.P5.T3).
+//! Receipt path consumes `CanonicalBytes` for hybrid signing.
 //!
-//! Per D16, the M06 `Arc<CanonicalBytes>` newtype
-//! ([`SharedCanonicalBytes`]) ships before M03.P1 opens, so the
-//! receipt-signing path consumes it directly without a byte-equivalence
-//! shim. This test pins the contract:
+//! The `Arc<CanonicalBytes>` newtype ([`SharedCanonicalBytes`]) is
+//! consumed directly by the receipt-signing path without a
+//! byte-equivalence shim. This test pins the contract:
 //!
 //! 1. **Single canonicalization.** The hybrid signing entrypoint builds
 //!    the canonical JSON byte buffer once and returns it alongside the
@@ -13,7 +12,7 @@
 //!    classical [`Ed25519Backend`] path the canonical bytes returned by
 //!    the new hybrid-canonical helper are byte-identical to the bytes
 //!    the legacy `sign_receipt_body_with_backend` flow signs. This is
-//!    the trajectory-1 byte-equivalence guarantee.
+//!    the byte-equivalence guarantee.
 //! 3. **Hybrid round-trip verifies against the shared bytes.** The
 //!    [`HybridBackend`] signs the shared canonical buffer; the
 //!    public-key `verify` path against those EXACT bytes succeeds.
@@ -22,7 +21,7 @@
 //!    BEFORE canonicalization, so a stale-key body never produces a
 //!    canonical buffer downstream consumers might persist.
 //!
-//! Trust-boundary milestone: M03 P5.T3.
+//! Trust boundary: kernel-key / canonical-bytes binding for hybrid receipts.
 
 #![cfg(feature = "pq")]
 #![allow(clippy::unwrap_used, clippy::expect_used)]
@@ -35,7 +34,8 @@ use chio_core::crypto::{
     SigningAlgorithm, SigningBackend,
 };
 use chio_core::receipt::{
-    chio_receipt_id, ChioReceiptBody, ChioReceiptSigningBody, Decision, ToolCallAction, TrustLevel,
+    bind_receipt_signing_nonce, chio_receipt_id, ChioReceiptBody, ChioReceiptSigningBody, Decision,
+    ToolCallAction, TrustLevel,
 };
 use chio_kernel::{
     sign_receipt_body_hybrid_canonical, sign_receipt_body_with_backend, SignedHybridReceipt,
@@ -48,20 +48,24 @@ use chio_kernel::{
 /// compare produced bytes against the authoritative signed bytes.
 fn canonical_signing_wrapper_bytes(body: &ChioReceiptBody) -> Vec<u8> {
     let mut body = body.clone();
+    // Bind the signing nonce before computing the id, mirroring what every
+    // signing entrypoint does, so this oracle reflects the authoritative bytes
+    // both the classical and hybrid paths actually sign.
+    bind_receipt_signing_nonce(&mut body);
     body.id = chio_receipt_id(&body).unwrap();
     let signing_body = ChioReceiptSigningBody::from(&body);
     canonical_json_bytes(&signing_body).unwrap()
 }
 
 fn fixture_classical_seed() -> [u8; 32] {
-    let raw = b"chio-m03-p5-t3-canonbytes-class!";
+    let raw = b"chio-canonical-bytes-class-seed!";
     let mut out = [0u8; 32];
     out.copy_from_slice(raw);
     out
 }
 
 fn fixture_pq_seed() -> [u8; 32] {
-    let raw = b"chio-m03-p5-t3-canonbytes-pqseed";
+    let raw = b"chio-canonical-bytes-pq-seedval!";
     let mut out = [0u8; 32];
     out.copy_from_slice(raw);
     out
@@ -94,10 +98,10 @@ fn build_body(kernel_key: PublicKey) -> ChioReceiptBody {
 }
 
 #[test]
-fn shared_canonical_bytes_match_legacy_classical_path() {
+fn shared_canonical_bytes_match_classical_signing_path() {
     // Contract 2: the canonical buffer the hybrid-canonical helper
     // emits under a classical backend is byte-identical to the buffer
-    // the legacy classical entrypoint signs. Trajectory-1 deployments
+    // the legacy classical entrypoint signs. Deployments
     // see no byte drift when they switch to the canonical-bytes-aware
     // entrypoint.
     let kp = Keypair::from_seed(&fixture_classical_seed());
@@ -111,7 +115,7 @@ fn shared_canonical_bytes_match_legacy_classical_path() {
     let wrapper_bytes = canonical_signing_wrapper_bytes(&body);
     let legacy_receipt = sign_receipt_body_with_backend(body.clone(), &backend).unwrap();
 
-    // New path: consume the M06 SharedCanonicalBytes newtype.
+    // New path: consume the SharedCanonicalBytes newtype.
     let SignedHybridReceipt { receipt, canonical } =
         sign_receipt_body_hybrid_canonical(body, &backend).unwrap();
 
@@ -174,7 +178,7 @@ fn hybrid_signing_consumes_shared_canonical_bytes_and_verifies() {
 #[test]
 fn shared_canonical_bytes_are_arc_shareable_without_recanonicalization() {
     // Contract 1: the returned canonical buffer is an
-    // `Arc<CanonicalBytes>` (the M06 newtype) so multiple downstream
+    // `Arc<CanonicalBytes>` newtype so multiple downstream
     // consumers can share a single allocation. Cloning the Arc is cheap
     // and does not reserialize.
     let classical_kp = Keypair::from_seed(&fixture_classical_seed());
@@ -250,7 +254,7 @@ fn shared_bytes_round_trip_through_serde_after_signing() {
 
 #[test]
 fn hybrid_canonical_and_classical_paths_sign_identical_bytes_under_ed25519() {
-    // PR 682 contract: `sign_receipt_body_hybrid_canonical` must sign
+    // `sign_receipt_body_hybrid_canonical` must sign
     // the authoritative `ChioReceiptSigningBody` wrapper (id plus
     // `ChioReceiptIdInput`), not the bare `ChioReceiptBody`. Under a
     // classical-only Ed25519 backend this means the signed bytes -- and

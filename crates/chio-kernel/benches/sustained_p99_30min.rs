@@ -1,8 +1,8 @@
-//! M06 sustained p99 lane.
+//! Sustained p99 lane.
 //!
 //! This bench target is intentionally executable through Cargo's bench test
-//! harness. Local and ticket gates use the default one-second duration. The
-//! nightly workflow sets `CHIO_M06_SUSTAINED_P99_SECONDS=1800`.
+//! harness. The default duration is one second; the nightly workflow sets
+//! `CHIO_SUSTAINED_P99_SECONDS=1800`.
 
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
@@ -29,7 +29,7 @@ fn sustained_p99_30min() {
     let p99_micros = p99(&stats.latencies);
 
     println!(
-        "m06 sustained p99 duration_secs={} iterations={} accepted={} dropped_oldest={} max_queue_depth={} p99_micros={}",
+        "sustained p99 duration_secs={} iterations={} accepted={} dropped_oldest={} max_queue_depth={} p99_micros={}",
         duration.as_secs(),
         stats.iterations,
         stats.accepted,
@@ -51,7 +51,7 @@ fn sustained_p99_30min() {
 }
 
 fn sustained_duration() -> Duration {
-    let seconds = std::env::var("CHIO_M06_SUSTAINED_P99_SECONDS")
+    let seconds = std::env::var("CHIO_SUSTAINED_P99_SECONDS")
         .ok()
         .and_then(|value| value.parse::<u64>().ok())
         .unwrap_or(DEFAULT_TEST_SECONDS);
@@ -122,7 +122,7 @@ fn p99(samples: &[u128]) -> u128 {
 
 #[test]
 fn sustained_duration_defaults_to_ticket_gate_duration() {
-    if std::env::var("CHIO_M06_SUSTAINED_P99_SECONDS").is_ok() {
+    if std::env::var("CHIO_SUSTAINED_P99_SECONDS").is_ok() {
         return;
     }
     assert_eq!(

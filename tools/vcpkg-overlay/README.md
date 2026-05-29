@@ -45,7 +45,7 @@ so the target machine needs:
 
 CI runners and developer workstations both satisfy this. For locked-down
 environments, the OCI Object Storage binary cache (see
-`packages/sdk/chio-cpp/RELEASING.md`) typically eliminates the from-source
+`sdks/cpp/chio-cpp/RELEASING.md`) typically eliminates the from-source
 path entirely after the first publish.
 
 ## Updating port files

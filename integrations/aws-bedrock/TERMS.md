@@ -1,7 +1,7 @@
 # Terms
 
 These terms supplement the Standard Contract for AWS Marketplace for the
-trajectory-3 Chio AWS Bedrock listing.
+Chio AWS Bedrock listing.
 
 ## Entitlement
 
@@ -23,5 +23,5 @@ guards, sign a receipt, or prepare metering evidence.
 
 ## Region
 
-The listing is limited to `us-east-1`. Additional regions are trajectory-4
+The listing is limited to `us-east-1`. Additional regions are future
 candidates.

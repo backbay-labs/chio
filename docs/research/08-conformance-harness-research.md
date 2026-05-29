@@ -278,9 +278,9 @@ Without that, peer tests will sprawl and become another pile of ad hoc integrati
 
 ### Step 2
 
-Add one JS peer and one Python peer for Wave 1 scenarios only.
+Add one JS peer and one Python peer for the initial scenarios only.
 
-Keep the first wave deliberately small:
+Keep the first set deliberately small:
 
 - initialize
 - tools/list
@@ -312,7 +312,7 @@ If Slice A tries to encode every existing integration test as a fixture immediat
 
 Recommendation:
 
-- publish a Wave 1 matrix first
+- publish an initial matrix first
 - expand by scenario family after the first report exists
 
 ### Risk: external peers become flaky infrastructure

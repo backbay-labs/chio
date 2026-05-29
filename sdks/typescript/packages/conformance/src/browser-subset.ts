@@ -28,7 +28,7 @@
 export const BROWSER_SUBSET_TAG = "chio.conformance.browser-subset/v1" as const;
 
 /**
- * Selection rule for a category in the M01 conformance corpus.
+ * Selection rule for a category in the conformance corpus.
  *
  * - `mode: "all"` selects every case in that category.
  * - `mode: "verify_only"` selects cases whose `verify_only` flag is `true`.

@@ -4,8 +4,8 @@ Both :class:`chio_airflow.ChioOperator` and :func:`chio_airflow.chio_task`
 take the same pre-dispatch path: resolve a :class:`ChioClient`, call
 ``evaluate_tool_call``, translate denies into an
 :class:`airflow.exceptions.AirflowException` whose ``__cause__`` is a
-:class:`PermissionError` (roadmap 17.3 acceptance), and return the
-allow-path receipt so the caller can push its id into XCom.
+:class:`PermissionError`, and return the allow-path receipt so the
+caller can push its id into XCom.
 
 The kernel / transport error path deliberately does *not* translate to
 ``PermissionError``. A sidecar that is down is not a denial; Airflow's
@@ -143,7 +143,7 @@ def _denied_permission_error(
     :attr:`PermissionError.chio_error` so structured-log consumers can
     inspect the full deny context. The surface type is
     :class:`PermissionError` so callers can ``except PermissionError``
-    naturally, per the roadmap acceptance criterion.
+    naturally.
     """
     err = ChioAirflowError(
         reason,

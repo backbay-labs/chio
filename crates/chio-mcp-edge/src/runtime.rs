@@ -86,7 +86,7 @@ impl Default for McpEdgeConfig {
     }
 }
 
-/// Bridge-only request for projecting an Chio tool invocation through MCP session semantics.
+/// Bridge-only request for projecting a Chio tool invocation through MCP session semantics.
 #[derive(Debug, Clone)]
 pub struct BridgeMcpToolCallRequest {
     pub request_id: String,
@@ -318,7 +318,7 @@ fn bridge_mcp_tool_call_from_response(
     });
 
     if record_receipt_write {
-        // W2.4: emit `chio_receipt_write_total` at the MCP receipt-sink
+        // Emit `chio_receipt_write_total` at the MCP receipt-sink
         // boundary. PendingApproval is normal HITL flow, so it must not feed
         // infrastructure error burn-rate numerators.
         crate::metrics::record_receipt_write_verdict(response.verdict);
@@ -849,9 +849,8 @@ impl ChioMcpEdge {
         Ok(self.take_pending_notifications())
     }
 
-    // Retained for embedders that drive the edge through a custom transport
-    // loop instead of the default session-owned path.
-    #[allow(dead_code)]
+    // Reader/writer transport variant: used by the blocking `send_client_request`
+    // loop that drives nested client requests over an owned reader/writer pair.
     fn handle_jsonrpc_with_transport<R: BufRead + Send, W: Write + Send>(
         &mut self,
         message: Value,
@@ -1030,9 +1029,7 @@ impl ChioMcpEdge {
         }
     }
 
-    // Retained for embedders that drive the edge through a custom transport
-    // loop instead of the default session-owned path.
-    #[allow(dead_code)]
+    // Reader/writer transport variant dispatched from `handle_jsonrpc_with_transport`.
     fn handle_request_with_transport<R: BufRead + Send, W: Write + Send>(
         &mut self,
         id: Value,
@@ -1634,9 +1631,7 @@ impl ChioMcpEdge {
         )
     }
 
-    // Retained for embedders that drive the edge through a custom transport
-    // loop instead of the default session-owned path.
-    #[allow(dead_code)]
+    // Reader/writer transport variant dispatched from `handle_request_with_transport`.
     fn handle_tools_call_with_transport<R: BufRead + Send, W: Write + Send>(
         &mut self,
         id: Value,
@@ -2630,36 +2625,6 @@ impl ChioMcpEdge {
         result
     }
 
-    // Retained for embedders that drive the edge through a custom transport
-    // loop instead of the default session-owned path.
-    #[allow(dead_code)]
-    fn process_pending_actions<R: BufRead + Send, W: Write + Send>(
-        &mut self,
-        reader: &mut R,
-        writer: &mut W,
-    ) -> Result<(), AdapterError> {
-        while let Some(action) = self.pending_actions.pop() {
-            match action {
-                EdgeAction::RefreshRoots { session_id, reason } => {
-                    if let Err(error) = self.refresh_roots_from_client(&session_id, reader, writer)
-                    {
-                        self.emit_log(
-                            LogLevel::Warning,
-                            "chio.mcp.roots",
-                            json!({
-                                "event": "roots_refresh_failed",
-                                "reason": reason,
-                                "error": error.to_string(),
-                            }),
-                        );
-                    }
-                }
-            }
-        }
-
-        Ok(())
-    }
-
     fn process_pending_actions_with_channel<W: Write>(
         &mut self,
         client_rx: &mpsc::Receiver<ClientInbound>,
@@ -2703,39 +2668,6 @@ impl ChioMcpEdge {
 
         self.pending_actions
             .push(EdgeAction::RefreshRoots { session_id, reason });
-    }
-
-    // Retained for embedders that drive the edge through a custom transport
-    // loop instead of the default session-owned path.
-    #[allow(dead_code)]
-    fn refresh_roots_from_client<R: BufRead + Send, W: Write + Send>(
-        &mut self,
-        session_id: &SessionId,
-        reader: &mut R,
-        writer: &mut W,
-    ) -> Result<(), AdapterError> {
-        let result = self.send_client_request(reader, writer, "roots/list", json!({}))?;
-        let roots_value = result.get("roots").cloned().ok_or_else(|| {
-            AdapterError::ParseError("roots/list response missing 'roots'".into())
-        })?;
-        let roots: Vec<RootDefinition> = serde_json::from_value(roots_value)
-            .map_err(|error| AdapterError::ParseError(format!("failed to parse roots: {error}")))?;
-
-        self.kernel
-            .replace_session_roots(session_id, roots.clone())
-            .map_err(|error| {
-                AdapterError::ConnectionFailed(format!("failed to update session roots: {error}"))
-            })?;
-
-        self.emit_log(
-            LogLevel::Info,
-            "chio.mcp.roots",
-            json!({
-                "event": "roots_refreshed",
-                "rootCount": roots.len(),
-            }),
-        );
-        Ok(())
     }
 
     fn refresh_roots_from_client_with_channel<W: Write>(

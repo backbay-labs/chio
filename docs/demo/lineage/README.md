@@ -1,6 +1,6 @@
 # Chio lineage viewer (static)
 
-A vanilla static viewer for the M09 P5 lineage DAG. Open `index.html`
+A vanilla static viewer for the lineage DAG. Open `index.html`
 in a browser. There is no build step, no bundler, no import map, and
 no CDN-pinned module loader. The page loads three local files only:
 
@@ -14,7 +14,7 @@ The viewer reads JSON dumps stamped with `schema_version =
 "chio.lineage.graph/v1"`. The same format is produced by:
 
 ```bash
-arc lineage query --emit demo --json > lineage.json
+chio lineage query --emit demo --json > lineage.json
 ```
 
 A graph dump has three top-level fields:
@@ -29,7 +29,7 @@ A graph dump has three top-level fields:
 
 ## No-build constraint
 
-Per the ticket M09.P5.T8 soft-dep:
+The no-build constraint is intentional:
 
 > JS uses plain ES modules with NO import map and NO transpiler step;
 > the README documents the no-build constraint so a starter does not
@@ -49,7 +49,7 @@ The viewer surfaces the protocol evidence class on every row:
 - `verified`: signed or proof-checked (purple).
 
 Mixing these without preserving the class is the highest correctness
-risk called out in the M09 P5 readiness research doc; the viewer
+risk called out in the lineage readiness research doc; the viewer
 keeps the class visible so reviewers cannot accidentally treat an
 asserted edge as verified.
 

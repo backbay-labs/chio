@@ -7,8 +7,8 @@ name: Release npm
 # Tag formats:
 #   ts/v<X.Y.Z>                 -> publishes every TypeScript package
 #   ts/<slug>-v<X.Y.Z>          -> publishes only that package
-#                                  (e.g. ts/express-v1.2.0 publishes
-#                                  @chio-protocol/express)
+#                                  (e.g. ts/chio-ts-v1.2.0 publishes
+#                                  @chio-protocol/sdk)
 #
 # workflow_dispatch always builds and lints only; package publishing is
 # restricted to tag pushes. No stored NPM_TOKEN is required;
@@ -64,9 +64,10 @@ jobs:
           # `conformance` workspace is marked `"private": true` and is
           # intentionally excluded.
           #
-          # node-http must always be built first because the other
-          # packages depend on it via `file:../node-http`.
+          # chio-ts is the core SDK package. node-http stays ahead of
+          # packages that depend on it via `file:../node-http`.
           all_packages=(
+            "sdks/typescript/chio-ts"
             "sdks/typescript/packages/node-http"
             "sdks/typescript/packages/express"
             "sdks/typescript/packages/fastify"
@@ -246,9 +247,9 @@ jobs:
             echo "Bootstrapping local file dependency $dep_dir"
             pushd "$dep_dir" >/dev/null
             if [[ -f package-lock.json ]]; then
-              npm ci
+              npm ci --workspaces=false
             else
-              npm install
+              npm install --workspaces=false
             fi
             if node -e 'const pkg = require("./package.json"); process.exit(pkg.scripts?.build ? 0 : 1)'; then
               npm run build
@@ -256,9 +257,9 @@ jobs:
             popd >/dev/null
           done
           if [[ -f package-lock.json ]]; then
-            npm ci
+            npm ci --workspaces=false
           else
-            npm install
+            npm install --workspaces=false
           fi
 
       - name: Build
@@ -327,7 +328,7 @@ jobs:
       - name: Install cosign
         # Pinned to a tagged release of sigstore/cosign-installer so the
         # signing-side toolchain version is auditable. The Renovate config
-        # in .github/renovate.json (M09 NEW sub-task) tracks upstream
+        # in .github/renovate.json tracks upstream
         # cosign-installer releases for review.
         uses: sigstore/cosign-installer@1aa8e0f2454b781fbf0fbf306a4c9533a0c57409
         with:

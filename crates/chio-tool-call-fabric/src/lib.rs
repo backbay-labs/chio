@@ -6,7 +6,7 @@
 //! lowers the kernel's [`VerdictResult`] back into provider-native bytes via
 //! the [`ProviderAdapter`] trait below.
 //!
-//! Phase 1 of M07 establishes:
+//! The crate establishes:
 //!
 //! - The verbatim trait surface ([`ProviderId`], [`Principal`],
 //!   [`ProvenanceStamp`], [`ToolInvocation`], [`VerdictResult`],
@@ -14,10 +14,9 @@
 //! - A [`provenance::sign_provenance`] helper that produces a stand-alone
 //!   [`provenance::SignedProvenance`] so downstream auditors can attest to a
 //!   stamp's identity without pulling the surrounding receipt.
-//!
-//! Later Phase-1 tickets layer the streaming state machine
-//! (`crates/chio-tool-call-fabric/src/stream.rs`), the kernel verdict shim,
-//! and the lift/lower fixture set on top of this surface.
+//! - The streaming state machine
+//!   (`crates/chio-tool-call-fabric/src/stream.rs`), the kernel verdict shim,
+//!   and the lift/lower fixture set on top of this surface.
 
 #![forbid(unsafe_code)]
 
@@ -67,6 +66,27 @@ pub enum Principal {
         caller_arn: String,
         account_id: String,
         assumed_role_session_arn: Option<String>,
+    },
+    /// Google Gemini calls are scoped to a Google Cloud project.
+    GeminiProject {
+        project_id: String,
+    },
+    /// Groq's OpenAI-compatible API scopes calls to a project.
+    GroqProject {
+        project_id: String,
+    },
+    /// Mistral's La Plateforme scopes calls to a project.
+    MistralProject {
+        project_id: String,
+    },
+    /// Cohere calls are scoped to an organization.
+    CohereOrg {
+        org_id: String,
+    },
+    /// Ollama runs as a local daemon with no upstream identity provider; the
+    /// host (or instance label) is the only stable provenance handle.
+    OllamaHost {
+        host: String,
     },
 }
 
@@ -169,7 +189,7 @@ pub struct ToolResult(pub Vec<u8>);
 /// format the upstream expects.
 ///
 /// The trait is intentionally minimal so it stays dyn-compatible and so the
-/// streaming state machine in `stream.rs` (Phase 1 task 3) can wrap any
+/// streaming state machine in `stream.rs` can wrap any
 /// implementer uniformly.
 #[async_trait]
 pub trait ProviderAdapter: Send + Sync {
@@ -242,11 +262,69 @@ mod tests {
                     "arn:aws:sts::123456789012:assumed-role/ChioAgentRole/session-1".to_string(),
                 ),
             },
+            Principal::GeminiProject {
+                project_id: "proj_chio_demo".to_string(),
+            },
+            Principal::GroqProject {
+                project_id: "proj_chio_demo".to_string(),
+            },
+            Principal::MistralProject {
+                project_id: "proj_chio_demo".to_string(),
+            },
+            Principal::CohereOrg {
+                org_id: "org_chio_demo".to_string(),
+            },
+            Principal::OllamaHost {
+                host: "http://localhost:11434".to_string(),
+            },
         ];
         for p in cases {
             let json = serde_json::to_string(&p).unwrap();
             let back: Principal = serde_json::from_str(&json).unwrap();
             assert_eq!(p, back);
+        }
+    }
+
+    #[test]
+    fn principal_kind_tags_render_per_provider() {
+        let cases = [
+            (
+                Principal::GeminiProject {
+                    project_id: "proj".to_string(),
+                },
+                "gemini_project",
+            ),
+            (
+                Principal::GroqProject {
+                    project_id: "proj".to_string(),
+                },
+                "groq_project",
+            ),
+            (
+                Principal::MistralProject {
+                    project_id: "proj".to_string(),
+                },
+                "mistral_project",
+            ),
+            (
+                Principal::CohereOrg {
+                    org_id: "org".to_string(),
+                },
+                "cohere_org",
+            ),
+            (
+                Principal::OllamaHost {
+                    host: "host".to_string(),
+                },
+                "ollama_host",
+            ),
+        ];
+        for (principal, expected_kind) in cases {
+            let json = serde_json::to_string(&principal).unwrap();
+            assert!(
+                json.contains(&format!("\"kind\":\"{expected_kind}\"")),
+                "{json} did not carry kind tag {expected_kind}"
+            );
         }
     }
 

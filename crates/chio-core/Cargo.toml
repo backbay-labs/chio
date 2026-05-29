@@ -1,6 +1,6 @@
 [package]
 name = "chio-core"
-description = "Core types for the Chio (Chio) protocol"
+description = "Core types for the Chio protocol"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -48,6 +48,5 @@ serde_json = { workspace = true }
 proptest = { workspace = true }
 criterion = { workspace = true }
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

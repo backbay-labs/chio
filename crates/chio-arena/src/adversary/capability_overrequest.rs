@@ -34,8 +34,8 @@ pub struct OverrequestVariant {
 }
 
 /// Default canonical variants. Each variant escalates one or both of
-/// (server, tool) outside the typical filesystem allowlist used by P1/P2
-/// reference scenarios. A real arena run would source variants from M03
+/// (server, tool) outside the typical filesystem allowlist used by the
+/// reference scenarios. A real arena run would source variants from
 /// fuzz outputs; the canonical set here exists so unit tests have a
 /// stable, kernel-free fixture.
 pub fn default_variants() -> Vec<OverrequestVariant> {
@@ -131,7 +131,7 @@ impl Adversary for CapabilityOverrequestAdversary {
         // `default_variants` list and `population_from_block` keep an
         // additional invariant: variants supplied at construction time
         // must escalate beyond the canonical filesystem allowlist used by
-        // P1/P2 reference scenarios, so default-built populations always
+        // the reference scenarios, so default-built populations always
         // emit `Deny`.
         let in_scope = self.variant.target_server == base_step.server
             && self.variant.target_tool == base_step.tool;

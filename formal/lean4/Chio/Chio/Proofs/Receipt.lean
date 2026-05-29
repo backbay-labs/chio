@@ -118,16 +118,31 @@ theorem receipt_immutability
     exact h_eq.symm
   simp [verifyReceipt, signReceipt, h_body_ne]
 
-/-- Receipt identity plumbing: the kernel mints `ChioReceipt` whose
-    `id` field equals `H(canonical_jcs(ChioReceiptIdInput))` on the
-    production hot path. The replay store keys exclusively on that id.
+/-- ASSUMED (not proven in Lean). Receipt content-addressing:
+    the kernel mints `ChioReceipt` whose `id` field equals
+    `H(canonical_jcs(ChioReceiptIdInput))` on the production hot path,
+    and the replay store keys exclusively on that id. The load-bearing
+    property is injectivity: two `ChioReceiptIdInput`s with distinct
+    canonical bytes never collide to the same `id`.
 
-    The full Lean model of canonical-JSON serialization lives in a
-    separate development; the bounded-model statement below records
-    the property that two distinct bodies cannot share a hash (a
-    consequence of the canonicalizer's injectivity). -/
-theorem id_input_set_pinned
-    (body₁ body₂ : ReceiptBody) (h_same_hash : body₁ = body₂) :
-    body₁ = body₂ := h_same_hash
+    This is stated as an `axiom` rather than a theorem because the
+    bounded `ReceiptBody` model in `Chio.Core.Receipt` treats `id` as an
+    opaque `String` field with NO modeled canonicalizer or hash
+    function. There is therefore nothing in this development to prove
+    injectivity against; the earlier `theorem id_input_set_pinned`
+    (`(h : body₁ = body₂) : body₁ = body₂ := h`) was pure reflexivity
+    and proved nothing about content-addressing.
+
+    A genuine proof would require: (1) a Lean model of the JCS canonical
+    serializer (`canonical_jcs`) over the `ChioReceiptIdInput` field set,
+    (2) a model of the hash `H` (e.g. SHA-256), and (3) a collision-
+    resistance / injectivity assumption on `H` discharged as a crypto
+    assumption (see `ASSUME-SHA256` in `formal/assumptions.toml`). Until
+    that model exists, this property is asserted, not mechanized. -/
+axiom receipt_id_collision_resistant
+    (idInput₁ idInput₂ : ReceiptBody) :
+    idInput₁.id = idInput₂.id →
+      idInput₁.contentHash = idInput₂.contentHash ∧
+        idInput₁.policyHash = idInput₂.policyHash
 
 end Chio.Proofs

@@ -30,6 +30,7 @@ use chio_core::crypto::{sha256_hex, Keypair};
 use chio_core::merkle::MerkleTree;
 use chio_core::receipt::{
     chio_receipt_id, ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
+    CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY,
 };
 use proptest::prelude::*;
 use proptest::test_runner::{Config as ProptestConfig, FileFailurePersistence};
@@ -150,8 +151,8 @@ fn edge_case_payload() -> impl Strategy<Value = serde_json::Value> {
             "bytes": Vec::<u8>::new(),
             "magnitude": i32::MIN,
         })),
-        // Single-element byte vector with the high bit set (canonical-JSON
-        // numeric encoding has previously regressed on values >= 128).
+        // Single-element byte vector with the high bit set: canonical-JSON
+        // numeric encoding must handle bytes >= 128 correctly.
         Just(json!({
             "method": "h",
             "bytes": vec![0xFFu8],
@@ -287,6 +288,35 @@ fn canonical_body_bytes(body: &ChioReceiptBody) -> Vec<u8> {
     canonical_json_bytes(body).expect("body canonicalises")
 }
 
+/// Bind the `chio_receipt_signing_nonce` metadata key to the pre-nonce
+/// receipt id, mirroring `chio_core_types::receipt::bind_receipt_signing_nonce`
+/// (the private step every `ChioReceipt::sign*` path runs before computing the
+/// content-addressed id). The nonce is the trimmed pre-nonce `body.id`; an
+/// existing non-object metadata value is preserved under `original_metadata`.
+/// The signed receipt's projected body therefore carries this key, so the
+/// test transforms the pre-sign body the same way before comparing canonical
+/// bytes.
+fn bind_signing_nonce(body: &mut ChioReceiptBody) {
+    let nonce = body.id.trim();
+    if nonce.is_empty() {
+        return;
+    }
+    let mut metadata = match body.metadata.take() {
+        Some(serde_json::Value::Object(map)) => map,
+        Some(value) => {
+            let mut map = serde_json::Map::new();
+            map.insert("original_metadata".to_string(), value);
+            map
+        }
+        None => serde_json::Map::new(),
+    };
+    metadata.insert(
+        CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY.to_string(),
+        serde_json::Value::String(nonce.to_string()),
+    );
+    body.metadata = Some(serde_json::Value::Object(metadata));
+}
+
 /// Outcome of anchoring a (possibly empty) receipt batch. The empty-batch
 /// case is a documented failure mode of `MerkleTree::from_leaves`; the
 /// idempotence property treats it as a value to compare across replays.
@@ -395,10 +425,19 @@ proptest! {
 
         // Canonical body bytes must round-trip independent of which receipt
         // we project from: the body is the input to signing and must remain
-        // a fixed point.
+        // a fixed point. Signing binds `chio_receipt_signing_nonce` into the
+        // body metadata before computing the id, so the fixed point is the
+        // nonce-bound body, not the bare pre-sign body.
         let body_bytes_a = canonical_body_bytes(&receipt_a.body());
         let body_bytes_b = canonical_body_bytes(&receipt_b.body());
-        let body_bytes_direct = canonical_body_bytes(&body);
+        // Reproduce the signer's body transform: bind the nonce, then
+        // recompute the content-addressed id over the nonce-bound body. The
+        // signed receipt's projected body carries this final id.
+        let mut nonce_bound_body = body.clone();
+        bind_signing_nonce(&mut nonce_bound_body);
+        nonce_bound_body.id =
+            chio_receipt_id(&nonce_bound_body).expect("nonce-bound receipt id computes");
+        let body_bytes_direct = canonical_body_bytes(&nonce_bound_body);
         prop_assert_eq!(&body_bytes_a, &body_bytes_b);
         prop_assert_eq!(&body_bytes_a, &body_bytes_direct);
 

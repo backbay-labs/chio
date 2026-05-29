@@ -11,7 +11,7 @@ use sha2::{Digest, Sha256};
 /// label. The memo signature in this repository is a self-generated SHA-256
 /// receipt; rendering it as `sigstore-cosign` would misrepresent it as a
 /// vendor-issued cosign attestation. Real partner cryptographic attestation is
-/// deferred to trajectory-4 (M02-followup).
+/// deferred to follow-on work.
 const SYNTHETIC_TEST_SAMPLE: &str = "synthetic-test-sample";
 
 /// Closed set of fields permitted in a `chio-memo-signature.v1` sig file.
@@ -95,7 +95,7 @@ fn verify_memo_path(memo_path: &str, sig_path: &str) -> Result<String, String> {
 
     require_field(&fields, "signature_format", "chio-memo-signature.v1")?;
     require_field(&fields, "scheme", SYNTHETIC_TEST_SAMPLE)?;
-    require_field(&fields, "signed_payload", "m02-memo.md:sha256")?;
+    require_field(&fields, "signed_payload", "memo.md:sha256")?;
 
     let signer = field_value(&fields, "signer_identity")?;
     let signed_hash = field_value(&fields, "memo_sha256")?;
@@ -226,7 +226,7 @@ mod tests {
             "signature_format: chio-memo-signature.v1\n\
              scheme: synthetic-test-sample\n\
              signer_identity: {signer}\n\
-             signed_payload: m02-memo.md:sha256\n\
+             signed_payload: memo.md:sha256\n\
              memo_sha256: {memo_sha}\n\
              signature: {signature}\n",
         );
@@ -250,17 +250,17 @@ mod tests {
         );
         assert!(
             !message.contains("cosign-github-oidc-test"),
-            "verifier must not surface the legacy cosign-github-oidc-test literal, got: {message}"
+            "verifier must not surface the cosign-github-oidc-test scheme literal, got: {message}"
         );
         Ok(())
     }
 
     #[test]
     fn verifier_rejects_duplicate_scheme_field() -> Result<(), String> {
-        // Defence-in-depth: a sig file with two `scheme:` lines (one
-        // synthetic-test-sample, one sigstore-cosign) must not slip through
-        // because the verifier happens to match the first occurrence. Reject
-        // duplicates outright so any downstream parser disagreement fail-closes.
+        // A sig file with two `scheme:` lines (one synthetic-test-sample, one
+        // sigstore-cosign) must not slip through because the verifier happens
+        // to match the first occurrence. Reject duplicates outright so any
+        // downstream parser disagreement fail-closes.
         let memo = b"duplicate-scheme rejection test memo\n";
         let memo_sha = sha256_hex(memo);
         let signer = "https://example.invalid/dup-scheme-signer";
@@ -270,7 +270,7 @@ mod tests {
              scheme: synthetic-test-sample\n\
              scheme: sigstore-cosign\n\
              signer_identity: {signer}\n\
-             signed_payload: m02-memo.md:sha256\n\
+             signed_payload: memo.md:sha256\n\
              memo_sha256: {memo_sha}\n\
              signature: {signature}\n",
         );
@@ -306,7 +306,7 @@ mod tests {
             "signature_format: chio-memo-signature.v1\n\
              scheme: synthetic-test-sample\n\
              signer_identity: {signer}\n\
-             signed_payload: m02-memo.md:sha256\n\
+             signed_payload: memo.md:sha256\n\
              memo_sha256: {memo_sha}\n\
              signature: {signature}\n\
              attacker_claim: forged-cosign-cert\n",
@@ -342,7 +342,7 @@ mod tests {
              signature_format: chio-memo-signature.v1\n\
              scheme: synthetic-test-sample\n\
              signer_identity: {signer}\n\
-             signed_payload: m02-memo.md:sha256\n\
+             signed_payload: memo.md:sha256\n\
              memo_sha256: {memo_sha}\n\
              signature: {signature}\n",
         );
@@ -366,29 +366,29 @@ mod tests {
     }
 
     #[test]
-    fn verifier_rejects_legacy_cosign_github_oidc_test_scheme() -> Result<(), String> {
-        let memo = b"legacy literal rejection test memo\n";
+    fn verifier_rejects_cosign_github_oidc_test_scheme() -> Result<(), String> {
+        let memo = b"scheme rejection test memo\n";
         let memo_sha = sha256_hex(memo);
-        let signer = "https://example.invalid/legacy-signer";
+        let signer = "https://example.invalid/rejected-scheme-signer";
         let signature = memo_signature(&memo_sha, signer);
         let sig_body = format!(
             "signature_format: chio-memo-signature.v1\n\
              scheme: cosign-github-oidc-test\n\
              signer_identity: {signer}\n\
-             signed_payload: m02-memo.md:sha256\n\
+             signed_payload: memo.md:sha256\n\
              memo_sha256: {memo_sha}\n\
              signature: {signature}\n",
         );
 
-        let memo_path = write_temp("legacy-memo.md", memo)?;
-        let sig_path = write_temp("legacy-memo.sig", sig_body.as_bytes())?;
+        let memo_path = write_temp("rejected-scheme-memo.md", memo)?;
+        let sig_path = write_temp("rejected-scheme-memo.sig", sig_body.as_bytes())?;
 
         let result = verify_memo_path(path_str(&memo_path)?, path_str(&sig_path)?);
         let _ = fs::remove_file(&memo_path);
         let _ = fs::remove_file(&sig_path);
 
         let err = result.err().ok_or_else(|| {
-            "legacy cosign-github-oidc-test literal must be rejected by the verifier".to_owned()
+            "cosign-github-oidc-test scheme must be rejected by the verifier".to_owned()
         })?;
         assert!(
             err.contains("scheme mismatch"),

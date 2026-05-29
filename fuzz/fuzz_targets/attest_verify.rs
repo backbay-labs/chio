@@ -22,7 +22,7 @@ fn verifier() -> Option<&'static SigstoreVerifier> {
 fn expected_identity() -> ExpectedIdentity {
     ExpectedIdentity {
         certificate_identity_regexp:
-            r"https://github\.com/backbay/chio/\.github/workflows/release-binaries\.yml@refs/tags/v.*"
+            r"https://github\.com/backbay-labs/chio/\.github/workflows/release-binaries\.yml@refs/tags/v.*"
                 .to_owned(),
         certificate_oidc_issuer: "https://token.actions.githubusercontent.com".to_owned(),
     }

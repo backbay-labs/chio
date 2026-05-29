@@ -62,8 +62,7 @@ pub struct SpecToolGrant {
 impl SpecToolGrant {
     /// Reference implementation of `ToolGrant::is_subset_of`.
     ///
-    /// Written for clarity rather than performance. Mirrors the current
-    /// shipped Rust implementation.
+    /// Mirrors the shipped Rust implementation.
     #[must_use]
     pub fn is_subset_of(&self, parent: &SpecToolGrant) -> bool {
         if parent.server_id != "*" && self.server_id != parent.server_id {

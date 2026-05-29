@@ -7,7 +7,7 @@
     "exporterId": "relay-exporter",
     "exporterKeyId": "default",
     "exportedAtUnixMs": 1766000100000,
-    "sourcePackageSha256": "a5b4ac0db9f924dc89b60aed12bfd3b6883162f40cd44610c05791710feab928",
+    "sourcePackageSha256": "b1c7b86889bbe933a4d44f605da452d819bae714a470d00ebef9643bcb240afd",
     "artifacts": [
       {
         "role": "alert_report",
@@ -61,7 +61,7 @@
         "role": "drift_report",
         "schema": "chio.pheromone.relay-alert-delivery-drift-report.v1",
         "path": "reports/relay-alert-delivery-drift-report.json",
-        "sha256": "b76063cb46ad9129de05931f097a60f1c62d03ffa0828a2532abc2edca7b0727",
+        "sha256": "021e1ef11efff2dc78d6918886f97b4471800bacf7e31aa86f104c5f06bf6218",
         "byteCount": 442,
         "retentionClass": "incident_evidence"
       },
@@ -69,7 +69,7 @@
         "role": "route_review_packet",
         "schema": "chio.pheromone.relay-alert-route-review-packet.v1",
         "path": "reports/relay-alert-route-review-packet.json",
-        "sha256": "869e805c8bd0858f4a1cf290bc61c6c66245ba9735ad2e1027161ec70188e779",
+        "sha256": "6133b4d741774eb1ee945358cc417d3cc917a49ee9dc11f11383bdfde931212a",
         "byteCount": 1242,
         "retentionClass": "incident_evidence"
       },
@@ -77,7 +77,7 @@
         "role": "assurance_package",
         "schema": "chio.pheromone.relay-alert-assurance-package.v1",
         "path": "reports/relay-alert-assurance-package.json",
-        "sha256": "a5b4ac0db9f924dc89b60aed12bfd3b6883162f40cd44610c05791710feab928",
+        "sha256": "b1c7b86889bbe933a4d44f605da452d819bae714a470d00ebef9643bcb240afd",
         "byteCount": 1330,
         "retentionClass": "legal_hold"
       },
@@ -121,5 +121,5 @@
     ]
   },
   "signerPublicKey": "6b734a8eff246fe734b38d4046c148eee5f04fe87b3a0a423955a77956de066b",
-  "signature": "af4eefd2bee1252ca91ba0f60df98a835a1d25d17404d41acd49e46c6c455efe8755377ae109faf49bb0930588f18bbcba3f8a7847353f642e7f4cfb0974ee04"
+  "signature": "9ccd20c8302bf745afa5f4610d9bc3f57ced3966e6b9ab71a0be0e35de1b05117e027db8248209431dd91523894c68259e73a33ebf7941e17cf366a71b46820a"
 }

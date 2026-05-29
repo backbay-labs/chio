@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://chio.dev/schemas/chio-tee-frame/v1.json",
+  "$id": "https://chio.world/schemas/chio-tee-frame/v1.json",
   "title": "chio-tee-frame.v1",
   "description": "Capture frame emitted by the chio-tee shadow runner per kernel evaluation. Mirrors the Rust types in crates/chio-tee-frame.",
   "type": "object",
@@ -70,7 +70,7 @@
     },
     "invocation": {
       "type": "object",
-      "description": "Canonical-JSON ToolInvocation per the M01 schema. Validated by the M01 validator; opaque here."
+      "description": "Canonical-JSON ToolInvocation per the wire schema. Validated by the wire-schema validator; opaque here."
     },
     "provenance": {
       "type": "object",
@@ -96,7 +96,7 @@
         },
         "supply_chain": {
           "type": "object",
-          "description": "Optional M09 SBOM-style provenance superset; opaque here."
+          "description": "Optional SBOM-style supply-chain provenance superset; opaque here."
         }
       }
     },
@@ -115,7 +115,7 @@
       "minLength": 1,
       "maxLength": 128,
       "pattern": "^[a-z0-9][a-z0-9._@+-]*$",
-      "description": "Identifier for the redactor pipeline that produced this frame, e.g. m06-redactors@1.4.0+default."
+      "description": "Identifier for the redactor pipeline that produced this frame, e.g. redactors@1.4.0+default."
     },
     "verdict": {
       "type": "string",

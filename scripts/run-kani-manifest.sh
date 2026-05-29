@@ -2,9 +2,8 @@
 # run-kani-manifest.sh
 #
 # Iterate `.kani/harnesses.toml` and invoke `cargo kani` for each
-# (crate, harness) pair in the requested lane. This is the multi-crate
-# replacement for the chio-kernel-core-only sweep that used to live
-# inline in `.github/workflows/ci.yml`.
+# (crate, harness) pair in the requested lane. It runs the kani sweep
+# across every manifest crate, not just chio-kernel-core.
 #
 # Usage:
 #   scripts/run-kani-manifest.sh [--lane pr|nightly] [--crate <name>]

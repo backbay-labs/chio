@@ -1,23 +1,23 @@
-# Policy Engine Absorption: ClawdStrike into Chio
+# Policy Engine Capability and Porting Plan
 
 Chio is becoming the universal security kernel. A universal kernel needs a
 policy engine that compiles declarative YAML into the guard pipeline. Today
-that engine lives in ClawdStrike. This document specifies the plan to absorb
+that engine lives in the upstream guard suite. This document specifies the plan to absorb
 it into Chio.
 
 ---
 
-## 1. What ClawdStrike's Policy Engine Does
+## 1. What the Upstream Policy Engine Does
 
-ClawdStrike's policy engine is a full YAML-to-guard-instance compiler. It
+The HushSpec policy engine is a full YAML-to-guard-instance compiler. It
 takes a declarative policy document, validates it, resolves inheritance, and
 produces a set of instantiated guard objects. The pipeline has five stages.
 
 ### 1.1 Schema format
 
-ClawdStrike policies use a native YAML schema (distinct from but
+Upstream policies use a native YAML schema (distinct from but
 interoperable with HushSpec). The top-level `Policy` struct
-(`clawdstrike/src/policy.rs`) contains:
+(the upstream policy module) contains:
 
 ```rust
 pub struct Policy {
@@ -87,7 +87,7 @@ pub(crate) fn create_guards(&self) -> PolicyGuards {
 }
 ```
 
-ClawdStrike also supports async guard compilation via
+The upstream suite also supports async guard compilation via
 `build_async_guards()` and custom guard compilation via
 `CustomGuardRegistry`.
 
@@ -137,13 +137,13 @@ Deep merge has specialized logic per guard type. For example:
 
 ### 1.6 HushSpec compiler
 
-ClawdStrike includes a bidirectional HushSpec compiler
+The upstream suite includes a bidirectional HushSpec compiler
 (`hushspec_compiler.rs`):
 
-- `compile()` / `compile_hushspec()`: HushSpec -> ClawdStrike Policy
-- `decompile()`: ClawdStrike Policy -> HushSpec
+- `compile()` / `compile_hushspec()`: HushSpec -> upstream Policy
+- `decompile()`: the upstream suite Policy -> HushSpec
 
-The compiler maps HushSpec rule types to ClawdStrike guard configs, handles
+The compiler maps HushSpec rule types to upstream guard configs, handles
 HushSpec extensions (posture, origins, detection), and converts
 HushSpec-prefixed extends references (`hushspec:X` -> `X`).
 
@@ -152,7 +152,7 @@ key. `from_yaml_auto()` uses this for transparent format detection.
 
 ### 1.7 Built-in rulesets
 
-ClawdStrike ships 11 built-in rulesets via `include_str!()`:
+The upstream suite ships 11 built-in rulesets via `include_str!()`:
 
 | Ruleset | Purpose |
 |---------|---------|
@@ -194,7 +194,7 @@ secret_patterns, patch_integrity, shell_commands, tool_access, computer_use,
 remote_desktop_channels, input_injection) and all extension modules (posture,
 origins, detection, reputation, runtime_assurance).
 
-Chio's schema is a superset of ClawdStrike's HushSpec support -- it includes
+Chio's schema is a superset of the upstream HushSpec support -- it includes
 `reputation` and `runtime_assurance` extensions, plus `WorkloadIdentityMatch`
 on tool_access rules, plus `GovernanceMetadata`.
 
@@ -275,7 +275,7 @@ It also derives an `ChioScope` from tool_access rules.
 
 ## 3. Gap Analysis
 
-| Capability | ClawdStrike | Chio (chio-policy) | Gap |
+| Capability | Upstream | Chio (chio-policy) | Gap |
 |-----------|-------------|------------------|-----|
 | Schema format | Native YAML with versioned schema | HushSpec YAML (0.1.0) | Chio lacks a native policy format with schema versioning |
 | Schema versioning | 1.1.0 - 1.5.0 with feature gating | 0.1.0 only | Chio needs versioned schema evolution |
@@ -318,10 +318,10 @@ It also derives an `ChioScope` from tool_access rules.
 
 ### 4.1 Strategy: absorb, don't wrap
 
-ClawdStrike's policy engine was built for ClawdStrike's async guard trait.
+The HushSpec policy engine was built for the upstream async guard trait.
 Chio has its own synchronous `Guard` trait and its own guard implementations.
-Wrapping ClawdStrike as a dependency would drag in async runtime,
-ClawdStrike-specific guard types, and an incompatible guard interface.
+Wrapping the upstream suite as a dependency would drag in async runtime,
+upstream-specific guard types, and an incompatible guard interface.
 
 Instead: **absorb the design patterns into chio-policy** while keeping Chio's
 type system.
@@ -340,13 +340,13 @@ type system.
 | Custom guard specs | `PolicyCustomGuardSpec` | New `custom_guards` field on `HushSpec` | Bridge to WASM guard loading |
 | Load-time verification | `install_policy_load_verifier()` | Hook on kernel load | Policy integrity check at startup |
 
-### 4.3 What stays in ClawdStrike
+### 4.3 What stays in the upstream guard suite
 
-- ClawdStrike's native YAML schema (non-HushSpec)
-- ClawdStrike's async guard trait and runtime
-- `HushEngine` (ClawdStrike's enforcement engine)
-- ClawdStrike-specific guards (Spider Sense threat intel, output sanitizer)
-- Bidirectional HushSpec compiler (only needed inside ClawdStrike)
+- the upstream native YAML schema (non-HushSpec)
+- the upstream async guard trait and runtime
+- `HushEngine` (the upstream enforcement engine)
+- upstream-specific guards (Spider Sense threat intel, output sanitizer)
+- Bidirectional HushSpec compiler (only needed inside the upstream suite)
 - Broker policy (not applicable to Chio's model)
 
 ### 4.4 Phased implementation
@@ -372,7 +372,7 @@ implementations, fail-closed for misconfigured existing guards).
 
 **Phase 2: Built-in rulesets**
 
-Port ClawdStrike's rulesets to HushSpec format and embed them:
+Port the upstream suite rulesets to HushSpec format and embed them:
 
 ```rust
 // chio-policy/src/rulesets.rs
@@ -582,7 +582,7 @@ The compiled output defines ordering via priority:
 2. Custom guards sorted by `priority` (ascending)
 3. Advisory guards last (custom guards with `advisory: true`)
 
-This matches the ordering specified in `04-HUSHSPEC-CLAWDSTRIKE-INTEGRATION.md`
+This matches the ordering specified in `04-HUSHSPEC-POLICY-INTEGRATION.md`
 Section 1.
 
 ---
@@ -591,7 +591,7 @@ Section 1.
 
 ### 6.1 Which rulesets to port
 
-| ClawdStrike ruleset | Port to Chio? | Rationale |
+| Upstream ruleset | Port to Chio? | Rationale |
 |---------------------|-------------|-----------|
 | `default` | Yes | Universal baseline; every deployment needs a starting point |
 | `strict` | Yes | High-security baseline for production |
@@ -599,18 +599,18 @@ Section 1.
 | `ai-agent` | Yes | Primary use case for Chio |
 | `ai-agent-posture` | Yes | Demonstrates posture state machine |
 | `cicd` | Yes | Common deployment context |
-| `remote-desktop` | No | ClawdStrike-specific use case, not relevant to Chio's agent model |
+| `remote-desktop` | No | upstream-specific use case, not relevant to Chio's agent model |
 | `remote-desktop-strict` | No | Same |
 | `remote-desktop-permissive` | No | Same |
-| `spider-sense` | No | Depends on ClawdStrike's threat intel infrastructure |
+| `spider-sense` | No | Depends on the upstream threat-intel infrastructure |
 | `origin-enclaves-example` | Yes | Demonstrates origin-aware policy |
 
 ### 6.2 Adaptation required
 
-ClawdStrike rulesets use ClawdStrike's native YAML format. Chio rulesets must
+Upstream rulesets use the upstream native YAML format. Chio rulesets must
 use HushSpec format. The translation is mechanical:
 
-ClawdStrike native:
+Upstream native:
 ```yaml
 version: "1.1.0"
 guards:
@@ -634,7 +634,7 @@ Key differences:
 - Top-level `version` -> `hushspec`
 - `guards.*` -> `rules.*` (with name changes: `egress_allowlist` -> `egress`,
   `mcp_tool` -> `tool_access`, `forbidden_path` -> `forbidden_paths`)
-- ClawdStrike's `settings` section has no HushSpec equivalent (will be added
+- the upstream `settings` section has no HushSpec equivalent (will be added
   in version 0.2.0)
 - Detection guards (prompt_injection, jailbreak) move under
   `extensions.detection`
@@ -731,9 +731,9 @@ for translating protocol-specific requests into `GuardContext`.
 
 ## 8. Schema Evolution
 
-### 8.1 ClawdStrike's schema lineage
+### 8.1 Upstream schema lineage
 
-ClawdStrike's native schema versions:
+The upstream native schema versions:
 
 | Version | Features added |
 |---------|---------------|
@@ -747,12 +747,12 @@ ClawdStrike's native schema versions:
 
 Chio uses HushSpec format, which has its own version track. The current
 version is `0.1.0` (pre-stable). Chio's schema already contains features
-that ClawdStrike added incrementally (posture, origins, detection,
+that the upstream suite added incrementally (posture, origins, detection,
 reputation, runtime assurance).
 
-Chio's schema evolution is independent of ClawdStrike's. The HushSpec
-compiler in ClawdStrike handles the translation. Chio does not need to track
-ClawdStrike's version numbers.
+Chio's schema evolution is independent of the upstream suite. The HushSpec
+compiler in the upstream guard suite handles the translation. Chio does not need to track
+The upstream version numbers.
 
 ### 8.3 Forward compatibility contract
 
@@ -941,10 +941,10 @@ if let Some(settings) = compiled.settings {
    and the kernel performs instantiation. Decision: keep the current coupling
    for simplicity; the guard types are stable.
 
-2. **Merge modifier syntax.** ClawdStrike's `additional_*`/`remove_*` fields
+2. **Merge modifier syntax.** the upstream `additional_*`/`remove_*` fields
    are ergonomic for additive inheritance. Should HushSpec adopt the same
    pattern, or use a different syntax (e.g., `+patterns` / `-patterns`)?
-   Decision: adopt ClawdStrike's field-name convention for consistency with
+   Decision: adopt the upstream field-name convention for consistency with
    the existing ecosystem.
 
 3. **Policy reload.** The kernel currently loads guards at startup. Hot reload
@@ -952,7 +952,7 @@ if let Some(settings) = compiled.settings {
    `CompiledPolicy` return type supports this pattern but the kernel does not
    implement it yet.
 
-4. **Remote policy resolution.** ClawdStrike supports `PolicyLocation::Git`
+4. **Remote policy resolution.** The upstream suite supports `PolicyLocation::Git`
    and `PolicyLocation::Url`. Chio should add these when needed, behind a
    feature flag. Not required for initial absorption.
 

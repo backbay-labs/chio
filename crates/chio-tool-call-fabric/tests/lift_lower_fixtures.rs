@@ -14,8 +14,8 @@
 //! House rules:
 //! - No em dashes (U+2014) anywhere in code, comments, or rendered output.
 //! - `unwrap_used` / `expect_used` are denied workspace-wide; we allow them
-//!   inside this test file because fixture authoring is a controlled
-//!   in-source builder pipeline, not production code.
+//!   inside this test file; the `#[allow]` is scoped to controlled fixture
+//!   builders, not workspace code.
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
@@ -62,7 +62,7 @@ impl Fixture {
 // -- Builders --------------------------------------------------------------
 //
 // Each builder constructs one `ToolInvocation` whose shape mirrors what the
-// corresponding native provider adapter will surface in M07 Phase 2/3/4. The
+// corresponding native provider adapter will surface via ProviderAdapter::lift. The
 // `arguments` field carries the inner tool-call argument blob as
 // canonical-JSON bytes (RFC 8785), matching the contract set by
 // `ProviderAdapter::lift` in `crates/chio-tool-call-fabric/src/lib.rs`.
@@ -173,10 +173,9 @@ fn anthropic_parallel_tool_use() -> ToolInvocation {
 }
 
 fn anthropic_server_tool() -> ToolInvocation {
-    // Server tool surface (computer_use family). Per M07 Phase 3 task 4, this
-    // shape lifts an Anthropic `tool_use` block whose tool name resolves to
-    // a server-side tool such as `text_editor`. The fixture pins the wire
-    // shape ahead of the server-tools allowlist landing in Phase 3.
+    // Server tool surface (computer_use family). This shape lifts an Anthropic
+    // `tool_use` block whose tool name resolves to a server-side tool such as
+    // `text_editor`. The fixture pins the wire shape for the server-tools allowlist.
     ToolInvocation {
         provider: ProviderId::Anthropic,
         tool_name: "text_editor".to_string(),
@@ -242,7 +241,7 @@ fn bedrock_parallel_tool_use() -> ToolInvocation {
 
 fn bedrock_assumed_role() -> ToolInvocation {
     // Exercises the Bedrock-specific `assumed_role_session_arn` provenance
-    // field (M07 Phase 4 task 4 IAM principal disambiguation). The fixture
+    // field (Bedrock IAM principal disambiguation). The fixture
     // pins the canonical ordering of the assumed-role principal so adapters
     // never collapse caller and session identities.
     ToolInvocation {
@@ -389,9 +388,8 @@ fn lift_lower_fixtures_round_trip_canonical_json() {
     }
 }
 
-/// Sanity check on directory layout: the on-disk corpus carries exactly
-/// three fixtures per provider, all `.json`, so a future stray file (e.g.,
-/// a tenth fixture or a back-up) trips CI.
+/// The on-disk corpus carries exactly three fixtures per provider, all
+/// `.json`, so a stray file (e.g. a tenth fixture or a back-up) trips CI.
 #[test]
 fn lift_lower_fixture_directories_have_three_json_files_each() {
     for provider_dir in ["openai", "anthropic", "bedrock"] {

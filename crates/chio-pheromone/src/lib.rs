@@ -1,5 +1,7 @@
 //! Local Chio pheromone substrate and transit evidence types.
 
+#![forbid(unsafe_code)]
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Mutex, PoisonError};
 

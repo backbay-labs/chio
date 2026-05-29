@@ -17,7 +17,7 @@ at the signed receipt.
 ## Install
 
 ```bash
-go get github.com/backbay/chio/sdks/go/chio-go-http
+go get github.com/backbay-labs/chio/sdks/go/chio-go-http
 ```
 
 Requires Go 1.21 or newer and a running Chio sidecar (defaults to
@@ -32,7 +32,7 @@ import (
     "fmt"
     "net/http"
 
-    chio "github.com/backbay/chio/sdks/go/chio-go-http"
+    chio "github.com/backbay-labs/chio/sdks/go/chio-go-http"
 )
 
 func handlePets(w http.ResponseWriter, r *http.Request) {

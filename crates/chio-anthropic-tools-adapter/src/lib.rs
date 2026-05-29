@@ -1,6 +1,17 @@
 //! Provider-native adapter that mediates Anthropic Messages API tool-use
 //! traffic through the Chio kernel. Pinned upstream API version:
 //! `anthropic-version: 2023-06-01` (see [`transport::ANTHROPIC_VERSION`]).
+//!
+//! The adapter is a mediation gateway: [`AnthropicAdapter::send_messages`]
+//! forwards a native `messages.create` request body to
+//! `https://api.anthropic.com/v1/messages` over the shared HTTP transport with
+//! `x-api-key` plus `anthropic-version` headers, then
+//! [`lift_batch`](AnthropicAdapter::lift_batch) lifts every `tool_use` content
+//! block in the response into a [`chio_tool_call_fabric::ToolInvocation`].
+//! [`lower_tool_result_block`](AnthropicAdapter::lower_tool_result_block) lowers
+//! a kernel verdict back into the `tool_result` block returned on the next
+//! turn, and [`gate_sse_stream`](AnthropicAdapter::gate_sse_stream) gates the
+//! streaming path.
 
 #![forbid(unsafe_code)]
 
@@ -12,13 +23,23 @@ pub mod transport;
 
 use std::sync::Arc;
 
-use chio_tool_call_fabric::ProviderId;
+use chio_provider_adapter_core::http::map_transport_error;
+use chio_tool_call_fabric::{
+    ProviderError, ProviderId, ProviderRequest, ToolInvocation, VerdictResult,
+};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+pub use adapter::streaming::GatedSseStream;
 pub use manifest::AnthropicServerToolGate;
 pub use native::{ToolResultBlock, ToolUseBlock};
-pub use transport::{Transport, ANTHROPIC_VERSION, COMPUTER_USE_BETA};
+pub use transport::{
+    anthropic_transport, anthropic_transport_from_env, AuthScheme, HttpTransport, MockTransport,
+    Transport, ANTHROPIC_MESSAGES_PATH, ANTHROPIC_VERSION, COMPUTER_USE_BETA,
+};
+
+/// Provider label used in transport-failure messages.
+const PROVIDER_LABEL: &str = "Anthropic";
 
 /// Configuration for the Anthropic Messages adapter.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -117,6 +138,59 @@ impl AnthropicAdapter {
         &self.server_tool_gate
     }
 
+    /// Forward a native `messages.create` request to the upstream Anthropic
+    /// endpoint and lift the tool-use blocks in the response.
+    ///
+    /// `request_body` is the Messages API JSON body
+    /// (`{ model, messages, tools, max_tokens, .. }`). It is POSTed to
+    /// [`ANTHROPIC_MESSAGES_PATH`] over the configured transport with the
+    /// `x-api-key` and `anthropic-version` headers; a non-2xx status, timeout,
+    /// or transport failure is mapped into the fabric [`ProviderError`]
+    /// taxonomy and fails closed. On success the response body is handed to
+    /// [`lift_batch`](Self::lift_batch).
+    pub async fn send_messages(
+        &self,
+        request_body: &[u8],
+    ) -> Result<Vec<ToolInvocation>, ProviderError> {
+        let response = self.post_messages(request_body).await?;
+        self.lift_batch(ProviderRequest(response.body))
+    }
+
+    /// Forward a streaming `messages.create` request and gate the SSE response.
+    ///
+    /// The request is POSTed to [`ANTHROPIC_MESSAGES_PATH`]; the buffered
+    /// `text/event-stream` body is then run through
+    /// [`gate_sse_stream`](Self::gate_sse_stream) with the supplied evaluator so
+    /// every buffered `tool_use` block is gated at `content_block_stop` before
+    /// any bytes are released.
+    pub async fn send_messages_stream<F>(
+        &self,
+        request_body: &[u8],
+        evaluate: F,
+    ) -> Result<GatedSseStream, ProviderError>
+    where
+        F: FnMut(&ToolInvocation) -> Result<VerdictResult, ProviderError>,
+    {
+        let body = self
+            .transport
+            .post_sse(ANTHROPIC_MESSAGES_PATH, request_body)
+            .await
+            .map_err(|error| map_transport_error(PROVIDER_LABEL, error))?;
+        self.gate_sse_stream(&body, evaluate)
+    }
+
+    /// Perform the raw upstream POST and return the buffered response, mapping
+    /// any transport failure into the fabric error taxonomy.
+    async fn post_messages(
+        &self,
+        request_body: &[u8],
+    ) -> Result<transport::HttpResponse, ProviderError> {
+        self.transport
+            .post_json(ANTHROPIC_MESSAGES_PATH, request_body)
+            .await
+            .map_err(|error| map_transport_error(PROVIDER_LABEL, error))
+    }
+
     /// Whether this build was compiled with the `computer-use` cargo
     /// feature. Surfaced here so callers can refuse to start a session that
     /// requests server tools without the feature flag set, without having
@@ -139,12 +213,13 @@ impl chio_provider_adapter_core::Provider for AnthropicAdapter {
 /// Adapter-local error taxonomy.
 #[derive(Debug, Error)]
 pub enum AnthropicAdapterError {
-    /// Placeholder for call sites not yet implemented.
-    #[error("anthropic adapter call site is not implemented: {0}")]
-    NotImplemented(&'static str),
-    /// Bubbled up from the transport layer.
+    /// Bubbled up from the shared HTTP transport layer.
     #[error(transparent)]
-    Transport(#[from] transport::TransportError),
+    Transport(#[from] transport::HttpTransportError),
+    /// The upstream response could not be lifted into the canonical fabric
+    /// types.
+    #[error(transparent)]
+    Provider(#[from] ProviderError),
     /// The `computer-use` cargo feature is required but not enabled.
     #[error("server-tool surface requires the `computer-use` cargo feature")]
     ComputerUseFeatureDisabled,
@@ -195,7 +270,11 @@ mod tests {
     #[test]
     fn error_display_is_em_dash_free() {
         let cases = vec![
-            AnthropicAdapterError::NotImplemented("messages.create lift"),
+            AnthropicAdapterError::Transport(transport::HttpTransportError::Status {
+                code: 500,
+                body: "overloaded".to_string(),
+            }),
+            AnthropicAdapterError::Provider(ProviderError::Malformed("nope".to_string())),
             AnthropicAdapterError::ComputerUseFeatureDisabled,
         ];
         for err in cases {
@@ -213,5 +292,90 @@ mod tests {
             AnthropicAdapter::computer_use_enabled(),
             cfg!(feature = "computer-use")
         );
+    }
+
+    fn tool_use_response() -> Vec<u8> {
+        serde_json::to_vec(&serde_json::json!({
+            "id": "msg_01outbound",
+            "type": "message",
+            "role": "assistant",
+            "content": [{
+                "type": "tool_use",
+                "id": "toolu_weather_1",
+                "name": "get_weather",
+                "input": { "location": "Paris" }
+            }]
+        }))
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn send_messages_posts_and_lifts() {
+        let mock = Arc::new(transport::MockTransport::new());
+        mock.push_json_response(tool_use_response());
+        let adapter = AnthropicAdapter::new(config(), mock.clone());
+
+        let request = b"{\"model\":\"claude\",\"messages\":[]}";
+        let invocations = adapter.send_messages(request).await.unwrap();
+
+        // The lifted invocation came back from the real outbound parse path.
+        assert_eq!(invocations.len(), 1);
+        assert_eq!(invocations[0].tool_name, "get_weather");
+        assert_eq!(invocations[0].provenance.request_id, "toolu_weather_1");
+
+        // The adapter posted the request body to the Messages path.
+        let calls = mock.calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].path, ANTHROPIC_MESSAGES_PATH);
+        assert_eq!(calls[0].body, request);
+    }
+
+    #[tokio::test]
+    async fn send_messages_maps_upstream_status() {
+        let mock = Arc::new(transport::MockTransport::new());
+        mock.push_error(transport::HttpTransportError::Status {
+            code: 429,
+            body: "rate limited".to_string(),
+        });
+        let adapter = AnthropicAdapter::new(config(), mock);
+
+        let error = adapter
+            .send_messages(b"{}")
+            .await
+            .expect_err("a 429 must fail closed");
+        assert!(matches!(error, ProviderError::RateLimited { .. }));
+    }
+
+    #[tokio::test]
+    async fn send_messages_timeout_fails_closed() {
+        let mock = Arc::new(transport::MockTransport::new());
+        mock.push_error(transport::HttpTransportError::Timeout {
+            url: "https://api.anthropic.com/v1/messages".to_string(),
+            timeout_ms: 60_000,
+        });
+        let adapter = AnthropicAdapter::new(config(), mock);
+
+        let error = adapter
+            .send_messages(b"{}")
+            .await
+            .expect_err("a timeout must fail closed");
+        assert!(matches!(
+            error,
+            ProviderError::TransportTimeout { ms: 60_000 }
+        ));
+    }
+
+    #[tokio::test]
+    async fn send_messages_exhausted_mock_fails_closed() {
+        let mock = Arc::new(transport::MockTransport::new());
+        let adapter = AnthropicAdapter::new(config(), mock);
+
+        let error = adapter
+            .send_messages(b"{}")
+            .await
+            .expect_err("an empty mock script must fail closed");
+        // An exhausted mock surfaces through the transport-error mapping as a
+        // malformed upstream payload rather than a silent empty success.
+        assert!(matches!(error, ProviderError::Malformed(_)));
     }
 }

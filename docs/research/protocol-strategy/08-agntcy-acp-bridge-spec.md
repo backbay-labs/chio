@@ -1,6 +1,6 @@
 # AGNTCY ACP Bridge: Engineering Specification
 
-> **SUPERSEDED (wave 4):** AGNTCY ACP was archived on 2026-04-11. The `agntcy/acp-spec` repo is read-only; ACP was absorbed into A2A. The "frozen v0.2.3" framing in this doc was wrong (frozen meant archived). The proposed `chio-bridge-agntcy` crate is **not** being built. Only the `chio-directory` consume-only integration survives, redirected to AGNTCY Directory + Identity (which remain actively developed) per Webex's production pattern. See [17-agntcy-revisited.md](17-agntcy-revisited.md) for the replacement plan. This doc is retained as historical context for the wave-2 research; do not implement the bridge spec.
+> **SUPERSEDED:** AGNTCY ACP was archived on 2026-04-11. The `agntcy/acp-spec` repo is read-only; ACP was absorbed into A2A. The "frozen v0.2.3" framing in this doc was wrong (frozen meant archived). The proposed `chio-bridge-agntcy` crate is **not** being built. Only the `chio-directory` consume-only integration survives, redirected to AGNTCY Directory + Identity (which remain actively developed) per Webex's production pattern. See [17-agntcy-revisited.md](17-agntcy-revisited.md) for the replacement plan. This doc is retained as historical context; do not implement the bridge spec.
 
 Status: ~~draft, May 2026~~ SUPERSEDED. Successor (concrete) to doc 02 section 2
 ("AGNTCY (SLIM, OASF, ACP)"). Companion to doc 00's three-ACPs warning.

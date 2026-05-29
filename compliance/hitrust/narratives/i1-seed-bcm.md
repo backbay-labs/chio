@@ -1,9 +1,10 @@
 # Business Continuity Management Narrative
 
-Business continuity evidence combines design-partner DR posture,
-revocation oracle behavior, recovery procedures, and evidence retention.
-P1 keeps this family as a gap until out-of-tree DR evidence and P2/P3
-repository references are attached.
+Business-continuity evidence would combine design-partner DR posture,
+revocation-oracle behavior, recovery procedures, and evidence retention.
+This family is recorded as a gap: there is no in-repository DR evidence,
+and tenant-specific recovery evidence is out-of-tree and not yet
+collected.
 
 Fail-closed note: continuity claims require tenant-specific recovery
-evidence.
+evidence that does not exist in the repository today.

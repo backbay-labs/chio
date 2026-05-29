@@ -1,5 +1,3 @@
-//! ## Why this module exists
-//!
 //! ## Wire format
 //!
 //! ```text
@@ -26,11 +24,12 @@
 //!
 //! ## Scope boundary
 //!
-//! This module emits both the legacy DSSE signature-slice profile and the
-//! strict Chio bilateral invocation predicate. The signature-slice profile
-//! stays available for compatibility; strict Chio conformance uses
-//! `chio.bilateral-cosign-invocation.v1` and does not carry the local
-//! `receipt_canonical_json` helper field.
+//! This module emits both the DSSE signature-slice profile
+//! (`chio.bilateral-signature-slice.v1`) and the strict Chio bilateral
+//! invocation predicate (`chio.bilateral-cosign-invocation.v1`). The
+//! signature-slice profile stays available for compatibility; strict Chio
+//! conformance uses `chio.bilateral-cosign-invocation.v1` and does not
+//! carry the local `receipt_canonical_json` helper field.
 
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
@@ -416,7 +415,8 @@ pub struct DsseEnvelope {
 impl DsseEnvelope {
     /// Recompute the DSSE PAE bytes that the signatures cover. Useful for
     /// the negative conformance fixture (which compares this preimage
-    /// byte-for-byte against the legacy `CoSigningBody` preimage).
+    /// byte-for-byte against the `CoSigningBody` preimage used by
+    /// `DualSignedReceipt`).
     pub fn pae_bytes(&self) -> Result<Vec<u8>, BilateralCoSigningError> {
         let payload_bytes = BASE64_STANDARD
             .decode(self.payload.as_bytes())
@@ -787,8 +787,8 @@ pub fn sign_dsse_envelope_full(
     };
 
     // Self-check: the envelope verifies under the same public keys we signed
-    // with. Mirrors the assertion `co_sign_with_origin` makes about the
-    // legacy `DualSignedReceipt` so any subtle encoding drift is caught at
+    // with. Mirrors the self-check `co_sign_with_origin` performs on the
+    // `DualSignedReceipt` so any subtle encoding drift is caught at
     // the producer.
     verify_dsse_envelope(&envelope, &org_a_pub, &org_b_pub)?;
     Ok(envelope)
@@ -1062,13 +1062,11 @@ pub fn verify_dsse_envelope(
     validate_signature_slice_predicate(&statement.predicate)?;
 
     // Single-subject invariant: the bilateral envelope profile
-    // binds exactly ONE subject (the receipt body). The pre-fix
-    // verifier only rejected the empty-list case, so a multi-subject
-    // envelope was accepted and only `subject[0]` was bound. A
-    // signer could insert an arbitrary second subject digest and
-    // verifiers that walked the full subject list (which is the
-    // spec-conformant behavior for in-toto subject membership) would
-    // resolve a different receipt than the producer signed.
+    // binds exactly ONE subject (the receipt body). Rejecting only the
+    // empty-list case is fail-OPEN: a signer could insert an arbitrary
+    // second subject digest and verifiers that walked the full subject
+    // list (the spec-conformant behavior for in-toto subject membership)
+    // would resolve a different receipt than the producer signed.
     if statement.subject.len() != 1 {
         return Err(BilateralCoSigningError::CanonicalJson(format!(
             "statement.malformed: bilateral envelope must carry exactly 1 subject, got {}",

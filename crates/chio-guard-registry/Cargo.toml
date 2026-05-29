@@ -1,6 +1,6 @@
 [package]
 name = "chio-guard-registry"
-description = "Chio guard OCI registry client scaffold"
+description = "Chio guard OCI registry client: cosign-verified pull and publish of guard modules with offline cache support"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -13,13 +13,12 @@ name = "chio_guard_registry"
 
 [features]
 default = []
-# M09 marketplace: gates the optional `price: GuardPrice` and
+# Marketplace: gates the optional `price: GuardPrice` and
 # `reputation_floor: ReputationTier` manifest fields. Default-off so the
-# trajectory-1 M06 cosign-gated publish and pull paths keep working
-# unchanged. Enabling this feature in M09 P4 wires the marketplace
-# discovery surface; P0 lands the gate only.
+# cosign-gated publish and pull paths keep working unchanged. Enabling
+# this feature wires the marketplace discovery surface.
 marketplace = ["dep:chio-reputation"]
-# M03.P2.T6: regression-only feature that pulls chio-attest-verify/pq so
+# Regression-only feature that pulls chio-attest-verify/pq so
 # the cosign-bundle regression test can exercise the verifier under all
 # three crypto_floor settings. Cosign payload bytes themselves are NOT
 # hybrid-signed; this feature exists solely to ride the same compile
@@ -46,6 +45,5 @@ tempfile = { workspace = true }
 testcontainers = { workspace = true }
 tokio = { workspace = true }
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

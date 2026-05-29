@@ -50,18 +50,7 @@ impl std::fmt::Display for HttpMethod {
 mod tests {
     use super::*;
 
-    trait TestUnwrap<T> {
-        fn test_unwrap(self) -> T;
-    }
-
-    impl<T, E: std::fmt::Debug> TestUnwrap<T> for Result<T, E> {
-        fn test_unwrap(self) -> T {
-            match self {
-                Ok(value) => value,
-                Err(error) => panic!("expected Ok(..), got Err({error:?})"),
-            }
-        }
-    }
+    use chio_test_support::prelude::*;
 
     #[test]
     fn safe_methods() {

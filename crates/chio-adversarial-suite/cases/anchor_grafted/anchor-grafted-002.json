@@ -17,6 +17,6 @@
       "key_id": "did:chio:authority:foreign#anchor",
       "signature": "ed25519:anchor-grafted-002"
     },
-    "expected_authority": "did:chio:authority:m05#anchor"
+    "expected_authority": "did:chio:authority:home#anchor"
   }
 }

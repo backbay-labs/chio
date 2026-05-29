@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"os"
 
-	chio "github.com/backbay/chio/sdks/go/chio-go-http"
+	chio "github.com/backbay-labs/chio/sdks/go/chio-go-http"
 	"github.com/go-chi/chi/v5"
 )
 

@@ -30,10 +30,10 @@ silently implies the other.
 
 ```bash
 chio certify check \
-  --scenarios-dir tests/conformance/scenarios/wave1 \
-  --results-dir target/release-qualification/conformance/wave1/results \
-  --output target/release-qualification/conformance/wave1/certification.json \
-  --report-output target/release-qualification/conformance/wave1/certification-report.md \
+  --scenarios-dir tests/conformance/scenarios/mcp_core \
+  --results-dir target/release-qualification/conformance/mcp_core/results \
+  --output target/release-qualification/conformance/mcp_core/certification.json \
+  --report-output target/release-qualification/conformance/mcp_core/certification-report.md \
   --tool-server-id demo-server \
   --tool-server-name "Demo Server" \
   --signing-seed-file .chio/certify-ed25519.seed
@@ -43,14 +43,14 @@ Verify one artifact:
 
 ```bash
 chio certify verify \
-  --input target/release-qualification/conformance/wave1/certification.json
+  --input target/release-qualification/conformance/mcp_core/certification.json
 ```
 
 Publish into a local registry:
 
 ```bash
 chio certify registry publish \
-  --input target/release-qualification/conformance/wave1/certification.json \
+  --input target/release-qualification/conformance/mcp_core/certification.json \
   --certification-registry-file .chio/certifications.json
 ```
 
@@ -74,7 +74,7 @@ Publish across a configured discovery network:
 
 ```bash
 chio certify registry publish-network \
-  --input target/release-qualification/conformance/wave1/certification.json \
+  --input target/release-qualification/conformance/mcp_core/certification.json \
   --certification-discovery-file .chio/certification-network.json
 ```
 
@@ -236,7 +236,7 @@ pipeline. A typical flow is:
 
 1. run `./scripts/qualify-release.sh`
 2. inspect the generated compatibility report and raw results
-3. run `chio certify check` against the selected wave corpus
+3. run `chio certify check` against the selected scenario corpus
 4. optionally run `chio certify verify` as a local integrity gate
 5. publish the signed artifact into the local or remote certification registry
 6. use `chio certify registry resolve` to surface the current operator-facing

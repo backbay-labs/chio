@@ -8,7 +8,7 @@
 > historical sketches unless [18-decision-packet.md](18-decision-packet.md)
 > keeps them.
 >
-> **Erratum (wave 3 + v1-only collapse) - canonical current fields:**
+> **Erratum - canonical current fields:**
 >
 > - **`policy_hash`** is the current signed receipt field. It is a hex or
 >   operator-pinned `String` (RFC 8785 canonical-JSON friendly), not `[u8; 32]`.

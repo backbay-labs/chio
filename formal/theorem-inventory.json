@@ -1,7 +1,19 @@
 {
   "schema": "chio.theorem-inventory.v1",
   "rootModule": "formal/lean4/Chio/Chio.lean",
-  "assumptions": [],
+  "assumptions": [
+    {
+      "id": "theorem.receipt.id_input_set_pinned",
+      "leanName": "Chio.Proofs.receipt_id_collision_resistant",
+      "file": "formal/lean4/Chio/Chio/Proofs/Receipt.lean",
+      "kind": "axiom",
+      "rootImported": true,
+      "claimClass": "symbolic_crypto",
+      "status": "assumed",
+      "mapsTo": ["P4"],
+      "notes": "ASSUMED, not proven in Lean. Receipt content-addressing: the kernel mints ChioReceipt whose id field equals H(canonical_jcs(ChioReceiptIdInput)) and the replay store keys exclusively on id; the load-bearing property is injectivity (distinct canonical id inputs never collide). Declared as a Lean axiom rather than a theorem because the bounded ReceiptBody model treats id as an opaque String with no modeled canonicalizer or hash, so there is nothing in this development to prove injectivity against. This replaces the prior id_input_set_pinned which was a reflexivity tautology ((h : body1 = body2) : body1 = body2 := h) that proved nothing about content-addressing. A genuine proof requires a Lean model of the JCS serializer, a model of H, and a collision-resistance assumption on H (ASSUME-SHA256 in formal/assumptions.toml)."
+    }
+  ],
   "theorems": [
     {
       "id": "core.scope.empty_isSubsetOf",
@@ -727,15 +739,15 @@
     },
     {
       "id": "theorem.handshake.negotiation_safety",
-      "leanName": "Chio.Proofs.HandshakeNegotiation.negotiation_safety",
+      "leanName": "Chio.Proofs.HandshakeNegotiation.negotiation_admit_only_current",
       "file": "formal/lean4/Chio/Chio/Proofs/HandshakeNegotiation.lean",
       "kind": "theorem",
       "rootImported": true,
       "claimClass": "bounded_model",
-      "status": "proven_in_part",
+      "status": "proved",
       "proof_path": "formal/lean4/Chio/Chio/Proofs/HandshakeNegotiation.lean",
       "mapsTo": ["P3"],
-      "notes": "Current-schema admission: the verifier admits `chio.capability.v1` and rejects unknown Chio-owned capability schema identifiers before signature, time, floor, or budget checks run. The Lean model records the current pre-release posture: feature bits are negotiated, but alternate Chio-owned capability schema rungs are not exposed. Remaining obligations include mechanizing the wider hot-path verifier, including chain-binding, signature, crypto floor, and budgets."
+      "notes": "Fail-closed admission soundness over the whole CurrentSchema domain: checkCurrentSchema admits only when the presented schema is the current Chio-owned one (any non-current schema is rejected before signature, time, floor, or budget checks). This replaces the prior negotiation_safety, which restated the two definitional match arms of checkCurrentSchema and was definitionally true by construction. The present theorem quantifies over all inputs and rules out admitting anything unrecognized, but the model is still bounded to a two-constructor schema enum: it does NOT yet mechanize the wider hot-path verifier (chain-binding, signature, crypto floor, budgets) and does not model alternate Chio-owned capability schema rungs (none are exposed pre-release)."
     },
     {
       "id": "theorem.budget.sibling_sum_soundness",
@@ -748,17 +760,6 @@
       "proof_path": "formal/lean4/Chio/Chio/Proofs/SiblingSumBudget.lean",
       "mapsTo": ["P1"],
       "notes": "Sibling-sum budget enforcement: when the BudgetRegistry admits a child, the running sum after admission is bounded by the parent's share. This rejects cross-hop amplification where two siblings jointly oversubscribe their parent's budget. Status remains assumed until the Lean toolchain is available in CI; the Rust shell is exercised by crates/chio-conformance/tests/budget_split_rejects_oversubscribed_siblings.rs and the cross-hop case by crates/chio-conformance/tests/budget_split_cross_hop_rejects_amplification.rs. The protocol-side check is implemented in chio_kernel_core::budget_split::BudgetSplit::try_admit_child."
-    },
-    {
-      "id": "theorem.receipt.id_input_set_pinned",
-      "leanName": "Chio.Proofs.id_input_set_pinned",
-      "file": "formal/lean4/Chio/Chio/Proofs/Receipt.lean",
-      "kind": "theorem",
-      "rootImported": true,
-      "claimClass": "bounded_model",
-      "status": "assumed",
-      "mapsTo": ["P4"],
-      "notes": "Receipt content-addressed id: the kernel mints `ChioReceipt` whose `id` field equals H(canonical_jcs(ChioReceiptIdInput)) on the production hot path. The replay store keys exclusively on id. Status remains `assumed` because the Lean toolchain is not in CI."
     },
     {
       "id": "proof.treaty_admission_iff_predicate_intersection",

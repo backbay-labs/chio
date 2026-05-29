@@ -42,16 +42,16 @@ this repository.
 
 ```kotlin
 dependencies {
-    implementation("io.backbay.chio:chio-sdk-jvm:0.1.0")
+    implementation("world.chio:chio-sdk-jvm:0.1.0")
 }
 ```
 
 ## Quickstart
 
 ```kotlin
-import io.backbay.chio.sdk.CallerIdentity
-import io.backbay.chio.sdk.ChioClient
-import io.backbay.chio.sdk.ChioHttpRequest
+import world.chio.sdk.CallerIdentity
+import world.chio.sdk.ChioClient
+import world.chio.sdk.ChioHttpRequest
 
 val client = ChioClient("http://127.0.0.1:9090")
 

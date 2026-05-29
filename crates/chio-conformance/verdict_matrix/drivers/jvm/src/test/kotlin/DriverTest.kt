@@ -1,17 +1,21 @@
-// M07.P6.T1: JVM SDK verdict-matrix driver smoke test.
+// JVM SDK verdict-matrix driver smoke test.
 //
-// Exercises the scenario-corpus loader and the unsupported-without-sidecar
-// path. Active execution against a live Chio sidecar is operator-tactical
-// and out of P6 scope.
+// Exercises the scenario-corpus loader, the verdict-tuple parser, the
+// `/chio/evaluate` response decoder, and the unsupported-without-sidecar gate.
+// Live execution against a running Chio sidecar is covered by the
+// operator-supplied CHIO_VERDICT_MATRIX_SIDECAR_URL integration path.
 
-package io.backbay.chio.verdictmatrix.jvm
+package world.chio.verdictmatrix.jvm
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class DriverTest {
+    private val mapper = ObjectMapper()
+
     @Test
     fun driverNameIsStable() {
         assertEquals("jvm-sdk", DRIVER_NAME)
@@ -49,5 +53,69 @@ class DriverTest {
             first.diagnostic?.contains("CHIO_VERDICT_MATRIX_SIDECAR_URL") == true,
             "diagnostic must name the sidecar env var",
         )
+    }
+
+    @Test
+    fun runDriverRecordsFailWhenSidecarIsSetButUnreachable() {
+        // A sidecar URL pointing at a closed port must surface as `fail`,
+        // never a silent skip: a set-but-broken sidecar cannot pass.
+        val scenarioRoot = resolveScenarioRoot(emptyArray())
+        val report = runDriver(scenarioRoot, sidecarUrl = "http://127.0.0.1:1")
+        assertTrue(report.total > 0, "expected scenarios to load from corpus")
+        assertEquals(0, report.unsupported)
+        assertEquals(0, report.passed)
+        assertEquals(report.total, report.failed)
+        assertEquals("fail", report.outcomes.first().status)
+    }
+
+    @Test
+    fun decodesAllowResponseWithMatrixMetadata() {
+        val response =
+            mapper.readTree(
+                """
+                {"verdict":{"verdict":"allow"},
+                 "receipt":{"metadata":{"verdict_matrix":{
+                   "reason_code":"urn:chio:error:none",
+                   "scope_set":["tool:write","tool:read"]}}}}
+                """.trimIndent(),
+            )
+        val tuple = tupleFromEvaluateResponse(response)
+        assertEquals("allow", tuple.verdict)
+        assertEquals("urn:chio:error:none", tuple.reasonCode)
+        assertEquals(listOf("tool:read", "tool:write"), tuple.scopeSet)
+    }
+
+    @Test
+    fun decodesDenyResponseFallsBackToReason() {
+        val response =
+            mapper.readTree(
+                """
+                {"verdict":{"verdict":"deny","reason":"urn:chio:error:capability:revoked",
+                 "guard":"capability"},"receipt":{"metadata":{}}}
+                """.trimIndent(),
+            )
+        val tuple = tupleFromEvaluateResponse(response)
+        assertEquals("deny", tuple.verdict)
+        assertEquals("urn:chio:error:capability:revoked", tuple.reasonCode)
+        assertTrue(tuple.scopeSet.isEmpty())
+    }
+
+    @Test
+    fun httpRequestSetsToolCallFieldsAndGetForRead() {
+        val request =
+            scenarioToHttpRequest(
+                "capability-subset-001-read-exact",
+                mapOf(
+                    "operation" to "tool.call",
+                    "tool" to "files.read",
+                    "input_json" to "{}",
+                    "capability_scopes" to listOf("tool:read"),
+                ),
+            )
+        assertEquals("GET", request.get("method").asText())
+        assertEquals("verdict-matrix", request.get("tool_server").asText())
+        assertEquals("files.read", request.get("tool_name").asText())
+        // GET requests carry no body hash.
+        assertTrue(request.get("body_hash") == null)
     }
 }

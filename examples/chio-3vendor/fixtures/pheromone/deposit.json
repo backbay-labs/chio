@@ -29,8 +29,8 @@
       "verifierKeyId": "cost-root-key-1",
       "runtimePolicySha256": "b0cfe65c6f966a7e7b3abbc3490bcc9a2c2546e46df757aa15ab6473096f6955",
       "scarcityPolicySha256": "69073f134018c3cc27f53726aa2a98a63bdfedf6bd68bfde7bb2b3777f3050d4",
-      "depositBodySha256": "fb58b361fda05660f367c5431b5e08cd88b1f9577daa3b6a1e9827887c80e2f5",
-      "depositSignatureSha256": "ea64f8a5f6fc746597bfe79e09977c7b4b34e9c51919d25dffc7b22230ba5808",
+      "depositBodySha256": "8fac28b7398710da558bcccc9a094e3280275a1c346f9570cad5f56bda8b5887",
+      "depositSignatureSha256": "b36786093d6a43aac394cca85bcd2e24855bc21a2c44a7f64adfca282cf2bb30",
       "kernelId": "did:chio:llamaworks",
       "agentPassportKeyHash": "1f5fe64ec2f8c901be3aad94a41d70c12d2f3a8f43755f902e665c96f41c87e3",
       "treatyId": "treaty:buyer-dataco:support-ops",
@@ -47,7 +47,7 @@
       "telemetry": {
         "schema": "chio.pheromone-observation-cost-telemetry-root.v1",
         "algorithm": "rfc6962-sha256-v1",
-        "rootHash": "0xf6548cac770304ce3769069a5b8264b2c0a1e17c9a9b83b03f4da4bfa82ad224",
+        "rootHash": "0xc0ccf8e3a6db44ceff6d2ed85cfff83561b5436bc0637ca62782371be6b24f35",
         "treeSize": 1,
         "verifierId": "did:chio:dataco-cost-verifier",
         "verifierKeyId": "cost-root-key-1",
@@ -58,21 +58,21 @@
         "leaf_index": 0,
         "audit_path": []
       },
-      "leafPreimageSha256": "c0ad3e11029e8b1bc5e7f796659aae66d9d3884e670724658409d71972d628a4"
+      "leafPreimageSha256": "838ef46ca56966b58417946ea496e581ce066370ed1f16cbded4e15e8b26977b"
     },
-    "signature": "574d0219245e30ad0226a3fd7df2c50ed3efa88565ab14bc8849cd9568f05f3c7ec937fd7aca7f31b83b05ec93b84323a79297712ef6abc6ab46ef9b0123390b"
+    "signature": "c377e9b013fcd946baed419ada8bd43b6642135103ec47185401513c5f09a905d04b1c6a8f0476606a5c66aecdd0601e62f2c118e7fbc9641f0fe64cbe334e0e"
   },
   "workflow_context": {
     "schema": "chio.pheromone-workflow-context.v1",
     "workflow_id": "wf-chio-refund-001",
     "workflow_receipt_id": "wf-chio-refund-001",
-    "workflow_receipt_sha256": "68b78b84e667ead0dcc570d3d6c089cedb0691006e2c954f17a15b3977beae96",
+    "workflow_receipt_sha256": "7420b44ad99ce1f0702a3f47d8c2ec0a9dbb4e9dc96950fde66341bf62b475ee",
     "workflow_intersection_id": "workflow-intersection:buyer-refund:001",
-    "workflow_intersection_sha256": "0fb25e3f08250084d23411d0e900fc039050d6eeb7ecd42141dc43a1db3705e3",
+    "workflow_intersection_sha256": "5556c73b5867d42b0803b65f91396972beceddc10843212ab66f76b8718f17f3",
     "step_index": 0,
-    "tool_receipt_id": "rcpt-vendor-a",
-    "bilateral_dsse_sha256": "752d5b9e3d905818a82c116822261eaa810ce26fd0dfcb682d4121a6d53f835a",
+    "tool_receipt_id": "14b79693334d566639bdb36299b1b1e7efa4e5695135811dbc281e0474eeabf1",
+    "bilateral_dsse_sha256": "c2e3db14cda40df288fe59dc6106b9dfdd39778ed7078fc0eca652840c95504f",
     "consistency_anchor": "chio:consistency:wf-chio-refund-001:0"
   },
-  "signature": "b5a867d12ab90ade5a2c7555c3d77a1233293e1763b8a031b61a1a905e1105fb950ac30f074042133d00396f1abdc9fce6cda91de5e8d3894bbf2a140e8ba104"
+  "signature": "6ff06f7ade179868459aafb2394ebde479de307ff5493b76685fcd0091591f64eabf9ee8cfbcecd390f393ad0367d4f602442fbdb123ca38f1a2221a08e2670e"
 }

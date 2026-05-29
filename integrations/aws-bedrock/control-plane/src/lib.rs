@@ -1,7 +1,7 @@
 //! AWS Marketplace contract helpers for the Chio Bedrock listing.
 //!
 //! The crate models the fail-closed entitlement and metering contract used
-//! by the trajectory-3 SaaS listing. The public APIs are deterministic and
+//! by the AWS Marketplace SaaS listing. The public APIs are deterministic and
 //! testable without AWS credentials. Production callers can bind these
 //! decisions to `aws-sdk-marketplaceentitlement` and
 //! `aws-sdk-marketplacemetering` clients at the process edge.

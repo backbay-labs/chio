@@ -1,4 +1,4 @@
-//! Phase 19.1 -- HTTP handler for `POST /compliance/score`.
+//! HTTP handler for `POST /compliance/score`.
 //!
 //! The handler is substrate-agnostic: adapters feed in raw request
 //! bytes, the handler parses them into a [`ComplianceScoreRequest`],
@@ -193,8 +193,6 @@ mod tests {
             config: None,
         })
         .unwrap();
-        // We build a dummy kernel via ChioKernel::new with the
-        // simplest possible config.
         let keypair = chio_core_types::crypto::Keypair::generate();
         let kernel = Arc::new(ChioKernel::new(chio_kernel::KernelConfig {
             keypair,

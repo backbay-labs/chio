@@ -10,7 +10,7 @@
     "case_kind": "sigstore_identity_policy",
     "bundle": {
       "subject_digest": "sha256:trusted-kernel",
-      "certificate_identity": "release@chio.dev",
+      "certificate_identity": "release@chio.world",
       "certificate_oidc_issuer": "https://token.actions.githubusercontent.com"
     },
     "payload": {

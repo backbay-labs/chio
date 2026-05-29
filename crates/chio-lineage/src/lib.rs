@@ -23,7 +23,7 @@ pub const LINEAGE_GRAPH_SCHEMA: &str = "chio.lineage.graph/v1";
 pub enum LineageError {
     #[error("OTEL ingest failed: {0}")]
     OtelIngest(#[from] ingest_otel::OtelIngestError),
-    #[error("M04 corpus ingest failed: {0}")]
+    #[error("replay corpus ingest failed: {0}")]
     CorpusIngest(#[from] ingest_replay_corpus::CorpusIngestError),
 }
 

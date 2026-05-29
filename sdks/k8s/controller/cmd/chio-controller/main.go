@@ -1,7 +1,7 @@
 // Command chio-controller is the entrypoint for the Chio K8s Job controller.
 //
 // The controller watches batch/v1 Job objects labeled
-// chio.protocol/governed=true, mints an Chio capability grant at creation,
+// chio.world/governed=true, mints a Chio capability grant at creation,
 // harvests per-pod receipts across the Job lifecycle, and releases the grant
 // while emitting a JobReceipt on Job completion or failure.
 package main
@@ -23,8 +23,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	chioapi "github.com/backbay/chio-k8s-controller/internal/chio"
-	"github.com/backbay/chio-k8s-controller/internal/reconciler"
+	chioapi "github.com/backbay-labs/chio-k8s-controller/internal/chio"
+	"github.com/backbay-labs/chio-k8s-controller/internal/reconciler"
 )
 
 var (
@@ -90,7 +90,7 @@ func run() error {
 		},
 		HealthProbeBindAddress:  probeAddr,
 		LeaderElection:          leaderElect,
-		LeaderElectionID:        "chio-k8s-controller.chio.protocol",
+		LeaderElectionID:        "chio-k8s-controller.chio.world",
 		LeaderElectionNamespace: leaderNamespace,
 	})
 	if err != nil {

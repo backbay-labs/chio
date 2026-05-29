@@ -1126,6 +1126,12 @@ fn make_chain_bound_capability(
         child_scope_hash: scope_hash(&scope).unwrap(),
         normalized_subset_proof: compute_attenuation_witness(proof_parent_scope, &scope).unwrap(),
     };
+    // Keep the delegated child strictly inside its parent's lifetime. The parent
+    // helpers issue a 300s window; capture the clock once and use a shorter child
+    // window so a sub-second tick between the parent's and child's timestamp reads
+    // cannot make the child outlive the parent, which validate_delegation_admission
+    // rejects before the scope checks these tests assert on.
+    let issued_at = current_unix_timestamp();
     CapabilityToken::sign_attenuated(
         CapabilityTokenAttenuationBody {
             body: CapabilityTokenBody {
@@ -1133,8 +1139,8 @@ fn make_chain_bound_capability(
                 issuer: kernel.config.keypair.public_key(),
                 subject,
                 scope,
-                issued_at: current_unix_timestamp(),
-                expires_at: current_unix_timestamp() + 300,
+                issued_at,
+                expires_at: issued_at.saturating_add(120),
                 delegation_chain,
             },
             caveats: vec![],

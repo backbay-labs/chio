@@ -6,10 +6,11 @@ build-backend = "hatchling.build"
 name = "chio-django"
 version = "0.1.0"
 description = "Django middleware and DRF integration for the Chio protocol"
-license = "MIT"
+readme = "README.md"
+license = "Apache-2.0"
 requires-python = ">=3.11"
 authors = [
-    { name = "Backbay Industries" },
+    { name = "Backbay Labs", email = "security@backbay.io" },
 ]
 keywords = ["chio", "django", "security", "capability", "middleware"]
 classifiers = [

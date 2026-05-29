@@ -40,14 +40,16 @@ fn allow_verdict() -> VerdictResult {
 }
 
 fn malformed_stream() -> Vec<u8> {
-    br#"data: {"event": "content_block_delta", "frame": "missing-functionCall"}
+    br#"data: {"event": "content_block_delta", "frame": "missing-tool-call"}
 
 "#
     .to_vec()
 }
 
 fn function_call_stream() -> Vec<u8> {
-    br#"data: {"candidates": [{"content": {"parts": [{"functionCall": {"name": "get_weather", "args": {"city": "Paris"}}}]}}]}
+    // OpenAI-compatible streaming chunk: choices[].delta.tool_calls[] with the
+    // arguments slot encoded as a JSON string.
+    br#"data: {"id": "chatcmpl_taxonomy", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "get_weather", "arguments": "{\"city\":\"Paris\"}"}}]}}]}
 
 "#
     .to_vec()
@@ -97,13 +99,22 @@ fn current_adapter_paths_match_documented_classes() -> Result<(), String> {
 
     let adapter = adapter();
 
+    // OpenAI-compatible tool_calls entry whose decoded arguments are a JSON
+    // string (not an object): the adapter refuses it as BadToolArgs.
     let bad_args = adapter.lift_batch(raw(json!({
-        "candidates": [{
-            "content": {
-                "parts": [
-                    {"functionCall": {"name": "get_weather", "args": "not-an-object"}}
-                ]
-            }
+        "id": "chatcmpl_bad_args",
+        "object": "chat.completion",
+        "choices": [{
+            "index": 0,
+            "message": {
+                "role": "assistant",
+                "tool_calls": [{
+                    "id": "call_bad_1",
+                    "type": "function",
+                    "function": {"name": "get_weather", "arguments": "\"not-an-object\""}
+                }]
+            },
+            "finish_reason": "tool_calls"
         }]
     }))?);
     require_provider_error(bad_args, "BadToolArgs")?;

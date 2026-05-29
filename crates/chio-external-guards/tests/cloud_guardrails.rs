@@ -1,4 +1,4 @@
-//! Integration tests for the phase-13.2 cloud guardrail adapters.
+//! Integration tests for the cloud guardrail adapters.
 //!
 //! Each test stands up a [`wiremock::MockServer`], points the guard at
 //! the mock, wraps the guard in an [`AsyncGuardAdapter`], and verifies
@@ -157,22 +157,21 @@ async fn cloud_guardrails_recheck_runtime_endpoints_before_send() {
 }
 
 #[test]
-fn bedrock_constructor_rejects_default_hostname_without_dns_pinning() {
-    let error = match BedrockGuardrailGuard::new(BedrockGuardrailConfig::new(
+fn bedrock_default_hostname_constructs_with_connect_time_egress() {
+    // Egress enforcement for the default Bedrock hostname moved from
+    // construction to connect (the same relocation applied to chio-anchor and
+    // chio-link): https-only, the IP denylist, and DNS resolution are checked
+    // inside eval, not in the constructor. The connect-time denial path is
+    // exercised by cloud_guardrails_recheck_runtime_endpoints_before_send. This
+    // test guards the relocation by asserting a default config (no pre-resolved
+    // endpoint) builds successfully.
+    BedrockGuardrailGuard::new(BedrockGuardrailConfig::new(
         "test-token",
         "us-east-1",
         "gr-123",
         "1",
-    )) {
-        Ok(_) => panic!("default Bedrock hostname must fail before dispatch"),
-        Err(error) => error,
-    };
-    let message = error.to_string();
-    assert!(
-        message.contains("bedrock-runtime.us-east-1.amazonaws.com")
-            && message.contains("hostname egress requires DNS pinning"),
-        "unexpected default Bedrock hostname denial: {message}"
-    );
+    ))
+    .expect("default Bedrock hostname constructs; egress is enforced at connect");
 }
 
 #[tokio::test]

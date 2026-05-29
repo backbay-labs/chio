@@ -1,4 +1,4 @@
-//! Phase 2.4 plan-level evaluation HTTP surface.
+//! Plan-level evaluation HTTP surface.
 //!
 //! Mirrors the structure of [`crate::emergency`]: `chio-http-core` does
 //! not embed an HTTP server, so this module exposes a substrate-agnostic

@@ -16,7 +16,7 @@
     "provider": {
       "type": "string",
       "minLength": 1,
-      "description": "Stable identifier of the upstream provider adapter that handled the tool call (for example `openai`, `anthropic`, `google-vertex`). M07 owns the canonical adapter identifier registry."
+      "description": "Stable identifier of the upstream provider adapter that handled the tool call (for example `openai`, `anthropic`, `google-vertex`)."
     },
     "request_id": {
       "type": "string",
@@ -36,7 +36,7 @@
     "received_at": {
       "type": "integer",
       "minimum": 0,
-      "description": "Unix timestamp (seconds) at which Chio observed the provider response. Monotonic with respect to receipts emitted from the same kernel; M07 fails closed if the value is in the future relative to the kernel clock."
+      "description": "Unix timestamp (seconds) at which Chio observed the provider response. Monotonic with respect to receipts emitted from the same kernel; Chio fails closed if the value is in the future relative to the kernel clock."
     }
   }
 }

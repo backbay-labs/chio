@@ -19,7 +19,7 @@
       "crates/chio-http-core/tests/compliance_score_endpoint.rs"
     ],
     "constraints": [
-      "Do not rank Mercury product release code above protocol qualification evidence for compliance certificate queries.",
+      "Release qualification evidence takes priority over product-specific code for compliance certificate queries.",
       "Release claims must stay behind current qualification evidence.",
       "Compliance certificate work should surface signed receipts and Merkle checkpoint context."
     ]

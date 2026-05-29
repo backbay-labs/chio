@@ -1,8 +1,8 @@
-# Reference Cloud Run service for an Chio-sidecar-governed tool server.
+# Reference Cloud Run service for a Chio-sidecar-governed tool server.
 #
 # Placeholders:
 #   APP_IMAGE_PLACEHOLDER            -- replace with your application image
-#   ghcr.io/backbay/chio-sidecar      -- replace with the sidecar image you pushed
+#   ghcr.io/backbay-labs/chio-sidecar      -- replace with the sidecar image you pushed
 #   PROJECT_ID / REGION              -- substitute for your GCP project and region
 #   projects/PROJECT_ID/secrets/...  -- create the secrets in Secret Manager first
 #   chio-kernel-config / chio-openapi-spec -- Secret Manager secrets mounted below
@@ -68,7 +68,7 @@ spec:
         # Chio sidecar container
         # ------------------------------------------------------------------
         - name: chio-sidecar
-          image: ghcr.io/backbay/chio-sidecar:latest
+          image: ghcr.io/backbay-labs/chio-sidecar:latest
           # Cloud Run sends all external traffic to the only container that
           # declares a containerPort, so the proxy must be the ingress
           # container and the app stays reachable only over localhost.

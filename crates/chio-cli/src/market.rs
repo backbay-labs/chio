@@ -1,4 +1,4 @@
-//! `arc guard market {list,info,install}` CLI subcommands.
+//! `chio guard market {list,info,install}` CLI subcommands.
 //!
 //! The marketplace surface reuses the `chio-guard-registry` pull path
 //! for fetching artifacts. Listing and info read from a local
@@ -8,7 +8,7 @@
 //!
 //! The catalog format is intentionally simple: a JSON array of
 //! [`MarketCatalogEntry`] under the path resolved by
-//! `arc guard market --catalog <PATH>`. The end-to-end demo test writes
+//! `chio guard market --catalog <PATH>`. The end-to-end demo test writes
 //! this catalog directly. A production deployment refreshes the catalog
 //! by walking the OCI registry and indexing manifests; that loop is
 //! deliberately out of scope.
@@ -40,13 +40,13 @@ use chio_underwriting::{
 use serde::{Deserialize, Serialize};
 
 /// Schema string emitted on the wire for the JSON output of
-/// `arc guard market list`.
+/// `chio guard market list`.
 pub const MARKET_LIST_REPORT_SCHEMA: &str = "chio.market.list-report.v1";
 
-/// Schema string emitted on the wire for `arc guard market info` JSON.
+/// Schema string emitted on the wire for `chio guard market info` JSON.
 pub const MARKET_INFO_REPORT_SCHEMA: &str = "chio.market.info-report.v1";
 
-/// Schema string emitted on the wire for `arc guard market install` JSON.
+/// Schema string emitted on the wire for `chio guard market install` JSON.
 pub const MARKET_INSTALL_REPORT_SCHEMA: &str = "chio.market.install-report.v1";
 
 /// One entry in the local marketplace catalog.
@@ -57,7 +57,7 @@ pub struct MarketCatalogEntry {
     pub reference: String,
     /// Human-readable name shown in the TTY table.
     pub name: String,
-    /// Manifest base price (per the marketplace block landed in P4.T1).
+    /// Manifest base price (per the manifest marketplace block).
     pub price: GuardPrice,
     /// Reputation floor required to discover this guard.
     pub reputation_floor: ReputationTier,
@@ -84,7 +84,7 @@ pub struct MarketTenantContext {
     pub currency: String,
 }
 
-/// Local installation record persisted by `arc guard market install`.
+/// Local installation record persisted by `chio guard market install`.
 ///
 /// The record binds a tenant bundle entry to a (reference, price,
 /// applied_tier) triple so the kernel-level pricing machinery can
@@ -702,8 +702,8 @@ mod tests {
     #[test]
     fn install_record_path_distinguishes_punctuation_variants() {
         // References differing only by punctuation must NOT collide
-        // on the install-record path. The previous `_`-replacement
-        // scheme was lossy; the digest-keyed scheme is collision-free.
+        // on the install-record path: the digest-keyed scheme is
+        // collision-free where a `_`-replacement scheme would be lossy.
         let dir = tempdir().expect("tmpdir");
         let bundle = dir.path().join("bundle");
         let a = install_record_path(&bundle, "tenant", "guard-foo");

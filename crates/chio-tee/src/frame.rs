@@ -11,8 +11,9 @@
 //! this file.
 
 pub use chio_tee_frame::{
-    canonicalize, parse, validate, Frame, FrameError, FrameInputs, Otel, Provenance, SchemaError,
-    Upstream, UpstreamSystem, Verdict, FRAME_VERSION, SCHEMA_ID, SCHEMA_VERSION,
+    canonicalize, parse, signing_payload, validate, validate_signed, verify_tenant_sig, Frame,
+    FrameError, FrameInputs, Otel, Provenance, SchemaError, Upstream, UpstreamSystem, Verdict,
+    FRAME_VERSION, SCHEMA_ID, SCHEMA_VERSION,
 };
 
 #[cfg(test)]
@@ -42,7 +43,7 @@ mod tests {
             },
             request_blob_sha256: "a".repeat(64),
             response_blob_sha256: "b".repeat(64),
-            redaction_pass_id: "m06-redactors@1.4.0+default".to_string(),
+            redaction_pass_id: "redactors@1.4.0+default".to_string(),
             verdict: Verdict::Allow,
             deny_reason: None,
             would_have_blocked: false,
@@ -65,6 +66,6 @@ mod tests {
     fn bridge_exposes_schema_constants() {
         assert_eq!(SCHEMA_VERSION, "1");
         assert_eq!(FRAME_VERSION, "chio-tee-frame.v1");
-        assert!(SCHEMA_ID.starts_with("https://chio.dev/schemas/chio-tee-frame/"));
+        assert!(SCHEMA_ID.starts_with("https://chio.world/schemas/chio-tee-frame/"));
     }
 }

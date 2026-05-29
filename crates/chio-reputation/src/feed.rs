@@ -5,7 +5,7 @@
 //! kernel, do NOT touch storage, and do NOT mutate global state. The kernel
 //! never invokes a feed; instead, callers (the marketplace surface, the
 //! reputation CLI, audit tooling) gather observations from existing
-//! ground-truth sources (M08 arena rounds, M07 verdict matrix) and feed them
+//! ground-truth sources (arena rounds, the verdict matrix) and feed them
 //! through the trait to produce score deltas that are summed into a numeric
 //! score and then mapped to a `ReputationTier`.
 //!
@@ -22,7 +22,7 @@
 //! downstream crates may define their own feeds, but the two feeds bundled in
 //! this crate (`feeds::arena_survival`, `feeds::cross_provider_equality`) are
 //! the canonical Chio implementations. Each shipped feed names a stable
-//! `feed_id` so the audit doc and the M09 closing pass can attribute the
+//! `feed_id` so the audit doc and downstream tooling can attribute the
 //! tier-distribution histogram back to the feed that produced it.
 
 use serde::{Deserialize, Serialize};
@@ -36,7 +36,7 @@ pub const MAX_FEED_DELTA: f64 = 1.0;
 ///
 /// `value` is always in `[0.0, MAX_FEED_DELTA]`. The struct also carries the
 /// `feed_id` and `observations_consumed` count so the audit doc can report
-/// which feed produced which delta on the M04 corpus.
+/// which feed produced which delta on the deterministic corpus.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct ScoreDelta {
     pub feed_id: &'static str,
@@ -104,7 +104,7 @@ pub trait ReputationFeed {
 /// Composition is the per-feed maximum, not the sum: a single feed dominating
 /// the floor would otherwise let a publisher whose only signal is arena
 /// survival reach the highest tier. Capping at the per-feed maximum keeps the
-/// `tier_3` requirement (P3.T4 threshold table) satisfiable only when every
+/// `tier_3` requirement (the threshold table) satisfiable only when every
 /// feed independently clears its bar.
 ///
 /// Returns `None` when the slice is empty so callers can distinguish

@@ -1,11 +1,9 @@
 """Behavioural tests for :func:`chio_adapter_base.redact.bind_and_redact`.
 
-6-axis coverage matrix (FINAL-PLAN Section 4)
-=============================================
+6-axis coverage matrix
+======================
 
-Tests reference cells from the orthogonal axis combinatoric below. Each
-new v0.3 test header names the (axis, value) coordinates it exercises,
-plus the deferred-ID it closes (when applicable).
+Tests reference cells from the orthogonal axis combinatoric below.
 
 1. Signature shape:
    - SS1 fixed-positional
@@ -68,12 +66,6 @@ Cells documented as out-of-scope (covered by fail-closed semantics):
   that does not declare any field for the tool yields a no-op redact;
   exercised indirectly via ``test_unrelated_tool_passes_*``-shape
   prefect tests.
-
-Per-deferred-ID regression coverage. Each ID below maps to a test in
-this file via the ``Closes deferred ID`` docstring marker. The IDs
-trace to the v2 review tables (REVIEW-v2-interval-3 / -4) and the
-addressed_comment_ids list in
-``.planning/chio-adapter-redact-batch/poll-state-v2.json``.
 """
 
 from __future__ import annotations
@@ -411,14 +403,13 @@ def test_pure_var_positional_treated_as_forwarder() -> None:
 def test_fixed_signature_redacts_both_positional_and_kwarg_for_protected_slot() -> None:
     """Custom-tool merge conflict: redact both positional + kwarg without a custom table.
 
-    Regression for bot comment 3229135384: a fixed-signature custom
-    tool (``def my_tool(path, body)``) called with a duplicate
-    protected name (``my_tool("p", "SECRET", body="KW")``) caused
-    ``bind_partial`` to raise. The fallback used the chio-default
-    positional table, which has no entry for ``my_tool``, so the
-    positional ``body`` value was returned raw. The fix derives the
-    fallback positional names from the signature itself when the
-    caller has not supplied a ``positional_table=`` for the tool.
+    A fixed-signature custom tool (``def my_tool(path, body)``) called
+    with a duplicate protected name (``my_tool("p", "SECRET", body="KW")``)
+    makes ``bind_partial`` raise. The chio-default positional table has
+    no entry for ``my_tool``, so without a signature-derived fallback the
+    positional ``body`` value is returned raw. The fallback positional
+    names are derived from the signature itself when the caller has not
+    supplied a ``positional_table=`` for the tool.
     """
 
     def my_tool(path: str, body: str) -> None:
@@ -441,13 +432,11 @@ def test_fixed_signature_redacts_both_positional_and_kwarg_for_protected_slot() 
 def test_var_positional_named_after_protected_chio_default() -> None:
     """``def fn(*content, path)`` for chio_file_write: each ``*content`` value redacts.
 
-    Regression for bot comments 3229375712 and 3229301707: the
-    wrapper's varargs parameter is itself the protected field name
-    (``content``). Previously, the rebuild loop ignored the declared
-    ``*content`` name and bound extras only via the positional
-    table. Because ``path`` already filled the table's ``path`` slot
-    via kwargs, the first content chunk was treated as ``path`` and
-    returned raw.
+    The wrapper's varargs parameter is itself the protected field name
+    (``content``). If the rebuild loop ignored the declared ``*content``
+    name and bound extras only via the positional table, then because
+    ``path`` already filled the table's ``path`` slot via kwargs, the
+    first content chunk would be treated as ``path`` and returned raw.
     """
 
     def write_file(*content: object, path: str) -> None:
@@ -493,13 +482,12 @@ def test_var_positional_named_after_protected_custom_tool() -> None:
 def test_positional_only_with_same_named_kwarg_preserves_spillover() -> None:
     """``def write(path, /, **kw)`` called as ``write("/etc", path="/tmp/x")``.
 
-    Regression for bot comments 3229301699 and 3229411436:
     Python permits both a positional-only ``path`` and a
     same-named entry in ``**kw``. ``bind_partial`` keeps the
-    kwarg in the VAR_KEYWORD spillover, but the rebuild loop
-    previously matched ``redacted_fixed`` first and replaced the
-    spillover value with the positional value. Each redacted
-    independently; the original wire shape preserves both.
+    kwarg in the VAR_KEYWORD spillover; the rebuild loop must not
+    match ``redacted_fixed`` first and replace the spillover value
+    with the positional value. Each redacts independently; the
+    original wire shape preserves both.
     """
 
     def write(path: str, /, **kw: object) -> None:
@@ -539,13 +527,13 @@ def test_positional_only_with_same_named_protected_kwarg_redacts_both() -> None:
 def test_known_tool_with_renamed_param_redacts_correctly() -> None:
     """Wrapper renames the canonical body field; rebuild still redacts.
 
-    Regression for PR #666 P1 (3229550950): when a wrapper for a
+    When a wrapper for a
     chio-default tool uses a non-canonical parameter name (here
     ``def write_file(path, body)`` against ``chio_file_write`` whose
     canonical slots are ``("path", "content")``), the rebuild must
     route the value through the table-derived canonical name so the
-    policy lookup matches. Previously the wrapper's ``body`` name was
-    used directly and ``content``-keyed policy missed it, leaking the
+    policy lookup matches. If the wrapper's ``body`` name were used
+    directly, the ``content``-keyed policy would miss it and leak the
     raw secret in ``parameters["args"][1]``.
     """
 
@@ -593,12 +581,12 @@ def test_known_tool_with_renamed_param_redacts_correctly() -> None:
 def test_pure_forwarder_skips_table_slot_filled_by_kwarg() -> None:
     """Pure forwarder fallback maps positional[0] to next free slot.
 
-    Regression for PR #666 P1 (3229550957): a pure-forwarding wrapper
+    A pure-forwarding wrapper
     (``def proxy(*args, **kwargs)``) registered as ``chio_file_write``
     called as ``proxy("PROD_SECRET", path="/tmp/x")``. The kwarg already
     fills slot 0 (``path``), so the lone positional value is logically
-    the ``content`` slot. Previously the fallback always mapped
-    positional[0] -> table slot 0, returning the raw secret under
+    the ``content`` slot. A fallback that always mapped
+    positional[0] -> table slot 0 would return the raw secret under
     ``args[0]``.
     """
 
@@ -664,12 +652,12 @@ def test_signature_param_order_overrides_default_table_for_renamed_protected_fie
 
 
 def test_keyword_only_alias_for_protected_field_redacts_via_canonical() -> None:
-    """PR #666 P1 (3229853017): a TaskFlow wrapper with a keyword-only
+    """A TaskFlow wrapper with a keyword-only
     alias for the protected body must still redact via the canonical
     slot name. ``def write_file(path, *, body)`` registered as
-    ``chio_file_write`` (table ``("path", "content")``) was previously
-    omitted from the alias map because the kwonly param is not in the
-    fixed-positional collection.
+    ``chio_file_write`` (table ``("path", "content")``) must not be
+    omitted from the alias map merely because the kwonly param is not in
+    the fixed-positional collection.
     """
 
     def write_file(path: str, *, body: str) -> None:
@@ -704,12 +692,12 @@ def test_keyword_only_alias_for_protected_field_redacts_via_canonical() -> None:
 
 
 def test_pure_forwarder_redacts_both_positional_and_kwarg_for_same_slot() -> None:
-    """PR #666 P1 (3229853019): a pure-forwarding wrapper that receives
+    """A pure-forwarding wrapper that receives
     the protected slot both positionally and as a kwarg must redact both
     independently. ``proxy("/tmp/x", "POS_SECRET", content="KW_SECRET")``
-    for ``chio_file_write`` previously dropped the positional
-    ``POS_SECRET`` to raw because the ``content`` slot had been removed
-    from the free-slot sequence by the kwarg.
+    for ``chio_file_write`` must not drop the positional ``POS_SECRET``
+    to raw when the kwarg has already removed the ``content`` slot from
+    the free-slot sequence.
     """
 
     def proxy(*args: object, **kwargs: object) -> None:
@@ -746,12 +734,10 @@ def test_pure_forwarder_redacts_both_positional_and_kwarg_for_same_slot() -> Non
 
 
 # ---------------------------------------------------------------------------
-# v0.3 helper hardening regression tests (per FINAL-PLAN Section 2 PR-1)
-# ---------------------------------------------------------------------------
 
 
 def test_index_collision_does_not_corrupt_redaction_when_renamed_protected_first() -> None:  # noqa: E501
-    """Cell SS1 / AP3 / KP1 / DT1. Closes deferred ID 3229853017.
+    """Cell SS1 / AP3 / KP1 / DT1.
 
     Wrapper renames a protected slot AND swaps the canonical-name slot
     later: ``def write(body, path)`` for ``chio_file_write`` whose
@@ -777,7 +763,7 @@ def test_index_collision_does_not_corrupt_redaction_when_renamed_protected_first
 
 
 def test_index_collision_via_kwarg_call_routes_to_protected_canonical() -> None:
-    """Cell SS1 / AP1 / KP2 / DT1. Closes deferred ID 3229898769.
+    """Cell SS1 / AP1 / KP2 / DT1.
 
     Same wrapper shape as above (``def write(body, path)``) but called
     purely with kwargs. The wrapper-renamed ``body`` kwarg must redact
@@ -802,7 +788,7 @@ def test_index_collision_via_kwarg_call_routes_to_protected_canonical() -> None:
 
 
 def test_typeerror_fallback_arity_mismatch_keeps_alias_map() -> None:
-    """Cell SS1 / AP4 / KP1 / DT1. Closes deferred ID 3229853019.
+    """Cell SS1 / AP4 / KP1 / DT1.
 
     A wrapper with a renamed protected param hit by an arity mismatch
     (more positional args than the signature accepts) blows
@@ -832,11 +818,7 @@ def test_typeerror_fallback_arity_mismatch_keeps_alias_map() -> None:
 
 
 def test_alias_map_redacts_kwarg_under_canonical_no_fallback() -> None:
-    """Cell SS1 / AP3 / KP4 / DT1. Closes deferred ID 3229898779.
-
-    Also covers deferred IDs 3229550950, 3229550957 (same root: PR
-    #666 P1 alias-rename for default-tool slot + kwarg-fills-table-slot
-    fallback path).
+    """Cell SS1 / AP3 / KP4 / DT1.
 
     Same renamed-protected wrapper as above. The original test name
     referenced a TypeError fallback path, but ``bind_partial`` actually
@@ -867,7 +849,7 @@ def test_alias_map_redacts_kwarg_under_canonical_no_fallback() -> None:
 
 
 def test_kwonly_alias_in_typeerror_fallback() -> None:
-    """Cell SS2 / AP2 / KP4 / DT1. Closes deferred ID 3229898774.
+    """Cell SS2 / AP2 / KP4 / DT1.
 
     A wrapper with both a renamed positional protected slot AND a
     kwonly alias gets hit by a duplicate-keyword TypeError. The alias
@@ -895,7 +877,7 @@ def test_kwonly_alias_in_typeerror_fallback() -> None:
 
 
 def test_pure_var_positional_named_for_protected_field_uses_signature_path() -> None:  # noqa: E501
-    """Cell SS5 / AP2 / KP1 / DT2. Closes deferred ID 3229515818.
+    """Cell SS5 / AP2 / KP1 / DT2.
 
     ``def upload(*payload)`` against a custom policy declaring
     ``payload`` as the protected field. The earlier
@@ -924,7 +906,7 @@ def test_pure_var_positional_named_for_protected_field_uses_signature_path() -> 
 
 
 def test_pure_var_positional_named_for_protected_field_with_var_keyword() -> None:  # noqa: E501
-    """Cell SS7 / AP2 / KP1 / DT2. Closes deferred ID 3229428714.
+    """Cell SS7 / AP2 / KP1 / DT2.
 
     ``def upload(*payload, **opts)`` for the same custom-tool policy.
     Even with a sibling VAR_KEYWORD, the variadic-name match must
@@ -948,7 +930,7 @@ def test_pure_var_positional_named_for_protected_field_with_var_keyword() -> Non
 
 
 def test_pure_var_positional_named_for_protected_field_chio_default() -> None:
-    """Cell SS5 / AP2 / KP1 / DT1. Closes deferred ID 3229428721.
+    """Cell SS5 / AP2 / KP1 / DT1.
 
     Prefect-side surface: ``def write_file(*content)`` against
     chio_file_write's default policy. The variadic-name ``content``
@@ -969,7 +951,7 @@ def test_pure_var_positional_named_for_protected_field_chio_default() -> None:
 
 
 def test_custom_positional_table_replaces_default_locked_v0_3_semantic() -> None:  # noqa: E501
-    """Cell SS8 / AP3 / KP1 / OV2. Closes deferred ID 3229515813.
+    """Cell SS8 / AP3 / KP1 / OV2.
 
     The v0.3 contract LOCKS ``positional_table`` as REPLACES (current
     behavior) rather than EXTENDS. A caller-supplied table fully
@@ -1019,11 +1001,7 @@ def test_custom_positional_table_replaces_default_locked_v0_3_semantic() -> None
 
 
 def test_kwarg_filling_table_slot_does_not_leak_positional_when_renamed_wrapper() -> None:  # noqa: E501
-    """Cell SS1 / AP2 / KP4 / DT1. Closes deferred ID 3229883416.
-
-    Also covers deferred IDs 3229550950, 3229550957 (same root: PR
-    #666 P1 alias-rename for default-tool slot + kwarg-fills-table-slot
-    fallback path).
+    """Cell SS1 / AP2 / KP4 / DT1.
 
     Wrapper renames protected slot, kwarg supplies the wrapper's
     renamed name AND a positional secret arrives. Both buckets must
@@ -1047,7 +1025,7 @@ def test_kwarg_filling_table_slot_does_not_leak_positional_when_renamed_wrapper(
 
 
 def test_typeerror_fallback_two_kwargs_same_canonical_both_redact() -> None:
-    """Cell SS1 / AP1 / KP4 / DT1. Closes Cursor Bugbot Medium on PR #679.
+    """Cell SS1 / AP1 / KP4 / DT1.
 
     Two distinct kwarg names resolve to the SAME canonical: a wrapper
     aliases ``body`` -> canonical ``content`` AND the caller passes both
@@ -1067,9 +1045,9 @@ def test_typeerror_fallback_two_kwargs_same_canonical_both_redact() -> None:
     def write(body: str, path: str) -> None:
         del body, path
 
-    # ``content=`` is not a parameter of ``write``; bind_partial will
-    # raise TypeError, dropping the helper into the alias-map fallback
-    # path where C1 previously dropped one of the two kwargs.
+    # ``content=`` is not a parameter of ``write``; bind_partial raises
+    # TypeError, dropping the helper into the alias-map fallback path
+    # where C1 must not drop either of the two kwargs.
     args, kwargs = bind_and_redact(
         write,
         (),
@@ -1091,7 +1069,7 @@ def test_typeerror_fallback_two_kwargs_same_canonical_both_redact() -> None:
 
 
 def test_pure_forwarder_kwarg_aliasing_does_not_break_existing_path() -> None:
-    """Cell SS7 / AP2 / KP3 / DT1. Closes deferred ID 3229883411.
+    """Cell SS7 / AP2 / KP3 / DT1.
 
     A pure-forwarder wrapper called with a non-table kwarg name must
     not invent an alias. ``proxy("PROD_SECRET", marker="ok")`` for
@@ -1116,7 +1094,7 @@ def test_pure_forwarder_kwarg_aliasing_does_not_break_existing_path() -> None:
 
 
 def test_pure_forwarder_with_kwarg_canonical_redirects_positional_to_protected() -> None:  # noqa: E501
-    """Cell SS7 / AP2 / KP2 / DT1. Closes deferred ID 3229890976.
+    """Cell SS7 / AP2 / KP2 / DT1.
 
     Pure-forwarder with a kwarg consuming the unprotected canonical
     slot (``path``); the positional value rolls onto the next free
@@ -1137,7 +1115,7 @@ def test_pure_forwarder_with_kwarg_canonical_redirects_positional_to_protected()
 
 
 def test_known_tool_with_canonical_kwarg_filling_unprotected_slot() -> None:
-    """Cell SS1 / AP2 / KP2 / DT1. Closes deferred ID 3229381473.
+    """Cell SS1 / AP2 / KP2 / DT1.
 
     ``def write(content, path)`` (canonical names, swapped order)
     called as ``write("PROD_SECRET", path="/tmp/x")``. The wrapper's
@@ -1158,7 +1136,7 @@ def test_known_tool_with_canonical_kwarg_filling_unprotected_slot() -> None:
 
 
 def test_var_positional_after_protected_kwarg_redacts_extras() -> None:
-    """Cell SS3 / AP4 / KP2 / DT1. Closes deferred ID 3229566280.
+    """Cell SS3 / AP4 / KP2 / DT1.
 
     ``def fn(path, *rest, **kw)`` with the kwarg consuming the
     canonical protected slot. The VAR_POSITIONAL extras must STILL
@@ -1190,7 +1168,7 @@ def test_var_positional_after_protected_kwarg_redacts_extras() -> None:
 
 
 def test_var_positional_after_protected_kwarg_redacts_extras_alt_shape() -> None:  # noqa: E501
-    """Cell SS3 / AP4 / KP1 / DT1. Closes deferred ID 3229515822.
+    """Cell SS3 / AP4 / KP1 / DT1.
 
     ``def fn(path, *rest, **kw)`` purely positional: rest[0] is the
     secret. The variadic redacts via table slot 1 (``content``).
@@ -1211,7 +1189,7 @@ def test_var_positional_after_protected_kwarg_redacts_extras_alt_shape() -> None
 
 
 def test_custom_policy_without_positional_table_redacts_kwargs() -> None:
-    """Cell SS6 / AP1 / KP2 / DT2. Closes deferred ID 3229550963.
+    """Cell SS6 / AP1 / KP2 / DT2.
 
     A custom policy for a tool not in any positional_table at all -
     kwargs-only redaction is the fail-closed contract. Positional args
@@ -1238,7 +1216,7 @@ def test_custom_policy_without_positional_table_redacts_kwargs() -> None:
 
 
 def test_custom_policy_without_positional_table_pure_forwarder_kwargs() -> None:
-    """Cell SS7 / AP1 / KP2 / DT2. Closes deferred ID 3229566266.
+    """Cell SS7 / AP1 / KP2 / DT2.
 
     Pure-forwarder, custom-policy tool, kwargs-only call: kwargs
     redact under the policy.
@@ -1265,7 +1243,7 @@ def test_custom_policy_without_positional_table_pure_forwarder_kwargs() -> None:
 
 
 def test_custom_policy_without_table_positional_passes_raw_documented_limitation() -> None:  # noqa: E501
-    """Cell SS7 / AP2 / KP1 / DT2. Closes deferred ID 3229566275.
+    """Cell SS7 / AP2 / KP1 / DT2.
 
     Pure-forwarder, custom-policy tool, positional-only call: no
     positional_table entry means no name to bind against; positional
@@ -1290,7 +1268,7 @@ def test_custom_policy_without_table_positional_passes_raw_documented_limitation
 
 
 def test_var_positional_named_after_protected_multi_chunk_emits_each() -> None:
-    """Cell SS3 / AP4 / KP2 / DT1. Closes deferred ID 3229428697.
+    """Cell SS3 / AP4 / KP2 / DT1.
 
     ``def write_file(*content, path)`` with multiple chunks. Every
     chunk must redact under the variadic name; none silently dropped.
@@ -1312,7 +1290,7 @@ def test_var_positional_named_after_protected_multi_chunk_emits_each() -> None:
 
 
 def test_pure_forwarder_kwarg_alias_not_invented_when_no_canonical_match() -> None:  # noqa: E501
-    """Cell SS7 / AP1 / KP3 / DT1. Closes deferred ID 3229428705.
+    """Cell SS7 / AP1 / KP3 / DT1.
 
     Pure-forwarder, single non-matching kwarg, chio-default policy:
     no alias inference; kwarg passes through unredacted.
@@ -1332,7 +1310,7 @@ def test_pure_forwarder_kwarg_alias_not_invented_when_no_canonical_match() -> No
 
 
 def test_pure_forwarder_positional_only_kwarg_redacts_under_canonical() -> None:
-    """Cell SS7 / AP2 / KP2 / DT1. Closes deferred ID 3229428710.
+    """Cell SS7 / AP2 / KP2 / DT1.
 
     Same pure-forwarder shape but with the kwarg supplying the
     canonical protected name directly. Both buckets redact.
@@ -1357,7 +1335,7 @@ def test_pure_forwarder_positional_only_kwarg_redacts_under_canonical() -> None:
 
 
 def test_temporal_extras_past_table_pass_through_raw_documented() -> None:
-    """Cell SS3 / AP4 / KP1 / DT1. Closes deferred ID 3229196956.
+    """Cell SS3 / AP4 / KP1 / DT1.
 
     chio-temporal motivation: ``chio_file_write(path, content,
     overwrite)`` style call where a third positional ``overwrite``
@@ -1383,15 +1361,14 @@ def test_temporal_extras_past_table_pass_through_raw_documented() -> None:
 
 
 def test_index_renamed_kwonly_with_typeerror_routes_via_alias() -> None:
-    """Cell SS2 / AP3 / KP4 / DT1. Closes deferred ID 3229515806.
+    """Cell SS2 / AP3 / KP4 / DT1.
 
     Wrapper with renamed positional protected slot AND a kwonly alias,
     triggered into the TypeError fallback by an arity overflow.
 
     The overflow positional ``EXTRA`` redacts under the kwonly-aliased
     protected canonical (``content``) - the wrapped fn would reject this
-    call anyway, but a leaky receipt is the worse failure mode. Closes
-    PR #679 P2 3230753453.
+    call anyway, but a leaky receipt is the worse failure mode.
     """
 
     def write_file(path: str, *, body: str) -> None:
@@ -1420,7 +1397,7 @@ def test_index_renamed_kwonly_with_typeerror_routes_via_alias() -> None:
 
 
 def test_typeerror_fallback_unknown_tool_only_redacts_kwargs() -> None:
-    """Cell SS1 / AP4 / KP1 / DT2. Closes deferred ID 3229383817.
+    """Cell SS1 / AP4 / KP1 / DT2.
 
     Test integrity: the original
     ``test_bind_and_redact_fallback_unknown_tool_forwards_args_raw``
@@ -1448,7 +1425,7 @@ def test_typeerror_fallback_unknown_tool_only_redacts_kwargs() -> None:
 
 
 def test_signature_derived_table_overrides_default_in_typeerror_fallback() -> None:  # noqa: E501
-    """Cell SS1 / AP3 / KP4 / DT1. Closes deferred ID 3229551813.
+    """Cell SS1 / AP3 / KP4 / DT1.
 
     E1 regression: the dict-spread in the TypeError fallback must put
     signature-derived names AFTER the caller table so they take
@@ -1477,13 +1454,12 @@ def test_signature_derived_table_overrides_default_in_typeerror_fallback() -> No
 
 
 def test_var_keyword_only_preserves_documented_kwargs_only_redact() -> None:
-    """Cell SS6 / AP1 / KP2 / DT1. Closes deferred ID 3229135545.
+    """Cell SS6 / AP1 / KP2 / DT1.
 
     Pure VAR_KEYWORD wrapper; the positional-only same-named kwarg
     edge case is already covered by
     ``test_positional_only_with_same_named_kwarg_preserves_spillover``;
-    this asserts the simpler kwargs-only path for
-    completeness of the deferred-ID mapping.
+    this asserts the simpler kwargs-only path for completeness.
     """
 
     def fn(**kwargs: object) -> None:
@@ -1504,7 +1480,7 @@ def test_var_keyword_only_preserves_documented_kwargs_only_redact() -> None:
 
 
 def test_typeerror_fallback_kwonly_protected_redacts_overflow_positional() -> None:
-    """Cell SS2 / AP4 / KP1 / DT1. Closes PR #679 P2 3230753453.
+    """Cell SS2 / AP4 / KP1 / DT1.
 
     A wrapper that keeps the protected body in a keyword-only slot,
     invoked positionally by mistake, must redact the overflow
@@ -1531,14 +1507,14 @@ def test_typeerror_fallback_kwonly_protected_redacts_overflow_positional() -> No
 
 
 def test_typeerror_fallback_protected_var_positional_with_unknown_kwarg() -> None:
-    """Cell SS3 / AP2 / KP3 / DT1. Closes PR #679 P2 3230753454.
+    """Cell SS3 / AP2 / KP3 / DT1.
 
     A wrapper whose VAR_POSITIONAL is itself the protected canonical
     (``def write_file(*content)``), invoked with an unsupported kwarg
     so bind_partial raises, must still redact the positional values
-    under the variadic name. Previously the TypeError fallback dropped
-    the variadic-name slot list and the chio-default
-    ``("path", "content")`` table routed the secret to the unprotected
+    under the variadic name. The TypeError fallback must not drop the
+    variadic-name slot list; otherwise the chio-default
+    ``("path", "content")`` table routes the secret to the unprotected
     ``path`` slot.
     """
 
@@ -1559,18 +1535,17 @@ def test_typeerror_fallback_protected_var_positional_with_unknown_kwarg() -> Non
 
 
 def test_typeerror_fallback_protected_var_positional_multi_chunk() -> None:
-    """Multi-chunk variant of PR #679 P2 3230753454.
+    """Multi-chunk variant: several positional values past the
+    unsupported-kwarg trigger each redact under the variadic protected
+    canonical, not just the first.
 
     Several positional values past the unsupported-kwarg trigger should
     each redact under the variadic protected canonical, not just the
     first one.
 
     Uses chunks of DISTINCT byte lengths so a regression that
-    overwrites earlier values (e.g. the fallback table dedup bug closed
-    by b75631cbb) cannot hide behind matching ``byte_count`` records.
-    The interval-1 version of this test used three 13-byte chunks
-    (``PROD_SECRET_A/B/C``) which masked the overwrite. Distinct
-    lengths make any future regression visible.
+    overwrites earlier values cannot hide behind matching
+    ``byte_count`` records.
     """
 
     def write_file(*content: str) -> None:
@@ -1591,7 +1566,7 @@ def test_typeerror_fallback_protected_var_positional_multi_chunk() -> None:
 
 
 def test_typeerror_fallback_protected_var_positional_distinct_byte_counts() -> None:
-    """Regression for Cursor Bugbot Medium 3230918235 on PR #679.
+    """Regression:
 
     The TypeError fallback pads ``extended_positional_names`` with the
     variadic slot name (e.g. ``("content", "content", "content")`` for
@@ -1619,18 +1594,17 @@ def test_typeerror_fallback_protected_var_positional_distinct_byte_counts() -> N
 
 
 def test_signature_path_kwonly_body_with_unrelated_var_positional() -> None:
-    """Regression for PR #679 P2 3230955382.
+    """Regression:
 
     ``def write_file(path, *rest, body)`` invoked with the protected
-    body as a kwarg. The kwonly aliasing pass was previously SKIPPED
-    whenever the signature contained any VAR_POSITIONAL (broad
-    ``has_var_positional`` guard). The guard is intended to defer to
-    the variadic when the variadic ITSELF names a protected canonical
-    (e.g. ``def writer(*content, path)``); when the VAR_POSITIONAL is
-    unrelated (``*rest``), the kwonly may still alias the protected
-    body. The broad guard let ``body='PROD_SECRET'`` forward raw.
-    Distinct byte length so a future regression cannot hide behind a
-    coincidentally-matching ``byte_count``.
+    body as a kwarg. The kwonly aliasing pass must not be skipped merely
+    because the signature contains any VAR_POSITIONAL. The guard defers
+    to the variadic only when the variadic ITSELF names a protected
+    canonical (e.g. ``def writer(*content, path)``); when the
+    VAR_POSITIONAL is unrelated (``*rest``), the kwonly may still alias
+    the protected body. A broad guard would let ``body='PROD_SECRET'``
+    forward raw. Distinct byte length so a regression cannot hide behind
+    a coincidentally-matching ``byte_count``.
     """
 
     def write_file(path: str, *rest: object, body: str) -> None:
@@ -1650,18 +1624,18 @@ def test_signature_path_kwonly_body_with_unrelated_var_positional() -> None:
 
 
 def test_signature_path_ambiguous_kwonly_aliases_redact_all() -> None:
-    """Regression for PR #679 P2 3230955385.
+    """Regression:
 
     ``def write_file(path, *, label, body)`` invoked with both kwonly
-    kwargs supplied. Pass-B previously walked the kwonly params in
-    declaration order and greedily assigned the only unclaimed
-    protected canonical (``content``) to the first-declared kwonly
-    (``label``), leaving ``body`` unaliased so ``body='PROD_SECRET'``
-    forwarded raw. The fix routes EVERY unclaimed kwonly to a
-    protected canonical (cycling) when there are more kwonlys than
-    free canonicals, mirroring the merge-conflict semantics used by
-    other paths. Both kwargs must redact; each stub must report ITS
-    OWN byte_count (not a shared one) so a regression can't hide.
+    kwargs supplied. Pass-B must not walk the kwonly params in
+    declaration order and greedily assign the only unclaimed protected
+    canonical (``content``) to the first-declared kwonly (``label``),
+    leaving ``body`` unaliased so ``body='PROD_SECRET'`` forwards raw.
+    EVERY unclaimed kwonly routes to a protected canonical (cycling)
+    when there are more kwonlys than free canonicals, mirroring the
+    merge-conflict semantics used by other paths. Both kwargs must
+    redact; each stub must report ITS OWN byte_count (not a shared one)
+    so a regression can't hide.
     """
 
     def write_file(path: str, *, label: str, body: str) -> None:
@@ -1685,16 +1659,13 @@ def test_signature_path_ambiguous_kwonly_aliases_redact_all() -> None:
 
 
 def test_typeerror_fallback_protected_var_positional_distinct_lengths_strict() -> None:  # noqa: E501
-    """Regression for PR #679 P2 3230955379.
+    """Regression:
 
     ``def write_file(*content)`` invoked with ``args=("A","BB","CCC")``
-    plus an unsupported ``path`` kwarg. The reviewer flagged that
-    earlier code overwrote the per-position byte_count so the rebuilt
-    args reported the LAST value's length for every position
-    (``byte_count: 3`` for all three). Interval-2's de-dup fix
-    (b75631cbb) did close this; this test asserts the post-fix
-    invariant with DISTINCT byte lengths so any future regression that
-    re-introduces overwrite behaviour fails loudly. Complements
+    plus an unsupported ``path`` kwarg. Asserts each position reports
+    its OWN value's byte_count (not the last value's length for every
+    position), using DISTINCT byte lengths so an overwrite regression
+    fails loudly. Complements
     ``test_typeerror_fallback_protected_var_positional_multi_chunk``
     by varying the input arity and chunk-shape so the contract is
     pinned from multiple angles.
@@ -1716,7 +1687,7 @@ def test_typeerror_fallback_protected_var_positional_distinct_lengths_strict() -
 
 
 def test_typeerror_fallback_extra_positional_with_kwonly_label_and_body() -> None:
-    """Regression for PR #679 P2 3231057181.
+    """Regression:
 
     ``def write_file(path, *, label, body)`` invoked with one extra
     positional plus both kwonly kwargs supplied (``write_file('/tmp',
@@ -1752,7 +1723,7 @@ def test_typeerror_fallback_extra_positional_with_kwonly_label_and_body() -> Non
 
 
 def test_signature_path_var_positional_named_after_unprotected_table_slot() -> None:
-    """Regression for PR #679 P2 3231057186 + 3231057261.
+    """Regression:
 
     ``def write_file(*path, body)`` invoked with the protected body as
     a kwarg. ``*path`` is named after the chio-default ``("path",
@@ -1783,7 +1754,7 @@ def test_signature_path_var_positional_named_after_unprotected_table_slot() -> N
 
 
 def test_typeerror_fallback_kwonly_only_preserves_default_prefix() -> None:
-    """Regression for PR #679 P2 3231314237.
+    """Regression:
 
     A kwonly-only wrapper has no fixed positional signature slots, but
     the chio default wire table still says position 0 is ``path`` and
@@ -1811,7 +1782,7 @@ def test_typeerror_fallback_kwonly_only_preserves_default_prefix() -> None:
 
 
 def test_typeerror_fallback_unprotected_var_positional_keeps_table_prefix() -> None:
-    """Regression for PR #679 P2 3231314239 + Cursor Low 3231359832.
+    """Regression:
 
     ``def write_file(*path, body)`` has a VAR_POSITIONAL named after an
     unprotected table slot. An invalid ``path=`` kwarg drives the
@@ -1838,7 +1809,7 @@ def test_typeerror_fallback_unprotected_var_positional_keeps_table_prefix() -> N
 
 
 def test_signature_path_swap_detected_ambiguous_fixed_aliases_redact_all() -> None:
-    """Regression for PR #679 P2 3231057188.
+    """Regression:
 
     ``def write_file(label, body, path)`` invoked positionally. The
     swap-detected branch (``path`` at sig idx 2 vs table idx 0) used
@@ -1872,24 +1843,22 @@ def test_signature_path_swap_detected_ambiguous_fixed_aliases_redact_all() -> No
 
 
 def test_typeerror_fallback_colliding_positional_aliases_redact_independently() -> None:
-    """Regression for PR #679 Cursor High 3231129174 + P2 3231134970.
+    """Regression:
 
     ``def write_file(label, body, path)`` invoked positionally AND with
     ``path='/tmp'`` as a kwarg triggers ``bind_partial`` TypeError
     (``path`` duplicated across positional + kwarg). The TypeError
     fallback builds an ambiguous-fail-closed alias map sending BOTH
-    ``label`` and ``body`` to canonical ``content``. Earlier versions
-    keyed the canonical-redact view by canonical name, so the second
-    slot silently overwrote the first in the dict view, and the
-    rebuild ``KeyError``-crashed when looking up the missing wrapper-
-    name.
+    ``label`` and ``body`` to canonical ``content``. Keying the
+    canonical-redact view by canonical name would let the second slot
+    silently overwrite the first in the dict view and crash the rebuild
+    with a ``KeyError`` on the missing wrapper-name.
 
-    The fix mirrors the overflow path: detect that two wrapper slot
-    names collide on the same canonical and route the second slot
-    through a per-position sentinel so each value redacts and rebuilds
-    independently. Both stubs must report DISTINCT byte_counts
-    (4 != 11) so a future regression that re-uses one slot's record
-    for both positions cannot hide.
+    Mirroring the overflow path: when two wrapper slot names collide on
+    the same canonical, the second slot routes through a per-position
+    sentinel so each value redacts and rebuilds independently. Both
+    stubs must report DISTINCT byte_counts (4 != 11) so a regression
+    that re-uses one slot's record for both positions cannot hide.
     """
 
     def write_file(label: str, body: str, path: str) -> None:
@@ -1912,7 +1881,7 @@ def test_typeerror_fallback_colliding_positional_aliases_redact_independently() 
 
 
 def test_build_alias_map_is_importable_from_top_level() -> None:
-    """Regression for PR #679 Cursor Bugbot Low 3231024465.
+    """Regression:
 
     ``build_alias_map`` is a public helper (no underscore prefix) and
     is advertised in the PR description as exposing the wrapper-name
@@ -1926,7 +1895,7 @@ def test_build_alias_map_is_importable_from_top_level() -> None:
     assert "build_alias_map" in chio_adapter_base.__all__
     assert hasattr(chio_adapter_base, "build_alias_map")
     # Smoke-test the exposed callable on the swap-detection scenario it
-    # was extracted to handle.
+    # handles.
     routing = chio_adapter_base.build_alias_map(
         ("body", "path"),
         ("path", "content"),

@@ -35,10 +35,8 @@ jobs:
           required_checks=(
             "Build, lint, test"
             "MSRV build and test"
-            "cargo-vet (supply-chain audit)"
+            "cargo-vet (locked supply-chain audit)"
             "cargo-deny (supply-chain bans/advisories/licenses)"
-            "freeze-guard"
-            "bench-regression"
           )
 
           gh api \

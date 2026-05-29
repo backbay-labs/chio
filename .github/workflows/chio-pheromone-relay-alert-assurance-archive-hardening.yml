@@ -1,0 +1,37 @@
+name: Chio Pheromone Relay Alert Assurance Archive Hardening
+
+on:
+  pull_request:
+    paths:
+      - "crates/chio-pheromone-relay/**"
+      - "crates/chio-cli/**"
+      - "crates/chio-spec-validate/**"
+      - "examples/chio-3vendor/fixtures/pheromone/relay/**"
+      - "spec/schemas/chio-pheromone/v1/**"
+      - "spec/schemas/registry.json"
+      - "scripts/check-chio-pheromone-relay-alert-assurance-archive-hardening.sh"
+      - ".github/workflows/chio-pheromone-relay-alert-assurance-archive-hardening.yml"
+  push:
+    branches: [main]
+    paths:
+      - "crates/chio-pheromone-relay/**"
+      - "crates/chio-cli/**"
+      - "crates/chio-spec-validate/**"
+      - "examples/chio-3vendor/fixtures/pheromone/relay/**"
+      - "spec/schemas/chio-pheromone/v1/**"
+      - "spec/schemas/registry.json"
+      - "scripts/check-chio-pheromone-relay-alert-assurance-archive-hardening.sh"
+      - ".github/workflows/chio-pheromone-relay-alert-assurance-archive-hardening.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  chio-pheromone-relay-alert-assurance-archive-hardening:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable (pins to rust-toolchain.toml 1.93.0)
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      - name: Check Chio pheromone relay alert assurance archive hardening
+        run: bash scripts/check-chio-pheromone-relay-alert-assurance-archive-hardening.sh

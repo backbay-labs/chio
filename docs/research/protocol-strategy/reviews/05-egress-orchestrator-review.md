@@ -58,7 +58,7 @@ Coverage gaps verified by absence: `grep -rni 'amqp\|rabbitmq\|websub'`
 returns **zero hits** in `sdks/python/`, `crates/`, and the SDK READMEs.
 SNS and SQS are absent as modules (`sns.py` / `sqs.py` do not exist).
 Doc 01's gap list (AMQP/RabbitMQ + SNS+SQS + WebSub) is therefore
-**accurate**. Doc 00-overview-v2's Wave D bullet
+**accurate**. Doc 00-overview-v2's Phase D bullet
 (`00-overview-v2.md:71`) defers these correctly.
 
 ## chio-temporal / chio-airflow existence verification

@@ -1,12 +1,12 @@
 # Healthcare Pilot Operator Runbook
 
-This directory is the tenant-shaped operator runbook for the M01 healthcare
+This directory is the tenant-shaped operator runbook for the healthcare
 design-partner pilot. It layers deployment-specific operating rules on top of
 the generic bounded release runbook at `docs/release/OPERATIONS_RUNBOOK.md`.
 
 The pilot is a single-tenant deployment. It remains in zero-PHI shadow mode
 until the contract memo, BAA chain, topology acceptance, PagerDuty routing key,
-and cutover rehearsal are recorded in the M01 audit doc.
+and cutover rehearsal are recorded in the pilot audit doc.
 
 ## Required Reading
 
@@ -22,7 +22,7 @@ Read these pages before operating the pilot:
    rules.
 7. `rotations.md` - weekly primary and secondary on-call rotation.
 
-Later M01 phases add:
+Later pilot phases add:
 
 - `quota.md` for sustained-load sizing.
 - `phi-policy.md` for request, response, receipt, and alert redaction.
@@ -39,7 +39,7 @@ The operator must keep these constraints true:
 - One PagerDuty service named `chio-healthcare-pilot-prod`.
 
 Do not widen the pilot to multi-tenant, multi-region, public transparency-log,
-or consensus HA claims. Those claims are outside trajectory-3 M01.
+or consensus HA claims. Those claims are outside the pilot scope.
 
 ## Runtime Surfaces
 
@@ -71,7 +71,8 @@ shadow mode.
 
 ## Evidence Links
 
-Evidence lands in `.planning/trajectory-3/audits/M01-healthcare-pilot.md`.
+Internal self-assessment artifacts are maintained under `compliance/hitrust/`
+(see `compliance/hitrust/control-mapping.csv` for the per-control mapping).
 
 - P0 opened audit hard counts and the topology baseline.
 - P1 hardens this runbook and wires PagerDuty.

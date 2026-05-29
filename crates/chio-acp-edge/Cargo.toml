@@ -26,6 +26,7 @@ futures = "0.3"
 tokio = { workspace = true }
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
 chio-cross-protocol = { path = "../chio-cross-protocol" }
+chio-edge-metrics = { path = "../chio-edge-metrics" }
 chio-kernel = { path = "../chio-kernel" }
 chio-manifest = { path = "../chio-manifest" }
 chio-mcp-edge = { path = "../chio-mcp-edge" }
@@ -38,6 +39,8 @@ tracing = { workspace = true }
 # free of fuzz instrumentation.
 arbitrary = { version = "1", features = ["derive"], optional = true }
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[dev-dependencies]
+chio-test-support = { path = "../chio-test-support" }
+
+[lints]
+workspace = true

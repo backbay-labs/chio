@@ -57,7 +57,7 @@ Promotes a fuzz seed into a permanent regression test:
   - In adversarial mode: writes a triage-pending case under
     crates/chio-adversarial-suite/cases/<class>/<sha>.json with
     `expected_verdict: "DENY"` and `pending: true`. Requires --class
-    (one of the eight M05 attack classes) and --threat-id (a
+    (one of the eight adversarial attack classes) and --threat-id (a
     chio-threat-model.v1.json identifier).
   - Moves the seed file into fuzz/corpus/<target>/<sha>.bin so future
     fuzz runs continue exercising it. Re-promoting a seed that already

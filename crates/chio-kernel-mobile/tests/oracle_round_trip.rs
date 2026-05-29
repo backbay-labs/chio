@@ -32,7 +32,7 @@ struct ReceiptFixture {
 }
 
 #[test]
-fn ios_and_android_signed_receipts_round_trip_to_m01_oracle() -> Result<(), Box<dyn Error>> {
+fn ios_and_android_signed_receipts_round_trip_to_hosted_oracle() -> Result<(), Box<dyn Error>> {
     let fixture_dir = fixture_dir();
     let oracle_endpoint = load_oracle_endpoint(&fixture_dir.join("hosted-oracle.json"))?;
     let schema = load_json(&repo_root().join("spec/audit-log/export-schema.v1.json"))?;
@@ -61,7 +61,7 @@ fn sign_fixture_receipt(fixture: &ReceiptFixture) -> Result<ChioReceipt, Box<dyn
     let action = ToolCallAction::from_parameters(json!({
         "actor_subject": fixture.actor_subject,
         "mobile_platform": fixture.platform,
-        "oracle_endpoint": "m01-hosted-oracle-fixture",
+        "oracle_endpoint": "hosted-oracle-fixture",
     }))?;
     let body = ChioReceiptBody {
         id: fixture.receipt_id.clone(),
@@ -129,7 +129,7 @@ fn export_record_from_receipt(fixture: &ReceiptFixture, receipt: &ChioReceipt) -
         },
         "cef": {
             "version": "CEF:0",
-            "device_vendor": "Backbay Industries",
+            "device_vendor": "Backbay Labs",
             "device_product": "Chio",
             "signature_id": fixture.reason_code,
             "name": "Mobile receipt oracle verification",
@@ -155,7 +155,7 @@ fn hosted_oracle_accepts(
     receipt: &ChioReceipt,
     export_record: &Value,
 ) -> Result<bool, Box<dyn Error>> {
-    if endpoint != "https://m01-hosted-oracle.fixture.chio.local/audit-log/v1/receipts" {
+    if endpoint != "https://hosted-oracle.fixture.chio.local/audit-log/v1/receipts" {
         return Err(invalid_data("unexpected hosted oracle endpoint").into());
     }
     if !receipt.verify_signature()? {

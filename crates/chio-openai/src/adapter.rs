@@ -89,7 +89,7 @@ impl OpenAiAdapter {
     ///
     /// The actual tool-call extraction delegates to the existing
     /// [`ChioOpenAiAdapter::extract_responses_api_calls`] helper so the
-    /// legacy Responses API behavior remains the source of truth.
+    /// Responses API behavior remains the source of truth.
     pub fn lift_batch(&self, raw: ProviderRequest) -> Result<Vec<ToolInvocation>, ProviderError> {
         let parsed = parse_payload(raw)?;
         let org_id = self.org_id_for_payload(parsed.org_id_from_header.as_deref())?;

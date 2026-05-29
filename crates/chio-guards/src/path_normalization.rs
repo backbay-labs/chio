@@ -1,7 +1,6 @@
 //! Shared path normalization for policy path matching.
 //!
-//! Copied from ClawdStrike's `guards/path_normalization.rs` and adapted for
-//! the Chio kernel. The logic is intentionally identical.
+//! Normalizes a path into a canonical form for policy glob matching.
 
 use std::path::Path;
 

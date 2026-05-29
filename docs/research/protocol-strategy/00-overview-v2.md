@@ -1,15 +1,15 @@
-# Chio protocol strategy research, wave 2 (May 2026)
+# Chio protocol strategy research, round 2 (May 2026)
 
 ## Context
 
-Ten parallel research agents extended the May 2026 swarm: five **refine** passes that deepened doc-03/04/05 gating questions plus added concrete designs for AGNTCY ACP and the event-action vocabulary, three **expand** passes that filled the Tier-1 surfaces missing from wave 1 (OpenAI Responses, Bedrock Agents, voice), and two **cross-cutting** passes that stress-tested the receipt schema and audited hot-path latency.
+Ten parallel research agents extended the May 2026 swarm: five **refine** passes that deepened doc-03/04/05 gating questions plus added concrete designs for AGNTCY ACP and the event-action vocabulary, three **expand** passes that filled the Tier-1 surfaces missing from the first round (OpenAI Responses, Bedrock Agents, voice), and two **cross-cutting** passes that stress-tested the receipt schema and audited hot-path latency.
 
-Output: docs `07-` through `16-` on `research/protocol-strategy-2026`. Wave 1 docs (`00-` through `06-`) are preserved as historical research with errata.
+Output: docs `07-` through `16-` on `research/protocol-strategy-2026`. First-round docs (`00-` through `06-`) are preserved as historical research with errata.
 
 > **Plan-of-record status (PR 652 review):** This file is the synthesis of record for the research branch. The earlier [00-overview.md](00-overview.md) remains useful historical context, but follow-on planning should start here and then use [18-decision-packet.md](18-decision-packet.md) for architecture decisions before implementation tickets.
 
-> **Erratum (wave 3 + wave 4)**:
-> - AGNTCY ACP is dead. `agntcy/acp-spec` was archived 2026-04-11 (the date doc 08 cited was the *archival* date, not a stabilization freeze). The bridge plan in Wave C is struck; only the consume-only `chio-directory` integration survives. See [17-agntcy-revisited.md](17-agntcy-revisited.md).
+> **Erratum (subsequent reviews)**:
+> - AGNTCY ACP is dead. `agntcy/acp-spec` was archived 2026-04-11 (the date doc 08 cited was the *archival* date, not a stabilization freeze). The bridge plan in phase C is struck; only the consume-only `chio-directory` integration survives. See [17-agntcy-revisited.md](17-agntcy-revisited.md).
 > - The n8n priority-1 framing here originally referenced the Talos 686% abuse spike, which is **Chain D** (NOT blocked by Chio). The actually-blocked attack is **Chain C** (prompt-injection agent-to-webhook). See [11-n8n-threat-mapping.md](11-n8n-threat-mapping.md).
 > - Bench-stub coverage is broader than originally reported: not 4 stubs, but **11+** ([reviews/04-receipts-kernel-latency-review.md](reviews/04-receipts-kernel-latency-review.md)). Doc 16's `responses.rs:1506` citation is also a wrong file path; the function lives at `crates/chio-kernel/src/kernel/responses.rs:1459-1517`.
 > - Canonical type forms: the current signed receipt field is `policy_hash`, encoded as a hex or operator-pinned `String` (matches existing code, RFC 8785 friendly). Historical `policy_digest` references are per-engine digest sketches, not a current core receipt field. ADR-0010 folds `tool_origin` (`CallerExecuted | HostExecutedProviderReported | HostExecutedUnmediated`) and `redaction_mode` into the current v1 receipt shape as separate signed fields; `human_principal` is the typed enum on `CallerIdentity` (doc 14) referenced by historical extension sketches, not duplicated.
@@ -20,7 +20,7 @@ Output: docs `07-` through `16-` on `research/protocol-strategy-2026`. Wave 1 do
 
 Two findings change the immediate priorities:
 
-1. **Per-stage kernel benches were `black_box(0_u64)` stubs (resolved).** ([X2](16-latency-budget-audit.md), with wave-3 verification at [reviews/04](reviews/04-receipts-kernel-latency-review.md) expanding the list to 11+: `single_guard`, `cap_verify_ed25519`, `receipt_sign`, `guard_pipeline_5`, `scope_match`, `time_bound`, `revocation_lookup`, `budget_decrement`, `receipt_append`, `session_lookup`, `dispatch_deny`.) CI runs them at [`.github/workflows/bench-regression.yml:101-108`](../../../.github/workflows/bench-regression.yml#L101). The bench bodies now drive real dispatch through `dispatch_request_fixture` rather than constants, so wave-1 and wave-2 latency claims can be re-measured against the current bench tree.
+1. **Per-stage kernel benches were `black_box(0_u64)` stubs (resolved).** ([X2](16-latency-budget-audit.md), with follow-up verification at [reviews/04](reviews/04-receipts-kernel-latency-review.md) expanding the list to 11+: `single_guard`, `cap_verify_ed25519`, `receipt_sign`, `guard_pipeline_5`, `scope_match`, `time_bound`, `revocation_lookup`, `budget_decrement`, `receipt_append`, `session_lookup`, `dispatch_deny`.) CI runs them at [`.github/workflows/bench-regression.yml:101-108`](../../../.github/workflows/bench-regression.yml#L101). The bench bodies now drive real dispatch through `dispatch_request_fixture` rather than constants, so earlier latency claims can be re-measured against the current bench tree.
 2. **`tool_origin` is a current v1 receipt field, separate from redaction.** It surfaced independently in E1 (OpenAI built-in tools) and E2 (Bedrock Lambda action groups). PR 652 review tightened the rule: execution origin and redaction stay orthogonal. The planning default is `CallerExecuted | HostExecutedProviderReported | HostExecutedUnmediated` plus a separate redaction mode.
 
 Everything else is incremental but coherent: Cedar, OpenAI Responses, Bedrock Agents, voice (LiveKit-first) all fit. AGNTCY ACP is dead but AGNTCY Directory + Identity consumption survives. n8n priority restricted to Chain C. OAuth AS stays live but blocked for product work until a dedicated ADR or equivalent decision note is accepted.
@@ -60,7 +60,7 @@ Three protocols are named "ACP":
 2. **IBM Agent Communication Protocol**: converging with A2A; no Chio bridge today.
 3. **AGNTCY Agent Connect Protocol**: archived 2026-04-11; absorbed into A2A. No Chio bridge planned.
 
-The `chio-acp-*` namespace is owned by Zed's ACP. Do not propose other crates with that prefix. The wave-2 doc 02 used the name `chio-bridge-acp` for AGNTCY, which is doubly wrong (now-dead protocol + non-convention prefix) and is corrected in the erratum at the top of [doc 02](02-decentralized-agent-networks.md).
+The `chio-acp-*` namespace is owned by Zed's ACP. Do not propose other crates with that prefix. Doc 02 used the name `chio-bridge-acp` for AGNTCY, which is doubly wrong (now-dead protocol + non-convention prefix) and is corrected in the erratum at the top of [doc 02](02-decentralized-agent-networks.md).
 
 ## Updated phased build queue
 
@@ -70,9 +70,9 @@ receipt-kind semantics, the boundary matrix, current v1 event-action planning, a
 durability. OAuth AS product work stays blocked until a dedicated OAuth AS ADR
 or equivalent decision note is accepted.
 
-### Wave A: foundation (close gaps, unblock everything else)
+### Phase A: foundation (close gaps, unblock everything else)
 
-- **Real bench bodies landed in CI (resolved).** The 11 per-stage kernel benches enumerated in TL;DR finding 1 now drive real dispatch through `dispatch_request_fixture` rather than `black_box(0_u64)`; the remaining work in this area is gating benches with `required-features` per bench file. ([16](16-latency-budget-audit.md), [reviews/04](reviews/04-receipts-kernel-latency-review.md))
+- **Real bench bodies landed in CI (resolved).** The 11 per-stage kernel benches now drive real dispatch through `dispatch_request_fixture` rather than `black_box(0_u64)`; the remaining work is gating benches with `required-features` per bench file. ([16](16-latency-budget-audit.md), [reviews/04](reviews/04-receipts-kernel-latency-review.md))
 - **Current v1 receipt-kind semantic gate**: implement the accepted ADR-0010 decisions for
   `receipt_kind`, `boundary_class`, verifier behavior, `tool_origin`,
   redaction, `ActorRef`, and current `policy_hash` handling. Extension
@@ -98,20 +98,20 @@ or equivalent decision note is accepted.
   [18](18-decision-packet.md))
 - **Parallelize hybrid signing** (`crates/chio-core-types/src/pq.rs:166-170` per doc 16: verify the citation as part of this work). ~50-100us savings on every receipt. ([16](16-latency-budget-audit.md))
 
-### Wave B: high-ROI new bridges
+### Phase B: high-ROI new bridges
 
 - **Future OpenAI function-tools adapter**: function-tools-only MVP, refuses built-in / reasoning at boundary; blocked until v1 receipt/read-boundary gates and official-doc refresh. ([12](12-openai-responses-adapter.md))
 - **`chio-bedrock-agents-adapter`**: RETURN_CONTROL mediation, summary redaction default. ([13](13-bedrock-agents-bridge.md))
 - **Cedar `PolicyEngineProvider`** + port `McpToolGuard` + `EgressAllowlistGuard` as flagship references. ([10](10-cedar-first-guard.md))
 - **n8n orchestrator-egress, Chain C only**: prompt-injection agent-to-webhook exfiltration is the value-prop; do NOT cite the Talos 686% spike (Chain D is below Chio's layer). ([11](11-n8n-threat-mapping.md))
 
-### Wave C: strategic expansions
+### Phase C: strategic expansions
 
 - **`chio-directory`** (consume-only): `DirectoryProvider` trait + `StaticAgntcyDirectoryProvider`. Read-only AGNTCY Directory + Identity consumption, mirroring Webex's production pattern. NO `chio-bridge-agntcy` (ACP is archived). ([17](17-agntcy-revisited.md))
 - **`chio-livekit-py`**: voice mediation, paired with async receipt write + sequence numbering + bounded-loss SLO. ([14](14-voice-agent-bridges.md))
 - **Per-bridge fast paths + voice-tier policy classification**: voice fast-path skips outer signature; voice-tier guards declare in-process. ([14](14-voice-agent-bridges.md), [16](16-latency-budget-audit.md))
 
-### Wave D: defer
+### Phase D: defer
 
 - AMQP / SNS+SQS / WebSub additions to `chio-streaming` ([01](01-pubsub-coverage-audit.md))
 - Pipecat FrameProcessor, Vapi+Retell shims, and voice implementation before async durability is settled ([14](14-voice-agent-bridges.md))
@@ -134,4 +134,4 @@ or equivalent decision note is accepted.
 
 ## Files
 
-All in `docs/research/protocol-strategy/`. Wave 1: 00-overview, 01 through 06. Wave 2: 07 through 16. Wave 3 reviews: [reviews/](reviews/). Wave 4 AGNTCY follow-up: [17-agntcy-revisited.md](17-agntcy-revisited.md). PR 652 decision packet: [18-decision-packet.md](18-decision-packet.md). This file: `00-overview-v2.md`.
+All in `docs/research/protocol-strategy/`. Round 1: 00-overview, 01 through 06. Round 2: 07 through 16. Review passes: [reviews/](reviews/). AGNTCY follow-up: [17-agntcy-revisited.md](17-agntcy-revisited.md). PR 652 decision packet: [18-decision-packet.md](18-decision-packet.md). This file: `00-overview-v2.md`.

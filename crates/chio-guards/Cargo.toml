@@ -1,6 +1,6 @@
 [package]
 name = "chio-guards"
-description = "Security guards for the Chio runtime kernel, adapted from ClawdStrike"
+description = "Security guards for the Chio runtime kernel"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -36,6 +36,5 @@ chio-store-sqlite = { path = "../chio-store-sqlite" }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

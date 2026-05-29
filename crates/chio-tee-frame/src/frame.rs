@@ -1,7 +1,6 @@
 //! `chio-tee-frame.v1` types.
 //!
-//! Mirrors the JSON schema pinned in
-//! `.planning/trajectory/10-tee-replay-harness.md` lines 64-219. A frame is
+//! Mirrors the v1 JSON schema defined in `spec/PROTOCOL.md`. A frame is
 //! the unit of capture that the chio-tee shadow runner emits per kernel
 //! evaluation. Each frame is signed by the tenant key and serialized with
 //! RFC 8785 canonical JSON so downstream replay can re-verify the
@@ -32,10 +31,11 @@ pub struct Frame {
     pub tee_id: String,
     /// Upstream system + operation descriptor.
     pub upstream: Upstream,
-    /// Canonical-JSON ToolInvocation per the M01 schema. Opaque here; the
-    /// M01 validator is the source of truth.
+    /// Canonical-JSON ToolInvocation per the canonical schema. Opaque
+    /// here; the canonical-JSON validator is the source of truth.
     pub invocation: serde_json::Value,
-    /// Provenance envelope (W3C trace context + optional M09 supply chain).
+    /// Provenance envelope (W3C trace context + optional supply-chain
+    /// provenance).
     pub provenance: Provenance,
     /// Lowercase hex SHA-256 of the redacted request blob.
     pub request_blob_sha256: String,
@@ -140,7 +140,7 @@ impl FromStr for UpstreamSystem {
 #[serde(deny_unknown_fields)]
 pub struct Provenance {
     pub otel: Otel,
-    /// Optional M09 SBOM-style provenance superset; opaque here.
+    /// Optional SBOM-style supply-chain provenance superset; opaque here.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supply_chain: Option<serde_json::Value>,
 }
@@ -179,9 +179,7 @@ pub enum FrameError {
     Schema(#[from] SchemaError),
 }
 
-/// Builder-style payload for [`Frame::build`]. Groups the 13 frame fields
-/// to keep the constructor under the clippy `too_many_arguments` limit
-/// while preserving the named-field ergonomics of the wire-level type.
+/// Builder-style payload for [`Frame::build`]. Groups the 13 frame fields while preserving named-field ergonomics.
 #[derive(Debug, Clone)]
 pub struct FrameInputs {
     pub event_id: String,
@@ -267,7 +265,7 @@ mod tests {
             },
             request_blob_sha256: "a".repeat(64),
             response_blob_sha256: "b".repeat(64),
-            redaction_pass_id: "m06-redactors@1.4.0+default".to_string(),
+            redaction_pass_id: "redactors@1.4.0+default".to_string(),
             verdict: Verdict::Allow,
             deny_reason: None,
             would_have_blocked: false,
@@ -323,10 +321,8 @@ mod tests {
         let bytes = canonicalize(&frame).expect("canonicalize");
         let s = std::str::from_utf8(&bytes).expect("utf8");
         // RFC 8785 sorts object keys; "deny_reason" is absent for an
-        // `Allow` frame because of `skip_serializing_if`. The first key
-        // must be `event_id` since "e" < "i" < "p" < "r" < "s" < "t" < "u" < "v" < "w" but
-        // also < "schema_version". Let's just assert the schema version
-        // appears later than event_id.
+        // `Allow` frame because of `skip_serializing_if`. "event_id" sorts
+        // before "schema_version".
         let pos_event = s.find("\"event_id\"").expect("event_id present");
         let pos_schema = s
             .find("\"schema_version\"")

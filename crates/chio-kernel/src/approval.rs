@@ -1,4 +1,4 @@
-//! Phase 3.4-3.6 human-in-the-loop (HITL) primitives.
+//! Human-in-the-loop (HITL) primitives.
 //!
 //! This module houses the approval-request data model, the persistent
 //! approval-store contract, the approval guard that decides when a call
@@ -6,7 +6,7 @@
 //! HTTP surface after a human responds. The design follows
 //! `docs/protocols/HUMAN-IN-THE-LOOP-PROTOCOL.md`.
 //!
-//! Scope note (deviation documented in the phase report): the existing
+//! Design note: the existing
 //! `crate::runtime::Verdict` is `Copy` and threaded through 5,000+ lines
 //! of kernel code. Rather than ripple a breaking change through every
 //! call site, this module exposes a richer [`HitlVerdict`] that carries
@@ -42,7 +42,7 @@ pub const MAX_APPROVAL_TTL_SECS: u64 = 3600;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ApprovalRequest {
     /// Unique request identifier. Caller-stable so the approval store
-    /// can be keyed on this value. In production this is a UUIDv7.
+    /// can be keyed on this value. Callers should supply a UUIDv7.
     pub approval_id: String,
 
     /// The policy / grant identifier that triggered the approval.
@@ -233,7 +233,6 @@ impl ApprovalToken {
             )));
         }
 
-        // Signature.
         let ok = self.governed_token.verify_signature().map_err(|e| {
             KernelError::ApprovalRejected(format!(
                 "approval token signature verification failed: {e}"
@@ -563,10 +562,10 @@ impl ApprovalGuard {
             }
         }
 
-        // Sentinel for Phase 3.4-3.6: an attribute flag on the request
-        // (`force_approval`) forces a PendingApproval outcome so host
-        // integrations can drop into the HITL flow without teaching
-        // every constraint variant. Test harnesses use this path too.
+        // An attribute flag on the request (`force_approval`) forces a
+        // PendingApproval outcome so host integrations can enter the HITL
+        // flow without teaching every constraint variant.
+        // Test harnesses use this path too.
         if ctx.force_approval {
             always_hit = true;
             triggered.push("force_approval".to_string());
@@ -830,8 +829,8 @@ pub fn resume_with_decision(
 
 /// Thread-safe in-memory `ApprovalStore`. Useful for tests and for
 /// ephemeral deployments where operators explicitly accept data loss
-/// on restart (the opposite of Phase 3.5's durability contract; SQLite
-/// is the production path).
+/// on restart (ephemeral: data is lost on restart; use the SQLite-backed
+/// store for production durability).
 #[derive(Default)]
 pub struct InMemoryApprovalStore {
     pending: RwLock<HashMap<String, ApprovalRequest>>,

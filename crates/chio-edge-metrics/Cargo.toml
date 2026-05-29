@@ -1,0 +1,19 @@
+[package]
+name = "chio-edge-metrics"
+description = "Shared receipt-write metrics sink for Chio protocol edge crates"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_edge_metrics"
+
+[dependencies]
+chio-kernel = { path = "../chio-kernel" }
+chio-metrics-spec = { workspace = true }
+
+[lints]
+workspace = true

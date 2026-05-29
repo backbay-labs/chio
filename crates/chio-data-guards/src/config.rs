@@ -1,7 +1,6 @@
 //! Configuration types for the SQL query guard.
 //!
-//! [`SqlGuardConfig`] captures the four enforcement knobs defined by phase
-//! 7.1 of the roadmap:
+//! [`SqlGuardConfig`] captures the four enforcement knobs:
 //!
 //! - `operation_allowlist`: which SQL operations are permitted
 //!   (`SELECT`, `INSERT`, `UPDATE`, `DELETE`, DDL, other).
@@ -115,7 +114,7 @@ pub struct SqlGuardConfig {
     pub denylisted_predicates: Vec<String>,
 
     /// Deny mutations (`UPDATE`, `DELETE`) that lack a `WHERE` clause.
-    /// Defaults to `true` (roadmap 7.1 acceptance criterion).
+    /// Defaults to `true`.
     #[serde(default = "default_require_where_for_mutations")]
     pub require_where_for_mutations: bool,
 

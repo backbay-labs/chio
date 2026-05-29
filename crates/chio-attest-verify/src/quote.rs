@@ -24,9 +24,8 @@ use sha2::{Digest, Sha256};
 
 /// TEE family that produced a verified quote.
 ///
-/// Variants are added once their backend module ships. The enum is
-/// `non_exhaustive` so adding a new TEE family in a future milestone is
-/// not a breaking change for consumers.
+/// The enum is `non_exhaustive` so adding a new TEE family in a future
+/// release is not a breaking change for consumers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum TeeKind {

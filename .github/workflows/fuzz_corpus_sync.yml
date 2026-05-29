@@ -1,11 +1,11 @@
 # fuzz_corpus_sync.yml - Weekly minimized-corpus sync.
 #
-# Pulls minimized inputs from the arc-fuzz-corpus sibling private repo and
+# Pulls minimized inputs from the chio-fuzz-corpus sibling private repo and
 # PRs them into fuzz/corpus/<target>/ for permanent retention. Every candidate
 # diff is scanned by gitleaks; if any secret-like token is detected the sync
 # FAILS and refuses to commit (no production-issued JWTs or DIDs in seeds).
 #
-# Merge gate: CODEOWNERS rule `fuzz/corpus/**  @bb-connor` requires a
+# Merge gate: CODEOWNERS rule `fuzz/corpus/**  Chio maintainers` requires a
 # maintainer review before the PR can land.
 #
 # Required check name: fuzz_corpus_sync / sync (advisory)
@@ -20,7 +20,7 @@ on:
   workflow_dispatch:
     inputs:
       source_ref:
-        description: "arc-fuzz-corpus ref to pull from (default: main)"
+        description: "chio-fuzz-corpus ref to pull from (default: main)"
         required: false
         type: string
         default: "main"
@@ -34,7 +34,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  CORPUS_REPO: "bb-connor/arc-fuzz-corpus"
+  CORPUS_REPO: "backbay-labs/chio-fuzz-corpus"
   SOURCE_REF: ${{ inputs.source_ref || 'main' }}
 
 jobs:
@@ -55,7 +55,7 @@ jobs:
         working-directory: chio
         run: bash scripts/check-upstream-skips.sh
 
-      # The sibling private corpus repo `bb-connor/arc-fuzz-corpus` and the
+      # The sibling private corpus repo `backbay-labs/chio-fuzz-corpus` and the
       # `FUZZ_CORPUS_PAT` token are provisioned out-of-band; until they
       # exist this workflow has nothing to pull, so skip the sync cleanly
       # rather than hard-failing every Sunday cron with `Input required and
@@ -74,25 +74,25 @@ jobs:
             echo "fuzz_corpus_sync: FUZZ_CORPUS_PAT not configured; skipping sync"
           fi
 
-      - name: Checkout arc-fuzz-corpus sibling repo
+      - name: Checkout chio-fuzz-corpus sibling repo
         if: steps.storage.outputs.enabled == 'true'
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           repository: ${{ env.CORPUS_REPO }}
           ref: ${{ env.SOURCE_REF }}
           token: ${{ secrets.FUZZ_CORPUS_PAT }}
-          path: arc-fuzz-corpus
+          path: chio-fuzz-corpus
           fetch-depth: 1
 
       - name: Record source corpus commit
         id: source
         if: steps.storage.outputs.enabled == 'true'
-        working-directory: arc-fuzz-corpus
+        working-directory: chio-fuzz-corpus
         run: |
           set -euo pipefail
           src_sha="$(git rev-parse HEAD)"
           src_short="$(git rev-parse --short HEAD)"
-          printf 'arc-fuzz-corpus HEAD: %s\n' "${src_sha}"
+          printf 'chio-fuzz-corpus HEAD: %s\n' "${src_sha}"
           {
             echo "sha=${src_sha}"
             echo "short=${src_short}"
@@ -104,10 +104,10 @@ jobs:
         working-directory: chio
         run: |
           set -euo pipefail
-          src_root="${GITHUB_WORKSPACE}/arc-fuzz-corpus/corpus"
+          src_root="${GITHUB_WORKSPACE}/chio-fuzz-corpus/corpus"
           dst_root="fuzz/corpus"
           if [[ ! -d "${src_root}" ]]; then
-            echo "no corpus/ directory in arc-fuzz-corpus; nothing to sync"
+            echo "no corpus/ directory in chio-fuzz-corpus; nothing to sync"
             {
               echo "added_files=0"
               echo "targets_changed="
@@ -220,7 +220,7 @@ jobs:
           # Build commit message via printf to avoid shell heredoc parsing
           # surprises in the YAML pre-pass.
           {
-            printf 'chore(fuzz): sync minimized corpus from arc-fuzz-corpus\n\n'
+            printf 'chore(fuzz): sync minimized corpus from chio-fuzz-corpus\n\n'
             printf 'Pulled %s newly minimized seeds from %s@%s.\n\n' \
               "${ADDED_FILES}" "${CORPUS_REPO}" "${SOURCE_SHORT}"
             printf 'Targets touched:\n%s\n\n' "${TARGETS_CHANGED:-(see PR body)}"
@@ -246,9 +246,9 @@ jobs:
             printf 'land in seed corpora. If gitleaks fires, the workflow refuses\n'
             printf 'to open the PR.\n\n'
             printf '### Maintainer review gate\n\n'
-            printf "The CODEOWNERS rule %sfuzz/corpus/** @bb-connor%s requires\n" \
+            printf "The CODEOWNERS rule %sfuzz/corpus/** Chio maintainers%s requires\n" \
               "${BT}" "${BT}"
-            printf 'a @bb-connor review before this PR can merge.\n\n'
+            printf 'a Chio maintainers review before this PR can merge.\n\n'
             printf -- '---\n\n'
             printf "Auto-opened by %s.github/workflows/fuzz_corpus_sync.yml%s.\n" \
               "${BT}" "${BT}"
@@ -256,5 +256,5 @@ jobs:
           gh pr create \
             --base "${GITHUB_REF_NAME}" \
             --head "${branch}" \
-            --title "chore(fuzz): sync minimized corpus from arc-fuzz-corpus" \
+            --title "chore(fuzz): sync minimized corpus from chio-fuzz-corpus" \
             --body-file /tmp/pr-body.md

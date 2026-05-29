@@ -78,7 +78,9 @@ where present) reflect the PARTIAL label.
 omitted by `audits/evidence/mutants/.gitignore`: cargo-mutants records
 local process metadata and per-mutant console transcripts in those files. The committed evidence is
 the dated JSON summary plus `caught.txt`, `missed.txt`, `timeout.txt`,
-`unviable.txt`, `mutants.json`, and per-mutant `diff/` patches.
+`unviable.txt`. The per-mutant `diff/` patches and `mutants.json` catalogue
+are produced per-run and published as release artifacts rather than
+committed to the repository.
 
 To regenerate the omitted files locally, rerun:
 

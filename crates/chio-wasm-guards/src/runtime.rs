@@ -705,7 +705,7 @@ pub mod wasmtime_backend {
         }
     }
 
-    /// Load a WASM guard enforcing the Phase 1.3 signing policy.
+    /// Load a WASM guard enforcing the signing policy.
     ///
     /// Reads `wasm_path` from disk, verifies that the signature sidecar
     /// (`wasm_path + ".sig"`) is present and valid per
@@ -1056,8 +1056,8 @@ pub mod wasmtime_backend {
     impl WasmtimeBackend {
         /// Create a new Wasmtime backend with its own shared engine.
         ///
-        /// For backward compatibility; callers that want to share an engine
-        /// across multiple guards should use [`with_engine`] instead.
+        /// Convenience constructor that creates its own engine; callers sharing
+        /// an engine across guards should use [`with_engine`] instead.
         pub fn new() -> Result<Self, WasmGuardError> {
             let engine = create_shared_engine()?;
             Ok(Self {
@@ -1280,7 +1280,7 @@ pub mod wasmtime_backend {
                     }
                 }
             } else {
-                // No chio_alloc export -- use legacy offset-0 protocol
+                // No chio_alloc export -- use offset-0 placement (core-module ABI)
                 0
             };
 
@@ -1330,7 +1330,7 @@ pub mod wasmtime_backend {
                     let reason = if let Some(ref reason_fn) = deny_reason_fn {
                         read_structured_deny_reason(reason_fn, &memory, &mut store)
                     } else {
-                        // Fallback to legacy offset-64K NUL-terminated string
+                        // Fallback to core-module offset-64K NUL-terminated deny string (no chio_deny_reason export)
                         read_deny_reason(&memory, &store)
                     };
 
@@ -1447,7 +1447,7 @@ pub mod wasmtime_backend {
     }
 
     // -------------------------------------------------------------------
-    // Phase 5.6: Policy-driven loading with placeholders and capability
+    // Policy-driven loading with placeholders and capability
     // intersection.
     // -------------------------------------------------------------------
 
@@ -1463,11 +1463,10 @@ pub mod wasmtime_backend {
 
     /// A single WASM guard declared in the policy YAML.
     ///
-    /// This is the Chio-side equivalent of ClawdStrike's `custom.rs` plugin
-    /// entry: it names the module, points at its `.wasm` bytes (either on
-    /// disk or inline), declares the host-function capabilities the guard
-    /// needs, and carries a JSON config blob that may contain `${ENV_VAR}`
-    /// placeholders.
+    /// A custom-guard plugin entry: it names the module, points at its `.wasm`
+    /// bytes (either on disk or inline), declares the host-function
+    /// capabilities the guard needs, and carries a JSON config blob that may
+    /// contain `${ENV_VAR}` placeholders.
     #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
     pub struct PolicyCustomGuard {
         /// Human-readable guard name. Used for logs, receipts, and to identify
@@ -1510,7 +1509,7 @@ pub mod wasmtime_backend {
         pub advisory: bool,
 
         /// Hex-encoded Ed25519 public key of the trusted signer. Enforced via
-        /// the Phase 1.3 signing path ([`crate::manifest::verify_guard_signature`]).
+        /// the signing path ([`crate::manifest::verify_guard_signature`]).
         /// When set the `.wasm.sig` sidecar MUST exist.
         #[serde(default)]
         pub signer_public_key: Option<String>,
@@ -1690,7 +1689,7 @@ pub mod wasmtime_backend {
     ///
     /// 3. **Signature verification.** If the guard declares
     ///    `signer_public_key` (or `allow_unsigned = false` with no key), the
-    ///    Phase 1.3 signing path ([`crate::manifest::verify_guard_signature`])
+    ///    signing path ([`crate::manifest::verify_guard_signature`])
     ///    is invoked. For on-disk modules the `.wasm.sig` sidecar is
     ///    consulted; for inline modules only `allow_unsigned = true` is
     ///    accepted (there is no sidecar to check).
@@ -1744,7 +1743,7 @@ pub mod wasmtime_backend {
                 })?;
             let config_map = json_object_to_string_map(&resolved_config, &guard_spec.name)?;
 
-            // 3. Obtain bytes and enforce Phase 1.3 signing.
+            // 3. Obtain bytes and enforce the signing policy.
             let wasm_bytes = match &guard_spec.module {
                 PolicyModuleSource::Path { module_path } => {
                     let bytes = std::fs::read(module_path).map_err(|e| {
@@ -1755,7 +1754,7 @@ pub mod wasmtime_backend {
                     })?;
 
                     // Build a transient GuardManifest describing just the
-                    // identity + signer, so we can reuse the Phase 1.3
+                    // identity + signer, so we can reuse the signing
                     // sidecar verification path.
                     let transient_manifest = GuardManifest {
                         name: guard_spec.name.clone(),
@@ -2154,16 +2153,16 @@ pub mod wasmtime_backend {
         }
 
         #[test]
-        fn chio_deny_reason_fallback_legacy() {
+        fn chio_deny_reason_fallback_core_module() {
             // WAT module WITHOUT chio_deny_reason export.
-            // Has a NUL-terminated string at offset 65536 ("legacy reason\0").
+            // Has a NUL-terminated string at offset 65536 (core-module deny-reason ABI: "core-module reason\0").
             let wat = r#"
                 (module
                     (import "chio" "log" (func $log (param i32 i32 i32)))
                     (import "chio" "get_config" (func $get_config (param i32 i32 i32 i32) (result i32)))
                     (import "chio" "get_time_unix_secs" (func $get_time (result i64)))
                     (memory (export "memory") 2)
-                    (data (i32.const 65536) "legacy reason\00")
+                    (data (i32.const 65536) "core-module reason\00")
                     (func (export "evaluate") (param $ptr i32) (param $len i32) (result i32)
                         ;; Return DENY (1)
                         (i32.const 1)
@@ -2180,8 +2179,8 @@ pub mod wasmtime_backend {
                 GuardVerdict::Deny { reason } => {
                     assert_eq!(
                         reason.as_deref(),
-                        Some("legacy reason"),
-                        "expected legacy deny reason from offset 64K"
+                        Some("core-module reason"),
+                        "expected core-module deny reason from offset 64K"
                     );
                 }
                 _ => panic!("expected Deny verdict, got: {result:?}"),

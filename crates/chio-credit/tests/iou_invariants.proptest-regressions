@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 7de4bc31ab23b06f30235fa38380842a6ade5f29bd146f7d6249bc5194744351 # shrinks to scenario = ReceiptScenario { receipt_id: "rcpt-aaaa", timestamp: 1700000000, cost_charged: 1, currency: "USD", has_financial_metadata: true, decision: Allow, tenant_id: None }

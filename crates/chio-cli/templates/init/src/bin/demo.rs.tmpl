@@ -110,6 +110,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .arg(&receipt_db)
         .arg("receipt")
         .arg("list")
+        .arg("--admin-all")
         .arg("--limit")
         .arg("1")
         .current_dir(&project_root)

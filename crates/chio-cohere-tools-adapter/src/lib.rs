@@ -9,6 +9,13 @@
 //! into a [`chio_tool_call_fabric::ToolInvocation`] and
 //! [`lower_tool_message`](CohereAdapter::lower_tool_message) lowers a kernel
 //! verdict back into a [`ToolResultMessage`].
+//!
+//! [`chat`](CohereAdapter::chat) drives the outbound request end to end: a
+//! [`CohereTransport`] POSTs the native `/v2/chat` body to
+//! [`COHERE_CHAT_HOST`] with `Authorization: Bearer`, buffers the response, and
+//! feeds it to `lift_batch`. [`chat_stream`](CohereAdapter::chat_stream) does
+//! the same for the SSE surface and gates each `tool-call-end` frame. Tests use
+//! the hermetic [`MockTransport`]; no live network is required.
 
 #![forbid(unsafe_code)]
 
@@ -30,7 +37,10 @@ use serde_json::{json, Value};
 use thiserror::Error;
 
 pub use native::{ToolCallBlock, ToolCallFunction, ToolResultContent, ToolResultMessage};
-pub use transport::{Transport, COHERE_API_VERSION, COHERE_CHAT_HOST};
+pub use transport::{
+    CohereTransport, MockTransport, Transport, TransportError, COHERE_API_KEY_ENV,
+    COHERE_API_VERSION, COHERE_CHAT_HOST, COHERE_CHAT_PATH,
+};
 
 /// Configuration for the Cohere adapter.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -45,9 +55,8 @@ pub struct CohereAdapterConfig {
     pub public_key: String,
     /// Pinned upstream API version, always [`COHERE_API_VERSION`].
     pub api_version: String,
-    /// Cohere organization identifier. Cohere does not expose a dedicated
-    /// principal slot in the fabric `Principal` taxonomy yet; the adapter
-    /// reuses the `OpenAiOrg` slot here so receipts remain provenance-stable.
+    /// Cohere organization identifier that scopes tool calls. Stamped into the
+    /// [`Principal::CohereOrg`] provenance slot.
     pub org_id: String,
 }
 
@@ -105,6 +114,36 @@ impl CohereAdapter {
         &self.transport
     }
 
+    /// Proxy a Cohere `/v2/chat` request to the upstream endpoint and lift the
+    /// tool calls from the buffered response.
+    ///
+    /// `request_body` is the native Cohere `/v2/chat` JSON (model, messages,
+    /// tools). The transport POSTs it with the configured bearer auth, and the
+    /// buffered response is fed straight into [`lift_batch`](Self::lift_batch).
+    /// Transport-layer failures are mapped into the [`ProviderError`] taxonomy
+    /// so a failed request never reads as an empty success.
+    pub async fn chat(&self, request_body: &[u8]) -> Result<Vec<ToolInvocation>, ProviderError> {
+        let response = self.transport.send_chat(request_body).await?;
+        self.lift_batch(response)
+    }
+
+    /// Proxy a streaming Cohere `/v2/chat` request and gate the SSE response.
+    ///
+    /// `request_body` is the native Cohere `/v2/chat` JSON with `stream: true`.
+    /// The buffered SSE body is gated frame-by-frame through `evaluate` by
+    /// [`gate_sse_stream`](Self::gate_sse_stream) before any bytes are forwarded.
+    pub async fn chat_stream<F>(
+        &self,
+        request_body: &[u8],
+        evaluate: F,
+    ) -> Result<streaming::GatedSseStream, ProviderError>
+    where
+        F: FnMut(&ToolInvocation) -> Result<VerdictResult, ProviderError>,
+    {
+        let body = self.transport.send_chat_stream(request_body).await?;
+        self.gate_sse_stream(&body, evaluate)
+    }
+
     /// Lift every Cohere `tool_calls` block in a non-streaming `/v2/chat`
     /// response payload.
     pub fn lift_batch(&self, raw: ProviderRequest) -> Result<Vec<ToolInvocation>, ProviderError> {
@@ -152,7 +191,7 @@ impl CohereAdapter {
                 provider: ProviderId::Cohere,
                 request_id: call.id.clone(),
                 api_version: self.config.api_version.clone(),
-                principal: Principal::OpenAiOrg {
+                principal: Principal::CohereOrg {
                     org_id: self.config.org_id.clone(),
                 },
                 received_at: SystemTime::now(),
@@ -210,12 +249,12 @@ impl chio_provider_adapter_core::Provider for CohereAdapter {
 /// Adapter-local error taxonomy.
 #[derive(Debug, Error)]
 pub enum CohereAdapterError {
-    /// Placeholder for call sites not yet implemented.
-    #[error("cohere adapter call site is not implemented: {0}")]
-    NotImplemented(&'static str),
-    /// Bubbled up from the transport layer.
+    /// Raised while building or running the outbound HTTP transport.
     #[error(transparent)]
     Transport(#[from] transport::TransportError),
+    /// Raised while lifting or lowering a Cohere payload through the kernel.
+    #[error(transparent)]
+    Provider(#[from] ProviderError),
 }
 
 fn tool_calls(raw: ProviderRequest) -> Result<Vec<ToolCallBlock>, ProviderError> {
@@ -426,10 +465,65 @@ mod tests {
 
     #[test]
     fn error_display_is_em_dash_free() {
-        let cases = vec![CohereAdapterError::NotImplemented("/v2/chat")];
+        let cases = vec![
+            CohereAdapterError::Transport(transport::TransportError::MissingApiKey),
+            CohereAdapterError::Provider(ProviderError::Malformed("bad".to_string())),
+        ];
         for err in cases {
             let s = err.to_string();
             assert!(!s.contains('\u{2014}'));
         }
+    }
+
+    #[tokio::test]
+    async fn chat_proxies_request_and_lifts_tool_calls() {
+        let cfg = config();
+        let mock = Arc::new(transport::MockTransport::new());
+        mock.push_chat_response(
+            serde_json::to_vec(&json!({
+                "message": {
+                    "role": "assistant",
+                    "tool_plan": "I will look up the weather",
+                    "tool_calls": [
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {
+                                "name": "get_weather",
+                                "arguments": "{\"city\":\"Paris\"}"
+                            }
+                        }
+                    ]
+                }
+            }))
+            .unwrap(),
+        );
+        let adapter = CohereAdapter::new(cfg, mock.clone());
+        let request = b"{\"model\":\"command-r\",\"messages\":[],\"tools\":[]}";
+        let invocations = adapter.chat(request).await.unwrap();
+        assert_eq!(invocations.len(), 1);
+        assert_eq!(invocations[0].tool_name, "get_weather");
+        let calls = mock.calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].0, transport::COHERE_CHAT_PATH);
+        assert_eq!(calls[0].1, request);
+    }
+
+    #[tokio::test]
+    async fn chat_propagates_upstream_status_error() {
+        let cfg = config();
+        let mock = transport::MockTransport::new();
+        mock.push_error(
+            chio_provider_adapter_core::http::HttpTransportError::Status {
+                code: 503,
+                body: "service unavailable".to_string(),
+            },
+        );
+        let adapter = CohereAdapter::new(cfg, Arc::new(mock));
+        let err = adapter.chat(b"{}").await.unwrap_err();
+        assert!(matches!(
+            err,
+            ProviderError::Upstream5xx { status: 503, .. }
+        ));
     }
 }

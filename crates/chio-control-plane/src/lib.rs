@@ -15,36 +15,16 @@ use chio_errors::{ChioError, ErrorCodeSpec};
 use chio_kernel::transport::TransportError;
 use chio_kernel::{ChioKernel, KernelConfig, StructuredErrorReport};
 
-#[path = "../../chio-cli/src/policy.rs"]
-pub mod policy;
-
-#[path = "../../chio-cli/src/issuance.rs"]
-pub mod issuance;
-
-#[path = "../../chio-cli/src/certify.rs"]
-pub mod certify;
-
-#[path = "../../chio-cli/src/enterprise_federation.rs"]
-pub mod enterprise_federation;
-
-#[path = "../../chio-cli/src/federation_policy.rs"]
-pub mod federation_policy;
-
-#[path = "../../chio-cli/src/scim_lifecycle.rs"]
-pub mod scim_lifecycle;
-
 pub mod attestation;
-
-#[path = "../../chio-cli/src/passport_verifier.rs"]
-pub mod passport_verifier;
-
-#[path = "../../chio-cli/src/evidence_export.rs"]
+pub mod certify;
+pub mod enterprise_federation;
 pub mod evidence_export;
-
-#[path = "../../chio-cli/src/reputation.rs"]
+pub mod federation_policy;
+pub mod issuance;
+pub mod passport_verifier;
+pub mod policy;
 pub mod reputation;
-
-#[path = "../../chio-cli/src/trust_control.rs"]
+pub mod scim_lifecycle;
 pub mod trust_control;
 
 #[derive(
@@ -313,7 +293,7 @@ impl CliError {
                     serde_json::json!({
                         "domain": diagnostic.domain().as_str(),
                         "severity": diagnostic.severity().as_str(),
-                        "legacy_string_code": spec.map(|entry| entry.legacy_string_code),
+                        "string_code": spec.map(|entry| entry.string_code),
                         "stability": spec.map(|entry| entry.stability),
                     }),
                     diagnostic

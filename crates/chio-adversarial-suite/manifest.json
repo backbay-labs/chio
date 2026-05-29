@@ -19,7 +19,7 @@
       "expected_reason": "anchor_grafted_checkpoint_signature",
       "threat_id": "kernel_impersonation",
       "path": "cases/anchor_grafted/anchor-grafted-002.json",
-      "content_sha256": "b0ea2d9806b22644cd19d55148b99ff4148059774bc79ab7500a2e7a40070d6e"
+      "content_sha256": "b7f631fdbf9712f82bd447578d2225674cf6bfa802a87f5c925fba9d004e457a"
     },
     {
       "id": "anchor-grafted-003",
@@ -55,7 +55,7 @@
       "expected_reason": "clock_rewound_capability_window",
       "threat_id": "capability_token_theft",
       "path": "cases/clock_rewound/clock-rewound-001.json",
-      "content_sha256": "b20f381b053d391875b308ca8aba952e79c1d0200ea79baf9f21640eb424548b"
+      "content_sha256": "513c34afe579fcf9d6f86a7e4d1c28d478ae6140656e961c1baf36b9e32a8613"
     },
     {
       "id": "clock-rewound-002",
@@ -82,7 +82,7 @@
       "expected_reason": "clock_rewound_authority_epoch",
       "threat_id": "kernel_impersonation",
       "path": "cases/clock_rewound/clock-rewound-004.json",
-      "content_sha256": "6c5a1f01cfacea51bc9e64d8b39c7834c5419c2a5258e9d45bbf838882c84ed9"
+      "content_sha256": "0548ac7492b82dedf29637bd6f7aefc3d793af892320bab26832537d8180c346"
     },
     {
       "id": "clock-rewound-005",
@@ -100,7 +100,7 @@
       "expected_reason": "future_dated_receipt_window",
       "threat_id": "native_channel_replay",
       "path": "cases/future_dated/future-dated-001.json",
-      "content_sha256": "0ead4ba5c0582461fb529858dc244a437ec9d71f9f17dd2a9a4f210f9b9c99bc"
+      "content_sha256": "18447a3ec04c29f941e15295c9e60f544dbfd3e156e7628451bedff820e14f38"
     },
     {
       "id": "future-dated-002",
@@ -109,7 +109,7 @@
       "expected_reason": "future_dated_capability_issued_at",
       "threat_id": "capability_token_theft",
       "path": "cases/future_dated/future-dated-002.json",
-      "content_sha256": "ba462b9fb34f6dce15928cee3a9b0758e7e1f6ecdeb3677a83b88aad6eda444e"
+      "content_sha256": "fc98fdd847155b4c325c57f38c453727fc52a28ba8e2b438fb4ed8c31c8fbd37"
     },
     {
       "id": "future-dated-003",
@@ -136,7 +136,7 @@
       "expected_reason": "future_dated_authority_signature",
       "threat_id": "kernel_impersonation",
       "path": "cases/future_dated/future-dated-005.json",
-      "content_sha256": "9b931c9740b758c440f4c7095d9dc63c72058c9b25e6570402997ba94bdeab73"
+      "content_sha256": "70dd7a95b2572da007282fe9e77b6d13b04c873b9c86a0c48bada48688ba9eeb"
     },
     {
       "id": "partial-signature-001",
@@ -145,7 +145,7 @@
       "expected_reason": "partial_signature_envelope",
       "threat_id": "kernel_impersonation",
       "path": "cases/partial_signature/partial-signature-001.json",
-      "content_sha256": "698f23bfae5ca93563865f790d97f0b5149af4ac8cd7c1293d3dd9407cef7411"
+      "content_sha256": "4f4a432648518f8d634532e665998097b5db4cf44f45d2e4e9ec6773835ea66d"
     },
     {
       "id": "partial-signature-002",
@@ -181,7 +181,7 @@
       "expected_reason": "partial_signature_missing_expiry_claim",
       "threat_id": "capability_token_theft",
       "path": "cases/partial_signature/partial-signature-005.json",
-      "content_sha256": "73d07e4a020b646c03096c87d1f54a1bd0d679cde3a65a559e1408569ea90d49"
+      "content_sha256": "e79ed78e2323d6fcc69773271135a8251b793abc12b8a74d8a506ecdf59bee9a"
     },
     {
       "id": "replayed-nonce-001",
@@ -325,7 +325,7 @@
       "expected_reason": "sigstore_bundle_payload_mismatch",
       "threat_id": "kernel_impersonation",
       "path": "cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-001.json",
-      "content_sha256": "f4d15c472cd652cf150c69641d085d20192fba9fbd7e9e7d693cb333217aae7e"
+      "content_sha256": "78a4bfa86acb46d70df509c9610a3e1d7a4101cc224f284f6d1d8fc1fa1b445e"
     },
     {
       "id": "sigstore-bundle-payload-mismatch-002",
@@ -343,7 +343,7 @@
       "expected_reason": "sigstore_bundle_payload_mismatch",
       "threat_id": "kernel_impersonation",
       "path": "cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-003.json",
-      "content_sha256": "60b8e9c94736d036b8d1246226196133261d1e378d4d29176048a78cd2ff96b7"
+      "content_sha256": "14fdff4906386b2c2085022a75f40ad284ae359aa87e3fcd72d2a8a664cfa756"
     },
     {
       "id": "sigstore-bundle-payload-mismatch-004",
@@ -352,7 +352,7 @@
       "expected_reason": "sigstore_bundle_payload_mismatch",
       "threat_id": "tool_server_escape",
       "path": "cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-004.json",
-      "content_sha256": "635adb88841453a3d0f364d6212d09b56c22da259e42e2238934e004528dce36"
+      "content_sha256": "2f0482047db20298da8a1ca53b94438f979103172f12dc7080a2f8907b5862c3"
     },
     {
       "id": "sigstore-bundle-payload-mismatch-005",
@@ -361,7 +361,7 @@
       "expected_reason": "sigstore_bundle_payload_mismatch",
       "threat_id": "kernel_impersonation",
       "path": "cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-005.json",
-      "content_sha256": "4f61f16e0f77e8f3eddb2bf5b094503ee8806732abb3a0e3c0002da9430607a5"
+      "content_sha256": "bc7de137ed1ba550e8fedfe91b3bfd33105c0afa1d1a6d25f92f3972a4150919"
     }
   ]
 }

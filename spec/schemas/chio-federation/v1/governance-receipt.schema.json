@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://chio.dev/schemas/chio-federation/v1/governance-receipt.schema.json",
+  "$id": "https://chio.world/schemas/chio-federation/v1/governance-receipt.schema.json",
   "title": "Signed Chio Governance Receipt",
   "type": "object",
   "additionalProperties": false,

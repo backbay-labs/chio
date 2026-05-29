@@ -222,7 +222,7 @@ fn multiple_blocks_full_lifecycle() {
 
 #[test]
 fn block_kinds_are_distinct() {
-    // Sanity check that BlockKind variants are not collapsed by clone/PartialEq.
+    // BlockKind variants must not be collapsed by clone/PartialEq.
     let kinds = [
         BlockKind::ToolCall,
         BlockKind::ToolResult,

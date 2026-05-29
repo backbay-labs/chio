@@ -134,14 +134,14 @@ fn clean_match_exits_zero() {
 }
 
 #[test]
-fn legacy_from_tee_requires_tenant_pubkey() {
+fn replay_from_tee_requires_tenant_pubkey() {
     let output = run_from_tee(&fixture_path("clean_match.ndjson"), &[]);
 
     assert_exit(&output, 20);
 }
 
 #[test]
-fn legacy_from_tee_accepts_signed_capture_with_pubkey() {
+fn replay_from_tee_accepts_signed_capture_with_pubkey() {
     let dir = tempfile::tempdir().expect("tempdir");
     let key = tenant_signing_key();
     let fixture = signed_fixture_copy("clean_match.ndjson", dir.path(), &key);

@@ -36,7 +36,8 @@ pub async fn dispatch(client: &reqwest::Client) {
 EOF
 
 # Synthetic negative: crate that uses reqwest::ClientBuilder + .send() with
-# no contract. The previous (literal-only) lint missed this.
+# no contract. The lint must flag the builder form, not just literal
+# `reqwest::Client`.
 mkdir -p "$work/negative_builder/crates/chio-fake-builder/src"
 cat > "$work/negative_builder/crates/chio-fake-builder/src/lib.rs" <<'EOF'
 pub async fn dispatch() {
@@ -90,7 +91,7 @@ pub fn dispatch() {
 EOF
 
 # Synthetic negative: aliased reqwest import (`use reqwest as rq;`) used
-# to construct a Client. The previous lint did not match the alias.
+# to construct a Client. The lint must match through the alias.
 mkdir -p "$work/negative_aliased/crates/chio-fake-aliased/src"
 cat > "$work/negative_aliased/crates/chio-fake-aliased/src/lib.rs" <<'EOF'
 use reqwest as rq;

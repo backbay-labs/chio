@@ -196,7 +196,7 @@ must not be implied by the current edge surface.
 
 `session/request_permission` replaces `chio-acp-proxy`'s allowlist model
 with the kernel's full capability pipeline (guards + budgets). The edge
-maps the ACP permission type to an Chio `Operation` and scope, then
+maps the ACP permission type to a Chio `Operation` and scope, then
 delegates to `kernel.check_capability(...)`.
 
 ### 3.6 Transport

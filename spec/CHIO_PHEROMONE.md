@@ -1,4 +1,4 @@
-# Chiodos Pheromone Substrate
+# Chio Pheromone Substrate
 
 **Status:** v1 (Chio-owned pre-release; wire-frozen against `chio.pheromone-deposit.v1` and the sibling pheromone schemas)
 **Date:** 2026-05-04
@@ -6,11 +6,11 @@
 
 **Revision history (pre-v1 drafting passes):**
 - First drafting pass (2026-05-04): initial wire freeze; sqrt(N) cap framed as a Sybil-cost reducer; newcomer-discount cybersec default `N = 28`; observation-cost commitments required only for `cost_committed_only` subject classes.
-- Second drafting pass (2026-05-04): three corrections from `docs/research/CHIODOS_SCARCITY_ECONOMICS.md`. (1) `sqrt(N)` cap reframed honestly as a cost-shifter, not a cost-reducer (section 5.4). (2) Newcomer-discount default lowered to `N = 8` epochs across sectors (section 6); the prior `N = 28` is retained as a high-assurance opt-in. (3) Observation-cost commitments are now REQUIRED by default for any subject class that the participant's ladder manifest declares `destructive: true` (section 7); the previous `cost_committed_only` flag survives as a way to opt non-destructive classes into the same requirement. Wire format unchanged across these passes; the changes affect default substrate behaviour and operator guidance, not the canonical bytes.
+- Second drafting pass (2026-05-04): three corrections from `docs/research/CHIO_SCARCITY_ECONOMICS.md`. (1) `sqrt(N)` cap reframed honestly as a cost-shifter, not a cost-reducer (section 5.4). (2) Newcomer-discount default lowered to `N = 8` epochs across sectors (section 6); the prior `N = 28` is retained as a high-assurance opt-in. (3) Observation-cost commitments are now REQUIRED by default for any subject class that the participant's ladder manifest declares `destructive: true` (section 7); the previous `cost_committed_only` flag survives as a way to opt non-destructive classes into the same requirement. Wire format unchanged across these passes; the changes affect default substrate behaviour and operator guidance, not the canonical bytes.
 
 This specification freezes the wire format for the chio-pheromone
 substrate called out as the gating spec in
-`docs/research/CHIODOS_CONCEPT.md` section 4.1. Cross-trust pheromone
+`docs/research/CHIO_CONCEPT.md` section 4.1. Cross-trust pheromone
 surfaces in `chio-federation`, `chio-market`, `chio-governance`, and
 `chio-workflow` ship against the v1 wire format defined here;
 post-v1 revisions remain backward-compatible per the additive rule
@@ -29,7 +29,7 @@ whitespace, exact-form numbers. Signed bodies are signed over the JCS
 encoding of the body with the `signature` field omitted.
 
 **Consistency model.** All pheromone deposits are intrinsically
-`crdt-commutative` in the sense defined by `spec/CHIODOS_LADDER.md`
+`crdt-commutative` in the sense defined by `spec/CHIO_LADDER.md`
 section 4.1: the merge operation is concentration accumulation, FIFO
 gossip with no supersession means partition-divergent peers converge
 automatically on reconnect, and exponential decay bounds the
@@ -129,7 +129,7 @@ with `workflow_context_mismatch`.
 | `workflow_id` | string | Yes | Workflow id the deposit comments on |
 | `workflow_receipt_id` | string | Yes | Stable workflow receipt id |
 | `workflow_receipt_sha256` | string | Yes | SHA-256 of the canonical workflow receipt artifact |
-| `workflow_intersection_id` | string | Yes | Chiodos workflow-intersection artifact id |
+| `workflow_intersection_id` | string | Yes | Chio workflow-intersection artifact id |
 | `workflow_intersection_sha256` | string | Yes | SHA-256 of the canonical workflow intersection artifact |
 | `step_index` | u64 | Yes | Workflow step index |
 | `tool_receipt_id` | string | Yes | Tool receipt id referenced by the step |
@@ -230,7 +230,7 @@ Subscription is per-treaty: a peer subscribes to `(peer_kernel_id, treaty_id)`
 on the push queue. A deposit is enqueued for a peer iff the peer holds a
 subscription whose `treaty_id` is contained in the deposit's `treaty_scope`.
 Treaty handshake (out of scope here; lives with the ladder manifest in
-`spec/CHIODOS_LADDER.md` to be written) defines the subject-class allowlist
+`spec/CHIO_LADDER.md` to be written) defines the subject-class allowlist
 within a treaty.
 
 ### 3.4 Per-origin rate limit
@@ -276,9 +276,9 @@ does not require it.
 ### 4.2 `concentration_weighted` interface
 
 The reputation-weighted form takes a peer-weight closure injected by the
-chiodos runtime. The substrate stays unaware of reputation; this preserves
+chio runtime. The substrate stays unaware of reputation; this preserves
 the "no cycle into chio-reputation" property called out in
-`docs/research/CHIODOS_CONCEPT.md` section 4.1.
+`docs/research/CHIO_CONCEPT.md` section 4.1.
 
 ```rust
 fn query_concentration_weighted(
@@ -355,7 +355,7 @@ turn over together.
 **Honest framing of what the cap does** (corrected in a pre-v1
 drafting pass from earlier framing). The cap is a **cost-shifter, not
 a cost-reducer**. The
-quantitative analysis in `docs/research/CHIODOS_SCARCITY_ECONOMICS.md`
+quantitative analysis in `docs/research/CHIO_SCARCITY_ECONOMICS.md`
 shows that for a fixed dollar budget the `sqrt(N)` term cancels out of
 the closed-form attacker-budget expression: an adversary capped on
 passport keys per kernel is forced to provision more cover operator-orgs
@@ -379,7 +379,7 @@ The substrate-layer defenses that DO move the dollar-cost breakeven are
 the newcomer discount horizon `N` (section 6), the observation-cost
 commitment requirement (section 7), and the underlying passport-issuance
 cost `C` set by the participant's identity policy (hardware attestation
-versus software keys). See `CHIODOS_SCARCITY_ECONOMICS.md` for the
+versus software keys). See `CHIO_SCARCITY_ECONOMICS.md` for the
 numerical envelope per attacker class.
 
 ---
@@ -395,7 +395,7 @@ ladder manifest.
 
 **Default**: `N = 8` epochs across all sectors (revised in a pre-v1
 drafting pass from the earlier cybersec default of `N = 28`). The
-`CHIODOS_SCARCITY_ECONOMICS` analysis shows `N = 8` is the breakeven
+`CHIO_SCARCITY_ECONOMICS` analysis shows `N = 8` is the breakeven
 point at which (a) the newcomer-discount linearly amortises the
 passport-issuance cost in the attacker-budget formula and (b) honest
 agents reach full weight within operationally reasonable onboarding
@@ -407,7 +407,7 @@ latency for adversary-budget headroom)
 and MAY be lowered for fast-churn sectors with strong out-of-band
 identity verification, but participants SHOULD NOT lower `N` below `4`
 without an explicit out-of-band roster issuer (see
-`docs/research/CHIODOS_TRUST_ANCHOR_COSTS.md` Tier 1 sectors).
+`docs/research/CHIO_TRUST_ANCHOR_COSTS.md` Tier 1 sectors).
 
 The discount mitigates whitewashing: a freshly minted passport from a
 sanctioned org carries no weight until it accumulates anchored history.
@@ -435,9 +435,9 @@ body carries a `chio.pheromone-cost-commitment.v1` object:
 drafting pass):
 
 1. **Always**, for any subject class that the participant's ladder
-   manifest (`spec/CHIODOS_LADDER.md`) declares `destructive: true`.
+   manifest (`spec/CHIO_LADDER.md`) declares `destructive: true`.
    This is the v1 default; the rationale follows the
-   `CHIODOS_SCARCITY_ECONOMICS` analysis showing observation-cost
+   `CHIO_SCARCITY_ECONOMICS` analysis showing observation-cost
    commitments add a multiplicative term `m_oc` to the attacker-budget
    formula that no passport-key-cap manipulation can offset, and
    destructive subject classes are exactly the ones whose poisoning
@@ -459,13 +459,13 @@ drafting pass):
    itself MUST NOT reject them.
 
 The substrate MUST NOT itself verify the chain inclusion proof; that
-is the responsibility of the chiodos runtime, which MAY weight or
+is the responsibility of the chio runtime, which MAY weight or
 discount deposits whose commitments fail later verification (this
 preserves substrate simplicity and keeps the verification surface in
 the runtime where reputation lives).
 
 This field implements the "verifiable observation-cost commitment"
-requirement in `docs/research/CHIODOS_CONCEPT.md` section 4.1, which
+requirement in `docs/research/CHIO_CONCEPT.md` section 4.1, which
 prevents a peer from co-signing without originating evidence.
 
 ---
@@ -574,9 +574,9 @@ spec; see `spec/errors/README.md`.
 
 ## 11. Optional ZK Selective Disclosure (deferred to selective-disclosure spec)
 
-The selective-disclosure mechanism for chiodos receipts (including
+The selective-disclosure mechanism for chio receipts (including
 pheromone deposits) is normatively specified in
-`spec/CHIODOS_SELECTIVE_DISCLOSURE.md` (v1). The high-level
+`spec/CHIO_SELECTIVE_DISCLOSURE.md` (v1). The high-level
 direction:
 
 - BBS+ projection over the deposit body (`bbs-2023` cryptosuite plus

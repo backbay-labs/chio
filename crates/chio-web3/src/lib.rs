@@ -5,6 +5,8 @@
 //! chain configuration, anchoring proof bundle, oracle evidence envelope, and
 //! web3 settlement lifecycle artifacts that later live-money work must honor.
 
+#![forbid(unsafe_code)]
+
 pub use chio_core_types::{canonical, capability, crypto, hashing, merkle, receipt};
 pub use chio_credit as credit;
 

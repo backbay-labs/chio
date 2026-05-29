@@ -1,7 +1,7 @@
 //! Shell command guard -- blocks dangerous command lines.
 //!
-//! Adapted from ClawdStrike's `guards/shell_command.rs`.  The regex patterns,
-//! shlex splitter, and forbidden-path extraction are intentionally identical.
+//! Matches command lines against forbidden regex patterns, splits arguments
+//! with a shlex splitter, and extracts forbidden paths from the arguments.
 
 use regex::Regex;
 

@@ -49,7 +49,9 @@ class BedrockChioClient:
         trusted_kernel_keys: Iterable[str] | None = None,
     ) -> None:
         if region != BEDROCK_REGION:
-            raise ValueError("chio-bedrock is pinned to us-east-1 for trajectory-3")
+            raise ValueError(
+                f"chio-bedrock currently supports only the {BEDROCK_REGION} region"
+            )
         if not principal_arn or not account_id:
             raise ValueError("principal_arn and account_id are required")
         self._bedrock_runtime = bedrock_runtime

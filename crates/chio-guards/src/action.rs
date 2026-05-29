@@ -9,9 +9,8 @@ use serde_json::Value;
 
 /// A categorized action derived from a tool call request.
 ///
-/// This plays the same role as ClawdStrike's `GuardAction` enum, but is
-/// produced by inspecting `ToolCallRequest` fields rather than being
-/// supplied directly.
+/// The action is produced by inspecting `ToolCallRequest` fields rather than
+/// being supplied directly.
 #[derive(Clone, Debug)]
 pub enum ToolAction {
     /// File system read (path).
@@ -470,6 +469,32 @@ fn split_host_port(host_with_port: &str, default_port: u16) -> (String, u16) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Compile-time tripwire: this match has no `_` arm, so adding a
+    // `ToolAction` variant breaks the build here and forces an audit of every
+    // guard's action dispatch (each guard matches its domain variants and
+    // passes the rest; a new variant must be classified, not silently allowed).
+    #[test]
+    fn tool_action_dispatch_is_exhaustive() {
+        fn classify(action: &ToolAction) {
+            match action {
+                ToolAction::FileAccess(_)
+                | ToolAction::FileWrite(_, _)
+                | ToolAction::NetworkEgress(_, _)
+                | ToolAction::ShellCommand(_)
+                | ToolAction::McpTool(_, _)
+                | ToolAction::Patch(_, _)
+                | ToolAction::CodeExecution { .. }
+                | ToolAction::BrowserAction { .. }
+                | ToolAction::DatabaseQuery { .. }
+                | ToolAction::ExternalApiCall { .. }
+                | ToolAction::MemoryWrite { .. }
+                | ToolAction::MemoryRead { .. }
+                | ToolAction::Unknown => {}
+            }
+        }
+        classify(&ToolAction::Unknown);
+    }
 
     #[test]
     fn extract_file_access() {

@@ -4,8 +4,7 @@
 #   <iso8601-utc>\t<user_name> <<user_email>>\t<branch>\t<sha>\t<fixture_path>\t<reason>
 # Lines beginning with `#` are reserved as header comments. The CHIO_BLESS
 # gate (see `tests/replay/src/bless.rs`) is the only sanctioned writer.
-# Source-of-truth: `.planning/trajectory/04-deterministic-replay.md`,
-# section "CHIO_BLESS gate logic", clause 7.
+# Source-of-truth: `spec/PROTOCOL.md`, CHIO_BLESS gate logic, clause 7.
 #
 # `<sha>` discipline: at bless time the staged audit line, goldens, and
 # (optionally) `docs/replay-compat.md` are not yet committed, so the

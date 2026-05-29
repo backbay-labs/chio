@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://chio.dev/schemas/chio-runtime/v1/trust-floor-state.schema.json",
+  "$id": "https://chio.world/schemas/chio-runtime/v1/trust-floor-state.schema.json",
   "title": "Chio Runtime Trust Floor State",
   "type": "object",
   "additionalProperties": false,

@@ -76,7 +76,7 @@ namespace chio_kernel_mobile {
     [Throws=ChioMobileError]
     VerifiedCapability verify_capability_with_context(string request_json);
 
-    // Verify a portable passport envelope (Phase 20.1 wire format).
+    // Verify a portable passport envelope (v1 wire format).
     //
     // `envelope_json` is the JSON-encoded PortablePassportEnvelope.
     // `issuer_pub_hex` is the trusted authority public key in lowercase hex.

@@ -1105,8 +1105,9 @@ mod tests {
                     id: "chio.remote-receipt-store".to_string(),
                     name: "Remote receipt store".to_string(),
                     extension_point_ids: vec!["chio.kernel.receipt_store".to_string()],
-                    crate_path: "crates/chio-cli/src/trust_control.rs::RemoteReceiptStore"
-                        .to_string(),
+                    crate_path:
+                        "crates/chio-control-plane/src/trust_control.rs::RemoteReceiptStore"
+                            .to_string(),
                     implementation_source: OfficialImplementationSource::FirstParty,
                 },
                 OfficialStackComponent {

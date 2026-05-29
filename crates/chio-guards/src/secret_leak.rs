@@ -1,8 +1,7 @@
 //! Secret leak guard -- detects potential secret exposure in file writes.
 //!
-//! Adapted from ClawdStrike's `guards/secret_leak.rs`. Uses regex patterns
-//! to detect common API keys, tokens, passwords, and private keys in file
-//! write content. This is a critical security guard.
+//! Uses regex patterns to detect common API keys, tokens, passwords, and
+//! private keys in file write content. This is a critical security guard.
 
 use regex::Regex;
 use thiserror::Error;

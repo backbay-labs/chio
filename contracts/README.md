@@ -1,6 +1,6 @@
 # Chio Web3 Contracts
 
-This package is the phase `145` realization of Chio's official web3 contract
+This package is the on-chain realization of Chio's official web3 contract
 family:
 
 - `ChioRootRegistry`

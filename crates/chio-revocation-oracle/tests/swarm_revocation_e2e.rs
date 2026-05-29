@@ -1,5 +1,5 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
-//! M04.P5.T1 - 3-tier swarm acceptance test.
+//! 3-tier swarm acceptance test.
 //!
 //! Spins up a planner kernel, a coder kernel, and a tester kernel as
 //! three independent oracle + view + receipt-log triples connected by
@@ -13,14 +13,13 @@
 //! interval from revoke -> first deny on each child.
 //!
 //! The acceptance budget is 500 ms median across 100 trials, mirroring
-//! the milestone success criterion in
-//! `.planning/trajectory-2/04-recursive-delegation-revocation-oracle.md`.
+//! the success criterion in `spec/PROTOCOL.md`.
 //!
 //! As a side-effect, the harness writes a structured JSONL receipt log
-//! to a temp path captured by a `RECEIPT_LOG_PATH` env var so the
-//! companion T2 receipt-chain-proof test can walk it and assert that
-//! every allow receipt has `seen_epoch < revoke_epoch`. The two tests
-//! share their on-disk schema via `tests/common/mod.rs`.
+//! to a temp path. The companion receipt-chain-proof test builds its own
+//! self-contained log and asserts that every allow receipt has
+//! `seen_epoch < revoke_epoch`. The two tests share their on-disk schema
+//! via `tests/common/mod.rs`.
 
 #[path = "common/mod.rs"]
 mod common;
@@ -33,7 +32,7 @@ use std::time::{Duration, Instant};
 use chio_federation::{RevocationGossipPushQueue, RevocationRootGossip};
 use chio_kernel_core::{RevocationSnapshot, RevocationView, RevocationViewSubject};
 use chio_revocation_oracle::{
-    DigestRootSigner, EpochNonce, InMemoryRevocationOracle, RevocationKey, RevocationOracle,
+    Ed25519RootSigner, EpochNonce, InMemoryRevocationOracle, RevocationKey, RevocationOracle,
     SignedEpochRoot, SubjectId,
 };
 
@@ -44,9 +43,8 @@ use common::{ReceiptLog, ReceiptRecord};
 /// chain; revoking it must propagate to both children.
 const PLANNER_CAP_ID: &str = "cap-planner-root";
 
-/// Number of acceptance trials. The milestone budget is 500ms median
-/// across 100 trials; we use the same N so the test exercises the
-/// gate the success criteria specify.
+/// Number of acceptance trials. Matches the success criterion's sample
+/// size: 500ms median across 100 trials.
 const TRIALS: usize = 100;
 
 /// Hard timeout per trial. If a child fails to observe the deny
@@ -54,7 +52,7 @@ const TRIALS: usize = 100;
 /// fail-closed (we never silently treat a hang as 0ms).
 const TRIAL_TIMEOUT_MS: u64 = 1500;
 
-/// Median budget (ms) the milestone success criterion calls out.
+/// Median budget (ms) the success criterion calls out.
 const MEDIAN_BUDGET_MS: u128 = 500;
 
 /// Tight-loop sleep between consult attempts, in microseconds. Small
@@ -104,7 +102,11 @@ struct TrialOutcome {
 /// oracle rejects same-key re-insertion as `AlreadyRevoked`).
 fn run_trial(trial_idx: u64, log: &ReceiptLog) -> Result<TrialOutcome, String> {
     let planner_oracle = Arc::new(Mutex::new(InMemoryRevocationOracle::new()));
-    let signer = DigestRootSigner::new("planner-oracle", b"swarm-secret".to_vec());
+    let signer = Ed25519RootSigner::from_signing_key(
+        "planner-oracle",
+        "0505050505050505050505050505050505050505050505050505050505050505",
+    )
+    .expect("fixed seed is valid Ed25519 material");
 
     let push_queue =
         RevocationGossipPushQueue::new(8).map_err(|err| format!("push-queue init: {err:?}"))?;
@@ -147,8 +149,8 @@ fn run_trial(trial_idx: u64, log: &ReceiptLog) -> Result<TrialOutcome, String> {
         "tester-cap",
     );
 
-    // Briefly let the children record allow receipts so T2 has a
-    // pre-revoke prefix to walk. Sub-millisecond suffices.
+    // Briefly let the children record allow receipts so the proof test
+    // has a pre-revoke prefix to walk. Sub-millisecond suffices.
     thread::sleep(Duration::from_micros(200));
 
     // -- Revoke step ----------------------------------------------------
@@ -309,14 +311,9 @@ fn elapsed_us(started: Instant) -> u64 {
 
 #[test]
 fn three_tier_swarm_revoke_to_deny_under_500ms_median() {
-    // Receipt log lives under target/ so test artifacts survive the
-    // run for the T2 verifier to walk.
-    let log_path = std::env::temp_dir().join("chio-m04-p5-receipt-log.jsonl");
+    // Receipt log lives in the temp dir so the sibling proof test can walk it.
+    let log_path = std::env::temp_dir().join("chio-revocation-e2e-receipt-log.jsonl");
     let log = ReceiptLog::create(&log_path).expect("open receipt log");
-
-    // Stamp the env var so T2 (or a later debugger) can locate the
-    // log without hard-coding the path.
-    std::env::set_var("CHIO_M04_P5_RECEIPT_LOG", &log_path);
 
     log.write_header(TRIALS, MEDIAN_BUDGET_MS as u64);
 
@@ -340,7 +337,7 @@ fn three_tier_swarm_revoke_to_deny_under_500ms_median() {
     log.write_footer(median, MEDIAN_BUDGET_MS);
 
     eprintln!(
-        "M04.P5.T1: revoke->deny min={} ms, median={} ms, max={} ms across {} trials",
+        "revoke->deny min={} ms, median={} ms, max={} ms across {} trials",
         measurements.first().copied().unwrap_or(0),
         median,
         measurements.last().copied().unwrap_or(0),

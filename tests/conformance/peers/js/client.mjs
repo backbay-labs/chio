@@ -7,7 +7,7 @@ import {
   ChioClient,
   ChioSession,
   terminalMessage
-} from "../../../../packages/sdk/chio-ts/src/index.ts";
+} from "../../../../sdks/typescript/chio-ts/src/index.ts";
 
 if (process.argv.includes("--help")) {
   console.log("Chio JS conformance client");

@@ -10,7 +10,7 @@
 //!
 //! # Pipeline tiers
 //!
-//! The guard pipeline is organized in three conceptual tiers:
+//! The guard pipeline is organized in two tiers:
 //!
 //! - **Tier 1 -- HushSpec-compiled guards**: Deterministic, native Rust guards
 //!   compiled from HushSpec policy YAML via `chio_policy::compile_policy()`.
@@ -19,10 +19,6 @@
 //! - **Tier 2 -- WASM guards**: Guards loaded from `.wasm` modules, sorted by
 //!   priority (lower values first). Within the same priority, non-advisory
 //!   guards run before advisory guards.
-//!
-//! - **Tier 3 -- (reserved)**: Reserved for future advisory-only pipeline
-//!   extensions. Currently, advisory WASM guards are loaded after non-advisory
-//!   WASM guards within Tier 2.
 
 use std::sync::Arc;
 

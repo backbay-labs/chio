@@ -30,9 +30,7 @@
       "witnesses": [
         "README.md",
         "docs/release/QUALIFICATION.md",
-        "docs/release/RELEASE_AUDIT.md",
-        "docs/review/13-ship-blocker-ladder.md",
-        "docs/review/14-bounded-chio-pre-ship-checklist.md"
+        "docs/release/RELEASE_AUDIT.md"
       ]
     },
     {
@@ -49,9 +47,7 @@
       "summary": "One bounded hosted/auth profile is published and compatibility paths are explicitly demoted.",
       "witnesses": [
         "docs/release/OPERATIONS_RUNBOOK.md",
-        "docs/DPOP_INTEGRATION_GUIDE.md",
-        "docs/review/06-authentication-dpop-remediation.md",
-        "docs/review/09-session-isolation-remediation.md"
+        "docs/reference/DPOP_INTEGRATION_GUIDE.md"
       ]
     },
     {
@@ -75,8 +71,8 @@
       "id": "BOUND5-03",
       "summary": "The Track A P0 checklist maps blockers to evidence and sign-off expectations.",
       "witnesses": [
-        "docs/review/14-bounded-chio-pre-ship-checklist.md",
-        "docs/review/13-ship-blocker-ladder.md"
+        "docs/release/RELEASE_AUDIT.md",
+        "docs/release/QUALIFICATION.md"
       ]
     }
   ],

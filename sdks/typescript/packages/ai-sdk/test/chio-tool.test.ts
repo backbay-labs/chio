@@ -642,10 +642,10 @@ describe("chioTool: allow path invokes underlying execute", () => {
   });
 
   it("lifts receipt.verdict into decision when sidecar omits decision", async () => {
-    // Canonical Rust EvaluateResponse: receipt has `verdict` but no
-    // sibling `decision` field. Pre-fix, normalizeReceipt only saw
-    // `decision` and chioTool treated the result as `verdict == null`,
-    // throwing a non-authorizing ChioToolError.
+    // Canonical Rust EvaluateResponse: the receipt carries `verdict` with
+    // no sibling `decision` field. normalizeReceipt must lift `verdict`
+    // into `decision`, otherwise chioTool reads `verdict == null` and
+    // throws a non-authorizing ChioToolError.
     const { fetch } = fakeFetch([sidecarVerdictOnlyAllowResponse()]);
     const wrapped = chioTool({
       verifyReceipt: trustedReceiptVerifier,
@@ -968,9 +968,9 @@ describe("chioTool: verdict lifting across wire shapes", () => {
     // Mirrors the Rust `Verdict` enum
     // (`#[serde(tag = "verdict", rename_all = "snake_case")]`): the
     // HttpReceipt carries `verdict: {verdict:"allow"}` with NO sibling
-    // `decision` field. Before the fix, the normalizer only handled the
-    // `receipt.decision` shapes, so chioTool denied every otherwise-
-    // authorized tool use because `decision` stayed undefined.
+    // `decision` field. The normalizer must handle this tagged shape;
+    // if it only reads `receipt.decision`, chioTool denies every
+    // otherwise-authorized tool use because `decision` stays undefined.
     const { fetch } = fakeFetch([sidecarVerdictOnlyAllowResponse("r-tagged-allow")]);
     const wrapped = chioTool({
       verifyReceipt: trustedReceiptVerifier,

@@ -42,6 +42,5 @@ fuzz = ["dep:arbitrary"]
 rcgen = "0.13"
 tokio = { workspace = true }
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

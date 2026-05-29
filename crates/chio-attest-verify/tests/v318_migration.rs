@@ -144,7 +144,7 @@ fn rebuild_v318_fixture() -> ChioReceipt {
 /// recovery procedure if a future encoding bump intentionally moves the
 /// byte oracle (the canonical vector corpus signs off on every bump).
 #[test]
-#[ignore]
+#[ignore = "fixture-bless helper; run with --ignored regenerate_fixture --features pq"]
 fn regenerate_fixture() {
     let receipt = rebuild_v318_fixture();
     let json = serde_json::to_string_pretty(&receipt).unwrap();
@@ -245,13 +245,14 @@ fn rolled_hybrid_bundle_round_trips_under_pq_required() {
     assert_eq!(rolled.signature.algorithm(), SigningAlgorithm::Hybrid);
 
     // Cryptographic verification dispatches off the signature material.
-    let bytes = canonical_json_bytes(&body).unwrap();
-    assert!(rolled.kernel_key.verify(&bytes, &rolled.signature));
+    // verify_signature reconstructs the canonical signing body (the recomputed
+    // content-addressed id plus the nonce-bound metadata) that sign_with_backend
+    // actually signed over, then checks it against the hybrid signature.
+    assert!(rolled.verify_signature().unwrap());
 
     // Floor enforcement: under pq_required, hybrid is the ONLY accepted
-    // algorithm. We re-implement the dispatch table here (no
-    // chio-policy / chio-kernel dep on chio-attest-verify) to keep the
-    // test self-contained.
+    // algorithm. No chio-policy / chio-kernel dep is permitted in
+    // chio-attest-verify; the dispatch table is re-implemented inline.
     assert!(matches!(
         rolled.signature.algorithm(),
         SigningAlgorithm::Hybrid

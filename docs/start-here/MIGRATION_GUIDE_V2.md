@@ -261,7 +261,7 @@ GET /v1/receipts/query?agentSubject=<hex-encoded-ed25519-pubkey>&limit=50
 ```
 
 All filter parameters are optional and combinable. Filters are applied with
-AND semantics. See `ReceiptQueryHttpQuery` in `chio-cli/src/trust_control.rs`
+AND semantics. See `ReceiptQueryHttpQuery` in `chio-control-plane/src/trust_control.rs`
 for the full parameter list.
 
 The response includes `totalCount` (full filtered set, not just this page),

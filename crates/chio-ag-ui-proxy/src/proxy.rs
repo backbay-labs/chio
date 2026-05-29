@@ -138,8 +138,8 @@ pub enum ProxyDecision {
 pub struct AgUiProxy {
     config: AgUiProxyConfig,
     signing_key: Keypair,
-    /// Wave 1.5 hot-path wiring: persistent W1.2 sibling-sum budget
-    /// registry. Hoisted onto the proxy so siblings on a delegated
+    /// Persistent sibling-sum budget registry on the hot path. Hoisted
+    /// onto the proxy so siblings on a delegated
     /// chain can be tracked across AG-UI events for the lifetime of
     /// the proxy. A fresh per-event registry would let two siblings
     /// on different events both see the same residual headroom and

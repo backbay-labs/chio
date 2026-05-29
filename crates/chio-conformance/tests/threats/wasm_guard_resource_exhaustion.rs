@@ -5,16 +5,11 @@
 //
 // Coverage strategy: import the production
 // `chio_wasm_guards::runtime::wasmtime_backend::WasmtimeBackend`
-// directly. The Risk Register R3 entry that previously listed this
-// row as `BLOCKED-BY-ARCHITECTURE` was scoped to wasm-guard SDK v4
-// (the SDK-side multi-tenant arena work) and explicitly noted that
-// the existing per-class escape harness "pin only the harness, not
-// a production-call-path". This conformance test resolves that
-// constraint by driving the SAME production runtime-execution
-// surface (`WasmtimeBackend::load_module` / `evaluate`) used by the
-// kernel host pipeline, so the deny path that the threat row targets
-// is exercised through a workspace-path import without depending on
-// the deferred SDK v4. The escape-class fixture pins are kept as a
+// directly. This conformance test drives the SAME production
+// runtime-execution surface (`WasmtimeBackend::load_module` /
+// `evaluate`) used by the kernel host pipeline, so the deny path
+// that the threat row targets is exercised through a workspace-path
+// import. The escape-class fixture pins are kept as a
 // supplementary regression net (a stealth removal of any of them
 // still trips this test).
 //

@@ -21,9 +21,9 @@ use serde_wasm_bindgen::from_value;
 use wasm_bindgen::JsValue;
 use wasm_bindgen_test::wasm_bindgen_test;
 
-/// M04 receipt-binding vector corpus, embedded at compile time. The
+/// Receipt-binding vector corpus, embedded at compile time. The
 /// path is relative to this source file. The corpus is owned by the
-/// canonical-bindings track (M04) so this dependency is one-way: this
+/// canonical-bindings track so this dependency is one-way: this
 /// test consumes it, never mutates it.
 const RECEIPT_BINDING_VECTORS: &str =
     include_str!("../../../tests/bindings/vectors/receipt/v1.json");
@@ -36,7 +36,7 @@ fn fixture_envelope_for(case_id: &str) -> Vec<u8> {
     let case = cases
         .iter()
         .find(|case| case["id"] == case_id)
-        .unwrap_or_else(|| panic!("case {case_id} not in M04 receipt corpus"));
+        .unwrap_or_else(|| panic!("case {case_id} not in receipt corpus"));
     serde_json::to_vec(&case["receipt"]).unwrap()
 }
 
@@ -47,7 +47,7 @@ fn fixture_case(case_id: &str) -> serde_json::Value {
         .unwrap()
         .iter()
         .find(|case| case["id"] == case_id)
-        .unwrap_or_else(|| panic!("case {case_id} not in M04 receipt corpus"))
+        .unwrap_or_else(|| panic!("case {case_id} not in receipt corpus"))
         .clone()
 }
 
@@ -94,7 +94,7 @@ fn verify_receipt_vector_corpus_matches_expected_without_pinning() {
 
 #[wasm_bindgen_test]
 fn verify_receipt_allow_fixture_is_signature_only_without_pinning() {
-    // M04 case: known-good signed allow receipt with valid parameter hash.
+    // Case: known-good signed allow receipt with valid parameter hash.
     let envelope = fixture_envelope_for("allow_receipt");
 
     let result_js = verify_receipt(&envelope, &JsValue::UNDEFINED).expect("verify_receipt Ok");
@@ -150,7 +150,7 @@ fn verify_receipt_rejects_untrusted_signer_when_pinned() {
 
 #[wasm_bindgen_test]
 fn verify_receipt_tampered_signature_fixture_marks_invalid() {
-    // M04 case: signature tampered, expected `signature_valid: false`.
+    // Case: signature tampered, expected `signature_valid: false`.
     let envelope = fixture_envelope_for("tampered_receipt_signature");
 
     let result_js =

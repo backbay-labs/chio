@@ -2,7 +2,7 @@
 
 - Status: Proposed
 - Decision owner: protocol and runtime lanes
-- Related plan item: `D3` in [../EXECUTION_PLAN.md](../EXECUTION_PLAN.md)
+- Related plan item: `D3` in [../EXECUTION_PLAN.md](../operations/EXECUTION_PLAN.md)
 
 ## Context
 

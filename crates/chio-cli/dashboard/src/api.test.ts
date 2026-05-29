@@ -537,32 +537,32 @@ describe('dashboard api helpers', () => {
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       6,
-      '/v1/chiodos/pheromone/alert-assurance/archive-package',
+      '/v1/chio/pheromone/alert-assurance/archive-package',
       expect.anything(),
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       7,
-      '/v1/chiodos/pheromone/alert-assurance/archive-extraction',
+      '/v1/chio/pheromone/alert-assurance/archive-extraction',
       expect.anything(),
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       8,
-      '/v1/chiodos/pheromone/alert-assurance/archive-restore-drill',
+      '/v1/chio/pheromone/alert-assurance/archive-restore-drill',
       expect.anything(),
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       9,
-      '/v1/chiodos/pheromone/alert-assurance/physical-archive',
+      '/v1/chio/pheromone/alert-assurance/physical-archive',
       expect.anything(),
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       10,
-      '/v1/chiodos/pheromone/alert-assurance/retention-handoff',
+      '/v1/chio/pheromone/alert-assurance/retention-handoff',
       expect.anything(),
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       11,
-      '/v1/chiodos/pheromone/alert-assurance/external-retention-review',
+      '/v1/chio/pheromone/alert-assurance/external-retention-review',
       expect.anything(),
     )
   })

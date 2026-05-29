@@ -51,8 +51,7 @@ use dudect_bencher::{ctbench_main, BenchRng, Class, CtRunner};
 /// Number of input pairs generated per harness invocation.
 const SAMPLES_PER_RUN: usize = 100_000;
 
-/// Build a `Signature` from a raw 64-byte array. Helper around
-/// [`Signature::from_bytes`] kept local so the harness logic reads cleanly.
+/// Build a `Signature` from a raw 64-byte array.
 fn signature_from_bytes(bytes: &[u8; 64]) -> Signature {
     Signature::from_bytes(bytes)
 }

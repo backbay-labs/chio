@@ -117,7 +117,7 @@ describe("receipt authority helpers", () => {
       receipt_kind: "mediated_decision",
       boundary_class: "prevent",
       trust_level: "mediated",
-      result: "authorized",
+      result: "allow",
       authorized: true,
       signer_key_hex: "d".repeat(64),
       ok: true,

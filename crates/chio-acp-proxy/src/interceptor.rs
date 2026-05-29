@@ -662,7 +662,7 @@ impl MessageInterceptor {
                 if request
                     .authorization_correlation_id
                     .as_deref()
-                    .map_or(true, str::is_empty)
+                    .is_none_or(str::is_empty)
                 {
                     return CapabilityGate::Block(json_rpc_error(
                         id,
@@ -681,7 +681,7 @@ impl MessageInterceptor {
                     && request
                         .tool_call_id
                         .as_deref()
-                        .map_or(true, str::is_empty)
+                        .is_none_or(str::is_empty)
                 {
                     return CapabilityGate::Block(json_rpc_error(
                         id,
@@ -689,11 +689,11 @@ impl MessageInterceptor {
                         "capability checker allowed access without a tool_call_id binding",
                     ));
                 }
-                if verdict.receipt_id.as_deref().map_or(true, str::is_empty)
+                if verdict.receipt_id.as_deref().is_none_or(str::is_empty)
                     || verdict
                         .receipt_request_id
                         .as_deref()
-                        .map_or(true, str::is_empty)
+                        .is_none_or(str::is_empty)
                 {
                     return CapabilityGate::Block(json_rpc_error(
                         id,
@@ -962,19 +962,13 @@ struct PendingCapabilityContext {
 /// `ToolKind` enum: `read`, `edit`, `execute`, `delete`, `move`,
 /// `search`, `fetch`, `think`, `switch_mode`, and `other` (with `read`
 /// reserved for file reads, `edit` for file writes, and `execute` for
-/// terminal/process invocations). Internal Chio-style aliases
-/// (`fs_read`, `fs_write`, `terminal`, `terminal_create`) are also
-/// accepted because the legacy test suite uses them and they remain
-/// unambiguous.
+/// terminal/process invocations).
 fn pending_operation_matches_event_kind(operation: &str, event_kind: &str) -> bool {
     let event_kind = event_kind.trim();
     match operation {
-        "fs_read" => matches!(event_kind, "fs_read" | "read"),
-        "fs_write" => matches!(event_kind, "fs_write" | "edit" | "write"),
-        "terminal" => matches!(
-            event_kind,
-            "terminal" | "terminal_create" | "execute" | "command"
-        ),
+        "fs_read" => matches!(event_kind, "read"),
+        "fs_write" => matches!(event_kind, "edit"),
+        "terminal" => matches!(event_kind, "execute"),
         _ => false,
     }
 }

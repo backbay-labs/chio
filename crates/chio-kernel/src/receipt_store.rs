@@ -368,7 +368,7 @@ pub trait ReceiptStore: Send + Sync {
         Ok(None)
     }
 
-    /// Persist a serialized `SessionAnchor` while the concrete P1-A type remains in flight.
+    /// Persist a serialized `SessionAnchor` (JSON form).
     fn record_session_anchor(
         &self,
         _session_id: &str,
@@ -381,7 +381,7 @@ pub trait ReceiptStore: Send + Sync {
         Ok(())
     }
 
-    /// Persist a serialized `RequestLineageRecord` while the concrete P1-A type remains in flight.
+    /// Persist a serialized `RequestLineageRecord` (JSON form).
     #[allow(clippy::too_many_arguments)]
     fn record_request_lineage(
         &self,
@@ -396,7 +396,7 @@ pub trait ReceiptStore: Send + Sync {
         Ok(())
     }
 
-    /// Persist a serialized `ReceiptLineageStatement` while the concrete P1-A type remains in flight.
+    /// Persist a serialized `ReceiptLineageStatement` (JSON form).
     #[allow(clippy::too_many_arguments)]
     fn record_receipt_lineage_statement(
         &self,

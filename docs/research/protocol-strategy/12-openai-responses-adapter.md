@@ -2,7 +2,7 @@
 
 > **Historical research note (PR 652):** Use [00-overview-v2.md](00-overview-v2.md) and [18-decision-packet.md](18-decision-packet.md) for planning. This file remains research input, not an implementation ticket.
 >
-> **Erratum (wave 3 + PR 652 review):** `tool_origin` records execution locus, not redaction policy. ADR-0010 keeps `tool_origin` and `redaction_mode` as separate signed current v1 fields. The planning default is `CallerExecuted | HostExecutedProviderReported | HostExecutedUnmediated`. References below that imply redaction as an origin variant should be read as historical.
+> **Erratum (PR 652 review):** `tool_origin` records execution locus, not redaction policy. ADR-0010 keeps `tool_origin` and `redaction_mode` as separate signed current v1 fields. The planning default is `CallerExecuted | HostExecutedProviderReported | HostExecutedUnmediated`. References below that imply redaction as an origin variant should be read as historical.
 >
 > **API refresh note (PR 652 review):** Before implementation, refresh against the current official OpenAI tools docs. `function` tools remain the clean MVP seam because the caller executes them. Current tool docs also describe `computer` as a caller-harness action surface and remote MCP / connectors as approval-mediated but externally executed surfaces, so this document's older "all built-ins are host-executed" shorthand must not drive adapter code.
 >

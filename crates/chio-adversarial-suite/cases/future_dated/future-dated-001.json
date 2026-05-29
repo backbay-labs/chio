@@ -10,7 +10,7 @@
     "case_kind": "capability_receipt",
     "capability": {
       "id": "cap-future-dated-001",
-      "issuer": "did:chio:authority:m05",
+      "issuer": "did:chio:authority:home",
       "not_before": "2026-04-30T15:00:00Z",
       "expires_at": "2026-04-30T15:05:00Z",
       "nonce": "fd-001",

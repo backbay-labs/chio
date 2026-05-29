@@ -1,7 +1,7 @@
 //! Guard DSL diagnostics.
 //!
 //! Validates `*.chio-guard.yaml` documents. The DSL describes a guard
-//! pipeline as a list of stages. P4.T6 ships a narrow check: the
+//! pipeline as a list of stages. The check is deliberately narrow: the
 //! document must be a mapping with `guards:` keying a sequence; each
 //! stage must carry an `id:` (the `urn:chio:guard:*` reference) and an
 //! optional `policy:` key. Diagnostics carry

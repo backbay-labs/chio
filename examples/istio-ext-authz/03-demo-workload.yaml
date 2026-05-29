@@ -1,7 +1,7 @@
 # Demo workload used by test-harness.sh to exercise the allow/deny flow.
 #
 # Deploys a tiny httpbin-style server into the `agent-tools` namespace with
-# the `chio.protocol/secured=true` label so the AuthorizationPolicy from
+# the `chio.world/secured=true` label so the AuthorizationPolicy from
 # 02-authorization-policy.yaml applies to it. The Service + VirtualService
 # expose two routes that matter:
 #
@@ -52,10 +52,10 @@ spec:
         # The opt-in label consumed by every AuthorizationPolicy in
         # 02-authorization-policy.yaml. Workloads that omit this label
         # skip Chio evaluation entirely.
-        chio.protocol/secured: "true"
+        chio.world/secured: "true"
       annotations:
-        chio.protocol/policy: "demo-tool-policy"
-        chio.protocol/fail-mode: "closed"
+        chio.world/policy: "demo-tool-policy"
+        chio.world/fail-mode: "closed"
     spec:
       serviceAccountName: demo-tool
       securityContext:

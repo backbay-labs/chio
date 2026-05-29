@@ -1,7 +1,7 @@
 {
   "schema": "chio.anchor-inclusion-proof.v1",
   "receipt": {
-    "id": "rcpt-web3-1",
+    "id": "041758766741b1c43902e603ce805304e3d7cc1d435b0f0c54cacda2c32131a4",
     "timestamp": 1743292800,
     "capability_id": "cap-web3-1",
     "tool_server": "chio-settle",
@@ -17,9 +17,14 @@
     "decision": {
       "verdict": "allow"
     },
+    "receipt_kind": "mediated_decision",
+    "boundary_class": "prevent",
+    "tool_origin": "caller_executed",
+    "redaction_mode": "none",
     "content_hash": "1ff0dfe4513af263d73d4cc9dedae5aeb7ecc223cb42529f23c436601403afe5",
     "policy_hash": "dc6d6cc7acce9b97eb353f08426fefba0b54cc98f38d794dab4f6770252f50df",
     "metadata": {
+      "chio_receipt_signing_nonce": "rcpt-web3-1",
       "financial": {
         "budget_remaining": 850,
         "budget_total": 1000,
@@ -49,12 +54,13 @@
         "settlement_status": "pending"
       }
     },
+    "trust_level": "mediated",
     "kernel_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
-    "signature": "8eb9e2aa3290e69362a270ce61ea9ab1269705bb62732746560c992b649ee5f3df400e9c4856644c73dbd021b9bbaf49fc57933deda3ef8d0280fa5a2484a600"
+    "signature": "c99f3bc3cadd4a0af01cb2f24cc8d4afa7b7c8c3adcd7c5cdce38f5d20d91d0f71893de0eba0c552182bced5db96039ee1d91e2a5d42518f3b48787cfcc17504"
   },
   "receipt_inclusion": {
     "checkpoint_seq": 1042,
-    "merkle_root": "0x2485929637d87c02824ba6ba507637b16b71ed85a5a76b19d889790559b71d67",
+    "merkle_root": "0x7957ab2da3ec75f08ced4377529cbd734388429ff60bbed4dae520308f017381",
     "proof": {
       "tree_size": 1,
       "leaf_index": 0,
@@ -67,10 +73,10 @@
     "batch_start_seq": 104101,
     "batch_end_seq": 104200,
     "tree_size": 1,
-    "merkle_root": "0x2485929637d87c02824ba6ba507637b16b71ed85a5a76b19d889790559b71d67",
+    "merkle_root": "0x7957ab2da3ec75f08ced4377529cbd734388429ff60bbed4dae520308f017381",
     "issued_at": 1743292800,
     "kernel_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
-    "signature": "91ef6c1f7e1789491d77fec62448d70a1b2c850ff5e29f9db7b1d8cf29034328483448ebc747826bfecbe8293c2fc74bbadd66cc61d1339a6c52ae2282b7c40a"
+    "signature": "c743917754608cf80da923fb215811dcde4468af989cb553307de33f9a5e3359029b82f5c9f8967cea16f218bd75efed389536f9f9077c16bc52126cb1474800"
   },
   "chain_anchor": {
     "chain_id": "eip155:8453",
@@ -79,7 +85,7 @@
     "tx_hash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "block_number": 12345678,
     "block_hash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-    "anchored_merkle_root": "0x2485929637d87c02824ba6ba507637b16b71ed85a5a76b19d889790559b71d67",
+    "anchored_merkle_root": "0x7957ab2da3ec75f08ced4377529cbd734388429ff60bbed4dae520308f017381",
     "anchored_checkpoint_seq": 1042
   },
   "key_binding_certificate": {

@@ -6,6 +6,7 @@
   "license": "Apache-2.0",
   "type": "module",
   "workspaces": [
+    "chio-ts",
     "packages/ai-sdk",
     "packages/chio-ai-sdk-middleware",
     "packages/chio-next",
@@ -19,7 +20,8 @@
     "packages/elysia",
     "packages/express",
     "packages/fastify",
-    "packages/node-http"
+    "packages/node-http",
+    "packages/create-chio-app"
   ],
   "engines": {
     "node": ">=20.0.0"

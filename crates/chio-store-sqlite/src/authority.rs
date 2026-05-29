@@ -454,28 +454,48 @@ impl SqliteCapabilityAuthority {
     fn update_cached_public_key(&self, public_key: PublicKey) {
         match self.cached_public_key.lock() {
             Ok(mut guard) => *guard = public_key,
-            Err(poisoned) => *poisoned.into_inner() = public_key,
+            Err(poisoned) => {
+                tracing::error!(
+                    "cached_public_key mutex is poisoned - recovering possibly-stale key material"
+                );
+                *poisoned.into_inner() = public_key;
+            }
         }
     }
 
     fn update_cached_trusted_public_keys(&self, public_keys: Vec<PublicKey>) {
         match self.cached_trusted_public_keys.lock() {
             Ok(mut guard) => *guard = public_keys,
-            Err(poisoned) => *poisoned.into_inner() = public_keys,
+            Err(poisoned) => {
+                tracing::error!(
+                    "cached_trusted_public_keys mutex is poisoned - recovering possibly-stale key material"
+                );
+                *poisoned.into_inner() = public_keys;
+            }
         }
     }
 
     fn cached_public_key(&self) -> PublicKey {
         match self.cached_public_key.lock() {
             Ok(guard) => guard.clone(),
-            Err(poisoned) => poisoned.into_inner().clone(),
+            Err(poisoned) => {
+                tracing::error!(
+                    "cached_public_key mutex is poisoned - reading possibly-stale key material"
+                );
+                poisoned.into_inner().clone()
+            }
         }
     }
 
     fn cached_trusted_public_keys(&self) -> Vec<PublicKey> {
         match self.cached_trusted_public_keys.lock() {
             Ok(guard) => guard.clone(),
-            Err(poisoned) => poisoned.into_inner().clone(),
+            Err(poisoned) => {
+                tracing::error!(
+                    "cached_trusted_public_keys mutex is poisoned - reading possibly-stale key material"
+                );
+                poisoned.into_inner().clone()
+            }
         }
     }
 

@@ -4,12 +4,12 @@ use std::path::Path;
 use std::time::{Duration, SystemTime};
 
 use chio_guard_registry::{
-    expected_identity_from_config, load_guard_with_policy, AttestError, AttestVerifier,
-    ExpectedIdentity, GuardArtifactConfig, GuardCache, GuardLoadEventResult, GuardLoadSource,
-    GuardNetworkState, GuardOciRef, GuardOfflineLoadError, GuardOfflineLoadRequest,
-    GuardPublishArtifact, GuardPublishArtifactInput, GuardPublishRef, GuardRegistryClient,
-    GuardRegistryConfig, GuardRegistryError, GuardSigstoreVerifier, GuardVerificationKind,
-    RegistryCredentials, Sha256Digest, VerifiedAttestation,
+    load_guard_with_policy, AttestError, AttestVerifier, ExpectedIdentity, GuardArtifactConfig,
+    GuardCache, GuardLoadEventResult, GuardLoadSource, GuardNetworkState, GuardOciRef,
+    GuardOfflineLoadError, GuardOfflineLoadRequest, GuardPublishArtifact,
+    GuardPublishArtifactInput, GuardPublishRef, GuardRegistryClient, GuardRegistryConfig,
+    GuardRegistryError, GuardSigstoreVerifier, GuardVerificationKind, RegistryCredentials,
+    Sha256Digest, VerifiedAttestation,
 };
 use oci_distribution::client::{Client, ClientConfig, ClientProtocol};
 use oci_distribution::secrets::RegistryAuth;
@@ -29,7 +29,7 @@ const ZOT_PORT: u16 = 5000;
 const REPOSITORY: &str = "chio/guard-registry/zot-integration";
 const TAG: &str = "suite";
 const SIGNER_SUBJECT: &str =
-    "https://github.com/backbay/chio/.github/workflows/release-binaries.yml@refs/tags/v1.0.0";
+    "https://github.com/backbay-labs/chio/.github/workflows/release-binaries.yml@refs/tags/v1.0.0";
 const OFFLINE_MISS_DIGEST: &str =
     "sha256:9999999999999999999999999999999999999999999999999999999999999999";
 const WIT_BYTES: &[u8] = b"package chio:guard@0.2.0;";
@@ -258,8 +258,8 @@ fn expected_identity() -> ExpectedIdentity
 where
     ExpectedIdentity: Sized,
 {
-    expected_identity_from_config(
-        "https://github\\.com/backbay/chio/\\.github/workflows/release-binaries\\.yml@refs/tags/v.*",
+    ExpectedIdentity::doc_hidden_inline(
+        "https://github\\.com/backbay-labs/chio/\\.github/workflows/release-binaries\\.yml@refs/tags/v.*",
         "https://token.actions.githubusercontent.com",
     )
 }

@@ -5,14 +5,18 @@
 //!
 //! # Architecture
 //!
-//! chio-siem depends on chio-core (for ChioReceipt and FinancialReceiptMetadata)
-//! and rusqlite (for direct read access to the kernel receipt database). It does
-//! NOT depend on chio-kernel, keeping the kernel TCB free of HTTP client
-//! dependencies.
+//! chio-siem depends on chio-core (for ChioReceipt and FinancialReceiptMetadata),
+//! rusqlite (for direct read access to the kernel receipt database), and
+//! chio-kernel for its read-only receipt boundary (ReceiptReadBoundary /
+//! ReceiptReadContext). The dependency is one-directional (chio-siem ->
+//! chio-kernel): the kernel does not depend on chio-siem, so SIEM HTTP-client
+//! surface stays out of the kernel TCB.
 //!
 //! The ExporterManager opens its own read-only rusqlite connection and pulls
 //! receipts using a seq-based cursor. It fans out to registered Exporter
 //! implementations with exponential backoff retry and a bounded DeadLetterQueue.
+
+#![forbid(unsafe_code)]
 
 pub mod alerting;
 pub mod dlq;

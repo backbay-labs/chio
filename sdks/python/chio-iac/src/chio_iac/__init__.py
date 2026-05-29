@@ -25,7 +25,7 @@ Public surface
   subcommand-specific scope enforcement (``plan``, ``apply``,
   ``destroy``).
 * :func:`chio_pulumi` -- decorator that gates a ``pulumi.Program``
-  callable on an Chio capability, with the same plan / apply split.
+  callable on a Chio capability, with the same plan / apply split.
 * :class:`PlanReviewGuard` -- parses Terraform / Pulumi plan JSON and
   denies out-of-scope resource types. Supports
   :class:`ResourceTypeAllowlist` and :class:`ResourceTypeDenylist`

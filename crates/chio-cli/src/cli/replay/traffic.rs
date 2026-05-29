@@ -1,16 +1,18 @@
 // `chio replay traffic` dispatcher.
 //
 // Composes the NDJSON frame iterator with the validators in `replay/validate.rs`
-// (schema-version gate, tenant-sig verifier, M01 invocation validator) and emits
+// (schema-version gate, tenant-sig verifier, invocation validator) and emits
 // per-frame output. When `--against` is supplied, routes to the re-execution
 // path in `replay/execute.rs`.
+
+use super::*;
 
 /// Dispatch `chio replay traffic` against the supplied [`TrafficArgs`].
 ///
 /// Per-frame pipeline: NDJSON parse, schema-version gate, optional tenant-sig
-/// verify, M01 invocation validate. When `--against` is supplied, routes
+/// verify, invocation validate. When `--against` is supplied, routes
 /// through [`run_traffic_replay`] instead.
-fn cmd_replay_traffic(args: &TrafficArgs) -> Result<(), CliError> {
+pub(crate) fn cmd_replay_traffic(args: &TrafficArgs) -> Result<(), CliError> {
     if let Some(against_str) = args.against.as_deref() {
         return cmd_replay_traffic_with_against(args, against_str);
     }
@@ -222,12 +224,12 @@ fn traffic_diff_exit_code(diff: &TrafficReplayDiffReport) -> i32 {
 }
 
 #[cfg(not(test))]
-fn finish_replay_failure(code: i32, _message: String) -> Result<(), CliError> {
+pub(crate) fn finish_replay_failure(code: i32, _message: String) -> Result<(), CliError> {
     std::process::exit(code);
 }
 
 #[cfg(test)]
-fn finish_replay_failure(_code: i32, message: String) -> Result<(), CliError> {
+pub(crate) fn finish_replay_failure(_code: i32, message: String) -> Result<(), CliError> {
     Err(CliError::replay_mismatch_error(message))
 }
 
@@ -301,7 +303,7 @@ mod replay_traffic_tests {
             },
             request_blob_sha256: "a".repeat(64),
             response_blob_sha256: "b".repeat(64),
-            redaction_pass_id: "m06-redactors@1.4.0+default".to_string(),
+            redaction_pass_id: "redactors@1.4.0+default".to_string(),
             verdict: chio_tee_frame::Verdict::Allow,
             deny_reason: None,
             would_have_blocked: false,
@@ -401,7 +403,7 @@ mod replay_traffic_tests {
     }
 
     #[test]
-    fn exit_parse_error_constant_matches_m04_registry() {
+    fn exit_parse_error_constant_matches_canonical_registry() {
         assert_eq!(EXIT_PARSE_ERROR, 30);
     }
 }

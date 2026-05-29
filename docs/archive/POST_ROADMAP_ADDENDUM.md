@@ -9,9 +9,8 @@
 > remaining repo-solvable closure path after Phase 20.
 >
 > **Authority rule**: This document is subordinate to
-> `docs/review/17-post-closure-execution-board.md`,
-> `docs/release/QUALIFICATION.md`, `docs/release/RELEASE_AUDIT.md`, and the
-> current `.planning` state. It is not a replacement ship-boundary document.
+> `docs/release/QUALIFICATION.md` and `docs/release/RELEASE_AUDIT.md`. It is
+> not a replacement ship-boundary document.
 
 ---
 
@@ -59,22 +58,20 @@ Phases 26 through 31 are the remaining repo-solvable full-vision closure path.
 > **Depends on**: Completion of the current roadmap or an explicit decision to
 > pause lower-priority roadmap breadth.
 > **Refs**:
-> - `docs/review/07-ha-control-plane-remediation.md`
-> - `docs/review/08-distributed-budget-remediation.md`
 > - `docs/release/RELEASE_AUDIT.md`
 > - `docs/release/QUALIFICATION.md`
 
 **Current repo baseline**:
-- [`crates/chio-kernel/src/authority.rs`](../crates/chio-kernel/src/authority.rs),
-  [`crates/chio-cli/src/trust_control/cluster_and_reports.rs`](../crates/chio-cli/src/trust_control/cluster_and_reports.rs),
+- [`crates/chio-kernel/src/authority.rs`](../../crates/chio-kernel/src/authority.rs),
+  [`crates/chio-control-plane/src/trust_control/cluster_and_reports.rs`](../../crates/chio-control-plane/src/trust_control/cluster_and_reports.rs),
   and
-  [`crates/chio-cli/src/trust_control/service_runtime.rs`](../crates/chio-cli/src/trust_control/service_runtime.rs)
+  [`crates/chio-control-plane/src/trust_control/service_runtime.rs`](../../crates/chio-control-plane/src/trust_control/service_runtime.rs)
   already provide a real authority and clustered trust-control surface. The
   remaining gap is fenced custody and stale-leader rejection, not absence of an
   authority subsystem.
-- [`crates/chio-kernel/src/budget_store.rs`](../crates/chio-kernel/src/budget_store.rs),
-  [`crates/chio-store-sqlite/src/budget_store.rs`](../crates/chio-store-sqlite/src/budget_store.rs),
-  and [`crates/chio-cli/tests/trust_cluster.rs`](../crates/chio-cli/tests/trust_cluster.rs)
+- [`crates/chio-kernel/src/budget_store.rs`](../../crates/chio-kernel/src/budget_store.rs),
+  [`crates/chio-store-sqlite/src/budget_store.rs`](../../crates/chio-store-sqlite/src/budget_store.rs),
+  and [`crates/chio-cli/tests/trust_cluster.rs`](../../crates/chio-cli/tests/trust_cluster.rs)
   already implement hold and mutation-event substrate plus clustered tests.
   Phase 21 is about making those holds and events authoritative across the HA
   path instead of leaving money truth partly leader-local or merge-shaped.
@@ -87,10 +84,10 @@ leader fencing.
 
 **Files**:
 - `crates/chio-kernel/src/authority.rs`
-- `crates/chio-cli/src/trust_control/cluster_and_reports.rs`
-- `crates/chio-cli/src/trust_control/service_runtime.rs`
-- `crates/chio-cli/src/trust_control/service_types.rs`
-- `crates/chio-cli/src/trust_control/http_handlers_b.rs`
+- `crates/chio-control-plane/src/trust_control/cluster_and_reports.rs`
+- `crates/chio-control-plane/src/trust_control/service_runtime.rs`
+- `crates/chio-control-plane/src/trust_control/service_types.rs`
+- `crates/chio-control-plane/src/trust_control/http_handlers_b.rs`
 
 **Acceptance**:
 - authority seed material is no longer serialized and replayed as ordinary
@@ -109,8 +106,8 @@ bounded money truth into a stronger claim.
 **Files**:
 - `crates/chio-kernel/src/budget_store.rs`
 - `crates/chio-store-sqlite/src/budget_store.rs`
-- `crates/chio-cli/src/trust_control/service_runtime.rs`
-- `crates/chio-cli/src/trust_control/service_types.rs`
+- `crates/chio-control-plane/src/trust_control/service_runtime.rs`
+- `crates/chio-control-plane/src/trust_control/service_types.rs`
 - `crates/chio-cli/tests/trust_cluster.rs`
 
 **Acceptance**:
@@ -156,15 +153,15 @@ authoritative budget semantics.
 > - `docs/guards/13-CODE-EXECUTION-GUARDS.md`
 
 **Current repo baseline**:
-- [`crates/chio-wasm-guards/src/wiring.rs`](../crates/chio-wasm-guards/src/wiring.rs),
-  [`crates/chio-wasm-guards/src/manifest.rs`](../crates/chio-wasm-guards/src/manifest.rs),
-  [`crates/chio-wasm-guards/src/runtime.rs`](../crates/chio-wasm-guards/src/runtime.rs),
-  and [`crates/chio-cli/src/guards/sign.rs`](../crates/chio-cli/src/guards/sign.rs)
+- [`crates/chio-wasm-guards/src/wiring.rs`](../../crates/chio-wasm-guards/src/wiring.rs),
+  [`crates/chio-wasm-guards/src/manifest.rs`](../../crates/chio-wasm-guards/src/manifest.rs),
+  [`crates/chio-wasm-guards/src/runtime.rs`](../../crates/chio-wasm-guards/src/runtime.rs),
+  and [`crates/chio-cli/src/guards/sign.rs`](../../crates/chio-cli/src/guards/sign.rs)
   already provide signed-guard machinery. The open issue is that the default
   loader path still needs mandatory signature enforcement.
-- [`crates/chio-data-guards/src/sql_parser.rs`](../crates/chio-data-guards/src/sql_parser.rs),
-  [`crates/chio-data-guards/src/sql_guard.rs`](../crates/chio-data-guards/src/sql_guard.rs),
-  and [`crates/chio-policy/src/compiler.rs`](../crates/chio-policy/src/compiler.rs)
+- [`crates/chio-data-guards/src/sql_parser.rs`](../../crates/chio-data-guards/src/sql_parser.rs),
+  [`crates/chio-data-guards/src/sql_guard.rs`](../../crates/chio-data-guards/src/sql_guard.rs),
+  and [`crates/chio-policy/src/compiler.rs`](../../crates/chio-policy/src/compiler.rs)
   already implement real data-guard and policy-compiler paths. Phase 22 closes
   known bypass and coverage gaps in those existing paths rather than adding a
   brand-new guard stack.
@@ -230,23 +227,21 @@ policy block lacks a runtime guard mapping.
 > truth so receipts and reports stop widening economic claims by default.
 > **Depends on**: Phase 21.
 > **Refs**:
-> - `docs/review/10-economic-authorization-remediation.md`
-> - `docs/review/17-post-closure-execution-board.md`
 > - `docs/AGENT_ECONOMY.md`
 > - `docs/TOOL_PRICING_GUIDE.md`
 
 **Current repo baseline**:
-- [`crates/chio-kernel/src/payment.rs`](../crates/chio-kernel/src/payment.rs)
+- [`crates/chio-kernel/src/payment.rs`](../../crates/chio-kernel/src/payment.rs)
   already defines both `not_applicable` and `settled`, while
-  [`crates/chio-kernel/src/kernel/mod.rs`](../crates/chio-kernel/src/kernel/mod.rs)
+  [`crates/chio-kernel/src/kernel/mod.rs`](../../crates/chio-kernel/src/kernel/mod.rs)
   and
-  [`crates/chio-kernel/src/kernel/responses.rs`](../crates/chio-kernel/src/kernel/responses.rs)
+  [`crates/chio-kernel/src/kernel/responses.rs`](../../crates/chio-kernel/src/kernel/responses.rs)
   still surface `settled` on some no-adapter paths. Phase 23 corrects that
   truth boundary rather than inventing settlement support from zero.
-- [`crates/chio-kernel/src/operator_report.rs`](../crates/chio-kernel/src/operator_report.rs),
-  [`crates/chio-store-sqlite/src/receipt_store/reports.rs`](../crates/chio-store-sqlite/src/receipt_store/reports.rs),
+- [`crates/chio-kernel/src/operator_report.rs`](../../crates/chio-kernel/src/operator_report.rs),
+  [`crates/chio-store-sqlite/src/receipt_store/reports.rs`](../../crates/chio-store-sqlite/src/receipt_store/reports.rs),
   and
-  [`crates/chio-kernel/tests/property_budget_store.rs`](../crates/chio-kernel/tests/property_budget_store.rs)
+  [`crates/chio-kernel/tests/property_budget_store.rs`](../../crates/chio-kernel/tests/property_budget_store.rs)
   already preserve hold lineage, guarantee level, and budget-authority context
   on several reporting paths. The remaining work is preventing later report and
   export layers from collapsing budget, meter, rail, and settlement truth into
@@ -318,29 +313,27 @@ reconciliation surfaces.
 > the same thing.
 > **Depends on**: Phases 21 through 23.
 > **Refs**:
-> - `docs/review/13-ship-blocker-ladder.md`
-> - `docs/review/15-vision-gap-map.md`
 > - `docs/release/RELEASE_AUDIT.md`
 > - `docs/release/QUALIFICATION.md`
 
 **Current repo baseline**:
-- [`docs/release/QUALIFICATION.md`](release/QUALIFICATION.md),
-  [`docs/release/RELEASE_AUDIT.md`](release/RELEASE_AUDIT.md),
-  [`scripts/qualify-bounded-chio.sh`](../scripts/qualify-bounded-chio.sh), and
-  [`scripts/qualify-release.sh`](../scripts/qualify-release.sh) already define
+- [`docs/release/QUALIFICATION.md`](../release/QUALIFICATION.md),
+  [`docs/release/RELEASE_AUDIT.md`](../release/RELEASE_AUDIT.md),
+  `scripts/qualify-bounded-chio.sh`, and
+  [`scripts/qualify-release.sh`](../../scripts/qualify-release.sh) already define
   a real bounded-release qualification surface. Phase 24 is mainly about claim
   synchronization and gate enforcement.
 - Public entry-point crates already exist at
-  [`crates/chio-api-protect`](../crates/chio-api-protect),
-  [`crates/chio-http-core`](../crates/chio-http-core),
-  [`crates/chio-hosted-mcp`](../crates/chio-hosted-mcp),
-  [`crates/chio-openapi`](../crates/chio-openapi),
-  [`crates/chio-openapi-mcp-bridge`](../crates/chio-openapi-mcp-bridge),
-  [`crates/chio-workflow`](../crates/chio-workflow), and
-  [`crates/chio-http-session`](../crates/chio-http-session). Existing public
+  [`crates/chio-api-protect`](../../crates/chio-api-protect),
+  [`crates/chio-http-core`](../../crates/chio-http-core),
+  [`crates/chio-hosted-mcp`](../../crates/chio-hosted-mcp),
+  [`crates/chio-openapi`](../../crates/chio-openapi),
+  [`crates/chio-openapi-mcp-bridge`](../../crates/chio-openapi-mcp-bridge),
+  [`crates/chio-workflow`](../../crates/chio-workflow), and
+  [`crates/chio-http-session`](../../crates/chio-http-session). Existing public
   boundary docs such as
-  [`spec/OPENAPI-INTEGRATION.md`](../spec/OPENAPI-INTEGRATION.md) and
-  [`docs/standards/CHIO_CROSS_PROTOCOL_QUALIFICATION_MATRIX.json`](standards/CHIO_CROSS_PROTOCOL_QUALIFICATION_MATRIX.json)
+  [`spec/OPENAPI-INTEGRATION.md`](../../spec/OPENAPI-INTEGRATION.md) and
+  [`docs/standards/CHIO_CROSS_PROTOCOL_QUALIFICATION_MATRIX.json`](../standards/CHIO_CROSS_PROTOCOL_QUALIFICATION_MATRIX.json)
   already reference parts of that surface.
 
 ### 24.1 Claim-Discipline Sync Gate
@@ -359,8 +352,6 @@ for milestone and claim drift against the existing bounded Chio release boundary
 - `docs/release/OPERATIONS_RUNBOOK.md`
 - `docs/release/OBSERVABILITY.md`
 - `docs/release/RISK_REGISTER.md`
-- `.planning/PROJECT.md`
-- `.planning/STATE.md`
 - new script under `scripts/`
 
 **Acceptance**:
@@ -420,12 +411,12 @@ pre-merge gate, a post-merge release gate, or split by surface.
 > - `docs/SDK_PARITY_EXECUTION_ROADMAP.md`
 
 **Current repo baseline**:
-- [`packages/sdk/chio-py`](../packages/sdk/chio-py) and
-  [`packages/sdk/chio-ts`](../packages/sdk/chio-ts) already exist with package
+- [`sdks/python/chio-py`](../../sdks/python/chio-py) and
+  [`sdks/typescript/chio-ts`](../../sdks/typescript/chio-ts) already exist with package
   structure, tests, and release-check scripts such as
-  [`scripts/check-chio-py-release.sh`](../scripts/check-chio-py-release.sh) and
-  [`scripts/check-chio-ts-release.sh`](../scripts/check-chio-ts-release.sh).
-- [`crates/chio-http-core/src/verdict.rs`](../crates/chio-http-core/src/verdict.rs)
+  [`scripts/check-chio-py-release.sh`](../../scripts/check-chio-py-release.sh) and
+  [`scripts/check-chio-ts-release.sh`](../../scripts/check-chio-ts-release.sh).
+- [`crates/chio-http-core/src/verdict.rs`](../../crates/chio-http-core/src/verdict.rs)
   already emits richer deny structure, and the remaining work is carrying that
   contract cleanly through the Python and TypeScript SDKs and into externally
   consumable artifacts.
@@ -437,11 +428,11 @@ the enriched Rust contract is visible to users.
 
 **Files**:
 - `crates/chio-http-core/src/verdict.rs`
-- `packages/sdk/chio-py/src/chio/errors.py`
-- `packages/sdk/chio-py/tests/test_errors.py`
-- `packages/sdk/chio-ts/src/errors.ts`
-- `packages/sdk/chio-ts/src/types.ts`
-- `packages/sdk/chio-ts/test/errors.test.ts`
+- `sdks/python/chio-py/src/chio/errors.py`
+- `sdks/python/chio-py/tests/test_errors.py`
+- `sdks/typescript/chio-ts/src/errors.ts`
+- `sdks/typescript/chio-ts/src/types.ts`
+- `sdks/typescript/chio-ts/test/errors.test.ts`
 
 **Acceptance**:
 - Python and TypeScript surface the same deny details contract that Rust emits
@@ -454,9 +445,9 @@ the enriched Rust contract is visible to users.
 `MockChioClient`.
 
 **Files**:
-- `packages/sdk/chio-ts/src/testing.ts`
-- `packages/sdk/chio-ts/package.json`
-- `packages/sdk/chio-ts/test/`
+- `sdks/typescript/chio-ts/src/testing.ts`
+- `sdks/typescript/chio-ts/package.json`
+- `sdks/typescript/chio-ts/test/`
 
 **Acceptance**:
 - JavaScript and TypeScript users can unit test without a live sidecar
@@ -470,10 +461,10 @@ the enriched Rust contract is visible to users.
 and verifiable as release outputs.
 
 **Files**:
-- `packages/sdk/chio-py/pyproject.toml`
-- `packages/sdk/chio-ts/package.json`
-- `packages/sdk/chio-py/RELEASING.md`
-- `packages/sdk/chio-ts/README.md`
+- `sdks/python/chio-py/pyproject.toml`
+- `sdks/typescript/chio-ts/package.json`
+- `sdks/python/chio-py/RELEASING.md`
+- `sdks/typescript/chio-ts/README.md`
 - `scripts/check-chio-py-release.sh`
 - `scripts/check-chio-ts-release.sh`
 - `.github/workflows/publish-typescript.yml`
@@ -517,17 +508,16 @@ falls into the following candidate phases.
 > **Goal**: Make Chio able to prove who authorized what across recursive,
 > cross-kernel, and cross-protocol execution with one durable provenance model.
 > **Refs**:
-> - `docs/review/04-provenance-call-chain-remediation.md`
-> - `docs/review/15-vision-gap-map.md`
+> - `spec/PROTOCOL.md`
 
 **Current repo baseline**:
-- [`spec/PROTOCOL.md`](../spec/PROTOCOL.md) already defines the
+- [`spec/PROTOCOL.md`](../../spec/PROTOCOL.md) already defines the
   `asserted`, `observed`, and `verified` provenance classes plus versioned
   artifacts such as `chio.session_anchor.v1`,
   `chio.request_lineage_record.v1`,
   `chio.receipt_lineage_statement.v1`, and
   `chio.call_chain_continuation.v1`.
-- [`docs/standards/CHIO_BOUNDED_OPERATIONAL_PROFILE.md`](standards/CHIO_BOUNDED_OPERATIONAL_PROFILE.md)
+- [`docs/standards/CHIO_BOUNDED_OPERATIONAL_PROFILE.md`](../standards/CHIO_BOUNDED_OPERATIONAL_PROFILE.md)
   already states that session anchors and request-lineage records are part of
   the shipped bounded profile, while stronger cross-kernel receipt lineage and
   continuation proofs remain bounded or optional.
@@ -550,17 +540,15 @@ falls into the following candidate phases.
 > **Goal**: Make verified runtime attestation and strong sender-constrained
 > identity continuity the default strong path rather than a bounded profile.
 > **Refs**:
-> - `docs/review/03-runtime-attestation-remediation.md`
-> - `docs/review/06-authentication-dpop-remediation.md`
-> - `docs/review/09-session-isolation-remediation.md`
+> - `spec/PROTOCOL.md`
 
 **Current repo baseline**:
-- [`crates/chio-core-types/src/capability.rs`](../crates/chio-core-types/src/capability.rs)
+- [`crates/chio-core-types/src/capability.rs`](../../crates/chio-core-types/src/capability.rs)
   already includes `RuntimeAssuranceTier`, governed-autonomy requirements, and
   workload-identity structures. The missing piece is making the strongest
   runtime-assurance path the default qualified path.
-- [`spec/PROTOCOL.md`](../spec/PROTOCOL.md) and
-  [`docs/standards/CHIO_BOUNDED_OPERATIONAL_PROFILE.md`](standards/CHIO_BOUNDED_OPERATIONAL_PROFILE.md)
+- [`spec/PROTOCOL.md`](../../spec/PROTOCOL.md) and
+  [`docs/standards/CHIO_BOUNDED_OPERATIONAL_PROFILE.md`](../standards/CHIO_BOUNDED_OPERATIONAL_PROFILE.md)
   already distinguish stronger sender-constrained or attested modes from
   bounded hosted compatibility modes such as `shared_hosted_owner`.
 - This phase is about verifier-backed attestation records and sender-constrained
@@ -587,17 +575,15 @@ falls into the following candidate phases.
 > **Goal**: Move from bounded trust-anchor publication to a real append-only,
 > externally checkable transparency substrate.
 > **Refs**:
-> - `docs/review/05-non-repudiation-remediation.md`
-> - `docs/review/15-vision-gap-map.md`
-> - `docs/review/17-post-closure-execution-board.md`
+> - `spec/PROTOCOL.md`
 
 **Current repo baseline**:
-- [`spec/PROTOCOL.md`](../spec/PROTOCOL.md) already defines checkpoint
+- [`spec/PROTOCOL.md`](../../spec/PROTOCOL.md) already defines checkpoint
   statements, trust-anchor bindings, and explicit `audit_only` and
   `transparency_preview` claim boundaries.
-- [`crates/chio-anchor/src/bundle.rs`](../crates/chio-anchor/src/bundle.rs),
-  [`crates/chio-anchor/src/ops.rs`](../crates/chio-anchor/src/ops.rs), and
-  [`crates/chio-web3/src/lib.rs`](../crates/chio-web3/src/lib.rs) already
+- [`crates/chio-anchor/src/bundle.rs`](../../crates/chio-anchor/src/bundle.rs),
+  [`crates/chio-anchor/src/ops.rs`](../../crates/chio-anchor/src/ops.rs), and
+  [`crates/chio-web3/src/lib.rs`](../../crates/chio-web3/src/lib.rs) already
   implement checkpoint packaging, publication operations, and verification.
   Phase 28 is the step from bounded transparency preview to externally
   checkable append-only semantics.
@@ -620,16 +606,14 @@ falls into the following candidate phases.
 > **Goal**: Move from bounded leader-local control to real quorum-safe or
 > escrow-safe authority and spend invariants.
 > **Refs**:
-> - `docs/review/07-ha-control-plane-remediation.md`
-> - `docs/review/08-distributed-budget-remediation.md`
-> - `docs/review/15-vision-gap-map.md`
+> - `docs/standards/CHIO_BOUNDED_OPERATIONAL_PROFILE.md`
 
 **Current repo baseline**:
-- [`docs/standards/CHIO_BOUNDED_OPERATIONAL_PROFILE.md`](standards/CHIO_BOUNDED_OPERATIONAL_PROFILE.md)
+- [`docs/standards/CHIO_BOUNDED_OPERATIONAL_PROFILE.md`](../standards/CHIO_BOUNDED_OPERATIONAL_PROFILE.md)
   already documents that trust-control writes are leader-local and budgets are
   local-only or bounded on clustered paths. That file is the clearest statement
   of the current floor.
-- [`spec/PROTOCOL.md`](../spec/PROTOCOL.md) already avoids consensus-grade or
+- [`spec/PROTOCOL.md`](../../spec/PROTOCOL.md) already avoids consensus-grade or
   distributed-linearizable spend claims. Phase 29 is therefore a true control
   plane capability expansion, not just wording cleanup.
 
@@ -650,20 +634,18 @@ falls into the following candidate phases.
 > **Goal**: Turn bounded reputation and multi-issuer artifact packaging into a
 > real trust-portable network.
 > **Refs**:
-> - `docs/review/11-reputation-federation-remediation.md`
-> - `docs/review/15-vision-gap-map.md`
 > - `docs/VISION.md`
 
 **Current repo baseline**:
-- [`spec/PROTOCOL.md`](../spec/PROTOCOL.md) already contains shipped or bounded
+- [`spec/PROTOCOL.md`](../../spec/PROTOCOL.md) already contains shipped or bounded
   passport, OID4VCI, OID4VP, discovery, cross-issuer portfolio, trust-pack,
   and migration semantics.
-- [`crates/chio-did/src/lib.rs`](../crates/chio-did/src/lib.rs),
-  [`crates/chio-credentials/src/oid4vci.rs`](../crates/chio-credentials/src/oid4vci.rs),
-  [`crates/chio-credentials/src/oid4vp.rs`](../crates/chio-credentials/src/oid4vp.rs),
-  [`crates/chio-core/src/identity_network.rs`](../crates/chio-core/src/identity_network.rs),
-  [`crates/chio-federation/src/lib.rs`](../crates/chio-federation/src/lib.rs),
-  and [`docs/IDENTITY_FEDERATION_GUIDE.md`](IDENTITY_FEDERATION_GUIDE.md)
+- [`crates/chio-did/src/lib.rs`](../../crates/chio-did/src/lib.rs),
+  [`crates/chio-credentials/src/oid4vci.rs`](../../crates/chio-credentials/src/oid4vci.rs),
+  [`crates/chio-credentials/src/oid4vp.rs`](../../crates/chio-credentials/src/oid4vp.rs),
+  [`crates/chio-core/src/identity_network.rs`](../../crates/chio-core/src/identity_network.rs),
+  [`crates/chio-federation/src/lib.rs`](../../crates/chio-federation/src/lib.rs),
+  and [`docs/IDENTITY_FEDERATION_GUIDE.md`](../reference/IDENTITY_FEDERATION_GUIDE.md)
   already provide real identity, federation, clearing, and Sybil-control
   substrate. Phase 30 is about turning that substrate into a trust-portable
   network with explicit issuer accountability and bounded clearing.
@@ -687,18 +669,15 @@ falls into the following candidate phases.
 > **Goal**: Make Chio's formal-verification story literally true inside one
 > explicit verified core and prevent claim drift.
 > **Refs**:
-> - `docs/review/01-formal-verification-remediation.md`
-> - `docs/review/15-vision-gap-map.md`
 > - `spec/PROTOCOL.md`
 
 **Current repo baseline**:
-- [`formal/lean4`](../formal/lean4),
-  [`scripts/check-formal-proofs.sh`](../scripts/check-formal-proofs.sh), and
-  [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) already provide a
+- [`formal/lean4`](../../formal/lean4),
+  [`scripts/check-formal-proofs.sh`](../../scripts/check-formal-proofs.sh), and
+  [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) already provide a
   real formal toolchain and CI hook.
-- [`spec/PROTOCOL.md`](../spec/PROTOCOL.md) and
-  [`docs/review/01-formal-verification-remediation.md`](review/01-formal-verification-remediation.md)
-  already state that the current Lean model is informative and ongoing rather
+- [`spec/PROTOCOL.md`](../../spec/PROTOCOL.md)
+  already states that the current Lean model is informative and ongoing rather
   than a closed proof of the production runtime. Phase 31 makes the public
   claim boundary line up with a named verified core and refinement story.
 

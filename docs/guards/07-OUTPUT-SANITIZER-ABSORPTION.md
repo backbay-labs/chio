@@ -1,16 +1,16 @@
-# Output Sanitizer Absorption: ClawdStrike to Chio
+# Output Sanitizer Guard Capability and Porting Plan
 
-This document plans the full absorption of ClawdStrike's output sanitizer
+This document plans the full absorption of the upstream output sanitizer
 into Chio's post-invocation guard system. Chio already has a partial port at
-`crates/chio-guards/src/response_sanitization.rs`. ClawdStrike's implementation
+`crates/chio-guards/src/response_sanitization.rs`. The upstream implementation
 is substantially richer. This doc inventories the gap, defines the refactoring
 plan, and proposes type signatures for the complete Chio-native version.
 
 ---
 
-## 1. What ClawdStrike's Output Sanitizer Does
+## 1. What the Upstream Output Sanitizer Does
 
-Source: `clawdstrike/crates/libs/clawdstrike/src/output_sanitizer.rs`
+Source: the upstream `output_sanitizer.rs` module
 
 ### 1.1 Detection Categories
 
@@ -142,9 +142,9 @@ case each chunk is sanitized independently.
 
 ---
 
-## 2. ClawdStrike Watermarking System
+## 2. Upstream Watermarking System
 
-Source: `clawdstrike/crates/libs/clawdstrike/src/watermarking.rs`
+Source: the upstream `watermarking.rs` module
 
 The watermarking module provides content provenance via signed metadata
 comments embedded in text.
@@ -183,9 +183,9 @@ bytes for correlation across systems.
 
 ---
 
-## 3. ClawdStrike Hygiene Module
+## 3. Upstream Hygiene Module
 
-Source: `clawdstrike/crates/libs/clawdstrike/src/hygiene.rs`
+Source: the upstream `hygiene.rs` module
 
 While not directly part of output sanitization, the hygiene module is
 relevant because it operates on the same text pipeline:
@@ -206,7 +206,7 @@ separate pre- and post-invocation pipelines, so these map naturally.
 
 ---
 
-## 4. Gap Analysis: Chio vs ClawdStrike
+## 4. Gap Analysis: Chio vs the upstream guard suite
 
 ### 4.1 What Chio Has
 
@@ -232,13 +232,13 @@ separate pre- and post-invocation pipelines, so these map naturally.
 
 ### 4.2 What Chio Is Missing
 
-| Feature | ClawdStrike | Chio |
+| Feature | Upstream | Chio |
 |---------|------------|-----|
 | Detection categories | 4 variants (`Secret`/`Pii`/`Internal`/`Custom`) with per-category toggles and strategies | 3-tier sensitivity level, no categories |
 | Redaction strategies | 5 variants with strength ranking and overlap resolution | Single replacement string per pattern |
 | Secret detection | 7 patterns + entropy detector | None |
 | Internal infra detection | 4 patterns | None |
-| Healthcare PII | None (generic PII only) | MRN + ICD-10 (Chio has this, ClawdStrike does not) |
+| Healthcare PII | None (generic PII only) | MRN + ICD-10 (Chio has this, the upstream suite does not) |
 | Luhn validation | Yes, on credit card matches | No (regex-only, high false positive rate) |
 | Allowlist/denylist | Exact strings, regex patterns, test credential detection | None |
 | Entity recognizer hook | Trait-based extensibility for NER | None |
@@ -253,14 +253,14 @@ separate pre- and post-invocation pipelines, so these map naturally.
 ### 4.3 Chio-Only Features Worth Keeping
 
 - **MRN and ICD-10 patterns** -- healthcare-specific PII not present in
-  ClawdStrike. These should be preserved and added to the merged pattern
+  the upstream suite. These should be preserved and added to the merged pattern
   library as `Pii` category entries.
 - **Date-of-birth pattern** -- useful for HIPAA compliance, keep as `Pii`.
 - **`Guard` trait integration** -- the pre-invocation Guard impl that scans
-  tool call arguments for PII leakage. ClawdStrike does not have this
+  tool call arguments for PII leakage. The upstream suite does not have this
   bidirectional use.
 - **`PostInvocationHook` integration** -- the pipeline model is cleaner than
-  ClawdStrike's standalone sanitizer and should be the integration point.
+  the upstream standalone sanitizer and should be the integration point.
 
 ---
 
@@ -268,7 +268,7 @@ separate pre- and post-invocation pipelines, so these map naturally.
 
 ### 5.1 Phase 1: Type Unification
 
-Replace Chio's `SensitivityLevel` with ClawdStrike's richer type model:
+Replace Chio's `SensitivityLevel` with the upstream richer type model:
 
 - Adopt `SensitiveCategory` (Secret/Pii/Internal/Custom)
 - Adopt `RedactionStrategy` (None/Partial/Hash/TypeLabel/Full) with strength
@@ -287,7 +287,7 @@ Remove `SensitivityLevel`. The old Low/Medium/High mapping becomes:
 
 Port the full detection pipeline into `response_sanitization.rs`:
 
-1. **Static pattern library** -- merge ClawdStrike's 14 patterns with Chio's
+1. **Static pattern library** -- merge the upstream 14 patterns with Chio's
    healthcare patterns (MRN, ICD-10, date of birth) into a single
    `OnceLock`-backed `compile_patterns()` function. Total: ~17 patterns.
 
@@ -809,13 +809,13 @@ impl ResponseSanitizationGuard {
 
 ### 9.2 Pattern Library Migration
 
-1. Start with ClawdStrike's 14 patterns as the base
+1. Start with the upstream 14 patterns as the base
 2. Add Chio's MRN, ICD-10, and date-of-birth patterns with appropriate
    categories and confidence scores
 3. Mark Chio-original patterns with a `healthcare_` prefix in their IDs
    for traceability
 4. Remove duplicate patterns (SSN, email, phone, credit card are in both;
-   prefer ClawdStrike's versions which have Luhn validation and better
+   prefer the upstream versions which have Luhn validation and better
    regex coverage)
 
 ### 9.3 Dependency Changes
@@ -832,7 +832,7 @@ goes through `chio_core::crypto` and `chio_core::canonical`.
 
 ## 10. Open Questions
 
-1. **Entropy threshold tuning** -- ClawdStrike defaults to 4.5 bits. Is this
+1. **Entropy threshold tuning** -- The upstream suite defaults to 4.5 bits. Is this
    appropriate for Chio's use cases, or should it be more conservative
    (higher threshold, fewer false positives)?
 

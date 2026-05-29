@@ -1,17 +1,12 @@
 //! Threat-model codegen pipeline.
 //!
-//! Owner: M05.P5.T2.
-//!
 //! Reads `spec/security/chio-threat-model.v1.json`, validates it against
-//! `spec/security/chio-threat-model.schema.json`, and emits one stub
-//! Rust test file per threat ID into the configured output directory
-//! (typically `crates/chio-conformance/tests/threats/`). Each emitted
-//! file is a minimal compiling test that calls `unimplemented!()` until
-//! M05.P5.T3 fills the body in.
+//! `spec/security/chio-threat-model.schema.json`, and emits one Rust test
+//! inventory file per threat ID into the configured output directory
+//! (typically `crates/chio-conformance/tests/threats/`).
 //!
-//! The threat-model-coverage CI gate (M05.P5.T4) inspects the output
-//! tree and fails the build if any threat ID lacks a populated test
-//! body. The gate treats `unimplemented!()` as not-yet-covered.
+//! The threat-model coverage CI gate inspects the output tree and fails the
+//! build if any threat ID lacks a populated regression body.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -130,11 +125,9 @@ pub fn render_threat_stub(entry: &ThreatEntry) -> String {
 //!\n\
 //! Surfaces: {surfaces}.\n\
 //!\n\
-//! Owner: M05.P5.T2 (codegen) and M05.P5.T3 (test bodies for the\n\
-//! six initial threat IDs). Until M05.P5.T3 lands a real test body\n\
-//! the stub fails closed via `unimplemented!()` so the\n\
-//! threat-model-coverage CI gate (M05.P5.T4) flags this threat ID\n\
-//! as not-yet-covered.\n\
+//! Until a real test body lands, the stub fails closed via\n\
+//! `unimplemented!()` so the threat-model-coverage CI gate flags this\n\
+//! threat ID as not-yet-covered.\n\
 //!\n\
 //! When you fill in the body, replace the `unimplemented!()` call\n\
 //! with assertions that the relevant adversarial vector or escape\n\
@@ -144,7 +137,7 @@ pub fn render_threat_stub(entry: &ThreatEntry) -> String {
 #[test]\n\
 fn threat_{id}_is_covered() {{\n\
     // covers: {id}\n\
-    unimplemented!(\"M05.P5.T3 must populate the test body for threat \\\"{id}\\\"\");\n\
+    unimplemented!(\"populate the test body for threat \\\"{id}\\\"\");\n\
 }}\n",
         header = GENERATED_HEADER,
         id = entry.id,
@@ -192,7 +185,7 @@ pub fn render_threats_mod(entries: &[ThreatEntry]) -> String {
     body.push_str(GENERATED_HEADER);
     body.push('\n');
     body.push_str("//! Aggregator for the threat-model codegen stubs.\n");
-    body.push_str("//!\n//! Owner: M05.P5.T2. The chio-conformance test crate does NOT\n");
+    body.push_str("//!\n//! The chio-conformance test crate does NOT\n");
     body.push_str("//! pull this module into its `lib.rs`; each per-threat `.rs` file\n");
     body.push_str("//! under this directory is its own integration test. The module\n");
     body.push_str("//! aggregator is emitted for documentation purposes only.\n\n");
@@ -207,10 +200,10 @@ pub fn render_threats_mod(entries: &[ThreatEntry]) -> String {
 ///
 /// `out_dir` is created if missing. Existing files whose body matches
 /// the freshly rendered output are not rewritten (deterministic
-/// `write_if_changed`). Files whose body diverges - because M05.P5.T3
-/// or a later ticket has filled the body in - are NOT overwritten;
-/// instead the codegen pass leaves them in place. The threat-model
-/// coverage gate (M05.P5.T4) uses the presence of `unimplemented!()`
+/// `write_if_changed`). Files whose body diverges - because a real test
+/// body has been filled in - are NOT overwritten; instead the codegen
+/// pass leaves them in place. The threat-model coverage gate uses the
+/// presence of `unimplemented!()`
 /// to decide whether the threat is covered.
 pub fn codegen_threat_model(
     threat_model_path: &Path,
@@ -306,9 +299,9 @@ mod tests {
 
     #[test]
     fn render_stub_strips_doc_comment_escape_in_name() {
-        // P1 hardening: a threat-model entry with a newline (or `*/`) in
-        // its `name` must NOT be able to break out of the generated doc
-        // comment and inject top-level Rust into the stub.
+        // A threat-model entry with a newline (or `*/`) in its `name` must
+        // NOT be able to break out of the generated doc comment and inject
+        // top-level Rust into the stub.
         let evil = ThreatEntry {
             id: "evil_threat".to_string(),
             name: "evil\n#[panic_handler] fn p(_: &core::panic::PanicInfo) -> ! { loop {} } //"

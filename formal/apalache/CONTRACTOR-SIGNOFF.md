@@ -1,17 +1,19 @@
-# Apalache Contractor Sign-Off
+# Apalache Internal Verification Record
 
-**Packet:** APALACHE-SIGNOFF-2026-05-02
-**Sign-off date:** 2026-05-02
-**Contractor lane:** Informal Systems primary, Runtime Verification fallback
-**External countersignature:** pending vendor calendar response
-**Owner of record:** Chio formal verification lane
+**Packet:** APALACHE-RECORD-2026-05-02
+**Record date:** 2026-05-02
+**Authored by:** Chio formal verification lane (internal, self-authored)
+**External countersignature:** none. No external contractor has reviewed or
+countersigned this record. There is no external sign-off.
 
-This memo records the contractor sign-off package for the focused Apalache
-kernel-state subset. The external contractor countersignature is still a
-vendor-calendar item; the local sign-off records the exact commands, bounds,
-solver posture, and counterexample status that the contractor is asked to
-countersign. Hosted workflow completion is replayed during the CI-debt
-stabilization pass.
+This memo is an internal, self-authored record of the focused Apalache
+kernel-state subset run. It is NOT an external contractor sign-off: no
+third-party vendor (and no Informal Systems or Runtime Verification engagement)
+has reviewed, run, or countersigned these results. The record exists so that an
+external reviewer, if engaged in a future milestone, has the exact commands,
+bounds, solver posture, and counterexample status in one place. Treat every
+result below as the maintainers' own claim, reproducible from the pinned
+tooling, not as independently verified evidence.
 
 ## Invariants Checked
 
@@ -27,8 +29,10 @@ stabilization pass.
 - Apalache version: `apalache-mc 0.50.1`, build `cd35919`.
 - Installer pin: `tools/install-apalache.sh` `APALACHE_VERSION="0.50.1"`.
 - SMT solver: default Apalache Z3 backend.
-- Runner posture: local macOS smoke plus hosted `ubuntu-24.04` workflow
-  dispatch at `https://github.com/bb-connor/arc/actions/runs/25251783773`.
+- Runner posture: local macOS smoke. A hosted `ubuntu-24.04` workflow that
+  re-runs the same invocations exists in `.github/workflows`; a stable hosted
+  run reference is not yet recorded here and is tracked as a CI-debt item
+  rather than cited as a point-in-time run URL.
 
 ## SMT Invocations
 
@@ -38,7 +42,7 @@ Each safety invariant used the same invocation shape:
 apalache-mc check --length=6 --config=<MC*.cfg> <Spec>.tla
 ```
 
-The workflow dispatch also preserves the same command shape for all four
+The hosted workflow preserves the same command shape for all four
 safety invariants. The temporal `RevocationEventuallySeen` check remains in
 `.github/workflows/apalache-temporal.yml` as the fail-closed nightly TLA+
 liveness lane.
@@ -63,10 +67,12 @@ fail-closed: file a property-counterexample issue, classify it as spec fix,
 implementation fix, or out-of-bound, and reopen the formal evidence row
 before final qualification.
 
-## Sign-Off
+## Status
 
-The focused Apalache subset is ready for external countersignature and
-protocol-review consumption. The four safety checks pass locally with the
-pinned Apalache version and the documented bounds. The hosted workflow run and
-7-consecutive-night-green evidence are tracked as CI-debt replay items before
-final close.
+This is an internal record, not a sign-off. The four safety checks pass
+locally with the pinned Apalache version and the documented bounds, as run by
+the maintainers. The focused Apalache subset is documented here so it could be
+handed to an external reviewer if and when such an engagement is opened; no
+such engagement has occurred and no external party has countersigned. A stable
+hosted workflow run reference and 7-consecutive-night-green evidence are
+tracked as CI-debt replay items before final close.

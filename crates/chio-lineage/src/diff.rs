@@ -1,7 +1,7 @@
-//! Differential mode (M09 P5.T5).
+//! Differential mode.
 //!
 //! Compare lineage graphs across two guard versions (typically derived
-//! from running the same M04 deterministic corpus through two guard
+//! from running the same deterministic replay corpus through two guard
 //! manifests). The diff is the symmetric difference of edges keyed by
 //! `(from, to, kind)`, plus an evidence-class summary so downstream
 //! reviewers can see when an edge was upgraded or downgraded across

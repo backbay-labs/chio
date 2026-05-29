@@ -136,7 +136,7 @@ export function chioErrorHandler(
     return;
   }
 
-  // Check if this is an Chio-related error
+  // Check if this is a Chio-related error
   if ("code" in err && typeof (err as { code: unknown }).code === "string") {
     const code = (err as { code: string }).code;
     if (code.startsWith("chio_")) {

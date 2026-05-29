@@ -1,7 +1,7 @@
 """Unit tests for :class:`chio_dagster.ChioIOManager`.
 
 The :class:`ChioIOManager` wraps an inner :class:`dagster.IOManager` and
-evaluates an Chio capability before each :meth:`load_input` /
+evaluates a Chio capability before each :meth:`load_input` /
 :meth:`handle_output`. These tests exercise the manager directly with a
 fake :class:`dagster.IOManager` and a fake context object so we cover
 the allow, deny, and partition-scoping paths without needing Dagster's

@@ -1,13 +1,12 @@
 # Healthcare Pilot Quota Lane
 
-This page records quota lane sizing for the M01 healthcare design-partner
-pilot. It consumes the P2 capacity report in
-`.planning/trajectory-3/audits/M01-healthcare-pilot.md`.
+This page records quota lane sizing for the healthcare design-partner pilot. Capacity evidence is maintained under `compliance/hitrust/`
+(see `compliance/hitrust/control-mapping.csv` for the per-control mapping).
 
 ## Bound
 
 The quota lane honors BOUNDED_OPERATIONAL_PROFILE. Monetary budgets remain
-single-node atomic on one SQLite store. M01 does not claim
+single-node atomic on one SQLite store. The pilot does not claim
 distributed-linearizable budget enforcement.
 
 ## Baseline
@@ -29,7 +28,7 @@ Provision the pilot for 5x replayed baseline and no more:
 |------|----------------|---------|
 | 1x | 25,000 | Normal shadow or production operating baseline. |
 | 2x | 50,000 | Expected burst headroom. |
-| 5x | 125,000 | Maximum M01 tested headroom. |
+| 5x | 125,000 | Maximum tested headroom. |
 
 Do not silently promote the lane above 5x. A spike above 5x is a P1 incident
 per `docs/operator-runbook/incidents.md`, not a larger release claim.
@@ -42,8 +41,8 @@ Budget state stays in the tenant-local SQLite budget database configured by:
 chio trust serve --budget-db /var/lib/chio/healthcare-pilot/budgets.sqlite
 ```
 
-The operator must not split this store across writers during M01. If lock
-contention or write latency threatens p99 mediation, fail closed and open a P1.
+The operator must not split this store across writers. If lock contention or
+write latency threatens p99 mediation, fail closed and open a P1.
 
 ## Operational Checks
 

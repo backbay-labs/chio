@@ -1,6 +1,6 @@
 # 04 - Policy Engine Collaborators: OPA, Cedar, OpenFGA, Tetragon
 
-> **Erratum (wave 3 + v1-only collapse):** [`ChioReceiptBody.policy_hash`](../../../crates/chio-core-types/src/receipt.rs#L159) is the current signed receipt field and is a hex or operator-pinned `String`, not `[u8; 32]`. The `policy_digest` wording below is an internal per-engine digest sketch, not a current core receipt field. See [reviews/03-policy-guards-review.md](reviews/03-policy-guards-review.md).
+> **Erratum:** [`ChioReceiptBody.policy_hash`](../../../crates/chio-core-types/src/receipt.rs#L159) is the current signed receipt field and is a hex or operator-pinned `String`, not `[u8; 32]`. The `policy_digest` wording below is an internal per-engine digest sketch, not a current core receipt field. See [reviews/03-policy-guards-review.md](reviews/03-policy-guards-review.md).
 
 ## TL;DR
 

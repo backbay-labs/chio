@@ -1,7 +1,7 @@
 /**
  * Error types for `@chio-protocol/ai-sdk`.
  *
- * `ChioToolError` is thrown from an Chio-wrapped tool's `execute` callback when
+ * `ChioToolError` is thrown from a Chio-wrapped tool's `execute` callback when
  * the sidecar denies a tool invocation or is otherwise unreachable in
  * fail-closed mode. The Vercel AI SDK surfaces thrown errors to the caller
  * via `onError` / `toolExecutionError`, so this error must preserve the

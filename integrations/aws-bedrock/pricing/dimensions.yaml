@@ -16,5 +16,5 @@ dimensions:
     registration_status: partner_central_uploaded
     description: "Metered receipt overage beyond the tenant base contract."
 notes:
-  - "Pricing model was locked at M10.P0.T5 and must not change during review."
+  - "Pricing model is locked and must not change during review."
   - "The control-plane crate maps receipt overage to MeterUsage or BatchMeterUsage."

@@ -113,7 +113,7 @@ occurs.
 ### 1.5 Kernel Integration
 
 The bridge implements `ToolServerConnection`, allowing direct
-registration with an Chio kernel instance. Both borrowed (`BridgeToolServer`)
+registration with a Chio kernel instance. Both borrowed (`BridgeToolServer`)
 and owned (`OwnedBridgeToolServer`) variants are provided:
 
 - `BridgeToolServer<'a>`: borrows the bridge; suitable for scoped kernel
@@ -250,7 +250,7 @@ Tool results are converted to A2A message parts using these rules:
 ### 2.5 BridgeFidelity Evaluation
 
 The edge evaluates fidelity per tool at registration time. The assessment
-indicates how faithfully an Chio tool maps to A2A semantics.
+indicates how faithfully a Chio tool maps to A2A semantics.
 
 | Fidelity Level | Criteria | Implications |
 |---|---|---|
@@ -343,7 +343,7 @@ The edge handles `session/request_permission` JSON-RPC requests by:
    edge MUST return `deny`.
 2. If `requiresPermission` is `true` for the capability, the edge MUST
    return `deny` by default. Explicit permission grants require kernel
-   capability token validation (full integration deferred to Phase 324).
+   capability token validation (full integration deferred to a future release).
 3. If `requiresPermission` is `false`, the edge MUST return `allow`.
 
 ```mermaid

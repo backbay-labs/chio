@@ -44,7 +44,7 @@
     },
     {
       "name": "chio-sidecar",
-      "image": "ghcr.io/backbay/chio-sidecar:latest",
+      "image": "ghcr.io/backbay-labs/chio-sidecar:latest",
       "essential": true,
       "cpu": 128,
       "memory": 128,

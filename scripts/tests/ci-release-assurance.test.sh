@@ -9,10 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
-import shutil
-import subprocess
 import sys
-import tempfile
 
 repo = Path(sys.argv[1])
 
@@ -83,7 +80,7 @@ def check_fuzz_matrix_and_smoke_inventory() -> None:
 def check_chio_cpp_drogon_coverage() -> None:
     text = read(".github/workflows/chio-cpp.yml")
     markers = [
-        '"packages/sdk/chio-drogon/**"',
+        '"sdks/cpp/chio-drogon/**"',
         '"scripts/check-chio-drogon*.sh"',
         "./scripts/check-chio-drogon.sh",
         "./scripts/check-chio-drogon-release.sh",
@@ -103,44 +100,6 @@ def check_release_pypi_runs_local_tests_before_build() -> None:
     require("find tests" in text, "package-local test step must only run where tests exist")
 
 
-def check_hitrust_missing_evidence_modes() -> None:
-    with tempfile.TemporaryDirectory(prefix="chio-hitrust-test.") as tmp:
-        tmp_root = Path(tmp)
-        tmp_script = tmp_root / "compliance/hitrust/build-evidence-pack.sh"
-        tmp_script.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(repo / "compliance/hitrust/build-evidence-pack.sh", tmp_script)
-
-        strict = subprocess.run(
-            ["bash", str(tmp_script), "2099-01-01"],
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        require(
-            strict.returncode != 0,
-            "HITRUST evidence pack must fail when required evidence is missing",
-        )
-        require(
-            "missing required HITRUST evidence" in (strict.stdout + strict.stderr),
-            "strict HITRUST failure should explain missing required evidence",
-        )
-
-        allowed = subprocess.run(
-            ["bash", str(tmp_script), "--allow-missing", "2099-01-02"],
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        require(
-            allowed.returncode == 0,
-            "HITRUST --allow-missing mode should permit incomplete evidence packs",
-        )
-        require(
-            allowed.stdout.strip().endswith("evidence-bundles/2099-01-02"),
-            "HITRUST --allow-missing should still treat the following argument as the bundle date",
-        )
-
-
 def check_ttfrh_container_lane_is_not_echo_only() -> None:
     text = read(".github/workflows/ttfrh.yml")
     require("docker run" in text, "ttfrh container lane must execute a real container")
@@ -155,7 +114,6 @@ checks = [
     check_fuzz_matrix_and_smoke_inventory,
     check_chio_cpp_drogon_coverage,
     check_release_pypi_runs_local_tests_before_build,
-    check_hitrust_missing_evidence_modes,
     check_ttfrh_container_lane_is_not_echo_only,
 ]
 

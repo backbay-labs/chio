@@ -1,5 +1,7 @@
 //! Live runtime loopback harness for Chio proof regeneration.
 
+#![forbid(unsafe_code)]
+
 mod admission_loop;
 mod buyer_closure;
 mod evidence_io;

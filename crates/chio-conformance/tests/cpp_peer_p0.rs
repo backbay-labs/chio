@@ -7,7 +7,7 @@
 // expanding this one (its purpose is to be the immutable P0 gate).
 //
 // The C++ peer is the conformance-peer binary built from
-// `packages/sdk/chio-cpp` via CMake; that binary links against
+// `sdks/cpp/chio-cpp` via CMake; that binary links against
 // `crates/chio-cpp-kernel-ffi` (the C ABI surface for the Chio offline
 // kernel). Driving the binary therefore exercises the FFI end-to-end.
 //
@@ -45,9 +45,7 @@ const AUTH_P0_SCENARIOS: &[&str] = &[
     "auth-token-exchange-initialize",
 ];
 
-// Areas explicitly deferred from the P0 gate. Listed here so a future
-// reader can grep and confirm the deferral is still the intent before
-// expanding the gate.
+// Areas explicitly outside the P0 gate and not exercised by the C++ peer.
 const DEFERRED_AREAS: &[&str] = &[
     "chio-extensions",
     "tasks",
@@ -105,7 +103,7 @@ fn cpp_peer_p0_mcp_core_and_auth_pass() {
 
 // Compile-time guard: deferred areas live on disk but are intentionally not
 // driven through the C++ peer in P0. If a deferred-area scenarios directory
-// disappears, that is a signal that the follow-on milestone has begun and the
+// disappears, that is a signal that follow-on coverage has begun and the
 // P0 gate should be revisited.
 #[test]
 fn deferred_areas_still_present_on_disk() {
@@ -115,7 +113,7 @@ fn deferred_areas_still_present_on_disk() {
         assert!(
             area_dir.exists(),
             "deferred scenario area `{area}` missing at {}; \
-             if the follow-on milestone has started, update cpp_peer_p0.rs to cover it",
+             if follow-on coverage has started, update cpp_peer_p0.rs to cover it",
             area_dir.display()
         );
     }

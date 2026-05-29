@@ -8,7 +8,7 @@ pub const CHIO_PASSPORT_SD_JWT_VC_CREDENTIAL_CONFIGURATION_ID: &str =
     "chio_agent_passport_sd_jwt_vc";
 pub const CHIO_PASSPORT_SD_JWT_VC_FORMAT: &str = "application/dc+sd-jwt";
 pub const CHIO_PASSPORT_SD_JWT_VC_TYPE: &str =
-    "https://chio.dev/credentials/types/chio-passport-sd-jwt-vc/v1";
+    "https://chio.world/credentials/types/chio-passport-sd-jwt-vc/v1";
 pub const CHIO_PASSPORT_SD_JWT_VC_TYPE_METADATA_PATH: &str =
     "/.well-known/chio-passport-sd-jwt-vc";
 pub const OID4VCI_JWKS_PATH: &str = "/.well-known/jwks.json";

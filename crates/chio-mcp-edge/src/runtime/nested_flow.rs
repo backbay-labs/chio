@@ -13,9 +13,9 @@ pub(super) enum ClientInbound {
     Closed,
 }
 
-// Retained for the direct reader/writer nested-flow transport path even though
-// the queued channel transport is the default runtime entry point today.
-#[allow(dead_code)]
+// Reader/writer nested-flow client used by the blocking `serve_stdio` entry
+// point. The queued-channel sibling `QueuedEdgeNestedFlowClient` serves the
+// `serve_message_channels` entry point; both are live runtime paths.
 pub(super) struct EdgeNestedFlowClient<'a, R, W> {
     pub(super) request_counter: &'a mut u64,
     pub(super) parent_progress_step: &'a mut u64,
@@ -53,9 +53,6 @@ pub(super) struct AcceptedUrlElicitation {
     pub(super) related_task_id: Option<String>,
 }
 
-// Retained for the direct reader/writer nested-flow transport path even though
-// the queued channel transport is the default runtime entry point today.
-#[allow(dead_code)]
 impl<R: BufRead, W: Write> EdgeNestedFlowClient<'_, R, W> {
     fn emit_log(&mut self, level: LogLevel, logger: &str, data: Value) {
         if !self.logging_enabled || level < self.minimum_log_level {
@@ -272,9 +269,6 @@ impl<W: Write> QueuedEdgeNestedFlowClient<'_, W> {
     }
 }
 
-// Retained for the direct reader/writer nested-flow transport path even though
-// the queued channel transport is the default runtime entry point today.
-#[allow(dead_code)]
 impl<R: BufRead + Send, W: Write + Send> NestedFlowClient for EdgeNestedFlowClient<'_, R, W> {
     fn list_roots(
         &mut self,

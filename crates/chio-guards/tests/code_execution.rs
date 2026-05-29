@@ -1,6 +1,6 @@
-//! Integration tests for Phase 8.1 CodeExecutionGuard.
+//! Integration tests for CodeExecutionGuard.
 //!
-//! Exercises the three roadmap acceptance criteria:
+//! Exercises the three acceptance criteria:
 //!
 //! * language outside the allowlist is denied;
 //! * `import subprocess` (dangerous module) is denied;
@@ -218,10 +218,10 @@ fn disabled_guard_allows_everything() {
 
 #[test]
 fn payload_exceeding_max_scan_bytes_is_denied_failclosed() {
-    // Set a deliberately tiny scan budget so we can force the
-    // padding-bypass path: the dangerous module ("subprocess") sits past
-    // the configured bound. Pre-fix this returned Allow because the
-    // truncated prefix did not contain the import.
+    // Set a deliberately tiny scan budget to force the padding-bypass
+    // path: the dangerous module ("subprocess") sits past the configured
+    // bound, so the truncated prefix does not contain the import. A scan
+    // that gives up past its budget must deny rather than allow.
     let guard = CodeExecutionGuard::with_config(CodeExecutionConfig {
         language_allowlist: vec!["python".to_string()],
         network_access: true,

@@ -1272,7 +1272,7 @@ fn treaty_runtime_fixture() -> Result<TreatyRuntimeFixture, Box<dyn std::error::
             tool_origin: ToolOrigin::CallerExecuted,
             redaction_mode: RedactionMode::None,
             actor_chain: vec![ActorRef {
-                actor_id: "agent:chiodos-runtime/admission".to_string(),
+                actor_id: "agent:chio-runtime/admission".to_string(),
                 actor_kind: Some("agent".to_string()),
             }],
             content_hash: bilateral_invocation.outcome_sha256.clone(),

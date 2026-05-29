@@ -110,7 +110,11 @@ fn make_kernel_bare() -> (ChioKernel, Keypair) {
     let kp = Keypair::generate();
     let config = KernelConfig {
         keypair: kp.clone(),
-        ca_public_keys: vec![],
+        // Trust the kernel's own key as a CA so externally-signed capabilities
+        // that name it as issuer (the delegated cap in the revocation-cascade
+        // test) verify against the trusted authority set. Self-issued caps work
+        // either way; this only admits externally-signed caps from this key.
+        ca_public_keys: vec![kp.public_key()],
         max_delegation_depth: 5,
         policy_hash: "e2e-test-policy".to_string(),
         allow_sampling: false,
@@ -412,6 +416,14 @@ async fn full_flow_revocation_cascade() {
         )
         .expect("issue delegable cap");
 
+    // Register cap_a as a budget parent so cap_b's sibling-sum budget admission
+    // can resolve its delegated parent. Without it the delegated call is denied
+    // ("parent capability ... is not registered") before the revocation logic
+    // under test is reached.
+    kernel
+        .register_budget_parent(cap_a.id.clone(), 10_000)
+        .expect("register cap_a as budget parent");
+
     // Build a delegated capability B: issued by the CA (kernel) to agent_b,
     // but with a delegation chain showing that agent_a delegated to agent_b.
     let now = std::time::SystemTime::now()
@@ -470,7 +482,8 @@ async fn full_flow_revocation_cascade() {
     assert_eq!(
         resp_ok.verdict,
         Verdict::Allow,
-        "B should work before A is revoked"
+        "B should work before A is revoked; reason: {:?}",
+        resp_ok.reason
     );
 
     // Revoke A's capability ID; descendants should now fail via the chain entry.
@@ -810,7 +823,7 @@ async fn full_flow_untrusted_issuer() {
     assert_eq!(resp.verdict, Verdict::Deny);
     let reason = resp.reason.as_deref().unwrap_or("");
     assert!(
-        reason.contains("not found among trusted"),
+        reason.contains("not a trusted CA"),
         "expected untrusted issuer denial, got: {reason}"
     );
     assert!(resp.receipt.verify_signature().unwrap());

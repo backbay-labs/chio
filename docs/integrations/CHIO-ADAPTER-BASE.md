@@ -192,9 +192,7 @@ canary collapse onto `bind_and_redact` exercises the v0.2.0 helper
 hardening against a real adapter. The migration of the OTHER
 adapters' floor pins is not part of this release-docs PR; those
 bumps should land in a separate v0.2.x cleanup after the 0.2.0
-package is published. See the v0.3 FINAL-PLAN
-(`.planning/chio-adapter-base-v0.3/FINAL-PLAN.md` Section 8) for
-the sequencing rationale.
+package is published.
 
 ## 5. chio-hermes precedent reconciliation
 

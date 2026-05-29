@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-//! Sustained-load capacity harness for the M01 healthcare design-partner pilot.
+//! Sustained-load capacity harness for the healthcare design-partner pilot.
 //!
 //! The crate is intentionally deterministic in PR-tier gates. Real traffic
 //! capture is owned by `scripts/shadow-capture.sh`; this library converts the

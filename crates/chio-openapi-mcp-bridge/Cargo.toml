@@ -35,6 +35,5 @@ arbitrary = { version = "1", features = ["derive"], optional = true }
 [dev-dependencies]
 tokio = { workspace = true }
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

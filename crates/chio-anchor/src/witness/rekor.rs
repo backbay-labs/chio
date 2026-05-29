@@ -12,12 +12,19 @@
 //!    over the canonical JSON of `{body, integratedTime, logID,
 //!    logIndex}` (Rekor SET spec).
 //!
-//! HIGH-3 in PR #594 review: previously the client only inspected the
-//! body hash and treated any well-formed JSON response as valid,
-//! letting a malicious mirror forge inclusion responses. The SET
-//! signature check fixes that. Inclusion-proof Merkle verification
-//! against the log root is a follow-up (see TODO at hard expiry
-//! 2026-08-01 below).
+//! The SET signature check is load-bearing: inspecting only the body
+//! hash and treating any well-formed JSON response as valid would let a
+//! malicious mirror forge inclusion responses.
+//!
+//! In addition, when the response carries a
+//! `verification.inclusionProof`, [`verify_inclusion_proof`] rebuilds
+//! the Merkle tree head from the entry leaf hash and the audit path
+//! per RFC 6962 / the Rekor transparency-log algorithm and asserts the
+//! recomputed root equals `inclusionProof.rootHash`. The proof's
+//! `logIndex` is required to equal the SET-signed `logIndex`, so the
+//! Merkle path is bound to the same (body, logIndex) the pinned Rekor
+//! key already authenticated. Any malformed, truncated, or mismatched
+//! proof fails closed.
 //!
 //! This module makes a real HTTP call (via `reqwest`). The negative
 //! conformance test
@@ -29,6 +36,7 @@ use std::time::Duration;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
 use chio_core::canonical_json_bytes;
+use chio_core::hashing::{sha256, Hash};
 use p256::ecdsa::signature::Verifier;
 use p256::ecdsa::{Signature as P256Signature, VerifyingKey};
 use p256::pkcs8::DecodePublicKey;
@@ -85,6 +93,9 @@ impl RekorClient {
                 "max_witness_age_seconds must be non-negative".to_string(),
             ));
         }
+        // CHIO_EGRESS_LINT_ALLOW_DIRECT_REQWEST: Sigstore Rekor witness lane;
+        // threading an HttpEgressContract through RekorClient::new is a
+        // dedicated refactor, not yet wired here.
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(15))
             .https_only(false)
@@ -142,17 +153,15 @@ struct RekorIntotoContent<'a> {
 ///                   "sig": <base64>}] }
 /// ```
 ///
-/// HIGH-2 (PR #594 round-2 review): the previous shape serialized
-/// `payload_type` (snake_case) instead of Rekor's canonical
-/// `payloadType` (camelCase). Real Rekor would either reject the
-/// envelope or canonicalize it to a shape that would no longer
-/// match the SET signature input. The `rename_all` annotation
-/// fixes the wire shape.
+/// The wire shape MUST serialize Rekor's canonical `payloadType`
+/// (camelCase), not `payload_type` (snake_case): real Rekor would
+/// either reject the envelope or canonicalize it to a shape that would
+/// no longer match the SET signature input.
 ///
-/// P1 (PR #594 round-3 review): the previous shape carried an empty
-/// `signatures` array. The intoto v0.0.2 schema requires a signature
-/// object with `publicKey` and `sig`, so the entry now forwards the
-/// batch signer key and batch signature into the DSSE envelope.
+/// The intoto v0.0.2 schema requires a signature object with `publicKey`
+/// and `sig` (an empty `signatures` array is rejected), so the entry
+/// forwards the batch signer key and batch signature into the DSSE
+/// envelope.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct RekorIntotoEnvelope<'a> {
@@ -405,13 +414,215 @@ fn verify_set_signature(
         "rekor SET signature did not verify against any pinned key: {}",
         last_error.unwrap_or_else(|| "no trusted keys configured".to_string())
     )))
-    // TODO(2026-08-01): also verify `verification.inclusionProof`
-    // (rebuild the Merkle root from leaf_hash + audit_path; assert it
-    // equals `inclusionProof.rootHash`; verify the checkpoint signed
-    // by the Rekor log key). Until then we accept the SET as the
-    // authoritative authentication of the entry. A malicious mirror
-    // that controls the Rekor private key is out-of-scope for this
-    // PR; that's the threat model the SET pinning addresses.
+}
+
+/// RFC 6962 leaf-hash domain prefix (`MTH({d}) = SHA-256(0x00 || d)`).
+const RFC6962_LEAF_PREFIX: u8 = 0x00;
+/// RFC 6962 node-hash domain prefix
+/// (`MTH(D) = SHA-256(0x01 || left || right)`).
+const RFC6962_NODE_PREFIX: u8 = 0x01;
+
+/// Hash a transparency-log leaf per RFC 6962 section 2.1:
+/// `SHA-256(0x00 || leaf_bytes)`. For a Rekor entry the leaf bytes are
+/// the base64-decoded canonical `body`.
+fn rfc6962_leaf_hash(leaf_bytes: &[u8]) -> Hash {
+    let mut buffer = Vec::with_capacity(1 + leaf_bytes.len());
+    buffer.push(RFC6962_LEAF_PREFIX);
+    buffer.extend_from_slice(leaf_bytes);
+    sha256(&buffer)
+}
+
+/// Hash two child subtree roots into their parent per RFC 6962:
+/// `SHA-256(0x01 || left || right)`.
+fn rfc6962_node_hash(left: &Hash, right: &Hash) -> Hash {
+    let mut buffer = [0u8; 1 + 32 + 32];
+    buffer[0] = RFC6962_NODE_PREFIX;
+    buffer[1..33].copy_from_slice(left.as_bytes());
+    buffer[33..].copy_from_slice(right.as_bytes());
+    sha256(&buffer)
+}
+
+/// Recompute a Merkle tree head from an inclusion proof per RFC 6962
+/// section 2.1.1 (the algorithm Rekor's transparency log uses).
+///
+/// `leaf_index` is the zero-based position of the leaf in a tree of
+/// `tree_size` leaves; `audit_path` is the ordered list of sibling
+/// hashes from the leaf up to the root. Returns the computed root or a
+/// fail-closed error if the index is out of range or the path length
+/// does not match the tree geometry (a truncated or padded path is a
+/// forged proof).
+fn rfc6962_root_from_inclusion_proof(
+    leaf_index: u64,
+    tree_size: u64,
+    leaf_hash: Hash,
+    audit_path: &[Hash],
+) -> Result<Hash, AnchorWitnessError> {
+    if tree_size == 0 {
+        return Err(AnchorWitnessError::SignatureInvalid(
+            "rekor inclusion proof has zero tree size".to_string(),
+        ));
+    }
+    if leaf_index >= tree_size {
+        return Err(AnchorWitnessError::SignatureInvalid(format!(
+            "rekor inclusion proof logIndex {leaf_index} is out of range for treeSize {tree_size}"
+        )));
+    }
+
+    // `fn`/`sn` track the leaf index and the index of the last leaf as
+    // we ascend the tree (RFC 6962 verifier algorithm). At each level a
+    // node is a right child when its index is odd, or when it is the
+    // rightmost node at that level (`fn == sn`); otherwise it is a left
+    // child and its sibling is to the right.
+    let mut node_index = leaf_index;
+    let mut last_index = tree_size - 1;
+    let mut computed = leaf_hash;
+    let mut consumed = 0usize;
+
+    while last_index > 0 {
+        let sibling = audit_path.get(consumed).ok_or_else(|| {
+            AnchorWitnessError::SignatureInvalid(format!(
+                "rekor inclusion proof audit path too short: needed more than {} hashes for treeSize {tree_size}",
+                audit_path.len()
+            ))
+        })?;
+        consumed += 1;
+
+        if !node_index.is_multiple_of(2) || node_index == last_index {
+            computed = rfc6962_node_hash(sibling, &computed);
+            // Skip levels where this node has no left sibling until it
+            // settles into a left/odd position (handles the rightmost
+            // edge of an unbalanced tree).
+            while node_index.is_multiple_of(2) {
+                node_index >>= 1;
+                last_index >>= 1;
+            }
+        } else {
+            computed = rfc6962_node_hash(&computed, sibling);
+        }
+        node_index >>= 1;
+        last_index >>= 1;
+    }
+
+    if consumed != audit_path.len() {
+        return Err(AnchorWitnessError::SignatureInvalid(format!(
+            "rekor inclusion proof audit path too long: consumed {consumed} of {} hashes for treeSize {tree_size}",
+            audit_path.len()
+        )));
+    }
+    Ok(computed)
+}
+
+/// Decode a Rekor inclusion-proof hash. Rekor encodes audit-path and
+/// root hashes as unprefixed lowercase hex; we accept an optional `0x`
+/// prefix defensively. Must decode to exactly 32 bytes (SHA-256).
+fn decode_proof_hash(value: &str, label: &str) -> Result<Hash, AnchorWitnessError> {
+    Hash::from_hex(value).map_err(|error| {
+        AnchorWitnessError::SignatureInvalid(format!(
+            "rekor inclusion proof {label} is not a 32-byte hex hash: {error}"
+        ))
+    })
+}
+
+/// Verify the Rekor inclusion proof, when present, against the entry.
+///
+/// This is the Merkle half of inclusion verification (the SET is the
+/// signature half). The proof is bound to the SET-authenticated entry
+/// by two checks:
+///
+/// 1. The leaf hashed into the tree is `SHA-256(0x00 || body_bytes)`
+///    for the SAME base64 `body` the SET signed, so a mirror cannot
+///    swap in a proof for a different entry.
+/// 2. The proof's `logIndex`, when carried, MUST equal the entry's
+///    SET-signed `logIndex`.
+///
+/// The recomputed RFC 6962 tree head must then equal the proof's
+/// `rootHash`. Any missing required field (rootHash, treeSize), a
+/// logIndex disagreement, an out-of-range index, a malformed hash, a
+/// truncated or padded audit path, or a root mismatch fails closed.
+///
+/// When the entry carries no `verification.inclusionProof`, this is a
+/// no-op: the SET remains the authoritative authentication. Rekor
+/// responses are not guaranteed to inline an inclusion proof, and the
+/// pinned-key SET already binds the (body, logIndex) tuple.
+fn verify_inclusion_proof(entry: &RekorEntry) -> Result<(), AnchorWitnessError> {
+    let Some(proof) = entry
+        .verification
+        .as_ref()
+        .and_then(|verification| verification.inclusion_proof.as_ref())
+    else {
+        return Ok(());
+    };
+
+    let tree_size = proof.tree_size.ok_or_else(|| {
+        AnchorWitnessError::SignatureInvalid(
+            "rekor inclusion proof is missing treeSize".to_string(),
+        )
+    })?;
+    if tree_size <= 0 {
+        return Err(AnchorWitnessError::SignatureInvalid(format!(
+            "rekor inclusion proof treeSize {tree_size} is not positive"
+        )));
+    }
+    let tree_size = tree_size as u64;
+
+    // The proof index defaults to the SET-signed logIndex; when the
+    // proof carries its own logIndex it MUST agree (a disagreement
+    // means the mirror stapled a proof for a different leaf).
+    let proof_index = match proof.log_index {
+        Some(index) => {
+            if index != entry.log_index {
+                return Err(AnchorWitnessError::SignatureInvalid(format!(
+                    "rekor inclusion proof logIndex {index} does not match SET-signed logIndex {}",
+                    entry.log_index
+                )));
+            }
+            index
+        }
+        None => entry.log_index,
+    };
+    if proof_index < 0 {
+        return Err(AnchorWitnessError::SignatureInvalid(format!(
+            "rekor inclusion proof logIndex {proof_index} is negative"
+        )));
+    }
+    let proof_index = proof_index as u64;
+
+    let root_hash_hex = proof.root_hash.as_deref().ok_or_else(|| {
+        AnchorWitnessError::SignatureInvalid(
+            "rekor inclusion proof is missing rootHash".to_string(),
+        )
+    })?;
+    let expected_root = decode_proof_hash(root_hash_hex, "rootHash")?;
+
+    let audit_path = proof
+        .hashes
+        .as_deref()
+        .ok_or_else(|| {
+            AnchorWitnessError::SignatureInvalid(
+                "rekor inclusion proof is missing audit path hashes".to_string(),
+            )
+        })?
+        .iter()
+        .map(|hash_hex| decode_proof_hash(hash_hex, "audit path hash"))
+        .collect::<Result<Vec<Hash>, AnchorWitnessError>>()?;
+
+    let leaf_bytes = BASE64_STANDARD
+        .decode(entry.body.as_bytes())
+        .map_err(|error| {
+            AnchorWitnessError::Decode(format!("rekor inclusion proof body base64: {error}"))
+        })?;
+    let leaf_hash = rfc6962_leaf_hash(&leaf_bytes);
+
+    let computed_root =
+        rfc6962_root_from_inclusion_proof(proof_index, tree_size, leaf_hash, &audit_path)?;
+    if computed_root != expected_root {
+        return Err(AnchorWitnessError::SignatureInvalid(format!(
+            "rekor inclusion proof root mismatch: recomputed {} but proof asserts {}",
+            computed_root.to_hex(),
+            expected_root.to_hex()
+        )));
+    }
+    Ok(())
 }
 
 #[async_trait::async_trait]
@@ -445,6 +656,7 @@ impl AnchorWitnessClient for RekorClient {
             .http
             .post(self.entries_url())
             .json(&request)
+            // CHIO_EGRESS_LINT_ALLOW_DIRECT_REQWEST: paired with builder above.
             .send()
             .await
             .map_err(|error| AnchorWitnessError::Network(error.to_string()))?;
@@ -475,6 +687,11 @@ impl AnchorWitnessClient for RekorClient {
         // never persist a Witnessed receipt that fails the lane-pinned
         // signature check.
         verify_set_signature(&entry, &self.trusted_keys)?;
+        // If the response inlines a Merkle inclusion proof, verify it
+        // against the entry leaf and the asserted root before we treat
+        // the entry as witnessed. Absent proof leaves the SET as the
+        // authoritative authentication.
+        verify_inclusion_proof(&entry)?;
         let inclusion_proof_bytes = entry
             .verification
             .as_ref()
@@ -501,6 +718,7 @@ impl AnchorWitnessClient for RekorClient {
         let response = self
             .http
             .get(self.entry_by_uuid_url(&receipt.external_uuid))
+            // CHIO_EGRESS_LINT_ALLOW_DIRECT_REQWEST: paired with builder above.
             .send()
             .await
             .map_err(|error| AnchorWitnessError::Network(error.to_string()))?;
@@ -534,8 +752,13 @@ impl AnchorWitnessClient for RekorClient {
         // SET signature against the pinned Rekor public key. This is
         // the substantive authentication of the inclusion response;
         // without it, a malicious mirror could forge any
-        // body+integratedTime triple. (HIGH-3 fix.)
+        // body+integratedTime triple.
         verify_set_signature(entry, &self.trusted_keys)?;
+        // Merkle inclusion proof, when the lane returns one: rebuild
+        // the RFC 6962 tree head from the entry leaf and audit path and
+        // assert it equals the asserted root, bound to the SET-signed
+        // logIndex. Fails closed on any malformed or mismatched proof.
+        verify_inclusion_proof(entry)?;
 
         let now = chrono_now_unix();
         if self.max_witness_age_seconds > 0
@@ -679,7 +902,7 @@ pub fn build_rekor_publish_response_with_set(
 
 /// Sign the canonical SET envelope `{body, integratedTime, logID,
 /// logIndex}` with a P-256 signing key and return the base64-DER
-/// signature. Exposed for tests; production code never calls this.
+/// signature. Test-only; never called from production paths.
 pub fn sign_set_with_test_key(
     body_b64: &str,
     integrated_time: i64,
@@ -753,7 +976,7 @@ mod tests {
         assert_eq!(parsed.spec.content.hash.value, expected);
     }
 
-    /// HIGH-2 (PR #594 round-2 review): the DSSE envelope wire shape
+    /// The DSSE envelope wire shape
     /// MUST use Rekor's canonical camelCase keys (`payloadType`,
     /// `apiVersion`) and the in-toto payload type. Inspect the raw
     /// JSON bytes to catch any future serde drift.
@@ -845,5 +1068,359 @@ mod tests {
         let err = verify_set_signature(&entry, &[REKOR_PUBLIC_KEY_PEM.to_string()])
             .expect_err("SET must be rejected under a non-signing key");
         assert!(matches!(err, AnchorWitnessError::SignatureInvalid(_)));
+    }
+
+    // --- Inclusion-proof (RFC 6962) test fixtures and vectors -------
+    //
+    // The fixture below builds a reference Merkle tree from leaf bytes
+    // using the SAME RFC 6962 hashing the verifier uses
+    // (`SHA-256(0x00 || leaf)` for leaves, `SHA-256(0x01 || l || r)`
+    // for nodes) and derives the audit path for any leaf. Because the
+    // tree is built independently of `rfc6962_root_from_inclusion_proof`
+    // (recursive split-at-largest-power-of-two vs the iterative
+    // verifier ascent), a passing round-trip is a genuine cross-check,
+    // not a tautology. The known-good vectors are then tampered to
+    // confirm fail-closed behavior.
+
+    /// Reference RFC 6962 Merkle tree over arbitrary leaf byte strings.
+    struct ReferenceMerkleTree {
+        leaf_hashes: Vec<Hash>,
+    }
+
+    impl ReferenceMerkleTree {
+        fn from_leaves(leaves: &[&[u8]]) -> Self {
+            let leaf_hashes = leaves
+                .iter()
+                .map(|leaf| rfc6962_leaf_hash(leaf))
+                .collect::<Vec<_>>();
+            ReferenceMerkleTree { leaf_hashes }
+        }
+
+        fn size(&self) -> u64 {
+            self.leaf_hashes.len() as u64
+        }
+
+        /// Root of the subtree spanning `leaves` (RFC 6962 section 2.1:
+        /// split at the largest power of two strictly less than the
+        /// subtree width).
+        fn subtree_root(leaves: &[Hash]) -> Hash {
+            match leaves {
+                [] => rfc6962_leaf_hash(&[]),
+                [single] => *single,
+                _ => {
+                    let split = largest_power_of_two_below(leaves.len());
+                    let left = Self::subtree_root(&leaves[..split]);
+                    let right = Self::subtree_root(&leaves[split..]);
+                    rfc6962_node_hash(&left, &right)
+                }
+            }
+        }
+
+        fn root(&self) -> Hash {
+            Self::subtree_root(&self.leaf_hashes)
+        }
+
+        /// Audit path for `index`: the ordered sibling hashes from the
+        /// leaf up to (but excluding) the root.
+        fn audit_path(&self, index: usize) -> Vec<Hash> {
+            let mut path = Vec::new();
+            Self::collect_path(&self.leaf_hashes, index, &mut path);
+            path
+        }
+
+        fn collect_path(leaves: &[Hash], index: usize, path: &mut Vec<Hash>) {
+            if leaves.len() <= 1 {
+                return;
+            }
+            let split = largest_power_of_two_below(leaves.len());
+            if index < split {
+                // Target is in the left subtree; sibling is the right
+                // subtree root.
+                let right = Self::subtree_root(&leaves[split..]);
+                Self::collect_path(&leaves[..split], index, path);
+                path.push(right);
+            } else {
+                // Target is in the right subtree; sibling is the left
+                // subtree root.
+                let left = Self::subtree_root(&leaves[..split]);
+                Self::collect_path(&leaves[split..], index - split, path);
+                path.push(left);
+            }
+        }
+    }
+
+    /// Largest power of two strictly less than `n` (RFC 6962 split
+    /// point). `n` must be >= 2.
+    fn largest_power_of_two_below(n: usize) -> usize {
+        let mut k = 1usize;
+        while k < n {
+            k <<= 1;
+        }
+        k >> 1
+    }
+
+    fn proof_from_reference(tree: &ReferenceMerkleTree, index: usize) -> RekorInclusionProof {
+        RekorInclusionProof {
+            log_index: Some(index as i64),
+            root_hash: Some(tree.root().to_hex()),
+            tree_size: Some(tree.size() as i64),
+            hashes: Some(tree.audit_path(index).iter().map(Hash::to_hex).collect()),
+        }
+    }
+
+    fn entry_with_inclusion_proof(
+        body_bytes: &[u8],
+        log_index: i64,
+        proof: RekorInclusionProof,
+    ) -> RekorEntry {
+        RekorEntry {
+            body: BASE64_STANDARD.encode(body_bytes),
+            integrated_time: 1_700_000_010,
+            log_id: "0".repeat(64),
+            log_index,
+            verification: Some(RekorVerification {
+                inclusion_proof: Some(proof),
+                signed_entry_timestamp: None,
+            }),
+        }
+    }
+
+    /// The verifier's iterative ascent must reproduce the reference
+    /// tree root for every leaf, across balanced and unbalanced trees.
+    #[test]
+    fn rfc6962_recomputes_reference_root_for_every_leaf() {
+        for leaf_count in 1usize..=9 {
+            let owned: Vec<Vec<u8>> = (0..leaf_count)
+                .map(|i| format!("rekor-leaf-{i}").into_bytes())
+                .collect();
+            let leaves: Vec<&[u8]> = owned.iter().map(Vec::as_slice).collect();
+            let tree = ReferenceMerkleTree::from_leaves(&leaves);
+            let expected_root = tree.root();
+            for (index, &leaf) in leaves.iter().enumerate() {
+                let leaf_hash = rfc6962_leaf_hash(leaf);
+                let path = tree.audit_path(index);
+                let computed = rfc6962_root_from_inclusion_proof(
+                    index as u64,
+                    leaf_count as u64,
+                    leaf_hash,
+                    &path,
+                )
+                .expect("known-good proof must recompute the root");
+                assert_eq!(
+                    computed, expected_root,
+                    "leaf {index} of {leaf_count}-leaf tree must recompute the reference root"
+                );
+            }
+        }
+    }
+
+    /// End-to-end known-good inclusion proof over a Rekor entry: a
+    /// 5-leaf (unbalanced) tree exercises the rightmost-edge ascent.
+    #[test]
+    fn verify_inclusion_proof_accepts_known_good_vector() {
+        let bodies: Vec<Vec<u8>> = (0..5).map(|i| format!("body-{i}").into_bytes()).collect();
+        let leaves: Vec<&[u8]> = bodies.iter().map(Vec::as_slice).collect();
+        let tree = ReferenceMerkleTree::from_leaves(&leaves);
+        // Pick the last leaf (index 4) so the audit path climbs the
+        // unbalanced right edge.
+        let index = 4usize;
+        let proof = proof_from_reference(&tree, index);
+        let entry = entry_with_inclusion_proof(leaves[index], index as i64, proof);
+        verify_inclusion_proof(&entry).expect("known-good inclusion proof must verify");
+    }
+
+    /// Absent inclusion proof is a no-op: the SET remains the
+    /// authoritative authentication and verification must not fail.
+    #[test]
+    fn verify_inclusion_proof_is_noop_when_absent() {
+        let entry = RekorEntry {
+            body: BASE64_STANDARD.encode(b"no-proof-body"),
+            integrated_time: 1_700_000_010,
+            log_id: "0".repeat(64),
+            log_index: 3,
+            verification: Some(RekorVerification {
+                inclusion_proof: None,
+                signed_entry_timestamp: Some("set".to_string()),
+            }),
+        };
+        verify_inclusion_proof(&entry).expect("absent inclusion proof must be a no-op");
+
+        // Also a no-op when there is no verification block at all.
+        let bare = RekorEntry {
+            body: BASE64_STANDARD.encode(b"bare-body"),
+            integrated_time: 1_700_000_010,
+            log_id: "0".repeat(64),
+            log_index: 0,
+            verification: None,
+        };
+        verify_inclusion_proof(&bare).expect("missing verification block must be a no-op");
+    }
+
+    /// Tamper: a wrong root hash must be rejected.
+    #[test]
+    fn verify_inclusion_proof_rejects_wrong_root() {
+        let bodies: Vec<Vec<u8>> = (0..4).map(|i| format!("body-{i}").into_bytes()).collect();
+        let leaves: Vec<&[u8]> = bodies.iter().map(Vec::as_slice).collect();
+        let tree = ReferenceMerkleTree::from_leaves(&leaves);
+        let index = 1usize;
+        let mut proof = proof_from_reference(&tree, index);
+        // Flip the asserted root to an unrelated hash.
+        proof.root_hash = Some(sha256(b"attacker-root").to_hex());
+        let entry = entry_with_inclusion_proof(leaves[index], index as i64, proof);
+        let err = verify_inclusion_proof(&entry).expect_err("a wrong root hash must fail closed");
+        assert!(
+            matches!(&err, AnchorWitnessError::SignatureInvalid(message) if message.contains("root mismatch")),
+            "expected root-mismatch SignatureInvalid, got: {err:?}"
+        );
+    }
+
+    /// Tamper: a wrong tree size must be rejected (the geometry no
+    /// longer matches the audit-path length, or the recomputed root
+    /// diverges).
+    #[test]
+    fn verify_inclusion_proof_rejects_wrong_tree_size() {
+        let bodies: Vec<Vec<u8>> = (0..4).map(|i| format!("body-{i}").into_bytes()).collect();
+        let leaves: Vec<&[u8]> = bodies.iter().map(Vec::as_slice).collect();
+        let tree = ReferenceMerkleTree::from_leaves(&leaves);
+        let index = 1usize;
+        let mut proof = proof_from_reference(&tree, index);
+        // Claim a tree of 8 leaves while supplying a 4-leaf audit path.
+        proof.tree_size = Some(8);
+        let entry = entry_with_inclusion_proof(leaves[index], index as i64, proof);
+        let err = verify_inclusion_proof(&entry).expect_err("a wrong tree size must fail closed");
+        assert!(
+            matches!(err, AnchorWitnessError::SignatureInvalid(_)),
+            "expected SignatureInvalid for wrong tree size, got: {err:?}"
+        );
+    }
+
+    /// Tamper: a truncated audit path (one sibling removed) must be
+    /// rejected as too short.
+    #[test]
+    fn verify_inclusion_proof_rejects_truncated_path() {
+        let bodies: Vec<Vec<u8>> = (0..5).map(|i| format!("body-{i}").into_bytes()).collect();
+        let leaves: Vec<&[u8]> = bodies.iter().map(Vec::as_slice).collect();
+        let tree = ReferenceMerkleTree::from_leaves(&leaves);
+        let index = 2usize;
+        let mut proof = proof_from_reference(&tree, index);
+        let mut hashes = proof.hashes.take().unwrap();
+        assert!(!hashes.is_empty(), "fixture must have a non-empty path");
+        hashes.pop();
+        proof.hashes = Some(hashes);
+        let entry = entry_with_inclusion_proof(leaves[index], index as i64, proof);
+        let err =
+            verify_inclusion_proof(&entry).expect_err("a truncated audit path must fail closed");
+        assert!(
+            matches!(&err, AnchorWitnessError::SignatureInvalid(message) if message.contains("too short")),
+            "expected too-short SignatureInvalid, got: {err:?}"
+        );
+    }
+
+    /// Tamper: a padded audit path (one extra sibling) must be
+    /// rejected as too long.
+    #[test]
+    fn verify_inclusion_proof_rejects_padded_path() {
+        let bodies: Vec<Vec<u8>> = (0..4).map(|i| format!("body-{i}").into_bytes()).collect();
+        let leaves: Vec<&[u8]> = bodies.iter().map(Vec::as_slice).collect();
+        let tree = ReferenceMerkleTree::from_leaves(&leaves);
+        let index = 0usize;
+        let mut proof = proof_from_reference(&tree, index);
+        let mut hashes = proof.hashes.take().unwrap();
+        hashes.push(sha256(b"extra-sibling").to_hex());
+        proof.hashes = Some(hashes);
+        let entry = entry_with_inclusion_proof(leaves[index], index as i64, proof);
+        let err = verify_inclusion_proof(&entry).expect_err("a padded audit path must fail closed");
+        assert!(
+            matches!(&err, AnchorWitnessError::SignatureInvalid(message) if message.contains("too long")),
+            "expected too-long SignatureInvalid, got: {err:?}"
+        );
+    }
+
+    /// Tamper: a proof logIndex that disagrees with the SET-signed
+    /// logIndex must be rejected (a mirror stapling a foreign proof).
+    #[test]
+    fn verify_inclusion_proof_rejects_log_index_disagreement() {
+        let bodies: Vec<Vec<u8>> = (0..4).map(|i| format!("body-{i}").into_bytes()).collect();
+        let leaves: Vec<&[u8]> = bodies.iter().map(Vec::as_slice).collect();
+        let tree = ReferenceMerkleTree::from_leaves(&leaves);
+        let index = 2usize;
+        let proof = proof_from_reference(&tree, index);
+        // Entry's SET-signed logIndex says 3, proof says 2.
+        let entry = entry_with_inclusion_proof(leaves[index], 3, proof);
+        let err =
+            verify_inclusion_proof(&entry).expect_err("a logIndex disagreement must fail closed");
+        assert!(
+            matches!(&err, AnchorWitnessError::SignatureInvalid(message) if message.contains("logIndex")),
+            "expected logIndex-mismatch SignatureInvalid, got: {err:?}"
+        );
+    }
+
+    /// Tamper: an out-of-range logIndex (>= treeSize) must be rejected.
+    #[test]
+    fn verify_inclusion_proof_rejects_out_of_range_index() {
+        let bodies: Vec<Vec<u8>> = (0..4).map(|i| format!("body-{i}").into_bytes()).collect();
+        let leaves: Vec<&[u8]> = bodies.iter().map(Vec::as_slice).collect();
+        let tree = ReferenceMerkleTree::from_leaves(&leaves);
+        let mut proof = proof_from_reference(&tree, 0);
+        proof.log_index = Some(4); // treeSize is 4, so index 4 is out of range
+        let entry = entry_with_inclusion_proof(leaves[0], 4, proof);
+        let err =
+            verify_inclusion_proof(&entry).expect_err("an out-of-range logIndex must fail closed");
+        assert!(
+            matches!(&err, AnchorWitnessError::SignatureInvalid(message) if message.contains("out of range")),
+            "expected out-of-range SignatureInvalid, got: {err:?}"
+        );
+    }
+
+    /// Tamper: a missing rootHash must be rejected.
+    #[test]
+    fn verify_inclusion_proof_rejects_missing_root_hash() {
+        let bodies: Vec<Vec<u8>> = (0..4).map(|i| format!("body-{i}").into_bytes()).collect();
+        let leaves: Vec<&[u8]> = bodies.iter().map(Vec::as_slice).collect();
+        let tree = ReferenceMerkleTree::from_leaves(&leaves);
+        let mut proof = proof_from_reference(&tree, 1);
+        proof.root_hash = None;
+        let entry = entry_with_inclusion_proof(leaves[1], 1, proof);
+        let err = verify_inclusion_proof(&entry).expect_err("a missing rootHash must fail closed");
+        assert!(
+            matches!(&err, AnchorWitnessError::SignatureInvalid(message) if message.contains("rootHash")),
+            "expected missing-rootHash SignatureInvalid, got: {err:?}"
+        );
+    }
+
+    /// Tamper: a missing treeSize must be rejected.
+    #[test]
+    fn verify_inclusion_proof_rejects_missing_tree_size() {
+        let bodies: Vec<Vec<u8>> = (0..4).map(|i| format!("body-{i}").into_bytes()).collect();
+        let leaves: Vec<&[u8]> = bodies.iter().map(Vec::as_slice).collect();
+        let tree = ReferenceMerkleTree::from_leaves(&leaves);
+        let mut proof = proof_from_reference(&tree, 1);
+        proof.tree_size = None;
+        let entry = entry_with_inclusion_proof(leaves[1], 1, proof);
+        let err = verify_inclusion_proof(&entry).expect_err("a missing treeSize must fail closed");
+        assert!(
+            matches!(&err, AnchorWitnessError::SignatureInvalid(message) if message.contains("treeSize")),
+            "expected missing-treeSize SignatureInvalid, got: {err:?}"
+        );
+    }
+
+    /// Tamper: a malformed (non-hex / wrong-length) audit-path hash
+    /// must be rejected.
+    #[test]
+    fn verify_inclusion_proof_rejects_malformed_hash() {
+        let bodies: Vec<Vec<u8>> = (0..4).map(|i| format!("body-{i}").into_bytes()).collect();
+        let leaves: Vec<&[u8]> = bodies.iter().map(Vec::as_slice).collect();
+        let tree = ReferenceMerkleTree::from_leaves(&leaves);
+        let mut proof = proof_from_reference(&tree, 1);
+        let mut hashes = proof.hashes.take().unwrap();
+        hashes[0] = "not-a-valid-hash".to_string();
+        proof.hashes = Some(hashes);
+        let entry = entry_with_inclusion_proof(leaves[1], 1, proof);
+        let err = verify_inclusion_proof(&entry)
+            .expect_err("a malformed audit-path hash must fail closed");
+        assert!(
+            matches!(err, AnchorWitnessError::SignatureInvalid(_)),
+            "expected SignatureInvalid for malformed hash, got: {err:?}"
+        );
     }
 }

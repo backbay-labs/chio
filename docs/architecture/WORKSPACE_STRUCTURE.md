@@ -1,7 +1,6 @@
 # Workspace Structure
 
-`v2.4` leaves the workspace flat, but the layers are no longer meant to be
-flat in responsibility.
+The workspace is currently flat, but the layers are not meant to be flat in responsibility.
 
 ## Intended Layers
 

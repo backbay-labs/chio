@@ -56,8 +56,8 @@ control_url="http://127.0.0.1:${control_port}"
 mcp_url="http://127.0.0.1:${mcp_port}"
 
 cargo build -p chio-cli --bin chio >/dev/null
-npm --prefix "${repo_root}/packages/sdk/chio-ts" ci --no-fund --no-audit >/dev/null
-npm --prefix "${repo_root}/packages/sdk/chio-ts" run build >/dev/null
+npm --prefix "${repo_root}/sdks/typescript/chio-ts" ci --no-fund --no-audit >/dev/null
+npm --prefix "${repo_root}/sdks/typescript/chio-ts" run build >/dev/null
 
 "${chio_bin}" \
   --receipt-db "${work_dir}/receipts.sqlite" \
@@ -128,7 +128,7 @@ node "${repo_root}/examples/anthropic-sdk/run.mjs" --dry-run \
 python3 -m venv "${venv_dir}"
 . "${venv_dir}/bin/activate"
 python -m pip install --quiet --upgrade pip
-python -m pip install --quiet -e "${repo_root}/packages/sdk/chio-py" -e "${repo_root}/examples/langchain"
+python -m pip install --quiet -e "${repo_root}/sdks/python/chio-py" -e "${repo_root}/examples/langchain"
 
 CHIO_BASE_URL="${mcp_url}" \
 CHIO_CONTROL_URL="${control_url}" \

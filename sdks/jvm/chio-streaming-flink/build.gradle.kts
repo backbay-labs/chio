@@ -52,9 +52,8 @@ dependencies {
     integrationTestImplementation(libs.flink.connector.kafka)
     integrationTestImplementation(libs.flink.connector.base)
 
-    // Testcontainers-driven Redpanda. Self-contained: ./gradlew
-    // :chio-streaming-flink:integrationTest works without a separate
-    // `docker compose up` step; only a running Docker daemon is required.
+    // Testcontainers-driven Redpanda: no separate `docker compose up` step;
+    // only a running Docker daemon is required.
     integrationTestImplementation(libs.testcontainers.core)
     integrationTestImplementation(libs.testcontainers.redpanda)
     integrationTestImplementation(libs.testcontainers.junit.jupiter)

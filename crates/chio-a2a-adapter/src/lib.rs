@@ -1,3 +1,12 @@
+//! A2A-to-Chio adapter.
+//!
+//! Mediates between the Agent-to-Agent (A2A) protocol and the Chio kernel:
+//! agent-card discovery, `SendMessage` invocation and streaming, task-registry
+//! tracking, OAuth token handling, and HTTP transport bound by the egress
+//! contract.
+
+#![forbid(unsafe_code)]
+
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::{BufRead, BufReader, Read};

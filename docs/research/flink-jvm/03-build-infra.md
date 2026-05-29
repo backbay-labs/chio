@@ -20,7 +20,7 @@ CI" posture from `cargo fmt --check`). Use **JUnit 5** via
 with a separate `integrationTest` source set for Flink mini-cluster tests so
 fast unit tests stay on the default `test` task. **No publishing block exists
 today**; publishing is out of scope for this work but the coordinates pattern
-from `chio-spring-boot` (`io.backbay.chio:<artifact>:0.1.0`) should be
+from `chio-spring-boot` (`world.chio:<artifact>:0.1.0`) should be
 preserved when it lands. **CI currently runs zero JVM jobs**; a new
 `jvm-build` job must be added to `.github/workflows/ci.yml`. The one-liner
 for JVM work is `(cd sdks/jvm && ./gradlew build check)`.
@@ -37,7 +37,7 @@ Evidence from reading the existing files:
 - `examples/hello-spring-boot/settings.gradle.kts` already uses
   `includeBuild("../../sdks/jvm/chio-spring-boot")`, i.e. it is a composite
   build consuming the SDK as a source dep. It resolves
-  `io.backbay.chio:chio-spring-boot:0.1.0` through the substitution Gradle
+  `world.chio:chio-spring-boot:0.1.0` through the substitution Gradle
   derives from the included build's `group`/`version`/`rootProject.name`.
 - `examples/hello-spring-boot/run.sh` invokes the SDK's wrapper
   (`${SDK_ROOT}/gradlew --no-daemon -p "${EXAMPLE_ROOT}" bootRun`), which
@@ -58,7 +58,7 @@ that covers all JVM modules. The existing `chio-spring-boot` wrapper
 (`gradle-wrapper.properties: gradle-8.7-bin.zip`) is moved up one level.
 `examples/hello-spring-boot` continues to work unchanged because
 `includeBuild("../../sdks/jvm")` resolves the full multi-project build; the
-Gradle substitution engine maps `io.backbay.chio:chio-spring-boot:0.1.0` to
+Gradle substitution engine maps `world.chio:chio-spring-boot:0.1.0` to
 the `chio-spring-boot` subproject automatically.
 
 One wrinkle: **`chio-streaming-flink-jvm` depends on `flink-streaming-java`,
@@ -164,15 +164,15 @@ jars.
 
 `chio-spring-boot/build.gradle.kts` has **no `publishing { }` block, no
 `maven-publish` plugin, no `signing` plugin**. The artifact coordinates
-`io.backbay.chio:chio-spring-boot:0.1.0` exist only because Gradle synthesises
+`world.chio:chio-spring-boot:0.1.0` exist only because Gradle synthesises
 them from `group` + `rootProject.name` + `version` when the SDK is consumed
 via `includeBuild`. Nothing is pushed to Maven Central or GitHub Packages.
 
 Recommendation: **publishing is out of scope for this work.** When the
 eventual 0.1.0 JVM release lands, adopt the `maven-publish` plugin with
-`io.backbay.chio:chio-sdk-jvm:<v>`,
-`io.backbay.chio:chio-spring-boot:<v>`,
-`io.backbay.chio:chio-streaming-flink-jvm:<v>`. Keep `group = "io.backbay.chio"`
+`world.chio:chio-sdk-jvm:<v>`,
+`world.chio:chio-spring-boot:<v>`,
+`world.chio:chio-streaming-flink-jvm:<v>`. Keep `group = "world.chio"`
 and a unified `version` across modules. Track in the release epic; not here.
 
 ### 7. CI integration
@@ -317,7 +317,7 @@ plugins {
 }
 
 subprojects {
-    group = "io.backbay.chio"
+    group = "world.chio"
     version = "0.1.0"
 
     apply(plugin = "com.diffplug.spotless")
@@ -475,4 +475,4 @@ command; add the `jvm-build` job sketched in section 7.
 - **Kafka connector version hedge.** `flink-connector-kafka:4.0.1-2.0` is the only 2.x-suffixed release on Maven Central. If a `-2.2`-suffixed release ships before our module goes to main, switch to it. Pin-via-catalog makes this a one-line bump.
 - **Integration-test isolation.** Flink MiniCluster acquires free ports and can clash with `examples/hello-spring-boot/smoke.sh` (which also grabs free ports with `pick_free_port`). If CI ever runs both in parallel on the same runner, add `maxParallelForks = 1` at the `integrationTest` task level.
 - **Jackson version drift.** Flink 2.2 uses `flink-shaded-jackson` internally, but any Chio envelope serialisation we do must not leak into the shaded namespace. Pinning `com.fasterxml.jackson.module:jackson-module-kotlin:2.17.2` is safe because Flink's shading relocates its copy to `org.apache.flink.shaded.jackson2.*`. Confirm on first integration test run.
-- **Publishing coordinates.** Out of scope for this work, but worth ratifying before code review: `io.backbay.chio:chio-sdk-jvm:0.1.0` (pure Kotlin), `io.backbay.chio:chio-spring-boot:0.1.0` (Spring adapter), `io.backbay.chio:chio-streaming-flink-jvm:0.1.0` (Flink adapter). Matches the Python `chio_streaming[flink]` naming from `docs/research/chio-streaming-flink-integration.md`.
+- **Publishing coordinates.** Out of scope for this work, but worth ratifying before code review: `world.chio:chio-sdk-jvm:0.1.0` (pure Kotlin), `world.chio:chio-spring-boot:0.1.0` (Spring adapter), `world.chio:chio-streaming-flink-jvm:0.1.0` (Flink adapter). Matches the Python `chio_streaming[flink]` naming from `docs/research/chio-streaming-flink-integration.md`.

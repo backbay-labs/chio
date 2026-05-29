@@ -3,21 +3,12 @@
 //! Subcommands so far:
 //!
 //! ```text
-//! cargo xtask trajectory regen-manifest
-//! cargo xtask trajectory regen-manifest --trajectory trajectory-2
-//! cargo xtask trajectory regen-manifest --check
 //! cargo xtask validate-scenarios
 //! cargo xtask freeze-vectors
 //! cargo xtask freeze-vectors --check
 //! cargo xtask eval-receipt-regen
 //! cargo xtask eval-receipt-regen --check
 //! ```
-//!
-//! `trajectory regen-manifest` walks `.planning/trajectory/tickets/M*/P*.yml`,
-//! concatenates the per-phase ticket arrays, sorts by id, and writes the
-//! result to `.planning/trajectory/tickets/manifest.yml` with the canonical
-//! header. With `--check` it exits non-zero on drift instead of writing.
-//! Pass `--trajectory trajectory-2` to target `.planning/trajectory-2`.
 //!
 //! `validate-scenarios` walks `tests/conformance/scenarios/**/*.json`, looks
 //! up each scenario's declared `$schema` URI (resolved primarily through an
@@ -89,69 +80,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
-use serde::de::Error as _;
-use serde_yml::Value;
 use sha2::{Digest, Sha256};
 
 mod eval_receipt_regen;
 mod snippets_subcommand;
-
-const TRAJECTORY_1_MANIFEST_HEADER: &str = "\
-# GENERATED from per-phase files under .planning/trajectory/tickets/M{nn}/P{n}.yml
-# Do not hand-edit. Regenerate with `cargo xtask trajectory regen-manifest`.
-# CI validates manifest.yml against schema.json on every PR.
-#
-# The per-phase files under tickets/M{nn}/P{n}.yml are the source of truth.
-# This manifest is a flat, id-sorted concatenation. Empty manifest is the
-# Wave-0 seed state until the Wave 1a phase tickets are authored.
-";
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum TrajectoryManifest {
-    Trajectory1,
-    Trajectory2,
-}
-
-impl TrajectoryManifest {
-    fn parse(value: &str) -> Option<Self> {
-        match value {
-            "trajectory" | "trajectory-1" | "1" => Some(Self::Trajectory1),
-            "trajectory-2" | "2" => Some(Self::Trajectory2),
-            _ => None,
-        }
-    }
-
-    fn tickets_dir(self, workspace_root: &Path) -> PathBuf {
-        match self {
-            Self::Trajectory1 => workspace_root.join(".planning/trajectory/tickets"),
-            Self::Trajectory2 => workspace_root.join(".planning/trajectory-2/tickets"),
-        }
-    }
-
-    fn manifest_header(self, phase_file_count: usize, ticket_count: usize) -> String {
-        match self {
-            Self::Trajectory1 => TRAJECTORY_1_MANIFEST_HEADER.to_string(),
-            Self::Trajectory2 => format!(
-                "\
-# GENERATED from per-phase files under .planning/trajectory-2/tickets/M{{nn}}/P{{n}}.yml
-# Do not hand-edit. Regenerate with:
-#   cargo xtask trajectory regen-manifest --trajectory trajectory-2
-# CI validates manifest.yml against schema.json on every PR.
-#
-# Total: {ticket_count} tickets across 10 milestones, {phase_file_count} per-phase files.
-# The per-phase files under tickets/M{{nn}}/P{{n}}.yml are the source of truth.
-"
-            ),
-        }
-    }
-
-    fn rerun_hint(self) -> &'static str {
-        match self {
-            Self::Trajectory1 => "cargo xtask trajectory regen-manifest",
-            Self::Trajectory2 => "cargo xtask trajectory regen-manifest --trajectory trajectory-2",
-        }
-    }
-}
 
 #[derive(Debug)]
 enum XtaskError {
@@ -188,7 +120,6 @@ fn main() -> ExitCode {
     let mut args = env::args().skip(1);
     let cmd = args.next().unwrap_or_default();
     let result = match cmd.as_str() {
-        "trajectory" => run_trajectory(args.collect()),
         "validate-scenarios" => validate_scenarios(args.collect()),
         "freeze-vectors" => freeze_vectors(args.collect()),
         "eval-receipt-regen" => eval_receipt_regen::run(args.collect()),
@@ -212,7 +143,6 @@ fn main() -> ExitCode {
 
 fn print_help() {
     println!("xtask subcommands:");
-    println!("  trajectory regen-manifest [--trajectory trajectory-2] [--check]");
     println!("  validate-scenarios");
     println!("  freeze-vectors [--check]");
     println!("  eval-receipt-regen [--check]");
@@ -226,237 +156,6 @@ fn print_help() {
     println!("  codegen --lang ts [--check]");
     println!("  codegen python [--check]");
     println!("  codegen --lang python [--check]");
-}
-
-fn run_trajectory(args: Vec<String>) -> Result<(), XtaskError> {
-    let mut iter = args.into_iter();
-    let sub = iter
-        .next()
-        .ok_or_else(|| XtaskError::Usage("trajectory <subcommand>".into()))?;
-    match sub.as_str() {
-        "regen-manifest" => regen_manifest(iter.collect()),
-        other => Err(XtaskError::Usage(format!(
-            "unknown trajectory subcommand: {other}"
-        ))),
-    }
-}
-
-#[rustfmt::skip]
-fn regen_manifest(args: Vec<String>) -> Result<(), XtaskError> {
-    let mut check_only = false;
-    let mut target = TrajectoryManifest::Trajectory1;
-    let mut iter = args.into_iter();
-    while let Some(arg) = iter.next() {
-        match arg.as_str() {
-            "--check" => check_only = true,
-            "--trajectory" => {
-                let value = iter.next().ok_or_else(|| {
-                    XtaskError::Usage("regen-manifest: --trajectory requires a value".into())
-                })?;
-                target = TrajectoryManifest::parse(&value).ok_or_else(|| {
-                    XtaskError::Usage(format!(
-                        "regen-manifest: unknown trajectory target: {value}"
-                    ))
-                })?;
-            }
-            value if value.starts_with("--trajectory=") => {
-                let value = value.trim_start_matches("--trajectory=");
-                target = TrajectoryManifest::parse(value).ok_or_else(|| {
-                    XtaskError::Usage(format!(
-                        "regen-manifest: unknown trajectory target: {value}"
-                    ))
-                })?;
-            }
-            other => {
-                return Err(XtaskError::Usage(format!(
-                    "regen-manifest: unknown flag: {other}"
-                )));
-            }
-        }
-    }
-
-    let workspace_root = workspace_root()?;
-    if target == TrajectoryManifest::Trajectory2 {
-        return regen_trajectory_2_manifest(&workspace_root, check_only);
-    }
-    let tickets_dir = target.tickets_dir(&workspace_root);
-    let manifest_path = tickets_dir.join("manifest.yml");
-
-    let mut tickets: Vec<Value> = Vec::new();
-    let phase_files = collect_phase_files(&tickets_dir)?;
-    for path in &phase_files {
-        let raw =
-            fs::read_to_string(path).map_err(|err| XtaskError::Io(display_path(path), err))?;
-        if raw.trim().is_empty() {
-            continue;
-        }
-        let parsed: Value =
-            serde_yml::from_str(&raw).map_err(|err| XtaskError::Yaml(display_path(path), err))?;
-        match parsed {
-            Value::Sequence(seq) => tickets.extend(seq),
-            Value::Null => continue,
-            _ => {
-                return Err(XtaskError::Yaml(
-                    display_path(path),
-                    serde_yml::Error::custom(format!(
-                        "{}: expected a YAML sequence at the top level",
-                        display_path(path)
-                    )),
-                ));
-            }
-        }
-    }
-
-    tickets.sort_by_key(ticket_id);
-
-    let body = if tickets.is_empty() {
-        "[]\n".to_string()
-    } else {
-        serde_yml::to_string(&Value::Sequence(tickets))
-            .map_err(|err| XtaskError::Yaml(display_path(&manifest_path), err))?
-    };
-    let new_content = format!(
-        "{}\n{body}",
-        target.manifest_header(
-            phase_files.len(),
-            count_top_level_sequence_entries_from_body(&body)
-        )
-    );
-
-    if check_only {
-        let existing = fs::read_to_string(&manifest_path)
-            .map_err(|err| XtaskError::Io(display_path(&manifest_path), err))?;
-        if existing != new_content {
-            return Err(XtaskError::Drift(format!(
-                "manifest.yml is stale; rerun `{}` ({} phase files inspected)",
-                target.rerun_hint(),
-                phase_files.len()
-            )));
-        }
-        println!(
-            "manifest.yml in sync with {} phase files",
-            phase_files.len()
-        );
-    } else {
-        fs::write(&manifest_path, new_content)
-            .map_err(|err| XtaskError::Io(display_path(&manifest_path), err))?;
-        println!(
-            "wrote {} ({} phase files; {} ticket entries)",
-            display_path(&manifest_path),
-            phase_files.len(),
-            // Recompute count for the message.
-            count_top_level_sequence_entries(&manifest_path).unwrap_or(0)
-        );
-    }
-    Ok(())
-}
-
-fn count_top_level_sequence_entries_from_body(body: &str) -> usize {
-    let Ok(value) = serde_yml::from_str::<Value>(body) else {
-        return 0;
-    };
-    match value {
-        Value::Sequence(seq) => seq.len(),
-        _ => 0,
-    }
-}
-
-fn regen_trajectory_2_manifest(workspace_root: &Path, check_only: bool) -> Result<(), XtaskError> {
-    let script = workspace_root.join(".planning/trajectory-2/scripts/regen-manifest.sh");
-    let mut command = Command::new("bash");
-    command.arg(&script);
-    if check_only {
-        command.arg("--check");
-    }
-    let status = command.status().map_err(|err| {
-        XtaskError::Process(format!("failed to run {}: {err}", display_path(&script)))
-    })?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(XtaskError::ToolFailed(format!(
-            "{} exited with status {status}",
-            display_path(&script)
-        )))
-    }
-}
-
-fn collect_phase_files(tickets_dir: &Path) -> Result<Vec<PathBuf>, XtaskError> {
-    let mut out: Vec<PathBuf> = Vec::new();
-    let entries = match fs::read_dir(tickets_dir) {
-        Ok(it) => it,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(out),
-        Err(err) => return Err(XtaskError::Io(display_path(tickets_dir), err)),
-    };
-    for entry in entries {
-        let entry = entry.map_err(|err| XtaskError::Io(display_path(tickets_dir), err))?;
-        let path = entry.path();
-        let Some(name) = path.file_name().and_then(OsStr::to_str) else {
-            continue;
-        };
-        if !is_milestone_dir(name) || !path.is_dir() {
-            continue;
-        }
-        let phase_entries =
-            fs::read_dir(&path).map_err(|err| XtaskError::Io(display_path(&path), err))?;
-        let mut phase_files: Vec<PathBuf> = Vec::new();
-        for phase_entry in phase_entries {
-            let phase_entry =
-                phase_entry.map_err(|err| XtaskError::Io(display_path(&path), err))?;
-            let phase_path = phase_entry.path();
-            let Some(phase_name) = phase_path.file_name().and_then(OsStr::to_str) else {
-                continue;
-            };
-            if is_phase_file(phase_name) {
-                phase_files.push(phase_path);
-            }
-        }
-        phase_files.sort();
-        out.extend(phase_files);
-    }
-    out.sort();
-    Ok(out)
-}
-
-fn is_milestone_dir(name: &str) -> bool {
-    let bytes = name.as_bytes();
-    bytes.len() == 3 && bytes[0] == b'M' && bytes[1].is_ascii_digit() && bytes[2].is_ascii_digit()
-}
-
-fn is_phase_file(name: &str) -> bool {
-    let Some(stem) = name.strip_suffix(".yml") else {
-        return false;
-    };
-    if !stem.starts_with('P') {
-        return false;
-    }
-    let rest = &stem[1..];
-    if rest.is_empty() {
-        return false;
-    }
-    rest.chars().all(|c| c.is_ascii_digit() || c == '.')
-}
-
-fn ticket_id(value: &Value) -> String {
-    match value {
-        Value::Mapping(map) => map
-            .get(Value::String("id".into()))
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string(),
-        _ => String::new(),
-    }
-}
-
-fn count_top_level_sequence_entries(path: &Path) -> Result<usize, XtaskError> {
-    let raw = fs::read_to_string(path).map_err(|err| XtaskError::Io(display_path(path), err))?;
-    let value: Value =
-        serde_yml::from_str(&raw).map_err(|err| XtaskError::Yaml(display_path(path), err))?;
-    match value {
-        Value::Sequence(seq) => Ok(seq.len()),
-        Value::Null => Ok(0),
-        _ => Ok(0),
-    }
 }
 
 const SCHEMA_URI_PREFIX: &str = "https://chio-protocol.dev/schemas/";
@@ -509,10 +208,9 @@ fn validate_scenarios(args: Vec<String>) -> Result<(), XtaskError> {
         let schema_path = match resolve_schema_path(uri, &schema_index, &schemas_root) {
             Some(path) => path,
             None => {
-                // Unrecognized `$schema` URIs were previously SKIPped, which
-                // meant a typo could silently bypass validation. Treat them
-                // as a hard failure: a scenario that opted into schema
-                // validation must point at a real schema.
+                // Fail closed on an unrecognized `$schema` URI: a scenario
+                // that opted into schema validation must point at a real
+                // schema, so a typo cannot silently bypass validation.
                 println!(
                     "FAIL {}: unrecognized $schema URI: {}",
                     display_path(scenario),
@@ -906,9 +604,8 @@ fn codegen_rust(check_only: bool) -> Result<(), XtaskError> {
     if check_only {
         // Render BOTH the consolidated chio_wire_v1.rs and the placeholder
         // mod.rs into a temporary staging directory and compare every file
-        // byte-for-byte with the on-disk copy. The previous implementation
-        // only checked chio_wire_v1.rs, so a stale or missing mod.rs slipped
-        // past the spec-drift CI lane.
+        // byte-for-byte with the on-disk copy, so a stale or missing mod.rs
+        // cannot slip past the spec-drift CI lane.
         let staging = TempDir::new("chio-codegen-rust-check").map_err(|err| {
             XtaskError::Io("<temp staging dir for codegen rust --check>".into(), err)
         })?;
@@ -1335,6 +1032,14 @@ fn run_json2ts(json2ts: &Path, schema: &Path) -> Result<String, XtaskError> {
     let output = Command::new(json2ts)
         .arg("-i")
         .arg(schema)
+        // Resolve the schema's own directory as the working directory so cross-file
+        // relative `$ref`s (e.g. `../receipt/record.schema.json`) resolve against the
+        // schema file rather than the process working directory. The json2ts CLI
+        // defaults its cwd to the process cwd (unlike the library's compileFromFile),
+        // so without this a cross-file ref fails with ENOENT when xtask runs from the
+        // workspace root.
+        .arg("--cwd")
+        .arg(schema.parent().unwrap_or_else(|| Path::new(".")))
         .arg("--no-bannerComment")
         .arg("--unreachableDefinitions=false")
         .arg("--strictIndexSignatures=false")
@@ -1941,8 +1646,7 @@ fn extract_top_level_python_classes(body: &str) -> Vec<String> {
         if name.is_empty() {
             continue;
         }
-        // Skip private classes (datamodel-codegen does not emit any, but be
-        // defensive against future changes).
+        // Skip private (leading-underscore) classes.
         if name.starts_with('_') {
             continue;
         }

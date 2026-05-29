@@ -51,9 +51,9 @@ fn runtime_ops_input_documents_accept_chio_native_schemas() -> Result<(), Box<dy
     };
     validate_runtime_provider_bindings(&bindings)?;
 
-    let mut legacy_supervisor = supervisor_profile();
-    legacy_supervisor.schema = CHIO_RUNTIME_SUPERVISOR_PROFILE_SCHEMA.to_string();
-    validate_runtime_supervisor_profile(&legacy_supervisor)?;
+    let mut const_schema_supervisor = supervisor_profile();
+    const_schema_supervisor.schema = CHIO_RUNTIME_SUPERVISOR_PROFILE_SCHEMA.to_string();
+    validate_runtime_supervisor_profile(&const_schema_supervisor)?;
     Ok(())
 }
 

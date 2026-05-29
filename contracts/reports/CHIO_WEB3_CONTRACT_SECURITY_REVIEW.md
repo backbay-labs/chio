@@ -50,7 +50,7 @@ This review covers the official `v2.34` contract family:
 - No relayer registry
   - Escrow release is beneficiary-driven today. The research discussed
     beneficiary-or-relayer authorization, but a relayer allowlist is not part
-    of this milestone's runtime surface.
+    of the current runtime surface.
 - No CREATE2 deploy script yet
   - The package now ships deterministic deployment templates, but live chain
     execution still needs an operator-specific deployment runner.

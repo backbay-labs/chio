@@ -21,13 +21,17 @@ gemini_api_version = "v1beta"
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
 chio-provider-adapter-core = { path = "../chio-provider-adapter-core" }
 chio-tool-call-fabric = { path = "../chio-tool-call-fabric" }
+async-trait = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+wiremock = { workspace = true }
+
 [[bench]]
 name = "verdict_latency"
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

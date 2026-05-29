@@ -1,9 +1,10 @@
-//! Mistral SSE gating for `chat/completions stream` payloads.
+//! Mistral SSE gating for `chat/completions` streaming payloads.
 //!
-//! Mistral streams as JSON-array chunks framed in SSE-style `data:` events.
-//! Each chunk carries a partial `Candidate` with content parts. We buffer
-//! `tool_calls` parts (which arrive whole on Mistral's wire) and gate the
-//! emission on a kernel verdict before forwarding bytes downstream.
+//! Mistral is OpenAI-compatible: it streams `chat.completion.chunk` objects
+//! framed as SSE `data:` events. Each chunk carries
+//! `choices[].delta.tool_calls[]` (or `choices[].message.tool_calls[]` on
+//! aggregated chunks). We buffer the tool calls and gate emission on a kernel
+//! verdict before forwarding bytes downstream.
 
 use chio_provider_adapter_core::{
     ensure_streaming_allow_no_redactions, parse_sse_frames, GatedStream, SseParseOptions,
@@ -36,9 +37,7 @@ impl MistralAdapter {
                 continue;
             };
 
-            // Walk OpenAI-shaped choices[].{delta,message}.tool_calls[]
-            // first; fall back to Gemini-shaped candidates[].content.parts[]
-            // for legacy fixtures.
+            // Walk OpenAI-shaped choices[].{delta,message}.tool_calls[].
             for call in extract_stream_function_calls(data)? {
                 let invocation = self.invocation_from_function_call(&call)?;
                 let verdict = evaluate(&invocation)?;
@@ -67,6 +66,8 @@ fn extract_stream_function_calls(data: &Value) -> Result<Vec<FunctionCallPart>, 
     let mut out = Vec::new();
     if let Some(choices) = data.get("choices").and_then(Value::as_array) {
         for choice in choices {
+            // Streaming deltas live at choices[].delta.tool_calls[], while
+            // batched / aggregated chunks reuse choices[].message.tool_calls[].
             for source in ["delta", "message"] {
                 let Some(tool_calls) = choice
                     .get(source)
@@ -79,33 +80,6 @@ fn extract_stream_function_calls(data: &Value) -> Result<Vec<FunctionCallPart>, 
                     if let Some(part) = openai_tool_call_to_function_call(entry, "Mistral")? {
                         out.push(part);
                     }
-                }
-            }
-        }
-    }
-
-    if !out.is_empty() {
-        return Ok(out);
-    }
-
-    if let Some(candidates) = data.get("candidates").and_then(Value::as_array) {
-        for candidate in candidates {
-            let Some(parts) = candidate
-                .get("content")
-                .and_then(|c| c.get("parts"))
-                .and_then(Value::as_array)
-            else {
-                continue;
-            };
-            for part in parts {
-                if let Some(call) = part.get("functionCall") {
-                    let parsed: FunctionCallPart =
-                        serde_json::from_value(call.clone()).map_err(|error| {
-                            ProviderError::Malformed(format!(
-                                "Mistral functionCall part was malformed: {error}"
-                            ))
-                        })?;
-                    out.push(parsed);
                 }
             }
         }

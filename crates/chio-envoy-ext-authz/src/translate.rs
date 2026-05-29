@@ -3,9 +3,8 @@
 //!
 //! The types defined here are deliberately self-contained. The adapter does
 //! not pull in `chio-kernel` or `chio-http-core`; instead it exposes a small
-//! protocol-agnostic request / verdict pair that real wiring can map onto the
-//! richer Chio substrate types downstream. This keeps the crate compilable
-//! and testable without the heavier substrate.
+//! protocol-agnostic request / verdict pair that callers map onto the richer
+//! Chio substrate types downstream.
 
 use std::collections::BTreeMap;
 
@@ -157,7 +156,7 @@ impl Verdict {
 /// match on this server id.
 pub const ENVOY_SERVER_ID: &str = "envoy";
 
-/// Translate an Envoy `CheckRequest` into an Chio [`ToolCallRequest`]. Returns
+/// Translate an Envoy `CheckRequest` into a Chio [`ToolCallRequest`]. Returns
 /// [`TranslateError`] when the request is malformed. The adapter treats a
 /// translation error as an internal fault and denies fail-closed.
 pub fn check_request_to_tool_call(check: &CheckRequest) -> Result<ToolCallRequest, TranslateError> {

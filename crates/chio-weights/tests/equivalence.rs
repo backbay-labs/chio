@@ -1,9 +1,9 @@
-//! Cross-provider model-card equivalence test (M10 P5.T2).
+//! Cross-provider model-card equivalence test.
 //!
 //! Asserts that two model cards (A and B) bound to the canonical
 //! cross-provider scenario corpus from `chio-provider-conformance`
 //! produce verdict-equivalent kernel outputs at every fixture in the
-//! matrix. This test consumes the trajectory-1 M07 verdict-equality
+//! matrix. This test consumes the verdict-equality
 //! oracle (`assert_canonical_bytes_eq` over normalized verdict and
 //! receipt bytes); it does not fork the oracle.
 //!
@@ -12,17 +12,17 @@
 //! PR CI runs a smoke subset gated by `--features smoke`: the eight
 //! providers in `fixtures/cross_provider/manifest.toml` (one fixture
 //! per adversary class). The full 8-provider * 12-fixture nightly
-//! sweep (96 fixtures) runs through the existing M07 nightly
+//! sweep (96 fixtures) runs through the existing nightly
 //! conformance lane and is not duplicated here.
 //!
 //! # Why two cards
 //!
 //! Operational equivalence between two distinct model cards is the
-//! property M10 P5 promises. Card A and Card B carry distinct
+//! property this test guarantees. Card A and Card B carry distinct
 //! `weights_hash` values (different model lineage) but identical
 //! `allowed_capability_set`, identical `banned_tools`, and matching
 //! coverage of the scenario's tool. The kernel binding refusal contract
-//! (P4.T5) accepts both cards for the matrix scenario, so the verdict
+//! accepts both cards for the matrix scenario, so the verdict
 //! bytes recorded under each binding are byte-identical. A divergence
 //! here would mean the cards are not operationally equivalent and the
 //! oracle catches it before publication.

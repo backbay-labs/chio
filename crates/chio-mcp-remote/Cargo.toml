@@ -38,6 +38,5 @@ subtle = "2.6"
 [dev-dependencies]
 chio-siem = { path = "../chio-siem" }
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

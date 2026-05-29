@@ -17,28 +17,7 @@ use chio_core::web3::{
 };
 use chio_kernel::checkpoint::{build_checkpoint, CheckpointError};
 
-trait TestResultOk<T, E> {
-    fn test_expect(self, context: &'static str) -> T;
-}
-
-impl<T, E> TestResultOk<T, E> for Result<T, E>
-where
-    E: std::fmt::Debug,
-{
-    fn test_expect(self, context: &'static str) -> T {
-        self.unwrap_or_else(|error| panic!("{context}: {error:?}"))
-    }
-}
-
-trait TestOptionExt<T> {
-    fn test_expect(self, context: &'static str) -> T;
-}
-
-impl<T> TestOptionExt<T> for Option<T> {
-    fn test_expect(self, context: &'static str) -> T {
-        self.unwrap_or_else(|| panic!("{context}"))
-    }
-}
+use chio_test_support::prelude::*;
 
 #[test]
 fn anchor_public_types_capture_discovery_shape() {

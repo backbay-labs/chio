@@ -47,7 +47,7 @@ impl AttestVerifier for AllowVerifier {
         Ok(VerifiedAttestation {
             subject_digest_sha256: [7u8; 32],
             certificate_identity:
-                "https://github.com/backbay/chio/.github/workflows/iam.yml@refs/heads/main"
+                "https://github.com/backbay-labs/chio/.github/workflows/iam.yml@refs/heads/main"
                     .to_string(),
             certificate_oidc_issuer: "https://token.actions.githubusercontent.com".to_string(),
             rekor_log_index: 42,
@@ -99,7 +99,7 @@ fn expected_identity() -> ExpectedIdentity {
     // `TenantPolicyResolver::expected_for_tenant`; tests retain the
     // inline form via the doc-hidden entry point.
     ExpectedIdentity::doc_hidden_inline(
-        "https://github\\.com/backbay/chio/\\.github/workflows/iam\\.yml@refs/heads/main",
+        "https://github\\.com/backbay-labs/chio/\\.github/workflows/iam\\.yml@refs/heads/main",
         "https://token.actions.githubusercontent.com",
     )
 }

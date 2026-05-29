@@ -129,7 +129,7 @@ git rm -q crates/chio-kernel-core/tests/regression_deadbeef.rs
 git commit -q -m "case4: drop deadbeef regression
 
 Crash was reclassified as a duplicate of
-https://github.com/bb-connor/arc/issues/9999 so the regression test is
+https://github.com/backbay-labs/chio/issues/9999 so the regression test is
 redundant."
 unset PR_BODY
 rc=$(run_guard)

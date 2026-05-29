@@ -1,7 +1,7 @@
 # chio-weights mutation baseline
 
 This directory holds the per-mutant cargo-mutants output for the
-`chio-weights` crate (the M10 phase 4 model-card surface: signed
+`chio-weights` crate (the model-card trust-boundary surface: signed
 weights cards, cosign bundle helper, kernel binding refusal,
 `arc bind --card`). The seed measurement closes the chio-weights
 BASELINE-GAP row.
@@ -213,12 +213,12 @@ to include `chio-weights`.
   kill rate, missed-mutant categorisation, follow-up plan).
 - `README.md`: this file.
 - `mutants.out/`: per-mutant output captured by cargo-mutants
-  (`caught.txt`, `missed.txt`, `timeout.txt`, `unviable.txt`,
-  `mutants.json`, and per-mutant `diff/` patches). The per-mutant
-  `log/` directory, `debug.log`, `outcomes.json`, and `lock.json`
-  produced by cargo-mutants are NOT committed; they contain large
-  transcripts and local process metadata. This matches the reference layout used by the
-other per-crate mutation baselines.
+  (`caught.txt`, `missed.txt`, `timeout.txt`, `unviable.txt`).
+  The per-mutant `diff/` patches and `mutants.json` catalogue are
+  produced per-run and published as release artifacts rather than
+  committed to the repository. The `log/` directory, `debug.log`,
+  `outcomes.json`, and `lock.json` are also NOT committed; they contain
+  large transcripts and local process metadata.
 
 ## Reproducibility
 
@@ -226,9 +226,11 @@ other per-crate mutation baselines.
 omitted by `audits/evidence/mutants/.gitignore`: cargo-mutants records
 local process metadata and per-mutant console transcripts in those files. The committed evidence is
 the dated JSON summary plus `caught.txt`, `missed.txt`, `timeout.txt`,
-`unviable.txt`, `mutants.json`, and per-mutant `diff/` patches.
+`unviable.txt`. The per-mutant `diff/` patches and `mutants.json` catalogue
+are produced per-run and published as release artifacts rather than
+committed to the repository.
 
-To regenerate the omitted files locally, rerun:
+To regenerate locally, rerun:
 
 ```sh
 cargo mutants \
@@ -241,4 +243,5 @@ cargo mutants \
 
 Then compare the regenerated counts against
 `audits/evidence/mutants/chio-weights/2026-05-08.json`; do not commit
-the regenerated `lock.json`, `outcomes.json`, `log/`, or `debug.log`.
+the regenerated `lock.json`, `outcomes.json`, `log/`, `debug.log`,
+`diff/`, or `mutants.json`.

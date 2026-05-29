@@ -5,6 +5,8 @@
 //! remains evidence-referential: it carries explicit references back to prior
 //! Chio truth rather than replacing those signed artifacts.
 
+#![forbid(unsafe_code)]
+
 pub use chio_core_types::{capability, receipt};
 pub use chio_market as market;
 pub use chio_web3 as web3;

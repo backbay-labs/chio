@@ -6,10 +6,10 @@ build-backend = "hatchling.build"
 name = "chio-prefect"
 version = "0.1.2"
 description = "Prefect integration for the Chio protocol -- @chio_task / @chio_flow decorators, per-task capability checks, receipts as Prefect Events"
-license = "MIT"
+license = "Apache-2.0"
 requires-python = ">=3.11"
 authors = [
-    { name = "Backbay Industries" },
+    { name = "Backbay Labs", email = "security@backbay.io" },
 ]
 keywords = ["chio", "prefect", "workflow", "orchestration", "security", "capability"]
 classifiers = [

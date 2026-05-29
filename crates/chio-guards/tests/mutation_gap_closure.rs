@@ -18,9 +18,12 @@ where
 
 #[test]
 fn forbidden_path_exceptions_do_not_widen_neighboring_secret_paths() {
-    let guard = ForbiddenPathGuard::with_patterns(
-        vec!["**/secret/**".to_string(), "**/.env".to_string()],
-        vec!["**/secret/public/**".to_string()],
+    let guard = test_ok(
+        ForbiddenPathGuard::with_patterns(
+            vec!["**/secret/**".to_string(), "**/.env".to_string()],
+            vec!["**/secret/public/**".to_string()],
+        ),
+        "build forbidden-path guard",
     );
 
     assert!(guard.is_forbidden("/workspace/secret/private/key.txt"));

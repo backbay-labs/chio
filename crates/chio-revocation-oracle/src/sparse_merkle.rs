@@ -266,11 +266,14 @@ mod tests {
         let mut oracle = InMemoryRevocationOracle::new();
         let key = RevocationKey::new(SubjectId::from("subject-a"), EpochNonce::new(7));
         oracle.insert(key, 10)?;
-        let signer = crate::DigestRootSigner::new("m04-test", b"secret".to_vec());
+        let signer = crate::Ed25519RootSigner::from_signing_key(
+            "m04-test",
+            "0303030303030303030303030303030303030303030303030303030303030303",
+        )?;
 
         let signed = oracle.signed_epoch_root(&signer)?;
 
-        signed.verify(&signer)
+        signed.verify(&signer.verifier())
     }
 
     /// Regression: clock skew backward across `insert` calls must not

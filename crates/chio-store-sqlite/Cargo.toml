@@ -13,11 +13,11 @@ name = "chio_store_sqlite"
 
 [features]
 default = []
-# M09 lineage: gates the recursive-CTE query helpers and the lineage
+# Lineage: gates the recursive-CTE query helpers and the lineage
 # DAG view atop the existing receipt store. Default-off so the
-# trajectory-1 receipt store and capability lineage indexers keep
-# their byte-equivalent behaviour. Enabling this feature in M09 P5
-# wires the recursive-CTE query layer; P0 lands the gate only.
+# receipt store and capability lineage indexers keep their
+# byte-equivalent behaviour. Enabling this feature wires the
+# recursive-CTE query layer.
 lineage = []
 
 [dependencies]
@@ -32,10 +32,12 @@ r2d2_sqlite = "0.33.0"
 serde = { workspace = true }
 serde_json = { workspace = true }
 rusqlite = { workspace = true }
+tracing = { workspace = true }
 uuid = { workspace = true, features = ["v7"] }
 zeroize = { version = "1.8", features = ["derive"] }
 
 [dev-dependencies]
+chio-test-support = { path = "../chio-test-support" }
 criterion = { workspace = true }
 tempfile = { workspace = true }
 
@@ -43,6 +45,5 @@ tempfile = { workspace = true }
 name = "store_receipt_write_throughput"
 harness = false
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

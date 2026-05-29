@@ -13,8 +13,8 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@chio/ai-sdk-middleware": "workspace:*",
-    "@chio/next": "workspace:*",
+    "@chio-protocol/ai-sdk-middleware": "workspace:*",
+    "@chio-protocol/next": "workspace:*",
     "ai": ">=4.0 <6",
     "next": ">=14.2 <16",
     "react": ">=18.2 <20",

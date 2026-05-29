@@ -51,13 +51,13 @@ pub use scope_escape::ScopeEscapeAdversary;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum AdversaryClass {
-    /// Mutates seed prompts using injection patterns (P3.T2).
+    /// Mutates seed prompts using injection patterns.
     PromptInjection,
-    /// Asks for scope outside the issued capability (P3.T3).
+    /// Asks for scope outside the issued capability.
     CapabilityOverrequest,
-    /// Reuses a captured capability after expiry / revocation (P3.T4).
+    /// Reuses a captured capability after expiry / revocation.
     ReplayAttempt,
-    /// Delegates with a scope larger than the issuer's (P3.T5).
+    /// Delegates with a scope larger than the issuer's.
     ScopeEscape,
 }
 
@@ -110,7 +110,7 @@ pub struct AdversaryAction {
     pub reason_marker: String,
 }
 
-/// Adversary trait. Each P3 class implements this surface.
+/// Adversary trait. Each adversary class implements this surface.
 pub trait Adversary {
     /// Class of the adversary.
     fn class(&self) -> AdversaryClass;
@@ -213,7 +213,7 @@ impl AdversaryPopulation {
     }
 }
 
-/// Toy guard pool used by P3 unit tests.
+/// Toy guard pool used by adversary unit tests.
 ///
 /// The evaluator mirrors the shape of the kernel's fail-closed decision
 /// tree without depending on a full kernel build: it asserts that
@@ -251,7 +251,7 @@ pub struct IssuedScope {
     /// Tool name the capability authorises.
     pub tool: String,
     /// Set of nonces the kernel has already observed; reuse triggers
-    /// fail-closed under the M04 replay-attack family rules.
+    /// fail-closed under the replay-attack family rules.
     pub seen_nonces: BTreeMap<String, ()>,
     /// Whether the capability has been revoked or expired.
     pub revoked: bool,

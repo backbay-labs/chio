@@ -64,7 +64,7 @@ RS
 
 mkdir -p "${OUT_DIR}" "${SWIFT_OUT}"
 
-TARGET_DIR="${ROOT}/target/wave3k-mobile-ios"
+TARGET_DIR="${ROOT}/target/mobile-ios"
 CARGO_TARGET_DIR="${TARGET_DIR}" cargo build --release --target aarch64-apple-ios -p chio-kernel-mobile
 CARGO_TARGET_DIR="${TARGET_DIR}" cargo build --release --target aarch64-apple-ios-sim -p chio-kernel-mobile
 CARGO_TARGET_DIR="${TARGET_DIR}" cargo build --release --target x86_64-apple-ios -p chio-kernel-mobile

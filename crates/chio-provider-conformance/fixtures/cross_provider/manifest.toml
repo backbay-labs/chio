@@ -1,4 +1,4 @@
-# M07.P4.T5 cross-provider verdict-equality oracle manifest.
+# Cross-provider verdict-equality oracle manifest.
 #
 # The oracle in `tests/cross_provider_equality.rs` asserts that the
 # kernel verdict bytes recorded for the canonical
@@ -7,9 +7,9 @@
 # matrix cardinality; bumping the cardinality requires re-recording
 # every provider's fixture corpus and updating the test in lockstep.
 #
-# Trajectory-1 M07.P4.T6 shipped this oracle for 3 providers
-# (OpenAI, Anthropic, Bedrock). Trajectory-2 M07.P4.T5 expands the
-# matrix to 8 providers without modifying the oracle surface.
+# This oracle originally shipped for 3 providers (OpenAI, Anthropic,
+# Bedrock) and was later expanded to 8 providers without modifying the
+# oracle surface.
 
 schema = "chio-provider-conformance.cross-provider.v1"
 matrix_id = "weather_lookup_allow"

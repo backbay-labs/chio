@@ -1,7 +1,7 @@
 # Istio ext_authz integration for Chio
 
 Reference Kubernetes manifests and walkthrough for plugging the Chio
-`chio-envoy-ext-authz` gRPC adapter (Phase 9.1) into an Istio service mesh via
+`chio-envoy-ext-authz` gRPC adapter into an Istio service mesh via
 `MeshConfig.extensionProviders` and `AuthorizationPolicy` with the `CUSTOM`
 action.
 
@@ -33,9 +33,9 @@ action.
 - `curl` and `awk` on the workstation running `test-harness.sh`.
 - A dedicated Chio Envoy ext_authz adapter image pushed to a registry your
   cluster can pull. The reference manifest uses
-  `ghcr.io/backbay/chio-ext-authz:latest` as a placeholder. Replace it with
+  `ghcr.io/backbay-labs/chio-ext-authz:latest` as a placeholder. Replace it with
   the adapter image you built and published for your environment. Do not use
-  the generic `ghcr.io/backbay/chio-sidecar` image here; that image is the
+  the generic `ghcr.io/backbay-labs/chio-sidecar` image here; that image is the
   HTTP sidecar and does not expose Envoy's gRPC `Authorization/Check`
   service.
 - A capability token issued by a Chio capability authority (or the demo
@@ -195,7 +195,7 @@ x-chio-denial-guard: IstioAuthorization
 | All requests 403 (including authenticated) | Chio pod not ready or MeshConfig not reloaded | `kubectl -n chio-system get pods`; `istioctl proxy-config bootstrap ... | grep chio-ext-authz` |
 | Allowed requests missing `x-chio-receipt-id` | `includeRequestHeadersInCheck` omitted or ext_authz in HTTP mode | Re-apply `01-meshconfig-patch.yaml`; confirm `envoyExtAuthzGrpc` is used |
 | `AuthorizationPolicy` rejected at apply | API version mismatch (v1beta1 vs v1) | Ensure the cluster runs Istio 1.22+ and `security.istio.io/v1` is served |
-| Port-forward drops immediately | Pod not labelled `chio.protocol/secured=true` | `kubectl -n agent-tools get pod -l app.kubernetes.io/name=demo-tool --show-labels` |
+| Port-forward drops immediately | Pod not labelled `chio.world/secured=true` | `kubectl -n agent-tools get pod -l app.kubernetes.io/name=demo-tool --show-labels` |
 | 503 from demo pod | Istio sidecar injection disabled on `agent-tools` | Re-label: `kubectl label ns agent-tools istio-injection=enabled --overwrite` |
 
 ## Teardown
@@ -212,8 +212,8 @@ kubectl delete -f examples/istio-ext-authz/00-chio-sidecar-deployment.yaml
 
 - `docs/protocols/ENVOY-EXT-AUTHZ-INTEGRATION.md` section 6 -- architectural
   rationale for the Istio layering.
-- `crates/chio-envoy-ext-authz/` -- Phase 9.1 adapter source.
-- `deploy/cloud-run`, `deploy/ecs`, `deploy/azure` -- Phase 17.6 sidecar
-  deploy targets for managed multi-container platforms.
+- `crates/chio-envoy-ext-authz/` -- Envoy ext_authz gRPC adapter source.
+- `deploy/cloud-run`, `deploy/ecs`, `deploy/azure` -- managed multi-container
+  sidecar deploy targets.
 - `examples/istio-ext-authz/ci-validation.md` -- how to validate these
   manifests in CI without a live cluster.

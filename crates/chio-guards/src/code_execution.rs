@@ -2,7 +2,7 @@
 //! network gating, and execution-time bounds for sandboxed interpreter
 //! actions.
 //!
-//! Roadmap phase 8.1.  The guard applies to
+//! The guard applies to
 //! [`ToolAction::CodeExecution`] derived from tool calls like `python`,
 //! `eval`, `run_code`, `jupyter`, etc.  See [`crate::action::extract_action`]
 //! for the full list of tool names that map to code execution.

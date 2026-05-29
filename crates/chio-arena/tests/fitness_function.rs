@@ -46,7 +46,7 @@ expect_verdict = "allow"
 [[adversaries]]
 class = "prompt-injection"
 population = "fitness-injection"
-seed_ref = "fuzz/artifacts/m02"
+seed_ref = "fuzz/artifacts"
 
 [adversaries.params]
 patterns = ["ignore-previous-instructions", "system-prompt-leak"]

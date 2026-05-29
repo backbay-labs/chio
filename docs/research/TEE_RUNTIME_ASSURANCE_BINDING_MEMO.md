@@ -256,8 +256,7 @@ Bottom line:
 
 - `docs/POST_ROADMAP_ADDENDUM.md`
 - `docs/POST_31_EXTERNAL_PROGRAMS.md`
-- `docs/review/03-runtime-attestation-remediation.md`
-- `spec/PROTOCOL.md`
+- `spec/PROTOCOL.md` (runtime attestation contract)
 
 ### Attestation and Identity Sources
 

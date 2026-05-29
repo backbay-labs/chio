@@ -3,10 +3,9 @@
 We exercise the decorator's underlying evaluation + XCom-push logic
 directly via the wrapped function that the decorator stores on the
 TaskFlow object. Driving TaskFlow through a real DagRun would require
-the full scheduler; the roadmap acceptance only asks that denied
-tasks raise ``PermissionError`` and that receipt ids are pushed to
-XCom on allow. Both are properties of the inner wrapper, so we test
-it at that level.
+the full scheduler. The contract is that denied tasks raise
+``PermissionError`` and that receipt ids are pushed to XCom on allow.
+Both are properties of the inner wrapper, so we test it at that level.
 """
 
 from __future__ import annotations

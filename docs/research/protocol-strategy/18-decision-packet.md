@@ -71,9 +71,8 @@ Use two fields, not one overloaded status:
 ## Planning Sequence
 
 1. **Measurement foundation**
-   - The bench-stub engineering plan
-     [2026-05-12-bench-stub-foundation.md](../../superpowers/plans/2026-05-12-bench-stub-foundation.md)
-     has shipped: the 11 `black_box(0_u64)` bodies are replaced in-tree
+   - The bench-stub engineering plan has shipped: the 11
+     `black_box(0_u64)` bodies are replaced in-tree
      with real bodies driven through `dispatch_request_fixture`.
    - Remaining work in this area: add `required-features` gating per bench
      where needed, and re-baseline latency claims for voice, Cedar, and

@@ -18,7 +18,7 @@
 //! Build the TypeScript guard before running these tests:
 //!
 //! ```bash
-//! cd packages/sdk/chio-guard-ts && npm install && npm run build:example
+//! cd sdks/guard/chio-guard-ts && npm install && npm run build:example
 //! ```
 
 #![cfg(feature = "wasmtime-runtime")]
@@ -47,13 +47,13 @@ const TS_MAX_MEMORY: usize = 16 * 1024 * 1024;
 /// Load the TypeScript-compiled tool-gate guard WASM binary.
 fn load_ts_guard_wasm() -> Vec<u8> {
     let path = format!(
-        "{}/../../packages/sdk/chio-guard-ts/dist/tool-gate.wasm",
+        "{}/../../sdks/guard/chio-guard-ts/dist/tool-gate.wasm",
         env!("CARGO_MANIFEST_DIR"),
     );
     std::fs::read(&path).unwrap_or_else(|e| {
         panic!(
             "Missing .wasm at {path}: {e}. Build with: \
-             cd packages/sdk/chio-guard-ts && npm run build:example"
+             cd sdks/guard/chio-guard-ts && npm run build:example"
         )
     })
 }
@@ -93,6 +93,7 @@ fn load_ts_backend() -> Box<dyn WasmGuardAbi> {
 // ---------------------------------------------------------------------------
 
 #[test]
+#[ignore = "requires built TS guard wasm: cd sdks/guard/chio-guard-ts && npm run build:example"]
 fn ts_guard_detected_as_component() {
     let bytes = load_ts_guard_wasm();
     let format = detect_wasm_format(&bytes).unwrap();
@@ -107,6 +108,7 @@ fn ts_guard_detected_as_component() {
 // ---------------------------------------------------------------------------
 
 #[test]
+#[ignore = "requires built TS guard wasm: cd sdks/guard/chio-guard-ts && npm run build:example"]
 fn ts_guard_loads_via_create_backend() {
     let wasm_bytes = load_ts_guard_wasm();
     let engine = create_shared_engine().unwrap();
@@ -137,6 +139,7 @@ fn ts_guard_loads_via_create_backend() {
 // ---------------------------------------------------------------------------
 
 #[test]
+#[ignore = "requires built TS guard wasm: cd sdks/guard/chio-guard-ts && npm run build:example"]
 fn ts_guard_allows_safe_tool() {
     let mut backend = load_ts_backend();
     let verdict = backend.evaluate(&make_request("read_file")).unwrap();
@@ -147,6 +150,7 @@ fn ts_guard_allows_safe_tool() {
 }
 
 #[test]
+#[ignore = "requires built TS guard wasm: cd sdks/guard/chio-guard-ts && npm run build:example"]
 fn ts_guard_denies_dangerous_tool() {
     let mut backend = load_ts_backend();
     let verdict = backend.evaluate(&make_request("dangerous_tool")).unwrap();
@@ -166,6 +170,7 @@ fn ts_guard_denies_dangerous_tool() {
 }
 
 #[test]
+#[ignore = "requires built TS guard wasm: cd sdks/guard/chio-guard-ts && npm run build:example"]
 fn ts_guard_denies_rm_rf() {
     let mut backend = load_ts_backend();
     let verdict = backend.evaluate(&make_request("rm_rf")).unwrap();
@@ -176,6 +181,7 @@ fn ts_guard_denies_rm_rf() {
 }
 
 #[test]
+#[ignore = "requires built TS guard wasm: cd sdks/guard/chio-guard-ts && npm run build:example"]
 fn ts_guard_denies_drop_database() {
     let mut backend = load_ts_backend();
     let verdict = backend.evaluate(&make_request("drop_database")).unwrap();

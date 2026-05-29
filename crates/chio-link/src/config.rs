@@ -680,7 +680,16 @@ mod tests {
 
     #[test]
     fn validate_accepts_default_hostname_egress_with_pinned_resolver() {
-        let config = PriceOracleConfig::base_mainnet_default("https://example.invalid");
+        // Use loopback addresses so validate() does not perform a live DNS lookup.
+        // The test intent is to verify the egress contract shape is accepted, not
+        // to test live DNS resolution.
+        let mut config = PriceOracleConfig::base_arbitrum_default(
+            "http://127.0.0.1:8545",
+            "http://127.0.0.1:9545",
+        );
+        config.egress_contract =
+            build_default_egress_contract(&config.pyth, &config.operator.chains);
+        config.egress_contract.deny_loopback = false;
         config
             .validate()
             .test_unwrap("default hostname egress is resolver-enforced at dispatch");

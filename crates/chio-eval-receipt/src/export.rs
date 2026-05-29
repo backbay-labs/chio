@@ -1,26 +1,26 @@
 //! Unsigned eval-report bundle export helpers.
 //!
-//! P2 intentionally stops before outer signature generation. The helper
+//! Export intentionally stops before outer signature generation. The helper
 //! preserves inner receipt payloads, hashes them for batch integrity checks,
-//! and leaves `signatures` empty until P3 wires schema and signature
-//! verification.
+//! and leaves `signatures` empty; schema and signature verification are
+//! layered on separately.
 
 use sha2::{Digest, Sha256};
 
 use crate::BUNDLE_SCHEMA_ID;
 
-/// Hash-pinned verdict-matrix corpus used by M02.
+/// Hash-pinned verdict-matrix corpus digest.
 pub const VERDICT_MATRIX_CORPUS_SHA256: &str =
     "47e8d5394c807196d9567d97515e786cb1abfb0c7676e54db269ca82c735422f";
 
-/// M02 consumes the 48-scenario trajectory-2 verdict-matrix corpus.
+/// The reference verifier consumes the 48-scenario verdict-matrix corpus.
 pub const VERDICT_MATRIX_SCENARIO_COUNT: u16 = 48;
 
 /// Manifest path for the corpus metadata.
 pub const VERDICT_MATRIX_MANIFEST_PATH: &str =
     "crates/chio-conformance/verdict_matrix/manifest.toml";
 
-const PRODUCER_REPOSITORY: &str = "https://github.com/bb-connor/arc";
+const PRODUCER_REPOSITORY: &str = "https://github.com/backbay-labs/chio";
 const CORPUS_NAME: &str = "chio-verdict-matrix";
 
 /// Error returned by typed export input constructors.
@@ -180,7 +180,7 @@ pub struct ReceiptEntry {
     pub evidence: ReceiptEvidence,
 }
 
-/// Unsigned P2 bundle shape.
+/// Unsigned bundle shape.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Bundle {
     pub schema: String,

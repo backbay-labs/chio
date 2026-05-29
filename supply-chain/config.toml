@@ -157,12 +157,6 @@ audit-as-crates-io = true
 [policy.chio-mcp-remote]
 audit-as-crates-io = true
 
-[policy.chio-mercury]
-audit-as-crates-io = true
-
-[policy.chio-mercury-core]
-audit-as-crates-io = true
-
 [policy.chio-metering]
 audit-as-crates-io = true
 
@@ -247,6 +241,11 @@ criteria = "safe-to-deploy"
 [[exemptions.aes]]
 version = "0.8.4"
 criteria = "safe-to-deploy"
+
+[[exemptions.affinidi-bbs]]
+version = "0.1.0"
+criteria = "safe-to-deploy"
+notes = "Round-3 cleanup: bootstrap exemption; not yet formally audited."
 
 [[exemptions.ahash]]
 version = "0.7.8"
@@ -352,6 +351,11 @@ criteria = "safe-to-deploy"
 version = "0.5.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.arrayref]]
+version = "0.3.9"
+criteria = "safe-to-deploy"
+notes = "Round-3 cleanup: bootstrap exemption; not yet formally audited."
+
 [[exemptions.askama]]
 version = "0.12.1"
 criteria = "safe-to-deploy"
@@ -370,11 +374,21 @@ criteria = "safe-to-deploy"
 
 [[exemptions.assert-json-diff]]
 version = "2.0.2"
+criteria = "safe-to-deploy"
+notes = "Round-3 cleanup: bootstrap exemption; not yet formally audited."
+
+[[exemptions.assert-json-diff]]
+version = "2.0.2"
 criteria = "safe-to-run"
 
 [[exemptions.astral-tokio-tar]]
 version = "0.6.1"
 criteria = "safe-to-run"
+
+[[exemptions.astral-tokio-tar]]
+version = "0.6.2"
+criteria = "safe-to-run"
+notes = "Round-3 cleanup: bootstrap exemption; not yet formally audited."
 
 [[exemptions.async-recursion]]
 version = "1.1.1"
@@ -419,6 +433,11 @@ criteria = "safe-to-deploy"
 [[exemptions.aws-sdk-sts]]
 version = "1.103.0"
 criteria = "safe-to-deploy"
+
+[[exemptions.aws-smithy-protocol-test]]
+version = "0.63.14"
+criteria = "safe-to-deploy"
+notes = "Round-3 cleanup: bootstrap exemption; not yet formally audited."
 
 [[exemptions.aws-types]]
 version = "1.3.15"
@@ -524,6 +543,11 @@ criteria = "safe-to-deploy"
 version = "0.6.2"
 criteria = "safe-to-deploy"
 
+[[exemptions.bls12_381_plus]]
+version = "0.8.13"
+criteria = "safe-to-deploy"
+notes = "Round-3 cleanup: bootstrap exemption; not yet formally audited."
+
 [[exemptions.blst]]
 version = "0.3.16"
 criteria = "safe-to-deploy"
@@ -591,6 +615,11 @@ criteria = "safe-to-deploy"
 [[exemptions.cbc]]
 version = "0.1.2"
 criteria = "safe-to-deploy"
+
+[[exemptions.cbor-diag]]
+version = "0.1.12"
+criteria = "safe-to-deploy"
+notes = "Round-3 cleanup: bootstrap exemption; not yet formally audited."
 
 [[exemptions.cesu8]]
 version = "1.1.0"
@@ -729,6 +758,11 @@ version = "0.1.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.chio-guard-sdk]]
+version = "0.1.0"
+criteria = "safe-to-deploy"
+notes = "First-party SDK crate; formal cargo-vet audit deferred post-SDK-consolidation."
+
+[[exemptions.chio-guard-sdk]]
 version = "0.2.0"
 criteria = "safe-to-deploy"
 
@@ -789,14 +823,6 @@ version = "0.1.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.chio-mcp-edge]]
-version = "0.1.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.chio-mercury]]
-version = "0.1.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.chio-mercury-core]]
 version = "0.1.0"
 criteria = "safe-to-deploy"
 
@@ -1048,6 +1074,11 @@ criteria = "safe-to-run"
 version = "0.5.0"
 criteria = "safe-to-run"
 
+[[exemptions.crossbeam-channel]]
+version = "0.5.15"
+criteria = "safe-to-deploy"
+notes = "Round-3 cleanup: bootstrap exemption; not yet formally audited."
+
 [[exemptions.crossbeam-deque]]
 version = "0.8.6"
 criteria = "safe-to-deploy"
@@ -1179,6 +1210,11 @@ criteria = "safe-to-deploy"
 [[exemptions.dhat]]
 version = "0.3.3"
 criteria = "safe-to-run"
+
+[[exemptions.diff]]
+version = "0.1.13"
+criteria = "safe-to-deploy"
+notes = "Round-3 cleanup: bootstrap exemption; not yet formally audited."
 
 [[exemptions.digest]]
 version = "0.9.0"
@@ -1541,6 +1577,11 @@ version = "1.9.3"
 criteria = "safe-to-deploy"
 
 [[exemptions.inotify]]
+version = "0.9.6"
+criteria = "safe-to-deploy"
+notes = "Round-3 cleanup: bootstrap exemption; not yet formally audited."
+
+[[exemptions.inotify]]
 version = "0.11.1"
 criteria = "safe-to-deploy"
 
@@ -1769,6 +1810,11 @@ version = "0.1.4"
 criteria = "safe-to-run"
 
 [[exemptions.mio]]
+version = "0.8.11"
+criteria = "safe-to-deploy"
+notes = "Round-3 cleanup: bootstrap exemption; not yet formally audited."
+
+[[exemptions.mio]]
 version = "1.1.1"
 criteria = "safe-to-deploy"
 
@@ -1783,6 +1829,11 @@ criteria = "safe-to-deploy"
 [[exemptions.nix]]
 version = "0.31.2"
 criteria = "safe-to-deploy"
+
+[[exemptions.notify]]
+version = "6.1.1"
+criteria = "safe-to-deploy"
+notes = "Round-3 cleanup: bootstrap exemption; not yet formally audited."
 
 [[exemptions.notify]]
 version = "8.2.0"
@@ -1912,6 +1963,11 @@ criteria = "safe-to-deploy"
 version = "0.13.1"
 criteria = "safe-to-deploy"
 
+[[exemptions.pairing]]
+version = "0.23.0"
+criteria = "safe-to-deploy"
+notes = "Round-3 cleanup: bootstrap exemption; not yet formally audited."
+
 [[exemptions.parity-scale-codec]]
 version = "3.7.5"
 criteria = "safe-to-deploy"
@@ -2035,6 +2091,11 @@ criteria = "safe-to-deploy"
 [[exemptions.ppv-lite86]]
 version = "0.2.21"
 criteria = "safe-to-deploy"
+
+[[exemptions.pretty_assertions]]
+version = "1.4.1"
+criteria = "safe-to-deploy"
+notes = "Round-3 cleanup: bootstrap exemption; not yet formally audited."
 
 [[exemptions.primeorder]]
 version = "0.13.6"
@@ -2296,6 +2357,11 @@ criteria = "safe-to-deploy"
 version = "0.5.2"
 criteria = "safe-to-deploy"
 
+[[exemptions.roxmltree]]
+version = "0.14.1"
+criteria = "safe-to-deploy"
+notes = "Round-3 cleanup: bootstrap exemption; not yet formally audited."
+
 [[exemptions.rsa]]
 version = "0.9.10"
 criteria = "safe-to-deploy"
@@ -2467,6 +2533,11 @@ criteria = "safe-to-deploy"
 [[exemptions.semver-parser]]
 version = "0.10.3"
 criteria = "safe-to-deploy"
+
+[[exemptions.separator]]
+version = "0.4.1"
+criteria = "safe-to-deploy"
+notes = "Round-3 cleanup: bootstrap exemption; not yet formally audited."
 
 [[exemptions.serde-value]]
 version = "0.7.0"
@@ -3311,6 +3382,11 @@ criteria = "safe-to-deploy"
 [[exemptions.xmlparser]]
 version = "0.13.6"
 criteria = "safe-to-deploy"
+
+[[exemptions.yansi]]
+version = "1.0.1"
+criteria = "safe-to-deploy"
+notes = "Round-3 cleanup: bootstrap exemption; not yet formally audited."
 
 [[exemptions.yasna]]
 version = "0.5.2"

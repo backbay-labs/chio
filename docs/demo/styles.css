@@ -1,7 +1,8 @@
 /*
- * Demo page stylesheet. The engineering-output-banner rules below are
- * load-bearing: the banner MUST be visible above the fold on a 1080p
- * viewport (banner-snapshot Playwright test asserts visibility).
+ * Demo page stylesheet. The .engineering-output-banner rules below are
+ * load-bearing: the demo-notice banner MUST be visible above the fold on a
+ * 1080p viewport (banner-snapshot Playwright test asserts visibility). The
+ * class name is also a test selector; keep it stable.
  */
 
 :root {
@@ -28,7 +29,7 @@ body {
 }
 
 /*
- * Engineering-output banner. Sticky to the top of the viewport so it remains
+ * Demo-notice banner. Sticky to the top of the viewport so it remains
  * visible during scroll. Must render above the fold on 1080p; padding +
  * font-size are tuned so the banner fits within ~80px on a 1920x1080
  * viewport.

@@ -9,6 +9,8 @@
 // 3. Workspace path: absolute or relative filesystem path to a YAML policy.
 //    Fully resolvable now.
 
+use super::*;
+
 /// Parsed and discriminated policy reference.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PolicyRef {

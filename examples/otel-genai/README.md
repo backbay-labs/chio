@@ -2,7 +2,7 @@
 
 This example wires an OTLP collector to Tempo and Jaeger, then validates the
 Chio receipt export path with an ignored Rust integration test. It demonstrates
-the M10 requirement that a GenAI tool-call span can be looked up by receipt id
+the OTel GenAI contract (documented in `docs/integrations/otel.md`) that a GenAI tool-call span can be looked up by receipt id
 and that a signed receipt can be looked up by span id.
 
 ## Files
@@ -47,8 +47,9 @@ From the repository root:
 cargo test --manifest-path examples/otel-genai/Cargo.toml --test bidirectional_lookup -- --ignored
 ```
 
-The test constructs a decoded OTLP trace export with the locked M10
-`gen_ai.tool.call` attributes, exports it through `chio-otel-receipt-exporter`,
+The test constructs a decoded OTLP trace export with the `gen_ai.tool.call`
+attributes defined in `docs/integrations/otel.md`, exports it through
+`chio-otel-receipt-exporter`,
 verifies the signed receipt, and builds both lookup directions:
 
 - `receipt id -> span id`

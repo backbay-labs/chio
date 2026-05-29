@@ -76,7 +76,7 @@ class TraceContext:
 
 @dataclass
 class SpanPayload:
-    """Backend-neutral span description built from an Chio receipt.
+    """Backend-neutral span description built from a Chio receipt.
 
     Bridges consume this and emit platform-specific payloads.
     """
@@ -159,7 +159,7 @@ class ReceiptEnricher:
         tool_result: Any | None = None,
         error: str | None = None,
     ) -> SpanPayload:
-        """Build a :class:`SpanPayload` from an Chio receipt.
+        """Build a :class:`SpanPayload` from a Chio receipt.
 
         Parameters
         ----------

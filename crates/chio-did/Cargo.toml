@@ -31,6 +31,5 @@ serde_json = { workspace = true, optional = true }
 # Off by default; turned on only by the `chio-fuzz` standalone workspace.
 fuzz = ["dep:arbitrary", "dep:serde_json"]
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

@@ -1,8 +1,8 @@
 use crate::{RunnerPlan, TemplateRunner};
 
-// Synthetic samples (milliseconds) captured during P5 dry-runs against
-// the reference 4-core Linux runner. The container lane in
-// `.github/workflows/ttfrh.yml` overwrites these with live samples.
+// Synthetic samples (milliseconds) from the reference 4-core Linux runner.
+// The container lane in `.github/workflows/ttfrh.yml` overwrites these with
+// live samples.
 const SAMPLES_MS: &[u64] = &[38_400, 41_200, 43_700, 45_100, 47_900];
 
 pub fn plan() -> RunnerPlan {

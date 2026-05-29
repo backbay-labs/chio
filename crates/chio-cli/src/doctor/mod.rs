@@ -4,7 +4,7 @@
 //! diagnose common DX failure modes (toolchain mismatch, OCI registry
 //! reachability, cosign freshness, OTEL endpoint resolution, kernel
 //! runtime metrics presence, and `chio.yaml` schema validity). Each
-//! probe is self-contained and reports a single `ProbeReport`; the
+//! probe reports a single `ProbeReport`; the
 //! runner aggregates the reports and derives an exit code from the
 //! worst observed severity.
 //!

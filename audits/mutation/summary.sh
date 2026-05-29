@@ -129,10 +129,9 @@ for crate in "$@"; do
   # ONLY a strict whitelist of durable, hand-curated annotations is
   # preserved across regenerations. Run-shape and release-truth keys
   # (`run_status`, `target_met`, `result_label`, `evaluated`,
-  # `total_discovered`, etc.) are recomputed-or-cleared every run.
-  # Preserving them previously caused a chio-policy summary that was
-  # interrupted at 314/418 mutants to keep `target_met: true` from a
-  # previous edit.
+  # `total_discovered`, etc.) are recomputed-or-cleared every run so a
+  # partial run cannot retain a stale `target_met: true` from an earlier
+  # edit.
   #
   # Durable (preserved when present, never invented):
   #   * `command`          - the exact cargo-mutants invocation recorded

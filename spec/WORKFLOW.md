@@ -17,13 +17,13 @@ and authority lifecycle described herein.
 A skill is an ordered sequence of tool invocations that composes multiple
 tools into a single authorized unit of work. The workflow system provides:
 
-- **SkillGrant** -- extends the capability model for ordered tool sequences
+- **SkillGrant**: extends the capability model for ordered tool sequences
   with budget envelopes and execution limits
-- **SkillManifest** -- declares tool dependencies, I/O contracts between
+- **SkillManifest**: declares tool dependencies, I/O contracts between
   steps, and budget requirements
-- **WorkflowReceipt** -- captures the complete execution trace as a single
+- **WorkflowReceipt**: captures the complete execution trace as a single
   signed, verifiable artifact
-- **WorkflowAuthority** -- validates each step against declared scope,
+- **WorkflowAuthority**: validates each step against declared scope,
   ordering, budget, and time constraints
 
 ---

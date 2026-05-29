@@ -1,7 +1,7 @@
 # Chio Conformance Suite (Standalone Consumer Guide)
 
 This document is the canonical entry point for an external implementer
-who wants to run the Chio (formerly ARC) cross-language conformance
+who wants to run the Chio cross-language conformance
 suite against their own peer implementation, without checking out the
 Chio monorepo.
 
@@ -9,9 +9,9 @@ It pairs with two other surfaces:
 
 - `crates/chio-conformance/README.md` - quickstart for the published
   crate and its bundled fixture tree.
-- `.planning/trajectory/01-spec-codegen-conformance.md` - source-of-truth
-  trajectory document. Phase 4 (M01 P4) is the milestone that ships the
-  external-consumer flow described below.
+- `spec/PROTOCOL.md` - normative wire-level protocol specification that
+  the conformance suite checks against. The external-consumer flow
+  described below is the published surface of that contract.
 
 ## Audience and prerequisites
 
@@ -23,7 +23,7 @@ You will need:
 
 - A Rust toolchain at the workspace MSRV (stable, see `rust-toolchain.toml`
   for the exact pin) so that `cargo install` can build the harness.
-- Network access to crates.io and to `github.com/bb-connor/arc/releases`
+- Network access to crates.io and to `github.com/backbay-labs/chio/releases`
   (the default `peers.lock.toml` URLs point at GitHub release assets).
 - One of the following, depending on which peer you intend to verify:
   - Python 3.10+ if you plan to run the bundled Python peer from source.
@@ -41,7 +41,7 @@ The full external-consumer flow is three commands.
 ```bash
 # 1. Install the chio CLI (which provides the `chio conformance` subcommand)
 #    plus the conformance harness library / runner binaries.
-cargo install --git https://github.com/bb-connor/arc chio-cli
+cargo install --git https://github.com/backbay-labs/chio chio-cli
 cargo install chio-conformance
 
 # 2. Fetch sha256-pinned peer binaries for the languages you care about.
@@ -64,7 +64,7 @@ earlier draft that conflated the two.
 
 ```bash
 # `chio` binary (the surface this guide demonstrates).
-cargo install --git https://github.com/bb-connor/arc chio-cli
+cargo install --git https://github.com/backbay-labs/chio chio-cli
 
 # Bundled harness + scenarios + reference peers (published on crates.io).
 cargo install chio-conformance
@@ -196,7 +196,7 @@ The JSON envelope has the shape:
 ```
 
 The schema version is stable across patch releases. Any breaking change
-to this shape is gated by the M01 Phase 5 conformance-matrix workflow
+to this shape is gated by the Phase 5 conformance-matrix workflow
 (`.github/workflows/conformance-matrix.yml`, job
 `external-consumer-smoke`).
 
@@ -264,7 +264,7 @@ C++ Phase-0 scenario coverage (`mcp_core` and `auth`) is gated by the
 `cpp_peer_p0` integration test under `crates/chio-conformance/tests/`.
 Other categories (`chio-extensions`, `tasks`, `nested_callbacks`,
 `notifications`) are deferred to a follow-on milestone for the C++
-peer per the Wave 1 roadmap decision.
+peer per the initial roadmap decision.
 
 ## Output schema and stability
 
@@ -294,13 +294,13 @@ The `chio conformance fetch-peers` subcommand looks for
    default).
 5. `./peers.lock.toml` (cwd-relative).
 
-The runtime resolver mirrors the M04.P3.T3 cache-dir strategy so
+The runtime resolver mirrors the kernel cache-dir strategy so
 `cargo install`-installed binaries do not depend on the compile-time
 `CARGO_MANIFEST_DIR` of the crate that is no longer on disk.
 
 ## Unpublished peer entries
 
-The lockfile carries `published = false` placeholders for peers whose
+The lockfile carries `published = false` entries for peers whose
 release artifacts have not been cut yet (cleanup C5 issue D). The
 `fetch-peers` subcommand SKIPS those entries with a clear message
 rather than failing the run with a sha256 mismatch:
@@ -311,8 +311,8 @@ skipping unpublished peer `python / x86_64-unknown-linux-gnu`: lockfile entry ha
 skipping unpublished peer `python / aarch64-apple-darwin`: lockfile entry has `published = false` (no real binary uploaded yet)
 ```
 
-Once the M01 release pipeline cuts a real artifact, the lockfile
-updater replaces the placeholder sha256 and flips `published = true`;
+Once the release pipeline cuts a real artifact, the lockfile
+updater writes the final sha256 and flips `published = true`;
 no consumer-facing change is required.
 
 ## Troubleshooting
@@ -334,8 +334,8 @@ itself is intact, then either:
 
 - Pin to an older release of `chio-conformance` whose lockfile entries
   still match the live release assets, or
-- File an issue on `github.com/bb-connor/arc` with the mismatched url
-  and observed sha256; the M01 release pipeline regenerates the
+- File an issue on `github.com/backbay-labs/chio` with the mismatched url
+  and observed sha256; the release pipeline regenerates the
   lockfile on every release tag.
 
 ### `chio conformance run --peer cpp` cannot find the C++ peer
@@ -345,7 +345,7 @@ The C++ peer is not bundled in the published crate. Either:
 - Run `chio conformance fetch-peers --language cpp` first to download
   the pre-built peer binary into `./.chio-peers/cpp/`, or
 - Build from source in the Chio monorepo (the C++ peer lives under
-  `packages/sdk/chio-cpp/`) and point at the resulting binary via
+  `sdks/cpp/chio-cpp/`) and point at the resulting binary via
   `ConformanceRunOptions`.
 
 ### A scenario is green locally but red in `external-consumer-smoke`
@@ -368,7 +368,7 @@ External consumers can copy the same pattern into their own CI:
 
 ```yaml
 - name: Install Chio CLI (provides the `chio conformance` subcommand)
-  run: cargo install --git https://github.com/bb-connor/arc chio-cli
+  run: cargo install --git https://github.com/backbay-labs/chio chio-cli
 
 - name: Install Chio conformance harness
   run: cargo install chio-conformance --version 0.1.0
@@ -392,20 +392,14 @@ External consumers can copy the same pattern into their own CI:
 - `crates/chio-cli/README.md` - general `chio` CLI surface and global
   flags.
 - `spec/PROTOCOL.md` - normative wire-level protocol specification.
-- `.planning/trajectory/01-spec-codegen-conformance.md` - milestone
-  scope, phase breakdown, and exit-test definitions.
 - `tests/conformance/reports/` - canonical location for generated
   compatibility matrices in Chio's own CI.
 
-## Related milestone work
+## What the harness provides
 
-- M01.P4.T1 - flip the crate to publishable shape and seed the stub
-  version of this document.
-- M01.P4.T2 - ship `chio conformance run` subcommand.
-- M01.P4.T3 - insta snapshot-test the JSON report shape.
-- M01.P4.T4 - ship `chio conformance fetch-peers` plus
-  `peers.lock.toml`.
-- M01.P4.T5 (this ticket) - expand this document to the final
-  consumer-facing form.
-- M01.P4.T6 - C++ peer P0 (`mcp_core`, `auth`) coverage gate.
-- M01.P5.T4 - nightly `external-consumer-smoke` workflow.
+- A publishable `chio-conformance` crate (`cargo install chio-conformance`).
+- The `chio conformance run` subcommand.
+- A snapshot-tested JSON report shape.
+- The `chio conformance fetch-peers` subcommand plus `peers.lock.toml`.
+- A C++ peer P0 coverage gate (`mcp_core`, `auth`).
+- A nightly `external-consumer-smoke` workflow.

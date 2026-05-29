@@ -1,11 +1,11 @@
-//! Issuer service skeleton.
+//! Issuer service.
 //!
-//! P1 ships an in-process [`IssuerService`] that turns a verified WebAuthn
-//! assertion into an unsigned [`PasskeyCapability`]. There is intentionally
-//! no Axum binary in this milestone: the service is a library surface that
-//! `chio-control-plane` operators mount. The shape is HTTP-shaped
-//! ([`MintRequest`] / [`MintResponse`]) so a P2 follower can wire an Axum
-//! `Router` without changing the call site.
+//! The in-process [`IssuerService`] turns a verified WebAuthn assertion
+//! into a SIGNED audience-pinned [`PasskeyCapability`]. There is
+//! intentionally no Axum binary in this crate: the service is a library
+//! surface that `chio-control-plane` operators mount. The shape is
+//! HTTP-shaped ([`MintRequest`] / [`MintResponse`]) so a follower can wire
+//! an Axum `Router` without changing the call site.
 //!
 //! # Trust contract
 //!
@@ -21,16 +21,27 @@
 //!   issuance is never downgraded to possession-only authentication, even
 //!   in deployments where the relying party has not pinned UV at the
 //!   WebAuthn layer.
-//! - P1 returns an unsigned capability; P2 wires `HybridBackend::sign` and
-//!   the durable `PasskeyNonceStore`.
+//! - The issuer NEVER emits an unsigned capability. A signing backend is
+//!   a mandatory constructor argument ([`IssuerService::with_signer`]), so
+//!   an issuer without a signer cannot be constructed and the unsigned
+//!   path is unrepresentable rather than merely guarded at runtime.
 //!
-//! TODO(security): P2 wires:
-//!   - Per-credential nonce store keyed by `(credential_id,
-//!     challenge_nonce)`. Replayed assertions reject with
-//!     `urn:chio:error:custody:replay-detected`.
-//!   - `HybridBackend` signing through the M03 surface.
-//!   - Revocation cascade through the M04 oracle.
-//!   - Rate limiting and bot-defence at the HTTP edge.
+//! # Issuance pipeline (fail-closed, ordered)
+//!
+//! `mint_capability` applies its gates in this order so the cheapest /
+//! most abuse-resistant checks run first and an early deny never advances
+//! later state:
+//!
+//! 1. Audience pin match.
+//! 2. User-verification bit.
+//! 3. Per-subject rate limit ([`IssuanceRateLimiter`]). A flood is denied
+//!    before the oracle, nonce store, or signer are touched.
+//! 4. Revocation cascade ([`CredentialRevocationOracle`]). A revoked
+//!    credential (or one revoked transitively through its parent) is
+//!    denied before recording the nonce or signing.
+//! 5. Replay nonce store ([`PasskeyNonceStore`]). A replayed
+//!    `(credential_id, challenge_nonce)` is denied before signing.
+//! 6. Signature over the canonical-JSON envelope.
 
 use std::sync::Arc;
 
@@ -42,6 +53,7 @@ use crate::capability::{PasskeyCapability, ScopeSet};
 use crate::error::CustodyError;
 use crate::mint::sign_capability;
 use crate::nonce_store::{PasskeyNonceStore, RecordOutcome};
+use crate::rate_limit::{IssuanceRateLimiter, RateLimitOutcome};
 use crate::revocation::CredentialRevocationOracle;
 use crate::verifier::VerifiedAssertion;
 
@@ -61,7 +73,8 @@ pub struct MintRequest {
 /// HTTP-shaped mint response.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MintResponse {
-    /// The minted (P1: unsigned) capability.
+    /// The minted, signed capability. Its `signature` is never empty on a
+    /// successful mint.
     pub capability: PasskeyCapability,
 }
 
@@ -70,50 +83,73 @@ pub struct MintResponse {
 /// Configured with a fixed audience pin that requests must match. The
 /// audience pin is the kernel identity URI; it is not caller-rewritable.
 ///
-/// An optional signing backend turns the unsigned P1 stub envelope into a
-/// signed P2 capability. The same constructor accepts any
+/// The signing backend is MANDATORY: it turns the canonical envelope into
+/// a signed capability and is the reason the issuer never emits an
+/// unsigned artifact. The constructor accepts any
 /// [`chio_core_types::crypto::SigningBackend`] (Ed25519, P-256/P-384 via
 /// the `fips` feature, or `HybridBackend` via the `pq` feature) so a
 /// deployment running with `crypto_floor=allow_classical` and one running
 /// hybrid produce byte-identical envelopes apart from the `signature`
 /// slot itself.
+///
+/// The rate limiter, nonce store, and revocation oracle are injectable so
+/// a single-process deployment can use the in-crate in-memory
+/// implementations while a clustered deployment swaps in durable /
+/// distributed backends without changing the call site. When a gate is
+/// not wired the corresponding check is skipped; the rate limiter is
+/// wired by default (see [`Self::with_signer`]) so a freshly-constructed
+/// issuer is rate-limited out of the box.
 pub struct IssuerService {
     audience: String,
-    signer: Option<Arc<dyn SigningBackend>>,
+    signer: Arc<dyn SigningBackend>,
+    rate_limiter: Option<Arc<dyn IssuanceRateLimiter>>,
     nonce_store: Option<Arc<dyn PasskeyNonceStore>>,
     revocation: Option<Arc<dyn CredentialRevocationOracle>>,
 }
 
 impl IssuerService {
-    /// Build an issuer pinned to a specific audience URI. The returned
-    /// service has no signer wired (legacy P1 path: produces unsigned
-    /// stubs).
+    /// Build an issuer pinned to an audience URI and a signing backend.
+    /// The signing backend is typically the hybrid `HybridBackend` (or any
+    /// [`SigningBackend`] when `crypto_floor=allow_classical`).
     ///
-    /// New code SHOULD prefer [`Self::with_signer`]; this constructor
-    /// remains for backwards compatibility with the P1 unsigned-stub test
-    /// surface and for deployments that synthesise capabilities for
-    /// canonical-JSON regression suites.
+    /// A default [`RateLimiter`](crate::rate_limit::RateLimiter) (the
+    /// conservative module defaults) is wired automatically so a
+    /// freshly-constructed issuer is rate-limited without extra
+    /// configuration; replace it with [`Self::with_rate_limiter`] or
+    /// remove it with [`Self::without_rate_limiter`]. The nonce store and
+    /// revocation oracle are opt-in via the builder methods.
     #[must_use]
-    pub fn new(audience: impl Into<String>) -> Self {
+    pub fn with_signer(audience: impl Into<String>, signer: Arc<dyn SigningBackend>) -> Self {
         Self {
             audience: audience.into(),
-            signer: None,
+            signer,
+            rate_limiter: Some(Arc::new(crate::rate_limit::RateLimiter::new())),
             nonce_store: None,
             revocation: None,
         }
     }
 
-    /// Build an issuer pinned to an audience URI and a signing backend.
-    /// The signing backend is the M03 `HybridBackend` (or any
-    /// [`SigningBackend`] when `crypto_floor=allow_classical`).
+    /// Attach a custom [`IssuanceRateLimiter`], replacing the default.
+    ///
+    /// Builder-style: returns the issuer with the limiter wired. The
+    /// limiter is consulted FIRST in the mint pipeline so a flood is
+    /// denied before the oracle, nonce store, or signer are touched.
     #[must_use]
-    pub fn with_signer(audience: impl Into<String>, signer: Arc<dyn SigningBackend>) -> Self {
-        Self {
-            audience: audience.into(),
-            signer: Some(signer),
-            nonce_store: None,
-            revocation: None,
-        }
+    pub fn with_rate_limiter(mut self, limiter: Arc<dyn IssuanceRateLimiter>) -> Self {
+        self.rate_limiter = Some(limiter);
+        self
+    }
+
+    /// Remove the issuance rate limiter.
+    ///
+    /// Builder-style: returns the issuer with rate limiting disabled. Use
+    /// only when an upstream component (e.g. an API gateway) already
+    /// enforces a per-subject issuance budget; the default posture keeps
+    /// the in-crate limiter wired.
+    #[must_use]
+    pub fn without_rate_limiter(mut self) -> Self {
+        self.rate_limiter = None;
+        self
     }
 
     /// Attach a [`PasskeyNonceStore`] for replay-attack resistance.
@@ -147,13 +183,13 @@ impl IssuerService {
         &self.audience
     }
 
-    /// Mint a stub capability from a verified assertion plus a request.
+    /// Mint a capability from a verified assertion plus a request.
     ///
     /// `now` is the verifier clock; the capability's `iat` and `exp` are
     /// computed off this value (not the system clock) so tests can pin
     /// the timeline deterministically.
     ///
-    /// Fail-closed paths:
+    /// Fail-closed paths (in pipeline order):
     /// - audience mismatch -> [`CustodyError::AudienceMismatch`]
     /// - assertion did not report user verification ->
     ///   [`CustodyError::UserVerificationRequired`]. Custody issuance
@@ -161,6 +197,14 @@ impl IssuerService {
     ///   did not perform a user-verifying gesture (PIN, biometric) is
     ///   possession-only authentication, which the custody trust contract
     ///   forbids.
+    /// - subject over its issuance budget -> [`CustodyError::RateLimited`]
+    /// - credential revoked (directly or via a revoked parent) ->
+    ///   [`CustodyError::CredentialRevoked`]
+    /// - replayed `(credential_id, challenge_nonce)` ->
+    ///   [`CustodyError::ReplayDetected`]
+    ///
+    /// On success the returned capability is always signed; the issuer
+    /// has no code path that returns an unsigned capability.
     pub fn mint_capability(
         &self,
         verified: &VerifiedAssertion,
@@ -178,12 +222,27 @@ impl IssuerService {
             return Err(CustodyError::UserVerificationRequired);
         }
 
-        // Revocation cascade. The check happens AFTER audience and UV
-        // gates but BEFORE recording the nonce or signing so a revoked
-        // credential never advances the nonce store nor consumes a
-        // signing budget. The cascade is synchronous from the issuer's
-        // point of view: revoking the credential at the oracle denies
-        // the next mint within the current epoch.
+        // Rate limiting. The cheapest abuse gate runs first so a flood is
+        // shed before the oracle, nonce store, or signer are touched. A
+        // limited subject (or a lock/clock fault inside the limiter)
+        // fails closed.
+        if let Some(limiter) = &self.rate_limiter {
+            match limiter.check_and_record(&verified.credential_id_b64, now)? {
+                RateLimitOutcome::Allowed => {}
+                RateLimitOutcome::Limited => {
+                    return Err(CustodyError::RateLimited {
+                        subject: verified.credential_id_b64.clone(),
+                    });
+                }
+            }
+        }
+
+        // Revocation cascade. The check happens AFTER the rate gate but
+        // BEFORE recording the nonce or signing so a revoked credential
+        // never advances the nonce store nor consumes a signing budget.
+        // The cascade is synchronous from the issuer's point of view:
+        // revoking the credential (or a parent that cascades to it) at the
+        // oracle denies the next mint within the current epoch.
         if let Some(oracle) = &self.revocation {
             if oracle.is_revoked(&verified.credential_id_b64)? {
                 return Err(CustodyError::CredentialRevoked);
@@ -219,9 +278,17 @@ impl IssuerService {
             }
         }
 
-        if let Some(signer) = &self.signer {
-            sign_capability(&mut cap, signer.as_ref())?;
-        }
+        // Signing is mandatory. `new_stub_unsigned` produced the envelope
+        // with an empty `signature` slot; `sign_capability` overwrites it
+        // with a detached signature over the canonical-JSON bytes and
+        // refuses to return `Ok(_)` with an empty signature. There is no
+        // branch that leaves the capability unsigned, so the issuer never
+        // emits an unsigned artifact.
+        sign_capability(&mut cap, self.signer.as_ref())?;
+        debug_assert!(
+            !cap.signature.is_empty(),
+            "mint_capability invariant: returned capability must be signed"
+        );
 
         Ok(MintResponse { capability: cap })
     }
@@ -230,6 +297,8 @@ impl IssuerService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rate_limit::RateLimiter;
+    use chio_core_types::crypto::{Ed25519Backend, Keypair, Signature};
     use chrono::TimeZone;
 
     fn fixed_now() -> DateTime<Utc> {
@@ -237,6 +306,14 @@ mod tests {
             chrono::LocalResult::Single(t) => t,
             _ => panic!("fixed_now fixture must construct"),
         }
+    }
+
+    fn signer(seed: u8) -> Arc<dyn SigningBackend> {
+        Arc::new(Ed25519Backend::new(Keypair::from_seed(&[seed; 32])))
+    }
+
+    fn issuer(audience: &str, seed: u8) -> IssuerService {
+        IssuerService::with_signer(audience, signer(seed))
     }
 
     fn verified() -> VerifiedAssertion {
@@ -247,8 +324,8 @@ mod tests {
     }
 
     #[test]
-    fn mints_unsigned_capability_with_correct_audience() {
-        let svc = IssuerService::new("urn:chio:audience:kernel");
+    fn mints_signed_capability_with_correct_audience() {
+        let svc = issuer("urn:chio:audience:kernel", 1);
         let req = MintRequest {
             audience: "urn:chio:audience:kernel".into(),
             scope_set: ScopeSet::new(["tool:read"]),
@@ -260,13 +337,47 @@ mod tests {
             Err(e) => panic!("mint must succeed for matching audience: {e}"),
         };
         assert_eq!(resp.capability.audience, "urn:chio:audience:kernel");
-        assert_eq!(resp.capability.signature, "", "P1 stub MUST be unsigned");
+        assert!(
+            !resp.capability.signature.is_empty(),
+            "issued capability MUST be signed; the issuer never emits an unsigned artifact"
+        );
         assert_eq!(resp.capability.credential_id, "AAAA");
     }
 
     #[test]
+    fn issued_signature_verifies_under_signer_public_key() {
+        // Proves the issued capability verifies under the signer's public
+        // key, and (with the empty-signature refusal in `sign_capability`)
+        // that an unsigned issued capability is impossible.
+        let backend = Ed25519Backend::new(Keypair::from_seed(&[5u8; 32]));
+        let public = backend.public_key();
+        let svc = IssuerService::with_signer("urn:chio:audience:kernel", Arc::new(backend));
+        let req = MintRequest {
+            audience: "urn:chio:audience:kernel".into(),
+            scope_set: ScopeSet::new(["tool:read"]),
+            challenge_nonce: "verify-me".into(),
+        };
+        let resp = match svc.mint_capability(&verified(), &req, fixed_now()) {
+            Ok(r) => r,
+            Err(e) => panic!("signed mint must succeed: {e}"),
+        };
+        let message = match crate::mint::signing_message(&resp.capability) {
+            Ok(m) => m,
+            Err(e) => panic!("signing_message must encode: {e}"),
+        };
+        let signature = match Signature::from_hex(&resp.capability.signature) {
+            Ok(s) => s,
+            Err(e) => panic!("issued signature must decode: {e}"),
+        };
+        assert!(
+            public.verify(&message, &signature),
+            "issued capability must verify under the signer public key"
+        );
+    }
+
+    #[test]
     fn rejects_audience_mismatch_fail_closed() {
-        let svc = IssuerService::new("urn:chio:audience:kernel");
+        let svc = issuer("urn:chio:audience:kernel", 2);
         let req = MintRequest {
             audience: "urn:chio:audience:other".into(),
             scope_set: ScopeSet::new(["tool:read"]),
@@ -282,7 +393,7 @@ mod tests {
         // report a user-verifying gesture must NOT receive a capability:
         // custody issuance requires UV to avoid silent downgrade to
         // possession-only authentication.
-        let svc = IssuerService::new("urn:chio:audience:kernel");
+        let svc = issuer("urn:chio:audience:kernel", 3);
         let req = MintRequest {
             audience: "urn:chio:audience:kernel".into(),
             scope_set: ScopeSet::new(["tool:read"]),
@@ -302,5 +413,37 @@ mod tests {
             err.urn(),
             "urn:chio:error:custody:user-verification-required"
         );
+    }
+
+    #[test]
+    fn rate_limit_triggers_fail_closed() {
+        // A 1-per-window limiter admits the first mint and denies the
+        // second within the window. The deny is a typed RateLimited
+        // error, not an unsigned capability.
+        let svc = IssuerService::with_signer("urn:chio:audience:kernel", signer(4))
+            .with_rate_limiter(Arc::new(RateLimiter::with_limits(1, 600)));
+        let first = MintRequest {
+            audience: "urn:chio:audience:kernel".into(),
+            scope_set: ScopeSet::new(["tool:read"]),
+            challenge_nonce: "rl-1".into(),
+        };
+        let second = MintRequest {
+            audience: "urn:chio:audience:kernel".into(),
+            scope_set: ScopeSet::new(["tool:read"]),
+            challenge_nonce: "rl-2".into(),
+        };
+        match svc.mint_capability(&verified(), &first, fixed_now()) {
+            Ok(_) => {}
+            Err(e) => panic!("first mint within budget must succeed: {e}"),
+        }
+        let err = match svc.mint_capability(&verified(), &second, fixed_now()) {
+            Ok(_) => panic!("second mint over budget MUST fail-closed"),
+            Err(e) => e,
+        };
+        match &err {
+            CustodyError::RateLimited { subject } => assert_eq!(subject, "AAAA"),
+            other => panic!("expected RateLimited, got {other:?}"),
+        }
+        assert_eq!(err.urn(), "urn:chio:error:custody:rate-limited");
     }
 }

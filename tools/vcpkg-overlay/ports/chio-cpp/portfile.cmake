@@ -15,7 +15,7 @@
 # mismatch.
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
-    REPO bb-connor/arc
+    REPO backbay-labs/chio
     REF "cpp/v${VERSION}"
     SHA512 0
     HEAD_REF main
@@ -42,7 +42,7 @@ vcpkg_check_features(
 )
 
 vcpkg_cmake_configure(
-    SOURCE_PATH "${SOURCE_PATH}/packages/sdk/chio-cpp"
+    SOURCE_PATH "${SOURCE_PATH}/sdks/cpp/chio-cpp"
     OPTIONS
         ${FEATURE_OPTIONS}
         -DCHIO_CPP_BUILD_TESTS=OFF

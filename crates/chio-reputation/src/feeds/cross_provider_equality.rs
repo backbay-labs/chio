@@ -17,7 +17,7 @@
 //! - The feed reads no global state; the same `VerdictMatrixObservation`
 //!   produces the same `ScoreDelta` on every call.
 //! - The feed does not depend on `chio-conformance` directly; callers
-//!   project the M07 verdict-matrix runs into the local
+//!   project the verdict-matrix runs into the local
 //!   `VerdictCaseOutcome` shape.
 
 use serde::{Deserialize, Serialize};
@@ -56,7 +56,7 @@ impl VerdictCaseOutcome {
     }
 }
 
-/// Caller-projected view of an M07 verdict-matrix run for a single
+/// Caller-projected view of a verdict-matrix run for a single
 /// publisher's guard bundle.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VerdictMatrixObservation {

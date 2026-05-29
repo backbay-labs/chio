@@ -1,6 +1,6 @@
 //! Probe trait and report types shared by every `chio doctor` probe.
 //!
-//! A probe is a self-contained, side-effect-light check that reports a
+//! A probe is a side-effect-light check that reports a
 //! single `ProbeReport`. Reports carry a `urn:chio:error:*` code (always
 //! anchored in `spec/errors/registry.yaml`), a severity, a message, and
 //! optional context. The doctor runner aggregates reports and derives a

@@ -119,10 +119,10 @@ dependency is already pulled in so the expansion is mechanical).
 ```bash
 # From the crate root:
 cd sdks/lambda/chio-lambda-extension
-CARGO_TARGET_DIR=target/wave3c-lambda cargo build --release
+CARGO_TARGET_DIR=target/lambda cargo build --release
 
 # Run the tests:
-CARGO_TARGET_DIR=target/wave3c-lambda cargo test
+CARGO_TARGET_DIR=target/lambda cargo test
 ```
 
 ### Cross-compile for Lambda

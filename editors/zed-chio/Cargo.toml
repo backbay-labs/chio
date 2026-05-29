@@ -25,6 +25,5 @@ zed_extension_api = "0.7.0"
 [dev-dependencies]
 toml = { workspace = true }
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

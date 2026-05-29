@@ -13,9 +13,8 @@
 // independently of the signing layer (the signing layer only
 // certifies provenance, never content).
 //
-// With Lane B0 (`ToolServerConnection` async-trait migration) merged
-// the kernel dispatch path is unified, but the actual sandbox-escape
-// containment still lives in chio-wasm-guards. This conformance test
+// The actual sandbox-escape containment lives in chio-wasm-guards, not
+// in the signing or kernel dispatch layer. This conformance test
 // pins the production runtime deny path that catches a malicious
 // tool module at module-load and at evaluate-time. Three sub-vectors:
 //

@@ -1,11 +1,14 @@
-# Chio HITRUST i1 System Security Plan
+# Chio HITRUST i1 System Security Plan (Readiness Draft)
 
-**Trajectory:** trajectory-3
-**Milestone:** M09
-**Version:** P0 seed
-**Date:** 2026-05-02
+> **Status: internal self-assessment / readiness.** No external HITRUST
+> assessment has been performed; no assessor is engaged; no certification
+> is claimed. This System Security Plan is internal, self-authored
+> readiness material describing intended scope and the security controls
+> Chio actually implements today, alongside honest gaps.
+
 **Framework target:** HITRUST CSF v11.7 i1
-**Control count target:** 182 controls in scope
+**Product version:** This assessed release
+**Control count target:** the i1 control set (exact count is fixed by HITRUST when a MyCSF object is created)
 
 ## System overview
 
@@ -14,98 +17,99 @@ The runtime kernel mediates every tool call, validates capability
 tokens, evaluates guards before data crosses trust boundaries, and
 signs decisions into an append-only receipt log.
 
-The M09 assessment scope is intentionally narrow: a single Chio v3.18
-deployment for the M01 healthcare design-partner tenant. Other tenants,
-other versions, mobile extensions, and AWS Bedrock listing surfaces are
-outside this HITRUST i1 certification boundary unless a signed assessor
-scope memo says otherwise.
+The intended assessment scope is deliberately narrow: a single Chio
+deployment (this assessed release) for a single healthcare design-partner tenant. Other
+tenants, other versions, mobile extensions, and AWS Bedrock listing
+surfaces are outside this intended HITRUST i1 boundary.
 
-## Assessment scope
+## Assessment scope (intended)
 
-- Assessment type: HITRUST Implemented, 1-year (i1) Validated
+- Target assessment type: HITRUST Implemented, 1-year (i1) Validated
   Assessment and Certification.
 - Framework version: HITRUST CSF v11.7.
-- Control population: 182 HITRUST-curated i1 controls.
+- Control population: the HITRUST-curated i1 control set. The exact count
+  is determined by HITRUST when a MyCSF object is created; this document
+  does not assert a specific count.
 - Deployment boundary: single tenant, single version, single deployment
   environment.
-- Product version: Chio v3.18 at trajectory-3 close.
-- Evidence portal: MyCSF or assessor-designated equivalent.
-- Assessor: to be selected during M09.P0.
+- Product version: this assessed release.
+- Evidence portal: MyCSF or assessor-designated equivalent (not yet
+  created).
+- Assessor: none selected or engaged.
 
-## CSF version pin
+## CSF version note
 
-P0 pins CSF v11.7 as the active target for new i1 assessment creation
-on 2026-05-02. The assessment package treats 182 controls in scope as
-the P0 control count until the selected assessor creates the MyCSF
-object and returns the authoritative export.
+This readiness material targets CSF v11.7. The authoritative control set
+and count are established only when a HITRUST-authorized assessor creates
+a MyCSF object; until then this document treats the published i1 control
+set as the target and maps controls to the evidence that exists today.
 
 ## Boundary summary
 
 In scope:
 
-- Chio kernel binaries for v3.18.
+- Chio kernel binaries (this assessed release).
 - Capability authority, kernel admission, guard pipeline, tool-server
   mediation, and receipt-log export.
-- M01 audit-log export schema v1 and 30-day design-partner audit-log
-  samples after M01.P5 closes.
-- M03 hosted CI restoration, reproducible-build, and provenance
-  evidence.
-- M05 threat-model and threat-coverage closure evidence.
-- M06 SBOM, cargo-vet, CVE-monitoring, and formal-invariant evidence.
+- Audit-log export schema v1 and design-partner audit-log samples.
+- Hosted CI, reproducible-build, and provenance evidence.
+- Threat-model and threat-coverage evidence.
+- SBOM, cargo-vet, CVE-monitoring, and formal-invariant evidence.
 
 Out of scope:
 
 - Non-design-partner tenants.
-- Versions earlier or later than v3.18.
-- M07 mobile patient-app extension unless later signed into scope.
-- M10 AWS Bedrock and MCP marketplace listing surfaces.
-- Backbay platform systems outside the Chio product boundary.
+- Other Chio releases (earlier or later than this assessed release).
+- Mobile patient-app extension unless later added to scope.
+- AWS Bedrock and MCP marketplace listing surfaces.
+- Operator platform systems outside the Chio product boundary.
 - ISO 42001, SOC 2 Type II, and HITRUST r2.
 
-## Control family scaffold
+## Control family posture
 
-The P0 control-mapping CSV carries one seed row per HITRUST control
-family and will expand to one row per i1 control after the assessor
-confirms the exact MyCSF object. Family ownership starts as follows:
+The `control-mapping.csv` carries one row per HITRUST control family with
+an honest posture flag. Each row maps to evidence that actually exists in
+this repository, or is marked as a gap. Posture by family:
 
-| Family | Chio source of evidence | P0 posture |
-|--------|-------------------------|------------|
-| Information Security Management Program | trajectory-3 README, freezes, audit docs | Seeded |
-| Access Control | capability algebra, revocation, sender constraints | Strong inherited evidence |
-| Human Resources Security | Backbay HR policy corpus | Out-of-tree evidence needed |
-| Risk Management | threat model, M05 coverage closure | Inherited plus P2 narratives |
-| Security Policy | `spec/SECURITY.md`, `docs/security/` | Inherited |
-| Organization of Information Security | OWNERS and trust-boundary review policy | Seeded |
-| Compliance | this SSP, audit docs, certificate scope | Net-new |
-| Asset Management | M06 SBOM and cargo-vet ledger | Pending M06 |
-| Physical and Environmental Security | cloud-provider inheritance | Out-of-tree evidence needed |
-| Communications and Operations Management | M01 runbook, CI, receipts pipeline | Pending M01/M03 |
-| Systems Acquisition, Development, and Maintenance | M03 provenance, M06 supply chain, formal evidence | Pending M03/M06 |
-| Incident Management | M09 incident runbook | Net-new P2 |
-| Business Continuity Management | design-partner DR posture plus revocation oracle | Out-of-tree evidence needed |
-| Privacy Practices | PHI handling, telemetry de-identification, receipt redaction | Net-new P2 |
+| Family | Chio source of evidence | Posture |
+|--------|-------------------------|---------|
+| Information Security Management Program | spec, security docs, repository governance | Partial; governance is documented in-repo, formal review cadence is a gap |
+| Access Control | capability algebra, revocation, sender constraints (kernel crates, formal proofs) | Implemented and evidenced |
+| Human Resources Security | none in repository | Gap; out-of-tree HR evidence required |
+| Risk Management | threat model and coverage | Implemented and evidenced |
+| Security Policy | `spec/SECURITY.md`, `docs/security/` | Implemented and evidenced |
+| Organization of Information Security | `formal/OWNERS.md`, repository review conventions | Partial |
+| Compliance | this SSP, scope boundary | Partial (self-assessment only) |
+| Asset Management | SBOM and cargo-vet ledger (`supply-chain/`) | Implemented and evidenced |
+| Physical and Environmental Security | none in repository | Gap; cloud-provider inheritance evidence required |
+| Communications and Operations Management | audit-log schema, CI, receipts pipeline | Partial; production operational samples are a gap |
+| Systems Acquisition, Development, and Maintenance | provenance, supply chain, formal evidence | Implemented and evidenced |
+| Incident Management | `compliance/hitrust/ir-runbook.md` | Documented; first-cycle execution evidence is a gap |
+| Business Continuity Management | none in repository | Gap; DR evidence required |
+| Privacy Practices | PHI boundary, telemetry de-identification, receipt redaction (`crates/chio-log-redact/`) | Partial; policy documented, BAA and PHI handling is out-of-tree |
 
 ## Evidence inheritance
 
-M09 consumes these artifacts read-only:
+This readiness material relies on these in-repository artifacts (all
+exist today):
 
-- `.planning/trajectory-3/audits/M01-healthcare-pilot.md`
 - `spec/audit-log/export-schema.v1.json`
-- `.planning/trajectory-3/audits/M03-ci-restoration.md`
+- `spec/PROTOCOL.md`, `spec/SECURITY.md`
 - `docs/security/threat-coverage.md`
 - `spec/security/chio-threat-model.v1.json`
-- `supply-chain/**`
-- `formal/**`
-- `.planning/trajectory-3/audits/M08-vendor-evidence.md`
+- `supply-chain/` (cargo-vet `audits.toml`, `imports.lock`, SBOM/CVE workflows)
+- `formal/` (TLA+, Apalache, Lean, Kani evidence; see `formal/MAPPING.md`)
+- `.github/workflows/` (CI, reproducible build, SLSA, SBOM, CVE monitor)
 
 ## Fail-closed compliance rule
 
-If an evidence row cannot be tied to a signed artifact, frozen audit
-doc, assessor request, or explicit out-of-tree control owner, the row
-remains `gap` and cannot be promoted to `ready`.
+If a control row cannot be tied to evidence that actually exists in this
+repository or to an explicit out-of-tree owner, the row remains a `gap`
+and is not represented as satisfied.
 
-## Security review requested (M09 trust-boundary)
+## Honesty rule
 
-The SSP is a trust-boundary artifact because assessors will use it to
-scope evidence. Any ambiguous scope, BAA, PHI, access-control, logging,
-or inherited-evidence statement must be narrowed or marked as a gap.
+This SSP states only what is true. Where a control is implemented in the
+codebase, the mapping cites the real file. Where it is not, the row is an
+honest gap. No external assessment, assessor engagement, walkthrough, or
+certification is asserted anywhere in this package.

@@ -7,9 +7,8 @@
 //! [`BlockingToolEvaluator`] remains for compatibility surfaces that
 //! intentionally enter the synchronous bridge.
 //!
-//! This migration is a containment slice, not the final durable async
-//! architecture. The kernel still needs a later cancellation-safe finalization
-//! design for futures dropped after budget admission or tool dispatch.
+//! The synchronous bridge path is not cancellation-safe for futures dropped
+//! after budget admission or tool dispatch; that gap is a known open item.
 
 use crate::kernel::ChioKernel;
 use crate::{
@@ -71,8 +70,8 @@ pub trait ToolEvaluator: Send + Sync {
     /// Dispatch the validated request to the appropriate tool server.
     ///
     /// The default body routes through
-    /// [`ChioKernel::dispatch_tool_call_with_cost`], which preserves the
-    /// pre-T4 dispatch order: try streaming first, use `invoke_with_cost`
+    /// [`ChioKernel::dispatch_tool_call_with_cost`], which uses this
+    /// dispatch order: try streaming first, use `invoke_with_cost`
     /// only for monetary grants, and report `None` cost for non-monetary
     /// grants.
     async fn dispatch(

@@ -2,22 +2,39 @@
 //!
 //! The driver loads the canonical scenario corpus from
 //! `crates/chio-conformance/verdict_matrix/scenarios/` and emits a
-//! `(verdict, reason_code, scope_set)` tuple per scenario by invoking the
-//! `sdks/lambda/chio-lambda-extension` runtime through a local invoke shim.
-//! The Lambda extension itself does not embed kernel evaluation; it forwards
-//! admission requests to a Chio sidecar. The deployment-shape driver mirrors
-//! the TypeScript node-http driver contract: an operator-supplied sidecar
-//! URL is read from `CHIO_VERDICT_MATRIX_SIDECAR_URL` (with
-//! `CHIO_SIDECAR_URL` fallback). Without that variable, every scenario is
-//! reported as `unsupported` with a diagnostic that names the missing
-//! variable.
+//! `(verdict, reason_code, scope_set)` tuple per scenario by forwarding each
+//! scenario to a Chio sidecar over the same `POST /chio/evaluate` wire surface
+//! the `sdks/lambda/chio-lambda-extension` runtime speaks in production. The
+//! Lambda extension itself does not embed kernel evaluation; it relays
+//! admission requests to a Chio sidecar, so this deployment-shape driver
+//! mirrors that contract exactly.
+//!
+//! ## Runtime-availability gate
+//!
+//! The driver gates on an operator-supplied sidecar URL read from
+//! `CHIO_VERDICT_MATRIX_SIDECAR_URL` (with `CHIO_SIDECAR_URL` fallback):
+//!
+//! - When a sidecar URL is set, the driver issues a real blocking HTTP POST to
+//!   `<url>/chio/evaluate` for every scenario, parses the returned verdict and
+//!   the `verdict_matrix` receipt metadata, and emits a pass/fail tuple by
+//!   comparing against the scenario's expected tuple. A transport error against
+//!   a sidecar that is set-but-unreachable surfaces as a `fail` outcome (never
+//!   a silent skip), so a misconfigured sidecar cannot masquerade as a pass.
+//! - When no sidecar URL is set, the driver reports every scenario as
+//!   `unsupported` with a diagnostic naming the missing variable. This is a
+//!   real availability gate, not a placeholder: the Lambda SDK has no in-process
+//!   kernel, so there is no verdict it can honestly emit without a sidecar.
 
 #![forbid(clippy::unwrap_used)]
 #![forbid(clippy::expect_used)]
 
-use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
+
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 pub const DRIVER_NAME: &str = "lambda-deployment-shape";
 pub const MATRIX_ROLE: &str = "deployment-shape";
@@ -25,6 +42,15 @@ pub const UNDERLYING_DRIVER: &str = "rust-kernel";
 pub const SIDECAR_ENV: &str = "CHIO_VERDICT_MATRIX_SIDECAR_URL";
 pub const SIDECAR_FALLBACK_ENV: &str = "CHIO_SIDECAR_URL";
 pub const SCENARIO_SCHEMA: &str = "chio.verdict-matrix.scenario.v1";
+
+const MATRIX_SERVER_ID: &str = "verdict-matrix";
+const REASON_NONE: &str = "urn:chio:error:none";
+const REASON_KERNEL_INTERNAL: &str = "urn:chio:error:kernel:internal-error";
+const EVALUATE_PATH: &str = "/chio/evaluate";
+const DEFAULT_TIMEOUT_SECS: u64 = 5;
+/// Synthetic request timestamp (unix seconds). The verdict-matrix corpus
+/// is time-invariant, so a fixed value keeps relayed requests deterministic.
+const REQUEST_TIMESTAMP_SECS: u64 = 1_700_000_000;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct VerdictTuple {
@@ -41,12 +67,22 @@ impl VerdictTuple {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScenarioScript {
+    pub operation: String,
+    pub tool: String,
+    pub input_json: String,
+    #[serde(default)]
+    pub capability_scopes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Scenario {
     pub schema: String,
     pub id: String,
     pub category: String,
     #[serde(default)]
     pub requires: Vec<String>,
+    pub script: ScenarioScript,
     pub expected: VerdictTuple,
 }
 
@@ -138,27 +174,45 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
 
 pub fn run_driver(scenario_root: &Path, sidecar_url: Option<&str>) -> Result<DriverReport, String> {
     let scenarios = load_scenarios(scenario_root)?;
-    let sidecar_present = sidecar_url.is_some_and(|url| !url.trim().is_empty());
+    let sidecar = sidecar_url
+        .map(str::trim)
+        .filter(|url| !url.is_empty())
+        .map(|url| url.trim_end_matches('/').to_string());
+
     let mut outcomes = Vec::with_capacity(scenarios.len());
-    for scenario in scenarios {
-        let diagnostic = if sidecar_present {
-            "Lambda deployment-shape driver local-invoke shim is operator-tactical; \
-             the scaffold registers the driver shape only"
-                .to_string()
-        } else {
-            format!(
-                "set {SIDECAR_ENV} (or {SIDECAR_FALLBACK_ENV}) to a live Chio sidecar; \
-                 the Lambda extension does not embed kernel evaluation"
-            )
-        };
-        outcomes.push(ScenarioOutcome {
-            scenario_id: scenario.id,
-            status: "unsupported".to_string(),
-            expected: scenario.expected.normalized(),
-            actual: None,
-            diagnostic: Some(diagnostic),
-        });
+    match sidecar {
+        None => {
+            for scenario in scenarios {
+                outcomes.push(ScenarioOutcome {
+                    scenario_id: scenario.id,
+                    status: "unsupported".to_string(),
+                    expected: scenario.expected.normalized(),
+                    actual: None,
+                    diagnostic: Some(format!(
+                        "set {SIDECAR_ENV} (or {SIDECAR_FALLBACK_ENV}) to a live Chio sidecar; \
+                         the Lambda extension does not embed kernel evaluation"
+                    )),
+                });
+            }
+        }
+        Some(base_url) => {
+            let client = build_client()?;
+            for scenario in scenarios {
+                if let Some(reason) = sidecar_unsupported_reason(&scenario) {
+                    outcomes.push(ScenarioOutcome {
+                        scenario_id: scenario.id,
+                        status: "unsupported".to_string(),
+                        expected: scenario.expected.normalized(),
+                        actual: None,
+                        diagnostic: Some(reason),
+                    });
+                    continue;
+                }
+                outcomes.push(evaluate_scenario(&client, &base_url, &scenario));
+            }
+        }
     }
+
     let unsupported = outcomes
         .iter()
         .filter(|o| o.status == "unsupported")
@@ -177,9 +231,252 @@ pub fn run_driver(scenario_root: &Path, sidecar_url: Option<&str>) -> Result<Dri
     })
 }
 
+fn build_client() -> Result<reqwest::blocking::Client, String> {
+    // CHIO_EGRESS_LINT_ALLOW_DIRECT_REQWEST: verdict-matrix conformance
+    // driver targets an operator-supplied sidecar URL via env var, outside
+    // production substrate egress policy.
+    reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(DEFAULT_TIMEOUT_SECS))
+        .build()
+        .map_err(|err| format!("failed to build HTTP client: {err}"))
+}
+
+fn evaluate_scenario(
+    client: &reqwest::blocking::Client,
+    base_url: &str,
+    scenario: &Scenario,
+) -> ScenarioOutcome {
+    let expected = scenario.expected.clone().normalized();
+    let request_body = scenario_to_http_request(scenario);
+    let url = format!("{base_url}{EVALUATE_PATH}");
+    let response = match client
+        .post(&url)
+        .header("content-type", "application/json")
+        .header("x-chio-capability", capability_token_for(scenario))
+        .json(&request_body)
+        // CHIO_EGRESS_LINT_ALLOW_DIRECT_REQWEST: paired with builder above.
+        .send()
+    {
+        Ok(response) => response,
+        Err(err) => {
+            return fail(
+                scenario.id.clone(),
+                expected,
+                format!("sidecar POST failed: {err}"),
+            );
+        }
+    };
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().unwrap_or_default();
+        return fail(
+            scenario.id.clone(),
+            expected,
+            format!("sidecar returned {status}: {body}"),
+        );
+    }
+    let value = match response.json::<Value>() {
+        Ok(value) => value,
+        Err(err) => {
+            return fail(
+                scenario.id.clone(),
+                expected,
+                format!("failed to parse sidecar response: {err}"),
+            );
+        }
+    };
+    let actual = tuple_from_evaluate_response(&value).normalized();
+    let pass = actual == expected;
+    ScenarioOutcome {
+        scenario_id: scenario.id.clone(),
+        status: if pass { "pass" } else { "fail" }.to_string(),
+        actual: Some(actual),
+        expected,
+        diagnostic: if pass {
+            None
+        } else {
+            Some("tuple mismatch against sidecar verdict".to_string())
+        },
+    }
+}
+
+fn fail(scenario_id: String, expected: VerdictTuple, diagnostic: String) -> ScenarioOutcome {
+    ScenarioOutcome {
+        scenario_id,
+        status: "fail".to_string(),
+        actual: None,
+        expected,
+        diagnostic: Some(diagnostic),
+    }
+}
+
+/// Build the `ChioHttpRequest` body for a scenario, populating the tool-call
+/// fields the sidecar's capability-scope evaluator reads. Mirrors the
+/// node-http transport-client driver so the deployment shapes share one wire
+/// contract.
+pub fn scenario_to_http_request(scenario: &Scenario) -> Value {
+    let tool = scenario.script.tool.as_str();
+    let method = method_for_tool(tool);
+    let path = format!("/{}", tool.replace('.', "/"));
+    let arguments: Value = serde_json::from_str(&scenario.script.input_json).unwrap_or(Value::Null);
+    let mut body_length = 0u64;
+    let mut body_hash: Option<String> = None;
+    if method != "GET" && method != "HEAD" {
+        body_length = scenario.script.input_json.len() as u64;
+        if body_length > 0 {
+            body_hash = Some("0".repeat(64));
+        }
+    }
+    let mut request = serde_json::json!({
+        "request_id": format!("req-{}", scenario.id),
+        "method": method,
+        "path": path,
+        "query": {},
+        "headers": { "content-type": "application/json" },
+        "caller": {
+            "subject": format!("agent:{}", scenario.id),
+            "auth_method": { "method": "anonymous" },
+            "verified": true,
+            "agent_id": format!("agent:{}", scenario.id),
+        },
+        "body_length": body_length,
+        "route_pattern": format!("{MATRIX_SERVER_ID}:{tool}"),
+        "capability_id": format!("cap-{}", scenario.id),
+        "tool_server": MATRIX_SERVER_ID,
+        "tool_name": tool,
+        "arguments": arguments,
+        "timestamp": REQUEST_TIMESTAMP_SECS,
+    });
+    if let (Some(object), Some(hash)) = (request.as_object_mut(), body_hash) {
+        object.insert("body_hash".to_string(), Value::String(hash));
+    }
+    request
+}
+
+fn capability_token_for(scenario: &Scenario) -> String {
+    serde_json::json!({
+        "id": format!("cap-{}", scenario.id),
+        "scopes": scenario.script.capability_scopes,
+    })
+    .to_string()
+}
+
+/// Scenario classes this sidecar relay cannot faithfully evaluate over
+/// plain HTTP, mirroring the TypeScript node-http driver's
+/// `unsupportedSignedCapability` gate. The `capability` and `revocation`
+/// tuples turn on signed `CapabilityToken` validation (issuer, signature,
+/// and time-validity per `chio-http-core::authority::validate_capability_token`);
+/// this relay has no signed-token builder, so an unsigned token would force
+/// a deny on validation rather than surface the intended verdict. Report
+/// `unsupported` instead of a misleading pass/fail.
+fn sidecar_unsupported_reason(scenario: &Scenario) -> Option<String> {
+    match scenario.category.as_str() {
+        "capability" | "revocation" => Some(format!(
+            "lambda deployment-shape relay has no signed CapabilityToken builder; \
+             sidecar evaluation of `{}` scenarios requires issuer + signature + \
+             time-valid fields per chio-http-core::authority::validate_capability_token",
+            scenario.category
+        )),
+        _ => None,
+    }
+}
+
+fn method_for_tool(tool: &str) -> &'static str {
+    if tool.ends_with(".read") || tool.ends_with(".get") || tool == "metrics.query" {
+        "GET"
+    } else {
+        "POST"
+    }
+}
+
+/// Derive the matrix verdict tuple from a `/chio/evaluate` response. The
+/// authoritative `reason_code` and `scope_set` are read from
+/// `receipt.metadata.verdict_matrix`; the verdict tag falls back to the deny
+/// reason when the matrix metadata is absent.
+pub fn tuple_from_evaluate_response(response: &Value) -> VerdictTuple {
+    let verdict_obj = response.get("verdict");
+    let verdict_tag = verdict_obj
+        .and_then(|verdict| verdict.get("verdict"))
+        .and_then(Value::as_str)
+        .unwrap_or("error");
+    let verdict = match verdict_tag {
+        "allow" => "allow",
+        "deny" => "deny",
+        _ => "error",
+    };
+
+    let matrix = response
+        .get("receipt")
+        .and_then(|receipt| receipt.get("metadata"))
+        .and_then(|metadata| metadata.get("verdict_matrix"));
+    let reason_code = matrix
+        .and_then(|matrix| matrix.get("reason_code"))
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .unwrap_or_else(|| reason_from_verdict(verdict_tag, verdict_obj));
+    let scope_set = matrix
+        .and_then(|matrix| matrix.get("scope_set"))
+        .and_then(Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    VerdictTuple {
+        verdict: verdict.to_string(),
+        reason_code,
+        scope_set,
+    }
+}
+
+fn reason_from_verdict(verdict_tag: &str, verdict_obj: Option<&Value>) -> String {
+    match verdict_tag {
+        "allow" => REASON_NONE.to_string(),
+        "deny" => verdict_obj
+            .and_then(|verdict| verdict.get("reason"))
+            .and_then(Value::as_str)
+            .unwrap_or(REASON_KERNEL_INTERNAL)
+            .to_string(),
+        _ => REASON_KERNEL_INTERNAL.to_string(),
+    }
+}
+
+/// Build the expected-tuple map keyed by scenario id, used by the cross-driver
+/// diff oracle once a sidecar is in play.
+pub fn expected_tuple_map(scenarios: &[Scenario]) -> BTreeMap<String, VerdictTuple> {
+    scenarios
+        .iter()
+        .map(|scenario| (scenario.id.clone(), scenario.expected.clone().normalized()))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn scenario(id: &str) -> Scenario {
+        Scenario {
+            schema: SCENARIO_SCHEMA.to_string(),
+            id: id.to_string(),
+            category: "capability".to_string(),
+            requires: vec![],
+            script: ScenarioScript {
+                operation: "tool.call".to_string(),
+                tool: "files.read".to_string(),
+                input_json: "{}".to_string(),
+                capability_scopes: vec!["tool:read".to_string()],
+            },
+            expected: VerdictTuple {
+                verdict: "allow".to_string(),
+                reason_code: REASON_NONE.to_string(),
+                scope_set: vec!["tool:read".to_string()],
+            },
+        }
+    }
 
     #[test]
     fn driver_constants_are_stable() {
@@ -219,10 +516,77 @@ mod tests {
     }
 
     #[test]
+    fn run_driver_records_fail_when_sidecar_is_set_but_unreachable() {
+        // capability/revocation scenarios self-gate to `unsupported` before
+        // any sidecar call (the relay has no signed-token builder). The
+        // remaining scenarios are attempted, and a set-but-unreachable
+        // sidecar must surface them as `fail`, never a silent pass.
+        let root = match resolve_scenario_root() {
+            Ok(root) => root,
+            Err(err) => panic!("could not resolve scenario root: {err}"),
+        };
+        // 127.0.0.1:1 is reserved and refuses connections fast.
+        let report = match run_driver(&root, Some("http://127.0.0.1:1")) {
+            Ok(report) => report,
+            Err(err) => panic!("run_driver failed: {err}"),
+        };
+        assert!(report.total > 0, "expected scenarios to load");
+        assert_eq!(report.passed, 0);
+        assert!(
+            report.unsupported > 0,
+            "capability/revocation classes should gate to unsupported"
+        );
+        assert!(
+            report.failed > 0,
+            "attempted scenarios must fail against an unreachable sidecar, not skip"
+        );
+        assert_eq!(report.unsupported + report.failed, report.total);
+    }
+
+    #[test]
+    fn scenario_to_http_request_matches_chio_http_request_contract() {
+        let request = scenario_to_http_request(&scenario("shape-check"));
+        let object = match request.as_object() {
+            Some(object) => object,
+            None => panic!("request must serialize to a JSON object"),
+        };
+        // request_id and timestamp are required (non-defaulted) fields on
+        // ChioHttpRequest; tool inputs go under `arguments`, not `tool_arguments`.
+        assert!(object.contains_key("request_id"), "request_id is required");
+        assert!(object.contains_key("timestamp"), "timestamp is required");
+        assert!(
+            object.contains_key("arguments"),
+            "tool inputs go under `arguments`"
+        );
+        assert!(
+            !object.contains_key("tool_arguments"),
+            "`tool_arguments` is not a ChioHttpRequest field"
+        );
+    }
+
+    #[test]
+    fn capability_and_revocation_scenarios_gate_to_unsupported() {
+        let mut capability = scenario("cap-1");
+        capability.category = "capability".to_string();
+        assert!(sidecar_unsupported_reason(&capability).is_some());
+
+        let mut revocation = scenario("revoke-1");
+        revocation.category = "revocation".to_string();
+        assert!(sidecar_unsupported_reason(&revocation).is_some());
+
+        let mut replay = scenario("replay-1");
+        replay.category = "replay".to_string();
+        assert!(
+            sidecar_unsupported_reason(&replay).is_none(),
+            "replay scenarios are attempted, not gated"
+        );
+    }
+
+    #[test]
     fn verdict_tuple_normalizes_scope_set() {
         let tuple = VerdictTuple {
             verdict: "allow".into(),
-            reason_code: "urn:chio:error:none".into(),
+            reason_code: REASON_NONE.into(),
             scope_set: vec!["tool:write".into(), "tool:read".into()],
         };
         let normalized = tuple.normalized();
@@ -230,5 +594,59 @@ mod tests {
             normalized.scope_set,
             vec!["tool:read".to_string(), "tool:write".to_string()]
         );
+    }
+
+    #[test]
+    fn allow_response_with_matrix_metadata_yields_allow_tuple() {
+        let response = serde_json::json!({
+            "verdict": { "verdict": "allow" },
+            "receipt": {
+                "metadata": {
+                    "verdict_matrix": {
+                        "reason_code": "urn:chio:error:none",
+                        "scope_set": ["tool:write", "tool:read"]
+                    }
+                }
+            }
+        });
+        let tuple = tuple_from_evaluate_response(&response).normalized();
+        assert_eq!(tuple.verdict, "allow");
+        assert_eq!(tuple.reason_code, "urn:chio:error:none");
+        assert_eq!(
+            tuple.scope_set,
+            vec!["tool:read".to_string(), "tool:write".to_string()]
+        );
+    }
+
+    #[test]
+    fn deny_response_without_matrix_metadata_falls_back_to_reason() {
+        let response = serde_json::json!({
+            "verdict": {
+                "verdict": "deny",
+                "reason": "urn:chio:error:capability:revoked",
+                "guard": "capability"
+            },
+            "receipt": { "metadata": {} }
+        });
+        let tuple = tuple_from_evaluate_response(&response).normalized();
+        assert_eq!(tuple.verdict, "deny");
+        assert_eq!(tuple.reason_code, "urn:chio:error:capability:revoked");
+        assert!(tuple.scope_set.is_empty());
+    }
+
+    #[test]
+    fn http_request_sets_tool_call_fields_and_get_for_read() {
+        let request = scenario_to_http_request(&scenario("capability-subset-001-read-exact"));
+        assert_eq!(request.get("method").and_then(Value::as_str), Some("GET"));
+        assert_eq!(
+            request.get("tool_server").and_then(Value::as_str),
+            Some(MATRIX_SERVER_ID)
+        );
+        assert_eq!(
+            request.get("tool_name").and_then(Value::as_str),
+            Some("files.read")
+        );
+        // GET requests carry no body hash.
+        assert!(request.get("body_hash").is_none());
     }
 }

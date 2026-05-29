@@ -1,6 +1,8 @@
 // `chio replay --bless --into <fixture-dir>` dispatcher.
 
-fn cmd_replay_bless(args: &ReplayArgs, log: &Path) -> Result<(), CliError> {
+use super::*;
+
+pub(crate) fn cmd_replay_bless(args: &ReplayArgs, log: &Path) -> Result<(), CliError> {
     let into = args.into.as_ref().ok_or_else(|| {
         CliError::cli_other_error("chio replay --bless requires --into <fixture-dir>".to_string())
     })?;
@@ -42,7 +44,7 @@ fn cmd_replay_bless(args: &ReplayArgs, log: &Path) -> Result<(), CliError> {
         frames.push(record.frame);
     }
 
-    let summary = chio_replay_corpus::write_m04_fixture(into, frames)
+    let summary = chio_replay_corpus::write_fixture(into, frames)
         .map_err(map_replay_fixture_error)?;
 
     let mut stdout = std::io::stdout().lock();
@@ -142,7 +144,7 @@ mod replay_bless_tests {
             },
             request_blob_sha256: "a".repeat(64),
             response_blob_sha256: "b".repeat(64),
-            redaction_pass_id: "m06-redactors@1.4.0+default".to_string(),
+            redaction_pass_id: "redactors@1.4.0+default".to_string(),
             verdict: Verdict::Allow,
             deny_reason: None,
             would_have_blocked: false,

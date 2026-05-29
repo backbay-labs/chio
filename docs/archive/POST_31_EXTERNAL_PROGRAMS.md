@@ -55,25 +55,24 @@ What it does not yet contain is independent external evidence that those
 surfaces are relied on outside Chio's own operator boundary.
 
 - Standards, claim-boundary, and qualification substrate already exists in
-  [`docs/release/QUALIFICATION.md`](release/QUALIFICATION.md),
-  [`docs/release/RELEASE_AUDIT.md`](release/RELEASE_AUDIT.md),
-  [`docs/standards/CHIO_BOUNDED_OPERATIONAL_PROFILE.md`](standards/CHIO_BOUNDED_OPERATIONAL_PROFILE.md),
-  [`docs/standards/CHIO_CROSS_PROTOCOL_QUALIFICATION_MATRIX.json`](standards/CHIO_CROSS_PROTOCOL_QUALIFICATION_MATRIX.json),
-  [`docs/review/12-standards-positioning-remediation.md`](review/12-standards-positioning-remediation.md),
-  and [`spec/PROTOCOL.md`](../spec/PROTOCOL.md).
+  [`docs/release/QUALIFICATION.md`](../release/QUALIFICATION.md),
+  [`docs/release/RELEASE_AUDIT.md`](../release/RELEASE_AUDIT.md),
+  [`docs/standards/CHIO_BOUNDED_OPERATIONAL_PROFILE.md`](../standards/CHIO_BOUNDED_OPERATIONAL_PROFILE.md),
+  [`docs/standards/CHIO_CROSS_PROTOCOL_QUALIFICATION_MATRIX.json`](../standards/CHIO_CROSS_PROTOCOL_QUALIFICATION_MATRIX.json),
+  and [`spec/PROTOCOL.md`](../../spec/PROTOCOL.md).
 - Identity, passport, and federation substrate already exists in
-  [`crates/chio-core/src/identity_network.rs`](../crates/chio-core/src/identity_network.rs),
-  [`crates/chio-did/src/lib.rs`](../crates/chio-did/src/lib.rs),
-  [`crates/chio-credentials/src/oid4vci.rs`](../crates/chio-credentials/src/oid4vci.rs),
-  [`crates/chio-credentials/src/oid4vp.rs`](../crates/chio-credentials/src/oid4vp.rs),
-  [`crates/chio-federation/src/lib.rs`](../crates/chio-federation/src/lib.rs),
-  and [`docs/IDENTITY_FEDERATION_GUIDE.md`](IDENTITY_FEDERATION_GUIDE.md).
+  [`crates/chio-core/src/identity_network.rs`](../../crates/chio-core/src/identity_network.rs),
+  [`crates/chio-did/src/lib.rs`](../../crates/chio-did/src/lib.rs),
+  [`crates/chio-credentials/src/oid4vci.rs`](../../crates/chio-credentials/src/oid4vci.rs),
+  [`crates/chio-credentials/src/oid4vp.rs`](../../crates/chio-credentials/src/oid4vp.rs),
+  [`crates/chio-federation/src/lib.rs`](../../crates/chio-federation/src/lib.rs),
+  and [`docs/IDENTITY_FEDERATION_GUIDE.md`](../reference/IDENTITY_FEDERATION_GUIDE.md).
 - Market-facing and external-proof substrate already exists in
-  [`crates/chio-market/src/lib.rs`](../crates/chio-market/src/lib.rs),
-  [`crates/chio-store-sqlite/src/receipt_store/liability_market.rs`](../crates/chio-store-sqlite/src/receipt_store/liability_market.rs),
-  [`crates/chio-store-sqlite/src/receipt_store/liability_claims.rs`](../crates/chio-store-sqlite/src/receipt_store/liability_claims.rs),
-  [`docs/release/PARTNER_PROOF.md`](release/PARTNER_PROOF.md), and
-  [`docs/release/CHIO_COMPTROLLER_MARKET_POSITION_PROOF.md`](release/CHIO_COMPTROLLER_MARKET_POSITION_PROOF.md).
+  [`crates/chio-market/src/lib.rs`](../../crates/chio-market/src/lib.rs),
+  [`crates/chio-store-sqlite/src/receipt_store/liability_market.rs`](../../crates/chio-store-sqlite/src/receipt_store/liability_market.rs),
+  [`crates/chio-store-sqlite/src/receipt_store/liability_claims.rs`](../../crates/chio-store-sqlite/src/receipt_store/liability_claims.rs),
+  [`docs/release/PARTNER_PROOF.md`](../release/PARTNER_PROOF.md), and
+  [`docs/release/CHIO_COMPTROLLER_MARKET_POSITION_PROOF.md`](../release/CHIO_COMPTROLLER_MARKET_POSITION_PROOF.md).
 
 ---
 
@@ -85,17 +84,16 @@ surfaces are relied on outside Chio's own operator boundary.
 
 ### Current Repo Baseline
 
-- [`docs/standards/CHIO_CROSS_PROTOCOL_QUALIFICATION_MATRIX.json`](standards/CHIO_CROSS_PROTOCOL_QUALIFICATION_MATRIX.json),
-  [`docs/standards/CHIO_BOUNDED_OPERATIONAL_PROFILE.md`](standards/CHIO_BOUNDED_OPERATIONAL_PROFILE.md),
-  [`docs/review/12-standards-positioning-remediation.md`](review/12-standards-positioning-remediation.md),
-  and [`spec/PROTOCOL.md`](../spec/PROTOCOL.md) already define large parts of
+- [`docs/standards/CHIO_CROSS_PROTOCOL_QUALIFICATION_MATRIX.json`](../standards/CHIO_CROSS_PROTOCOL_QUALIFICATION_MATRIX.json),
+  [`docs/standards/CHIO_BOUNDED_OPERATIONAL_PROFILE.md`](../standards/CHIO_BOUNDED_OPERATIONAL_PROFILE.md),
+  and [`spec/PROTOCOL.md`](../../spec/PROTOCOL.md) already define large parts of
   Chio's claim-boundary and interoperability story, but not yet as one checked
   external-facing registry.
-- [`crates/chio-core/src/identity_network.rs`](../crates/chio-core/src/identity_network.rs),
-  [`crates/chio-federation/src/lib.rs`](../crates/chio-federation/src/lib.rs),
-  [`crates/chio-did/src/lib.rs`](../crates/chio-did/src/lib.rs),
-  [`crates/chio-credentials/src/oid4vci.rs`](../crates/chio-credentials/src/oid4vci.rs),
-  and [`crates/chio-credentials/src/oid4vp.rs`](../crates/chio-credentials/src/oid4vp.rs)
+- [`crates/chio-core/src/identity_network.rs`](../../crates/chio-core/src/identity_network.rs),
+  [`crates/chio-federation/src/lib.rs`](../../crates/chio-federation/src/lib.rs),
+  [`crates/chio-did/src/lib.rs`](../../crates/chio-did/src/lib.rs),
+  [`crates/chio-credentials/src/oid4vci.rs`](../../crates/chio-credentials/src/oid4vci.rs),
+  and [`crates/chio-credentials/src/oid4vp.rs`](../../crates/chio-credentials/src/oid4vp.rs)
   already give Chio real portability and identity substrate. Program A turns
   that repo-local substrate into checked and reviewable peer evidence.
 
@@ -139,10 +137,9 @@ Here, `research claims` means explicitly non-ship, non-program claim classes
 tracked for boundary discipline, not hidden Program A deliverables.
 
 **Existing substrate**:
-[`docs/standards/CHIO_CROSS_PROTOCOL_QUALIFICATION_MATRIX.json`](standards/CHIO_CROSS_PROTOCOL_QUALIFICATION_MATRIX.json),
-[`docs/standards/CHIO_BOUNDED_OPERATIONAL_PROFILE.md`](standards/CHIO_BOUNDED_OPERATIONAL_PROFILE.md),
-[`docs/review/12-standards-positioning-remediation.md`](review/12-standards-positioning-remediation.md),
-and [`spec/PROTOCOL.md`](../spec/PROTOCOL.md) already cover parts of this
+[`docs/standards/CHIO_CROSS_PROTOCOL_QUALIFICATION_MATRIX.json`](../standards/CHIO_CROSS_PROTOCOL_QUALIFICATION_MATRIX.json),
+[`docs/standards/CHIO_BOUNDED_OPERATIONAL_PROFILE.md`](../standards/CHIO_BOUNDED_OPERATIONAL_PROFILE.md),
+and [`spec/PROTOCOL.md`](../../spec/PROTOCOL.md) already cover parts of this
 taxonomy. The missing step is unifying them into one checked claim registry.
 
 **Repo-prep work**:
@@ -167,12 +164,12 @@ taxonomy. The missing step is unifying them into one checked claim registry.
 against Chio-owned demos or local adapters.
 
 **Existing substrate**:
-[`docs/standards/CHIO_CROSS_PROTOCOL_QUALIFICATION_MATRIX.json`](standards/CHIO_CROSS_PROTOCOL_QUALIFICATION_MATRIX.json),
-[`crates/chio-core/src/identity_network.rs`](../crates/chio-core/src/identity_network.rs),
-[`crates/chio-federation/src/lib.rs`](../crates/chio-federation/src/lib.rs),
+[`docs/standards/CHIO_CROSS_PROTOCOL_QUALIFICATION_MATRIX.json`](../standards/CHIO_CROSS_PROTOCOL_QUALIFICATION_MATRIX.json),
+[`crates/chio-core/src/identity_network.rs`](../../crates/chio-core/src/identity_network.rs),
+[`crates/chio-federation/src/lib.rs`](../../crates/chio-federation/src/lib.rs),
 and the OID portability surfaces in
-[`crates/chio-credentials/src/oid4vci.rs`](../crates/chio-credentials/src/oid4vci.rs)
-and [`crates/chio-credentials/src/oid4vp.rs`](../crates/chio-credentials/src/oid4vp.rs)
+[`crates/chio-credentials/src/oid4vci.rs`](../../crates/chio-credentials/src/oid4vci.rs)
+and [`crates/chio-credentials/src/oid4vp.rs`](../../crates/chio-credentials/src/oid4vp.rs)
 already give Chio something to qualify. The gap is repeatable testing against
 external peers instead of Chio-owned fixtures alone.
 
@@ -199,9 +196,9 @@ external peers instead of Chio-owned fixtures alone.
   identity, governance, and independence metadata.
 
 **Existing substrate**:
-[`crates/chio-core/src/identity_network.rs`](../crates/chio-core/src/identity_network.rs),
-[`crates/chio-federation/src/lib.rs`](../crates/chio-federation/src/lib.rs),
-and [`docs/IDENTITY_FEDERATION_GUIDE.md`](IDENTITY_FEDERATION_GUIDE.md)
+[`crates/chio-core/src/identity_network.rs`](../../crates/chio-core/src/identity_network.rs),
+[`crates/chio-federation/src/lib.rs`](../../crates/chio-federation/src/lib.rs),
+and [`docs/IDENTITY_FEDERATION_GUIDE.md`](../reference/IDENTITY_FEDERATION_GUIDE.md)
 already model public identity profiles, federation metadata, certification
 references, and Sybil-control concepts. This track packages those concepts into
 auditable issuer-accountability artifacts and fail-closed policy.
@@ -227,12 +224,12 @@ auditable issuer-accountability artifacts and fail-closed policy.
   informal migration metadata.
 
 **Existing substrate**:
-[`spec/PROTOCOL.md`](../spec/PROTOCOL.md),
-[`crates/chio-credentials/src/oid4vci.rs`](../crates/chio-credentials/src/oid4vci.rs),
-[`crates/chio-credentials/src/oid4vp.rs`](../crates/chio-credentials/src/oid4vp.rs),
-[`crates/chio-did/src/lib.rs`](../crates/chio-did/src/lib.rs),
-[`crates/chio-federation/src/lib.rs`](../crates/chio-federation/src/lib.rs),
-and [`docs/IDENTITY_FEDERATION_GUIDE.md`](IDENTITY_FEDERATION_GUIDE.md)
+[`spec/PROTOCOL.md`](../../spec/PROTOCOL.md),
+[`crates/chio-credentials/src/oid4vci.rs`](../../crates/chio-credentials/src/oid4vci.rs),
+[`crates/chio-credentials/src/oid4vp.rs`](../../crates/chio-credentials/src/oid4vp.rs),
+[`crates/chio-did/src/lib.rs`](../../crates/chio-did/src/lib.rs),
+[`crates/chio-federation/src/lib.rs`](../../crates/chio-federation/src/lib.rs),
+and [`docs/IDENTITY_FEDERATION_GUIDE.md`](../reference/IDENTITY_FEDERATION_GUIDE.md)
 already define passport, migration, discovery, and trust-pack substrate. The
 missing piece is external clearing discipline and continuity evidence across
 real counterparties.
@@ -258,10 +255,10 @@ real counterparties.
   test runs.
 
 **Existing substrate**:
-[`docs/release/QUALIFICATION.md`](release/QUALIFICATION.md),
-[`docs/release/RELEASE_AUDIT.md`](release/RELEASE_AUDIT.md),
-[`docs/standards/CHIO_BOUNDED_OPERATIONAL_PROFILE.md`](standards/CHIO_BOUNDED_OPERATIONAL_PROFILE.md),
-and the review memos under [`docs/review`](review) already form an internal
+[`docs/release/QUALIFICATION.md`](../release/QUALIFICATION.md),
+[`docs/release/RELEASE_AUDIT.md`](../release/RELEASE_AUDIT.md),
+[`docs/standards/CHIO_BOUNDED_OPERATIONAL_PROFILE.md`](../standards/CHIO_BOUNDED_OPERATIONAL_PROFILE.md),
+and the internal review memos already form an internal
 reviewer package. This track makes that package standards-facing, bounded, and
 reusable by third parties.
 
@@ -286,14 +283,14 @@ reusable by third parties.
 
 ### Current Repo Baseline
 
-- [`crates/chio-market/src/lib.rs`](../crates/chio-market/src/lib.rs),
-  [`crates/chio-store-sqlite/src/receipt_store/liability_market.rs`](../crates/chio-store-sqlite/src/receipt_store/liability_market.rs),
-  and [`crates/chio-store-sqlite/src/receipt_store/liability_claims.rs`](../crates/chio-store-sqlite/src/receipt_store/liability_claims.rs)
+- [`crates/chio-market/src/lib.rs`](../../crates/chio-market/src/lib.rs),
+  [`crates/chio-store-sqlite/src/receipt_store/liability_market.rs`](../../crates/chio-store-sqlite/src/receipt_store/liability_market.rs),
+  and [`crates/chio-store-sqlite/src/receipt_store/liability_claims.rs`](../../crates/chio-store-sqlite/src/receipt_store/liability_claims.rs)
   already model market, liability, and claims-shaped workflows.
-- [`crates/chio-kernel/src/operator_report.rs`](../crates/chio-kernel/src/operator_report.rs),
-  [`crates/chio-anchor/src/bundle.rs`](../crates/chio-anchor/src/bundle.rs),
-  [`crates/chio-anchor/src/ops.rs`](../crates/chio-anchor/src/ops.rs), and
-  [`crates/chio-web3/src/lib.rs`](../crates/chio-web3/src/lib.rs) already give
+- [`crates/chio-kernel/src/operator_report.rs`](../../crates/chio-kernel/src/operator_report.rs),
+  [`crates/chio-anchor/src/bundle.rs`](../../crates/chio-anchor/src/bundle.rs),
+  [`crates/chio-anchor/src/ops.rs`](../../crates/chio-anchor/src/ops.rs), and
+  [`crates/chio-web3/src/lib.rs`](../../crates/chio-web3/src/lib.rs) already give
   Chio exportable operator, checkpoint, and proof artifacts. Program B turns
   those internal artifacts into evidence of outside dependence.
 
@@ -336,9 +333,9 @@ reusable by third parties.
 evidence scattered across decks and docs.
 
 **Existing substrate**:
-[`docs/release/PARTNER_PROOF.md`](release/PARTNER_PROOF.md),
-[`docs/release/CHIO_COMPTROLLER_MARKET_POSITION_PROOF.md`](release/CHIO_COMPTROLLER_MARKET_POSITION_PROOF.md),
-[`crates/chio-market/src/lib.rs`](../crates/chio-market/src/lib.rs), and the
+[`docs/release/PARTNER_PROOF.md`](../release/PARTNER_PROOF.md),
+[`docs/release/CHIO_COMPTROLLER_MARKET_POSITION_PROOF.md`](../release/CHIO_COMPTROLLER_MARKET_POSITION_PROOF.md),
+[`crates/chio-market/src/lib.rs`](../../crates/chio-market/src/lib.rs), and the
 liability-market store modules already sketch several evidence categories. This
 track standardizes them into one reusable proof-bundle contract.
 
@@ -361,10 +358,10 @@ track standardizes them into one reusable proof-bundle contract.
 truth for consequential workflows.
 
 **Existing substrate**:
-[`crates/chio-kernel/src/operator_report.rs`](../crates/chio-kernel/src/operator_report.rs),
-[`crates/chio-anchor/src/bundle.rs`](../crates/chio-anchor/src/bundle.rs),
-[`crates/chio-anchor/src/ops.rs`](../crates/chio-anchor/src/ops.rs), and
-[`crates/chio-web3/src/lib.rs`](../crates/chio-web3/src/lib.rs) already produce
+[`crates/chio-kernel/src/operator_report.rs`](../../crates/chio-kernel/src/operator_report.rs),
+[`crates/chio-anchor/src/bundle.rs`](../../crates/chio-anchor/src/bundle.rs),
+[`crates/chio-anchor/src/ops.rs`](../../crates/chio-anchor/src/ops.rs), and
+[`crates/chio-web3/src/lib.rs`](../../crates/chio-web3/src/lib.rs) already produce
 machine-verifiable operator and checkpoint artifacts. What is missing is
 outside operator dependence on those artifacts.
 
@@ -387,9 +384,9 @@ outside operator dependence on those artifacts.
 real market control-plane truth.
 
 **Existing substrate**:
-[`docs/release/PARTNER_PROOF.md`](release/PARTNER_PROOF.md),
-[`crates/chio-kernel/src/operator_report.rs`](../crates/chio-kernel/src/operator_report.rs),
-and [`crates/chio-store-sqlite/src/receipt_store/reports.rs`](../crates/chio-store-sqlite/src/receipt_store/reports.rs)
+[`docs/release/PARTNER_PROOF.md`](../release/PARTNER_PROOF.md),
+[`crates/chio-kernel/src/operator_report.rs`](../../crates/chio-kernel/src/operator_report.rs),
+and [`crates/chio-store-sqlite/src/receipt_store/reports.rs`](../../crates/chio-store-sqlite/src/receipt_store/reports.rs)
 already give Chio reconciliation and report substrate that can feed bilateral
 proof. This track turns that substrate into counterparty-reviewed dependence.
 
@@ -413,9 +410,9 @@ proof. This track turns that substrate into counterparty-reviewed dependence.
 need real dependence evidence rather than protocol completeness.
 
 **Existing substrate**:
-[`crates/chio-store-sqlite/src/receipt_store/liability_claims.rs`](../crates/chio-store-sqlite/src/receipt_store/liability_claims.rs),
-[`crates/chio-market/src/lib.rs`](../crates/chio-market/src/lib.rs), and
-[`docs/release/PARTNER_PROOF.md`](release/PARTNER_PROOF.md) already show that
+[`crates/chio-store-sqlite/src/receipt_store/liability_claims.rs`](../../crates/chio-store-sqlite/src/receipt_store/liability_claims.rs),
+[`crates/chio-market/src/lib.rs`](../../crates/chio-market/src/lib.rs), and
+[`docs/release/PARTNER_PROOF.md`](../release/PARTNER_PROOF.md) already show that
 the repo has claims and liability-shaped primitives. What it does not yet have
 is insurer or underwriter evidence that those primitives changed a real
 decision.
@@ -440,10 +437,10 @@ decision.
 liquidity behavior around Chio-verified artifacts.
 
 **Existing substrate**:
-[`crates/chio-market/src/lib.rs`](../crates/chio-market/src/lib.rs),
-[`crates/chio-store-sqlite/src/receipt_store/liability_market.rs`](../crates/chio-store-sqlite/src/receipt_store/liability_market.rs),
-[`crates/chio-store-sqlite/src/receipt_store/liability_claims.rs`](../crates/chio-store-sqlite/src/receipt_store/liability_claims.rs),
-and [`docs/release/CHIO_COMPTROLLER_MARKET_POSITION_PROOF.md`](release/CHIO_COMPTROLLER_MARKET_POSITION_PROOF.md)
+[`crates/chio-market/src/lib.rs`](../../crates/chio-market/src/lib.rs),
+[`crates/chio-store-sqlite/src/receipt_store/liability_market.rs`](../../crates/chio-store-sqlite/src/receipt_store/liability_market.rs),
+[`crates/chio-store-sqlite/src/receipt_store/liability_claims.rs`](../../crates/chio-store-sqlite/src/receipt_store/liability_claims.rs),
+and [`docs/release/CHIO_COMPTROLLER_MARKET_POSITION_PROOF.md`](../release/CHIO_COMPTROLLER_MARKET_POSITION_PROOF.md)
 already define marketplace-shaped substrate and strategy claims. The missing
 proof is live third-party pricing, matching, and repeated use.
 

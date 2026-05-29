@@ -4,9 +4,9 @@ name: apalache-temporal
 # RevocationEventuallySeen against formal/tla/RevocationPropagation.tla.
 #
 # This job is scheduled/manual only and is not a required PR gate while the
-# trajectory-3.1 temporal lane gathers green history. Safety invariants for
-# RevocationPropagation run in ci.yml at the PR length bound and in this
-# length-24 temporal config so deep safety regressions remain covered.
+# temporal lane gathers green history. Safety invariants for
+# RevocationPropagation run in apalache-safety.yml at the PR length bound.
+# This length-24 temporal config keeps deep liveness coverage separate.
 #
 # Do not promote this workflow to a required check until the underlying
 # property is fixed and the run is reliably green.

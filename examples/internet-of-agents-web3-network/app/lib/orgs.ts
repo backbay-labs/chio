@@ -1,9 +1,5 @@
-// Demo org layout for the four-quadrant graph.
-//
-// Wave 2 ships with this hardcoded ensemble. The runtime topology.json from
-// the bundle is merged in where it carries matching fields (names, roles,
-// trust control URL). Later waves may derive the whole ensemble from
-// topology.json once the schema stabilizes.
+// Demo org layout for the four-quadrant graph. Hardcoded ensemble; future
+// versions may derive this from topology.json once the schema stabilizes.
 
 import type { Edge, Org, Topology } from "./types";
 

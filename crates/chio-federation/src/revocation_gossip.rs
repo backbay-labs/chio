@@ -545,10 +545,11 @@ pub fn respond_to_catchup<H: RevocationCatchupHistory>(
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use chio_revocation_oracle::{DigestRootSigner, EpochRoot, SignedEpochRoot};
+    use chio_revocation_oracle::{Ed25519RootSigner, EpochRoot, SignedEpochRoot};
 
     fn signed_root(signer_id: &str, epoch: u64) -> SignedEpochRoot {
-        let signer = DigestRootSigner::new(signer_id, b"unit-test-secret".to_vec());
+        let signer =
+            Ed25519RootSigner::from_signing_key(signer_id, "generate").expect("unit test signer");
         let root = EpochRoot {
             epoch,
             root_hash: [0xAB; 32],

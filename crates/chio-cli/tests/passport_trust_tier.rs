@@ -1,6 +1,6 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-//! Phase 20.1: verify that `chio passport generate --agent <id>` emits a
+//! Verify that `chio passport generate --agent <id>` emits a
 //! passport with a `trustTier` field derived from the kernel's
 //! compliance + behavioral scoring.
 

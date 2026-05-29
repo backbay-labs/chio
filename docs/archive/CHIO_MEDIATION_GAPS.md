@@ -1,14 +1,14 @@
-# CHIO Mediation Gaps - Kernel Work Items Surfaced by Wave D
+# CHIO Mediation Gaps - Kernel Work Items Surfaced by Demo Hardening
 
 This document tracks two kernel-level gaps that prevent CLI-mediated
 `chio check` paths from enforcing spend-aware guards, surfaced during
-Wave D's tiny-hedge-fund demo hardening. Both gaps have been worked
+the tiny-hedge-fund demo hardening. Both gaps have been worked
 around at the `chio-bridge` layer (see `chio-bridge@0.2.2` release
 notes) and are blocked for a clean upstream fix in arc itself.
 
-Neither gap is a regression; both have been latent since Wave 1.6 /
-Wave 5.0.1 when `rules.velocity` and `rules.human_in_loop` re-landed
-as first-class rule variants on `chio-policy`. The MCP-edge path
+Neither gap is a regression; both have been latent since
+`chio-bridge@0.2.2` when `rules.velocity` and `rules.human_in_loop`
+re-landed as first-class rule variants on `chio-policy`. The MCP-edge path
 (daemon mode via `chio mcp serve-http`) is similarly affected: the
 edge does not synthesise governed intents or per-invocation cost
 estimates from `tools/call` metadata.
@@ -81,8 +81,8 @@ of abstraction; every policy's tool inventory is different).
    recommended** - silently under-enforces a rule the policy
    author explicitly set.
 
-Wave 5.0.1 re-landed the `human_in_loop` rule variant; the block
-therein is effectively unreachable today from CLI-mediated flows.
+The `chio-bridge@0.2.2` release re-landed the `human_in_loop` rule variant;
+the block therein is effectively unreachable today from CLI-mediated flows.
 The bridge-side workaround
 (`chio-hedge-fund-demo/policy/hedge.policy.runtime.yaml`) omits
 `approve_above` to unblock the demo's runtime, and retains
@@ -169,11 +169,11 @@ policy author to remember the knob exists. Less ergonomic.
 
 Either way, the fix is compiler-side, not guard-side.
 
-### Bridge-side workaround (Wave D, shipped)
+### Bridge-side workaround (shipped in chio-bridge@0.2.2)
 
 `chio-bridge@0.2.2` implements a bridge-owned spend ledger over the
 trust plane's existing `POST /v1/budgets/authorize-exposure`
-endpoint (see `arc/crates/chio-cli/src/trust_control/http_handlers_b.rs:2214`
+endpoint (see `arc/crates/chio-control-plane/src/trust_control/http_handlers_b.rs:2214`
 and `service_types.rs:2041-2062`). A new
 `ChioBridge.check(call, {capabilityId, costUsd})` option threads the
 bonded capability id + per-call cost into that endpoint; the trust
@@ -194,14 +194,12 @@ upstream fix is still required.
 
 ## References
 
-- Wave 5.0.1 work that landed `velocity` + `human_in_loop` as
-  first-class rule variants:
-  `chio-policy/src/models.rs::Rules` (rename from `arc-policy`);
-  `/tmp/chio-debate/WAVE5_0_1_POLICY_RELAND.md`.
-- Bridge workaround: `chio-bridge@0.2.2` (Wave D):
-  `standalone/chio-bridge/src/check.ts` → `mediateBudget`;
+- Work that landed `velocity` + `human_in_loop` as first-class rule variants:
+  `chio-policy/src/models.rs::Rules` (rename from `arc-policy`).
+- Bridge workaround: `chio-bridge@0.2.2`:
+  `standalone/chio-bridge/src/check.ts` -> `mediateBudget`;
   `standalone/chio-bridge/src/index.ts::bond` and
   `deriveCapabilityScopeFromPolicy`.
-- Kernel file:line citations in this doc were validated against
-  the Wave 5.0.1 snapshot of arc. If the kernel refactors approval
+- Kernel file:line citations in this doc were validated against the
+  `chio-bridge@0.2.2` snapshot of arc. If the kernel refactors approval
   or velocity, re-anchor the lines before quoting.

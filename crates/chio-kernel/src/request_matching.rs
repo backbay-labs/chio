@@ -370,13 +370,12 @@ fn constraint_matches(
         | Constraint::MinimumAutonomyTier(_) => Ok(true),
         Constraint::Custom(key, expected) => Ok(argument_contains_custom(arguments, key, expected)),
 
-        // Phase 2.2 additions. These constraints either require domain-
-        // specific evaluation (SQL parsing, post-invocation result
-        // inspection, or cross-request HITL state) that lives outside
-        // this argument-matching stage, or they match against
-        // well-known argument keys. Unless a specific check below
-        // rejects the request, the constraint is accepted at this
-        // stage and enforced by a downstream guard.
+        // Constraints that require domain-specific evaluation (SQL parsing,
+        // post-invocation result inspection, or cross-request HITL state)
+        // outside this argument-matching stage, or that match against
+        // well-known argument keys. Unless a specific check below rejects
+        // the request, the constraint is accepted at this stage and enforced
+        // by a downstream guard.
         Constraint::TableAllowlist(_)
         | Constraint::ColumnDenylist(_)
         | Constraint::MaxRowsReturned(_)
@@ -384,11 +383,10 @@ fn constraint_matches(
         Constraint::ContentReviewTier(_) => Ok(false),
         Constraint::MaxTransactionAmountUsd(_) | Constraint::RequireDualApproval(_) => Ok(false),
 
-        // Phase 2.3 / RTC-08: evaluate the model-routing constraint
-        // against request-carried `model_metadata`. The separate
-        // provenance class rides on the metadata for receipt and audit
-        // surfaces; routing checks compare the concrete model identity
-        // and safety tier only.
+        // RTC-08: evaluate the model-routing constraint against
+        // request-carried `model_metadata`. The separate provenance class
+        // rides on the metadata for receipt and audit surfaces; routing
+        // checks compare the concrete model identity and safety tier only.
         Constraint::ModelConstraint {
             allowed_model_ids,
             min_safety_tier,

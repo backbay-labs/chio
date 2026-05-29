@@ -1,4 +1,4 @@
-//! Phase 2.4 HTTP-surface tests for `POST /evaluate-plan`.
+//! HTTP-surface tests for `POST /evaluate-plan`.
 //!
 //! `chio-http-core` does not embed an HTTP server, so these tests
 //! exercise the substrate-independent `handle_evaluate_plan` function

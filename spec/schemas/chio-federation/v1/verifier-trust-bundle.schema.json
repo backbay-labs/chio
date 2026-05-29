@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://chio.dev/schemas/chio-federation/v1/verifier-trust-bundle.schema.json",
+  "$id": "https://chio.world/schemas/chio-federation/v1/verifier-trust-bundle.schema.json",
   "title": "Chio Federation Verifier Trust Bundle",
   "type": "object",
   "additionalProperties": false,

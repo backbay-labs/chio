@@ -5,41 +5,7 @@ use chio_kernel::budget_store::BudgetEventAuthority;
 use chio_kernel::{BudgetStore, RevocationRecord};
 use chio_store_sqlite::{SqliteBudgetStore, SqliteCapabilityAuthority, SqliteRevocationStore};
 
-trait TestResultOk<T, E> {
-    fn test_expect(self, context: &'static str) -> T;
-}
-
-impl<T, E> TestResultOk<T, E> for Result<T, E> {
-    fn test_expect(self, context: &'static str) -> T {
-        match self {
-            Ok(value) => value,
-            Err(_) => panic!("{context}"),
-        }
-    }
-}
-
-trait TestResultErr<T, E> {
-    fn test_expect_err(self, context: &'static str) -> E;
-}
-
-impl<T, E> TestResultErr<T, E> for Result<T, E> {
-    fn test_expect_err(self, context: &'static str) -> E {
-        match self {
-            Ok(_) => panic!("{context} unexpectedly succeeded"),
-            Err(error) => error,
-        }
-    }
-}
-
-trait TestOptionExt<T> {
-    fn test_expect(self, context: &'static str) -> T;
-}
-
-impl<T> TestOptionExt<T> for Option<T> {
-    fn test_expect(self, context: &'static str) -> T {
-        self.unwrap_or_else(|| panic!("{context}"))
-    }
-}
+use chio_test_support::prelude::*;
 
 fn unique_db_path(prefix: &str) -> std::path::PathBuf {
     let nonce = SystemTime::now()

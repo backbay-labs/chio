@@ -1388,6 +1388,9 @@ impl SqliteReceiptStore {
         .collect()
     }
 
+    // Six optional SQL filter columns plus the admin read context; the
+    // positional list mirrors list_child_receipts by design.
+    #[allow(clippy::too_many_arguments)]
     pub fn list_child_receipts_with_context(
         &self,
         read_context: &ReceiptReadContext,

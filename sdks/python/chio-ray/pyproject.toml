@@ -6,10 +6,10 @@ build-backend = "hatchling.build"
 name = "chio-ray"
 version = "0.1.1"
 description = "Ray integration for the Chio protocol -- @chio_remote decorator, ChioActor base class with standing capability grants"
-license = "MIT"
+license = "Apache-2.0"
 requires-python = ">=3.11"
 authors = [
-    { name = "Backbay Industries" },
+    { name = "Backbay Labs", email = "security@backbay.io" },
 ]
 keywords = ["chio", "ray", "distributed", "actor", "agent", "security", "capability"]
 classifiers = [
@@ -24,7 +24,7 @@ classifiers = [
 
 dependencies = [
     "chio-sdk-python>=0.1.0",
-    "chio-adapter-base>=0.1.1,<0.2",
+    "chio-adapter-base>=0.2.0,<0.3",
     "ray[default]>=2.10,<3",
     "pydantic>=2.5,<3",
 ]

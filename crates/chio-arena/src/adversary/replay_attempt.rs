@@ -28,7 +28,7 @@ pub const REPLAYED_NONCE_KEY: &str = "replayed_nonce";
 /// Stable reason marker.
 pub const REASON: &str = "replay-attempt-denied";
 
-/// Canonical pattern names. Aligned with the M04 `replay_attack` fixture
+/// Canonical pattern names. Aligned with the `replay_attack` fixture
 /// family (`01_immediate_reuse`, `02_delayed_reuse`, `03_stale_nonce`,
 /// `04_concurrent_reuse`). The arena consumes the family's pattern names
 /// directly so audits that grep for "replay_attack" surface both sides.

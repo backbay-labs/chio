@@ -5,6 +5,9 @@
 //! HTTP/2 headers. It does not prove replay support for real
 //! `tonic::body::Body`, so the test remains an approximation rather than a
 //! full Tonic runtime qualification.
+//!
+//! These tests drive the kernel's async tool dispatch through Chio's sync
+//! bridge, which requires a multi-thread Tokio runtime.
 
 use bytes::Bytes;
 use chio_core_types::capability::{CapabilityToken, CapabilityTokenBody, ChioScope};
@@ -37,7 +40,7 @@ fn valid_capability_token_json(id: &str, issuer: &Keypair) -> String {
 
 /// Simulate a gRPC unary call (POST with application/grpc content type).
 /// gRPC calls are always POST, so they require a capability token.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn grpc_post_denied_without_capability() {
     let keypair = Keypair::generate();
     let layer = ChioLayer::new(keypair, "test-policy-grpc".to_string());
@@ -82,7 +85,7 @@ async fn grpc_post_denied_without_capability() {
 }
 
 /// gRPC call with capability token should be allowed.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn grpc_post_allowed_with_capability() {
     let keypair = Keypair::generate();
     let layer = ChioLayer::new(keypair.clone(), "test-policy-grpc".to_string());
@@ -131,7 +134,7 @@ async fn grpc_post_allowed_with_capability() {
 }
 
 /// Verify that the receipt ID is a valid UUIDv7 format.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn grpc_receipt_id_format() {
     let keypair = Keypair::generate();
     let layer = ChioLayer::new(keypair.clone(), "test-policy-grpc".to_string());
@@ -170,9 +173,10 @@ async fn grpc_receipt_id_format() {
         .to_str()
         .unwrap_or_else(|e| panic!("invalid header value: {e}"));
 
-    // UUIDv7 format: 8-4-4-4-12 hex chars.
-    assert_eq!(receipt_id.len(), 36);
-    assert_eq!(receipt_id.chars().filter(|c| *c == '-').count(), 4);
+    // The receipt id is the content-derived SHA-256 of the receipt body, hex
+    // encoded (64 hex chars), not the request_id UUID.
+    assert_eq!(receipt_id.len(), 64);
+    assert!(receipt_id.chars().all(|c| c.is_ascii_hexdigit()));
     let receipt = resp
         .extensions()
         .get::<HttpReceipt>()
@@ -181,7 +185,7 @@ async fn grpc_receipt_id_format() {
 }
 
 /// gRPC call with bearer token for identity extraction.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn grpc_bearer_identity() {
     let keypair = Keypair::generate();
     let layer = ChioLayer::new(keypair.clone(), "test-policy-grpc".to_string());

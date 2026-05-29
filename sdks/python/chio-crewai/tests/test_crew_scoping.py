@@ -1,9 +1,8 @@
 """Integration-style tests for per-role capability scoping on ChioCrew.
 
-Acceptance (roadmap phase 6.1): *A CrewAI crew where the researcher
-agent can search but not write, and the writer agent can write but not
-search.* These tests set up exactly that crew against a mocked sidecar
-and assert the verdicts end-to-end.
+A CrewAI crew where the researcher agent can search but not write, and
+the writer agent can write but not search. These tests set up that crew
+against a mocked sidecar and assert the verdicts end-to-end.
 """
 
 from __future__ import annotations

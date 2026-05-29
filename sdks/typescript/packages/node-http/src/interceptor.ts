@@ -167,7 +167,7 @@ function capabilityIdFromToken(rawToken: string | undefined): string | undefined
   }
 }
 
-/** Build an ChioHttpRequest from extracted request parts. */
+/** Build a ChioHttpRequest from extracted request parts. */
 export function buildChioHttpRequest(opts: BuildRequestOptions): ChioHttpRequest {
   return {
     request_id: randomUUID(),

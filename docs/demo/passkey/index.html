@@ -3,26 +3,26 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Chio passkey custody demo (engineering output)</title>
+    <title>Chio passkey custody demo</title>
     <meta
       name="description"
-      content="Engineering demo: presents a WebAuthn passkey assertion to a Chio issuer and exercises the audience-pinned PasskeyCapability flow."
+      content="Interactive demo: presents a WebAuthn passkey assertion to a Chio issuer and exercises the audience-pinned PasskeyCapability flow."
     />
     <link rel="stylesheet" href="../styles.css" />
     <link rel="stylesheet" href="./passkey.css" />
   </head>
   <body>
     <!--
-      Banner contract: the text and DOM shape are normative; do not
-      paraphrase. Playwright / bun e2e asserts the banner is visible
-      above the fold on a 1080p viewport and that it is the first child
-      of <body>.
+      Demo notice banner. The data-testid and DOM shape are a test contract:
+      the bun e2e asserts the banner is the first child of <body> and that it
+      carries the "zero key material" phrase, and Playwright asserts it is
+      visible above the fold on a 1080p viewport. Keep them stable.
     -->
     <div role="note" class="engineering-output-banner" data-testid="engineering-output-banner">
-      This page is engineering output, not a release. It demonstrates the
-      @chio/passkey browser-to-issuer flow: a passkey assertion is presented
-      to a Chio issuer that mints an audience-pinned PasskeyCapability. The
-      browser holds zero key material and never signs anything. It is not a
+      This is an interactive demonstration of the @chio-protocol/passkey
+      browser-to-issuer flow: a passkey assertion is presented to a Chio
+      issuer that mints an audience-pinned PasskeyCapability. The browser
+      holds zero key material and never signs anything, and this demo is not a
       substitute for an audited release of the SDK.
     </div>
 
@@ -34,7 +34,7 @@
           challenge, POSTs the assertion to the issuer, and renders the
           minted <code>PasskeyCapability</code>. Then revokes the credential
           at the issuer test-double and replays the kernel call to show the
-          revocation cascade through the M04 oracle.
+          revocation cascade through the revocation oracle.
         </p>
       </header>
 
@@ -80,7 +80,7 @@
       <footer>
         <p class="footnote">
           Source:
-          <a href="https://github.com/bb-connor/arc/tree/main/docs/demo/passkey">docs/demo/passkey/</a>.
+          <a href="https://github.com/backbay-labs/chio/tree/main/docs/demo/passkey">docs/demo/passkey/</a>.
           Trust boundary:
           <a href="../../trust-boundary-browser-signing.md">browser-signing verdict</a>
           (rejected 2026-04-27); this demo satisfies its named evidence

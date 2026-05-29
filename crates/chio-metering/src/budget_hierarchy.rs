@@ -469,8 +469,8 @@ impl BudgetTree {
                     });
                 }
                 if !visited.insert(current.clone()) {
-                    // Pre-existing cycle in tree (should not happen but
-                    // guard anyway).
+                    // A pre-existing cycle in the stored tree: reject rather
+                    // than loop forever.
                     return Err(BudgetError::Cycle {
                         node: node.id.clone(),
                     });

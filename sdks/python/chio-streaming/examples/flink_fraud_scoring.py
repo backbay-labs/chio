@@ -147,9 +147,9 @@ def main() -> None:
         FileSink.for_row_format(args.dlq_out, SimpleStringEncoder()).build()
     ).name("chio-dlq-sink")
 
-    # Production swap (Kafka source + 2PC sinks). KafkaSink implements
-    # TwoPhaseCommitSinkFunction, so receipt / DLQ writes become
-    # exactly-once end-to-end once checkpointing is enabled:
+    # Kafka source + 2PC sinks variant. KafkaSink implements
+    # TwoPhaseCommitSinkFunction: receipt / DLQ writes are exactly-once
+    # end-to-end when checkpointing is enabled.
     #
     # from pyflink.datastream.connectors.base import DeliveryGuarantee
     # from pyflink.datastream.connectors.kafka import (

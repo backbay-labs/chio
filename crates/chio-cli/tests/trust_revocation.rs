@@ -98,7 +98,7 @@ fn drain_stderr_after_exit(service: &mut ServerGuard) -> String {
 
 fn wait_for_trust_service(client: &Client, base_url: &str, service: &mut ServerGuard) {
     // 30s readiness budget matches mcp_auth_server.rs and provider_admin.rs.
-    // The previous 5s budget is tight on slow CI runners and risks flake.
+    // A tighter budget risks flake on slow CI runners.
     for _ in 0..300 {
         if let Some(status) = service.child.try_wait().expect("poll trust service child") {
             let stderr = drain_stderr_after_exit(service);

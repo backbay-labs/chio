@@ -436,7 +436,7 @@ async def _invoke_task(
     return await asyncio.to_thread(fn, *args, **kwargs)
 
 
-def _legacy_envelope(
+def _prefect_envelope(
     args: tuple[Any, ...],
     kwargs: dict[str, Any],
     tool_name: str,
@@ -462,10 +462,7 @@ def _legacy_envelope(
        v0.2 wire shape; v0.4 will deprecate the synthetic key with a
        one-release migration window).
 
-    Note on shim length: this function is ~88 lines (not the "~20
-    lines" the FINAL-PLAN initially estimated). The functional core is
-    a single ``bind_and_redact`` call plus the envelope rebuild; the
-    bulk of the body is the synthetic-key spillover-detection loop
+    The bulk of the body is the synthetic-key spillover-detection loop
     (positional-only collision walk + per-name index lookup) and the
     wire-shape rebuild that re-routes kwargs into the envelope under
     either their original key or the synthetic spillover key. Both
@@ -483,16 +480,14 @@ def _legacy_envelope(
     # Arity-overflow fail-closed redaction. The bare ``bind_and_redact``
     # fallback table forwards positional values past the wrapper's last
     # named slot raw (``# Extras beyond the table entry stay positional
-    # and raw.``). Pre-v0.3 prefect's ``_task_parameters`` instead
-    # dropped overflow positionals entirely so an arity-invalid call
-    # such as ``write('/tmp', 'SECRET1', 'SECRET2')`` against
-    # ``def write(path, content)`` could never leak ``SECRET2`` on the
-    # wire. Re-establish that fail-closed contract here, but preserve
-    # the audit trail by REDACTING the overflow values under each
-    # protected canonical instead of dropping them. A future receipt
-    # consumer can see "a secret was attempted at position N" without
-    # the raw bytes ever crossing the wire. (Closes PR #679 P2
-    # 3231181763.)
+    # and raw.``). An arity-invalid call such as
+    # ``write('/tmp', 'SECRET1', 'SECRET2')`` against
+    # ``def write(path, content)`` must not leak ``SECRET2`` on the
+    # wire. Enforce that fail-closed contract here, but redact the
+    # overflow values under each protected canonical instead of dropping
+    # them (preserves the audit trail: a receipt consumer can see
+    # "a secret was attempted at position N" without the raw bytes
+    # crossing the wire).
     redacted_arg_list = list(redacted_args)
     if fn is not None and len(redacted_arg_list) > 0:
         try:
@@ -537,16 +532,14 @@ def _legacy_envelope(
                         # ``redact_args`` on the stub dict would treat its
                         # ``repr()`` as the new "value" and overwrite
                         # ``byte_count`` with the length of the stub repr,
-                        # corrupting the audit trail. (Closes PR #680
-                        # CursorM 3231239987 / P2 3231244182.)
+                        # corrupting the audit trail.
                         #
                         # Match the exact stub fingerprint
                         # ``{"omitted": True, "byte_count": int}`` (no
                         # other keys) rather than just ``omitted is True``
                         # so a user dict that happens to carry an
                         # ``omitted`` flag plus real secrets does NOT slip
-                        # through unredacted. Closes PR #679 P2
-                        # 3231314233.
+                        # through unredacted.
                         if (
                             isinstance(overflow_value, dict)
                             and len(overflow_value) == 2
@@ -635,7 +628,7 @@ def _task_parameters(
     """Canonicalise call arguments for the sidecar payload.
 
     Thin wrapper around ``chio_adapter_base.redact.bind_and_redact``
-    plus the prefect ``_legacy_envelope`` shim. The shim's two jobs:
+    plus the prefect ``_prefect_envelope`` shim. The shim's two jobs:
 
     1. Pack ``(args, kwargs)`` into prefect's
        ``{"args": [...], "kwargs": {...}}`` envelope.
@@ -644,13 +637,13 @@ def _task_parameters(
        already supplied positionally.
 
     The helper redaction logic itself lives in
-    ``chio_adapter_base.redact.bind_and_redact`` (v0.2.0+). All
-    pre-v0.3 prefect-local contracts (variadic-named-after-protected,
-    pure-forwarder kwarg precedence, alias-rename redaction, TypeError
-    fallback) are now expressed there; the prefect canary verifies the
-    helper API actually subsumes the bespoke shape.
+    ``chio_adapter_base.redact.bind_and_redact``. The prefect-local
+    contracts (variadic-named-after-protected, pure-forwarder kwarg
+    precedence, alias-rename redaction, TypeError fallback) are
+    expressed there; the prefect canary verifies the helper API
+    subsumes the bespoke shape.
     """
-    return _legacy_envelope(args, kwargs, tool_name, policy, fn)
+    return _prefect_envelope(args, kwargs, tool_name, policy, fn)
 
 
 @overload

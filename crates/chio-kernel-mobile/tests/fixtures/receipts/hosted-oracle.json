@@ -1,5 +1,5 @@
 {
   "schema": "chio.mobile.hosted-oracle.fixture.v1",
-  "endpoint_url": "https://m01-hosted-oracle.fixture.chio.local/audit-log/v1/receipts",
+  "endpoint_url": "https://hosted-oracle.fixture.chio.local/audit-log/v1/receipts",
   "export_schema": "spec/audit-log/export-schema.v1.json"
 }

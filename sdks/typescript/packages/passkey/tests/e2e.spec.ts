@@ -1,15 +1,8 @@
-// e2e: drive the passkey demo's full flow end-to-end.
+// e2e: passkey mint -> capability -> kernel-call flow.
 //
-// We avoid a Playwright browser dependency in the gate-check by exercising
-// the same code paths the demo's main.ts runs (requestCapability +
-// installIssuerTestDouble) under bun. The browser-side render is covered
-// separately by the docs/demo Playwright surface; this file pins the
-// behavioural contract that is reachable without a chromium binary.
-//
-// The mint -> capability -> "kernel call" flow is exactly what the demo
-// renders when a reviewer clicks "Run passkey flow"; if it green here, it
-// will green in the live page (modulo the navigator.credentials platform
-// glue, which we stub identically to the demo's test-double).
+// Exercises requestCapability + installIssuerTestDouble under bun;
+// no Playwright / chromium binary required. navigator.credentials
+// is stubbed identically to the docs/demo test-double.
 
 import { describe, expect, test, beforeEach } from 'bun:test';
 import { requestCapability } from '../src/index.js';
@@ -43,7 +36,7 @@ function freshGlobals(): { restoreFetch: () => void } {
   };
 }
 
-describe('@chio/passkey demo e2e', () => {
+describe('@chio-protocol/passkey demo e2e', () => {
   let env: { restoreFetch: () => void };
   let state: RevocationState;
 

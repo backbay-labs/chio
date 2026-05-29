@@ -56,7 +56,7 @@ def canonical_json(obj: Any) -> bytes:
 
 @dataclass(frozen=True)
 class ReceiptEnvelope:
-    """Kafka-friendly envelope around an Chio receipt.
+    """Kafka-friendly envelope around a Chio receipt.
 
     Attributes
     ----------

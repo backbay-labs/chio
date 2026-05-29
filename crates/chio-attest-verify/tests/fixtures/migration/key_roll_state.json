@@ -1,5 +1,5 @@
 {
-  "_comment": "M03.P5.T2 deterministic key-roll state pinning the three crypto-floor migration stages. Fixed seeds give reproducible CI-stable bytes; never used in production.",
+  "_comment": "Deterministic key-roll state pinning the three crypto-floor migration stages. Fixed seeds give reproducible CI-stable bytes; never used in production.",
   "schema_version": 1,
   "stages": [
     {

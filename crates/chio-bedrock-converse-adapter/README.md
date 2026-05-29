@@ -1,7 +1,23 @@
 # chio-bedrock-converse-adapter
 
-Provider-native scaffold for Amazon Bedrock Runtime Converse and
-ConverseStream tool-use traffic in Chio.
+Mediates Amazon Bedrock Runtime Converse and ConverseStream tool-use traffic
+in Chio.
+
+## Transport
+
+The live transport, `transport::AwsSdkTransport`, calls the Bedrock Runtime
+Converse operation through the AWS SDK for Rust (`aws-sdk-bedrockruntime`),
+which signs every request with SigV4. It is built from an
+`aws_types::sdk_config::SdkConfig` (the shape the AWS default credential and
+region chain produces, via `aws_config::defaults(..).load().await`) or from
+caller-supplied static credentials, and is pinned to `us-east-1`. The SDK
+lifts the model's `toolUse` blocks; `BedrockAdapter::converse` drives the call
+and feeds the response to `lift_batch`.
+
+`transport::MockTransport` records intended calls and replays scripted Converse
+responses, so the adapter is exercised without contacting AWS. Hermetic tests
+(`tests/sdk_transport.rs`) inject a `StaticReplayClient` as the SDK HTTP client
+to run the real Converse serialize/deserialize path offline.
 
 ## Pinned upstream SDK and region
 
@@ -12,14 +28,14 @@ ConverseStream tool-use traffic in Chio.
   `chio_bedrock_converse_adapter::transport::BEDROCK_CONVERSE_API_VERSION`.
 
 Bumping the SDK version, region, or API marker is a deliberate PR that must
-re-record the Bedrock conformance fixtures. This scaffold does not construct
-an AWS client and does not make network calls in tests or normal builds.
+re-record the Bedrock conformance fixtures.
 
 ## Implementation Status
 
 | Deliverable                                                               | Status |
 | ------------------------------------------------------------------------- | ------ |
-| Crate scaffold, workspace SDK pin, `us-east-1` gate, native types, transport trait | done |
+| Workspace SDK pin, `us-east-1` gate, native types, transport trait        | done |
+| AWS-SDK-backed `Converse` transport (SigV4) plus recording `MockTransport` | done |
 | `ProviderAdapter::lift`/`lower` for batch `Converse` toolUse/toolResult blocks | done |
 | `ConverseStream` buffering with verdict at `contentBlockStart` for `toolUse` | done |
 | IAM principal disambiguation via signed `config/iam_principals.toml` and STS bootstrap | done |
@@ -36,19 +52,18 @@ crates/chio-bedrock-converse-adapter/
   src/
     iam_principals.rs signed IAM mapping loader, STS identity cache
     lib.rs        BedrockAdapter, BedrockAdapterConfig, error type
-    native.rs     toolConfig, toolUse, toolResult scaffold types
-    transport.rs  Transport trait, MockTransport, region and API pins
+    native.rs     toolConfig, toolUse, toolResult wire types
+    transport.rs  Transport trait, AwsSdkTransport, MockTransport, region and API pins
   config/
     iam_principals.toml          default signed-config path
     iam_principals.example.toml  operator template
 ```
 
-## Scope in this scaffold
+## Scope
 
-The transport scaffold permits only the `Converse` and `ConverseStream`
-operations and rejects any region other than `us-east-1`. Native structs cover
-only the subset needed by later lift/lower work: `toolConfig`, `toolUse`, and
-`toolResult`.
+The transport permits only the `Converse` and `ConverseStream` operations and
+rejects any region other than `us-east-1`. Native structs cover the subset
+needed by lift/lower: `toolConfig`, `toolUse`, and `toolResult`.
 
 ## IAM Principal Mapping
 
@@ -81,11 +96,12 @@ assumed-role callers, the adapter preserves the original
 
 Bedrock Runtime surfaces batch failures as AWS JSON error envelopes and
 ConverseStream failures as event-stream exception objects such as
-`throttlingException` and `internalServerException`. This crate currently owns
-offline lift/lower, deterministic stream gating, and mockable transport
-validation. Rows marked `AWS Bedrock Runtime boundary` pin the
-adapter-visible taxonomy that the eventual live SDK transport must preserve.
-Rows marked `current adapter path` are emitted by the current lift/lower,
+`throttlingException` and `internalServerException`. Rows marked
+`AWS Bedrock Runtime boundary` are emitted by the live `AwsSdkTransport`
+Converse path: `BedrockAdapter::converse` maps the SDK error taxonomy into the
+adapter-visible classes below (throttling to `RateLimited`, service 5xx to
+`Upstream5xx`, model timeout to a transport error, validation/access errors to
+`Malformed`). Rows marked `current adapter path` are emitted by the lift/lower,
 streaming, or evaluator path.
 
 The table is parsed by `tests/error_taxonomy_doctest.rs`; keep each envelope
@@ -125,5 +141,5 @@ cargo build -p chio-bedrock-converse-adapter
 ## References
 
 - Fabric trait surface: `crates/chio-tool-call-fabric/src/lib.rs`.
-- Existing scaffold convention:
+- Sibling adapter convention:
   `crates/chio-anthropic-tools-adapter/`.

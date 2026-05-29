@@ -1,7 +1,6 @@
 """Hypothesis property tests for ``bind_and_redact``.
 
-FINAL-PLAN Section 5 acceptance gate requires at least 5 properties,
-each running >= 200 examples on CI. The 6-axis matrix in
+At least 5 properties, each running >= 200 examples on CI. The 6-axis matrix in
 ``test_bind_and_redact.py`` enumerates representative cells; the
 properties below random-sample the combinatoric space to surface
 shape combinations the matrix does not name explicitly.

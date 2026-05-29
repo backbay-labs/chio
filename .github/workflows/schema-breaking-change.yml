@@ -35,7 +35,7 @@ concurrency:
 jobs:
   schema-breaking-change-advisory:
     name: schema-breaking-change-advisory (json-schema-diff vs merge-base)
-    # owner: M01
+    # owner: Chio maintainers
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

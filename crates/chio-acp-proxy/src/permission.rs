@@ -39,7 +39,7 @@ impl PermissionMapper {
         }
     }
 
-    /// Map an ACP permission option to an Chio decision.
+    /// Map an ACP permission option to a Chio decision.
     ///
     /// Returns `None` if the `kind` string is not recognized --
     /// callers should treat unknown kinds as deny (fail-closed).

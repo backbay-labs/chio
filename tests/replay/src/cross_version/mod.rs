@@ -1,6 +1,6 @@
-//! Cross-version receipt-compatibility matrix loader (M04 Phase 3 T2).
+//! Cross-version receipt-compatibility matrix loader.
 //!
-//! Parses `tests/replay/release_compat_matrix.toml` (authored in T1) into
+//! Parses `tests/replay/release_compat_matrix.toml` into
 //! typed structs with strict validation. Strictness is enforced at three
 //! layers:
 //!
@@ -20,11 +20,11 @@
 //! `window` defaults to 5 (the ratchet floor specified in the source-of-truth
 //! document and the matrix file's leading comment).
 //!
-//! Phase 3 T3 extends this module with a [`fetch`] submodule that hits
-//! `bundle_url`, pins the response by `bundle_sha256`, and caches the bundle
-//! on disk under `$CHIO_REPLAY_CACHE_DIR` (default: `$HOME/.cache/chio/
-//! replay-bundles/<tag>/replay-bundle.tgz`). T4 adds the [`reverify`]
-//! submodule that drives the current `chio-kernel` verifier over a fetched
+//! The [`fetch`] submodule hits `bundle_url`, pins the response by
+//! `bundle_sha256`, and caches the bundle on disk under
+//! `$CHIO_REPLAY_CACHE_DIR` (default: `$HOME/.cache/chio/
+//! replay-bundles/<tag>/replay-bundle.tgz`). The [`reverify`]
+//! submodule drives the current `chio-kernel` verifier over a fetched
 //! bundle.
 
 use std::collections::HashSet;
@@ -292,7 +292,7 @@ notes = "fixture"
         CompatMatrix::from_toml_str(VALID_BASE).expect("base fixture must load");
     }
 
-    /// Happy path: load the actual file authored in T1 and assert the
+    /// Happy path: load the actual matrix file and assert the
     /// shape we expect (>=2 entries, schema tag, two known versions).
     #[test]
     fn happy_path_loads_real_file() {

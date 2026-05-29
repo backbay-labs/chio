@@ -17,11 +17,11 @@ security review.
 
 ## Provenance and supply-chain evidence
 
-- M03 hosted-CI reproducible-build hash is the build-provenance evidence
+- The hosted-CI reproducible-build hash is the build-provenance evidence
   consumed by AWS security review.
-- M06 SBOM plus cargo-vet artifacts are the supply-chain evidence consumed
+- The SBOM plus cargo-vet artifacts are the supply-chain evidence consumed
   by AWS security review.
-- M02 evaluation memo and M10.P2 MCP conformance evidence support the
+- The evaluation memo and MCP conformance evidence support the
   technical-review narrative.
 
 ## Fail-closed claims

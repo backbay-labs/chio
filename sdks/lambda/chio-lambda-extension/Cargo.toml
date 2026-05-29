@@ -5,7 +5,7 @@ edition = "2021"
 rust-version = "1.93"
 license = "Apache-2.0"
 description = "Chio kernel packaged as an AWS Lambda Extension. Runs in-process alongside the function handler, exposes a localhost:9090 HTTP evaluator, and flushes receipts to DynamoDB on SHUTDOWN."
-repository = "https://github.com/backbay/chio"
+repository = "https://github.com/backbay-labs/chio"
 publish = false
 
 # This crate is intentionally EXCLUDED from the main Chio workspace. Declaring

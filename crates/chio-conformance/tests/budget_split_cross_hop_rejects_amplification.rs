@@ -1,4 +1,4 @@
-//! W1.2 cross-hop conformance test: sibling-sum enforcement composes
+//! Cross-hop conformance test: sibling-sum enforcement composes
 //! across delegation hops.
 //!
 //! Topology:

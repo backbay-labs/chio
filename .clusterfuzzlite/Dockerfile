@@ -1,14 +1,11 @@
-# ClusterFuzzLite builder image for Chio (formerly ARC).
+# ClusterFuzzLite builder image for Chio.
 #
-# Source-of-truth: .planning/trajectory/02-fuzzing-post-pr13.md
-# (ClusterFuzzLite implementation section). Companion docs in
-# docs/fuzzing/continuous.md (ClusterFuzzLite bridge section).
+# Companion docs in docs/fuzzing/continuous.md (ClusterFuzzLite bridge section).
 #
-# Mirrors the OSS-Fuzz scaffold under infra/oss-fuzz/ (M02.P2.T5)
+# Mirrors the OSS-Fuzz scaffold under infra/oss-fuzz/
 # so the in-tree builder image and the CFLite builder image stay
 # behaviourally identical: same base image, same build deps, same
-# build.sh shape. Divergence between the two is a process bug and
-# blocks the M02 P4 close ledger.
+# build.sh shape. Divergence between the two is a process bug.
 
 FROM gcr.io/oss-fuzz-base/base-builder-rust
 
@@ -41,10 +38,10 @@ ENV OPENSSL_LIB_DIR=/opt/openssl-3/lib64
 ENV PKG_CONFIG_PATH=/opt/openssl-3/lib64/pkgconfig
 
 # ClusterFuzzLite mounts the repo into $SRC at runtime; the
-# `COPY . $SRC/arc` line below is a no-op in that flow but keeps
+# `COPY . $SRC/chio` line below is a no-op in that flow but keeps
 # the image self-contained for local `docker build` smoke tests.
-COPY . $SRC/arc
-WORKDIR $SRC/arc
+COPY . $SRC/chio
+WORKDIR $SRC/chio
 
 COPY .clusterfuzzlite/build.sh $SRC/build.sh
 RUN chmod +x $SRC/build.sh

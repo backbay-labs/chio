@@ -12,7 +12,7 @@ Chio AWS Bedrock listing. Deploy it in `us-east-1`.
 
 ## Validation
 
-The trajectory-3 gate validates the template with:
+The validation gate checks the template with:
 
 ```bash
 sam validate --template integrations/aws-bedrock/cloudformation/quick-launch.yaml --lint

@@ -1,0 +1,17 @@
+[package]
+name = "chio-test-support"
+description = "Shared test-only assertion helpers for the Chio workspace (Result/Option unwrap shims that satisfy the unwrap_used/expect_used lints in tests)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_test_support"
+
+[dependencies]
+
+[lints]
+workspace = true

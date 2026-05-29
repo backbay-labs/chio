@@ -10,10 +10,10 @@
 //!      are broken by their `intra_agent_step` counter, which is the order
 //!      they appear within that agent's stream of steps.
 //!
-//! No thread-local randomness is consulted. The arena RNG (`P2.T2`) is the
+//! No thread-local randomness is consulted. The arena RNG is the
 //! only entropy source available to higher-level schedulers, and the
 //! deterministic scheduler does not consume from it; the RNG is kept reserved
-//! for the adversary populations introduced in `P3`.
+//! for the adversary populations.
 
 use std::collections::BTreeMap;
 

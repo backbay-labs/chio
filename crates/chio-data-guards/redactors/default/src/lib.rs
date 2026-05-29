@@ -14,12 +14,6 @@
 //!
 //! Failure mode: an `Err` returned from [`redact_payload`] MUST cause
 //! the tee to refuse persistence and emit `tee.redact_failed`.
-//!
-//! The crate is callable directly from native Rust today; a future
-//! ticket lights up the `wasm32-wasip2` `wit_bindgen::generate!`
-//! adapter that re-exports [`redact_payload`] as the `chio:guards/redact`
-//! guest export. The native types here are designed to mirror the WIT
-//! records 1:1 so the wasm bridge is mechanical.
 
 use std::sync::LazyLock;
 use std::time::Instant;
@@ -31,7 +25,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// Tenants reading the manifest can pin redactor behaviour by exact
 /// `pass_id`. Bumped when default coverage changes.
-pub const PASS_ID: &str = "m06-redactors@1.4.0+default";
+pub const PASS_ID: &str = "redactors@1.4.0+default";
 
 /// Mirror of the WIT `redact-class` flags.
 ///
@@ -97,7 +91,7 @@ pub struct RedactionMatch {
 /// Mirrors WIT `redaction-manifest`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RedactionManifest {
-    /// e.g. `"m06-redactors@1.4.0+default"`.
+    /// e.g. `"redactors@1.4.0+default"`.
     pub pass_id: String,
     pub matches: Vec<RedactionMatch>,
     pub elapsed_micros: u64,
@@ -138,8 +132,8 @@ pub enum RedactError {
 
 /// Build a [`Regex`] or yield `None`. A `None` here means the redactor
 /// silently skips the corresponding class for this process; the tee's
-/// `--paranoid` heuristic (zero-match-on-large-payload quarantine,
-/// trajectory doc line 21) catches the misconfiguration downstream.
+/// `--paranoid` heuristic (zero-match-on-large-payload quarantine)
+/// catches the misconfiguration downstream.
 ///
 /// To surface the failure earlier, [`validate_default_redactor_compiles`]
 /// re-attempts every default pattern at startup and returns the list of

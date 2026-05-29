@@ -51,11 +51,9 @@ path = "src/bin/chio_native_conformance_fixture.rs"
 # directories through `ConformanceRunOptions`.
 default = ["in-repo-fixtures"]
 in-repo-fixtures = []
-# Opt-in selective-disclosure conformance test. Forwards to
-# chio-federation's `bbs-stub` feature so the projection module compiles.
-# The feature is `bbs-stub`, not `zk`, because the implementation is a
-# SHA-256-commitment stub without any privacy-preserving cryptographic property; this is a
-# separate CI matrix entry, not the default build path.
+# Opt-in selective-disclosure conformance tests. Enables the SHA-256-commitment stub
+# in chio-federation (not a ZK/BBS implementation; no privacy-preserving property).
+# Compiled as a separate CI matrix entry; not included in the default build.
 bbs-stub = ["chio-federation/bbs-stub"]
 chio-bbs = [
     "dep:chio-selective-disclosure",
@@ -97,15 +95,15 @@ name = "verdict_matrix_cross_language"
 path = "verdict_matrix/tests/verdict_matrix_cross_language.rs"
 
 [dev-dependencies]
-# M02.P5.T5: cross-language verdict-matrix oracle exercises the WASM
+# Cross-language verdict-matrix oracle exercises the WASM
 # browser kernel through its native (non-wasm32) cargo test surface.
 chio-kernel-browser = { version = "0.1.0", path = "../chio-kernel-browser" }
 chio-federation = { version = "0.1.0", path = "../chio-federation" }
-# W1.1: attenuation chain-binding conformance test exercises
+# Attenuation chain-binding conformance test exercises
 # verify_capability_with_floor_and_trust_root via chio-kernel-core directly.
-# W1.2: sibling-sum budget conformance tests exercise
+# Sibling-sum budget conformance tests exercise
 # evaluate_with_crypto_floor_and_budgets via chio-kernel-core directly.
-# W1.3: portable verifier surface for negotiated-floor capability tests.
+# Portable verifier surface for negotiated-floor capability tests.
 chio-kernel-core = { version = "0.1.0", path = "../chio-kernel-core" }
 chio-custody-hw = { version = "0.1.0", path = "../chio-custody-hw" }
 chio-http-core = { version = "0.1.0", path = "../chio-http-core" }
@@ -128,11 +126,11 @@ jsonwebtoken = { workspace = true }
 jsonschema = { workspace = true }
 sha2 = { workspace = true }
 chrono = { workspace = true, features = ["clock"] }
-# M05.P5.T3: threat-model coverage tests load curated adversarial
+# Threat-model coverage tests load curated adversarial
 # vectors and assert each of the six initial threat IDs is backed
 # by at least one non-pending DENY-asserted case.
 chio-adversarial-suite = { version = "0.1.0", path = "../chio-adversarial-suite" }
-# W2.2: SSRF negative-conformance tests exercise typed HttpEgressContract
+# SSRF negative-conformance tests exercise typed HttpEgressContract
 # enforcement through real production callers (chio-siem WebhookExporter,
 # chio-siem SplunkHecExporter, chio-siem DatadogExporter, chio-link
 # PythHermesClient, chio-openapi-mcp-bridge OpenApiMcpBridge,
@@ -148,7 +146,7 @@ chio-external-guards = { version = "0.1.0", path = "../chio-external-guards" }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 url = "2"
 zeroize = "1"
-# W2.3: anchor-batch witness-lane conformance tests exercise
+# Anchor-batch witness-lane conformance tests exercise
 # AnchorWitnessClient (RekorClient + OtsClient) and the WitnessState
 # state machine via the chio-anchor crate. tokio drives the async
 # trait surface; tiny_http stages the mock Rekor server.
@@ -162,7 +160,7 @@ rand = { workspace = true }
 chio-store-sqlite = { version = "0.1.0", path = "../chio-store-sqlite" }
 rusqlite = { workspace = true }
 tempfile = { workspace = true }
-# W2.4: registry-consumed smoke test pulls in the six edges plus
+# Registry-consumed smoke test pulls in the six edges plus
 # chio-wasm-guards so it can drive each emission boundary directly.
 chio-mcp-edge = { version = "0.1.0", path = "../chio-mcp-edge" }
 chio-acp-edge = { version = "0.1.0", path = "../chio-acp-edge" }
@@ -176,9 +174,8 @@ wat = "1.246"
 # tenant signatures.
 chio-tee-frame = { version = "0.1.0", path = "../chio-tee-frame" }
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true
 
 [package.metadata.docs.rs]
 all-features = true

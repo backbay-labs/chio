@@ -2,12 +2,20 @@
 //! tool-use traffic through the Chio kernel. Pinned upstream API version:
 //! `2025-04` (see [`transport::GROQ_API_VERSION`]).
 //!
-//! Groq surfaces tool calls as `tool_calls` parts inside the model's
-//! `Content` payload. Tool results travel back as `functionResponse` parts
-//! on the user turn. The adapter's [`lift_batch`](GroqAdapter::lift_batch)
-//! lifts every `tool_calls` into a [`chio_tool_call_fabric::ToolInvocation`]
-//! and [`lower_function_response`](GroqAdapter::lower_function_response)
-//! lowers a kernel verdict back into a [`FunctionResponsePart`].
+//! Groq exposes an OpenAI-compatible chat/completions API, so the model
+//! surfaces tool calls as `choices[].message.tool_calls[]` entries
+//! (`{ id, type: "function", function: { name, arguments } }`, where
+//! `arguments` is a JSON-encoded string). Tool results travel back as a
+//! `tool` role message carrying the matching `tool_call_id`.
+//!
+//! The adapter is a mediation gateway: [`send_chat_completion`] forwards a
+//! native request body to the upstream endpoint over the shared HTTP
+//! transport, then [`lift_batch`](GroqAdapter::lift_batch) lifts every
+//! `tool_calls` entry into a [`chio_tool_call_fabric::ToolInvocation`].
+//! [`lower_function_response`](GroqAdapter::lower_function_response) lowers a
+//! kernel verdict back into the tool-result payload returned on the next turn.
+//!
+//! [`send_chat_completion`]: GroqAdapter::send_chat_completion
 
 #![forbid(unsafe_code)]
 
@@ -29,7 +37,15 @@ use serde_json::{json, Value};
 use thiserror::Error;
 
 pub use native::{FunctionCallPart, FunctionResponsePart};
-pub use transport::{Transport, GROQ_API_VERSION, GROQ_CHAT_COMPLETIONS_HOST};
+pub use transport::{
+    groq_transport, groq_transport_from_env, AuthScheme, HttpTransport, MockTransport, Transport,
+    GROQ_API_VERSION, GROQ_CHAT_COMPLETIONS_HOST, GROQ_CHAT_COMPLETIONS_PATH,
+};
+
+use chio_provider_adapter_core::http::map_transport_error;
+
+/// Provider label used in transport-failure messages.
+const PROVIDER_LABEL: &str = "Groq";
 
 /// Configuration for the Groq adapter.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -44,10 +60,9 @@ pub struct GroqAdapterConfig {
     pub public_key: String,
     /// Pinned upstream API version, always [`GROQ_API_VERSION`].
     pub api_version: String,
-    /// Google Cloud project identifier (populates the AnthropicWorkspace
-    /// principal slot via reuse; Groq does not yet have its own variant
-    /// in the fabric ProviderId enum's Principal taxonomy, so we reuse the
-    /// generic OpenAi org slot here).
+    /// Groq project identifier that scopes tool calls on Groq's
+    /// OpenAI-compatible API. Stamped into the [`Principal::GroqProject`]
+    /// provenance slot.
     pub project_id: String,
 }
 
@@ -80,7 +95,10 @@ pub struct GroqAdapter {
 }
 
 impl GroqAdapter {
-    /// Build a new adapter from a config and a transport handle.
+    /// Build a new adapter from a config and an outbound transport handle.
+    ///
+    /// In production pass an [`HttpTransport`] built via [`groq_transport`]; in
+    /// tests pass a [`MockTransport`].
     pub fn new(config: GroqAdapterConfig, transport: Arc<dyn Transport>) -> Self {
         Self { config, transport }
     }
@@ -103,6 +121,57 @@ impl GroqAdapter {
     /// Borrow the transport handle.
     pub fn transport(&self) -> &Arc<dyn Transport> {
         &self.transport
+    }
+
+    /// Forward a native chat/completions request to the upstream Groq endpoint
+    /// and lift the tool calls in the response.
+    ///
+    /// `request_body` is the OpenAI-compatible chat/completions JSON body
+    /// (`{ model, messages, tools, .. }`). The body is POSTed to
+    /// [`GROQ_CHAT_COMPLETIONS_PATH`] over the configured transport with Bearer
+    /// auth; a non-2xx status, timeout, or transport failure is mapped into the
+    /// fabric [`ProviderError`] taxonomy and fails closed. On success the
+    /// response body is handed to [`lift_batch`](Self::lift_batch).
+    pub async fn send_chat_completion(
+        &self,
+        request_body: &[u8],
+    ) -> Result<Vec<ToolInvocation>, ProviderError> {
+        let response = self.post_chat_completion(request_body).await?;
+        self.lift_batch(ProviderRequest(response.body))
+    }
+
+    /// Forward a streaming chat/completions request and gate the SSE response.
+    ///
+    /// The request is POSTed to [`GROQ_CHAT_COMPLETIONS_PATH`]; the buffered
+    /// `text/event-stream` body is then run through
+    /// [`gate_sse_stream`](Self::gate_sse_stream) with the supplied evaluator so
+    /// every buffered tool call is gated before any bytes are released.
+    pub async fn send_chat_completion_stream<F>(
+        &self,
+        request_body: &[u8],
+        evaluate: F,
+    ) -> Result<streaming::GatedSseStream, ProviderError>
+    where
+        F: FnMut(&ToolInvocation) -> Result<VerdictResult, ProviderError>,
+    {
+        let body = self
+            .transport
+            .post_sse(GROQ_CHAT_COMPLETIONS_PATH, request_body)
+            .await
+            .map_err(|error| map_transport_error(PROVIDER_LABEL, error))?;
+        self.gate_sse_stream(&body, evaluate)
+    }
+
+    /// Perform the raw upstream POST and return the buffered response, mapping
+    /// any transport failure into the fabric error taxonomy.
+    async fn post_chat_completion(
+        &self,
+        request_body: &[u8],
+    ) -> Result<transport::HttpResponse, ProviderError> {
+        self.transport
+            .post_json(GROQ_CHAT_COMPLETIONS_PATH, request_body)
+            .await
+            .map_err(|error| map_transport_error(PROVIDER_LABEL, error))
     }
 
     /// Lift every Groq `tool_calls` part in a non-streaming
@@ -139,8 +208,8 @@ impl GroqAdapter {
                 provider: ProviderId::Groq,
                 request_id: format!("groq_{}_call", call.name),
                 api_version: self.config.api_version.clone(),
-                principal: Principal::OpenAiOrg {
-                    org_id: self.config.project_id.clone(),
+                principal: Principal::GroqProject {
+                    project_id: self.config.project_id.clone(),
                 },
                 received_at: SystemTime::now(),
             },
@@ -183,12 +252,13 @@ impl chio_provider_adapter_core::Provider for GroqAdapter {
 /// Adapter-local error taxonomy.
 #[derive(Debug, Error)]
 pub enum GroqAdapterError {
-    /// Placeholder for call sites not yet implemented.
-    #[error("groq adapter call site is not implemented: {0}")]
-    NotImplemented(&'static str),
-    /// Bubbled up from the transport layer.
+    /// Bubbled up from the shared HTTP transport layer.
     #[error(transparent)]
-    Transport(#[from] transport::TransportError),
+    Transport(#[from] transport::HttpTransportError),
+    /// The upstream response could not be lifted into the canonical fabric
+    /// types.
+    #[error(transparent)]
+    Provider(#[from] ProviderError),
 }
 
 fn function_calls(raw: ProviderRequest) -> Result<Vec<FunctionCallPart>, ProviderError> {
@@ -216,7 +286,7 @@ fn extract_function_calls(body: &Value) -> Result<Vec<FunctionCallPart>, Provide
     // Groq is OpenAI-compatible: tool calls live at
     // `choices[].message.tool_calls[]` with shape
     // `{ id, type: "function", function: { name, arguments } }` where
-    // `arguments` is a JSON-encoded string. Parse that primary shape first.
+    // `arguments` is a JSON-encoded string.
     let mut calls = Vec::new();
     if let Some(choices) = body.get("choices").and_then(Value::as_array) {
         for choice in choices {
@@ -229,41 +299,6 @@ fn extract_function_calls(body: &Value) -> Result<Vec<FunctionCallPart>, Provide
                     if let Some(part) = openai_tool_call_to_function_call(entry, "Groq")? {
                         calls.push(part);
                     }
-                }
-            }
-        }
-    }
-
-    if !calls.is_empty() {
-        return Ok(calls);
-    }
-
-    // Fall back to legacy Gemini-shaped fixtures for the cross-provider
-    // advisory NDJSON path that pre-dates the OpenAI-compat scaffold.
-    if let Some(call) = body.get("functionCall") {
-        let parsed: FunctionCallPart = serde_json::from_value(call.clone()).map_err(|error| {
-            ProviderError::Malformed(format!("Groq functionCall part was malformed: {error}"))
-        })?;
-        return Ok(vec![parsed]);
-    }
-    if let Some(candidates) = body.get("candidates").and_then(Value::as_array) {
-        for candidate in candidates {
-            let Some(parts) = candidate
-                .get("content")
-                .and_then(|c| c.get("parts"))
-                .and_then(Value::as_array)
-            else {
-                continue;
-            };
-            for part in parts {
-                if let Some(call) = part.get("functionCall") {
-                    let parsed: FunctionCallPart =
-                        serde_json::from_value(call.clone()).map_err(|error| {
-                            ProviderError::Malformed(format!(
-                                "Groq functionCall part was malformed: {error}"
-                            ))
-                        })?;
-                    calls.push(parsed);
                 }
             }
         }
@@ -455,25 +490,48 @@ mod tests {
     }
 
     #[test]
-    fn lift_batch_legacy_gemini_shape_still_works() {
-        // Legacy advisory/cross-provider NDJSON shape continues to lift so
-        // existing fixtures keep passing.
+    fn lift_batch_extracts_parallel_tool_calls() {
+        // Multiple OpenAI-compatible tool_calls[] entries lift in order.
         let cfg = config();
         let adapter = GroqAdapter::new(cfg, Arc::new(transport::MockTransport::new()));
         let payload = json!({
-            "candidates": [{
-                "content": {
-                    "parts": [
-                        {"text": "Let me check the forecast."},
-                        {"functionCall": {"name": "get_weather", "args": {"city": "Paris"}}}
+            "id": "chatcmpl_parallel",
+            "object": "chat.completion",
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "tool_calls": [
+                        {
+                            "id": "call_weather_1",
+                            "type": "function",
+                            "function": {
+                                "name": "get_weather",
+                                "arguments": "{\"city\":\"Paris\"}"
+                            }
+                        },
+                        {
+                            "id": "call_time_1",
+                            "type": "function",
+                            "function": {
+                                "name": "get_time",
+                                "arguments": "{\"tz\":\"UTC\"}"
+                            }
+                        }
                     ]
-                }
+                },
+                "finish_reason": "tool_calls"
             }]
         });
         let raw = ProviderRequest(serde_json::to_vec(&payload).unwrap());
         let invocations = adapter.lift_batch(raw).unwrap();
-        assert_eq!(invocations.len(), 1);
+        assert_eq!(invocations.len(), 2);
         assert_eq!(invocations[0].tool_name, "get_weather");
+        assert_eq!(invocations[1].tool_name, "get_time");
+        assert!(matches!(
+            invocations[0].provenance.principal,
+            Principal::GroqProject { .. }
+        ));
     }
 
     #[test]
@@ -493,10 +551,161 @@ mod tests {
 
     #[test]
     fn error_display_is_em_dash_free() {
-        let cases = vec![GroqAdapterError::NotImplemented("chat/completions")];
+        let cases = vec![
+            GroqAdapterError::Transport(transport::HttpTransportError::Status {
+                code: 500,
+                body: "boom".to_string(),
+            }),
+            GroqAdapterError::Provider(ProviderError::Malformed("bad shape".to_string())),
+        ];
         for err in cases {
             let s = err.to_string();
-            assert!(!s.contains('\u{2014}'));
+            assert!(!s.contains('\u{2014}'), "em dash in {s}");
         }
+    }
+
+    fn chat_request_body() -> Vec<u8> {
+        let request = json!({
+            "model": "llama-3.3-70b-versatile",
+            "messages": [{"role": "user", "content": "What is the weather in Paris?"}],
+            "tools": [{
+                "type": "function",
+                "function": {
+                    "name": "get_weather",
+                    "parameters": {"type": "object", "properties": {"city": {"type": "string"}}}
+                }
+            }]
+        });
+        serde_json::to_vec(&request).unwrap()
+    }
+
+    fn tool_call_response() -> Vec<u8> {
+        let response = json!({
+            "id": "chatcmpl_test",
+            "object": "chat.completion",
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "tool_calls": [{
+                        "id": "call_weather_1",
+                        "type": "function",
+                        "function": {
+                            "name": "get_weather",
+                            "arguments": "{\"city\":\"Paris\"}"
+                        }
+                    }]
+                },
+                "finish_reason": "tool_calls"
+            }]
+        });
+        serde_json::to_vec(&response).unwrap()
+    }
+
+    #[tokio::test]
+    async fn send_chat_completion_posts_and_lifts() {
+        let mock = Arc::new(transport::MockTransport::new());
+        mock.push_json_response(tool_call_response());
+        let adapter = GroqAdapter::new(config(), mock.clone());
+
+        let request = chat_request_body();
+        let invocations = adapter.send_chat_completion(&request).await.unwrap();
+
+        // The lifted invocation came back from the real outbound parse path.
+        assert_eq!(invocations.len(), 1);
+        assert_eq!(invocations[0].tool_name, "get_weather");
+
+        // The adapter posted the request body to the chat/completions path.
+        let calls = mock.calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].path, GROQ_CHAT_COMPLETIONS_PATH);
+        assert_eq!(calls[0].body, request);
+    }
+
+    #[tokio::test]
+    async fn send_chat_completion_maps_upstream_status() {
+        let mock = Arc::new(transport::MockTransport::new());
+        mock.push_error(transport::HttpTransportError::Status {
+            code: 429,
+            body: "rate limited".to_string(),
+        });
+        let adapter = GroqAdapter::new(config(), mock);
+
+        let error = adapter
+            .send_chat_completion(&chat_request_body())
+            .await
+            .expect_err("a 429 must fail closed");
+        assert!(matches!(error, ProviderError::RateLimited { .. }));
+    }
+
+    #[tokio::test]
+    async fn send_chat_completion_timeout_fails_closed() {
+        let mock = Arc::new(transport::MockTransport::new());
+        mock.push_error(transport::HttpTransportError::Timeout {
+            url: "https://api.groq.com/openai/v1/chat/completions".to_string(),
+            timeout_ms: 60_000,
+        });
+        let adapter = GroqAdapter::new(config(), mock);
+
+        let error = adapter
+            .send_chat_completion(&chat_request_body())
+            .await
+            .expect_err("a timeout must fail closed");
+        assert!(matches!(
+            error,
+            ProviderError::TransportTimeout { ms: 60_000 }
+        ));
+    }
+
+    #[tokio::test]
+    async fn send_chat_completion_stream_gates_buffered_sse() {
+        let chunk = json!({
+            "id": "chatcmpl_stream",
+            "object": "chat.completion.chunk",
+            "choices": [{
+                "index": 0,
+                "delta": {
+                    "tool_calls": [{
+                        "id": "call_weather_1",
+                        "type": "function",
+                        "function": {
+                            "name": "get_weather",
+                            "arguments": "{\"city\":\"Paris\"}"
+                        }
+                    }]
+                }
+            }]
+        });
+        let mut sse = Vec::new();
+        sse.extend_from_slice(b"data: ");
+        sse.extend_from_slice(&serde_json::to_vec(&chunk).unwrap());
+        sse.extend_from_slice(b"\n\ndata: [DONE]\n\n");
+
+        let mock = Arc::new(transport::MockTransport::new());
+        mock.push_response(transport::HttpResponse::new(
+            200,
+            sse,
+            Some("text/event-stream".to_string()),
+        ));
+        let adapter = GroqAdapter::new(config(), mock.clone());
+
+        let gated = adapter
+            .send_chat_completion_stream(&chat_request_body(), |_invocation| {
+                Ok(VerdictResult::Allow {
+                    redactions: vec![],
+                    receipt_id: chio_tool_call_fabric::ReceiptId("rcpt_stream".into()),
+                })
+            })
+            .await
+            .unwrap();
+        assert_eq!(gated.invocations.len(), 1);
+        assert_eq!(gated.invocations[0].tool_name, "get_weather");
+
+        let calls = mock.calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(
+            calls[0].kind,
+            chio_provider_adapter_core::http::CallKind::Sse
+        );
     }
 }

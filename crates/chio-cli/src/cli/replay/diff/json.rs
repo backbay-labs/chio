@@ -1,3 +1,5 @@
+use super::*;
+
 /// Render the grouped traffic diff as a single-line JSON document.
 pub fn render_traffic_diff_json<W: std::io::Write>(
     writer: &mut W,

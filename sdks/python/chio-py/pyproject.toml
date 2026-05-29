@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chio-sdk"
+version = "0.1.0"
+description = "Pure-Python SDK for the Chio trust and receipt-control plane"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+keywords = ["chio", "mcp", "receipts", "capabilities", "agent-governance"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "httpx>=0.28,<1",
+    "pure25519>=0.0.1",
+]
+
+[project.urls]
+Documentation = "https://github.com/backbay-labs/chio/tree/main/sdks/python/chio-py"
+Repository = "https://github.com/backbay-labs/chio"
+Issues = "https://github.com/backbay-labs/chio/issues"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.package-data]
+chio = ["py.typed"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

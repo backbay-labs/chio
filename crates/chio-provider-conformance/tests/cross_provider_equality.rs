@@ -103,12 +103,12 @@ fn weather_tool_policy_verdicts_match_across_all_providers() {
 }
 
 fn replay_fixture(provider: &str, path: &Path) {
-    // Providers added in M07 trajectory-2 P3 (Gemini, Mistral, Groq) and
-    // P4 (Ollama, Cohere) ride the cross-provider matrix through the
-    // load_single_verdict NDJSON capture path: the byte-equality oracle
-    // operates on the kernel_verdict records the harness recorded, not
-    // on a deep adapter round-trip. The trajectory-1 M07.P4.T6 oracle
-    // surface (assert_byte_equal_normalized_receipts) is reused without
+    // The later-added providers (Gemini, Mistral, Groq, Ollama, Cohere)
+    // ride the cross-provider matrix through the load_single_verdict
+    // NDJSON capture path: the byte-equality oracle operates on the
+    // kernel_verdict records the harness recorded, not on a deep adapter
+    // round-trip. The original oracle surface
+    // (assert_byte_equal_normalized_receipts) is reused without
     // modification; only the matrix cardinality changes from 3 to 8.
     match provider {
         "openai" => assert_replay(provider, path, replay_openai_fixture(path)),

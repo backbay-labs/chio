@@ -1,4 +1,4 @@
-//! Phase 20.2 roadmap acceptance tests for premium pricing.
+//! Acceptance tests for premium pricing.
 //!
 //! Acceptance: *An agent with a clean receipt history gets a lower
 //! premium quote than one with denials.* and *decline below score

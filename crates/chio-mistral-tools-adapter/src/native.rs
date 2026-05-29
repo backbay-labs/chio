@@ -1,23 +1,29 @@
-//! Mistral-native content-part shapes for `chat/completions`.
+//! Mistral-native content shapes for the OpenAI-compatible `chat/completions`
+//! API.
 //!
-//! Mistral renders tool calls as `tool_calls` parts inside a `Content` and
-//! tool results as `functionResponse` parts. Pinned to API version
-//! `2025-04` (see [`crate::transport::MISTRAL_API_VERSION`]).
+//! Mistral renders tool calls as `choices[].message.tool_calls[]` entries and
+//! consumes tool results as `tool` role messages on the next turn. The two
+//! structs here are the adapter's normalized projection of those wire shapes:
+//! the OpenAI-compatible `tool_calls[].function.{name, arguments}` envelope is
+//! parsed into a [`FunctionCallPart`] (with `arguments` decoded from its
+//! JSON-encoded string into a [`serde_json::Value`]), and a gated tool result
+//! is held as a [`FunctionResponsePart`] before it is lowered onto a `tool`
+//! message. Pinned to API version `2025-04` (see
+//! [`crate::transport::MISTRAL_API_VERSION`]).
 
 use serde::{Deserialize, Serialize};
 
-/// Function-call part emitted on the model turn.
+/// Normalized tool call lifted from a Mistral `tool_calls[]` entry.
 ///
-/// Wire shape:
-///
-/// ```json
-/// { "functionCall": { "name": "...", "args": { ... } } }
-/// ```
+/// The upstream wire entry is
+/// `{ "id": "...", "type": "function", "function": { "name": "...",
+/// "arguments": "<json-string>" } }`; this struct holds the decoded name and
+/// arguments object.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FunctionCallPart {
-    /// Tool name registered on the request `tools.functionDeclarations`.
+    /// Tool name from `tool_calls[].function.name`.
     pub name: String,
-    /// JSON arguments object the model wants the tool invoked with.
+    /// Decoded `tool_calls[].function.arguments` JSON object.
     pub args: serde_json::Value,
 }
 
@@ -31,18 +37,18 @@ impl FunctionCallPart {
     }
 }
 
-/// Function-response part fed back to Mistral on the next user turn.
+/// Normalized tool result lowered back to Mistral on the next turn.
 ///
-/// Wire shape:
-///
-/// ```json
-/// { "functionResponse": { "name": "...", "response": { ... } } }
-/// ```
+/// Mistral consumes a tool result as a message
+/// `{ "role": "tool", "tool_call_id": "...", "content": "<json-string>" }`.
+/// This struct carries the matching function name and the gated JSON result
+/// payload; the caller serializes it onto the `tool` message it appends to the
+/// conversation.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FunctionResponsePart {
     /// Function name matching [`FunctionCallPart::name`].
     pub name: String,
-    /// JSON object Mistral consumes as the tool result.
+    /// JSON object Mistral consumes as the tool result content.
     pub response: serde_json::Value,
 }
 

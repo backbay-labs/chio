@@ -12,6 +12,8 @@
 //!    registered public key, preventing a compromised server from advertising
 //!    tools it should not expose.
 
+#![forbid(unsafe_code)]
+
 use chio_core::capability::MonetaryAmount;
 use chio_core::crypto::{Keypair, PublicKey, Signature};
 use serde::{Deserialize, Serialize};

@@ -45,6 +45,7 @@ fuzz = ["dep:arbitrary"]
 dudect = ["dep:dudect-bencher"]
 
 [dev-dependencies]
+chio-test-support = { path = "../chio-test-support" }
 proptest = { workspace = true }
 
 # Timing-leak dudect harness. `harness = false` so the test binary's `main`
@@ -57,6 +58,5 @@ path = "tests/dudect/jwt_verify.rs"
 harness = false
 required-features = ["dudect"]
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

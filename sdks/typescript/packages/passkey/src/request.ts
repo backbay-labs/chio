@@ -10,7 +10,7 @@
 //     produced by the platform authenticator (Touch ID, security key,
 //     etc.) and forwarded as base64url-encoded bytes.
 //   * No envelope is signed in the browser. The audience-pinned
-//     PasskeyCapability is signed server-side by the issuer using the M03
+//     PasskeyCapability is signed server-side by the issuer using the
 //     HybridBackend (see crates/chio-custody-hw/src/issuer.rs).
 //   * Fail-closed at every step. A missing issuer challenge, a missing
 //     navigator.credentials, a non-2xx fetch, or a structurally invalid
@@ -39,8 +39,8 @@ export interface RequestCapabilityOptions {
   /** Optional `navigator.credentials` override (test injection). Defaults
    *  to `globalThis.navigator.credentials`. */
   credentials?: CredentialsContainer;
-  /** Optional UV preference. Defaults to `"required"`; M10 contract
-   *  requires user verification at the issuer side regardless. */
+  /** Optional UV preference. Defaults to `"required"`; the issuer
+   *  requires user verification on its side regardless. */
   userVerification?: UserVerificationRequirement;
 }
 
@@ -48,8 +48,8 @@ export interface RequestCapabilityOptions {
 export type PasskeyCapability = PasskeyCapabilityShape;
 
 /** Stable error class for browser-side failures. The `code` field carries
- *  a typed urn:chio:error:custody:* code matching the M01 registry; the
- *  union is enforced by the M01 LSP-driven typed-enum codegen via
+ *  a typed urn:chio:error:custody:* code matching the custody error
+ *  registry; the union is enforced by the typed-enum codegen via
  *  CustodyErrorCode in errors.ts. */
 export class RequestCapabilityError extends Error {
   readonly code: CustodyErrorCode;
@@ -299,7 +299,7 @@ async function postMint(
   if (res.status === 401 || res.status === 403) {
     // The issuer signals revoked or stale credentials with 401/403; the
     // exact code disambiguation is encoded in the response body when the
-    // issuer follows the M10 contract. Fail-closed regardless: an unknown
+    // issuer follows the custody contract. Fail-closed regardless: an unknown
     // urn collapses to assertion-rejected (the conservative bucket) so the
     // caller cannot be tricked into a treat-as-success path by a wire
     // value outside the typed enum.

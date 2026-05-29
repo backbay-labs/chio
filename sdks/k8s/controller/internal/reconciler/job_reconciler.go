@@ -25,40 +25,40 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
-	chioapi "github.com/backbay/chio-k8s-controller/internal/chio"
+	chioapi "github.com/backbay-labs/chio-k8s-controller/internal/chio"
 )
 
 // Label and annotation keys used to coordinate with governed Jobs.
 const (
 	// LabelGoverned marks a Job as requiring Chio capability governance.
 	// Only Jobs with this label set to "true" are reconciled.
-	LabelGoverned = "chio.protocol/governed"
+	LabelGoverned = "chio.world/governed"
 
 	// AnnotationScopes is a comma-separated list of scopes the Job wants.
-	AnnotationScopes = "chio.protocol/scopes"
+	AnnotationScopes = "chio.world/scopes"
 
 	// AnnotationCapabilityID records the ID of the minted capability.
-	AnnotationCapabilityID = "chio.protocol/capability-id"
+	AnnotationCapabilityID = "chio.world/capability-id"
 
 	// AnnotationCapabilityToken stores the serialized capability token on the
 	// governed pod template so admission can validate the spawned Pods.
-	AnnotationCapabilityToken = "chio.protocol/capability-token"
+	AnnotationCapabilityToken = "chio.world/capability-token"
 
 	// AnnotationCapabilityExpiresAt records the capability expiry (RFC3339).
-	AnnotationCapabilityExpiresAt = "chio.protocol/capability-expires-at"
+	AnnotationCapabilityExpiresAt = "chio.world/capability-expires-at"
 
 	// AnnotationReleased marks a Job as having had its capability released.
-	AnnotationReleased = "chio.protocol/released-at"
+	AnnotationReleased = "chio.world/released-at"
 
 	// AnnotationReceiptID records the ID of the submitted JobReceipt.
-	AnnotationReceiptID = "chio.protocol/receipt-id"
+	AnnotationReceiptID = "chio.world/receipt-id"
 
 	// PodAnnotationReceipt is read from governed Job pods to harvest receipts.
-	PodAnnotationReceipt = "chio.protocol/receipt"
+	PodAnnotationReceipt = "chio.world/receipt"
 
 	// FinalizerName keeps the Job resource alive until we have released
 	// the capability and emitted a JobReceipt.
-	FinalizerName = "chio.protocol/capability-finalizer"
+	FinalizerName = "chio.world/capability-finalizer"
 )
 
 // ChioClient is the subset of chio.Client methods the reconciler needs.
@@ -440,7 +440,7 @@ func (r *JobReconciler) handleDeletion(ctx context.Context, logger logr.Logger, 
 // The controller mints every authoritative field on the StepReceipt
 // (PodName, Phase, ObservedAt) from objects it observes through the
 // apiserver. Any payload the workload wrote to its own
-// `chio.protocol/receipt` annotation is captured separately under
+// `chio.world/receipt` annotation is captured separately under
 // AdvisoryPodAnnotation with Source=AdvisoryPodAnnotationSource and is
 // explicitly NOT treated as authoritative receipt content. Pod annotations
 // are user-owned, so allowing them to flow verbatim into the mediated

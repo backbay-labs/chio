@@ -12,7 +12,9 @@ use chio_core::receipt::{
 };
 use chio_siem::event::SiemEvent;
 use chio_siem::exporter::ExportError;
-use chio_siem::ocsf::{receipt_to_ocsf, OCSF_CATEGORY_UID, OCSF_CLASS_UID, OCSF_SCHEMA_VERSION};
+use chio_siem::ocsf::{
+    receipt_to_ocsf, siem_event_to_ocsf, OCSF_CATEGORY_UID, OCSF_CLASS_UID, OCSF_SCHEMA_VERSION,
+};
 use chio_siem::Exporter;
 use chio_siem::{OcsfExporter, OcsfExporterConfig, OcsfPayloadFormat};
 use serde_json::Value;
@@ -92,11 +94,16 @@ fn deny_receipt() -> ChioReceipt {
     )
 }
 
+fn trusted_event(receipt: ChioReceipt) -> SiemEvent {
+    let trusted_kernel_keys = BTreeSet::from([receipt.kernel_key.to_hex()]);
+    SiemEvent::from_receipt_with_trusted_kernel_keys(receipt, Some(&trusted_kernel_keys))
+}
+
 // -- Tests --------------------------------------------------------------------
 
 #[test]
-fn allow_receipt_maps_to_success_event() {
-    let ev = receipt_to_ocsf(&allow_receipt());
+fn trusted_allow_receipt_maps_to_success_event() {
+    let ev = siem_event_to_ocsf(&trusted_event(allow_receipt()));
 
     assert_eq!(ev["class_uid"], OCSF_CLASS_UID);
     assert_eq!(ev["category_uid"], OCSF_CATEGORY_UID);
@@ -338,8 +345,8 @@ fn unknown_decision_yields_non_panicking_event_with_defined_status() {
 #[test]
 fn ocsf_exporter_emits_one_json_object_per_receipt() {
     let events = vec![
-        SiemEvent::from_receipt(allow_receipt()),
-        SiemEvent::from_receipt(deny_receipt()),
+        trusted_event(allow_receipt()),
+        trusted_event(deny_receipt()),
     ];
     let mapped = OcsfExporter::format_events(&events);
     assert_eq!(mapped.len(), 2);

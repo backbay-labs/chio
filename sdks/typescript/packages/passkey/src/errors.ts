@@ -1,4 +1,4 @@
-// Typed error codes for @chio/passkey.
+// Typed error codes for @chio-protocol/passkey.
 //
 // The codes mirror spec/errors/registry.yaml entries under the
 // urn:chio:error:custody namespace. The TS surface is the caller-facing
@@ -17,7 +17,7 @@
 //   regenerates the file MUST keep the constant + type alias shape.
 
 /**
- * Exhaustive list of urn:chio:error:custody:* codes the @chio/passkey
+ * Exhaustive list of urn:chio:error:custody:* codes the @chio-protocol/passkey
  * SDK throws. Mirrors the rows in spec/errors/registry.yaml under the
  * custody domain.
  *
@@ -48,7 +48,7 @@ export function isCustodyErrorCode(s: unknown): s is CustodyErrorCode {
 }
 
 /**
- * Stable error class thrown from @chio/passkey when the SDK or the
+ * Stable error class thrown from @chio-protocol/passkey when the SDK or the
  * issuer reports a custody-domain failure. The `code` field is one of
  * CustodyErrorCode; never widen it.
  */

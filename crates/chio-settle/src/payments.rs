@@ -334,28 +334,7 @@ mod tests {
     };
     use chio_core::web3::Web3SettlementDispatchArtifact;
 
-    trait TestResultOk<T, E> {
-        fn test_unwrap(self) -> T;
-    }
-
-    impl<T, E> TestResultOk<T, E> for Result<T, E>
-    where
-        E: std::fmt::Debug,
-    {
-        fn test_unwrap(self) -> T {
-            self.unwrap_or_else(|error| panic!("expected Ok result: {error:?}"))
-        }
-    }
-
-    trait TestOptionExt<T> {
-        fn test_unwrap(self) -> T;
-    }
-
-    impl<T> TestOptionExt<T> for Option<T> {
-        fn test_unwrap(self) -> T {
-            self.unwrap_or_else(|| panic!("expected Some value"))
-        }
-    }
+    use chio_test_support::prelude::*;
 
     fn sample_dispatch() -> Web3SettlementDispatchArtifact {
         serde_json::from_str(include_str!(

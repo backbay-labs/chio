@@ -5,14 +5,42 @@
 //! lifts `response.output_item.done` into a canonical invocation, and the
 //! verdict allows the block.
 
+use chio_provider_adapter_core::{
+    ensure_streaming_allow_no_redactions, parse_sse_frames, SseFrame, SseParseOptions,
+};
 use chio_tool_call_fabric::{
-    BlockKind, BufferedBlock, DenyReason, ProviderError, ProviderRequest, StreamEvent, StreamPhase,
+    BlockKind, BufferedBlock, ProviderError, ProviderRequest, StreamEvent, StreamPhase,
     ToolInvocation, VerdictResult, DEFAULT_MAX_BUFFERED_BLOCK_BYTES,
     DEFAULT_MAX_BUFFERED_RAW_FRAMES,
 };
 use serde_json::{json, Value};
 
 use crate::adapter::OpenAiAdapter;
+
+/// SSE provider label used in error messages and parser configuration.
+const OPENAI_SSE_LABEL: &str = "OpenAI";
+
+/// OpenAI Responses SSE parser options: the canonical parser plus the OpenAI
+/// `[DONE]` terminator and the `event`/data-`type` cross-check.
+const OPENAI_SSE_OPTIONS: SseParseOptions = SseParseOptions::rejecting_unknown(OPENAI_SSE_LABEL)
+    .with_done_sentinel("[DONE]")
+    .with_event_type_cross_check();
+
+/// Borrow a frame's parsed JSON data or fail closed when it is absent.
+fn required_data<'a>(frame: &'a SseFrame, event: &str) -> Result<&'a Value, ProviderError> {
+    frame.data.as_ref().ok_or_else(|| {
+        ProviderError::Malformed(format!("OpenAI {event} SSE frame was missing data"))
+    })
+}
+
+/// Render a frame's data for error context, tolerating a missing payload.
+fn data_text(frame: &SseFrame) -> String {
+    frame
+        .data
+        .as_ref()
+        .map(Value::to_string)
+        .unwrap_or_else(|| "<missing data>".to_string())
+}
 
 /// Result of gating one deterministic OpenAI Responses SSE payload.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,7 +70,7 @@ impl OpenAiSseTransport {
     where
         F: FnMut(&ToolInvocation) -> Result<VerdictResult, ProviderError>,
     {
-        let frames = parse_sse_frames(raw)?;
+        let frames = parse_sse_frames(raw, OPENAI_SSE_OPTIONS)?;
         let mut gate = StreamGate::new(adapter);
 
         for frame in frames {
@@ -115,7 +143,7 @@ impl<'a> StreamGate<'a> {
             "response.completed" => self.close_stream(frame),
             "error" | "response.error" => Err(ProviderError::Malformed(format!(
                 "OpenAI SSE error event: {}",
-                frame.data_text()
+                data_text(&frame)
             ))),
             _ => self.forward_or_buffer(frame),
         }
@@ -129,7 +157,7 @@ impl<'a> StreamGate<'a> {
             )));
         }
 
-        let data = frame.required_data("response.output_item.added")?;
+        let data = required_data(&frame, "response.output_item.added")?;
         let item = data.get("item").ok_or_else(|| {
             ProviderError::Malformed("OpenAI output_item.added was missing item".to_string())
         })?;
@@ -203,7 +231,7 @@ impl<'a> StreamGate<'a> {
     where
         F: FnMut(&ToolInvocation) -> Result<VerdictResult, ProviderError>,
     {
-        let data = frame.required_data("response.output_item.done")?;
+        let data = required_data(&frame, "response.output_item.done")?;
         let item = data.get("item");
 
         let Some(active) = self.active.take() else {
@@ -429,7 +457,7 @@ impl ActiveToolBlock {
     }
 
     fn ensure_match(&self, frame: &SseFrame, event: &str) -> Result<(), ProviderError> {
-        let data = frame.required_data(event)?;
+        let data = required_data(frame, event)?;
         if let (Some(expected), Some(actual)) = (self.output_index, frame_output_index(data)) {
             if expected != actual {
                 return Err(ProviderError::Malformed(format!(
@@ -649,132 +677,8 @@ fn frame_call_id(data: &Value) -> Option<String> {
         .and_then(non_empty)
 }
 
-#[derive(Debug, Clone)]
-struct SseFrame {
-    event: Option<String>,
-    data: Option<Value>,
-    raw: Vec<u8>,
-    done: bool,
-}
-
-impl SseFrame {
-    fn required_data(&self, event: &str) -> Result<&Value, ProviderError> {
-        self.data.as_ref().ok_or_else(|| {
-            ProviderError::Malformed(format!("OpenAI {event} SSE frame was missing data"))
-        })
-    }
-
-    fn data_text(&self) -> String {
-        self.data
-            .as_ref()
-            .map(Value::to_string)
-            .unwrap_or_else(|| "<missing data>".to_string())
-    }
-}
-
-fn parse_sse_frames(raw: &[u8]) -> Result<Vec<SseFrame>, ProviderError> {
-    let text = std::str::from_utf8(raw).map_err(|error| {
-        ProviderError::Malformed(format!("OpenAI SSE bytes were not UTF-8: {error}"))
-    })?;
-    let mut frames = Vec::new();
-    let mut lines = Vec::new();
-
-    for line in text.lines() {
-        let line = line.strip_suffix('\r').unwrap_or(line);
-        if line.is_empty() {
-            if !lines.is_empty() {
-                frames.push(parse_sse_frame(&lines)?);
-                lines.clear();
-            }
-        } else {
-            lines.push(line.to_string());
-        }
-    }
-
-    if !lines.is_empty() {
-        frames.push(parse_sse_frame(&lines)?);
-    }
-
-    Ok(frames)
-}
-
-fn parse_sse_frame(lines: &[String]) -> Result<SseFrame, ProviderError> {
-    let mut event = None;
-    let mut data_lines = Vec::new();
-    let mut raw = Vec::new();
-
-    for line in lines {
-        raw.extend_from_slice(line.as_bytes());
-        raw.push(b'\n');
-
-        if line.starts_with(':') {
-            continue;
-        }
-
-        let (field, value) = line.split_once(':').ok_or_else(|| {
-            ProviderError::Malformed(format!("OpenAI SSE line `{line}` was missing `:`"))
-        })?;
-        let value = value.strip_prefix(' ').unwrap_or(value);
-        match field {
-            "event" => event = Some(value.to_string()),
-            "data" => data_lines.push(value.to_string()),
-            "id" | "retry" => {}
-            other => {
-                return Err(ProviderError::Malformed(format!(
-                    "OpenAI SSE field `{other}` is not supported"
-                )));
-            }
-        }
-    }
-    raw.push(b'\n');
-
-    let data_text = data_lines.join("\n");
-    if data_text == "[DONE]" {
-        return Ok(SseFrame {
-            event,
-            data: None,
-            raw,
-            done: true,
-        });
-    }
-
-    let data = if data_lines.is_empty() {
-        None
-    } else {
-        Some(serde_json::from_str::<Value>(&data_text).map_err(|error| {
-            ProviderError::Malformed(format!("OpenAI SSE data was not JSON: {error}"))
-        })?)
-    };
-    let inferred_event = data
-        .as_ref()
-        .and_then(|data| data.get("type"))
-        .and_then(Value::as_str);
-    if let (Some(event), Some(data_type)) = (event.as_deref(), inferred_event) {
-        if event != data_type {
-            return Err(ProviderError::Malformed(format!(
-                "OpenAI SSE event `{event}` did not match data type `{data_type}`"
-            )));
-        }
-    }
-    if event.is_none() {
-        event = inferred_event.map(ToString::to_string);
-    }
-    if data.is_some() && event.is_none() {
-        return Err(ProviderError::Malformed(
-            "OpenAI SSE data frame was missing event name".to_string(),
-        ));
-    }
-
-    Ok(SseFrame {
-        event,
-        data,
-        raw,
-        done: false,
-    })
-}
-
 fn argument_delta_text(frame: &SseFrame) -> Result<&str, ProviderError> {
-    let data = frame.required_data("response.function_call_arguments.delta")?;
+    let data = required_data(frame, "response.function_call_arguments.delta")?;
     data.get("delta")
         .or_else(|| data.get("arguments_delta"))
         .and_then(Value::as_str)
@@ -786,7 +690,7 @@ fn argument_delta_text(frame: &SseFrame) -> Result<&str, ProviderError> {
 }
 
 fn argument_done_text(frame: &SseFrame) -> Result<String, ProviderError> {
-    let data = frame.required_data("response.function_call_arguments.done")?;
+    let data = required_data(frame, "response.function_call_arguments.done")?;
     let arguments = data.get("arguments").ok_or_else(|| {
         ProviderError::Malformed(
             "OpenAI function_call_arguments.done was missing arguments".to_string(),
@@ -817,29 +721,13 @@ fn ensure_streamed_arguments_match_text(
 }
 
 fn ensure_streaming_allow(call_id: &str, verdict: &VerdictResult) -> Result<(), ProviderError> {
-    match verdict {
-        VerdictResult::Allow { redactions, .. } if redactions.is_empty() => Ok(()),
-        VerdictResult::Allow { .. } => Err(ProviderError::Malformed(format!(
-            "OpenAI streaming tool call `{call_id}` allow verdict requested redactions; fail-closed"
-        ))),
-        VerdictResult::Deny { reason, receipt_id } => Err(ProviderError::Malformed(format!(
-            "OpenAI streaming tool call `{call_id}` denied at output_item.done: {} (receipt {})",
-            deny_reason_text(reason),
-            receipt_id.0
-        ))),
-    }
-}
-
-fn deny_reason_text(reason: &DenyReason) -> String {
-    match reason {
-        DenyReason::PolicyDeny { rule_id } => format!("policy_deny:{rule_id}"),
-        DenyReason::GuardDeny { guard_id, detail } => {
-            format!("guard_deny:{guard_id}:{detail}")
-        }
-        DenyReason::CapabilityExpired => "capability_expired".to_string(),
-        DenyReason::PrincipalUnknown => "principal_unknown".to_string(),
-        DenyReason::BudgetExceeded => "budget_exceeded".to_string(),
-    }
+    ensure_streaming_allow_no_redactions(
+        OPENAI_SSE_LABEL,
+        "tool call",
+        call_id,
+        Some("output_item.done"),
+        verdict,
+    )
 }
 
 fn non_empty(value: &str) -> Option<String> {

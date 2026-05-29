@@ -9,7 +9,7 @@
 //!
 //! The test serialises the trace through `serde_json::to_vec` (canonical
 //! BTreeMap ordering) and compares the resulting byte buffers, mirroring
-//! the M04 determinism canary's "two runs, byte-equal output" pattern.
+//! the determinism canary's "two runs, byte-equal output" pattern.
 
 use chio_arena::adversary::capability_overrequest::OverrequestVariant;
 use chio_arena::adversary::scope_escape::ScopeEscalation;

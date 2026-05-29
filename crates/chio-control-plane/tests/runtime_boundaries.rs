@@ -19,13 +19,12 @@ fn line_count(relative: &str) -> usize {
 
 #[test]
 fn runtime_entrypoints_remain_decomposed_and_reexported() {
-    // Remote MCP now lives in chio-mcp-remote; chio-hosted-mcp is a compatibility shell.
-    let cli_types = read_repo_file("crates/chio-cli/src/cli/types.rs");
-    assert!(
-        cli_types.contains("pub use chio_mcp_remote as remote_mcp;"),
-        "chio-cli cli/types.rs must keep re-exporting the remote MCP crate",
-    );
+    // Remote MCP lives in chio-mcp-remote; chio-hosted-mcp is a compatibility shell.
     let main = read_repo_file("crates/chio-cli/src/main.rs");
+    assert!(
+        main.contains("pub use chio_mcp_remote as remote_mcp;"),
+        "chio-cli main.rs must keep re-exporting the remote MCP crate",
+    );
     assert!(
         !main.contains("mod remote_mcp;"),
         "chio-cli main must not inline the remote MCP runtime shell",
@@ -35,11 +34,7 @@ fn runtime_entrypoints_remain_decomposed_and_reexported() {
         "chio-cli main must not inline the trust-control runtime shell",
     );
 
-    // The pre-refactor crate-extraction pattern (#[path = "../../chio-cli/..."]
-    // splice from chio-hosted-mcp/chio-control-plane) was replaced by direct
-    // re-exports once chio-mcp-remote became a first-class workspace member.
-    // The current invariant is that chio-cli no longer inlines remote_mcp;
-    // ownership lives in chio-mcp-remote.
+    // chio-cli must not inline the remote_mcp module; ownership lives in chio-mcp-remote.
     let hosted_lib = read_repo_file("crates/chio-hosted-mcp/src/lib.rs");
     assert!(
         hosted_lib.contains("pub use chio_mcp_remote::{serve_http, RemoteServeHttpConfig};"),
@@ -48,16 +43,20 @@ fn runtime_entrypoints_remain_decomposed_and_reexported() {
 
     let control_plane_lib = read_repo_file("crates/chio-control-plane/src/lib.rs");
     assert!(
-        control_plane_lib.contains("#[path = \"../../chio-cli/src/trust_control.rs\"]"),
-        "chio-control-plane must remain the runtime owner of trust_control.rs",
+        !control_plane_lib.contains("../../chio-cli/src/"),
+        "chio-control-plane must own its trust-control sources directly, not reach into chio-cli/src",
     );
     assert!(
-        control_plane_lib.contains("#[path = \"../../chio-cli/src/federation_policy.rs\"]"),
-        "chio-control-plane must keep the extracted federation policy boundary",
+        control_plane_lib.contains("pub mod trust_control;"),
+        "chio-control-plane must own trust_control as a direct module",
     );
     assert!(
-        control_plane_lib.contains("#[path = \"../../chio-cli/src/scim_lifecycle.rs\"]"),
-        "chio-control-plane must keep the extracted scim lifecycle boundary",
+        control_plane_lib.contains("pub mod federation_policy;"),
+        "chio-control-plane must own federation_policy as a direct module",
+    );
+    assert!(
+        control_plane_lib.contains("pub mod scim_lifecycle;"),
+        "chio-control-plane must own scim_lifecycle as a direct module",
     );
 
     assert!(
@@ -73,26 +72,26 @@ fn runtime_entrypoints_remain_decomposed_and_reexported() {
         "remote_mcp ownership must live in chio-mcp-remote, not be inlined in chio-cli",
     );
 
-    let trust_control = read_repo_file("crates/chio-cli/src/trust_control.rs");
+    let trust_control = read_repo_file("crates/chio-control-plane/src/trust_control.rs");
     assert!(
         trust_control.contains("#[path = \"trust_control/health.rs\"]"),
         "trust_control.rs must keep its health boundary extracted",
     );
     assert!(
         repo_root()
-            .join("crates/chio-cli/src/trust_control/health.rs")
+            .join("crates/chio-control-plane/src/trust_control/health.rs")
             .exists(),
         "trust_control health boundary file must exist",
     );
     assert!(
         repo_root()
-            .join("crates/chio-cli/src/federation_policy.rs")
+            .join("crates/chio-control-plane/src/federation_policy.rs")
             .exists(),
         "trust_control federation policy boundary file must exist",
     );
     assert!(
         repo_root()
-            .join("crates/chio-cli/src/scim_lifecycle.rs")
+            .join("crates/chio-control-plane/src/scim_lifecycle.rs")
             .exists(),
         "trust_control scim lifecycle boundary file must exist",
     );
@@ -136,7 +135,7 @@ fn runtime_entrypoints_remain_decomposed_and_reexported() {
         "remote_mcp http_service.rs regrew past the phase-180 ceiling",
     );
     assert!(
-        line_count("crates/chio-cli/src/trust_control.rs") <= 21500,
+        line_count("crates/chio-control-plane/src/trust_control.rs") <= 21500,
         "trust_control.rs regrew past the phase-180 ceiling",
     );
     assert!(

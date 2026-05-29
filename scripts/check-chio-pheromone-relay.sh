@@ -50,7 +50,7 @@ if [[ "$MODE" != "schema-only" ]]; then
       --skip service::relay_rejects_authenticated_batch_with_unpinned_transit_ladder \
       --skip service::relay_tick_delivers_leased_batches_with_real_request_signature
   fi
-  cargo test -p chio-cli --bin chio_pheromone
+  cargo test -p chio-cli --bin chio chio_pheromone
 fi
 
 python3 - "$SCHEMA_DIR" "$SCHEMA_REGISTRY" "$FIXTURE_DIR" <<'PY'

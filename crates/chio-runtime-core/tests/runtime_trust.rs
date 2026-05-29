@@ -633,7 +633,7 @@ fn layered_store_keeps_trust_floor_separate_from_admission_state(
 }
 
 #[test]
-fn runtime_trust_floor_store_normalizes_legacy_schema_on_write(
+fn runtime_trust_floor_store_reads_existing_json_and_normalizes_on_write(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let dir = tempfile::tempdir()?;
     let trust_floor_path = dir.path().join("runtime-trust-floor.json");

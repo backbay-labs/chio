@@ -25,8 +25,8 @@ executing the returned function calls through `@chio-protocol/sdk`.
 From this directory:
 
 ```bash
-npm --prefix ../../packages/sdk/chio-ts ci
-npm --prefix ../../packages/sdk/chio-ts run build
+npm --prefix ../../sdks/typescript/chio-ts ci
+npm --prefix ../../sdks/typescript/chio-ts run build
 npm install
 ```
 
@@ -63,5 +63,5 @@ Optional environment variables:
 
 See also:
 
-- [docs/PROGRESSIVE_TUTORIAL.md](../../docs/PROGRESSIVE_TUTORIAL.md)
+- [docs/start-here/PROGRESSIVE_TUTORIAL.md](../../docs/start-here/PROGRESSIVE_TUTORIAL.md)
 - [examples/docker/README.md](../docker/README.md)

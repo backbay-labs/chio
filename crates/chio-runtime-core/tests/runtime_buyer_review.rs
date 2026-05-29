@@ -232,7 +232,7 @@ fn strict_dsse_fixture_receipt_with_id(
             tool_origin: ToolOrigin::CallerExecuted,
             redaction_mode: RedactionMode::None,
             actor_chain: vec![ActorRef {
-                actor_id: "agent:chiodos-runtime/buyer-review".to_string(),
+                actor_id: "agent:chio-runtime/buyer-review".to_string(),
                 actor_kind: Some("agent".to_string()),
             }],
             content_hash: "c".repeat(64),

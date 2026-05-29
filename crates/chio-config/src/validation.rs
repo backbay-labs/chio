@@ -1,7 +1,7 @@
 //! Post-deserialization validation for `ChioConfig`.
 //!
 //! Collects all validation errors before returning so the user can fix
-//! everything in one pass rather than playing whack-a-mole.
+//! everything in one pass rather than one at a time.
 
 use std::collections::HashSet;
 

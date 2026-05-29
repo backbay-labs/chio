@@ -649,10 +649,10 @@ mod retention {
         );
 
         // Live DB should NOT have batch 1's checkpoint (it was archived).
-        // Note: per plan spec, only receipt rows are deleted from live; checkpoint
-        // rows for fully-archived batches are also deleted. We verify batch 2 checkpoint
-        // is still present but do not mandate batch 1 checkpoint deletion from live
-        // (that is an optimization -- we just require it exists in the archive).
+        // Only receipt rows are deleted from live; checkpoint rows for
+        // fully-archived batches are also deleted. Verify batch 2 checkpoint
+        // is still present but do not mandate batch 1 checkpoint deletion from
+        // live (that is an optimization; require only that it exists in the archive).
 
         let _ = fs::remove_file(&live_path);
         let _ = fs::remove_file(&archive_path);

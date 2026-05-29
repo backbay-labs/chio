@@ -1,9 +1,13 @@
 # Incident Management Narrative
 
-Incident-management readiness depends on a P2 incident response runbook
-that references HIPAA breach-notification obligations and Chio-specific
-receipt, revocation, and audit-log workflows. P1 therefore records this
-family as a gap.
+An incident-response runbook exists in the repository
+(`compliance/hitrust/ir-runbook.md`); it references HIPAA
+breach-notification obligations and Chio-specific receipt, revocation,
+and audit-log workflows.
 
-Fail-closed note: incident rows cannot be promoted without the P2
-runbook and escalation owner references.
+This family is self-assessed as partial: the runbook is documented, but
+first-cycle execution evidence (an actual exercised incident record) has
+not been produced.
+
+Fail-closed note: incident rows are not promoted to fully evidenced
+without an exercised runbook record and an escalation owner.

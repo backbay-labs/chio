@@ -21,14 +21,14 @@ endif()
 set(CHIO_DROGON_BUILD_TESTS OFF CACHE BOOL "Build chio-drogon tests" FORCE)
 set(CHIO_DROGON_REQUIRE_DEPS OFF CACHE BOOL "Require chio-drogon deps" FORCE)
 add_subdirectory(
-  "${CMAKE_CURRENT_SOURCE_DIR}/../../packages/sdk/chio-drogon"
+  "${CMAKE_CURRENT_SOURCE_DIR}/../../sdks/cpp/chio-drogon"
   "${CMAKE_CURRENT_BINARY_DIR}/chio-drogon"
   EXCLUDE_FROM_ALL
 )
 
 if(NOT TARGET ChioDrogon::chio_drogon)
   file(WRITE "${HELLO_DROGON_SKIP_FILE}"
-       "ChioDrogon::chio_drogon was not available after configuring packages/sdk/chio-drogon.\n")
+       "ChioDrogon::chio_drogon was not available after configuring sdks/cpp/chio-drogon.\n")
   message(STATUS "ChioDrogon::chio_drogon was not available; skipping hello-drogon example")
   return()
 endif()

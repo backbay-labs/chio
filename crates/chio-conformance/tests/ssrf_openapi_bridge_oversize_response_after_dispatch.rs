@@ -6,7 +6,7 @@
 //! ceiling, wires a dispatcher that returns a body larger than the
 //! ceiling, and asserts that the contract rejects the response through
 //! the post-dispatch `enforce_attempt` call rather than letting the
-//! oversize body reach the caller. This pins the W2.2 fix to fail-closed
+//! oversize body reach the caller. This pins the SSRF fix to fail-closed
 //! behavior on the response-size axis.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 

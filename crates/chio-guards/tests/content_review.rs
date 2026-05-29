@@ -1,4 +1,4 @@
-//! Integration tests for Phase 11.1 ContentReviewGuard.
+//! Integration tests for ContentReviewGuard.
 //!
 //! Acceptance criteria:
 //!

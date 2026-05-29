@@ -14,7 +14,7 @@ function authorizedAllow() {
     receipt_kind: "mediated_decision" as const,
     boundary_class: "prevent" as const,
     trust_level: "mediated" as const,
-    result: "authorized",
+    result: "allow",
     authorized: true,
     ok: true,
     signer_trusted: true,
@@ -24,7 +24,7 @@ function authorizedAllow() {
   };
 }
 
-describe("@chio/next streaming and denial response", () => {
+describe("@chio-protocol/next streaming and denial response", () => {
   it("returns allowed streaming responses by reference", async () => {
     const stream = new ReadableStream();
     const response = new Response(stream);
@@ -137,15 +137,33 @@ describe("@chio/next streaming and denial response", () => {
     expect(invoked).toBe(false);
   });
 
-  it("accepts every VerifyReceiptResponse result variant from the Rust verify endpoint", async () => {
-    // The shared Rust VerifyReceiptResponse encodes Verdict::Allow as "allow"
-    // (see crates/chio-http-core/src/evaluation.rs verdict_result()). Earlier
-    // SDK callers minted strings like "Authorized"; the chio-next gate must
-    // accept any of those equivalents so a forwarded /chio/verify response
-    // does not silently deny.
-    const variants = ["allow", "Allow", "authorized", "Authorized"];
-    for (const result of variants) {
-      const wrapped = withChio(async () => new Response("ok"), {
+  it("authorizes only the canonical \"allow\" result and denies legacy variants", async () => {
+    // The shared Rust VerifyReceiptResponse encodes Verdict::Allow as the
+    // canonical lowercase "allow" (see crates/chio-http-core/src/evaluation.rs
+    // verdict_result()); it never emits "Allow"/"authorized"/"Authorized", so
+    // the gate authorizes only the canonical value and denies the rest.
+    const allowed = withChio(async () => new Response("ok"), {
+      evaluate: () => ({
+        verdict: "allow" as const,
+        decision: "allow" as const,
+        receipt_kind: "mediated_decision" as const,
+        boundary_class: "prevent" as const,
+        trust_level: "mediated" as const,
+        result: "allow",
+        authorized: true,
+        ok: true,
+        signer_trusted: true,
+        signature_valid: true,
+        receipt_id_valid: true,
+        parameter_hash_valid: true,
+      }),
+    });
+    const response = await allowed(new Request("https://app.test/api/chat"));
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("ok");
+
+    for (const result of ["Allow", "authorized", "Authorized"]) {
+      const denied = withChio(async () => new Response("ok"), {
         evaluate: () => ({
           verdict: "allow" as const,
           decision: "allow" as const,
@@ -161,10 +179,11 @@ describe("@chio/next streaming and denial response", () => {
           parameter_hash_valid: true,
         }),
       });
-
-      const response = await wrapped(new Request("https://app.test/api/chat"));
-      expect(response.status).toBe(200);
-      expect(await response.text()).toBe("ok");
+      const deniedResponse = await denied(
+        new Request("https://app.test/api/chat"),
+      );
+      expect(deniedResponse.status).toBe(403);
+      expect(deniedResponse.headers.get("x-chio-verdict")).toBe("deny");
     }
   });
 });

@@ -1,3 +1,11 @@
+//! Oracle runtime for Chio cross-currency budget enforcement.
+//!
+//! Reads price feeds (Chainlink, Pyth) behind a pluggable backend, caches and
+//! monitors them, applies circuit-breaker thresholds, and converts amounts
+//! across currencies to back budget enforcement with signed conversion evidence.
+
+#![forbid(unsafe_code)]
+
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -24,40 +32,7 @@ pub mod sequencer;
 
 #[cfg(test)]
 pub(crate) mod test_support {
-    pub(crate) trait TestUnwrap<T> {
-        fn test_unwrap(self, context: &str) -> T;
-    }
-
-    impl<T, E> TestUnwrap<T> for Result<T, E>
-    where
-        E: std::fmt::Display,
-    {
-        fn test_unwrap(self, context: &str) -> T {
-            self.unwrap_or_else(|error| panic!("{context}: {error}"))
-        }
-    }
-
-    impl<T> TestUnwrap<T> for Option<T> {
-        fn test_unwrap(self, context: &str) -> T {
-            self.unwrap_or_else(|| panic!("{context}"))
-        }
-    }
-
-    pub(crate) trait TestUnwrapErr<E> {
-        fn test_unwrap_err(self, context: &str) -> E;
-    }
-
-    impl<T, E> TestUnwrapErr<E> for Result<T, E>
-    where
-        T: std::fmt::Debug,
-    {
-        fn test_unwrap_err(self, context: &str) -> E {
-            match self {
-                Ok(value) => panic!("{context}: unexpected Ok({value:?})"),
-                Err(error) => error,
-            }
-        }
-    }
+    pub(crate) use chio_test_support::ctx::{TestUnwrap, TestUnwrapErr};
 }
 
 use cache::PriceCache;
@@ -1013,41 +988,7 @@ mod tests {
     use crate::config::{
         build_default_egress_contract, DegradedModePolicy, PriceOracleConfig, BASE_MAINNET_CHAIN_ID,
     };
-
-    trait TestUnwrap<T> {
-        fn test_unwrap(self, context: &str) -> T;
-    }
-
-    impl<T, E> TestUnwrap<T> for Result<T, E>
-    where
-        E: std::fmt::Display,
-    {
-        fn test_unwrap(self, context: &str) -> T {
-            self.unwrap_or_else(|error| panic!("{context}: {error}"))
-        }
-    }
-
-    impl<T> TestUnwrap<T> for Option<T> {
-        fn test_unwrap(self, context: &str) -> T {
-            self.unwrap_or_else(|| panic!("{context}"))
-        }
-    }
-
-    trait TestUnwrapErr<E> {
-        fn test_unwrap_err(self, context: &str) -> E;
-    }
-
-    impl<T, E> TestUnwrapErr<E> for Result<T, E>
-    where
-        T: std::fmt::Debug,
-    {
-        fn test_unwrap_err(self, context: &str) -> E {
-            match self {
-                Ok(value) => panic!("{context}: unexpected Ok({value:?})"),
-                Err(error) => error,
-            }
-        }
-    }
+    use crate::test_support::{TestUnwrap, TestUnwrapErr};
 
     struct StaticBackend {
         kind: OracleBackendKind,

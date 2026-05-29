@@ -31,7 +31,7 @@ sdks/jvm/
 ├── chio-sdk-jvm/
 │   ├── build.gradle.kts
 │   └── src/
-│       ├── main/kotlin/io/backbay/chio/sdk/
+│       ├── main/kotlin/world/chio/sdk/
 │       │   ├── ChioClient.kt
 │       │   ├── ChioTypes.kt
 │       │   ├── ChioReceipt.kt
@@ -50,7 +50,7 @@ sdks/jvm/
 │       │       ├── ChioTimeoutError.kt
 │       │       ├── ChioDeniedError.kt
 │       │       └── ChioValidationError.kt
-│       └── test/kotlin/io/backbay/chio/sdk/
+│       └── test/kotlin/world/chio/sdk/
 │           ├── CanonicalJsonTest.kt
 │           ├── HashingTest.kt
 │           ├── ChioClientHttpTest.kt
@@ -65,7 +65,7 @@ sdks/jvm/
 │   ├── settings.gradle.kts                  # DELETED (subproject)
 │   ├── README.md
 │   └── src/
-│       ├── main/kotlin/io/backbay/chio/
+│       ├── main/kotlin/world/chio/
 │       │   ├── CachedBodyHttpServletRequest.kt   # unchanged
 │       │   ├── ChioAutoConfiguration.kt          # unchanged
 │       │   ├── ChioFilter.kt                     # import updates only
@@ -76,14 +76,14 @@ sdks/jvm/
 │       │       ├── ChioSdkAliases.kt             # typealiases for one-release compat
 │       │       └── ChioSidecarClient.kt          # thin shim around sdk.ChioClient
 │       ├── main/resources/META-INF/spring.factories    # unchanged
-│       └── test/kotlin/io/backbay/chio/
+│       └── test/kotlin/world/chio/
 │           ├── ChioFilterBodyTest.kt             # unchanged
 │           └── ChioFilterCapabilityTransportTest.kt # unchanged
 │                                                 # ChioTypesTest.kt moved
 └── chio-streaming-flink/
     ├── build.gradle.kts
     └── src/
-        ├── main/kotlin/io/backbay/chio/flink/
+        ├── main/kotlin/world/chio/flink/
         │   ├── ChioFlinkConfig.kt
         │   ├── ChioFlinkEvaluator.kt             # internal shared core
         │   ├── ChioAsyncEvaluateFunction.kt
@@ -99,7 +99,7 @@ sdks/jvm/
         │   ├── ScopeResolver.kt
         │   ├── BodyCoercion.kt                   # canonical body bytes helper
         │   └── DefaultParametersExtractor.kt
-        ├── test/kotlin/io/backbay/chio/flink/
+        ├── test/kotlin/world/chio/flink/
         │   ├── ChioFlinkConfigTest.kt
         │   ├── ChioFlinkEvaluatorTest.kt
         │   ├── ChioAsyncEvaluateFunctionTest.kt
@@ -111,7 +111,7 @@ sdks/jvm/
         │       ├── FakeChioClient.kt
         │       ├── FakeDlqRouter.kt
         │       └── FakeRuntimeContext.kt
-        └── integrationTest/kotlin/io/backbay/chio/flink/
+        └── integrationTest/kotlin/world/chio/flink/
             ├── MiniClusterAsyncJobIT.kt
             └── MiniClusterSyncJobIT.kt
 ```
@@ -130,7 +130,7 @@ Notes:
 Every file lists purpose, public types, public signatures, and the Python
 reference that fixes semantics. Kotlin signatures only; no bodies.
 
-### 2.1 `chio-sdk-jvm` / `io.backbay.chio.sdk`
+### 2.1 `chio-sdk-jvm` / `world.chio.sdk`
 
 #### `CanonicalJson.kt`
 
@@ -181,8 +181,8 @@ object Hashing {
 Purpose: HTTP-side types carried by the sidecar (AuthMethod, CallerIdentity,
 Verdict, GuardEvidence, HttpReceipt, ChioHttpRequest, EvaluateResponse,
 ChioPassthrough, ChioErrorResponse, ChioErrorCodes). Moves verbatim from
-`sdks/jvm/chio-spring-boot/src/main/kotlin/io/backbay/chio/ChioTypes.kt`
-with a package change to `io.backbay.chio.sdk`. All Jackson `@JsonProperty`
+`sdks/jvm/chio-spring-boot/src/main/kotlin/world/chio/ChioTypes.kt`
+with a package change to `world.chio.sdk`. All Jackson `@JsonProperty`
 annotations stay.
 
 Public types (Kotlin data classes with `@JsonInclude(NON_NULL)`; copy current
@@ -600,7 +600,7 @@ class ChioClient @JvmOverloads constructor(
 Capability mint (`create_capability`, `validate_capability`,
 `attenuate_capability`) is NOT included in v1; see section 9.
 
-### 2.2 `chio-streaming-flink` / `io.backbay.chio.flink`
+### 2.2 `chio-streaming-flink` / `world.chio.flink`
 
 #### `SidecarErrorBehaviour.kt`
 
@@ -897,39 +897,39 @@ DLQ bytes to `dlqTag` when non-null.
 #### `compat/ChioSdkAliases.kt`
 
 Purpose: typealias re-exports so existing chio-spring-boot users import
-`io.backbay.chio.AuthMethod` without churn. One-release compat; removed in
+`world.chio.AuthMethod` without churn. One-release compat; removed in
 0.2.0.
 
 ```kotlin
 @file:JvmName("ChioSdkAliases")
-package io.backbay.chio
+package world.chio
 
-typealias AuthMethod = io.backbay.chio.sdk.AuthMethod
-typealias CallerIdentity = io.backbay.chio.sdk.CallerIdentity
-typealias Verdict = io.backbay.chio.sdk.Verdict
-typealias GuardEvidence = io.backbay.chio.sdk.GuardEvidence
-typealias HttpReceipt = io.backbay.chio.sdk.HttpReceipt
-typealias ChioHttpRequest = io.backbay.chio.sdk.ChioHttpRequest
-typealias EvaluateResponse = io.backbay.chio.sdk.EvaluateResponse
-typealias ChioPassthrough = io.backbay.chio.sdk.ChioPassthrough
-typealias ChioErrorResponse = io.backbay.chio.sdk.ChioErrorResponse
-typealias ChioErrorCodes = io.backbay.chio.sdk.ChioErrorCodes
+typealias AuthMethod = world.chio.sdk.AuthMethod
+typealias CallerIdentity = world.chio.sdk.CallerIdentity
+typealias Verdict = world.chio.sdk.Verdict
+typealias GuardEvidence = world.chio.sdk.GuardEvidence
+typealias HttpReceipt = world.chio.sdk.HttpReceipt
+typealias ChioHttpRequest = world.chio.sdk.ChioHttpRequest
+typealias EvaluateResponse = world.chio.sdk.EvaluateResponse
+typealias ChioPassthrough = world.chio.sdk.ChioPassthrough
+typealias ChioErrorResponse = world.chio.sdk.ChioErrorResponse
+typealias ChioErrorCodes = world.chio.sdk.ChioErrorCodes
 ```
 
 #### `compat/ChioSidecarClient.kt`
 
 Purpose: thin deprecated shim so `ChioFilter` keeps working without
-re-importing. Delegates to `io.backbay.chio.sdk.ChioClient`.
+re-importing. Delegates to `world.chio.sdk.ChioClient`.
 
 ```kotlin
-package io.backbay.chio
+package world.chio
 
-import io.backbay.chio.sdk.ChioClient
+import world.chio.sdk.ChioClient
 import java.time.Duration
 
 @Deprecated(
-    "Use io.backbay.chio.sdk.ChioClient directly",
-    ReplaceWith("io.backbay.chio.sdk.ChioClient(baseUrl, java.time.Duration.ofSeconds(timeoutSeconds))"),
+    "Use world.chio.sdk.ChioClient directly",
+    ReplaceWith("world.chio.sdk.ChioClient(baseUrl, java.time.Duration.ofSeconds(timeoutSeconds))"),
 )
 class ChioSidecarClient @JvmOverloads constructor(
     baseUrl: String = ChioClient.DEFAULT_BASE_URL,
@@ -945,7 +945,7 @@ class ChioSidecarClient @JvmOverloads constructor(
 }
 
 // Legacy exception name kept as alias:
-typealias ChioSidecarException = io.backbay.chio.sdk.errors.ChioError
+typealias ChioSidecarException = world.chio.sdk.errors.ChioError
 ```
 
 ## 3. Canonical JSON contract
@@ -1001,20 +1001,20 @@ restricts inputs to `Int`, `Long`, `Boolean`, `String`, `null`, `Map`, `List`.
 
 ## 4. Migration of chio-spring-boot
 
-Files that MOVE to `chio-sdk-jvm` (`io.backbay.chio.sdk`):
+Files that MOVE to `chio-sdk-jvm` (`world.chio.sdk`):
 - `ChioSidecarClient.kt` -> widened and renamed to `ChioClient.kt`.
 - `ChioTypes.kt` -> split into `ChioTypes.kt` (HTTP types) +
   `Decision.kt` + `ToolCallAction.kt` + `ChioReceipt.kt`.
 - `sha256Hex` (from `ChioIdentityExtractor.kt:13-22`) -> `Hashing.kt`.
 
 Files that STAY in chio-spring-boot (unchanged logic, import updates only):
-- `ChioFilter.kt`: change imports from `io.backbay.chio.ChioSidecarClient` to
-  `io.backbay.chio.sdk.ChioClient`; call `evaluateHttpRequest` instead of
+- `ChioFilter.kt`: change imports from `world.chio.ChioSidecarClient` to
+  `world.chio.sdk.ChioClient`; call `evaluateHttpRequest` instead of
   `evaluate`. Typealias shim means no churn if keeping `ChioSidecarClient` name.
 - `CachedBodyHttpServletRequest.kt`: unchanged.
 - `ChioAutoConfiguration.kt`: unchanged.
 - `ChioIdentityExtractor.kt`: delete the top-level `sha256Hex` functions
-  (callers import `io.backbay.chio.sdk.Hashing.sha256Hex`). Keep
+  (callers import `world.chio.sdk.Hashing.sha256Hex`). Keep
   `defaultIdentityExtractor` and `IdentityExtractorFn`.
 - `spring.factories` resource: unchanged.
 - Tests `ChioFilterBodyTest.kt`, `ChioFilterCapabilityTransportTest.kt`:
@@ -1067,7 +1067,7 @@ plugins {
 }
 
 allprojects {
-    group = "io.backbay.chio"
+    group = "world.chio"
     version = "0.1.0"
     repositories { mavenCentral() }
 }
@@ -1394,7 +1394,7 @@ and the JVM test that pins it.
 - **Capability mint flow** (`create_capability`, `validate_capability`,
   `attenuate_capability`, capability token models, `is_subset_of`, the whole
   `chio_sdk.models` capability stack from `models.py:21-305`). Deferred
-  post-v1. Stub constants / reserved package `io.backbay.chio.sdk.capabilities`
+  post-v1. Stub constants / reserved package `world.chio.sdk.capabilities`
   may be pre-created empty, but no code is required. Revisit before 0.2.0.
 - **Kafka connector version skew**. We intentionally do not depend on
   `flink-connector-kafka`; users bring their own sink. Document in the
@@ -1491,7 +1491,7 @@ passing. Do not reorder without re-validating that invariant.
     `examples/hello-spring-boot/settings.gradle.kts` from
     `includeBuild("../../sdks/jvm/chio-spring-boot")` to
     `includeBuild("../../sdks/jvm")`. Safe under Gradle composite build
-    substitution (the `io.backbay.chio:chio-spring-boot:0.1.0` coordinate
+    substitution (the `world.chio:chio-spring-boot:0.1.0` coordinate
     resolves to the `:chio-spring-boot` subproject). Non-blocking for the
     Phase 3 gate.
 

@@ -1,9 +1,7 @@
 //! InputInjectionCapabilityGuard - fine-grained control over `input.inject`
 //! actions.
 //!
-//! Roadmap phase 5.2.  Ported from ClawdStrike's
-//! `guards/input_injection_capability.rs` and adapted to Chio's synchronous
-//! [`chio_kernel::Guard`] trait.
+//! Implements Chio's synchronous [`chio_kernel::Guard`] trait.
 //!
 //! The guard applies to tool calls that represent an **input injection**
 //! action on a remote / desktop session.  It claims two detection surfaces:

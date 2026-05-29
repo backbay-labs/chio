@@ -658,7 +658,8 @@ fn sign_receipt_preserves_signed_body_fields() {
     let receipt = sign_receipt(body.clone(), &backend).unwrap();
 
     assert!(receipt.verify_signature().unwrap());
-    assert_eq!(receipt.body().id, body.id);
+    // body.id is the content-addressed hash assigned by signing (verify_signature
+    // re-derives and checks it); the caller-supplied id becomes the signing nonce.
     assert_eq!(receipt.body().capability_id, body.capability_id);
     assert_eq!(receipt.body().tool_server, body.tool_server);
     assert_eq!(receipt.body().tool_name, body.tool_name);

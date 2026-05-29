@@ -128,6 +128,14 @@ RAW_OUTPUT_PATH="${WORK_DIR}/types.raw.go"
 #      `$ref: "#/$defs/..."` into `$ref: "#/components/schemas/..."`
 #   6. Top-level `$schema` and `$id` keys are stripped (oapi-codegen ignores
 #      them; we keep the data flat under components.schemas).
+#   7. Conditional applicators (`if`/`then`/`else`) are dropped, and any
+#      `allOf` member that carried only those keywords is pruned. OpenAPI
+#      3.0 cannot express them and oapi-codegen v2.4.1 collapses a schema
+#      that carries them to a bare `interface{}` alias (losing every
+#      sibling property). The canonical JSON Schema still enforces them.
+#   8. Cross-file `$ref`s (e.g. "../receipt/record.schema.json") are
+#      rewritten to the local component the target file lifts to (e.g.
+#      "#/components/schemas/ReceiptRecord").
 #
 # Component naming: `<DirPascal><FilePascal>` for top-level schemas (so
 # `agent/heartbeat.schema.json` -> `AgentHeartbeat`,
@@ -255,6 +263,46 @@ def rewrite(node, lifts: dict, prefix: str):
                             continue
                         node[key] = value
 
+        # Drop JSON Schema 2020-12 conditional applicators (`if`/`then`/
+        # `else`). OpenAPI 3.0 has no equivalent, and oapi-codegen v2.4.1
+        # cannot represent them: a schema that carries `if`/`then`/`else`
+        # (directly or inside an `allOf` member) degrades to a bare
+        # `interface{}` alias, dropping every sibling property. These
+        # keywords are validation-only constraints (they add no fields to
+        # the object shape), so removing them preserves the generated
+        # struct while discarding constraints the generator cannot encode.
+        # The canonical JSON Schema still enforces the conditionals.
+        for conditional_key in ("if", "then", "else"):
+            node.pop(conditional_key, None)
+
+        # Prune `allOf` members that carry only the conditional keywords
+        # removed above (or are already empty) so a residual `allOf: [{}]`
+        # does not itself collapse the parent to `interface{}`. This runs
+        # before the generic recursion descends into surviving members, so
+        # it matches conditional-only members by their keys directly rather
+        # than relying on them having been emptied first. If no composable
+        # member survives, drop the `allOf` entirely and keep the parent's
+        # own `type`/`properties`/`required`.
+        if "allOf" in node and isinstance(node["allOf"], list):
+            conditional_only = {"if", "then", "else"}
+
+            def _is_droppable_member(member) -> bool:
+                if not isinstance(member, dict):
+                    return False
+                if not member:
+                    return True
+                return set(member.keys()).issubset(conditional_only)
+
+            surviving = [
+                member
+                for member in node["allOf"]
+                if not _is_droppable_member(member)
+            ]
+            if surviving:
+                node["allOf"] = surviving
+            else:
+                del node["allOf"]
+
         # Lift `$defs` (JSON Schema 2020-12) into the components.schemas
         # bag. Rewrite local `$ref` strings to point at the lifted name.
         if "$defs" in node:
@@ -350,21 +398,58 @@ def _rewrite_refs(node, mapping: dict[str, str]):
             _rewrite_refs(item, mapping)
 
 
-schemas: dict = {}
-for path in collect_schema_files():
-    rel = path.relative_to(schemas_dir)
-    parts = rel.parts
-    # Component name = DirPascal + FilePascal. The schemas tree is two
-    # levels deep (subtree/file.schema.json), so we expect parts of length
-    # 2. Defensive fallback for deeper trees: join all dir segments.
+# Map a schema file path (relative to schemas_dir) to its top-level
+# OpenAPI component name using the same DirPascal + FilePascal convention
+# the main loop applies. Keeps cross-file ref targets in sync with the
+# lifted component names.
+def component_name_for(rel_path: Path) -> str:
+    parts = rel_path.parts
     if len(parts) < 2:
         raise SystemExit(
-            f"regen-types.sh: unexpected schema layout: {rel}"
+            f"regen-types.sh: unexpected schema layout: {rel_path}"
         )
     dir_segments = parts[:-1]
     file_stem = parts[-1].removesuffix(".schema.json")
     name_prefix = "".join(pascalize(seg) for seg in dir_segments)
-    component_name = name_prefix + pascalize(file_stem)
+    return name_prefix + pascalize(file_stem)
+
+
+# Rewrite cross-file `$ref` strings (e.g. "../receipt/record.schema.json")
+# into local component refs ("#/components/schemas/ReceiptRecord"). JSON
+# Schema 2020-12 resolves a relative ref against the referencing file's own
+# location; oapi-codegen has no notion of the original directory layout
+# once every schema is flattened into components.schemas, so it would 404
+# trying to open the on-disk path. Local "#/..." refs and remote URLs are
+# left untouched.
+def _rewrite_cross_file_refs(node, base_dir: Path):
+    if isinstance(node, dict):
+        ref = node.get("$ref")
+        if isinstance(ref, str) and ref.endswith(".schema.json") and "://" not in ref:
+            target = (base_dir / ref).resolve()
+            try:
+                rel_target = target.relative_to(schemas_dir.resolve())
+            except ValueError as exc:
+                raise SystemExit(
+                    "regen-types.sh: cross-file $ref escapes the schema root: "
+                    f"{ref}"
+                ) from exc
+            node["$ref"] = (
+                f"#/components/schemas/{component_name_for(rel_target)}"
+            )
+        for value in node.values():
+            _rewrite_cross_file_refs(value, base_dir)
+    elif isinstance(node, list):
+        for item in node:
+            _rewrite_cross_file_refs(item, base_dir)
+
+
+schemas: dict = {}
+for path in collect_schema_files():
+    rel = path.relative_to(schemas_dir)
+    # Component name = DirPascal + FilePascal. The schemas tree is two
+    # levels deep (subtree/file.schema.json), so we expect parts of length
+    # 2. Defensive fallback for deeper trees: join all dir segments.
+    component_name = component_name_for(rel)
 
     raw = path.read_text(encoding="utf-8")
     schema = json.loads(raw)
@@ -373,6 +458,10 @@ for path in collect_schema_files():
     # the schema body.
     schema.pop("$schema", None)
     schema.pop("$id", None)
+
+    # Resolve cross-file refs against this file's directory before the
+    # local `$defs`/`const`/`oneOf` rewrites run.
+    _rewrite_cross_file_refs(schema, path.parent)
 
     rewrite(schema, schemas, component_name)
     schemas[component_name] = schema
@@ -411,8 +500,8 @@ PY
 # `-generate types,skip-prune` keeps every schema even when no operation
 # references it (we have no operations - all schemas are model-only). The
 # `skip-fmt` member is intentionally omitted so oapi-codegen runs gofmt on
-# its output; we run gofmt again after prepending our header below for
-# safety.
+# its output; gofmt runs again after the header is prepended below, since
+# that edit lands after oapi-codegen has formatted the file.
 #
 # `compatibility.always-prefix-enum-values: true` forces oapi-codegen to
 # emit fully-qualified enum constants (`<TypeName><Value>`) rather than

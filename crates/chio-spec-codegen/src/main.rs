@@ -16,7 +16,7 @@
 //! The schemas directory is walked recursively for `*.schema.json` files; the
 //! output directory is created if missing. `--errors-only` regenerates the
 //! Chio error registry output from the default registry path.
-//! `--threat-model` (M05.P5.T2) emits one stub Rust test per threat ID.
+//! `--threat-model` emits one stub Rust test per threat ID.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;

@@ -1,7 +1,7 @@
 //! Forbidden path guard -- blocks access to sensitive filesystem paths.
 //!
-//! Adapted from ClawdStrike's `guards/forbidden_path.rs`.  The pattern
-//! matching and path normalization logic is intentionally identical.
+//! Denies a request when the normalized target path matches a configured
+//! forbidden glob pattern.
 
 use chio_kernel::{GuardContext, KernelError, Verdict};
 use glob::Pattern;
@@ -71,24 +71,70 @@ pub struct ForbiddenPathGuard {
     exceptions: Vec<Pattern>,
 }
 
+/// Error returned when an operator-supplied forbidden-path glob fails to
+/// compile. Surfaced at policy-load time so an invalid pattern rejects the
+/// policy instead of being silently dropped (which would leave the path
+/// reachable).
+#[derive(Debug, thiserror::Error)]
+pub enum ForbiddenPathConfigError {
+    #[error("invalid forbidden-path pattern {pattern:?}: {source}")]
+    InvalidPattern {
+        pattern: String,
+        source: glob::PatternError,
+    },
+    #[error("invalid forbidden-path exception {pattern:?}: {source}")]
+    InvalidException {
+        pattern: String,
+        source: glob::PatternError,
+    },
+}
+
 impl ForbiddenPathGuard {
     pub fn new() -> Self {
-        Self::with_patterns(default_forbidden_patterns(), vec![])
-    }
-
-    pub fn with_patterns(patterns: Vec<String>, exceptions: Vec<String>) -> Self {
-        let patterns = patterns
-            .iter()
-            .filter_map(|p| Pattern::new(p).ok())
-            .collect();
-        let exceptions = exceptions
+        // Default patterns are compile-time constants and always valid globs,
+        // so this construction never drops one. Operator-supplied patterns go
+        // through `with_patterns`, which rejects invalid globs rather than
+        // silently dropping them.
+        let patterns = default_forbidden_patterns()
             .iter()
             .filter_map(|p| Pattern::new(p).ok())
             .collect();
         Self {
             patterns,
-            exceptions,
+            exceptions: Vec::new(),
         }
+    }
+
+    /// Build a guard from operator-supplied glob patterns, failing closed.
+    ///
+    /// Any pattern or exception that is not a valid glob is rejected so a typo
+    /// in policy cannot silently disable a forbidden-path block.
+    pub fn with_patterns(
+        patterns: Vec<String>,
+        exceptions: Vec<String>,
+    ) -> Result<Self, ForbiddenPathConfigError> {
+        let patterns = patterns
+            .iter()
+            .map(|p| {
+                Pattern::new(p).map_err(|source| ForbiddenPathConfigError::InvalidPattern {
+                    pattern: p.clone(),
+                    source,
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let exceptions = exceptions
+            .iter()
+            .map(|p| {
+                Pattern::new(p).map_err(|source| ForbiddenPathConfigError::InvalidException {
+                    pattern: p.clone(),
+                    source,
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Self {
+            patterns,
+            exceptions,
+        })
     }
 
     pub fn is_forbidden(&self, path: &str) -> bool {
@@ -206,9 +252,40 @@ mod tests {
         let guard = ForbiddenPathGuard::with_patterns(
             vec!["**/.env".to_string()],
             vec!["**/project/.env".to_string()],
-        );
+        )
+        .expect("valid test patterns");
         assert!(guard.is_forbidden("/app/.env"));
         assert!(!guard.is_forbidden("/app/project/.env"));
+    }
+
+    #[test]
+    fn invalid_pattern_fails_closed() {
+        // A typo in an operator-supplied forbidden pattern must reject the
+        // policy, not be silently dropped (which would leave the path open).
+        let result = ForbiddenPathGuard::with_patterns(vec!["**/id_rsa[".to_string()], vec![]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn invalid_exception_fails_closed() {
+        let result = ForbiddenPathGuard::with_patterns(
+            vec!["**/.env".to_string()],
+            vec!["**/[".to_string()],
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn default_patterns_all_compile() {
+        // new() builds defaults via filter_map(...ok()), which would silently
+        // drop a malformed default. Guarantee none is malformed so the default
+        // guard never loses a forbidden pattern.
+        for pattern in default_forbidden_patterns() {
+            assert!(
+                Pattern::new(&pattern).is_ok(),
+                "default forbidden pattern failed to compile: {pattern}"
+            );
+        }
     }
 
     #[test]

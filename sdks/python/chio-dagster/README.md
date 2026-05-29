@@ -89,7 +89,7 @@ defs = Definitions(assets=[customer_embeddings])
 
 ### `ChioIOManager`
 
-Wraps an inner `IOManager` with an Chio capability check on every
+Wraps an inner `IOManager` with a Chio capability check on every
 `handle_output` / `load_input`. This is the natural enforcement
 point for data governance: the IO manager knows the destination
 (warehouse, S3 bucket, local FS) the asset will land in, and Chio

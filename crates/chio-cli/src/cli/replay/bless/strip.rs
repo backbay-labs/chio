@@ -1,9 +1,11 @@
 // Local capability guard for `chio replay --bless`.
 
-const REPLAY_BLESS_CAPABILITY: &str = "chio:tee/bless@1";
-const REPLAY_BLESS_CAPABILITY_ENV: &str = "CHIO_TEE_BLESS_CAPABILITY";
+use super::*;
 
-fn require_replay_bless_capability() -> Result<(), CliError> {
+pub(crate) const REPLAY_BLESS_CAPABILITY: &str = "chio:tee/bless@1";
+pub(crate) const REPLAY_BLESS_CAPABILITY_ENV: &str = "CHIO_TEE_BLESS_CAPABILITY";
+
+pub(crate) fn require_replay_bless_capability() -> Result<(), CliError> {
     validate_replay_bless_capability(std::env::var(REPLAY_BLESS_CAPABILITY_ENV).ok())
 }
 

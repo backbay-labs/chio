@@ -126,8 +126,9 @@ fn receipt_explain_bilateral_renders_dual_dsse_and_inspection_trace() {
         .as_str()
         .expect("dual section must carry non-section-6 disclaimer string");
     assert!(
-        disclaimer.contains("not section-6 conformant")
-            || disclaimer.contains("NOT-SECTION-6-CONFORMANT"),
+        disclaimer
+            .to_lowercase()
+            .contains("not section-6 conformant"),
         "disclaimer must call out non-section-6 status: got {disclaimer}"
     );
 
@@ -294,11 +295,10 @@ fn receipt_explain_bilateral_without_flag_omits_trace() {
     );
 }
 
-/// Backwards-compat: the legacy `--explain-bilateral` spelling is
-/// retained as a clap alias so existing operator scripts continue to
-/// work. The output schema is identical to the new flag.
+/// The `--explain-bilateral` spelling is retained as an alias.
+/// The output schema is identical to the new flag.
 #[test]
-fn legacy_explain_bilateral_flag_still_accepted_via_alias() {
+fn explain_bilateral_flag_accepted_as_alias() {
     let bin = env!("CARGO_BIN_EXE_chio");
     let tmp = tempfile::tempdir().expect("tempdir");
     let fixture = write_artifact_fixture(tmp.path());
@@ -314,10 +314,10 @@ fn legacy_explain_bilateral_flag_still_accepted_via_alias() {
             "--explain-bilateral",
         ])
         .output()
-        .expect("invoke chio receipt explain with legacy flag");
+        .expect("invoke chio receipt explain with alias flag");
     assert!(
         out.status.success(),
-        "--explain-bilateral alias must still be accepted: stderr={}",
+        "--explain-bilateral alias must be accepted: stderr={}",
         String::from_utf8_lossy(&out.stderr)
     );
     let stdout = String::from_utf8(out.stdout).expect("utf8 stdout");
@@ -327,7 +327,7 @@ fn legacy_explain_bilateral_flag_still_accepted_via_alias() {
     assert_eq!(
         trace["trace_kind"].as_str(),
         Some("inspection"),
-        "trace_kind MUST be `inspection` even when invoked via legacy alias"
+        "trace_kind MUST be `inspection` even when invoked via alias"
     );
 }
 

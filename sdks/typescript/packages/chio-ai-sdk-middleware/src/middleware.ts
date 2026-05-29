@@ -239,12 +239,8 @@ export function isAuthorizedEvaluation(evaluation: ChioEvaluation): boolean {
     && evaluation.boundary_class === "prevent"
     && evaluation.observation_outcome == null
     && evaluation.trust_level === "mediated"
-    // The sidecar's `/chio/verify` route encodes the verdict via
-    // `verdict_result` in `crates/chio-http-core/src/evaluation.rs`,
-    // returning `"allow"` rather than `"authorized"`. Caller-supplied
-    // `verifyReceipt` implementations historically used "authorized"
-    // (the older Rust naming). Both are accepted so authority results
-    // from either source authorize identically.
+    // The sidecar's /chio/verify returns "allow"; verifyReceipt implementations
+    // may also return "authorized". Both authorize identically (see isAuthorizedResult()).
     && isAuthorizedResult(evaluation.result)
     && evaluation.authorized === true
     && evaluation.ok === true

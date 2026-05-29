@@ -1,6 +1,6 @@
 //! Federation-hop metrics surfaced through the workspace
-//! `chio-metrics-spec` registry. Wave 2.4 of the trj4 closeout wires the
-//! federation-hop boundary into the workspace registry: every
+//! `chio-metrics-spec` registry. The federation-hop boundary is wired into
+//! the workspace registry: every
 //! [`co_sign_with_origin`](crate::co_sign_with_origin) call increments
 //! [`CHIO_FEDERATION_HOP_TOTAL`] with a `result` label and observes
 //! [`CHIO_FEDERATION_HOP_LATENCY_SECONDS`] with the same label so the

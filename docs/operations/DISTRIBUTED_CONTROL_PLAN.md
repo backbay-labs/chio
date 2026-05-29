@@ -44,7 +44,7 @@ The codebase already had the right extension points:
 - `CapabilityAuthority` in `crates/chio-kernel/src/authority.rs`
 - `RevocationStore` in `crates/chio-kernel/src/lib.rs`
 - `ReceiptStore` in `crates/chio-kernel/src/lib.rs`
-- hosted admin surfaces in `crates/chio-cli/src/remote_mcp.rs`
+- hosted admin surfaces in `crates/chio-mcp-remote/src/remote_mcp/`
 - centralized CLI/runtime wiring in `crates/chio-cli/src/main.rs`
 
 That meant the rewrite did not need a new kernel model. It needed a new control-plane implementation behind the existing interfaces.
@@ -53,7 +53,7 @@ That meant the rewrite did not need a new kernel model. It needed a new control-
 
 ### 1. Shared trust-control service
 
-The service lives in `crates/chio-cli/src/trust_control.rs` and exposes:
+The service lives in `crates/chio-control-plane/src/trust_control.rs` and exposes:
 
 - `GET /health`
 - `GET /v1/authority`
@@ -76,7 +76,7 @@ Hosted runtimes now attach remote-backed implementations for:
 - `RevocationStore`
 - `ReceiptStore`
 
-Those clients are also in `crates/chio-cli/src/trust_control.rs`.
+Those clients are also in `crates/chio-control-plane/src/trust_control.rs`.
 
 The runtime selection rule is:
 

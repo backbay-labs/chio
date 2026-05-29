@@ -5,7 +5,7 @@
 //! configured identity-provider host and asserts that loopback /
 //! link-local discovery URLs are rejected through the same code path
 //! the remote MCP runtime uses for OIDC discovery and JWKS resolution.
-//! Pins the W2.2 fix that gates `fetch_identity_provider_json` and its
+//! Pins the SSRF fix that gates `fetch_identity_provider_json` and its
 //! callers (`resolve_jwks_key_set`, `resolve_discovered_identity_provider`)
 //! through the typed contract before a TCP connect is attempted.
 #![allow(clippy::unwrap_used, clippy::expect_used)]

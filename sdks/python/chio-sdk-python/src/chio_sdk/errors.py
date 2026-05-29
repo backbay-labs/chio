@@ -97,7 +97,7 @@ class ChioDeniedError(ChioError):
 
     @classmethod
     def from_wire(cls, data: dict[str, Any]) -> "ChioDeniedError":
-        """Build an ChioDeniedError from a sidecar 403 response body.
+        """Build a ChioDeniedError from a sidecar 403 response body.
 
         Accepts any subset of the known fields. The human-readable
         ``message`` falls back to ``reason`` and then the literal string

@@ -498,7 +498,7 @@ async def process():
 
 ## 8. Dead Letter Governance
 
-DLQ in an Chio-governed streaming system serves a fundamentally different
+DLQ in a Chio-governed streaming system serves a fundamentally different
 purpose than traditional DLQ. It is a security audit trail, not just an
 error recovery mechanism:
 

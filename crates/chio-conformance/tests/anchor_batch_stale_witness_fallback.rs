@@ -337,7 +337,7 @@ fn require_public_witness_rejects_self_asserted_witnessed_under_async_path() {
     );
 }
 
-/// HIGH-2: a Stale state without a prior verified record must be
+/// A Stale state without a prior verified record must be
 /// rejected when require_public_witness=true, even within the
 /// stale window. The verifier-owned cache is the
 /// authoritative source.
@@ -385,10 +385,10 @@ fn require_public_witness_rejects_stale_without_previous_verification() {
     );
 }
 
-/// HIGH-2 (positive control): a Stale state IS admitted when the
+/// Positive control: a Stale state IS admitted when the
 /// recomputed batch body_hash is in the caller's
 /// verifier-owned cache and the stale window is open.
-/// HIGH-1 (round-2): the set is keyed by body_hash, not receipt id,
+/// The set is keyed by body_hash, not receipt id,
 /// so an attacker cannot replay a previously-observed receipt id
 /// against a different batch's content.
 #[test]

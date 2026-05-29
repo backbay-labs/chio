@@ -2,7 +2,7 @@
 // or 'cargo xtask codegen --lang go'.
 //
 // Source: spec/schemas/chio-wire/v1/**/*.schema.json
-// Schema content SHA-256: 5e2ef4edbea873423625045a2fcceac852ba473a2b42e9f022a1d04863dd6488
+// Schema content SHA-256: aea93e09d1c0ec0ce0ce4e2c181fc351e83b33eab34a3a86fb8c5ec0fcedfa2a
 // Tool:   oapi-codegen v2.4.1 (see xtask/codegen-tools.lock.toml)
 //
 // The Schema content SHA-256 is computed from the lex-sorted schema bytes
@@ -336,85 +336,6 @@ const (
 // Defines values for KernelToolCallChunkType.
 const (
 	KernelToolCallChunkTypeToolCallChunk KernelToolCallChunkType = "tool_call_chunk"
-)
-
-// Defines values for KernelToolCallResponseReceiptActorChainKind.
-const (
-	KernelToolCallResponseReceiptActorChainKindAgent      KernelToolCallResponseReceiptActorChainKind = "agent"
-	KernelToolCallResponseReceiptActorChainKindOther      KernelToolCallResponseReceiptActorChainKind = "other"
-	KernelToolCallResponseReceiptActorChainKindProvider   KernelToolCallResponseReceiptActorChainKind = "provider"
-	KernelToolCallResponseReceiptActorChainKindService    KernelToolCallResponseReceiptActorChainKind = "service"
-	KernelToolCallResponseReceiptActorChainKindToolServer KernelToolCallResponseReceiptActorChainKind = "tool_server"
-	KernelToolCallResponseReceiptActorChainKindUser       KernelToolCallResponseReceiptActorChainKind = "user"
-)
-
-// Defines values for KernelToolCallResponseReceiptAlgorithm.
-const (
-	KernelToolCallResponseReceiptAlgorithmEd25519 KernelToolCallResponseReceiptAlgorithm = "ed25519"
-	KernelToolCallResponseReceiptAlgorithmP256    KernelToolCallResponseReceiptAlgorithm = "p256"
-	KernelToolCallResponseReceiptAlgorithmP384    KernelToolCallResponseReceiptAlgorithm = "p384"
-)
-
-// Defines values for KernelToolCallResponseReceiptBoundaryClass.
-const (
-	KernelToolCallResponseReceiptBoundaryClassAdvisoryOnly KernelToolCallResponseReceiptBoundaryClass = "advisory_only"
-	KernelToolCallResponseReceiptBoundaryClassDetectOnly   KernelToolCallResponseReceiptBoundaryClass = "detect_only"
-	KernelToolCallResponseReceiptBoundaryClassPrevent      KernelToolCallResponseReceiptBoundaryClass = "prevent"
-)
-
-// Defines values for KernelToolCallResponseReceiptDecision0Verdict.
-const (
-	KernelToolCallResponseReceiptDecision0VerdictAllow KernelToolCallResponseReceiptDecision0Verdict = "allow"
-)
-
-// Defines values for KernelToolCallResponseReceiptDecision1Verdict.
-const (
-	KernelToolCallResponseReceiptDecision1VerdictDeny KernelToolCallResponseReceiptDecision1Verdict = "deny"
-)
-
-// Defines values for KernelToolCallResponseReceiptDecision2Verdict.
-const (
-	KernelToolCallResponseReceiptDecision2VerdictCancelled KernelToolCallResponseReceiptDecision2Verdict = "cancelled"
-)
-
-// Defines values for KernelToolCallResponseReceiptDecision3Verdict.
-const (
-	KernelToolCallResponseReceiptDecision3VerdictIncomplete KernelToolCallResponseReceiptDecision3Verdict = "incomplete"
-)
-
-// Defines values for KernelToolCallResponseReceiptObservationOutcome.
-const (
-	KernelToolCallResponseReceiptObservationOutcomeDropped   KernelToolCallResponseReceiptObservationOutcome = "dropped"
-	KernelToolCallResponseReceiptObservationOutcomeEvaluated KernelToolCallResponseReceiptObservationOutcome = "evaluated"
-	KernelToolCallResponseReceiptObservationOutcomeObserved  KernelToolCallResponseReceiptObservationOutcome = "observed"
-)
-
-// Defines values for KernelToolCallResponseReceiptReceiptKind.
-const (
-	KernelToolCallResponseReceiptReceiptKindAdvisoryEvaluation KernelToolCallResponseReceiptReceiptKind = "advisory_evaluation"
-	KernelToolCallResponseReceiptReceiptKindMediatedDecision   KernelToolCallResponseReceiptReceiptKind = "mediated_decision"
-	KernelToolCallResponseReceiptReceiptKindTraceObservation   KernelToolCallResponseReceiptReceiptKind = "trace_observation"
-)
-
-// Defines values for KernelToolCallResponseReceiptRedactionMode.
-const (
-	KernelToolCallResponseReceiptRedactionModeNone     KernelToolCallResponseReceiptRedactionMode = "none"
-	KernelToolCallResponseReceiptRedactionModeRedacted KernelToolCallResponseReceiptRedactionMode = "redacted"
-	KernelToolCallResponseReceiptRedactionModeSummary  KernelToolCallResponseReceiptRedactionMode = "summary"
-)
-
-// Defines values for KernelToolCallResponseReceiptToolOrigin.
-const (
-	KernelToolCallResponseReceiptToolOriginCallerExecuted               KernelToolCallResponseReceiptToolOrigin = "caller_executed"
-	KernelToolCallResponseReceiptToolOriginHostExecutedProviderReported KernelToolCallResponseReceiptToolOrigin = "host_executed_provider_reported"
-	KernelToolCallResponseReceiptToolOriginHostExecutedUnmediated       KernelToolCallResponseReceiptToolOrigin = "host_executed_unmediated"
-)
-
-// Defines values for KernelToolCallResponseReceiptTrustLevel.
-const (
-	KernelToolCallResponseReceiptTrustLevelAdvisory KernelToolCallResponseReceiptTrustLevel = "advisory"
-	KernelToolCallResponseReceiptTrustLevelMediated KernelToolCallResponseReceiptTrustLevel = "mediated"
-	KernelToolCallResponseReceiptTrustLevelVerified KernelToolCallResponseReceiptTrustLevel = "verified"
 )
 
 // Defines values for KernelToolCallResponseResult0Status.
@@ -1176,7 +1097,7 @@ type ErrorToolServerError struct {
 // ErrorToolServerErrorCode defines model for ErrorToolServerError.Code.
 type ErrorToolServerErrorCode string
 
-// FederationBilateralSignatureSlice Bounded in-toto Statement payload for Chio bilateral DSSE signature slices. This is not the strict CHIODOS bilateral cosign invocation predicate.
+// FederationBilateralSignatureSlice Bounded in-toto Statement payload for Chio bilateral DSSE signature slices. This is not the strict treaty-bound bilateral invocation predicate.
 type FederationBilateralSignatureSlice struct {
 	Type      FederationBilateralSignatureSliceType `json:"_type"`
 	Predicate struct {
@@ -1536,76 +1457,13 @@ type KernelToolCallChunkType string
 
 // KernelToolCallResponse defines model for KernelToolCallResponse.
 type KernelToolCallResponse struct {
-	Id      string                        `json:"id"`
+	Id string `json:"id"`
+
+	// Receipt A signed Chio receipt: proof that a tool call was evaluated by the Kernel. The receipt id is the authoritative content-addressed SHA-256 hash over the canonical ChioReceiptIdInput.
 	Receipt ReceiptRecord                 `json:"receipt"`
 	Result  KernelToolCallResponse_Result `json:"result"`
 	Type    KernelToolCallResponseType    `json:"type"`
 }
-
-// KernelToolCallResponseReceiptActorChainKind defines model for KernelToolCallResponse.Receipt.ActorChain.Kind.
-type KernelToolCallResponseReceiptActorChainKind string
-
-// KernelToolCallResponseReceiptAlgorithm defines model for KernelToolCallResponse.Receipt.Algorithm.
-type KernelToolCallResponseReceiptAlgorithm string
-
-// KernelToolCallResponseReceiptBoundaryClass defines model for KernelToolCallResponse.Receipt.BoundaryClass.
-type KernelToolCallResponseReceiptBoundaryClass string
-
-// KernelToolCallResponseReceiptDecision0 defines model for .
-type KernelToolCallResponseReceiptDecision0 struct {
-	Verdict KernelToolCallResponseReceiptDecision0Verdict `json:"verdict"`
-}
-
-// KernelToolCallResponseReceiptDecision0Verdict defines model for KernelToolCallResponse.Receipt.Decision.0.Verdict.
-type KernelToolCallResponseReceiptDecision0Verdict string
-
-// KernelToolCallResponseReceiptDecision1 defines model for .
-type KernelToolCallResponseReceiptDecision1 struct {
-	Guard   string                                        `json:"guard"`
-	Reason  string                                        `json:"reason"`
-	Verdict KernelToolCallResponseReceiptDecision1Verdict `json:"verdict"`
-}
-
-// KernelToolCallResponseReceiptDecision1Verdict defines model for KernelToolCallResponse.Receipt.Decision.1.Verdict.
-type KernelToolCallResponseReceiptDecision1Verdict string
-
-// KernelToolCallResponseReceiptDecision2 defines model for .
-type KernelToolCallResponseReceiptDecision2 struct {
-	Reason  string                                        `json:"reason"`
-	Verdict KernelToolCallResponseReceiptDecision2Verdict `json:"verdict"`
-}
-
-// KernelToolCallResponseReceiptDecision2Verdict defines model for KernelToolCallResponse.Receipt.Decision.2.Verdict.
-type KernelToolCallResponseReceiptDecision2Verdict string
-
-// KernelToolCallResponseReceiptDecision3 defines model for .
-type KernelToolCallResponseReceiptDecision3 struct {
-	Reason  string                                        `json:"reason"`
-	Verdict KernelToolCallResponseReceiptDecision3Verdict `json:"verdict"`
-}
-
-// KernelToolCallResponseReceiptDecision3Verdict defines model for KernelToolCallResponse.Receipt.Decision.3.Verdict.
-type KernelToolCallResponseReceiptDecision3Verdict string
-
-// KernelToolCallResponse_Receipt_Decision defines model for KernelToolCallResponse.Receipt.Decision.
-type KernelToolCallResponse_Receipt_Decision struct {
-	union json.RawMessage
-}
-
-// KernelToolCallResponseReceiptObservationOutcome defines model for KernelToolCallResponse.Receipt.ObservationOutcome.
-type KernelToolCallResponseReceiptObservationOutcome string
-
-// KernelToolCallResponseReceiptReceiptKind defines model for KernelToolCallResponse.Receipt.ReceiptKind.
-type KernelToolCallResponseReceiptReceiptKind string
-
-// KernelToolCallResponseReceiptRedactionMode defines model for KernelToolCallResponse.Receipt.RedactionMode.
-type KernelToolCallResponseReceiptRedactionMode string
-
-// KernelToolCallResponseReceiptToolOrigin defines model for KernelToolCallResponse.Receipt.ToolOrigin.
-type KernelToolCallResponseReceiptToolOrigin string
-
-// KernelToolCallResponseReceiptTrustLevel defines model for KernelToolCallResponse.Receipt.TrustLevel.
-type KernelToolCallResponseReceiptTrustLevel string
 
 // KernelToolCallResponseResult0 defines model for .
 type KernelToolCallResponseResult0 struct {
@@ -1820,17 +1678,17 @@ type ProvenanceStamp struct {
 	// Principal Calling subject Chio resolved at the kernel boundary, in the same canonical form used by capability tokens (subject public key or normalized workload identity). Bound into the provenance graph alongside the receipt principal.
 	Principal string `json:"principal"`
 
-	// Provider Stable identifier of the upstream provider adapter that handled the tool call (for example `openai`, `anthropic`, `google-vertex`). M07 owns the canonical adapter identifier registry.
+	// Provider Stable identifier of the upstream provider adapter that handled the tool call (for example `openai`, `anthropic`, `google-vertex`).
 	Provider string `json:"provider"`
 
-	// ReceivedAt Unix timestamp (seconds) at which Chio observed the provider response. Monotonic with respect to receipts emitted from the same kernel; M07 fails closed if the value is in the future relative to the kernel clock.
+	// ReceivedAt Unix timestamp (seconds) at which Chio observed the provider response. Monotonic with respect to receipts emitted from the same kernel; Chio fails closed if the value is in the future relative to the kernel clock.
 	ReceivedAt int64 `json:"received_at"`
 
 	// RequestId Upstream request identifier returned by the provider for this call. Opaque to Chio; preserved verbatim so operators can correlate Chio receipts with provider-side logs.
 	RequestId string `json:"request_id"`
 }
 
-// ProvenanceVerdictLink One link binding a Chio policy verdict to the provenance graph. The link names the `verdict` decision that Chio's policy engine returned (`allow`, `deny`, `cancel`, `incomplete`), the `requestId` and optional `receiptId` the verdict applies to, and the `chainId` that ties the verdict back to a delegated call-chain context. Verdict-specific required fields are enforced via `oneOf` so the wire shape stays in lock-step with the HTTP verdict union in `spec/schemas/chio-http/v1/verdict.schema.json`: `deny` requires both `reason` and `guard`; `cancel` and `incomplete` require `reason`; `allow` rejects either. The verdict vocabulary mirrors the HTTP verdict tagged union and the per-step verdict family `StepVerdictKind` in `crates/chio-core-types/src/plan.rs` (lines 110-138). NOTE: there is no live `VerdictLink` Rust struct on this branch; the link is drafted as the wire form of the verdict-to-provenance edge that M07's tool-call fabric and the M01 receipt-record schema reference indirectly today. The dedicated Rust struct is expected to land alongside the M07 phase that wires the tool-call fabric to the provenance graph and the schema will be re-pinned to that serde shape at that time. Field names are camelCase to match the `GovernedCallChainContext` family this link binds to.
+// ProvenanceVerdictLink One link binding a Chio policy verdict to the provenance graph. The link names the `verdict` decision that Chio's policy engine returned (`allow`, `deny`, `cancel`, `incomplete`), the `requestId` and optional `receiptId` the verdict applies to, and the `chainId` that ties the verdict back to a delegated call-chain context. Verdict-specific required fields are enforced via `oneOf` so the wire shape stays in lock-step with the HTTP verdict union in `spec/schemas/chio-http/v1/verdict.schema.json`: `deny` requires both `reason` and `guard`; `cancel` and `incomplete` require `reason`; `allow` rejects either. The verdict vocabulary mirrors the HTTP verdict tagged union. Field names are camelCase to match the governed call-chain context family this link binds to.
 type ProvenanceVerdictLink struct {
 	// ChainId Stable identifier of the governed call chain this verdict ties back to. Matches the `chainId` carried by `provenance/context.schema.json` and `provenance/attestation-bundle.schema.json`.
 	ChainId string `json:"chainId"`
@@ -1905,7 +1763,7 @@ type ProvenanceVerdictLink3 struct {
 // ProvenanceVerdictLink3Verdict defines model for ProvenanceVerdictLink.3.Verdict.
 type ProvenanceVerdictLink3Verdict string
 
-// ReceiptInclusionProof Merkle inclusion proof for a single receipt leaf in a receipt-log Merkle tree. Mirrors the serde shape of `MerkleProof` in `crates/chio-core-types/src/merkle.rs`. The proof allows an auditor, holding only the published Merkle root and the original leaf bytes, to verify that the leaf was included in a tree of the given size at the given position. The audit path is the ordered list of sibling hashes encountered when walking from the leaf up to the root; siblings whose subtree was carried upward without pairing (the right-edge of an unbalanced level) are omitted. M04 deterministic-replay consumes this schema as the contract for golden-bundle inclusion artifacts under `tests/replay/goldens/<family>/<name>/`.
+// ReceiptInclusionProof Merkle inclusion proof for a single receipt leaf in a receipt-log Merkle tree. Mirrors the serde shape of `MerkleProof` in `crates/chio-core-types/src/merkle.rs`. The proof allows an auditor, holding only the published Merkle root and the original leaf bytes, to verify that the leaf was included in a tree of the given size at the given position. The audit path is the ordered list of sibling hashes encountered when walking from the leaf up to the root; siblings whose subtree was carried upward without pairing (the right-edge of an unbalanced level) are omitted. Deterministic-replay consumes this schema as the contract for golden-bundle inclusion artifacts under `tests/replay/goldens/<family>/<name>/`.
 type ReceiptInclusionProof struct {
 	// AuditPath Ordered sibling hashes from leaf-level up to (but not including) the root. Siblings that were carried upward without pairing on the right edge of an unbalanced level are omitted, so the path length is not strictly `ceil(log2(tree_size))`. Each entry is a `chio-core-types::Hash` serialized via its transparent serde adapter (32-byte SHA-256 digest, hex-encoded with a `0x` prefix).
 	AuditPath []string `json:"audit_path"`
@@ -1950,7 +1808,7 @@ type ReceiptLineageStatementSessionAnchorReference struct {
 	SessionAnchorId   string `json:"sessionAnchorId"`
 }
 
-// ReceiptRecord A signed Chio receipt: proof that a tool call was evaluated by the Kernel. The receipt id is the authoritative content-addressed SHA-256 hash over the canonical receipt body excluding id, algorithm, and signature.
+// ReceiptRecord A signed Chio receipt: proof that a tool call was evaluated by the Kernel. The receipt id is the authoritative content-addressed SHA-256 hash over the canonical ChioReceiptIdInput.
 type ReceiptRecord struct {
 	// Action Describes the tool call that was evaluated. Mirrors `ToolCallAction`.
 	Action ReceiptRecordToolCallAction `json:"action"`
@@ -1997,7 +1855,7 @@ type ReceiptRecord struct {
 	// RedactionMode Signed redaction mode applied to receipt details.
 	RedactionMode ReceiptRecordRedactionMode `json:"redaction_mode"`
 
-	// Signature Hex-encoded signature over the canonical JSON of the receipt body. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.
+	// Signature Hex-encoded signature over canonical JSON of ChioReceiptSigningBody { id, body: ChioReceiptIdInput }. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.
 	Signature string `json:"signature"`
 
 	// TenantId Tenant identifier for multi-tenant deployments. Absent in single-tenant mode; derived from the authenticated session's enterprise identity context, never from caller-provided request fields.
@@ -2274,7 +2132,7 @@ type TrustControlAttestationWorkloadIdentityCredentialKind string
 // TrustControlAttestationWorkloadIdentityScheme Identity scheme Chio recognized from the upstream evidence. Mirrors `WorkloadIdentityScheme` (lines 273-278).
 type TrustControlAttestationWorkloadIdentityScheme string
 
-// TrustControlHeartbeat One trust-control heartbeat used to refresh a held authority lease before it expires. The heartbeat names the lease being refreshed (`leaseId` plus `leaseEpoch`), the leader URL claiming continued ownership, and the unix-millisecond observation timestamp at which the heartbeat was issued. Drafted from `spec/PROTOCOL.md` section 9 prose around `/v1/internal/cluster/status` and the cluster lease lifecycle described in `crates/chio-cli/src/trust_control/cluster_and_reports.rs` (lines 832-877). NOTE: this schema is drafted from prose plus the `ClusterAuthorityLeaseView` shape; there is no dedicated `LeaseHeartbeatRequest` Rust struct in the live trust-control surface yet, so wire field names follow the same `serde(rename_all = camelCase)` convention used by the lease projection. The dedicated request/response struct is expected to land alongside the cluster RPC formalization in M09 P3.
+// TrustControlHeartbeat One trust-control heartbeat used to refresh a held authority lease before it expires. The heartbeat names the lease being refreshed (`leaseId` plus `leaseEpoch`), the leader URL claiming continued ownership, and the unix-millisecond observation timestamp at which the heartbeat was issued. The contract is anchored by `spec/PROTOCOL.md` section 9 (the `/v1/internal/cluster/status` cluster lease lifecycle). Wire field names are camelCase to match the lease projection.
 type TrustControlHeartbeat struct {
 	// LeaderUrl Normalized URL of the leader claiming continued ownership of the lease.
 	LeaderUrl string `json:"leaderUrl"`
@@ -2292,7 +2150,7 @@ type TrustControlHeartbeat struct {
 	ProposedExpiresAt *int64 `json:"proposedExpiresAt,omitempty"`
 }
 
-// TrustControlLease One operator-visible authority lease projection emitted by the trust-control service over `/v1/internal/cluster/status` and the budget-write authority block. A lease names the leader URL that currently holds the trust-control authority, the cluster election term that minted it, the lease identifier and epoch that scope subsequent budget and revocation writes, and the unix-second expiry plus configured TTL that bound the lease's continued validity. Mirrors the `ClusterAuthorityLeaseView` serde shape in `crates/chio-cli/src/trust_control/service_types.rs` (lines 1837-1848). The view uses `serde(rename_all = camelCase)` so wire field names are camelCase. The shape is constructed in `crates/chio-cli/src/trust_control/cluster_and_reports.rs` (`cluster_authority_lease_view_locked`, lines 841-862) from the live cluster consensus view; `leaseValid` is true only when the cluster has quorum and `leaseExpiresAt` is still in the future. NOTE: `leaseExpiresAt` and `termStartedAt` are unix **seconds** (computed in `cluster_and_reports.rs` lines 1580-1606 as `unix_timestamp_now() + lease_ttl_ms / 1000`), even though `leaseTtlMs` itself is in milliseconds. The asymmetry mirrors the live runtime shape and is preserved on the wire so consumers do not have to re-scale by 1000.
+// TrustControlLease One operator-visible authority lease projection emitted by the trust-control service over `/v1/internal/cluster/status` and the budget-write authority block. A lease names the leader URL that currently holds the trust-control authority, the cluster election term that minted it, the lease identifier and epoch that scope subsequent budget and revocation writes, and the unix-second expiry plus configured TTL that bound the lease's continued validity. Wire field names are camelCase. `leaseValid` is true only when the cluster has quorum and `leaseExpiresAt` is still in the future. NOTE: `leaseExpiresAt` and `termStartedAt` are unix seconds (`unix_timestamp_now() + leaseTtlMs / 1000`), even though `leaseTtlMs` itself is in milliseconds. The asymmetry mirrors the live runtime shape and is preserved on the wire so consumers do not have to re-scale by 1000.
 type TrustControlLease struct {
 	// AuthorityId Stable identifier for the authority that holds the lease. In the current bounded release this equals the leader URL.
 	AuthorityId string `json:"authorityId"`
@@ -2303,13 +2161,13 @@ type TrustControlLease struct {
 	// LeaseEpoch Lease epoch carried alongside `leaseId`. Currently equals `term`; kept distinct on the wire so future epoch bumps within a term remain expressible.
 	LeaseEpoch int64 `json:"leaseEpoch"`
 
-	// LeaseExpiresAt Unix-second timestamp at which the lease expires if not renewed. Computed as `unix_timestamp_now() + lease_ttl_ms / 1000` in `cluster_and_reports.rs` lines 1580-1606. The unit is seconds (not milliseconds) even though the configured TTL is expressed in milliseconds; downstream consumers MUST treat this field as a unix-second timestamp.
+	// LeaseExpiresAt Unix-second timestamp at which the lease expires if not renewed. Computed as `unix_timestamp_now() + leaseTtlMs / 1000`. The unit is seconds (not milliseconds) even though the configured TTL is expressed in milliseconds; downstream consumers MUST treat this field as a unix-second timestamp.
 	LeaseExpiresAt int64 `json:"leaseExpiresAt"`
 
 	// LeaseId Composite lease identifier in the form `{leaderUrl}#term-{leaseEpoch}`. Authoritative for downstream writes.
 	LeaseId string `json:"leaseId"`
 
-	// LeaseTtlMs Configured lease time-to-live in milliseconds. Bounded between 500ms and 5000ms by `authority_lease_ttl` (cluster_and_reports.rs lines 832-839). NOTE: this field is the only millisecond-denominated quantity in the lease projection; `termStartedAt` and `leaseExpiresAt` are unix seconds.
+	// LeaseTtlMs Configured lease time-to-live in milliseconds. Bounded between 500ms and 5000ms. NOTE: this field is the only millisecond-denominated quantity in the lease projection; `termStartedAt` and `leaseExpiresAt` are unix seconds.
 	LeaseTtlMs int64 `json:"leaseTtlMs"`
 
 	// LeaseValid True only when the cluster currently has quorum and `leaseExpiresAt` has not yet passed. Trust-control fails closed and rejects authority-bearing writes when this is false.
@@ -2318,11 +2176,11 @@ type TrustControlLease struct {
 	// Term Cluster election term that minted this lease. Monotonically non-decreasing.
 	Term int64 `json:"term"`
 
-	// TermStartedAt Optional unix-second timestamp at which the current term began on this leader. Captured via `unix_timestamp_now()` in `cluster_and_reports.rs` line 1603. Omitted via `serde(skip_serializing_if = Option::is_none)` when unknown (no quorum or no leader).
+	// TermStartedAt Optional unix-second timestamp at which the current term began on this leader. Omitted when unknown (no quorum or no leader).
 	TermStartedAt *int64 `json:"termStartedAt,omitempty"`
 }
 
-// TrustControlTerminate One trust-control termination request that voluntarily releases a held authority lease before its TTL expires. Termination names the lease being released (`leaseId` plus `leaseEpoch`), the leader URL releasing it, and a typed `reason` so operators can distinguish leader handoff from quorum loss or operator-initiated stepdown. Drafted from `spec/PROTOCOL.md` section 9 prose plus the lease invalidation paths in `crates/chio-cli/src/trust_control/cluster_and_reports.rs` (lines 1595-1611) where loss of quorum or a leader change clears `lease_expires_at` and bumps the election term. NOTE: this schema is drafted from prose; there is no dedicated `LeaseTerminateRequest` Rust struct in the live trust-control surface yet. The dedicated request/response struct is expected to land alongside the cluster RPC formalization in M09 P3. Wire field names follow the `serde(rename_all = camelCase)` convention used by the sibling lease projection so the families stay consistent on the wire.
+// TrustControlTerminate One trust-control termination request that voluntarily releases a held authority lease before its TTL expires. Termination names the lease being released (`leaseId` plus `leaseEpoch`), the leader URL releasing it, and a typed `reason` so operators can distinguish leader handoff from quorum loss or operator-initiated stepdown. The contract is anchored by `spec/PROTOCOL.md` section 9, where loss of quorum or a leader change clears the lease expiry and bumps the election term. Wire field names are camelCase to match the sibling lease projection so the families stay consistent on the wire.
 type TrustControlTerminate struct {
 	// LeaderUrl Normalized URL of the leader releasing the lease.
 	LeaderUrl string `json:"leaderUrl"`
@@ -3371,120 +3229,6 @@ func (t JsonrpcResponse_Id) MarshalJSON() ([]byte, error) {
 }
 
 func (t *JsonrpcResponse_Id) UnmarshalJSON(b []byte) error {
-	err := t.union.UnmarshalJSON(b)
-	return err
-}
-
-// AsKernelToolCallResponseReceiptDecision0 returns the union data inside the KernelToolCallResponse_Receipt_Decision as a KernelToolCallResponseReceiptDecision0
-func (t KernelToolCallResponse_Receipt_Decision) AsKernelToolCallResponseReceiptDecision0() (KernelToolCallResponseReceiptDecision0, error) {
-	var body KernelToolCallResponseReceiptDecision0
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromKernelToolCallResponseReceiptDecision0 overwrites any union data inside the KernelToolCallResponse_Receipt_Decision as the provided KernelToolCallResponseReceiptDecision0
-func (t *KernelToolCallResponse_Receipt_Decision) FromKernelToolCallResponseReceiptDecision0(v KernelToolCallResponseReceiptDecision0) error {
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
-
-// MergeKernelToolCallResponseReceiptDecision0 performs a merge with any union data inside the KernelToolCallResponse_Receipt_Decision, using the provided KernelToolCallResponseReceiptDecision0
-func (t *KernelToolCallResponse_Receipt_Decision) MergeKernelToolCallResponseReceiptDecision0(v KernelToolCallResponseReceiptDecision0) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-// AsKernelToolCallResponseReceiptDecision1 returns the union data inside the KernelToolCallResponse_Receipt_Decision as a KernelToolCallResponseReceiptDecision1
-func (t KernelToolCallResponse_Receipt_Decision) AsKernelToolCallResponseReceiptDecision1() (KernelToolCallResponseReceiptDecision1, error) {
-	var body KernelToolCallResponseReceiptDecision1
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromKernelToolCallResponseReceiptDecision1 overwrites any union data inside the KernelToolCallResponse_Receipt_Decision as the provided KernelToolCallResponseReceiptDecision1
-func (t *KernelToolCallResponse_Receipt_Decision) FromKernelToolCallResponseReceiptDecision1(v KernelToolCallResponseReceiptDecision1) error {
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
-
-// MergeKernelToolCallResponseReceiptDecision1 performs a merge with any union data inside the KernelToolCallResponse_Receipt_Decision, using the provided KernelToolCallResponseReceiptDecision1
-func (t *KernelToolCallResponse_Receipt_Decision) MergeKernelToolCallResponseReceiptDecision1(v KernelToolCallResponseReceiptDecision1) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-// AsKernelToolCallResponseReceiptDecision2 returns the union data inside the KernelToolCallResponse_Receipt_Decision as a KernelToolCallResponseReceiptDecision2
-func (t KernelToolCallResponse_Receipt_Decision) AsKernelToolCallResponseReceiptDecision2() (KernelToolCallResponseReceiptDecision2, error) {
-	var body KernelToolCallResponseReceiptDecision2
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromKernelToolCallResponseReceiptDecision2 overwrites any union data inside the KernelToolCallResponse_Receipt_Decision as the provided KernelToolCallResponseReceiptDecision2
-func (t *KernelToolCallResponse_Receipt_Decision) FromKernelToolCallResponseReceiptDecision2(v KernelToolCallResponseReceiptDecision2) error {
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
-
-// MergeKernelToolCallResponseReceiptDecision2 performs a merge with any union data inside the KernelToolCallResponse_Receipt_Decision, using the provided KernelToolCallResponseReceiptDecision2
-func (t *KernelToolCallResponse_Receipt_Decision) MergeKernelToolCallResponseReceiptDecision2(v KernelToolCallResponseReceiptDecision2) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-// AsKernelToolCallResponseReceiptDecision3 returns the union data inside the KernelToolCallResponse_Receipt_Decision as a KernelToolCallResponseReceiptDecision3
-func (t KernelToolCallResponse_Receipt_Decision) AsKernelToolCallResponseReceiptDecision3() (KernelToolCallResponseReceiptDecision3, error) {
-	var body KernelToolCallResponseReceiptDecision3
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromKernelToolCallResponseReceiptDecision3 overwrites any union data inside the KernelToolCallResponse_Receipt_Decision as the provided KernelToolCallResponseReceiptDecision3
-func (t *KernelToolCallResponse_Receipt_Decision) FromKernelToolCallResponseReceiptDecision3(v KernelToolCallResponseReceiptDecision3) error {
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
-
-// MergeKernelToolCallResponseReceiptDecision3 performs a merge with any union data inside the KernelToolCallResponse_Receipt_Decision, using the provided KernelToolCallResponseReceiptDecision3
-func (t *KernelToolCallResponse_Receipt_Decision) MergeKernelToolCallResponseReceiptDecision3(v KernelToolCallResponseReceiptDecision3) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-func (t KernelToolCallResponse_Receipt_Decision) MarshalJSON() ([]byte, error) {
-	b, err := t.union.MarshalJSON()
-	return b, err
-}
-
-func (t *KernelToolCallResponse_Receipt_Decision) UnmarshalJSON(b []byte) error {
 	err := t.union.UnmarshalJSON(b)
 	return err
 }

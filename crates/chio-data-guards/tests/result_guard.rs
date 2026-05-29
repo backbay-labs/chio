@@ -9,7 +9,7 @@
 //! 2. The `PostInvocationHook` adapter, which slots into the
 //!    `chio_guards::post_invocation::PostInvocationPipeline` today.
 //!
-//! Acceptance criteria (roadmap phase 7.4):
+//! Acceptance criteria:
 //!
 //! - Post-invocation guard truncates results exceeding `MaxRowsReturned`.
 //! - Columns in `ColumnDenylist` are redacted from results.

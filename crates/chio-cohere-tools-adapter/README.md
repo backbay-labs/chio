@@ -2,6 +2,15 @@
 
 Provider-native adapter for Cohere `/v2/chat` tool-use traffic.
 
+The adapter forwards a native `/v2/chat` request to the upstream endpoint,
+lifts the tool calls from the response into the canonical kernel types, runs
+the verdict, and lowers the result back into Cohere's wire shape. The outbound
+call is a real `reqwest`-backed HTTP transport (`CohereTransport`) that POSTs
+to `https://api.cohere.com/v2/chat` with an `Authorization: Bearer` API key;
+the shared `chio-provider-adapter-core` HTTP module owns the client, timeout,
+and failure classification. Tests run against the hermetic `MockTransport` (and
+a local mock server), so the suite makes no live network calls.
+
 The adapter pins the upstream API version to `2025-04` (see
 `crate::transport::COHERE_API_VERSION`). Bumping the pin requires a deliberate
 PR with a fixture re-record; the version string is also re-asserted by the
@@ -13,6 +22,10 @@ messages carrying `tool_call_id` and a content block list.
 
 ## Surface
 
+- `CohereAdapter::chat` POSTs a native `/v2/chat` request body through the
+  transport and lifts the tool calls from the buffered response.
+- `CohereAdapter::chat_stream` POSTs a streaming `/v2/chat` request and gates
+  the buffered SSE response frame by frame.
 - `CohereAdapter::lift_batch` lifts every `tool_calls` block on the assistant
   `message` of a `/v2/chat` response into a
   `chio_tool_call_fabric::ToolInvocation`.

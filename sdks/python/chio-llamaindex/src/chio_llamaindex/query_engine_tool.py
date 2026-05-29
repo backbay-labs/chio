@@ -24,15 +24,11 @@ The Chio core type :class:`Constraint` ships a
 list of memory-store identifiers -- exactly the shape needed for a
 vector-collection allowlist. We reuse it here.
 
-The Python :class:`chio_sdk.models.Constraint` in the currently-shipped
-SDK only exposes ``value: str | int | None``. To keep this SDK useful
-without touching the core types crate (phase 2.2 owns that file), the
-:class:`ChioQueryEngineTool` performs the allowlist check *client-side*
-against an :class:`ChioScope` it carries. The client-side check is
-enforced fail-closed: if no allowlist is present the call is denied.
-When the Python :class:`Constraint` is extended to hold list values,
-the wrapper will transparently pick up the scope constraint instead of
-its locally-cached allowlist.
+The Python :class:`chio_sdk.models.Constraint` only exposes
+``value: str | int | None``, so :class:`ChioQueryEngineTool` performs
+the allowlist check *client-side* against an :class:`ChioScope` it
+carries. The client-side check is enforced fail-closed: if no allowlist
+is present the call is denied.
 """
 
 from __future__ import annotations

@@ -26,6 +26,5 @@ base64 = { workspace = true }
 chio-attest-loopback = { path = "../chio-attest-loopback" }
 tempfile = { workspace = true }
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

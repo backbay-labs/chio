@@ -1,8 +1,7 @@
 //! Integration tests for `VectorDbGuard`.
 //!
 //! Drives the guard through the `chio_kernel::Guard` trait with realistic
-//! capability scopes, verifying the acceptance criteria called out in
-//! roadmap phase 7.2:
+//! capability scopes, verifying the acceptance criteria:
 //!
 //! - Query to a collection not in `CollectionAllowlist` is denied.
 //! - Cross-namespace access is denied.

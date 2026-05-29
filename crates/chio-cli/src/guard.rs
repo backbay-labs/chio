@@ -185,7 +185,6 @@ pub(crate) fn cmd_guard_inspect(path: &Path) -> Result<(), CliError> {
 
     let file_size = wasm_bytes.len() as u64;
 
-    // Parse the WASM binary
     let parser = wasmparser::Parser::new(0);
     let mut export_list: Vec<(String, &str)> = Vec::new();
     let mut memory_info: Vec<String> = Vec::new();
@@ -836,9 +835,9 @@ pub(crate) fn cmd_guard_install(archive_path: &Path, target_dir: &Path) -> Resul
     let dec = GzDecoder::new(file);
     let mut archive = tar::Archive::new(dec);
 
-    // Extract to a temporary directory first, then determine guard name from manifest.
-    // Use std::env::temp_dir with a unique suffix derived from the archive filename
-    // to avoid requiring tempfile as a regular dependency.
+    // Extract to a temporary directory first, then determine guard name from
+    // manifest. The temp dir name carries a unique suffix derived from the
+    // archive filename.
     let archive_stem = archive_path
         .file_stem()
         .and_then(|s| s.to_str())

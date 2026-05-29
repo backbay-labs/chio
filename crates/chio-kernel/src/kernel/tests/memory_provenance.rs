@@ -1,4 +1,4 @@
-// Phase 18.2 memory-provenance tests.
+// Memory-provenance tests.
 //
 // Included by `src/kernel/tests.rs`. Shares helper items from
 // `tests/all.rs` via the surrounding `tests.rs` `include!`s

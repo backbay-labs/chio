@@ -65,10 +65,10 @@ impl Guard for GuardPipeline {
             match guard.evaluate(ctx) {
                 Ok(Verdict::Allow) => continue,
                 Ok(Verdict::PendingApproval) => {
-                    // Phase 3.4 introduced `PendingApproval` as a sticky
-                    // escalation state. Keep iterating so another guard can
-                    // still short-circuit to Deny, but propagate the pending
-                    // verdict up the stack if no deny occurs.
+                    // `PendingApproval` is a sticky escalation state. Keep
+                    // iterating so another guard can still short-circuit to
+                    // Deny, but propagate the pending verdict up the stack if
+                    // no deny occurs.
                     final_verdict = Verdict::PendingApproval;
                 }
                 Ok(Verdict::Deny) => {

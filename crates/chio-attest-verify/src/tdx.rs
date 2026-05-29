@@ -50,9 +50,9 @@ const INTEL_SGX_QE_VENDOR_ID: [u8; 16] = [
 const ATT_KEY_TYPE_ECDSA_P256: u16 = 2;
 const ATT_KEY_TYPE_ECDSA_P384: u16 = 3;
 
-/// Minimal DCAP collateral bundle required by the TDX scaffold.
+/// Minimal DCAP collateral bundle for TDX quote verification.
 ///
-/// Full quote and collateral corpus pinning lands in the next phase, but this
+/// Full quote and collateral corpus pinning is not yet wired; this
 /// shape already rejects absent evidence, stale collateral, and chains that do
 /// not anchor at the configured Intel root bytes.
 #[derive(Debug, Clone)]
@@ -89,7 +89,7 @@ impl TdxCollateral {
     }
 }
 
-/// Intel TDX DCAP quote verifier scaffold.
+/// Intel TDX DCAP quote verifier.
 #[derive(Debug, Clone)]
 pub struct TdxDcapVerifier {
     collateral: TdxCollateral,

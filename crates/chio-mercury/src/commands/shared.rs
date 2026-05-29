@@ -285,7 +285,7 @@ fn populate_mercury_receipt_store(
             .into_iter()
             .map(|(_, bytes)| bytes)
             .collect::<Vec<_>>(),
-        &issuer,
+        &kernel_keypair,
     )?;
     store.store_checkpoint(&checkpoint)?;
     Ok(())

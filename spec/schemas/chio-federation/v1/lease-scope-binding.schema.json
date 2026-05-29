@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://chio.dev/schemas/chio-federation/v1/lease-scope-binding.schema.json",
+  "$id": "https://chio.world/schemas/chio-federation/v1/lease-scope-binding.schema.json",
   "title": "Chio Federation Lease Scope Binding",
   "type": "object",
   "additionalProperties": false,

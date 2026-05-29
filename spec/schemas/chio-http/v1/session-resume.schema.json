@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Chio HTTP Session Resume",
-  "description": "Persisted session-resume record used to re-attach a remote MCP session after edge restart or transport reconnection. Mirrors the serde-derived `RemoteSessionResumeRecord` struct in `crates/chio-cli/src/remote_mcp/session_core.rs` lines 223-240. The record is signed by `RemoteSessionResumeIntegrityEnvelope` (lines 1611+) and validated on the load path. The `lifecycle.state` enum values reflect the default serde rendering of `RemoteSessionState` (no `#[serde(rename_all)]` attribute), which serializes variant names as PascalCase (`Initializing`, `Ready`, `Draining`, `Deleted`, `Expired`, `Closed`); the lower-case `as_str()` projection is reserved for log/metric labels and is not emitted on the wire. The lifecycle timestamps (`created_at`, `last_seen_at`, `idle_expires_at`, `drain_deadline_at`) are unix **milliseconds** because they are populated from `session_now_millis()` (`session_core.rs` lines 2087-2094 and 2312-2326). NOTE: M07 may re-pin the cross-cluster fields; M08 may extend lifecycle snapshot semantics.",
+  "description": "Persisted session-resume record used to re-attach a remote MCP session after edge restart or transport reconnection. Mirrors the serde-derived `RemoteSessionResumeRecord` struct in `crates/chio-mcp-remote/src/remote_mcp/session_core.rs`. The record is signed by `RemoteSessionResumeIntegrityEnvelope` and validated on the load path. The `lifecycle.state` enum values reflect the default serde rendering of `RemoteSessionState` (no `#[serde(rename_all)]` attribute), which serializes variant names as PascalCase (`Initializing`, `Ready`, `Draining`, `Deleted`, `Expired`, `Closed`); the lower-case `as_str()` projection is reserved for log/metric labels and is not emitted on the wire. The lifecycle timestamps (`created_at`, `last_seen_at`, `idle_expires_at`, `drain_deadline_at`) are unix milliseconds because they are populated from `session_now_millis()`.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -47,12 +47,12 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["state", "created_at", "last_seen_at", "idle_expires_at"],
-      "description": "Lifecycle snapshot recorded at suspend time. Mirrors `RemoteSessionLifecycleSnapshot` in `session_core.rs` lines 338-345. All timestamps are unix milliseconds (populated from `session_now_millis()`).",
+      "description": "Lifecycle snapshot recorded at suspend time. Mirrors `RemoteSessionLifecycleSnapshot`. All timestamps are unix milliseconds (populated from `session_now_millis()`).",
       "properties": {
         "state": {
           "type": "string",
           "enum": ["Initializing", "Ready", "Draining", "Deleted", "Expired", "Closed"],
-          "description": "Session state at the time of the snapshot. Mirrors the default serde rendering of `RemoteSessionState` in `session_core.rs` lines 315-323 (PascalCase, no `#[serde(rename_all)]`). The `as_str()` projection at lines 325-335 returns lower-case labels for logs and metrics; those are not emitted on the wire."
+          "description": "Session state at the time of the snapshot. Mirrors the default serde rendering of `RemoteSessionState` (PascalCase, no `#[serde(rename_all)]`). The `as_str()` projection returns lower-case labels for logs and metrics; those are not emitted on the wire."
         },
         "created_at": {
           "type": "integer",
@@ -62,7 +62,7 @@
         "last_seen_at": {
           "type": "integer",
           "minimum": 0,
-          "description": "Unix timestamp (milliseconds) of the most recent activity recorded for the session. Populated via `session_now_millis()` (see `session_core.rs` lines 2312-2372)."
+          "description": "Unix timestamp (milliseconds) of the most recent activity recorded for the session. Populated via `session_now_millis()`."
         },
         "idle_expires_at": {
           "type": "integer",
@@ -97,7 +97,7 @@
     },
     "resume_integrity_tag": {
       "type": ["string", "null"],
-      "description": "Optional MAC tag computed by `RemoteSessionResumeIntegrityEnvelope` over the resume record (see `session_core.rs` lines 1611+). `#[serde(default, skip_serializing_if = \"Option::is_none\")]`."
+      "description": "Optional MAC tag computed by `RemoteSessionResumeIntegrityEnvelope` over the resume record. `#[serde(default, skip_serializing_if = \"Option::is_none\")]`."
     }
   }
 }

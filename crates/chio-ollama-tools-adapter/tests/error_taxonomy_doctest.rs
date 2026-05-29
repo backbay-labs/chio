@@ -23,7 +23,7 @@ fn adapter() -> OllamaAdapter {
         "deadbeef",
         "local_chio_demo",
     );
-    OllamaAdapter::new(config, Arc::new(MockTransport::new()))
+    OllamaAdapter::new(config, Arc::new(MockTransport::new("mock://ollama")))
 }
 
 fn raw(value: Value) -> Result<ProviderRequest, String> {

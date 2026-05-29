@@ -1,6 +1,6 @@
 [package]
 name = "chiodome-bilateral-example"
-description = "Cross-org bilateral co-signed invocation under DSSE plus a KB MCP integration scaffold"
+description = "Cross-org bilateral co-signed invocation under DSSE plus a KB MCP integration"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -34,6 +34,5 @@ serde_json = { workspace = true }
 sha2 = { workspace = true }
 hex = { workspace = true }
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

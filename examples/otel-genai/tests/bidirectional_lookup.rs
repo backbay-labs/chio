@@ -78,7 +78,7 @@ fn receipt_id_and_span_id_lookup_is_bidirectional() -> Result<(), Box<dyn Error>
         .with_attribute("chio.agent.id", serde_json::json!("agent-demo"))
         .with_attribute(
             "redaction_pass_id",
-            serde_json::json!("m06-redactors@1.4.0+default"),
+            serde_json::json!("redactors@1.4.0+default"),
         )
         .with_attribute("redaction_elapsed_micros", serde_json::json!(12450_u64));
 
@@ -105,7 +105,7 @@ fn receipt_id_and_span_id_lookup_is_bidirectional() -> Result<(), Box<dyn Error>
     assert_eq!(metadata["otel"]["attributes"]["gen_ai.system"], "openai");
     assert_eq!(
         metadata["otel"]["attributes"]["redaction_pass_id"],
-        "m06-redactors@1.4.0+default"
+        "redactors@1.4.0+default"
     );
     assert!(metadata["otel"]["attributes"]
         .get("gen_ai.tool.call.id")

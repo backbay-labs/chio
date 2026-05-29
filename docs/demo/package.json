@@ -2,7 +2,7 @@
   "name": "docs-demo",
   "version": "0.0.0",
   "private": true,
-  "description": "Chio M04-fixture verify demo. Engineering output, not a release. Built as a static site under docs/demo/dist/ for GitHub Pages publication.",
+  "description": "Chio browser receipt-verify demo. Built as a static site under docs/demo/dist/ for GitHub Pages publication.",
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {

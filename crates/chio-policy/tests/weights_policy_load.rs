@@ -1,4 +1,4 @@
-//! Integration coverage for `policy.weights_card_required` (P4.T4).
+//! Integration coverage for `policy.weights_card_required`.
 //!
 //! Locks the fail-closed load contract:
 //!

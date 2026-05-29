@@ -229,7 +229,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_passport_artifacts_remain_accepted() {
+    fn passport_artifacts_with_canonical_schema_verify() {
         let signer = Keypair::from_seed(&[1u8; 32]);
         let holder = Keypair::from_seed(&[7u8; 32]);
         let credential = issue_reputation_credential(
@@ -243,12 +243,12 @@ mod tests {
         let holder_did = did_from_public_key(holder.public_key());
         let mut passport =
             build_agent_passport(&holder_did.to_string(), vec![credential]).expect("passport");
-        passport.schema = LEGACY_PASSPORT_SCHEMA.to_string();
-        verify_agent_passport(&passport, 1_710_000_100).expect("legacy passport verify");
+        passport.schema = PASSPORT_SCHEMA.to_string();
+        verify_agent_passport(&passport, 1_710_000_100).expect("passport verify");
 
         let policy = PassportVerifierPolicy::default();
-        let legacy_policy_body = SignedPassportVerifierPolicyBody {
-            schema: LEGACY_PASSPORT_VERIFIER_POLICY_SCHEMA.to_string(),
+        let policy_body = SignedPassportVerifierPolicyBody {
+            schema: PASSPORT_VERIFIER_POLICY_SCHEMA.to_string(),
             policy_id: "rp-default".to_string(),
             verifier: "https://rp.example.com".to_string(),
             signer_public_key: signer.public_key(),
@@ -256,15 +256,15 @@ mod tests {
             expires_at: 1_710_086_400,
             policy: policy.clone(),
         };
-        let (legacy_policy_signature, _) = signer
-            .sign_canonical(&legacy_policy_body)
-            .expect("sign legacy verifier policy");
-        let legacy_policy = SignedPassportVerifierPolicy {
-            body: legacy_policy_body,
-            signature: legacy_policy_signature,
+        let (policy_signature, _) = signer
+            .sign_canonical(&policy_body)
+            .expect("sign verifier policy");
+        let signed_policy = SignedPassportVerifierPolicy {
+            body: policy_body,
+            signature: policy_signature,
         };
-        verify_signed_passport_verifier_policy(&legacy_policy)
-            .expect("legacy verifier policy verify");
+        verify_signed_passport_verifier_policy(&signed_policy)
+            .expect("verifier policy verify");
 
         let mut challenge = create_passport_presentation_challenge(
             "https://rp.example.com",
@@ -275,9 +275,9 @@ mod tests {
             Some(policy),
         )
         .expect("challenge");
-        challenge.schema = LEGACY_PASSPORT_PRESENTATION_CHALLENGE_SCHEMA.to_string();
+        challenge.schema = PASSPORT_PRESENTATION_CHALLENGE_SCHEMA.to_string();
         verify_passport_presentation_challenge(&challenge, 1_710_000_020)
-            .expect("legacy challenge verify");
+            .expect("challenge verify");
 
         let mut response = respond_to_passport_presentation_challenge(
             &holder,
@@ -286,18 +286,18 @@ mod tests {
             1_710_000_020,
         )
         .expect("response");
-        response.schema = LEGACY_PASSPORT_PRESENTATION_RESPONSE_SCHEMA.to_string();
+        response.schema = PASSPORT_PRESENTATION_RESPONSE_SCHEMA.to_string();
         let unsigned = UnsignedPassportPresentationResponse {
             schema: response.schema.clone(),
             challenge: response.challenge.clone(),
             passport: response.passport.clone(),
         };
-        let (legacy_response_signature, _) = holder
+        let (response_signature, _) = holder
             .sign_canonical(&unsigned)
-            .expect("sign legacy response");
-        response.proof.proof_value = legacy_response_signature.to_hex();
+            .expect("sign response");
+        response.proof.proof_value = response_signature.to_hex();
         verify_passport_presentation_response(&response, Some(&challenge), 1_710_000_120)
-            .expect("legacy response verify");
+            .expect("response verify");
     }
 
     #[test]

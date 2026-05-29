@@ -37,7 +37,7 @@ class ChioEvaluation(BaseModel):
 
 
 def _default_evaluator(_: ChatRequest) -> ChioEvaluation:
-    """Static allow evaluator. Production swaps this for the kernel shim."""
+    """Static allow evaluator; replace with the kernel shim to enforce."""
 
     return ChioEvaluation(verdict="allow")
 

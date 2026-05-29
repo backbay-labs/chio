@@ -32,7 +32,7 @@ where agents invoke tools or access sensitive resources.
 
 ### 2.1 Sidecar per Ray Node
 
-Each Ray node runs an Chio sidecar. Ray tasks and actors on that node call
+Each Ray node runs a Chio sidecar. Ray tasks and actors on that node call
 the local sidecar:
 
 ```

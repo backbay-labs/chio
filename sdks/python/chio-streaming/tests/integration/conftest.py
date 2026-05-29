@@ -214,8 +214,7 @@ def kafka_topic_factory(
 
     The factory returns the topic name. Topics are tracked and deleted
     on teardown so parallel test runs do not accumulate leftover state
-    across the cluster (Redpanda's metadata cache is small but it is
-    considerate to keep the test surface tight).
+    across the cluster.
     """
     from confluent_kafka.admin import NewTopic  # type: ignore[import-not-found]
 

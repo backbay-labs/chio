@@ -1,12 +1,12 @@
 # Adversarial corpus minimization report
 
-Owner: M05.P2.T3.
+Owner: maintainers.
 Last sweep: 2026-04-30.
 
 This report records the result of running `cargo fuzz cmin` over each
-fuzz corpus that feeds the M05 trust-boundary adversarial pipeline.
-Minimization runs as a maintenance task before every milestone close;
-intermediate trajectory-2 phases append to the same table rather than
+fuzz corpus that feeds the trust-boundary adversarial pipeline.
+Minimization runs as a maintenance task before every release close;
+later sweeps append to the same table rather than
 rewriting prior rows so the audit trail stays linear.
 
 Methodology, fail-closed:
@@ -21,7 +21,7 @@ Methodology, fail-closed:
    the delta and any seeds that the run dropped.
 4. A seed dropped by cmin is an information-redundant input rather
    than a coverage hole; the corpus_metadata.toml entry for that
-   seed must be removed in the same commit so the M05.P2.T2 gate
+   seed must be removed in the same commit so the corpus-metadata gate
    stays green.
 
 The table below pins the **pre-minimization baseline** at the date
@@ -65,10 +65,10 @@ are not fed through cmin (they are coverage artifacts of the
 trust-boundary harness, not libFuzzer mutation inputs).
 
 Pending adversarial-promoted seeds at 2026-04-30: 0 (no auto-promotions
-have landed on this branch; M05.P3 ships the wasm_guard_escape corpus,
-which is the first sink for adversarial-mode promotions).
+have landed yet; the wasm_guard_escape corpus is the first sink for
+adversarial-mode promotions).
 
 ## Changelog
 
 - 2026-04-30: baseline recorded; table pinned to the 23 corpora present
-  on the M05 P2 branch tip. No seeds dropped.
+  at the baseline sweep. No seeds dropped.

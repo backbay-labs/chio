@@ -1,6 +1,6 @@
 # Healthcare Pilot PHI Policy
 
-This page pins the M01 healthcare design-partner PHI and PII redaction policy.
+This page pins the healthcare design-partner PHI and PII redaction policy.
 It applies to request arguments, tool responses, signed receipts, PagerDuty
 alerts, and audit-log exports.
 
@@ -17,7 +17,7 @@ Required deployment settings:
 - Custom patterns for design-partner identifiers, if supplied by the partner
   SOC team.
 
-`High` is the safe M01 default because `spec/GUARDS.md` defines High as
+`High` is the safe default for this pilot because `spec/GUARDS.md` defines High as
 definite PII/PHI, including SSN, credit card, and MRN. `Medium` may be enabled
 after P3 schema negotiation for ICD-10 and email coverage.
 
@@ -69,8 +69,8 @@ redactor configuration before continuing cutover.
 
 ## Audit Export Rule
 
-OCSF JSON remains the canonical export. CEF is the M01 SOC text format. Both
-exports carry `redaction_status`.
+OCSF JSON remains the canonical export. CEF is the SOC text format for this
+pilot. Both exports carry `redaction_status`.
 
 Allowed `redaction_status` values:
 
@@ -86,7 +86,7 @@ and evaluate the canonical halt triggers.
 ## HIPAA Retention
 
 The design-partner deployment retains Chio receipts for 6 years on its own
-audit store. Chio M01 does not ship a long-retention storage tier. The export
+audit store. Chio does not ship a long-retention storage tier in this release. The export
 schema records checkpoint ids so the design partner can bind retained receipts
 to its HIPAA evidence chain.
 

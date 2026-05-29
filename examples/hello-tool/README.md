@@ -51,4 +51,4 @@ authority flow:
 2. choose a safe per-call ceiling and total budget
 3. issue a capability whose monetary budget is consistent with that quote
 
-For the end-to-end planning flow, see [TOOL_PRICING_GUIDE.md](../../docs/TOOL_PRICING_GUIDE.md).
+For the end-to-end planning flow, see [TOOL_PRICING_GUIDE.md](../../docs/reference/TOOL_PRICING_GUIDE.md).

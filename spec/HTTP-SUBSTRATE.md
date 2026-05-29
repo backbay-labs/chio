@@ -16,7 +16,7 @@ The keywords **MUST**, **SHOULD**, and **MAY** are normative in this document
 
 ## 1. Overview
 
-The HTTP substrate introduces a sidecar evaluation model: an Chio kernel runs as
+The HTTP substrate introduces a sidecar evaluation model: a Chio kernel runs as
 a local process and exposes an HTTP API on localhost. Language-specific middleware
 (Express, Actix, Axum, etc.) intercepts incoming HTTP requests, constructs an
 `ChioHttpRequest`, sends it to the sidecar, and enforces the returned verdict.

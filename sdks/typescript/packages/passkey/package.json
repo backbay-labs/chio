@@ -1,5 +1,5 @@
 {
-  "name": "@chio/passkey",
+  "name": "@chio-protocol/passkey",
   "version": "0.1.0",
   "description": "Chio passkey browser helper. Thin wrapper around navigator.credentials.get + fetch to a server-side issuer that mints audience-pinned PasskeyCapability envelopes. Holds zero key material; never signs in the browser.",
   "license": "Apache-2.0",

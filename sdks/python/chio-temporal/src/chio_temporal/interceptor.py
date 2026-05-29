@@ -389,7 +389,7 @@ def _activity_parameters(
     # shape, but a plausible extension such as
     # ``chio_file_write(path, content, overwrite)`` still carries the
     # protected ``content`` slot in position 1; redact the known prefix
-    # and forward any trailing extras raw. (See bot comment 3229196956.)
+    # and forward any trailing extras raw.
     positional_names = DEFAULT_TOOL_POSITIONAL_NAMES.get(tool_name or "")
     if (
         positional_names is not None

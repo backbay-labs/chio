@@ -18,8 +18,8 @@
 //! spawns `chio replay <path> --json`, and asserts the process exit code
 //! and the `exit_code` field in the JSON report.
 //!
-//! Tests are `#[ignore]` because `cmd_replay` does not yet call the live
-//! pipeline. Remove `#[ignore]` once the dispatch wiring lands.
+//! All six tests are active - `cmd_replay` is wired (dispatch.rs) and the
+//! fixtures exist. Tests spawn the `chio` binary and assert exit codes.
 //!
 //! Fixtures are regenerated via:
 //! `cargo test -p chio-cli --test replay -- --ignored bless_fixtures`
@@ -31,7 +31,7 @@ use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction,
 use chio_core::Keypair;
 use serde_json::{json, Value};
 
-// All six exit-code tests are `#[ignore]` pending dispatch wiring.
+// All six exit-code tests are active; cmd_replay is wired and fixtures exist.
 
 // --------------------------------------------------------------------
 // Path / fixture helpers
@@ -203,10 +203,9 @@ mod replay {
         assert_eq!(report["first_divergence"]["kind"], "verdict_drift");
     }
 
-    /// Exit code 20: an Ed25519 signature does not verify against the
-    /// embedded `kernel_key`. The fixture flips a single content_hash
-    /// byte on a previously-signed receipt so the body the verifier
-    /// re-canonicalises no longer matches the signature.
+    /// Exit code 20: an Ed25519 signature does not verify against the embedded `kernel_key`.
+    /// The fixture has a single flipped byte in `content_hash`, so the re-canonicalized body
+    /// no longer matches the signature.
     #[test]
     fn bad_signature_exits_twenty() {
         let fixture = fixture_path("20-bad-signature");
@@ -244,7 +243,7 @@ mod replay {
     }
 
     /// Exit code 40: the receipt declares a `schema_version` that the
-    /// current build does not support (or otherwise fails the M01
+    /// current build does not support (or otherwise fails the
     /// canonical-JSON schema validator). The fixture carries a sentinel
     /// `"schema_version":"chio.receipt/v999"` field that the dispatcher
     /// rejects before signature verification.

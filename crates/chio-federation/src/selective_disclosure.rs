@@ -1,5 +1,3 @@
-//! ## Why this module exists
-//!
 //! ## Stub status (HONEST)
 //!
 //! What this module DOES today (`bbs-stub` feature):
@@ -35,10 +33,6 @@
 //!   (wholesale-only fields are flagged in the message metadata but
 //!   not refused at projection - that lives in the predicate layer
 //!   per §5.6 and arrives with the predicate-language pass).
-//!
-//! ## Bounded-claim language (per selective-disclosure.md)
-//!
-//! ## Crate placement note
 
 use chio_core_types::canonical::canonical_json_bytes;
 use chio_core_types::receipt::ChioReceiptBody;
@@ -61,7 +55,6 @@ pub struct BbsMessage {
     pub encoding: String,
     /// Encoded message bytes per §5.2. Hex-encoded for serde
     /// transport so the audit view round-trips through JSON cleanly.
-    /// In a real BBS+ implementation these bytes feed `hash_to_scalar`.
     pub bytes_hex: String,
     /// True iff the §5.2 table marks this row as wholesale-only
     /// (i.e. predicates cannot reach inside the structured sub-body).

@@ -36,54 +36,7 @@ use chio_kernel::{
 
 use super::*;
 
-trait TestResultOk<T, E> {
-    fn test_expect(self, context: &'static str) -> T;
-    fn test_unwrap(self) -> T;
-}
-
-impl<T, E> TestResultOk<T, E> for Result<T, E> {
-    fn test_expect(self, context: &'static str) -> T {
-        match self {
-            Ok(value) => value,
-            Err(_) => panic!("{context}"),
-        }
-    }
-
-    fn test_unwrap(self) -> T {
-        match self {
-            Ok(value) => value,
-            Err(_) => panic!("expected Ok result"),
-        }
-    }
-}
-
-trait TestResultErr<T, E> {
-    fn test_unwrap_err(self) -> E;
-}
-
-impl<T, E> TestResultErr<T, E> for Result<T, E> {
-    fn test_unwrap_err(self) -> E {
-        match self {
-            Ok(_) => panic!("expected Err result"),
-            Err(error) => error,
-        }
-    }
-}
-
-trait TestOptionExt<T> {
-    fn test_expect(self, context: &'static str) -> T;
-    fn test_unwrap(self) -> T;
-}
-
-impl<T> TestOptionExt<T> for Option<T> {
-    fn test_expect(self, context: &'static str) -> T {
-        self.unwrap_or_else(|| panic!("{context}"))
-    }
-
-    fn test_unwrap(self) -> T {
-        self.unwrap_or_else(|| panic!("expected Some value"))
-    }
-}
+use chio_test_support::prelude::*;
 
 fn unique_db_path(prefix: &str) -> std::path::PathBuf {
     let nonce = SystemTime::now()
@@ -397,7 +350,7 @@ fn sample_receipt_with_keypair(id: &str, timestamp: u64, keypair: &Keypair) -> C
             tenant_id: None,
             kernel_key: keypair.public_key(),
         },
-        &keypair,
+        keypair,
     )
     .test_unwrap()
 }
@@ -438,39 +391,6 @@ fn sample_receipt_with_keypair_and_tenant(
 
 fn receipt_test_keypair() -> Keypair {
     Keypair::from_seed(&[0x42; 32])
-}
-
-fn legacy_receipt_with_mismatched_parameter_hash(id: &str) -> ChioReceipt {
-    let keypair = Keypair::generate();
-    ChioReceipt::sign(
-        ChioReceiptBody {
-            id: id.to_string(),
-            timestamp: 1,
-            capability_id: "cap-1".to_string(),
-            tool_server: "shell".to_string(),
-            tool_name: "bash".to_string(),
-            action: ToolCallAction {
-                parameters: serde_json::json!({ "cmd": "echo legacy" }),
-                parameter_hash: "0".repeat(64),
-            },
-            decision: Some(Decision::Allow),
-            receipt_kind: Default::default(),
-            boundary_class: Default::default(),
-            observation_outcome: None,
-            tool_origin: Default::default(),
-            redaction_mode: Default::default(),
-            actor_chain: Vec::new(),
-            content_hash: "content-1".to_string(),
-            policy_hash: "policy-1".to_string(),
-            evidence: Vec::new(),
-            metadata: None,
-            trust_level: chio_core::TrustLevel::default(),
-            tenant_id: None,
-            kernel_key: keypair.public_key(),
-        },
-        &keypair,
-    )
-    .test_unwrap()
 }
 
 fn sample_child_receipt_with_id_and_timestamp(id: &str, timestamp: u64) -> ChildRequestReceipt {
@@ -841,7 +761,7 @@ fn load_checkpoint_publication_trust_anchor_binding_rows(
     .collect()
 }
 
-fn seed_legacy_projectionless_store(
+fn seed_pre_projection_store(
     path: &std::path::Path,
     tool_receipts: &[ChioReceipt],
     child_receipts: &[ChildRequestReceipt],
@@ -1228,59 +1148,6 @@ fn append_chio_receipt_rejects_mismatched_parameter_hash() {
         chio_kernel::ReceiptStoreError::Conflict(message)
             if message.contains("mismatched action parameter hash")
     ));
-
-    let _ = fs::remove_file(path);
-}
-
-#[test]
-fn decode_verified_chio_receipt_preserves_legacy_mismatched_parameter_hash() {
-    let receipt = legacy_receipt_with_mismatched_parameter_hash("rcpt-legacy-parameter-hash");
-    let raw_json = serde_json::to_string(&receipt).test_unwrap();
-
-    let decoded =
-        decode_verified_chio_receipt(&raw_json, "persisted tool receipt", Some(1)).test_unwrap();
-
-    assert_eq!(decoded.id, receipt.id);
-    assert!(!decoded.action.verify_hash().test_unwrap());
-}
-
-#[test]
-fn list_tool_receipts_preserves_legacy_mismatched_parameter_hash_rows() {
-    let path = unique_db_path("chio-receipts-legacy-parameter-hash");
-    let store = SqliteReceiptStore::open(&path).test_unwrap();
-    let receipt = legacy_receipt_with_mismatched_parameter_hash("rcpt-legacy-row");
-    {
-        let connection = store.connection().test_unwrap();
-        connection
-            .execute(
-                r#"
-                INSERT INTO chio_tool_receipts (
-                    receipt_id, timestamp, capability_id, subject_key, issuer_key, grant_index,
-                    tool_server, tool_name, decision_kind, policy_hash, content_hash, raw_json
-                ) VALUES (?1, ?2, ?3, NULL, NULL, NULL, ?4, ?5, ?6, ?7, ?8, ?9)
-                "#,
-                rusqlite::params![
-                    receipt.id.as_str(),
-                    receipt.timestamp as i64,
-                    receipt.capability_id.as_str(),
-                    receipt.tool_server.as_str(),
-                    receipt.tool_name.as_str(),
-                    support::decision_kind(receipt.decision.as_ref()),
-                    receipt.policy_hash.as_str(),
-                    receipt.content_hash.as_str(),
-                    serde_json::to_string(&receipt).test_unwrap(),
-                ],
-            )
-            .test_unwrap();
-    }
-
-    let receipts = store
-        .list_tool_receipts(10, None, None, None, None)
-        .test_unwrap();
-
-    assert_eq!(receipts.len(), 1);
-    assert_eq!(receipts[0].id, receipt.id);
-    assert!(!receipts[0].action.verify_hash().test_unwrap());
 
     let _ = fs::remove_file(path);
 }
@@ -3105,7 +2972,7 @@ fn open_backfills_claim_log_and_checkpoint_transparency_projections() {
     )
     .test_unwrap();
 
-    seed_legacy_projectionless_store(
+    seed_pre_projection_store(
         &path,
         std::slice::from_ref(&tool_receipt),
         std::slice::from_ref(&child_receipt),
@@ -6669,12 +6536,12 @@ fn liability_claim_lifecycle_persists_package_through_payout_receipt() {
 /// phantom increments when the commit actor drains a request between
 /// `try_send` returning Ok and the caller's `fetch_add`.
 ///
-/// Before the fix, `inflight.fetch_add(1)` ran AFTER `try_send`, so the
-/// worker could dequeue, commit, and run `atomic_saturating_sub` before the
-/// appender thread observed the send result. The increment then leaked past
-/// the drain, leaving `health.writer.inflight` stuck at a positive value
-/// after a flush, OR saturating the worker's subtraction to 0 mid-flight and
-/// underreporting concurrent writes.
+/// The hazard: if `inflight.fetch_add(1)` runs AFTER `try_send`, the worker
+/// can dequeue, commit, and run `atomic_saturating_sub` before the appender
+/// thread observes the send result. The increment then leaks past the drain,
+/// leaving `health.writer.inflight` stuck at a positive value after a flush,
+/// OR saturating the worker's subtraction to 0 mid-flight and underreporting
+/// concurrent writes.
 ///
 /// This stress test runs many concurrent appenders within a bounded time
 /// budget, polls `inflight` from a sampler thread, then drains via
@@ -6682,13 +6549,12 @@ fn liability_claim_lifecycle_persists_package_through_payout_receipt() {
 ///   - `inflight == 0` after flush (no phantom leaked increment),
 ///   - `accepted_total == committed_total` (no lost commits),
 ///   - sampler never observed `inflight > accepted_total + thread_count`
-///     slack (catches the pre-fix leak-past-drain signature).
+///     slack (catches the leak-past-drain signature).
 ///
-/// The race window on the buggy code is genuinely narrow because the worker
-/// runs a SQL commit between dequeue and decrement (milliseconds), while the
-/// caller's `fetch_add` follows `try_send` in nanoseconds. The test acts as
-/// a regression guard pinning the post-fix accounting invariant rather than
-/// a deterministic reproducer.
+/// The race window is narrow because the worker runs a SQL commit between
+/// dequeue and decrement (milliseconds), while the caller's `fetch_add`
+/// follows `try_send` in nanoseconds. The test acts as a regression guard
+/// pinning the accounting invariant rather than a deterministic reproducer.
 #[test]
 fn append_inflight_counter_does_not_underflow_on_concurrent_drain() {
     use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -6769,10 +6635,7 @@ fn append_inflight_counter_does_not_underflow_on_concurrent_drain() {
                     Ordering::SeqCst,
                 );
             }
-            // Pre-fix race signature: late `fetch_add` ran after the worker
-            // drained N items, so `inflight` briefly exceeded the number of
-            // accepted commands. The slack tolerates the fact that a thread
-            // can hold an unincremented receipt between `fetch_add` (now
+            // The slack tolerates a thread holding an unincremented receipt between `fetch_add` (now
             // pre-send) and its corresponding decrement.
             if inflight > accepted.saturating_add(slack) {
                 sampler_leak_clone.store(true, Ordering::SeqCst);

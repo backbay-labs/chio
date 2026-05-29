@@ -10,7 +10,7 @@ Reference runner:
 - 4-core Linux x86_64 host.
 - Rust toolchain pinned by the workspace.
 - Warm cargo cache and no network access during the timed benchmark.
-- Default `chio-kernel` features, including `legacy-sync` and `delegation`.
+- Default `chio-kernel` features, including `delegation`.
 - In-process benchmark tool server only. External network, filesystem, and
   mTLS transport costs are excluded by design.
 

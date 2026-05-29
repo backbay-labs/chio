@@ -147,7 +147,6 @@ fixtures:
       - docs/standards/CHIO_RECEIPTS_PROFILE.md
     forbidden_top_paths:
       - .planning
-      - docs/mercury
     forbidden_any_paths:
       - .planning
     max_latency_ms: 2500
@@ -169,7 +168,6 @@ fixtures:
       - crates/chio-revocation-oracle/tests/swarm_revocation_e2e.rs
     forbidden_top_paths:
       - crates/chio-tee
-      - docs/mercury
     expected_text_terms:
       - revocation
       - read_first
@@ -190,11 +188,6 @@ fixtures:
       - spec/COMPLIANCE-CERTIFICATE.md
       - docs/release/QUALIFICATION.md
       - crates/chio-kernel/tests/compliance_certificate_hybrid.rs
-    forbidden_top_paths:
-      - crates/chio-mercury
-      - docs/mercury
-    forbidden_text_terms:
-      - chio-mercury/src/commands/assurance_release.rs
     max_latency_ms: 7000
 
   - id: compound-test-revocation
@@ -226,8 +219,6 @@ fixtures:
     expected_any_paths:
       - crates/chio-kernel/src/kernel/tests/compliance_score.rs
       - crates/chio-http-core/tests/compliance_score_endpoint.rs
-    forbidden_top_paths:
-      - crates/chio-mercury
     max_latency_ms: 2500
 
   - id: graph-neighbors-mcp-adapter
@@ -246,12 +237,10 @@ fixtures:
     forbidden_top_paths:
       - docs/sdk/PYTHON.md
       - docs/adr/README.md
-      - docs/mercury/README.md
     forbidden_any_paths:
       - .
       - docs/sdk/PYTHON.md
       - docs/adr/README.md
-      - docs/mercury/README.md
     max_latency_ms: 2500
 
   - id: graph-context-scoped-capability
@@ -355,18 +344,6 @@ fixtures:
       - .planning
       - docs/scratchpad
       - spec/schemas
-    max_latency_ms: 2500
-
-  - id: mercury-test-latency
-    suite: deep
-    category: test-discovery
-    target_tool: kb_find_tests
-    query: Mercury assurance release renewal
-    limit: 8
-    expected_top_paths:
-      - crates/chio-mercury/tests/cli.rs
-    expected_any_paths:
-      - crates/chio-mercury-core/tests/integration_smoke.rs
     max_latency_ms: 2500
 
   - id: graphiti-release-memory

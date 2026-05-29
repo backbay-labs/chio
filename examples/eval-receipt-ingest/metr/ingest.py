@@ -43,16 +43,16 @@ def canonical_payload_without_signatures(bundle):
 def build_bundle():
     bundle = {
         "schema": "chio.eval-report.bundle.v1",
-        "bundle_id": "urn:chio:eval-bundle:metr:p4-sample",
+        "bundle_id": "urn:chio:eval-bundle:metr:sample-v1",
         "created_at": "2026-05-02T00:00:00Z",
         "producer": {
             "name": "Chio",
-            "repository": "https://github.com/bb-connor/arc",
-            "commit": "trajectory-3-m02-p4",
-            "workflow_run_url": "https://github.com/bb-connor/arc/actions/runs/25246581763",
+            "repository": "https://github.com/backbay-labs/chio",
+            "commit": "v0.1.0",
+            "workflow_run_url": "https://github.com/backbay-labs/chio/actions/runs/25246581763",
         },
         "eval_run": {
-            "run_id": "metr-p4-vivaria-export",
+            "run_id": "metr-vivaria-export-v1",
             "partner": "METR",
             "partner_slug": "metr",
             "pipeline": "vivaria-trace-postprocess",
@@ -71,7 +71,7 @@ def build_bundle():
             receipt_entry(index, scenario_id, category, verdict)
             for index, (scenario_id, category, verdict) in enumerate(SCENARIOS, start=1)
         ],
-        "partner_review": {"feedback_ref": "M02.P4 METR pair-run 2026-05-02", "review_window_days": 7, "reviewer_role": "partner technical reviewer", "disposition": "accepted-with-notes"},
+        "partner_review": {"feedback_ref": "METR pair-run 2026-05-02", "review_window_days": 7, "reviewer_role": "partner technical reviewer", "disposition": "accepted-with-notes"},
         "signatures": [],
     }
     signature = sha256_text(canonical_payload_without_signatures(bundle))

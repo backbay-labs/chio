@@ -1,4 +1,4 @@
-// Phase 20.3 cross-kernel federation bilateral co-signing tests.
+// Cross-kernel federation bilateral co-signing tests.
 //
 // Included by `src/kernel/tests.rs`; shares helpers (`make_config`,
 // `make_keypair`, `make_scope`, `make_grant`, `make_capability`,
@@ -31,6 +31,95 @@ impl BilateralCoSigningProtocol for CountingRejectingCosigner {
         Err(BilateralCoSigningError::PeerRejected(
             "test cosigner should not be called before local durability".to_string(),
         ))
+    }
+}
+
+/// Runtime admission hook that supplies the treaty-bound DSSE material the
+/// federation post-sign hook requires. In production this metadata is emitted
+/// by the runtime admission verifier (`chio-runtime-core`) after it resolves
+/// and verifies the cross-boundary treaty evidence; here we mint an equivalent
+/// `chio_runtime.federation_treaty_dsse` block directly so the kernel's
+/// fail-closed dual-signing path has the material it demands.
+///
+/// The kernel re-derives `outcome_sha256` and `remote_receipt_sha256` from the
+/// freshly signed receipt and validates `request_sha256` against the receipt's
+/// action parameter hash, so the only receipt-bound value this hook must get
+/// right is `request_sha256`, which it computes from the request arguments.
+struct TreatyDsseAdmissionHook;
+
+impl TreatyDsseAdmissionHook {
+    fn federation_treaty_dsse(request_sha256: &str) -> serde_json::Value {
+        let capability_lease_ref = chio_federation::CapabilityLeaseRef {
+            lease_id: "lease-bilateral".to_string(),
+            issuer: "kernel.org-a".to_string(),
+            expires_at_unix_ms: 4_102_444_800_000,
+            scope_digest: None,
+        };
+        let policy_evaluation_summary = chio_federation::PolicyEvaluationSummary {
+            server_a_verdict: chio_federation::PolicyVerdict {
+                verdict: "allow".to_string(),
+                policy_id: "policy-a".to_string(),
+                policy_version: "v1".to_string(),
+                rationale_code: None,
+            },
+            server_b_verdict: chio_federation::PolicyVerdict {
+                verdict: "allow".to_string(),
+                policy_id: "policy-b".to_string(),
+                policy_version: "v1".to_string(),
+                rationale_code: None,
+            },
+            joint_disposition: Some("allow".to_string()),
+        };
+        // `outcome_sha256` and `remote_receipt_sha256` are overwritten by the
+        // kernel from the signed receipt; supply syntactically valid 64-hex
+        // placeholders. `request_sha256` must match the receipt action hash.
+        let treaty_binding_ref = chio_federation::TreatyBindingRef {
+            treaty_id: "treaty-buyer-vendor".to_string(),
+            treaty_scope_sha256: "1".repeat(64),
+            ladder_intersection_sha256: "2".repeat(64),
+            admission_report_sha256: "3".repeat(64),
+            continuation_sha256: "4".repeat(64),
+            lineage_bundle_sha256: "5".repeat(64),
+            action_class_id: "workflow.destructive.vendor_call".to_string(),
+            consistency_model: "totally_ordered".to_string(),
+            request_sha256: request_sha256.to_string(),
+            outcome_sha256: "6".repeat(64),
+            local_receipt_sha256: "7".repeat(64),
+            remote_receipt_sha256: "8".repeat(64),
+            lease_refs: vec!["lease-bilateral".to_string()],
+            governance_refs: Vec::new(),
+            signer_kernel_ids: vec!["kernel.org-a".to_string(), "kernel.org-b".to_string()],
+        };
+        serde_json::json!({
+            "capability_lease_ref": capability_lease_ref,
+            "policy_evaluation_summary": policy_evaluation_summary,
+            "consistency_anchor": "anchor-live",
+            "consistency_model": "totally_ordered",
+            "cross_org_visibility": "treaty_only",
+            "treaty_binding_ref": treaty_binding_ref,
+        })
+    }
+}
+
+impl RuntimeAdmissionHook for TreatyDsseAdmissionHook {
+    fn name(&self) -> &str {
+        "test-federation-treaty-dsse-admission"
+    }
+
+    fn evaluate(
+        &self,
+        context: &RuntimeAdmissionContext<'_>,
+    ) -> Result<RuntimeAdmissionDecision, KernelError> {
+        let action = ToolCallAction::from_parameters(context.request.arguments.clone())
+            .map_err(|e| KernelError::Internal(format!("failed to hash request arguments: {e}")))?;
+        Ok(RuntimeAdmissionDecision::allow(Some(serde_json::json!({
+            "chio_runtime": {
+                "admission_id": context.request.request_id,
+                "accepted": true,
+                "failure_code": null,
+                "federation_treaty_dsse": Self::federation_treaty_dsse(&action.parameter_hash),
+            }
+        }))))
     }
 }
 
@@ -114,6 +203,12 @@ fn federated_request_produces_dual_signed_receipt_verifiable_by_both_orgs() {
         tool_host_public_key.clone(),
     )));
 
+    // Supply the treaty-bound DSSE runtime material that the post-sign
+    // federation hook requires. In production this rides in on the runtime
+    // admission decision after the treaty evidence is verified; the kernel
+    // refuses to mint a treaty-bound DSSE envelope without it (fail-closed).
+    kernel.set_runtime_admission_hook(std::sync::Arc::new(TreatyDsseAdmissionHook));
+
     // Build a federated tool call request (agent in Org A calling a tool
     // hosted by Org B).
     let agent_kp = make_keypair();
@@ -150,12 +245,27 @@ fn federated_request_produces_dual_signed_receipt_verifiable_by_both_orgs() {
     let envelope = kernel
         .federation_dsse_envelope(&response.receipt.id)
         .expect("DSSE envelope must exist for federated request");
-    chio_federation::verify_dsse_envelope(
+    // The treaty-bound federation hop emits a strict Chio bilateral
+    // invocation predicate (it carries `treaty_binding_ref` and omits the
+    // signature-slice `receipt_canonical_json`), so it must be verified with
+    // the strict Chio verifier rather than the signature-slice
+    // `verify_dsse_envelope`.
+    let statement = chio_federation::verify_chio_bilateral_dsse_envelope(
         &envelope,
         &origin_kp.public_key(),
         &tool_host_public_key,
     )
-    .expect("DSSE envelope must verify against both pinned peer keys");
+    .expect("treaty-bound DSSE envelope must verify against both pinned peer keys");
+    let treaty = statement
+        .predicate
+        .treaty_binding_ref
+        .expect("treaty-bound DSSE envelope must carry a treaty binding ref");
+    assert_eq!(treaty.request_sha256, response.receipt.action.parameter_hash);
+    assert_eq!(treaty.outcome_sha256, response.receipt.content_hash);
+    assert_eq!(
+        treaty.signer_kernel_ids,
+        vec![origin_kernel_id.to_string(), tool_host_kernel_id.to_string()]
+    );
 }
 
 #[test]

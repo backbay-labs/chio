@@ -1,9 +1,8 @@
 #![forbid(unsafe_code)]
 
-//! TTFRH bench harness. P5 flips the runners from advisory placeholders
-//! to required gating, adding a deterministic in-process simulation
-//! layer so the bench reports p50 and p99 timings without provisioning
-//! a Docker host on every PR. The CI workflow at
+//! TTFRH bench harness. Runners are required gating backed by a deterministic
+//! in-process simulation layer so the bench reports p50 and p99 timings
+//! without provisioning a Docker host on every PR. The CI workflow at
 //! `.github/workflows/ttfrh.yml` runs the full container path once a
 //! template directory or a runner module changes.
 
@@ -51,7 +50,7 @@ impl fmt::Display for TemplateRunner {
 pub struct RunnerPlan {
     pub template: TemplateRunner,
     pub command: &'static str,
-    /// `false` once P5 flips the gate to required CI.
+    /// `false` when the runner is required by CI (all runners are currently required).
     pub advisory: bool,
     /// Synthetic samples in milliseconds used by the in-process bench
     /// path. The container path under `.github/workflows/ttfrh.yml`
@@ -134,13 +133,9 @@ mod tests {
     }
 
     #[test]
-    fn p5_flips_runners_to_required() {
+    fn all_runners_are_required() {
         for plan in runner_plans() {
-            assert!(
-                !plan.advisory,
-                "{} runner must be required in P5",
-                plan.template
-            );
+            assert!(!plan.advisory, "{} runner must be required", plan.template);
             assert!(!plan.command.trim().is_empty());
             assert!(
                 !plan.synthetic_samples_ms.is_empty(),

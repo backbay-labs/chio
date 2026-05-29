@@ -17,7 +17,7 @@ def test_doc_rank_boosts_canonical_docs() -> None:
 
 def test_doc_rank_penalizes_planning_unless_requested() -> None:
     row = {
-        "file_path": ".planning/v3.14-MILESTONE-AUDIT.md",
+        "file_path": "docs/archive/v3.14-milestone-audit.md",
         "score": 0.80,
         "canonicality": "planning",
     }
@@ -51,9 +51,8 @@ def test_global_hubs_are_marked_for_suppression() -> None:
     assert "guard:guard" in query.GLOBAL_HUB_IDS
 
 
-def test_intent_classification_separates_release_and_mercury() -> None:
+def test_intent_classification_identifies_release_qualification() -> None:
     assert query.detect_query_intent("release qualification evidence export compliance certificate") == "release-qualification"
-    assert query.detect_query_intent("Mercury assurance release renewal qualification") == "mercury-product"
 
 
 def test_multi_intent_classification_keeps_guard_and_receipt() -> None:
@@ -99,9 +98,9 @@ def test_graph_noise_suppression_allows_scoped_concepts() -> None:
     assert query._is_noisy_graph_row({"kind": "capability", "path": "", "concept_scope": "scoped"}) is False
 
 
-def test_context_doc_noise_filter_blocks_planning_by_default() -> None:
-    assert query._is_noisy_context_doc({"path": ".planning/phases/example.md"}, "delegation revocation") is True
-    assert query._is_noisy_context_doc({"path": ".planning/phases/example.md"}, "planning history revocation") is False
+def test_context_doc_noise_filter_blocks_archive_by_default() -> None:
+    assert query._is_noisy_context_doc({"path": "docs/archive/old-design.md"}, "delegation revocation") is True
+    assert query._is_noisy_context_doc({"path": "docs/archive/old-design.md"}, "planning history revocation") is False
     assert query._is_noisy_context_doc({"path": "spec/schemas/chio-wire/v1/receipt/record.schema.json"}, "delegation revocation") is True
 
 

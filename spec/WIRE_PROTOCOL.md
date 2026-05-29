@@ -436,7 +436,7 @@ Surface mapping rules:
 
 - Native Chio `ToolCallError` discriminators map deterministically to registry
   entries such as `capability_denied`, `capability_expired`,
-  `capability_revoked`, `guard_denied`, `tool_server_error`, and
+  `capability_revoked`, `policy_denied`, `tool_server_error`, and
   `internal_error`.
 - Hosted MCP initialize-time protocol rejection communicates the numeric Chio
   protocol code under JSON-RPC `error.data.chioError.code`.

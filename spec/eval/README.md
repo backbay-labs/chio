@@ -6,7 +6,7 @@ pipelines without changing the inner `chio-wire/v1/receipt` body.
 
 ## `chio.eval-report.bundle.v1`
 
-`receipt-format.v1.json` defines the M02 eval-report bundle envelope.
+`receipt-format.v1.json` defines the eval-report bundle envelope.
 The bundle:
 
 - preserves each inner Chio receipt payload;
@@ -18,9 +18,8 @@ The bundle:
   partner-review samples.
 
 The bundle parser today accepts only the local `test-sha256` signature
-kind. Trajectory-3.1 retracted real partner cryptographic attestation
-(see `.planning/trajectory-3/audits/M02-ai-lab.md` disclaimer); cosign
-+ GitHub OIDC and PGP detached lanes are deferred to trajectory-4
-(M02-followup). Until those lanes land, the schema enum and the
+kind. Real partner cryptographic attestation is not yet claimed; cosign
++ GitHub OIDC and PGP detached lanes are tracked as backlog work for a
+future v3.x release. Until those lanes land, the schema enum and the
 verifier are intentionally aligned on a single closed allow-list and
 any other `kind` value is rejected fail-closed.

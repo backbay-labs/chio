@@ -1,5 +1,5 @@
 //! End-to-end test: `compile_policy(yaml)` emits a Vec of guards that
-//! includes all 12 guard types defined by phase 5.5 of the roadmap.
+//! includes all 12 guard types.
 //!
 //! This exercises the HushSpec YAML -> `CompiledPolicy` path rather than
 //! the Rust-struct path; the rust-struct path is covered by the module
@@ -51,7 +51,7 @@ fn all_twelve_guards_yaml(pattern_db: &Path) -> String {
     format!(
         r#"
 hushspec: "0.1.0"
-name: phase-5.5-coverage
+name: all-guards-coverage
 description: Exercises every guard type the compiler can emit.
 
 rules:
@@ -156,7 +156,7 @@ fn compile_policy_emits_all_twelve_guard_types() {
     assert_eq!(
         expected.len(),
         12,
-        "the phase 5.5 acceptance criterion requires 12 distinct guard types"
+        "the acceptance criterion requires 12 distinct guard types"
     );
     assert!(
         compiled.guards.len() >= 12,
@@ -171,7 +171,7 @@ fn compile_policy_emits_all_twelve_guard_types() {
 fn compile_policy_produces_vec_of_guards_accessible_via_pipeline() {
     // The GuardPipeline stores guards as `Vec<Box<dyn Guard>>` internally;
     // the sidecar `guard_names` list mirrors that vector's ordering and
-    // size. Together they satisfy the phase 5.5 acceptance wording that
+    // size. Together they satisfy the acceptance wording that
     // `compile_policy(yaml)` produces a `Vec<Box<dyn Guard>>` containing
     // all 12 guard types.
     let pattern_db = write_temp_threat_intel_pattern_db();
@@ -261,7 +261,7 @@ fn compile_policy_accepts_canonical_hushspec_fixture() {
     // Canonical fixture exercises forbidden_paths, path_allowlist, shell,
     // tool_access, secret_patterns, patch_integrity. With no commented
     // velocity/human_in_loop stanzas active, compilation must still be
-    // accepted (backward compatible).
+    // accepted (partial spec is valid).
     assert!(
         !compiled.guard_names.is_empty(),
         "canonical fixture should emit at least one guard"

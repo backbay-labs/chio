@@ -8,7 +8,7 @@ This roadmap is intentionally narrower than the full repo roadmap. It optimizes 
 
 - make SDK parity real enough that Chio has a credible multi-language adoption surface
 
-It does not replace the broader release-closeout work tracked in [POST_REVIEW_EXECUTION_PLAN.md](POST_REVIEW_EXECUTION_PLAN.md). It is the interop and adoption lane that should feed into that closeout.
+It does not replace the broader release-closeout work tracked in [POST_REVIEW_EXECUTION_PLAN.md](../archive/POST_REVIEW_EXECUTION_PLAN.md). It is the interop and adoption lane that should feed into that closeout.
 
 ## Execution Status
 
@@ -32,15 +32,15 @@ At the start of this roadmap, the repo already has:
 
 - `crates/chio-binding-helpers` with canonical JSON, hashing, signing, receipt, capability, and manifest helpers
 - checked-in shared vectors under `tests/bindings/vectors/`
-- `packages/sdk/chio-ts` invariant helpers plus a low-level transport/session layer
+- `sdks/typescript/chio-ts` invariant helpers plus a low-level transport/session layer
 - the JS conformance peer importing shared transport code from `chio-ts`
 - live MCP core, tasks, auth, notifications, and nested-callback JS and Python conformance green against the remote edge
 
 The repo does not yet have:
 
 - a first-class `chio-ts` client/session API
-- a `packages/sdk/chio-py` package
-- a `packages/sdk/chio-go` package
+- a `sdks/python/chio-py` package
+- a `sdks/go/chio-go` package
 - a checked-in SDK feature matrix with release gates
 
 ## North Star
@@ -77,7 +77,7 @@ Do not spend this 4 to 6 week window on:
 
 - `crates/chio-bindings-ffi`
 - `crates/chio-bindings-wasm`
-- `packages/sdk/chio-py/chio-native`
+- `sdks/python/chio-py/chio-native`
 - Go CGO bridge work
 - browser-first packaging work
 - moving full SDK runtime logic behind Rust FFI
@@ -136,11 +136,11 @@ Objective:
 
 Deliverables:
 
-- `packages/sdk/chio-ts/src/client/`
-- `packages/sdk/chio-ts/src/session/`
-- `packages/sdk/chio-ts/src/auth/`
-- `packages/sdk/chio-ts/src/tasks/`
-- `packages/sdk/chio-ts/src/nested/`
+- `sdks/typescript/chio-ts/src/client/`
+- `sdks/typescript/chio-ts/src/session/`
+- `sdks/typescript/chio-ts/src/auth/`
+- `sdks/typescript/chio-ts/src/tasks/`
+- `sdks/typescript/chio-ts/src/nested/`
 - public `Client` and `Session` API exported from the package root
 - updated README with alpha scope, examples, and unsupported surfaces
 
@@ -155,7 +155,7 @@ Acceptance bar:
 
 - `chio-ts` root exports more than invariants and transport
 - the JS peer uses package modules for all remote-edge behavior in current conformance areas
-- `npm --prefix packages/sdk/chio-ts test` is green
+- `npm --prefix sdks/typescript/chio-ts test` is green
 - MCP core, tasks, auth, notifications, and nested-callback live conformance is green with the JS peer backed by `chio-ts`
 - the README clearly marks the package as alpha and lists unsupported surfaces explicitly
 
@@ -171,8 +171,8 @@ Objective:
 
 Deliverables:
 
-- `packages/sdk/chio-py/pyproject.toml`
-- `packages/sdk/chio-py/src/chio/`
+- `sdks/python/chio-py/pyproject.toml`
+- `sdks/python/chio-py/src/chio/`
 - Python errors, models, invariants, transport, and session modules
 - vector tests for Python invariant helpers
 
@@ -186,7 +186,7 @@ Tasks:
 
 Acceptance bar:
 
-- `pip install -e packages/sdk/chio-py` works without a Rust toolchain
+- `pip install -e sdks/python/chio-py` works without a Rust toolchain
 - Python vector tests are green against the checked-in shared fixtures
 - the package can initialize a remote session and perform low-level request execution in tests
 - no PyO3 or maturin dependency is required for the package to function
@@ -211,7 +211,7 @@ Deliverables:
 
 Tasks:
 
-- move the current peer transport and callback logic into `packages/sdk/chio-py`
+- move the current peer transport and callback logic into `sdks/python/chio-py`
 - keep transcript/debug hooks available to the peer
 - route the existing Python peer through the package for all current scenarios
 - document the alpha surface and explicit non-goals
@@ -235,12 +235,12 @@ Objective:
 
 Deliverables:
 
-- `packages/sdk/chio-go/go.mod`
-- `packages/sdk/chio-go/client/`
-- `packages/sdk/chio-go/transport/`
-- `packages/sdk/chio-go/session/`
-- `packages/sdk/chio-go/auth/`
-- `packages/sdk/chio-go/invariants/`
+- `sdks/go/chio-go/go.mod`
+- `sdks/go/chio-go/client/`
+- `sdks/go/chio-go/transport/`
+- `sdks/go/chio-go/session/`
+- `sdks/go/chio-go/auth/`
+- `sdks/go/chio-go/invariants/`
 - first Go vector tests
 
 Tasks:

@@ -43,7 +43,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: manager
-          image: ghcr.io/backbay/chio-k8s-controller:latest
+          image: ghcr.io/backbay-labs/chio-k8s-controller:latest
           imagePullPolicy: IfNotPresent
           args:
             - --leader-elect

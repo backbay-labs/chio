@@ -114,7 +114,7 @@ Keep `ToolGrant`, but add constraints that are actually enforced:
 - regex match
 - max length
 
-This already exists structurally in [capability.rs](../../crates/arc-core/src/capability.rs), but most of the runtime path does not yet turn it into pervasive enforcement behavior.
+This already exists structurally in [capability.rs](../../crates/chio-core-types/src/capability.rs), but most of the runtime path does not yet turn it into pervasive enforcement behavior.
 
 ### Step 2
 

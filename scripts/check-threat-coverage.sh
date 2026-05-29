@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Threat-model coverage CI gate.
 #
-# Owner: M05.P5.T4.
+# Owner: chio-maintainers.
 #
 # Reads spec/security/chio-threat-model.v1.json and asserts that
 # every threat ID either:
@@ -31,8 +31,8 @@
 # to `pending` with a `deferred_to` reference), `pending` without
 # `deferred_to` exits non-zero with a clear hint, and `partial`
 # without both a `deferred_to` reference and an in-tree test body
-# also exits non-zero. Auto-promoted pending corpus seeds (D14)
-# are excluded from coverage by construction since they live in
+# also exits non-zero. Auto-promoted pending corpus seeds are
+# excluded from coverage by construction since they live in
 # the corpus, not the threat list.
 #
 # This script handles the file-existence check only. The companion
@@ -150,7 +150,7 @@ while IFS=$'\t' read -r id state deferred_to; do
             # uncovered with a clear remediation hint.
             stub_partial="$STUBS_DIR/$id.rs"
             if [[ -z "${deferred_to:-}" ]]; then
-                uncovered+=("$id (coverage_state partial requires a non-empty deferred_to in $THREAT_MODEL naming the future-milestone work that closes the deferred sub-vector)")
+                uncovered+=("$id (coverage_state partial requires a non-empty deferred_to in $THREAT_MODEL naming the follow-up work that closes the deferred sub-vector)")
                 continue
             fi
             if [[ ! -f "$stub_partial" ]]; then

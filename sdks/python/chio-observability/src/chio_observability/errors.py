@@ -8,7 +8,7 @@ from chio_sdk.errors import ChioError
 
 
 class ChioObservabilityError(ChioError):
-    """A bridge failed to publish an Chio receipt as a span.
+    """A bridge failed to publish a Chio receipt as a span.
 
     Carries contextual information about the receipt that failed so
     operators can correlate the failure back to a specific tool call

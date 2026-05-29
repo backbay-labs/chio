@@ -73,10 +73,10 @@ crates/
 
 For non-Rust languages (TypeScript, Python, Go), the guest SDK will be
 language-specific packages that generate the same ABI exports. These live in
-`packages/sdk/`:
+`sdks/guard/`:
 
 ```
-packages/sdk/
+sdks/guard/
   chio-guard-ts/          # AssemblyScript / ts2wasm guard SDK
   chio-guard-py/          # componentize-py or Extism PDK for Python
   chio-guard-go/          # TinyGo guard SDK
@@ -281,7 +281,7 @@ The `WasmGuardConfig` currently supports a filesystem `path`. Future options:
 | Source | Config field | Notes |
 |--------|-------------|-------|
 | Local file | `path: /etc/chio/guards/pii.wasm` | Current |
-| HTTP URL | `url: https://registry.chio.dev/guards/pii/1.0.0` | Download + cache |
+| HTTP URL | `url: https://registry.chio.world/guards/pii/1.0.0` | Download + cache |
 | Inline base64 | `wasm_base64: AGFzbQEA...` | Embedded in config (small guards only) |
 | OCI registry | `oci: ghcr.io/org/pii-guard:1.0` | Pull from container registry |
 
@@ -380,7 +380,7 @@ def evaluate(req):
 ```go
 package main
 
-import "github.com/backbay/chio-guard-sdk-go"
+import "github.com/backbay-labs/chio/sdks/guard/chio-guard-go"
 
 //export evaluate
 func evaluate(ptr, len int32) int32 {
@@ -596,9 +596,9 @@ let fuel_consumed = self.fuel_limit.saturating_sub(fuel_remaining);
 ### Phase 4: Non-Rust guest SDKs + WIT migration -- v2+
 
 - Define WIT interface, migrate from raw ABI
-- TypeScript/AssemblyScript guard SDK (`packages/sdk/chio-guard-ts`)
-- Python guard SDK (`packages/sdk/chio-guard-py`)
-- Go guard SDK (TinyGo, `packages/sdk/chio-guard-go`)
+- TypeScript/AssemblyScript guard SDK (`sdks/guard/chio-guard-ts`)
+- Python guard SDK (`sdks/guard/chio-guard-py`)
+- Go guard SDK (TinyGo, `sdks/guard/chio-guard-go`)
 - Cross-language conformance test suite
 
 

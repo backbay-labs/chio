@@ -8,7 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
     <OutputType>Library</OutputType>
-    <!-- M07.P6.T2: dotnet SDK verdict-matrix deployment-shape driver. -->
+    <!-- dotnet SDK verdict-matrix deployment-shape driver. -->
   </PropertyGroup>
 
   <ItemGroup>

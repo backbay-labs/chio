@@ -117,7 +117,7 @@ grep -v '^#' tests/abi/chio-bindings-ffi.symbols |
   sort -u > "${smoke_dir}/expected.symbols"
 diff -u "${smoke_dir}/expected.symbols" "${smoke_dir}/actual.symbols"
 
-cmake -S packages/sdk/chio-cpp -B "${build_dir}" \
+cmake -S sdks/cpp/chio-cpp -B "${build_dir}" \
   -DCHIO_CPP_BUILD_TESTS=ON \
   -DCHIO_CPP_BUILD_EXAMPLES=ON \
   -DCHIO_CPP_ENABLE_CURL=OFF

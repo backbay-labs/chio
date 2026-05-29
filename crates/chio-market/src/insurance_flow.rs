@@ -738,8 +738,8 @@ mod tests {
         keypair: &Keypair,
         receipt_id: &str,
     ) -> (ReceiptFingerprint, ResolvedReceiptEvidence) {
-        // A canonical body can be any serializable value; we use a tuple
-        // so the test doesn't need a full receipt fixture.
+        // A canonical body can be any serializable value, so a tuple
+        // stands in for a full receipt fixture.
         let body = ("chio.receipt.fixture.v1", receipt_id, 1_000_000u64);
         let canonical = canonical_json_bytes(&body).unwrap();
         let body_sha256 = sha256_hex(&canonical);

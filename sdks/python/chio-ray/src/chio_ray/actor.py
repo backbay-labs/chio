@@ -104,7 +104,7 @@ class ChioActor:
         tool_name: str | None = None,
         tool_server: str | None = None,
     ) -> Callable[[F], F]:
-        """Gate an actor method on an Chio capability check.
+        """Gate an actor method on a Chio capability check.
 
         ``scope`` may be a short-string spec (``"tools:search"``) or a
         :class:`ChioScope`. ``tool_name`` defaults to the method name.

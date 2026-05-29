@@ -38,7 +38,7 @@ are pending.
 
 ```kotlin
 dependencies {
-    implementation("io.backbay.chio:chio-streaming-flink:0.1.0")
+    implementation("world.chio:chio-streaming-flink:0.1.0")
     compileOnly("org.apache.flink:flink-streaming-java:2.2.0")
 }
 ```
@@ -50,13 +50,13 @@ Flink version.
 ## Quickstart
 
 ```kotlin
-import io.backbay.chio.flink.ChioAsyncEvaluateFunction
-import io.backbay.chio.flink.ChioFlinkConfig
-import io.backbay.chio.flink.ChioOutputTags
-import io.backbay.chio.flink.ChioVerdictSplitFunction
-import io.backbay.chio.flink.SidecarErrorBehaviour
-import io.backbay.chio.sdk.ChioClient
-import io.backbay.chio.sdk.DlqRouter
+import world.chio.flink.ChioAsyncEvaluateFunction
+import world.chio.flink.ChioFlinkConfig
+import world.chio.flink.ChioOutputTags
+import world.chio.flink.ChioVerdictSplitFunction
+import world.chio.flink.SidecarErrorBehaviour
+import world.chio.sdk.ChioClient
+import world.chio.sdk.DlqRouter
 import org.apache.flink.api.common.typeinfo.Types
 import org.apache.flink.streaming.api.datastream.AsyncDataStream
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment

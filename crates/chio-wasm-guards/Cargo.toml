@@ -46,7 +46,7 @@ serde_json = { workspace = true }
 serde_yml = { workspace = true }
 sha2 = { workspace = true }
 thiserror = { workspace = true }
-notify = "8"
+notify = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 wasmparser = { version = "0.221", optional = true }

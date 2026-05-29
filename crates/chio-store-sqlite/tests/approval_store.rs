@@ -17,41 +17,7 @@ use chio_kernel::{
 };
 use chio_store_sqlite::SqliteApprovalStore;
 
-trait TestResultOk<T, E> {
-    fn test_unwrap(self) -> T;
-}
-
-impl<T, E> TestResultOk<T, E> for Result<T, E> {
-    fn test_unwrap(self) -> T {
-        match self {
-            Ok(value) => value,
-            Err(_) => panic!("expected Ok result"),
-        }
-    }
-}
-
-trait TestResultErr<T, E> {
-    fn test_unwrap_err(self) -> E;
-}
-
-impl<T, E> TestResultErr<T, E> for Result<T, E> {
-    fn test_unwrap_err(self) -> E {
-        match self {
-            Ok(_) => panic!("expected Err result"),
-            Err(error) => error,
-        }
-    }
-}
-
-trait TestOptionExt<T> {
-    fn test_unwrap(self) -> T;
-}
-
-impl<T> TestOptionExt<T> for Option<T> {
-    fn test_unwrap(self) -> T {
-        self.unwrap_or_else(|| panic!("expected Some value"))
-    }
-}
+use chio_test_support::prelude::*;
 
 fn unique_path(prefix: &str) -> std::path::PathBuf {
     let nonce = SystemTime::now()

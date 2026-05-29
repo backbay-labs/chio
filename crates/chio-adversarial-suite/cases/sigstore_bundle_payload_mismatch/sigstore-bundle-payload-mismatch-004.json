@@ -10,7 +10,7 @@
     "case_kind": "guard_module_bundle",
     "bundle": {
       "subject_digest": "sha256:approved-guard-module",
-      "certificate_identity": "release@chio.dev",
+      "certificate_identity": "release@chio.world",
       "certificate_oidc_issuer": "https://token.actions.githubusercontent.com"
     },
     "payload": {

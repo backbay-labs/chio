@@ -17,6 +17,5 @@ chio-binding-helpers = { path = "../chio-binding-helpers" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

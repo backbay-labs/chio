@@ -62,8 +62,9 @@ import sys
 from pathlib import Path
 
 payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-assert payload["code"] == "CHIO-CLI-OTHER", payload
-assert "hash mismatch" in payload["message"] or "hash mismatch" in payload["context"]["detail"], payload
+assert payload["code"] == "urn:chio:error:attest:provenance-missing", payload
+assert payload["context"]["legacy_string_code"] == "CHIO-ATTEST-PROVENANCE-MISSING", payload
+assert "hash mismatch" in payload["message"], payload
 PY
 
 RECEIPT_ID="$(python3 - "${ARTIFACT_ROOT}/summary.json" <<'PY'

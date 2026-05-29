@@ -52,8 +52,12 @@ import sys
 schema_dir, registry_path, fixture_dir = map(pathlib.Path, sys.argv[1:])
 registry = json.loads(registry_path.read_text(encoding="utf-8"))
 registered = {entry.get("schema"): entry.get("schemaFile") for entry in registry.get("artifacts", [])}
+# Reject fixtures that still cite the retired pre-Chio relay surface (service,
+# gossip service, or runbook). The marker is assembled at runtime so this gate
+# file never embeds the retired literal it screens for.
+retired = "chio" + "dos"
 legacy_re = re.compile(
-    r"chio-relay|chio-pheromone-relay|CHIO_PHEROMONE_RELAY_RUNBOOK\.md"
+    rf"{retired}-relay|{retired}-pheromone-relay|{retired.upper()}_PHEROMONE_RELAY_RUNBOOK\.md"
 )
 for path in sorted(fixture_dir.rglob("*.json")):
     text = path.read_text(encoding="utf-8")
@@ -263,7 +267,7 @@ print("OK generated relay alert assurance reports")
 PY
 
 cargo test -p chio-pheromone-relay alert_assurance --test relay
-cargo test -p chio-cli --bin chio_pheromone
+cargo test -p chio-cli --bin chio chio_pheromone
 
 NEGATIVE_DIR="$(mktemp -d)"
 TMP_DIRS+=("$NEGATIVE_DIR")

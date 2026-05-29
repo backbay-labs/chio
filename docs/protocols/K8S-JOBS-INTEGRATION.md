@@ -90,7 +90,7 @@ CronJob (schedule: "0 */6 * * *")
 Extends the existing `ChioPolicy` CRD with job-specific fields:
 
 ```yaml
-apiVersion: chio.protocol/v1alpha1
+apiVersion: chio.world/v1alpha1
 kind: ChioJobGrant
 metadata:
   name: etl-pipeline-grant
@@ -100,7 +100,7 @@ spec:
   jobSelector:
     matchLabels:
       app: etl-pipeline
-      chio.protocol/governed: "true"
+      chio.world/governed: "true"
 
   # Capability scope for the Job
   capability:
@@ -153,7 +153,7 @@ import (
     "sigs.k8s.io/controller-runtime/pkg/client"
     "sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-    arcv1 "github.com/backbay/chio/sdks/k8s/api/v1alpha1"
+    arcv1 "github.com/backbay-labs/chio/sdks/k8s/api/v1alpha1"
 )
 
 type JobReconciler struct {
@@ -231,8 +231,8 @@ func (r *JobReconciler) handleJobCreated(
     }
 
     // Annotate Job with grant info
-    job.Annotations["chio.protocol/grant-token-secret"] = secret.Name
-    job.Annotations["chio.protocol/grant-scopes"] = fmt.Sprintf("%v", grantSpec.Spec.Capability.Scopes)
+    job.Annotations["chio.world/grant-token-secret"] = secret.Name
+    job.Annotations["chio.world/grant-scopes"] = fmt.Sprintf("%v", grantSpec.Spec.Capability.Scopes)
     return reconcile.Result{}, r.Update(ctx, job)
 }
 ```
@@ -257,7 +257,7 @@ spec:
         - name: CHIO_SIDECAR_URL
           value: "http://localhost:9090"
     - name: chio-sidecar
-      image: ghcr.io/backbay/chio-sidecar:latest
+      image: ghcr.io/backbay-labs/chio-sidecar:latest
       ports:
         - containerPort: 9090
       env:
@@ -283,7 +283,7 @@ func (r *JobReconciler) handleJobCompleted(
     job *batchv1.Job,
     grantSpec *arcv1.ChioJobGrant,
 ) (reconcile.Result, error) {
-    tokenSecret := job.Annotations["chio.protocol/grant-token-secret"]
+    tokenSecret := job.Annotations["chio.world/grant-token-secret"]
 
     // Aggregate receipts from all pods in the Job
     pods, err := r.getJobPods(ctx, job)
@@ -293,7 +293,7 @@ func (r *JobReconciler) handleJobCompleted(
 
     var receiptIDs []string
     for _, pod := range pods {
-        if rid, ok := pod.Annotations["chio.protocol/receipt-ids"]; ok {
+        if rid, ok := pod.Annotations["chio.world/receipt-ids"]; ok {
             receiptIDs = append(receiptIDs, splitReceiptIDs(rid)...)
         }
     }
@@ -307,7 +307,7 @@ func (r *JobReconciler) handleJobCompleted(
         if err != nil {
             return reconcile.Result{}, err
         }
-        job.Annotations["chio.protocol/workflow-receipt"] = workflowReceipt.ReceiptID
+        job.Annotations["chio.world/workflow-receipt"] = workflowReceipt.ReceiptID
     }
 
     // Release the grant
@@ -316,8 +316,8 @@ func (r *JobReconciler) handleJobCompleted(
     }
 
     // Annotate Job with completion status
-    job.Annotations["chio.protocol/grant-released"] = "true"
-    job.Annotations["chio.protocol/receipt-count"] = fmt.Sprintf("%d", len(receiptIDs))
+    job.Annotations["chio.world/grant-released"] = "true"
+    job.Annotations["chio.world/receipt-count"] = fmt.Sprintf("%d", len(receiptIDs))
 
     return reconcile.Result{}, r.Update(ctx, job)
 }
@@ -333,16 +333,16 @@ kind: CronJob
 metadata:
   name: agent-etl
   labels:
-    chio.protocol/governed: "true"
+    chio.world/governed: "true"
   annotations:
-    chio.protocol/scope: "tools:etl"
-    chio.protocol/guards: "data-residency,business-hours"
+    chio.world/scope: "tools:etl"
+    chio.world/guards: "data-residency,business-hours"
 spec:
   schedule: "0 */6 * * *"
   jobTemplate:
     metadata:
       labels:
-        chio.protocol/governed: "true"
+        chio.world/governed: "true"
     spec:
       template:
         spec:

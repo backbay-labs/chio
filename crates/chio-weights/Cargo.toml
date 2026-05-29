@@ -32,8 +32,7 @@ default = []
 # canonical 8-fixture cross_provider matrix (one fixture per provider
 # / adversary class) when this feature is enabled. The full
 # 8-provider * 12-fixture sweep (96 fixtures) runs nightly via the
-# existing trajectory-1 M07 nightly conformance lane and is not
-# duplicated here.
+# existing nightly conformance lane and is not duplicated here.
 smoke = []
 # `kani` is an opt-in feature toggle for the model-checked harness
 # module (`src/kani_public_harnesses.rs`). The module body itself is

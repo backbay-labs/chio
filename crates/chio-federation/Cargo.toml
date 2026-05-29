@@ -51,6 +51,5 @@ hex = { workspace = true }
 # dependency only.
 chio-kernel-core = { path = "../chio-kernel-core" }
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

@@ -1,17 +1,17 @@
-//! Golden reader for the M04 deterministic-replay gate.
+//! Golden reader for the deterministic-replay gate.
 //!
 //! This module is the read-side counterpart of
-//! [`crate::golden_writer`]. The writer (T3) produces three on-disk
+//! [`crate::golden_writer`]. The writer produces three on-disk
 //! artifacts per scenario; this module loads them back as RAW BYTES
 //! so the byte-comparison harness in [`crate::byte_compare`] can
 //! diff a candidate run against a golden snapshot without ever round-
 //! tripping through `serde_json`. A serde round-trip would mask the
 //! exact byte-level drift (whitespace, key order, line endings) that
-//! T3 was carefully designed to lock down.
+//! the writer was carefully designed to lock down.
 //!
 //! # Naming
 //!
-//! T3's writer-side accumulator is also called `GoldenSet`. To avoid
+//! The writer-side accumulator is also called `GoldenSet`. To avoid
 //! a name collision in code that imports both modules, the loaded
 //! representation here is named [`GoldenLoaded`]. Mnemonic: the
 //! writer assembles a set; the reader hands back a loaded snapshot.

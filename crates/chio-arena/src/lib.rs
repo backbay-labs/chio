@@ -46,11 +46,11 @@ pub use link::{
     KernelEndpoint, KernelLink, KernelMultiplexer, LinkEnvelope, LinkError, MultiplexError,
 };
 pub use promote::{
-    promote_to_adversarial_suite, promote_to_m04_fixtures, write_arena_bundle,
-    AdversarialSuiteSummary, ArenaBundleManifest, ArenaBundleSummary, ArenaManifestBundle,
-    ArenaManifestVerdict, BlessEnv, M04PromotionGate, M04PromotionSummary, ProcessBlessEnv,
-    PromoteError, ARENA_ADVERSARIAL_CASE_SCHEMA, ARENA_M04_FIXTURE_SCHEMA,
-    ARENA_M04_PROMOTE_CAP_DEFAULT, ARENA_MANIFEST_FILENAME,
+    promote_to_adversarial_suite, promote_to_fixtures, write_arena_bundle, AdversarialSuiteSummary,
+    ArenaBundleManifest, ArenaBundleSummary, ArenaManifestBundle, ArenaManifestVerdict,
+    ArenaPromotionGate, ArenaPromotionSummary, BlessEnv, ProcessBlessEnv, PromoteError,
+    ARENA_ADVERSARIAL_CASE_SCHEMA, ARENA_FIXTURE_SCHEMA, ARENA_MANIFEST_FILENAME,
+    ARENA_PROMOTE_CAP_DEFAULT,
 };
 pub use rng::{ArenaRng, RngError};
 pub use runtime::{

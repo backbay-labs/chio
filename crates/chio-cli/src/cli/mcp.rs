@@ -1,4 +1,4 @@
-// Top-level glue for the `arc mcp wrap` subcommand.
+// Top-level glue for the `chio mcp wrap` subcommand.
 //
 // Per the workspace `include!()` pattern (mirrors `cli/replay.rs` +
 // `cli/replay/*.rs`), this file is `include!`-d from `src/main.rs` and in
@@ -9,23 +9,18 @@
 // modules so they compose with the rest of the CLI without re-importing the
 // already in-scope helper types from `cli/types.rs` and `cli/runtime.rs`.
 
+use super::*;
+
 use chio_mcp_adapter::McpTransport as _;
 
-include!("mcp/ide.rs");
-include!("mcp/scope.rs");
-include!("mcp/attestation.rs");
-include!("mcp/wrap.rs");
-include!("mcp/manifest.rs");
-include!("mcp/emit_config.rs");
-
-/// Dispatch entry-point for `arc mcp wrap`.
+/// Dispatch entry-point for `chio mcp wrap`.
 ///
 /// Wrapper-side of the native MCP adapter surface (`chio-mcp-adapter` and
 /// `chio-hosted-mcp`). It runs the verdict gate over `tools/call`,
 /// renders an inferred capability-scope manifest scaffold, and (when
 /// `--emit-config` is supplied) emits a paste-ready IDE configuration blob
 /// for Cursor / Claude Desktop / Continue / Zed.
-fn cmd_mcp_wrap(args: &McpWrapArgs) -> Result<(), CliError> {
+pub(crate) fn cmd_mcp_wrap(args: &McpWrapArgs) -> Result<(), CliError> {
     if let Some(tool) = args.self_test_attestation.as_ref() {
         let header = build_chio_verified_header(tool);
         let mut payload = serde_json::json!({
@@ -77,7 +72,7 @@ fn cmd_mcp_wrap(args: &McpWrapArgs) -> Result<(), CliError> {
 /// [`chio_mcp_adapter::McpToolInfo`]. The fixture format is the same
 /// shape MCP servers return, e.g. `{ "tools": [ ... ] }` or a bare
 /// array.
-fn load_tools_fixture(
+pub(crate) fn load_tools_fixture(
     path: &std::path::Path,
 ) -> Result<Vec<chio_mcp_adapter::McpToolInfo>, CliError> {
     let raw = std::fs::read_to_string(path).map_err(|e| {
@@ -104,3 +99,29 @@ fn load_tools_fixture(
     })?;
     Ok(tools)
 }
+
+// The sibling `mcp/*.rs` files are real submodules wired in with
+// `#[path] mod`; each begins with `use super::*;` to inherit the shared
+// imports from this parent and `cli/types.rs`/`cli/runtime.rs`. Their
+// crate-internal items are re-exported here so the parent (`mcp_cli` in
+// `main.rs`) keeps exposing the same surface (e.g. `McpWrapArgs`,
+// `cmd_mcp_wrap`).
+#[path = "mcp/ide.rs"]
+mod ide;
+#[path = "mcp/scope.rs"]
+mod scope;
+#[path = "mcp/attestation.rs"]
+mod attestation;
+#[path = "mcp/manifest.rs"]
+mod manifest;
+#[path = "mcp/emit_config.rs"]
+mod emit_config;
+#[path = "mcp/wrap.rs"]
+mod wrap;
+
+pub(crate) use attestation::{attach_chio_verified_header, build_chio_verified_header};
+pub(crate) use emit_config::cmd_mcp_emit_config;
+pub(crate) use manifest::cmd_mcp_print_scopes;
+pub(crate) use wrap::{
+    cmd_mcp_wrap_e2e_fixture, cmd_mcp_wrap_run, McpWrapArgs,
+};

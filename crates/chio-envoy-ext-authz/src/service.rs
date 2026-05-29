@@ -1,5 +1,5 @@
 //! gRPC service implementation for Envoy's `envoy.service.auth.v3.Authorization`
-//! interface. Each `Check` RPC is translated into an Chio
+//! interface. Each `Check` RPC is translated into a Chio
 //! [`crate::translate::ToolCallRequest`], routed through the
 //! [`EnvoyKernel`] abstraction, and the returned [`Verdict`] is mapped back
 //! onto an Envoy `CheckResponse`.
@@ -81,7 +81,7 @@ impl<K: EnvoyKernel> Authorization for ChioExtAuthzService<K> {
     }
 }
 
-/// Convert an Chio [`Verdict`] into the wire-level `CheckResponse` expected by
+/// Convert a Chio [`Verdict`] into the wire-level `CheckResponse` expected by
 /// Envoy. Allow becomes status OK + `OkHttpResponse`; Deny becomes
 /// `PERMISSION_DENIED` + `DeniedHttpResponse` with the Chio-supplied HTTP
 /// status code (defaulting to 403).

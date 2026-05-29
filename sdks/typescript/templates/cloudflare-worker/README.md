@@ -5,7 +5,7 @@ npx create-chio-app cloudflare-worker
 ```
 
 Cloudflare Worker template consuming `@chio-protocol/workers` and
-`@chio/ai-sdk-middleware`. Receipts persist to a local Workers KV
+`@chio-protocol/ai-sdk-middleware`. Receipts persist to a local Workers KV
 namespace by default; the first-run TTFRH bench provisions the binding
 through `wrangler dev` and asserts no outbound calls beyond the
 explicitly configured upstream provider.

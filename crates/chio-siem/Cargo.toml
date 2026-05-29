@@ -27,11 +27,9 @@ url = { workspace = true }
 zeroize = "1"
 
 [dev-dependencies]
+chio-test-support = { path = "../chio-test-support" }
 wiremock = "0.6"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
-chio-egress-contract = { path = "../chio-egress-contract" }
-url = { workspace = true }
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

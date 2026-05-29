@@ -148,7 +148,7 @@ pub enum AcpScopeContext {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FileOperation { Read, Write }
 
-/// Parameters for signing an ACP tool-call event into an Chio receipt.
+/// Parameters for signing an ACP tool-call event into a Chio receipt.
 #[derive(Debug, Clone)]
 pub struct AcpReceiptRequest {
     /// Unique tool call ID from the ACP protocol.

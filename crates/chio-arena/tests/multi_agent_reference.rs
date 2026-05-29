@@ -1,4 +1,4 @@
-//! End-to-end multi-agent reference scenarios (P2.T5).
+//! End-to-end multi-agent reference scenarios.
 //!
 //! Drives the two-agent and three-agent scenarios under the deterministic
 //! scheduler and asserts the runtime produces a receipt per scenario step in

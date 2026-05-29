@@ -264,16 +264,16 @@ pub fn sign_receipt_body_with_backend(
 }
 
 // ---------------------------------------------------------------------------
-// M03.P5.T3: CanonicalBytes consumer wiring for the hybrid signing path
+// CanonicalBytes consumer wiring for the hybrid signing path
 // ---------------------------------------------------------------------------
 //
-// Per D16, the M06 `Arc<CanonicalBytes>` newtype lives at
+// The `Arc<CanonicalBytes>` newtype lives at
 // `chio_core_types::crypto::SharedCanonicalBytes` (already exported from
 // `chio-core-types/src/canonical.rs`). The receipt-signing path under the
 // hybrid backend consumes that newtype directly so the canonical JSON byte
 // buffer is built once, hashed once for the classical half, and signed once
-// for the ML-DSA-65 half. No byte-equivalence shim is required because M06
-// shipped the newtype before M03.P1 opened.
+// for the ML-DSA-65 half. No byte-equivalence shim is required because the
+// newtype is consumed directly rather than reserialized.
 //
 // The helper below returns the signed `ChioReceipt` paired with the
 // `SharedCanonicalBytes` it signed, so downstream consumers (receipt store,
@@ -303,10 +303,11 @@ pub struct SignedHybridReceipt {
 /// both the signed [`ChioReceipt`] and the [`SharedCanonicalBytes`] that
 /// were signed.
 ///
-/// This is the M03.P5.T3 entrypoint: the hybrid backend (classical Ed25519
-/// plus ML-DSA-65) is fed the M06 `CanonicalBytes` newtype directly so the
-/// canonical JSON byte buffer is built once, signed once, and shared by
-/// every downstream consumer (storage, lineage anchor, federation cosign).
+/// This is the shared-canonical-bytes entrypoint: the hybrid backend
+/// (classical Ed25519 plus ML-DSA-65) is fed the `CanonicalBytes` newtype
+/// directly so the canonical JSON byte buffer is built once, signed once, and
+/// shared by every downstream consumer (storage, lineage anchor, federation
+/// cosign).
 ///
 /// # Authoritative signing input
 ///
@@ -333,9 +334,9 @@ pub struct SignedHybridReceipt {
 /// - Algorithm agnostic at the trait boundary: the helper accepts any
 ///   [`SigningBackend`] (Ed25519, P-256, P-384, or hybrid). When the
 ///   backend is the classical-only `Ed25519Backend` the canonical buffer
-///   is still the exact bytes the legacy `sign_with_backend` path signs,
+///   is still the exact bytes the `sign_with_backend` path signs,
 ///   so callers may treat this entrypoint as the canonical-bytes-aware
-///   superset of the legacy path.
+///   superset of the `sign_with_backend` path.
 ///
 /// # Errors
 ///
@@ -355,7 +356,7 @@ pub fn sign_receipt_body_hybrid_canonical(
     use chio_core::crypto::{
         canonical_json_shared_bytes, sign_shared_canonical_with_backend, PublicKey,
     };
-    use chio_core::receipt::{chio_receipt_id, ChioReceiptSigningBody};
+    use chio_core::receipt::{bind_receipt_signing_nonce, chio_receipt_id, ChioReceiptSigningBody};
 
     // Fail-closed kernel-key match BEFORE any cryptographic work. Mirrors
     // `chio_kernel_core::sign_receipt` so the byte-identity contract holds
@@ -370,16 +371,21 @@ pub fn sign_receipt_body_hybrid_canonical(
     // Mirror the classical sibling path so the two entrypoints sign the
     // same authoritative `ChioReceiptSigningBody` wrapper (id plus
     // `ChioReceiptIdInput`). `ChioReceipt::sign_with_backend` performs
-    // three steps: validate semantics, compute the content-addressed
-    // id, and build the wrapper. We replicate them here so the bytes the
-    // hybrid backend signs are byte-identical to what the classical
-    // sibling signs for the same body.
+    // four steps: validate semantics, bind the canonical signing nonce
+    // into metadata, compute the content-addressed id, and build the
+    // wrapper. We replicate them here so the bytes the hybrid backend
+    // signs are byte-identical to what the classical sibling signs for
+    // the same body.
     let mut body = body;
     body.validate_signable_semantics().map_err(|error| {
         KernelError::ReceiptSigningFailed(format!(
             "receipt body failed semantic validation: {error}"
         ))
     })?;
+    // Bind the signing nonce BEFORE computing the id, exactly as the
+    // classical path does, so the content-addressed id (and therefore the
+    // signed bytes) cover the nonce.
+    bind_receipt_signing_nonce(&mut body);
     body.id = chio_receipt_id(&body).map_err(|error| {
         KernelError::ReceiptSigningFailed(format!(
             "canonical JSON encoding of receipt id input failed: {error}"
@@ -387,7 +393,7 @@ pub fn sign_receipt_body_hybrid_canonical(
     })?;
     let signing_body = ChioReceiptSigningBody::from(&body);
 
-    // Build the M06 SharedCanonicalBytes once over the authoritative
+    // Build the SharedCanonicalBytes once over the authoritative
     // signing wrapper. This is the byte buffer the classical half
     // hashes and the ML-DSA-65 half signs.
     let canonical = canonical_json_shared_bytes(&signing_body).map_err(|error| {
@@ -412,7 +418,7 @@ pub fn sign_receipt_body_hybrid_canonical(
     debug_assert_eq!(
         canonical.as_bytes(),
         signed_canonical.as_bytes(),
-        "M03.P5.T3 byte-identity drift: shared canonical bytes were re-encoded"
+        "byte-identity drift: shared canonical bytes were re-encoded"
     );
 
     let receipt = ChioReceipt {

@@ -9,7 +9,7 @@
   "artifact": {
     "case_kind": "authority_signature",
     "authority": {
-      "id": "did:chio:authority:m05",
+      "id": "did:chio:authority:home",
       "key_id": "chio-key-future-dated-005"
     },
     "signature_envelope": {

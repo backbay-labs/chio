@@ -2,24 +2,36 @@
 
 Provider-native adapter for Ollama `/api/chat` tool-use traffic.
 
+The adapter forwards a native `/api/chat` request to a running Ollama daemon
+through the shared `chio_provider_adapter_core::http` transport, then lifts the
+response tool calls into the canonical `chio_tool_call_fabric::ToolInvocation`,
+runs the kernel verdict, and lowers the result back into Ollama's wire shape.
+The reqwest-backed client, default headers, timeouts, and failure
+classification live in the adapter core; `crate::transport` wires Ollama's
+defaults onto it.
+
 The adapter pins the upstream API version to `2025-04` (see
 `crate::transport::OLLAMA_API_VERSION`). Bumping the pin requires a deliberate
 PR with a fixture re-record; the version string is also re-asserted by the
 conformance harness.
 
-Ollama is a localhost daemon, not a hosted provider; the adapter defaults to
-`http://localhost:11434` and the conformance corpus uses fully deterministic
-fixtures. The optional `tests/localhost_replay.rs` lane boots a real daemon
-through a CI service container when `OLLAMA_HOST` is set.
+Ollama runs as a local daemon, not a hosted provider; the transport defaults to
+`http://localhost:11434` with no authentication. Set `OLLAMA_HOST` to point at
+another daemon URL and, for a remote gateway that fronts the daemon, set
+`OLLAMA_API_KEY` to attach a bearer token.
 
 ## Surface
 
+- `OllamaAdapter::chat` posts a non-streaming `/api/chat` request through the
+  transport and lifts every `tool_calls` entry in the response.
+- `OllamaAdapter::chat_stream` posts a streaming `/api/chat` request and gates
+  the NDJSON tool-call frames behind a kernel verdict before forwarding bytes.
 - `OllamaAdapter::lift_batch` lifts every `tool_calls` entry on the assistant
   `message` of an `/api/chat` response into a
   `chio_tool_call_fabric::ToolInvocation`.
-- `OllamaAdapter::gate_sse_stream` mediates `/api/chat` NDJSON stream
-  payloads. Each `tool_calls` entry is evaluated by the kernel before its
-  enclosing line is forwarded.
+- `OllamaAdapter::gate_sse_stream` gates `/api/chat` NDJSON stream payloads.
+  Each `tool_calls` entry is evaluated by the kernel before its enclosing line
+  is forwarded.
 - `OllamaAdapter::lower_tool_message` converts a kernel verdict and a
   canonical tool result into an Ollama `tool` role message suitable for the
   next user turn.
@@ -50,10 +62,12 @@ The adapter projects upstream Ollama failures onto
 | Default endpoint | `http://localhost:11434` |
 | ProviderId | `ProviderId::Ollama` |
 
-## Localhost integration test
+## Replay test
 
-`tests/localhost_replay.rs` is gated on the `OLLAMA_HOST` environment
-variable. Set `OLLAMA_HOST=http://localhost:11434` (or another daemon URL)
-to enable the lane locally. CI exposes the daemon through a service
-container with a pre-pulled small model; the lane is optional on PR and
-required on nightly per the M07 P4 rollout plan.
+`tests/localhost_replay.rs` has two lanes. The hermetic lane always runs: it
+scripts the shared `MockTransport` with the recorded `ollama_localhost_replay`
+fixture response and drives `OllamaAdapter::chat`, so it is deterministic and
+needs no network. The opt-in live lane is gated on the `OLLAMA_HOST`
+environment variable; set `OLLAMA_HOST=http://localhost:11434` (or another
+daemon URL) to drive the real reqwest transport against a running daemon.
+Optionally set `OLLAMA_MODEL` to choose the probe model.

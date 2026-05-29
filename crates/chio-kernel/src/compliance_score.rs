@@ -1,4 +1,4 @@
-//! Phase 19.1 -- compliance scoring on top of `ComplianceReport`.
+//! Compliance scoring built on top of `ComplianceReport`.
 //!
 //! Productizes the existing [`crate::operator_report::ComplianceReport`]
 //! into a user-facing 0..=1000 score with weighted factors:

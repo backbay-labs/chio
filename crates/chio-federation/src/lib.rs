@@ -5,6 +5,8 @@
 //! evidence-referential and fail-closed: visibility may flow across operators,
 //! but runtime trust still requires explicit local activation and review.
 
+#![forbid(unsafe_code)]
+
 pub use chio_core_types::{capability, receipt};
 pub use chio_listing as listing;
 pub use chio_open_market as open_market;

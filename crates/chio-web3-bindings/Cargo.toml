@@ -24,6 +24,5 @@ chio-core = { path = "../chio-core" }
 chio-link = { path = "../chio-link" }
 chio-web3 = { path = "../chio-web3" }
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

@@ -1,6 +1,6 @@
 [package]
 name = "chio-tee"
-description = "Chio TEE shadow runner: replays kernel decisions inside a TEE for attestation"
+description = "Chio TEE shadow runner: captures kernel decisions and emits signed, redacted replay frames"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -30,6 +30,8 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 arc-swap = { workspace = true }
+base64 = { workspace = true }
+chrono = { workspace = true }
 toml = "0.8"
 # Pinned to 1.8.x; the derive feature provides the `Zeroize` + `ZeroizeOnDrop`
 # derives used by `RawPayloadBuffer` in `src/buffer.rs`.
@@ -41,9 +43,9 @@ zeroize = { version = "1.8", features = ["derive"] }
 signal-hook = "0.3"
 
 [dev-dependencies]
+chio-test-support = { path = "../chio-test-support" }
 proptest = { workspace = true }
 tempfile = { workspace = true }
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

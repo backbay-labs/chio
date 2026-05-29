@@ -215,7 +215,6 @@ fn load_session_receipts(
     conn: &rusqlite::Connection,
     session_id: &str,
 ) -> Result<Vec<ComplianceReceiptEntry>, CliError> {
-    // Check if the table exists.
     let table_exists: bool = conn
         .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='chio_receipts'")
         .and_then(|mut stmt| stmt.exists([]))

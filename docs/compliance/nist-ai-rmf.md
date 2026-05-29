@@ -62,7 +62,7 @@ This mapping covers every Govern/Map/Measure/Manage subcategory in AI RMF 1.0. S
 | GV-5.1 | Policies for addressing AI risk exist | `chio-policy` crate, guard configurations, `chio.yaml` | strong | None at enforcement layer | Policy authoring process |
 | GV-5.2 | Mechanisms for communicating risks | `chio-siem` receipt streaming (`crates/chio-siem/src/exporter.rs`) | partial | Delivery to stakeholders is external | Receiving-end SIEM configuration |
 | GV-6.1 | Policies to address AI risks of third-party AI | Capability scoping (`ToolGrant.constraints`) restricts which third-party tools are reachable; delegation attenuation | strong | Chio does not audit third-party providers | Third-party risk due diligence |
-| GV-6.2 | Contingency processes for failure of third parties | Circuit-breaker patterns live in ClawdStrike async guard runtime; Chio supports revocation for scope tightening | partial | Chio does not automate provider failover | Runbooks for third-party outages |
+| GV-6.2 | Contingency processes for failure of third parties | Circuit-breaker patterns live in the async guard runtime; Chio supports revocation for scope tightening | partial | Chio does not automate provider failover | Runbooks for third-party outages |
 
 ---
 
@@ -103,7 +103,7 @@ This mapping covers every Govern/Map/Measure/Manage subcategory in AI RMF 1.0. S
 | MS-2.3 | Performance metrics are tracked | Receipt store records timing, outcome, cost | partial | Latency percentiles not reported out of the box | Observability stack |
 | MS-2.4 | Measurement results are documented | Evidence export (`crates/chio-cli/src/evidence_export.rs`) and compliance certificates | strong | None | Reporting cadence |
 | MS-2.5 | Robustness, reliability, resilience are evaluated | Fail-closed pipeline; checkpoint integrity (`crates/chio-kernel/src/checkpoint.rs`) | partial | Model-level robustness is out of scope | Model evaluations |
-| MS-2.6 | Safety risks are evaluated | Content safety guards: jailbreak/prompt-injection (ClawdStrike integration per `docs/CLAWDSTRIKE_INTEGRATION.md`); `secret_leak`, `egress_allowlist`, `forbidden_path` in `crates/chio-guards/src/` | strong | Model-inference safety out of scope | Model safety testing |
+| MS-2.6 | Safety risks are evaluated | Content safety guards: jailbreak/prompt-injection detectors in the application-layer guard suite (see `../archive/GUARD_SUITE_INTEGRATION.md`); `secret_leak`, `egress_allowlist`, `forbidden_path` in `crates/chio-guards/src/` | strong | Model-inference safety out of scope | Model safety testing |
 | MS-2.7 | Security and resilience are evaluated | Signed receipts, Merkle checkpoints, DPoP, capability revocation | strong | Penetration testing is not automated | Regular pen-testing |
 | MS-2.8 | Risks of privacy violations are examined | PII-oriented `QueryResultGuard` / `response_sanitization.rs`, column constraints in data guards | partial | Not all privacy patterns covered | Privacy impact assessment |
 | MS-2.9 | Risks of fairness violations are examined | Out of scope | customer-responsibility | N/A | Fairness evaluations |

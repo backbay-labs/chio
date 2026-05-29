@@ -141,7 +141,7 @@ fn relative_display(root: &Path, path: &Path) -> Result<String, CliError> {
 
 fn chio_wall_doc_refs() -> ChioWallDocRefs {
     ChioWallDocRefs {
-        brief_file: "docs/mercury/CHIO_WALL_BRIEF.md".to_string(),
+        brief_file: "docs/chio-wall/BRIEF.md".to_string(),
         readme_file: "docs/chio-wall/README.md".to_string(),
         control_path_file: "docs/chio-wall/CONTROL_PATH.md".to_string(),
         operations_file: "docs/chio-wall/OPERATIONS.md".to_string(),
@@ -391,7 +391,7 @@ fn create_chio_wall_receipt_db(
             .into_iter()
             .map(|(_, bytes)| bytes)
             .collect::<Vec<_>>(),
-        &issuer,
+        &kernel,
     )?;
     store.store_checkpoint(&checkpoint)?;
     Ok(())

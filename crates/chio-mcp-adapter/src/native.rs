@@ -465,27 +465,7 @@ mod tests {
     use chio_core::{PromptArgument, PromptMessage};
     use chio_kernel::ToolServerEvent;
 
-    trait TestUnwrap<T> {
-        fn test_unwrap(self) -> T;
-    }
-
-    impl<T, E: std::fmt::Debug> TestUnwrap<T> for Result<T, E> {
-        fn test_unwrap(self) -> T {
-            match self {
-                Ok(value) => value,
-                Err(error) => panic!("expected Ok(..), got Err({error:?})"),
-            }
-        }
-    }
-
-    impl<T> TestUnwrap<T> for Option<T> {
-        fn test_unwrap(self) -> T {
-            match self {
-                Some(value) => value,
-                None => panic!("expected Some(..), got None"),
-            }
-        }
-    }
+    use chio_test_support::prelude::*;
 
     #[tokio::test]
     async fn native_service_builder_registers_tools_resources_and_prompts() {

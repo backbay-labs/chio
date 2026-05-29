@@ -5,6 +5,8 @@
 //! It is the foundation for `chio-openapi`, `chio-config`, `chio api protect`,
 //! and all language-specific middleware crates.
 
+#![forbid(unsafe_code)]
+
 pub mod approvals;
 mod authority;
 pub mod compliance;

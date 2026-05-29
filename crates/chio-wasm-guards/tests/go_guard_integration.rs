@@ -24,7 +24,7 @@
 //! wasm-tools, and wkg:
 //!
 //! ```bash
-//! cd packages/sdk/chio-guard-go && ./scripts/build-guard.sh
+//! cd sdks/guard/chio-guard-go && ./scripts/build-guard.sh
 //! ```
 //!
 //! Install toolchain prerequisites:
@@ -58,7 +58,7 @@ const GO_MAX_MEMORY: usize = 16 * 1024 * 1024;
 /// Path to the Go-compiled tool-gate guard WASM binary.
 fn go_guard_wasm_path() -> String {
     format!(
-        "{}/../../packages/sdk/chio-guard-go/dist/tool-gate.wasm",
+        "{}/../../sdks/guard/chio-guard-go/dist/tool-gate.wasm",
         env!("CARGO_MANIFEST_DIR"),
     )
 }
@@ -81,7 +81,7 @@ fn load_go_guard_wasm() -> Vec<u8> {
     std::fs::read(&path).unwrap_or_else(|e| {
         panic!(
             "Missing .wasm at {path}: {e}. Build with: \
-             cd packages/sdk/chio-guard-go && ./scripts/build-guard.sh"
+             cd sdks/guard/chio-guard-go && ./scripts/build-guard.sh"
         )
     })
 }
@@ -124,7 +124,7 @@ fn go_guard_detected_as_component() {
     if !go_guard_wasm_exists() {
         eprintln!(
             "SKIPPED: Go guard WASM not found at {}. \
-             Build with: cd packages/sdk/chio-guard-go && ./scripts/build-guard.sh",
+             Build with: cd sdks/guard/chio-guard-go && ./scripts/build-guard.sh",
             go_guard_wasm_path()
         );
         return;
@@ -146,7 +146,7 @@ fn go_guard_loads_via_create_backend() {
     if !go_guard_wasm_exists() {
         eprintln!(
             "SKIPPED: Go guard WASM not found at {}. \
-             Build with: cd packages/sdk/chio-guard-go && ./scripts/build-guard.sh",
+             Build with: cd sdks/guard/chio-guard-go && ./scripts/build-guard.sh",
             go_guard_wasm_path()
         );
         return;
@@ -179,7 +179,7 @@ fn go_guard_allows_safe_tool() {
     if !go_guard_wasm_exists() {
         eprintln!(
             "SKIPPED: Go guard WASM not found at {}. \
-             Build with: cd packages/sdk/chio-guard-go && ./scripts/build-guard.sh",
+             Build with: cd sdks/guard/chio-guard-go && ./scripts/build-guard.sh",
             go_guard_wasm_path()
         );
         return;
@@ -197,7 +197,7 @@ fn go_guard_denies_dangerous_tool() {
     if !go_guard_wasm_exists() {
         eprintln!(
             "SKIPPED: Go guard WASM not found at {}. \
-             Build with: cd packages/sdk/chio-guard-go && ./scripts/build-guard.sh",
+             Build with: cd sdks/guard/chio-guard-go && ./scripts/build-guard.sh",
             go_guard_wasm_path()
         );
         return;
@@ -224,7 +224,7 @@ fn go_guard_denies_rm_rf() {
     if !go_guard_wasm_exists() {
         eprintln!(
             "SKIPPED: Go guard WASM not found at {}. \
-             Build with: cd packages/sdk/chio-guard-go && ./scripts/build-guard.sh",
+             Build with: cd sdks/guard/chio-guard-go && ./scripts/build-guard.sh",
             go_guard_wasm_path()
         );
         return;
@@ -242,7 +242,7 @@ fn go_guard_denies_drop_database() {
     if !go_guard_wasm_exists() {
         eprintln!(
             "SKIPPED: Go guard WASM not found at {}. \
-             Build with: cd packages/sdk/chio-guard-go && ./scripts/build-guard.sh",
+             Build with: cd sdks/guard/chio-guard-go && ./scripts/build-guard.sh",
             go_guard_wasm_path()
         );
         return;

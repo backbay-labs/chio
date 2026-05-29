@@ -214,41 +214,7 @@ mod tests {
     use r2d2::Pool;
     use r2d2_sqlite::SqliteConnectionManager;
 
-    trait TestResultOk<T, E> {
-        fn test_expect(self, context: &'static str) -> T;
-    }
-
-    impl<T, E> TestResultOk<T, E> for Result<T, E> {
-        fn test_expect(self, context: &'static str) -> T {
-            match self {
-                Ok(value) => value,
-                Err(_) => panic!("{context}"),
-            }
-        }
-    }
-
-    trait TestResultErr<T, E> {
-        fn test_expect_err(self, context: &'static str) -> E;
-    }
-
-    impl<T, E> TestResultErr<T, E> for Result<T, E> {
-        fn test_expect_err(self, context: &'static str) -> E {
-            match self {
-                Ok(_) => panic!("{context} unexpectedly succeeded"),
-                Err(error) => error,
-            }
-        }
-    }
-
-    trait TestOptionExt<T> {
-        fn test_expect(self, context: &'static str) -> T;
-    }
-
-    impl<T> TestOptionExt<T> for Option<T> {
-        fn test_expect(self, context: &'static str) -> T {
-            self.unwrap_or_else(|| panic!("{context}"))
-        }
-    }
+    use chio_test_support::prelude::*;
 
     fn pool() -> Pool<SqliteConnectionManager> {
         let manager = SqliteConnectionManager::memory();

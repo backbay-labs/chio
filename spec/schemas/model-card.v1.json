@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://chio.dev/schemas/model-card.v1.json",
+  "$id": "https://chio.world/schemas/model-card.v1.json",
   "title": "Chio Model Card v1",
-  "description": "Signed declaration that binds a model's loaded weights to an allowed capability set, banned tools, and training-data class. Locked under the M10 P4 trust-boundary milestone. The kernel refuses to bind a provider whose loaded weights or requested scopes do not match a card.",
+  "description": "Signed declaration that binds a model's loaded weights to an allowed capability set, banned tools, and training-data class. The kernel refuses to bind a provider whose loaded weights or requested scopes do not match a card.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -50,7 +50,7 @@
       "minLength": 1
     },
     "issuer": {
-      "description": "Logical issuer identity (URI / OIDC subject / SAN). Cosign bundle verification (P4.T3) pins this against the verified Fulcio certificate identity supplied by the caller.",
+      "description": "Logical issuer identity (URI / OIDC subject / SAN). Cosign bundle verification pins this against the verified Fulcio certificate identity supplied by the caller.",
       "type": "string",
       "minLength": 1
     },

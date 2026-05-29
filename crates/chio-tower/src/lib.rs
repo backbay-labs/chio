@@ -26,6 +26,8 @@
 //! let _service = layer.layer(inner);
 //! ```
 
+#![forbid(unsafe_code)]
+
 mod error;
 mod evaluator;
 mod host_call;

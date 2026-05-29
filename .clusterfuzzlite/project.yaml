@@ -1,6 +1,6 @@
-# ClusterFuzzLite project config for Chio (formerly ARC).
+# ClusterFuzzLite project config for Chio.
 #
-# Storage backend: bb-connor/arc-fuzz-corpus sibling private repo (no GCS).
+# Storage backend: backbay-labs/chio-fuzz-corpus sibling private repo (no GCS).
 # The repo is created out-of-band before the first cflite_batch.yml run.
 #
 # NOTE: ClusterFuzzLite reads the corpus storage-repo as an input to
@@ -8,11 +8,10 @@
 # project.yaml. The `storage-repo:` input is wired with `FUZZ_CORPUS_PAT`
 # in `.github/workflows/cflite_pr.yml` and `.github/workflows/cflite_batch.yml`.
 language: rust
-primary_contact: "whelan.connor11@gmail.com"
+primary_contact: "security@backbay.io"
 auto_ccs:
-  - "whelan.connor11@gmail.com"
-  # TODO: add backup contact before opening the upstream OSS-Fuzz PR.
-  # Mirrors the matching slot in infra/oss-fuzz/project.yaml so the two configs stay in lockstep.
+  - "security@backbay.io"
+  - "fuzzing@backbay.io"
 sanitizers:
   - address
   - undefined

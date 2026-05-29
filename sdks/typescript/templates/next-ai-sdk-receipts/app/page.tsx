@@ -5,10 +5,10 @@ export default function Home() {
     <main>
       <h1>Chio receipts template</h1>
       <p>
-        This is the M07 P1 skeleton. The chat Route Handler lives at{" "}
+        This is the starter skeleton. The chat Route Handler lives at{" "}
         <code>/api/chat</code> and the receipts viewer at{" "}
-        <Link href="/receipts">/receipts</Link>. P5 will replace the
-        skeleton with a runnable chat experience and a local receipt sink.
+        <Link href="/receipts">/receipts</Link>. Replace the skeleton with
+        your own chat experience backed by a local receipt sink.
       </p>
     </main>
   );

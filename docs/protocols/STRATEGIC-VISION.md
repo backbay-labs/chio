@@ -701,7 +701,7 @@ It is not a tool server. It does not implement tools. It intercepts JSON-RPC
 messages, enforces capability-based access control, and generates audit entries.
 
 The kernel is injected as a service, not embedded as a library. This means the
-proxy can run alongside an Chio kernel that is already managing MCP and A2A
+proxy can run alongside a Chio kernel that is already managing MCP and A2A
 edges, producing receipts into the same log. The alternative -- making the ACP
 proxy a standalone tool server -- would have created a second receipt log and a
 second policy evaluation path, violating the single-kernel invariant.

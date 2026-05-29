@@ -69,7 +69,7 @@ ErrorHandler = Callable[[BaseException, ChioReceipt | None, str | None], None]
 
 
 class ReceiptPoller:
-    """Tail an Chio receipt source and forward new receipts to bridges.
+    """Tail a Chio receipt source and forward new receipts to bridges.
 
     Parameters
     ----------

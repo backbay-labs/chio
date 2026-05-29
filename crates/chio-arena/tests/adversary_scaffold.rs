@@ -42,7 +42,7 @@ expect_verdict = "allow"
 [[adversaries]]
 class = "prompt-injection"
 population = "scaffold-injection"
-seed_ref = "fuzz/artifacts/m02"
+seed_ref = "fuzz/artifacts"
 
 [adversaries.params]
 patterns = ["ignore-previous-instructions"]

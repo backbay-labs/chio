@@ -2,7 +2,7 @@
 //!
 //! These tests exercise the full `Guard` trait entrypoint (not just the
 //! `scan` helper) through a realistic `GuardContext`, verifying the
-//! roadmap Phase 3.1 acceptance criterion: classic "ignore previous
+//! acceptance criterion: classic "ignore previous
 //! instructions" payloads deny, benign inputs allow, and the guard does
 //! not interfere with non-text-bearing actions.
 

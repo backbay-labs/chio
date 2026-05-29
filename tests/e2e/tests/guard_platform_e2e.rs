@@ -1,4 +1,4 @@
-//! Ignored phase-boundary gate for the M06 guard platform.
+//! Ignored end-to-end gate for the guard platform.
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 

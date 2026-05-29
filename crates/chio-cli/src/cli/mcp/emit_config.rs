@@ -1,8 +1,13 @@
-// IDE config blob renderer for `arc mcp wrap --emit-config <target>`.
+// IDE config blob renderer for `chio mcp wrap --emit-config <target>`.
 //
 // Each IDE has its own schema; the rendered JSON is canonical (sorted
 // keys via `serde_json::to_string_pretty`) and the schema version is
 // pinned in [`IdeTarget::schema_version`].
+
+use super::*;
+
+use super::ide::IdeTarget;
+use super::wrap::McpWrapArgs;
 
 /// Render the paste-ready IDE config blob for the supplied target.
 /// Pure function so the test corpus can compare bytes against the
@@ -76,7 +81,7 @@ pub(crate) fn render_ide_config(
         .map_err(|e| CliError::cli_other_error(format!("failed to encode IDE config: {e}")))
 }
 
-fn cmd_mcp_emit_config(args: &McpWrapArgs, target: IdeTarget) -> Result<(), CliError> {
+pub(crate) fn cmd_mcp_emit_config(args: &McpWrapArgs, target: IdeTarget) -> Result<(), CliError> {
     let blob = render_ide_config(
         target,
         &args.server_id,

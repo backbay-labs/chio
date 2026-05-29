@@ -131,7 +131,7 @@ pub struct ScenarioAdversary {
     pub class: String,
     pub population: String,
     pub seed_ref: String,
-    /// Optional kebab-case parameter map used by P3 adversary classes to
+    /// Optional kebab-case parameter map used by adversary classes to
     /// configure their populations. Unknown keys are forwarded as-is to the
     /// adversary constructor; constructors are responsible for rejecting
     /// missing or ill-typed parameters.

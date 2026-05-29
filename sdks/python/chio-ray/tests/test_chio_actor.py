@@ -1,6 +1,6 @@
 """Unit tests for :class:`chio_ray.ChioActor` and :meth:`ChioActor.requires`.
 
-Exercises the roadmap acceptance shape verbatim: a Ray actor with
+Exercises the documented usage shape: a Ray actor with
 ``@ChioActor.requires("tools:search")`` on its methods, a standing
 grant that authorises ``tools:search`` only, and calls outside the
 granted scope that are denied with :class:`PermissionError`.
@@ -81,12 +81,12 @@ def _scope_aware_policy(
 
 
 # ---------------------------------------------------------------------------
-# (a) Roadmap acceptance: in-scope method call succeeds.
+# (a) In-scope method call succeeds.
 # ---------------------------------------------------------------------------
 
 
 class TestRoadmapAcceptance:
-    """The scenario called out in the phase acceptance criteria."""
+    """In-scope method calls succeed under a standing grant."""
 
     def test_search_method_allowed_when_standing_grant_authorises_search(
         self,
@@ -111,8 +111,8 @@ class TestRoadmapAcceptance:
             def search(self, query: str) -> list[str]:
                 return [f"hit:{query}"]
 
-        # Wrap with the ray fake so the acceptance shape matches the
-        # roadmap snippet: `ActorClass.remote(...)` to instantiate,
+        # Wrap with the ray fake to match the documented usage:
+        # `ActorClass.remote(...)` to instantiate,
         # `handle.method.remote(...)` to call.
         remote_cls = ray.remote(ResearchAgent)
         handle = remote_cls.remote(chio_client=chio, token=search_token)
@@ -246,10 +246,8 @@ class TestStandingGrantIntrospection:
 
         # After a call, the receipt is recorded on the trail.
         _ = ray.get(ray.remote(Agent).remote().search.remote("x"))
-        # The driver-side instance and the Ray-side fake instance
-        # are different processes in a real cluster; in the fake they
-        # are independent instances, so the trail lives on the
-        # per-handle instance. We also confirm the direct-call trail:
+        # In the fake, driver-side and Ray-side are independent instances
+        # so the receipt trail lives on the per-handle instance. We also confirm the direct-call trail:
         agent.search("y")
         assert len(agent.chio_receipts) == 1
         assert agent.chio_receipts[0].is_allowed

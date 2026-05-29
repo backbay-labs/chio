@@ -1,15 +1,13 @@
 //! Data layer guards for the Chio runtime kernel.
 //!
 //! This crate houses guards that inspect the *semantics* of data-store
-//! accesses rather than merely the presence of a tool.  Phase 7.1 of the
-//! Chio roadmap ships the first such guard, [`SqlQueryGuard`], which parses
-//! SQL queries submitted to database tools and enforces allowlists on
-//! operations, tables, columns, and predicates.
+//! accesses rather than merely the presence of a tool.  [`SqlQueryGuard`]
+//! parses SQL queries submitted to database tools and enforces allowlists
+//! on operations, tables, columns, and predicates.
 //!
-//! Future phases (7.2, 7.3, 7.4) will add `VectorDbGuard`,
-//! `WarehouseCostGuard`, and the post-invocation `QueryResultGuard` in
-//! this same crate.  The module layout is designed to absorb those
-//! additions without breaking the public surface.
+//! The crate also ships `VectorDbGuard`, `WarehouseCostGuard`, and the
+//! post-invocation `QueryResultGuard`. The module layout is designed to
+//! absorb further additions without breaking the public surface.
 //!
 //! # Relationship to `chio-guards`
 //!
@@ -32,6 +30,7 @@
 //! configurations deny, and invalid user-supplied regex configuration
 //! rejects policy loading or constructs a deny-all guard.
 
+#![forbid(unsafe_code)]
 #![cfg_attr(test, allow(clippy::expect_used, clippy::unwrap_used))]
 
 pub mod config;

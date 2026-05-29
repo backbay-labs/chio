@@ -10,9 +10,11 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from enum import Enum
 from typing import Any
 
 import httpx
+from pydantic import BaseModel
 
 from chio_sdk.errors import (
     ChioConnectionError,
@@ -42,6 +44,27 @@ from chio_sdk.models_approvals import (
 )
 
 
+def _jsonable(obj: Any) -> Any:
+    """Convert Pydantic and enum values into HTTP JSON payload values."""
+    if isinstance(obj, BaseModel):
+        return _jsonable(
+            obj.model_dump(
+                mode="json",
+                exclude_none=True,
+                by_alias=True,
+            )
+        )
+    if isinstance(obj, Enum):
+        return obj.value
+    if isinstance(obj, dict):
+        return {key: _jsonable(value) for key, value in obj.items()}
+    if isinstance(obj, list):
+        return [_jsonable(value) for value in obj]
+    if isinstance(obj, tuple):
+        return [_jsonable(value) for value in obj]
+    return obj
+
+
 def _canonical_json(obj: Any) -> bytes:
     """Produce canonical JSON (sorted keys, no extra whitespace, ensure_ascii).
 
@@ -51,7 +74,7 @@ def _canonical_json(obj: Any) -> bytes:
     sufficient for content hashing.
     """
     return json.dumps(
-        obj, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+        _jsonable(obj), sort_keys=True, separators=(",", ":"), ensure_ascii=True
     ).encode("utf-8")
 
 
@@ -85,6 +108,123 @@ def _capability_id_from_token(raw_token: str | None) -> str | None:
         return CapabilityToken.model_validate_json(raw_token).id
     except Exception:
         return None
+
+
+def _operations_subset(child: list[Any], parent: list[Any]) -> bool:
+    return set(_jsonable(child)) <= set(_jsonable(parent))
+
+
+def _money_within_child_limit(child: Any | None, parent: Any | None) -> bool:
+    if parent is None:
+        return True
+    if child is None:
+        return False
+    child_json = _jsonable(child)
+    parent_json = _jsonable(parent)
+    return (
+        child_json.get("currency") == parent_json.get("currency")
+        and child_json.get("units", 0) <= parent_json.get("units", 0)
+    )
+
+
+def _constraints_preserve_parent(child: Any | None, parent: Any | None) -> bool:
+    parent_constraints = parent or []
+    if not parent_constraints:
+        return True
+    child_constraints = child or []
+    child_set = {
+        _canonical_json(constraint).decode("utf-8")
+        for constraint in child_constraints
+    }
+    return all(
+        _canonical_json(constraint).decode("utf-8") in child_set
+        for constraint in parent_constraints
+    )
+
+
+def _tool_grant_subset(child: Any, parent: Any) -> bool:
+    child_json = _jsonable(child)
+    parent_json = _jsonable(parent)
+    if child_json.get("server_id") != parent_json.get("server_id"):
+        return False
+    if child_json.get("tool_name") != parent_json.get("tool_name"):
+        return False
+    if not _operations_subset(
+        child_json.get("operations", []), parent_json.get("operations", [])
+    ):
+        return False
+    if not _constraints_preserve_parent(
+        child_json.get("constraints"), parent_json.get("constraints")
+    ):
+        return False
+    for field in ("max_invocations",):
+        parent_value = parent_json.get(field)
+        child_value = child_json.get(field)
+        if parent_value is not None and (
+            child_value is None or child_value > parent_value
+        ):
+            return False
+    for field in ("max_cost_per_invocation", "max_total_cost"):
+        if not _money_within_child_limit(
+            child_json.get(field), parent_json.get(field)
+        ):
+            return False
+    if (
+        parent_json.get("dpop_required") is True
+        and child_json.get("dpop_required") is not True
+    ):
+        return False
+    return True
+
+
+def _resource_grant_subset(child: Any, parent: Any) -> bool:
+    child_json = _jsonable(child)
+    parent_json = _jsonable(parent)
+    return (
+        child_json.get("uri_pattern") == parent_json.get("uri_pattern")
+        and _operations_subset(
+            child_json.get("operations", []), parent_json.get("operations", [])
+        )
+    )
+
+
+def _prompt_grant_subset(child: Any, parent: Any) -> bool:
+    child_json = _jsonable(child)
+    parent_json = _jsonable(parent)
+    return (
+        child_json.get("prompt_name") == parent_json.get("prompt_name")
+        and _operations_subset(
+            child_json.get("operations", []), parent_json.get("operations", [])
+        )
+    )
+
+
+def _all_grants_subset(
+    child_grants: list[Any] | None,
+    parent_grants: list[Any] | None,
+    predicate: Any,
+) -> bool:
+    parents = parent_grants or []
+    return all(
+        any(predicate(child, parent) for parent in parents)
+        for child in child_grants or []
+    )
+
+
+def _scope_subset(child: ChioScope, parent: ChioScope) -> bool:
+    return (
+        _all_grants_subset(child.grants, parent.grants, _tool_grant_subset)
+        and _all_grants_subset(
+            child.resource_grants,
+            parent.resource_grants,
+            _resource_grant_subset,
+        )
+        and _all_grants_subset(
+            child.prompt_grants,
+            parent.prompt_grants,
+            _prompt_grant_subset,
+        )
+    )
 
 
 class ChioClient:
@@ -158,7 +298,7 @@ class ChioClient:
         """
         body = {
             "subject": subject,
-            "scope": scope.model_dump(exclude_none=True),
+            "scope": scope,
             "ttl_seconds": ttl_seconds,
         }
         data = await self._post("/v1/capabilities", body)
@@ -174,7 +314,7 @@ class ChioClient:
         """
         data = await self._post(
             "/v1/capabilities/validate",
-            token.model_dump(exclude_none=True),
+            token,
         )
         return bool(data.get("valid", False))
 
@@ -188,13 +328,13 @@ class ChioClient:
 
         The new scope must be a subset of the original.
         """
-        if not new_scope.is_subset_of(token.scope):
+        if not _scope_subset(new_scope, token.scope):
             raise ChioValidationError(
                 "new_scope must be a subset of the parent token scope"
             )
         body = {
-            "parent_token": token.model_dump(exclude_none=True),
-            "new_scope": new_scope.model_dump(exclude_none=True),
+            "parent_token": token,
+            "new_scope": new_scope,
         }
         data = await self._post("/v1/capabilities/attenuate", body)
         return CapabilityToken.model_validate(data)
@@ -212,7 +352,7 @@ class ChioClient:
         """
         data = await self._post(
             "/v1/receipts/verify",
-            receipt.model_dump(exclude_none=True),
+            receipt,
         )
         try:
             report = VerifyReceiptResponse.model_validate(data)
@@ -224,7 +364,7 @@ class ChioClient:
         """Ask the sidecar to verify an HTTP receipt's authority."""
         data = await self._post(
             "/chio/verify",
-            receipt.model_dump(exclude_none=True),
+            receipt,
         )
         return VerifyReceiptResponse.model_validate(data)
 
@@ -240,7 +380,7 @@ class ChioClient:
             return True
         for i in range(1, len(receipts)):
             prev_canonical = _canonical_json(
-                receipts[i - 1].model_dump(exclude_none=True)
+                receipts[i - 1]
             )
             expected_hash = _sha256_hex(prev_canonical)
             if receipts[i].content_hash != expected_hash:
@@ -324,7 +464,7 @@ class ChioClient:
             request_headers = {"X-Chio-Capability": capability_token}
         data = await self._post(
             "/chio/evaluate",
-            request_model.model_dump(exclude_none=True),
+            request_model,
             headers=request_headers,
         )
         result = EvaluateResponse.model_validate(data)
@@ -496,7 +636,7 @@ class ChioClient:
         """Collect all guard evidence from a list of receipts."""
         evidence: list[GuardEvidence] = []
         for receipt in receipts:
-            evidence.extend(receipt.evidence)
+            evidence.extend(receipt.evidence or [])
         return evidence
 
     # ------------------------------------------------------------------
@@ -519,12 +659,12 @@ class ChioClient:
     async def _post(
         self,
         path: str,
-        body: dict[str, Any],
+        body: Any,
         *,
         headers: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         try:
-            resp = await self._http.post(path, json=body, headers=headers)
+            resp = await self._http.post(path, json=_jsonable(body), headers=headers)
         except httpx.ConnectError as exc:
             raise ChioConnectionError(
                 f"Failed to connect to Chio sidecar at {self._base_url}"

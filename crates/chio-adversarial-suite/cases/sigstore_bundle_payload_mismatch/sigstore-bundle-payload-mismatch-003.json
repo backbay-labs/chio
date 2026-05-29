@@ -11,7 +11,7 @@
     "bundle": {
       "dsse_payload_type": "application/vnd.in-toto+json",
       "signed_subject": "sha256:trusted-policy-bundle",
-      "certificate_identity": "release@chio.dev"
+      "certificate_identity": "release@chio.world"
     },
     "payload": {
       "decoded_subject": "sha256:modified-policy-bundle",

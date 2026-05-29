@@ -19,9 +19,7 @@
 //! native targets it compiles with no-op fallbacks for host imports, allowing
 //! `cargo test` to run without a WASM runtime.
 //!
-//! The `#[chio_guard]` proc macro (Phase 383) will generate the `evaluate`
-//! export automatically. Until then, guard authors wire the pieces together
-//! manually.
+//! Guard authors wire the pieces together manually.
 //!
 //! # Quick start
 //!

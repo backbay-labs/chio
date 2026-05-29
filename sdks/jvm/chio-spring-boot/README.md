@@ -21,7 +21,7 @@ Add the dependency to `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("io.backbay.chio:chio-spring-boot:0.1.0")
+    implementation("world.chio:chio-spring-boot:0.1.0")
 }
 ```
 
@@ -29,7 +29,7 @@ Or to `pom.xml`:
 
 ```xml
 <dependency>
-  <groupId>io.backbay.chio</groupId>
+  <groupId>world.chio</groupId>
   <artifactId>chio-spring-boot</artifactId>
   <version>0.1.0</version>
 </dependency>

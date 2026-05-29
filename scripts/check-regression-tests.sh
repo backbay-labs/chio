@@ -125,7 +125,6 @@ if [[ -z "$BASE" ]]; then
     fi
 fi
 
-# Sanity-check refs exist.
 if ! git rev-parse --verify --quiet "$BASE" >/dev/null; then
     echo "check-regression-tests: base ref '$BASE' not found" >&2
     exit 2

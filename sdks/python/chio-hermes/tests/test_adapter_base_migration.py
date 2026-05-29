@@ -100,8 +100,8 @@ def test_redact_args_delegates_to_adapter_base(
     # ``redact_args as _adapter_base_redact_args`` so the
     # module-level reference is what the shim actually calls.
     monkeypatch.setattr(_hooks, "_adapter_base_redact_args", _fake)
-    # Belt-and-braces: also patch the canonical module so the bind name
-    # path stays consistent if someone re-imports.
+    # Also patch the canonical module so the bind name path stays
+    # consistent if someone re-imports.
     monkeypatch.setattr(_ab_redact, "redact_args", _fake)
 
     with warnings.catch_warnings():

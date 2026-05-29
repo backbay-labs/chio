@@ -167,9 +167,8 @@ and content-hash verification are deterministic across runs.
 ## HITL approval path
 
 Human-in-the-loop approval support (pause Activity on a pending
-approval guard, resume via Temporal Signal) lands in v2 after Phase 3.4
-of the Chio roadmap. This v1 release implements the synchronous
-allow/deny path only.
+approval guard, resume via Temporal Signal) lands in a future release.
+This v1 release implements the synchronous allow/deny path only.
 
 ## Reference
 

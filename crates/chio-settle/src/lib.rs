@@ -5,6 +5,7 @@
 //! exposes the bounded Solana-native settlement model used for Ed25519-first
 //! parity checks.
 
+#![forbid(unsafe_code)]
 #![cfg(feature = "web3")]
 
 mod automation;

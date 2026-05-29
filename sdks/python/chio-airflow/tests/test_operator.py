@@ -205,7 +205,7 @@ class TestDenyPath:
         with pytest.raises(AirflowException) as exc_info:
             op.execute(ctx)
 
-        # Roadmap acceptance: PermissionError is the __cause__.
+        # PermissionError is the __cause__.
         cause = exc_info.value.__cause__
         assert isinstance(cause, PermissionError), (
             f"expected PermissionError cause, got {type(cause)!r}"

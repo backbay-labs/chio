@@ -1,12 +1,16 @@
-// Verdict-matrix driver registration for the @chio/ai-sdk-middleware
+// Verdict-matrix driver registration for the @chio-protocol/ai-sdk-middleware
 // framework wrapper. The driver does not embed kernel evaluation; it
-// delegates to the typescript-node-http transport-client driver shipped by
-// M02.P5.T2 (./run_scenarios.ts) so the matrix asserts the framework
-// wrapper preserves the verdict tuple emitted by the underlying SDK.
+// delegates to the typescript-node-http transport-client driver
+// (./run_scenarios.ts) so the matrix asserts the framework wrapper
+// preserves the verdict tuple emitted by the underlying SDK.
 //
-// While M02.P5.T2 is still in flight, this file ships as a prepared
-// registration. Matrix tooling enumerates this driver but skips execution
-// until the underlying transport-client driver is active.
+// Execution gates on a live Chio sidecar exactly like the underlying
+// transport-client driver: when CHIO_VERDICT_MATRIX_SIDECAR_URL (or
+// CHIO_SIDECAR_URL) names a reachable sidecar the wrapper issues a real
+// evaluation per scenario through @chio-protocol/ai-sdk-middleware and emits a verdict
+// tuple; without a sidecar each scenario is reported as unsupported. The
+// wrapper carries no in-process kernel, so there is no verdict it can emit on
+// its own.
 
 import {
   runVerdictMatrixScenarios as runUnderlyingScenarios,
@@ -17,8 +21,8 @@ import {
 
 export const driver = {
   id: "typescript-ai-sdk-middleware",
-  packageName: "@chio/ai-sdk-middleware",
-  status: "prepared-blocked-by-m02-pr-352",
+  packageName: "@chio-protocol/ai-sdk-middleware",
+  status: "transport-client",
   matrixRole: "framework-wrapper",
   underlyingDriver: "typescript-node-http",
   tupleFields: ["verdict", "reason_code", "scope_set"] as const,
@@ -28,7 +32,7 @@ export type AiSdkMiddlewareTuple = VerdictTuple;
 export type AiSdkMiddlewareOutcome = DriverOutcome;
 
 /**
- * Drive the verdict-matrix scenarios through @chio/ai-sdk-middleware.
+ * Drive the verdict-matrix scenarios through @chio-protocol/ai-sdk-middleware.
  *
  * The middleware evaluates at the tool-use boundary; for matrix purposes
  * it must preserve the verdict tuple emitted by the underlying transport

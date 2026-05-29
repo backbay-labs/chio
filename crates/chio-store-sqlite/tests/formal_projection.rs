@@ -8,28 +8,7 @@ use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction,
 use chio_kernel::{BudgetStore, ReceiptStore, RevocationStore};
 use chio_store_sqlite::{SqliteBudgetStore, SqliteReceiptStore, SqliteRevocationStore};
 
-trait TestResultOk<T, E> {
-    fn test_unwrap(self) -> T;
-}
-
-impl<T, E> TestResultOk<T, E> for Result<T, E> {
-    fn test_unwrap(self) -> T {
-        match self {
-            Ok(value) => value,
-            Err(_) => panic!("expected Ok result"),
-        }
-    }
-}
-
-trait TestOptionExt<T> {
-    fn test_unwrap(self) -> T;
-}
-
-impl<T> TestOptionExt<T> for Option<T> {
-    fn test_unwrap(self) -> T {
-        self.unwrap_or_else(|| panic!("expected Some value"))
-    }
-}
+use chio_test_support::prelude::*;
 
 fn temp_path(prefix: &str) -> std::path::PathBuf {
     let nonce = SystemTime::now()

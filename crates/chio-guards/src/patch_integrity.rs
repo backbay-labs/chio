@@ -1,6 +1,6 @@
 //! Patch integrity guard -- validates patch/diff safety.
 //!
-//! Adapted from ClawdStrike's `guards/patch_integrity.rs`. Checks for:
+//! Checks for:
 //! - Maximum additions/deletions thresholds
 //! - Forbidden patterns in added lines (security disablement, backdoors, etc.)
 //! - Optional addition/deletion imbalance checks

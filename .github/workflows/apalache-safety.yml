@@ -21,10 +21,10 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  m06-apalache-subset:
-    name: m06-apalache-subset
+  apalache-subset:
+    name: apalache-subset
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
@@ -54,7 +54,7 @@ jobs:
           set -euo pipefail
           python3 scripts/check-apalache-formal-slice.py
 
-      - name: M06 Apalache safety checks
+      - name: Apalache safety checks
         shell: bash
         run: |
           set -euo pipefail
@@ -68,4 +68,6 @@ jobs:
           formal/apalache/MCRevocationCutCompleteness.cfg|formal/apalache/RevocationCutCompleteness.tla
           formal/apalache/MCReceiptBeforeAllow.cfg|formal/apalache/ReceiptBeforeAllow.tla
           formal/apalache/MCKernelTransitionCancelSafe.cfg|formal/apalache/KernelTransitionCancelSafe.tla
+          formal/tla/MCRevocationPropagation.cfg|formal/tla/RevocationPropagation.tla
+          formal/tla/MCDelegationDepthBound.cfg|formal/tla/DelegationDepthBound.tla
           EOF

@@ -80,7 +80,7 @@ pub enum WasmGuardError {
     UnrecognizedFormat,
 
     /// Ed25519 signature verification (or the surrounding envelope check)
-    /// failed for a WASM guard module. Emitted by Phase 1.3 signing.
+    /// failed for a WASM guard module. Emitted by the signing path.
     #[error("signature verification failed: {0}")]
     SignatureVerification(String),
 }

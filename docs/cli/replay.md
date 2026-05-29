@@ -1,16 +1,14 @@
 # `chio replay`
 
-Re-evaluate a captured receipt log (or M10 tee NDJSON stream) against the
+Re-evaluate a captured receipt log (or tee NDJSON stream) against the
 current build. Re-verifies every Ed25519 signature, recomputes the Merkle
 root incrementally, and reports the first divergence by byte offset and
 JSON pointer.
 
-This page is a CLI reference. The normative source is
-`.planning/trajectory/04-deterministic-replay.md` Phase 4 ("chio replay
-subcommand surface"). The exit-code registry on this page is canonical:
-M04 owns it, and M10's `chio replay` traffic mode (see
-`.planning/trajectory/10-tee-replay-harness.md` Phase 2) consumes it
-verbatim without defining new codes.
+This page is a CLI reference. The normative source is the
+deterministic-replay contract in `spec/PROTOCOL.md` (the `chio replay`
+subcommand surface). The exit-code registry on this page is canonical:
+The goldens-replay subsystem owns it, and the tee-replay traffic mode consumes it verbatim without defining new codes.
 
 ## Synopsis
 
@@ -26,7 +24,7 @@ ARGS:
   <LOG>                Path to a receipt-log directory or NDJSON stream.
 
 OPTIONS:
-      --from-tee           Treat <LOG> as an M10 tee NDJSON stream. When
+      --from-tee           Treat <LOG> as a tee NDJSON stream. When
                            omitted, the reader auto-detects the input
                            shape (directory vs. NDJSON file).
       --expect-root <HEX>  Assert the recomputed Merkle root equals this
@@ -42,7 +40,7 @@ OPTIONS:
                            clean tree outside `tests/replay/goldens/**`
                            and `docs/replay-compat.md`, and an audit-log
                            entry. The bless gate is fail-closed; see
-                           milestone M04 phase 5 for the full rules.
+                           the replay-gate rules below for the full rules.
   -h, --help               Print help.
   -V, --version            Print version.
 ```
@@ -51,15 +49,15 @@ The `<LOG>` positional accepts two shapes:
 
 - A directory of signed receipts laid out under
   `tests/replay/goldens/<family>/<name>/` (`receipts.ndjson`,
-  `checkpoint.json`, `root.hex`). This is the M04 fixture shape.
+  `checkpoint.json`, `root.hex`). This is the goldens fixture shape.
 - An NDJSON stream (one signed receipt per line). When the stream is an
-  M10 tee capture, pass `--from-tee` to skip auto-detection. The frame
+  tee capture, pass `--from-tee` to skip auto-detection. The frame
   layout is byte-compatible with the goldens NDJSON.
 
 ## Exit codes
 
-M04 is the source of truth for these codes. M10's traffic-mode replay
-(`.planning/trajectory/10-tee-replay-harness.md` Phase 2) consumes them
+The goldens-replay subsystem is the source of truth for these codes. The tee-replay traffic mode
+(the tee replay harness; see `spec/PROTOCOL.md`) consumes them
 verbatim.
 
 | Code | Name                | Meaning                                                                                                                                  |
@@ -68,7 +66,7 @@ verbatim.
 | 10   | verdict drift       | A receipt's allow / deny decision differs from what the current build issues for the same input. Also fires when `--expect-root` mismatches. |
 | 20   | signature mismatch  | Ed25519 verification failed on at least one receipt's or frame's `tenant_sig`.                                                           |
 | 30   | parse error         | Malformed JSON or a missing required field. Structural failure before schema validation.                                                 |
-| 40   | schema mismatch     | Unsupported `schema_version`, or schema validation failed against the M01 canonical-JSON schema set.                                     |
+| 40   | schema mismatch     | Unsupported `schema_version`, or schema validation failed against the canonical-JSON schema set.                                     |
 | 50   | redaction mismatch  | The recorded `redaction_pass_id` is unavailable, or rerunning the redaction manifest produces a different result.                        |
 
 Exit code 1 is reserved for unrelated CLI errors (missing input file,
@@ -77,7 +75,7 @@ into 0 / 10 / 20 / 30 / 40 / 50.
 
 ### Error-class to exit-code mapping
 
-This table is the authoritative mapping. M10's `chio replay` traffic
+This table is the authoritative mapping. The tee-replay traffic
 mode reuses it without modification.
 
 | Error class                                | Exit |
@@ -120,31 +118,31 @@ The root for a given fixture lives at
 
 ### `--from-tee`
 
-Treats `<LOG>` as an M10 tee NDJSON stream rather than a goldens
+Treats `<LOG>` as a tee NDJSON stream rather than a goldens
 directory or a generic NDJSON file. The frame shape is the same
-canonical-JSON receipt envelope used by M04's goldens, so the
+canonical-JSON receipt envelope used by the goldens, so the
 distinction is mostly about input-shape detection: a directory implies
 goldens, a file may be either.
 
-The interplay with M10:
+The interplay with the tee-replay subsystem:
 
-- M10 owns the encoder. The `chio-tee` sidecar
+- The tee-replay subsystem owns the encoder. The `chio-tee` sidecar
   (`crates/chio-tee/`) writes NDJSON capture files in
-  `verdict-only`, `shadow`, and `enforce` modes. See
-  `.planning/trajectory/10-tee-replay-harness.md` Phase 2.
-- M04 owns the consumer. `chio replay --from-tee <capture.ndjson>`
+  `verdict-only`, `shadow`, and `enforce` modes. See the tee replay
+  harness contract in `spec/PROTOCOL.md`.
+- The goldens-replay subsystem owns the consumer. `chio replay --from-tee <capture.ndjson>`
   re-verifies every frame's `tenant_sig`, re-derives the verdict, and
-  recomputes the root. The exit-code registry is M04's; M10 does not
+  recomputes the root. The exit-code registry is the goldens-replay subsystem's; the tee-replay subsystem does not
   define new codes.
-- Graduation path: a captured tee session graduates into the M04
+- Graduation path: a captured tee session graduates into the goldens
   fixture corpus via `chio replay --bless --into <goldens-dir>`. The
   bless flow strips `tenant_sig` and request / response blobs, writes
-  the M04 directory layout (`receipts.ndjson`, `checkpoint.json`,
+  the goldens directory layout (`receipts.ndjson`, `checkpoint.json`,
   `root.hex`), and the result is a fixture indistinguishable from one
-  produced by the M04 driver.
-- The M10 sibling subcommand `chio replay <capture.ndjson> --against
+  produced by the goldens driver.
+- The sibling tee subcommand `chio replay <capture.ndjson> --against
   <policy-ref>` re-executes captures against a named policy version
-  rather than the current build. It is documented separately in M10's
+  rather than the current build. It is documented separately in the tee-replay subsystem's
   milestone doc; the surface and exit codes match this page.
 
 When `--from-tee` is omitted, the reader auto-detects: a directory path
@@ -163,7 +161,7 @@ machine-readable diagnosis on stdout while exiting non-zero.
 ### `--bless`
 
 Restricted to fixture maintainers. Converts `<LOG>` into a goldens
-directory. Fails closed unless every gate in M04 phase 5 holds:
+directory. Fails closed unless every replay-gate clause holds:
 `CHIO_BLESS=1`, non-empty `BLESS_REASON`, non-`main` non-`release/*`
 branch, clean tree outside `tests/replay/goldens/**` and
 `docs/replay-compat.md`, TTY on stderr, `CI` unset or `false`, audit-log
@@ -177,8 +175,8 @@ CI cannot bless: the gate refuses any invocation when `CI=true`.
 `chio.replay.report/v1` is pinned by
 `crates/chio-cli/src/cli/replay/report.rs::SCHEMA_ID` and the formal
 JSON Schema lives at
-`spec/schemas/chio-replay-report/v1.schema.json`. PR #186 (M04.P4.T5)
-landed the surface; PR #193 (M04.P4.T6) wired it through the live
+`spec/schemas/chio-replay-report/v1.schema.json`. PR #186
+landed the surface; PR #193 wired it through the live
 pipeline.
 
 Shape (verbatim from the in-tree definition):
@@ -234,7 +232,7 @@ Verify a goldens directory (clean run, exit 0):
 chio replay ./tests/replay/goldens/openai_responses/tool_call_allow/
 ```
 
-Verify an M10 tee capture and assert the root (drift case, exit 10):
+Verify a tee capture and assert the root (drift case, exit 10):
 
 ```bash
 chio replay capture.ndjson --from-tee --expect-root 7af9c0dead...
@@ -259,11 +257,11 @@ chio replay ./fixtures/run-42/ --json | jq -r '.first_divergence.kind'
 
 ## Composition with other tooling
 
-- M10 tee: `chio-tee` writes NDJSON captures under any of its three
+- Tee captures: `chio-tee` writes NDJSON captures under any of its three
   modes (`verdict-only`, `shadow`, `enforce`); `chio replay --from-tee`
-  consumes them. Graduation into the M04 corpus is via `chio replay
+  consumes them. Graduation into the goldens corpus is via `chio replay
   --bless`.
-- M04 replay-gate CI job: `.github/workflows/chio-replay-gate.yml`
+- Replay-gate CI job: `.github/workflows/chio-replay-gate.yml`
   invokes `chio replay` over each goldens directory in the corpus and
   asserts exit code 0. Any divergence fails the gate.
 - Cross-version compatibility: the matrix at
@@ -274,10 +272,10 @@ chio replay ./fixtures/run-42/ --json | jq -r '.first_divergence.kind'
 
 ## See also
 
-- `.planning/trajectory/04-deterministic-replay.md` Phase 4 (canonical
-  surface, exit codes, JSON schema; this page is the user-facing
-  rendering of that section).
-- `.planning/trajectory/10-tee-replay-harness.md` Phase 2 (M10 sibling
+- `spec/PROTOCOL.md` deterministic-replay contract (canonical surface,
+  exit codes, JSON schema; this page is the user-facing rendering of
+  that section).
+- `spec/PROTOCOL.md` tee replay harness contract (sibling
   `chio replay --against <policy-ref>` traffic mode, which reuses this
   page's exit codes verbatim).
 - `crates/chio-cli/src/cli/replay/report.rs` (in-tree report builder

@@ -3,7 +3,7 @@
 //! Ported from the HushSpec reference implementation. Evaluates an action
 //! against a policy and returns a decision (allow/warn/deny).
 
-use crate::conditions::{evaluate_condition, Condition, RuntimeContext};
+use crate::conditions::{evaluate_condition, validate_condition_keys, Condition, RuntimeContext};
 use crate::models::{
     ComputerUseMode, ComputerUseRule, DefaultAction, ForbiddenPathsRule, HushSpec,
     InputInjectionRule, OriginMatch, OriginProfile, PatchIntegrityRule, PathAllowlistRule,

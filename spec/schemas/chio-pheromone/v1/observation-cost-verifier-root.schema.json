@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://chio.dev/schemas/chio-pheromone/v1/observation-cost-verifier-root.schema.json",
+  "$id": "https://chio.world/schemas/chio-pheromone/v1/observation-cost-verifier-root.schema.json",
   "title": "Chio Pheromone Observation Cost Verifier Root",
   "type": "object",
   "additionalProperties": false,

@@ -128,27 +128,27 @@ if [[ "${status}" != "401" ]]; then
   exit 1
 fi
 
-if [[ -f "${repo_root}/packages/sdk/chio-ts/package-lock.json" ]]; then
-  npm --prefix "${repo_root}/packages/sdk/chio-ts" ci --no-fund --no-audit >/dev/null
+if [[ -f "${repo_root}/sdks/typescript/chio-ts/package-lock.json" ]]; then
+  npm --prefix "${repo_root}/sdks/typescript/chio-ts" ci --no-fund --no-audit >/dev/null
 else
-  npm --prefix "${repo_root}/packages/sdk/chio-ts" install --no-fund --no-audit >/dev/null
+  npm --prefix "${repo_root}/sdks/typescript/chio-ts" install --no-fund --no-audit >/dev/null
 fi
 
 CHIO_BASE_URL="${mcp_url}" \
 CHIO_CONTROL_URL="${control_url}" \
 CHIO_AUTH_TOKEN="${auth_token}" \
-node --experimental-strip-types "${repo_root}/packages/sdk/chio-ts/examples/governed_hello.ts" \
+node --experimental-strip-types "${repo_root}/sdks/typescript/chio-ts/examples/governed_hello.ts" \
   >"${work_dir}/ts-example.json"
 
 python3 -m venv "${venv_dir}"
 . "${venv_dir}/bin/activate"
 python -m pip install --quiet --upgrade pip
-python -m pip install --quiet -e "${repo_root}/packages/sdk/chio-py"
+python -m pip install --quiet -e "${repo_root}/sdks/python/chio-py"
 
 CHIO_BASE_URL="${mcp_url}" \
 CHIO_CONTROL_URL="${control_url}" \
 CHIO_AUTH_TOKEN="${auth_token}" \
-python "${repo_root}/packages/sdk/chio-py/examples/governed_hello.py" \
+python "${repo_root}/sdks/python/chio-py/examples/governed_hello.py" \
   >"${work_dir}/py-example.json"
 
 deactivate

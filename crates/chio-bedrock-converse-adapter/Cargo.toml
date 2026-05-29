@@ -1,6 +1,6 @@
 [package]
 name = "chio-bedrock-converse-adapter"
-description = "Amazon Bedrock Converse adapter for Chio, pinned to one workspace AWS SDK and us-east-1"
+description = "Amazon Bedrock Converse adapter for Chio: SigV4-signed Converse calls via the AWS SDK for Rust, pinned to one workspace AWS SDK and us-east-1"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -12,9 +12,9 @@ publish = false
 [lib]
 name = "chio_bedrock_converse_adapter"
 
-# Pinned Bedrock Converse scaffold metadata. The SDK version is pinned once
-# in root Cargo.toml under [workspace.dependencies] and inherited below.
-# Bumping the SDK pin or region requires a fixture re-record PR.
+# Pinned Bedrock Converse metadata. The SDK version is pinned once in root
+# Cargo.toml under [workspace.dependencies] and inherited below. Bumping the
+# SDK pin or region requires a fixture re-record PR.
 [package.metadata.chio]
 bedrock_converse_api = "bedrock.converse.v1"
 aws_region = "us-east-1"
@@ -27,6 +27,11 @@ aws-sdk-sts = { version = "1", default-features = false, features = [
     "rt-tokio",
     "sigv4a",
 ] }
+aws-smithy-runtime-api = { version = "1", default-features = false, features = [
+    "client",
+] }
+aws-smithy-types = { version = "1", default-features = false }
+aws-types = { version = "1", default-features = false }
 chio-attest-verify = { path = "../chio-attest-verify" }
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
 chio-provider-adapter-core = { path = "../chio-provider-adapter-core" }
@@ -34,11 +39,23 @@ chio-tool-call-fabric = { path = "../chio-tool-call-fabric" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true }
 toml = "0.8"
+
+# Hermetic transport tests inject a static replay HTTP client so the AWS SDK
+# Converse path is exercised end to end without contacting AWS.
+[dev-dependencies]
+aws-smithy-http-client = { version = "1", default-features = false, features = [
+    "test-util",
+] }
+aws-smithy-types = { version = "1", default-features = false, features = [
+    "http-body-1-x",
+] }
+http = "1"
+tokio = { workspace = true }
 
 [[bench]]
 name = "verdict_latency"
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

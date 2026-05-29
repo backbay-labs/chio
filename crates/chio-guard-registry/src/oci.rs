@@ -34,7 +34,7 @@ const SHA256_HEX_LEN: usize = 64;
 /// Result type for guard registry operations.
 pub type Result<T> = std::result::Result<T, GuardRegistryError>;
 
-/// Errors returned by the guard registry scaffold.
+/// Errors returned by the guard registry.
 #[derive(Debug, thiserror::Error)]
 pub enum GuardRegistryError {
     /// The user provided a reference without the required `oci://` prefix.

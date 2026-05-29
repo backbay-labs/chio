@@ -1,5 +1,5 @@
 {
-  "name": "@chio/ai-sdk-middleware",
+  "name": "@chio-protocol/ai-sdk-middleware",
   "version": "0.1.0",
   "type": "module",
   "description": "Chio verdict middleware for Vercel AI SDK language models. Edge and Node runtime split, verdict evaluation at the tool-use boundary.",

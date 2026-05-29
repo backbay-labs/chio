@@ -208,8 +208,6 @@ mod tests {
     #[test]
     fn guard_request_no_session_metadata() {
         // This test proves session_metadata field is gone.
-        // If session_metadata were still on GuardRequest, this would need it.
-        // The fact that this compiles without session_metadata is the assertion.
         let req = GuardRequest {
             tool_name: "t".to_string(),
             server_id: "s".to_string(),

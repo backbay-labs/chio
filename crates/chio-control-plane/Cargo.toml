@@ -55,9 +55,9 @@ url = "2"
 [dev-dependencies]
 chio-anchor = { path = "../chio-anchor" }
 chio-link = { path = "../chio-link" }
+chio-test-support = { path = "../chio-test-support" }
 chio-settle = { path = "../chio-settle" }
 rcgen = "0.13"
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

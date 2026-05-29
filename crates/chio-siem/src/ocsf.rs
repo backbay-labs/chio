@@ -58,7 +58,7 @@ pub const OCSF_CATEGORY_NAME: &str = "Identity & Access Management";
 pub const OCSF_PRODUCT_NAME: &str = "Chio";
 
 /// Product vendor surfaced in OCSF metadata.
-pub const OCSF_PRODUCT_VENDOR: &str = "Backbay Industries";
+pub const OCSF_PRODUCT_VENDOR: &str = "Backbay Labs";
 
 /// Convert an [`ChioReceipt`] into an OCSF 1.3.0 Authorization event.
 ///
@@ -535,6 +535,7 @@ mod tests {
     use chio_core::receipt::{
         ChioReceipt, ChioReceiptBody, Decision, ReceiptSemanticFields, ToolCallAction, TrustLevel,
     };
+    use chio_test_support::prelude::*;
 
     fn test_receipt(id: &str, decision: Decision) -> ChioReceipt {
         test_receipt_with_semantics(id, decision, None, TrustLevel::Mediated)
@@ -582,7 +583,7 @@ mod tests {
             kernel_key: kp.public_key(),
         };
         #[allow(clippy::unwrap_used)]
-        ChioReceipt::sign(body, &kp).unwrap()
+        ChioReceipt::sign(body, &kp).test_unwrap()
     }
 
     #[test]

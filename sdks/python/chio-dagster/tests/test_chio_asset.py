@@ -3,9 +3,9 @@
 Exercise the decorator end-to-end against Dagster's
 :func:`dagster.materialize` harness so we test the real asset
 materialization path, capability evaluation via a
-:class:`chio_sdk.testing.MockChioClient`, the partition-key scoping rule
-(the roadmap acceptance criterion), and the deny path that raises
-:class:`PermissionError` + attaches receipt metadata.
+:class:`chio_sdk.testing.MockChioClient`, the partition-key scoping rule,
+and the deny path that raises :class:`PermissionError` + attaches
+receipt metadata.
 
 Note: We deliberately do NOT use ``from __future__ import annotations``
 here because Dagster's ``asset`` / ``op`` decorators inspect the
@@ -134,7 +134,7 @@ class TestAllowPath:
 
 
 # ---------------------------------------------------------------------------
-# (b) Partition-key-in-scope test -- the roadmap acceptance criterion.
+# (b) Partition-key-in-scope test.
 # ---------------------------------------------------------------------------
 
 
@@ -454,7 +454,7 @@ def _error_chain_class_names(error: Any) -> list[str]:
             names.append(str(cls_name))
         current = getattr(current, "cause", None)
     # Dagster exposes the entire error as a string too; pull class names
-    # out of the rendered traceback as a belt-and-braces fallback.
+    # out of the rendered traceback as a fallback.
     tb = getattr(error, "message", "") or ""
     for candidate in ("PermissionError", "ChioDagsterConfigError"):
         if candidate in tb and candidate not in names:

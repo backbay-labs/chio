@@ -1,27 +1,26 @@
 # slsa.yml - SLSA L2 provenance generation for release binaries.
 #
-# Owned by M09 per OWNERS.toml workflow lane table. Triggered on
+# Owned by the release-engineering lane. Triggered on
 # successful completion of release-binaries.yml. Consumes the
 # per-target binary digests from that workflow's uploaded artifacts
 # and emits a signed provenance attestation alongside each release.
 #
 # The workflow_run trigger fires after release-binaries.yml succeeds
-# (which itself runs on `v*.*.*` tag pushes or workflow_dispatch). We
-# avoid coupling the SLSA generator step into release-binaries.yml
-# directly because the reusable slsa-github-generator workflow needs
-# `id-token: write` and `contents: write` and is easier to audit when
-# isolated from the build matrix.
+# (which itself runs on `v*.*.*` tag pushes or workflow_dispatch). The SLSA
+# generator step is kept out of release-binaries.yml because the reusable
+# slsa-github-generator workflow needs `id-token: write` and
+# `contents: write` and is easier to audit when isolated from the build
+# matrix.
 
 name: slsa
 
 # `workflow_run` does NOT support a `tags:` filter, and `branches:`
 # matches only branch refs. release-binaries.yml's primary path is
 # `push: tags: v*.*.*`, whose triggering ref is `refs/tags/v...` and
-# matches no branch pattern; the previous `branches: [main, ...]`
-# filter therefore silently dropped every tag-driven release and SLSA
-# provenance was never generated for actual releases.
+# matches no branch pattern, so a `branches:` filter here would drop every
+# tag-driven release.
 #
-# The replacement triggers on every successful `Release Binaries` run
+# This workflow triggers on every successful `Release Binaries` run
 # regardless of ref shape. The `collect-digests` job below performs
 # the release-vs-non-release branching by reading the tag-bound
 # release-metadata.json emitted by release-binaries.yml. The
@@ -41,7 +40,7 @@ permissions:
 jobs:
   collect-digests:
     name: Collect binary digests from release-binaries
-    # owner: M09
+    # owner: Chio maintainers
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     outputs:
@@ -113,7 +112,7 @@ jobs:
 
   provenance:
     name: SLSA L2 provenance
-    # owner: M09
+    # owner: Chio maintainers
     needs: [collect-digests]
     permissions:
       id-token: write

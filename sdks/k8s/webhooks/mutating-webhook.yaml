@@ -6,7 +6,7 @@ metadata:
     app.kubernetes.io/name: chio-admission-controller
     app.kubernetes.io/component: mutating-webhook
 webhooks:
-  - name: mutate.chio.backbay.io
+  - name: mutate.chio.world
     admissionReviewVersions:
       - v1
     clientConfig:
@@ -29,4 +29,4 @@ webhooks:
     timeoutSeconds: 10
     namespaceSelector:
       matchLabels:
-        chio.backbay.io/inject: "true"
+        chio.world/inject: "true"

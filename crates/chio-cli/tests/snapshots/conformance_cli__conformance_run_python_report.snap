@@ -1,5 +1,6 @@
 ---
 source: crates/chio-cli/tests/conformance_cli.rs
+assertion_line: 138
 expression: report
 ---
 {

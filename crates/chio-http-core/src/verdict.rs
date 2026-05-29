@@ -4,8 +4,8 @@
 //! The `Deny` variant carries optional structured context (tool identity,
 //! required vs granted scope, guard name, a stable reason code, and a
 //! next-steps hint) so the HTTP sidecar can tell an SDK exactly what scope
-//! to request. All detail fields default to `None` on serde, preserving
-//! wire and constructor back-compat.
+//! to request. All detail fields default to `None` on serde; the `details`
+//! key is omitted from the wire when all fields are absent.
 
 use serde::{Deserialize, Serialize};
 
@@ -61,7 +61,7 @@ pub struct DenyDetails {
 
 impl DenyDetails {
     /// True when every field is `None`. Used to keep the default-path
-    /// serialized form identical to the pre-0.5 wire shape.
+    /// serialized form compact (details key omitted when empty).
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.tool_name.is_none()
@@ -341,8 +341,8 @@ mod tests {
         let v: Verdict = serde_json::from_str(json).expect("deserializes");
         let (_, _, http_status, details) = expect_deny(v);
         assert_eq!(http_status, 403);
-        // A pre-0.5 wire payload with no details field deserializes into
-        // an empty DenyDetails block, preserving back-compat.
+        // A payload with no details field deserializes into an empty
+        // DenyDetails block (compact wire form, details omitted when empty).
         assert!(details.is_empty());
     }
 
@@ -379,8 +379,8 @@ mod tests {
 
     #[test]
     fn deny_details_empty_is_omitted_on_the_wire() {
-        // The plain `deny(...)` path must serialize to the pre-0.5 shape
-        // so that older SDKs keep parsing the payload.
+        // The plain `deny(...)` path emits compact wire form: details key
+        // is omitted when the DenyDetails block is entirely empty.
         let v = Verdict::deny("no capability", "CapabilityGuard");
         let json = serde_json::to_string(&v).expect("serializes");
         assert!(

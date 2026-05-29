@@ -624,7 +624,7 @@ mod tests {
     impl StubGit {
         fn happy() -> Self {
             Self {
-                branch: "wave/W2/m04/p2.t1-bless-gate-logic".to_string(),
+                branch: "feature/bless-gate-logic".to_string(),
                 sha: "deadbeefcafebabe1234567890abcdef12345678".to_string(),
                 user_name: "Jane Tester".to_string(),
                 user_email: "jane@example.com".to_string(),
@@ -735,7 +735,7 @@ mod tests {
             Ok(ctx) => ctx,
             Err(e) => panic!("expected Ok, got {e:?}"),
         };
-        assert_eq!(ctx.branch, "wave/W2/m04/p2.t1-bless-gate-logic");
+        assert_eq!(ctx.branch, "feature/bless-gate-logic");
         // SHA column is the pending-bless placeholder; the actual commit SHA
         // is filled in by `scripts/seal-bless-audit.sh`. The stub git
         // provider's `head_sha` is still consulted (so a broken repo
@@ -943,9 +943,8 @@ mod tests {
 
     #[test]
     fn clause_6_ci_one_refuses() {
-        // The original gate failed open on `CI=1` (a common CI marker
-        // outside the literal `true` convention). The fix treats any
-        // non-falsey value as "running under CI".
+        // `CI=1` is a common CI marker outside the literal `true`
+        // convention; any non-falsey value counts as "running under CI".
         let env = StubEnv::happy().with("CI", "1");
         let git = StubGit::happy();
         let err = evaluate_gate(&env, &git, true, fixture(), fixed_now())
@@ -1049,7 +1048,7 @@ mod tests {
     fn append_audit_line_writes_tab_separated_entry() {
         let fs = StubFs::new();
         let ctx = BlessContext {
-            branch: "wave/W2/m04/p2.t1-bless-gate-logic".to_string(),
+            branch: "feature/bless-gate-logic".to_string(),
             // This test pins a literal SHA to keep field-parsing assertions tight.
             sha: "deadbeefcafebabe1234567890abcdef12345678".to_string(),
             user_name: "Jane Tester".to_string(),
@@ -1067,7 +1066,7 @@ mod tests {
         assert_eq!(fields.len(), 6, "line was: {line:?}");
         assert_eq!(fields[0], "2026-04-26T12:00:00Z");
         assert_eq!(fields[1], "Jane Tester <jane@example.com>");
-        assert_eq!(fields[2], "wave/W2/m04/p2.t1-bless-gate-logic");
+        assert_eq!(fields[2], "feature/bless-gate-logic");
         assert_eq!(fields[3], "deadbeefcafebabe1234567890abcdef12345678");
         assert_eq!(fields[4], "tests/replay/goldens/allow_simple/00");
         assert_eq!(fields[5], "fix corpus drift after kernel bump");
@@ -1232,7 +1231,7 @@ mod tests {
         assert!(branch_is_forbidden("release/v3.0"));
         assert!(branch_is_forbidden("release/0.1.0"));
         assert!(!branch_is_forbidden("feature/foo"));
-        assert!(!branch_is_forbidden("wave/W2/m04/p2.t1"));
+        assert!(!branch_is_forbidden("feature/bless-gate"));
         // "release" with no slash is NOT forbidden (matches doc:
         // `release/*`, not `release` exact). A literal `release`
         // branch would be unusual; we err on the side of allowing it

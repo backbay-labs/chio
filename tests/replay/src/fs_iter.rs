@@ -25,7 +25,7 @@
 //! the underlying representation is a sequence of `u16` code units
 //! whose locale-free byte ordering is ill-defined; we fall back to
 //! the lossy UTF-8 form and reject any path component that is not
-//! valid UTF-8 with [`FsIterError::NonUtf8Path`]. The M04 corpus is
+//! valid UTF-8 with [`FsIterError::NonUtf8Path`]. The replay corpus is
 //! ASCII-only by construction, so this fallback never trips in
 //! practice but stays fail-closed if it ever does.
 //!
@@ -226,7 +226,7 @@ fn sort_paths(paths: &mut [PathBuf]) -> Result<(), FsIterError> {
 /// On Unix targets each `Component` is converted to bytes via
 /// `OsStrExt::as_bytes`. On non-Unix targets we go via `to_str` and
 /// return [`FsIterError::NonUtf8Path`] for any component that would
-/// need lossy re-encoding (the M04 corpus is ASCII-only so the
+/// need lossy re-encoding (the replay corpus is ASCII-only so the
 /// non-Unix UTF-8 fallback is fail-closed in practice).
 fn sort_key(path: &Path) -> Result<Vec<u8>, FsIterError> {
     use std::path::Component;
@@ -261,10 +261,9 @@ fn sort_key(path: &Path) -> Result<Vec<u8>, FsIterError> {
 
 /// Convert a single [`Component`]'s [`OsStr`] into its byte-form key.
 ///
-/// Mirrors the platform split used by the previous implementation but
-/// operates per-component so the caller can interleave a fixed-byte
-/// separator. `parent` is only used for diagnostic context in the
-/// non-Unix `NonUtf8Path` error.
+/// Uses the platform-specific `OsStr` byte split, operating per-component
+/// so the caller can interleave a fixed-byte separator. `parent` is only
+/// used for diagnostic context in the non-Unix `NonUtf8Path` error.
 #[cfg(unix)]
 fn component_bytes(raw: &std::ffi::OsStr, _parent: &Path) -> Result<Vec<u8>, FsIterError> {
     use std::os::unix::ffi::OsStrExt;

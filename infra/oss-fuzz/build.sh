@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# OSS-Fuzz build entry point for Chio (formerly ARC).
+# OSS-Fuzz build entry point for Chio.
 #
 # Builds every chio-fuzz target listed below and copies the resulting
 # binary into $OUT/<target>, plus a per-target seed corpus zip when one
@@ -13,7 +13,7 @@ set -euo pipefail
 # Move into the standalone fuzz workspace. cargo-fuzz emits binaries under
 # the workspace's target/ tree, namespaced by host triple; OSS-Fuzz builders
 # run on x86_64-unknown-linux-gnu.
-cd "$SRC/arc/fuzz"
+cd "$SRC/chio/fuzz"
 
 TARGETS=(
     attest_verify
@@ -45,13 +45,9 @@ TARGETS=(
 
 for target in "${TARGETS[@]}"; do
     cargo +nightly fuzz build "$target" --release --sanitizer "$SANITIZER"
-    # Binaries land under the fuzz workspace's own `target/` tree
-    # (the script `cd`'d into `$SRC/arc/fuzz` above, which is itself
-    # a standalone Cargo workspace with its own `[workspace]`
-    # stanza). The previous `../target/...` prefix pointed at the
-    # parent project's target dir, where no fuzz binaries exist, so
-    # `cp` failed on the first target and the build script exited
-    # before exporting any fuzzers.
+    # Binaries land under the fuzz workspace's own `target/` tree:
+    # `$SRC/chio/fuzz` is a standalone Cargo workspace with its own
+    # `[workspace]` stanza, not the parent project's target dir.
     cp "target/x86_64-unknown-linux-gnu/release/$target" "$OUT/"
 
     # Pack the per-target seed corpus when one exists in-tree.

@@ -1,7 +1,7 @@
 package example.hello
 
-import io.backbay.chio.ChioFilter
-import io.backbay.chio.ChioFilterConfig
+import world.chio.ChioFilter
+import world.chio.ChioFilterConfig
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.runApplication
 import org.springframework.boot.web.servlet.FilterRegistrationBean

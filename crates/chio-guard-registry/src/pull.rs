@@ -6,9 +6,9 @@ use crate::oci::{
 };
 use crate::publish::GUARD_OCI_MANIFEST_MEDIA_TYPE;
 
-/// Reserved cache slot for Sigstore bundle verification. Empty until the
-/// verification path is wired; bundle verification fails closed rather than
-/// passing with placeholder JSON.
+/// Reserved cache slot for Sigstore bundle verification. Not yet wired:
+/// bundle verification fails closed (empty slice) rather than passing
+/// with placeholder JSON.
 pub const RESERVED_SIGSTORE_BUNDLE_JSON: &[u8] = b"";
 
 /// Inputs for pulling a digest-pinned guard artifact into the local cache.

@@ -23,7 +23,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	chioapi "github.com/backbay/chio-k8s-controller/internal/chio"
+	chioapi "github.com/backbay-labs/chio-k8s-controller/internal/chio"
 )
 
 func newScheme(t *testing.T) *runtime.Scheme {
@@ -226,8 +226,8 @@ func TestReconcile_NewGovernedJob_MintsGrant(t *testing.T) {
 	if got.Annotations[AnnotationCapabilityToken] != "" {
 		t.Fatalf("expected no top-level capability-token annotation, got %q", got.Annotations[AnnotationCapabilityToken])
 	}
-	if got.Spec.Template.Annotations["chio.protocol/capability-token"] != "token-cap-abc" {
-		t.Fatalf("expected pod-template capability-token annotation, got %q", got.Spec.Template.Annotations["chio.protocol/capability-token"])
+	if got.Spec.Template.Annotations["chio.world/capability-token"] != "token-cap-abc" {
+		t.Fatalf("expected pod-template capability-token annotation, got %q", got.Spec.Template.Annotations["chio.world/capability-token"])
 	}
 	if _, err := time.Parse(time.RFC3339, got.Annotations[AnnotationCapabilityExpiresAt]); err != nil {
 		t.Fatalf("invalid expires-at annotation %q: %v", got.Annotations[AnnotationCapabilityExpiresAt], err)
@@ -652,7 +652,7 @@ func TestBackoff_GrowsExponentially(t *testing.T) {
 // malicious pod annotation cannot wash into the authoritative fields of the
 // mediated JobReceipt. The pod claims a substituted job_name, namespace,
 // capability_id, outcome, and rationale via its own
-// `chio.protocol/receipt` annotation. The controller must keep its
+// `chio.world/receipt` annotation. The controller must keep its
 // authoritative fields intact and surface the annotation only as
 // AdvisoryPodAnnotation with Source=pod_annotation_unverified.
 func TestPodAnnotationDoesNotFlowIntoMediatedReceiptDecision(t *testing.T) {

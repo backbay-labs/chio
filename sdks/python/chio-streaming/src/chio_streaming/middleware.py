@@ -325,8 +325,8 @@ class ChioConsumerMiddleware:
         # Derive request_id from (topic, partition, offset) so non-transactional
         # consumers that redeliver between produce and commit still collide on
         # the same request_id, honouring the README dedupe contract. In
-        # transactional=True mode the EOS commit prevents redelivery so this
-        # is a belt-and-braces guarantee.
+        # transactional=True mode the EOS commit prevents redelivery, so the
+        # derivation is redundant there.
         partition = message.partition()
         offset = message.offset()
         if partition is not None and offset is not None:

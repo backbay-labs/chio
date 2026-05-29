@@ -3,11 +3,10 @@
 #
 # Owner: threat-coverage evidence gate.
 #
-# The first threat-coverage gate only enforced "the threat-stub file
-# exists and does not call unimplemented!()", so a one-line
-# `assert!(true)` body satisfies the 20/0/0 gate without exercising
-# any real defensive logic. This script is the per-row mutation-
-# testing backstop.
+# Mutation-testing backstop for threat coverage: the threat-stub
+# existence gate accepts a one-line `assert!(true)` body that exercises
+# no defensive logic, so this gate verifies each row's tests actually
+# kill mutants.
 #
 # For each threat in `spec/security/chio-threat-model.v1.json`
 # whose `coverage_state` is `covered` (or absent, which defaults to
@@ -93,11 +92,10 @@
 #
 # Bootstrap expiry:
 #   The `needs_real_run: true` accommodation is bounded by
-#   BOOTSTRAP_EXPIRES_DATE (default 2026-08-01, 90 days out from
-#   the threat-coverage hardening pass). After that date the script treats every
-#   `needs_real_run: true` evidence file as a bootstrap_expired
-#   failure. CHIO_BOOTSTRAP_EXPIRY=YYYY-MM-DD overrides for local
-#   development and tests.
+#   BOOTSTRAP_EXPIRES_DATE (default 2026-08-01). After that date the
+#   script treats every `needs_real_run: true` evidence file as a
+#   bootstrap_expired failure. CHIO_BOOTSTRAP_EXPIRY=YYYY-MM-DD
+#   overrides for local development and tests.
 #
 # Exit codes:
 #   0 - all covered rows have caught >= 1 evidence (or --dry-run, or
@@ -156,8 +154,7 @@ EVIDENCE_DIR="${CHIO_THREAT_EVIDENCE_DIR:-$REPO_ROOT/audits/evidence/threats}"
 
 # Decide whether the bootstrap-placeholder accommodation has expired. Use
 # python3 to compare ISO-8601 dates portably (date-only, no clock-skew
-# math). A bare `today` string lets us inject a fake "today" via env var
-# in tests if we ever need to.
+# math).
 BOOTSTRAP_EXPIRED=0
 if ! BOOTSTRAP_EXPIRED="$(python3 - "$BOOTSTRAP_EXPIRES_DATE" <<'PY'
 import datetime

@@ -16,6 +16,7 @@
 //! - **Thread-safe**: the journal is wrapped in a `Mutex` for safe concurrent
 //!   access from multiple guards.
 
+#![forbid(unsafe_code)]
 #![cfg_attr(test, allow(clippy::expect_used, clippy::unwrap_used))]
 
 use std::collections::HashMap;

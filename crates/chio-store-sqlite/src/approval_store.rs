@@ -328,8 +328,7 @@ impl ApprovalStore for SqliteApprovalStore {
         tx.commit()
             .map_err(|e| ApprovalStoreError::Backend(format!("commit: {e}")))?;
 
-        // Silence unused warning for policy_id -- we kept it to sanity
-        // check the join. Future migrations may surface it in analytics.
+        // policy_id is part of the trait signature but unused on this path.
         let _ = policy_id;
         Ok(())
     }

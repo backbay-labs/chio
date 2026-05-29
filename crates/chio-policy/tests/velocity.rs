@@ -1,8 +1,7 @@
 //! `rules.velocity` first-class variant tests.
 //!
-//! Wave 1.6 added `Rules::velocity` with a dedicated `VelocityRule` struct
-//! that compiles to `VelocityGuard` + `AgentVelocityGuard`. Wave 5.0.1
-//! re-lands these tests against the renamed `chio-policy` crate.
+//! `Rules::velocity` carries a dedicated `VelocityRule` struct that compiles
+//! to `VelocityGuard` + `AgentVelocityGuard`.
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
@@ -175,7 +174,7 @@ rules:
 
 #[test]
 fn velocity_guard_precedes_shell_guard() {
-    // Wave 1.6 insertion point: VelocityGuard + AgentVelocityGuard sit
+    // Insertion point: VelocityGuard + AgentVelocityGuard sit
     // between ForbiddenPathGuard and ShellCommandGuard.
     let spec = rule(
         r#"

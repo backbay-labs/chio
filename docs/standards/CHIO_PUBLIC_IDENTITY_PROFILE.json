@@ -34,7 +34,7 @@
       "artifactId": "ptp-1",
       "operatorId": "chio",
       "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "uri": "https://chio.dev/standards/portable-trust-profile"
+      "uri": "https://chio.world/standards/portable-trust-profile"
     },
     {
       "kind": "oid4vci_issuer_metadata",

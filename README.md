@@ -12,10 +12,6 @@
 <p align="center">
   <strong>Governed tool access for AI systems</strong><br/>
   <em>Capability validation, fail-closed policy, budgets, and signed receipts</em>
-  <!-- chio-mutants-banner:start -->
-  <br/>
-  <strong>Mutation evidence: advisory baselines recast</strong> - six trust-boundary crates, observed 44.12%-80.21%, excluded from active bounded release claims at 7f56cf5383fc1caa7a4f06b4cd59e45177f00496 - 2026-05-10
-  <!-- chio-mutants-banner:end -->
 </p>
 
 <p align="center">
@@ -97,9 +93,9 @@ Install and verification instructions live in
 
 | Language | Package | Package README |
 | --- | --- | --- |
-| TypeScript | `@chio-protocol/sdk` | [packages/sdk/chio-ts/README.md](packages/sdk/chio-ts/README.md) |
-| Python | `chio-sdk` | [packages/sdk/chio-py/README.md](packages/sdk/chio-py/README.md) |
-| Go | `chio-go` | [packages/sdk/chio-go/README.md](packages/sdk/chio-go/README.md) |
+| TypeScript | `@chio-protocol/sdk` | [sdks/typescript/chio-ts/README.md](sdks/typescript/chio-ts/README.md) |
+| Python | `chio-sdk` | [sdks/python/chio-py/README.md](sdks/python/chio-py/README.md) |
+| Go | `chio-go` | [sdks/go/chio-go/README.md](sdks/go/chio-go/README.md) |
 
 The primary Python and TypeScript packages include runnable quickstarts and
 canonical example links back to the supported web-backend flow.
@@ -121,12 +117,8 @@ canonical example links back to the supported web-backend flow.
 
 ## External Evidence
 
-- AI lab partner eval-report memo:
-  [.planning/trajectory-3/audits/M02-memo.md](.planning/trajectory-3/audits/M02-memo.md)
 - Partner ingest sample:
   [examples/eval-receipt-ingest/metr/README.md](examples/eval-receipt-ingest/metr/README.md)
-- M02 audit closure:
-  [.planning/trajectory-3/audits/M02-ai-lab.md](.planning/trajectory-3/audits/M02-ai-lab.md)
 
 ## More
 

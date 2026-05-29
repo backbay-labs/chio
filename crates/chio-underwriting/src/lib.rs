@@ -1,3 +1,20 @@
+//! Underwriting decision, simulation, and appeal contracts for the Chio
+//! protocol.
+//!
+//! This crate computes underwriting decisions and premiums from signed Chio
+//! evidence; `chio-market` and `chio-credit` consume its outputs. It defines
+//! the risk taxonomy and reason codes, evidence references (receipt,
+//! reputation, certification), the deterministic premium-pricing model
+//! (`price_premium`, risk multipliers, decline reasons), and reputation-tiered
+//! marketplace credit limits. It builds on the appraisal surface.
+//!
+//! # Modules
+//!
+//! - [`premium`] -- premium pricing, risk multipliers, and decline floors.
+//! - [`marketplace_limits`] -- reputation-tiered marketplace credit limits.
+
+#![forbid(unsafe_code)]
+
 pub use chio_appraisal as appraisal;
 pub use chio_core_types::{canonical, capability, crypto, receipt};
 

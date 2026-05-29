@@ -82,7 +82,7 @@ worth porting. Right home for `CedarPolicyGuard` as a sibling adapter.
   predicate, exactly what Cedar `when`/`unless` encodes best.
 - **Self-contained.** Touches only `request.tool_name`, `request.arguments`,
   and config. No journal, no FS normalization, no upstream call.
-- **Stable.** Untouched since ClawdStrike import; not on any TODO.
+- **Stable.** Untouched since the initial guard import; not on any TODO.
 - **Entity-typed.** `Chio::Agent::"<agent_id>"` / `Action::"invoke"` /
   `Chio::Tool::"<server_id>/<tool_name>"`.
 

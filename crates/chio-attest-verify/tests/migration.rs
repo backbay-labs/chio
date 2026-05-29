@@ -1,9 +1,9 @@
-//! End-to-end PQ migration test (M03.P5.T2).
+//! End-to-end PQ migration test.
 //!
 //! Drives a v3.18 receipt bundle through three crypto-floor stages with
 //! a PQ key roll inserted between stages 2 and 3:
 //!
-//! 1. **`allow_classical`.** The trajectory-1 v3.18 bundle re-verifies
+//! 1. **`allow_classical`.** The pre-migration v3.18 bundle re-verifies
 //!    byte-identically. PQ key NOT provisioned. (Pre-migration baseline.)
 //! 2. **`allow_hybrid`.** Operator opts into hybrid; the kernel key
 //!    composes the same classical Ed25519 with an initial ML-DSA-65
@@ -19,7 +19,6 @@
 //! pinned in `tests/fixtures/migration/key_roll_state.json` so the
 //! migration narrative is auditable and reproducible across CI runs.
 //!
-//! Trust-boundary milestone: M03 P5.T2.
 //! Threat-model rows guarded: `pq_signature_downgrade`,
 //! `tee_quote_forgery` (the latter is exercised separately in
 //! `cross_backend_conformance.rs` but the migration suite is the
@@ -36,7 +35,8 @@ use chio_core_types::crypto::{
     SigningBackend,
 };
 use chio_core_types::receipt::{
-    ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
+    chio_receipt_id, ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
+    CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY,
 };
 use serde_json::Value;
 
@@ -110,7 +110,7 @@ fn fixture_action() -> ToolCallAction {
 }
 
 fn migration_body(kernel_key: PublicKey) -> ChioReceiptBody {
-    ChioReceiptBody {
+    let mut body = ChioReceiptBody {
         id: "rcpt-v318-fixture-001".to_string(),
         timestamp: 1_700_000_001,
         capability_id: "cap-v318-fixture".to_string(),
@@ -132,7 +132,20 @@ fn migration_body(kernel_key: PublicKey) -> ChioReceiptBody {
         trust_level: TrustLevel::Mediated,
         tenant_id: None,
         kernel_key,
-    }
+    };
+    // Mirror the canonical signing-nonce binding that ChioReceipt::sign_with_backend
+    // applies before signing: the pre-binding id is recorded as the signing nonce in
+    // metadata, then the content-addressed id is recomputed over the body that
+    // includes it. This keeps the expected body byte-identical to the signed fixture.
+    let nonce = body.id.clone();
+    let mut metadata = serde_json::Map::new();
+    metadata.insert(
+        CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY.to_string(),
+        Value::String(nonce),
+    );
+    body.metadata = Some(Value::Object(metadata));
+    body.id = chio_receipt_id(&body).unwrap();
+    body
 }
 
 fn load_v318_fixture() -> ChioReceipt {
@@ -223,7 +236,7 @@ fn key_roll_state_fixture_is_consistent() {
 
 #[test]
 fn stage1_allow_classical_accepts_v318_bundle_byte_identically() {
-    // Stage 1: trajectory-1 deployment that has not opted into PQ.
+    // Stage 1: pre-migration deployment that has not opted into PQ.
     // The v3.18 bundle re-verifies byte-identically under
     // `allow_classical`; the body canonical-JSON does not drift.
     let fixture = load_v318_fixture();
@@ -333,9 +346,9 @@ fn stage3_pq_required_accepts_rolled_hybrid_and_rejects_v318_bundle() {
 
 #[test]
 fn end_to_end_migration_walks_three_stages() {
-    // Compose the per-stage assertions into the single E2E walk the
-    // ticket title pins: allow_classical -> allow_hybrid -> pq_required
-    // with the PQ key roll between stages 2 and 3.
+    // Compose the per-stage assertions into a single E2E walk:
+    // allow_classical -> allow_hybrid -> pq_required, with the PQ key
+    // roll between stages 2 and 3.
     //
     // This test is the operator-facing narrative oracle: if any
     // individual stage assertion drifts, this walk fails first with a

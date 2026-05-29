@@ -90,7 +90,7 @@ fn generate_vector() -> Result<String, XtaskError> {
     let meta = EvalRunMeta::from_parts(EvalRunMetaParts {
         bundle_id: "urn:chio:eval-bundle:metr:golden-v1",
         created_at: "2026-05-02T00:00:00Z",
-        producer_commit: "trajectory-3-m02-p3",
+        producer_commit: "golden-v1",
         workflow_run_url: "local-eval-receipt-regen",
         run_id: "metr-golden-v1",
         partner: "METR",

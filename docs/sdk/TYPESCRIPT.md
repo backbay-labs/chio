@@ -41,7 +41,7 @@ All Chio TypeScript SDKs communicate with the Chio Rust kernel through localhost
 - **Default URL**: `http://127.0.0.1:9090`
 - **Configurable via**: `CHIO_SIDECAR_URL` environment variable or the `sidecarUrl` config option
 - **No native compilation or FFI**: pure TypeScript/JavaScript over HTTP (uses `fetch`)
-- **Fail-closed by default**: when the sidecar is unreachable, requests receive a 502 response. Set `onSidecarError: "allow"` to forward the request without synthesizing an Chio receipt.
+- **Fail-closed by default**: when the sidecar is unreachable, requests receive a 502 response. Set `onSidecarError: "allow"` to forward the request without synthesizing a Chio receipt.
 
 ---
 
@@ -294,7 +294,7 @@ if (result != null) {
 ```ts
 import { buildChioHttpRequest, resolveConfig } from "@chio-protocol/node-http";
 
-// Build an ChioHttpRequest from parts
+// Build a ChioHttpRequest from parts
 const chioReq = buildChioHttpRequest({
   method: "POST",
   path: "/api/deploy",

@@ -6,6 +6,8 @@
 //! - Post-deserialization validation (duplicate IDs, broken references, incomplete auth)
 //! - Sensible defaults so a minimal config needs only `kernel` + one adapter
 
+#![forbid(unsafe_code)]
+
 pub mod interpolation;
 pub mod loader;
 pub mod schema;

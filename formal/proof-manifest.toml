@@ -74,7 +74,7 @@ covered_rust_symbols = [
   "chio_kernel_core::formal_core::dpop_admits",
   "chio_kernel_core::formal_core::guard_pipeline_allows",
   "chio_kernel_core::formal_core::receipt_fields_coupled",
-  # M04.P4.T6: surfaces witnessed by the new Kani harnesses and Lean
+  # Surfaces witnessed by the Kani harnesses and Lean
   # delegation theorems.
   "chio_core_types::capability::delegate",
   "chio_core_types::delegation_receipt::DelegationReceipt::canonical_bytes",
@@ -126,7 +126,15 @@ allowed_assumption_modules = [
   "Chio.Core.Revocation",
 ]
 
-allowed_axioms = []
+allowed_axioms = [
+  # ASSUMED, not proven. Receipt content-addressing injectivity over the
+  # ChioReceiptIdInput canonical-bytes set. Declared as a Lean axiom because
+  # the bounded ReceiptBody model has no modeled JCS canonicalizer or hash;
+  # see assume.receipt.id_collision_resistant in theorem-inventory.json and
+  # ASSUME-SHA256 in formal/assumptions.toml. Replaces the prior
+  # id_input_set_pinned reflexivity tautology.
+  "Chio.Proofs.receipt_id_collision_resistant",
+]
 
 allowed_open_modules = [
   "Chio.Core",
@@ -164,12 +172,12 @@ discharged_assumptions = [
   "RETIRED-SQLITE-CROSS-ROW|MonotoneLog (formal/tla/RevocationPropagation.tla),budget_per_row_invariant (crates/chio-kernel/src/budget_store.rs::BudgetUsageRecord)|crates/chio-kernel/src/receipt_store.rs,crates/chio-kernel/src/budget_store.rs,crates/chio-kernel-core/src/evaluate.rs::evaluate|Cross-row SQLite atomicity for the audit-log append plus budget-state update is no longer assumed. The MonotoneLog TLA invariant proves the per-authority receipt log is append-only and strictly time-monotone, and the per single-row write budget invariant proves BudgetUsageRecord updates are individually atomic and monotone in seq/total_cost. Their conjunction means a partial-pair crash is observable: the next evaluate either sees no receipt (deny) or sees an inconsistent budget row that the per-row invariant rejects (deny). Therefore no allow can outrun its log entry without violating one of two named properties, and the prior cross-row assumption is retired.",
 ]
 
-# M04 P5.T5 assumptions-toml ledger row.
+# ASSUME-NETWORK-TRANSPORT ledger row (kept unchanged; rationale below).
 #
 # Decision: ASSUME-NETWORK-TRANSPORT remains in
 # `formal/assumptions.toml` `required_assumption_ids` unchanged.
 #
-# Rationale: the M04.P4.T6 `RevocationFreshness` invariant in
+# Rationale: the `RevocationFreshness` invariant in
 # `formal/tla/RevocationPropagation.tla` (~L321) constrains every
 # recorded local revocation epoch to be strictly less than the global
 # clock value, which discharges only the LOCAL freshness gate
@@ -187,13 +195,7 @@ discharged_assumptions = [
 # pinning in `crates/chio-federation/src/revocation_gossip.rs`
 # (signer_id pin, signature verification before
 # `RevocationView::install_if_newer`) is the operational mitigation;
-# the formal discharge is left for a future milestone that ships a
-# distributed-time TLA model.
-#
-# This ledger row exists so the milestone-success criterion ("the
-# `assumptions.toml` ledger updated (or explicitly documented as
-# unchanged)") is traceable from the proof-manifest, not just the
-# audit doc.
+# the formal discharge is deferred until a distributed-time TLA model
+# ships.
 m04_p5_t5_assumptions_decision = "ASSUME-NETWORK-TRANSPORT-unchanged"
 m04_p5_t5_rationale_anchor = "formal/tla/RevocationPropagation.tla::RevocationFreshness"
-m04_p5_t5_audit_doc = ".planning/audits/M04-delegation-revocation.md"

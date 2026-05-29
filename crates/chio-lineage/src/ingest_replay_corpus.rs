@@ -17,7 +17,7 @@ use chio_core_types::receipt::ReceiptLineageStatement;
 
 use crate::schema::{EdgeKind, EvidenceClass, LineageEdge, LineageGraph, LineageNode, NodeKind};
 
-/// One M04 corpus receipt row in the lineage-projection shape. Real M04
+/// One replay-corpus receipt row in the lineage-projection shape. Real
 /// corpus rows carry many more fields; only the lineage-relevant subset is
 /// typed here. Unknown fields are tolerated.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,10 +35,6 @@ pub struct CorpusReceiptRow {
     pub tenant_id: Option<String>,
     #[serde(default)]
     pub recorded_at: Option<i64>,
-    /// Legacy hint retained for old corpora. It is never sufficient to mark
-    /// lineage verified; ingest requires `signed_lineage_statement`.
-    #[serde(default)]
-    pub has_signed_lineage_statement: bool,
     /// Signed receipt-lineage statement linking parent_receipt_id to
     /// receipt_id. This is the only field that can upgrade replay-corpus
     /// receipt lineage from observed to verified.
@@ -83,7 +79,7 @@ pub fn ingest_corpus(rows: &[CorpusReceiptRow]) -> LineageGraph {
                 tenant_id: row.tenant_id.clone(),
                 recorded_at: row.recorded_at,
                 label: Some(row.receipt_id.clone()),
-                source_table: Some("m04.corpus".to_string()),
+                source_table: Some("replay.corpus".to_string()),
                 source_id: Some(row.receipt_id.clone()),
             },
         );
@@ -99,7 +95,7 @@ pub fn ingest_corpus(rows: &[CorpusReceiptRow]) -> LineageGraph {
                     tenant_id: row.tenant_id.clone(),
                     recorded_at: row.recorded_at,
                     label: Some(cap.clone()),
-                    source_table: Some("m04.corpus".to_string()),
+                    source_table: Some("replay.corpus".to_string()),
                     source_id: Some(row.receipt_id.clone()),
                 },
             );
@@ -114,7 +110,7 @@ pub fn ingest_corpus(rows: &[CorpusReceiptRow]) -> LineageGraph {
                         tenant_id: row.tenant_id.clone(),
                         recorded_at: row.recorded_at,
                         label: Some(parent_cap.clone()),
-                        source_table: Some("m04.corpus".to_string()),
+                        source_table: Some("replay.corpus".to_string()),
                         source_id: Some(row.receipt_id.clone()),
                     },
                 );
@@ -125,7 +121,7 @@ pub fn ingest_corpus(rows: &[CorpusReceiptRow]) -> LineageGraph {
                         to: cap_id.clone(),
                         kind: EdgeKind::CapabilityParent,
                         evidence_class: EvidenceClass::Observed,
-                        source_table: Some("m04.corpus".to_string()),
+                        source_table: Some("replay.corpus".to_string()),
                         source_id: Some(row.receipt_id.clone()),
                         tenant_id: row.tenant_id.clone(),
                         recorded_at: row.recorded_at,
@@ -143,7 +139,7 @@ pub fn ingest_corpus(rows: &[CorpusReceiptRow]) -> LineageGraph {
                         tenant_id: row.tenant_id.clone(),
                         recorded_at: row.recorded_at,
                         label: Some(tool.clone()),
-                        source_table: Some("m04.corpus".to_string()),
+                        source_table: Some("replay.corpus".to_string()),
                         source_id: Some(row.receipt_id.clone()),
                     },
                 );
@@ -154,7 +150,7 @@ pub fn ingest_corpus(rows: &[CorpusReceiptRow]) -> LineageGraph {
                         to: tool_id.clone(),
                         kind: EdgeKind::CapabilityToGuard,
                         evidence_class: EvidenceClass::Observed,
-                        source_table: Some("m04.corpus".to_string()),
+                        source_table: Some("replay.corpus".to_string()),
                         source_id: Some(row.receipt_id.clone()),
                         tenant_id: row.tenant_id.clone(),
                         recorded_at: row.recorded_at,
@@ -167,7 +163,7 @@ pub fn ingest_corpus(rows: &[CorpusReceiptRow]) -> LineageGraph {
                         to: receipt_id.clone(),
                         kind: EdgeKind::ToolCallToReceipt,
                         evidence_class: EvidenceClass::Observed,
-                        source_table: Some("m04.corpus".to_string()),
+                        source_table: Some("replay.corpus".to_string()),
                         source_id: Some(row.receipt_id.clone()),
                         tenant_id: row.tenant_id.clone(),
                         recorded_at: row.recorded_at,
@@ -187,7 +183,7 @@ pub fn ingest_corpus(rows: &[CorpusReceiptRow]) -> LineageGraph {
                     tenant_id: row.tenant_id.clone(),
                     recorded_at: row.recorded_at,
                     label: Some(parent.clone()),
-                    source_table: Some("m04.corpus".to_string()),
+                    source_table: Some("replay.corpus".to_string()),
                     source_id: Some(parent.clone()),
                 },
             );
@@ -203,7 +199,7 @@ pub fn ingest_corpus(rows: &[CorpusReceiptRow]) -> LineageGraph {
                     to: receipt_id,
                     kind: EdgeKind::ReceiptLineageParent,
                     evidence_class: evidence,
-                    source_table: Some("m04.corpus".to_string()),
+                    source_table: Some("replay.corpus".to_string()),
                     source_id: Some(row.receipt_id.clone()),
                     tenant_id: row.tenant_id.clone(),
                     recorded_at: row.recorded_at,
@@ -246,7 +242,6 @@ mod tests {
             tool_name: None,
             tenant_id: None,
             recorded_at: None,
-            has_signed_lineage_statement: true,
             signed_lineage_statement: None,
         }];
         let g = ingest_corpus(&rows);
@@ -294,7 +289,6 @@ mod tests {
             tool_name: None,
             tenant_id: None,
             recorded_at: None,
-            has_signed_lineage_statement: true,
             signed_lineage_statement: Some(statement),
         }];
         let g = ingest_corpus(&rows);
@@ -344,7 +338,6 @@ mod tests {
             tool_name: None,
             tenant_id: None,
             recorded_at: None,
-            has_signed_lineage_statement: true,
             signed_lineage_statement: Some(statement),
         }];
         let g = ingest_corpus(&rows);
@@ -367,7 +360,6 @@ mod tests {
             tool_name: Some("tool.run".into()),
             tenant_id: Some("t".into()),
             recorded_at: Some(1),
-            has_signed_lineage_statement: false,
             signed_lineage_statement: None,
         };
         let rows = vec![row.clone(), row.clone(), row];

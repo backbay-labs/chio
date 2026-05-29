@@ -1,4 +1,4 @@
-// Unit tests for @chio/passkey.
+// Unit tests for @chio-protocol/passkey.
 //
 // These tests exercise the requestCapability call sequence with injected
 // fetch + credentials stubs so they run anywhere bun runs (no real

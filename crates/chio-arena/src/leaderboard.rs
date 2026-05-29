@@ -73,10 +73,9 @@ impl Leaderboard {
                 // emitted by `AdversaryClass::as_str()` and serialised by
                 // `#[serde(rename_all = "kebab-case")]`) so the
                 // `chio.arena.leaderboard/v1` schema is consistent with
-                // every other arena artifact. The previous Debug-derived
-                // form produced names like "promptinjection" that
-                // diverged from the canonical "prompt-injection" tokens
-                // M09 reputation matches against.
+                // every other arena artifact and matches the canonical
+                // "prompt-injection" tokens the reputation surface keys on
+                // (not the Debug form "promptinjection").
                 population: name.clone(),
                 class: sample.class.as_str().to_string(),
                 survival_rate: sample.survival_rate(),

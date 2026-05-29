@@ -73,10 +73,12 @@ pub fn build_tool_call_request(
 /// - `Verdict::Deny` (and the non-allow terminal variants) ->
 ///   `VerdictResult::Deny { reason, receipt_id }`
 /// - `Verdict::PendingApproval` -> `VerdictResult::Deny { reason, receipt_id }`
-///   so callers fail-closed if they ignore the approval channel; phases that
-///   plumb HITL across the fabric will replace this branch.
+///   so callers fail-closed if they ignore the approval channel. The fabric
+///   verdict vocabulary has no pending state, so an approval-gated outcome
+///   maps to a denial here.
 ///
-/// Redactions are always empty; data-guard redaction lists are not yet wired.
+/// Redactions are emitted as an empty list: the fabric verdict does not
+/// carry data-guard redaction detail.
 #[must_use]
 pub fn verdict_result_from_response(
     invocation: &ToolInvocation,
@@ -107,8 +109,9 @@ pub fn verdict_result_from_response(
 /// [`ToolCallResponse::reason`] string. We surface this as
 /// [`DenyReason::PolicyDeny`] with the kernel's reason as the `rule_id`,
 /// preserving information for auditors without inventing a richer mapping.
-/// Specialized variants (`CapabilityExpired`, `BudgetExceeded`, etc.) require
-/// kernel-side classification work; the structured taxonomy is not yet wired.
+/// Specialized variants (`CapabilityExpired`, `BudgetExceeded`, etc.) would
+/// require kernel-side classification; this shim maps every deny to the
+/// single [`DenyReason::PolicyDeny`] form.
 fn classify_deny_reason(_invocation: &ToolInvocation, response: &ToolCallResponse) -> DenyReason {
     let detail = response
         .reason

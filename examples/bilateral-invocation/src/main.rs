@@ -4,8 +4,8 @@
 //! 2. Build a `ChioReceipt` for the invocation Org A's agent made
 //!    against a tool hosted by Org B.
 //! 3. Drive `chio_federation::execute_local_bilateral_invocation_fixture`, which:
-//!    - Drives the legacy `co_sign_with_origin` hop to produce the
-//!      legacy `DualSignedReceipt`.
+//!    - Drives the `co_sign_with_origin` hop to produce the
+//!      `DualSignedReceipt` compatibility artifact.
 //!    - Calls `sign_dsse_envelope_full` to produce the DSSE
 //!      signature-slice envelope, with the predicate extensions
 //!      (`capability_lease_ref`, `policy_evaluation_summary`) the
@@ -127,7 +127,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         kp_tool_host.public_key(),
     );
 
-    // ---- 6. Drive the kernel-boundary helper -------------------------
+    // ---- 5. Drive the kernel-boundary helper -------------------------
     let request = LocalBilateralInvocationFixtureRequest {
         origin_kernel_id,
         origin_keypair: &kp_origin,
@@ -163,11 +163,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let outcome = execute_local_bilateral_invocation_fixture(request, &config)?;
 
-    // ---- 7. Print results --------------------------------------------
+    // ---- 6. Print results --------------------------------------------
     println!();
     println!("== Bilateral co-sign succeeded ==");
     println!(
-        "  legacy DualSignedReceipt schema: {}",
+        "  DualSignedReceipt schema: {}",
         outcome.artifacts.dual_signed_receipt.schema
     );
     println!(

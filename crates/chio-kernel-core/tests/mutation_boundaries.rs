@@ -254,9 +254,9 @@ fn resolve_matching_grants_audience_null_fails_closed_and_missing_allows() {
     //   * `audience: ""` -> relevant empty string (fails closed because no
     //     allowed value matches "").
     //   * `audience` missing -> "key not provided" (allows).
-    // Regression for the strict-collector P1 review: null under a relevant
-    // key must not be treated like absence, or an attacker can bypass an
-    // audience/store allowlist by sending an explicit JSON null.
+    // Null under a relevant key must not be treated like absence, or an
+    // attacker can bypass an audience/store allowlist by sending an
+    // explicit JSON null.
     let scope = ChioScope {
         grants: vec![grant(
             "web",
@@ -324,10 +324,9 @@ fn resolve_matching_grants_audience_mixed_null_array_fails_closed() {
     // A mixed array `["security", null]` directly under an audience key must
     // poison the constraint to match the hosted matcher's strict semantics
     // (`chio_kernel::request_matching::collect_string_values_strict` rejects
-    // any non-string, non-array leaf). The portable matcher previously treated
-    // null array elements as tolerated; that allowed an attacker who controlled
-    // any nullable field in the array to relax the allowlist check on the
-    // sibling string elements compared to the hosted kernel.
+    // any non-string, non-array leaf). Tolerating null array elements would let
+    // an attacker who controls any nullable field in the array relax the
+    // allowlist check on the sibling string elements compared to the hosted kernel.
     let scope = ChioScope {
         grants: vec![grant(
             "web",

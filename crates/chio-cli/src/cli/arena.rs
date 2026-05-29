@@ -1,10 +1,12 @@
 // chio-arena CLI subcommands.
 //
-// `arc arena run`: load a scenario file, drive the runtime, write a bundle.
-// `arc arena replay`: resolve scenario id under target/arena/<id>/ and
+// `chio arena run`: load a scenario file, drive the runtime, write a bundle.
+// `chio arena replay`: resolve scenario id under target/arena/<id>/ and
 // delegate to the `chio replay` engine.
-// `arc arena evolve`: run the co-evolution driver under the bounded-budget
+// `chio arena evolve`: run the co-evolution driver under the bounded-budget
 // gate and render a leaderboard.
+
+use super::*;
 
 const MAX_ARENA_EVOLVE_GENERATIONS: u32 = 200;
 const MAX_ARENA_EVOLVE_WALL_SECONDS: u64 = 30 * 60;
@@ -23,7 +25,7 @@ fn arena_resolve_output_root(override_path: Option<&std::path::Path>) -> std::pa
 }
 
 #[allow(dead_code)]
-fn cmd_arena_run(
+pub(crate) fn cmd_arena_run(
     scenario_path: &std::path::Path,
     output_root: Option<&std::path::Path>,
     json_output: bool,
@@ -74,7 +76,7 @@ fn cmd_arena_run(
 }
 
 #[allow(dead_code)]
-fn cmd_arena_replay(
+pub(crate) fn cmd_arena_replay(
     scenario_id: &str,
     output_root: Option<&std::path::Path>,
     bundle_dir: Option<&std::path::Path>,
@@ -87,7 +89,7 @@ fn cmd_arena_replay(
     };
     if !resolved.is_dir() {
         return Err(CliError::cli_other_error(format!(
-            "arena replay: bundle directory {} does not exist (did you run `arc arena run` first?)",
+            "arena replay: bundle directory {} does not exist (did you run `chio arena run` first?)",
             resolved.display()
         )));
     }
@@ -98,7 +100,7 @@ fn cmd_arena_replay(
         "schema_version": "chio.arena.replay/v1",
         "scenario_id": scenario_id,
         "bundle_dir": resolved.display().to_string(),
-        "engine": "chio-replay-corpus@m04",
+        "engine": "chio-replay-corpus",
     });
     if json_output {
         let bytes = serde_json::to_vec(&summary).map_err(|err| {
@@ -121,7 +123,7 @@ fn cmd_arena_replay(
 }
 
 #[allow(dead_code)]
-fn cmd_arena_evolve(
+pub(crate) fn cmd_arena_evolve(
     seed_path: &std::path::Path,
     generations: u32,
     wall_seconds: u64,

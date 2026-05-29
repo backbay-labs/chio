@@ -1,7 +1,7 @@
 """Chio-governed Dagster :class:`dagster.IOManager` wrapper.
 
 :class:`ChioIOManager` wraps an inner :class:`dagster.IOManager` and
-evaluates an Chio capability before every :meth:`load_input` and
+evaluates a Chio capability before every :meth:`load_input` and
 :meth:`handle_output` call. Denied I/O raises :class:`PermissionError`
 so Dagster records the materialization / input as failed; allow
 verdicts delegate to the inner manager unchanged.

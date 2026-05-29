@@ -934,7 +934,6 @@ impl SqliteBudgetStore {
         transaction: &rusqlite::Transaction<'_>,
         event_id: &str,
     ) -> Result<bool, BudgetStoreError> {
-        let legacy_rollback_event_id = format!("{event_id}:rollback");
         let rollback_prefix = format!("{event_id}:rollback:");
         let rollback_prefix_pattern = Self::sqlite_like_prefix_pattern(&rollback_prefix);
         Ok(transaction
@@ -942,11 +941,10 @@ impl SqliteBudgetStore {
                 r#"
                 SELECT 1
                 FROM budget_mutation_events
-                WHERE event_id = ?1
-                   OR event_id LIKE ?2 ESCAPE '\'
+                WHERE event_id LIKE ?1 ESCAPE '\'
                 LIMIT 1
                 "#,
-                params![legacy_rollback_event_id, rollback_prefix_pattern],
+                params![rollback_prefix_pattern],
                 |_| Ok(()),
             )
             .optional()?
@@ -3590,7 +3588,7 @@ mod tests {
                 0,
                 100,
                 Some(hold_id),
-                Some("hold-cap-lease-0:authorize:rollback"),
+                Some("hold-cap-lease-0:authorize:rollback:1"),
                 Some(&initial),
             )
             .unwrap();
@@ -3625,7 +3623,7 @@ mod tests {
         assert_eq!(
             event_ids,
             vec![
-                "hold-cap-lease-0:authorize:rollback",
+                "hold-cap-lease-0:authorize:rollback:1",
                 "hold-cap-lease-0:authorize"
             ]
         );

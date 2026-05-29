@@ -111,6 +111,7 @@ mod tests {
     use super::*;
     use chio_core::crypto::Keypair;
     use chio_core::receipt::{ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
+    use chio_test_support::prelude::*;
 
     fn signed_allow_receipt() -> ChioReceipt {
         let keypair = Keypair::generate();
@@ -124,7 +125,7 @@ mod tests {
                 action: ToolCallAction::from_parameters(serde_json::json!({
                     "path": "/workspace/readme.md"
                 }))
-                .expect("action parameters serialize"),
+                .test_expect("action parameters serialize"),
                 decision: Some(Decision::Allow),
                 receipt_kind: chio_core::ReceiptKind::MediatedDecision,
                 boundary_class: chio_core::BoundaryClass::Prevent,
@@ -142,7 +143,7 @@ mod tests {
             },
             &keypair,
         )
-        .expect("sign test receipt")
+        .test_expect("sign test receipt")
     }
 
     #[test]

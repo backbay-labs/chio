@@ -103,7 +103,7 @@ tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
 cargo test -p chio-pheromone-relay directory
-cargo test -p chio-cli --bin chio_pheromone
+cargo test -p chio-cli --bin chio chio_pheromone
 
 cargo run -p chio-cli --bin chio -- pheromone relay directory inspect \
   --state "$FIXTURE_DIR/peer-directory-state.json" \

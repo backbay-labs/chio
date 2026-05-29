@@ -1,9 +1,8 @@
 //! Path allowlist guard -- deny by default when enabled.
 //!
-//! Adapted from ClawdStrike's `guards/path_allowlist.rs`. If a path is NOT in
-//! the allowlist, the guard denies the request. Separate allowlists for file
-//! access, file write, and patch operations. When `patch_allow` is empty, it
-//! falls back to `file_write_allow`.
+//! If a path is NOT in the allowlist, the guard denies the request. Separate
+//! allowlists for file access, file write, and patch operations. When
+//! `patch_allow` is empty, it falls back to `file_write_allow`.
 
 use chio_kernel::{GuardContext, KernelError, Verdict};
 use glob::Pattern;
@@ -203,7 +202,9 @@ impl chio_kernel::Guard for PathAllowlistGuard {
             ToolAction::FileAccess(path) => self.is_file_access_allowed(path),
             ToolAction::FileWrite(path, _) => self.is_file_write_allowed(path),
             ToolAction::Patch(path, _) => self.is_patch_allowed(path),
-            _ => unreachable!("non-filesystem actions should return early"),
+            // Fail closed: any path-bearing action this allowlist cannot
+            // classify is denied, never silently allowed.
+            _ => false,
         };
 
         if allowed {

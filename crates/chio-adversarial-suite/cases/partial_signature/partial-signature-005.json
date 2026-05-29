@@ -11,7 +11,7 @@
     "algebra_oracle": "capability_expiry_is_signed",
     "signed_payload": {
       "id": "cap-partial-signature-005",
-      "issuer": "did:chio:authority:m05",
+      "issuer": "did:chio:authority:home",
       "subject": "did:chio:agent:partial"
     },
     "unsigned_expiry": "2026-05-01T00:00:00Z",

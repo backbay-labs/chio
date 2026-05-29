@@ -291,10 +291,10 @@ run_negative_flow() {
 run_failure_code_flow() {
   write_common_fixtures
   validate_schema "$runtime_schema_dir/failure-code-registry.schema.json" "$tmpdir/failure-code-registry.json"
-  rg -q 'runtime_provider_discovery_not_allowed' "$repo_root/crates/chio-runtime-core/src"
-  rg -q 'runtime_evidence_artifact_hash_mismatch' "$repo_root/crates/chio-runtime-core/src"
-  rg -q 'runtime_ops_supervisor_profile_stale' "$repo_root/crates/chio-runtime-core/src"
-  rg -q 'runtime_recovery_supervisor_profile_stale' "$repo_root/crates/chio-runtime-core/src"
+  grep -rq 'runtime_provider_discovery_not_allowed' "$repo_root/crates/chio-runtime-core/src"
+  grep -rq 'runtime_evidence_artifact_hash_mismatch' "$repo_root/crates/chio-runtime-core/src"
+  grep -rq 'runtime_ops_supervisor_profile_stale' "$repo_root/crates/chio-runtime-core/src"
+  grep -rq 'runtime_recovery_supervisor_profile_stale' "$repo_root/crates/chio-runtime-core/src"
 }
 
 case "$MODE" in
@@ -324,7 +324,7 @@ case "$MODE" in
     ;;
   "full")
     cargo test -p chio-runtime-core runtime_ops
-    cargo test -p chio-cli --bin chio_native_runtime_surface_parses
+    cargo test -p chio-cli --bin chio chio_native_runtime_surface_parses
     run_schema_flow
     run_tick_flow
     run_status_flow

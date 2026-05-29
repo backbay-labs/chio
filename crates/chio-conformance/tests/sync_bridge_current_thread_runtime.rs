@@ -134,8 +134,8 @@ fn current_thread_runtime_returns_typed_error_instead_of_deadlocking() {
         federated_origin_kernel_id: None,
     };
 
-    // A current-thread Tokio runtime is the production deadlock case.
-    // The fix surfaces a typed error rather than parking forever.
+    // A current-thread Tokio runtime is the production deadlock case: the
+    // bridge must surface a typed error rather than park forever.
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -143,9 +143,9 @@ fn current_thread_runtime_returns_typed_error_instead_of_deadlocking() {
 
     let outcome: Result<chio_kernel::ToolCallResponse, KernelError> = runtime.block_on(async {
         // The kernel's sync API is intentionally invoked from inside the
-        // current-thread runtime. Pre-fix this would have deadlocked
-        // when any tool-server future awaited Tokio I/O. Post-fix the
-        // bridge fails closed with a typed error.
+        // current-thread runtime, where a tool-server future awaiting Tokio
+        // I/O would deadlock. The bridge must instead fail closed with a
+        // typed error.
         kernel.evaluate_tool_call_blocking(&request)
     });
 

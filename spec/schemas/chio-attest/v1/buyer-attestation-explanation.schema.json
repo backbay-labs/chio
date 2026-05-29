@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://chio.dev/schemas/chio-attest/v1/buyer-attestation-explanation.schema.json",
+  "$id": "https://chio.world/schemas/chio-attest/v1/buyer-attestation-explanation.schema.json",
   "title": "Chio Buyer Attestation Explanation",
   "type": "object",
   "additionalProperties": false,

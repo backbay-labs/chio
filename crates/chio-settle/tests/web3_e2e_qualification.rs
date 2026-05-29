@@ -58,28 +58,7 @@ const OPERATOR_PRIVATE_KEY: &str =
 const PARTNER_QUALIFICATION_SCHEMA: &str = "chio.web3-e2e-qualification.v1";
 const PARTNER_SCENARIO_SCHEMA: &str = "chio.web3-e2e-scenario.v1";
 
-trait TestResultOk<T, E> {
-    fn test_expect(self, context: &'static str) -> T;
-}
-
-impl<T, E> TestResultOk<T, E> for Result<T, E> {
-    fn test_expect(self, context: &'static str) -> T {
-        match self {
-            Ok(value) => value,
-            Err(_) => panic!("{context}"),
-        }
-    }
-}
-
-trait TestOptionExt<T> {
-    fn test_expect(self, context: &'static str) -> T;
-}
-
-impl<T> TestOptionExt<T> for Option<T> {
-    fn test_expect(self, context: &'static str) -> T {
-        self.unwrap_or_else(|| panic!("{context}"))
-    }
-}
+use chio_test_support::prelude::*;
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))

@@ -14,17 +14,49 @@ use chio_core::canonical::canonical_json_bytes;
 use chio_core::crypto::{Keypair, PublicKey, SigningAlgorithm};
 use chio_core::receipt::{
     chio_receipt_id, ChioReceiptBody, ChioReceiptSigningBody, Decision, ToolCallAction, TrustLevel,
+    CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY,
 };
 use chio_kernel::{
     kernel_signing_backend, sign_receipt_body_with_backend, KernelCryptoFloor,
     KernelSigningBackendError,
 };
 
+/// Bind the `chio_receipt_signing_nonce` metadata key to the pre-nonce
+/// receipt id, mirroring `chio_core_types::receipt::bind_receipt_signing_nonce`
+/// (the private step `ChioReceipt::sign_with_backend` runs before computing
+/// the content-addressed id). The nonce is the trimmed pre-nonce `body.id`;
+/// an existing non-object metadata value is preserved under
+/// `original_metadata`. This is the canonical signed-body transform, so the
+/// test reconstructs the exact bytes the signer signs.
+fn bind_signing_nonce(body: &mut ChioReceiptBody) {
+    let nonce = body.id.trim();
+    if nonce.is_empty() {
+        return;
+    }
+    let mut metadata = match body.metadata.take() {
+        Some(serde_json::Value::Object(map)) => map,
+        Some(value) => {
+            let mut map = serde_json::Map::new();
+            map.insert("original_metadata".to_string(), value);
+            map
+        }
+        None => serde_json::Map::new(),
+    };
+    metadata.insert(
+        CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY.to_string(),
+        serde_json::Value::String(nonce.to_string()),
+    );
+    body.metadata = Some(serde_json::Value::Object(metadata));
+}
+
 /// Canonical JSON bytes of the authoritative `ChioReceiptSigningBody`
 /// wrapper. Both classical and hybrid receipt-signing paths sign these
-/// bytes, not the bare `ChioReceiptBody` bytes.
+/// bytes, not the bare `ChioReceiptBody` bytes. The signer binds the
+/// `chio_receipt_signing_nonce` metadata key before computing the id, so the
+/// reconstruction here applies the same binding first.
 fn canonical_signing_wrapper_bytes(body: &ChioReceiptBody) -> Vec<u8> {
     let mut body = body.clone();
+    bind_signing_nonce(&mut body);
     body.id = chio_receipt_id(&body).unwrap();
     let signing_body = ChioReceiptSigningBody::from(&body);
     canonical_json_bytes(&signing_body).unwrap()
@@ -32,7 +64,7 @@ fn canonical_signing_wrapper_bytes(body: &ChioReceiptBody) -> Vec<u8> {
 
 fn fixture_pq_seed() -> [u8; 32] {
     // Stable test seed: reproducible across runs, never used in production.
-    let raw = b"chio-m03-p2-t2-hybrid-test-seed!";
+    let raw = b"chio-hybrid-receipt-sign-seedval";
     let mut out = [0u8; 32];
     out.copy_from_slice(raw);
     out

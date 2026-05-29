@@ -1,4 +1,4 @@
-//! Shared on-disk format contract for the M04 replay-gate goldens.
+//! Shared on-disk format contract for the replay-gate goldens.
 //!
 //! This module is the single source of truth for the constants that
 //! the writer ([`crate::golden_writer`]) emits and the reader

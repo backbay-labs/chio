@@ -2,7 +2,7 @@
 
 - Status: Proposed
 - Decision owner: protocol and interop lanes
-- Related plan item: `D5` in [../EXECUTION_PLAN.md](../EXECUTION_PLAN.md)
+- Related plan item: `D5` in [../EXECUTION_PLAN.md](../operations/EXECUTION_PLAN.md)
 
 ## Context
 

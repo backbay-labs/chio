@@ -1,4 +1,6 @@
-fn select_capability_for_request(
+use super::*;
+
+pub(crate) fn select_capability_for_request(
     capabilities: &[chio_core::CapabilityToken],
     tool: &str,
     server: &str,
@@ -14,7 +16,7 @@ fn select_capability_for_request(
         .or_else(|| capabilities.first().cloned())
 }
 
-fn handle_agent_message(
+pub(crate) fn handle_agent_message(
     kernel: &mut ChioKernel,
     msg: &AgentMessage,
     session_id: &SessionId,
@@ -32,7 +34,7 @@ fn handle_agent_message(
             match response.verdict {
                 chio_kernel::Verdict::Allow => stats.allowed += 1,
                 chio_kernel::Verdict::Deny => stats.denied += 1,
-                // Phase 3.4: pending approval is a non-terminal
+                // Pending approval is a non-terminal
                 // outcome; from the CLI's accounting perspective we
                 // fold it into denied until the human responds.
                 chio_kernel::Verdict::PendingApproval => stats.denied += 1,
@@ -131,7 +133,7 @@ fn handle_agent_message(
     }
 }
 
-fn tool_response_messages(
+pub(crate) fn tool_response_messages(
     request_id: String,
     response: chio_kernel::ToolCallResponse,
 ) -> Vec<KernelMessage> {
@@ -189,7 +191,7 @@ fn tool_response_messages(
         (chio_kernel::Verdict::Allow, _, None) => ToolCallResult::Ok {
             value: serde_json::Value::Null,
         },
-        // Phase 3.4: map PendingApproval to a policy-denied result so
+        // Map PendingApproval to a policy-denied result so
         // the existing session driver surfaces it to the caller; the
         // HTTP `/approvals` surface is the mechanism for resume.
         (chio_kernel::Verdict::PendingApproval, _, _) => ToolCallResult::Err {
@@ -210,7 +212,7 @@ fn tool_response_messages(
     messages
 }
 
-fn normalize_agent_message(
+pub(crate) fn normalize_agent_message(
     msg: &AgentMessage,
     session_id: &SessionId,
     session_agent_id: &str,
@@ -255,12 +257,12 @@ fn normalize_agent_message(
     }
 }
 
-fn control_request_id(session_id: &SessionId, suffix: &str) -> RequestId {
+pub(crate) fn control_request_id(session_id: &SessionId, suffix: &str) -> RequestId {
     RequestId::new(format!("{session_id}::{suffix}"))
 }
 
 /// Build an error receipt when the kernel fails internally.
-fn make_error_receipt(
+pub(crate) fn make_error_receipt(
     _kernel: &mut ChioKernel,
     request: &KernelToolCallRequest,
 ) -> Result<chio_core::ChioReceipt, chio_core::error::Error> {
@@ -310,8 +312,8 @@ fn make_error_receipt(
     chio_core::receipt::ChioReceipt::sign(body, &kp)
 }
 
-struct StubToolServer {
-    id: String,
+pub(crate) struct StubToolServer {
+    pub(crate) id: String,
 }
 
 #[async_trait::async_trait]
@@ -339,8 +341,8 @@ impl chio_kernel::ToolServerConnection for StubToolServer {
 }
 
 #[cfg(test)]
-struct StubSqlResultToolServer {
-    id: String,
+pub(crate) struct StubSqlResultToolServer {
+    pub(crate) id: String,
 }
 
 #[cfg(test)]
@@ -369,7 +371,7 @@ impl chio_kernel::ToolServerConnection for StubSqlResultToolServer {
 }
 
 #[cfg(test)]
-struct StubStreamingToolServer {
+pub(crate) struct StubStreamingToolServer {
     id: String,
     incomplete: bool,
 }
@@ -423,13 +425,13 @@ impl chio_kernel::ToolServerConnection for StubStreamingToolServer {
 }
 
 #[derive(Default)]
-struct SessionStats {
+pub(crate) struct SessionStats {
     requests: u64,
     allowed: u64,
     denied: u64,
 }
 
-fn print_summary(stats: &SessionStats, exit_code: Option<i32>, json_output: bool) {
+pub(crate) fn print_summary(stats: &SessionStats, exit_code: Option<i32>, json_output: bool) {
     if json_output {
         let output = serde_json::json!({
             "summary": {
@@ -502,6 +504,19 @@ mod tests {
             .expect("system time before unix epoch")
             .as_nanos();
         std::env::temp_dir().join(format!("{prefix}-{nonce}.seed"))
+    }
+
+    // Mirror production (cli/runtime.rs): pair build_kernel with a receipt
+    // store so the kernel's fail-closed receipt-persistence check passes.
+    fn build_kernel_with_receipt_store(
+        loaded_policy: policy::LoadedPolicy,
+        kernel_kp: &Keypair,
+    ) -> ChioKernel {
+        let mut kernel = build_kernel(loaded_policy, kernel_kp);
+        let receipt_db_path = unique_db_path("chio-cli-session-receipts");
+        configure_receipt_store(&mut kernel, Some(&receipt_db_path), None, None)
+            .expect("configure receipt store for session test");
+        kernel
     }
 
     fn first_default_capability(
@@ -787,7 +802,7 @@ capabilities:
 "#;
         let policy = policy::parse_policy(yaml).unwrap();
         let kp = Keypair::generate();
-        let mut kernel = build_kernel(load_test_policy_runtime(&policy), &kp);
+        let mut kernel = build_kernel_with_receipt_store(load_test_policy_runtime(&policy), &kp);
         kernel.register_tool_server(Box::new(StubToolServer {
             id: "*".to_string(),
         }));
@@ -956,7 +971,7 @@ capabilities:
 "#;
         let policy = policy::parse_policy(yaml).unwrap();
         let kp = Keypair::generate();
-        let mut kernel = build_kernel(load_test_policy_runtime(&policy), &kp);
+        let mut kernel = build_kernel_with_receipt_store(load_test_policy_runtime(&policy), &kp);
         kernel.register_tool_server(Box::new(StubToolServer {
             id: "srv-b".to_string(),
         }));
@@ -1065,7 +1080,7 @@ capabilities:
         let default_capabilities = loaded_policy.default_capabilities.clone();
 
         let kp = Keypair::generate();
-        let mut kernel = build_kernel(loaded_policy, &kp);
+        let mut kernel = build_kernel_with_receipt_store(loaded_policy, &kp);
         kernel.register_tool_server(Box::new(StubToolServer {
             id: "*".to_string(),
         }));
@@ -1255,7 +1270,7 @@ guards:
         let default_capabilities = loaded_policy.default_capabilities.clone();
 
         let kp = Keypair::generate();
-        let mut kernel = build_kernel(loaded_policy, &kp);
+        let mut kernel = build_kernel_with_receipt_store(loaded_policy, &kp);
         kernel.register_tool_server(Box::new(StubToolServer {
             id: "*".to_string(),
         }));
@@ -1335,7 +1350,7 @@ capabilities:
 "#;
         let policy = policy::parse_policy(yaml).unwrap();
         let kp = Keypair::generate();
-        let mut kernel = build_kernel(load_test_policy_runtime(&policy), &kp);
+        let mut kernel = build_kernel_with_receipt_store(load_test_policy_runtime(&policy), &kp);
         kernel.register_tool_server(Box::new(StubStreamingToolServer {
             id: "*".to_string(),
             incomplete: false,
@@ -1391,7 +1406,7 @@ capabilities:
 "#;
         let policy = policy::parse_policy(yaml).unwrap();
         let kp = Keypair::generate();
-        let mut kernel = build_kernel(load_test_policy_runtime(&policy), &kp);
+        let mut kernel = build_kernel_with_receipt_store(load_test_policy_runtime(&policy), &kp);
         kernel.register_tool_server(Box::new(StubStreamingToolServer {
             id: "*".to_string(),
             incomplete: true,
@@ -1570,7 +1585,7 @@ guards:
         let default_capabilities = policy::build_runtime_default_capabilities(&policy).unwrap();
 
         let kp = Keypair::generate();
-        let mut kernel = build_kernel(load_test_policy_runtime(&policy), &kp);
+        let mut kernel = build_kernel_with_receipt_store(load_test_policy_runtime(&policy), &kp);
         kernel.register_tool_server(Box::new(StubSqlResultToolServer {
             id: "*".to_string(),
         }));

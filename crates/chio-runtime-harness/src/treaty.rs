@@ -107,7 +107,16 @@ pub(crate) fn insert_runtime_loopback_treaty_context(
             tool_server: step.request.server_id.clone(),
             tool_name: step.request.tool_name.clone(),
             action,
-            decision: chio_core::receipt::Decision::Allow,
+            decision: Some(chio_core::receipt::Decision::Allow),
+            receipt_kind: chio_core::receipt::ReceiptKind::MediatedDecision,
+            boundary_class: chio_core::receipt::BoundaryClass::Prevent,
+            observation_outcome: None,
+            tool_origin: chio_core::receipt::ToolOrigin::CallerExecuted,
+            redaction_mode: chio_core::receipt::RedactionMode::None,
+            actor_chain: vec![chio_core::receipt::ActorRef {
+                actor_id: "agent:chio-loopback".to_string(),
+                actor_kind: Some("agent".to_string()),
+            }],
             content_hash: outcome_sha256.clone(),
             policy_hash: chio_core::sha256_hex(
                 format!("runtime-loopback:{step_index}:policy").as_bytes(),

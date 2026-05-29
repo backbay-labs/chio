@@ -27,7 +27,7 @@
       {
         "@context": [
           "https://www.w3.org/2018/credentials/v1",
-          "https://chio.dev/credentials/v1"
+          "https://chio.world/credentials/v1"
         ],
         "type": [
           "VerifiableCredential",

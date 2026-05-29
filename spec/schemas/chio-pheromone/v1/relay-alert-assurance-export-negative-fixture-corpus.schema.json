@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-alert-assurance-export-negative-fixture-corpus.schema.json",
+  "$id": "https://chio.world/schemas/chio-pheromone/v1/relay-alert-assurance-export-negative-fixture-corpus.schema.json",
   "title": "Chio Pheromone Relay Alert Assurance Export Negative Fixture Corpus",
   "type": "object",
   "additionalProperties": false,

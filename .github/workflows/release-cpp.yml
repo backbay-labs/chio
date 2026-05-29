@@ -1,24 +1,20 @@
 name: Release C++ SDKs
 
-# Tag-driven publish for the four Chio C++ SDKs to the private Conan remote
-# (Sonatype Nexus on the platform-dev OKE cluster) and the private vcpkg
-# overlay registry (backbay-labs/chio-vcpkg-registry).
+# Tag-driven publish for the four Chio C++ SDKs to GitHub Releases under
+# github.com/backbay-labs/chio and the private vcpkg overlay registry
+# (backbay-labs/chio-vcpkg-registry).
 #
 # Tag format: cpp/v<X.Y.Z> publishes all four SDKs. The four SDK versions
-# stay coupled while the C ABI invariant boundary is pre-1.0; once any SDK
-# diverges, switch to slug-specific tags (cpp/<slug>-v<X.Y.Z>) following the
-# release-npm.yml precedent.
+# stay coupled while the C ABI invariant boundary is pre-1.0.
 #
 # Required GitHub Actions secrets (configured at repo level):
-#   - CHIO_NEXUS_PUBLISHER_TOKEN: bearer token for the chio-publisher Nexus
-#     account, sourced from OCI Vault secret chio-registry/chio-publisher
 #   - CHIO_VCPKG_REGISTRY_DEPLOY_KEY: SSH private key whose public half is
 #     a deploy key on backbay-labs/chio-vcpkg-registry with write access
 #
-# Network reachability: this workflow assumes nexus.dev.backbay.io is
-# publicly resolvable and accepts traffic from GitHub-hosted runners. If
-# the gateway is ACL'd to internal CIDRs, swap to a self-hosted runner
-# pinned to the OKE cluster network.
+# Conan packages are published as assets on the cpp/v<X.Y.Z> GitHub Release
+# (the prior private Nexus remote was decommissioned). The publish-conan job
+# attaches the qualified Conan 2 cache archive; consumers restore it into a
+# local Conan home (the restore command is in the job's release notes).
 
 on:
   push:
@@ -44,9 +40,6 @@ env:
   CHIO_CPP_CBINDGEN_VERSION: "0.29.2"
   CHIO_CPP_CONAN_VERSION: "2.28.0"
   CHIO_CPP_VCPKG_REF: 7a9071743140154391b0e18b77d46cc66c5f3663
-  # No trailing slash. Some Conan/Nexus combos loop on redirects when the
-  # configured remote URL doesn't match the canonical form Nexus serves.
-  CHIO_NEXUS_REMOTE_URL: https://nexus.dev.backbay.io/repository/chio-conan
   CHIO_VCPKG_REGISTRY_REPO: backbay-labs/chio-vcpkg-registry
 
 jobs:
@@ -78,11 +71,17 @@ jobs:
             fi
             dry_run="false"
           else
-            version="$(grep -m1 'version =' packages/sdk/chio-cpp/conanfile.py | sed -E 's/.*"([^"]+)".*/\1/')"
+            version="$(grep -m1 'version =' sdks/cpp/chio-cpp/conanfile.py | sed -E 's/.*"([^"]+)".*/\1/')"
             dry_run="${INPUT_DRY_RUN:-true}"
           fi
+          sdk_dir() {
+            case "$1" in
+              chio-guard-cpp) echo "sdks/guard/$1" ;;
+              *)              echo "sdks/cpp/$1"   ;;
+            esac
+          }
           for sdk in chio-cpp chio-cpp-kernel chio-guard-cpp chio-drogon; do
-            recipe_version="$(grep -m1 'version =' "packages/sdk/${sdk}/conanfile.py" | sed -E 's/.*"([^"]+)".*/\1/')"
+            recipe_version="$(grep -m1 'version =' "$(sdk_dir "${sdk}")/conanfile.py" | sed -E 's/.*"([^"]+)".*/\1/')"
             if [[ "$recipe_version" != "$version" ]]; then
               echo "::error::${sdk}/conanfile.py declares version ${recipe_version} but tag is v${version}" >&2
               exit 1
@@ -144,58 +143,35 @@ jobs:
           if-no-files-found: error
 
   publish-conan:
-    name: Upload to Nexus
+    name: Publish Conan packages
     needs: qualify
     if: needs.qualify.outputs.dry_run != 'true'
     runs-on: ubuntu-latest
-    environment:
-      name: chio-conan-private
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-
-      - name: Install conan
-        run: |
-          python3 -m pip install --user "conan==${CHIO_CPP_CONAN_VERSION}"
-          echo "$(python3 -m site --user-base)/bin" >> "$GITHUB_PATH"
-
-      - name: Restore Conan cache snapshot
+      - name: Download Conan cache snapshot
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: conan-cache-${{ needs.qualify.outputs.version }}
-          path: ${{ runner.temp }}/snapshot
+          path: ${{ runner.temp }}/conan-dist
 
-      - name: Hydrate local Conan cache
-        run: |
-          set -euo pipefail
-          mkdir -p "$HOME/.conan2"
-          tar -C "$HOME/.conan2" -xzf "${RUNNER_TEMP}/snapshot/conan-cache.tar.gz"
-
-      - name: Configure Nexus remote
-        run: |
-          set -euo pipefail
-          if ! conan profile path default >/dev/null 2>&1; then
-            conan profile detect --force
-          fi
-          conan remote add chio-private "${CHIO_NEXUS_REMOTE_URL}" || true
-
-      - name: Upload SDK packages
-        # Conan v2 `remote login` obtains a session token but the token
-        # storage doesn't reliably persist across separate `conan` invocations
-        # in CI; subsequent commands re-prompt for credentials and EOF on
-        # closed stdin. The supported non-interactive path is per-remote
-        # env vars, which Conan reads on every command. Per
-        # https://docs.conan.io/2/reference/environment.html the remote
-        # name is uppercased and hyphens are replaced with underscores in
-        # the variable name; "chio-private" -> "CHIO_PRIVATE".
+      - name: Publish the Conan cache to the GitHub Release
         env:
-          CONAN_LOGIN_USERNAME_CHIO_PRIVATE: chio-publisher
-          CONAN_PASSWORD_CHIO_PRIVATE: ${{ secrets.CHIO_NEXUS_PUBLISHER_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.qualify.outputs.version }}
         run: |
           set -euo pipefail
-          for sdk in chio-cpp chio-cpp-kernel chio-guard-cpp chio-drogon; do
-            conan upload "${sdk}/${{ needs.qualify.outputs.version }}" \
-              -r=chio-private --confirm
-          done
+          tag="cpp/v${VERSION}"
+          asset="${RUNNER_TEMP}/conan-dist/chio-cpp-sdks-${VERSION}-conan2-cache.tar.gz"
+          mv "${RUNNER_TEMP}/conan-dist/conan-cache.tar.gz" "$asset"
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" \
+              --title "Chio C++ SDKs v${VERSION}" \
+              --notes "Conan 2 packages for chio-cpp, chio-cpp-kernel, chio-guard-cpp, and chio-drogon, built and qualified by this workflow. Download the archive and restore it into a local Conan home: tar -C \"\$HOME/.conan2\" -xzf chio-cpp-sdks-${VERSION}-conan2-cache.tar.gz"
+          fi
+          gh release upload "$tag" "$asset" --clobber
 
   publish-vcpkg:
     name: Sync vcpkg overlay
@@ -316,10 +292,8 @@ jobs:
               # vcpkg expects each (version, port-version) tuple to appear
               # at most once. Re-tagging the same release (e.g. after a
               # publish-conan retry) can leave duplicate rows from earlier
-              # runs; the previous `next(...)` form found only the first
-              # match and left any additional duplicates untouched, so the
-              # file could remain invalid after this step. Strip every
-              # matching tuple before re-inserting the canonical entry.
+              # runs, so strip every matching tuple before re-inserting the
+              # canonical entry.
               data["versions"] = [
                   v
                   for v in data["versions"]

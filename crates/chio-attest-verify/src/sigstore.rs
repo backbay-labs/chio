@@ -488,7 +488,7 @@ fn certificate_validity(cert: &Certificate) -> Result<(SystemTime, SystemTime), 
 /// is acceptable, and a certificate at the exact `notAfter` second is
 /// also still inside its window.
 ///
-/// Extracted from the `verify_bytes` flow so the comparison can be
+/// A standalone helper so the validity-window comparison can be
 /// unit-tested independently of the trust-root chain validation that
 /// gates the surrounding code path.
 fn is_within_validity_window(
@@ -778,18 +778,18 @@ mod sigstore_internal_tests {
     #[test]
     fn match_identity_accepts_san_uri_with_der_wrapped_issuer() {
         let leaf_der = build_leaf_with_san_and_issuer(
-            "https://github.com/bb-connor/arc/.github/workflows/release.yml@refs/tags/v1.0.0",
+            "https://github.com/backbay-labs/chio/.github/workflows/release.yml@refs/tags/v1.0.0",
             Some("https://token.actions.githubusercontent.com"),
             true,
         );
         let cert = parse_leaf(&leaf_der);
         let result = match_identity(
             &cert,
-            &ghactions_identity(r"https://github\.com/bb-connor/arc/.*"),
+            &ghactions_identity(r"https://github\.com/backbay-labs/chio/.*"),
         );
         match result {
             Ok(ident) => assert!(
-                ident.starts_with("https://github.com/bb-connor/arc/"),
+                ident.starts_with("https://github.com/backbay-labs/chio/"),
                 "matched SAN must echo the URI: {ident}"
             ),
             Err(err) => panic!("expected SAN match, got {err:?}"),
@@ -802,14 +802,14 @@ mod sigstore_internal_tests {
         // bytes rather than wrapping it in a DER UTF8String. The
         // verifier must accept both encodings.
         let leaf_der = build_leaf_with_san_and_issuer(
-            "https://github.com/bb-connor/arc/.github/workflows/release.yml@refs/tags/v1.0.0",
+            "https://github.com/backbay-labs/chio/.github/workflows/release.yml@refs/tags/v1.0.0",
             Some("https://token.actions.githubusercontent.com"),
             false,
         );
         let cert = parse_leaf(&leaf_der);
         let result = match_identity(
             &cert,
-            &ghactions_identity(r"https://github\.com/bb-connor/arc/.*"),
+            &ghactions_identity(r"https://github\.com/backbay-labs/chio/.*"),
         );
         assert!(
             result.is_ok(),
@@ -820,14 +820,14 @@ mod sigstore_internal_tests {
     #[test]
     fn match_identity_fails_closed_on_issuer_mismatch() {
         let leaf_der = build_leaf_with_san_and_issuer(
-            "https://github.com/bb-connor/arc/x.yml@refs/tags/v1.0.0",
+            "https://github.com/backbay-labs/chio/x.yml@refs/tags/v1.0.0",
             Some("https://other.example.com"),
             true,
         );
         let cert = parse_leaf(&leaf_der);
         let result = match_identity(
             &cert,
-            &ghactions_identity(r"https://github\.com/bb-connor/arc/.*"),
+            &ghactions_identity(r"https://github\.com/backbay-labs/chio/.*"),
         );
         match result {
             Err(AttestError::IssuerMismatch) => {}
@@ -838,14 +838,14 @@ mod sigstore_internal_tests {
     #[test]
     fn match_identity_fails_closed_on_missing_issuer_extension() {
         let leaf_der = build_leaf_with_san_and_issuer(
-            "https://github.com/bb-connor/arc/x.yml@refs/tags/v1.0.0",
+            "https://github.com/backbay-labs/chio/x.yml@refs/tags/v1.0.0",
             None,
             true,
         );
         let cert = parse_leaf(&leaf_der);
         let result = match_identity(
             &cert,
-            &ghactions_identity(r"https://github\.com/bb-connor/arc/.*"),
+            &ghactions_identity(r"https://github\.com/backbay-labs/chio/.*"),
         );
         match result {
             Err(AttestError::IssuerMismatch) => {}
@@ -863,7 +863,7 @@ mod sigstore_internal_tests {
         let cert = parse_leaf(&leaf_der);
         let result = match_identity(
             &cert,
-            &ghactions_identity(r"https://github\.com/bb-connor/arc/.*"),
+            &ghactions_identity(r"https://github\.com/backbay-labs/chio/.*"),
         );
         match result {
             Err(AttestError::IdentityMismatch) => {}
@@ -877,14 +877,14 @@ mod sigstore_internal_tests {
         // `^...$`. A SAN that contains the pattern as a substring (but
         // does not match end-to-end) MUST be rejected.
         let leaf_der = build_leaf_with_san_and_issuer(
-            "https://attacker.example.com/?wrap=https://github.com/bb-connor/arc/x.yml@refs/tags/v1#tail",
+            "https://attacker.example.com/?wrap=https://github.com/backbay-labs/chio/x.yml@refs/tags/v1#tail",
             Some("https://token.actions.githubusercontent.com"),
             true,
         );
         let cert = parse_leaf(&leaf_der);
         let result = match_identity(
             &cert,
-            &ghactions_identity(r"https://github\.com/bb-connor/arc/.*"),
+            &ghactions_identity(r"https://github\.com/backbay-labs/chio/.*"),
         );
         match result {
             Err(AttestError::IdentityMismatch) => {}
@@ -1941,7 +1941,7 @@ mod sigstore_internal_tests {
         //   Production code MUST reject because the OID does not match
         //   the Sigstore OtherName OID.
         let foreign_oid = "1.3.6.1.4.1.99999.1"; // not OTHERNAME_OID.
-        let san_value = b"https://github.com/bb-connor/arc/x.yml";
+        let san_value = b"https://github.com/backbay-labs/chio/x.yml";
         let leaf_der = build_leaf_with_othername_san_and_issuer(
             san_value,
             foreign_oid,
@@ -1949,7 +1949,7 @@ mod sigstore_internal_tests {
         );
         let cert = parse_leaf(&leaf_der);
         let identity = ExpectedIdentity {
-            certificate_identity_regexp: r"https://github\.com/bb-connor/arc/.*".to_owned(),
+            certificate_identity_regexp: r"https://github\.com/backbay-labs/chio/.*".to_owned(),
             certificate_oidc_issuer: "https://token.actions.githubusercontent.com".to_owned(),
         };
         match match_identity(&cert, &identity) {
@@ -1972,7 +1972,7 @@ mod sigstore_internal_tests {
         //   and accepting foreign OIDs. The Sigstore-OID input here
         //   would yield IdentityMismatch under the mutant.
         let sigstore_oid = "1.3.6.1.4.1.57264.1.7";
-        let san_value = b"https://github.com/bb-connor/arc/release.yml@refs/tags/v1";
+        let san_value = b"https://github.com/backbay-labs/chio/release.yml@refs/tags/v1";
         let leaf_der = build_leaf_with_othername_san_and_issuer(
             san_value,
             sigstore_oid,
@@ -1980,12 +1980,12 @@ mod sigstore_internal_tests {
         );
         let cert = parse_leaf(&leaf_der);
         let identity = ExpectedIdentity {
-            certificate_identity_regexp: r"https://github\.com/bb-connor/arc/.*".to_owned(),
+            certificate_identity_regexp: r"https://github\.com/backbay-labs/chio/.*".to_owned(),
             certificate_oidc_issuer: "https://token.actions.githubusercontent.com".to_owned(),
         };
         match match_identity(&cert, &identity) {
             Ok(matched) => assert!(
-                matched.starts_with("https://github.com/bb-connor/arc/"),
+                matched.starts_with("https://github.com/backbay-labs/chio/"),
                 "Sigstore OtherName SAN must round-trip to the matched identity, got {matched}"
             ),
             Err(err) => panic!(

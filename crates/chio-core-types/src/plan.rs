@@ -1,4 +1,4 @@
-//! Plan-level evaluation DTOs (Phase 2.4).
+//! Plan-level evaluation DTOs for pre-flight tool-call assessment.
 //!
 //! An agent planner can submit an ordered list of planned tool calls to
 //! the kernel for a pre-flight evaluation. The kernel evaluates every

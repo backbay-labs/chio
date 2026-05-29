@@ -1,17 +1,15 @@
 /-
   Syntactic predicate language for Chio constitutional admission.
 
-  Action-plan item V1 (Predicate ADT). Iteration-1 PL-skeptic and
-  iteration-4 mid-swarm synthesizer both flagged that the existing
-  `Constitution` type stores predicates as `List (ReceiptId -> Bool)`,
-  i.e., opaque closures Lean cannot inspect. That makes `BackwardRefines`
-  essentially unconstructable for any non-trivial polity and renders
-  the decidability claim a category error.
+  Action-plan item V1 (Predicate ADT). The existing `Constitution` type
+  stores predicates as `List (ReceiptId -> Bool)`, i.e., opaque closures
+  Lean cannot inspect. That makes `BackwardRefines` essentially
+  unconstructable for any non-trivial polity and renders the decidability
+  claim a category error.
 
-  The Cedar move (named in iter-4 synthesizer (C) MISSED list as the
-  systematic fix) is to introduce a syntactic ADT for predicates plus
-  a `denote` interpreter, so refinement becomes decidable on syntax
-  rather than on closures.
+  The fix (following the Cedar approach) is to introduce a syntactic ADT
+  for predicates plus a `denote` interpreter, so refinement becomes
+  decidable on syntax rather than on closures.
 
   This file is additive. It does NOT modify `Intersection.lean`. A
   follow-up revision can swap `Predicate` into the polity model when
@@ -143,15 +141,13 @@ instance (p q : Predicate) (sample : List ReceiptId) :
   inferInstance
 
 /-
-  ## Trajectory-invariant essential admission (action-plan V5).
+  ## Chain-invariant essential admission (action-plan V5).
 
-  Iteration-1 hostile reviewer and iteration-2 adversarial
-  brainstormer identified the constitutional-ratchet attack:
-  individually valid backward-refining amendments can collectively
-  collapse admission to an adversary-only predicate. The defense is
-  an essential-predicate invariant: each amendment must additionally
-  preserve admission of an essential predicate, and the invariant
-  composes across chains.
+  This guards against the constitutional-ratchet attack: individually
+  valid backward-refining amendments can collectively collapse admission
+  to an adversary-only predicate. The defense is an essential-predicate
+  invariant: each amendment must additionally preserve admission of an
+  essential predicate, and the invariant composes across chains.
 
   We model constitutions syntactically (over `Predicate`) so chain
   composition is decidable and inductive proofs go through. The
@@ -208,8 +204,8 @@ theorem essential_preserved_two_step
   Each step `steps[i]` carries the obligation that amendment
   `i -> i+1` preserves essential admission. The conclusion is
   that the final constitution `cn` admits essential whenever
-  the initial constitution `c0` does. This is the trajectory-
-  invariant theorem the iter-2 adversarial agent named.
+  the initial constitution `c0` does. This is the chain-invariant
+  preservation theorem for essential admission.
 -/
 theorem essential_preserved_chain
     (essential : Predicate) (sample : List ReceiptId)
@@ -254,14 +250,14 @@ theorem ratchet_attack_requires_dropping_essential
 /-
   ## Meta-stability theorem (action-plan V4).
 
-  Iteration-3 institutional reviewer and the §4 threat-model paragraph
-  identify the trust-store admission predicate as an axiom-grade
-  invariant no amendment may drop. We formalize this syntactically:
-  the constitution `c` "contains" predicate `p` iff `p ∈ c.predicates`.
-  Amendments that preserve containment for a designated non-amendable
-  predicate compose, so structural non-amendability is trajectory-
-  invariant in the same sense V5 made essential admission trajectory-
-  invariant. V4 covers the syntactic axis (the predicate stays in the
+  The §4 threat-model paragraph identifies the trust-store admission
+  predicate as an axiom-grade invariant no amendment may drop. We
+  formalize this syntactically: the constitution `c` "contains"
+  predicate `p` iff `p ∈ c.predicates`. Amendments that preserve
+  containment for a designated non-amendable predicate compose, so
+  structural non-amendability is chain-invariant in the same sense V5
+  made essential admission chain-invariant. V4 covers the syntactic
+  axis (the predicate stays in the
   constitution at all); V5 covers the semantic axis (the predicate
   continues to admit its essential receipts). Both must hold for the
   trust-store-admission obligation to be defensible.
@@ -286,7 +282,7 @@ theorem containsPredicate_preserved_two_step
   h12 (h01 h0)
 
 /--
-  N-step composition: structural presence is trajectory-invariant
+  N-step composition: structural presence is chain-invariant
   over chains where every step carries a preservation witness. This
   is the syntactic counterpart of `essential_preserved_chain`.
 -/
@@ -350,10 +346,9 @@ theorem containsPredicate_implies_satisfied
 /-
   ## Lane quorum policy and anchor admission (action-plan V3).
 
-  Iteration-5 swarm's anchor-trust paragraph flagged that the paper
-  describes multi-lane anchor admission ("at least k of n declared
-  anchor lanes must co-sign") but the formal model had no theorem
-  connecting anchor-layer admission to lane quorum. V3 adds a
+  The paper describes multi-lane anchor admission ("at least k of n
+  declared anchor lanes must co-sign") but the formal model had no
+  theorem connecting anchor-layer admission to lane quorum. V3 adds a
   structural `LaneQuorumPolicy` field to a treaty scope and proves
   `anchor_admission_iff_lane_quorum_satisfied`: the anchor layer
   admits a receipt iff the witness's contributing lanes meet the

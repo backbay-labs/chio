@@ -30,7 +30,7 @@ Use the release binary or build from source:
 
 ```bash
 # Homebrew release asset
-curl -fsSL -o /tmp/chio.rb https://github.com/bb-connor/chio/releases/latest/download/chio.rb
+curl -fsSL -o /tmp/chio.rb https://github.com/backbay-labs/chio/releases/latest/download/chio.rb
 brew install --formula /tmp/chio.rb
 
 # Or, from a local checkout

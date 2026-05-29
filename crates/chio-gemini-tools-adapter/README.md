@@ -2,6 +2,20 @@
 
 Provider-native adapter for Google Gemini `generateContent` tool-use traffic.
 
+## Transport
+
+The adapter forwards a native `generateContent` request to the Google
+Generative Language API and feeds the response through its lift/gate code.
+`GeminiTransport` is the real, `reqwest`-backed client (provided by the shared
+`chio_provider_adapter_core::http` module): it POSTs to
+`/v1beta/models/<model>:generateContent` (or `:streamGenerateContent?alt=sse`
+for streaming) and authenticates with the API key carried as the `?key=` query
+parameter, which is how the Generative Language API (Google AI Studio)
+authenticates. The key is injected at construction (`GeminiTransport::new`) or
+read from the `GEMINI_API_KEY` environment variable (`GeminiTransport::from_env`),
+never embedded in library code; an empty key fails closed. `MockTransport`
+backs hermetic tests with scripted responses and records every call.
+
 The adapter pins the upstream API version to `v1beta` (see
 `crate::transport::GEMINI_API_VERSION`). Bumping the pin requires a deliberate
 PR with a fixture re-record; the version string is also re-asserted by the

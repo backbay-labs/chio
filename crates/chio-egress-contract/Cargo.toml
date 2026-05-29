@@ -30,6 +30,5 @@ reqwest-egress = ["dep:reqwest", "dep:serde_json", "dep:tokio"]
 reqwest = { workspace = true, default-features = false, features = ["rustls"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

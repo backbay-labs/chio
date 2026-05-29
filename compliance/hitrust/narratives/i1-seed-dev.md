@@ -1,9 +1,14 @@
 # Systems Acquisition Development and Maintenance Narrative
 
-Development evidence is inherited from hosted CI, reproducible build
-work, provenance attestations, SBOM, cargo-vet, CVE monitoring, and
-formal evidence. P1 marks the family partially ready, with a P2 action
-to explain formal invariants in assessor-readable language.
+Development evidence exists in the repository: hosted CI
+(`.github/workflows/ci.yml`), reproducible build
+(`.github/workflows/reproducible-build.yml`), SLSA provenance
+(`.github/workflows/slsa.yml`), supply-chain audits (`supply-chain/`),
+and formal evidence (`formal/MAPPING.md`, `formal/proof-manifest.toml`).
+
+This family is self-assessed as implemented. The
+`formal-evidence-bridge.md` narrative explains the formal invariants in
+plain language.
 
 Fail-closed note: build or supply-chain evidence without a reproducible
 source path remains a gap.

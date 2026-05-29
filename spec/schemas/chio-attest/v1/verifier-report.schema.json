@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://chio.dev/schemas/chio-attest/v1/verifier-report.schema.json",
+  "$id": "https://chio.world/schemas/chio-attest/v1/verifier-report.schema.json",
   "title": "Chio Attest Verifier Report",
   "type": "object",
   "additionalProperties": false,

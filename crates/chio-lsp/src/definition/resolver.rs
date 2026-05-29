@@ -214,10 +214,9 @@ mod tests {
 
     #[test]
     fn extract_urn_handles_non_ascii_prefix() {
-        // 'café ' adds a multibyte char before the URN. Pre-fix the
-        // function used `position.character` as a byte offset and could
-        // panic when slicing into the URN. Now it must round-trip the
-        // URN intact regardless of the leading non-ASCII run.
+        // 'café ' adds a multibyte char before the URN; the URN must
+        // round-trip intact regardless of the leading non-ASCII run
+        // (UTF-16 columns, not byte offsets).
         let text = "scopes: # café\n  - urn:chio:scope:tool.read\n";
         // UTF-16 column of 't' in 'tool.read' on line 1: bytes
         // "  - urn:chio:scope:" -> all ASCII, so column == byte index.
@@ -279,7 +278,6 @@ mod tests {
         let canonical_tmp = std::fs::canonicalize(&tmp).expect("canonical tmp");
         assert!(resolved.starts_with(&canonical_tmp));
 
-        // Cleanup.
         let _ = std::fs::remove_file(&manifest);
         let _ = std::fs::remove_dir(&tmp);
     }
@@ -287,8 +285,7 @@ mod tests {
     #[test]
     fn locate_in_text_emits_utf16_columns_for_non_ascii_prefix() {
         // 'café ' is 5 chars / 6 bytes. The URN starts at byte 6 but
-        // UTF-16 column 5. Pre-fix the function emitted byte 6 in the
-        // start column, shifting the editor highlight by one.
+        // UTF-16 column 5, so the start column must be reported as 5.
         let text = "café urn:chio:scope:tool.read\n";
         let uri = Url::parse("file:///proj/chio.yaml").unwrap();
         let range = locate_in_text(&uri, text, "urn:chio:scope:tool.read").expect("range");

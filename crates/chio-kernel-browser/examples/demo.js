@@ -1,4 +1,4 @@
-// Phase 14.2 acceptance demo for chio-kernel-browser.
+// Acceptance demo for chio-kernel-browser.
 //
 // This file is intentionally dependency-free: it loads the wasm module
 // produced by `wasm-pack build --target web --release` and exercises
@@ -26,14 +26,9 @@ function nowMs() {
 
 let fixture = null;
 
-// A real deployment ships fixture JSON fetched from the host. To keep
-// this demo self-contained, we inline a tiny capability-less evaluate
-// request that exercises the JSON decode path and the deny branch: the
-// kernel-core rejects the capability signature (the fixture pubkey
-// does not match the signed payload) and returns a structured verdict
-// object in well under 5 ms. That is sufficient to verify the browser
-// round-trip latency acceptance criterion without shipping a signing
-// oracle in the demo.
+// Capability-less evaluate request: the fixture pubkey does not match
+// the signed payload, so kernel-core returns a structured deny verdict.
+// Acceptance criterion: round-trip latency < 5 ms.
 const FIXTURE_EVALUATE_REQUEST = {
   request: {
     request_id: "demo-req-1",

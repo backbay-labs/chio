@@ -7,10 +7,6 @@
 # cloning to register the driver locally.
 Cargo.lock merge=cargo-lock-regen
 
-# Treat the EXECUTION-LOG audit trail as append-only NDJSON so
-# whitespace-aware merges do not coalesce events.
-.planning/trajectory/EXECUTION-LOG.ndjson  merge=union  text=auto
-
 # Release audit reports are binary publication artifacts.
 releases/audit-reports/*.pdf binary
 

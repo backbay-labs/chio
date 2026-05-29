@@ -1,10 +1,14 @@
 # Information Security Management Program Narrative
 
-Chio uses the trajectory-3 roadmap, execution board, freezes register,
-and milestone audit docs as the assessment governance corpus. The M09
-SSP defines the assessed product, version, tenant, and evidence
-owners. P1 readiness is partial because formal review cadence and
-out-of-tree compliance ownership evidence must be attached in P2.
+Chio's information-security governance is documented in the repository:
+the system security plan (`compliance/hitrust/ssp.md`), the security
+specification (`spec/SECURITY.md`), and ownership records for formal
+evidence (`formal/OWNERS.md`). The SSP defines the assessed product,
+version, tenant, and evidence owners.
 
-Fail-closed note: if a control row lacks an owner and evidence source,
-it remains `gap`.
+This family is self-assessed as partial: governance is documented, but a
+formal security-review cadence and out-of-tree compliance ownership
+evidence are not yet established. Those are honest gaps.
+
+Fail-closed note: if a control row lacks an owner and an in-repository
+evidence source, it remains a gap.

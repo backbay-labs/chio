@@ -1,4 +1,4 @@
-//! Phase 1.4 HTTP-surface tests for the emergency kill switch.
+//! HTTP-surface tests for the emergency kill switch.
 //!
 //! `chio-http-core` is protocol-agnostic and does not embed an HTTP
 //! server, so these tests exercise the substrate-independent handler

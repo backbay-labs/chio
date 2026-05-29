@@ -1,7 +1,10 @@
 name: browser-kernel-twiggy
 
 on:
-  pull_request:
+  # Wasm bundle-size measurement. Nightly and manual dispatch only; not a
+  # per-PR gate and has no path scope.
+  schedule:
+    - cron: "37 6 * * *"
   workflow_dispatch:
 
 concurrency:

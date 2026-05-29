@@ -1,0 +1,53 @@
+{
+  "description": "Valid allow receipt with matching signature and parameter hash.",
+  "expected": {
+    "decision": "allow",
+    "parameter_hash_valid": true,
+    "signature_valid": true
+  },
+  "receipt": {
+    "action": {
+      "parameter_hash": "035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929",
+      "parameters": {
+        "mode": "read",
+        "path": "/workspace/docs/roadmap.md"
+      }
+    },
+    "boundary_class": "prevent",
+    "capability_id": "cap-bindings-001",
+    "content_hash": "4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93",
+    "decision": {
+      "verdict": "allow"
+    },
+    "evidence": [
+      {
+        "details": "path allowed",
+        "guard_name": "ForbiddenPathGuard",
+        "verdict": true
+      },
+      {
+        "details": "no secrets detected",
+        "guard_name": "SecretLeakGuard",
+        "verdict": true
+      }
+    ],
+    "id": "c9909f733d5fb367922293f0167d06db715393be114f212096cf2866f29433ea",
+    "kernel_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+    "metadata": {
+      "surface": "bindings-vectors",
+      "version": 1
+    },
+    "policy_hash": "policy-bindings-v1",
+    "receipt_kind": "mediated_decision",
+    "redaction_mode": "none",
+    "signature": "276a4c59dbc5e0c4fbd47beefa33515d207e8f516aca296afee2cb95a443bb18d31031cae0b69943e7a930be03b2e0a60156e5a26e732e888e32d4653d059f03",
+    "timestamp": 1710000200,
+    "tool_name": "file_read",
+    "tool_origin": "caller_executed",
+    "tool_server": "srv-files",
+    "trust_level": "mediated"
+  },
+  "source": "tests/bindings/vectors/receipt/v1.json",
+  "source_case_id": "allow_receipt",
+  "verify_only": true
+}

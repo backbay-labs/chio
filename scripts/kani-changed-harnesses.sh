@@ -226,12 +226,10 @@ source = Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()
 # plus the closing brace that ends each proof function's body. Helpers
 # (free functions, structs, impl blocks, comments) placed BETWEEN two
 # proofs are conventionally consumed by the FOLLOWING proof, not the
-# preceding one. The previous attribution scheme (each range = proof N
-# start through proof N+1 start - 1) misattributed those helpers to the
-# preceding proof and could silently skip the proof that actually
-# depended on the changed helper.
+# preceding one. Attributing them to the preceding proof would silently
+# skip the proof that actually depends on the changed helper.
 #
-# New attribution:
+# Attribution:
 #   * proof N owns its own function body (proof start through matching
 #     close brace), exactly.
 #   * The gap BETWEEN proof N's close brace and proof N+1's start is

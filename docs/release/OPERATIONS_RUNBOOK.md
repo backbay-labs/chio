@@ -91,8 +91,6 @@ Hosted session lifecycle tuning now uses these canonical env names:
 - `CHIO_MCP_SESSION_REAPER_INTERVAL_MILLIS`
 - `CHIO_MCP_SESSION_TOMBSTONE_RETENTION_MILLIS`
 
-Legacy `CHIO_MCP_SESSION_*` aliases still work for one compatibility cycle.
-
 ## 2. Initial Deployment Procedure
 
 ### Trust-Control

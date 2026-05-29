@@ -5,7 +5,7 @@
 //! and optional configuration. The functions in this module load and validate
 //! the manifest before the guard is instantiated.
 //!
-//! # Signing (Phase 1.3)
+//! # Signing
 //!
 //! The manifest may also carry a `signer_public_key` (hex-encoded Ed25519
 //! public key) and an optional `allow_unsigned` opt-out flag. If
@@ -193,7 +193,7 @@ pub fn verify_wit_world(wit_world: Option<&str>) -> Result<(), WasmGuardError> {
 }
 
 // ---------------------------------------------------------------------------
-// Signing helpers (Phase 1.3)
+// Signing helpers
 // ---------------------------------------------------------------------------
 
 /// Produce the canonical byte sequence that a signer signs when attesting a
@@ -349,7 +349,7 @@ pub fn verify_signed_module(
     Ok(())
 }
 
-/// Enforce the Phase 1.3 signing policy for a guard about to be loaded.
+/// Enforce the signing policy for a guard about to be loaded.
 ///
 /// The policy is:
 ///
@@ -669,7 +669,7 @@ config:
         );
     }
 
-    // -- Signing tests (Phase 1.3) --------------------------------------------
+    // -- Signing tests --------------------------------------------------------
 
     use ed25519_dalek::{Signer, SigningKey};
     use rand_core::OsRng;

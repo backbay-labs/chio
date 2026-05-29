@@ -1,4 +1,4 @@
-//! Phase 20.2 roadmap acceptance tests for the insurance flow.
+//! Acceptance tests for the insurance flow.
 //!
 //! Acceptance: *A claim filed against a policy with receipt evidence is
 //! processed through the settlement flow.*

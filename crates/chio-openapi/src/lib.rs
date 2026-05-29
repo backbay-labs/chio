@@ -5,6 +5,8 @@
 //! `ToolDefinition` with input schema derived from path, query, and body
 //! parameters.
 
+#![forbid(unsafe_code)]
+
 mod extensions;
 mod generator;
 mod parser;

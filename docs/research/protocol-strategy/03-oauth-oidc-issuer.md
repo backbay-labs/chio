@@ -33,7 +33,7 @@ What this AS supports:
 
 ### A separate runtime DPoP layer (chio-native, not RFC 9449)
 
-The kernel ships its own DPoP variant for tool invocation in `crates/chio-kernel/src/dpop.rs:1-100`. Schema is `chio.dpop_proof.v1`. Body fields are `capability_id`, `tool_server`, `tool_name`, `action_hash`, `nonce`, `issued_at`, `agent_key`. This is *not* RFC 9449 JWT DPoP. The remediation memo at `docs/review/06-authentication-dpop-remediation.md:118-136` calls this out explicitly: the spec promises RFC-shaped DPoP at the HTTP boundary but ships a Chio-native proof everywhere. End-state A in that memo is "edge verifies HTTP DPoP and synthesizes internal caller context" (`06-authentication-dpop-remediation.md:237-242`).
+The kernel ships its own DPoP variant for tool invocation in `crates/chio-kernel/src/dpop.rs:1-100`. Schema is `chio.dpop_proof.v1`. Body fields are `capability_id`, `tool_server`, `tool_name`, `action_hash`, `nonce`, `issued_at`, `agent_key`. This is *not* RFC 9449 JWT DPoP. The gap is explicit: the spec promises RFC-shaped DPoP at the HTTP boundary but ships a Chio-native proof everywhere. The intended end state is that the edge verifies HTTP DPoP and synthesizes internal caller context, keeping `chio.dpop_proof.v1` as the internal invocation proof. See `spec/PROTOCOL.md` for the DPoP boundary contract.
 
 ### Identity surface that consumes, not issues, broadly
 
@@ -137,8 +137,8 @@ For the **consumer + step-up** path:
   with authentication-strength parameters such as `acr_values` and `max_age`.
   If Chio also needs RAR context, carry `authorization_details` as a Chio/MCP
   extension, not as an RFC 9470 challenge parameter.
-- Implement RFC 9449 JWT DPoP at the HTTP edge per the end-state-A plan in `docs/review/06-authentication-dpop-remediation.md:237-242`. Keep `chio.dpop_proof.v1` as the internal invocation proof.
-- Add a durable replay store for both proof families (`docs/review/06-authentication-dpop-remediation.md:244-275`).
+- Implement RFC 9449 JWT DPoP at the HTTP edge (edge verifies HTTP DPoP and synthesizes internal caller context). Keep `chio.dpop_proof.v1` as the internal invocation proof. See `spec/PROTOCOL.md` for the DPoP boundary contract.
+- Add a durable replay store for both proof families.
 - Track and validate actor-chain claims per `draft-oauth-ai-agents-on-behalf-of-user`. Surface the chain in receipts.
 
 For the **bounded issuer**:

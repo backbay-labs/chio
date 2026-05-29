@@ -397,7 +397,7 @@ fn run_peer(
             );
             let mut command = Command::new(&options.go_binary);
             command
-                .current_dir(options.repo_root.join("packages/sdk/chio-go"))
+                .current_dir(options.repo_root.join("sdks/go/chio-go"))
                 .arg("run")
                 .arg("./cmd/conformance-peer");
             command
@@ -463,7 +463,7 @@ fn ensure_cpp_peer_executable(repo_root: &Path) -> Result<PathBuf, RunnerError> 
         build_dir.join(&executable_name),
         build_dir.join(build_config).join(&executable_name),
     ];
-    let source_dir = repo_root.join("packages/sdk/chio-cpp");
+    let source_dir = repo_root.join("sdks/cpp/chio-cpp");
     let configure_status = Command::new("cmake")
         .current_dir(repo_root)
         .arg("-S")

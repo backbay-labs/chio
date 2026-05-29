@@ -190,7 +190,7 @@ What this does:
   explain where the child authority came from
 
 For a fuller walkthrough of the federated inputs, see
-[docs/AGENT_PASSPORT_GUIDE.md](../AGENT_PASSPORT_GUIDE.md).
+[docs/AGENT_PASSPORT_GUIDE.md](../reference/AGENT_PASSPORT_GUIDE.md).
 
 ## 8. Run The Framework Examples
 

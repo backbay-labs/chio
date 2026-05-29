@@ -135,16 +135,23 @@ fn conformance_run_python_report_shape_is_stable() {
     // path, and the wall-clock scenario duration. The snapshot then
     // captures the stable envelope keys, the schema version, and the
     // structural shape of each scenario result.
-    assert_json_snapshot!(
-        "conformance_run_python_report",
-        report,
-        {
-            ".listen" => "[listen-addr]",
-            ".resultsDir" => "[results-dir]",
-            ".reportOutput" => "[report-output]",
-            ".peerResultFiles" => "[peer-result-files]",
-            ".results[].durationMs" => "[duration-ms]",
-            ".results[].artifacts.transcript" => "[transcript-path]",
-        }
-    );
+    //
+    // sort_maps canonicalizes object key order: the live Python peer emits
+    // its JSON object keys in an order that varies across SDK/interpreter
+    // versions, so without sorting the snapshot drifts between environments
+    // even though the content is identical.
+    insta::with_settings!({sort_maps => true}, {
+        assert_json_snapshot!(
+            "conformance_run_python_report",
+            report,
+            {
+                ".listen" => "[listen-addr]",
+                ".resultsDir" => "[results-dir]",
+                ".reportOutput" => "[report-output]",
+                ".peerResultFiles" => "[peer-result-files]",
+                ".results[].durationMs" => "[duration-ms]",
+                ".results[].artifacts.transcript" => "[transcript-path]",
+            }
+        );
+    });
 }

@@ -4,7 +4,7 @@
 //! both kernels need to sign the same receipt so that either org can
 //! independently verify the chain. This module defines the wire-level
 //! [`CoSigningRequest`] / [`CoSigningResponse`] envelope, the
-//! legacy [`DualSignedReceipt`] compatibility artifact (which carries both
+//! [`DualSignedReceipt`] compatibility artifact (which carries both
 //! signatures side-by-side without mutating the core `ChioReceipt` body), and a
 //! [`BilateralCoSigningProtocol`] trait that the kernel calls after it
 //! signs a receipt locally.
@@ -532,9 +532,8 @@ fn co_sign_with_origin_inner(
 /// Chio bilateral invocation predicate.
 #[derive(Debug, Clone)]
 pub struct BilateralCoSignArtifacts {
-    /// Compatibility-only legacy artifact for callers that still consume
-    /// the old `CoSigningBody` preimage. New verifier paths must use
-    /// `dsse_envelope`.
+    /// Compatibility artifact for callers that still consume the
+    /// `CoSigningBody` preimage. New verifier paths must use `dsse_envelope`.
     pub dual_signed_receipt: DualSignedReceipt,
     /// Canonical bilateral verification artifact for this crate's
     /// signature-slice profile.

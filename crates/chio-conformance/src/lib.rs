@@ -1,3 +1,9 @@
+//! Chio cross-language conformance tooling.
+//!
+//! Loads conformance scenarios and recorded results, drives the native and
+//! cross-peer conformance harnesses, tracks peer language locks, and generates
+//! Markdown compatibility reports.
+
 mod load;
 mod model;
 mod native_suite;

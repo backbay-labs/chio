@@ -348,11 +348,10 @@ fn normalize_tower_error(error: tower::BoxError) -> KernelServiceError {
     KernelServiceError::Middleware(error.to_string())
 }
 
-/// Build the M05 P3 kernel service stack.
+/// Build the layered kernel service stack.
 ///
 /// Request flow is trace, then timeout, then per-tenant load shedding and
-/// concurrency, then kernel dispatch. Later work add auth prechecks
-/// around this stack.
+/// concurrency, then kernel dispatch. Auth prechecks wrap around this stack.
 pub fn build_layered(
     kernel: Arc<chio_kernel::ChioKernel>,
     per_tenant_limit: usize,

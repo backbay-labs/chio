@@ -151,11 +151,7 @@ export function isAuthoritativeVerification(
     && verification.receipt_kind === "mediated_decision"
     && verification.boundary_class === "prevent"
     && verification.trust_level === "mediated"
-    && (
-      verification.result === "allow"
-      || verification.result === "authorized"
-      || verification.result === "Authorized"
-    )
+    && verification.result === "allow"
     && (receipt == null || isAuthorizedHttpReceipt(receipt));
 }
 

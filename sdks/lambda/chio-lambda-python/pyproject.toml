@@ -9,7 +9,7 @@ description = "Python client for the Chio Lambda Extension (localhost:9090 evalu
 license = "Apache-2.0"
 requires-python = ">=3.11"
 authors = [
-    { name = "Backbay Industries" },
+    { name = "Backbay Labs", email = "security@backbay.io" },
 ]
 keywords = ["chio", "lambda", "aws", "serverless", "capability", "security", "agent"]
 classifiers = [

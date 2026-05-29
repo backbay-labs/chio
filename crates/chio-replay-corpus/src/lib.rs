@@ -8,7 +8,7 @@
 
 pub mod audit;
 pub mod dedupe;
-pub mod m04_writer;
+pub mod fixture_writer;
 pub mod reredact;
 
 pub use audit::{
@@ -16,10 +16,9 @@ pub use audit::{
     TeeBlessAuditBody, TeeBlessAuditEntry, TEE_BLESS_CAPABILITY, TEE_BLESS_EVENT,
 };
 pub use dedupe::{dedupe_last_wins, invocation_hash, DedupedFrame};
-pub use m04_writer::{
-    scenario_from_dir, validate_m04_scenario_dir, write_m04_fixture, M04ByteSizes,
-    M04FixtureSummary, M04Scenario, M04WriterError, CHECKPOINT_FILENAME, RECEIPTS_FILENAME,
-    ROOT_FILENAME,
+pub use fixture_writer::{
+    scenario_from_dir, validate_scenario_dir, write_fixture, ByteSizes, FixtureSummary,
+    ReplayScenario, WriterError, CHECKPOINT_FILENAME, RECEIPTS_FILENAME, ROOT_FILENAME,
 };
 pub use reredact::{reredact_default, ReredactedPayload};
 

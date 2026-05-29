@@ -28,7 +28,7 @@ containerized smoke path.
 
 After install, choose the supported path that matches your use case:
 
-1. Guided walkthrough: [../PROGRESSIVE_TUTORIAL.md](../PROGRESSIVE_TUTORIAL.md)
+1. Guided walkthrough: [../PROGRESSIVE_TUTORIAL.md](../start-here/PROGRESSIVE_TUTORIAL.md)
 2. MCP migration and coding agents: [../guides/MIGRATING-FROM-MCP.md](../guides/MIGRATING-FROM-MCP.md)
 3. Web backends: [../guides/WEB_BACKEND_QUICKSTART.md](../guides/WEB_BACKEND_QUICKSTART.md)
-4. Native Chio servers: [../NATIVE_ADOPTION_GUIDE.md](../NATIVE_ADOPTION_GUIDE.md)
+4. Native Chio servers: [../NATIVE_ADOPTION_GUIDE.md](../start-here/NATIVE_ADOPTION_GUIDE.md)

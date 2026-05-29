@@ -133,7 +133,6 @@ pub fn execute_cost_query(records: &[CostMetadata], query: &CostQuery) -> CostQu
     let truncated = filtered.len() > limit;
     let capped: Vec<&CostMetadata> = filtered.iter().take(limit).copied().collect();
 
-    // Compute summary
     let mut agents = std::collections::HashSet::new();
     let mut tools = std::collections::HashSet::new();
     let mut total_compute = 0u64;
@@ -181,7 +180,6 @@ pub fn execute_cost_query(records: &[CostMetadata], query: &CostQuery) -> CostQu
         distinct_tools: tools.len() as u64,
     };
 
-    // Grouping
     let groups = match query.group_by {
         GroupBy::None => vec![],
         GroupBy::Session | GroupBy::Agent | GroupBy::Tool => build_groups(&capped, &query.group_by),

@@ -4,8 +4,8 @@
   "created_at": "2026-05-02T00:00:00Z",
   "producer": {
     "name": "Chio",
-    "repository": "https://github.com/bb-connor/arc",
-    "commit": "trajectory-3-m02-p3",
+    "repository": "https://github.com/backbay-labs/chio",
+    "commit": "golden-v1",
     "workflow_run_url": "local-eval-receipt-regen"
   },
   "eval_run": {
@@ -63,7 +63,7 @@
     {
       "kind": "test-sha256",
       "key_id": "local-test",
-      "signature": "b738e01ea5ef6e0dacfb709935c38014fc8525fb644db20a44ca92ba28a85447",
+      "signature": "40e8d6f70ab688681678fb63862052214771954ccee652377c2b9d5f554dc137",
       "signed_payload": "bundle_without_signatures:rfc8785"
     }
   ]

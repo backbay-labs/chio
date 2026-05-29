@@ -78,7 +78,7 @@ pub enum CapabilityError {
     NotYetValid,
     /// Token has expired.
     Expired,
-    /// W1.1: attenuated capability token violated the chain-binding rule.
+    /// Attenuated capability token violated the chain-binding rule.
     /// `attenuation_proof.parent_scope_hash` did not match either the
     /// issuer's trust-root scope hash (direct issue) or the last
     /// delegation link's `scope_hash` (delegated chain).
@@ -270,7 +270,7 @@ where
 }
 
 /// Chain-binding entry point. Verify a capability token while also
-/// enforcing the chain-binding rule that closes the P0 soundness gap.
+/// enforcing the chain-binding rule required for delegation soundness.
 ///
 /// In addition to the checks in [`verify_capability_with_floor`], this
 /// entry point checks tokens that carry an `attenuation_proof`
@@ -369,9 +369,9 @@ pub fn verify_capability_full(
     }
 
     // Step 3: legacy signature, issuer-trust, crypto-floor, time-bound
-    // verification, AND W1.2 sibling-sum budget admission. The legacy
+    // verification, AND sibling-sum budget admission. The legacy
     // function chains issuer -> signature/floor -> time-window -> budget
-    // admit at the end (matching the W1.2 hook position). Returns a
+    // admit at the end (matching the sibling-sum hook position). Returns a
     // verified capability projection on success.
     verify_capability_with_floor(token, trusted_issuers, clock, crypto_floor, budgets)
 }

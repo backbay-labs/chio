@@ -1,6 +1,6 @@
 // Package chio provides HTTP middleware for the Chio protocol.
 //
-// Chio (Chio) secures HTTP APIs with
+// Chio secures HTTP APIs with
 // cryptographic receipts and capability-based access control. This package
 // wraps any net/http Handler, sending evaluation requests to the Chio Rust
 // kernel running as a localhost sidecar and attaching signed receipt IDs to

@@ -1,3 +1,4 @@
+#![forbid(unsafe_code)]
 #![allow(clippy::result_large_err)]
 
 pub use chio_control_plane::{CliError, JwtProviderProfile};

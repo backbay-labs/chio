@@ -22,7 +22,7 @@ use std::time::Instant;
 use chio_federation::{RevocationGossipBatch, RevocationGossipPushQueue, RevocationRootGossip};
 use chio_kernel_core::{RevocationSnapshot, RevocationView, RevocationViewSubject};
 use chio_revocation_oracle::{
-    DigestRootSigner, EpochNonce, InMemoryRevocationOracle, RevocationKey, RevocationOracle,
+    Ed25519RootSigner, EpochNonce, InMemoryRevocationOracle, RevocationKey, RevocationOracle,
     SignedEpochRoot, SubjectId,
 };
 
@@ -53,7 +53,7 @@ impl Verifier {
     fn apply_frame(
         &self,
         frame: &RevocationRootGossip,
-        signer: &DigestRootSigner,
+        signer: &Ed25519RootSigner,
         subject: &RevocationViewSubject,
     ) {
         frame
@@ -61,7 +61,7 @@ impl Verifier {
             .expect("envelope structurally valid");
         frame
             .signed_root
-            .verify(signer)
+            .verify(&signer.verifier())
             .expect("frame signed by pinned oracle signer");
         let mut set = self.revoked_set.borrow_mut();
         set.insert(subject.clone());
@@ -83,7 +83,7 @@ impl Verifier {
 fn deliver_batch(
     verifiers: &[&Verifier],
     batch: &RevocationGossipBatch,
-    signer: &DigestRootSigner,
+    signer: &Ed25519RootSigner,
     subject: &RevocationViewSubject,
 ) {
     batch
@@ -107,7 +107,7 @@ fn percentile_ns(samples: &mut [u128], pct: f64) -> u128 {
 
 #[test]
 fn oracle_insert_visible_at_verifier_within_budget() {
-    let signer = DigestRootSigner::new("oracle-a", b"e2e-secret".to_vec());
+    let signer = Ed25519RootSigner::from_signing_key("oracle-a", "generate").expect("e2e signer");
     let mut oracle = InMemoryRevocationOracle::new();
     let push_queue = RevocationGossipPushQueue::new(64).expect("push queue");
 
@@ -203,7 +203,7 @@ fn verifier_view_is_monotonically_advancing_after_burst() {
     // subscriber ring contents so the eventual flush emits a single
     // frame per peer carrying the latest signed root, and every verifier
     // observes the final epoch (not a stale midpoint).
-    let signer = DigestRootSigner::new("oracle-a", b"burst-secret".to_vec());
+    let signer = Ed25519RootSigner::from_signing_key("oracle-a", "generate").expect("burst signer");
     let mut oracle = InMemoryRevocationOracle::new();
     let push_queue = RevocationGossipPushQueue::new(8).expect("push queue");
     let verifiers: Vec<Verifier> = (0..NUM_PEERS)
@@ -251,7 +251,8 @@ fn verifier_rejects_replayed_root_after_advance() {
     // verifier has already advanced past it. The kernel-core view's
     // monotone install_if_newer MUST refuse the replay and leave the
     // current snapshot intact.
-    let signer = DigestRootSigner::new("oracle-a", b"replay-secret".to_vec());
+    let signer =
+        Ed25519RootSigner::from_signing_key("oracle-a", "generate").expect("replay signer");
     let mut oracle = InMemoryRevocationOracle::new();
 
     oracle

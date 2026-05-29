@@ -3,7 +3,7 @@
 Submission date: 2026-05-02
 AWS Marketplace category: AI Agents and Tools
 Listing: Chio Bedrock Governance
-Primary support contact: support@chio.dev
+Primary support contact: support@chio.world
 
 ## Placement Request
 
@@ -50,7 +50,6 @@ evidence for healthcare and regulated customers.
 - `integrations/aws-bedrock/diagrams/security-review-intake.md`
 - `integrations/aws-bedrock/tests/post_listing_smoke.rs`
 
-Category placement is a downstream marketing surface. M10 closure uses
+Category placement is a downstream marketing surface. This release uses
 listing approval and the post-listing smoke path as the distribution
-evidence, while final category-page placement may slip beyond the
-trajectory-3 closeout window.
+evidence, while final category-page placement may follow later.

@@ -123,7 +123,7 @@ cargo run -p chio-conformance --bin chio-conformance-runner -- \
   --report-output tests/conformance/reports/generated/mcp-core-cpp-live.md
 ```
 
-The C++ peer builds `packages/sdk/chio-cpp` and uses the SDK curl transport for
+The C++ peer builds `sdks/cpp/chio-cpp` and uses the SDK curl transport for
 live HTTP. It should remain green across MCP core, tasks, auth, notifications,
 and nested callbacks.
 

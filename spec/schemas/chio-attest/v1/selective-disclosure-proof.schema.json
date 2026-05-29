@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://chio.dev/schemas/chio-attest/v1/selective-disclosure-proof.schema.json",
+  "$id": "https://chio.world/schemas/chio-attest/v1/selective-disclosure-proof.schema.json",
   "title": "Chio Attest Selective Disclosure Proof",
   "type": "object",
   "additionalProperties": false,

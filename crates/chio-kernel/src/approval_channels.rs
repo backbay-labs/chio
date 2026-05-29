@@ -1,4 +1,4 @@
-//! Phase 3.6 approval channels.
+//! Approval channels for HITL signaling.
 //!
 //! A channel is a delivery mechanism that gets an `ApprovalRequest` in
 //! front of a human. The kernel treats channels as fire-and-forget
@@ -6,7 +6,7 @@
 //! still be fetched via `GET /approvals/pending`, matching the
 //! fail-closed rule in the HITL protocol.
 //!
-//! Two channels ship in this phase:
+//! Two channels:
 //!
 //! 1. `WebhookChannel` -- blocking HTTP POST to a configured URL.
 //!    Production integrations wire this into their own dashboard or

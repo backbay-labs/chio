@@ -1,3 +1,5 @@
+> **Status:** superseded - SDKs live under `sdks/` (e.g. `sdks/typescript/chio-ts`), not `packages/sdk/`; the `crates/chio-bindings-wasm` crate is planned, not yet created.
+
 # Chio Bindings Core Plan
 
 ## Goal
@@ -6,9 +8,9 @@ Add SDKs for TypeScript, Python, and Go without turning the Rust runtime into a 
 
 Language-specific implementation research for this plan lives in:
 
-- [research/10-sdk-typescript-plan.md](research/10-sdk-typescript-plan.md)
-- [research/11-sdk-python-plan.md](research/11-sdk-python-plan.md)
-- [research/12-sdk-go-plan.md](research/12-sdk-go-plan.md)
+- [research/10-sdk-typescript-plan.md](../research/10-sdk-typescript-plan.md)
+- [research/11-sdk-python-plan.md](../research/11-sdk-python-plan.md)
+- [research/12-sdk-go-plan.md](../research/12-sdk-go-plan.md)
 
 The recommended model is:
 
@@ -261,7 +263,7 @@ This is distinct from the main conformance harness. It records SDK surface progr
 ### Package layout
 
 ```text
-packages/sdk/chio-ts/
+sdks/typescript/chio-ts/
   src/
     client/
     transport/
@@ -317,7 +319,7 @@ Remote-edge SDK:
 ### Package layout
 
 ```text
-packages/sdk/chio-py/
+sdks/python/chio-py/
   src/chio/
     client/
     session/
@@ -375,7 +377,7 @@ PyO3 native module:
 ### Package layout
 
 ```text
-packages/sdk/chio-go/
+sdks/go/chio-go/
   client/
   session/
   auth/
@@ -483,7 +485,7 @@ Reason to do this first:
 
 Deliverables:
 
-- `packages/sdk/chio-ts`
+- `sdks/typescript/chio-ts`
 - invariant helper layer with optional WASM backend
 - remote HTTP client for current conformance waves
 
@@ -503,8 +505,8 @@ Reason to do this second:
 
 Deliverables:
 
-- `packages/sdk/chio-py`
-- `packages/sdk/chio-py/chio-native`
+- `sdks/python/chio-py`
+- `sdks/python/chio-py/chio-native`
 - optional native invariants module
 - remote HTTP client for current conformance waves
 
@@ -524,7 +526,7 @@ Reason to do this third:
 
 Deliverables:
 
-- `packages/sdk/chio-go`
+- `sdks/go/chio-go`
 - pure Go remote-edge client
 - optional `internal/native` bridge using `chio-bindings-ffi`
 
@@ -566,7 +568,7 @@ Tasks:
 
 Tasks:
 
-- scaffold `packages/sdk/chio-ts`
+- scaffold `sdks/typescript/chio-ts`
 - move current JS peer transport logic into reusable library code
 - add optional WASM loading for invariant helpers
 - run current JS conformance waves through the package
@@ -575,7 +577,7 @@ Tasks:
 
 Tasks:
 
-- scaffold `packages/sdk/chio-py`
+- scaffold `sdks/python/chio-py`
 - add `httpx` transport and session handling
 - add `chio-native` with `abi3`
 - run current Python conformance waves through the package
@@ -584,7 +586,7 @@ Tasks:
 
 Tasks:
 
-- scaffold `packages/sdk/chio-go`
+- scaffold `sdks/go/chio-go`
 - add context-aware remote HTTP client
 - add optional CGO helpers
 - create first Go integration coverage
@@ -607,8 +609,8 @@ Tasks:
 
 1. Add `crates/chio-binding-helpers` with only canonical JSON, hashing, signature, receipt, capability, and manifest helpers.
 2. Add `tests/bindings/vectors/` and generate the first canonical JSON, hash, and receipt verification fixtures from Rust.
-3. Scaffold `packages/sdk/chio-ts` and route the existing JS peer through it for remote HTTP coverage.
-4. After the TS package shape stabilizes, scaffold `packages/sdk/chio-py` plus a minimal PyO3 module.
+3. Scaffold `sdks/typescript/chio-ts` and route the existing JS peer through it for remote HTTP coverage.
+4. After the TS package shape stabilizes, scaffold `sdks/python/chio-py` plus a minimal PyO3 module.
 5. Start Go only after the TS and Python packages prove that the bindings-core boundary is small enough.
 
 ## Recommendation

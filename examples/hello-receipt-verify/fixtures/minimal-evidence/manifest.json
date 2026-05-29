@@ -1,7 +1,11 @@
 {
   "schema": "chio.evidence_export_manifest.v1",
   "exportedAt": 1776272775,
-  "query": {},
+  "query": {
+    "readBoundary": {
+      "kind": "admin_all"
+    }
+  },
   "counts": {
     "toolReceipts": 1,
     "childReceipts": 0,
@@ -14,17 +18,27 @@
     "checkpointedReceipts": 0,
     "uncheckpointedReceipts": 1
   },
+  "receiptSemantics": {
+    "mediatedDecisions": 1,
+    "traceObservations": 0,
+    "advisoryEvaluations": 0,
+    "prevent": 1,
+    "detectOnly": 0,
+    "advisoryOnly": 0,
+    "cannotSee": 0,
+    "authorized": 1
+  },
   "childReceiptScope": "full_query_window",
   "files": [
     {
       "path": "query.json",
-      "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
-      "bytes": 2
+      "sha256": "389b6d7ad6a818c323ab4f296b58876ccad9d3173783a2e4ec1bbd1676b96614",
+      "bytes": 37
     },
     {
       "path": "receipts.ndjson",
-      "sha256": "a8f224542a0605779f503c46276295a7d334a9a0b21f989e5a4bd98d4431dd87",
-      "bytes": 968
+      "sha256": "5954824cd998e84ba4b0d99591bdae63547024a2fbcc8fabaeaaf9fc4be90a00",
+      "bytes": 1207
     },
     {
       "path": "child-receipts.ndjson",
@@ -38,7 +52,7 @@
     },
     {
       "path": "capability-lineage.ndjson",
-      "sha256": "789ca683a814f51088f5a4384ce22d3ecd04626620cd51c7909c11320686d928",
+      "sha256": "953e149fabde8614b6b2fb4f3d05abd275734eb852f0d0f2ed858c09b53b3ef7",
       "bytes": 427
     },
     {

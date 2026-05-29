@@ -107,8 +107,7 @@ where
     match last_err {
         Some(err) => Err(err),
         // Unreachable in practice: total_attempts >= 1 so the loop body runs
-        // at least once and either returns Ok or records an error. We still
-        // return a sensible path without panicking.
+        // at least once and either returns Ok or records an error.
         None => unreachable!("retry loop must have produced at least one result"),
     }
 }

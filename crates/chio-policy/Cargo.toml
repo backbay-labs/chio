@@ -31,6 +31,5 @@ chrono-tz = "0.10"
 [dev-dependencies]
 proptest = { workspace = true }
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

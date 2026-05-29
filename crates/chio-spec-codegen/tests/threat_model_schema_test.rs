@@ -1,16 +1,16 @@
 //! Validate `spec/security/chio-threat-model.v1.json` against
 //! `spec/security/chio-threat-model.schema.json`.
 //!
-//! Owner: M05.P5.T1.
-//!
 //! The schema asserts the four top-level keys (`schema`, `updatedAt`,
 //! `boundary`, `threats`), the `boundary.surfaces` and `boundary.assets`
 //! enums, and the per-threat object shape (`id`, `name`, `surfaces`,
 //! `mitigations`, `residualRisk`, optional `coveredBy`,
 //! `covered_by_tests`, `deferred_to`, and `coverage_state`). The
 //! optional `coverage_state` field carries the enum `{covered, partial,
-//! pending}`. The threat-model-coverage CI gate fails on `partial` and
-//! fails on `pending` unless `deferred_to` is populated.
+//! pending, weak_coverage}`. The threat-model-coverage CI gate accepts
+//! `partial` only with a `deferred_to` reference, an in-tree test body,
+//! and a companion evidence file; accepts `pending` only with a
+//! `deferred_to` reference; and never accepts `weak_coverage`.
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
@@ -231,7 +231,7 @@ fn schema_accepts_pending_with_deferred_to() {
                 ],
                 "residualRisk": "x",
                 "coverage_state": "pending",
-                "deferred_to": "trajectory-4.follow-up"
+                "deferred_to": "later-follow-up"
             }
         ]
     });

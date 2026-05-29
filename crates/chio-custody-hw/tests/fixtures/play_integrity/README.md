@@ -1,7 +1,6 @@
 # Play Integrity Fixtures
 
-P3 uses deterministic signed JWS fixtures generated in
+Deterministic signed JWS fixtures are generated in
 `tests/attestation_play_integrity.rs`. Real Play Integrity tokens from
-the internal-track APK are recorded at P5 closeout, because those
-tokens carry app and account metadata that should not be committed
-during scaffold work.
+a production APK are not committed here because they carry app and account
+metadata; use the generation script to capture live tokens against a real device.

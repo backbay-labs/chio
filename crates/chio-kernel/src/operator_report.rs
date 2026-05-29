@@ -1353,9 +1353,8 @@ pub struct BehavioralFeedReport {
 pub type SignedBehavioralFeed = SignedExportEnvelope<BehavioralFeedReport>;
 
 // ===========================================================================
-// Phase 19.1 + 19.2 additive surfaces on top of ComplianceReport and
-// BehavioralFeedReport. These helpers do not mutate the existing structs;
-// they compute derived signals for the scoring / advisory pipeline.
+// Additive scoring and advisory signals on top of ComplianceReport and
+// BehavioralFeedReport. These helpers do not mutate the existing structs.
 // ===========================================================================
 
 impl ComplianceReport {

@@ -36,9 +36,9 @@ That is stronger than vanilla MCP's default trust model.
 
 Relevant code:
 
-- [capability.rs](../../crates/arc-core/src/capability.rs)
-- [lib.rs](../../crates/arc-kernel/src/lib.rs)
-- [integration.rs](../../crates/arc-guards/tests/integration.rs)
+- [capability.rs](../../crates/chio-core-types/src/capability.rs)
+- [lib.rs](../../crates/chio-kernel/src/lib.rs)
+- [integration.rs](../../crates/chio-guards/tests/integration.rs)
 - [full_flow.rs](../../tests/e2e/tests/full_flow.rs)
 
 ### 2. Clean crate boundaries
@@ -60,8 +60,8 @@ The existence of `arc-mcp-adapter` is strategically important. It shows the proj
 
 Relevant code:
 
-- [crates/arc-mcp-adapter/src/lib.rs](../../crates/arc-mcp-adapter/src/lib.rs)
-- [crates/arc-mcp-adapter/src/transport.rs](../../crates/arc-mcp-adapter/src/transport.rs)
+- [crates/arc-mcp-adapter/src/lib.rs](../../crates/chio-mcp-adapter/src/lib.rs)
+- [crates/arc-mcp-adapter/src/transport.rs](../../crates/chio-mcp-adapter/src/transport.rs)
 
 ### 4. The policy future is already partly built
 
@@ -75,9 +75,9 @@ Relevant code:
 
 Relevant code:
 
-- [crates/arc-policy/src/lib.rs](../../crates/arc-policy/src/lib.rs)
-- [crates/arc-policy/src/compiler.rs](../../crates/arc-policy/src/compiler.rs)
-- [crates/arc-policy/src/models.rs](../../crates/arc-policy/src/models.rs)
+- [crates/arc-policy/src/lib.rs](../../crates/chio-policy/src/lib.rs)
+- [crates/arc-policy/src/compiler.rs](../../crates/chio-policy/src/compiler.rs)
+- [crates/arc-policy/src/models.rs](../../crates/chio-policy/src/models.rs)
 
 ## What Is Structurally Missing
 
@@ -93,7 +93,7 @@ The current agent/kernel messages only cover:
 
 Relevant code:
 
-- [crates/arc-core/src/message.rs](../../crates/arc-core/src/message.rs)
+- [crates/arc-core/src/message.rs](../../crates/chio-core-types/src/message.rs)
 
 That is too small to replace MCP, which is a session protocol with lifecycle, negotiated capabilities, notifications, and multiple primitives.
 
@@ -103,7 +103,7 @@ ARC currently speaks a custom length-prefixed canonical JSON framing layer.
 
 Relevant code:
 
-- [crates/arc-kernel/src/transport.rs](../../crates/arc-kernel/src/transport.rs)
+- [crates/arc-kernel/src/transport.rs](../../crates/chio-kernel/src/transport.rs)
 
 That may be fine internally, but it is not enough externally if the goal is ecosystem replacement. MCP clients and servers expect JSON-RPC session semantics.
 
@@ -135,7 +135,7 @@ It still does not present:
 
 Relevant code:
 
-- [crates/arc-mcp-adapter/src/lib.rs](../../crates/arc-mcp-adapter/src/lib.rs)
+- [crates/arc-mcp-adapter/src/lib.rs](../../crates/chio-mcp-adapter/src/lib.rs)
 
 ### 4. Runtime is still behind the draft spec
 
@@ -186,8 +186,8 @@ The important change is that both now compile into the same loaded runtime polic
 
 Relevant code:
 
-- [crates/arc-cli/src/policy.rs](../../crates/arc-cli/src/policy.rs)
-- [crates/arc-policy/src/compiler.rs](../../crates/arc-policy/src/compiler.rs)
+- [crates/chio-control-plane/src/policy.rs](../../crates/chio-control-plane/src/policy.rs)
+- [crates/arc-policy/src/compiler.rs](../../crates/chio-policy/src/compiler.rs)
 
 This is still a maturity issue, but it is no longer a runtime integrity problem.
 

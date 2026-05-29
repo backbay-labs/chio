@@ -1,6 +1,6 @@
 // Static layout coordinates for the four-quadrant topology graph.
 //
-// Ported from chio-showcase/graph.jsx. The coordinates are chosen for a 1000x700
+// The coordinates are chosen for a 1000x700
 // viewBox. Node ids match the topology.json entries produced by orchestrate.py.
 
 export type QuadrantKey = "tl" | "tr" | "bl" | "br";

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://chio.dev/schemas/chio-pheromone/v1/batch.schema.json",
+  "$id": "https://chio.world/schemas/chio-pheromone/v1/batch.schema.json",
   "title": "Chio Pheromone Batch",
   "type": "object",
   "additionalProperties": false,

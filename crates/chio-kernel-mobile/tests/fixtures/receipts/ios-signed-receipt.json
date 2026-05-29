@@ -1,9 +1,9 @@
 {
   "platform": "ios",
-  "receipt_id": "m07-ios-round-trip-001",
-  "tenant_id": "m01-design-partner-tenant",
+  "receipt_id": "ios-round-trip-001",
+  "tenant_id": "design-partner-tenant",
   "capability_id": "cap-mobile-ios-001",
-  "tool_server": "m01-hosted-oracle-fixture",
+  "tool_server": "hosted-oracle-fixture",
   "tool_name": "patient-record-read",
   "actor_subject": "did:chio:mobile:ios-fixture",
   "timestamp_unix": 1700000301,
@@ -12,6 +12,6 @@
   "policy_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
   "guard_id": "mobile-attestation-oracle",
   "reason_code": "allow.mobile-attested",
-  "checkpoint_id": "m07-p4-ios-oracle-checkpoint",
+  "checkpoint_id": "ios-oracle-checkpoint",
   "kernel_seed_hex": "1111111111111111111111111111111111111111111111111111111111111111"
 }

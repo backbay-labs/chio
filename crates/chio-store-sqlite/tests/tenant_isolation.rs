@@ -1,10 +1,10 @@
 //! Multi-tenant receipt isolation tests for
 //! `chio_store_sqlite::SqliteReceiptStore`.
 //!
-//! The scenario mirrors the roadmap acceptance criterion:
+//! The test scenario covers the following invariants:
 //!
 //!   Tenant A writes 5 receipts, tenant B writes 3, and an operator's
-//!   pre-migration session writes 2 legacy untagged rows. The store
+//!   pre-migration session writes 2 untagged (NULL-tenant) rows. The store
 //!   must:
 //!     * return 5 rows for tenant A by default;
 //!     * return 3 rows for tenant B by default;
@@ -13,7 +13,7 @@
 //!     * return all 10 rows for explicit admin mode.
 //!
 //! The tenant_id is derived from the receipt body -- the store does not
-//! accept caller-injected tenant hints, per Phase 1.5 threat model.
+//! accept caller-injected tenant hints, per the multi-tenant threat model.
 
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -23,26 +23,7 @@ use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction}
 use chio_kernel::receipt_query::ReceiptQuery;
 use chio_store_sqlite::SqliteReceiptStore;
 
-trait TestResultOk<T, E> {
-    fn test_expect(self, context: &'static str) -> T;
-    fn test_unwrap(self) -> T;
-}
-
-impl<T, E> TestResultOk<T, E> for Result<T, E> {
-    fn test_expect(self, context: &'static str) -> T {
-        match self {
-            Ok(value) => value,
-            Err(_) => panic!("{context}"),
-        }
-    }
-
-    fn test_unwrap(self) -> T {
-        match self {
-            Ok(value) => value,
-            Err(_) => panic!("expected Ok result"),
-        }
-    }
-}
+use chio_test_support::prelude::*;
 
 fn unique_db_path(prefix: &str) -> std::path::PathBuf {
     let nonce = SystemTime::now()
@@ -106,7 +87,9 @@ fn compat_query(tenant: String) -> ReceiptQuery {
     ReceiptQuery {
         limit: chio_kernel::MAX_QUERY_LIMIT,
         tenant_filter: Some(tenant.clone()),
-        read_context: Some(chio_kernel::ReceiptReadContext::local_operator_tenant_compat(tenant)),
+        read_context: Some(chio_kernel::ReceiptReadContext::local_operator_tenant(
+            tenant,
+        )),
         ..ReceiptQuery::default()
     }
 }
@@ -123,7 +106,7 @@ fn tenant_filter_without_read_context_fails_closed() {
             read_context: None,
             ..ReceiptQuery::default()
         })
-        .expect_err("tenant_filter without read context must fail closed");
+        .test_expect_err("tenant_filter without read context must fail closed");
 
     assert!(
         err.to_string()
@@ -135,7 +118,7 @@ fn tenant_filter_without_read_context_fails_closed() {
 }
 
 #[test]
-fn tenant_scoped_queries_respect_and_leak_only_legacy_null_rows() {
+fn tenant_scoped_queries_respect_and_leak_only_null_tenant_rows() {
     let path = unique_db_path("tenant-isolation");
     let store = SqliteReceiptStore::open(&path).test_expect("open store");
     assert!(
@@ -165,17 +148,17 @@ fn tenant_scoped_queries_respect_and_leak_only_legacy_null_rows() {
             .append_chio_receipt_returning_seq(&r)
             .test_expect("append tenant-B receipt");
     }
-    // 2 pre-migration legacy receipts without a tenant_id. These land in
+    // 2 pre-migration untagged receipts without a tenant_id. These land in
     // the store with `tenant_id IS NULL`.
     for i in 0..2 {
         let r = signed_receipt(
-            &format!("rcpt-legacy-{i}"),
-            &format!("cap-legacy-{i}"),
+            &format!("rcpt-untagged-{i}"),
+            &format!("cap-untagged-{i}"),
             None,
         );
         store
             .append_chio_receipt_returning_seq(&r)
-            .test_expect("append legacy receipt");
+            .test_expect("append untagged receipt");
     }
 
     // Default strict mode: tenant A only sees its own rows.
@@ -184,7 +167,7 @@ fn tenant_scoped_queries_respect_and_leak_only_legacy_null_rows() {
         .test_expect("query tenant-A");
     assert_eq!(
         a_page.total_count, 5,
-        "tenant A default visibility must exclude legacy NULL rows"
+        "tenant A default visibility must exclude NULL-tenant rows"
     );
     assert_eq!(a_page.receipts.len(), 5);
     for stored in &a_page.receipts {
@@ -213,7 +196,7 @@ fn tenant_scoped_queries_respect_and_leak_only_legacy_null_rows() {
         .test_expect("query tenant-A compat");
     assert_eq!(
         a_compat.total_count, 7,
-        "compat mode must include legacy NULL rows in tenant-A view"
+        "compat mode must include NULL-tenant rows in tenant-A view"
     );
     assert_eq!(a_compat.receipts.len(), 7);
     for stored in &a_compat.receipts {
@@ -246,7 +229,7 @@ fn tenant_scoped_queries_respect_and_leak_only_legacy_null_rows() {
 
     store.with_strict_tenant_isolation(true);
 
-    // Flip strict back on: tenant-scoped queries drop the legacy
+    // Flip strict back on: tenant-scoped queries drop the NULL-tenant
     // fallback set again.
     let a_strict_again = store
         .query_receipts(&basic_query(Some("tenant-A".to_string())))
@@ -261,7 +244,7 @@ fn explicit_admin_context_returns_all_rows_regardless_of_tags() {
     let path = unique_db_path("tenant-isolation-all");
     let store = SqliteReceiptStore::open(&path).test_expect("open store");
 
-    // Three distinct tenants + legacy nulls.
+    // Three distinct tenants + untagged nulls.
     for (tenant, count) in [
         (Some("ten-1"), 4usize),
         (Some("ten-2"), 1),
@@ -269,7 +252,7 @@ fn explicit_admin_context_returns_all_rows_regardless_of_tags() {
         (None, 3),
     ] {
         for i in 0..count {
-            let id = format!("rcpt-{}-{i}", tenant.unwrap_or("legacy"));
+            let id = format!("rcpt-{}-{i}", tenant.unwrap_or("untagged"));
             let capability_id = format!("cap-{id}");
             let r = signed_receipt(&id, &capability_id, tenant);
             store
@@ -285,7 +268,7 @@ fn explicit_admin_context_returns_all_rows_regardless_of_tags() {
     assert_eq!(page.receipts.len(), 10);
 
     // Even with strict mode flipped on, the explicit admin context returns
-    // everything. Strict mode only controls tenant-scoped legacy NULL-row
+    // everything. Strict mode only controls tenant-scoped NULL-tenant-row
     // compatibility.
     store.with_strict_tenant_isolation(true);
     let page_admin_strict = store

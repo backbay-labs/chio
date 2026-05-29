@@ -13,7 +13,7 @@
 //! catch parse-path regressions in the compact-JWT decoder, base64url path,
 //! `serde_json` decoder, and downstream schema-shape checks.
 //!
-//! Cleanup C6: arbitrary fuzzer bytes can almost never produce a valid
+//! Arbitrary fuzzer bytes can almost never produce a valid
 //! Ed25519 signature against the fixed-issuer keypair, so the verifier
 //! always returns at the signature-check step before reaching the
 //! payload-shape branch (`vc` typed-claim shape, `cnf.jwk`,
@@ -74,7 +74,7 @@ fn issuer_public_key() -> &'static PublicKey {
 /// surfaces as a crash). No arbitrary input can produce `Ok(_)` because the
 /// signature check requires a key controlled by the issuer keypair above.
 ///
-/// Cleanup C6: arbitrary fuzzer bytes essentially never produce a valid
+/// Arbitrary fuzzer bytes essentially never produce a valid
 /// Ed25519 signature, so the verifier always returns at the
 /// signature-check step before reaching the payload-shape branches
 /// (`vc` typed-claim shape, `cnf.jwk`, `iat`/`nbf`/`exp` consistency).

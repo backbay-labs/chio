@@ -429,7 +429,7 @@ MUST document the omission alongside the surface helper. The
 The W1.1 chain-binding fixture asserts the pre-admit pass MUST; the W1.2
 sibling-sum admit MUST is asserted by the hosted-dispatch admit fixtures (e.g.
 `budget_split_cross_hop_rejects_amplification.rs`,
-`wave1_hot_path_enforcement.rs`). Both rejection paths surface
+`hot_path_enforcement.rs`). Both rejection paths surface
 `CapabilityError::AttenuationViolation` with the offending hashes
 formatted as hex. The check costs a single hash comparison on the
 happy path and runs after the basic signature, time, and crypto-floor
@@ -547,7 +547,7 @@ Chio's normative provenance model now distinguishes three evidence classes:
   `chio.session_anchor.v1`, `chio.receipt_lineage_statement.v1`, or
   `chio.call_chain_continuation.v1`
 
-The Phase 1 provenance substrate uses these versioned artifacts:
+The provenance substrate uses these versioned artifacts:
 
 - `chio.session_anchor.v1`: signed anchor binding `session_id`, `agent_id`,
   transport/auth context, proof-binding material, and auth epoch
@@ -723,6 +723,28 @@ The signature input is the typed wrapper:
 ChioReceiptSigningBody { id, body: ChioReceiptIdInput }
 ```
 
+Before the id is computed, the producer binds a signing nonce into the
+receipt body. The nonce is the pre-binding receipt `id` (the producer's
+content-addressed id for the body as first assembled), recorded under the
+reserved `metadata` key `chio_receipt_signing_nonce`:
+
+```text
+metadata["chio_receipt_signing_nonce"] = pre_nonce_id
+```
+
+The binding happens once, in order: validate the body, write
+`chio_receipt_signing_nonce` into `metadata`, then compute `id =
+H(canonical_jcs(ChioReceiptIdInput))` over the now-nonce-bound body. Because
+`metadata` is part of `ChioReceiptIdInput`, the nonce is covered by both the
+authoritative `id` and the signature. If `metadata` already holds a non-object
+JSON value the producer preserves it under the `original_metadata` key before
+inserting the nonce; an empty or whitespace-only pre-binding `id` skips the
+binding. The nonce is a fixed point of signing: re-binding an already-bound
+body is a no-op because the bound body's `id` is recomputed over the bound
+metadata. Every signed `chio.receipt.v1` carries this key, and the inline and
+asynchronous kernel signing funnels emit byte-identical receipts because both
+apply this same binding through one signing primitive.
+
 The producer canonicalizes that wrapper via RFC 8785 JCS and signs the
 resulting bytes with the kernel's identity key. Three signing
 algorithms are supported in v1, and verifiers dispatch off the
@@ -823,6 +845,9 @@ Nested flows such as sampling, elicitation, and resource reads use
 The shipped metadata surface is extensible JSON. Current first-class uses
 include:
 
+- the reserved `chio_receipt_signing_nonce` key, bound by the signing path to
+  the pre-binding receipt id (see "Receipt Identity And DAG"); it is part of
+  the signed body on every receipt
 - financial attribution and settlement metadata
 - governed transaction intent and approval metadata
 - subject and issuer attribution
@@ -1130,7 +1155,7 @@ The manifest defines:
 - operator-facing descriptions and metadata
 
 This manifest is the authoritative discovery contract for native tool servers
-and for mediated adapters that synthesize an Chio tool surface from another
+and for mediated adapters that synthesize a Chio tool surface from another
 protocol. `chio.manifest.v1` remains frozen in this release for compatibility.
 
 ### 7.1 OpenAPI-Derived Manifests
@@ -1803,7 +1828,7 @@ that operators later persist.
 `POST /v1/underwriting/decisions/issue` signs and persists that durable
 underwriting artifact. The signed decision envelope carries:
 
-- one immutable decision artifact over the phase-50 evaluation snapshot
+- one immutable decision artifact over the underwriting evaluation snapshot
 - one explicit lifecycle and review state at issuance time
 - one budget recommendation in the bounded vocabulary
   `preserve`/`reduce`/`hold`/`deny`
@@ -1926,7 +1951,7 @@ count is capped, and blocking negative events require corroboration when the
 policy says so. Shared clearing is still operator-local evaluation truth, not a
 universal oracle or automatic runtime admission.
 
-Chiodos runtime admission may consume pheromone concentration as evidence only
+Chio runtime admission may consume pheromone concentration as evidence only
 when a verifier-owned runtime policy explicitly enables it. The runtime policy,
 peer weights, runtime trust input, and trusted verifier keys are local verifier
 inputs. Request JSON may reference stable ids and hashes, but it cannot carry
@@ -1935,22 +1960,22 @@ metadata and cannot change the verdict. Enforced policy can allow, deny, or
 escalate before tool dispatch, but it does not issue leases, create governance
 receipts, mutate trust, settle payments, or perform peer discovery.
 
-Chiodos runtime proof-parity reports bind local admission output to structured
+Chio runtime proof-parity reports bind local admission output to structured
 step evidence before claiming proof regeneration success. A runtime workflow
 run report records per-step admission report hashes, tool receipt ids and
 hashes, output hashes, bilateral DSSE hashes, workflow step hashes,
 consistency anchors, destructive flags, and lease or governance ids where
 present. Runtime proof regeneration now also emits a runtime evidence manifest,
 a proof-regeneration input artifact, package-valid signed `ChioReceipt`
-artifacts, strict Chiodos DSSE envelopes, a signed `WorkflowReceipt v2`,
-`chio.chiodos.proof-package.v1`, verifier trust and context inputs, and the
-verifier report produced by the existing Chiodos verifier. A regeneration
+artifacts, strict Chio DSSE envelopes, a signed `WorkflowReceipt v2`,
+`chio.attest.proof-package.v1`, verifier trust and context inputs, and the
+verifier report produced by the existing Chio verifier. A regeneration
 report may set `accepted=true` only when that verifier accepts the regenerated
 package and the report binds proof package, verifier report, and workflow
 receipt hashes. `runtime_proof_semantic_regeneration_pending` is a rejected
 gate state, not a successful runtime proof claim.
 
-Chiodos production local runtime orchestration wraps the same runtime admission
+Chio production local runtime orchestration wraps the same runtime admission
 and proof-regeneration evidence in verifier-owned local operating contracts.
 An orchestration profile and run contract bind the local kernel id, verifier id,
 expected workflow steps, admission ids, durable store id, evidence sink id, and
@@ -1965,7 +1990,7 @@ report hashes, and stable semantic fields. Drift is operator evidence only; it
 does not mutate policy, trust, leases, governance, settlement, pheromone state,
 or provider routing.
 
-Chiodos runtime operations hardening supervises local orchestration runs
+Chio runtime operations hardening supervises local orchestration runs
 without changing admission authority. A supervisor profile controls local run
 lease TTLs, stale-run windows, evidence health requirements, static provider
 binding checks, and dry-run retention posture. Scheduler tick reports claim
@@ -1978,7 +2003,7 @@ operator-owned bindings and must not discover, substitute, or widen providers.
 Retention plans are dry-run classifications only; they do not delete, move,
 compact, upload, or mutate runtime evidence.
 
-Chiodos treaty-bound provenance adds the first bounded cross-kernel admission
+Chio treaty-bound provenance adds the first bounded cross-kernel admission
 evidence lane. Governance ladder manifests declare action class mode,
 destructive posture, consistency model, co-sign requirement, and required
 evidence for one kernel. A treaty scope pins the participating kernels and the
@@ -1993,7 +2018,7 @@ packets may bind budget references, but they do not claim settlement. A buyer
 packet is accepted only when the packet hashes match verified lineage and the
 lineage remains verified rather than asserted.
 
-Chiodos treaty-to-buyer review adds a local buyer-facing loop over the
+Chio treaty-to-buyer review adds a local buyer-facing loop over the
 treaty-bound evidence. A buyer review package binds the buyer packet, admission
 report, continuation, lineage bundle, bilateral invocation, workflow receipt,
 proof package, verifier report, and runtime run report by artifact role,
@@ -2004,12 +2029,12 @@ review loop is local evidence only: budget references remain non-settlement
 references, hidden predicates remain unsupported, and package-carried material
 does not become a trust root.
 
-Chiodos live treaty-to-buyer closure is the assurance gate that upgrades those
+Chio live treaty-to-buyer closure is the assurance gate that upgrades those
 local artifacts from fixture-shaped evidence to bounded runtime evidence. The
 closure requires verifier-owned treaty runtime state, pre-dispatch denial in
-the kernel, strict Chiodos DSSE with treaty binding references over real
+the kernel, strict Chio DSSE with treaty binding references over real
 request, outcome, and receipt hashes, bounded lineage graph closure, and proof
-regeneration accepted by the existing Chiodos proof verifier. Hash-only
+regeneration accepted by the existing Chio proof verifier. Hash-only
 self-attestation, copied static proof packages, compatibility-only bilateral
 predicates, and package-carried trust roots do not satisfy closure. The
 boundary remains local evidence only and does not add dynamic trust, settlement
@@ -2654,7 +2679,7 @@ The profile is intentionally narrow:
   `response_mode=direct_post.jwt`
 - Chio currently supports exactly one requested credential with format
   `application/dc+sd-jwt` and type
-  `https://chio.dev/credentials/types/chio-passport-sd-jwt-vc/v1`
+  `https://chio.world/credentials/types/chio-passport-sd-jwt-vc/v1`
 - verifier trust bootstrap is one Chio verifier metadata document plus one
   verifier `JWKS`
 - verifier or issuer key rotation may preserve active request and credential

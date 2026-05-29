@@ -1,5 +1,7 @@
 //! Runtime Chio federation authority artifact issuance.
 
+#![forbid(unsafe_code)]
+
 use std::collections::BTreeSet;
 
 use chio_attest_buyer_core::{

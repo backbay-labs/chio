@@ -188,9 +188,8 @@ fn audit_view_rejects_unknown_schema_or_projection_version() {
 #[test]
 fn audit_view_rejects_malformed_content_hash_hex() {
     // An Hx field that does not decode to a 32-byte SHA-256 must
-    // fail closed at projection. Previously the code silently
-    // re-hashed the raw string while still labelling the message
-    // `Hx`, which lied about the encoding to the auditor.
+    // fail closed at projection; any other treatment would lie about
+    // the encoding to the auditor.
     let kp = Keypair::generate();
     let mut body = fixture_body(&kp);
     body.content_hash = "not-a-real-hex-string".to_string();

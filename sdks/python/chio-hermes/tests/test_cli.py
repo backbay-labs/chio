@@ -168,8 +168,7 @@ def test_revoke_invokes_chio_trust_revoke_subprocess(
     )
 
     # The revoke handler refuses to shell out without a backend
-    # configured (P2-1 / comment 3222802721); set a control URL so the
-    # happy-path argv is observable.
+    # configured; set a control URL so the happy-path argv is observable.
     monkeypatch.setenv("CHIO_CONTROL_URL", "http://127.0.0.1:9091")
     monkeypatch.delenv("CHIO_REVOCATION_DB", raising=False)
 
@@ -215,7 +214,7 @@ def test_revoke_refuses_without_backend_env(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """`hermes chio revoke` exits with `chio_revocation_backend_unconfigured`
-    when neither CHIO_CONTROL_URL nor CHIO_REVOCATION_DB is set (P2-1)."""
+    when neither CHIO_CONTROL_URL nor CHIO_REVOCATION_DB is set."""
     _fake_cache_dir(tmp_path, monkeypatch)
     monkeypatch.delenv("CHIO_CONTROL_URL", raising=False)
     monkeypatch.delenv("CHIO_REVOCATION_DB", raising=False)
@@ -246,7 +245,7 @@ def test_revoke_refuses_without_backend_env(
 def test_revoke_uses_revocation_db_when_no_control_url(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """CHIO_REVOCATION_DB falls back when CHIO_CONTROL_URL is unset (P2-1)."""
+    """CHIO_REVOCATION_DB falls back when CHIO_CONTROL_URL is unset."""
     _fake_cache_dir(tmp_path, monkeypatch)
     monkeypatch.delenv("CHIO_CONTROL_URL", raising=False)
     db_path = tmp_path / "revocations.sqlite"

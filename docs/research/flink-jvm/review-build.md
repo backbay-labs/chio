@@ -133,7 +133,7 @@ non-JVM PRs.
 
 ### [P2] 78 Kotlin 2.3 annotation-target warnings pending promotion to errors
 
-File: pervasive across `chio-sdk-jvm/src/main/kotlin/io/backbay/chio/sdk/*.kt`
+File: pervasive across `chio-sdk-jvm/src/main/kotlin/world/chio/sdk/*.kt`
 (~60 in `ChioReceipt.kt`, `ChioTypes.kt`, `Decision.kt`,
 `ToolCallAction.kt`).
 
@@ -218,7 +218,7 @@ example for the Flink module, `ChioClient` example for the SDK).
 
 ### [P3] No package-level KDoc
 
-File: `sdks/jvm/chio-sdk-jvm/src/main/kotlin/io/backbay/chio/sdk/`, same for
+File: `sdks/jvm/chio-sdk-jvm/src/main/kotlin/world/chio/sdk/`, same for
 `chio-streaming-flink`.
 
 There is no `package.kt` / module-level summary file. Each source file has
@@ -251,7 +251,7 @@ which is plain JDK. Good.
 
 File: `ChioFilter.kt:66` -> `ChioSidecarClient(...)` is marked deprecated in
 `compat/ChioSidecarClient.kt`. The caller is the filter itself, not a user.
-Migrate the internal usage to `io.backbay.chio.sdk.ChioClient` to silence
+Migrate the internal usage to `world.chio.sdk.ChioClient` to silence
 the warning and mirror the plan's guidance that `ChioSidecarClient` is a
 one-release compat shim.
 

@@ -4,8 +4,8 @@
 // a package + reserved comment only. M10 Phase 1 ships the concrete
 // interface bodies and redactor world below.
 //
-// Source of truth: .planning/trajectory/10-tee-replay-harness.md
-// (Phase 1 Task 5; "Redactor host call shape: chio:guards/redact@0.1.0").
+// Source of truth: spec/PROTOCOL.md (redactor host call shape for
+// chio:guards/redact@0.1.0 and the fail-closed persistence rule below).
 //
 // Errors are fail-closed: an Err return from the guest MUST cause the
 // tee to refuse persistence and write `tee.redact_failed` to the

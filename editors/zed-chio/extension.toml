@@ -3,8 +3,8 @@ name = "Chio"
 description = "Chio language support: chio.yaml, manifests, and guard DSL diagnostics powered by chio-lsp."
 version = "0.1.0"
 schema_version = 1
-authors = ["Backbay <chio@backbay.dev>"]
-repository = "https://github.com/backbay/chio"
+authors = ["Backbay <chio@chio.world>"]
+repository = "https://github.com/backbay-labs/chio"
 
 [language_servers.chio-lsp]
 name = "Chio Language Server"

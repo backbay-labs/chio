@@ -13,7 +13,7 @@ The first implementation target is a filesystem package generated from local
 SQLite state. Remote trust-control export can follow the same manifest shape
 later.
 
-## Wave 1 Implementation Boundary
+## Initial Implementation Boundary
 
 This plan was the pulled-forward foundation work for the later roadmap item. The
 first coding pass shipped:

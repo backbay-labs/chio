@@ -1474,7 +1474,7 @@ environment that made the decision.
 ### Attestation Integration Points
 
 ```rust
-/// TEE attestation evidence attached to an Chio receipt.
+/// TEE attestation evidence attached to a Chio receipt.
 pub struct ComputeAttestation {
     /// TEE platform.
     pub platform: TeePlatform,

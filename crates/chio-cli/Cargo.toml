@@ -100,6 +100,7 @@ uuid = { workspace = true, features = ["v4"] }
 chio-credit = { path = "../chio-credit" }
 chio-open-market = { path = "../chio-open-market" }
 chio-settle = { path = "../chio-settle" }
+chio-test-support = { path = "../chio-test-support" }
 insta = { version = "1.42", features = ["json", "redactions"] }
 rand_core = { workspace = true }
 tempfile = "3"
@@ -109,6 +110,5 @@ wiremock = "0.6"
 siem = ["chio-siem"]
 tee-quotes = ["chio-attest-verify/tee-quotes"]
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

@@ -20,7 +20,7 @@ use chio_kernel::{
     BudgetStore, CapabilityAuthority, CapabilitySnapshot, FederatedEvidenceShareImport,
     LocalCapabilityAuthority, ReceiptStore, StoredToolReceipt,
 };
-use chio_store_sqlite::{SqliteBudgetStore, SqliteReceiptStore};
+use chio_store_sqlite::{SqliteBudgetStore, SqliteCapabilityAuthority, SqliteReceiptStore};
 use reqwest::blocking::Client;
 
 fn unique_dir(prefix: &str) -> PathBuf {
@@ -156,8 +156,8 @@ fn make_receipt(
     subject_key: &str,
     issuer_key: &str,
     timestamp: u64,
+    kernel_kp: &Keypair,
 ) -> ChioReceipt {
-    let kernel_kp = Keypair::generate();
     ChioReceipt::sign(
         ChioReceiptBody {
             id: id.to_string(),
@@ -191,7 +191,7 @@ fn make_receipt(
             tenant_id: None,
             kernel_key: kernel_kp.public_key(),
         },
-        &kernel_kp,
+        kernel_kp,
     )
     .expect("sign receipt")
 }
@@ -229,6 +229,7 @@ fn import_federated_reputation_share(
     partner: &str,
     require_proofs: bool,
     exported_at: u64,
+    kernel_kp: &Keypair,
 ) {
     let remote_signer = Keypair::generate().public_key().to_hex();
     let root_capability_id = format!("{share_id}-root");
@@ -259,6 +260,7 @@ fn import_federated_reputation_share(
                         subject_key,
                         &remote_signer,
                         exported_at.saturating_sub(300),
+                        kernel_kp,
                     ),
                 },
                 StoredToolReceipt {
@@ -269,6 +271,7 @@ fn import_federated_reputation_share(
                         subject_key,
                         &remote_signer,
                         exported_at.saturating_sub(60),
+                        kernel_kp,
                     ),
                 },
             ],
@@ -302,6 +305,7 @@ fn seed_subject_history(
     receipt_db_path: &Path,
     budget_db_path: &Path,
     subject_kp: &Keypair,
+    kernel_kp: &Keypair,
 ) -> String {
     let authority = LocalCapabilityAuthority::new(Keypair::generate());
     let capability = authority
@@ -345,6 +349,7 @@ fn seed_subject_history(
             &subject_key,
             &issuer_key,
             1_700_000_000,
+            kernel_kp,
         ))
         .expect("append first receipt");
     receipt_store
@@ -354,6 +359,7 @@ fn seed_subject_history(
             &subject_key,
             &issuer_key,
             1_700_086_500,
+            kernel_kp,
         ))
         .expect("append second receipt");
 
@@ -378,8 +384,13 @@ fn trust_service_exposes_local_reputation_scorecard() {
     let budget_db_path = dir.join("budgets.sqlite3");
     let policy_path = fixture_path("hushspec-reputation.yaml");
 
+    let kernel_kp = SqliteCapabilityAuthority::open(&authority_db_path)
+        .expect("open authority db")
+        .local_keypair()
+        .expect("recover authority kernel keypair");
     let subject_kp = Keypair::generate();
-    let subject_hex = seed_subject_history(&receipt_db_path, &budget_db_path, &subject_kp);
+    let subject_hex =
+        seed_subject_history(&receipt_db_path, &budget_db_path, &subject_kp, &kernel_kp);
 
     let listen = reserve_listen_addr();
     let service_token = "local-reputation-service-token";
@@ -444,8 +455,13 @@ fn trust_service_exposes_reputation_compare_over_http() {
     let signing_seed_path = dir.join("authority-seed.txt");
     let policy_path = fixture_path("hushspec-reputation.yaml");
 
+    let kernel_kp = SqliteCapabilityAuthority::open(&authority_db_path)
+        .expect("open authority db")
+        .local_keypair()
+        .expect("recover authority kernel keypair");
     let subject_kp = Keypair::generate();
-    let subject_hex = seed_subject_history(&receipt_db_path, &budget_db_path, &subject_kp);
+    let subject_hex =
+        seed_subject_history(&receipt_db_path, &budget_db_path, &subject_kp, &kernel_kp);
     create_passport(
         &receipt_db_path,
         &budget_db_path,
@@ -516,8 +532,10 @@ fn cli_reputation_local_reports_policy_backed_scorecard() {
     let budget_db_path = dir.join("budgets.sqlite3");
     let policy_path = fixture_path("hushspec-reputation.yaml");
 
+    let kernel_kp = Keypair::generate();
     let subject_kp = Keypair::generate();
-    let subject_hex = seed_subject_history(&receipt_db_path, &budget_db_path, &subject_kp);
+    let subject_hex =
+        seed_subject_history(&receipt_db_path, &budget_db_path, &subject_kp, &kernel_kp);
 
     let output = Command::new(env!("CARGO_BIN_EXE_chio"))
         .current_dir(workspace_root())
@@ -564,9 +582,13 @@ fn cli_reputation_local_surfaces_imported_trust_guardrails() {
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
     let budget_db_path = dir.join("budgets.sqlite3");
+    let authority_seed_path = dir.join("authority-seed.txt");
 
+    let kernel_kp = Keypair::generate();
+    std::fs::write(&authority_seed_path, kernel_kp.seed_hex()).expect("write authority seed");
     let subject_kp = Keypair::generate();
-    let subject_hex = seed_subject_history(&receipt_db_path, &budget_db_path, &subject_kp);
+    let subject_hex =
+        seed_subject_history(&receipt_db_path, &budget_db_path, &subject_kp, &kernel_kp);
     let now = current_unix_secs();
 
     import_federated_reputation_share(
@@ -577,6 +599,7 @@ fn cli_reputation_local_surfaces_imported_trust_guardrails() {
         "org-local",
         true,
         now.saturating_sub(3_600),
+        &kernel_kp,
     );
     import_federated_reputation_share(
         &receipt_db_path,
@@ -586,6 +609,7 @@ fn cli_reputation_local_surfaces_imported_trust_guardrails() {
         "org-local",
         false,
         now.saturating_sub(1_800),
+        &kernel_kp,
     );
 
     let output = Command::new(env!("CARGO_BIN_EXE_chio"))
@@ -596,6 +620,8 @@ fn cli_reputation_local_surfaces_imported_trust_guardrails() {
             receipt_db_path.to_str().expect("receipt db path"),
             "--budget-db",
             budget_db_path.to_str().expect("budget db path"),
+            "--authority-seed-file",
+            authority_seed_path.to_str().expect("authority seed path"),
             "reputation",
             "local",
             "--subject-public-key",
@@ -664,8 +690,16 @@ fn cli_reputation_compare_reports_drift_against_fresh_passport() {
     let signing_seed_path = dir.join("authority-seed.txt");
     let verifier_policy_path = dir.join("passport-verifier.yaml");
 
+    // The portable passport scorecard and the local scorecard must trust the
+    // same receipt-signing kernel key for the drift to be zero. Pre-create the
+    // signing keypair, sign the seeded receipts with it, and feed the same seed
+    // to `passport create` (--signing-seed-file) and `reputation compare`
+    // (--authority-seed-file).
+    let kernel_kp = Keypair::generate();
+    std::fs::write(&signing_seed_path, kernel_kp.seed_hex()).expect("write signing seed");
     let subject_kp = Keypair::generate();
-    let subject_hex = seed_subject_history(&receipt_db_path, &budget_db_path, &subject_kp);
+    let subject_hex =
+        seed_subject_history(&receipt_db_path, &budget_db_path, &subject_kp, &kernel_kp);
 
     create_passport(
         &receipt_db_path,
@@ -703,6 +737,8 @@ fn cli_reputation_compare_reports_drift_against_fresh_passport() {
             receipt_db_path.to_str().expect("receipt db path"),
             "--budget-db",
             budget_db_path.to_str().expect("budget db path"),
+            "--authority-seed-file",
+            signing_seed_path.to_str().expect("authority seed path"),
             "reputation",
             "compare",
             "--subject-public-key",
@@ -749,8 +785,13 @@ fn cli_reputation_compare_supports_control_service_local_view() {
     let signing_seed_path = dir.join("authority-seed.txt");
     let policy_path = fixture_path("hushspec-reputation.yaml");
 
+    let kernel_kp = SqliteCapabilityAuthority::open(&authority_db_path)
+        .expect("open authority db")
+        .local_keypair()
+        .expect("recover authority kernel keypair");
     let subject_kp = Keypair::generate();
-    let subject_hex = seed_subject_history(&receipt_db_path, &budget_db_path, &subject_kp);
+    let subject_hex =
+        seed_subject_history(&receipt_db_path, &budget_db_path, &subject_kp, &kernel_kp);
 
     create_passport(
         &receipt_db_path,
@@ -824,8 +865,13 @@ fn trust_service_reputation_views_include_imported_trust_provenance() {
     let signing_seed_path = dir.join("authority-seed.txt");
     let policy_path = fixture_path("hushspec-reputation.yaml");
 
+    let kernel_kp = SqliteCapabilityAuthority::open(&authority_db_path)
+        .expect("open authority db")
+        .local_keypair()
+        .expect("recover authority kernel keypair");
     let subject_kp = Keypair::generate();
-    let subject_hex = seed_subject_history(&receipt_db_path, &budget_db_path, &subject_kp);
+    let subject_hex =
+        seed_subject_history(&receipt_db_path, &budget_db_path, &subject_kp, &kernel_kp);
     let now = current_unix_secs();
     import_federated_reputation_share(
         &receipt_db_path,
@@ -835,6 +881,7 @@ fn trust_service_reputation_views_include_imported_trust_provenance() {
         "org-http-local",
         true,
         now.saturating_sub(1_200),
+        &kernel_kp,
     );
 
     create_passport(
@@ -912,8 +959,13 @@ fn trust_service_portable_reputation_issue_and_evaluate_respects_local_weighting
     let budget_db_path = dir.join("budgets.sqlite3");
     let policy_path = fixture_path("hushspec-reputation.yaml");
 
+    let kernel_kp = SqliteCapabilityAuthority::open(&authority_db_path)
+        .expect("open authority db")
+        .local_keypair()
+        .expect("recover authority kernel keypair");
     let subject_kp = Keypair::generate();
-    let subject_hex = seed_subject_history(&receipt_db_path, &budget_db_path, &subject_kp);
+    let subject_hex =
+        seed_subject_history(&receipt_db_path, &budget_db_path, &subject_kp, &kernel_kp);
     let now = current_unix_secs();
 
     let listen = reserve_listen_addr();

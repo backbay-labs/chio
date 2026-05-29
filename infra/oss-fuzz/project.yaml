@@ -1,10 +1,10 @@
-homepage: "https://github.com/bb-connor/arc"
+homepage: "https://github.com/backbay-labs/chio"
 language: rust
-primary_contact: "whelan.connor11@gmail.com"
+primary_contact: "security@backbay.io"
 auto_ccs:
-  - "whelan.connor11@gmail.com"
-  # TODO: add backup contact before opening the upstream OSS-Fuzz PR.
-main_repo: "https://github.com/bb-connor/arc"
+  - "security@backbay.io"
+  - "fuzzing@backbay.io"
+main_repo: "https://github.com/backbay-labs/chio"
 sanitizers:
   # OSS-Fuzz Rust integration only supports `address` for Rust
   # projects; `cargo fuzz build --sanitizer undefined` fails with an

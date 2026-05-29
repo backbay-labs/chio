@@ -1,8 +1,12 @@
 # Organization of Information Security Narrative
 
-Trust-boundary review requirements, milestone ownership, and freeze
-records provide the repository-side evidence for organization of
-information security. P1 readiness is partial until reviewer evidence,
-security review receipts, and out-of-tree operating roles are attached.
+Ownership of the formal-evidence surface is documented in
+`formal/OWNERS.md`, and fuzzing ownership in `fuzz/owners.toml`.
+Trust-boundary review conventions are described in `spec/SECURITY.md`.
 
-Fail-closed note: unclear owner rows remain gaps.
+This family is self-assessed as partial: ownership is documented for the
+formal and fuzzing evidence, but broader operating-role evidence,
+security-reviewer records, and out-of-tree organizational roles are not
+established in the repository.
+
+Fail-closed note: rows with an unclear owner remain gaps.

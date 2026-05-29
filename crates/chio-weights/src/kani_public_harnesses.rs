@@ -213,7 +213,7 @@ pub fn public_model_card_require_live_fail_closed() {
 
 /// Real public surface exercised symbolically: `WeightsError::urn`
 /// MUST map every error variant to a stable URN string. The kernel
-/// audit-log surface and the M01 typed-enum codegen consume these
+/// audit-log surface and the typed-enum codegen consume these
 /// URNs; a bug that reused or dropped a URN would silently merge
 /// two distinct refusal classes in the audit trail.
 ///
@@ -264,11 +264,11 @@ pub fn public_weights_error_urn_is_stable() {
 
     let urn = err.urn();
 
-    // (1) Every URN starts with the registered prefix. The M01
-    // registry pins this; a drift would break audit-log routing.
+    // (1) Every URN starts with the registered prefix. The
+    // error-code registry pins this; a drift would break audit-log routing.
     assert!(urn.starts_with("urn:chio:error:weights:"));
 
-    // (2) Per-variant URN. The mapping is the registered M01
+    // (2) Per-variant URN. The mapping is the registered
     // identifier; pin each one explicitly so a future regression
     // that renamed a code is caught here. `MissingField` and
     // `SchemaRejected` share a URN by design (both are schema
@@ -311,10 +311,7 @@ pub fn public_model_card_new_pins_schema_version() {
     };
     let card = fixture_card(issued_at, expires_at);
 
-    // (1) Schema version is pinned to the M10 v1 constant. A future
-    // refactor that promoted `ModelCard::new` to accept a
-    // caller-supplied schema string would break this invariant; we
-    // catch the regression here.
+    // (1) Schema version MUST equal `CARD_VERSION_V1`; `ModelCard::new` MUST NOT accept a caller-supplied schema string.
     assert_eq!(card.card_version, CARD_VERSION_V1.to_string());
 
     // (2) `validate()` is idempotent and accepts a freshly

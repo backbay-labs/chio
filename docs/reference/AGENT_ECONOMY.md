@@ -1198,9 +1198,8 @@ operator-managed sidecar data keyed by `receipt_id`.*
 
 ### Implementation Status
 
-**Phase 1 features are implemented in the current pre-release v1 branch.** The
-economic primitives described in Phase 1 are implemented and available in the
-current codebase. Historical internal milestone work also added governed
+**The economic primitives are implemented in the current pre-release v1 branch.**
+They are available in the current codebase. Earlier work also added governed
 transaction metadata, x402 and ACP bridge integrations, truthful settlement
 linkage, settlement backlog reporting, and explicit invocation-plus-money
 budget dimensions on operator reports. Broader observability, Stripe-style
@@ -1213,9 +1212,9 @@ Operational guides for current v1 features:
 - [DPOP_INTEGRATION_GUIDE.md](DPOP_INTEGRATION_GUIDE.md): DPoP proof-of-possession setup and verification
 - [RECEIPT_QUERY_API.md](RECEIPT_QUERY_API.md): `GET /v1/receipts/query` filters, pagination, and CLI usage
 
-### Phase 1: Economic Primitives -- Implemented In Current V1
+### Economic Primitives -- Implemented In Current V1
 
-All Phase 1 deliverables are implemented in the current pre-release v1 branch:
+These deliverables are implemented in the current pre-release v1 branch:
 
 - `MonetaryAmount` type in `crates/chio-core/src/capability.rs`.
 - `max_cost_per_invocation` and `max_total_cost` fields on `ToolGrant`; `is_subset_of` enforces cost caps through delegation chains.
@@ -1241,14 +1240,14 @@ All Phase 1 deliverables are implemented in the current pre-release v1 branch:
 | `crates/chio-kernel/src/receipt_store.rs` | Cost indexing columns, `RetentionConfig`, archival rotation |
 | `crates/chio-guards/src/velocity.rs` | `VelocityGuard` token-bucket implementation |
 
-### Phase 2: Observability (~3 months effort; maps to Q3 2026 in the Strategic Roadmap)
+### Next -- Observability (~3 months effort; maps to Q3 2026 in the Strategic Roadmap)
 
 - Spending dashboard (query layer over receipt store).
 - Budget utilization webhooks.
 - Real-time cost streaming from receipt log.
 - Design partner integrations (2-3 agent framework vendors).
 
-### Phase 3: Payment Rail Integration (~3 months incremental work beyond the implemented bridge baseline; maps to Q4 2026 in the Strategic Roadmap)
+### Later -- Payment Rail Integration (~3 months incremental work beyond the implemented bridge baseline; maps to Q4 2026 in the Strategic Roadmap)
 
 Implemented bridge baseline:
 
@@ -1266,7 +1265,7 @@ Remaining incremental work:
 - Hold-and-capture flow (authorize before invocation, capture or release after cost report).
 - Kernel integration: optional adapter on `ChioKernel`, with truthful receipt semantics and deeper reconciliation automation for post-execution settlement failures.
 
-### Phase 4: Cross-Org Settlement (~6 months effort; maps to Q1-Q2 2027 in the Strategic Roadmap)
+### Later -- Cross-Org Settlement (~6 months effort; maps to Q1-Q2 2027 in the Strategic Roadmap)
 
 - Batch settlement engine walking delegation chains across receipt log.
 - Net position calculation per organization.
@@ -1278,7 +1277,7 @@ Remaining incremental work:
 
 ## 7. Estimated Effort
 
-Core economic layer (Phase 1):
+Core economic layer (the implemented primitives above):
 
 | Component | Estimate |
 |-----------|----------|

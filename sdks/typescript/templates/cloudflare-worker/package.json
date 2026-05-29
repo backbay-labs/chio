@@ -9,7 +9,7 @@
     "deploy": "wrangler deploy"
   },
   "dependencies": {
-    "@chio/ai-sdk-middleware": "workspace:*",
+    "@chio-protocol/ai-sdk-middleware": "workspace:*",
     "@chio-protocol/workers": ">=0.1.0 <1"
   },
   "devDependencies": {

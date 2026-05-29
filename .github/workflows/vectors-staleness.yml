@@ -26,14 +26,14 @@ concurrency:
 env:
   LC_ALL: C
   # Maximum allowed age (in days) of `tests/bindings/vectors/MANIFEST.sha256`
-  # before the staleness alarm fires. 90 days matches the M02 fuzz-corpus
+  # before the staleness alarm fires. 90 days matches the fuzz-corpus
   # sunset-gate cadence (see fuzz_corpus_sync.yml + upstream_skips.toml).
   STALENESS_DAYS: "90"
 
 jobs:
   vectors-freshness:
     name: vectors-freshness (manifest age <= STALENESS_DAYS days)
-    # owner: M01
+    # owner: Chio maintainers
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -77,7 +77,7 @@ jobs:
 
   notify-on-failure:
     name: notify-on-failure (alarm-policy issue opener)
-    # owner: M01
+    # owner: Chio maintainers
     needs: [vectors-freshness]
     if: failure() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest

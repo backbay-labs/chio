@@ -1,4 +1,4 @@
-// Phase 1.4 emergency kill switch tests.
+// Emergency kill-switch tests.
 //
 // Included by `src/kernel/tests.rs`, which already imported `super::*`
 // and all helper items from `tests/all.rs`. The helpers used here

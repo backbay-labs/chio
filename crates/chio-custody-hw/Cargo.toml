@@ -57,6 +57,5 @@ serde_json = { workspace = true }
 proptest = { workspace = true }
 rusqlite = { workspace = true }
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

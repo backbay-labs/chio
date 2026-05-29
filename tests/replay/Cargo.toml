@@ -63,6 +63,5 @@ path = "tests/golden_byte_equivalence.rs"
 name = "cross_version_replay"
 path = "tests/cross_version_replay.rs"
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

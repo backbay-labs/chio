@@ -6,7 +6,7 @@
     "artifactId": "pip-1",
     "operatorId": "chio",
     "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
-    "uri": "https://chio.dev/standards/public-identity-profile"
+    "uri": "https://chio.world/standards/public-identity-profile"
   },
   "directoryEntryRef": {
     "kind": "public_wallet_directory_entry",

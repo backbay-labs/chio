@@ -83,24 +83,28 @@ while IFS= read -r line; do
     continue
   fi
 
-  # Chiodos and Pheromone are independently-versioned subsystems that ship
-  # inside the Chio repo but are not the v1 Chio-owned wire / SDK / receipt
-  # surface this scan is intended to gate. Their schema IDs use their own
-  # version numbering (chio.chiodos.*.vN, chio.pheromone.*.vN) and may
-  # legitimately advance past v1 ahead of the v1 wire surface.
-  if [[ "$text" =~ chio\.chiodos\.[A-Za-z0-9_.-]+\.v[2-9][0-9]* ]]; then
+  # Attest, federation, and pheromone are independently-versioned subsystems
+  # that ship inside the Chio repo but are not the v1 Chio-owned wire / SDK /
+  # receipt surface this scan is intended to gate. Their schema IDs use their
+  # own version numbering (chio.attest.*.vN, chio.federation.*.vN,
+  # chio.pheromone.*.vN) and may legitimately advance past v1 ahead of the v1
+  # wire surface.
+  if [[ "$text" =~ chio\.attest\.[A-Za-z0-9_.-]+\.v[2-9][0-9]* ]]; then
+    continue
+  fi
+  if [[ "$text" =~ chio\.federation\.[A-Za-z0-9_.-]+\.v[2-9][0-9]* ]]; then
     continue
   fi
   if [[ "$text" =~ chio\.pheromone\.[A-Za-z0-9_.-]+\.v[2-9][0-9]* ]]; then
     continue
   fi
 
-  # Chiodos bilateral-cosign / 3-vendor proof-package fixtures embed
+  # Attest bilateral-cosign / 3-vendor proof-package fixtures embed
   # workflow-receipt slices keyed at v2 as fixture data; the canonical
   # Chio-owned workflow-receipt schema (spec/WORKFLOW.md) remains v1.
-  # Limit this exclusion to chiodos test/fixture/example surfaces.
+  # Limit this exclusion to attest test/fixture/example surfaces.
   if [[ "$text" =~ chio\.workflow-receipt\.v[2-9][0-9]* ]] && \
-     [[ "$path" =~ (^|/)(chio-chiodos-|chiodos-)|fixtures/|examples/chiodos- ]]; then
+     [[ "$path" =~ (^|/)(chio-attest-)|fixtures/|examples/chio- ]]; then
     continue
   fi
 

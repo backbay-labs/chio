@@ -5,24 +5,19 @@
 all-features = true
 no-default-features = false
 
-# NOTE: [output] feedback-level = "error" is not accepted in cargo-deny ^0.16;
-# the [output] block was dropped to keep the config parseable.
-
-# NOTE: cargo-deny PR #611 removed `unmaintained` and `notice` from
-# [advisories] (severity is now implicit). Both keys were dropped here
-# to keep the config parseable.
+# cargo-deny ^0.16 rejects `[output] feedback-level` and the `unmaintained` /
+# `notice` keys under `[advisories]` (severity is now implicit); none are set
+# here.
 [advisories]
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
 yanked = "deny"
-# The ignore list exceeds the ~6-entry soft cap for structural reasons:
-# remaining entries are either unmaintained build-time/test-only transitives,
-# ecosystem migrations that need coordinated upstream bumps, or one RSA
-# advisory with no upstream fix. Trajectory-4 follow-up removed the AWS SDK
-# legacy rustls 0.21 path, so rustls-webpki advisories are no longer ignored.
-# Prune the corresponding entries here when those bumps land.
-# M06.P4 refresh: last-checked = 2026-05-05. Each ignore below is either
-# closed by a lockfile bump in this phase or re-justified with a dated status.
+# Each ignore below is individually dated and justified (see the per-entry
+# `last-checked` notes). Keep this list small: every entry must be one of an
+# unmaintained build-time/test-only transitive, an ecosystem migration that
+# needs a coordinated upstream bump, or one RSA advisory with no upstream fix.
+# rustls-webpki advisories are not ignored.
+# Last full refresh: 2026-05-05.
 ignore = [
     # --- unmaintained / unsound clusters: each requires a dep migration. ---
     # last-checked = 2026-05-02; bincode 1.3.3 unmaintained (RUSTSEC-2025-0141). Pulled by uniffi 0.28.x build deps;
@@ -57,10 +52,9 @@ ignore = [
     "RUSTSEC-2024-0370",
 ]
 
-# NOTE: cargo-deny 0.16 enforces an explicit allow-list only; unlisted licenses
-# are denied by default. The `unlicensed`, `copyleft`, `allow-osi-fsf-free`, and
-# `default` keys from prior config were removed because cargo-deny 0.16
-# enforces an explicit allow-list only.
+# cargo-deny 0.16 enforces an explicit allow-list only: unlisted licenses are
+# denied by default, and the `unlicensed`, `copyleft`, `allow-osi-fsf-free`,
+# and `default` keys are not accepted.
 [licenses]
 confidence-threshold = 0.93
 # Workspace-wide allow-list. Strictly permissive: no GPL / AGPL / LGPL /
@@ -71,10 +65,6 @@ confidence-threshold = 0.93
 # family (which is the only legitimate consumer in the graph today) is
 # pinned via per-crate `[[licenses.exceptions]]` entries below; new MPL
 # transitives must add a similar pinned exception.
-# The prior `Unicode-DFS-2016` entry was removed because the Unicode
-# consortium relicensed under `Unicode-3.0` (already allowed) and no
-# remaining crate in the lockfile ships the older identifier (cargo-deny
-# was emitting a `license-not-encountered` warning for it).
 allow = [
     "MIT",
     "Apache-2.0",
@@ -157,7 +147,7 @@ name = "uniffi_udl"
 allow = ["MPL-2.0"]
 
 [[licenses.exceptions]]
-# M10 P0 pins WebAuthn crates for passkey-backed custody. Both crates are
+# Pins WebAuthn crates for passkey-backed custody. Both crates are
 # MPL-2.0 weak copyleft, so keep the exception pinned to the exact crate names
 # instead of widening the workspace allow-list.
 name = "webauthn-rs"
@@ -168,20 +158,20 @@ name = "webauthn-rs-proto"
 allow = ["MPL-2.0"]
 
 [[licenses.exceptions]]
-# M06.P4 last-checked = 2026-05-02. webauthn-rs-core is part of the same
+# last-checked = 2026-05-02. webauthn-rs-core is part of the same
 # WebAuthn passkey custody stack as webauthn-rs and webauthn-rs-proto.
 # Keep the MPL-2.0 exception pinned to this crate name.
 name = "webauthn-rs-core"
 allow = ["MPL-2.0"]
 
 [[licenses.exceptions]]
-# M06.P4 last-checked = 2026-05-02. webauthn-attestation-ca provides
+# last-checked = 2026-05-02. webauthn-attestation-ca provides
 # passkey attestation certificate parsing for the custody stack.
 name = "webauthn-attestation-ca"
 allow = ["MPL-2.0"]
 
 [[licenses.exceptions]]
-# M06.P4 last-checked = 2026-05-02. base64urlsafedata is a WebAuthn
+# last-checked = 2026-05-02. base64urlsafedata is a WebAuthn
 # support crate pulled only through webauthn-attestation-ca.
 name = "base64urlsafedata"
 allow = ["MPL-2.0"]
@@ -215,6 +205,21 @@ allow = ["BlueOak-1.0.0"]
 name = "sized-chunks"
 allow = ["MPL-2.0"]
 
+# Duplicate-version policy.
+#
+# `multiple-versions = "deny"` is the gate: any NEW duplicated crate name fails
+# `cargo deny check bans` until it is either resolved or consciously waived
+# here. The `[[bans.skip]]` entries below are transitive ecosystem splits that
+# exist in `Cargo.lock` and cannot be flattened without forcing an upstream
+# major bump on wasmtime, tonic, the rand/getrandom family, the RustCrypto
+# stack, or alloy.
+#
+# Every entry has been verified against `cargo tree -d --workspace
+# --all-features --target all` to be a genuine current duplicate (the
+# cross-target view matters: the windows_*, jni, hermit-abi, r-efi, and redox
+# crates only duplicate on their own platforms and do not appear in a
+# host-only tree). When an upstream convergence lands, re-run that command and
+# delete the entries that no longer appear.
 [bans]
 multiple-versions = "deny"
 # cargo-deny treats local path dependencies without an explicit version as
@@ -245,14 +250,18 @@ version = "<0.4.31"
 name = "windows-sys"
 
 [[bans.skip]]
+# `mio` resolves to 0.8 (pulled by `notify` 6.x for filesystem watching) and
+# 1.x (pulled by tokio). Cannot be flattened without bumping `notify` to 7.x;
+# revisit when `notify` moves onto mio 1.x.
+name = "mio"
+
+[[bans.skip]]
 # `windows-targets` duplicates as a direct consequence of the windows-sys
-# 0.52 vs 0.59 split above. The seven `windows_<arch>_<abi>` platform
-# sub-crates (gnu/gnullvm/msvc across aarch64/i686/x86_64) also duplicate
-# in lockstep but are intentionally NOT listed individually here; the
-# ~8-entry skip cap is a deliberate smell threshold and listing them
-# would mask the real fix (forcing an ecosystem bump on windows-sys).
-# `cargo deny check bans` will continue to flag those seven; that is
-# expected until the windows-sys major split resolves upstream.
+# 0.52 vs 0.59 split above. The eight `windows_<arch>_<abi>` platform
+# sub-crates (gnu/gnullvm/msvc across aarch64/i686/x86_64, plus
+# aarch64-gnullvm) duplicate in lockstep and are listed individually at the
+# end of this block so `cargo deny check bans` stays green on every target;
+# they all clear together once the windows-sys major split resolves upstream.
 name = "windows-targets"
 
 [[bans.skip]]
@@ -274,25 +283,21 @@ name = "getrandom"
 name = "rand"
 
 [[bans.skip]]
-# M06.P4 last-checked = 2026-05-03. `syn` 1.x is a known proc-macro
+# last-checked = 2026-05-03. `syn` 1.x is a known proc-macro
 # lingerer; lockfile currently pins both 1.0.x and 2.0.x. Force-bump
 # audit when `darling` and `serde_derive` align on `syn` 2.x.
 name = "syn"
 version = "1"
 
 [[bans.skip]]
-# M06.P4 last-checked = 2026-05-03. `bitflags` 1.x is historically pinned
+# last-checked = 2026-05-03. `bitflags` 1.x is historically pinned
 # by `clap` and `wasmtime`; lockfile currently pins both 1.3.x and 2.x.
 # Remove once every upstream consumer migrates to bitflags 2.
 name = "bitflags"
 version = "1"
 
-# Current duplicate-version baseline for the blocking `cargo deny check bans`
-# CI gate. New duplicate crate names still fail because multiple-versions
-# remains `deny`; these entries document the transitive ecosystem splits that
-# already exist in the lockfile and need coordinated dependency-upgrade work.
 [[bans.skip]]
-# M06.P4 last-checked = 2026-05-02. Alloy 1.8.x and older alloy-core
+# last-checked = 2026-05-02. Alloy 1.8.x and older alloy-core
 # transitives keep two alloy-primitives majors until the web3 stack unifies.
 name = "alloy-primitives"
 
@@ -309,7 +314,7 @@ name = "alloy-sol-macro-input"
 name = "alloy-sol-types"
 
 [[bans.skip]]
-# M06.P4 last-checked = 2026-05-02. ASN.1 parser splits come from
+# last-checked = 2026-05-02. ASN.1 parser splits come from
 # sigstore, webauthn, and DCAP quote parsing stacks.
 name = "asn1-rs"
 

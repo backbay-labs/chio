@@ -224,7 +224,7 @@ audit trail; pick the one that matches the situation.
 a PR that clears `cycle_end_tag` in `releases.toml`, includes
 `mutants-gate-override` in the PR title, and merges. The lane returns to
 advisory for one cycle. CODEOWNERS routes any edit on `releases.toml` to
-`@bb-connor` (principal-engineer review), so the override cannot land
+`Chio maintainers` (principal-engineer review), so the override cannot land
 without explicit sign-off. Use this path when the project needs to
 re-enter advisory mode for an entire release cycle (e.g. a large
 refactor temporarily depresses the catch ratio while tests are
@@ -264,14 +264,14 @@ override paragraph.
 
 ### Rollback dry-run
 
-After M04.P3 activates the blocking gate, every release-cycle rollback
+Once the blocking gate is active, every release-cycle rollback
 must be rehearsed locally before merge. The dry-run command intentionally
 uses a failing mutant exit code and a one-run override reason:
 
 ```bash
 MUTANTS_PACKAGE=chio-kernel-core \
 MUTANTS_EXIT=1 \
-MUTANTS_GATE_OVERRIDE_REASON='M04.P3 rollback dry-run; followup PR #465' \
+MUTANTS_GATE_OVERRIDE_REASON='rollback dry-run; followup PR #465' \
   bash scripts/mutants-gate.sh
 ```
 

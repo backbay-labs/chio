@@ -179,7 +179,7 @@ only exercise the wrapper logic).
 
 ## Status
 
-* **Phase 17.4 (this crate)**: `@chio_remote`, `ChioActor`,
+* **Implemented**: `@chio_remote`, `ChioActor`,
   `StandingGrant`, attenuation, error propagation.
 * **Future**: `ChioServeMiddleware` for Ray Serve deployments,
   `ReceiptAggregator` for scatter/gather receipt collection,

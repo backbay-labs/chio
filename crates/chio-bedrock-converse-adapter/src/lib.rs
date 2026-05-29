@@ -1,8 +1,11 @@
-//! Provider-native scaffold for mediating Amazon Bedrock Runtime Converse
-//! and ConverseStream tool-use traffic through the Chio kernel.
+//! Mediates Amazon Bedrock Runtime Converse and ConverseStream tool-use
+//! traffic through the Chio kernel.
 //!
 //! The v1 region is restricted to [`transport::BEDROCK_REGION`] (`us-east-1`).
-//! No AWS client is constructed and no network call is made by normal builds.
+//! The live transport ([`transport::AwsSdkTransport`]) calls the Bedrock
+//! Runtime Converse operation through the AWS SDK for Rust (SigV4-signed); a
+//! recording [`transport::MockTransport`] replays scripted responses for
+//! hermetic tests.
 
 #![forbid(unsafe_code)]
 
@@ -25,7 +28,10 @@ pub use iam_principals::{
     DEFAULT_IAM_PRINCIPALS_CONFIG_PATH,
 };
 pub use native::{ToolConfig, ToolResultBlock, ToolResultStatus, ToolSpec, ToolUseBlock};
-pub use transport::{BedrockOperation, Transport, BEDROCK_CONVERSE_API_VERSION, BEDROCK_REGION};
+pub use transport::{
+    AwsSdkTransport, BedrockOperation, ConverseRequest, MockTransport, Transport, TransportError,
+    BEDROCK_CONVERSE_API_VERSION, BEDROCK_REGION,
+};
 
 /// Configuration for the Bedrock Converse adapter.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -40,7 +46,7 @@ pub struct BedrockAdapterConfig {
     pub public_key: String,
     /// Pinned upstream API surface, always [`BEDROCK_CONVERSE_API_VERSION`].
     pub api_version: String,
-    /// AWS region allowed by this scaffold, always [`BEDROCK_REGION`].
+    /// AWS region this adapter is pinned to, always [`BEDROCK_REGION`].
     pub region: String,
     /// IAM caller ARN that will populate Bedrock provenance.
     pub caller_arn: String,
@@ -222,6 +228,27 @@ impl BedrockAdapter {
         &self.transport
     }
 
+    /// Run one batch Bedrock Runtime Converse turn through the transport and
+    /// lift every `toolUse` block in the response into the shared fabric
+    /// [`ToolInvocation`](chio_tool_call_fabric::ToolInvocation) shape.
+    ///
+    /// Transport-layer failures (throttling, upstream 5xx, timeout, rejected
+    /// request) are mapped into the adapter-visible
+    /// [`chio_tool_call_fabric::ProviderError`] taxonomy and fail closed before
+    /// any invocation is produced.
+    pub async fn converse(
+        &self,
+        request: transport::ConverseRequest,
+    ) -> Result<Vec<chio_tool_call_fabric::ToolInvocation>, chio_tool_call_fabric::ProviderError>
+    {
+        let body = self
+            .transport
+            .converse(&request)
+            .await
+            .map_err(map_transport_error)?;
+        self.lift_batch(chio_tool_call_fabric::ProviderRequest(body))
+    }
+
     /// Chio owner/team label resolved from the signed IAM principal map.
     pub fn principal_owner(&self) -> Option<&str> {
         self.principal_owner.as_deref()
@@ -230,14 +257,6 @@ impl BedrockAdapter {
     /// Mapping pattern that authorized the configured IAM principal.
     pub fn matched_iam_principal_pattern(&self) -> Option<&str> {
         self.matched_iam_principal_pattern.as_deref()
-    }
-
-    /// Name of the SDK client type pulled in by the workspace pin.
-    ///
-    /// This references the SDK crate without constructing a client, so the
-    /// build proves the dependency resolves while remaining offline.
-    pub fn sdk_client_type_name() -> &'static str {
-        std::any::type_name::<aws_sdk_bedrockruntime::Client>()
     }
 }
 
@@ -251,7 +270,7 @@ impl chio_provider_adapter_core::Provider for BedrockAdapter {
     }
 }
 
-/// Adapter-local scaffold errors.
+/// Adapter-local configuration and transport errors.
 #[derive(Debug, Error)]
 pub enum BedrockAdapterError {
     #[error("bedrock converse adapter supports only us-east-1 in v1; requested {requested}")]
@@ -264,8 +283,28 @@ pub enum BedrockAdapterError {
     Transport(#[from] transport::TransportError),
     #[error(transparent)]
     IamPrincipals(#[from] iam_principals::IamPrincipalConfigError),
-    #[error("bedrock converse adapter call site is not implemented: {0}")]
-    NotImplemented(&'static str),
+}
+
+/// Map a wire-level [`transport::TransportError`] into the adapter-visible
+/// fabric [`ProviderError`](chio_tool_call_fabric::ProviderError) taxonomy.
+fn map_transport_error(error: transport::TransportError) -> chio_tool_call_fabric::ProviderError {
+    use chio_tool_call_fabric::ProviderError;
+    use transport::TransportError;
+
+    match error {
+        TransportError::RateLimited { retry_after_ms } => {
+            ProviderError::RateLimited { retry_after_ms }
+        }
+        TransportError::Timeout { ms } => ProviderError::TransportTimeout { ms },
+        TransportError::Upstream { status, message } => ProviderError::Upstream5xx {
+            status,
+            body: message,
+        },
+        TransportError::Rejected(detail)
+        | TransportError::MalformedRequest(detail)
+        | TransportError::DecodeResponse(detail) => ProviderError::Malformed(detail),
+        other => ProviderError::Malformed(other.to_string()),
+    }
 }
 
 #[cfg(test)]
@@ -347,12 +386,6 @@ mod tests {
     }
 
     #[test]
-    fn sdk_pin_is_visible_without_constructing_client() {
-        assert!(BedrockAdapter::sdk_client_type_name()
-            .contains("aws_sdk_bedrockruntime::client::Client"));
-    }
-
-    #[test]
     fn error_display_is_em_dash_free() {
         let cases = vec![
             BedrockAdapterError::UnsupportedRegion {
@@ -361,11 +394,39 @@ mod tests {
             BedrockAdapterError::UnsupportedApiVersion {
                 requested: "bedrock.converse.v2".to_string(),
             },
-            BedrockAdapterError::NotImplemented("converse lift"),
         ];
         for err in cases {
             let s = err.to_string();
             assert!(!s.contains('\u{2014}'), "em dash in {s}");
         }
+    }
+
+    #[test]
+    fn transport_error_maps_into_fabric_taxonomy() {
+        use chio_tool_call_fabric::ProviderError;
+
+        assert!(matches!(
+            map_transport_error(transport::TransportError::RateLimited {
+                retry_after_ms: 1000
+            }),
+            ProviderError::RateLimited {
+                retry_after_ms: 1000
+            }
+        ));
+        assert!(matches!(
+            map_transport_error(transport::TransportError::Timeout { ms: 30000 }),
+            ProviderError::TransportTimeout { ms: 30000 }
+        ));
+        assert!(matches!(
+            map_transport_error(transport::TransportError::Upstream {
+                status: 500,
+                message: "boom".to_string(),
+            }),
+            ProviderError::Upstream5xx { status: 500, .. }
+        ));
+        assert!(matches!(
+            map_transport_error(transport::TransportError::Rejected("bad".to_string())),
+            ProviderError::Malformed(_)
+        ));
     }
 }

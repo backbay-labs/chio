@@ -1,6 +1,6 @@
 [package]
 name = "chio-mistral-tools-adapter"
-description = "Mistral chat/completions tool-use adapter for Chio (pinned to 2025-04 chat/completions)"
+description = "Mistral chat/completions tool-use adapter for Chio: forwards requests to api.mistral.ai over HTTPS, lifts tool_calls into the kernel fabric, and gates streamed responses (pinned to the 2025-04 chat/completions API)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -21,13 +21,18 @@ mistral_api_version = "2025-04"
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
 chio-provider-adapter-core = { path = "../chio-provider-adapter-core" }
 chio-tool-call-fabric = { path = "../chio-tool-call-fabric" }
+async-trait = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+wiremock = { workspace = true }
 
 [[bench]]
 name = "verdict_latency"
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

@@ -7,9 +7,8 @@ the inner operator's ``execute()`` run unchanged and push the receipt
 id into XCom under the ``chio_receipt_id`` key. Deny verdicts raise
 :class:`airflow.exceptions.AirflowException` with a
 :class:`PermissionError` as ``__cause__`` so Airflow's scheduler marks
-the task as failed while preserving the roadmap's
-``except PermissionError`` contract for callers inspecting the cause
-chain.
+the task as failed while preserving the ``except PermissionError``
+contract for callers inspecting the cause chain.
 
 The wrapper deliberately does not try to deep-merge inner-operator
 arguments into its own :meth:`BaseOperator.__init__` signature.
@@ -52,7 +51,7 @@ XCOM_CAPABILITY_KEY = "chio_capability_id"
 
 
 class ChioOperator(BaseOperator):
-    """Wraps another operator with an Chio capability evaluation.
+    """Wraps another operator with a Chio capability evaluation.
 
     Parameters
     ----------
@@ -160,9 +159,8 @@ class ChioOperator(BaseOperator):
 
         Deny path: translates the inner :class:`PermissionError` into
         an :class:`AirflowException` whose ``__cause__`` is the
-        original :class:`PermissionError`. This matches the roadmap's
-        acceptance criterion (*Denied tasks fail with
-        PermissionError*) while still surfacing an Airflow-native
+        original :class:`PermissionError`. This preserves the
+        :class:`PermissionError` cause while surfacing an Airflow-native
         failure type to the scheduler so retry rules apply uniformly.
         """
         dag_id = _context_dag_id(context)

@@ -35,8 +35,11 @@ pub(crate) struct ContractJsonRpcTransport {
 
 impl ContractJsonRpcTransport {
     fn new(url: Url, egress_contract: &HttpEgressContract) -> Result<Self, PriceOracleError> {
+        // Policy check only; the pinned ContractDnsResolver on the client built
+        // below enforces hostname address-class at connect, so this does not
+        // resolve DNS here (a config-time lookup would be redundant + offline-fragile).
         egress_contract
-            .enforce_url_with_dns(url.as_str(), 0)
+            .enforce_url(url.as_str(), 0)
             .map_err(|err| {
                 PriceOracleError::InvalidConfiguration(format!(
                     "HttpEgressContract rejects JSON-RPC endpoint: {err}"
@@ -187,12 +190,14 @@ impl OracleBackend for ChainlinkFeedReader {
                         quote: pair.quote.clone(),
                     })?;
             let network = self.network_for_pair(pair)?;
-            // HttpEgressContract: validate the RPC endpoint URL through the
-            // typed egress contract before alloy opens an HTTP connection.
-            // The contract is non-optional in production paths; bypass is
-            // not possible without recompiling.
+            // Policy check only (scheme/authority + IP-literal class). The pinned
+            // ContractDnsResolver on the contract-backed transport enforces
+            // hostname address-class at connect, so this does not resolve DNS
+            // here (a config-time lookup would be redundant + offline-fragile).
+            // The contract is non-optional in production paths; bypass is not
+            // possible without recompiling.
             self.egress_contract
-                .enforce_url_with_dns(&network.rpc_endpoint, 0)
+                .enforce_url(&network.rpc_endpoint, 0)
                 .map_err(|err| {
                     PriceOracleError::InvalidConfiguration(format!(
                         "HttpEgressContract rejects Chainlink RPC endpoint: {err}"
@@ -463,7 +468,7 @@ mod tests {
             .test_unwrap_err("unreachable hostname RPC should fail during dispatch");
         let message = error.to_string();
         assert!(
-            message.contains("rpc.example") && message.contains("dispatch failed"),
+            message.contains("rpc.example") && message.contains("oracle backend unavailable"),
             "unexpected Chainlink hostname dispatch error: {message}"
         );
     }

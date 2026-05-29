@@ -1,7 +1,7 @@
 //! Integration tests for `WarehouseCostGuard`.
 //!
 //! Drives the guard through the `chio_kernel::Guard` trait and verifies
-//! the acceptance criteria called out in roadmap phase 7.3:
+//! the acceptance criteria:
 //!
 //! - Query estimating 50 GiB scan denied when `max_bytes_scanned = 1 GiB`.
 //! - Query estimating $0.25 allowed when `max_cost_per_query_usd = 5.00`.

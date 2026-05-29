@@ -1,57 +1,61 @@
-# Chio HITRUST MyCSF Portal Provisioning
+# Chio HITRUST MyCSF Portal Configuration (Planned)
 
-**Trajectory:** trajectory-3
-**Milestone:** M09.P1
-**Assessment:** HITRUST i1 readiness and validated assessment
-**Framework:** HITRUST CSF v11.7 i1
-**Control population:** 182 controls in scope
-**Status:** provisioned for assessor gap-assessment intake
+> **Status: internal readiness.** No MyCSF object exists. No assessor is
+> engaged. This document describes the configuration Chio intends to use
+> IF and WHEN a MyCSF object is created for a future HITRUST i1
+> engagement. Nothing here has been provisioned in any portal.
 
-## Portal object
+**Framework target:** HITRUST CSF v11.7 i1
+**Control population:** the i1 control set (count fixed by HITRUST at object creation)
 
-| Field | Value |
-|-------|-------|
-| MyCSF object label | `chio-v3.18-design-partner-i1-2026` |
+## Planned portal object
+
+The following are the values Chio would request when a MyCSF object is
+created. They are intentions, not provisioned state. No object label or
+object id has been assigned because no object exists.
+
+| Field | Planned value |
+|-------|---------------|
+| MyCSF object label | to be assigned at object creation |
 | Assessment type | HITRUST i1 Validated Assessment |
-| Scope | Chio v3.18, one healthcare design-partner tenant, one deployment environment |
+| Scope | Chio (this assessed release), one healthcare design-partner tenant, one deployment environment |
 | Assessor access role | External assessor reviewer with evidence-download access |
-| Chio evidence owner | M09 vendor-coord lane |
-| Upload model | Coarse inherited evidence first, control-specific evidence after P2 remediation |
+| Chio evidence owner | chio-security |
+| Upload model | Coarse inherited evidence first, control-specific evidence after remediation |
 
-The object intentionally excludes M07 mobile, M10 AWS Bedrock, other
-tenants, other Chio versions, and unrelated Backbay systems. If the
-assessor requests any additional scope, the row remains out of scope
-until the scope memo is amended.
+The object would intentionally exclude mobile patient-app surfaces, AWS
+Bedrock listing, MCP marketplace, other tenants, other Chio versions,
+and unrelated operator systems. Any assessor request to add scope would
+require a scope-memo amendment first.
 
-## Inherited evidence preload
+## Evidence that would be loaded
 
-The initial portal load uses coarse inherited evidence. These are not
-control-final uploads; they are intake artifacts so the assessor can
-run the P1 walkthroughs and produce the gap report.
+These are real, in-repository artifacts that exist today and would be
+offered as inherited evidence. They are not currently uploaded anywhere.
 
-| Evidence packet | Source | Control family coverage | Portal status |
-|-----------------|--------|-------------------------|---------------|
-| Protocol and capability model | `spec/PROTOCOL.md`, `spec/SECURITY.md` | Access Control, Security Policy, Communications and Operations | preloaded |
-| Session compliance certificate | `spec/COMPLIANCE-CERTIFICATE.md` | Compliance, Access Control, Operations | preloaded |
-| M01 audit-log schema and pilot audit doc | `spec/audit-log/export-schema.v1.json`, `.planning/trajectory-3/audits/M01-healthcare-pilot.md` | Operations, Audit Controls, Privacy | preloaded as inherited evidence |
-| M03 CI and provenance audit doc | `.planning/trajectory-3/audits/M03-ci-restoration.md`, `.github/workflows/**` | Development, Operations, Compliance | preloaded as inherited evidence |
-| M05 threat coverage | `docs/security/threat-coverage.md`, `spec/security/chio-threat-model.v1.json` | Risk Management, Privacy, Incident Management | preloaded as inherited evidence |
-| M06 supply-chain and formal evidence | `supply-chain/**`, `formal/**`, `.planning/trajectory-3/audits/M06-supply-chain.md` | Asset Management, Development, Business Continuity | queued pending assessor row mapping |
-| M08 independent review | `.planning/trajectory-3/audits/M08-vendor-evidence.md`, `releases/audit-reports/` | Complementary security evidence | preloaded as supplemental evidence |
+| Evidence packet | Source (exists in repo) | Control family coverage |
+|-----------------|-------------------------|-------------------------|
+| Protocol and capability model | `spec/PROTOCOL.md`, `spec/SECURITY.md` | Access Control, Security Policy, Operations |
+| Session compliance certificate | `spec/COMPLIANCE-CERTIFICATE.md` | Compliance, Access Control, Operations |
+| Audit-log schema | `spec/audit-log/export-schema.v1.json` | Operations, Audit Controls, Privacy |
+| CI and provenance | `.github/workflows/`, `.github/workflows/reproducible-build.yml` | Development, Operations, Compliance |
+| Threat coverage | `docs/security/threat-coverage.md`, `spec/security/chio-threat-model.v1.json` | Risk Management, Privacy, Incident Management |
+| Supply-chain and formal evidence | `supply-chain/`, `formal/` | Asset Management, Development |
+| Receipt redaction | `crates/chio-log-redact/src/lib.rs` | Privacy, Operations |
 
-## Access and retention controls
+## Access and retention controls (planned)
 
-- Access is limited to assessor reviewers and the Chio evidence owner.
-- Downloads are logged as evidence-retention events in the audit doc.
-- PHI-bearing samples are not uploaded during P1. The P1 gap assessment
-  uses schemas, redacted sample descriptions, and runbook references.
-- Any PHI-bearing sample required later must be loaded through the
-  BAA-approved design-partner evidence channel.
-- Evidence rows without a signed source, frozen audit doc, or explicit
-  out-of-tree owner remain `gap`.
+- Access would be limited to assessor reviewers and the Chio evidence
+  owner.
+- PHI-bearing samples would not be uploaded; intake would use schemas,
+  redacted sample descriptions, and runbook references.
+- Any PHI-bearing sample required later would be loaded through a
+  BAA-approved design-partner evidence channel, never committed to this
+  repository.
+- An evidence row without a source artifact and an owner remains a gap.
 
 ## Fail-closed intake rule
 
-If an inherited evidence packet does not map to a control family, the
-portal row stays in `gap` status. The assessor cannot rely on repository
-assertions alone; every ready row needs a source artifact and an owner.
+If an inherited evidence packet does not map to a control family, the row
+stays a `gap`. Repository assertions alone do not satisfy a control;
+every ready row needs a real source artifact and an owner.

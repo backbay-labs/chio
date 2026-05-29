@@ -18,7 +18,7 @@ name = "chio_kernel_mobile"
 # `src/lib.rs`.
 crate-type = ["staticlib", "cdylib", "rlib"]
 
-# Phase 14.3 mobile FFI adapter.
+# Mobile FFI adapter.
 #
 # This crate wraps `chio-kernel-core`'s pure-compute entry points in an
 # ergonomic Rust surface, then emits UniFFI scaffolding so Swift (iOS) and
@@ -60,6 +60,5 @@ uniffi = { version = "0.28", features = ["build"] }
 # an iOS simulator or Android emulator in CI.
 chio-kernel-core = { path = "../chio-kernel-core" }
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

@@ -3,8 +3,8 @@
 //! # Trust contract
 //!
 //! This module is a shape-only verifier for mobile attestation receipts.
-//! Wave 1A flagged it as a "permissive shell"; Wave 3.2 keeps the surface
-//! intentionally narrow so deployments do not accidentally treat
+//! It is intentionally a "permissive shell": the surface is kept narrow so
+//! deployments do not accidentally treat
 //! receipt-chain acceptance as proof of device integrity. The function is
 //! reachable through the `chio_custody_hw::verify_mobile_receipt_chain`
 //! re-export but does not feed any production capability-mint path; the

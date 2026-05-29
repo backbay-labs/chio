@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://chio.dev/spec/security/chio-threat-model.schema.json",
+  "$id": "https://chio.world/spec/security/chio-threat-model.schema.json",
   "title": "Chio Threat Model v1",
   "description": "Schema for spec/security/chio-threat-model.v1.json. Asserts the four top-level keys, the boundary.surfaces and boundary.assets enums, and the per-threat object shape (id, name, surfaces, mitigations, residualRisk, optional coveredBy, covered_by_tests, deferred_to, and coverage_state).",
   "type": "object",
@@ -126,7 +126,7 @@
         "deferred_to": {
           "type": "string",
           "minLength": 1,
-          "description": "Milestone, ticket, or trajectory carry-forward reference for pending threats that are intentionally deferred instead of counted as covered."
+          "description": "Version or ticket carry-forward reference for pending threats that are intentionally deferred instead of counted as covered."
         }
       }
     },

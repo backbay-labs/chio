@@ -1,11 +1,11 @@
-# @chio/next
+# @chio-protocol/next
 
 Next.js App Router wrappers for Chio verdict gating.
 
 ## Route Handler
 
 ```ts
-import { withChio } from "@chio/next";
+import { withChio } from "@chio-protocol/next";
 
 export const POST = withChio(async request => {
   return new Response("ok");
@@ -22,7 +22,7 @@ headers (`x-chio-verdict`, `x-chio-receipt-id`).
 
 ```ts
 "use server";
-import { withChioAction } from "@chio/next";
+import { withChioAction } from "@chio-protocol/next";
 
 export const archiveDocument = withChioAction(async (id: string) => {
   return database.archive(id);

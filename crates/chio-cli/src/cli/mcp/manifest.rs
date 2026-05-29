@@ -1,8 +1,13 @@
-// Default-deny manifest scaffold renderer for `arc mcp wrap`.
+// Default-deny manifest scaffold renderer for `chio mcp wrap`.
 //
 // Emits a TOML scaffold that the user reviews before promoting. The
 // scaffold lives at `~/.config/chio/mcp/<server-id>.toml` by convention;
 // the renderer is pure so tests can compare bytes.
+
+use super::*;
+
+use super::scope::{infer_scopes, InferredCapability, InferredScope};
+use super::wrap::{split_wrapped_command, McpWrapArgs};
 
 /// Render the inferred capability scaffold to a TOML string. The output
 /// is deterministic: tools are sorted alphabetically, scopes are emitted
@@ -87,8 +92,8 @@ pub(crate) fn load_manifest_allowlist(
 }
 
 /// Print the inferred manifest scaffold to stdout. Used by
-/// `arc mcp wrap --print-scopes`.
-fn cmd_mcp_print_scopes(args: &McpWrapArgs) -> Result<(), CliError> {
+/// `chio mcp wrap --print-scopes`.
+pub(crate) fn cmd_mcp_print_scopes(args: &McpWrapArgs) -> Result<(), CliError> {
     let tools = if let Some(fixture) = args.tools_fixture.as_ref() {
         load_tools_fixture(fixture)?
     } else {

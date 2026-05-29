@@ -277,8 +277,13 @@ impl SettlementChainConfig {
                     "invalid settlement RPC HttpEgressContract: {error}"
                 ))
             })?;
+        // Validate scheme/authority and reject IP-literal loopback/link-local
+        // hosts here. Hostname address-class is enforced at connect time by the
+        // contract's pinned ContractDnsResolver (see client_builder_with_contract),
+        // so this validation does not resolve DNS itself: a config-time lookup
+        // would be redundant, fail offline, and be open to TOCTOU drift.
         self.egress_contract
-            .enforce_url_with_dns(&self.rpc_url, 0)
+            .enforce_url(&self.rpc_url, 0)
             .map_err(|error| {
                 SettlementError::InvalidInput(format!(
                     "settlement RPC URL is not allowed by HttpEgressContract: {error}"
@@ -443,37 +448,7 @@ impl LocalDevnetDeployment {
 mod tests {
     use super::*;
 
-    trait TestResultOk<T, E> {
-        fn test_unwrap(self) -> T;
-    }
-
-    impl<T, E> TestResultOk<T, E> for Result<T, E>
-    where
-        E: std::fmt::Display,
-    {
-        fn test_unwrap(self) -> T {
-            match self {
-                Ok(value) => value,
-                Err(error) => panic!("expected Ok result: {error}"),
-            }
-        }
-    }
-
-    trait TestResultErr<T, E> {
-        fn test_unwrap_err(self) -> E;
-    }
-
-    impl<T, E> TestResultErr<T, E> for Result<T, E>
-    where
-        T: std::fmt::Debug,
-    {
-        fn test_unwrap_err(self) -> E {
-            match self {
-                Ok(value) => panic!("expected Err result, got Ok: {value:?}"),
-                Err(error) => error,
-            }
-        }
-    }
+    use chio_test_support::prelude::*;
 
     fn sample_chain_config() -> SettlementChainConfig {
         SettlementChainConfig {

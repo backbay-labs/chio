@@ -1129,7 +1129,11 @@ fn execute_bridge_mcp_tool_call_blocking_skips_receipt_write_error_for_request_c
         "mcp-cancelled-blocking",
     );
     let before_error = crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR);
-    let runtime = tokio::runtime::Builder::new_current_thread()
+    // execute_bridge_mcp_tool_call drives the kernel's sync tool-dispatch
+    // bridge, which requires a multi-thread runtime (the documented host
+    // requirement); a current-thread runtime cannot drive the async tool server.
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
         .enable_all()
         .build()
         .unwrap();
@@ -1159,7 +1163,8 @@ fn execute_bridge_mcp_tool_call_blocking_skips_receipt_write_error_for_url_elici
         "mcp-url-required-blocking",
     );
     let before_error = crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR);
-    let runtime = tokio::runtime::Builder::new_current_thread()
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
         .enable_all()
         .build()
         .unwrap();

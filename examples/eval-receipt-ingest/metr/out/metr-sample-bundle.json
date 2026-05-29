@@ -1,15 +1,15 @@
 {
   "schema": "chio.eval-report.bundle.v1",
-  "bundle_id": "urn:chio:eval-bundle:metr:p4-sample",
+  "bundle_id": "urn:chio:eval-bundle:metr:sample-v1",
   "created_at": "2026-05-02T00:00:00Z",
   "producer": {
     "name": "Chio",
-    "repository": "https://github.com/bb-connor/arc",
-    "commit": "trajectory-3-m02-p4",
-    "workflow_run_url": "https://github.com/bb-connor/arc/actions/runs/25246581763"
+    "repository": "https://github.com/backbay-labs/chio",
+    "commit": "v0.1.0",
+    "workflow_run_url": "https://github.com/backbay-labs/chio/actions/runs/25246581763"
   },
   "eval_run": {
-    "run_id": "metr-p4-vivaria-export",
+    "run_id": "metr-vivaria-export-v1",
     "partner": "METR",
     "partner_slug": "metr",
     "pipeline": "vivaria-trace-postprocess",
@@ -60,7 +60,7 @@
     }
   ],
   "partner_review": {
-    "feedback_ref": "M02.P4 METR pair-run 2026-05-02",
+    "feedback_ref": "METR pair-run 2026-05-02",
     "review_window_days": 7,
     "reviewer_role": "partner technical reviewer",
     "disposition": "accepted-with-notes"
@@ -69,7 +69,7 @@
     {
       "kind": "test-sha256",
       "key_id": "local-test-cosign-oidc",
-      "signature": "a9db1fd48789231a4cda56003d22444181e127c5fce76f9cb5e2cf8966d84bdb",
+      "signature": "e0e5d5a24dfd2e1fb04ca2c7ab3526304e8ab7508add3e0f832a8ffcc18f0e48",
       "signed_payload": "bundle_without_signatures:rfc8785"
     }
   ]

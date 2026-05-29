@@ -151,8 +151,8 @@ class TestProvisionCapability:
         # below in acceptance.)
 
     async def test_acceptance_allows_in_scope_denies_out_of_scope(self) -> None:
-        """Roadmap acceptance: an AgentRunner with ChioFunctionTool evaluates
-        each tool dispatch through the sidecar."""
+        """An AgentRunner with ChioFunctionTool evaluates each tool
+        dispatch through the sidecar."""
         chio = _instrumented_client()
 
         search = ChioFunctionTool(

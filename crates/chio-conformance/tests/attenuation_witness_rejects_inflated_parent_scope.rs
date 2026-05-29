@@ -1,4 +1,4 @@
-//! W1.1 negative conformance test: chain-binding rejects inflated
+//! Negative conformance test: chain-binding rejects inflated
 //! `attenuation_proof.parent_scope_hash`.
 //!
 //! Threat: an issuer with true authority `scope_X` mints a token whose

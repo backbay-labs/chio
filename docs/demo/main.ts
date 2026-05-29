@@ -1,7 +1,7 @@
 /*
- * Chio browser-SDK M04 verify demo.
+ * Chio browser-SDK verify demo.
  *
- * Loads a stable, public-key-only receipt fixture from the M04 corpus
+ * Loads a stable, public-key-only receipt fixture
  * (tests/bindings/vectors/receipt/v1.json, case `allow_receipt`) and runs
  * `verify_receipt` from `@chio-protocol/browser` directly in the page.
  *
@@ -11,7 +11,7 @@
  * and a clear "wasm not built" notice instead of crashing the page.
  */
 
-import fixture from './fixtures/m04-allow-receipt.json';
+import fixture from './fixtures/allow-receipt.json';
 
 interface VerifyReceiptResult {
   ok: boolean;

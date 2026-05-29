@@ -40,8 +40,8 @@ BASE = "http://127.0.0.1:9090"
 def _make_token_dict() -> dict:
     return {
         "id": "tok-1",
-        "issuer": "aa",
-        "subject": "bb",
+        "issuer": "a" * 64,
+        "subject": "b" * 64,
         "scope": {
             "grants": [
                 {
@@ -53,34 +53,34 @@ def _make_token_dict() -> dict:
         },
         "issued_at": 100,
         "expires_at": 200,
-        "signature": "sig",
+        "signature": "c" * 128,
     }
 
 
 def _make_receipt_dict() -> dict:
     return {
-        "id": "r-1",
+        "id": "1" * 64,
         "timestamp": 1700000000,
         "capability_id": "cap-1",
         "tool_server": "srv",
         "tool_name": "read",
-        "action": {"parameters": {}, "parameter_hash": "abc"},
+        "action": {"parameters": {}, "parameter_hash": "2" * 64},
         "decision": {"verdict": "allow"},
         "receipt_kind": "mediated_decision",
         "boundary_class": "prevent",
         "tool_origin": "caller_executed",
         "redaction_mode": "none",
-        "content_hash": "deadbeef",
-        "policy_hash": "cafe",
+        "content_hash": "3" * 64,
+        "policy_hash": "4" * 64,
         "trust_level": "mediated",
-        "kernel_key": "kk",
-        "signature": "ss",
+        "kernel_key": "5" * 64,
+        "signature": "6" * 128,
     }
 
 
 def _make_http_receipt_dict() -> dict:
     return {
-        "id": "hr-1",
+        "id": "7" * 64,
         "request_id": "req-1",
         "route_pattern": "/pets/{petId}",
         "method": "GET",
@@ -93,10 +93,10 @@ def _make_http_receipt_dict() -> dict:
         "trust_level": "mediated",
         "response_status": 200,
         "timestamp": 1700000000,
-        "content_hash": "x",
-        "policy_hash": "y",
-        "kernel_key": "k",
-        "signature": "s",
+        "content_hash": "8" * 64,
+        "policy_hash": "9" * 64,
+        "kernel_key": "a" * 64,
+        "signature": "b" * 128,
     }
 
 
@@ -166,7 +166,7 @@ class TestCreateCapability:
                     ToolGrant(
                         server_id="s",
                         tool_name="t",
-                        operations=[Operation.INVOKE],
+                        operations=[Operation.invoke],
                     )
                 ]
             )
@@ -195,7 +195,7 @@ class TestAttenuateCapability:
                 ToolGrant(
                     server_id="s",
                     tool_name="t",
-                    operations=[Operation.INVOKE],
+                    operations=[Operation.invoke],
                 )
             ]
         )
@@ -234,6 +234,19 @@ class TestVerifyReceipt:
             receipt = ChioReceipt.model_validate(_make_receipt_dict())
             assert await client.verify_receipt(receipt) is False
 
+    @respx.mock
+    async def test_untrusted_signer_report_is_not_authoritative(self) -> None:
+        report = _verify_report(True)
+        report["signer_trusted"] = False
+        report["authorized"] = False
+        report["ok"] = False
+        respx.post(f"{BASE}/v1/receipts/verify").mock(
+            return_value=httpx.Response(200, json=report)
+        )
+        async with ChioClient(BASE) as client:
+            receipt = ChioReceipt.model_validate(_make_receipt_dict())
+            assert await client.verify_receipt(receipt) is False
+
 
 class TestVerifyHttpReceipt:
     @respx.mock
@@ -265,7 +278,7 @@ class TestReceiptChain:
         r1_hash = _sha256_hex(r1_canonical)
 
         r2_dict = _make_receipt_dict()
-        r2_dict["id"] = "r-2"
+        r2_dict["id"] = "a" * 64
         r2_dict["content_hash"] = r1_hash
         r2 = ChioReceipt.model_validate(r2_dict)
 
@@ -275,8 +288,8 @@ class TestReceiptChain:
     async def test_broken_chain(self) -> None:
         r1 = ChioReceipt.model_validate(_make_receipt_dict())
         r2_dict = _make_receipt_dict()
-        r2_dict["id"] = "r-2"
-        r2_dict["content_hash"] = "wrong"
+        r2_dict["id"] = "a" * 64
+        r2_dict["content_hash"] = "b" * 64
         r2 = ChioReceipt.model_validate(r2_dict)
 
         async with ChioClient(BASE) as client:
@@ -305,7 +318,8 @@ class TestEvaluateToolCall:
                 parameters={"path": "/tmp"},
             )
             assert isinstance(receipt, ChioReceipt)
-            assert receipt.is_allowed
+            assert receipt.decision is not None
+            assert receipt.decision.root.verdict == "allow"
 
     @respx.mock
     async def test_evaluate_rejects_unverified_receipt(self) -> None:

@@ -29,7 +29,10 @@ use serde_json::{json, Value};
 use thiserror::Error;
 
 pub use native::{FunctionCallPart, FunctionResponsePart};
-pub use transport::{Transport, GEMINI_API_VERSION, GEMINI_GENERATE_CONTENT_HOST};
+pub use transport::{
+    GeminiTransport, Transport, GEMINI_API_KEY_ENV, GEMINI_API_VERSION,
+    GEMINI_GENERATE_CONTENT_HOST,
+};
 
 /// Configuration for the Gemini adapter.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -44,10 +47,8 @@ pub struct GeminiAdapterConfig {
     pub public_key: String,
     /// Pinned upstream API version, always [`GEMINI_API_VERSION`].
     pub api_version: String,
-    /// Google Cloud project identifier (populates the AnthropicWorkspace
-    /// principal slot via reuse; Gemini does not yet have its own variant
-    /// in the fabric ProviderId enum's Principal taxonomy, so we reuse the
-    /// generic OpenAi org slot here).
+    /// Google Cloud project identifier that scopes Gemini tool calls. Stamped
+    /// into the [`Principal::GeminiProject`] provenance slot.
     pub project_id: String,
 }
 
@@ -105,6 +106,50 @@ impl GeminiAdapter {
         &self.transport
     }
 
+    /// Proxy a non-streaming Gemini `generateContent` request and lift the
+    /// response.
+    ///
+    /// `request_body` is the native Gemini `generateContent` JSON (`contents`,
+    /// `tools.functionDeclarations`). The transport POSTs it to
+    /// `/v1beta/models/<model>:generateContent` with the API key carried as the
+    /// `?key=` query parameter, and the buffered response is fed straight into
+    /// [`lift_batch`](Self::lift_batch). Transport-layer failures are mapped into
+    /// the [`ProviderError`] taxonomy so a failed request never reads as an empty
+    /// success.
+    pub async fn generate_content(
+        &self,
+        model: &str,
+        request_body: &[u8],
+    ) -> Result<Vec<ToolInvocation>, ProviderError> {
+        let response = self
+            .transport
+            .send_generate_content(model, request_body)
+            .await?;
+        self.lift_batch(response)
+    }
+
+    /// Proxy a streaming Gemini `streamGenerateContent` request and gate the SSE
+    /// response.
+    ///
+    /// `request_body` is the native Gemini `generateContent` JSON. The buffered
+    /// SSE body is gated frame-by-frame through `evaluate` by
+    /// [`gate_sse_stream`](Self::gate_sse_stream) before any bytes are forwarded.
+    pub async fn generate_content_stream<F>(
+        &self,
+        model: &str,
+        request_body: &[u8],
+        evaluate: F,
+    ) -> Result<streaming::GatedSseStream, ProviderError>
+    where
+        F: FnMut(&ToolInvocation) -> Result<VerdictResult, ProviderError>,
+    {
+        let body = self
+            .transport
+            .send_generate_content_stream(model, request_body)
+            .await?;
+        self.gate_sse_stream(&body, evaluate)
+    }
+
     /// Lift every Gemini `functionCall` part in a non-streaming
     /// `generateContent` response payload.
     pub fn lift_batch(&self, raw: ProviderRequest) -> Result<Vec<ToolInvocation>, ProviderError> {
@@ -139,8 +184,8 @@ impl GeminiAdapter {
                 provider: ProviderId::Gemini,
                 request_id: format!("gemini_{}_call", call.name),
                 api_version: self.config.api_version.clone(),
-                principal: Principal::OpenAiOrg {
-                    org_id: self.config.project_id.clone(),
+                principal: Principal::GeminiProject {
+                    project_id: self.config.project_id.clone(),
                 },
                 received_at: SystemTime::now(),
             },
@@ -183,12 +228,12 @@ impl chio_provider_adapter_core::Provider for GeminiAdapter {
 /// Adapter-local error taxonomy.
 #[derive(Debug, Error)]
 pub enum GeminiAdapterError {
-    /// Placeholder for call sites not yet implemented.
-    #[error("gemini adapter call site is not implemented: {0}")]
-    NotImplemented(&'static str),
     /// Bubbled up from the transport layer.
     #[error(transparent)]
     Transport(#[from] transport::TransportError),
+    /// A provider-layer failure surfaced while proxying a request.
+    #[error(transparent)]
+    Provider(#[from] ProviderError),
 }
 
 fn function_calls(raw: ProviderRequest) -> Result<Vec<FunctionCallPart>, ProviderError> {
@@ -387,10 +432,91 @@ mod tests {
 
     #[test]
     fn error_display_is_em_dash_free() {
-        let cases = vec![GeminiAdapterError::NotImplemented("generateContent")];
+        let cases = vec![
+            GeminiAdapterError::Transport(transport::TransportError::MissingApiKey),
+            GeminiAdapterError::Provider(ProviderError::Malformed("bad".to_string())),
+        ];
         for err in cases {
             let s = err.to_string();
             assert!(!s.contains('\u{2014}'));
         }
+    }
+
+    #[tokio::test]
+    async fn generate_content_proxies_request_and_lifts_tool_calls() {
+        let cfg = config();
+        let mock = Arc::new(transport::MockTransport::new());
+        mock.push_generate_content_response(
+            serde_json::to_vec(&json!({
+                "candidates": [{
+                    "content": {
+                        "parts": [
+                            {"functionCall": {"name": "get_weather", "args": {"city": "Paris"}}}
+                        ]
+                    }
+                }]
+            }))
+            .unwrap(),
+        );
+        let adapter = GeminiAdapter::new(cfg, mock.clone());
+        let request = b"{\"contents\":[],\"tools\":[]}";
+        let invocations = adapter
+            .generate_content("gemini-1.5-pro", request)
+            .await
+            .unwrap();
+        assert_eq!(invocations.len(), 1);
+        assert_eq!(invocations[0].tool_name, "get_weather");
+        let calls = mock.calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].0, "/v1beta/models/gemini-1.5-pro:generateContent");
+        assert_eq!(calls[0].1, request);
+    }
+
+    #[tokio::test]
+    async fn generate_content_propagates_upstream_status_error() {
+        let cfg = config();
+        let mock = transport::MockTransport::new();
+        mock.push_error(
+            chio_provider_adapter_core::http::HttpTransportError::Status {
+                code: 503,
+                body: "service unavailable".to_string(),
+            },
+        );
+        let adapter = GeminiAdapter::new(cfg, Arc::new(mock));
+        let err = adapter
+            .generate_content("gemini-1.5-pro", b"{}")
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            ProviderError::Upstream5xx { status: 503, .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn generate_content_stream_gates_function_call_frames() {
+        let cfg = config();
+        let mock = Arc::new(transport::MockTransport::new());
+        let sse = "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"name\":\"get_weather\",\"args\":{\"city\":\"Paris\"}}}]}}]}\n\n";
+        mock.push_generate_content_response(sse.as_bytes().to_vec());
+        let adapter = GeminiAdapter::new(cfg, mock.clone());
+        let verdict = VerdictResult::Allow {
+            redactions: vec![],
+            receipt_id: chio_tool_call_fabric::ReceiptId("rcpt_stream".into()),
+        };
+        let gated = adapter
+            .generate_content_stream("gemini-1.5-pro", b"{\"contents\":[]}", |_invocation| {
+                Ok(verdict.clone())
+            })
+            .await
+            .unwrap();
+        assert_eq!(gated.invocations.len(), 1);
+        assert_eq!(gated.invocations[0].tool_name, "get_weather");
+        let calls = mock.calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(
+            calls[0].0,
+            "/v1beta/models/gemini-1.5-pro:streamGenerateContent?alt=sse"
+        );
     }
 }

@@ -31,6 +31,11 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
+# Each case below sets CI explicitly when it needs it (case 9 opts into
+# CI=true to assert the dry-run refusal). Neutralize any ambient CI value so
+# the local-mode dry-run pass-cases are not tripped by the runner's CI=true.
+unset CI
+
 MODEL="$TMP_DIR/threat-model.json"
 EVIDENCE_DIR="$TMP_DIR/evidence"
 STUBS="$TMP_DIR/stubs"

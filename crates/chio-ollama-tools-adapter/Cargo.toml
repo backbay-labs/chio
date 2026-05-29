@@ -1,6 +1,6 @@
 [package]
 name = "chio-ollama-tools-adapter"
-description = "Ollama /api/chat tool-use adapter for Chio (pinned to /api/chat 2025-04)"
+description = "Ollama /api/chat tool-use adapter for Chio, pinned to the 2025-04 API"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -25,9 +25,11 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
 [[bench]]
 name = "verdict_latency"
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

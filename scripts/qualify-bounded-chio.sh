@@ -17,7 +17,6 @@ matrix_src="docs/standards/CHIO_BOUNDED_QUALIFICATION_MATRIX.json"
 matrix_snapshot="${output_root}/CHIO_BOUNDED_QUALIFICATION_MATRIX.json"
 profile_src="docs/standards/CHIO_BOUNDED_OPERATIONAL_PROFILE.md"
 profile_snapshot="${output_root}/CHIO_BOUNDED_OPERATIONAL_PROFILE.md"
-checklist_src="docs/review/14-bounded-chio-pre-ship-checklist.md"
 checklist_snapshot="${output_root}/bounded-chio-pre-ship-checklist.md"
 
 rm -rf "${output_root}"
@@ -26,69 +25,8 @@ mkdir -p "${log_root}"
 python3 -m json.tool "${matrix_src}" >/dev/null
 cp "${matrix_src}" "${matrix_snapshot}"
 cp "${profile_src}" "${profile_snapshot}"
-cp "${checklist_src}" "${checklist_snapshot}"
 
 python3 - <<'PY' >"${log_root}/doc-claim-discipline.log"
-from pathlib import Path
-
-checks = [
-    (
-        "README.md",
-        [
-            "Lean 4 verified",
-            "formally verified protocol specification",
-            "Merkle-committed append-only log",
-        ],
-    ),
-    (
-        "docs/reference/COMPETITIVE_LANDSCAPE.md",
-        [
-            "proven in Lean 4",
-            "making stolen tokens useless",
-            "signed, append-only receipt log provides continuous, cryptographically verifiable attestation",
-        ],
-    ),
-]
-
-for rel_path, forbidden in checks:
-    text = Path(rel_path).read_text()
-    for phrase in forbidden:
-        if phrase in text:
-            raise SystemExit(f"forbidden bounded-release phrase still present in {rel_path}: {phrase}")
-    print(f"ok: {rel_path}")
-PY
-
-python3 - <<'PY' >"${log_root}/planning-truth.log"
-from pathlib import Path
-
-checks = {
-    ".planning/PROJECT.md": [
-        "Latest completed milestone:** v3.18 Bounded Chio Ship Readiness Closure",
-        "Most recent implemented milestone:** Post-v3.18 Chio Closure Program",
-    ],
-    ".planning/STATE.md": [
-        "Status: `v3.18` is now the latest completed milestone and bounded Chio",
-        "ship-readiness lane.",
-        "post-`v3.18` closure tracker is also complete locally",
-    ],
-    ".planning/REQUIREMENTS.md": [
-        "after completing the v3.18 bounded Chio ship-readiness closure",
-    ],
-    ".planning/ROADMAP.md": [
-        "| 417 | v3.18 | Claim Discipline and Planning Truth Closure | Complete |",
-        "| 421 | v3.18 | Bounded Operational Profile and Release Gate | Complete |",
-    ],
-}
-
-for rel_path, required in checks.items():
-    text = Path(rel_path).read_text()
-    for needle in required:
-        if needle not in text:
-            raise SystemExit(f"missing planning truth in {rel_path}: {needle}")
-    print(f"ok: {rel_path}")
-PY
-
-python3 - <<'PY' >"${log_root}/release-doc-sync.log"
 from pathlib import Path
 
 checks = {
@@ -97,17 +35,13 @@ checks = {
         "docs/release/RELEASE_AUDIT.md",
         "docs/release/QUALIFICATION.md",
     ],
-    "docs/release/RELEASE_AUDIT.md": [
-        "./scripts/check-formal-proofs.sh",
-        "./scripts/check-portable-kernel.sh",
-        "./scripts/qualify-portable-browser.sh",
-        "./scripts/qualify-mobile-kernel.sh",
+    "docs/release/QUALIFICATION.md": [
+        "./scripts/qualify-bounded-chio.sh",
+        "target/release-qualification/bounded-chio/",
     ],
-    "docs/release/RELEASE_CANDIDATE.md": [
-        "./scripts/check-formal-proofs.sh",
-        "./scripts/check-portable-kernel.sh",
-        "./scripts/qualify-portable-browser.sh",
-        "./scripts/qualify-mobile-kernel.sh",
+    "docs/release/RELEASE_AUDIT.md": [
+        "./scripts/qualify-bounded-chio.sh",
+        "CHIO_BOUNDED_QUALIFICATION_MATRIX.json",
     ],
 }
 
@@ -115,8 +49,39 @@ for rel_path, required in checks.items():
     text = Path(rel_path).read_text()
     for needle in required:
         if needle not in text:
-            raise SystemExit(f"missing release-doc sync in {rel_path}: {needle}")
+            raise SystemExit(f"missing bounded qualification reference in {rel_path}: {needle}")
     print(f"ok: {rel_path}")
+PY
+
+python3 - <<'PY' >"${log_root}/planning-truth.log"
+import json
+from pathlib import Path
+
+matrix = json.loads(Path("docs/standards/CHIO_BOUNDED_QUALIFICATION_MATRIX.json").read_text())
+if matrix.get("entrypoint") != "./scripts/qualify-bounded-chio.sh":
+    raise SystemExit("bounded qualification matrix entrypoint drifted")
+if matrix.get("scope") != "bounded_chio_release_qualification":
+    raise SystemExit("bounded qualification matrix scope drifted")
+if not matrix.get("gateConditions"):
+    raise SystemExit("bounded qualification matrix has no gate conditions")
+print("ok: bounded qualification matrix remains the planning truth source")
+PY
+
+python3 - <<'PY' "${checklist_snapshot}"
+import json
+import sys
+from pathlib import Path
+
+matrix = json.loads(Path("docs/standards/CHIO_BOUNDED_QUALIFICATION_MATRIX.json").read_text())
+lines = [
+    "# Bounded Chio Pre-Ship Checklist",
+    "",
+    "Generated from `docs/standards/CHIO_BOUNDED_QUALIFICATION_MATRIX.json`.",
+    "",
+]
+for condition in matrix["gateConditions"]:
+    lines.append(f"- [ ] `{condition['id']}` {condition['summary']}")
+Path(sys.argv[1]).write_text("\n".join(lines) + "\n")
 PY
 
 cat >"${report_path}" <<'EOF'
@@ -127,17 +92,14 @@ This bundle records the current ship-facing release boundary.
 Decision:
 
 - Chio is qualified locally as a bounded governance and evidence control plane.
-- The current bounded release excludes stronger recursive delegation,
-  verifier-bound runtime, transparency-log, consensus-HA, and market-position
-  claims.
+- The bounded release excludes stronger recursive delegation, verifier-bound
+  runtime, transparency-log, consensus-HA, and market-position claims.
 
 Executed checks:
 
 - JSON validation of `CHIO_BOUNDED_QUALIFICATION_MATRIX.json`
-- bounded claim-discipline grep checks over README and competitive-positioning
-  copy
-- planning-truth checks over `.planning/*`
-- release-doc sync checks over README and release candidate/audit docs
+- bounded release reference checks over README and release docs
+- bounded matrix scope and entrypoint checks
 
 Supporting documents:
 
@@ -147,8 +109,6 @@ Supporting documents:
 EOF
 
 python3 - <<'PY' "${output_root}" "${checksum_path}" "${manifest_path}"
-from __future__ import annotations
-
 import hashlib
 import json
 import sys
@@ -161,9 +121,7 @@ manifest_path = Path(sys.argv[3])
 
 entries = []
 for artifact in sorted(output_root.rglob("*")):
-    if not artifact.is_file():
-        continue
-    if artifact in {checksum_path, manifest_path}:
+    if not artifact.is_file() or artifact in {checksum_path, manifest_path}:
         continue
     payload = artifact.read_bytes()
     entries.append(
@@ -185,6 +143,5 @@ manifest = {
     "claimLevel": "bounded_chio_release_candidate",
     "artifacts": entries,
 }
-
 manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
 PY

@@ -1,9 +1,7 @@
 """Tests for :func:`chio_langgraph.chio_approval_node`.
 
-Roadmap acceptance (phase 10.3): *``chio_approval_node`` pauses the graph
-via ``interrupt()``, waits for human approval, and resumes.*
-
-The tests exercise:
+``chio_approval_node`` pauses the graph via ``interrupt()``, waits for
+human approval, and resumes. The tests exercise:
 
 * Approved resume: node body runs, returns the final state update.
 * Denied resume: wrapper raises :class:`ChioLangGraphError` carrying the

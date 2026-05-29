@@ -1,7 +1,6 @@
 //! SpiderSense embedding detector - cosine-similarity anomaly detection.
 //!
-//! Roadmap phase 5.4.  Ported from ClawdStrike's `spider_sense.rs` sync
-//! detector and wrapped in Chio's synchronous [`chio_kernel::Guard`] trait.
+//! Wrapped in Chio's synchronous [`chio_kernel::Guard`] trait.
 //!
 //! The guard compares a per-request embedding vector against a pre-loaded
 //! pattern database of known-threat embeddings using cosine similarity.
@@ -278,7 +277,6 @@ impl SpiderSenseGuard {
                 // work, because the DB is typically small.  Break only
                 // when the scan has observed at least top_k entries; we
                 // still want the maximum across the full DB.
-                // (Equivalent to Clawdstrike's sort+truncate.)
             }
         }
         best

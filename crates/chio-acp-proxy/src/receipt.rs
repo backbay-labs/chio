@@ -263,12 +263,12 @@ fn tool_call_update_event_canonical_hash_input(
 /// # Wire-format compatibility note
 ///
 /// This canonicalization is INTENTIONALLY not backward-compatible with the
-/// prior `serde_json::to_string(event)` digest. The Chio v1 collapse
-/// re-grounded the receipt wire format on the canonical JSON pipeline so
-/// receipts produced by independent implementations agree on a single
-/// content hash for the same logical event. Previously stored receipts
-/// computed with the v0 (non-canonical) digest will therefore not match
-/// a freshly computed v1 digest of the same event payload, and
+/// prior `serde_json::to_string(event)` digest. The v1 receipt wire format
+/// is grounded on the canonical JSON pipeline so receipts produced by
+/// independent implementations agree on a single content hash for the same
+/// logical event. Previously stored receipts computed with the v0
+/// (non-canonical) digest will therefore not match a freshly computed v1
+/// digest of the same event payload, and
 /// `content_hash`-based deduplication or comparability across the
 /// v0/v1 boundary is not supported by design. v0 stores must be
 /// rebuilt or migrated by re-deriving content hashes from the

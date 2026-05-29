@@ -1,4 +1,4 @@
-//! Phase 19.3 -- HTTP integration tests for `GET /regulatory/receipts`.
+//! HTTP integration tests for `GET /regulatory/receipts`.
 //!
 //! Exercise the wire contract:
 //!   1. Returned envelope verifies against the kernel public key.

@@ -65,41 +65,51 @@ fn signed_mint_yields_non_empty_signature_under_classical_floor() {
     };
     assert!(
         !resp.capability.signature.is_empty(),
-        "P2 signed capability MUST carry a non-empty signature"
+        "a signed capability MUST carry a non-empty signature"
     );
 }
 
 #[test]
-fn unsigned_envelope_is_byte_identical_under_classical_floor() {
-    // Mint twice: once unsigned (legacy stub) and once signed. The
-    // canonical-JSON encoding of the envelope with an empty signature
-    // slot must match across the two paths byte-for-byte. This is the
-    // observable form of the byte-identity invariant.
-    let unsigned_svc = IssuerService::new(AUDIENCE);
-    let backend: Arc<dyn SigningBackend> = Arc::new(ed25519_backend(11));
-    let signed_svc = IssuerService::with_signer(AUDIENCE, backend);
+fn signing_envelope_is_byte_identical_across_signers() {
+    // Mint the same request under two different signers. The
+    // canonical-JSON encoding of the envelope with the signature slot
+    // cleared (`signing_message`) must match byte-for-byte regardless of
+    // which key signed it: only the `signature` field differs across
+    // backends. This is the observable form of the byte-identity
+    // invariant that `crypto_floor=allow_classical` relies on.
+    let svc_a = IssuerService::with_signer(AUDIENCE, Arc::new(ed25519_backend(11)));
+    let svc_b = IssuerService::with_signer(AUDIENCE, Arc::new(ed25519_backend(99)));
     let req = fixture_request(AUDIENCE, "n2");
 
-    let unsigned = match unsigned_svc.mint_capability(&fixture_assertion(), &req, fixed_now()) {
+    let signed_a = match svc_a.mint_capability(&fixture_assertion(), &req, fixed_now()) {
         Ok(r) => r,
-        Err(e) => panic!("unsigned mint must succeed: {e}"),
+        Err(e) => panic!("mint under signer A must succeed: {e}"),
     };
-    let signed = match signed_svc.mint_capability(&fixture_assertion(), &req, fixed_now()) {
+    let signed_b = match svc_b.mint_capability(&fixture_assertion(), &req, fixed_now()) {
         Ok(r) => r,
-        Err(e) => panic!("signed mint must succeed: {e}"),
+        Err(e) => panic!("mint under signer B must succeed: {e}"),
     };
 
-    let lhs = match signing_message(&unsigned.capability) {
+    // Both are signed (the issuer never emits an unsigned capability),
+    // and the two signatures differ because the keys differ.
+    assert!(!signed_a.capability.signature.is_empty());
+    assert!(!signed_b.capability.signature.is_empty());
+    assert_ne!(
+        signed_a.capability.signature, signed_b.capability.signature,
+        "distinct signing keys must produce distinct signatures"
+    );
+
+    let lhs = match signing_message(&signed_a.capability) {
         Ok(b) => b,
         Err(e) => panic!("signing_message must encode: {e}"),
     };
-    let rhs = match signing_message(&signed.capability) {
+    let rhs = match signing_message(&signed_b.capability) {
         Ok(b) => b,
         Err(e) => panic!("signing_message must encode: {e}"),
     };
     assert_eq!(
         lhs, rhs,
-        "envelope with empty signature must be byte-identical across signed/unsigned mint paths"
+        "envelope with the signature slot cleared must be byte-identical across signers"
     );
 }
 

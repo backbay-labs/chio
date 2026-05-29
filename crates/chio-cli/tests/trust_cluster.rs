@@ -671,7 +671,7 @@ fn wait_for_cluster_leader_convergence(
 /// The internal cluster status endpoint can transiently fail with HTTP errors during cluster
 /// state transitions (initial bring-up, leader failover, follower restart) even when the node's
 /// `/health` endpoint is already up. Single-shot callers that immediately panic on `None` are
-/// the source of intermittent flakes (see the `initial cluster status` failure on PR #528 CI).
+/// the source of intermittent flakes.
 /// This helper bounds the wait with a deadline and returns the first non-`None` snapshot.
 fn wait_for_internal_cluster_status(
     client: &Client,
@@ -1114,9 +1114,12 @@ fn run_trust_control_cluster_proving_scenario(run_index: usize, run_total: usize
         },
     );
 
-    let leader_tool_receipt =
-        serde_json::to_value(sample_receipt("cluster-tool-leader", "cap-tool-leader"))
-            .expect("tool receipt json");
+    // `ChioReceipt::sign` overwrites the supplied id with the canonical content hash
+    // (`chio_receipt_id`) and folds the input string in as a signing nonce. Match
+    // visibility against the stored id, not the nonce.
+    let leader_tool = sample_receipt("cluster-tool-leader", "cap-tool-leader");
+    let leader_tool_id = leader_tool.id.clone();
+    let leader_tool_receipt = serde_json::to_value(&leader_tool).expect("tool receipt json");
     let stored_leader_tool = post_json(
         &client,
         &format!("{leader_url}/v1/receipts/tools"),
@@ -1130,12 +1133,12 @@ fn run_trust_control_cluster_proving_scenario(run_index: usize, run_total: usize
         &leader_url,
         service_token,
         "cap-tool-leader",
-        "cluster-tool-leader",
+        &leader_tool_id,
     );
 
-    let follower_tool_receipt =
-        serde_json::to_value(sample_receipt("cluster-tool-follower", "cap-tool-follower"))
-            .expect("tool receipt json");
+    let follower_tool = sample_receipt("cluster-tool-follower", "cap-tool-follower");
+    let follower_tool_id = follower_tool.id.clone();
+    let follower_tool_receipt = serde_json::to_value(&follower_tool).expect("tool receipt json");
     let stored_follower_tool = post_json(
         &client,
         &format!("{follower_url}/v1/receipts/tools"),
@@ -1149,7 +1152,7 @@ fn run_trust_control_cluster_proving_scenario(run_index: usize, run_total: usize
         &leader_url,
         service_token,
         "cap-tool-follower",
-        "cluster-tool-follower",
+        &follower_tool_id,
     );
 
     wait_until("tool receipt replication", Duration::from_secs(90), || {
@@ -1540,7 +1543,7 @@ fn trust_control_cluster_replicates_state_and_fails_closed_without_quorum() {
 }
 
 #[test]
-#[ignore = "qualification lane exercises trust-control runtime assurance issuance"]
+#[ignore = "slow scenario: exercises trust-control runtime assurance issuance"]
 fn trust_cluster_runtime_assurance_policy_gates_capability_issuance() {
     let _test_lock = trust_cluster_test_lock();
     let dir = unique_test_dir();
@@ -3044,10 +3047,14 @@ fn trust_control_cluster_multi_region_partition_qualification() {
             );
         }
 
-        let receipt_id = format!("multi-region-heal-{index}");
+        let receipt_nonce = format!("multi-region-heal-{index}");
         let capability_id = format!("cap-multi-region-heal-{index}");
-        let receipt = serde_json::to_value(sample_receipt(&receipt_id, &capability_id))
-            .expect("receipt json");
+        let signed_receipt = sample_receipt(&receipt_nonce, &capability_id);
+        // `ChioReceipt::sign` overwrites the supplied id with the canonical content
+        // hash (`chio_receipt_id`) and re-purposes the input string as a signing
+        // nonce. Match visibility against the stored id, not the nonce.
+        let receipt_id = signed_receipt.id.clone();
+        let receipt = serde_json::to_value(&signed_receipt).expect("receipt json");
         let stored = post_json(
             &client,
             &format!("{url_b}/v1/receipts/tools"),
@@ -3134,7 +3141,7 @@ fn trust_control_cluster_multi_region_partition_qualification() {
 }
 
 #[test]
-#[ignore = "qualification lane repeats the full failover scenario"]
+#[ignore = "slow scenario: repeats the full failover scenario"]
 fn trust_control_cluster_repeat_run_qualification() {
     let _test_lock = trust_cluster_test_lock();
     for run_index in 1..=TRUST_CLUSTER_QUALIFICATION_RUNS {

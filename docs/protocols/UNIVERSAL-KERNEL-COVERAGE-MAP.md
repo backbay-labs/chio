@@ -354,7 +354,7 @@ patterns. Any new integration should identify which pattern it uses:
 ### Pattern 1: Tool Execution Wrapper
 **Used by:** Agent frameworks (CrewAI, AutoGen, LlamaIndex, Vercel AI SDK),
   data layer (SQL, vector DB), code execution (E2B, Modal)
-**How:** Wrap the framework's tool/function execution with an Chio
+**How:** Wrap the framework's tool/function execution with a Chio
   `evaluate()` call before and `record()` call after.
 **Chio artifact:** `chio-{framework}` SDK package.
 

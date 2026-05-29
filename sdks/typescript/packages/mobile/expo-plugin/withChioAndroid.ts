@@ -19,7 +19,7 @@ export const withChioAndroid: ConfigPlugin = (config) => {
   return withProjectBuildGradle(withManifest, (mod) => {
     if (!mod.modResults.contents.includes('chio-kernel-mobile-release.aar')) {
       mod.modResults.contents +=
-        '\n// Chio mobile AAR is copied by the design-partner prebuild lane.\n';
+        '\n// Chio mobile AAR is copied in by the prebuild step.\n';
     }
     return mod;
   });

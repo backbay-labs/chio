@@ -1,6 +1,6 @@
 # OpenTelemetry integration
 
-Chio's M10 OpenTelemetry path links GenAI tool-call spans to signed receipts.
+Chio's OpenTelemetry path links GenAI tool-call spans to signed receipts.
 The same identifiers let operators move in either direction:
 
 - from a Chio receipt id to the OTel span and trace that produced it
@@ -17,8 +17,8 @@ The same identifiers let operators move in either direction:
 
 ## Attribute contract
 
-Adapters that emit `gen_ai.tool.call` spans must use the locked M10 attribute
-set below.
+Adapters that emit `gen_ai.tool.call` spans must use the locked attribute set
+below.
 
 | Attribute | Required | Use |
 |-----------|----------|-----|

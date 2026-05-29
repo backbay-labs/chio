@@ -1,5 +1,5 @@
 {
-  "id": "rcpt-v318-fixture-001",
+  "id": "045e76273ff5ae76bf05039fe2f8a97fbd05d0353abcd91f7396d3261a66fe19",
   "timestamp": 1700000001,
   "capability_id": "cap-v318-fixture",
   "tool_server": "audit-server",
@@ -13,8 +13,16 @@
   "decision": {
     "verdict": "allow"
   },
+  "receipt_kind": "mediated_decision",
+  "boundary_class": "prevent",
+  "tool_origin": "caller_executed",
+  "redaction_mode": "none",
   "content_hash": "1111111111111111111111111111111111111111111111111111111111111111",
   "policy_hash": "policy-v318-fixture",
+  "metadata": {
+    "chio_receipt_signing_nonce": "rcpt-v318-fixture-001"
+  },
+  "trust_level": "mediated",
   "kernel_key": "6faf81b89c5b8a683096efcbe39a6ab66ddef934d561aed4c3cc43b43ba635d3",
-  "signature": "30af057ec88adb289951b8d9ea24d20c56f855f0c93e74925b494797eb2ee5cdb3b11b04d9624068f28660b2014007df87b704131149615c37b07ab2d3533007"
+  "signature": "7fd0faee2444306ccd71eb10818ee81424f67e27850b3868a89bb28b8ecf6176627de858d086bae50aa723638f27ad0be4acbfbc2cbc8f2214aa63609dc2ff0e"
 }

@@ -1,6 +1,6 @@
 # Guard Platform Dashboards
 
-`guard-platform.json` is the Grafana dashboard for the M06 guard platform telemetry surface.
+`guard-platform.json` is the Grafana dashboard for the guard platform telemetry surface.
 
 It expects a Prometheus datasource and the guard metric families exposed by the kernel `/metrics` endpoint:
 

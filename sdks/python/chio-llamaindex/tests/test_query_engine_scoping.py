@@ -1,8 +1,8 @@
 """Collection-scoping tests for :class:`ChioQueryEngineTool`.
 
-Roadmap acceptance (phase 6.3): *QueryEngineTool scoped to specific
-vector collections.* These tests exercise both the client-side allowlist
-check and the sidecar-driven deny paths.
+QueryEngineTool scoped to specific vector collections. These tests
+exercise both the client-side allowlist check and the sidecar-driven
+deny paths.
 """
 
 from __future__ import annotations
@@ -130,7 +130,7 @@ class TestConstruction:
 
 
 # ---------------------------------------------------------------------------
-# Client-side allowlist enforcement (roadmap acceptance)
+# Client-side allowlist enforcement
 # ---------------------------------------------------------------------------
 
 

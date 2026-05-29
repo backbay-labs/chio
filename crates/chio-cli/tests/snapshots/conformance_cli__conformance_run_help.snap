@@ -16,7 +16,7 @@ Options:
       --output <OUTPUT>
           Optional output file. When provided, the report is written to this path; otherwise the report is printed to stdout
       --json
-          Backward-compatible alias for `--format json`
+          Short alias for `--format json`
       --receipt-db <RECEIPT_DB>
           Optional SQLite database path for durable receipt persistence
       --revocation-db <REVOCATION_DB>

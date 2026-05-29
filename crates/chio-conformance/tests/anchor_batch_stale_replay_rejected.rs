@@ -1,5 +1,5 @@
-//! W2.3 negative conformance test: stale receipt replay across
-//! different batch content (HIGH-1, PR #594 round-2 review).
+//! Negative conformance test: stale receipt replay across
+//! different batch content.
 //!
 //! Threat: an attacker observes a single receipt id (e.g. a Rekor
 //! UUID, an OTS digest) that was previously verified by a verifier
@@ -30,8 +30,7 @@ use chio_core::Keypair;
 fn stale_admission_rejects_replay_of_receipt_id_against_different_content() {
     let kp = Keypair::generate();
 
-    // Batch A: previously verified, body_hash recorded by the
-    // verifier daemon at some earlier successful verify_inclusion.
+    // Batch A: simulates a batch whose body_hash has already been recorded in the verifier-owned cache.
     let witness_a = AnchorBatchWitness {
         kind: AnchorBatchWitnessKind::Rekor,
         witness_id: "rekor:uuid-replay-target".to_string(),
@@ -106,7 +105,7 @@ fn stale_admission_rejects_replay_of_receipt_id_against_different_content() {
         .expect("batch A admitted: body_hash present in verifier-owned cache");
 
     // Negative case: batch B (same receipt id, different content)
-    // must be rejected. Without the HIGH-1 fix this would slip
+    // must be rejected. If admission were keyed by receipt id this would slip
     // through because the receipt id matches.
     let err = runtime
         .block_on(verify_anchor_batch_with_witness_policy_async(

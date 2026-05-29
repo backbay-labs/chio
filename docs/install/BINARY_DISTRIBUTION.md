@@ -18,7 +18,7 @@ Container images are published for `linux/amd64` and `linux/arm64`.
 ## Install via Homebrew
 
 ```bash
-curl -fsSL -o /tmp/chio.rb https://github.com/bb-connor/chio/releases/latest/download/chio.rb
+curl -fsSL -o /tmp/chio.rb https://github.com/backbay-labs/chio/releases/latest/download/chio.rb
 brew install --formula /tmp/chio.rb
 chio --version
 ```
@@ -31,13 +31,13 @@ See [`docs/install/homebrew.md`](./homebrew.md) for details.
 
 ```bash
 # Pull the latest published image
-docker pull ghcr.io/bb-connor/chio-sidecar:latest
+docker pull ghcr.io/backbay-labs/chio-sidecar:latest
 
 # Pin to a specific version
-docker pull ghcr.io/bb-connor/chio-sidecar:0.1.0
+docker pull ghcr.io/backbay-labs/chio-sidecar:0.1.0
 
 # Run the published image
-docker run --rm ghcr.io/bb-connor/chio-sidecar:latest --help
+docker run --rm ghcr.io/backbay-labs/chio-sidecar:latest --help
 ```
 
 The image:
@@ -62,7 +62,7 @@ case "$OS" in
 esac
 
 ARCHIVE="chio-${VERSION}-${TRIPLE}.tar.gz"
-BASE="https://github.com/bb-connor/chio/releases/download/v${VERSION}"
+BASE="https://github.com/backbay-labs/chio/releases/download/v${VERSION}"
 
 curl -fsSL "${BASE}/${ARCHIVE}"        -o "${ARCHIVE}"
 curl -fsSL "${BASE}/${ARCHIVE}.sha256" -o "${ARCHIVE}.sha256"
@@ -86,7 +86,7 @@ Verify a downloaded archive with:
 shasum -a 256 -c chio-0.1.0-aarch64-apple-darwin.tar.gz.sha256
 
 # All archives at once
-curl -fsSL https://github.com/bb-connor/chio/releases/download/v0.1.0/SHA256SUMS -o SHA256SUMS
+curl -fsSL https://github.com/backbay-labs/chio/releases/download/v0.1.0/SHA256SUMS -o SHA256SUMS
 shasum -a 256 -c SHA256SUMS
 ```
 
@@ -95,7 +95,7 @@ Container image provenance is attested by the build workflow
 workflow logged:
 
 ```bash
-docker buildx imagetools inspect ghcr.io/bb-connor/chio-sidecar:0.1.0
+docker buildx imagetools inspect ghcr.io/backbay-labs/chio-sidecar:0.1.0
 ```
 
 ## Troubleshooting
@@ -116,5 +116,5 @@ docker buildx imagetools inspect ghcr.io/bb-connor/chio-sidecar:0.1.0
 | Asset                                          | Built by                                              |
 | ---------------------------------------------- | ----------------------------------------------------- |
 | GitHub Release archives + `SHA256SUMS`         | `.github/workflows/release-binaries.yml`              |
-| `ghcr.io/bb-connor/chio-sidecar` container image | `.github/workflows/sidecar-image.yml`                 |
+| `ghcr.io/backbay-labs/chio-sidecar` container image | `.github/workflows/sidecar-image.yml`                 |
 | Homebrew formula template                      | `Homebrew/chio.rb.tmpl` rendered into release asset `chio.rb` |

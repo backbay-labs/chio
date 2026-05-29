@@ -6,8 +6,8 @@ on the qualified authoritative surfaces, and the repo now also qualifies a
 stronger local economic boundary: Chio is comptroller-capable software on the
 documented operator, partner, and bounded federated proof surfaces. The
 broader market-position story remains strategic rather than proved. See
-[docs/protocols/STRATEGIC-VISION.md](protocols/STRATEGIC-VISION.md) and
-[docs/release/QUALIFICATION.md](release/QUALIFICATION.md).
+[docs/protocols/STRATEGIC-VISION.md](../protocols/STRATEGIC-VISION.md) and
+[docs/release/QUALIFICATION.md](../release/QUALIFICATION.md).
 
 Chio is pre-release. The current Chio-owned protocol, schema, SDK, and runtime
 surfaces are v1-only. Roadmap labels in this narrative are internal
@@ -252,7 +252,7 @@ introducing external telemetry. The receipts are the primary data source.
 
 Agent reputation materializes as a W3C Verifiable Credential: an Agent
 Passport. The passport is a portable, cryptographically signed attestation of
-an agent's behavioral track record, issued by an Chio-participating authority
+an agent's behavioral track record, issued by a Chio-participating authority
 and verifiable by any relying party.
 
 The current shipped surface already supports offline verification,

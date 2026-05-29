@@ -98,13 +98,10 @@ jobs:
           set -euo pipefail
           # Reuse the cflite budget guard; its WORKFLOWS array enumerates
           # every fuzz workflow (cflite_pr.yml, cflite_batch.yml, fuzz.yml)
-          # against the 1,800-min/30-day cap. The cap is advisory here:
-          # the cron itself contributes minutes to the trailing 30-day
-          # window, so a hard halt becomes self-perpetuating once the
-          # budget is exceeded and leaves the workflow permanently red.
-          # The script still emits its used/cap/remaining line for the
-          # operator dashboard. The matching `mutants-nightly` knob was
-          # added in PR #519.
+          # against the 1,800-min/30-day cap. Cap is advisory (CAP_MODE=warn):
+          # this cron's own runs count toward the trailing 30-day window, so
+          # a hard halt would not clear on its own. The script emits
+          # used/cap/remaining.
           scripts/check-fuzz-budget.sh "${{ github.repository }}"
 
   fuzz-scheduled:
@@ -209,7 +206,7 @@ jobs:
           cd fuzz
           # libFuzzer flags:
           #   -max_total_time : per-target wall-time budget
-          #   -timeout=25     : per-input timeout (matches PR #13 profile)
+          #   -timeout=25     : per-input timeout
           #   -rss_limit_mb=2048 : per-target RSS ceiling
           # The corpus dir under fuzz/corpus/<target>/ seeds the run; if
           # the dir is empty libFuzzer starts from scratch.

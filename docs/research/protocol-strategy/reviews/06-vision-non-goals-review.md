@@ -1,6 +1,6 @@
 # 06 - Vision and Non-Goals Review
 
-> Wave-2 swarm seat 6: vision-level consistency. Branch
+> Round-2 swarm seat 6: vision-level consistency. Branch
 > `research/protocol-strategy-2026`. Reads 17 docs in
 > `docs/research/protocol-strategy/` against `spec/PROTOCOL.md:96-115`
 > (v2 non-goals), `spec/PROTOCOL.md:305-329` (ceiling negotiation), and
@@ -13,8 +13,8 @@ Overall coherence is **mixed**. The 17 docs respect Chio's stated discipline
 proposes a long-lived peer daemon, a permissionless directory node, or a
 generic MCP / A2A wire replacement. The strong vision drift is concentrated
 in three places: (1) the relationship between `00-overview.md` and
-`00-overview-v2.md` is undeclared, with Wave A items contradictory across
-the two files; (2) the three-ACPs naming warning that v1 carried is not
+`00-overview-v2.md` is undeclared, with Phase A items contradictory across
+the two files; (2) the three-ACPs naming warning carried in v1 is not
 propagated forward into v2, and doc 02 still names the AGNTCY bridge
 `chio-bridge-acp` (which would collide with the existing Zed
 `crates/chio-acp-edge`); and (3) the `tool_origin` field is described
@@ -114,16 +114,16 @@ This is the **largest vision-level inconsistency** in the corpus.
 Action items: (a) add the three-ACPs warning section to
 `00-overview-v2.md`; (b) edit `02-decentralized-agent-networks.md:132, 243`
 to rename `chio-bridge-acp` to `chio-bridge-agntcy`, matching doc 08; (c)
-update line 8 of `00-overview-v2.md`'s "Wave 1 docs unchanged" claim - the
-naming fix in doc 02 is a Wave-2 edit and should be acknowledged.
+update line 8 of `00-overview-v2.md`'s "first-round docs unchanged" claim -
+the naming fix in doc 02 is a second-round edit and should be acknowledged.
 
 ## Overview v1 vs v2 reconciliation
 
-The relationship is undeclared. `00-overview-v2.md:7` says "Wave 1 docs
+The relationship is undeclared. `00-overview-v2.md:7` says "round-1 docs
 (`00-` through `06-`) are unchanged" but never says whether v2 supersedes
 v1, builds on it, or is a delta document. The two phased queues disagree:
 
-| Wave | v1 (`00-overview.md`) Wave A | v2 (`00-overview-v2.md`) Wave A |
+| Phase | v1 (`00-overview.md`) Phase A | v2 (`00-overview-v2.md`) Phase A |
 |---|---|---|
 | Top item | `EventPublish`/`EventConsume` variants | **Land real bench bodies** (new, urgent) |
 | Item 2 | OAuth consumer/verifier posture | Current v1 receipt-kind schema (Option D) |
@@ -136,16 +136,16 @@ The deltas are real:
   `16-latency-budget-audit.md:22-26`) is genuinely new and reorders the
   queue. v1 has no entry for it.
 - v2 demotes the OAuth-consumer-posture work (RFC 9449 JWT DPoP, RFC 9470
-  step-up, actor-chain validation) that v1 had as a top-three Wave A item.
+  step-up, actor-chain validation) that v1 had as a top-three Phase A item.
   Doc 03 still proposes it but the v2 overview does not list it under any
-  wave. **This is a regression in the overview, not in the underlying
+  phase. **This is a regression in the overview, not in the underlying
   research.**
-- v1 Wave C lists "AGNTCY ACP bridge" and "DirectoryProvider seam";
-  v2 Wave C lists `chio-bridge-agntcy + chio-directory` (same items,
+- v1 Phase C lists "AGNTCY ACP bridge" and "DirectoryProvider seam";
+  v2 Phase C lists `chio-bridge-agntcy + chio-directory` (same items,
   agreed) plus `chio-livekit-py` (new from doc 14, agreed) plus per-bridge
   fast paths (new from doc 16, agreed).
 - v1 "Defer or hard skip" lists database wire protocols, Agora, AGNTCY
-  SLIM, Temporal/Airflow dedicated bridges; v2's Wave D defer list is
+  SLIM, Temporal/Airflow dedicated bridges; v2's Phase D defer list is
   much shorter and omits all four. The defers are not contradicted - they
   are just silently dropped.
 
@@ -159,14 +159,14 @@ record but link from v2 to it.
 
 ## "We already have" surprise propagation
 
-Wave 1 surfaced five surprises (`00-overview.md:13-23`):
+Round 1 surfaced five surprises (`00-overview.md:13-23`):
 
 1. Python `chio-streaming` SDK -> doc 09 (`09-event-action-schema.md:8-9, 210-237`)
    explicitly aligns the SDK with the kernel vocabulary. No doc proposes
    to "build a new pub/sub bridge" in ignorance.
 2. Real OAuth AS in `chio-mcp-remote` -> doc 07 confirms it is live but
-   opt-in (`07-oauth-as-usage-audit.md:5-7`). Doc 03 (wave-1) already knew
-   about it. Reconciled.
+   opt-in (`07-oauth-as-usage-audit.md:5-7`). Doc 03 already knew about it.
+   Reconciled.
 3. `chio-temporal` and `chio-airflow` SDKs -> doc 05 keeps them as the
    primary recommendation, defers dedicated bridges
    (`05-workflow-orchestrator-mediation.md:27-32, 277-282`). No doc
@@ -216,7 +216,7 @@ enumerate:
 
 Actual count of *proposed-anywhere-in-the-corpus* new crates is closer
 to **fourteen**. v2's "5 + 1 flag" is the right number only if you also
-say "Wave A through C critical path." The v2 overview should clarify
+say "Phase A through C critical path." The v2 overview should clarify
 that the five it lists are the *committed-to* set, and explicitly note
 the future-reserved names (`chio-broker-contract`, `chio-orchestrator-egress`,
 `chio-pipecat`, `chio-managed-voice-shim`, `chio-wire-mediation`) so the
@@ -257,7 +257,7 @@ naming surface is not silently colonized by later docs.
 
 ## Open questions reconciled
 
-Wave 1 open questions (`00-overview.md:77-83`):
+Round 1 open questions (`00-overview.md:77-83`):
 
 1. "Is the existing OAuth AS actively used or stale?" -> **answered**
    by doc 07: live but opt-in, dead-by-default at runtime, no
@@ -270,14 +270,14 @@ Wave 1 open questions (`00-overview.md:77-83`):
 4. "Cedar adoption greenfield vs migrate?" -> **answered** by doc 10:
    Option A' = greenfield + two flagship ports
    (`10-cedar-first-guard.md:352-373`).
-5. "Wave A vocabulary changes require manifest bump?" -> **answered**
-   by doc 09: yes, `chio.manifest.v1` -> `v2`, additive, fail-closed
-   via ceiling negotiation (`09-event-action-schema.md:181-208`).
+5. "Vocabulary changes require manifest bump?" -> **answered** by doc 09:
+   yes, `chio.manifest.v1` -> `v2`, additive, fail-closed via ceiling
+   negotiation (`09-event-action-schema.md:181-208`).
 
 v2 open questions (`00-overview-v2.md:77-83`) are new and load-bearing:
 voice-tier policy classification, `must_understand` extension registry
 ownership, AGNTCY zero-securitySchemes, async receipt write SLO,
-bench-stub PR ordering. None repeat wave-1.
+bench-stub PR ordering. None repeat round-1 items.
 
 ## Top inconsistencies to fix
 
@@ -287,12 +287,12 @@ bench-stub PR ordering. None repeat wave-1.
 3. **`tool_origin` shape disagreement** across 00-v2, 12, 13, 15. Three
    variants vs four; core vs extension; absent in 13 (uses
    `mediation_scope`).
-4. **v1 vs v2 overview relationship undeclared**. Wave A items differ.
-   OAuth consumer-side step-up (Wave A in v1) is dropped from v2's
+4. **v1 vs v2 overview relationship undeclared**. Phase A items differ.
+   OAuth consumer-side step-up (Phase A in v1) is dropped from v2's
    queue, though doc 03 still proposes it.
 5. **Em dashes in both overviews**: 11 in `00-overview.md`, 20 in
-   `00-overview-v2.md`. CLAUDE.md forbids U+2014 anywhere; the wave-1
-   and wave-2 docs themselves are clean. Examples at
+   `00-overview-v2.md`. CLAUDE.md forbids U+2014 anywhere; the round-1
+   and round-2 docs themselves are clean. Examples at
    `00-overview-v2.md:23, 25, 31, 39, 43, 47, 56, 58, 59, 61` and
    `00-overview.md:27, 31, 33, 37, 39, 42, 44, 71, 72, 73`.
 6. **Crate count understated**: v2 lists 5 new crates; the corpus
@@ -303,7 +303,7 @@ bench-stub PR ordering. None repeat wave-1.
 - `00-overview-v2.md`: add explicit "supersedes 00-overview.md" header
   with carry-forward and retire lists; restore the three-ACPs warning;
   carry forward OAuth consumer-side step-up + DPoP + actor-chain as a
-  Wave A item; enumerate future-reserved crate names; replace 20 em
+  Phase A item; enumerate future-reserved crate names; replace 20 em
   dashes with hyphens.
 - `00-overview.md`: mark as superseded by v2; replace 11 em dashes
   with hyphens (or migrate the content into v2 and retire v1).

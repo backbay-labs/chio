@@ -4,6 +4,8 @@
 //! declare one of these contracts before a target URL is accepted. Missing or
 //! malformed contract state fails closed.
 
+#![forbid(unsafe_code)]
+
 use std::collections::BTreeSet;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, ToSocketAddrs};
 

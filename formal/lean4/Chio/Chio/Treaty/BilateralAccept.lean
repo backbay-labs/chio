@@ -1,9 +1,6 @@
 /-
   Freestanding accept-set model for the bilateral-DSSE short paper.
 
-  Action-plan item: clear the gate "Short paper to HotSec / WOOT
-  (gated by short-paper §4 freestanding accept-set theorem)".
-
   This file is intentionally self-contained at the module level: it
   imports `Chio.Treaty.PredicateLang` for the `Predicate` type and
   `denote` interpreter but does not depend on the wider Chio polity

@@ -181,10 +181,8 @@ fn signed_token_with_issuer(issuer: &str) -> Result<String, Box<dyn Error>> {
 #[test]
 fn play_integrity_verifier_rejects_expired_token_fail_closed() -> Result<(), Box<dyn Error>> {
     // A token whose `exp` claim is in the past must be rejected even when
-    // every other claim matches. This locks in the trj3.2 fix that closes
-    // the previous "validate_exp = false" path: the fixture verifier no
-    // longer silently accepts a stale token replayed past the issuer's
-    // retention window.
+    // every other claim matches, so a stale token replayed past the
+    // issuer's retention window cannot be silently accepted.
     let token = signed_token_with_exp(
         NONCE,
         PACKAGE,

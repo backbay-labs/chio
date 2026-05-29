@@ -24,7 +24,7 @@ pub const FEED_ID: &str = "arena_survival";
 
 /// Single arena round outcome for a publisher's guard bundle.
 ///
-/// `entered` and `survived` are u32 because the M08 round structure caps
+/// `entered` and `survived` are u32 because the arena round structure caps
 /// rounds per epoch well below 2^32. `survived` must be `<= entered`; if
 /// callers pass `survived > entered`, the feed clamps to the entered count
 /// rather than panicking.
@@ -34,7 +34,7 @@ pub struct ArenaRoundOutcome {
     pub survived: u32,
 }
 
-/// Caller-projected view of M08 arena rounds for a single publisher.
+/// Caller-projected view of arena rounds for a single publisher.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ArenaRoundsObservation {
     pub rounds: Vec<ArenaRoundOutcome>,

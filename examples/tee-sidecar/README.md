@@ -43,6 +43,6 @@ let `[tee] mode = "shadow"` in `chio-tee.toml` provide the same setting.
 - The sidecar drops Linux capabilities and sets `no-new-privileges`.
 - No host port is published by default.
 
-`chio-tee` is still an M10 phase-1 binary. This example validates the image,
-config mount, runtime user, and writable spool shape while later tickets wire
-the replay and attestation loop behind the same container contract.
+`chio-tee` is the TEE sidecar binary. This example validates the image,
+config mount, runtime user, and writable spool shape; the replay and attestation
+loop follow the same container contract.

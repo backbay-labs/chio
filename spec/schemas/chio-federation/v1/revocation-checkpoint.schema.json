@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://chio.dev/schemas/chio-federation/v1/revocation-checkpoint.schema.json",
+  "$id": "https://chio.world/schemas/chio-federation/v1/revocation-checkpoint.schema.json",
   "title": "Chio Federation Revocation Checkpoint",
   "type": "object",
   "additionalProperties": false,

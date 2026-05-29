@@ -18,6 +18,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 # Packages to check. Each entry is: <path-relative-to-repo-root>
 PACKAGES=(
   "sdks/python/chio-sdk-python"
+  "sdks/python/chio-adapter-base"
   "sdks/python/chio-asgi"
   "sdks/python/chio-django"
   "sdks/python/chio-fastapi"
@@ -35,6 +36,7 @@ PACKAGES=(
   "sdks/python/chio-observability"
   "sdks/python/chio-langgraph"
   "sdks/python/chio-code-agent"
+  "sdks/python/chio-hermes"
   "sdks/lambda/chio-lambda-python"
 )
 

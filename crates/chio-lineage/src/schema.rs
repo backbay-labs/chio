@@ -96,8 +96,8 @@ pub struct LineageEdge {
 }
 
 /// Truncation marker emitted when bounded query results exceed the
-/// documented depth or row cap. Shape is pinned by the M09 narrative
-/// recursive-CTE risk note.
+/// documented depth or row cap. Its shape is pinned to bound the
+/// recursive-CTE traversal risk.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TruncationMarker {
     pub truncated: bool,

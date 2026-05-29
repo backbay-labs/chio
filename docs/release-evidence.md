@@ -1,14 +1,13 @@
 # Release Evidence
 
 This document is the external-reviewer entry point for Chio release evidence.
-It is written for the M08 crypto and protocol reviewer and the M09 HITRUST i1
-assessor.
+It is written for the crypto and protocol reviewer and the HITRUST i1 assessor.
 
 ## Checksum Index
 
 For release `v<tag>`, fetch:
 
-- GitHub Release assets from `https://github.com/bb-connor/arc/releases/tag/v<tag>`
+- GitHub Release assets from `https://github.com/backbay-labs/chio/releases/tag/v<tag>`
 - Checksum index from `supply-chain/checksums/v<tag>.txt`
 - Checksum index signature from `supply-chain/checksums/v<tag>.txt.sig`
 - Checksum index certificate from `supply-chain/checksums/v<tag>.txt.pem`
@@ -45,7 +44,7 @@ cosign verify-blob \
 ```
 
 Use the certificate identity and issuer printed by `cosign verify-blob` to
-confirm the signer is GitHub Actions for `bb-connor/arc`.
+confirm the signer is GitHub Actions for `backbay-labs/chio`.
 
 ## Rekor Witness
 
@@ -62,7 +61,7 @@ index is the stable reviewer index.
 
 ## Reproducibility Scope
 
-Trajectory-3 M03 promises Linux x86_64 reproducibility for the `chio` binary.
-macOS and Windows release archives are still checksum-published and signed, but
-they are not claimed to be byte-reproducible in v3.18 because codesign and PE
-timestamp behavior remains platform-dependent.
+The release pipeline guarantees Linux x86_64 reproducibility for the `chio`
+binary. macOS and Windows release archives are still checksum-published and
+signed, but they are not claimed to be byte-reproducible because codesign and
+PE timestamp behavior remains platform-dependent.

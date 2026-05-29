@@ -1,3 +1,5 @@
+use super::*;
+
 /// Render the grouped traffic diff in the default human format.
 ///
 /// The layout is intentionally line-oriented and TTY-friendly: a compact

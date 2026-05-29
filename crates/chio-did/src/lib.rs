@@ -6,6 +6,7 @@
 //! lookup. Optional receipt-log service endpoints can be attached by the
 //! resolving environment.
 
+#![forbid(unsafe_code)]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
 #[cfg(feature = "fuzz")]

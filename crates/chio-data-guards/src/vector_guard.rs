@@ -1,4 +1,4 @@
-//! Vector database guard (roadmap phase 7.2).
+//! Vector database guard.
 //!
 //! `VectorDbGuard` inspects tool calls that target a vector database --
 //! Pinecone, Weaviate, Qdrant, Chroma, or any database the operator
@@ -13,9 +13,8 @@
 //! 3. **Operation class.** Upsert, delete, or index-mutation verbs are
 //!    denied when the active grant carries
 //!    [`SqlOperationClass::ReadOnly`](chio_core::capability::SqlOperationClass::ReadOnly).
-//!    The reuse of `SqlOperationClass` is deliberate -- see
-//!    `docs/ROADMAP.md` phase 7.2 -- so a single constraint enum covers
-//!    every database-shaped grant.
+//!    The reuse of `SqlOperationClass` is deliberate so a single
+//!    constraint enum covers every database-shaped grant.
 //! 4. **`top_k` ceiling.** A query whose `top_k` exceeds the grant's
 //!    [`Constraint::MaxRowsReturned`](chio_core::capability::Constraint::MaxRowsReturned)
 //!    is denied.  The guard fails closed when `top_k` is missing from the
@@ -182,8 +181,8 @@ impl Default for VectorFieldPaths {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct VectorGuardConfig {
     /// Substrings that mark a database identifier (or tool name) as
-    /// vector-flavored.  Defaults to the four vendors called out in the
-    /// roadmap plus the generic `"vector"` sentinel.
+    /// vector-flavored.  Defaults to the four supported vendors plus the
+    /// generic `"vector"` sentinel.
     #[serde(default = "default_vendor_markers")]
     pub vendor_markers: Vec<String>,
 
@@ -314,7 +313,7 @@ pub struct VectorCall {
     pub top_k: Option<u64>,
 }
 
-/// Vector database guard (roadmap phase 7.2).
+/// Vector database guard.
 pub struct VectorDbGuard {
     config: VectorGuardConfig,
 }
@@ -513,12 +512,13 @@ impl chio_kernel::Guard for VectorDbGuard {
         };
 
         // Non-vector traffic always short-circuits to Allow regardless of
-        // `allow_all`. The old `!allow_all && !looks_like_vector` gate
-        // inverted the bypass intent: enabling `allow_all` forced every
-        // tool call (including non-vector ones) through `extract_call`,
-        // which then denied any call lacking vector-specific fields.
-        // Split the condition so `allow_all` only governs whether vector
-        // policy is enforced on vector-shaped requests.
+        // `allow_all`. This is by design: a domain-scoped guard returns
+        // Allow for traffic outside its concern, and the deny-by-default
+        // contract is enforced by the composing authority layer, not here.
+        // `allow_all` only governs whether vector policy is enforced on
+        // vector-shaped requests; it must not force non-vector calls
+        // through `extract_call`, which would deny any call lacking
+        // vector-specific fields.
         if !self.config.looks_like_vector(&database, tool) {
             return Ok(Verdict::Allow);
         }

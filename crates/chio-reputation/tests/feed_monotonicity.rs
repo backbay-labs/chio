@@ -226,9 +226,7 @@ proptest! {
     }
 }
 
-/// Targeted regression: the empty-input fallback always lands at
-/// tier_0, never higher. This protects against a future refactor that
-/// swaps the zero-delta fallback for a default-positive value.
+/// Empty inputs MUST yield tier_0; a zero-delta fallback MUST NOT produce a positive default tier.
 #[test]
 fn empty_inputs_always_tier_0() {
     let arena_feed = ArenaSurvivalFeed::new();

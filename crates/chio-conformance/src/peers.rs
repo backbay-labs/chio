@@ -53,7 +53,7 @@ pub struct PeerEntry {
     /// to be edited; placeholder entries MUST set `published = false`.
     /// `chio conformance fetch-peers` SKIPS entries with
     /// `published = false` rather than failing them with a sha256
-    /// mismatch. See cleanup C5 issue D for the gating contract.
+    /// mismatch.
     #[serde(default = "default_published")]
     pub published: bool,
 }
@@ -154,7 +154,7 @@ impl PeersLock {
     }
 
     /// Partition entries into `(published, skipped)` based on the
-    /// `published` flag. Cleanup C5 issue D: placeholder entries with
+    /// `published` flag. Placeholder entries with
     /// all-zeros / all-ones sha256 pins must SKIP rather than fail
     /// `fetch-peers`; the partition lets the caller print a friendly
     /// "skipping unpublished entry" line per skipped row.
@@ -274,8 +274,7 @@ fn in_repo_default_lock_path() -> PathBuf {
 /// download path to verify integrity after fetching a release artifact.
 ///
 /// Thin re-export of [`chio_core::sha256_hex`]; kept here for callers that
-/// already imported `chio_conformance::sha256_hex`. Cleanup C5 issue E
-/// removed the duplicate implementation.
+/// already imported `chio_conformance::sha256_hex`.
 pub fn sha256_hex(bytes: &[u8]) -> String {
     chio_core::sha256_hex(bytes)
 }
@@ -413,7 +412,7 @@ binary = "chio-js-peer"
 
     #[test]
     fn published_defaults_to_true() {
-        // Cleanup C5 issue D: omitting `published` keeps the historical
+        // Omitting `published` keeps the historical
         // behaviour where every entry is treated as published.
         let lock = PeersLock::parse_str(VALID).expect("parse");
         assert!(lock.peers[0].published);
@@ -452,9 +451,8 @@ published = true
 
     #[test]
     fn shipped_lockfile_marks_placeholders_as_unpublished() {
-        // The shipped lockfile carries placeholder sha256 pins, so every
-        // entry MUST be flagged as unpublished until the release pipeline
-        // fills in real values.
+        // Every entry MUST be flagged `published = false` until the release pipeline
+        // replaces the placeholder sha256 pins with real values.
         let manifest_dir =
             std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR set during cargo test");
         let path = Path::new(&manifest_dir).join("peers.lock.toml");

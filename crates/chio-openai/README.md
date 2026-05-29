@@ -14,9 +14,12 @@ The crate publishes the library `chio_openai` (package
   in-tree consumers compile against today and is preserved verbatim.
 - **`provider-adapter` feature** (opt-in): the `ProviderAdapter` surface from
   [`chio-tool-call-fabric`](../chio-tool-call-fabric/README.md). When
-  enabled, this crate exposes lift/lower for OpenAI's Responses API
-  and an SSE streaming wrapper that enforces the kernel verdict at the
-  tool-use block boundary.
+  enabled, this crate exposes lift/lower for OpenAI's Responses API, an SSE
+  streaming wrapper that enforces the kernel verdict at the tool-use block
+  boundary, and an outbound `OpenAiTransport` that forwards native requests to
+  the OpenAI API over the shared
+  [`chio-provider-adapter-core`](../chio-provider-adapter-core/README.md) HTTP
+  transport.
 
 The two surfaces are independent: nothing on the default build pulls
 in `chio-tool-call-fabric`, and nothing on the `provider-adapter`
@@ -66,7 +69,15 @@ Enabling `provider-adapter` opts in to:
     `response.output_item.added` event of type `tool_call`;
     subsequent `response.function_call_arguments.delta` events
     are buffered until the verdict resolves, then flushed on
-    Allow or dropped on Deny.
+    Allow or dropped on Deny. The SSE parser is the canonical one in
+    `chio-provider-adapter-core` (configured with the OpenAI `[DONE]`
+    terminator and the event/`type` cross-check).
+  - `transport`: `OpenAiTransport`, a real outbound client built on the shared
+    `chio-provider-adapter-core` HTTP transport. It POSTs to `/v1/responses`
+    and `/v1/chat/completions` with `Authorization: Bearer <OPENAI_API_KEY>`,
+    parses tool calls back into the adapter types, and lifts them into the
+    canonical invocation shape. A `MockHttpTransport` constructor seam keeps
+    tests hermetic (no live network).
 
 The feature is **opt-in**. Downstream consumers who only want the
 existing Chat Completions helpers do not need to enable it. The
@@ -78,11 +89,12 @@ covers both.
 OpenAI surfaces request failures as JSON error envelopes with a
 `body.error` object, while tool-call and streaming boundary failures can
 arrive as native Responses API items or deterministic SSE frames. This crate
-currently owns batch lift/lower and SSE gating, but it does not ship a real
-HTTP client. Rows marked `HTTP transport boundary` pin the adapter-visible
-taxonomy that any future transport must preserve. Rows marked `current
-adapter path` are emitted by the current lift/lower, streaming, or evaluator
-path.
+owns batch lift/lower, SSE gating, and (under the `provider-adapter` feature)
+the outbound HTTP transport. Rows marked `HTTP transport boundary` are emitted
+by that transport (via `OpenAiTransport`), which maps upstream HTTP status and
+transport failures through the shared `chio-provider-adapter-core` classifier.
+Rows marked `current adapter path` are emitted by the lift/lower, streaming, or
+evaluator path.
 
 The table is parsed by `tests/error_taxonomy_doctest.rs`; keep each envelope
 as one valid inline JSON object.

@@ -10,7 +10,7 @@ reversible-computing line, and the verified-systems pattern.
 The saga pattern, introduced for long-running transactions whose
 commit boundary is weaker than serializable schedules, pairs each
 forward step with a compensating step that semantically undoes the
-forward step~\cite{TODO_bea_bib}. Workflow nets extend the model with
+forward step~\cite{garciamolina1987sagas}. Workflow nets extend the model with
 timed arcs and soundness criteria deciding whether every reachable
 marking has a path to a final marking. The reversible-action substrate
 inherits the saga vocabulary on the four reversible action variants:
@@ -43,7 +43,7 @@ workflows for a decade. CrowdStrike Falcon, SentinelOne, Microsoft
 Defender for Endpoint, and Sublime Security each record an action
 identifier, target host, action class, TTL duration, and rollback
 handle for response actions; auditors inspect the rollback handle by
-hand when something needs to be reverted~\cite{TODO_bea_bib}. The
+hand when something needs to be reverted~\cite{edrVendorSchemasPlaceholder}. The
 typed four-receipt grammar (request, execution, rollback,
 acknowledgement) is a normalization of existing vendor schemas; the
 constitutional admission predicate on the rollback receipt is the
@@ -52,7 +52,7 @@ typed discipline the existing engines could in principle adopt.
 
 \paragraph{Provenance and lineage.}
 Why-provenance, where-provenance, and how-provenance distinctions in
-the database literature~\cite{TODO_bea_bib} are structurally related to
+the database literature~\cite{cheney2009provenance} are structurally related to
 the receipt graph's lineage relations. A rollback receipt is a how-
 provenance fragment: it records the inverse executor's signed
 assertion that the OS operation completed, and the receipt graph
@@ -88,7 +88,7 @@ substrate makes no thermodynamic claim and inherits no Landauer bound.
 The Lean-based industrial verification pattern is established by AWS
 Cedar (Lean specification plus differential-tested Rust runtime) and
 SampCert (Lean-verified differential-privacy primitives deployed
-inside AWS Clean Rooms)~\cite{TODO_bea_bib}. The older systems-
+inside AWS Clean Rooms)~\cite{cutler2024cedar}. The older systems-
 verification line is the foundational reference set. CompCert
 \cite{leroy2009compcert} established that a realistic optimizing C
 compiler can be verified end-to-end against a formal semantics; seL4
@@ -110,7 +110,7 @@ here completes the shape on the response side.
 
 \paragraph{Agentic-AI safety.}
 The alignment-evaluation literature (METR, UK AI Safety Institute
-Inspect, ARC Evals)~\cite{TODO_bea_bib} bounds what a model is likely
+Inspect, ARC Evals)~\cite{alignmentEvalHarnessesPlaceholder} bounds what a model is likely
 to do during pre-deployment evaluation; the reversible-action substrate
 gates whether a deployed agent's destructive action crosses the trust
 boundary at runtime. The two disciplines compose rather than compete:

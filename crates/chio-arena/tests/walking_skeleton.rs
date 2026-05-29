@@ -18,8 +18,8 @@ use chio_replay_corpus::{CHECKPOINT_FILENAME, RECEIPTS_FILENAME, ROOT_FILENAME};
 use serde_json::json;
 
 #[tokio::test]
-async fn walking_skeleton_loads_runs_and_writes_m04_shape() -> Result<(), Box<dyn std::error::Error>>
-{
+async fn walking_skeleton_loads_runs_and_writes_fixture_shape(
+) -> Result<(), Box<dyn std::error::Error>> {
     let scenario_path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .join("arena/scenarios/walking_skeleton.toml");
@@ -92,11 +92,11 @@ async fn walking_skeleton_loads_runs_and_writes_m04_shape() -> Result<(), Box<dy
     );
     let root_hex = fs::read_to_string(fixture_dir.join(ROOT_FILENAME))?;
     assert_eq!(root_hex, summary.root_hex);
-    assert_eq!(recompute_m04_root_hex(&fixture_dir)?, summary.root_hex);
+    assert_eq!(recompute_root_hex(&fixture_dir)?, summary.root_hex);
     Ok(())
 }
 
-fn recompute_m04_root_hex(dir: &Path) -> Result<String, Box<dyn std::error::Error>> {
+fn recompute_root_hex(dir: &Path) -> Result<String, Box<dyn std::error::Error>> {
     let mut receipts = fs::read(dir.join(RECEIPTS_FILENAME))?;
     if receipts.last() == Some(&b'\n') {
         receipts.pop();

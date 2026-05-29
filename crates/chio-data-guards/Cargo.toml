@@ -23,9 +23,5 @@ tracing = { workspace = true }
 regex = "1"
 sqlparser = "0.61"
 
-[dev-dependencies]
-serde_json = { workspace = true }
-
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

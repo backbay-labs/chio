@@ -1,10 +1,10 @@
-//! Anchor pinning (M09 P5.T6).
+//! Anchor pinning.
 //!
 //! Hashes the current lineage frontier through canonical bytes and
-//! records a frontier digest. PQ signing is performed by the M03 hybrid
+//! records a frontier digest. PQ signing is performed by the hybrid
 //! signing backend when present (soft-dep); when absent, the command
 //! produces an unsigned frontier and exits cleanly. Soft-dep absence is
-//! recorded explicitly on the artifact so M10 model-card anchoring can
+//! recorded explicitly on the artifact so model-card anchoring can
 //! distinguish a verified anchor from a degraded unsigned one.
 
 use serde::{Deserialize, Serialize};
@@ -17,7 +17,7 @@ const FRONTIER_SIGNATURE_DOMAIN: &[u8] = b"chio.lineage.frontier-signature/v1\0"
 
 /// SHA-256 of the canonical JSON of a frontier projection. The frontier
 /// is a deterministic sorted list of node ids and edge keys; canonical
-/// bytes come from M06 [`CanonicalBytes`] when available; otherwise a
+/// bytes come from the [`CanonicalBytes`] newtype when available; otherwise a
 /// documented byte-equivalence shim (sorted JSON arrays with no
 /// whitespace) is used and recorded on the artifact.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -30,9 +30,9 @@ pub struct FrontierDigest {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CanonicalSource {
-    /// M06 `CanonicalBytes` newtype.
+    /// The `CanonicalBytes` newtype.
     CanonicalBytes,
-    /// Documented byte-equivalence shim. Used when M06 is absent.
+    /// Documented byte-equivalence shim. Used when `CanonicalBytes` is absent.
     EquivalenceShim,
 }
 
@@ -44,12 +44,12 @@ pub enum CanonicalSource {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SigningState {
-    /// M03 hybrid signing was used. The signature payload is included.
+    /// Hybrid signing was used. The signature payload is included.
     Signed {
         algorithm: String,
         signature_hex: String,
     },
-    /// M03 hybrid signing was absent. Frontier is recorded unsigned.
+    /// Hybrid signing was absent. Frontier is recorded unsigned.
     UnsignedSoftDepAbsent,
     /// A signer was named but the soft-dep produced no signature payload.
     /// Distinct from `UnsignedSoftDepAbsent` so model-card anchoring can

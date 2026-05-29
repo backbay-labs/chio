@@ -3,7 +3,7 @@
 Deterministic-replay corpus driver and golden infrastructure for the Chio
 kernel.
 
-This crate implements the M04 deterministic-replay gate. It is a sibling of
+This crate is the deterministic-replay gate. It is a sibling of
 `tests/conformance/` (cross-implementation conformance) and `tests/e2e/`
 (end-to-end integration tests). Where those crates exercise current kernel
 behaviour against semantic specs, `chio-replay-gate` pins **byte-exact**
@@ -11,68 +11,82 @@ kernel output across versions: a curated corpus of 50 input scenarios is
 replayed on every PR and the produced receipts, anchor checkpoint, and Merkle
 root are byte-compared against checked-in goldens.
 
-The source-of-truth specification for this gate lives in
-`.planning/trajectory/04-deterministic-replay.md`. Read it before changing
-anything that affects fixture layout, golden format, or `--bless` semantics.
+The normative specification for this gate lives in `spec/PROTOCOL.md`.
+Read it before changing anything that affects fixture layout, golden format,
+or `--bless` semantics.
 
-## Status
+## How it works
 
-This crate ships incrementally across M04 Phase 1:
+Every fixture flows through the same deterministic execution context so that
+replay output is byte-identical across machines and operating systems:
 
-| Ticket    | Scope                                                       |
-| --------- | ----------------------------------------------------------- |
-| M04.P1.T1 | Workspace-member skeleton (this commit).                    |
-| M04.P1.T2 | `Scenario` plus `ScenarioDriver` (fixed clock, deterministic nonce, signer from `test-key.seed`). |
-| M04.P1.T3 | Golden writer (NDJSON receipts, JSON checkpoint, hex root). |
-| M04.P1.T4 | Golden reader and byte-comparison harness.                  |
-| M04.P1.T5 | 50 fixture manifests across the eight families.             |
-| M04.P1.T6 | `cargo test -p chio-replay-gate` glue (`corpus_smoke`).     |
-| M04.P1.T7 | `LC_ALL=C` plus explicit directory-listing sort.            |
+- A fixed Ed25519 signing key is loaded from `tests/replay/test-key.seed`.
+- The clock is pinned at `2026-01-01T00:00:00Z`.
+- Nonces are strictly monotonic 16-byte values from an in-memory counter.
+- Directory enumeration is forced into `LC_ALL=C` byte order.
 
-M04 Phase 2 then adds the CI workflow (`.github/workflows/chio-replay-gate.yml`),
-the `--bless` flag with branch / env / audit-log gating, and the initial bless
-of all 50 goldens.
+Goldens are read back as raw `Vec<u8>` and byte-compared against a candidate
+run, so any drift in whitespace, key order, or line endings is caught without
+a `serde_json` round-trip masking it.
 
-T1 (this commit) wires the crate into the workspace so that later tickets have
-a stable home. There is no public API yet and the binary is a no-op.
-
-## Layout (planned)
+## Layout
 
 ```
 tests/replay/
-  Cargo.toml          # this crate (T1)
-  README.md           # this file (T1)
+  Cargo.toml                  # crate manifest
+  README.md                   # this file
+  release_compat_matrix.toml  # cross-version receipt-compatibility matrix
+  corpus_pins.toml            # pinned corpus metadata
   src/
-    lib.rs            # crate root, module map (T1)
-    main.rs           # binary entry, replay-gate runner (T1; logic in T2+)
-    driver.rs         # Scenario + ScenarioDriver (T2)
-    golden.rs         # writer / reader / byte comparison (T3, T4)
-    bless.rs          # --bless gate logic (Phase 2)
-  test-key.seed       # 32-byte deterministic Ed25519 seed; non-production (T2)
-  fixtures/           # 50 input scenarios across 8 families (T5)
+    lib.rs                    # crate root and module map
+    main.rs                   # binary entry, replay-gate runner
+    driver.rs                 # Scenario + ScenarioDriver (fixed clock, nonce, signer)
+    golden_writer.rs          # NDJSON receipts, JSON checkpoint, hex root writer
+    golden_reader.rs          # reads goldens back as raw Vec<u8>
+    golden_format.rs          # shared on-disk format contract
+    byte_compare.rs           # byte-equivalence harness
+    fs_iter.rs                # deterministic LC_ALL=C directory enumeration
+    bless.rs                  # --bless gate logic
+    cross_version/            # cross-version compat matrix loader, fetch, reverify
+  test-key.seed               # 32-byte deterministic Ed25519 seed; non-production
+  keys/                       # public verifying key for the seed above
+  fixtures/                   # 50 input scenarios across 10 families
+    allow_metered/...
     allow_simple/...
-    deny_capability/...
-    ...
-  goldens/            # blessed outputs; updated only via --bless (Phase 2)
-    allow_simple/...
+    allow_with_delegation/...
+    deny_expired/...
+    deny_revoked/...
+    deny_scope_mismatch/...
+    guard_rewrite/...
+    replay_attack/...
+    tampered_canonical_json/...
+    tampered_signature/...
+  goldens/                    # blessed outputs; updated only via --bless
+    allow_metered/...
     ...
 ```
 
-## Build
+## Build and run
 
 ```
 cargo build -p chio-replay-gate --tests
+cargo test -p chio-replay-gate
 ```
 
-## Adding a fixture (placeholder; full flow lands in T5)
+The `corpus_smoke` test enumerates the corpus and asserts every manifest is
+well-formed; `golden_byte_equivalence` replays each fixture and byte-compares
+the output against its golden. The CI gate runs under
+`.github/workflows/chio-replay-gate.yml`.
 
-Once T2-T5 land, a fixture is a JSON manifest plus an `inputs/` directory under
-one of the eight family subdirectories of `tests/replay/fixtures/`. Goldens are
-produced by running the gate with `--bless` (Phase 2).
+## Adding a fixture
 
-## Bless flow (placeholder; full flow lands in M04.P2)
+A fixture is a JSON manifest plus an `inputs/` directory under one of the ten
+family subdirectories of `tests/replay/fixtures/`. After authoring the
+manifest, produce its golden by running the gate with `--bless`.
 
-`--bless` is the only supported way to update goldens. It is gated by the rules
-documented in `.planning/trajectory/04-deterministic-replay.md` (allowed branch,
-environment, audit-log entry under `docs/replay-compat.md`). Direct edits to
+## Bless flow
+
+`--bless` is the only supported way to update goldens. It is gated by the
+rules documented in `spec/PROTOCOL.md` (allowed branch, environment, and an
+audit-log entry under `docs/replay-compat.md`). Direct edits to
 `tests/replay/goldens/**` are out of policy.

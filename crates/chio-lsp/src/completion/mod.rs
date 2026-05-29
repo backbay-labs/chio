@@ -7,8 +7,8 @@
 //! - guard identifiers (the `guards` key, native and WASM),
 //! - policy keys (top-level keys in `chio.yaml`).
 //!
-//! The catalog stays small in P4.T3; downstream tickets and milestones
-//! contribute additional entries.
+//! The catalog stays intentionally small; additional entries can be
+//! contributed over time.
 
 pub mod guards;
 pub mod scopes;
@@ -62,8 +62,8 @@ fn complete_chio_yaml(text: &str, position: Position) -> Vec<CompletionItem> {
 }
 
 /// Walk upward from `cursor_line` looking for the nearest line that
-/// looks like `key:` at column 0. The check stays cheap because P4.T3
-/// keeps the YAML model lightweight; P4.T6 swaps in a real AST.
+/// looks like `key:` at column 0. The check stays cheap because the
+/// YAML model is kept lightweight; a full AST is the eventual direction.
 fn nearest_top_level_section<'a>(lines: &[&'a str], cursor_line: usize) -> Option<&'a str> {
     let mut idx = cursor_line;
     loop {
@@ -159,10 +159,9 @@ mod tests {
 
     #[test]
     fn non_ascii_prefix_does_not_panic_in_chio_yaml() {
-        // Pre-fix this triggered an out-of-boundary slice on the
-        // 'é' multibyte character. The LSP column 12 is past the
-        // accent in UTF-16 code units; the helper must translate it
-        // to a UTF-8 byte boundary so slicing succeeds.
+        // LSP column 12 is past the 'é' accent in UTF-16 code units;
+        // the helper must translate it to a UTF-8 byte boundary so
+        // slicing does not panic on the multibyte character.
         let text = "policy: café\n  - ";
         let pos = Position::new(0, 12);
         // Should not panic, regardless of whether items come back.

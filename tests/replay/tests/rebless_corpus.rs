@@ -1,4 +1,4 @@
-//! Manual re-bless helper for the M04 replay corpus.
+//! Manual re-bless helper for the replay corpus.
 //!
 //! This is an `#[ignore]`-gated test that regenerates the on-disk
 //! goldens under `tests/replay/goldens/` from the manifests under

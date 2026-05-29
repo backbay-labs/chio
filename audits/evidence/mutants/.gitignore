@@ -14,7 +14,13 @@
 **/lock.json
 
 # outcomes.json embeds argv paths and per-mutant console transcripts.
-# The committed evidence is the dated JSON summary plus caught/missed/
-# timeout/unviable text files and evaluated mutant diffs.
 **/mutants.out/outcomes.json
 **/outcomes.json
+
+# diff/ directories and mutants.json are raw per-run cargo-mutants output.
+# They are produced per-run and published as release artifacts rather than
+# committed to the repository. Regenerate by re-running cargo-mutants
+# with the per-crate config in audits/mutation/per-crate-configs/.
+**/mutants.out/diff/
+**/diff/
+**/mutants.json

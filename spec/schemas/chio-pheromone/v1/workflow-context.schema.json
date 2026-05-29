@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://chio.dev/schemas/chio-pheromone/v1/workflow-context.schema.json",
+  "$id": "https://chio.world/schemas/chio-pheromone/v1/workflow-context.schema.json",
   "title": "Chio Pheromone Workflow Context",
   "type": "object",
   "additionalProperties": false,

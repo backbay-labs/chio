@@ -70,6 +70,7 @@ Use the root runner to list or execute the current smoke set:
 | [`hello-chi/`](./hello-chi/) | Go `chi` + `chio-go-http` | `./run.sh` | `./smoke.sh` |
 | [`hello-spring-boot/`](./hello-spring-boot/) | Spring Boot + `chio-spring-boot` | `./run.sh` | `./smoke.sh` |
 | [`hello-dotnet/`](./hello-dotnet/) | ASP.NET + `ChioMiddleware` | `./run.sh` | `./smoke.sh` |
+| [`hello-drogon/`](./hello-drogon/) | C++ Drogon + `chio::drogon::ChioMiddleware` | `./run.sh` | `./smoke.sh` (skips when CMake or Drogon is unavailable) |
 
 ### Protocol And Agent Surfaces
 
@@ -90,16 +91,17 @@ Use the root runner to list or execute the current smoke set:
 7. `hello-elysia`
 8. `hello-spring-boot`
 9. `hello-dotnet`
-10. `hello-mcp`
-11. `hello-a2a`
-12. `hello-acp`
+10. `hello-drogon`
+11. `hello-mcp`
+12. `hello-a2a`
+13. `hello-acp`
 
 That sequence gave:
 
 - one Python HTTP path
 - one TypeScript HTTP path
 - one Go HTTP path
-- then the remaining framework wrappers
+- then the remaining framework wrappers (including the C++/Drogon path)
 - then the protocol-native and agent surfaces
 
 ## Standard Shape
@@ -123,7 +125,7 @@ The next small examples should avoid broadening the matrix with thin variants. T
 
 The `hello-*` examples are the small, surface-specific teaching layer.
 
-The `agent-commerce-network` example is the “how these surfaces combine in the real world” layer.
+The `agent-commerce-network` example is the "how these surfaces combine in the real world" layer.
 
 The `internet-of-agents-incident-network` example is the "how recursive delegation, OpenAI SDK orchestration, MCP, ACP, and cross-org authority all compose together" layer.
 

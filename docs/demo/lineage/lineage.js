@@ -1,10 +1,10 @@
-// Chio lineage viewer (M09 P5.T8).
+// Chio lineage viewer.
 //
 // Vanilla ES module. NO import map, NO bundler, NO transpiler step.
 // Loads a single JSON file matching `chio.lineage.graph/v1` and renders
 // the nodes/edges tables. Designed to read the output of:
 //
-//   arc lineage query --emit demo --json > lineage.json
+//   chio lineage query --emit demo --json > lineage.json
 //
 // The viewer keeps the evidence_class on every row so reviewers can see
 // at a glance whether an edge is asserted, observed, or verified.

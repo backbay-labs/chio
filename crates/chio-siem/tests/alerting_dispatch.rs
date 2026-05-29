@@ -364,11 +364,7 @@ async fn partial_failure_across_two_backends_surfaces_partial_failure_error() {
     );
 }
 
-/// Regression: PagerDutyBackend constructors are fallible and never silently
-/// drop the configured 30s timeout by reverting to a no-timeout client.
-/// Previously the constructor used `unwrap_or_else(|_| reqwest::Client::new())`
-/// which masked builder failures. The new fallible API forces callers to
-/// surface (or propagate) any build error.
+/// Regression: PagerDutyBackend constructors are fallible; `new`/`with_endpoint` MUST NOT revert to an unbounded no-timeout client on builder failure.
 #[test]
 fn pagerduty_backend_constructors_are_fallible_and_succeed_on_default_runtime() {
     let pd = PagerDutyBackend::new("rk-test".to_string());
@@ -381,9 +377,7 @@ fn pagerduty_backend_constructors_are_fallible_and_succeed_on_default_runtime() 
     );
 }
 
-/// Regression: OpsGenieBackend constructors are fallible and never silently
-/// drop the configured 30s timeout. See the PagerDuty companion test for
-/// rationale.
+/// Regression: OpsGenieBackend constructors are fallible and never silently drop the 30s timeout.
 #[test]
 fn opsgenie_backend_constructors_are_fallible_and_succeed_on_default_runtime() {
     let og = OpsGenieBackend::new("api-key".to_string());

@@ -1,9 +1,9 @@
-# TTFRH Bench Scaffold
+# TTFRH Bench
 
-This crate reserves the time-to-first-receipt-happy-path bench surface for
-M07. P0 keeps the runners advisory and dependency-free so Cargo.lock remains
-quiet while the template skeletons land.
+This crate measures the time-to-first-receipt happy-path across the three
+`create-chio-app` template starters. Runners are dependency-free so
+`Cargo.lock` stays quiet during ordinary development.
 
-P5 owns the executable Docker runners, the inherited `ubuntu-24.04` reference
-runner pin, and the required CI flip for changes under
+The executable Docker runners use the inherited `ubuntu-24.04` reference
+runner pin. The required CI gate triggers on changes under
 `sdks/typescript/templates/**` or `bench/ttfrh/**`.

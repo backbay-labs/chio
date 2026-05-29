@@ -17,6 +17,7 @@
 
 use std::sync::Arc;
 
+use chio_core_types::crypto::{Ed25519Backend, Keypair, SigningBackend};
 use chio_custody_hw::capability::ScopeSet;
 use chio_custody_hw::error::CustodyError;
 use chio_custody_hw::issuer::{IssuerService, MintRequest};
@@ -31,6 +32,14 @@ fn fixed_now() -> chrono::DateTime<Utc> {
         chrono::LocalResult::Single(t) => t,
         _ => panic!("fixed_now fixture must construct"),
     }
+}
+
+fn signer() -> Arc<dyn SigningBackend> {
+    Arc::new(Ed25519Backend::new(Keypair::from_seed(&[31u8; 32])))
+}
+
+fn issuer_with_nonce_store(store: Arc<dyn PasskeyNonceStore>) -> IssuerService {
+    IssuerService::with_signer(AUDIENCE, signer()).with_nonce_store(store)
 }
 
 fn assertion(cred: &str) -> VerifiedAssertion {
@@ -51,7 +60,7 @@ fn request(nonce: &str) -> MintRequest {
 #[test]
 fn first_mint_fresh_second_mint_replay_in_memory() {
     let store: Arc<dyn PasskeyNonceStore> = Arc::new(InMemoryPasskeyNonceStore::new());
-    let svc = IssuerService::new(AUDIENCE).with_nonce_store(store);
+    let svc = issuer_with_nonce_store(store);
     let req = request("nonce-replay-1");
 
     let first = match svc.mint_capability(&assertion("cred-A"), &req, fixed_now()) {
@@ -77,7 +86,7 @@ fn first_mint_fresh_second_mint_replay_in_memory() {
 #[test]
 fn distinct_credentials_share_nonce_value_safely() {
     let store: Arc<dyn PasskeyNonceStore> = Arc::new(InMemoryPasskeyNonceStore::new());
-    let svc = IssuerService::new(AUDIENCE).with_nonce_store(store);
+    let svc = issuer_with_nonce_store(store);
     let req = request("collision");
 
     let a = svc.mint_capability(&assertion("cred-A"), &req, fixed_now());
@@ -230,7 +239,7 @@ mod sqlite {
             Err(e) => panic!("sqlite open: {e}"),
         };
         let store_arc: Arc<dyn PasskeyNonceStore> = Arc::new(store);
-        let svc = IssuerService::new(AUDIENCE).with_nonce_store(store_arc);
+        let svc = issuer_with_nonce_store(store_arc);
         let req = request("sqlite-nonce");
         let first = svc.mint_capability(&assertion("cred-X"), &req, fixed_now());
         assert!(first.is_ok());

@@ -14,7 +14,7 @@ receipts on the asset catalog row.
 Public surface:
 
 * :func:`chio_asset` -- decorator that wraps a Python function as a
-  Dagster :func:`dagster.asset` gated on an Chio capability check.
+  Dagster :func:`dagster.asset` gated on a Chio capability check.
 * :func:`chio_op` -- decorator that wraps a Python function as a
   Dagster :func:`dagster.op` with the same pre-execute gate.
 * :class:`ChioIOManager` -- IO manager wrapper that evaluates a

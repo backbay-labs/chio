@@ -659,11 +659,11 @@ mod tests {
         Ok(())
     }
 
-    /// M05.P5.T6: every non-pending bundled case must cite a
+    /// Every non-pending bundled case must cite a
     /// `threat_id` that exists in
     /// `spec/security/chio-threat-model.v1.json`. Vectors with
     /// `pending: true` are auto-promoted from libFuzzer crashes
-    /// (D14) and are excepted from the citation gate until a human
+    /// and are excepted from the citation gate until a human
     /// triages them and strips the flag.
     #[test]
     fn every_non_pending_case_cites_a_known_threat_id() -> Result<(), CaseError> {

@@ -1,6 +1,6 @@
 //! Bounded exponential retry policy for [`SettlementHook`] failures.
 //!
-//! M09 P2.T3 binds settlement failures to a documented retry envelope
+//! Binds settlement failures to a documented retry envelope
 //! plus a `settle_dead_letters` table. The policy is a pure function:
 //! it does not own any clock or storage, leaving observability and
 //! persistence to the kernel observer slot and the SQLite store
@@ -41,7 +41,7 @@ pub const DEFAULT_BACKOFF_CAP_MS: u64 = 60_000;
 /// Documented retry envelope for the settlement observer slot.
 ///
 /// All fields are policy inputs; the runtime evaluation is a pure
-/// function. The defaults match the bounds documented in the M09
+/// function. The defaults match the bounds documented in the settlement
 /// audit doc and are wired into [`crate::hook::SettlementHook`]
 /// callers via [`classify_attempt`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

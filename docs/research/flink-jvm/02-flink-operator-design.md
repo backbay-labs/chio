@@ -21,11 +21,11 @@ new `sdks/jvm/settings.gradle.kts` multi-project root that includes both
 `chio-spring-boot` and `chio-streaming-flink`. Depend on `chio-sdk-jvm` via
 `implementation(project(":chio-sdk-jvm"))`. JDK `java.net.http.HttpClient`
 remains the default transport (matches `chio-spring-boot` at
-`sdks/jvm/chio-spring-boot/src/main/kotlin/io/backbay/chio/ChioSidecarClient.kt:35-38`).
+`sdks/jvm/chio-spring-boot/src/main/kotlin/world/chio/ChioSidecarClient.kt:35-38`).
 
 ## API sketch
 
-Public surface only. Package `io.backbay.chio.streaming.flink`.
+Public surface only. Package `world.chio.streaming.flink`.
 
 ```java
 // Configuration. Immutable record + static builder. Subject/parameter
@@ -244,7 +244,7 @@ Follow `chio-spring-boot` with one bump:
   consumers bring their own Flink bundle. No transitive
   `flink-connector-kafka`.
 - Gradle `java-library` + `maven-publish`. Coordinates
-  `io.backbay.chio:chio-streaming-flink:0.1.0`.
+  `world.chio:chio-streaming-flink:0.1.0`.
 
 ### 6. Module layout
 
@@ -259,7 +259,7 @@ sdks/jvm/
   chio-spring-boot/             # existing
   chio-streaming-flink/
     build.gradle.kts
-    src/main/java/io/backbay/chio/streaming/flink/
+    src/main/java/world/chio/streaming/flink/
       ChioFlinkConfig.java
       ChioOutputTags.java
       ChioAsyncEvaluateFunction.java

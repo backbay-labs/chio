@@ -4,6 +4,8 @@
 //! artifacts. Registry transport and artifact shape checks stay local, while
 //! Sigstore verification is delegated to `chio-attest-verify`.
 
+#![forbid(unsafe_code)]
+
 pub mod cache;
 #[cfg(feature = "marketplace")]
 pub mod marketplace;
@@ -45,7 +47,7 @@ pub use publish::{
 };
 pub use pull::{GuardPullRequest, GuardPullResponse, RESERVED_SIGSTORE_BUNDLE_JSON};
 pub use verify::{
-    expected_identity_from_config, verify_dual_mode, GuardLoadEvent, GuardLoadEventResult,
-    GuardLoadSource, GuardSigstoreVerifier, GuardVerificationKind, GuardVerificationReport,
-    GuardVerifiedSignature, CHIO_GUARD_VERIFY_EVENT,
+    verify_dual_mode, GuardLoadEvent, GuardLoadEventResult, GuardLoadSource, GuardSigstoreVerifier,
+    GuardVerificationKind, GuardVerificationReport, GuardVerifiedSignature,
+    CHIO_GUARD_VERIFY_EVENT,
 };

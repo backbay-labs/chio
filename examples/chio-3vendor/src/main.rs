@@ -9,8 +9,7 @@ pub use chio_attest_loopback::{
     revocation_publication_request, revocation_publication_request_json, signing_keys_json,
     verification_context, verification_context_json, verifier_trust_bundle_document_for_package,
     verifier_trust_bundle_json, verify_package, write_signed_negative_case_inputs,
-    ChiodosPackageError as ChioPackageError, ChiodosProofPackage as ChioProofPackage,
-    ChiodosVerifierTrustBundle as ChioVerifierTrustBundle,
+    ChioPackageError, ChioProofPackage, ChioVerifierTrustBundle,
 };
 use chio_core_types::merkle::MerkleTree;
 use chio_core_types::receipt::SignedExportEnvelope;

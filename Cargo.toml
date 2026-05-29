@@ -36,6 +36,7 @@ members = [
     "crates/chio-bedrock-converse-adapter",
     "crates/chio-cohere-tools-adapter",
     "crates/chio-cross-protocol",
+    "crates/chio-edge-metrics",
     "crates/chio-egress-contract",
     "crates/chio-envoy-ext-authz",
     "crates/chio-gemini-tools-adapter",
@@ -148,6 +149,7 @@ members = [
     "examples/otel-genai",
     #
     # Tests
+    "crates/chio-test-support",
     "formal/diff-tests",
     "tests/e2e",
     "tests/replay",
@@ -171,7 +173,7 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.93"
 license = "Apache-2.0"
-repository = "https://github.com/backbay/chio"
+repository = "https://github.com/backbay-labs/chio"
 
 [workspace.metadata.chio]
 rust_public_entrypoints = [
@@ -197,6 +199,20 @@ rust_public_entrypoints = [
 # Downstream consumers can extract the manifest with `cargo audit -f <binary>`
 # to scan for known vulnerabilities without needing the source tree.
 
+# Canonical workspace lint policy. Every member crate inherits this block via
+# `[lints]\nworkspace = true` in its own manifest rather than hand-copying the
+# denies, so the policy lives in exactly one place. When tightening the policy
+# (for example adding `panic = "deny"`), edit it here only.
+#
+# `unwrap_used` / `expect_used` are denied because this is a fail-closed
+# security kernel: an unhandled `Option`/`Result` panic in a guard or receipt
+# path is an availability fault, not an acceptable shortcut. Crates that need a
+# narrow, reviewed exception annotate the specific call site with
+# `#[allow(clippy::unwrap_used)]` instead of opting the whole crate out.
+#
+# No `[workspace.lints.rust]` floor is defined: the only per-crate rust-lint
+# usage today is bespoke `unexpected_cfgs` check-cfg registration (kani / loom /
+# dhat) that cannot be hoisted, so those stay as local `[lints.rust]` tables.
 [workspace.lints.clippy]
 unwrap_used = "deny"
 expect_used = "deny"
@@ -222,7 +238,10 @@ aws-sdk-marketplacemetering = { version = "1", default-features = false, feature
     "rt-tokio",
 ] }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# float_roundtrip keeps f64 parsing exact so signed credentials persisted to
+# JSON re-verify: canonical signing bytes are reproducible only if a reloaded
+# float yields the exact bits that were signed.
+serde_json = { version = "1", features = ["float_roundtrip"] }
 serde_yaml = "0.9"
 serde_yml = "0.0.12"
 tokio = { version = "1", features = ["full"] }
@@ -261,6 +280,7 @@ proptest = "1.10"
 criterion = "0.5"
 dhat = "0.3"
 tempfile = "3"
+wiremock = "0.6"
 testcontainers = { version = "0.27.3", default-features = false }
 jsonschema = { version = "0.46", default-features = false, features = ["resolve-file"] }
 # Pin concurrency primitives + tower feature set in the workspace so member

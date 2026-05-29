@@ -102,9 +102,10 @@ actual verdicts in `arena.json`.
 
 ## Adversaries
 
-Adversary blocks are metadata in P1 and become executable populations in P3.
-Each `[[adversary]]` entry (a TOML array-of-tables under the `adversaries`
-key) describes one population the runtime instantiates for the scenario.
+Adversary blocks are metadata in the scenario file and become executable
+populations when the arena runtime is active. Each `[[adversary]]` entry
+(a TOML array-of-tables under the `adversaries` key) describes one population
+the runtime instantiates for the scenario.
 
 ```toml
 [[adversaries]]
@@ -113,12 +114,11 @@ population = "none"
 seed_ref = "none"
 ```
 
-### P3 adversary classes
+### Adversary classes
 
-The arena ships four canonical adversary classes (`M08.P3.T2` through
-`M08.P3.T5`). Each `[[adversary]]` entry selects one class via the `class`
-field, names the population through `population`, and forwards an optional
-`params` table to the class constructor.
+The arena ships four canonical adversary classes. Each `[[adversary]]` entry
+selects one class via the `class` field, names the population through
+`population`, and forwards an optional `params` table to the class constructor.
 
 | Class                  | Class id                  | Required params  |
 |------------------------|---------------------------|------------------|
@@ -141,7 +141,7 @@ secret marker list.
 [[adversaries]]
 class = "prompt-injection"
 population = "default-injection"
-seed_ref = "fuzz/artifacts/m02"
+seed_ref = "fuzz/artifacts/prompt-injection"
 [adversaries.params]
 patterns = ["ignore-previous-instructions", "tool-name-spoof"]
 ```
@@ -158,5 +158,5 @@ keys outside `[ext]` fail closed.
 
 ```toml
 [ext]
-owner = "m08"
+owner = "team-alpha"
 ```

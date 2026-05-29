@@ -1,16 +1,15 @@
 # Pinned WebAuthn fixture corpus
 
-P1 ships a JSON-descriptor corpus that pins the failure-mode taxonomy the
-M10 narrative requires (replayed challenge, mismatched origin, expired
+This is a JSON-descriptor corpus that pins the failure-mode taxonomy the
+verifier must enforce (replayed challenge, mismatched origin, expired
 challenge, malformed CBOR, plus four positive shapes). The descriptors
 carry the intended verifier verdict and the registry URN every negative
 case must surface.
 
-P2 will replace each descriptor with a byte-pinned WebAuthn assertion
-captured from a real authenticator. The descriptor schema is forward
-compatible: P2 adds an `assertion_b64` field carrying the wire bytes and a
-`relying_party_id` / `origin` pair the verifier was configured with at
-capture time.
+Tests that need byte-pinned WebAuthn assertions use the custody hardware
+integration fixtures. The descriptor schema stays compatible with those
+fixtures through the optional `assertion_b64`, `relying_party_id`, and
+`origin` fields.
 
 ## Schema
 
@@ -29,7 +28,7 @@ Each `*.json` file under `positive/` and `negative/` carries:
 }
 ```
 
-TODO(security): P2 wires a real `webauthn-rs` `start_passkey_authentication`
-state plus byte-pinned `PublicKeyCredential` JSON so the verifier actually
-exercises the cryptographic path. P1 only proves the corpus directory
-shape and the verdict taxonomy.
+The byte-pinned WebAuthn assertion corpus lives in the custody hardware
+integration fixtures that call `webauthn-rs` directly. This descriptor corpus
+is intentionally narrower: it pins the stable fixture taxonomy and expected
+URNs consumed by tests that do not need authenticator wire bytes.

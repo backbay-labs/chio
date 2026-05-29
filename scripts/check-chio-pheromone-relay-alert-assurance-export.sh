@@ -195,7 +195,7 @@ print("OK generated relay alert assurance export reports")
 PY
 
 cargo test -p chio-pheromone-relay alert_assurance_export --test relay
-cargo test -p chio-cli --bin chio_pheromone
+cargo test -p chio-cli --bin chio chio_pheromone
 
 NEGATIVE_DIR="$(mktemp -d)"
 TMP_DIRS+=("$NEGATIVE_DIR")

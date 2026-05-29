@@ -1,10 +1,10 @@
 # TTFRH (time-to-first-receipt-happy-path) gate.
 #
-# M07 P5.T5 flips this lane from advisory (P0.T4) to required CI on
-# changes under sdks/typescript/templates/** or bench/ttfrh/**. The
+# This lane is a required CI check on changes under
+# sdks/typescript/templates/** or bench/ttfrh/**. The
 # in-process Rust path runs on every PR; the container lane runs on a
 # self-hosted reference 4-core Linux runner once the path filter
-# matches. The grep gate command in the P5.T5 ticket asserts the
+# matches. A grep gate asserts the
 # `required: true` marker on the line below stays in tree.
 # required: true
 
@@ -28,9 +28,9 @@ jobs:
     name: ttfrh-bench (in-process p99 budget)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Cache cargo target
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: |
             ~/.cargo/registry
@@ -43,10 +43,15 @@ jobs:
 
   container-lane:
     name: ttfrh-container (clean-machine timing)
+    # Clean-machine p99 timing is only meaningful on a dedicated reference
+    # runner. Shared PR runners cannot provide that, and the from-scratch
+    # container build is wasteful per PR, so this lane runs on push and manual
+    # dispatch only. The in-process smoke above is the per-PR gate.
+    if: ${{ github.event_name != 'pull_request' }}
     runs-on: ubuntu-24.04
     needs: in-process-bench
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Run container TTFRH bench
         run: |
           set -euo pipefail
@@ -57,4 +62,4 @@ jobs:
             -e CARGO_HOME=/tmp/cargo \
             -e CARGO_TARGET_DIR=/tmp/chio-target \
             rust:1.93-bookworm \
-            bash -lc 'cargo run -p ttfrh-bench --release -- --all --p99-budget-ms 60000'
+            bash -c 'cargo run -p ttfrh-bench --release -- --all --p99-budget-ms 60000'

@@ -7,8 +7,8 @@
 # effect on chio-kernel-core behavior.
 #
 # This is a methodology fix, not a test fix. The chio-acp-proxy failure is
-# pre-existing on main (commit 708c7bb33) and is out of scope for the
-# A1 mutation baseline. The CI hosted-nightly remains the authoritative
+# pre-existing on main (commit 708c7bb33) and is out of scope for this
+# mutation baseline. The CI hosted-nightly remains the authoritative
 # workspace-scope measurement.
 #
 # examine_globs mirrors the workspace .cargo/mutants.toml chio-kernel-core

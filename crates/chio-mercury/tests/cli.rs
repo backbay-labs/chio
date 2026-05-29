@@ -33,8 +33,12 @@ fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
-fn mercury_receipt_with_ts(id: &str, capability_id: &str, timestamp: u64) -> ChioReceipt {
-    let keypair = Keypair::generate();
+fn mercury_receipt_with_ts(
+    id: &str,
+    capability_id: &str,
+    timestamp: u64,
+    keypair: &Keypair,
+) -> ChioReceipt {
     let metadata = sample_mercury_receipt_metadata()
         .into_receipt_metadata_value()
         .expect("mercury metadata value");
@@ -62,7 +66,7 @@ fn mercury_receipt_with_ts(id: &str, capability_id: &str, timestamp: u64) -> Chi
             tenant_id: None,
             kernel_key: keypair.public_key(),
         },
-        &keypair,
+        keypair,
     )
     .expect("sign mercury receipt")
 }
@@ -138,6 +142,7 @@ fn mercury_proof_and_inquiry_packages_export_and_verify() {
                 "rcpt-mercury-1",
                 "cap-mercury-proof",
                 100,
+                &issuer,
             ))
             .expect("append mercury receipt");
         let canonical = store

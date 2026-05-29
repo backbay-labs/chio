@@ -1,4 +1,4 @@
-//! Integration tests for the phase-13.3 threat-intel adapters.
+//! Integration tests for the threat-intel adapters.
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 

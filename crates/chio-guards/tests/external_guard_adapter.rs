@@ -1,4 +1,4 @@
-//! Integration tests for `AsyncGuardAdapter` (phase 13.1).
+//! Integration tests for `AsyncGuardAdapter`.
 //!
 //! These tests exercise the composed behavior of circuit breaker + TTL
 //! cache + rate limiter + retry-with-jitter on top of a mock

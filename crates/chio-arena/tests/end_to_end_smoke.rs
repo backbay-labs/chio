@@ -1,6 +1,6 @@
 //! End-to-end smoke test composing the auto-promotion building blocks:
 //! a failing arena scenario auto-promotes to both corpora, the receipt
-//! bundle is replayable bit-exact via the M04 layout, and the
+//! bundle is replayable bit-exact via the fixture layout, and the
 //! leaderboard is rendered with the stable schema.
 
 use std::collections::BTreeMap;
@@ -8,9 +8,9 @@ use std::collections::HashMap;
 
 use chio_arena::coevolve::{FitnessReport, FitnessSample};
 use chio_arena::{
-    parse_scenario_str, promote_to_adversarial_suite, promote_to_m04_fixtures, render_leaderboard,
+    parse_scenario_str, promote_to_adversarial_suite, promote_to_fixtures, render_leaderboard,
     write_arena_bundle, AdversaryClass, ArenaReceipt, ArenaRun, BlessEnv, Leaderboard,
-    ScenarioVerdict, ARENA_M04_PROMOTE_CAP_DEFAULT,
+    ScenarioVerdict, ARENA_PROMOTE_CAP_DEFAULT,
 };
 use chio_core::crypto::{sha256_hex, Keypair};
 use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
@@ -113,7 +113,7 @@ fn end_to_end_smoke() -> Result<(), Box<dyn std::error::Error>> {
     };
     let workspace = tempfile::tempdir()?;
 
-    // Step 1: write the M04-byte-compatible bundle under target/arena/.
+    // Step 1: write the byte-compatible bundle under target/arena/.
     let bundle_dir = workspace
         .path()
         .join("target")
@@ -126,7 +126,7 @@ fn end_to_end_smoke() -> Result<(), Box<dyn std::error::Error>> {
     assert!(bundle_dir.join("arena.json").is_file());
     assert_eq!(bundle.scenario_id, "smoke_e2e");
 
-    // Step 2: auto-promote to the M04 fixture corpus.
+    // Step 2: auto-promote to the fixture corpus.
     let fixtures_root = workspace
         .path()
         .join("tests")
@@ -135,22 +135,22 @@ fn end_to_end_smoke() -> Result<(), Box<dyn std::error::Error>> {
     let env = StubEnv::default()
         .with("CHIO_BLESS", "1")
         .with("BLESS_REASON", "arena:smoke_e2e");
-    let m04 = promote_to_m04_fixtures(
+    let fixture = promote_to_fixtures(
         &scenario,
         &run,
         &fixtures_root,
         "prompt-injection",
-        ARENA_M04_PROMOTE_CAP_DEFAULT,
+        ARENA_PROMOTE_CAP_DEFAULT,
         &env,
     )?;
-    assert_eq!(m04.fixtures.len(), 1);
-    let m04_bytes = std::fs::read(&m04.fixtures[0])?;
-    let m04_parsed: Value = serde_json::from_slice(&m04_bytes)?;
-    assert_eq!(m04_parsed["bless_reason"], "arena:smoke_e2e");
-    assert_eq!(m04_parsed["expected_failure_class"], "prompt-injection");
+    assert_eq!(fixture.fixtures.len(), 1);
+    let fixture_bytes = std::fs::read(&fixture.fixtures[0])?;
+    let fixture_parsed: Value = serde_json::from_slice(&fixture_bytes)?;
+    assert_eq!(fixture_parsed["bless_reason"], "arena:smoke_e2e");
+    assert_eq!(fixture_parsed["expected_failure_class"], "prompt-injection");
 
     // Step 3: auto-promote to the adversarial suite (falls back to
-    // promote-pending/ since the M05 scaffold is not present).
+    // promote-pending/ since the adversarial-suite scaffold is not present).
     let suite =
         promote_to_adversarial_suite(&scenario, &run, workspace.path(), "prompt-injection")?;
     assert!(!suite.live_target);

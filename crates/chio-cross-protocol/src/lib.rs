@@ -4,6 +4,8 @@
 //! so A2A, ACP, and later MCP/OpenAI/HTTP bridge paths do not each redefine
 //! provenance, attenuation, and receipt-lineage behavior independently.
 
+#![forbid(unsafe_code)]
+
 use std::collections::BTreeMap;
 use std::fmt;
 use std::time::{SystemTime, UNIX_EPOCH};

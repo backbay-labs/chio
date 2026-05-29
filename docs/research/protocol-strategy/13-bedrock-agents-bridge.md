@@ -2,7 +2,7 @@
 
 > **Historical research note (PR 652):** Use [00-overview-v2.md](00-overview-v2.md) and [18-decision-packet.md](18-decision-packet.md) for planning. This file remains research input, not an implementation ticket.
 >
-> **Erratum (wave 3 + PR 652 review):** `tool_origin` records execution locus, not redaction policy. Lambda action groups remain host-executed and outside Chio's mediation boundary; trace redaction should be captured by a separate signed current v1 `trace_redaction_mode` field.
+> **Erratum (PR 652 review):** `tool_origin` records execution locus, not redaction policy. Lambda action groups remain host-executed and outside Chio's mediation boundary; trace redaction should be captured by a separate signed current v1 `trace_redaction_mode` field.
 
 ## TL;DR
 

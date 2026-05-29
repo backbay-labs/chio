@@ -20,6 +20,5 @@ tracing-subscriber = { workspace = true, features = ["registry"] }
 [dev-dependencies]
 tracing-subscriber = { workspace = true, features = ["registry"] }
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

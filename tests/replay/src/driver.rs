@@ -1,4 +1,4 @@
-//! Scenario driver for the M04 deterministic-replay gate.
+//! Scenario driver for the deterministic-replay gate.
 //!
 //! This module defines the two primitives that all replay-gate fixtures
 //! flow through:
@@ -16,11 +16,10 @@
 //!   of these knobs so that replay output is byte-identical across
 //!   machines and OSes.
 //!
-//! T2 lands the driver primitives only. T3 wires `ScenarioDriver` into
-//! the kernel + `InMemoryReceiptStore` to actually drive a fixture
-//! through the pipeline; T4 adds the byte-comparison harness that reads
-//! the goldens back as raw `Vec<u8>` and compares them without serde
-//! round-tripping.
+//! `ScenarioDriver` wires into the kernel and `InMemoryReceiptStore` to
+//! drive a fixture through the pipeline; the byte-comparison harness in
+//! [`crate::byte_compare`] reads the goldens back as raw `Vec<u8>` and
+//! compares them without serde round-tripping.
 
 use std::fs;
 use std::io;
@@ -87,8 +86,7 @@ pub enum DriverError {
 ///
 /// The replay corpus lives under `tests/replay/fixtures/<name>/` with
 /// one subdirectory per scenario and one matching subdirectory under
-/// `tests/replay/goldens/<name>/`. T5 lands the fixture corpus; T2
-/// only defines the value type so later tickets can reference it.
+/// `tests/replay/goldens/<name>/`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Scenario {
     /// Human-readable scenario name (also the directory leaf).
@@ -206,7 +204,7 @@ impl ScenarioDriver {
 
     /// Returns a borrow of the underlying signing key for callers that
     /// need to hand it to APIs requiring an owned `&SigningKey` (for
-    /// example, capability-token issuance in T3).
+    /// example, capability-token issuance).
     pub fn signing_key(&self) -> &SigningKey {
         &self.signing_key
     }
@@ -222,9 +220,10 @@ impl ScenarioDriver {
 /// List the inputs directory for `scenario` in deterministic
 /// `LC_ALL=C`-equivalent byte order.
 ///
-/// This is the load-bearing wire-up for T7: every replay-gate code
-/// path that enumerates a scenario's input directory MUST go through
-/// this function (or [`crate::fs_iter::read_dir_sorted`] /
+/// This is the load-bearing wire-up for deterministic enumeration:
+/// every replay-gate code path that enumerates a scenario's input
+/// directory MUST go through this function
+/// (or [`crate::fs_iter::read_dir_sorted`] /
 /// [`crate::fs_iter::walk_files_sorted`]) rather than calling
 /// `fs::read_dir` directly. Native `read_dir` order varies across
 /// hosts (HFS+/APFS case-insensitive normalization, ext4 inode order,

@@ -12,7 +12,7 @@ Public surface:
 * :class:`ReceiptEnricher` -- build backend-neutral
   :class:`SpanPayload` objects; the bridges wrap this for their
   respective SDKs.
-* :class:`ReceiptPoller` -- async tail loop over an Chio receipt source
+* :class:`ReceiptPoller` -- async tail loop over a Chio receipt source
   that forwards new receipts to the configured bridges.
 * :class:`ChioObservabilityError` / :class:`ChioObservabilityConfigError` --
   error types.

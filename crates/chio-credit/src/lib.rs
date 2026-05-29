@@ -1,3 +1,20 @@
+//! Credit, capital, and bonded-execution contracts for the Chio protocol.
+//!
+//! This crate models credit limits, IOUs, and bonded execution for metered
+//! tool access. It defines the credit-evaluator hook and IOU envelope types, a
+//! local credit account that mints signed IOUs, an exposure ledger, and an IOU
+//! envelope store binding. It composes the appraisal and underwriting surfaces
+//! so credit decisions reference prior signed Chio truth rather than restating
+//! it.
+//!
+//! # Modules
+//!
+//! - [`hook`] -- credit-evaluator hook and the IOU envelope types.
+//! - [`local_account`] -- in-memory account that signs IOU envelopes.
+//! - [`store_binding`] -- durable-store trait for persisting IOU envelopes.
+
+#![forbid(unsafe_code)]
+
 pub use chio_appraisal as appraisal;
 pub use chio_core_types::{capability, crypto, receipt};
 pub use chio_underwriting as underwriting;

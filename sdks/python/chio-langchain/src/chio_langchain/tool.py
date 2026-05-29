@@ -31,7 +31,7 @@ from pydantic import BaseModel, Field, create_model
 
 
 class ChioTool(BaseTool):
-    """A LangChain tool backed by an Chio tool server.
+    """A LangChain tool backed by a Chio tool server.
 
     Invocations are evaluated by the Chio sidecar kernel which validates
     capabilities, runs guards, and signs receipts.

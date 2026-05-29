@@ -1,8 +1,8 @@
-//! Prompt-injection detection guard (roadmap phase 3.1).
+//! Prompt-injection detection guard.
 //!
-//! This guard is a port of ClawdStrike's 6-signal prompt-injection detector
-//! adapted for Chio's synchronous [`chio_kernel::Guard`] trait.  Each signal is
-//! a regex-driven heuristic over a canonicalized form of the input text.  The
+//! A 6-signal prompt-injection detector implementing Chio's synchronous
+//! [`chio_kernel::Guard`] trait.  Each signal is a regex-driven heuristic
+//! over a canonicalized form of the input text.  The
 //! guard sums signal weights into a total score and denies when the total
 //! meets or exceeds a configurable threshold (default `0.8`).
 //!
@@ -27,7 +27,7 @@
 //! - unrecognised [`ToolAction`] -> `Verdict::Allow` (guard does not apply).
 //!
 //! The guard is NOT registered in [`crate::GuardPipeline::default_pipeline`]
-//! by design: the roadmap introduces it opt-in so existing guards remain
+//! by design: it is opt-in so existing guards remain
 //! unaffected.  Callers can register it explicitly via
 //! `kernel.add_guard(Box::new(PromptInjectionGuard::default()))` or include
 //! it in a bespoke pipeline.

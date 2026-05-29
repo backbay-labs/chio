@@ -7,7 +7,7 @@
 //! `A2aAdapter` whose `HttpEgressContract` allow-lists the loopback
 //! discovery host but denies the cloud-metadata link-local address.
 //! Asserts the redirect is rejected by the contract before any byte
-//! is sent to the internal target. This pins the W2.2 fix that
+//! is sent to the internal target. This pins the SSRF fix that
 //! validates every redirect hop, not just the initial request URL.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 

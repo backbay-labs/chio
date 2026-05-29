@@ -281,10 +281,9 @@ class TestDefaultPolicyRedacts:
     ) -> None:
         """``chio_file_write(path, content, overwrite)``: redact the known prefix.
 
-        Regression for bot comment 3229196956: the exact-length check
-        previously fell through to raw pass-through when extras were
-        appended after the documented (path, content) shape. With the
-        fix, the table-named prefix is bound + redacted and any
+        The exact-length check must not fall through to raw pass-through
+        when extras are appended after the documented (path, content)
+        shape. The table-named prefix is bound + redacted and any
         trailing positional extras are preserved alongside.
         """
         async with allow_all() as chio:

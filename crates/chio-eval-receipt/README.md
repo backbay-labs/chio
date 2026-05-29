@@ -1,23 +1,36 @@
 # chio-eval-receipt
 
-`chio-eval-receipt` is the M02 reference-verifier crate for
-`chio.eval-report.bundle.v1`.
+`chio-eval-receipt` is the reference verifier for
+`chio.eval-report.bundle.v1` receipt bundles.
 
-P0 intentionally ships only the workspace shell and stable descriptor:
+It verifies a bundle end to end:
+
+- validates the bundle envelope against schema id `chio.eval-report.bundle.v1`
+- recomputes the corpus SHA-256 and checks it against the bundle
+- verifies the detached memo signature attached to each receipt
+
+Verification fails closed: any envelope, corpus, or signature mismatch is
+rejected.
+
+## Library
+
+- `verify_bundle` / `verify_fixture_bundle` parse and verify a bundle JSON
+  document into a `VerifiedBundle`.
+- `export_scenario_run` builds a `Bundle` from scenario inputs.
+
+Schema details:
 
 - schema id: `chio.eval-report.bundle.v1`
-- planned schema path: `spec/eval/receipt-format.v1.json`
-- initial partner lane: METR
-- current stage: `p0-placeholder`
+- schema path: `spec/eval/receipt-format.v1.json`
 
-The placeholder fails closed: `EvalReceiptSurface::verifier_ready()`
-returns `false` until P3 lands schema validation, bundle verification,
-and the CLI.
+## CLI
 
-Planned follow-up tickets:
+The `chio-eval-receipt` binary verifies bundles and memo signatures:
 
-- M02.P2 adds export-contract documentation and verdict-matrix mapping.
-- M02.P3 adds schema validation, signature verification, CLI support,
-  Python binding scaffolding, and golden vectors.
-- M02.P4 adds the partner ingest sample under
-  `examples/eval-receipt-ingest/`.
+- `chio-eval-receipt verify <bundle-path>`
+- `chio-eval-receipt verify-fixture <bundle-path>`
+- `chio-eval-receipt verify-memo <memo-path> <sig-path>`
+
+## Python binding
+
+The `py/` crate exposes `verify_bundle_json` through PyO3 for Python callers.

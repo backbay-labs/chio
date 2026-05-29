@@ -12,7 +12,7 @@ if ! command -v cmake >/dev/null 2>&1; then
   exit 1
 fi
 
-cmake -S packages/sdk/chio-drogon -B "${build_dir}" \
+cmake -S sdks/cpp/chio-drogon -B "${build_dir}" \
   -DCHIO_DROGON_BUILD_TESTS=ON
 
 if [[ -f "${build_dir}/CMakeCache.txt" ]] &&

@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # check-trj4-no-implementation-backed.sh
 #
-# Trajectory-4 closeout gate. The deprecated theorem status
-# `implementation_backed` was demoted to `proposed` (see PR titled
-# "chore(trj4-closeout): demote implementation_backed theorems to proposed").
+# Registry/formal status gate. The deprecated theorem status
+# `implementation_backed` was demoted to `proposed`.
 # This gate fails closed if the literal string `implementation_backed`
 # reappears anywhere under spec/registries/ or formal/, which would silently
 # re-promote a theorem past the Evidence Gate.
@@ -34,10 +33,10 @@ for root in "${roots[@]}"; do
 done
 
 if [ -n "$hits" ]; then
-  echo "::error::trj4 closeout gate: found '${needle}' in tracked registry/formal sources." 1>&2
+  echo "::error::registry status gate: found '${needle}' in tracked registry/formal sources." 1>&2
   echo "Demote these entries to 'proposed' (or 'proven'/'assumed') before merging:" 1>&2
   printf '%s' "$hits" 1>&2
   exit 1
 fi
 
-echo "trj4 closeout gate: no '${needle}' occurrences under ${roots[*]}"
+echo "registry status gate: no '${needle}' occurrences under ${roots[*]}"

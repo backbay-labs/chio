@@ -1,8 +1,9 @@
 {
   "name": "@chio-protocol/node-http",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "type": "module",
   "description": "Common HTTP interception substrate for Chio protocol -- Node and Bun compatible",
+  "license": "Apache-2.0",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -29,5 +30,8 @@
     "@types/node": "^22.0.0",
     "typescript": "~5.7.0",
     "vitest": "^3.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

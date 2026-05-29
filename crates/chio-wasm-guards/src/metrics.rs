@@ -1,12 +1,8 @@
 //! Prometheus metric family descriptors for WASM guard observability.
 //!
-//! All `METRIC_CHIO_*` constants used to live here as parallel string
-//! literals. W2.4 of the trj4 closeout migrates them to re-exports from
-//! `chio_metrics_spec` so the workspace registry is the single source of
-//! truth for Prometheus metric names. The three pool metrics
-//! (`chio_guard_pool_checkout_total`, `chio_guard_pool_warm_size`,
-//! `chio_guard_pool_evict_total`) were registered in the same wave; the
-//! re-exports below pick them up automatically.
+//! The `METRIC_CHIO_*` names are re-exported from `chio_metrics_spec` so the
+//! workspace registry is the single source of truth for Prometheus metric
+//! names.
 
 use std::collections::{BTreeMap, BTreeSet};
 

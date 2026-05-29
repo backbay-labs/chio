@@ -28,9 +28,7 @@
 /// (`max_scan_bytes`) and fail-closed on internal errors.
 pub fn canonicalize(input: &str) -> String {
     // First pass: strip zero-width / format characters, fold homoglyphs,
-    // lowercase ASCII letters in one sweep.  We also collect a secondary
-    // pass indicator: whether the previous emitted character was a
-    // punctuation run that should be collapsed.
+    // lowercase ASCII letters in one sweep.
     let mut out = String::with_capacity(input.len());
     for ch in input.chars() {
         if is_zero_width(ch) {

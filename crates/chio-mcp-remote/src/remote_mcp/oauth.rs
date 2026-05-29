@@ -1815,22 +1815,22 @@ fn read_session_lifecycle_policy() -> SessionLifecyclePolicy {
     SessionLifecyclePolicy {
         idle_expiry_millis: read_env_u64(
             SESSION_IDLE_EXPIRY_ENV,
-            Some(LEGACY_SESSION_IDLE_EXPIRY_ENV),
+            None,
             DEFAULT_SESSION_IDLE_EXPIRY_MILLIS,
         ),
         drain_grace_millis: read_env_u64(
             SESSION_DRAIN_GRACE_ENV,
-            Some(LEGACY_SESSION_DRAIN_GRACE_ENV),
+            None,
             DEFAULT_SESSION_DRAIN_GRACE_MILLIS,
         ),
         reaper_interval_millis: read_env_u64(
             SESSION_REAPER_INTERVAL_ENV,
-            Some(LEGACY_SESSION_REAPER_INTERVAL_ENV),
+            None,
             DEFAULT_SESSION_REAPER_INTERVAL_MILLIS,
         ),
         tombstone_retention_millis: read_env_u64(
             SESSION_TOMBSTONE_RETENTION_ENV,
-            Some(LEGACY_SESSION_TOMBSTONE_RETENTION_ENV),
+            None,
             DEFAULT_SESSION_TOMBSTONE_RETENTION_MILLIS,
         ),
     }

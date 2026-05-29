@@ -152,6 +152,18 @@ fn headless_browser_wasm_matches_frozen_canonical_vector_bytes() -> Result<(), S
         return Ok(());
     }
 
+    let wasm_pack_available = Command::new("wasm-pack")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false);
+    if !wasm_pack_available {
+        eprintln!("skipping wasm-bindgen differential test because wasm-pack is not installed");
+        return Ok(());
+    }
+
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let runner =
         std::env::var("CHIO_CANONICAL_DIFF_WASM_RUNNER").unwrap_or_else(|_| "auto".to_string());

@@ -132,7 +132,12 @@ where
                 Ok(r) => r,
                 Err(e) => {
                     if evaluator.is_fail_open() {
-                        // Fail-open: pass through to inner service.
+                        // Fail-open: pass through to inner service. Record the
+                        // skipped enforcement so the bypass is auditable.
+                        tracing::warn!(
+                            error = %e,
+                            "Chio evaluation failed; fail-open enabled, forwarding request WITHOUT enforcement"
+                        );
                         return inner.call(req).await.map_err(Into::into);
                     }
                     tracing::error!("Chio evaluation failed: {e}");
@@ -142,7 +147,6 @@ where
                 }
             };
 
-            // Check verdict.
             if prepared.verdict.is_denied() {
                 let status = denied_status(&prepared.verdict);
                 let receipt = evaluator
@@ -289,9 +293,8 @@ where
     }
 
     // Pull frames one at a time and abort as soon as the running buffer would
-    // exceed `max_body_bytes`. The previous implementation called
-    // `body.collect()` which buffered every byte of the request before
-    // checking the size, so an attacker could exhaust host memory with a
+    // exceed `max_body_bytes`. Buffering the whole body first (e.g.
+    // `body.collect()`) would let an attacker exhaust host memory with a
     // single oversized POST whose declared size hint hid the true length.
     // Streaming the frames bounds peak buffer use to `max_body_bytes` plus
     // the size of one in-flight frame.
@@ -379,7 +382,10 @@ mod tests {
         (keypair, evaluator)
     }
 
-    #[tokio::test]
+    // Chio's sync tool-dispatch bridge requires a multi-thread runtime (the
+    // documented host requirement); the default current-thread test runtime
+    // cannot drive the async tool server.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn service_allows_get() {
         let (_kp, evaluator) = make_service();
 
@@ -418,7 +424,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn service_denies_post_without_capability() {
         let (_kp, evaluator) = make_service();
 
@@ -459,7 +465,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn service_allows_post_with_capability() {
         let (kp, evaluator) = make_service();
 
@@ -582,8 +588,7 @@ mod tests {
             }
         }
 
-        // Wrapper that lets `From<Bytes>` work for the replay path the
-        // production code never reaches in this test (the call must abort).
+        // Wrapper that satisfies `From<Bytes>` for the replay path; the call must abort before this conversion runs.
         struct AdaptedBody(StreamingBody);
         impl Body for AdaptedBody {
             type Data = Bytes;

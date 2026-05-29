@@ -17,8 +17,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 TS_ROOT="${REPO_ROOT}/sdks/typescript"
 
-# node-http must be first -- other packages import it via file:../node-http.
+# chio-ts is the core SDK package. node-http stays ahead of packages that
+# import it via file:../node-http.
 PACKAGES=(
+  "chio-ts"
   "packages/node-http"
   "packages/express"
   "packages/fastify"
@@ -63,9 +65,11 @@ for rel_path in "${PACKAGES[@]}"; do
     continue
   fi
 
-  if ! (cd "${pkg_dir}" && npm run lint); then
-    failed+=("${slug}: npm run lint failed")
-    continue
+  if node -e "const pkg = require('${pkg_dir}/package.json'); process.exit(pkg.scripts?.lint ? 0 : 1)"; then
+    if ! (cd "${pkg_dir}" && npm run lint); then
+      failed+=("${slug}: npm run lint failed")
+      continue
+    fi
   fi
 
   # Smoke-require the built entry point. package.json "main" points at

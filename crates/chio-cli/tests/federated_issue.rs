@@ -915,6 +915,7 @@ fn create_evidence_federation_policy(
             partner,
             "--capability",
             capability_id,
+            "--admin-all",
             "--expires-at",
             "1900000000",
         ])
@@ -2166,10 +2167,9 @@ fn federated_issue_enterprise_policy_denies_missing_role() {
 }
 
 #[test]
-fn federated_issue_legacy_bearer_path_still_allows_enterprise_observability_without_provider_record(
-) {
+fn federated_issue_no_provider_record_still_allows_enterprise_observability() {
     let harness = setup_enterprise_federated_issue_case(
-        "chio-cli-enterprise-federated-legacy-bearer",
+        "chio-cli-enterprise-federated-no-provider-record",
         "org-789",
         "org-rogue",
         &["eng"],
@@ -2185,8 +2185,8 @@ fn federated_issue_legacy_bearer_path_still_allows_enterprise_observability_with
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    let body: serde_json::Value =
-        serde_json::from_slice(&output.stdout).expect("parse enterprise legacy response");
+    let body: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .expect("parse enterprise no-provider-record response");
     assert_eq!(body["enterpriseAudit"]["providerId"], "enterprise-login");
     assert_eq!(
         body["enterpriseAudit"]["providerRecordId"],

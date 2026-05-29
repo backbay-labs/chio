@@ -1,7 +1,7 @@
 //! BrowserAutomationGuard -- domain allowlists, action-type restrictions,
 //! and credential detection in `Type` actions.
 //!
-//! Roadmap phase 8.2.  Complements the coarse
+//! Complements the coarse
 //! [`crate::computer_use::ComputerUseGuard`] with fine-grained rules
 //! specifically for browser-automation tool calls:
 //!

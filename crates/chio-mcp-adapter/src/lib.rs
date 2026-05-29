@@ -17,6 +17,8 @@
 //! between the Chio kernel and the MCP server, providing the security
 //! boundary that MCP lacks.
 
+#![forbid(unsafe_code)]
+
 use std::sync::{Arc, Mutex};
 
 use chio_core::session::CreateElicitationOperation;
@@ -565,18 +567,7 @@ mod tests {
     use chio_kernel::KernelError;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    trait TestUnwrapErr<E> {
-        fn test_unwrap_err(self) -> E;
-    }
-
-    impl<T: std::fmt::Debug, E> TestUnwrapErr<E> for Result<T, E> {
-        fn test_unwrap_err(self) -> E {
-            match self {
-                Ok(value) => panic!("expected Err(..), got Ok({value:?})"),
-                Err(error) => error,
-            }
-        }
-    }
+    use chio_test_support::prelude::*;
 
     #[derive(Clone)]
     enum MockCallBehavior {
@@ -1652,7 +1643,7 @@ mod tests {
         assert!(matches!(err, KernelError::RequestIncomplete(_)));
     }
 
-    // ---- OAuth refresh placeholder tests ----
+    // ---- AdapterError display tests ----
 
     #[test]
     fn adapter_error_display_includes_structured_details() {

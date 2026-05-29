@@ -9,7 +9,7 @@
   "artifact": {
     "case_kind": "authority_epoch_receipt",
     "authority": {
-      "id": "did:chio:authority:m05",
+      "id": "did:chio:authority:home",
       "epoch": 42,
       "epoch_not_before": "2026-04-30T15:00:00Z"
     },

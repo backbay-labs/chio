@@ -108,4 +108,4 @@ verification, and signed-manifest verification helpers.
 
 ## Official Example
 
-See [packages/sdk/chio-py/examples/governed_hello.py](../../packages/sdk/chio-py/examples/governed_hello.py).
+See [sdks/python/chio-py/examples/governed_hello.py](../../sdks/python/chio-py/examples/governed_hello.py).

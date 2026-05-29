@@ -3,8 +3,8 @@
 //! Implements the minimal `LanguageServer` lifecycle (`initialize`,
 //! `initialized`, `shutdown`) plus the text-document open / change /
 //! close handlers that drive the document cache. Diagnostics,
-//! completion, hover, and go-to-definition are wired in by sibling
-//! P4 tickets.
+//! completion, hover, and go-to-definition are implemented in the
+//! sibling modules.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -79,9 +79,8 @@ impl ChioLanguageServer {
         self.shutdown_requested.load(Ordering::SeqCst)
     }
 
-    /// Capabilities advertised in `initialize`. Listed in
-    /// dependency order: P4.T1 ships text-document-sync; T3-T5 light up
-    /// completion, hover, and definition; T2/T6 wire diagnostics.
+    /// Capabilities advertised in `initialize`: text-document-sync,
+    /// completion, hover, definition, and diagnostics.
     #[must_use]
     pub fn capabilities() -> ServerCapabilities {
         ServerCapabilities {
@@ -244,10 +243,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn capabilities_snapshot_matches_phase_t1_contract() {
+    fn capabilities_snapshot_advertises_core_capabilities() {
         let snap = ChioLanguageServer::capabilities_snapshot();
         assert!(snap.text_document_sync_full);
-        // P4.T3-T5 land completion / hover; T1 exposes definition only.
         assert!(snap.definition);
     }
 }

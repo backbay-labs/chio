@@ -1,9 +1,7 @@
 # Verdict Matrix Scenario Format
 
-This directory defines the scaffold for cross-SDK verdict comparison. The
-initial scaffold is intentionally empty: scenario files, drivers, and the diff
-oracle land in follow-up work. This document fixes the scenario shape those
-pieces must share.
+This directory holds the cross-SDK verdict comparison corpus, drivers, and
+diff oracle. This document fixes the scenario shape every driver shares.
 
 ## File Layout
 

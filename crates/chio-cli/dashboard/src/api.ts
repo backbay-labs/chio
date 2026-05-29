@@ -346,7 +346,7 @@ export async function fetchRelayAlertAssuranceArchivePackageReport(): Promise<Re
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
-  const res = await fetch('/v1/chiodos/pheromone/alert-assurance/archive-package', { headers })
+  const res = await fetch('/v1/chio/pheromone/alert-assurance/archive-package', { headers })
   if (!res.ok) {
     throw new Error(`Relay alert assurance archive package request failed: ${res.status} ${res.statusText}`)
   }
@@ -361,7 +361,7 @@ export async function fetchRelayAlertAssuranceArchiveExtractionReport(): Promise
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
-  const res = await fetch('/v1/chiodos/pheromone/alert-assurance/archive-extraction', { headers })
+  const res = await fetch('/v1/chio/pheromone/alert-assurance/archive-extraction', { headers })
   if (!res.ok) {
     throw new Error(`Relay alert assurance archive extraction request failed: ${res.status} ${res.statusText}`)
   }
@@ -376,7 +376,7 @@ export async function fetchRelayAlertAssurancePhysicalArchiveDrillReport(): Prom
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
-  const res = await fetch('/v1/chiodos/pheromone/alert-assurance/physical-archive', { headers })
+  const res = await fetch('/v1/chio/pheromone/alert-assurance/physical-archive', { headers })
   if (!res.ok) {
     throw new Error(`Relay alert assurance physical archive request failed: ${res.status} ${res.statusText}`)
   }
@@ -391,7 +391,7 @@ export async function fetchRelayAlertAssuranceRetentionHandoffReport(): Promise<
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
-  const res = await fetch('/v1/chiodos/pheromone/alert-assurance/retention-handoff', { headers })
+  const res = await fetch('/v1/chio/pheromone/alert-assurance/retention-handoff', { headers })
   if (!res.ok) {
     throw new Error(`Relay alert assurance retention handoff request failed: ${res.status} ${res.statusText}`)
   }
@@ -406,7 +406,7 @@ export async function fetchRelayAlertAssuranceArchiveRestoreDrillReport(): Promi
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
-  const res = await fetch('/v1/chiodos/pheromone/alert-assurance/archive-restore-drill', { headers })
+  const res = await fetch('/v1/chio/pheromone/alert-assurance/archive-restore-drill', { headers })
   if (!res.ok) {
     throw new Error(`Relay alert assurance archive restore drill request failed: ${res.status} ${res.statusText}`)
   }
@@ -421,7 +421,7 @@ export async function fetchRelayAlertAssuranceExternalRetentionReviewReport(): P
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
-  const res = await fetch('/v1/chiodos/pheromone/alert-assurance/external-retention-review', { headers })
+  const res = await fetch('/v1/chio/pheromone/alert-assurance/external-retention-review', { headers })
   if (!res.ok) {
     throw new Error(`Relay alert assurance external retention request failed: ${res.status} ${res.statusText}`)
   }

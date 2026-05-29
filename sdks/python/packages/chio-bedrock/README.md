@@ -1,7 +1,7 @@
 # chio-bedrock
 
-`chio-bedrock` is the Python distribution wrapper for the trajectory-3
-AWS Bedrock listing. It presents a small `BedrockChioClient` surface over
+`chio-bedrock` is the Python distribution wrapper for the AWS Bedrock
+listing. It presents a small `BedrockChioClient` surface over
 an injected Bedrock runtime client, emits Chio receipt-shaped records, and
 prepares Marketplace metering callbacks.
 
@@ -34,4 +34,4 @@ The returned invocation contains:
 - `receipt`: a Chio receipt-compatible dictionary.
 - `metering`: a Marketplace metering callback payload.
 
-The SDK is pinned to `us-east-1` for trajectory-3.
+The SDK currently supports only the `us-east-1` region.

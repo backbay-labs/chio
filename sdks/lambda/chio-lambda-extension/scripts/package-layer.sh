@@ -27,7 +27,7 @@ ARCH=${1:-both}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CRATE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 DIST_DIR="$CRATE_DIR/dist"
-CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$CRATE_DIR/../../../target/wave3c-lambda}"
+CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$CRATE_DIR/../../../target/lambda}"
 
 mkdir -p "$DIST_DIR"
 

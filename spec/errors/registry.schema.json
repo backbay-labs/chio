@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://spec.chio.dev/errors/registry.schema.json",
+  "$id": "https://spec.chio.world/errors/registry.schema.json",
   "title": "Chio URN error registry",
   "type": "object",
   "additionalProperties": false,
@@ -25,7 +25,7 @@
     },
     "domains": {
       "type": "array",
-      "minItems": 18,
+      "minItems": 19,
       "items": {
         "$ref": "#/$defs/domain"
       }
@@ -59,7 +59,8 @@
         "economy",
         "lineage",
         "custody",
-        "weights"
+        "weights",
+        "mobile"
       ]
     },
     "domain": {
@@ -100,7 +101,7 @@
         "severity",
         "summary",
         "help",
-        "legacy_string_code",
+        "string_code",
         "since",
         "stability",
         "consumed_by"
@@ -108,7 +109,7 @@
       "properties": {
         "urn": {
           "type": "string",
-          "pattern": "^urn:chio:error:(capability|policy|guard|attest|replay|provider|manifest|kernel|transport|cli|delegation|adversarial|threat|arena|economy|lineage|custody|weights):[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+          "pattern": "^urn:chio:error:(capability|policy|guard|attest|replay|provider|manifest|kernel|transport|cli|delegation|adversarial|threat|arena|economy|lineage|custody|weights|mobile):[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
         },
         "domain": {
           "$ref": "#/$defs/domainName"
@@ -130,7 +131,7 @@
           "type": "string",
           "minLength": 1
         },
-        "legacy_string_code": {
+        "string_code": {
           "type": "string",
           "pattern": "^CHIO-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
         },

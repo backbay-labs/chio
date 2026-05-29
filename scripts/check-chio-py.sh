@@ -16,5 +16,5 @@ trap cleanup EXIT
 
 python3 -m venv "$venv_dir"
 . "$venv_dir/bin/activate"
-python -m pip install --quiet -e packages/sdk/chio-py
-python -m unittest discover -s packages/sdk/chio-py/tests
+python -m pip install --quiet -e sdks/python/chio-py
+python -m unittest discover -s sdks/python/chio-py/tests

@@ -53,8 +53,8 @@ tokio = { workspace = true, optional = true }
 [dev-dependencies]
 chio-anchor = { path = "../chio-anchor" }
 chio-link = { path = "../chio-link" }
+chio-test-support = { path = "../chio-test-support" }
 chio-kernel = { path = "../chio-kernel" }
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[lints]
+workspace = true

@@ -40,8 +40,8 @@ envelopes must either map to a concrete class above or fail closed as
 
 ## Bedrock IAM Principal Disambiguation
 
-Bedrock is the only M07 provider whose caller identity is an AWS IAM
-principal. Production initialization must use
+Bedrock is the only currently supported provider whose caller identity is an
+AWS IAM principal. Production initialization must use
 `BedrockAdapter::new_with_signed_iam_principals_config_from_sts`, which:
 
 1. Calls STS `GetCallerIdentity` once per process.
@@ -62,5 +62,5 @@ different assumed-role sessions can carry different operational provenance.
 | Provider | Deferred reason | Expected path |
 | -------- | --------------- | ------------- |
 | Vertex AI | Structurally close to Bedrock, but Google IAM, quota semantics, and fixture capture need a separate principal contract. | Add after the fabric trait and Bedrock IAM contract have stabilized. |
-| Cohere | Smaller tool-call surface and lower immediate deployment pressure than the three M07 providers. | Reuse the shared taxonomy and conformance harness once a pin is selected. |
-| Mistral | Similar to Cohere: tractable, but not part of the M07 release claim. | Add as a follow-on provider adapter with its own README taxonomy table and fixture corpus. |
+| Cohere | Smaller tool-call surface and lower immediate deployment pressure than the three supported providers. | Reuse the shared taxonomy and conformance harness once a pin is selected. |
+| Mistral | Similar to Cohere: tractable, but not part of the current release. | Add as a follow-on provider adapter with its own README taxonomy table and fixture corpus. |

@@ -1,5 +1,5 @@
 // Health probe. Returns 200 { ok, bundleDir, manifestSha } when the manifest
-// is readable, 500 with a diagnostic otherwise. Wave 3 smoke.sh will poll this.
+// is readable, 500 with a diagnostic otherwise. smoke.sh polls this endpoint.
 
 import { NextResponse } from "next/server";
 import crypto from "node:crypto";

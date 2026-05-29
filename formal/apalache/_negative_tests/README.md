@@ -1,6 +1,6 @@
 # Apalache Negative Tests
 
-This directory holds **deliberately broken** variants of the M06 Apalache
+This directory holds **deliberately broken** variants of the Apalache
 specs. The point is to demonstrate that the corresponding production
 property is not tautologically satisfied: a real bug must produce a real
 counterexample.
@@ -8,10 +8,10 @@ counterexample.
 Negative-spec runs are local diagnostic only; CI does not enforce them.
 The production specs in `.github/workflows/apalache-safety.yml` are the
 load-bearing gate. These broken variants are sanity checks invoked when
-a property is rewritten or revisited, and the captured logs under
-`.planning/trajectory-5/lane-a-floor/evidence/` document the expected
-counterexample for each property at the time the negative test was last
-run.
+a property is rewritten or revisited. The expected counterexample for
+each property is reproduced on demand by running the procedure below;
+the captured output is the authoritative record at the time the
+negative test was last run.
 
 ## Convention
 

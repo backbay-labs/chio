@@ -1,5 +1,6 @@
 // Integration tests for DatadogExporter against a wiremock mock server.
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+
+use std::collections::BTreeSet;
 
 use chio_core::crypto::Keypair;
 use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, GuardEvidence, ToolCallAction};
@@ -7,13 +8,14 @@ use chio_siem::event::SiemEvent;
 use chio_siem::exporter::ExportError;
 use chio_siem::exporters::datadog::{DatadogConfig, DatadogExporter};
 use chio_siem::Exporter;
+use chio_test_support::prelude::*;
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn allow_receipt(id: &str) -> ChioReceipt {
     let keypair = Keypair::generate();
     let action = ToolCallAction::from_parameters(serde_json::json!({"cmd": "ls"}))
-        .expect("hash receipt parameters");
+        .test_expect("hash receipt parameters");
     ChioReceipt::sign(
         ChioReceiptBody {
             id: id.to_string(),
@@ -39,13 +41,13 @@ fn allow_receipt(id: &str) -> ChioReceipt {
         },
         &keypair,
     )
-    .expect("sign allow")
+    .test_expect("sign allow")
 }
 
 fn deny_receipt(id: &str, guard: &str) -> ChioReceipt {
     let keypair = Keypair::generate();
     let action = ToolCallAction::from_parameters(serde_json::json!({"cmd": "cat /etc/shadow"}))
-        .expect("hash receipt parameters");
+        .test_expect("hash receipt parameters");
     ChioReceipt::sign(
         ChioReceiptBody {
             id: id.to_string(),
@@ -78,7 +80,7 @@ fn deny_receipt(id: &str, guard: &str) -> ChioReceipt {
         },
         &keypair,
     )
-    .expect("sign deny")
+    .test_expect("sign deny")
 }
 
 #[tokio::test]
@@ -104,21 +106,23 @@ async fn datadog_posts_log_array_with_api_key_header() {
         ..DatadogConfig::default()
     };
     let exporter =
-        DatadogExporter::new_with_base_url_for_tests(config, &server.uri()).expect("builds");
+        DatadogExporter::new_with_base_url_for_tests(config, &server.uri()).test_expect("builds");
 
+    let allow = allow_receipt("dd-001");
+    let trusted = BTreeSet::from([allow.kernel_key.to_hex()]);
     let events = vec![
-        SiemEvent::from_receipt(allow_receipt("dd-001")),
+        SiemEvent::from_receipt_with_trusted_kernel_keys(allow, Some(&trusted)),
         SiemEvent::from_receipt(deny_receipt("dd-002", "ForbiddenPathGuard")),
     ];
 
     let result = exporter.export_batch(&events).await;
     assert!(result.is_ok(), "export_batch ok: {result:?}");
-    assert_eq!(result.unwrap(), 2);
+    assert_eq!(result.test_unwrap(), 2);
 
-    let received = server.received_requests().await.unwrap();
+    let received = server.received_requests().await.test_unwrap();
     assert_eq!(received.len(), 1);
-    let body: serde_json::Value = serde_json::from_slice(&received[0].body).expect("json");
-    let arr = body.as_array().expect("array");
+    let body: serde_json::Value = serde_json::from_slice(&received[0].body).test_expect("json");
+    let arr = body.as_array().test_expect("array");
     assert_eq!(arr.len(), 2);
 
     // First entry is an allow.
@@ -131,7 +135,7 @@ async fn datadog_posts_log_array_with_api_key_header() {
     let tags0 = arr[0]
         .get("ddtags")
         .and_then(|v| v.as_str())
-        .expect("ddtags str");
+        .test_expect("ddtags str");
     assert!(tags0.contains("env:test"));
     assert!(tags0.contains("outcome:allow"));
 
@@ -140,7 +144,7 @@ async fn datadog_posts_log_array_with_api_key_header() {
     let tags1 = arr[1]
         .get("ddtags")
         .and_then(|v| v.as_str())
-        .expect("ddtags str");
+        .test_expect("ddtags str");
     assert!(tags1.contains("outcome:mediated_decision"));
     assert!(tags1.contains("receipt_kind:mediated_decision"));
     assert!(tags1.contains("boundary_class:prevent"));
@@ -172,12 +176,12 @@ async fn datadog_returns_http_error_on_500() {
         ..DatadogConfig::default()
     };
     let exporter =
-        DatadogExporter::new_with_base_url_for_tests(config, &server.uri()).expect("builds");
+        DatadogExporter::new_with_base_url_for_tests(config, &server.uri()).test_expect("builds");
 
     let events = vec![SiemEvent::from_receipt(allow_receipt("dd-500"))];
     let result = exporter.export_batch(&events).await;
 
-    match result.unwrap_err() {
+    match result.test_unwrap_err() {
         ExportError::HttpError(msg) => {
             assert!(msg.contains("500"), "should mention 500, got {msg}");
         }

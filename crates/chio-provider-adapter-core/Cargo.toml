@@ -14,8 +14,16 @@ name = "chio_provider_adapter_core"
 [dependencies]
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
 chio-tool-call-fabric = { path = "../chio-tool-call-fabric" }
+async-trait = { workspace = true }
+reqwest = { workspace = true, features = ["json", "query", "rustls"] }
 serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
+[dev-dependencies]
+chio-test-support = { path = "../chio-test-support" }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+wiremock = { workspace = true }
+
+[lints]
+workspace = true

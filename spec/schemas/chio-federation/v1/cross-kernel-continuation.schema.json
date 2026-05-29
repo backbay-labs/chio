@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://chio.dev/schemas/chio-federation/v1/cross-kernel-continuation.schema.json",
+  "$id": "https://chio.world/schemas/chio-federation/v1/cross-kernel-continuation.schema.json",
   "title": "Chio Federation Cross-Kernel Continuation",
   "type": "object",
   "additionalProperties": false,
