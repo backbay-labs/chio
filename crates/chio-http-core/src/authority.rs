@@ -2205,4 +2205,58 @@ mod tests {
             Some("capability does not authorize tool increment on server math")
         );
     }
+
+    #[test]
+    fn chio_tools_path_identity_parses_reserved_prefix() {
+        let ChioToolsPathIdentity::Identity {
+            server_id,
+            tool_name,
+        } = chio_tools_path_identity("/chio/tools/matrix/files.read")
+        else {
+            panic!("expected identity");
+        };
+        assert_eq!(server_id, "matrix");
+        assert_eq!(tool_name, "files.read");
+    }
+
+    #[test]
+    fn chio_tools_path_identity_rejects_missing_tool_segment() {
+        assert!(matches!(
+            chio_tools_path_identity("/chio/tools/matrix"),
+            ChioToolsPathIdentity::Malformed
+        ));
+    }
+
+    #[test]
+    fn chio_tools_path_identity_requires_trailing_slash_prefix() {
+        assert!(matches!(
+            chio_tools_path_identity("/chio/tools"),
+            ChioToolsPathIdentity::NotToolsPath
+        ));
+    }
+
+    #[test]
+    fn chio_tools_path_identity_rejects_nested_tool_segments() {
+        assert!(matches!(
+            chio_tools_path_identity("/chio/tools/matrix/files/read"),
+            ChioToolsPathIdentity::Malformed
+        ));
+    }
+
+    #[test]
+    fn chio_tools_path_identity_rejects_incomplete_percent_encoding() {
+        assert!(decode_path_identity_segment("terminal%2").is_none());
+        assert!(matches!(
+            chio_tools_path_identity("/chio/tools/acp/terminal%2"),
+            ChioToolsPathIdentity::Malformed
+        ));
+    }
+
+    #[test]
+    fn chio_tools_path_identity_non_tools_path_is_not_tools_path() {
+        assert!(matches!(
+            chio_tools_path_identity("/pets/42"),
+            ChioToolsPathIdentity::NotToolsPath
+        ));
+    }
 }
