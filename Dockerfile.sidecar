@@ -35,6 +35,7 @@ WORKDIR /workspace
 #     `integrations/` are declared as workspace members (or contain
 #     them), so their absence breaks the workspace Cargo.lock
 #     resolution.
+#   - `contracts/` is embedded by chio-web3-bindings via Alloy's sol! macro.
 #
 # Note on protobuf: the vendored Envoy protos consumed by
 # chio-envoy-ext-authz's tonic-build live under
@@ -43,6 +44,7 @@ WORKDIR /workspace
 # separate top-level `COPY proto` needed.
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
+COPY contracts ./contracts
 COPY bench ./bench
 COPY editors ./editors
 COPY wit ./wit
