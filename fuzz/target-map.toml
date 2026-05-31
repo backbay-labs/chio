@@ -289,9 +289,11 @@ triggers = [
     "crates/chio-guards/**",
     "crates/chio-kernel/src/**",
     "crates/chio-core/src/capability*.rs",
+    "crates/chio-http-core/src/**",
+    "crates/chio-api-protect/src/**",
     "spec/schemas/capability/**",
     "fuzz/fuzz_targets/tool_action.rs",
     "fuzz/corpus/fuzz_tool_action/**",
 ]
 seeds    = "fuzz/corpus/fuzz_tool_action"
-notes    = "Tool action classification and guard verdicts for egress, shell, SQL, memory, and MCP."
+notes    = "Tool action classification and guard verdicts for egress, shell, SQL, memory, MCP, and HTTP authority projection."

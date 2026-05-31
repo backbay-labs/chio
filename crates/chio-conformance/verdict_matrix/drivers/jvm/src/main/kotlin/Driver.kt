@@ -26,9 +26,11 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ObjectNode
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import java.net.URI
+import java.net.URLEncoder
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import java.nio.charset.StandardCharsets
 import java.nio.file.Path
 import java.time.Duration
 
@@ -136,6 +138,12 @@ private fun scenarioScript(scenario: Map<String, Any?>): Map<String, Any?> =
 private fun methodForTool(tool: String): String =
     if (tool.endsWith(".read") || tool.endsWith(".get") || tool == "metrics.query") "GET" else "POST"
 
+private fun pathSegment(value: String): String =
+    URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20")
+
+private fun toolPath(tool: String): String =
+    "/chio/tools/${pathSegment(MATRIX_SERVER_ID)}/${pathSegment(tool)}"
+
 /**
  * Build the `ChioHttpRequest` body for a scenario, populating the tool-call
  * fields the sidecar's capability-scope evaluator reads. Mirrors the node-http
@@ -144,6 +152,7 @@ private fun methodForTool(tool: String): String =
 fun scenarioToHttpRequest(scenarioId: String, script: Map<String, Any?>): ObjectNode {
     val tool = script["tool"]?.toString() ?: ""
     val method = methodForTool(tool)
+    val path = toolPath(tool)
     val inputJson = script["input_json"]?.toString() ?: "null"
     val arguments: JsonNode =
         try {
@@ -154,7 +163,7 @@ fun scenarioToHttpRequest(scenarioId: String, script: Map<String, Any?>): Object
     val root = MAPPER.createObjectNode()
     root.put("request_id", "req-$scenarioId")
     root.put("method", method)
-    root.put("path", "/" + tool.replace(".", "/"))
+    root.put("path", path)
     root.set<ObjectNode>("query", MAPPER.createObjectNode())
     val headers = MAPPER.createObjectNode()
     headers.put("content-type", "application/json")
@@ -172,7 +181,7 @@ fun scenarioToHttpRequest(scenarioId: String, script: Map<String, Any?>): Object
     if (bodyLength > 0) {
         root.put("body_hash", "0".repeat(64))
     }
-    root.put("route_pattern", "$MATRIX_SERVER_ID:$tool")
+    root.put("route_pattern", path)
     root.put("capability_id", "cap-$scenarioId")
     root.put("tool_server", MATRIX_SERVER_ID)
     root.put("tool_name", tool)

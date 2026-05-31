@@ -155,6 +155,9 @@ public static class Driver
             ? "GET"
             : "POST";
 
+    private static string ToolPathFor(string tool) =>
+        $"/chio/tools/{Uri.EscapeDataString(MatrixServerId)}/{Uri.EscapeDataString(tool)}";
+
     /// <summary>
     /// Build the ChioHttpRequest body for a scenario, populating the tool-call
     /// fields the sidecar's capability-scope evaluator reads. Mirrors the
@@ -165,6 +168,7 @@ public static class Driver
     {
         var tool = script.TryGetProperty("tool", out var toolEl) ? toolEl.GetString() ?? string.Empty : string.Empty;
         var method = MethodForTool(tool);
+        var path = ToolPathFor(tool);
         var inputJson = script.TryGetProperty("input_json", out var inputEl) ? inputEl.GetString() ?? "null" : "null";
         var bodyLength = method is "GET" or "HEAD" ? 0 : Encoding.UTF8.GetByteCount(inputJson);
 
@@ -174,7 +178,7 @@ public static class Driver
             writer.WriteStartObject();
             writer.WriteString("request_id", $"req-{scenarioId}");
             writer.WriteString("method", method);
-            writer.WriteString("path", "/" + tool.Replace(".", "/"));
+            writer.WriteString("path", path);
             writer.WriteStartObject("query");
             writer.WriteEndObject();
             writer.WriteStartObject("headers");
@@ -193,7 +197,7 @@ public static class Driver
             {
                 writer.WriteString("body_hash", new string('0', 64));
             }
-            writer.WriteString("route_pattern", $"{MatrixServerId}:{tool}");
+            writer.WriteString("route_pattern", path);
             writer.WriteString("capability_id", $"cap-{scenarioId}");
             writer.WriteString("tool_server", MatrixServerId);
             writer.WriteString("tool_name", tool);
@@ -507,9 +511,31 @@ public sealed class DriverTests
         var body = Driver.ScenarioToHttpRequest("capability-subset-001-read-exact", script.RootElement);
         using var parsed = JsonDocument.Parse(body);
         Assert.Equal("GET", parsed.RootElement.GetProperty("method").GetString());
+        Assert.Equal(
+            "/chio/tools/verdict-matrix/files.read",
+            parsed.RootElement.GetProperty("path").GetString());
+        Assert.Equal(
+            "/chio/tools/verdict-matrix/files.read",
+            parsed.RootElement.GetProperty("route_pattern").GetString());
         Assert.Equal("verdict-matrix", parsed.RootElement.GetProperty("tool_server").GetString());
         Assert.Equal("files.read", parsed.RootElement.GetProperty("tool_name").GetString());
         // GET requests carry no body hash.
         Assert.False(parsed.RootElement.TryGetProperty("body_hash", out _));
+    }
+
+    [Fact]
+    public void HttpRequestEscapesToolPathIdentitySegments()
+    {
+        using var script = JsonDocument.Parse(
+            "{\"operation\":\"tool.call\",\"tool\":\"terminal/create\",\"input_json\":\"{}\","
+            + "\"capability_scopes\":[\"tool:read\"]}");
+        var body = Driver.ScenarioToHttpRequest("capability-subset-001-slash", script.RootElement);
+        using var parsed = JsonDocument.Parse(body);
+        Assert.Equal(
+            "/chio/tools/verdict-matrix/terminal%2Fcreate",
+            parsed.RootElement.GetProperty("path").GetString());
+        Assert.Equal(
+            "/chio/tools/verdict-matrix/terminal%2Fcreate",
+            parsed.RootElement.GetProperty("route_pattern").GetString());
     }
 }

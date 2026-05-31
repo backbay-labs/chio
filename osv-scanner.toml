@@ -1,10 +1,9 @@
 # osv-scanner advisory exceptions for the CVE monitor (.github/workflows/cve-monitor.yml).
 #
-# Scope: every entry below is a TRANSITIVE npm dependency of the TypeScript SDK
-# example and conformance packages (the express / fastify integration examples
-# under sdks/typescript/packages/** and the root example bun.lock), not of the
-# shipped chio-ts runtime SDK. The Rust supply-chain gate (cargo-audit, plus
-# cargo-deny in ci.yml) is unaffected and stays fully blocking.
+# Scope: every entry below is a TRANSITIVE npm dependency in the scanned
+# TypeScript example, conformance, or SDK development lockfiles, not a bundled
+# dependency of a shipped runtime SDK. The Rust supply-chain gate (cargo-audit,
+# plus cargo-deny in ci.yml) is unaffected and stays fully blocking.
 #
 # Why these are suppressed rather than bumped: patched releases exist within the
 # current semver ranges, but the example packages depend on unpublished local
@@ -29,3 +28,7 @@ reason = "fast-uri (transitive via fastify in TS SDK example/conformance); host 
 [[IgnoredVulns]]
 id = "GHSA-q8mj-m7cp-5q26"
 reason = "qs (transitive via express in TS SDK example/conformance); prototype-pollution DoS; bump tracked for the dependency-refresh pass"
+
+[[IgnoredVulns]]
+id = "GHSA-866g-f22w-33x8"
+reason = "@ai-sdk/provider-utils (dev-only peer test lock for ai-sdk wrapper); patched provider-utils line requires ai@6 while package peer range remains <6; track for peer-range upgrade"

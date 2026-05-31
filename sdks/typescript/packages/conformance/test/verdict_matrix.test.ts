@@ -53,7 +53,7 @@ describe("verdict matrix TypeScript node-http driver", () => {
     const request = scenarioToHttpRequest(scenario);
 
     expect(request.method).toBe("GET");
-    expect(request.route_pattern).toBe("verdict-matrix:files.read");
+    expect(request.route_pattern).toBe("/chio/tools/verdict-matrix/files.read");
     expect(request.capability_id).toBe("cap-capability-subset-001-read-exact");
     expect(request.headers["content-type"]).toBe("application/json");
     expect(request.headers["x-verdict-scenario"]).toBeUndefined();

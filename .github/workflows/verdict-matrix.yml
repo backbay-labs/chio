@@ -198,8 +198,3 @@ jobs:
 
       - name: Run cross-deployment smoke gate
         run: cargo test -p chio-conformance --test deployment_shape_smoke --quiet
-
-      - name: Verify D07 closure marker in audit doc
-        run: |
-          set -euo pipefail
-          grep -q 'D07 deferral closed' .planning/audits/M07-adoption-beachhead.md

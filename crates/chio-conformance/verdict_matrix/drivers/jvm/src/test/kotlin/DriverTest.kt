@@ -113,9 +113,27 @@ class DriverTest {
                 ),
             )
         assertEquals("GET", request.get("method").asText())
+        assertEquals("/chio/tools/verdict-matrix/files.read", request.get("path").asText())
+        assertEquals("/chio/tools/verdict-matrix/files.read", request.get("route_pattern").asText())
         assertEquals("verdict-matrix", request.get("tool_server").asText())
         assertEquals("files.read", request.get("tool_name").asText())
         // GET requests carry no body hash.
         assertTrue(request.get("body_hash") == null)
+    }
+
+    @Test
+    fun httpRequestEscapesToolPathIdentitySegments() {
+        val request =
+            scenarioToHttpRequest(
+                "capability-subset-001-slash",
+                mapOf(
+                    "operation" to "tool.call",
+                    "tool" to "terminal/create",
+                    "input_json" to "{}",
+                    "capability_scopes" to listOf("tool:read"),
+                ),
+            )
+        assertEquals("/chio/tools/verdict-matrix/terminal%2Fcreate", request.get("path").asText())
+        assertEquals("/chio/tools/verdict-matrix/terminal%2Fcreate", request.get("route_pattern").asText())
     }
 }

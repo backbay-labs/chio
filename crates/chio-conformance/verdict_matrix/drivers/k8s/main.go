@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -208,6 +209,7 @@ func methodForTool(tool string) string {
 func scenarioToHTTPRequest(s scenario) map[string]interface{} {
 	tool := s.Script.Tool
 	method := methodForTool(tool)
+	path := "/chio/tools/" + url.PathEscape(matrixServerID) + "/" + url.PathEscape(tool)
 	var arguments interface{}
 	if err := json.Unmarshal([]byte(s.Script.InputJSON), &arguments); err != nil {
 		arguments = nil
@@ -216,7 +218,7 @@ func scenarioToHTTPRequest(s scenario) map[string]interface{} {
 	req := map[string]interface{}{
 		"request_id": "req-" + s.ID,
 		"method":     method,
-		"path":       "/" + strings.ReplaceAll(tool, ".", "/"),
+		"path":       path,
 		"query":      map[string]interface{}{},
 		"headers": map[string]interface{}{
 			"content-type": "application/json",
@@ -227,7 +229,7 @@ func scenarioToHTTPRequest(s scenario) map[string]interface{} {
 			"verified":    true,
 			"agent_id":    "agent:" + s.ID,
 		},
-		"route_pattern": matrixServerID + ":" + tool,
+		"route_pattern": path,
 		"capability_id": "cap-" + s.ID,
 		"tool_server":   matrixServerID,
 		"tool_name":     tool,

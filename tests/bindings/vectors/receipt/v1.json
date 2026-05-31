@@ -17,6 +17,7 @@
         "trust_level": "mediated"
       },
       "id": "allow_receipt",
+      "verify_only": true,
       "receipt": {
         "action": {
           "parameter_hash": "035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929",
@@ -78,6 +79,7 @@
         "trust_level": "mediated"
       },
       "id": "deny_receipt",
+      "verify_only": true,
       "receipt": {
         "action": {
           "parameter_hash": "d6f55d803ff027795f4a4c43fd8f6d3119051f82b7e3e1a13b1713fd37ea7b09",
@@ -263,6 +265,7 @@
         "trust_level": "verified"
       },
       "id": "trace_observation_receipt",
+      "verify_only": true,
       "receipt": {
         "action": {
           "parameter_hash": "035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929",
@@ -317,6 +320,7 @@
         "trust_level": "advisory"
       },
       "id": "advisory_evaluation_receipt",
+      "verify_only": true,
       "receipt": {
         "action": {
           "parameter_hash": "488c1c976ea2e8db55238019946f817920d824bf0f48c70a3dadfdaccc3a47af",

@@ -165,7 +165,7 @@ export async function evaluateScenario(
 
 export function scenarioToHttpRequest(scenario: VerdictScenario): ChioHttpRequest {
   const method = methodForTool(scenario.script.tool);
-  const path = `/${scenario.script.tool.replaceAll(".", "/")}`;
+  const path = `/chio/tools/${encodeURIComponent(MATRIX_SERVER_ID)}/${encodeURIComponent(scenario.script.tool)}`;
   let bodyLength = 0;
   let bodyHash: string | undefined;
   if (method !== "GET" && method !== "HEAD") {
@@ -197,7 +197,7 @@ export function scenarioToHttpRequest(scenario: VerdictScenario): ChioHttpReques
     },
     bodyHash,
     bodyLength,
-    routePattern: `${MATRIX_SERVER_ID}:${scenario.script.tool}`,
+    routePattern: path,
     capabilityId: `cap-${scenario.id}`,
     toolServer: MATRIX_SERVER_ID,
     toolName: scenario.script.tool,

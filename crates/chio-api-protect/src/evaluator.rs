@@ -140,6 +140,7 @@ impl RequestEvaluator {
         let ChioHttpRequest {
             request_id,
             method,
+            route_pattern: _client_route_pattern,
             path,
             query,
             headers,
@@ -154,7 +155,7 @@ impl RequestEvaluator {
             model_metadata,
             ..
         } = request;
-        let (route_pattern, matched_policy) = self.match_route(method, &path);
+        let (route_pattern, matched_policy, _) = self.match_route_with_status(method, &path);
         let raw_capability =
             presented_capability.or_else(|| extract_presented_capability(&headers, &query));
         let arguments = arguments.unwrap_or(Value::Null);
@@ -182,10 +183,19 @@ impl RequestEvaluator {
     /// Match a request path against the route table.
     /// Returns (matched_pattern, policy). Falls back to a catch-all.
     fn match_route(&self, method: HttpMethod, path: &str) -> (String, PolicyDecision) {
+        let (pattern, policy, _) = self.match_route_with_status(method, path);
+        (pattern, policy)
+    }
+
+    fn match_route_with_status(
+        &self,
+        method: HttpMethod,
+        path: &str,
+    ) -> (String, PolicyDecision, bool) {
         // Try exact pattern match first, then prefix match.
         for route in &self.routes {
             if route.method == method && path_matches_pattern(path, &route.pattern) {
-                return (route.pattern.clone(), route.policy);
+                return (route.pattern.clone(), route.policy, true);
             }
         }
 
@@ -196,7 +206,7 @@ impl RequestEvaluator {
         } else {
             PolicyDecision::DenyByDefault
         };
-        (pattern, policy)
+        (pattern, policy, false)
     }
 }
 
@@ -415,6 +425,157 @@ mod tests {
             http_status_scope(result.receipt.metadata.as_ref()),
             Some(CHIO_HTTP_STATUS_SCOPE_DECISION)
         );
+    }
+
+    #[test]
+    fn evaluate_chio_request_denies_spoofed_tool_identity_on_http_route() {
+        let keypair = Keypair::generate();
+        let routes = vec![RouteEntry {
+            pattern: "/pets".to_string(),
+            method: HttpMethod::Post,
+            operation_id: Some("createPet".to_string()),
+            policy: PolicyDecision::DenyByDefault,
+        }];
+        let evaluator = RequestEvaluator::new(routes, keypair.clone(), "test-policy".to_string());
+        let capability = signed_capability_token_json_with_scope(
+            &keypair,
+            "cap-math-only",
+            ChioScope {
+                grants: vec![ToolGrant {
+                    server_id: "math".to_string(),
+                    tool_name: "double".to_string(),
+                    operations: vec![Operation::Invoke],
+                    constraints: Vec::new(),
+                    max_invocations: None,
+                    max_cost_per_invocation: None,
+                    max_total_cost: None,
+                    dpop_required: None,
+                }],
+                ..ChioScope::default()
+            },
+        );
+
+        let mut request = ChioHttpRequest::new(
+            "req-sidecar-spoofed-tool".to_string(),
+            HttpMethod::Post,
+            "/pets".to_string(),
+            "/pets".to_string(),
+            CallerIdentity::anonymous(),
+        );
+        request.tool_server = Some("math".to_string());
+        request.tool_name = Some("double".to_string());
+        request.arguments = Some(serde_json::json!({ "value": 1 }));
+        request.body_hash = Some("pet-body".to_string());
+        request.body_length = 8;
+
+        let result = evaluator
+            .evaluate_chio_request(request, Some(&capability))
+            .test_unwrap();
+
+        assert!(result.verdict.is_denied());
+        assert!(result.receipt.capability_id.is_none());
+        assert!(result.receipt.evidence[0]
+            .details
+            .as_deref()
+            .is_some_and(|details| {
+                details.contains("capability does not authorize tool authorize_http_request")
+            }));
+    }
+
+    #[test]
+    fn evaluate_chio_request_allows_reserved_tools_path_context() {
+        let keypair = Keypair::generate();
+        let evaluator = RequestEvaluator::new(vec![], keypair.clone(), "test-policy".to_string());
+        let capability = signed_capability_token_json_with_scope(
+            &keypair,
+            "cap-matrix-read",
+            ChioScope {
+                grants: vec![ToolGrant {
+                    server_id: "matrix".to_string(),
+                    tool_name: "files.read".to_string(),
+                    operations: vec![Operation::Invoke],
+                    constraints: Vec::new(),
+                    max_invocations: None,
+                    max_cost_per_invocation: None,
+                    max_total_cost: None,
+                    dpop_required: None,
+                }],
+                ..ChioScope::default()
+            },
+        );
+
+        let mut request = ChioHttpRequest::new(
+            "req-sidecar-matrix-tool".to_string(),
+            HttpMethod::Post,
+            "/chio/tools/matrix/files.read".to_string(),
+            "/chio/tools/matrix/files.read".to_string(),
+            CallerIdentity::anonymous(),
+        );
+        request.tool_server = Some("matrix".to_string());
+        request.tool_name = Some("files.read".to_string());
+        request.arguments = Some(serde_json::json!({ "path": "/tmp/a" }));
+        request.body_hash = Some("tool-body".to_string());
+        request.body_length = 8;
+
+        let result = evaluator
+            .evaluate_chio_request(request, Some(&capability))
+            .test_unwrap();
+
+        assert!(result.verdict.is_allowed());
+        assert_eq!(
+            result.receipt.capability_id.as_deref(),
+            Some("cap-matrix-read")
+        );
+    }
+
+    #[test]
+    fn evaluate_chio_request_denies_unmatched_http_path_with_spoofed_synthetic_pattern() {
+        let keypair = Keypair::generate();
+        let evaluator = RequestEvaluator::new(vec![], keypair.clone(), "test-policy".to_string());
+        let capability = signed_capability_token_json_with_scope(
+            &keypair,
+            "cap-matrix-admin-delete",
+            ChioScope {
+                grants: vec![ToolGrant {
+                    server_id: "matrix".to_string(),
+                    tool_name: "admin.delete".to_string(),
+                    operations: vec![Operation::Invoke],
+                    constraints: Vec::new(),
+                    max_invocations: None,
+                    max_cost_per_invocation: None,
+                    max_total_cost: None,
+                    dpop_required: None,
+                }],
+                ..ChioScope::default()
+            },
+        );
+
+        let mut request = ChioHttpRequest::new(
+            "req-unmatched-spoofed-synthetic-pattern".to_string(),
+            HttpMethod::Post,
+            "matrix:admin.delete".to_string(),
+            "/admin/delete".to_string(),
+            CallerIdentity::anonymous(),
+        );
+        request.tool_server = Some("matrix".to_string());
+        request.tool_name = Some("admin.delete".to_string());
+        request.arguments = Some(serde_json::json!({ "path": "/tmp/a" }));
+        request.body_hash = Some("tool-body".to_string());
+        request.body_length = 8;
+
+        let result = evaluator
+            .evaluate_chio_request(request, Some(&capability))
+            .test_unwrap();
+
+        assert!(result.verdict.is_denied());
+        assert_eq!(result.receipt.route_pattern, "/admin/delete");
+        assert!(result.receipt.capability_id.is_none());
+        assert!(result.receipt.evidence[0]
+            .details
+            .as_deref()
+            .is_some_and(|details| {
+                details.contains("capability does not authorize tool authorize_http_request")
+            }));
     }
 
     #[test]

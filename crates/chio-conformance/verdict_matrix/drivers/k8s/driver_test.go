@@ -165,6 +165,12 @@ func TestScenarioToHTTPRequestSetsToolCallFieldsAndGetForRead(t *testing.T) {
 	if req["tool_name"] != "files.read" {
 		t.Fatalf("tool_name = %v, want files.read", req["tool_name"])
 	}
+	if req["path"] != "/chio/tools/verdict-matrix/files.read" {
+		t.Fatalf("path = %v, want reserved /chio/tools path", req["path"])
+	}
+	if req["route_pattern"] != req["path"] {
+		t.Fatalf("route_pattern = %v, want path-derived route", req["route_pattern"])
+	}
 	if _, ok := req["body_hash"]; ok {
 		t.Fatal("GET request must not carry a body hash")
 	}

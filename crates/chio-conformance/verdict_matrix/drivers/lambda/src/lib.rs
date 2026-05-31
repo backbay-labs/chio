@@ -35,6 +35,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use url::form_urlencoded::byte_serialize;
 
 pub const DRIVER_NAME: &str = "lambda-deployment-shape";
 pub const MATRIX_ROLE: &str = "deployment-shape";
@@ -317,7 +318,11 @@ fn fail(scenario_id: String, expected: VerdictTuple, diagnostic: String) -> Scen
 pub fn scenario_to_http_request(scenario: &Scenario) -> Value {
     let tool = scenario.script.tool.as_str();
     let method = method_for_tool(tool);
-    let path = format!("/{}", tool.replace('.', "/"));
+    let path = format!(
+        "/chio/tools/{}/{}",
+        encode_path_segment(MATRIX_SERVER_ID),
+        encode_path_segment(tool)
+    );
     let arguments: Value = serde_json::from_str(&scenario.script.input_json).unwrap_or(Value::Null);
     let mut body_length = 0u64;
     let mut body_hash: Option<String> = None;
@@ -340,7 +345,7 @@ pub fn scenario_to_http_request(scenario: &Scenario) -> Value {
             "agent_id": format!("agent:{}", scenario.id),
         },
         "body_length": body_length,
-        "route_pattern": format!("{MATRIX_SERVER_ID}:{tool}"),
+        "route_pattern": path,
         "capability_id": format!("cap-{}", scenario.id),
         "tool_server": MATRIX_SERVER_ID,
         "tool_name": tool,
@@ -351,6 +356,10 @@ pub fn scenario_to_http_request(scenario: &Scenario) -> Value {
         object.insert("body_hash".to_string(), Value::String(hash));
     }
     request
+}
+
+fn encode_path_segment(segment: &str) -> String {
+    byte_serialize(segment.as_bytes()).collect()
 }
 
 fn capability_token_for(scenario: &Scenario) -> String {
@@ -646,6 +655,11 @@ mod tests {
             request.get("tool_name").and_then(Value::as_str),
             Some("files.read")
         );
+        assert_eq!(
+            request.get("path").and_then(Value::as_str),
+            Some("/chio/tools/verdict-matrix/files.read")
+        );
+        assert_eq!(request.get("route_pattern"), request.get("path"));
         // GET requests carry no body hash.
         assert!(request.get("body_hash").is_none());
     }
