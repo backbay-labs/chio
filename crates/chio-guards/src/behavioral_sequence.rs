@@ -61,11 +61,12 @@ impl Guard for BehavioralSequenceGuard {
     fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
         let tool_name = &ctx.request.tool_name;
 
-        let sequence = self.journal.tool_sequence().map_err(|e| {
+        let snapshot = self.journal.snapshot().map_err(|e| {
             KernelError::Internal(format!(
                 "behavioral-sequence guard journal error (fail-closed): {e}"
             ))
         })?;
+        let sequence = snapshot.tool_sequence;
 
         // Check required first tool.
         if sequence.is_empty() {

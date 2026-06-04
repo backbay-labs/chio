@@ -2,6 +2,7 @@ use chio_core::{canonical_json_bytes, sha256_hex};
 use serde::{Deserialize, Serialize};
 
 use crate::receipt_metadata::{MercuryContractError, MercuryWorkflowIdentifiers};
+use crate::validation::ensure_non_empty;
 
 pub const MERCURY_BUNDLE_MANIFEST_SCHEMA: &str = "chio.mercury.bundle_manifest.v1";
 
@@ -98,14 +99,6 @@ impl MercuryBundleReference {
     }
 }
 
-fn ensure_non_empty(field: &'static str, value: &str) -> Result<(), MercuryContractError> {
-    if value.trim().is_empty() {
-        Err(MercuryContractError::EmptyField(field))
-    } else {
-        Ok(())
-    }
-}
-
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
@@ -126,5 +119,18 @@ mod tests {
         let reference = MercuryBundleReference::from_manifest(&manifest).expect("bundle ref");
         assert_eq!(reference.bundle_id, manifest.bundle_id);
         assert_eq!(reference.artifact_count, manifest.artifacts.len() as u64);
+    }
+
+    #[test]
+    fn bundle_manifest_rejects_padded_bundle_id() {
+        let mut manifest = sample_mercury_bundle_manifest();
+        manifest.bundle_id = " bundle-release-2026-04-02 ".to_string();
+
+        let error = manifest.validate().expect_err("padded bundle id");
+
+        assert!(matches!(
+            error,
+            MercuryContractError::PaddedField("bundle_id")
+        ));
     }
 }

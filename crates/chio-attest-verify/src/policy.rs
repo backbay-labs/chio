@@ -144,9 +144,7 @@ impl TenantPolicy {
     /// the loader before any signature check, so that signature failures
     /// always come from a structurally well-formed input.
     pub(crate) fn validate_structural(&self) -> Result<(), AttestError> {
-        if self.tenant_id.trim().is_empty() {
-            return Err(AttestError::Malformed("tenant_id is empty".to_owned()));
-        }
+        validate_required_policy_text(&self.tenant_id, "tenant_id")?;
         if self.version != TENANT_POLICY_SCHEMA_VERSION {
             return Err(AttestError::Malformed(format!(
                 "unsupported policy version {} (expected {})",
@@ -175,12 +173,8 @@ impl TenantPolicy {
                 MAX_OIDC_ISSUERS
             )));
         }
-        if self.signed_at.trim().is_empty() {
-            return Err(AttestError::Malformed("signed_at is empty".to_owned()));
-        }
-        if self.signature.trim().is_empty() {
-            return Err(AttestError::Malformed("signature is empty".to_owned()));
-        }
+        validate_required_policy_text(&self.signed_at, "signed_at")?;
+        validate_required_policy_text(&self.signature, "signature")?;
         if self.signature.len() > MAX_POLICY_SIGNATURE_BYTES {
             return Err(AttestError::Malformed(format!(
                 "signature is {} bytes, exceeding {} byte limit",
@@ -194,6 +188,7 @@ impl TenantPolicy {
             ));
         }
         for pattern in &self.identity_regexps {
+            validate_policy_list_entry(pattern, "identity_regexp")?;
             if pattern.len() > MAX_IDENTITY_REGEXP_BYTES {
                 return Err(AttestError::Malformed(format!(
                     "identity_regexp is {} bytes, exceeding {} byte limit",
@@ -208,11 +203,7 @@ impl TenantPolicy {
             })?;
         }
         for issuer in &self.oidc_issuers {
-            if issuer.trim().is_empty() {
-                return Err(AttestError::Malformed(
-                    "oidc_issuers contains an empty entry".to_owned(),
-                ));
-            }
+            validate_policy_list_entry(issuer, "oidc_issuer")?;
             if issuer.len() > MAX_OIDC_ISSUER_BYTES {
                 return Err(AttestError::Malformed(format!(
                     "oidc_issuer is {} bytes, exceeding {} byte limit",
@@ -229,6 +220,7 @@ impl TenantPolicy {
             )));
         }
         for pattern in &self.pq_identity_regexps {
+            validate_policy_list_entry(pattern, "pq_identity_regexp")?;
             if pattern.len() > MAX_IDENTITY_REGEXP_BYTES {
                 return Err(AttestError::Malformed(format!(
                     "pq_identity_regexp is {} bytes, exceeding {} byte limit",
@@ -293,6 +285,32 @@ impl TenantPolicy {
         }
         Ok(parsed)
     }
+}
+
+fn validate_required_policy_text(value: &str, field: &'static str) -> Result<(), AttestError> {
+    if value.trim().is_empty() {
+        return Err(AttestError::Malformed(format!("{field} is empty")));
+    }
+    if value.trim() != value {
+        return Err(AttestError::Malformed(format!(
+            "{field} contains surrounding whitespace"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_policy_list_entry(value: &str, field: &'static str) -> Result<(), AttestError> {
+    if value.trim().is_empty() {
+        return Err(AttestError::Malformed(format!(
+            "{field} contains an empty entry"
+        )));
+    }
+    if value.trim() != value {
+        return Err(AttestError::Malformed(format!(
+            "{field} contains an entry with surrounding whitespace"
+        )));
+    }
+    Ok(())
 }
 
 /// Minimal RFC 3339 parser restricted to the subset emitted by the policy

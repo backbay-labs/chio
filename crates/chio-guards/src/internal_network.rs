@@ -14,7 +14,7 @@ use std::net::IpAddr;
 
 use chio_kernel::{Guard, GuardContext, KernelError, Verdict};
 
-use crate::action::{extract_action, ToolAction};
+use crate::action::{extract_action_checked, ToolAction};
 
 /// Guard that blocks SSRF targeting internal/private network addresses.
 ///
@@ -98,7 +98,10 @@ impl Guard for InternalNetworkGuard {
     }
 
     fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
-        let action = extract_action(&ctx.request.tool_name, &ctx.request.arguments);
+        let action = match extract_action_checked(&ctx.request.tool_name, &ctx.request.arguments) {
+            Ok(action) => action,
+            Err(_) => return Ok(Verdict::Deny),
+        };
 
         let host = match &action {
             ToolAction::NetworkEgress(h, _) => h.as_str(),

@@ -12,7 +12,7 @@ The same identifiers let operators move in either direction:
 |-----------|------|
 | `chio-kernel::otel` | Builds the locked `gen_ai.tool.call` span shape used by adapters and edges. |
 | `chio-otel-receipt-exporter` | Accepts decoded OTLP trace batches, signs span-derived receipts, and appends them to a receipt store. |
-| `examples/otel-genai` | Runs a local OTel collector with Tempo and Jaeger and validates bidirectional lookup with an ignored test. |
+| `examples/otel-genai` | Runs a local OTel collector with Tempo and Jaeger and validates bidirectional lookup with a default integration test. |
 | `deploy/dashboards` | Grafana dashboards for Loki, Tempo, and Jaeger receipt investigations. |
 
 ## Attribute contract
@@ -92,7 +92,7 @@ The Rust exporter receives the decoded OTLP request as
 Run the bidirectional lookup contract from the repository root:
 
 ```bash
-cargo test --manifest-path examples/otel-genai/Cargo.toml --test bidirectional_lookup -- --ignored
+cargo test -p otel-genai
 ```
 
 The test proves:

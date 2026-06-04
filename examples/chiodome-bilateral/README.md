@@ -167,7 +167,8 @@ examples/chiodome-bilateral/
   Cargo.toml                  # workspace member; binary `chiodome-bilateral-demo`
   README.md                   # this file
   policy.yaml                 # policy for `chio mcp serve --policy`
-  src/main.rs                 # the C1 cross-org refund runner + tests
+  src/lib.rs                  # the C1 cross-org refund runner + tests
+  src/main.rs                 # thin binary wrapper around the library runner
   scripts/run-with-kb-mcp.sh  # the C3 KB-MCP-plus-Chio orchestration script
                               # (--check default smoke gate, --full canonical)
   fixtures/
@@ -186,8 +187,8 @@ examples/chiodome-bilateral/
 ## Evidence trail
 
 - Cites `bilateral_dsse` as the load-bearing primitive. The demo's
-  `Cargo.toml` and `src/main.rs` headers spell out which file each
-  consumed surface lives in.
-- Tests: `cargo test --bin chiodome-bilateral-demo` (4 tests; round-trip
-  envelope verification, receipt signing, anchor merkle-root binding,
-  attacker-key rejection).
+  `Cargo.toml` and `src/lib.rs` headers spell out which file each consumed
+  surface lives in.
+- Tests: `cargo test -p chiodome-bilateral-example` (configuration precedence,
+  seeded fixture emission, round-trip envelope verification, receipt signing,
+  anchor merkle-root binding, attacker-key rejection, symlink refusal).

@@ -107,6 +107,19 @@ fn rejects_multiple_oidc_issuers_in_static_map() {
 }
 
 #[test]
+fn static_map_revalidates_public_policy_values() {
+    let mut policy = acme_policy();
+    policy.identity_regexps = vec!["[unterminated".to_owned()];
+
+    let err = StaticTenantPolicyMap::from_verified(vec![policy]).unwrap_err();
+
+    match err {
+        AttestError::Malformed(msg) => assert!(msg.contains("does not compile"), "got: {msg}"),
+        other => panic!("expected Malformed, got {other:?}"),
+    }
+}
+
+#[test]
 fn unknown_tenant_fails_closed() {
     let map = StaticTenantPolicyMap::from_verified(vec![acme_policy()]).unwrap();
     let err = map.expected_for_tenant("ghost").unwrap_err();

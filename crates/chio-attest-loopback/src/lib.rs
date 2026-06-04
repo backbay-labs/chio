@@ -63,6 +63,7 @@ const BUYER_KERNEL_ID: &str = "did:chio:buyer-kernel";
 const GOVERNANCE_KERNEL_ID: &str = "did:chio:buyer-governance";
 const SESSION_ID: &str = "sess-chio-refund";
 const CAPABILITY_ID: &str = "cap-chio-workflow";
+const CASE_REF: &str = "refund-250";
 const LEASE_ISSUED_AT_UNIX_MS: u64 = GENERATED_AT_UNIX_MS - 30_000;
 const LEASE_EXPIRES_AT_UNIX_MS: u64 = GENERATED_AT_UNIX_MS + 30_000;
 const GOVERNANCE_ISSUED_AT_UNIX_MS: u64 = GENERATED_AT_UNIX_MS - 20_000;
@@ -191,7 +192,7 @@ fn receipt_body(
 ) -> Result<ChioReceiptBody, ChioPackageError> {
     let action = ToolCallAction::from_parameters(serde_json::json!({
         "workflowId": WORKFLOW_ID,
-        "caseRef": "refund-250",
+        "caseRef": CASE_REF,
         "tool": vendor.tool_name,
     }))
     .map_err(|error| ChioPackageError::Inconsistent(error.to_string()))?;
@@ -597,9 +598,7 @@ pub fn proof_package_from_runtime_artifacts(
 }
 
 pub fn runtime_vendor_keypair(step_index: usize) -> Result<Keypair, ChioPackageError> {
-    let vendor = VENDORS.get(step_index).ok_or_else(|| {
-        ChioPackageError::Inconsistent(format!("unknown runtime vendor step {step_index}"))
-    })?;
+    let vendor = runtime_vendor(step_index)?;
     Ok(Keypair::from_seed(&vendor.seed))
 }
 
@@ -610,10 +609,14 @@ pub fn runtime_buyer_keypair() -> Keypair {
 pub fn runtime_vendor_binding(
     step_index: usize,
 ) -> Result<(&'static str, &'static str, &'static str), ChioPackageError> {
-    let vendor = VENDORS.get(step_index).ok_or_else(|| {
-        ChioPackageError::Inconsistent(format!("unknown runtime vendor step {step_index}"))
-    })?;
+    let vendor = runtime_vendor(step_index)?;
     Ok((vendor.kernel_id, vendor.server_id, vendor.tool_name))
+}
+
+fn runtime_vendor(step_index: usize) -> Result<&'static VendorFixture, ChioPackageError> {
+    VENDORS.get(step_index).ok_or_else(|| {
+        ChioPackageError::Inconsistent(format!("unknown runtime vendor step {step_index}"))
+    })
 }
 
 pub fn fixture_proof_package() -> Result<ChioProofPackage, ChioPackageError> {
@@ -766,6 +769,8 @@ fn validate_runtime_receipt_for_vendor(
             receipt.id
         )));
     }
+    validate_runtime_receipt_action_payload(receipt, vendor)?;
+    validate_runtime_receipt_metadata(receipt, vendor)?;
     let expected_public_key = vendor_key.public_key();
     if receipt.kernel_key != expected_public_key {
         return Err(ChioPackageError::Inconsistent(format!(
@@ -783,6 +788,81 @@ fn validate_runtime_receipt_for_vendor(
         )));
     }
     Ok(())
+}
+
+fn validate_runtime_receipt_action_payload(
+    receipt: &ChioReceipt,
+    vendor: &VendorFixture,
+) -> Result<(), ChioPackageError> {
+    let action_hash_valid = receipt
+        .action
+        .verify_hash()
+        .map_err(|error| ChioPackageError::Inconsistent(error.to_string()))?;
+    if !action_hash_valid {
+        return Err(ChioPackageError::Inconsistent(format!(
+            "runtime receipt {} action parameter hash is invalid",
+            receipt.id
+        )));
+    }
+    validate_json_string_field(
+        &receipt.action.parameters,
+        "workflowId",
+        WORKFLOW_ID,
+        "runtime receipt action payload",
+    )?;
+    validate_json_string_field(
+        &receipt.action.parameters,
+        "caseRef",
+        CASE_REF,
+        "runtime receipt action payload",
+    )?;
+    validate_json_string_field(
+        &receipt.action.parameters,
+        "tool",
+        vendor.tool_name,
+        "runtime receipt action payload",
+    )
+}
+
+fn validate_runtime_receipt_metadata(
+    receipt: &ChioReceipt,
+    vendor: &VendorFixture,
+) -> Result<(), ChioPackageError> {
+    let metadata = receipt.metadata.as_ref().ok_or_else(|| {
+        ChioPackageError::Inconsistent(format!(
+            "runtime receipt {} is missing loopback metadata",
+            receipt.id
+        ))
+    })?;
+    validate_json_string_field(
+        metadata,
+        "workflow_id",
+        WORKFLOW_ID,
+        "runtime receipt metadata",
+    )?;
+    validate_json_string_field(
+        metadata,
+        "vendor_id",
+        vendor.vendor_id,
+        "runtime receipt metadata",
+    )
+}
+
+fn validate_json_string_field(
+    value: &serde_json::Value,
+    field: &'static str,
+    expected: &str,
+    context: &str,
+) -> Result<(), ChioPackageError> {
+    match value.get(field).and_then(serde_json::Value::as_str) {
+        Some(actual) if actual == expected => Ok(()),
+        Some(actual) => Err(ChioPackageError::Inconsistent(format!(
+            "{context} field {field} value {actual} does not match {expected}"
+        ))),
+        None => Err(ChioPackageError::Inconsistent(format!(
+            "{context} field {field} is missing"
+        ))),
+    }
 }
 
 struct RuntimeIssuedMaterialValidation<'a> {
@@ -863,6 +943,13 @@ fn validate_runtime_artifact_for_issued_material(
             index
         )));
     }
+    let expected_anchor = format!("chio:consistency:{WORKFLOW_ID}:{index}");
+    if step.consistency_anchor.as_deref() != Some(expected_anchor.as_str()) {
+        return Err(ChioPackageError::Workflow(format!(
+            "runtime step {} consistency anchor must be {}",
+            index, expected_anchor
+        )));
+    }
 
     let (statement, _) = envelope
         .decode_statement()
@@ -901,6 +988,12 @@ fn validate_runtime_artifact_for_issued_material(
         return Err(ChioPackageError::Workflow(format!(
             "runtime step {} DSSE args hash does not match receipt",
             index
+        )));
+    }
+    if predicate.consistency_anchor.as_deref() != Some(expected_anchor.as_str()) {
+        return Err(ChioPackageError::Workflow(format!(
+            "runtime step {} DSSE consistency anchor must be {}",
+            index, expected_anchor
         )));
     }
     let lease_ref = predicate.capability_lease_ref.as_ref().ok_or_else(|| {
@@ -1317,6 +1410,12 @@ mod tests {
     }
 
     #[test]
+    fn runtime_vendor_helper_reports_unknown_step() {
+        let error = runtime_vendor(VENDORS.len()).expect_err("unknown step must fail");
+        assert!(error.to_string().contains("unknown runtime vendor step 3"));
+    }
+
+    #[test]
     fn fresh_proof_package_binds_disclosure_subject_to_workflow() {
         let package = fresh_proof_package().expect("fresh package builds");
         let projection = project_workflow_receipt_body(&package.workflow_receipt.body())
@@ -1445,6 +1544,44 @@ mod tests {
         let error = proof_package_from_runtime_artifacts(artifacts).unwrap_err();
 
         assert!(error.to_string().contains("DSSE hash"));
+    }
+
+    #[test]
+    fn runtime_artifact_package_rejects_step_consistency_anchor_mismatch() {
+        let baseline = fresh_proof_package().expect("fresh package builds");
+        let mut artifacts = runtime_artifacts_from_package(&baseline).expect("runtime artifacts");
+        artifacts[0].workflow_step.consistency_anchor =
+            Some("chio:consistency:wf-chio-refund-001:wrong".to_string());
+        refresh_runtime_parent_chain(&mut artifacts);
+
+        let error = proof_package_from_runtime_artifacts(artifacts).unwrap_err();
+
+        assert!(error.to_string().contains("consistency anchor"));
+    }
+
+    #[test]
+    fn runtime_receipt_package_rejects_cross_workflow_action_payload(
+    ) -> Result<(), ChioPackageError> {
+        let baseline = fresh_proof_package()?;
+        let mut receipts = baseline.tool_receipts;
+        let mut body = receipts[0].body();
+        body.action = ToolCallAction::from_parameters(serde_json::json!({
+            "workflowId": "wf-other",
+            "caseRef": CASE_REF,
+            "tool": VENDORS[0].tool_name,
+        }))
+        .map_err(|error| ChioPackageError::Inconsistent(error.to_string()))?;
+        receipts[0] = ChioReceipt::sign(body, &Keypair::from_seed(&VENDOR_A_SEED))
+            .map_err(|error| ChioPackageError::Inconsistent(error.to_string()))?;
+
+        let Err(error) = proof_package_from_runtime_receipts(receipts) else {
+            return Err(ChioPackageError::Inconsistent(
+                "cross-workflow receipt was accepted".to_string(),
+            ));
+        };
+
+        assert!(error.to_string().contains("workflow"));
+        Ok(())
     }
 
     #[test]

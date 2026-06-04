@@ -8,6 +8,7 @@ mod tests {
     use rsa::pss::BlindedSigningKey as RsaPssSigningKey;
     use rsa::rand_core::OsRng;
     use rsa::signature::{RandomizedSigner as _, SignatureEncoding as _};
+    use rusqlite::params;
     use serde_json::json;
     use std::io::Read as _;
     use std::net::ToSocketAddrs as _;
@@ -72,6 +73,36 @@ mod tests {
         assert_eq!(key, "ip:127.0.0.1");
         assert!(!key.contains("session-secret"));
         assert!(!key.contains("token-secret"));
+    }
+
+    #[test]
+    fn mcp_session_id_header_classifies_missing_invalid_and_valid_values() {
+        let mut headers = HeaderMap::new();
+        assert_eq!(mcp_session_id_header(&headers), McpSessionIdHeader::Missing);
+
+        headers.insert(MCP_SESSION_ID_HEADER, HeaderValue::from_static(""));
+        assert_eq!(mcp_session_id_header(&headers), McpSessionIdHeader::Invalid);
+
+        headers.insert(
+            MCP_SESSION_ID_HEADER,
+            HeaderValue::from_static(" session-123"),
+        );
+        assert_eq!(mcp_session_id_header(&headers), McpSessionIdHeader::Invalid);
+
+        headers.insert(
+            MCP_SESSION_ID_HEADER,
+            HeaderValue::from_static("session-123 "),
+        );
+        assert_eq!(mcp_session_id_header(&headers), McpSessionIdHeader::Invalid);
+
+        headers.insert(
+            MCP_SESSION_ID_HEADER,
+            HeaderValue::from_static("session-123"),
+        );
+        assert_eq!(
+            mcp_session_id_header(&headers),
+            McpSessionIdHeader::Valid("session-123".to_string())
+        );
     }
 
     fn sign_jwt_rs256(
@@ -250,6 +281,67 @@ mod tests {
             egress_contract: None,
 
         }
+    }
+
+    fn test_local_authorization_server() -> LocalAuthorizationServer {
+        let (sender_dpop_nonce_store, sender_dpop_config) = test_sender_dpop_runtime();
+        LocalAuthorizationServer {
+            signing_key: Keypair::generate(),
+            issuer: "https://auth.example".to_string(),
+            default_audience: "https://edge.example/mcp".to_string(),
+            supported_scopes: vec!["mcp:invoke".to_string()],
+            subject: "operator".to_string(),
+            code_ttl_secs: 300,
+            access_token_ttl_secs: 600,
+            codes: Arc::new(StdMutex::new(HashMap::new())),
+            sender_dpop_nonce_store,
+            sender_dpop_config,
+        }
+    }
+
+    fn test_authorization_approval_form() -> AuthorizationApprovalForm {
+        AuthorizationApprovalForm {
+            response_type: "code".to_string(),
+            client_id: "client-abc".to_string(),
+            redirect_uri: "https://client.example/callback".to_string(),
+            state: Some("state-1".to_string()),
+            scope: Some("mcp:invoke".to_string()),
+            resource: Some("https://edge.example/mcp".to_string()),
+            authorization_details: None,
+            chio_transaction_context: None,
+            code_challenge: "challenge".to_string(),
+            code_challenge_method: "S256".to_string(),
+            chio_sender_dpop_public_key: None,
+            chio_sender_mtls_thumbprint_sha256: None,
+            chio_sender_attestation_sha256: None,
+            decision: "approve".to_string(),
+        }
+    }
+
+    fn authorization_code_from_redirect(redirect: Redirect) -> String {
+        let response = redirect.into_response();
+        let location = response
+            .headers()
+            .get(axum::http::header::LOCATION)
+            .expect("redirect has location")
+            .to_str()
+            .expect("location is valid header text");
+        Url::parse(location)
+            .expect("parse redirect location")
+            .query_pairs()
+            .find_map(|(key, value)| (key == "code").then(|| value.to_string()))
+            .expect("redirect includes authorization code")
+    }
+
+    fn stored_authorization_code_expiry(
+        server: &LocalAuthorizationServer,
+        code: &str,
+    ) -> u64 {
+        let guard = server.codes.lock().expect("lock authorization codes");
+        guard
+            .get(code)
+            .expect("authorization code stored")
+            .expires_at
     }
 
     fn sample_resume_record() -> RemoteSessionResumeRecord {
@@ -569,6 +661,169 @@ mod tests {
     }
 
     #[test]
+    fn load_active_session_records_keeps_active_row_when_matching_tombstone_is_malformed() {
+        let path = std::env::temp_dir().join(format!(
+            "chio-remote-malformed-tombstone-active-{}-{}.sqlite3",
+            std::process::id(),
+            session_now_millis()
+        ));
+        let auth_context = SessionAuthContext::streamable_http_static_bearer(
+            "agent-resumable",
+            "token-fingerprint",
+            None,
+        );
+        let lifecycle = RemoteSessionLifecycleSnapshot {
+            state: RemoteSessionState::Ready,
+            created_at: 10,
+            last_seen_at: 11,
+            idle_expires_at: 12,
+            drain_deadline_at: None,
+        };
+        let active_record = RemoteSessionResumeRecord {
+            session_id: "session-resumable".to_string(),
+            agent_id: "agent-resumable".to_string(),
+            auth_context,
+            auth_mode_fingerprint: Some("auth-contract-v1".to_string()),
+            policy_fingerprint: Some("policy-contract-v1".to_string()),
+            hosted_isolation: RemoteHostedIsolationMode::DedicatedPerSession,
+            lifecycle,
+            protocol_version: Some("2025-06-18".to_string()),
+            peer_capabilities: PeerCapabilities::default(),
+            initialize_params: json!({}),
+            issued_capabilities: Vec::new(),
+            resume_integrity_tag: None,
+        };
+        persist_active_session_record(&path, &active_record).expect("persist active session row");
+
+        let conn = open_session_state_db(&path).expect("open session state db");
+        conn.execute(
+            &format!(
+                "INSERT INTO {table} (session_id, terminal_at, record_json)
+                 VALUES (?1, ?2, ?3)",
+                table = SESSION_TOMBSTONE_TABLE,
+            ),
+            params!["session-resumable", 13_i64, "{not json"],
+        )
+        .expect("insert malformed terminal row");
+        drop(conn);
+
+        let loaded = load_active_session_records(&path).expect("load active session records");
+        assert_eq!(loaded.records.len(), 1);
+        assert_eq!(loaded.records[0].session_id, "session-resumable");
+        assert!(loaded.invalid_session_ids.is_empty());
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn load_terminal_session_records_skips_mismatched_payload_session_id() {
+        let path = std::env::temp_dir().join(format!(
+            "chio-remote-terminal-mismatch-{}-{}.sqlite3",
+            std::process::id(),
+            session_now_millis()
+        ));
+        let terminal_record = RemoteSessionDiagnosticRecord {
+            session_id: "session-payload".to_string(),
+            auth_context: SessionAuthContext::streamable_http_static_bearer(
+                "agent-terminal",
+                "token-fingerprint",
+                None,
+            ),
+            capabilities: Vec::new(),
+            lifecycle: RemoteSessionLifecycleSnapshot {
+                state: RemoteSessionState::Deleted,
+                created_at: 10,
+                last_seen_at: 11,
+                idle_expires_at: 12,
+                drain_deadline_at: None,
+            },
+            protocol_version: Some("2025-06-18".to_string()),
+            ownership: RemoteSessionOwnershipSnapshot::default(),
+            terminal_at: 13,
+        };
+        let conn = open_session_state_db(&path).expect("open session state db");
+        conn.execute(
+            &format!(
+                "INSERT INTO {table} (session_id, terminal_at, record_json)
+                 VALUES (?1, ?2, ?3)",
+                table = SESSION_TOMBSTONE_TABLE,
+            ),
+            params![
+                "session-row",
+                terminal_record.terminal_at as i64,
+                serde_json::to_string(&terminal_record).expect("serialize terminal record")
+            ],
+        )
+        .expect("insert mismatched terminal row");
+        drop(conn);
+
+        let records = load_terminal_session_records(&path).expect("load terminal session records");
+        assert!(
+            records.is_empty(),
+            "terminal tombstone payloads must match their row session_id"
+        );
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn remote_session_ledger_startup_skips_malformed_terminal_tombstones() {
+        let path = std::env::temp_dir().join(format!(
+            "chio-remote-terminal-malformed-{}-{}.sqlite3",
+            std::process::id(),
+            session_now_millis()
+        ));
+        let terminal_record = RemoteSessionDiagnosticRecord {
+            session_id: "session-valid".to_string(),
+            auth_context: SessionAuthContext::streamable_http_static_bearer(
+                "agent-terminal",
+                "token-fingerprint",
+                None,
+            ),
+            capabilities: Vec::new(),
+            lifecycle: RemoteSessionLifecycleSnapshot {
+                state: RemoteSessionState::Deleted,
+                created_at: 10,
+                last_seen_at: 11,
+                idle_expires_at: 12,
+                drain_deadline_at: None,
+            },
+            protocol_version: Some("2025-06-18".to_string()),
+            ownership: RemoteSessionOwnershipSnapshot::default(),
+            terminal_at: 13,
+        };
+        persist_terminal_session_record(&path, &terminal_record)
+            .expect("persist valid terminal session tombstone");
+
+        let conn = open_session_state_db(&path).expect("open session state db");
+        conn.execute(
+            &format!(
+                "INSERT INTO {table} (session_id, terminal_at, record_json)
+                 VALUES (?1, ?2, ?3)",
+                table = SESSION_TOMBSTONE_TABLE,
+            ),
+            params!["session-bad", 14_i64, "{not json"],
+        )
+        .expect("insert malformed terminal row");
+        drop(conn);
+
+        let lifecycle_policy = SessionLifecyclePolicy {
+            idle_expiry_millis: 5_000,
+            drain_grace_millis: 1_000,
+            reaper_interval_millis: 100,
+            tombstone_retention_millis: 10_000,
+        };
+        RemoteSessionLedger::new(lifecycle_policy, Some(path.clone()))
+            .expect("malformed terminal tombstone should not abort ledger startup");
+
+        let records = load_terminal_session_records(&path).expect("load terminal session records");
+        assert_eq!(records.len(), 1);
+        assert!(records.contains_key("session-valid"));
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
     fn purge_terminal_session_records_keeps_tombstones_for_stale_active_rows() {
         let path = std::env::temp_dir().join(format!(
             "chio-remote-terminal-retain-active-{}-{}.sqlite3",
@@ -779,6 +1034,32 @@ mod tests {
             error.to_string().contains("Chio authorization profile id"),
             "unexpected error: {error}"
         );
+    }
+
+    #[test]
+    fn local_authorization_server_issues_unique_codes_for_same_second_approvals() {
+        for _ in 0..8 {
+            let server = test_local_authorization_server();
+            let first = authorization_code_from_redirect(
+                server
+                    .approve_authorization(test_authorization_approval_form())
+                    .expect("first approval succeeds"),
+            );
+            let first_expires_at = stored_authorization_code_expiry(&server, &first);
+            let second = authorization_code_from_redirect(
+                server
+                    .approve_authorization(test_authorization_approval_form())
+                    .expect("second approval succeeds"),
+            );
+            let second_expires_at = stored_authorization_code_expiry(&server, &second);
+
+            if first_expires_at == second_expires_at {
+                assert_ne!(first, second);
+                return;
+            }
+        }
+
+        panic!("test could not issue two authorization codes in the same second");
     }
 
     #[test]
@@ -1635,6 +1916,36 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(error.contains("--admin-token"));
+    }
+
+    #[test]
+    fn remote_auth_state_rejects_unusable_static_bearer_tokens() {
+        for (field, value) in [
+            ("--auth-token", ""),
+            ("--auth-token", " remote-auth-token"),
+            ("--auth-token", "remote-auth-token\n"),
+            ("--admin-token", ""),
+            ("--admin-token", " admin-token"),
+            ("--admin-token", "admin-token\r"),
+        ] {
+            let mut config = test_remote_config();
+            match field {
+                "--auth-token" => config.auth_token = Some(value.to_string()),
+                "--admin-token" => config.admin_token = Some(value.to_string()),
+                other => panic!("unexpected field {other}"),
+            }
+
+            let error =
+                build_remote_auth_state(&config, "127.0.0.1:0".parse().unwrap(), None, None)
+                    .unwrap_err()
+                    .to_string();
+
+            assert!(error.contains(field), "error should name {field}: {error}");
+            assert!(
+                error.contains("must be non-empty, unpadded, and control-free"),
+                "error should describe usable bearer requirements: {error}"
+            );
+        }
     }
 
     #[test]

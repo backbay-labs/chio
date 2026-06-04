@@ -614,13 +614,7 @@ pub fn validate_autonomous_pricing_input(
         &input.requested_coverage_amount,
         "autonomous_pricing_input.requested_coverage_amount",
     )?;
-    if input
-        .requested_coverage_amount
-        .currency
-        .trim()
-        .to_ascii_uppercase()
-        != input.currency
-    {
+    if !money_currency_matches_declared(&input.requested_coverage_amount, &input.currency) {
         return Err(AutonomyContractError::InvalidDecision(
             "autonomous pricing input coverage amount currency must match currency".to_string(),
         ));
@@ -739,25 +733,13 @@ pub fn validate_autonomous_pricing_authority_envelope(
         &envelope.max_premium_amount,
         "autonomous_authority_envelope.max_premium_amount",
     )?;
-    if envelope
-        .max_coverage_amount
-        .currency
-        .trim()
-        .to_ascii_uppercase()
-        != envelope.currency
-    {
+    if !money_currency_matches_declared(&envelope.max_coverage_amount, &envelope.currency) {
         return Err(AutonomyContractError::InvalidEnvelope(
             "autonomous authority max_coverage_amount currency must match envelope currency"
                 .to_string(),
         ));
     }
-    if envelope
-        .max_premium_amount
-        .currency
-        .trim()
-        .to_ascii_uppercase()
-        != envelope.currency
-    {
+    if !money_currency_matches_declared(&envelope.max_premium_amount, &envelope.currency) {
         return Err(AutonomyContractError::InvalidEnvelope(
             "autonomous authority max_premium_amount currency must match envelope currency"
                 .to_string(),
@@ -778,7 +760,7 @@ pub fn validate_autonomous_pricing_authority_envelope(
             threshold,
             "autonomous_authority_envelope.requires_human_review_above_premium",
         )?;
-        if threshold.currency.trim().to_ascii_uppercase() != envelope.currency {
+        if !money_currency_matches_declared(threshold, &envelope.currency) {
             return Err(AutonomyContractError::InvalidEnvelope(
                 "autonomous authority premium review threshold currency must match envelope currency"
                     .to_string(),
@@ -849,19 +831,13 @@ pub fn validate_autonomous_pricing_decision(
         &decision.suggested_premium_amount,
         "autonomous_pricing_decision.suggested_premium_amount",
     )?;
-    if decision
-        .suggested_coverage_amount
-        .currency
-        .trim()
-        .to_ascii_uppercase()
-        != decision.authority_envelope.currency
-        || decision
-            .suggested_premium_amount
-            .currency
-            .trim()
-            .to_ascii_uppercase()
-            != decision.authority_envelope.currency
-    {
+    if !money_currency_matches_declared(
+        &decision.suggested_coverage_amount,
+        &decision.authority_envelope.currency,
+    ) || !money_currency_matches_declared(
+        &decision.suggested_premium_amount,
+        &decision.authority_envelope.currency,
+    ) {
         return Err(AutonomyContractError::InvalidDecision(
             "autonomous pricing decision money fields must match envelope currency".to_string(),
         ));
@@ -1070,7 +1046,7 @@ pub fn validate_capital_pool_optimization(
             &recommendation.amount,
             "capital_pool_optimization.recommendations.amount",
         )?;
-        if recommendation.amount.currency.trim().to_ascii_uppercase() != optimization.currency {
+        if !money_currency_matches_declared(&recommendation.amount, &optimization.currency) {
             return Err(AutonomyContractError::InvalidOptimization(
                 "capital pool optimization recommendation amounts must match optimization currency"
                     .to_string(),
@@ -1494,13 +1470,16 @@ fn validate_positive_money(
     validate_currency_code(&amount.currency, field)
 }
 
+fn money_currency_matches_declared(amount: &MonetaryAmount, declared_currency: &str) -> bool {
+    amount.currency == declared_currency
+}
+
 fn validate_currency_code(
     currency: &str,
     field: &'static str,
 ) -> Result<(), AutonomyContractError> {
-    let normalized = currency.trim().to_ascii_uppercase();
-    if normalized.len() != 3
-        || !normalized
+    if currency.len() != 3
+        || !currency
             .chars()
             .all(|character| character.is_ascii_uppercase())
     {
@@ -1524,6 +1503,12 @@ fn ensure_unique_strings(
 ) -> Result<(), AutonomyContractError> {
     let mut seen = HashSet::new();
     for value in values {
+        ensure_non_empty(value, field)?;
+        if value.trim() != value {
+            return Err(AutonomyContractError::InvalidDecision(format!(
+                "{field} must not contain values with surrounding whitespace"
+            )));
+        }
         if !seen.insert(value.as_str()) {
             return Err(AutonomyContractError::DuplicateValue(format!(
                 "{field}:{value}"
@@ -2077,6 +2062,52 @@ mod tests {
         assert!(matches!(
             validate_autonomous_pricing_input(&input),
             Err(AutonomyContractError::UnknownReference(_))
+        ));
+    }
+
+    #[test]
+    fn pricing_input_rejects_padded_money_currency() {
+        let mut input = sample_input();
+        input.requested_coverage_amount.currency = " usd ".to_string();
+
+        assert!(matches!(
+            validate_autonomous_pricing_input(&input),
+            Err(AutonomyContractError::InvalidDecision(message))
+                if message.contains("currency")
+        ));
+    }
+
+    #[test]
+    fn money_currency_matcher_requires_exact_currency_match() {
+        let amount = MonetaryAmount {
+            units: 1,
+            currency: "USD".to_string(),
+        };
+
+        assert!(money_currency_matches_declared(&amount, "USD"));
+        assert!(!money_currency_matches_declared(
+            &MonetaryAmount {
+                units: 1,
+                currency: " usd ".to_string(),
+            },
+            "USD"
+        ));
+        assert!(!money_currency_matches_declared(&amount, "EUR"));
+    }
+
+    #[test]
+    fn unique_string_lists_reject_blank_or_padded_entries() {
+        assert!(matches!(
+            ensure_unique_strings(&["ok".to_string(), " ".to_string()], "authority_refs"),
+            Err(AutonomyContractError::MissingField("authority_refs"))
+        ));
+        assert!(matches!(
+            ensure_unique_strings(
+                &["ok".to_string(), " padded ".to_string()],
+                "authority_refs",
+            ),
+            Err(AutonomyContractError::InvalidDecision(message))
+                if message.contains("surrounding whitespace")
         ));
     }
 

@@ -24,6 +24,14 @@ struct ReleaseTrackingRuntimeAdmissionHook {
     continuation_id: Option<&'static str>,
 }
 
+struct FailingReleaseRuntimeAdmissionHook {
+    calls: std::sync::Arc<AtomicU64>,
+    releases: std::sync::Arc<AtomicU64>,
+    expected_request_id: &'static str,
+    admission_id: &'static str,
+    lease_id: &'static str,
+}
+
 struct FailingAfterSideEffectServer {
     id: String,
     tools: Vec<String>,
@@ -158,6 +166,40 @@ impl RuntimeAdmissionHook for ReleaseTrackingRuntimeAdmissionHook {
         }
         self.releases.fetch_add(1, Ordering::SeqCst);
         Ok(())
+    }
+}
+
+impl RuntimeAdmissionHook for FailingReleaseRuntimeAdmissionHook {
+    fn name(&self) -> &str {
+        "test-chio-failing-release-admission"
+    }
+
+    fn evaluate(
+        &self,
+        context: &RuntimeAdmissionContext<'_>,
+    ) -> Result<RuntimeAdmissionDecision, KernelError> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        assert_eq!(context.request.request_id, self.expected_request_id);
+        assert_eq!(context.matched_grant_index, Some(0));
+        Ok(RuntimeAdmissionDecision::allow(Some(serde_json::json!({
+            "chio_runtime": {
+                "admission_id": self.admission_id,
+                "accepted": true,
+                "reserved_destructive_lease_id": self.lease_id,
+                "failure_code": null
+            }
+        }))))
+    }
+
+    fn release_reserved(&self, metadata: &serde_json::Value) -> Result<(), KernelError> {
+        assert_eq!(
+            metadata["chio_runtime"]["reserved_destructive_lease_id"],
+            self.lease_id
+        );
+        self.releases.fetch_add(1, Ordering::SeqCst);
+        Err(KernelError::Internal(
+            "runtime reservation release failed".to_string(),
+        ))
     }
 }
 
@@ -1177,6 +1219,96 @@ fn chio_runtime_admission_releases_reservations_on_pre_dispatch_budget_denial(
     assert_eq!(
         metadata["chio_runtime"]["reserved_treaty_continuation_id"],
         "continuation-pre-dispatch-budget-deny"
+    );
+    Ok(())
+}
+
+#[test]
+fn chio_runtime_release_failure_does_not_mask_pre_dispatch_budget_denial(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let SiblingSumMonetaryFixture {
+        mut kernel,
+        child_a,
+        child_b,
+        child_a_kp,
+        child_b_kp,
+        path: _path,
+    } = make_sibling_sum_monetary_fixture("chio-runtime-release-failure");
+
+    let allow_response = kernel.evaluate_tool_call_blocking(&ToolCallRequest {
+        request_id: "req-chio-runtime-release-failure-budget-allow".to_string(),
+        capability: child_a,
+        tool_name: "compute".to_string(),
+        server_id: "cost-srv".to_string(),
+        agent_id: child_a_kp.public_key().to_hex(),
+        arguments: serde_json::json!({}),
+        dpop_proof: None,
+        governed_intent: None,
+        approval_token: None,
+        model_metadata: None,
+        federated_origin_kernel_id: None,
+    })?;
+    assert_eq!(
+        allow_response.verdict, Verdict::Allow,
+        "unexpected deny reason: {:?}",
+        allow_response.reason
+    );
+
+    let admission_calls = std::sync::Arc::new(AtomicU64::new(0));
+    let releases = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.set_runtime_admission_hook(std::sync::Arc::new(
+        FailingReleaseRuntimeAdmissionHook {
+            calls: std::sync::Arc::clone(&admission_calls),
+            releases: std::sync::Arc::clone(&releases),
+            expected_request_id: "req-chio-runtime-release-failure-budget-deny",
+            admission_id: "adm-release-failure-budget-deny",
+            lease_id: "lease-release-failure-budget-deny",
+        },
+    ));
+
+    let deny_response = kernel.evaluate_tool_call_blocking(&ToolCallRequest {
+        request_id: "req-chio-runtime-release-failure-budget-deny".to_string(),
+        capability: child_b,
+        tool_name: "compute".to_string(),
+        server_id: "cost-srv".to_string(),
+        agent_id: child_b_kp.public_key().to_hex(),
+        arguments: serde_json::json!({}),
+        dpop_proof: None,
+        governed_intent: None,
+        approval_token: None,
+        model_metadata: None,
+        federated_origin_kernel_id: None,
+    })?;
+
+    assert_eq!(deny_response.verdict, Verdict::Deny);
+    assert!(deny_response.reason.as_deref().is_some_and(|reason| {
+        reason.contains("sibling-sum") || reason.contains("sibling sum")
+    }));
+    assert_eq!(admission_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        releases.load(Ordering::SeqCst),
+        1,
+        "runtime release must be attempted before the denial receipt is returned"
+    );
+    let metadata = deny_response
+        .receipt
+        .metadata
+        .ok_or_else(|| std::io::Error::other("deny metadata missing"))?;
+    assert_eq!(
+        metadata["chio_runtime"]["admission_id"],
+        "adm-release-failure-budget-deny"
+    );
+    assert_eq!(
+        metadata["chio_runtime"]["reserved_destructive_lease_id"],
+        "lease-release-failure-budget-deny"
+    );
+    assert_eq!(
+        metadata["chio_runtime"]["reservation_release_failed"],
+        true
+    );
+    assert_eq!(
+        metadata["chio_runtime"]["reservation_release_failure_reason"],
+        "internal error: runtime reservation release failed"
     );
     Ok(())
 }

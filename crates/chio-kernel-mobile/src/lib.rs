@@ -407,10 +407,23 @@ pub fn sign_receipt(
             message: format!("receipt body: {error}"),
         })?;
 
-    let keypair =
-        Keypair::from_seed_hex(&signing_seed_hex).map_err(|error| ChioMobileError::InvalidHex {
-            message: format!("signing seed: {error}"),
-        })?;
+    let seed_bytes = decode_hex_argument("signing seed", &signing_seed_hex)?;
+    if seed_bytes.len() != 32 {
+        return Err(ChioMobileError::InvalidHex {
+            message: format!(
+                "signing seed: expected 32-byte Ed25519 seed, got {} bytes",
+                seed_bytes.len()
+            ),
+        });
+    }
+    if seed_bytes.iter().all(|byte| *byte == 0) {
+        return Err(ChioMobileError::WeakEntropy {
+            message: "refusing to sign with an all-zero Ed25519 seed".to_string(),
+        });
+    }
+    let mut seed = [0u8; 32];
+    seed.copy_from_slice(&seed_bytes);
+    let keypair = Keypair::from_seed(&seed);
     let backend = Ed25519Backend::new(keypair);
 
     let receipt = core_sign_receipt(body, &backend).map_err(|error| match error {

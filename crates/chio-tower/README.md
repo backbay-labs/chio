@@ -10,3 +10,7 @@ bodies.
 Use this crate to add Chio enforcement to an existing Tower or Axum service.
 Real `tonic::body::Body` replay remains a follow-on concern and is not claimed
 as fully covered by the current middleware contract.
+
+Capability tokens may be presented in `X-Chio-Capability` or the
+`chio_capability` query parameter. Requests with duplicate `chio_capability`
+query parameters are rejected as ambiguous and receive a signed deny receipt.

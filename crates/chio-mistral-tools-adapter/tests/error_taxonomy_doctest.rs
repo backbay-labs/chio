@@ -92,7 +92,12 @@ fn readme_taxonomy_table_covers_adapter_visible_classes() -> Result<(), String> 
 #[test]
 fn current_adapter_paths_match_documented_classes() -> Result<(), String> {
     let classes = classes(&taxonomy_rows()?);
-    for required in ["BadToolArgs", "Malformed", "VerdictBudgetExceeded"] {
+    for required in [
+        "ContentPolicy",
+        "BadToolArgs",
+        "Malformed",
+        "VerdictBudgetExceeded",
+    ] {
         if !classes.contains(required) {
             return Err(format!(
                 "README taxonomy did not cover current class {required}"
@@ -101,6 +106,20 @@ fn current_adapter_paths_match_documented_classes() -> Result<(), String> {
     }
 
     let adapter = adapter();
+
+    let content_policy = adapter.lift_batch(raw(json!({
+        "id": "chatcmpl_safety",
+        "object": "chat.completion",
+        "choices": [{
+            "index": 0,
+            "message": {
+                "role": "assistant",
+                "content": null
+            },
+            "finish_reason": "content_filter"
+        }]
+    }))?);
+    require_provider_error(content_policy, "ContentPolicy")?;
 
     // Mistral is OpenAI-compatible. When `tool_calls[].function.arguments` is a
     // non-string, non-object scalar the adapter refuses it: it cannot canonicalize

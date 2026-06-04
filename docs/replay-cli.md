@@ -61,7 +61,7 @@ Required fields:
     "path": "tests/replay/fixtures/openai_responses_shadow/tool_call_with_pii/",
     "receipts_root": "a917b3c1..."
   },
-  "redaction_pass_id": "redactors@1.4.0+default",
+  "redaction_pass_id": "redactors@1.5.0+default",
   "control_plane_capability": "chio:tee/bless@1",
   "signature": "ed25519:..."
 }

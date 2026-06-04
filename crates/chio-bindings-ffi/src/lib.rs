@@ -42,6 +42,12 @@ pub const CHIO_FFI_ERROR_DUPLICATE_TOOL_NAME: i32 = 19;
 pub const CHIO_FFI_ERROR_UNSUPPORTED_SCHEMA: i32 = 20;
 pub const CHIO_FFI_ERROR_MANIFEST_VERIFICATION_FAILED: i32 = 21;
 pub const CHIO_FFI_ERROR_DUPLICATE_SERVER_TOOL: i32 = 22;
+pub const CHIO_FFI_ERROR_INVALID_TOOL_NAME: i32 = 23;
+pub const CHIO_FFI_ERROR_INVALID_INPUT_SCHEMA: i32 = 24;
+pub const CHIO_FFI_ERROR_INVALID_OUTPUT_SCHEMA: i32 = 25;
+pub const CHIO_FFI_ERROR_INVALID_MANIFEST_FIELD: i32 = 26;
+pub const CHIO_FFI_ERROR_INVALID_REQUIRED_PERMISSION: i32 = 27;
+pub const CHIO_FFI_ERROR_DUPLICATE_REQUIRED_PERMISSION: i32 = 28;
 pub const CHIO_FFI_ERROR_INTERNAL: i32 = 255;
 
 #[repr(C)]
@@ -110,7 +116,11 @@ fn err_string(status: i32, error_code: i32, message: String) -> ChioFfiResult {
 }
 
 fn helper_error_code(error: &Error) -> i32 {
-    match error.code() {
+    ffi_error_code_from_helper_code(error.code())
+}
+
+fn ffi_error_code_from_helper_code(code: ErrorCode) -> i32 {
+    match code {
         ErrorCode::InvalidPublicKey => CHIO_FFI_ERROR_INVALID_PUBLIC_KEY,
         ErrorCode::InvalidHex => CHIO_FFI_ERROR_INVALID_HEX,
         ErrorCode::InvalidSignature => CHIO_FFI_ERROR_INVALID_SIGNATURE,
@@ -130,7 +140,13 @@ fn helper_error_code(error: &Error) -> i32 {
         ErrorCode::InvalidProofIndex => CHIO_FFI_ERROR_INVALID_PROOF_INDEX,
         ErrorCode::EmptyManifest => CHIO_FFI_ERROR_EMPTY_MANIFEST,
         ErrorCode::DuplicateToolName => CHIO_FFI_ERROR_DUPLICATE_TOOL_NAME,
+        ErrorCode::InvalidToolName => CHIO_FFI_ERROR_INVALID_TOOL_NAME,
+        ErrorCode::InvalidInputSchema => CHIO_FFI_ERROR_INVALID_INPUT_SCHEMA,
+        ErrorCode::InvalidOutputSchema => CHIO_FFI_ERROR_INVALID_OUTPUT_SCHEMA,
         ErrorCode::DuplicateServerTool => CHIO_FFI_ERROR_DUPLICATE_SERVER_TOOL,
+        ErrorCode::InvalidManifestField => CHIO_FFI_ERROR_INVALID_MANIFEST_FIELD,
+        ErrorCode::InvalidRequiredPermission => CHIO_FFI_ERROR_INVALID_REQUIRED_PERMISSION,
+        ErrorCode::DuplicateRequiredPermission => CHIO_FFI_ERROR_DUPLICATE_REQUIRED_PERMISSION,
         ErrorCode::UnsupportedSchema => CHIO_FFI_ERROR_UNSUPPORTED_SCHEMA,
         ErrorCode::ManifestVerificationFailed => CHIO_FFI_ERROR_MANIFEST_VERIFICATION_FAILED,
     }
@@ -366,6 +382,30 @@ pub extern "C" fn chio_verify_receipt_json(input_json: *const c_char) -> ChioFfi
 }
 
 #[no_mangle]
+pub extern "C" fn chio_verify_receipt_json_with_trusted_signers(
+    input_json: *const c_char,
+    trusted_signers_json: *const c_char,
+) -> ChioFfiResult {
+    let input = match read_c_str(input_json, "input_json") {
+        Ok(value) => value,
+        Err(result) => return result,
+    };
+    let trusted_signers = match read_c_str(trusted_signers_json, "trusted_signers_json") {
+        Ok(value) => value,
+        Err(result) => return result,
+    };
+    run_ffi(|| {
+        let trusted_signers: Vec<String> = serde_json::from_str(trusted_signers)?;
+        json(
+            &chio_binding_helpers::verify_receipt_json_with_trusted_signer_hex(
+                input,
+                &trusted_signers,
+            )?,
+        )
+    })
+}
+
+#[no_mangle]
 pub extern "C" fn chio_verify_manifest_json(input_json: *const c_char) -> ChioFfiResult {
     let input = match read_c_str(input_json, "input_json") {
         Ok(value) => value,
@@ -379,8 +419,13 @@ mod tests {
     use super::{
         chio_buffer_free, chio_canonicalize_json, chio_ffi_abi_version, chio_ffi_build_info,
         chio_sha256_hex_bytes, chio_sha256_hex_utf8, chio_sign_utf8_message_ed25519,
-        chio_verify_utf8_message_ed25519, ChioFfiBuffer, CHIO_FFI_STATUS_ERROR,
-        CHIO_FFI_STATUS_NULL_ARGUMENT, CHIO_FFI_STATUS_OK,
+        chio_verify_receipt_json_with_trusted_signers, chio_verify_utf8_message_ed25519,
+        ffi_error_code_from_helper_code, ChioFfiBuffer,
+        CHIO_FFI_ERROR_DUPLICATE_REQUIRED_PERMISSION, CHIO_FFI_ERROR_INVALID_HEX,
+        CHIO_FFI_ERROR_INVALID_INPUT_SCHEMA, CHIO_FFI_ERROR_INVALID_MANIFEST_FIELD,
+        CHIO_FFI_ERROR_INVALID_OUTPUT_SCHEMA, CHIO_FFI_ERROR_INVALID_REQUIRED_PERMISSION,
+        CHIO_FFI_ERROR_INVALID_TOOL_NAME, CHIO_FFI_STATUS_ERROR, CHIO_FFI_STATUS_NULL_ARGUMENT,
+        CHIO_FFI_STATUS_OK,
     };
     use std::ffi::CString;
     use std::os::raw::c_char;
@@ -517,6 +562,87 @@ mod tests {
     }
 
     #[test]
+    fn receipt_json_trusted_signers_roundtrip_over_c_abi() {
+        let (receipt, signer) = fixture_allow_receipt();
+        let trusted_signers = trusted_signers_json(&signer);
+        let result = chio_verify_receipt_json_with_trusted_signers(
+            receipt.as_ptr(),
+            trusted_signers.as_ptr(),
+        );
+        assert_eq!(result.status, CHIO_FFI_STATUS_OK);
+        let output = result_to_string(result.data);
+        assert!(output.contains(r#""signer_trusted":true"#));
+        assert!(output.contains(r#""ok":true"#));
+        assert!(output.contains(r#""authorized":true"#));
+    }
+
+    #[test]
+    fn receipt_json_trusted_signers_rejects_malformed_signer_hex() {
+        let receipt = fixture_receipt_json();
+        let trusted_signers = c_string(r#"["not-a-public-key"]"#);
+        let result = chio_verify_receipt_json_with_trusted_signers(
+            receipt.as_ptr(),
+            trusted_signers.as_ptr(),
+        );
+        assert_eq!(result.status, CHIO_FFI_STATUS_ERROR);
+        assert_eq!(result.error_code, CHIO_FFI_ERROR_INVALID_HEX);
+        assert!(!result_to_string(result.data).is_empty());
+    }
+
+    #[test]
+    fn receipt_json_trusted_signers_rejects_malformed_json_list() {
+        let receipt = fixture_receipt_json();
+        let trusted_signers = c_string(r#"{"not":"an array"}"#);
+        let result = chio_verify_receipt_json_with_trusted_signers(
+            receipt.as_ptr(),
+            trusted_signers.as_ptr(),
+        );
+        assert_eq!(result.status, CHIO_FFI_STATUS_ERROR);
+        assert_ne!(result.error_code, 0);
+        assert!(!result_to_string(result.data).is_empty());
+    }
+
+    #[test]
+    fn invalid_manifest_tool_name_maps_to_stable_ffi_error_code() {
+        assert_eq!(
+            ffi_error_code_from_helper_code(chio_binding_helpers::ErrorCode::InvalidToolName),
+            CHIO_FFI_ERROR_INVALID_TOOL_NAME
+        );
+    }
+
+    #[test]
+    fn invalid_manifest_schema_errors_map_to_stable_ffi_error_codes() {
+        assert_eq!(
+            ffi_error_code_from_helper_code(chio_binding_helpers::ErrorCode::InvalidInputSchema),
+            CHIO_FFI_ERROR_INVALID_INPUT_SCHEMA
+        );
+        assert_eq!(
+            ffi_error_code_from_helper_code(chio_binding_helpers::ErrorCode::InvalidOutputSchema),
+            CHIO_FFI_ERROR_INVALID_OUTPUT_SCHEMA
+        );
+    }
+
+    #[test]
+    fn invalid_manifest_permission_errors_map_to_stable_ffi_error_codes() {
+        assert_eq!(
+            ffi_error_code_from_helper_code(chio_binding_helpers::ErrorCode::InvalidManifestField),
+            CHIO_FFI_ERROR_INVALID_MANIFEST_FIELD
+        );
+        assert_eq!(
+            ffi_error_code_from_helper_code(
+                chio_binding_helpers::ErrorCode::InvalidRequiredPermission
+            ),
+            CHIO_FFI_ERROR_INVALID_REQUIRED_PERMISSION
+        );
+        assert_eq!(
+            ffi_error_code_from_helper_code(
+                chio_binding_helpers::ErrorCode::DuplicateRequiredPermission
+            ),
+            CHIO_FFI_ERROR_DUPLICATE_REQUIRED_PERMISSION
+        );
+    }
+
+    #[test]
     fn freeing_empty_and_null_buffers_is_noop() {
         chio_buffer_free(ChioFfiBuffer {
             ptr: std::ptr::null_mut(),
@@ -544,6 +670,7 @@ mod tests {
             "chio_verify_json_signature_ed25519",
             "chio_verify_manifest_json",
             "chio_verify_receipt_json",
+            "chio_verify_receipt_json_with_trusted_signers",
             "chio_verify_utf8_message_ed25519",
         ];
 
@@ -552,5 +679,53 @@ mod tests {
             .filter(|line| !line.trim().is_empty() && !line.starts_with('#'))
             .collect();
         assert_eq!(actual, expected);
+    }
+
+    fn fixture_receipt_json() -> CString {
+        let (receipt, _) = fixture_allow_receipt();
+        receipt
+    }
+
+    fn fixture_allow_receipt() -> (CString, String) {
+        let fixture: serde_json::Value = match serde_json::from_str(include_str!(
+            "../../../tests/bindings/vectors/receipt/v1.json"
+        )) {
+            Ok(value) => value,
+            Err(error) => panic!("receipt fixture must parse: {error}"),
+        };
+        let cases = match fixture.get("cases").and_then(serde_json::Value::as_array) {
+            Some(value) => value,
+            None => panic!("receipt fixture cases must be an array"),
+        };
+        let receipt_case = match cases.iter().find(|case| {
+            case.get("id").and_then(serde_json::Value::as_str) == Some("allow_receipt")
+        }) {
+            Some(value) => value,
+            None => panic!("receipt fixture must contain allow_receipt"),
+        };
+        let receipt = match receipt_case.get("receipt") {
+            Some(value) => value,
+            None => panic!("allow_receipt must contain receipt"),
+        };
+        let signer = match receipt
+            .get("kernel_key")
+            .and_then(serde_json::Value::as_str)
+        {
+            Some(value) => value.to_owned(),
+            None => panic!("allow_receipt receipt must contain kernel_key"),
+        };
+        let receipt_json = match serde_json::to_string(receipt) {
+            Ok(value) => value,
+            Err(error) => panic!("receipt fixture case must serialize: {error}"),
+        };
+        (c_string(&receipt_json), signer)
+    }
+
+    fn trusted_signers_json(signer: &str) -> CString {
+        let payload = match serde_json::to_string(&[signer]) {
+            Ok(value) => value,
+            Err(error) => panic!("trusted signer fixture must serialize: {error}"),
+        };
+        c_string(&payload)
     }
 }

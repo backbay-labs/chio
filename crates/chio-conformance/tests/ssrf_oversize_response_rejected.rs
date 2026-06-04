@@ -11,6 +11,7 @@
 
 use std::collections::BTreeSet;
 
+use chio_core::Keypair;
 use chio_egress_contract::{HttpEgressContract, HttpEgressError};
 use chio_openapi_mcp_bridge::{BridgeConfig, OpenApiMcpBridge};
 
@@ -46,7 +47,7 @@ fn bridge_construction_accepts_in_scope_url() {
         server_id: "svc".to_string(),
         server_name: "svc".to_string(),
         server_version: "1.0".to_string(),
-        public_key: "00".to_string(),
+        public_key: Keypair::from_seed(&[44u8; 32]).public_key().to_hex(),
         base_url: "https://api.example.com".to_string(),
         egress_contract: Some(tight_response_size_contract()),
     };

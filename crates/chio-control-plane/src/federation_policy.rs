@@ -133,7 +133,13 @@ impl FederationAdmissionPolicyRegistry {
                     )));
                 }
                 registry.version = FEDERATION_ADMISSION_POLICY_REGISTRY_VERSION.to_string();
-                for record in registry.policies.values() {
+                for (policy_id, record) in &registry.policies {
+                    if policy_id != &record.policy.body.policy_id {
+                        return Err(CliError::cli_other_error(
+                            "federation policy map key must match signed policy body policy_id"
+                                .to_string(),
+                        ));
+                    }
                     verify_federation_admission_policy_record(record)?;
                 }
                 Ok(registry)
@@ -333,6 +339,16 @@ mod federation_policy_error_tests {
         }
     }
 
+    fn temp_registry_path() -> std::path::PathBuf {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .test_unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "chio-federation-admission-policy-registry-{nonce}.json"
+        ))
+    }
+
     #[test]
     fn invalid_record_schema_uses_cli_registry_domain() {
         let mut record = signed_record();
@@ -361,5 +377,24 @@ mod federation_policy_error_tests {
         let error = verify_federation_admission_policy_record(&record).test_unwrap_err();
 
         assert_cli_other_error(error, "anti_sybil.proof_of_work_bits");
+    }
+
+    #[test]
+    fn load_rejects_policy_map_key_that_differs_from_signed_policy_id() {
+        let path = temp_registry_path();
+        let mut registry = FederationAdmissionPolicyRegistry::default();
+        registry
+            .policies
+            .insert("open-admission-alias".to_string(), signed_record());
+        fs::write(&path, serde_json::to_vec_pretty(&registry).test_unwrap()).test_unwrap();
+
+        let result = FederationAdmissionPolicyRegistry::load(&path);
+        let _ = fs::remove_file(&path);
+        let error = result.test_unwrap_err();
+
+        assert_cli_other_error(
+            error,
+            "federation policy map key must match signed policy body policy_id",
+        );
     }
 }

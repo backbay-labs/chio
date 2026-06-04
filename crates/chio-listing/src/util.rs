@@ -374,6 +374,10 @@ fn freshness_state_rank(state: &GenericListingFreshnessState) -> u8 {
     }
 }
 
+pub(crate) fn bounded_listing_limit(limit: Option<usize>, max: usize) -> usize {
+    limit.unwrap_or(100).clamp(1, max)
+}
+
 pub(crate) fn validate_non_empty(value: &str, field: &str) -> Result<(), String> {
     if value.trim().is_empty() {
         return Err(format!("{field} must not be empty"));
@@ -394,4 +398,17 @@ pub(crate) fn validate_optional_http_url(value: Option<&str>, field: &str) -> Re
         validate_http_url(value, field)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::bounded_listing_limit;
+
+    #[test]
+    fn bounded_listing_limit_clamps_default_and_edges() {
+        assert_eq!(bounded_listing_limit(None, 200), 100);
+        assert_eq!(bounded_listing_limit(Some(0), 200), 1);
+        assert_eq!(bounded_listing_limit(Some(75), 200), 75);
+        assert_eq!(bounded_listing_limit(Some(500), 200), 200);
+    }
 }

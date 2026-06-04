@@ -67,62 +67,75 @@ fn trust_store_health_snapshot(config: &TrustServiceConfig) -> Value {
     })
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct EnterpriseProviderHealthCounts {
+    total: usize,
+    enabled: usize,
+    validated: usize,
+    invalid: usize,
+}
+
+fn enterprise_provider_health_counts(
+    registry: &EnterpriseProviderRegistry,
+) -> EnterpriseProviderHealthCounts {
+    let mut counts = EnterpriseProviderHealthCounts {
+        total: registry.providers.len(),
+        ..EnterpriseProviderHealthCounts::default()
+    };
+    for record in registry.providers.values() {
+        if record.enabled {
+            counts.enabled += 1;
+        }
+        if record.is_validated_enabled() {
+            counts.validated += 1;
+        }
+        if !record.validation_errors.is_empty() {
+            counts.invalid += 1;
+        }
+    }
+    counts
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct VerifierPolicyHealthCounts {
+    total: usize,
+    active: usize,
+}
+
+fn verifier_policy_health_counts(
+    registry: &VerifierPolicyRegistry,
+    now: u64,
+) -> VerifierPolicyHealthCounts {
+    VerifierPolicyHealthCounts {
+        total: registry.policies.len(),
+        active: registry
+            .policies
+            .values()
+            .filter(|document| ensure_signed_passport_verifier_policy_active(document, now).is_ok())
+            .count(),
+    }
+}
+
 fn trust_federation_health_snapshot(state: &TrustServiceState) -> Value {
     let loaded_enterprise_provider_summary = state
         .enterprise_provider_registry()
-        .map(|registry| {
-            let enabled_count = registry
-                .providers
-                .values()
-                .filter(|record| record.enabled)
-                .count();
-            let validated_count = registry
-                .providers
-                .values()
-                .filter(|record| record.is_validated_enabled())
-                .count();
-            let invalid_count = registry
-                .providers
-                .values()
-                .filter(|record| !record.validation_errors.is_empty())
-                .count();
-            (
-                registry.providers.len(),
-                enabled_count,
-                validated_count,
-                invalid_count,
-            )
-        })
-        .unwrap_or((0, 0, 0, 0));
+        .map(enterprise_provider_health_counts)
+        .unwrap_or_default();
 
     let enterprise_provider_summary =
         if let Some(path) = state.config.enterprise_providers_file.as_deref() {
             match EnterpriseProviderRegistry::load(path) {
                 Ok(registry) => {
-                    let enabled_count = registry
-                        .providers
-                        .values()
-                        .filter(|record| record.enabled)
-                        .count();
-                    let validated_count = registry
-                        .providers
-                        .values()
-                        .filter(|record| record.is_validated_enabled())
-                        .count();
-                    let invalid_count = registry
-                        .providers
-                        .values()
-                        .filter(|record| !record.validation_errors.is_empty())
-                        .count();
+                    let configured_counts = enterprise_provider_health_counts(&registry);
                     json!({
                         "configured": true,
                         "available": true,
-                        "count": registry.providers.len(),
-                        "enabledCount": enabled_count,
-                        "validatedCount": validated_count,
-                        "invalidCount": invalid_count,
-                        "loadedCount": loaded_enterprise_provider_summary.0,
-                        "loadedValidatedCount": loaded_enterprise_provider_summary.2,
+                        "count": configured_counts.total,
+                        "enabledCount": configured_counts.enabled,
+                        "validatedCount": configured_counts.validated,
+                        "invalidCount": configured_counts.invalid,
+                        "loadedCount": loaded_enterprise_provider_summary.total,
+                        "loadedValidatedCount": loaded_enterprise_provider_summary.validated,
                     })
                 }
                 Err(_) => json!({
@@ -132,8 +145,8 @@ fn trust_federation_health_snapshot(state: &TrustServiceState) -> Value {
                     "enabledCount": 0,
                     "validatedCount": 0,
                     "invalidCount": 0,
-                    "loadedCount": loaded_enterprise_provider_summary.0,
-                    "loadedValidatedCount": loaded_enterprise_provider_summary.2,
+                    "loadedCount": loaded_enterprise_provider_summary.total,
+                    "loadedValidatedCount": loaded_enterprise_provider_summary.validated,
                 }),
             }
         } else {
@@ -151,38 +164,22 @@ fn trust_federation_health_snapshot(state: &TrustServiceState) -> Value {
 
     let loaded_verifier_policy_summary = state
         .verifier_policy_registry()
-        .map(|registry| {
-            let now = unix_timestamp_now();
-            let active_count = registry
-                .policies
-                .values()
-                .filter(|document| {
-                    ensure_signed_passport_verifier_policy_active(document, now).is_ok()
-                })
-                .count();
-            (registry.policies.len(), active_count)
-        })
-        .unwrap_or((0, 0));
+        .map(|registry| verifier_policy_health_counts(registry, unix_timestamp_now()))
+        .unwrap_or_default();
 
     let verifier_policy_summary = if let Some(path) = state.config.verifier_policies_file.as_deref()
     {
         match VerifierPolicyRegistry::load(path) {
             Ok(registry) => {
-                let now = unix_timestamp_now();
-                let active_count = registry
-                    .policies
-                    .values()
-                    .filter(|document| {
-                        ensure_signed_passport_verifier_policy_active(document, now).is_ok()
-                    })
-                    .count();
+                let configured_counts =
+                    verifier_policy_health_counts(&registry, unix_timestamp_now());
                 json!({
                     "configured": true,
                     "available": true,
-                    "count": registry.policies.len(),
-                    "activeCount": active_count,
-                    "loadedCount": loaded_verifier_policy_summary.0,
-                    "loadedActiveCount": loaded_verifier_policy_summary.1,
+                    "count": configured_counts.total,
+                    "activeCount": configured_counts.active,
+                    "loadedCount": loaded_verifier_policy_summary.total,
+                    "loadedActiveCount": loaded_verifier_policy_summary.active,
                 })
             }
             Err(_) => json!({
@@ -190,8 +187,8 @@ fn trust_federation_health_snapshot(state: &TrustServiceState) -> Value {
                 "available": false,
                 "count": 0,
                 "activeCount": 0,
-                "loadedCount": loaded_verifier_policy_summary.0,
-                "loadedActiveCount": loaded_verifier_policy_summary.1,
+                "loadedCount": loaded_verifier_policy_summary.total,
+                "loadedActiveCount": loaded_verifier_policy_summary.active,
             }),
         }
     } else {
@@ -478,4 +475,118 @@ fn trust_cluster_health_snapshot(
         "electionTerm": consensus.election_term,
         "role": consensus.role,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chio_test_support::prelude::*;
+
+    fn provider_record(
+        provider_id: &str,
+        enabled: bool,
+        validation_errors: &[&str],
+    ) -> EnterpriseProviderRecord {
+        EnterpriseProviderRecord {
+            provider_id: provider_id.to_string(),
+            kind: EnterpriseProviderKind::OidcJwks,
+            enabled,
+            provenance: Default::default(),
+            trust_boundary: Default::default(),
+            provider_profile: None,
+            issuer: None,
+            discovery_url: None,
+            jwks_url: None,
+            introspection_url: None,
+            scim_base_url: None,
+            saml_entity_id: None,
+            saml_metadata_url: None,
+            tenant_id: None,
+            organization_id: None,
+            subject_mapping: crate::enterprise_federation::EnterpriseSubjectMapping {
+                principal_source: "sub".to_string(),
+                client_id_field: None,
+                object_id_field: None,
+                tenant_id_field: None,
+                organization_id_field: None,
+                groups_field: None,
+                roles_field: None,
+            },
+            validation_errors: validation_errors
+                .iter()
+                .map(|error| (*error).to_string())
+                .collect(),
+        }
+    }
+
+    fn verifier_policy_document(
+        policy_id: &str,
+        created_at: u64,
+        expires_at: u64,
+    ) -> SignedPassportVerifierPolicy {
+        let signer = Keypair::from_seed(&[9u8; 32]);
+        chio_credentials::create_signed_passport_verifier_policy(
+            &signer,
+            policy_id,
+            "https://verifier.example",
+            created_at,
+            expires_at,
+            PassportVerifierPolicy::default(),
+        )
+        .test_expect("create signed verifier policy")
+    }
+
+    #[test]
+    fn enterprise_provider_health_counts_summarize_enabled_validated_and_invalid_records() {
+        let mut registry = EnterpriseProviderRegistry::default();
+        registry.providers.insert(
+            "enabled-valid".to_string(),
+            provider_record("enabled-valid", true, &[]),
+        );
+        registry.providers.insert(
+            "disabled-valid".to_string(),
+            provider_record("disabled-valid", false, &[]),
+        );
+        registry.providers.insert(
+            "enabled-invalid".to_string(),
+            provider_record("enabled-invalid", true, &["issuer missing"]),
+        );
+
+        let counts = enterprise_provider_health_counts(&registry);
+
+        assert_eq!(
+            counts,
+            EnterpriseProviderHealthCounts {
+                total: 3,
+                enabled: 2,
+                validated: 1,
+                invalid: 1,
+            }
+        );
+    }
+
+    #[test]
+    fn verifier_policy_health_counts_summarize_active_documents_at_supplied_time() {
+        let now = 1_710_000_000;
+        let mut registry = VerifierPolicyRegistry::default();
+        for document in [
+            verifier_policy_document("active", now - 10, now + 10),
+            verifier_policy_document("expired", now - 20, now - 1),
+            verifier_policy_document("future", now + 1, now + 20),
+        ] {
+            registry
+                .policies
+                .insert(document.body.policy_id.clone(), document);
+        }
+
+        let counts = verifier_policy_health_counts(&registry, now);
+
+        assert_eq!(
+            counts,
+            VerifierPolicyHealthCounts {
+                total: 3,
+                active: 1,
+            }
+        );
+    }
 }

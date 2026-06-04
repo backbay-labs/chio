@@ -194,6 +194,8 @@ fn arena_cli_error<E: std::fmt::Display>(stage: &str, err: E) -> CliError {
 #[allow(dead_code)]
 fn arena_validate_scenario_id(value: &str) -> Result<(), CliError> {
     if !value.is_empty()
+        && value != "."
+        && value != ".."
         && value
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'.' | b'-'))

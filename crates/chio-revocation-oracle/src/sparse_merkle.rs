@@ -87,12 +87,29 @@ impl InMemoryRevocationOracle {
     }
 
     fn leaf_hash(key: &RevocationKey) -> Result<[u8; 32]> {
+        Self::validate_key(key)?;
         let subject = key.subject_id.as_str().as_bytes();
         let mut bytes = Vec::with_capacity(subject.len() + 16);
-        bytes.extend_from_slice(&(subject.len() as u64).to_be_bytes());
+        bytes.extend_from_slice(&Self::subject_len_prefix(subject)?);
         bytes.extend_from_slice(subject);
         bytes.extend_from_slice(&key.epoch_nonce.get().to_be_bytes());
         Ok(Sha256::hash(&bytes))
+    }
+
+    fn validate_key(key: &RevocationKey) -> Result<()> {
+        let subject = key.subject_id.as_str();
+        if subject.trim().is_empty() || subject.trim() != subject {
+            return Err(RevocationOracleError::InvalidRevocationKey(
+                "subject_id must be non-empty and unpadded".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn subject_len_prefix(subject: &[u8]) -> Result<[u8; 8]> {
+        let length = u64::try_from(subject.len())
+            .map_err(|error| RevocationOracleError::Serialization(error.to_string()))?;
+        Ok(length.to_be_bytes())
     }
 
     pub fn signed_epoch_root(&self, signer: &impl EpochRootSigner) -> Result<SignedEpochRoot> {
@@ -188,6 +205,7 @@ impl RevocationOracle for InMemoryRevocationOracle {
     }
 
     fn inclusion_proof(&self, key: &RevocationKey) -> Result<InclusionProof> {
+        Self::validate_key(key)?;
         let record = self
             .records
             .get(key)
@@ -206,6 +224,7 @@ impl RevocationOracle for InMemoryRevocationOracle {
         key: RevocationKey,
         now_unix_ms: u64,
     ) -> Result<NonInclusionProof> {
+        Self::validate_key(&key)?;
         if self.contains(&key) {
             return Err(RevocationOracleError::AlreadyRevoked);
         }
@@ -220,7 +239,16 @@ impl RevocationOracle for InMemoryRevocationOracle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{EpochNonce, SubjectId};
+    use crate::{EpochNonce, RevocationOracleError, SubjectId};
+
+    #[test]
+    fn subject_len_prefix_encodes_subject_length_big_endian() -> Result<()> {
+        assert_eq!(
+            InMemoryRevocationOracle::subject_len_prefix(b"subject-a")?,
+            9_u64.to_be_bytes()
+        );
+        Ok(())
+    }
 
     #[test]
     fn inclusion_proof_verifies_for_revoked_subject() -> Result<()> {
@@ -231,6 +259,18 @@ mod tests {
         let proof = oracle.inclusion_proof(&key)?;
 
         InMemoryRevocationOracle::verify_inclusion(&proof)
+    }
+
+    #[test]
+    fn insert_rejects_empty_revocation_subject() {
+        let mut oracle = InMemoryRevocationOracle::new();
+        let key = RevocationKey::new(SubjectId::from(" "), EpochNonce::new(7));
+
+        assert!(matches!(
+            oracle.insert(key, 10),
+            Err(RevocationOracleError::InvalidRevocationKey(message))
+                if message.contains("subject_id")
+        ));
     }
 
     #[test]

@@ -15,6 +15,7 @@ use chio_core::capability::{
     WorkloadCredentialKind, WorkloadIdentity, WorkloadIdentityScheme,
 };
 use chio_core::crypto::Keypair;
+use chio_test_support::loopback::{reserve_listen_addr, skip_when_loopback_bind_denied};
 use reqwest::blocking::Client;
 use reqwest::header::AUTHORIZATION;
 
@@ -77,13 +78,6 @@ fn workspace_root() -> PathBuf {
         .nth(2)
         .expect("workspace root")
         .to_path_buf()
-}
-
-fn reserve_listen_addr() -> std::net::SocketAddr {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind temp listener");
-    let addr = listener.local_addr().expect("listener addr");
-    drop(listener);
-    addr
 }
 
 struct ServerGuard {
@@ -150,6 +144,10 @@ fn wait_for_trust_service(client: &Client, base_url: &str, service: &mut ServerG
 
 #[test]
 fn issue_capability_records_lineage_snapshot() {
+    if skip_when_loopback_bind_denied("issue_capability_records_lineage_snapshot") {
+        return;
+    }
+
     let dir = unique_dir("chio-cli-lineage-test");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -251,6 +249,10 @@ fn issue_capability_records_lineage_snapshot() {
 
 #[test]
 fn authority_endpoints_require_auth_and_rotate_generation() {
+    if skip_when_loopback_bind_denied("authority_endpoints_require_auth_and_rotate_generation") {
+        return;
+    }
+
     let dir = unique_dir("chio-cli-authority-http");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -327,6 +329,10 @@ fn authority_endpoints_require_auth_and_rotate_generation() {
 
 #[test]
 fn issue_capability_rejects_invalid_public_key() {
+    if skip_when_loopback_bind_denied("issue_capability_rejects_invalid_public_key") {
+        return;
+    }
+
     let dir = unique_dir("chio-cli-invalid-capability-key");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -372,6 +378,12 @@ fn issue_capability_rejects_invalid_public_key() {
 
 #[test]
 fn issue_capability_rejects_conflicting_runtime_attestation_binding() {
+    if skip_when_loopback_bind_denied(
+        "issue_capability_rejects_conflicting_runtime_attestation_binding",
+    ) {
+        return;
+    }
+
     let dir = unique_dir("chio-cli-invalid-runtime-attestation");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");

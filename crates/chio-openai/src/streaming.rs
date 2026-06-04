@@ -95,6 +95,7 @@ impl OpenAiAdapter {
     where
         F: FnMut(&ToolInvocation) -> Result<VerdictResult, ProviderError>,
     {
+        self.ensure_supported_api_version()?;
         OpenAiSseTransport.gate_response_stream(self, raw, evaluate)
     }
 }

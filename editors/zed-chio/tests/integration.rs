@@ -11,7 +11,8 @@
 
 use std::path::PathBuf;
 
-use toml::Value;
+use serde_json::Value as JsonValue;
+use toml::Value as TomlValue;
 
 use zed_chio::{
     default_lsp_command, lsp_command_with_overrides, CHIO_LANGUAGE_ID, CHIO_LSP_BINARY,
@@ -31,15 +32,15 @@ fn read(file: &str) -> String {
 #[test]
 fn extension_manifest_advertises_chio_language_server() {
     let raw = read("extension.toml");
-    let parsed: Value = toml::from_str(&raw).expect("extension.toml parses");
+    let parsed: TomlValue = toml::from_str(&raw).expect("extension.toml parses");
     let id = parsed
         .get("id")
-        .and_then(Value::as_str)
+        .and_then(TomlValue::as_str)
         .expect("extension.toml carries id");
     assert_eq!(id, "chio");
     let lang_servers = parsed
         .get("language_servers")
-        .and_then(Value::as_table)
+        .and_then(TomlValue::as_table)
         .expect("extension.toml declares language_servers");
     assert!(
         lang_servers.contains_key("chio-lsp"),
@@ -50,22 +51,42 @@ fn extension_manifest_advertises_chio_language_server() {
 #[test]
 fn language_config_targets_chio_file_suffixes() {
     let raw = read("languages/chio/config.toml");
-    let parsed: Value = toml::from_str(&raw).expect("language config parses");
+    let parsed: TomlValue = toml::from_str(&raw).expect("language config parses");
     assert_eq!(
-        parsed.get("name").and_then(Value::as_str),
+        parsed.get("name").and_then(TomlValue::as_str),
         Some(CHIO_LANGUAGE_ID)
     );
     let suffixes = parsed
         .get("path_suffixes")
-        .and_then(Value::as_array)
+        .and_then(TomlValue::as_array)
         .expect("language config carries path_suffixes");
-    let suffixes: Vec<&str> = suffixes.iter().filter_map(Value::as_str).collect();
+    let suffixes: Vec<&str> = suffixes.iter().filter_map(TomlValue::as_str).collect();
     for expected in ["chio.yaml", "chio-manifest.yaml", "chio-guard.yaml"] {
         assert!(
             suffixes.contains(&expected),
             "language config missing suffix {expected}"
         );
     }
+}
+
+#[test]
+fn snippets_are_scoped_to_zed_chio_language_file() {
+    assert!(
+        !extension_dir().join("snippets/snippets.json").exists(),
+        "snippets/snippets.json is global in Zed; Chio snippets must live in snippets/chio.json"
+    );
+
+    let raw = read("snippets/chio.json");
+    let body_start = raw.find('{').expect("snippet file contains JSON object");
+    let parsed: JsonValue =
+        serde_json::from_str(&raw[body_start..]).expect("Chio snippets parse as JSON");
+    let snippets = parsed
+        .as_object()
+        .expect("Chio snippets file is keyed by snippet id");
+    assert!(
+        snippets.contains_key("chio.manifest_skeleton"),
+        "Chio snippets must include the manifest skeleton"
+    );
 }
 
 #[test]

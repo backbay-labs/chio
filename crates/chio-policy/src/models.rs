@@ -708,6 +708,25 @@ fn strip_inline_comment(input: &str) -> &str {
 // Rules
 // ---------------------------------------------------------------------------
 
+/// Rule-block names represented by [`Rules`]. Keep this list in lockstep with
+/// the fields on `Rules` so validators and evaluators share the same inventory.
+pub const RULE_BLOCK_NAMES: [&str; 14] = [
+    "forbidden_paths",
+    "path_allowlist",
+    "egress",
+    "secret_patterns",
+    "patch_integrity",
+    "shell_commands",
+    "tool_access",
+    "computer_use",
+    "remote_desktop_channels",
+    "input_injection",
+    "browser_automation",
+    "code_execution",
+    "velocity",
+    "human_in_loop",
+];
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct Rules {
@@ -739,6 +758,46 @@ pub struct Rules {
     pub velocity: Option<VelocityRule>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub human_in_loop: Option<HumanInLoopRule>,
+}
+
+impl Rules {
+    pub(crate) fn has_configured_blocks(&self) -> bool {
+        self.forbidden_paths.is_some()
+            || self.path_allowlist.is_some()
+            || self.egress.is_some()
+            || self.secret_patterns.is_some()
+            || self.patch_integrity.is_some()
+            || self.shell_commands.is_some()
+            || self.tool_access.is_some()
+            || self.computer_use.is_some()
+            || self.remote_desktop_channels.is_some()
+            || self.input_injection.is_some()
+            || self.browser_automation.is_some()
+            || self.code_execution.is_some()
+            || self.velocity.is_some()
+            || self.human_in_loop.is_some()
+    }
+
+    pub(crate) fn clear_block(&mut self, block_name: &str) -> bool {
+        match block_name {
+            "forbidden_paths" => self.forbidden_paths = None,
+            "path_allowlist" => self.path_allowlist = None,
+            "egress" => self.egress = None,
+            "secret_patterns" => self.secret_patterns = None,
+            "patch_integrity" => self.patch_integrity = None,
+            "shell_commands" => self.shell_commands = None,
+            "tool_access" => self.tool_access = None,
+            "computer_use" => self.computer_use = None,
+            "remote_desktop_channels" => self.remote_desktop_channels = None,
+            "input_injection" => self.input_injection = None,
+            "browser_automation" => self.browser_automation = None,
+            "code_execution" => self.code_execution = None,
+            "velocity" => self.velocity = None,
+            "human_in_loop" => self.human_in_loop = None,
+            _ => return false,
+        }
+        true
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -1692,6 +1751,40 @@ mod tests {
             spec.description.as_deref(),
             Some("first line second      line")
         );
+    }
+
+    #[test]
+    fn rules_block_helpers_cover_conditionable_rule_blocks() {
+        let mut rules = Rules::default();
+        assert!(!rules.has_configured_blocks());
+
+        rules.tool_access = Some(ToolAccessRule {
+            enabled: true,
+            allow: Vec::new(),
+            block: Vec::new(),
+            require_confirmation: Vec::new(),
+            default: DefaultAction::Allow,
+            max_args_size: None,
+            require_runtime_assurance_tier: None,
+            prefer_runtime_assurance_tier: None,
+            require_workload_identity: None,
+            prefer_workload_identity: None,
+        });
+        assert!(rules.has_configured_blocks());
+        assert!(rules.clear_block("tool_access"));
+        assert!(!rules.has_configured_blocks());
+
+        assert_eq!(RULE_BLOCK_NAMES.len(), 14);
+        for block_name in RULE_BLOCK_NAMES {
+            let mut empty_rules = Rules::default();
+            assert!(
+                empty_rules.clear_block(block_name),
+                "missing clear_block arm for {block_name}"
+            );
+        }
+
+        let mut empty_rules = Rules::default();
+        assert!(!empty_rules.clear_block("misspelled_rule_block"));
     }
 
     #[test]

@@ -1,11 +1,5 @@
 use super::*;
 
-#[derive(Debug, Clone, Deserialize)]
-pub(super) struct RequestedTask {
-    #[serde(default)]
-    pub(super) ttl: Option<u64>,
-}
-
 pub(super) enum ClientInbound {
     Message(Value),
     ParseError(String),

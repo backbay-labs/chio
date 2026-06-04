@@ -255,6 +255,28 @@ fn enforces_per_run_cap() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+#[test]
+fn refuses_receipts_for_steps_outside_the_scenario() -> Result<(), Box<dyn std::error::Error>> {
+    let scenario = parse_scenario_str(scenario_toml())?;
+    let mut run = run_with_one_deny()?;
+    run.receipts[0].step_id = "missing-step".to_string();
+    let tmp = tempfile::tempdir()?;
+    let env = StubEnv::default()
+        .with("CHIO_BLESS", "1")
+        .with("BLESS_REASON", "arena:promote_demo");
+
+    let result = promote_to_fixtures(&scenario, &run, tmp.path(), "prompt-injection", 5, &env);
+
+    match result {
+        Err(PromoteError::UnknownReceiptStep { step_id }) => {
+            assert_eq!(step_id, "missing-step");
+        }
+        other => panic!("expected unknown receipt step refusal, got {other:?}"),
+    }
+    assert!(!tmp.path().join("arena").exists());
+    Ok(())
+}
+
 fn scenario_toml_with_many_denies() -> &'static str {
     r#"
 schema_version = "chio.arena.scenario/v1"

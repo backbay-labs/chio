@@ -153,16 +153,14 @@ pub struct AgUiProxy {
 impl AgUiProxy {
     /// Create a new AG-UI proxy with the given config and signing key.
     pub fn new(config: AgUiProxyConfig, signing_key: Keypair) -> Self {
-        let mut budget_registry = InMemoryBudgetRegistry::new();
-        if let Err(error) =
-            seed_budget_registry(&mut budget_registry, &config.parent_budget_snapshots)
-        {
-            warn!(
-                reason = %error,
-                "AG-UI proxy ignored invalid parent budget snapshot"
-            );
-            budget_registry = InMemoryBudgetRegistry::new();
-        }
+        let budget_registry = build_budget_registry(&config.parent_budget_snapshots)
+            .unwrap_or_else(|error| {
+                warn!(
+                    reason = %error,
+                    "AG-UI proxy ignored invalid parent budget snapshot"
+                );
+                InMemoryBudgetRegistry::new()
+            });
         Self {
             config,
             signing_key,
@@ -172,8 +170,7 @@ impl AgUiProxy {
 
     /// Create a new AG-UI proxy and reject invalid budget snapshot config.
     pub fn try_new(config: AgUiProxyConfig, signing_key: Keypair) -> Result<Self, AgUiProxyError> {
-        let mut budget_registry = InMemoryBudgetRegistry::new();
-        seed_budget_registry(&mut budget_registry, &config.parent_budget_snapshots)?;
+        let budget_registry = build_budget_registry(&config.parent_budget_snapshots)?;
         Ok(Self {
             config,
             signing_key,
@@ -221,6 +218,9 @@ impl AgUiProxy {
         capability: Option<&CapabilityToken>,
         transport: &mut Transport,
     ) -> Result<(ProxyDecision, AgUiReceipt), AgUiProxyError> {
+        event
+            .validate_boundary()
+            .map_err(AgUiProxyError::InvalidEvent)?;
         let mut server_event = event.clone();
         let decision = match derive_server_classification(event) {
             Ok(classification) => {
@@ -263,29 +263,28 @@ impl AgUiProxy {
     }
 
     fn decide(&self, event: &AgUiEvent, capability: Option<&CapabilityToken>) -> ProxyDecision {
-        // Check if this classification requires a capability
         let requires_capability = self
             .config
             .restricted_classifications
             .contains(&event.classification);
 
-        if requires_capability {
-            match capability {
-                None => ProxyDecision::Block {
-                    reason: format!("capability required for {:?} events", event.classification),
-                },
-                Some(cap) => self.decide_restricted_event(event, cap),
-            }
-        } else if self.config.allow_display_without_capability || capability.is_some() {
-            ProxyDecision::Forward
-        } else {
-            ProxyDecision::Block {
-                reason: "no capability token provided".to_string(),
-            }
+        if let Some(capability) = capability {
+            return self.decide_capability_bound_event(event, capability);
         }
+
+        if self.config.allow_display_without_capability && !requires_capability {
+            return ProxyDecision::Forward;
+        }
+
+        let reason = if requires_capability {
+            format!("capability required for {:?} events", event.classification)
+        } else {
+            "no capability token provided".to_string()
+        };
+        ProxyDecision::Block { reason }
     }
 
-    fn decide_restricted_event(
+    fn decide_capability_bound_event(
         &self,
         event: &AgUiEvent,
         capability: &CapabilityToken,
@@ -588,6 +587,14 @@ fn custom_constraint_matches_if_present(grant: &ToolGrant, key: &str, expected: 
         }
         _ => true,
     })
+}
+
+fn build_budget_registry(
+    snapshots: &[ParentBudgetSnapshot],
+) -> Result<InMemoryBudgetRegistry, AgUiProxyError> {
+    let mut budget_registry = InMemoryBudgetRegistry::new();
+    seed_budget_registry(&mut budget_registry, snapshots)?;
+    Ok(budget_registry)
 }
 
 fn seed_budget_registry(
@@ -905,6 +912,60 @@ mod tests {
         }
     }
 
+    #[test]
+    fn budget_registry_builder_rejects_invalid_parent_snapshot() {
+        let error = build_budget_registry(&[ParentBudgetSnapshot {
+            parent_token_id: "cap-parent-invalid".to_string(),
+            parent_share_bps: 10_001,
+            admitted_children: vec![],
+        }])
+        .expect_err("invalid parent share should fail closed");
+
+        assert!(error
+            .to_string()
+            .contains("budget registry failed: parent budget snapshot"));
+    }
+
+    #[test]
+    fn permissive_constructor_with_invalid_budget_snapshot_still_fails_closed_on_delegation() {
+        let issuer = Keypair::generate();
+        let proxy = AgUiProxy::new(
+            AgUiProxyConfig {
+                trusted_issuers: vec![issuer.public_key()],
+                parent_budget_snapshots: vec![ParentBudgetSnapshot {
+                    parent_token_id: "cap-parent-invalid".to_string(),
+                    parent_share_bps: 10_001,
+                    admitted_children: vec![],
+                }],
+                ..Default::default()
+            },
+            Keypair::generate(),
+        );
+        let event = make_event(EventClassification::Submit);
+        let cap = make_delegated_scoped_capability(
+            &issuer,
+            "submit",
+            "cap-child-invalid-parent",
+            "cap-parent-invalid",
+        );
+        let mut transport = Transport::new(
+            TransportKind::WebSocket,
+            "ws-invalid-budget-snapshot".to_string(),
+            "agent-1".to_string(),
+        );
+
+        let (decision, receipt) = proxy.evaluate(&event, Some(&cap), &mut transport).unwrap();
+
+        assert!(matches!(decision, ProxyDecision::Block { .. }));
+        assert!(!receipt.allowed);
+        assert!(receipt
+            .denial_reason
+            .as_deref()
+            .unwrap_or_default()
+            .contains("sibling-sum budget"));
+        assert_eq!(transport.events_blocked, 1);
+    }
+
     fn proxy_with_trusted_issuer(issuer: &Keypair) -> AgUiProxy {
         AgUiProxy::new(
             AgUiProxyConfig {
@@ -949,6 +1010,174 @@ mod tests {
         assert_eq!(decision, ProxyDecision::Forward);
         assert!(receipt.allowed);
         assert_eq!(transport.events_forwarded, 1);
+    }
+
+    #[test]
+    fn display_event_rejects_untrusted_capability_by_default() {
+        let proxy = AgUiProxy::new(AgUiProxyConfig::default(), Keypair::generate());
+        let event = make_event(EventClassification::Display);
+        let cap = make_capability();
+        let mut transport = Transport::new(
+            TransportKind::Sse,
+            "conn-display-untrusted".to_string(),
+            "agent-1".to_string(),
+        );
+
+        let (decision, receipt) = proxy.evaluate(&event, Some(&cap), &mut transport).unwrap();
+
+        assert!(matches!(decision, ProxyDecision::Block { .. }));
+        assert!(!receipt.allowed);
+        assert_eq!(receipt.capability_id, "cap-test");
+        assert_eq!(transport.events_blocked, 1);
+        assert!(receipt
+            .denial_reason
+            .as_deref()
+            .unwrap_or_default()
+            .contains("issuer is not trusted"));
+    }
+
+    #[test]
+    fn display_event_requires_display_scope_when_capability_supplied() {
+        let issuer = Keypair::generate();
+        let proxy = proxy_with_trusted_issuer(&issuer);
+        let event = make_event(EventClassification::Display);
+        let submit_cap = make_scoped_capability(&issuer, "submit");
+        let mut transport = Transport::new(
+            TransportKind::Sse,
+            "conn-display-wrong-scope".to_string(),
+            "agent-1".to_string(),
+        );
+
+        let (decision, receipt) = proxy
+            .evaluate(&event, Some(&submit_cap), &mut transport)
+            .unwrap();
+
+        assert!(matches!(decision, ProxyDecision::Block { .. }));
+        assert!(!receipt.allowed);
+        assert_eq!(transport.events_blocked, 1);
+        assert!(receipt
+            .denial_reason
+            .as_deref()
+            .unwrap_or_default()
+            .contains("scope does not authorize"));
+    }
+
+    #[test]
+    fn proxy_rejects_empty_event_id_before_receipt() {
+        let config = AgUiProxyConfig {
+            allow_display_without_capability: true,
+            ..Default::default()
+        };
+        let proxy = AgUiProxy::new(config, Keypair::generate());
+        let event = AgUiEvent {
+            event_id: "  ".to_string(),
+            ..make_event(EventClassification::Display)
+        };
+        let mut transport = Transport::new(
+            TransportKind::Sse,
+            "conn-empty-event-id".to_string(),
+            "agent-1".to_string(),
+        );
+
+        let err = proxy
+            .evaluate(&event, None, &mut transport)
+            .expect_err("empty event_id must fail before AG-UI receipt construction");
+        assert_eq!(
+            err.to_string(),
+            "invalid event: event_id must be a non-empty string"
+        );
+        assert_eq!(transport.total_events(), 0);
+    }
+
+    #[test]
+    fn proxy_rejects_empty_target_component_before_receipt() {
+        let config = AgUiProxyConfig {
+            allow_display_without_capability: true,
+            ..Default::default()
+        };
+        let proxy = AgUiProxy::new(config, Keypair::generate());
+        let event = AgUiEvent {
+            target: Some(TargetComponent {
+                component_type: " ".to_string(),
+                component_id: Some("composer".to_string()),
+            }),
+            ..make_event(EventClassification::Display)
+        };
+        let mut transport = Transport::new(
+            TransportKind::Sse,
+            "conn-empty-target".to_string(),
+            "agent-1".to_string(),
+        );
+
+        let err = proxy
+            .evaluate(&event, None, &mut transport)
+            .expect_err("empty target component type must fail before receipt construction");
+        assert_eq!(
+            err.to_string(),
+            "invalid event: target.component_type must be a non-empty string"
+        );
+        assert_eq!(transport.total_events(), 0);
+    }
+
+    #[test]
+    fn proxy_rejects_padded_or_control_event_identity_before_receipt() {
+        let cases = vec![
+            (
+                "event_id",
+                AgUiEvent {
+                    event_id: " evt-padded ".to_string(),
+                    ..make_event(EventClassification::Display)
+                },
+            ),
+            (
+                "agent_id",
+                AgUiEvent {
+                    agent_id: "agent\ncontrol".to_string(),
+                    ..make_event(EventClassification::Display)
+                },
+            ),
+            (
+                "session_id",
+                AgUiEvent {
+                    session_id: Some(" sess-padded ".to_string()),
+                    ..make_event(EventClassification::Display)
+                },
+            ),
+            (
+                "target.component_id",
+                AgUiEvent {
+                    target: Some(TargetComponent {
+                        component_type: "chat".to_string(),
+                        component_id: Some("composer\rcontrol".to_string()),
+                    }),
+                    ..make_event(EventClassification::Display)
+                },
+            ),
+        ];
+
+        for (field, event) in cases {
+            let config = AgUiProxyConfig {
+                allow_display_without_capability: true,
+                ..Default::default()
+            };
+            let proxy = AgUiProxy::new(config, Keypair::generate());
+            let mut transport = Transport::new(
+                TransportKind::Sse,
+                format!("conn-malformed-{field}"),
+                "agent-1".to_string(),
+            );
+
+            let err = proxy
+                .evaluate(&event, None, &mut transport)
+                .expect_err("malformed event identity must fail before receipt construction");
+            assert_eq!(
+                err.to_string(),
+                format!(
+                    "invalid event: {field} must be unpadded and contain no control characters"
+                )
+            );
+            assert_eq!(transport.total_events(), 0);
+        }
     }
 
     #[test]

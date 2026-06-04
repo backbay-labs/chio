@@ -931,6 +931,7 @@ fn validate_deposit_static(
     validate_non_empty(&body.subject_class, "subject_class")?;
     validate_non_empty(&body.subject_class_namespace, "subject_class_namespace")?;
     validate_non_empty(&body.nonce, "nonce")?;
+    validate_unique_non_empty_strings(&body.treaty_scope, "treaty_scope")?;
     if !body.confidence.is_finite() || !(0.0..=1.0).contains(&body.confidence) {
         return Err(PheromoneError::ConfidenceOutOfRange(body.confidence));
     }
@@ -1231,6 +1232,7 @@ pub fn validate_scarcity_policy_material(
             policy.policy_id
         )));
     }
+    validate_unique_non_empty_strings(&policy.treaty_scope, "scarcity treaty scope")?;
     if !context
         .known_reputation_epochs
         .contains(&policy.reputation_epoch)
@@ -1682,16 +1684,34 @@ fn sqrt_passport_cap(active_peers: u64) -> u64 {
 }
 
 fn validate_non_empty(value: &str, field: &str) -> Result<(), PheromoneError> {
-    if value.trim().is_empty() {
+    if value.trim().is_empty() || value.trim() != value {
         return Err(PheromoneError::InvalidField(format!(
-            "{field} must not be empty"
+            "{field} must be non-empty and unpadded"
         )));
     }
     Ok(())
 }
 
+fn validate_unique_non_empty_strings(values: &[String], field: &str) -> Result<(), PheromoneError> {
+    if values.is_empty() {
+        return Err(PheromoneError::InvalidField(format!(
+            "{field} must not be empty"
+        )));
+    }
+    let mut seen = BTreeSet::new();
+    for value in values {
+        validate_non_empty(value, field)?;
+        if !seen.insert(value.as_str()) {
+            return Err(PheromoneError::InvalidField(format!(
+                "{field} contains duplicate value {value}"
+            )));
+        }
+    }
+    Ok(())
+}
+
 fn validate_hex64(value: &str, field: &str) -> Result<(), PheromoneError> {
-    if value.len() != 64 || !value.chars().all(|ch| ch.is_ascii_hexdigit()) {
+    if !is_hex64_shape(value) {
         return Err(PheromoneError::InvalidField(format!(
             "{field} must be 64 lowercase hex characters"
         )));
@@ -1702,4 +1722,19 @@ fn validate_hex64(value: &str, field: &str) -> Result<(), PheromoneError> {
         )));
     }
     Ok(())
+}
+
+fn is_hex64_shape(value: &str) -> bool {
+    value.len() == 64 && value.as_bytes().iter().all(u8::is_ascii_hexdigit)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn hex64_shape_helper_accepts_exact_ascii_hex_before_lowercase_validation() {
+        assert!(super::is_hex64_shape(&"a".repeat(64)));
+        assert!(super::is_hex64_shape(&"A".repeat(64)));
+        assert!(!super::is_hex64_shape(&"a".repeat(63)));
+        assert!(!super::is_hex64_shape(&format!("{}g", "a".repeat(63))));
+    }
 }

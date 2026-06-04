@@ -18,7 +18,7 @@ pub struct HttpEgressContract {
     /// Tenant-scoped namespace used by callers to bind egress receipts and
     /// deployment policy to one authority domain.
     pub tenant_egress_namespace: String,
-    /// Lowercase URL schemes allowed by this contract, for example `https`.
+    /// Lowercase HTTP URL schemes allowed by this contract: `http` or `https`.
     #[serde(default)]
     pub allowed_schemes: BTreeSet<String>,
     /// Exact normalized URL authorities allowed by this contract.
@@ -46,6 +46,13 @@ pub struct ValidatedHttpEgressTarget {
     pub tenant_egress_namespace: String,
     pub scheme: String,
     pub authority: String,
+}
+
+/// Immutable egress contract that has passed shape validation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PreparedHttpEgressContract {
+    contract: HttpEgressContract,
+    tenant_egress_namespace: String,
 }
 
 /// Fail-closed reasons returned by HTTP egress contract enforcement.
@@ -100,11 +107,8 @@ impl HttpEgressContract {
         redirect_chain_len: u8,
         observed_response_bytes: Option<u64>,
     ) -> Result<ValidatedHttpEgressTarget, HttpEgressError> {
-        let target = self.enforce_url(target_url, redirect_chain_len)?;
-        if let Some(observed) = observed_response_bytes {
-            self.enforce_response_bytes(observed)?;
-        }
-        Ok(target)
+        self.prepare()?
+            .enforce_attempt(target_url, redirect_chain_len, observed_response_bytes)
     }
 
     /// Enforce target URL and redirect hop constraints.
@@ -113,38 +117,7 @@ impl HttpEgressContract {
         target_url: &str,
         redirect_chain_len: u8,
     ) -> Result<ValidatedHttpEgressTarget, HttpEgressError> {
-        self.validate()?;
-        if redirect_chain_len > self.max_redirect_chain {
-            return Err(HttpEgressError::RedirectLimitExceeded {
-                observed: redirect_chain_len,
-                max: self.max_redirect_chain,
-            });
-        }
-
-        let url = Url::parse(target_url)
-            .map_err(|error| HttpEgressError::InvalidUrl(error.to_string()))?;
-        if !url.username().is_empty() || url.password().is_some() {
-            return Err(HttpEgressError::UserinfoDenied);
-        }
-
-        let scheme = url.scheme().to_ascii_lowercase();
-        if !self.allowed_schemes.contains(&scheme) {
-            return Err(HttpEgressError::SchemeDenied { scheme });
-        }
-
-        let host = url.host().ok_or(HttpEgressError::MissingAuthority)?;
-        self.enforce_host_class(&host)?;
-
-        let authority = normalized_url_authority(&url)?;
-        if !self.authority_is_allowed(&url, &authority)? {
-            return Err(HttpEgressError::AuthorityDenied { authority });
-        }
-
-        Ok(ValidatedHttpEgressTarget {
-            tenant_egress_namespace: self.tenant_egress_namespace.trim().to_string(),
-            scheme,
-            authority,
-        })
+        self.prepare()?.enforce_url(target_url, redirect_chain_len)
     }
 
     /// Enforce target URL, redirect hop constraints, and DNS safety.
@@ -157,24 +130,14 @@ impl HttpEgressContract {
         target_url: &str,
         redirect_chain_len: u8,
     ) -> Result<ValidatedHttpEgressTarget, HttpEgressError> {
-        let target = self.enforce_url(target_url, redirect_chain_len)?;
-        let url = Url::parse(target_url)
-            .map_err(|error| HttpEgressError::InvalidUrl(error.to_string()))?;
-        self.enforce_domain_resolution(&url)?;
-        Ok(target)
+        self.prepare()?
+            .enforce_url_with_dns(target_url, redirect_chain_len)
     }
 
     /// Enforce the response-byte ceiling after headers or streaming counters
     /// expose the observed size.
     pub fn enforce_response_bytes(&self, observed: u64) -> Result<(), HttpEgressError> {
-        self.validate()?;
-        if observed > self.max_response_bytes {
-            return Err(HttpEgressError::ResponseTooLarge {
-                observed,
-                max: self.max_response_bytes,
-            });
-        }
-        Ok(())
+        self.prepare()?.enforce_response_bytes(observed)
     }
 
     /// Validate the contract shape before use.
@@ -208,6 +171,15 @@ impl HttpEgressContract {
         Ok(())
     }
 
+    /// Validate this raw contract and return an immutable enforcement handle.
+    pub fn prepare(&self) -> Result<PreparedHttpEgressContract, HttpEgressError> {
+        self.validate()?;
+        Ok(PreparedHttpEgressContract {
+            contract: self.clone(),
+            tenant_egress_namespace: self.tenant_egress_namespace.trim().to_string(),
+        })
+    }
+
     /// Validate that this contract can be used by the reqwest-backed
     /// dispatcher whose resolver enforces address-class policy at connect
     /// time.
@@ -222,12 +194,8 @@ impl HttpEgressContract {
     fn enforce_host_class(&self, host: &Host<&str>) -> Result<(), HttpEgressError> {
         match host {
             Host::Domain(domain) => {
-                let normalized = domain.trim_end_matches('.').to_ascii_lowercase();
-                if self.deny_loopback
-                    && matches!(normalized.as_str(), "localhost" | "localhost.localdomain")
-                {
-                    return Err(HttpEgressError::LoopbackDenied { host: normalized });
-                }
+                let normalized = normalize_domain_name(domain);
+                self.enforce_loopback_hostname(&normalized)?;
             }
             Host::Ipv4(address) => self.enforce_ipv4_class(*address)?,
             Host::Ipv6(address) => self.enforce_ipv6_class(*address)?,
@@ -235,116 +203,85 @@ impl HttpEgressContract {
         Ok(())
     }
 
-    fn enforce_ipv4_class(&self, address: Ipv4Addr) -> Result<(), HttpEgressError> {
-        if self.deny_loopback && address.is_loopback() {
+    fn enforce_loopback_hostname(&self, normalized: &str) -> Result<(), HttpEgressError> {
+        if self.deny_loopback && matches!(normalized, "localhost" | "localhost.localdomain") {
             return Err(HttpEgressError::LoopbackDenied {
-                host: address.to_string(),
-            });
-        }
-        if self.deny_link_local && address.is_link_local() {
-            return Err(HttpEgressError::LinkLocalDenied {
-                host: address.to_string(),
+                host: normalized.to_string(),
             });
         }
         Ok(())
+    }
+
+    fn enforce_ipv4_class(&self, address: Ipv4Addr) -> Result<(), HttpEgressError> {
+        self.enforce_ip_address_class(address.to_string(), classify_ipv4_address(&address))
     }
 
     fn enforce_ipv6_class(&self, address: Ipv6Addr) -> Result<(), HttpEgressError> {
         if let Some(mapped) = address.to_ipv4_mapped() {
             return self.enforce_ipv4_class(mapped);
         }
-        if self.deny_loopback && address.is_loopback() {
-            return Err(HttpEgressError::LoopbackDenied {
-                host: address.to_string(),
-            });
-        }
-        if self.deny_link_local && is_ipv6_unicast_link_local(&address) {
-            return Err(HttpEgressError::LinkLocalDenied {
-                host: address.to_string(),
-            });
-        }
-        if self.deny_ipv6_ula && is_ipv6_unique_local(&address) {
-            return Err(HttpEgressError::Ipv6UlaDenied {
-                host: address.to_string(),
-            });
-        }
-        Ok(())
+        self.enforce_ip_address_class(address.to_string(), classify_ipv6_address(&address))
     }
 
     /// Enforce address-class denials after a domain has resolved to an IP.
     pub fn enforce_resolved_ip(&self, host: &str, address: IpAddr) -> Result<(), HttpEgressError> {
         match address {
             IpAddr::V4(address) => {
-                if address.is_loopback() {
-                    if self.deny_loopback {
-                        return Err(HttpEgressError::LoopbackDenied {
-                            host: format!("{host} resolved to {address}"),
-                        });
-                    }
-                    return Ok(());
-                }
-                if address.is_link_local() {
-                    if self.deny_link_local {
-                        return Err(HttpEgressError::LinkLocalDenied {
-                            host: format!("{host} resolved to {address}"),
-                        });
-                    }
-                    return Ok(());
-                }
-                if is_ipv4_private_or_special_use(&address) {
-                    return Err(HttpEgressError::PrivateNetworkDenied {
-                        host: format!("{host} resolved to {address}"),
-                    });
-                }
+                self.enforce_ip_address_class(
+                    format!("{host} resolved to {address}"),
+                    classify_ipv4_address(&address),
+                )?;
             }
             IpAddr::V6(address) => {
                 if let Some(mapped) = address.to_ipv4_mapped() {
                     return self.enforce_resolved_ip(host, IpAddr::V4(mapped));
                 }
-                if address.is_loopback() {
-                    if self.deny_loopback {
-                        return Err(HttpEgressError::LoopbackDenied {
-                            host: format!("{host} resolved to {address}"),
-                        });
-                    }
-                    return Ok(());
-                }
-                if is_ipv6_unicast_link_local(&address) {
-                    if self.deny_link_local {
-                        return Err(HttpEgressError::LinkLocalDenied {
-                            host: format!("{host} resolved to {address}"),
-                        });
-                    }
-                    return Ok(());
-                }
-                if is_ipv6_unique_local(&address) {
-                    if self.deny_ipv6_ula {
-                        return Err(HttpEgressError::Ipv6UlaDenied {
-                            host: format!("{host} resolved to {address}"),
-                        });
-                    }
-                    return Ok(());
-                }
-                if is_ipv6_private_or_special_use(&address) {
-                    return Err(HttpEgressError::PrivateNetworkDenied {
-                        host: format!("{host} resolved to {address}"),
-                    });
-                }
+                self.enforce_ip_address_class(
+                    format!("{host} resolved to {address}"),
+                    classify_ipv6_address(&address),
+                )?;
             }
         }
         Ok(())
+    }
+
+    fn enforce_ip_address_class(
+        &self,
+        host: String,
+        class: IpAddressClass,
+    ) -> Result<(), HttpEgressError> {
+        match class {
+            IpAddressClass::Global => Ok(()),
+            IpAddressClass::Loopback => {
+                if self.deny_loopback {
+                    return Err(HttpEgressError::LoopbackDenied { host });
+                }
+                Ok(())
+            }
+            IpAddressClass::LinkLocal => {
+                if self.deny_link_local {
+                    return Err(HttpEgressError::LinkLocalDenied { host });
+                }
+                Ok(())
+            }
+            IpAddressClass::Ipv6Ula => {
+                if self.deny_ipv6_ula {
+                    return Err(HttpEgressError::Ipv6UlaDenied { host });
+                }
+                Ok(())
+            }
+            IpAddressClass::PrivateOrSpecialUse => {
+                Err(HttpEgressError::PrivateNetworkDenied { host })
+            }
+        }
     }
 
     fn enforce_domain_resolution(&self, url: &Url) -> Result<(), HttpEgressError> {
         let Some(Host::Domain(domain)) = url.host() else {
             return Ok(());
         };
-        let normalized = domain.trim_end_matches('.').to_ascii_lowercase();
-        if self.deny_loopback
-            && matches!(normalized.as_str(), "localhost" | "localhost.localdomain")
-        {
-            return Err(HttpEgressError::LoopbackDenied { host: normalized });
-        }
+        let normalized = normalize_domain_name(domain);
+        self.enforce_loopback_hostname(&normalized)?;
         let port = url.port_or_known_default().ok_or_else(|| {
             HttpEgressError::InvalidUrl(format!(
                 "egress URL {url} has no explicit port or known default port"
@@ -388,18 +325,132 @@ impl HttpEgressContract {
         Ok(false)
     }
 
+    #[cfg(feature = "reqwest-egress")]
+    fn enforce_resolver_hostname(&self, host: &str) -> Result<(), HttpEgressError> {
+        self.prepare()?.enforce_resolver_hostname(host)
+    }
+}
+
+impl PreparedHttpEgressContract {
+    /// Return the validated raw contract that backs this prepared handle.
+    #[must_use]
+    pub fn contract(&self) -> &HttpEgressContract {
+        &self.contract
+    }
+
+    /// Return the normalized tenant namespace captured during preparation.
+    #[must_use]
+    pub fn tenant_egress_namespace(&self) -> &str {
+        &self.tenant_egress_namespace
+    }
+
+    /// Return the prepared redirect-hop ceiling.
+    #[must_use]
+    pub fn max_redirect_chain(&self) -> u8 {
+        self.contract.max_redirect_chain
+    }
+
+    /// Return the prepared response-byte ceiling.
+    #[must_use]
+    pub fn max_response_bytes(&self) -> u64 {
+        self.contract.max_response_bytes
+    }
+
+    /// Enforce target, redirect, and optional response-size bounds.
+    pub fn enforce_attempt(
+        &self,
+        target_url: &str,
+        redirect_chain_len: u8,
+        observed_response_bytes: Option<u64>,
+    ) -> Result<ValidatedHttpEgressTarget, HttpEgressError> {
+        let target = self.enforce_url(target_url, redirect_chain_len)?;
+        if let Some(observed) = observed_response_bytes {
+            self.enforce_response_bytes(observed)?;
+        }
+        Ok(target)
+    }
+
+    /// Enforce target URL and redirect hop constraints.
+    pub fn enforce_url(
+        &self,
+        target_url: &str,
+        redirect_chain_len: u8,
+    ) -> Result<ValidatedHttpEgressTarget, HttpEgressError> {
+        if redirect_chain_len > self.contract.max_redirect_chain {
+            return Err(HttpEgressError::RedirectLimitExceeded {
+                observed: redirect_chain_len,
+                max: self.contract.max_redirect_chain,
+            });
+        }
+
+        let url = Url::parse(target_url)
+            .map_err(|error| HttpEgressError::InvalidUrl(error.to_string()))?;
+        if !url.username().is_empty() || url.password().is_some() {
+            return Err(HttpEgressError::UserinfoDenied);
+        }
+
+        let scheme = url.scheme().to_ascii_lowercase();
+        if !self.contract.allowed_schemes.contains(&scheme) {
+            return Err(HttpEgressError::SchemeDenied { scheme });
+        }
+
+        let host = url.host().ok_or(HttpEgressError::MissingAuthority)?;
+        self.contract.enforce_host_class(&host)?;
+
+        let authority = normalized_url_authority(&url)?;
+        if !self.contract.authority_is_allowed(&url, &authority)? {
+            return Err(HttpEgressError::AuthorityDenied { authority });
+        }
+
+        Ok(ValidatedHttpEgressTarget {
+            tenant_egress_namespace: self.tenant_egress_namespace.clone(),
+            scheme,
+            authority,
+        })
+    }
+
+    /// Enforce target URL, redirect hop constraints, and DNS safety.
+    pub fn enforce_url_with_dns(
+        &self,
+        target_url: &str,
+        redirect_chain_len: u8,
+    ) -> Result<ValidatedHttpEgressTarget, HttpEgressError> {
+        let target = self.enforce_url(target_url, redirect_chain_len)?;
+        let url = Url::parse(target_url)
+            .map_err(|error| HttpEgressError::InvalidUrl(error.to_string()))?;
+        self.contract.enforce_domain_resolution(&url)?;
+        Ok(target)
+    }
+
+    /// Enforce the response-byte ceiling.
+    pub fn enforce_response_bytes(&self, observed: u64) -> Result<(), HttpEgressError> {
+        if observed > self.contract.max_response_bytes {
+            return Err(HttpEgressError::ResponseTooLarge {
+                observed,
+                max: self.contract.max_response_bytes,
+            });
+        }
+        Ok(())
+    }
+
+    /// Validate that this prepared contract can be used by the reqwest-backed
+    /// dispatcher whose resolver enforces address-class policy at connect time.
+    pub fn validate_dispatchable_with_pinned_dns(&self) -> Result<(), HttpEgressError> {
+        for authority in &self.contract.allowed_authority_set {
+            validate_dispatchable_authority(authority)?;
+        }
+        Ok(())
+    }
+
+    #[cfg(feature = "reqwest-egress")]
     fn enforce_resolver_hostname(&self, host: &str) -> Result<(), HttpEgressError> {
         self.validate_dispatchable_with_pinned_dns()?;
         let normalized = normalize_domain_name(host);
         if normalized.is_empty() {
             return Err(HttpEgressError::MissingAuthority);
         }
-        if self.deny_loopback
-            && matches!(normalized.as_str(), "localhost" | "localhost.localdomain")
-        {
-            return Err(HttpEgressError::LoopbackDenied { host: normalized });
-        }
-        for authority in &self.allowed_authority_set {
+        self.contract.enforce_loopback_hostname(&normalized)?;
+        for authority in &self.contract.allowed_authority_set {
             if normalized_authority_host(authority)? == normalized {
                 return Ok(());
             }
@@ -432,6 +483,127 @@ mod tests {
             max_redirect_chain: 3,
             max_response_bytes: 1024,
         }
+    }
+
+    #[test]
+    fn loopback_hostname_policy_respects_contract_flag() {
+        let contract = HttpEgressContract::permissive_for_tests("localhost:80");
+        contract
+            .enforce_loopback_hostname("localhost")
+            .expect("loopback hostname remains allowed when loopback denial is disabled");
+
+        let mut denied = contract;
+        denied.deny_loopback = true;
+        let error = denied
+            .enforce_loopback_hostname("localhost.localdomain")
+            .expect_err("known loopback hostname should be denied when flag is enabled");
+        assert!(matches!(
+            error,
+            HttpEgressError::LoopbackDenied { host } if host == "localhost.localdomain"
+        ));
+        denied
+            .enforce_loopback_hostname("api.example.com")
+            .expect("non-loopback hostname remains allowed");
+    }
+
+    #[test]
+    fn validate_rejects_allowed_authority_with_empty_port() {
+        let error = strict_contract("api.example.com:")
+            .validate()
+            .expect_err("empty authority port must fail contract validation");
+
+        assert!(matches!(error, HttpEgressError::InvalidContract(_)));
+        assert!(error.to_string().contains("invalid allowed authority"));
+    }
+
+    #[test]
+    fn validate_rejects_non_canonical_allowed_authorities() {
+        for authority in ["api.example.com.", "api.example.com:0443", "[2001:0db8::1]"] {
+            let error = strict_contract(authority)
+                .validate()
+                .expect_err("non-canonical authority should be rejected");
+            assert!(matches!(error, HttpEgressError::InvalidContract(_)));
+            assert!(
+                error.to_string().contains("must be normalized"),
+                "unexpected canonicalization error for {authority:?}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_accepts_explicit_default_port_authority() {
+        strict_contract("api.example.com:443")
+            .validate()
+            .expect("explicit default ports remain valid authority entries");
+    }
+
+    #[test]
+    fn validate_rejects_non_http_allowed_schemes() {
+        for scheme in ["ftp", "ws", "custom+scheme"] {
+            let mut contract = strict_contract("api.example.com");
+            contract.allowed_schemes = BTreeSet::from([scheme.to_string()]);
+
+            let error = contract
+                .validate()
+                .expect_err("non-HTTP schemes must fail HTTP egress contract validation");
+            assert!(matches!(error, HttpEgressError::InvalidContract(_)));
+            assert!(
+                error.to_string().contains("invalid HTTP egress scheme"),
+                "unexpected scheme validation error for {scheme:?}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_accepts_http_allowed_schemes() {
+        let mut contract = strict_contract("api.example.com");
+        contract.allowed_schemes = BTreeSet::from(["http".to_string(), "https".to_string()]);
+
+        contract
+            .validate()
+            .expect("http and https remain valid HTTP egress schemes");
+    }
+
+    #[test]
+    fn prepare_rejects_invalid_contract_shape() {
+        let mut contract = strict_contract("api.example.com");
+        contract.allowed_schemes.clear();
+
+        let error = contract
+            .prepare()
+            .expect_err("prepared contracts must reject invalid raw policy shape");
+        assert!(matches!(error, HttpEgressError::InvalidContract(_)));
+    }
+
+    #[test]
+    fn prepared_contract_normalizes_tenant_namespace() {
+        let mut contract = strict_contract("api.example.com");
+        contract.tenant_egress_namespace = " tenant-a ".to_string();
+
+        let prepared = contract.prepare().expect("prepare valid contract");
+        assert_eq!(prepared.tenant_egress_namespace(), "tenant-a");
+
+        let target = prepared
+            .enforce_url("https://api.example.com/v1", 0)
+            .expect("prepared contract should enforce allowed target");
+        assert_eq!(target.tenant_egress_namespace, "tenant-a");
+    }
+
+    #[test]
+    fn prepared_contract_keeps_validated_snapshot_after_raw_mutation() {
+        let mut contract = strict_contract("api.example.com");
+        let prepared = contract.prepare().expect("prepare valid contract");
+
+        contract.allowed_schemes.clear();
+        contract.max_response_bytes = 1;
+
+        prepared
+            .enforce_attempt("https://api.example.com/v1", 0, Some(1024))
+            .expect("prepared snapshot should retain original valid policy");
+        let error = contract
+            .enforce_attempt("https://api.example.com/v1", 0, Some(2))
+            .expect_err("mutated raw contract should be rejected when reused");
+        assert!(matches!(error, HttpEgressError::InvalidContract(_)));
     }
 
     #[test]
@@ -486,6 +658,30 @@ mod tests {
                 IpAddr::V6(Ipv6Addr::new(0x2606, 0x2800, 0x220, 0x1, 0, 0, 0, 0)),
             )
             .expect("global resolved addresses remain allowed");
+    }
+
+    #[test]
+    fn private_ipv4_literal_fails_closed_even_when_declared() {
+        let error = strict_contract("10.0.0.5")
+            .enforce_url("https://10.0.0.5/admin", 0)
+            .expect_err("private IPv4 literals must fail closed even when allow-listed");
+
+        assert!(matches!(
+            error,
+            HttpEgressError::PrivateNetworkDenied { host } if host == "10.0.0.5"
+        ));
+    }
+
+    #[test]
+    fn ipv4_mapped_private_literal_fails_closed_even_when_declared() {
+        let error = strict_contract("[::ffff:10.0.0.5]")
+            .enforce_url("https://[::ffff:10.0.0.5]/admin", 0)
+            .expect_err("IPv4-mapped private literals must fail closed even when allow-listed");
+
+        assert!(matches!(
+            error,
+            HttpEgressError::PrivateNetworkDenied { host } if host == "10.0.0.5"
+        ));
     }
 }
 
@@ -917,6 +1113,11 @@ fn validate_scheme_token(scheme: &str) -> Result<(), HttpEgressError> {
             "invalid allowed scheme {scheme:?}"
         )));
     }
+    if !matches!(scheme, "http" | "https") {
+        return Err(HttpEgressError::InvalidContract(format!(
+            "invalid HTTP egress scheme {scheme:?}; expected \"http\" or \"https\""
+        )));
+    }
     Ok(())
 }
 
@@ -928,9 +1129,17 @@ fn validate_authority_token(authority: &str) -> Result<(), HttpEgressError> {
         || authority.contains('@')
         || authority != authority.trim()
         || authority != authority.to_ascii_lowercase()
+        || authority.ends_with(':')
     {
         return Err(HttpEgressError::InvalidContract(format!(
             "invalid allowed authority {authority:?}"
+        )));
+    }
+    validate_dispatchable_authority(authority)?;
+    let normalized = normalize_authority_token(authority)?;
+    if normalized != authority {
+        return Err(HttpEgressError::InvalidContract(format!(
+            "allowed authority {authority:?} must be normalized as {normalized:?}"
         )));
     }
     Ok(())
@@ -939,6 +1148,40 @@ fn validate_authority_token(authority: &str) -> Result<(), HttpEgressError> {
 fn validate_dispatchable_authority(authority: &str) -> Result<(), HttpEgressError> {
     let _ = normalized_authority_host(authority)?;
     Ok(())
+}
+
+fn normalize_authority_token(authority: &str) -> Result<String, HttpEgressError> {
+    let parsed = Url::parse(&format!("http://{authority}/")).map_err(|error| {
+        HttpEgressError::InvalidContract(format!(
+            "invalid allowed authority {authority:?}: {error}"
+        ))
+    })?;
+    let host = parsed.host().ok_or_else(|| {
+        HttpEgressError::InvalidContract(format!("invalid allowed authority {authority:?}"))
+    })?;
+    let normalized_host = match host {
+        Host::Domain(domain) => normalize_domain_name(domain),
+        Host::Ipv4(address) => address.to_string(),
+        Host::Ipv6(address) => format!("[{address}]"),
+    };
+    if authority_has_explicit_port(authority) {
+        let port = parsed.port_or_known_default().ok_or_else(|| {
+            HttpEgressError::InvalidContract(format!("invalid allowed authority {authority:?}"))
+        })?;
+        return Ok(format!("{normalized_host}:{port}"));
+    }
+    Ok(normalized_host)
+}
+
+fn authority_has_explicit_port(authority: &str) -> bool {
+    if authority.starts_with('[') {
+        return authority
+            .rsplit_once(']')
+            .is_some_and(|(_, suffix)| suffix.starts_with(':'));
+    }
+    authority
+        .rsplit_once(':')
+        .is_some_and(|(host, _)| !host.contains(':'))
 }
 
 fn normalized_authority_host(authority: &str) -> Result<String, HttpEgressError> {
@@ -959,6 +1202,47 @@ fn normalized_authority_host(authority: &str) -> Result<String, HttpEgressError>
 
 fn normalize_domain_name(host: &str) -> String {
     host.trim_end_matches('.').to_ascii_lowercase()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum IpAddressClass {
+    Global,
+    Loopback,
+    LinkLocal,
+    Ipv6Ula,
+    PrivateOrSpecialUse,
+}
+
+fn classify_ipv4_address(address: &Ipv4Addr) -> IpAddressClass {
+    if address.is_loopback() {
+        return IpAddressClass::Loopback;
+    }
+    if address.is_link_local() {
+        return IpAddressClass::LinkLocal;
+    }
+    if is_ipv4_private_or_special_use(address) {
+        return IpAddressClass::PrivateOrSpecialUse;
+    }
+    IpAddressClass::Global
+}
+
+fn classify_ipv6_address(address: &Ipv6Addr) -> IpAddressClass {
+    if let Some(mapped) = address.to_ipv4_mapped() {
+        return classify_ipv4_address(&mapped);
+    }
+    if address.is_loopback() {
+        return IpAddressClass::Loopback;
+    }
+    if is_ipv6_unicast_link_local(address) {
+        return IpAddressClass::LinkLocal;
+    }
+    if is_ipv6_unique_local(address) {
+        return IpAddressClass::Ipv6Ula;
+    }
+    if is_ipv6_private_or_special_use(address) {
+        return IpAddressClass::PrivateOrSpecialUse;
+    }
+    IpAddressClass::Global
 }
 
 fn normalized_url_authority(url: &Url) -> Result<String, HttpEgressError> {
@@ -1017,7 +1301,7 @@ fn is_ipv6_private_or_special_use(address: &Ipv6Addr) -> bool {
 /// point and substrate adapters can keep their existing client builder.
 #[cfg(feature = "reqwest-egress")]
 pub mod reqwest_helper {
-    use super::{HttpEgressContract, HttpEgressError};
+    use super::{HttpEgressContract, HttpEgressError, PreparedHttpEgressContract};
     use reqwest::header::{
         HeaderMap, HeaderName, AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE, COOKIE, HOST, LOCATION,
         PROXY_AUTHORIZATION,
@@ -1077,12 +1361,13 @@ pub mod reqwest_helper {
         client: &reqwest::Client,
         request: reqwest::Request,
     ) -> Result<ContractResponse, HttpEgressError> {
+        let prepared = contract.prepare()?;
         let mut request = request;
         let mut redirect_chain_len = 0_u8;
 
         loop {
             let request_url = request.url().clone();
-            contract.enforce_url_with_dns(request_url.as_str(), redirect_chain_len)?;
+            prepared.enforce_url_with_dns(request_url.as_str(), redirect_chain_len)?;
             let reusable_request = request.try_clone();
             let redirect_request = RedirectRequestParts {
                 method: request.method().clone(),
@@ -1101,10 +1386,10 @@ pub mod reqwest_helper {
             let status = response.status();
             if is_redirect_status(status) {
                 if let Some(location) = response.headers().get(LOCATION).cloned() {
-                    if redirect_chain_len >= contract.max_redirect_chain {
+                    if redirect_chain_len >= prepared.max_redirect_chain() {
                         return Err(HttpEgressError::RedirectLimitExceeded {
                             observed: redirect_chain_len.saturating_add(1),
-                            max: contract.max_redirect_chain,
+                            max: prepared.max_redirect_chain(),
                         });
                     }
                     let location = location.to_str().map_err(|error| {
@@ -1118,7 +1403,7 @@ pub mod reqwest_helper {
                         ))
                     })?;
                     let next_chain_len = redirect_chain_len.saturating_add(1);
-                    contract.enforce_url_with_dns(next_url.as_str(), next_chain_len)?;
+                    prepared.enforce_url_with_dns(next_url.as_str(), next_chain_len)?;
                     let cross_origin = !same_origin(&request_url, &next_url);
                     request = build_redirect_request(
                         client,
@@ -1133,7 +1418,7 @@ pub mod reqwest_helper {
                 }
             }
 
-            return collect_capped_response(contract, response).await;
+            return collect_capped_response(&prepared, response).await;
         }
     }
 
@@ -1322,7 +1607,7 @@ pub mod reqwest_helper {
     }
 
     async fn collect_capped_response(
-        contract: &HttpEgressContract,
+        contract: &PreparedHttpEgressContract,
         mut response: reqwest::Response,
     ) -> Result<ContractResponse, HttpEgressError> {
         if let Some(content_length) = response.content_length() {
@@ -1338,7 +1623,7 @@ pub mod reqwest_helper {
             observed = observed.checked_add(chunk.len() as u64).ok_or(
                 HttpEgressError::ResponseTooLarge {
                     observed: u64::MAX,
-                    max: contract.max_response_bytes,
+                    max: contract.max_response_bytes(),
                 },
             )?;
             contract.enforce_response_bytes(observed)?;

@@ -41,7 +41,7 @@ use sha2::{Digest, Sha256};
 
 use chio_kernel::{Guard, GuardContext, KernelError, Verdict};
 
-use crate::action::{extract_action, ToolAction};
+use crate::action::{extract_action_checked, ToolAction};
 use crate::text_utils::{canonicalize, truncate_at_char_boundary};
 
 /// Default score threshold at which the guard denies.
@@ -247,7 +247,10 @@ impl Guard for PromptInjectionGuard {
     }
 
     fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
-        let action = extract_action(&ctx.request.tool_name, &ctx.request.arguments);
+        let action = match extract_action_checked(&ctx.request.tool_name, &ctx.request.arguments) {
+            Ok(action) => action,
+            Err(_) => return Ok(Verdict::Deny),
+        };
         let candidates = extract_texts(&action, &ctx.request.arguments);
         for text in candidates {
             if matches!(self.evaluate_text(&text), Verdict::Deny) {

@@ -24,7 +24,7 @@ pub const EXIT_BAD_TENANT_SIG: i32 = 20;
 pub const EXIT_REDACTION_MISMATCH: i32 = 50;
 
 /// Redaction pass this binary can re-run for local traffic fixtures.
-const SUPPORTED_REDACTION_PASS_ID: &str = "redactors@1.4.0+default";
+const SUPPORTED_REDACTION_PASS_ID: &str = chio_replay_corpus::DEFAULT_REDACTION_PASS_ID;
 
 /// Categorized validation failure for a single frame.
 #[derive(Debug, thiserror::Error)]
@@ -377,7 +377,7 @@ mod replay_validate_tests {
             },
             request_blob_sha256: "a".repeat(64),
             response_blob_sha256: "b".repeat(64),
-            redaction_pass_id: "redactors@1.4.0+default".to_string(),
+            redaction_pass_id: SUPPORTED_REDACTION_PASS_ID.to_string(),
             verdict: chio_tee_frame::Verdict::Allow,
             deny_reason: None,
             would_have_blocked: false,

@@ -9,35 +9,26 @@ repository.workspace = true
 readme = "README.md"
 publish = false
 
+[package.metadata.chio]
+public_entrypoint = true
+
 [lib]
 name = "chio_hosted_mcp"
 
 [dependencies]
 chio-control-plane = { path = "../chio-control-plane" }
-chio-core = { package = "chio-core-types", path = "../chio-core-types" }
-chio-kernel = { path = "../chio-kernel" }
-chio-mcp-adapter = { path = "../chio-mcp-adapter" }
 chio-mcp-remote = { path = "../chio-mcp-remote" }
-chio-store-sqlite = { path = "../chio-store-sqlite" }
-serde = { workspace = true }
-serde_json = { workspace = true }
-tokio = { workspace = true }
-tracing = { workspace = true }
-axum = "0.8"
-async-stream = "0.3"
-url = "2"
-base64 = "0.22"
-reqwest = { workspace = true, features = ["blocking", "form", "json", "query", "rustls"] }
-ureq = { version = "2.10", features = ["json"] }
-rusqlite = { workspace = true }
-rsa = { version = "0.9", features = ["sha2"] }
-p256 = { version = "0.13", features = ["ecdsa"] }
-p384 = { version = "0.13", features = ["ecdsa"] }
-sha2 = { workspace = true }
-subtle = "2.6"
 
 [dev-dependencies]
+base64 = "0.22"
+chio-core = { package = "chio-core-types", path = "../chio-core-types" }
+chio-kernel = { path = "../chio-kernel" }
 chio-siem = { path = "../chio-siem" }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+reqwest = { workspace = true, features = ["blocking", "form", "json", "query", "rustls"] }
+sha2 = { workspace = true }
+url = "2"
 
 [lints]
 workspace = true

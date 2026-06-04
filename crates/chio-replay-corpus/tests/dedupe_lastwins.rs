@@ -1,4 +1,4 @@
-use chio_replay_corpus::{dedupe_last_wins, invocation_hash};
+use chio_replay_corpus::{dedupe_last_wins, invocation_hash, DEFAULT_REDACTION_PASS_ID};
 use chio_tee_frame::{Frame, FrameInputs, Otel, Provenance, Upstream, UpstreamSystem, Verdict};
 use serde_json::json;
 
@@ -25,7 +25,7 @@ fn frame(
         },
         request_blob_sha256: "a".repeat(64),
         response_blob_sha256: "b".repeat(64),
-        redaction_pass_id: "redactors@1.4.0+default".to_string(),
+        redaction_pass_id: DEFAULT_REDACTION_PASS_ID.to_string(),
         verdict: Verdict::Allow,
         deny_reason: None,
         would_have_blocked: false,

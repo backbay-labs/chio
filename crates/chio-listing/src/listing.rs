@@ -5,7 +5,9 @@ use serde::{Deserialize, Serialize};
 use crate::crypto::PublicKey;
 use crate::receipt::SignedExportEnvelope;
 use crate::search::GenericListingFreshnessWindow;
-use crate::util::{validate_http_url, validate_non_empty, validate_optional_http_url};
+use crate::util::{
+    bounded_listing_limit, validate_http_url, validate_non_empty, validate_optional_http_url,
+};
 use crate::{normalize_namespace, GenericListingSearchPolicy};
 
 pub const GENERIC_NAMESPACE_ARTIFACT_SCHEMA: &str = "chio.registry.namespace.v1";
@@ -284,9 +286,7 @@ pub struct GenericListingQuery {
 impl GenericListingQuery {
     #[must_use]
     pub fn limit_or_default(&self) -> usize {
-        self.limit
-            .unwrap_or(100)
-            .clamp(1, MAX_GENERIC_LISTING_LIMIT)
+        bounded_listing_limit(self.limit, MAX_GENERIC_LISTING_LIMIT)
     }
 
     #[must_use]

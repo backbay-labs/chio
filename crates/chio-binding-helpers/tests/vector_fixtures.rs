@@ -5,8 +5,9 @@ use chio_binding_helpers::{
     canonicalize_json_str, capability_body_canonical_json, receipt_body_canonical_json,
     sha256_hex_utf8, sign_json_str_ed25519, sign_utf8_message_ed25519,
     signed_manifest_body_canonical_json, verify_capability, verify_json_str_signature_ed25519,
-    verify_receipt, verify_receipt_with_trusted_signers, verify_signed_manifest,
-    verify_utf8_message_ed25519, CapabilityVerification, ManifestVerification, ReceiptVerification,
+    verify_receipt, verify_receipt_json_with_trusted_signer_hex,
+    verify_receipt_with_trusted_signers, verify_signed_manifest, verify_utf8_message_ed25519,
+    CapabilityVerification, ManifestVerification, ReceiptVerification,
 };
 use chio_core::{
     chio_receipt_id, sha256_hex, BoundaryClass, CapabilityToken, CapabilityTokenBody, ChioReceipt,
@@ -1059,11 +1060,10 @@ fn manifest_cases() -> Vec<Value> {
     let tampered_verification = verify_signed_manifest(&tampered_signed_manifest)
         .test_unwrap("tampered manifest verification");
 
-    let mismatched_key_signed_manifest = sign_manifest(
-        &sample_signed_manifest(alternate.public_key().to_hex(), &["file_read"]),
+    let mismatched_key_signed_manifest = signed_manifest_with_manual_signature(
+        sample_signed_manifest(alternate.public_key().to_hex(), &["file_read"]),
         &server,
-    )
-    .test_unwrap("mismatched key manifest");
+    );
     let mismatched_key_verification = verify_signed_manifest(&mismatched_key_signed_manifest)
         .test_unwrap("mismatched key manifest verification");
 
@@ -1074,11 +1074,10 @@ fn manifest_cases() -> Vec<Value> {
     let duplicate_tool_verification = verify_signed_manifest(&duplicate_tool_signed_manifest)
         .test_unwrap("duplicate tool manifest verification");
 
-    let invalid_embedded_key_signed_manifest = sign_manifest(
-        &sample_signed_manifest("not-a-public-key".to_string(), &["file_read", "file_write"]),
+    let invalid_embedded_key_signed_manifest = signed_manifest_with_manual_signature(
+        sample_signed_manifest("not-a-public-key".to_string(), &["file_read", "file_write"]),
         &server,
-    )
-    .test_unwrap("invalid embedded key manifest");
+    );
     let invalid_embedded_key_verification =
         verify_signed_manifest(&invalid_embedded_key_signed_manifest)
             .test_unwrap("invalid embedded key manifest verification");
@@ -1310,6 +1309,33 @@ fn receipt_fixture_allow_case_passes_with_trusted_signer() {
     let actual =
         verify_receipt_with_trusted_signers(&receipt, std::slice::from_ref(&receipt.kernel_key))
             .test_unwrap("verify receipt with trusted signer");
+
+    assert!(actual.signature_valid);
+    assert!(actual.parameter_hash_valid);
+    assert!(actual.receipt_id_valid);
+    assert!(actual.signer_trusted);
+    assert!(actual.ok);
+    assert!(actual.authorized);
+}
+
+#[test]
+fn receipt_fixture_allow_case_passes_with_json_trusted_signer_hex() {
+    let raw = fs::read_to_string(receipt_fixture_path()).test_unwrap("read receipt fixture");
+    let fixture: Value = serde_json::from_str(&raw).test_unwrap("parse receipt fixture");
+    let case = fixture["cases"]
+        .as_array()
+        .test_unwrap("cases array")
+        .iter()
+        .find(|case| case["id"] == "allow_receipt")
+        .test_unwrap("allow case");
+    let receipt_json =
+        serde_json::to_string(&case["receipt"]).test_unwrap("serialize receipt case");
+    let trusted_signer_hex = vec![case["receipt"]["kernel_key"]
+        .as_str()
+        .test_unwrap("kernel_key")
+        .to_string()];
+    let actual = verify_receipt_json_with_trusted_signer_hex(&receipt_json, &trusted_signer_hex)
+        .test_unwrap("verify receipt json with trusted signer hex");
 
     assert!(actual.signature_valid);
     assert!(actual.parameter_hash_valid);

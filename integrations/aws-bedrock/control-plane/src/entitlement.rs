@@ -122,7 +122,7 @@ impl EntitlementStore {
 }
 
 fn validate_non_empty(value: &str, error: EntitlementError) -> Result<(), EntitlementError> {
-    if value.trim().is_empty() {
+    if value.trim().is_empty() || value.trim() != value {
         return Err(error);
     }
     Ok(())

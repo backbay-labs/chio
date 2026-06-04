@@ -614,6 +614,7 @@ async fn publish_anchor_proof(
         amount_units,
         beneficiary_address,
     );
+    let canonical_receipt_id = receipt.id.clone();
     let receipt_bytes = canonical_json_bytes(&receipt.body())?;
     let receipt_leaf = receipt_bytes.clone();
     let tree = MerkleTree::from_leaves(std::slice::from_ref(&receipt_leaf))?;
@@ -657,7 +658,7 @@ async fn publish_anchor_proof(
     };
     Ok(build_anchor_inclusion_proof_from_evidence_bundle(
         &evidence_bundle,
-        receipt_id,
+        &canonical_receipt_id,
         Some(chain_anchor),
         binding.clone(),
     )?)

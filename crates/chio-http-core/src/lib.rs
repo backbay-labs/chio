@@ -9,6 +9,7 @@
 
 pub mod approvals;
 mod authority;
+mod authority_projection;
 pub mod compliance;
 mod egress;
 pub mod emergency;

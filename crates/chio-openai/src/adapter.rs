@@ -79,6 +79,16 @@ impl OpenAiAdapter {
         &self.config
     }
 
+    pub(crate) fn ensure_supported_api_version(&self) -> Result<(), ProviderError> {
+        if self.config.api_version != OPENAI_RESPONSES_API_VERSION {
+            return Err(ProviderError::Malformed(format!(
+                "OpenAI adapter supports only API version {OPENAI_RESPONSES_API_VERSION}; configured {}",
+                self.config.api_version
+            )));
+        }
+        Ok(())
+    }
+
     /// Lift every function-call item in a non-streaming `responses.create`
     /// payload.
     ///
@@ -91,6 +101,7 @@ impl OpenAiAdapter {
     /// [`ChioOpenAiAdapter::extract_responses_api_calls`] helper so the
     /// Responses API behavior remains the source of truth.
     pub fn lift_batch(&self, raw: ProviderRequest) -> Result<Vec<ToolInvocation>, ProviderError> {
+        self.ensure_supported_api_version()?;
         let parsed = parse_payload(raw)?;
         let org_id = self.org_id_for_payload(parsed.org_id_from_header.as_deref())?;
         let calls = ChioOpenAiAdapter::extract_responses_api_calls(&parsed.body)
@@ -198,7 +209,10 @@ impl ProviderAdapter for OpenAiAdapter {
         'life0: 'async_trait,
         Self: 'async_trait,
     {
-        Box::pin(async move { lower_tool_outputs(verdict, result) })
+        Box::pin(async move {
+            self.ensure_supported_api_version()?;
+            lower_tool_outputs(verdict, result)
+        })
     }
 }
 
@@ -407,7 +421,10 @@ fn parse_payload(raw: ProviderRequest) -> Result<ParsedPayload, ProviderError> {
     let value: Value = serde_json::from_slice(&raw.0).map_err(|error| {
         ProviderError::Malformed(format!("responses.create payload was not JSON: {error}"))
     })?;
-    let org_id_from_header = value.get("headers").and_then(extract_org_id_header);
+    let org_id_from_header = match value.get("headers") {
+        Some(headers) => extract_org_id_header(headers)?,
+        None => None,
+    };
     let body = response_body(value)?;
     Ok(ParsedPayload {
         body,
@@ -448,15 +465,21 @@ fn is_responses_output_item(value: &Value) -> bool {
         .is_some_and(|item_type| item_type == "function_call")
 }
 
-fn extract_org_id_header(headers: &Value) -> Option<String> {
-    let headers = headers.as_object()?;
-    headers.iter().find_map(|(key, value)| {
+fn extract_org_id_header(headers: &Value) -> Result<Option<String>, ProviderError> {
+    let headers = headers.as_object().ok_or_else(|| {
+        ProviderError::Malformed("OpenAI headers envelope was not a JSON object".to_string())
+    })?;
+    for (key, value) in headers {
         if is_org_header_name(key) {
-            header_value(value)
-        } else {
-            None
+            let org_id = header_value(value).ok_or_else(|| {
+                ProviderError::Malformed(
+                    "OpenAI organization header did not contain a non-empty string".to_string(),
+                )
+            })?;
+            return Ok(Some(org_id));
         }
-    })
+    }
+    Ok(None)
 }
 
 fn is_org_header_name(key: &str) -> bool {

@@ -353,6 +353,24 @@ fn lift_fails_closed_for_malformed_tool_use_shapes() {
 }
 
 #[test]
+fn lift_fails_closed_when_tool_use_name_has_surrounding_whitespace() {
+    let adapter = adapter();
+    let err = adapter
+        .lift_batch(raw(json!({
+            "toolUse": {
+                "toolUseId": "tooluse_padded_name_1",
+                "name": " get_weather ",
+                "input": {}
+            }
+        })))
+        .expect_err("whitespace-padded tool name must fail closed");
+
+    assert!(err
+        .to_string()
+        .contains("toolUse.name must not contain surrounding whitespace"));
+}
+
+#[test]
 fn lift_fails_closed_when_tool_use_is_not_declared_in_tool_config() {
     let adapter = adapter();
     let err = adapter
@@ -382,6 +400,33 @@ fn lift_fails_closed_when_tool_use_is_not_declared_in_tool_config() {
             }
         })))
         .expect_err("undeclared tool use should fail closed");
+
+    assert!(err.to_string().contains("not declared in toolConfig"));
+}
+
+#[test]
+fn lift_fails_closed_when_tool_config_declares_no_tools() {
+    let adapter = adapter();
+    let err = adapter
+        .lift_batch(raw(json!({
+            "toolConfig": {
+                "tools": []
+            },
+            "output": {
+                "message": {
+                    "content": [
+                        {
+                            "toolUse": {
+                                "toolUseId": "tooluse_empty_config_1",
+                                "name": "undeclared_tool",
+                                "input": {}
+                            }
+                        }
+                    ]
+                }
+            }
+        })))
+        .expect_err("empty toolConfig must not disable declared-tool enforcement");
 
     assert!(err.to_string().contains("not declared in toolConfig"));
 }

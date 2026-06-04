@@ -44,6 +44,19 @@ pub enum ToolAction {
     Unknown,
 }
 
+/// A recognized tool-action shape with missing or mistyped arguments.
+///
+/// Guard boundaries must treat this as deny. The plain [`extract_action`]
+/// helper preserves its historical best-effort `ToolAction` return type for
+/// non-guard callers; guards and guard-like host enrichers should use
+/// [`extract_action_checked`] instead.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MalformedAction {
+    pub tool_name: String,
+    pub field: String,
+    pub expected: &'static str,
+}
+
 impl ToolAction {
     /// Return the path targeted by clearly filesystem-shaped actions.
     pub fn filesystem_path(&self) -> Option<&str> {
@@ -56,419 +69,39 @@ impl ToolAction {
     }
 }
 
+mod extractor;
+
+#[cfg(test)]
+use extractor::{string_arg, StringArgViolation};
+
 /// Extract a `ToolAction` from a tool name and its arguments.
 ///
 /// This uses a best-effort heuristic based on common tool naming conventions.
-/// Guards that receive `ToolAction::Unknown` should return `Verdict::Allow`
-/// (the guard simply does not apply to that action type).
+/// Recognized but malformed action shapes map to `ToolAction::Unknown` to
+/// preserve the historical return type. Guard-boundary code should call
+/// [`extract_action_checked`] and deny malformed-action errors.
 pub fn extract_action(tool_name: &str, arguments: &Value) -> ToolAction {
-    let tool = tool_name.to_lowercase();
-
-    // File read tools
-    if matches!(
-        tool.as_str(),
-        "read_file" | "read" | "file_read" | "get_file" | "cat"
-    ) {
-        if let Some(path) = extract_path(arguments) {
-            return ToolAction::FileAccess(path);
-        }
-    }
-
-    // File write tools
-    if matches!(
-        tool.as_str(),
-        "write_file" | "write" | "file_write" | "create_file" | "put_file" | "edit_file" | "edit"
-    ) {
-        if let Some(path) = extract_path(arguments) {
-            let content = arguments
-                .get("content")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .as_bytes()
-                .to_vec();
-            return ToolAction::FileWrite(path, content);
-        }
-    }
-
-    // Generic filesystem tools -- disambiguate read vs write by inspecting
-    // the `action` parameter or the presence of `content`.
-    if matches!(tool.as_str(), "filesystem" | "fs" | "file") {
-        if let Some(path) = extract_path(arguments) {
-            let is_write = arguments
-                .get("action")
-                .and_then(|v| v.as_str())
-                .map(|a| {
-                    let a = a.to_lowercase();
-                    a == "write" || a == "create" || a == "append"
-                })
-                .unwrap_or(false)
-                || arguments.get("content").is_some();
-
-            if is_write {
-                let content = arguments
-                    .get("content")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .as_bytes()
-                    .to_vec();
-                return ToolAction::FileWrite(path, content);
-            } else {
-                return ToolAction::FileAccess(path);
-            }
-        }
-    }
-
-    // Patch / apply diff tools
-    if matches!(tool.as_str(), "apply_patch" | "patch" | "apply_diff") {
-        if let Some(path) = extract_path(arguments) {
-            let diff = arguments
-                .get("diff")
-                .or_else(|| arguments.get("patch"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            return ToolAction::Patch(path, diff);
-        }
-    }
-
-    // Shell / command execution tools
-    if matches!(
-        tool.as_str(),
-        "bash" | "shell" | "run_command" | "exec" | "execute" | "run" | "shell_exec" | "terminal"
-    ) {
-        if let Some(cmd) = arguments
-            .get("command")
-            .or_else(|| arguments.get("cmd"))
-            .or_else(|| arguments.get("input"))
-            .and_then(|v| v.as_str())
-        {
-            return ToolAction::ShellCommand(cmd.to_string());
-        }
-    }
-
-    // Network / HTTP tools
-    if matches!(
-        tool.as_str(),
-        "http_request" | "fetch" | "curl" | "http" | "request" | "web_request"
-    ) {
-        if let Some(url) = arguments
-            .get("url")
-            .or_else(|| arguments.get("uri"))
-            .and_then(|v| v.as_str())
-        {
-            if let Some((host, port)) = parse_host_port(url) {
-                return ToolAction::NetworkEgress(host, port);
-            }
-        }
-    }
-
-    // Code execution via interpreter (Python/JS eval, notebook cell, REPL).
-    if matches!(
-        tool.as_str(),
-        "python"
-            | "python_exec"
-            | "run_python"
-            | "eval"
-            | "evaluate"
-            | "code_exec"
-            | "exec_code"
-            | "run_code"
-            | "notebook"
-            | "notebook_cell"
-            | "repl"
-            | "jupyter"
-            | "ipython"
-    ) {
-        let code = arguments
-            .get("code")
-            .or_else(|| arguments.get("source"))
-            .or_else(|| arguments.get("snippet"))
-            .or_else(|| arguments.get("script"))
-            .or_else(|| arguments.get("input"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        let language = arguments
-            .get("language")
-            .or_else(|| arguments.get("lang"))
-            .and_then(|v| v.as_str())
-            .map(String::from)
-            .unwrap_or_else(|| infer_language_from_tool(&tool));
-        return ToolAction::CodeExecution { language, code };
-    }
-
-    // Browser automation.
-    if matches!(
-        tool.as_str(),
-        "browser"
-            | "browser_action"
-            | "browser_navigate"
-            | "navigate"
-            | "goto"
-            | "click"
-            | "type"
-            | "screenshot"
-            | "browser_click"
-            | "browser_type"
-            | "browser_screenshot"
-            | "playwright"
-            | "puppeteer"
-            | "selenium"
-    ) {
-        let verb = arguments
-            .get("action")
-            .or_else(|| arguments.get("verb"))
-            .and_then(|v| v.as_str())
-            .map(String::from)
-            .unwrap_or_else(|| tool.clone());
-        let target = arguments
-            .get("url")
-            .or_else(|| arguments.get("target"))
-            .or_else(|| arguments.get("href"))
-            .or_else(|| arguments.get("selector"))
-            .and_then(|v| v.as_str())
-            .map(String::from);
-        return ToolAction::BrowserAction { verb, target };
-    }
-
-    // Database queries (SQL and NoSQL). Detect by tool name and presence of
-    // a query/statement argument.
-    if matches!(
-        tool.as_str(),
-        "sql"
-            | "query"
-            | "db_query"
-            | "database"
-            | "execute_sql"
-            | "run_sql"
-            | "postgres"
-            | "mysql"
-            | "sqlite"
-            | "snowflake"
-            | "bigquery"
-            | "redshift"
-            | "mongo"
-            | "mongodb"
-            | "redis"
-    ) {
-        if let Some(q) = arguments
-            .get("query")
-            .or_else(|| arguments.get("sql"))
-            .or_else(|| arguments.get("statement"))
-            .or_else(|| arguments.get("command"))
-            .and_then(|v| v.as_str())
-        {
-            let database = arguments
-                .get("database")
-                .or_else(|| arguments.get("db"))
-                .or_else(|| arguments.get("connection"))
-                .and_then(|v| v.as_str())
-                .map(String::from)
-                .unwrap_or_else(|| tool.clone());
-            return ToolAction::DatabaseQuery {
-                database,
-                query: q.to_string(),
-            };
-        }
-    }
-
-    // Vector database / memory writes.
-    if matches!(
-        tool.as_str(),
-        "memory_write"
-            | "remember"
-            | "store_memory"
-            | "vector_upsert"
-            | "vector_write"
-            | "upsert"
-            | "pinecone_upsert"
-            | "weaviate_write"
-            | "qdrant_upsert"
-    ) {
-        let store = arguments
-            .get("collection")
-            .or_else(|| arguments.get("index"))
-            .or_else(|| arguments.get("namespace"))
-            .or_else(|| arguments.get("store"))
-            .and_then(|v| v.as_str())
-            .map(String::from)
-            .unwrap_or_else(|| tool.clone());
-        let key = arguments
-            .get("id")
-            .or_else(|| arguments.get("key"))
-            .or_else(|| arguments.get("memory_id"))
-            .and_then(|v| v.as_str())
-            .map(String::from)
-            .unwrap_or_default();
-        return ToolAction::MemoryWrite { store, key };
-    }
-
-    // Vector database / memory reads.
-    if matches!(
-        tool.as_str(),
-        "memory_read"
-            | "recall"
-            | "retrieve_memory"
-            | "vector_query"
-            | "vector_search"
-            | "similarity_search"
-            | "pinecone_query"
-            | "weaviate_search"
-            | "qdrant_search"
-    ) {
-        let store = arguments
-            .get("collection")
-            .or_else(|| arguments.get("index"))
-            .or_else(|| arguments.get("namespace"))
-            .or_else(|| arguments.get("store"))
-            .and_then(|v| v.as_str())
-            .map(String::from)
-            .unwrap_or_else(|| tool.clone());
-        let key = arguments
-            .get("id")
-            .or_else(|| arguments.get("key"))
-            .or_else(|| arguments.get("memory_id"))
-            .and_then(|v| v.as_str())
-            .map(String::from);
-        return ToolAction::MemoryRead { store, key };
-    }
-
-    // External API calls with recognizable service prefixes.
-    if let Some(service) = detect_api_service(&tool) {
-        let endpoint = arguments
-            .get("endpoint")
-            .or_else(|| arguments.get("path"))
-            .or_else(|| arguments.get("action"))
-            .or_else(|| arguments.get("method"))
-            .and_then(|v| v.as_str())
-            .map(String::from)
-            .unwrap_or_else(|| tool.clone());
-        return ToolAction::ExternalApiCall { service, endpoint };
-    }
-
-    // MCP tool invocations (generic passthrough)
-    if tool.starts_with("mcp_") || tool.contains("mcp") {
-        return ToolAction::McpTool(tool_name.to_string(), arguments.clone());
-    }
-
-    // Fallback: treat as a generic MCP tool invocation so the MCP guard can
-    // still apply its block/allow lists.
-    ToolAction::McpTool(tool_name.to_string(), arguments.clone())
+    extractor::extract_action(tool_name, arguments)
 }
 
-fn infer_language_from_tool(tool: &str) -> String {
-    match tool {
-        "python" | "python_exec" | "run_python" | "jupyter" | "ipython" | "notebook"
-        | "notebook_cell" => "python".to_string(),
-        "repl" => "javascript".to_string(),
-        _ => "unknown".to_string(),
-    }
-}
-
-fn detect_api_service(tool: &str) -> Option<String> {
-    for prefix in [
-        "slack_",
-        "stripe_",
-        "github_",
-        "gitlab_",
-        "jira_",
-        "twilio_",
-        "sendgrid_",
-        "pagerduty_",
-        "opsgenie_",
-        "zendesk_",
-        "salesforce_",
-        "hubspot_",
-        "notion_",
-        "linear_",
-        "intercom_",
-    ] {
-        if let Some(rest) = tool.strip_prefix(prefix) {
-            if !rest.is_empty() {
-                let service = prefix.trim_end_matches('_').to_string();
-                return Some(service);
-            }
-        }
-    }
-    None
-}
-
-fn extract_path(arguments: &Value) -> Option<String> {
-    arguments
-        .get("path")
-        .or_else(|| arguments.get("file"))
-        .or_else(|| arguments.get("file_path"))
-        .or_else(|| arguments.get("filename"))
-        .and_then(|v| v.as_str())
-        .map(String::from)
-}
-
-fn parse_host_port(url: &str) -> Option<(String, u16)> {
-    let url = url.trim();
-    if url.is_empty() {
-        return None;
-    }
-
-    let lowered = url.to_ascii_lowercase();
-    if lowered.starts_with("data:")
-        || lowered.starts_with("javascript:")
-        || lowered.starts_with("about:")
-        || lowered.starts_with("file:")
-    {
-        return None;
-    }
-
-    let (rest, default_port, parsed_as_url) = if lowered.starts_with("https://") {
-        (&url["https://".len()..], 443, true)
-    } else if lowered.starts_with("http://") {
-        (&url["http://".len()..], 80, true)
-    } else if let Some(rest) = url.strip_prefix("//") {
-        (rest, 443, true)
-    } else {
-        (url, 443, false)
-    };
-
-    let host_with_port = rest.split(['/', '?', '#']).next().unwrap_or(rest);
-    let host_without_userinfo = host_with_port
-        .rsplit_once('@')
-        .map(|(_, host)| host)
-        .unwrap_or(host_with_port);
-
-    let (host, port) = if let Some(bracketed) = host_without_userinfo.strip_prefix('[') {
-        let (host, remainder) = bracketed.split_once(']')?;
-        let port = if remainder.is_empty() {
-            default_port
-        } else if let Some(port_str) = remainder.strip_prefix(':') {
-            port_str.parse::<u16>().ok()?
-        } else {
-            return None;
-        };
-        (host.to_string(), port)
-    } else {
-        split_host_port(host_without_userinfo, default_port)
-    };
-
-    let host = host.trim_matches(|c: char| c == '/' || c == '.');
-    let looks_like_host = host.contains('.') || host == "localhost" || host.contains(':');
-    if host.is_empty() || (!parsed_as_url && !looks_like_host) {
-        return None;
-    }
-
-    Some((host.to_ascii_lowercase(), port))
-}
-
-fn split_host_port(host_with_port: &str, default_port: u16) -> (String, u16) {
-    if let Some((host, port_str)) = host_with_port.rsplit_once(':') {
-        if let Ok(port) = port_str.parse::<u16>() {
-            return (host.to_string(), port);
-        }
-    }
-    (host_with_port.to_string(), default_port)
+/// Extract a `ToolAction`, failing closed on recognized malformed action shapes.
+pub fn extract_action_checked(
+    tool_name: &str,
+    arguments: &Value,
+) -> Result<ToolAction, MalformedAction> {
+    extractor::extract_action_checked(tool_name, arguments)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn malformed_field(tool_name: &str, args: &Value) -> String {
+        match extract_action_checked(tool_name, args) {
+            Ok(action) => panic!("expected malformed action, got: {action:?}"),
+            Err(err) => err.field,
+        }
+    }
 
     // Compile-time tripwire: this match has no `_` arm, so adding a
     // `ToolAction` variant breaks the build here and forces an audit of every
@@ -504,6 +137,36 @@ mod tests {
     }
 
     #[test]
+    fn string_arg_preserves_key_priority_and_rejects_non_strings() {
+        let args = serde_json::json!({
+            "path": "/tmp/from-path",
+            "file": "/tmp/from-file",
+            "filename": "/tmp/from-filename"
+        });
+
+        assert_eq!(
+            string_arg(&args, &["path", "file", "filename"]),
+            Ok(Some("/tmp/from-path"))
+        );
+
+        let args = serde_json::json!({
+            "path": 42,
+            "file": "/tmp/from-file",
+            "filename": "/tmp/from-filename"
+        });
+
+        assert_eq!(
+            string_arg(&args, &["path", "file", "filename"]),
+            Err(StringArgViolation::Malformed { field: "path" })
+        );
+        assert_eq!(
+            string_arg(&args, &["missing", "path"]),
+            Err(StringArgViolation::Malformed { field: "path" })
+        );
+        assert_eq!(string_arg(&args, &["missing"]), Ok(None));
+    }
+
+    #[test]
     fn extract_file_write() {
         let args = serde_json::json!({"path": "/tmp/out.txt", "content": "hello"});
         let action = extract_action("write_file", &args);
@@ -518,10 +181,55 @@ mod tests {
     }
 
     #[test]
+    fn shell_command_rejects_malformed_primary_alias() {
+        let args = serde_json::json!({"command": ["rm", "-rf", "/"], "cmd": "echo safe"});
+        assert_eq!(malformed_field("bash", &args), "command");
+    }
+
+    #[test]
     fn extract_network_egress() {
         let args = serde_json::json!({"url": "https://evil.com/api"});
         let action = extract_action("http_request", &args);
         assert!(matches!(action, ToolAction::NetworkEgress(ref h, 443) if h == "evil.com"));
+    }
+
+    #[test]
+    fn network_tool_with_filesystem_shaped_arguments_stays_network_egress() {
+        let args = serde_json::json!({
+            "url": "http://169.254.169.254/latest",
+            "path": "/tmp/cache-entry",
+            "action": "delete"
+        });
+        let action = extract_action("http_request", &args);
+        assert!(
+            matches!(action, ToolAction::NetworkEgress(ref h, 80) if h == "169.254.169.254"),
+            "expected NetworkEgress for http_request, got: {action:?}"
+        );
+    }
+
+    #[test]
+    fn network_rejects_malformed_primary_alias() {
+        let args =
+            serde_json::json!({"url": {"host": "169.254.169.254"}, "uri": "https://example.com"});
+        assert_eq!(malformed_field("http_request", &args), "url");
+    }
+
+    #[test]
+    fn network_rejects_unparseable_url() {
+        let args = serde_json::json!({"url": "not-a-host"});
+        assert_eq!(malformed_field("http_request", &args), "url");
+    }
+
+    #[test]
+    fn network_rejects_invalid_explicit_port() {
+        let args = serde_json::json!({"url": "http://127.0.0.1:notaport/latest"});
+        assert_eq!(malformed_field("http_request", &args), "url");
+    }
+
+    #[test]
+    fn network_rejects_ambiguous_unbracketed_ipv6() {
+        let args = serde_json::json!({"url": "http://fd00:ec2::254/latest"});
+        assert_eq!(malformed_field("http_request", &args), "url");
     }
 
     #[test]
@@ -585,6 +293,13 @@ mod tests {
     }
 
     #[test]
+    fn unknown_tool_with_path_still_becomes_mcp_tool() {
+        let args = serde_json::json!({"path": "/etc/shadow"});
+        let action = extract_action("custom_tool", &args);
+        assert!(matches!(action, ToolAction::McpTool(_, _)));
+    }
+
+    #[test]
     fn filesystem_tool_read_by_default() {
         let args = serde_json::json!({"path": "/etc/shadow"});
         let action = extract_action("filesystem", &args);
@@ -592,6 +307,92 @@ mod tests {
             matches!(action, ToolAction::FileAccess(ref p) if p == "/etc/shadow"),
             "expected FileAccess for filesystem tool with path-only params, got: {action:?}"
         );
+    }
+
+    #[test]
+    fn filesystem_tool_rejects_malformed_primary_path_alias() {
+        let args = serde_json::json!({
+            "path": 42,
+            "file": "/home/user/project/src/main.rs"
+        });
+        assert_eq!(malformed_field("filesystem", &args), "path");
+    }
+
+    #[test]
+    fn filesystem_tool_rejects_missing_path() {
+        let args = serde_json::json!({"action": "read"});
+        assert_eq!(malformed_field("filesystem", &args), "path");
+    }
+
+    #[test]
+    fn filesystem_tool_rejects_malformed_action() {
+        let args = serde_json::json!({"path": "/tmp/out.txt", "action": ["write"]});
+        assert_eq!(malformed_field("filesystem", &args), "action");
+    }
+
+    #[test]
+    fn filesystem_write_rejects_malformed_content() {
+        let args = serde_json::json!({"path": "/tmp/out.txt", "content": {"bytes": "hi"}});
+        assert_eq!(malformed_field("write_file", &args), "content");
+    }
+
+    #[test]
+    fn recognized_extractors_reject_malformed_higher_priority_aliases() {
+        let cases = [
+            (
+                "python",
+                serde_json::json!({"code": ["print('unsafe')"], "source": "print('safe')"}),
+                "code",
+            ),
+            (
+                "eval",
+                serde_json::json!({"code": "console.log(1)", "language": ["javascript"], "lang": "python"}),
+                "language",
+            ),
+            (
+                "browser",
+                serde_json::json!({"action": ["click"], "verb": "navigate"}),
+                "action",
+            ),
+            (
+                "browser",
+                serde_json::json!({"action": "click", "url": ["https://evil.example"], "selector": "#safe"}),
+                "url",
+            ),
+            (
+                "sql",
+                serde_json::json!({"query": {"raw": "DROP TABLE users"}, "sql": "SELECT 1"}),
+                "query",
+            ),
+            (
+                "postgres",
+                serde_json::json!({"query": "SELECT 1", "database": ["prod"], "db": "readonly"}),
+                "database",
+            ),
+            (
+                "vector_upsert",
+                serde_json::json!({"collection": ["sensitive"], "store": "safe"}),
+                "collection",
+            ),
+            (
+                "vector_query",
+                serde_json::json!({"collection": "facts", "id": ["secret"], "key": "safe"}),
+                "id",
+            ),
+            (
+                "slack_send_message",
+                serde_json::json!({"endpoint": ["chat.postMessage"], "path": "chat.safe"}),
+                "endpoint",
+            ),
+        ];
+
+        for (tool_name, args, expected_field) in cases {
+            assert_eq!(
+                malformed_field(tool_name, &args),
+                expected_field,
+                "tool {tool_name} should reject malformed {expected_field}"
+            );
+        }
     }
 
     #[test]
@@ -635,6 +436,41 @@ mod tests {
     }
 
     #[test]
+    fn acp_fs_read_text_file_classifies_as_file_access() {
+        let args = serde_json::json!({"path": "/etc/shadow", "sessionId": "sess-1"});
+        let action = extract_action("fs/read_text_file", &args);
+        assert!(
+            matches!(action, ToolAction::FileAccess(ref p) if p == "/etc/shadow"),
+            "expected FileAccess for ACP fs/read_text_file, got: {action:?}"
+        );
+    }
+
+    #[test]
+    fn acp_fs_write_text_file_classifies_as_file_write() {
+        let args = serde_json::json!({
+            "path": "/workspace/out.txt",
+            "content": "hello",
+            "sessionId": "sess-1"
+        });
+        let action = extract_action("fs/write_text_file", &args);
+        assert!(
+            matches!(action, ToolAction::FileWrite(ref p, ref content)
+                if p == "/workspace/out.txt" && content == b"hello"),
+            "expected FileWrite for ACP fs/write_text_file, got: {action:?}"
+        );
+    }
+
+    #[test]
+    fn fs_prefix_stat_classifies_as_file_access() {
+        let args = serde_json::json!({"path": "/workspace/file.txt"});
+        let action = extract_action("fs_stat", &args);
+        assert!(
+            matches!(action, ToolAction::FileAccess(ref p) if p == "/workspace/file.txt"),
+            "expected FileAccess for fs_stat, got: {action:?}"
+        );
+    }
+
+    #[test]
     fn file_tool_alias() {
         let args = serde_json::json!({"path": "/etc/passwd"});
         let action = extract_action("file", &args);
@@ -642,6 +478,21 @@ mod tests {
             matches!(action, ToolAction::FileAccess(ref p) if p == "/etc/passwd"),
             "expected FileAccess for file tool alias, got: {action:?}"
         );
+    }
+
+    #[test]
+    fn patch_tool_rejects_malformed_diff_alias() {
+        let action = extract_action(
+            "apply_patch",
+            &serde_json::json!({"path": "/repo/src/lib.rs", "diff": ["@@ -1 +1 @@"], "patch": "@@ -1 +1 @@"}),
+        );
+        assert!(matches!(action, ToolAction::Unknown));
+
+        let err_field = malformed_field(
+            "apply_patch",
+            &serde_json::json!({"path": "/repo/src/lib.rs", "diff": ["@@ -1 +1 @@"], "patch": "@@ -1 +1 @@"}),
+        );
+        assert_eq!(err_field, "diff");
     }
 
     #[test]

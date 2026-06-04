@@ -25,6 +25,7 @@ pub mod selective_account_activation;
 pub mod supervised_live;
 pub mod third_program;
 pub mod trust_network;
+mod validation;
 
 pub use assurance_suite::{
     MercuryAssuranceArtifactKind, MercuryAssuranceDisclosureProfile,

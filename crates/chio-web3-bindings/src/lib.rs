@@ -55,12 +55,37 @@ mod tests {
         CHIO_ROOT_REGISTRY_INTERFACE_ARTIFACT,
     };
 
-    fn assert_contract_artifact(name: &str, body: &str) {
+    fn parse_contract_artifact(name: &str, body: &str) -> Value {
         let parsed: Value =
             serde_json::from_str(body).unwrap_or_else(|error| panic!("parse {name}: {error}"));
         assert_eq!(parsed["contractName"], name);
-        assert!(parsed["abi"].is_array());
-        assert!(parsed["bytecode"].as_str().is_some());
+        let abi = parsed["abi"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{name} artifact ABI must be an array"));
+        assert!(!abi.is_empty(), "{name} artifact ABI must not be empty");
+        parsed
+    }
+
+    fn assert_contract_artifact(name: &str, body: &str) {
+        let parsed = parse_contract_artifact(name, body);
+        let bytecode = parsed["bytecode"]
+            .as_str()
+            .unwrap_or_else(|| panic!("{name} implementation bytecode must be present"));
+        assert!(
+            !bytecode.is_empty(),
+            "{name} implementation bytecode must not be empty"
+        );
+    }
+
+    fn assert_interface_artifact(name: &str, body: &str) {
+        let parsed = parse_contract_artifact(name, body);
+        let bytecode = parsed["bytecode"]
+            .as_str()
+            .unwrap_or_else(|| panic!("{name} interface bytecode must be present"));
+        assert!(
+            bytecode.is_empty(),
+            "{name} interface artifact must not carry implementation bytecode"
+        );
     }
 
     #[test]
@@ -73,15 +98,24 @@ mod tests {
     }
 
     #[test]
-    fn bundled_interface_artifacts_parse() {
-        assert_contract_artifact("IChioRootRegistry", CHIO_ROOT_REGISTRY_INTERFACE_ARTIFACT);
+    #[should_panic(expected = "implementation bytecode must not be empty")]
+    fn implementation_artifact_validation_rejects_empty_bytecode() {
         assert_contract_artifact(
+            "ChioEscrow",
+            r#"{"contractName":"ChioEscrow","abi":[{"type":"function","name":"dispatch","inputs":[]}],"bytecode":""}"#,
+        );
+    }
+
+    #[test]
+    fn bundled_interface_artifacts_parse() {
+        assert_interface_artifact("IChioRootRegistry", CHIO_ROOT_REGISTRY_INTERFACE_ARTIFACT);
+        assert_interface_artifact(
             "IChioIdentityRegistry",
             CHIO_IDENTITY_REGISTRY_INTERFACE_ARTIFACT,
         );
-        assert_contract_artifact("IChioEscrow", CHIO_ESCROW_INTERFACE_ARTIFACT);
-        assert_contract_artifact("IChioBondVault", CHIO_BOND_VAULT_INTERFACE_ARTIFACT);
-        assert_contract_artifact("IChioPriceResolver", CHIO_PRICE_RESOLVER_INTERFACE_ARTIFACT);
+        assert_interface_artifact("IChioEscrow", CHIO_ESCROW_INTERFACE_ARTIFACT);
+        assert_interface_artifact("IChioBondVault", CHIO_BOND_VAULT_INTERFACE_ARTIFACT);
+        assert_interface_artifact("IChioPriceResolver", CHIO_PRICE_RESOLVER_INTERFACE_ARTIFACT);
     }
 
     #[test]

@@ -29,8 +29,9 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use chio_appraisal::{
-    MarketplaceBasePrice, MarketplacePricingContext, MarketplaceReputationTier,
-    compute_marketplace_invocation_price,
+    MarketplaceBasePrice, MarketplaceInvocationPrice, MarketplacePricingContext,
+    MarketplacePricingError, MarketplaceReputationTier,
+    compute_checked_marketplace_invocation_price,
 };
 use chio_guard_registry::{GuardPrice, MARKETPLACE_BLOCK_KEY};
 use chio_reputation::{ReputationTier, satisfies_floor};
@@ -130,6 +131,8 @@ pub enum MarketError {
     UnknownReference(String),
     #[error("install denied: {0}")]
     InstallDenied(String),
+    #[error("marketplace pricing failed: {0}")]
+    Pricing(String),
 }
 
 fn read_catalog(path: &Path) -> Result<Vec<MarketCatalogEntry>, MarketError> {
@@ -154,6 +157,24 @@ fn tier_to_limit(tier: ReputationTier) -> MarketplaceLimitTier {
         ReputationTier::Tier1 => MarketplaceLimitTier::Tier1,
         ReputationTier::Tier2 => MarketplaceLimitTier::Tier2,
         ReputationTier::Tier3 => MarketplaceLimitTier::Tier3,
+    }
+}
+
+fn marketplace_price_for_tenant(
+    price: &GuardPrice,
+    tenant: &MarketTenantContext,
+) -> Result<MarketplaceInvocationPrice, MarketError> {
+    let base = MarketplaceBasePrice::try_new(price.units, price.currency.clone())?;
+    let context =
+        MarketplacePricingContext::try_new(&tenant.tenant_id, tier_to_pricing(tenant.tier))?;
+    Ok(compute_checked_marketplace_invocation_price(
+        &base, &context,
+    )?)
+}
+
+impl From<MarketplacePricingError> for MarketError {
+    fn from(error: MarketplacePricingError) -> Self {
+        Self::Pricing(error.to_string())
     }
 }
 
@@ -188,19 +209,16 @@ pub fn market_list(
         .into_iter()
         .filter(|entry| satisfies_floor(tenant.tier, entry.reputation_floor))
         .map(|entry| {
-            let price = compute_marketplace_invocation_price(
-                &MarketplaceBasePrice::new(entry.price.units, entry.price.currency.clone()),
-                &MarketplacePricingContext::new(&tenant.tenant_id, tier_to_pricing(tenant.tier)),
-            );
-            MarketListEntry {
+            let price = marketplace_price_for_tenant(&entry.price, tenant)?;
+            Ok(MarketListEntry {
                 reference: entry.reference,
                 name: entry.name,
                 effective_price_units: price.units,
                 currency: price.currency,
                 reputation_floor: entry.reputation_floor,
-            }
+            })
         })
-        .collect();
+        .collect::<Result<Vec<_>, MarketError>>()?;
     visible.sort_by(|a, b| a.reference.cmp(&b.reference));
 
     Ok(MarketListReport {
@@ -250,10 +268,7 @@ pub fn market_info(
         })
         .ok_or_else(|| MarketError::UnknownReference(reference.to_owned()))?;
 
-    let price = compute_marketplace_invocation_price(
-        &MarketplaceBasePrice::new(entry.price.units, entry.price.currency.clone()),
-        &MarketplacePricingContext::new(&tenant.tenant_id, tier_to_pricing(tenant.tier)),
-    );
+    let price = marketplace_price_for_tenant(&entry.price, tenant)?;
 
     let limit = compute_marketplace_credit_limit(&MarketplaceCreditLimitRequest {
         tenant_id: tenant.tenant_id.clone(),
@@ -301,10 +316,7 @@ pub fn market_install(
         )));
     }
 
-    let price = compute_marketplace_invocation_price(
-        &MarketplaceBasePrice::new(entry.price.units, entry.price.currency.clone()),
-        &MarketplacePricingContext::new(&tenant.tenant_id, tier_to_pricing(tenant.tier)),
-    );
+    let price = marketplace_price_for_tenant(&entry.price, tenant)?;
 
     let limit = compute_marketplace_credit_limit(&MarketplaceCreditLimitRequest {
         tenant_id: tenant.tenant_id.clone(),
@@ -612,6 +624,27 @@ mod tests {
             false,
         );
         assert!(matches!(result, Err(MarketError::UnknownReference(_))));
+    }
+
+    #[test]
+    fn catalog_pricing_rejects_non_canonical_currency() {
+        let dir = tempdir().expect("tmpdir");
+        let mut entries = fixture_entries();
+        entries[0].price.currency = "usd".to_owned();
+        let path = write_catalog(dir.path(), &entries);
+        let bundle = dir.path().join("bundle");
+        let tenant = tenant_ctx(ReputationTier::Tier1);
+        let reference = entries[0].reference.clone();
+
+        let list_result = market_list(&path, &tenant);
+        assert!(matches!(list_result, Err(MarketError::Pricing(_))));
+
+        let install_result = market_install(&path, &bundle, &tenant, &reference, false);
+        assert!(matches!(install_result, Err(MarketError::Pricing(_))));
+        assert!(
+            !bundle.exists(),
+            "install must fail before writing bundle records for malformed catalog prices"
+        );
     }
 
     #[test]

@@ -113,6 +113,30 @@ pub(crate) fn runtime_loopback_policy_summary(
     }
 }
 
+fn runtime_loopback_vendor_id(step: &RuntimeLoopbackStep) -> Result<String, RuntimeLoopbackError> {
+    let host_kernel_id = step.request.host_kernel_id.trim();
+    if host_kernel_id.is_empty() || host_kernel_id != step.request.host_kernel_id {
+        return Err(RuntimeLoopbackError::message(format!(
+            "Chio runtime loopback host kernel id {:?} cannot derive vendor id",
+            step.request.host_kernel_id
+        )));
+    }
+
+    Ok(host_kernel_id
+        .strip_prefix("did:chio:")
+        .unwrap_or(host_kernel_id)
+        .to_string())
+}
+
+fn runtime_loopback_receipt_metadata(
+    step: &RuntimeLoopbackStep,
+) -> Result<serde_json::Value, RuntimeLoopbackError> {
+    Ok(serde_json::json!({
+        "workflow_id": step.admission_bundle.workflow_id.clone(),
+        "vendor_id": runtime_loopback_vendor_id(step)?,
+    }))
+}
+
 type RuntimeLoopbackPolicyInputs = (
     chio_runtime_core::SignedRuntimeVerifierTrustBundle,
     Vec<chio_runtime_core::RuntimeTrustedVerifierKey>,
@@ -448,8 +472,9 @@ pub(crate) fn execute_runtime_loopback_step(
         .map_err(|error| {
             RuntimeLoopbackError::message(format!("Chio runtime loopback executor: {error}"))
         })?;
+    let receipt_metadata = runtime_loopback_receipt_metadata(step)?;
     let response = runtime
-        .block_on(kernel.evaluate_tool_call(&request))
+        .block_on(kernel.evaluate_tool_call_with_metadata(&request, Some(receipt_metadata)))
         .map_err(|error| {
             RuntimeLoopbackError::message(format!(
                 "Chio runtime loopback kernel evaluation step {}: {error}",
@@ -485,7 +510,7 @@ pub(crate) fn execute_runtime_loopback_step(
 
 #[cfg(test)]
 mod tests {
-    use super::runtime_loopback_policy_inputs;
+    use super::{runtime_loopback_policy_inputs, runtime_loopback_receipt_metadata};
     use crate::scenario::RuntimeLoopbackStep;
 
     fn fixed_hash(ch: char) -> String {
@@ -549,6 +574,17 @@ mod tests {
             signed_policy.body.schema,
             chio_runtime_core::CHIO_RUNTIME_PHEROMONE_POLICY_SCHEMA
         );
+        Ok(())
+    }
+
+    #[test]
+    fn runtime_loopback_receipt_metadata_binds_workflow_and_vendor(
+    ) -> Result<(), crate::RuntimeLoopbackError> {
+        let step = runtime_loopback_step();
+        let metadata = runtime_loopback_receipt_metadata(&step)?;
+
+        assert_eq!(metadata["workflow_id"], "wf-loopback-policy");
+        assert_eq!(metadata["vendor_id"], "kernel.vendor");
         Ok(())
     }
 }

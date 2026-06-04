@@ -99,13 +99,14 @@ pub use receipt_support::{
 pub(crate) use request_matching::{
     begin_child_request_in_sessions, begin_session_request_in_sessions, check_subject_binding,
     check_time_bounds, complete_session_request_with_terminal_state_in_sessions,
-    nested_child_request_id, resolve_matching_grants, session_from_map,
+    nested_child_request_id, resolve_required_matching_grants, session_from_map,
     validate_elicitation_request_in_sessions, validate_sampling_request_in_sessions,
 };
 pub use request_matching::{
     capability_matches_prompt_request, capability_matches_request,
     capability_matches_request_with_model_metadata, capability_matches_resource_pattern,
     capability_matches_resource_request, capability_matches_resource_subscription,
+    capability_request_requires_dpop, capability_request_requires_dpop_with_model_metadata,
 };
 
 pub use approval::{
@@ -131,21 +132,22 @@ pub use checkpoint::{
     ReceiptInclusionProof, CHECKPOINT_SCHEMA,
 };
 pub use chio_core::credit::{
-    CapitalAllocationDecisionArtifact, CapitalAllocationDecisionFinding,
-    CapitalAllocationDecisionOutcome, CapitalAllocationDecisionReasonCode,
-    CapitalAllocationDecisionSupportBoundary, CapitalAllocationInstructionDraft, CapitalBookEvent,
-    CapitalBookEventKind, CapitalBookEvidenceKind, CapitalBookEvidenceReference, CapitalBookQuery,
-    CapitalBookReport, CapitalBookRole, CapitalBookSource, CapitalBookSourceKind,
-    CapitalBookSummary, CapitalBookSupportBoundary, CapitalExecutionAuthorityStep,
-    CapitalExecutionInstructionAction, CapitalExecutionInstructionArtifact,
-    CapitalExecutionInstructionSupportBoundary, CapitalExecutionIntendedState,
-    CapitalExecutionObservation, CapitalExecutionRail, CapitalExecutionRailKind,
-    CapitalExecutionReconciledState, CapitalExecutionRole, CapitalExecutionWindow,
-    CreditBacktestQuery, CreditBacktestReasonCode, CreditBacktestReport, CreditBacktestSummary,
-    CreditBacktestWindow, CreditBondArtifact, CreditBondDisposition, CreditBondFinding,
-    CreditBondLifecycleState, CreditBondListQuery, CreditBondListReport, CreditBondListSummary,
-    CreditBondPrerequisites, CreditBondReasonCode, CreditBondReport, CreditBondRow,
-    CreditBondSupportBoundary, CreditBondTerms, CreditBondedExecutionControlPolicy,
+    ensure_capital_execution_custodian_authority, ensure_capital_execution_owner_authority,
+    validate_capital_execution_envelope, CapitalAllocationDecisionArtifact,
+    CapitalAllocationDecisionFinding, CapitalAllocationDecisionOutcome,
+    CapitalAllocationDecisionReasonCode, CapitalAllocationDecisionSupportBoundary,
+    CapitalAllocationInstructionDraft, CapitalBookEvent, CapitalBookEventKind,
+    CapitalBookEvidenceKind, CapitalBookEvidenceReference, CapitalBookQuery, CapitalBookReport,
+    CapitalBookRole, CapitalBookSource, CapitalBookSourceKind, CapitalBookSummary,
+    CapitalBookSupportBoundary, CapitalExecutionAuthorityStep, CapitalExecutionInstructionAction,
+    CapitalExecutionInstructionArtifact, CapitalExecutionInstructionSupportBoundary,
+    CapitalExecutionIntendedState, CapitalExecutionObservation, CapitalExecutionRail,
+    CapitalExecutionRailKind, CapitalExecutionReconciledState, CapitalExecutionRole,
+    CapitalExecutionWindow, CreditBacktestQuery, CreditBacktestReasonCode, CreditBacktestReport,
+    CreditBacktestSummary, CreditBacktestWindow, CreditBondArtifact, CreditBondDisposition,
+    CreditBondFinding, CreditBondLifecycleState, CreditBondListQuery, CreditBondListReport,
+    CreditBondListSummary, CreditBondPrerequisites, CreditBondReasonCode, CreditBondReport,
+    CreditBondRow, CreditBondSupportBoundary, CreditBondTerms, CreditBondedExecutionControlPolicy,
     CreditBondedExecutionDecision, CreditBondedExecutionEvaluation, CreditBondedExecutionFinding,
     CreditBondedExecutionFindingCode, CreditBondedExecutionSimulationDelta,
     CreditBondedExecutionSimulationQuery, CreditBondedExecutionSimulationReport,

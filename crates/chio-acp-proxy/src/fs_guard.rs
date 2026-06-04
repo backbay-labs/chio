@@ -47,6 +47,11 @@ impl FsGuard {
         self.check_path(path, "write")
     }
 
+    /// Check whether a terminal working directory is permitted.
+    pub fn check_cwd(&self, path: &str) -> Result<(), AcpProxyError> {
+        self.check_path(path, "cwd")
+    }
+
     fn check_path(&self, path: &str, operation: &str) -> Result<(), AcpProxyError> {
         // Reject empty paths immediately.
         if path.is_empty() {

@@ -214,9 +214,12 @@ impl DpopNonceStore {
 // verify_dpop_proof
 // ---------------------------------------------------------------------------
 
-/// Verify a DPoP proof against the given capability and invocation context.
+/// Verify the stateless parts of a DPoP proof against an invocation context.
 ///
-/// All six verification steps must pass; the first failure returns an error.
+/// This validates schema, sender binding, invocation binding, freshness, and
+/// signature, but deliberately does not consult or mutate the replay nonce
+/// store. Use this only for preview paths that must not burn a nonce before the
+/// authoritative invocation. Runtime execution must call [`verify_dpop_proof`].
 ///
 /// # Arguments
 ///
@@ -225,15 +228,13 @@ impl DpopNonceStore {
 /// * `expected_tool_server` - `server_id` the kernel expects
 /// * `expected_tool_name` - tool name the kernel expects
 /// * `expected_action_hash` - SHA-256 hex of the serialized tool arguments
-/// * `nonce_store` - shared replay-rejection store
 /// * `config` - TTL and clock-skew bounds
-pub fn verify_dpop_proof(
+pub fn verify_dpop_proof_stateless(
     proof: &DpopProof,
     capability: &CapabilityToken,
     expected_tool_server: &str,
     expected_tool_name: &str,
     expected_action_hash: &str,
-    nonce_store: &DpopNonceStore,
     config: &DpopConfig,
 ) -> Result<(), KernelError> {
     // Step 1: Schema check.
@@ -310,6 +311,40 @@ pub fn verify_dpop_proof(
             "proof signature verification failed".to_string(),
         ));
     }
+
+    Ok(())
+}
+
+/// Verify a DPoP proof against the given capability and invocation context.
+///
+/// All six verification steps must pass; the first failure returns an error.
+///
+/// # Arguments
+///
+/// * `proof` - the signed DPoP proof from the agent
+/// * `capability` - the capability token being used for this invocation
+/// * `expected_tool_server` - `server_id` the kernel expects
+/// * `expected_tool_name` - tool name the kernel expects
+/// * `expected_action_hash` - SHA-256 hex of the serialized tool arguments
+/// * `nonce_store` - shared replay-rejection store
+/// * `config` - TTL and clock-skew bounds
+pub fn verify_dpop_proof(
+    proof: &DpopProof,
+    capability: &CapabilityToken,
+    expected_tool_server: &str,
+    expected_tool_name: &str,
+    expected_action_hash: &str,
+    nonce_store: &DpopNonceStore,
+    config: &DpopConfig,
+) -> Result<(), KernelError> {
+    verify_dpop_proof_stateless(
+        proof,
+        capability,
+        expected_tool_server,
+        expected_tool_name,
+        expected_action_hash,
+        config,
+    )?;
 
     // Step 6: Nonce replay check.
     if !nonce_store.check_and_insert(&proof.body.nonce, &proof.body.capability_id)? {

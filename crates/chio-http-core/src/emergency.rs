@@ -151,6 +151,10 @@ impl std::fmt::Debug for EmergencyAdmin {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("EmergencyAdmin")
             .field("admin_token_len", &self.expected_admin_token.len())
+            .field(
+                "admin_token_usable",
+                &admin_token_usable(&self.expected_admin_token),
+            )
             .finish_non_exhaustive()
     }
 }
@@ -177,11 +181,18 @@ impl EmergencyAdmin {
     }
 
     fn authorize(&self, admin_token: Option<&str>) -> Result<(), EmergencyHandlerError> {
+        if !admin_token_usable(&self.expected_admin_token) {
+            return Err(EmergencyHandlerError::Unauthorized);
+        }
         match admin_token {
             Some(token) if token == self.expected_admin_token => Ok(()),
             _ => Err(EmergencyHandlerError::Unauthorized),
         }
     }
+}
+
+fn admin_token_usable(token: &str) -> bool {
+    !token.trim().is_empty() && !token.chars().any(char::is_control)
 }
 
 /// Handler for `POST /emergency-stop`.

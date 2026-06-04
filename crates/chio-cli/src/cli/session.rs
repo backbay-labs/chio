@@ -506,6 +506,10 @@ mod tests {
         std::env::temp_dir().join(format!("{prefix}-{nonce}.seed"))
     }
 
+    fn loopback_bind_available() -> bool {
+        std::net::TcpListener::bind(("127.0.0.1", 0)).is_ok()
+    }
+
     // Mirror production (cli/runtime.rs): pair build_kernel with a receipt
     // store so the kernel's fail-closed receipt-persistence check passes.
     fn build_kernel_with_receipt_store(
@@ -1708,6 +1712,11 @@ guards:
 
     #[tokio::test(flavor = "multi_thread")]
     async fn chio_yaml_azure_content_safety_guard_drives_session_runtime_path() {
+        if !loopback_bind_available() {
+            eprintln!("skipping Azure content safety session runtime test: loopback bind denied");
+            return;
+        }
+
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/contentsafety/text:analyze"))
@@ -1795,6 +1804,11 @@ guards:
 
     #[tokio::test(flavor = "multi_thread")]
     async fn chio_yaml_safe_browsing_guard_drives_session_runtime_path() {
+        if !loopback_bind_available() {
+            eprintln!("skipping Safe Browsing session runtime test: loopback bind denied");
+            return;
+        }
+
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/threatMatches:find"))

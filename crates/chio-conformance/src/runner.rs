@@ -93,12 +93,27 @@ pub enum RunnerError {
     NoResults { path: String },
 }
 
-pub fn default_repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
+fn conformance_fixture_root_from_manifest_dir(manifest_dir: &Path) -> PathBuf {
+    let workspace_root = manifest_dir
         .ancestors()
         .nth(2)
         .map(Path::to_path_buf)
-        .unwrap_or_else(|| PathBuf::from("."))
+        .unwrap_or_else(|| manifest_dir.to_path_buf());
+    if workspace_root
+        .join("tests/conformance/scenarios/mcp_core")
+        .is_dir()
+        && workspace_root
+            .join("tests/conformance/fixtures/mcp_core/policy.yaml")
+            .is_file()
+    {
+        return workspace_root;
+    }
+
+    manifest_dir.to_path_buf()
+}
+
+pub fn default_repo_root() -> PathBuf {
+    conformance_fixture_root_from_manifest_dir(Path::new(env!("CARGO_MANIFEST_DIR")))
 }
 
 pub fn default_run_options() -> ConformanceRunOptions {
@@ -556,4 +571,70 @@ pub fn unique_run_dir(prefix: &str) -> PathBuf {
         .map(|duration| duration.as_nanos())
         .unwrap_or(0);
     std::env::temp_dir().join(format!("{prefix}-{nonce}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::conformance_fixture_root_from_manifest_dir;
+    use std::fs;
+    use std::path::Path;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_test_dir(label: &str) -> std::path::PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        std::env::temp_dir().join(format!(
+            "chio-conformance-{label}-{}-{nanos}",
+            std::process::id()
+        ))
+    }
+
+    fn create_default_fixture_tree(root: &Path) {
+        let scenarios = root.join("tests/conformance/scenarios/mcp_core");
+        let fixtures = root.join("tests/conformance/fixtures/mcp_core");
+        if let Err(error) = fs::create_dir_all(&scenarios) {
+            panic!("failed to create {}: {error}", scenarios.display());
+        }
+        if let Err(error) = fs::create_dir_all(&fixtures) {
+            panic!("failed to create {}: {error}", fixtures.display());
+        }
+        if let Err(error) = fs::write(scenarios.join("initialize.json"), "{}\n") {
+            panic!("failed to write scenario fixture: {error}");
+        }
+        if let Err(error) = fs::write(fixtures.join("policy.yaml"), "version: 1\n") {
+            panic!("failed to write policy fixture: {error}");
+        }
+    }
+
+    #[test]
+    fn fixture_root_prefers_workspace_tree_when_present() {
+        let root = unique_test_dir("workspace");
+        let manifest_dir = root.join("crates/chio-conformance");
+        create_default_fixture_tree(&root);
+        if let Err(error) = fs::create_dir_all(&manifest_dir) {
+            panic!("failed to create {}: {error}", manifest_dir.display());
+        }
+
+        assert_eq!(
+            conformance_fixture_root_from_manifest_dir(&manifest_dir),
+            root
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn fixture_root_falls_back_to_packaged_crate_tree() {
+        let package_root = unique_test_dir("package");
+        create_default_fixture_tree(&package_root);
+
+        assert_eq!(
+            conformance_fixture_root_from_manifest_dir(&package_root),
+            package_root
+        );
+
+        let _ = fs::remove_dir_all(package_root);
+    }
 }

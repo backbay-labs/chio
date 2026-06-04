@@ -45,21 +45,24 @@ pub(crate) fn write_runtime_json_artifact_string(
 }
 
 fn validate_runtime_relative_path(relative_path: &str) -> Result<(), RuntimeLoopbackError> {
-    if relative_path.trim() != relative_path
-        || relative_path.is_empty()
-        || relative_path.starts_with('/')
-        || relative_path.contains('\\')
-        || relative_path.contains(':')
-        || relative_path.contains("//")
-        || relative_path
-            .split('/')
-            .any(|part| part.is_empty() || part == "." || part == "..")
-    {
+    if !is_safe_runtime_relative_path(relative_path) {
         return Err(RuntimeLoopbackError::message(format!(
             "Chio runtime artifact path {relative_path:?} is not safe relative evidence"
         )));
     }
     Ok(())
+}
+
+fn is_safe_runtime_relative_path(relative_path: &str) -> bool {
+    relative_path.trim() == relative_path
+        && !relative_path.is_empty()
+        && !relative_path.starts_with('/')
+        && !relative_path.contains('\\')
+        && !relative_path.contains(':')
+        && !relative_path.contains("//")
+        && relative_path
+            .split('/')
+            .all(|part| !part.is_empty() && part != "." && part != "..")
 }
 
 pub(crate) fn canonical_sha256_json<T: serde::Serialize>(
@@ -128,4 +131,28 @@ pub fn runtime_loopback_capability_window(now_unix_ms: u64) -> (u64, u64) {
             .max(wall_now_secs)
             .saturating_add(157_680_000),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn runtime_relative_path_helper_accepts_only_safe_evidence_paths() {
+        for path in ["proof-package.json", "steps/workflow-step-1.json"] {
+            assert!(super::is_safe_runtime_relative_path(path), "{path}");
+        }
+
+        for path in [
+            "",
+            " proof-package.json",
+            "proof-package.json ",
+            "/proof-package.json",
+            "steps\\proof-package.json",
+            "C:proof-package.json",
+            "steps//proof-package.json",
+            "steps/./proof-package.json",
+            "steps/../proof-package.json",
+        ] {
+            assert!(!super::is_safe_runtime_relative_path(path), "{path}");
+        }
+    }
 }

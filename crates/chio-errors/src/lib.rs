@@ -18,7 +18,9 @@ pub use _generated::error_codes::{
     ErrorCodeSpec, ERROR_CODES,
 };
 pub use code::Code;
-pub use diagnostic::{diagnostic, error, ChioError, Diagnostic};
+pub use diagnostic::{
+    diagnostic, diagnostic_from_spec, error, error_from_spec, ChioError, Diagnostic,
+};
 pub use domain::{Domain, UnknownDomain};
 pub use severity::{Severity, UnknownSeverity};
 

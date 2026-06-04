@@ -323,6 +323,31 @@ impl ChioKernel {
         Ok(())
     }
 
+    pub(crate) fn release_admitted_capability_budget(
+        &self,
+        cap: &CapabilityToken,
+    ) -> Result<(), String> {
+        if let Some(parent_link) = cap.delegation_chain.last() {
+            use chio_kernel_core::BudgetRegistry;
+            let proposed_share = cap
+                .budget_share_bps
+                .unwrap_or(chio_kernel_core::MAX_BUDGET_SHARE_BPS);
+            let mut budgets = match self.budget_registry.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            budgets
+                .release_child(
+                    parent_link.capability_id.as_str(),
+                    cap.id.as_str(),
+                    proposed_share,
+                )
+                .map_err(|err| err.to_string())?;
+        }
+
+        Ok(())
+    }
+
     /// Run the portable pure-compute verdict path provided by
     /// `chio-kernel-core`.
     ///
@@ -723,14 +748,13 @@ impl ChioKernel {
 
     /// Check and decrement the invocation budget for a capability.
     ///
-    /// Returns `(matched_grant_index, Option<BudgetChargeResult>)`.
-    /// The charge result is populated only for monetary grants.
+    /// Returns the matched grant index and the exact pre-execution budget mutation.
     pub(crate) fn check_and_increment_budget(
         &self,
         request_id: &str,
         cap: &CapabilityToken,
         matching_grants: &[MatchingGrant<'_>],
-    ) -> Result<(usize, Option<BudgetChargeResult>), KernelError> {
+    ) -> Result<(usize, PreExecutionBudgetMutation), KernelError> {
         let mut saw_exhausted_budget = false;
 
         for matching in matching_grants {
@@ -785,20 +809,28 @@ impl ChioKernel {
                                 .unwrap_or_else(|| budget_hold_id.clone()),
                             authorize_metadata: authorized.metadata,
                         };
-                        return Ok((matching.index, Some(charge)));
+                        return Ok((matching.index, PreExecutionBudgetMutation::Charge(charge)));
                     }
                     BudgetAuthorizeHoldDecision::Denied(_) => {
                         saw_exhausted_budget = true;
                     }
                 }
             } else {
-                // Non-monetary path: use try_increment as before.
+                if grant.max_invocations.is_none() {
+                    return Ok((matching.index, PreExecutionBudgetMutation::None));
+                }
+
                 if self.with_budget_store(|store| {
                     Ok(store.try_increment(&cap.id, matching.index, grant.max_invocations)?)
                 })? {
-                    return Ok((matching.index, None));
+                    return Ok((
+                        matching.index,
+                        PreExecutionBudgetMutation::Invocation {
+                            grant_index: matching.index,
+                        },
+                    ));
                 }
-                saw_exhausted_budget = saw_exhausted_budget || grant.max_invocations.is_some();
+                saw_exhausted_budget = true;
             }
         }
 
@@ -807,7 +839,7 @@ impl ChioKernel {
         } else {
             // No matching grant had any limit -- allow with the first grant's index.
             let first_index = matching_grants.first().map(|m| m.index).unwrap_or(0);
-            Ok((first_index, None))
+            Ok((first_index, PreExecutionBudgetMutation::None))
         }
     }
 
@@ -827,6 +859,25 @@ impl ChioKernel {
                 authority,
             })?)
         })
+    }
+
+    pub(crate) fn reverse_pre_execution_budget_mutation(
+        &self,
+        cap: &CapabilityToken,
+        budget_mutation: &PreExecutionBudgetMutation,
+    ) -> Result<Option<BudgetReverseHoldDecision>, KernelError> {
+        match budget_mutation {
+            PreExecutionBudgetMutation::Charge(charge) => {
+                self.reverse_budget_charge(&cap.id, charge).map(Some)
+            }
+            PreExecutionBudgetMutation::Invocation { grant_index } => {
+                self.with_budget_store(|store| {
+                    Ok(store.reverse_charge_cost(&cap.id, *grant_index, 0)?)
+                })?;
+                Ok(None)
+            }
+            PreExecutionBudgetMutation::None => Ok(None),
+        }
     }
 
     fn reconcile_budget_charge(

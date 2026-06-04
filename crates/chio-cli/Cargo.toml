@@ -11,6 +11,9 @@ autobins = false
 readme = "README.md"
 publish = false
 
+[package.metadata.chio]
+public_entrypoint = true
+
 [[bin]]
 name = "chio"
 path = "src/bin/chio.rs"

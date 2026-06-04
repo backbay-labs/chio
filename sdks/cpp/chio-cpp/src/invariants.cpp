@@ -3,6 +3,7 @@
 #include <cstring>
 
 #include "chio/chio_ffi.h"
+#include "json.hpp"
 
 namespace chio::invariants {
 namespace {
@@ -67,6 +68,18 @@ Result<bool> bool_from_ffi(ChioFfiResult result, std::string operation) {
 
 std::string owned(std::string_view input) {
   return std::string(input.data(), input.size());
+}
+
+std::string json_string_array(const std::vector<std::string>& values) {
+  std::string out = "[";
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    if (i != 0) {
+      out += ",";
+    }
+    out += chio::detail::quote(values[i]);
+  }
+  out += "]";
+  return out;
 }
 
 }  // namespace
@@ -147,6 +160,16 @@ Result<std::string> verify_receipt_json(std::string_view input_json) {
   auto input = owned(input_json);
   return from_ffi(chio_verify_receipt_json(input.c_str()),
                   "invariants::verify_receipt_json");
+}
+
+Result<std::string> verify_receipt_json_with_trusted_signers(
+    std::string_view input_json,
+    const std::vector<std::string>& trusted_signers_hex) {
+  auto input = owned(input_json);
+  auto trusted_signers = json_string_array(trusted_signers_hex);
+  return from_ffi(
+      chio_verify_receipt_json_with_trusted_signers(input.c_str(), trusted_signers.c_str()),
+      "invariants::verify_receipt_json_with_trusted_signers");
 }
 
 Result<std::string> verify_manifest_json(std::string_view input_json) {

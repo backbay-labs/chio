@@ -6,7 +6,6 @@
  * - `chio()` middleware that evaluates requests against the Chio sidecar
  * - `chioErrorHandler` for structured Chio error responses
  * - Chio evaluation results attached to req.chioResult when Chio produced a signed receipt
- * - Fail-open passthrough state attached to req.chioPassthrough when no receipt exists
  *
  * @example
  * ```ts

@@ -171,15 +171,8 @@ pub fn resolve_toml_path() -> PathBuf {
 /// not exist or `[tee] mode` is unset; returns `Err` for I/O errors, TOML
 /// parse errors, or invalid mode tags.
 pub fn load_toml_mode(path: &Path) -> Result<Option<Mode>, ConfigError> {
-    let raw = match std::fs::read_to_string(path) {
-        Ok(contents) => contents,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(e) => {
-            return Err(ConfigError::Io {
-                path: path.to_path_buf(),
-                source: e,
-            });
-        }
+    let Some(raw) = read_optional_config(path)? else {
+        return Ok(None);
     };
     parse_toml_mode_from_str(path, &raw)
 }
@@ -202,15 +195,8 @@ pub fn parse_toml_mode_from_str(path: &Path, raw: &str) -> Result<Option<Mode>, 
 /// Returns `Ok(None)` if the manifest file does not exist or
 /// `tenant.tee.mode` is unset.
 pub fn load_tenant_manifest_mode(path: &Path) -> Result<Option<Mode>, ConfigError> {
-    let raw = match std::fs::read_to_string(path) {
-        Ok(contents) => contents,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(e) => {
-            return Err(ConfigError::Io {
-                path: path.to_path_buf(),
-                source: e,
-            });
-        }
+    let Some(raw) = read_optional_config(path)? else {
+        return Ok(None);
     };
     load_tenant_manifest_mode_from_str(path, &raw)
 }
@@ -227,6 +213,17 @@ pub fn load_tenant_manifest_mode_from_str(
     match cfg.tenant.tee.mode {
         None => Ok(None),
         Some(s) => Ok(Some(s.parse::<Mode>()?)),
+    }
+}
+
+fn read_optional_config(path: &Path) -> Result<Option<String>, ConfigError> {
+    match std::fs::read_to_string(path) {
+        Ok(contents) => Ok(Some(contents)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(ConfigError::Io {
+            path: path.to_path_buf(),
+            source: e,
+        }),
     }
 }
 
@@ -320,6 +317,20 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(mode, Mode::Shadow);
+    }
+
+    #[test]
+    fn optional_config_reader_returns_none_for_missing_and_contents_for_present_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("missing.toml");
+        assert_eq!(read_optional_config(&missing).unwrap(), None);
+
+        let present = dir.path().join("tee.toml");
+        std::fs::write(&present, "[tee]\nmode = \"shadow\"\n").unwrap();
+        assert_eq!(
+            read_optional_config(&present).unwrap().as_deref(),
+            Some("[tee]\nmode = \"shadow\"\n")
+        );
     }
 
     /// Regression: a typo in the `[tee]` table key (e.g. capitalised

@@ -428,6 +428,39 @@ mod tests {
         }
     }
 
+    #[test]
+    fn parse_session_update_malformed_tool_call_id_fails_closed() {
+        let raw = json!({
+            "toolCallId": 7,
+            "status": "completed"
+        });
+
+        match parse_session_update(&raw) {
+            SessionUpdate::MalformedToolCall(message) => {
+                assert!(message.contains("toolCallId"));
+                assert!(message.contains("must be a string"));
+            }
+            other => panic!("expected MalformedToolCall, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_session_update_tool_call_id_takes_precedence_over_known_type() {
+        let raw = json!({
+            "type": "agent_message_chunk",
+            "content": "hello",
+            "toolCallId": 7
+        });
+
+        match parse_session_update(&raw) {
+            SessionUpdate::MalformedToolCall(message) => {
+                assert!(message.contains("toolCallId"));
+                assert!(message.contains("must be a string"));
+            }
+            other => panic!("expected MalformedToolCall, got {:?}", other),
+        }
+    }
+
     // -- New ACP method variants --
 
     #[test]
@@ -530,6 +563,45 @@ mod tests {
             .with_allowed_path_prefix("/home/user/project")
             .with_allowed_command("cargo")
             .with_allowed_command("npm")
+    }
+
+    #[test]
+    fn interceptor_jsonrpc_param_decoder_preserves_method_specific_protocol_errors() {
+        let missing = MessageInterceptor::jsonrpc_params(&json!({}), "fs/read_text_file")
+            .expect_err("missing params should fail closed");
+        assert_eq!(
+            missing.to_string(),
+            "protocol error: missing params in fs/read_text_file"
+        );
+
+        let invalid = MessageInterceptor::decode_jsonrpc_params::<ReadTextFileParams>(
+            &json!({
+                "sessionId": "s1",
+                "path": 42
+            }),
+            "fs/read_text_file",
+        )
+        .expect_err("invalid typed params should fail closed");
+        assert!(invalid
+            .to_string()
+            .contains("protocol error: invalid fs/read_text_file params:"));
+
+        let decoded = match MessageInterceptor::decode_jsonrpc_params::<ReadTextFileParams>(
+            &json!({
+                "sessionId": "s1",
+                "path": "/home/user/project/README.md",
+                "line": 1,
+                "limit": 5
+            }),
+            "fs/read_text_file",
+        ) {
+            Ok(decoded) => decoded,
+            Err(error) => panic!("valid fs/read_text_file params should decode: {error}"),
+        };
+        assert_eq!(decoded.session_id, "s1");
+        assert_eq!(decoded.path, "/home/user/project/README.md");
+        assert_eq!(decoded.line, Some(1));
+        assert_eq!(decoded.limit, Some(5));
     }
 
     #[test]
@@ -637,6 +709,58 @@ mod tests {
         match result {
             InterceptResult::Forward(_) => {}
             other => panic!("expected Forward, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn interceptor_blocks_terminal_create_with_out_of_scope_cwd() {
+        let interceptor = MessageInterceptor::new(test_config());
+        let msg = json!({
+            "jsonrpc": "2.0",
+            "id": 6,
+            "method": "terminal/create",
+            "params": {
+                "sessionId": "s1",
+                "command": "cargo",
+                "args": ["test"],
+                "cwd": "/etc"
+            }
+        });
+        let result = interceptor
+            .intercept(Direction::AgentToClient, &msg)
+            .unwrap();
+        match result {
+            InterceptResult::Block(v) => {
+                assert!(v.get("error").is_some());
+                assert!(v["error"]["message"]
+                    .as_str()
+                    .unwrap_or("")
+                    .contains("cwd"));
+            }
+            other => panic!("expected Block for out-of-scope cwd, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn interceptor_allows_terminal_create_with_in_scope_cwd() {
+        let interceptor = MessageInterceptor::new(test_config());
+        let msg = json!({
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "terminal/create",
+            "params": {
+                "sessionId": "s1",
+                "command": "cargo",
+                "args": ["test"],
+                "cwd": "/home/user/project"
+            }
+        });
+        let result = interceptor
+            .intercept(Direction::AgentToClient, &msg)
+            .unwrap();
+        match result {
+            InterceptResult::Forward(_) => {}
+            other => panic!("expected Forward for in-scope cwd, got {:?}", other),
         }
     }
 
@@ -1148,6 +1272,14 @@ mod extended_tests {
     }
 
     #[test]
+    fn protocol_json_rpc_error_builder_replaces_non_scalar_ids_with_null() {
+        for invalid_id in [json!(true), json!({"nested": 1}), json!([1])] {
+            let error = json_rpc_error(Some(&invalid_id), -32000, "access denied");
+            assert_eq!(error["id"], serde_json::Value::Null);
+        }
+    }
+
+    #[test]
     fn protocol_parse_session_update_tool_call_without_title() {
         // toolCallId present but no title -- should match ToolCallUpdate, not ToolCall
         let raw = json!({
@@ -1573,6 +1705,48 @@ mod extended_tests {
     }
 
     #[test]
+    fn interceptor_fs_read_rejects_empty_session_id_before_forwarding() {
+        let interceptor = MessageInterceptor::new(test_config());
+        let msg = json!({
+            "jsonrpc": "2.0",
+            "id": 105,
+            "method": "fs/read_text_file",
+            "params": {
+                "sessionId": "  ",
+                "path": "/home/user/project/src/lib.rs"
+            }
+        });
+        let err = interceptor
+            .intercept(Direction::AgentToClient, &msg)
+            .expect_err("empty sessionId must fail at the ACP request boundary");
+        assert_eq!(
+            err.to_string(),
+            "protocol error: invalid fs/read_text_file params: sessionId must be a non-empty string"
+        );
+    }
+
+    #[test]
+    fn interceptor_fs_read_rejects_padded_session_id_before_forwarding() {
+        let interceptor = MessageInterceptor::new(test_config());
+        let msg = json!({
+            "jsonrpc": "2.0",
+            "id": 106,
+            "method": "fs/read_text_file",
+            "params": {
+                "sessionId": " s1 ",
+                "path": "/home/user/project/src/lib.rs"
+            }
+        });
+        let err = interceptor
+            .intercept(Direction::AgentToClient, &msg)
+            .expect_err("padded sessionId must fail at the ACP request boundary");
+        assert_eq!(
+            err.to_string(),
+            "protocol error: invalid fs/read_text_file params: sessionId must be a non-empty unpadded string"
+        );
+    }
+
+    #[test]
     fn interceptor_fs_write_missing_params_returns_protocol_error() {
         let interceptor = MessageInterceptor::new(test_config());
         let msg = json!({
@@ -1585,6 +1759,78 @@ mod extended_tests {
             result.is_err(),
             "missing params should produce a protocol error"
         );
+    }
+
+    #[test]
+    fn interceptor_session_update_rejects_empty_tool_call_id_before_receipt() {
+        let interceptor = MessageInterceptor::new(test_config());
+        let msg = json!({
+            "jsonrpc": "2.0",
+            "method": "session/update",
+            "params": {
+                "sessionId": "session-empty-tool-id",
+                "update": {
+                    "toolCallId": " ",
+                    "title": "Read file",
+                    "kind": "read",
+                    "status": "running"
+                }
+            }
+        });
+        let err = interceptor
+            .intercept(Direction::AgentToClient, &msg)
+            .expect_err("empty toolCallId must not produce an ACP audit receipt");
+        assert_eq!(
+            err.to_string(),
+            "protocol error: invalid session/update params: update.toolCallId must be a non-empty string"
+        );
+    }
+
+    #[test]
+    fn interceptor_session_update_rejects_padded_tool_call_id_before_receipt() {
+        let interceptor = MessageInterceptor::new(test_config());
+        let msg = json!({
+            "jsonrpc": "2.0",
+            "method": "session/update",
+            "params": {
+                "sessionId": "session-padded-tool-id",
+                "update": {
+                    "toolCallId": " tc-1 ",
+                    "title": "Read file",
+                    "kind": "read",
+                    "status": "running"
+                }
+            }
+        });
+        let err = interceptor
+            .intercept(Direction::AgentToClient, &msg)
+            .expect_err("padded toolCallId must not produce an ACP audit receipt");
+        assert_eq!(
+            err.to_string(),
+            "protocol error: invalid session/update params: update.toolCallId must be a non-empty unpadded string"
+        );
+    }
+
+    #[test]
+    fn interceptor_session_update_rejects_malformed_tool_call_shape_before_forwarding() {
+        let interceptor = MessageInterceptor::new(test_config());
+        let msg = json!({
+            "jsonrpc": "2.0",
+            "method": "session/update",
+            "params": {
+                "sessionId": "session-malformed-tool-call",
+                "update": {
+                    "toolCallId": "tc-malformed",
+                    "status": 7
+                }
+            }
+        });
+
+        let err = interceptor
+            .intercept(Direction::AgentToClient, &msg)
+            .expect_err("malformed tool-call update must fail before forwarding");
+
+        assert!(err.to_string().contains("malformed tool call update"));
     }
 
     #[test]
@@ -1721,6 +1967,48 @@ mod extended_tests {
             Ok(InterceptResult::Forward(v)) => assert_eq!(v, msg),
             other => panic!("expected Forward for permission request, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn interceptor_permission_request_rejects_empty_boundary_ids() {
+        let interceptor = MessageInterceptor::new(test_config());
+        let empty_session = json!({
+            "jsonrpc": "2.0",
+            "id": 202,
+            "method": "session/request_permission",
+            "params": {
+                "sessionId": " ",
+                "options": [
+                    {"optionId": "allow-once", "name": "Allow once", "kind": "allow_once"}
+                ]
+            }
+        });
+        let err = interceptor
+            .intercept(Direction::AgentToClient, &empty_session)
+            .expect_err("empty permission sessionId must fail at the ACP boundary");
+        assert_eq!(
+            err.to_string(),
+            "protocol error: invalid session/request_permission params: sessionId must be a non-empty string"
+        );
+
+        let empty_option = json!({
+            "jsonrpc": "2.0",
+            "id": 203,
+            "method": "session/request_permission",
+            "params": {
+                "sessionId": "s1",
+                "options": [
+                    {"optionId": " ", "name": "Allow once", "kind": "allow_once"}
+                ]
+            }
+        });
+        let err = interceptor
+            .intercept(Direction::AgentToClient, &empty_option)
+            .expect_err("empty permission optionId must fail at the ACP boundary");
+        assert_eq!(
+            err.to_string(),
+            "protocol error: invalid session/request_permission params: options[0].optionId must be a non-empty string"
+        );
     }
 
     #[test]
@@ -2150,42 +2438,37 @@ mod extended_tests {
     }
 
     #[test]
-    fn interceptor_session_update_with_bad_params_forwarded() {
-        // session/update with params that cannot deserialize to
-        // SessionUpdateNotification should still forward.
+    fn interceptor_session_update_rejects_bad_params_before_forwarding() {
         let interceptor = MessageInterceptor::new(test_config());
         let msg = json!({
             "jsonrpc": "2.0",
             "method": "session/update",
             "params": "not an object"
         });
-        let result = interceptor.intercept(Direction::AgentToClient, &msg);
-        assert!(result.is_ok());
-        match result {
-            Ok(InterceptResult::Forward(_)) => {}
-            other => panic!(
-                "expected Forward for malformed session/update params, got {:?}",
-                other
-            ),
-        }
+        let err = interceptor
+            .intercept(Direction::AgentToClient, &msg)
+            .expect_err("malformed session/update params must fail at the ACP boundary");
+        assert!(
+            err.to_string()
+                .contains("protocol error: invalid session/update params:"),
+            "unexpected malformed session/update error: {err}"
+        );
     }
 
     #[test]
-    fn interceptor_session_update_with_no_params_forwarded() {
+    fn interceptor_session_update_rejects_missing_params_before_forwarding() {
         let interceptor = MessageInterceptor::new(test_config());
         let msg = json!({
             "jsonrpc": "2.0",
             "method": "session/update"
         });
-        let result = interceptor.intercept(Direction::AgentToClient, &msg);
-        assert!(result.is_ok());
-        match result {
-            Ok(InterceptResult::Forward(_)) => {}
-            other => panic!(
-                "expected Forward for session/update with no params, got {:?}",
-                other
-            ),
-        }
+        let err = interceptor
+            .intercept(Direction::AgentToClient, &msg)
+            .expect_err("missing session/update params must fail at the ACP boundary");
+        assert_eq!(
+            err.to_string(),
+            "protocol error: missing params in session/update"
+        );
     }
 
     #[test]
@@ -3436,6 +3719,90 @@ mod attestation_and_telemetry_tests {
     }
 
     #[test]
+    fn interceptor_rejects_malformed_checker_verdict_evidence() {
+        let cases = vec![
+            (
+                "capability_id",
+                AcpVerdict {
+                    allowed: true,
+                    capability_id: Some(" cap-padded ".to_string()),
+                    receipt_id: Some("auth-valid".to_string()),
+                    receipt_request_id: Some("req-valid".to_string()),
+                    reason: "malformed capability id".to_string(),
+                },
+                "malformed capability_id",
+            ),
+            (
+                "receipt_id",
+                AcpVerdict {
+                    allowed: true,
+                    capability_id: Some("cap-valid".to_string()),
+                    receipt_id: Some("auth\ncontrol".to_string()),
+                    receipt_request_id: Some("req-valid".to_string()),
+                    reason: "malformed receipt id".to_string(),
+                },
+                "malformed signed authorization receipt id",
+            ),
+            (
+                "receipt_request_id",
+                AcpVerdict {
+                    allowed: true,
+                    capability_id: Some("cap-valid".to_string()),
+                    receipt_id: Some("auth-valid".to_string()),
+                    receipt_request_id: Some(" req-padded ".to_string()),
+                    reason: "malformed receipt request id".to_string(),
+                },
+                "malformed signed authorization request id",
+            ),
+        ];
+
+        for (index, (field, verdict, expected_message)) in cases.into_iter().enumerate() {
+            let requests = Arc::new(Mutex::new(Vec::new()));
+            let checker = SequencedChecker::new(Arc::clone(&requests), vec![verdict]);
+            let config = AcpProxyConfig::new("echo", "deadbeef")
+                .with_allowed_path_prefix("/home/user/project")
+                .with_allowed_command("cargo")
+                .with_server_id("proxy-server");
+            let interceptor = MessageInterceptor::with_kernel(
+                config,
+                None,
+                Some(Box::new(checker)),
+                AcpAttestationMode::BestEffort,
+            );
+            let id = 384 + index;
+            let read = json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "method": "fs/read_text_file",
+                "params": {
+                    "sessionId": format!("session-malformed-{field}"),
+                    "toolCallId": format!("tool-malformed-{field}"),
+                    "path": "/home/user/project/src/lib.rs",
+                    "capabilityToken": "signed-capability-json"
+                }
+            });
+
+            match interceptor
+                .intercept(Direction::AgentToClient, &read)
+                .expect("malformed checker evidence should return a block response")
+            {
+                InterceptResult::Block(value) => {
+                    assert_eq!(value["error"]["code"], ACP_ERROR_ACCESS_DENIED);
+                    assert!(
+                        value["error"]["message"]
+                            .as_str()
+                            .unwrap_or_default()
+                            .contains(expected_message),
+                        "field {field} returned {value:?}"
+                    );
+                }
+                other => panic!("expected Block for {field}, got {:?}", other),
+            }
+            assert_eq!(requests.lock().expect("requests should lock").len(), 1);
+        }
+    }
+
+    #[test]
     fn interceptor_does_not_bind_ambiguous_pending_contexts_to_tool_calls() {
         let requests = Arc::new(Mutex::new(Vec::new()));
         let checker = SequencedChecker::new(
@@ -3600,6 +3967,177 @@ mod attestation_and_telemetry_tests {
     }
 
     #[test]
+    fn interceptor_blocked_request_preserves_unrelated_capability_contexts() {
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let checker = SequencedChecker::new(
+            Arc::clone(&requests),
+            vec![
+                AcpVerdict {
+                    allowed: true,
+                    capability_id: Some("cap-live".to_string()),
+                    receipt_id: Some("auth-live".to_string()),
+                    receipt_request_id: Some("req-live".to_string()),
+                    reason: "live allow".to_string(),
+                },
+                AcpVerdict {
+                    allowed: true,
+                    capability_id: Some("cap-pending".to_string()),
+                    receipt_id: Some("auth-pending".to_string()),
+                    receipt_request_id: Some("req-pending".to_string()),
+                    reason: "pending allow".to_string(),
+                },
+                AcpVerdict {
+                    allowed: true,
+                    capability_id: Some("cap-blocked".to_string()),
+                    receipt_id: Some("auth-blocked".to_string()),
+                    receipt_request_id: Some("req-blocked".to_string()),
+                    reason: "checker allowed but built-in guard will block".to_string(),
+                },
+            ],
+        );
+        let config = AcpProxyConfig::new("echo", "deadbeef")
+            .with_allowed_path_prefix("/home/user/project")
+            .with_allowed_command("cargo")
+            .with_server_id("proxy-server");
+        let interceptor = MessageInterceptor::with_kernel(
+            config,
+            None,
+            Some(Box::new(checker)),
+            AcpAttestationMode::BestEffort,
+        );
+
+        let live_read = json!({
+            "jsonrpc": "2.0",
+            "id": 610,
+            "method": "fs/read_text_file",
+            "params": {
+                "sessionId": "session-preserve-context",
+                "toolCallId": "tool-live-preserve",
+                "path": "/home/user/project/src/live.rs",
+                "capabilityToken": "token-live"
+            }
+        });
+        match interceptor
+            .intercept(Direction::AgentToClient, &live_read)
+            .expect("live read should forward after capability and path checks")
+        {
+            InterceptResult::Forward(_) => {}
+            other => panic!("expected Forward, got {:?}", other),
+        }
+        assert_eq!(
+            interceptor.live_capability_context_count_for_session("session-preserve-context"),
+            1,
+            "explicit toolCallId should create one live capability context"
+        );
+
+        let pending_read = json!({
+            "jsonrpc": "2.0",
+            "id": 611,
+            "method": "fs/read_text_file",
+            "params": {
+                "sessionId": "session-preserve-context",
+                "path": "/home/user/project/src/pending.rs",
+                "capabilityToken": "token-pending"
+            }
+        });
+        match interceptor
+            .intercept(Direction::AgentToClient, &pending_read)
+            .expect("toolCallId-less read should forward and buffer pending context")
+        {
+            InterceptResult::Forward(_) => {}
+            other => panic!("expected Forward, got {:?}", other),
+        }
+        assert_eq!(
+            interceptor.pending_capability_context_count("session-preserve-context"),
+            1,
+            "toolCallId-less read should create one pending capability context"
+        );
+
+        let blocked_read = json!({
+            "jsonrpc": "2.0",
+            "id": 612,
+            "method": "fs/read_text_file",
+            "params": {
+                "sessionId": "session-preserve-context",
+                "path": "/tmp/out-of-scope.rs",
+                "capabilityToken": "token-blocked"
+            }
+        });
+        match interceptor
+            .intercept(Direction::AgentToClient, &blocked_read)
+            .expect("built-in guard denial should return a block response")
+        {
+            InterceptResult::Block(value) => {
+                assert_eq!(value["error"]["code"], ACP_ERROR_ACCESS_DENIED);
+            }
+            other => panic!("expected Block, got {:?}", other),
+        }
+
+        assert_eq!(
+            interceptor.live_capability_context_count_for_session("session-preserve-context"),
+            1,
+            "blocked request must not erase unrelated live capability context"
+        );
+        assert_eq!(
+            interceptor.pending_capability_context_count("session-preserve-context"),
+            1,
+            "blocked request must not erase unrelated pending capability context"
+        );
+
+        let live_complete = json!({
+            "jsonrpc": "2.0",
+            "method": "session/update",
+            "params": {
+                "sessionId": "session-preserve-context",
+                "update": {
+                    "toolCallId": "tool-live-preserve",
+                    "status": "completed"
+                }
+            }
+        });
+        match interceptor
+            .intercept(Direction::AgentToClient, &live_complete)
+            .expect("live completion should still resolve its authorization context")
+        {
+            InterceptResult::ForwardWithReceipt(_, receipt) => {
+                assert_eq!(receipt.capability_id.as_deref(), Some("cap-live"));
+                assert_eq!(
+                    receipt.enforcement_mode,
+                    Some(AcpEnforcementMode::CryptographicallyEnforced)
+                );
+            }
+            other => panic!("expected ForwardWithReceipt, got {:?}", other),
+        }
+
+        let pending_start = json!({
+            "jsonrpc": "2.0",
+            "method": "session/update",
+            "params": {
+                "sessionId": "session-preserve-context",
+                "update": {
+                    "toolCallId": "tool-pending-preserve",
+                    "title": "Read pending file",
+                    "kind": "read",
+                    "status": "running"
+                }
+            }
+        });
+        match interceptor
+            .intercept(Direction::AgentToClient, &pending_start)
+            .expect("pending start should bind its preserved pending context")
+        {
+            InterceptResult::ForwardWithReceipt(_, receipt) => {
+                assert_eq!(receipt.capability_id.as_deref(), Some("cap-pending"));
+                assert_eq!(
+                    receipt.enforcement_mode,
+                    Some(AcpEnforcementMode::CryptographicallyEnforced)
+                );
+            }
+            other => panic!("expected ForwardWithReceipt, got {:?}", other),
+        }
+    }
+
+    #[test]
     fn interceptor_session_cancel_clears_pending_capability_contexts() {
         // Verifies that session/cancel drains the per-session pending FIFO:
         // authorization material must not leak across long-lived sessions.
@@ -3661,6 +4199,80 @@ mod attestation_and_telemetry_tests {
             interceptor.live_capability_context_count_for_session("session-cancel"),
             0,
             "session/cancel must drop live capability contexts for the session"
+        );
+    }
+
+    #[test]
+    fn interceptor_session_cancel_rejects_malformed_params_without_draining_contexts() {
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let checker = always_allow_sequenced_checker(Arc::clone(&requests), 1);
+        let config = AcpProxyConfig::new("echo", "deadbeef")
+            .with_allowed_path_prefix("/home/user/project")
+            .with_allowed_command("cargo")
+            .with_server_id("proxy-server");
+        let interceptor = MessageInterceptor::with_kernel(
+            config,
+            None,
+            Some(Box::new(checker)),
+            AcpAttestationMode::BestEffort,
+        );
+
+        let read = json!({
+            "jsonrpc": "2.0",
+            "id": 701,
+            "method": "fs/read_text_file",
+            "params": {
+                "sessionId": "session-cancel-invalid",
+                "path": "/home/user/project/src/read.rs",
+                "capabilityToken": "token-read"
+            }
+        });
+        interceptor
+            .intercept(Direction::AgentToClient, &read)
+            .expect("fs/read should forward and create pending context");
+        assert_eq!(
+            interceptor.pending_capability_context_count("session-cancel-invalid"),
+            1,
+            "expected pending context before malformed session/cancel"
+        );
+
+        let missing_params = json!({
+            "jsonrpc": "2.0",
+            "id": 702,
+            "method": "session/cancel"
+        });
+        let err = interceptor
+            .intercept(Direction::AgentToClient, &missing_params)
+            .expect_err("missing cancel params must fail before forwarding");
+        assert_eq!(
+            err.to_string(),
+            "protocol error: missing params in session/cancel"
+        );
+        assert_eq!(
+            interceptor.pending_capability_context_count("session-cancel-invalid"),
+            1,
+            "missing cancel params must not drain pending context"
+        );
+
+        let empty_session = json!({
+            "jsonrpc": "2.0",
+            "id": 703,
+            "method": "session/cancel",
+            "params": {
+                "sessionId": " "
+            }
+        });
+        let err = interceptor
+            .intercept(Direction::AgentToClient, &empty_session)
+            .expect_err("empty cancel sessionId must fail before forwarding");
+        assert_eq!(
+            err.to_string(),
+            "protocol error: invalid session/cancel params: sessionId must be a non-empty string"
+        );
+        assert_eq!(
+            interceptor.pending_capability_context_count("session-cancel-invalid"),
+            1,
+            "invalid cancel params must not drain pending context"
         );
     }
 

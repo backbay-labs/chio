@@ -122,6 +122,7 @@ impl CostMetadata {
     /// currencies, the total is set to the first currency encountered and
     /// cross-currency amounts are ignored (use oracle conversion for those).
     pub fn compute_total_monetary_cost(&mut self) {
+        self.total_monetary_cost = None;
         let mut total_units: u64 = 0;
         let mut currency: Option<String> = None;
 
@@ -334,6 +335,31 @@ mod tests {
         );
         meta.add_dimension(CostDimension::ComputeTime { duration_ms: 500 });
         meta.compute_total_monetary_cost();
+        assert!(meta.total_monetary_cost.is_none());
+    }
+
+    #[test]
+    fn recompute_total_clears_stale_cost_when_no_api_costs_remain() {
+        let mut meta = CostMetadata::new(
+            "r-stale".to_string(),
+            0,
+            "a".to_string(),
+            "s".to_string(),
+            "t".to_string(),
+        );
+        meta.add_dimension(CostDimension::ApiCost {
+            amount: MonetaryAmount {
+                units: 42,
+                currency: "USD".to_string(),
+            },
+            provider: "p".to_string(),
+        });
+        meta.compute_total_monetary_cost();
+        assert_eq!(meta.total_monetary_cost.as_ref().unwrap().units, 42);
+
+        meta.dimensions.clear();
+        meta.compute_total_monetary_cost();
+
         assert!(meta.total_monetary_cost.is_none());
     }
 

@@ -213,7 +213,7 @@ fn run_captures_signed_redacted_frames_end_to_end() {
         // Each frame is structurally valid and verifies under the tenant key.
         validate_signed(&frame, &pubkey).expect("frame verifies under tenant pubkey");
         assert_eq!(frame.tee_id, "tee-cli-test");
-        assert_eq!(frame.redaction_pass_id, "redactors@1.4.0+default");
+        assert_eq!(frame.redaction_pass_id, chio_tee::DEFAULT_REDACTION_PASS_ID);
         verdicts.push((frame.verdict, frame.would_have_blocked));
     }
 

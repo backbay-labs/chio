@@ -142,7 +142,7 @@ public class ChioMiddlewareCapabilityTests
         await middleware.InvokeAsync(context);
 
         Assert.False(nextCalled);
-        Assert.Equal(StatusCodes.StatusBadGateway, context.Response.StatusCode);
+        Assert.Equal(StatusCodes.Status502BadGateway, context.Response.StatusCode);
         Assert.False(context.Response.Headers.ContainsKey("X-Chio-Receipt-Id"));
     }
 

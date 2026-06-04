@@ -82,6 +82,7 @@ tool example:
 The supported operator and local-development entrypoints are:
 
 - `chio check`: evaluate a single governed tool call and inspect the verdict
+- `chio api protect`: protect an HTTP API with the zero-code reverse proxy
 - `chio mcp serve`: wrap an MCP server with Chio governance
 - `chio mcp serve-http`: expose the governed MCP edge over Streamable HTTP
 - `chio trust serve`: run the shared trust-control service

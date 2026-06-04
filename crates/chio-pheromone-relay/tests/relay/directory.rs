@@ -20,6 +20,17 @@ fn peer_directory_rejects_duplicate_peer_ids() {
 }
 
 #[test]
+fn peer_directory_rejects_padded_peer_kernel_ids() {
+    let sender = key(1);
+    let mut document = directory(&sender, "http://127.0.0.1:18080".to_string());
+    document.peers[0].kernel_id = " did:chio:llamaworks".to_string();
+
+    let err = PeerDirectory::from_document(document, NOW).unwrap_err();
+
+    assert_eq!(err.code(), "unknown_peer");
+}
+
+#[test]
 fn signed_peer_directory_bundle_verifies_trust_and_rejects_rollback() {
     let issuer = key(9);
     let sender = key(1);

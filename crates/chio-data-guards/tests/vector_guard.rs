@@ -15,7 +15,7 @@ use chio_core::capability::{
     ToolGrant,
 };
 use chio_core::crypto::Keypair;
-use chio_data_guards::{VectorDbGuard, VectorGuardConfig};
+use chio_data_guards::{VectorDbGuard, VectorFieldPaths, VectorGuardConfig};
 use chio_kernel::{Guard, GuardContext, ToolCallRequest, Verdict};
 
 fn grant(constraints: Vec<Constraint>) -> ToolGrant {
@@ -248,6 +248,39 @@ fn denies_parse_error_missing_collection() {
         ChioScope::default(),
     );
     assert_eq!(verdict, Verdict::Deny);
+}
+
+#[test]
+fn custom_nested_field_paths_are_enforced() {
+    let guard = VectorDbGuard::new(VectorGuardConfig {
+        collection_allowlist: vec!["docs".into()],
+        namespace_allowlist: Some(vec!["tenant-a".into()]),
+        field_paths: VectorFieldPaths {
+            collection: vec!["payload.index".into()],
+            namespace: vec!["payload.routing.namespace".into()],
+            operation: vec!["payload.action".into()],
+            top_k: vec!["payload.options.top_k".into()],
+        },
+        ..Default::default()
+    });
+    let scope = ChioScope {
+        grants: vec![grant(vec![Constraint::MaxRowsReturned(50)])],
+        ..Default::default()
+    };
+    let verdict = evaluate(
+        &guard,
+        "pinecone_query",
+        serde_json::json!({
+            "payload": {
+                "index": "docs",
+                "routing": {"namespace": "tenant-a"},
+                "action": "query",
+                "options": {"top_k": "10"}
+            }
+        }),
+        scope,
+    );
+    assert_eq!(verdict, Verdict::Allow);
 }
 
 #[test]

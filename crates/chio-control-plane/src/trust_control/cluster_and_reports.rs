@@ -765,6 +765,7 @@ pub(crate) fn build_cluster_state(
     config: &TrustServiceConfig,
     local_addr: SocketAddr,
 ) -> Result<Option<Arc<Mutex<ClusterRuntimeState>>>, CliError> {
+    config.validate()?;
     if !config.peer_urls.is_empty() && config.authority_seed_path.is_some() {
         return Err(CliError::cli_other_error(
             "clustered trust control requires --authority-db instead of --authority-seed-file"
@@ -1545,6 +1546,21 @@ fn normalize_cluster_config_url(value: &str, allow_local: bool) -> Result<String
                 "cluster URL scheme `{scheme}` is not allowed"
             )));
         }
+    }
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err(CliError::cli_other_error(
+            "cluster URL must not contain username or password material".to_string(),
+        ));
+    }
+    if parsed.query().is_some() {
+        return Err(CliError::cli_other_error(
+            "cluster URL must not contain a query string".to_string(),
+        ));
+    }
+    if parsed.fragment().is_some() {
+        return Err(CliError::cli_other_error(
+            "cluster URL must not contain a fragment".to_string(),
+        ));
     }
     if allow_local {
         return Ok(normalized);
@@ -2968,22 +2984,9 @@ pub(crate) fn resolve_control_read_principal(
     headers: &HeaderMap,
     config: &TrustServiceConfig,
 ) -> Result<ResolvedControlReadPrincipal, Response> {
-    if config.service_token.is_empty() {
-        return Err(plain_http_error(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "control service token must be non-empty",
-        ));
-    }
-    if config
-        .tenant_read_tokens
-        .values()
-        .any(|token| token == &config.service_token)
-    {
-        return Err(plain_http_error(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "control tenant read token must not equal service token",
-        ));
-    }
+    config
+        .validate()
+        .map_err(|error| plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string()))?;
     let Some(provided) = control_bearer_token(headers) else {
         return Err(missing_or_invalid_control_token());
     };
@@ -4278,6 +4281,21 @@ mod cluster_and_reports_tests {
     }
 
     #[test]
+    fn cluster_peer_url_validation_rejects_ambient_authority_material() {
+        for peer_url in [
+            "https://user:pass@control.example.test:443",
+            "http://127.0.0.1:3300?token=secret",
+            "http://127.0.0.1:3300#fragment",
+        ] {
+            let error = normalize_cluster_config_url(peer_url, true).test_unwrap_err();
+            assert!(
+                error.to_string().contains("cluster URL"),
+                "unexpected error for peer URL `{peer_url}`: {error}",
+            );
+        }
+    }
+
+    #[test]
     fn compute_cluster_consensus_tracks_role_quorum_and_election_terms() {
         let mut cluster = ClusterRuntimeState {
             self_url: "http://node-a".to_string(),
@@ -4804,6 +4822,44 @@ mod cluster_and_reports_tests {
             validate_metered_billing_reconciliation_request(&request),
             Err("evidenceSha256 must not be empty when provided".to_string())
         );
+    }
+
+    #[test]
+    fn trust_service_config_boundary_rejects_invalid_auth_material_and_cluster_timing() {
+        let mut headers = HeaderMap::new();
+        headers.insert(AUTHORIZATION, HeaderValue::from_static("Bearer token"));
+
+        let mut blank_tenant_id = base_config();
+        blank_tenant_id
+            .tenant_read_tokens
+            .insert(" ".to_string(), "tenant-read-token".to_string());
+        assert_eq!(
+            resolve_control_read_principal(&headers, &blank_tenant_id)
+                .test_unwrap_err()
+                .status(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+
+        let mut blank_tenant_token = base_config();
+        blank_tenant_token
+            .tenant_read_tokens
+            .insert("tenant-a".to_string(), "   ".to_string());
+        assert_eq!(
+            resolve_control_read_principal(&headers, &blank_tenant_token)
+                .test_unwrap_err()
+                .status(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+
+        let mut zero_cluster_interval = base_config();
+        zero_cluster_interval.advertise_url = Some("http://127.0.0.1:3200".to_string());
+        zero_cluster_interval.peer_urls = vec!["http://127.0.0.1:3300".to_string()];
+        zero_cluster_interval.cluster_sync_interval = Duration::ZERO;
+        let error = build_cluster_state(&zero_cluster_interval, zero_cluster_interval.listen)
+            .test_unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("cluster sync interval must be non-zero"));
     }
 
     #[test]

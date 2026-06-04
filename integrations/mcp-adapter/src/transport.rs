@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 const MCP_PROTOCOL_VERSION: &str = "2025-06-18";
+const REDACTED_AUTHORIZATION_HEADER: &str = "Bearer <redacted>";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct StreamableHttpExchange {
@@ -61,9 +62,15 @@ impl StreamableHttpTransportBuilder {
         let bearer_token = self.bearer_token.ok_or_else(|| {
             AdapterError::ConnectionFailed("OAuth bearer token is required".to_string())
         })?;
-        if bearer_token.trim().is_empty() {
+        if bearer_token.trim().is_empty()
+            || bearer_token.trim() != bearer_token
+            || bearer_token
+                .chars()
+                .any(|character| character.is_ascii_control() || character.is_ascii_whitespace())
+        {
             return Err(AdapterError::ConnectionFailed(
-                "OAuth bearer token is required".to_string(),
+                "OAuth bearer token must be non-empty and must not contain whitespace or control characters"
+                    .to_string(),
             ));
         }
         Ok(StreamableHttpTransport {
@@ -90,7 +97,7 @@ impl StreamableHttpTransport {
         Ok(exchanges.clone())
     }
 
-    fn push_exchange(&self, body: serde_json::Value) -> Result<(), AdapterError> {
+    fn wire_headers(&self) -> BTreeMap<String, String> {
         let mut headers = BTreeMap::new();
         headers.insert("accept".to_string(), "application/json".to_string());
         headers.insert(
@@ -102,10 +109,23 @@ impl StreamableHttpTransport {
             "mcp-protocol-version".to_string(),
             MCP_PROTOCOL_VERSION.to_string(),
         );
+        headers
+    }
+
+    fn redacted_exchange_headers(&self) -> BTreeMap<String, String> {
+        let mut headers = self.wire_headers();
+        headers.insert(
+            "authorization".to_string(),
+            REDACTED_AUTHORIZATION_HEADER.to_string(),
+        );
+        headers
+    }
+
+    fn push_exchange(&self, body: serde_json::Value) -> Result<(), AdapterError> {
         let exchange = StreamableHttpExchange {
             method: "POST".to_string(),
             path: self.endpoint_path.clone(),
-            headers,
+            headers: self.redacted_exchange_headers(),
             body,
         };
         let mut exchanges = self.exchanges.lock().map_err(|error| {

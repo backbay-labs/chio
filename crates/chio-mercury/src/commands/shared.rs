@@ -93,11 +93,28 @@ fn write_bundle_manifests(
     fs::create_dir_all(dir)?;
     let mut paths = Vec::with_capacity(manifests.len());
     for (index, manifest) in manifests.iter().enumerate() {
-        let path = dir.join(format!("{:02}-{}.json", index + 1, manifest.bundle_id));
+        let path = dir.join(bundle_manifest_file_name(index, &manifest.bundle_id)?);
         write_json_file(&path, manifest)?;
         paths.push(path);
     }
     Ok(paths)
+}
+
+fn bundle_manifest_file_name(index: usize, bundle_id: &str) -> Result<String, CliError> {
+    if bundle_id.trim() != bundle_id
+        || bundle_id.is_empty()
+        || bundle_id == "."
+        || bundle_id == ".."
+        || bundle_id.contains('/')
+        || bundle_id.contains('\\')
+        || bundle_id.contains(':')
+        || bundle_id.chars().any(char::is_control)
+    {
+        return Err(CliError::Other(format!(
+            "bundle_id {bundle_id:?} is not safe for a bundle manifest file name"
+        )));
+    }
+    Ok(format!("{:02}-{bundle_id}.json", index + 1))
 }
 
 fn build_proof_package(
@@ -1923,4 +1940,38 @@ fn build_broader_distribution_profile(
         .validate()
         .map_err(|error| CliError::Other(error.to_string()))?;
     Ok(profile)
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
+mod shared_tests {
+    use super::*;
+
+    #[test]
+    fn write_bundle_manifests_rejects_bundle_id_path_separator() {
+        let dir = unique_temp_dir("mercury-bundle-manifest-stem");
+        let mut safe = chio_mercury_core::sample_mercury_bundle_manifest();
+        safe.bundle_id = "safe-bundle".to_string();
+        let mut unsafe_manifest = chio_mercury_core::sample_mercury_bundle_manifest();
+        unsafe_manifest.bundle_id = "unsafe/bundle".to_string();
+
+        let error = write_bundle_manifests(&dir, &[safe, unsafe_manifest]).unwrap_err();
+
+        assert!(error.to_string().contains("bundle_id"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn write_bundle_manifests_rejects_bundle_id_control_character() {
+        let dir = unique_temp_dir("mercury-bundle-manifest-stem");
+        let mut safe = chio_mercury_core::sample_mercury_bundle_manifest();
+        safe.bundle_id = "safe-bundle".to_string();
+        let mut unsafe_manifest = chio_mercury_core::sample_mercury_bundle_manifest();
+        unsafe_manifest.bundle_id = "unsafe\tbundle".to_string();
+
+        let error = write_bundle_manifests(&dir, &[safe, unsafe_manifest]).unwrap_err();
+
+        assert!(error.to_string().contains("bundle_id"));
+        let _ = fs::remove_dir_all(dir);
+    }
 }

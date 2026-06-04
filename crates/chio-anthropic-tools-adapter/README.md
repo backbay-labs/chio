@@ -77,8 +77,9 @@ are open:
 }
 ```
 
-The adapter maps Anthropic's versioned wire names to the stable manifest
-entries:
+The adapter maps Anthropic's versioned wire-name families to the stable
+manifest entries. Date suffixes remain provider wire detail; the feature gate
+and manifest gate classify the whole family, not only the examples below:
 
 | Anthropic wire name        | Manifest entry |
 | -------------------------- | -------------- |

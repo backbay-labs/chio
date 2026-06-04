@@ -19,6 +19,7 @@ pub use chio_metrics_spec::{
 
 pub const ANCHOR_OUTCOME_SUCCESS: &str = "success";
 pub const ANCHOR_OUTCOME_ERROR: &str = "error";
+const ANCHOR_OUTCOMES: [&str; 2] = [ANCHOR_OUTCOME_SUCCESS, ANCHOR_OUTCOME_ERROR];
 
 static ANCHOR_ROUND_LATENCY_NS_SUM: AtomicU64 = AtomicU64::new(0);
 static ANCHOR_ROUND_LATENCY_ERROR_NS_SUM: AtomicU64 = AtomicU64::new(0);
@@ -63,14 +64,14 @@ struct AnchorLatencySeries {
 /// Observe an anchor round latency sample in nanoseconds.
 pub fn observe_anchor_round_latency_nanos(outcome: &str, nanos: u64) {
     let series = anchor_latency_series(outcome);
-    series.sum.fetch_add(nanos, Ordering::Relaxed);
-    series.count.fetch_add(1, Ordering::Relaxed);
+    atomic_saturating_add(series.sum, nanos);
+    atomic_saturating_add(series.count, 1);
     for (index, upper) in ANCHOR_ROUND_BUCKET_UPPER_NANOS.iter().enumerate() {
         if nanos <= *upper {
-            series.buckets[index].fetch_add(1, Ordering::Relaxed);
+            atomic_saturating_add(&series.buckets[index], 1);
         }
     }
-    series.buckets[ANCHOR_ROUND_BUCKET_UPPER_NANOS.len()].fetch_add(1, Ordering::Relaxed);
+    atomic_saturating_add(&series.buckets[ANCHOR_ROUND_BUCKET_UPPER_NANOS.len()], 1);
 }
 
 #[must_use]
@@ -90,7 +91,7 @@ pub fn render_anchor_metrics_prometheus() -> String {
     output.push_str("# TYPE ");
     output.push_str(CHIO_ANCHOR_ROUND_LATENCY_SECONDS);
     output.push_str(" histogram\n");
-    for outcome in [ANCHOR_OUTCOME_SUCCESS, ANCHOR_OUTCOME_ERROR] {
+    for outcome in ANCHOR_OUTCOMES {
         render_anchor_latency_histogram(&mut output, outcome);
     }
     output
@@ -156,6 +157,17 @@ fn format_seconds(nanos: u64) -> String {
     format!("{:.9}", (nanos as f64) / (NANOS_PER_SECOND as f64))
 }
 
+fn atomic_saturating_add(value: &AtomicU64, addend: u64) {
+    let mut current = value.load(Ordering::Relaxed);
+    loop {
+        let next = current.saturating_add(addend);
+        match value.compare_exchange_weak(current, next, Ordering::Relaxed, Ordering::Relaxed) {
+            Ok(_) => return,
+            Err(observed) => current = observed,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -166,5 +178,31 @@ mod tests {
             CHIO_ANCHOR_ROUND_LATENCY_SECONDS,
             "chio_anchor_round_latency_seconds"
         );
+    }
+
+    #[test]
+    fn atomic_saturating_add_caps_at_u64_max() {
+        let value = AtomicU64::new(u64::MAX - 1);
+
+        atomic_saturating_add(&value, 5);
+
+        assert_eq!(value.load(Ordering::Relaxed), u64::MAX);
+    }
+
+    #[test]
+    fn anchor_outcomes_are_rendered_in_stable_order() {
+        assert_eq!(
+            ANCHOR_OUTCOMES,
+            [ANCHOR_OUTCOME_SUCCESS, ANCHOR_OUTCOME_ERROR]
+        );
+
+        let rendered = render_anchor_metrics_prometheus();
+        let Some(success) = rendered.find(r#"outcome="success""#) else {
+            panic!("success outcome rendered");
+        };
+        let Some(error) = rendered.find(r#"outcome="error""#) else {
+            panic!("error outcome rendered");
+        };
+        assert!(success < error);
     }
 }

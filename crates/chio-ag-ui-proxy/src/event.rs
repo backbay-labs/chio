@@ -85,12 +85,28 @@ pub enum EventClassification {
 }
 
 impl AgUiEvent {
+    pub(crate) fn validate_boundary(&self) -> Result<(), String> {
+        validate_identity_field("event_id", &self.event_id)?;
+        validate_identity_field("agent_id", &self.agent_id)?;
+        if let Some(session_id) = &self.session_id {
+            validate_identity_field("session_id", session_id)?;
+        }
+        if let Some(target) = &self.target {
+            validate_identity_field("target.component_type", &target.component_type)?;
+            if let Some(component_id) = &target.component_id {
+                validate_identity_field("target.component_id", component_id)?;
+            }
+        }
+        Ok(())
+    }
+
     /// Returns `true` if this event modifies UI state.
     #[must_use]
     pub fn is_mutating(&self) -> bool {
         matches!(
             self.classification,
             EventClassification::Mutate
+                | EventClassification::Navigate
                 | EventClassification::Create
                 | EventClassification::Destroy
                 | EventClassification::Submit
@@ -102,6 +118,18 @@ impl AgUiEvent {
     pub fn is_display_only(&self) -> bool {
         matches!(self.classification, EventClassification::Display)
     }
+}
+
+fn validate_identity_field(field_name: &str, value: &str) -> Result<(), String> {
+    if value.trim().is_empty() {
+        return Err(format!("{field_name} must be a non-empty string"));
+    }
+    if value.trim() != value || value.chars().any(char::is_control) {
+        return Err(format!(
+            "{field_name} must be unpadded and contain no control characters"
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -141,6 +169,22 @@ mod tests {
             event_type: EventType::StateUpdate,
             target: None,
             classification: EventClassification::Mutate,
+            payload: serde_json::Value::Null,
+        };
+        assert!(event.is_mutating());
+        assert!(!event.is_display_only());
+    }
+
+    #[test]
+    fn navigation_events_are_mutating() {
+        let event = AgUiEvent {
+            event_id: "evt-nav".to_string(),
+            timestamp: 0,
+            agent_id: "a".to_string(),
+            session_id: None,
+            event_type: EventType::Navigation,
+            target: None,
+            classification: EventClassification::Navigate,
             payload: serde_json::Value::Null,
         };
         assert!(event.is_mutating());

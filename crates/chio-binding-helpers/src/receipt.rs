@@ -114,14 +114,40 @@ pub fn verify_receipt_with_trusted_signers(
     })
 }
 
+pub fn verify_receipt_with_trusted_signer_hex<S: AsRef<str>>(
+    receipt: &ChioReceipt,
+    trusted_signer_hex: &[S],
+) -> Result<ReceiptVerification> {
+    let trusted_signers = parse_trusted_signer_hex(trusted_signer_hex)?;
+    verify_receipt_with_trusted_signers(receipt, &trusted_signers)
+}
+
 pub fn verify_receipt_json(input: &str) -> Result<ReceiptVerification> {
     let receipt = parse_receipt_json(input)?;
     verify_receipt(&receipt)
 }
 
+pub fn verify_receipt_json_with_trusted_signer_hex<S: AsRef<str>>(
+    input: &str,
+    trusted_signer_hex: &[S],
+) -> Result<ReceiptVerification> {
+    let receipt = parse_receipt_json(input)?;
+    verify_receipt_with_trusted_signer_hex(&receipt, trusted_signer_hex)
+}
+
+fn parse_trusted_signer_hex<S: AsRef<str>>(trusted_signer_hex: &[S]) -> Result<Vec<PublicKey>> {
+    trusted_signer_hex
+        .iter()
+        .map(|value| PublicKey::from_hex(value.as_ref()).map_err(Into::into))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{verify_receipt, ReceiptDecisionKind};
+    use super::{
+        verify_receipt, verify_receipt_json_with_trusted_signer_hex,
+        verify_receipt_with_trusted_signer_hex, ReceiptDecisionKind,
+    };
     use chio_core::{
         sha256_hex, ChioReceipt, ChioReceiptBody, Decision, GuardEvidence, Keypair, ToolCallAction,
     };
@@ -193,6 +219,41 @@ mod tests {
         assert!(verification.signer_trusted);
         assert!(verification.ok);
         assert!(verification.authorized);
+        Ok(())
+    }
+
+    #[test]
+    fn verify_valid_receipt_with_trusted_signer_hex_is_ok() -> crate::Result<()> {
+        let receipt = sample_receipt()?;
+        let trusted = vec![receipt.kernel_key.to_hex()];
+        let verification = verify_receipt_with_trusted_signer_hex(&receipt, &trusted)?;
+
+        assert!(verification.signer_trusted);
+        assert!(verification.ok);
+        assert!(verification.authorized);
+        Ok(())
+    }
+
+    #[test]
+    fn verify_receipt_json_with_trusted_signer_hex_is_ok() -> crate::Result<()> {
+        let receipt = sample_receipt()?;
+        let input = serde_json::to_string(&receipt)?;
+        let trusted = vec![receipt.kernel_key.to_hex()];
+        let verification = verify_receipt_json_with_trusted_signer_hex(&input, &trusted)?;
+
+        assert!(verification.signer_trusted);
+        assert!(verification.ok);
+        assert!(verification.authorized);
+        Ok(())
+    }
+
+    #[test]
+    fn invalid_trusted_signer_hex_fails_closed() -> crate::Result<()> {
+        let receipt = sample_receipt()?;
+        let error =
+            verify_receipt_with_trusted_signer_hex(&receipt, &["not-a-public-key"]).unwrap_err();
+
+        assert_eq!(error.code(), crate::ErrorCode::InvalidHex);
         Ok(())
     }
 

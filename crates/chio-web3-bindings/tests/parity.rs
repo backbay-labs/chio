@@ -1,3 +1,5 @@
+#![cfg(feature = "web3")]
+
 use std::collections::BTreeSet;
 
 use chio_core::web3::{
@@ -49,24 +51,29 @@ fn canonical_param_type(param: &Value) -> String {
 fn signature_set(artifact: &str, kind: &str) -> BTreeSet<String> {
     let parsed: Value = serde_json::from_str(artifact)
         .unwrap_or_else(|error| panic!("parse ABI artifact: {error}"));
-    abi_items(&parsed)
+    let mut signatures = BTreeSet::new();
+    for item in abi_items(&parsed)
         .iter()
         .filter(|item| item["type"].as_str() == Some(kind))
-        .map(|item| {
-            let name = item["name"]
-                .as_str()
-                .unwrap_or_else(|| panic!("{kind} ABI item name is required"));
-            let inputs = item["inputs"]
-                .as_array()
-                .unwrap_or_else(|| panic!("{kind} ABI item inputs are required"));
-            let parameters = inputs
-                .iter()
-                .map(canonical_param_type)
-                .collect::<Vec<_>>()
-                .join(",");
-            format!("{name}({parameters})")
-        })
-        .collect()
+    {
+        let name = item["name"]
+            .as_str()
+            .unwrap_or_else(|| panic!("{kind} ABI item name is required"));
+        let inputs = item["inputs"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{kind} ABI item inputs are required"));
+        let parameters = inputs
+            .iter()
+            .map(canonical_param_type)
+            .collect::<Vec<_>>()
+            .join(",");
+        let signature = format!("{name}({parameters})");
+        assert!(
+            signatures.insert(signature.clone()),
+            "duplicate {kind} ABI signature: {signature}"
+        );
+    }
+    signatures
 }
 
 fn generated_signature_set(signatures: &[&str]) -> BTreeSet<String> {
@@ -74,6 +81,19 @@ fn generated_signature_set(signatures: &[&str]) -> BTreeSet<String> {
         .iter()
         .map(|signature| (*signature).to_string())
         .collect()
+}
+
+#[test]
+#[should_panic(expected = "duplicate function ABI signature")]
+fn signature_set_rejects_duplicate_abi_entries() {
+    let artifact = r#"{
+        "abi": [
+            {"type": "function", "name": "release", "inputs": [{"type": "bytes32"}]},
+            {"type": "function", "name": "release", "inputs": [{"type": "bytes32"}]}
+        ]
+    }"#;
+
+    let _ = signature_set(artifact, "function");
 }
 
 fn assert_generated_bindings_match_interface_artifact(

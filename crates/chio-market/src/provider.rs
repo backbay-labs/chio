@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::capability::MonetaryAmount;
 use crate::receipt::SignedExportEnvelope;
 
-use crate::MAX_LIABILITY_PROVIDER_LIST_LIMIT;
+use crate::{bounded_market_query_limit, MAX_LIABILITY_PROVIDER_LIST_LIMIT};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
@@ -245,9 +245,7 @@ impl Default for LiabilityProviderListQuery {
 impl LiabilityProviderListQuery {
     #[must_use]
     pub fn limit_or_default(&self) -> usize {
-        self.limit
-            .unwrap_or(50)
-            .clamp(1, MAX_LIABILITY_PROVIDER_LIST_LIMIT)
+        bounded_market_query_limit(self.limit, MAX_LIABILITY_PROVIDER_LIST_LIMIT)
     }
 
     #[must_use]

@@ -137,6 +137,7 @@ impl StaticTenantPolicyMap {
     /// configuration error, not a precedence rule).
     pub fn from_verified(policies: Vec<TenantPolicy>) -> Result<Self, AttestError> {
         for (i, a) in policies.iter().enumerate() {
+            a.validate_structural()?;
             if a.oidc_issuers.len() != 1 {
                 return Err(AttestError::Malformed(format!(
                     "tenant_id {:?} must declare exactly one oidc_issuer for StaticTenantPolicyMap",
@@ -175,26 +176,54 @@ impl TenantPolicyResolver for StaticTenantPolicyMap {
             .iter()
             .find(|p| p.tenant_id == tenant_id)
             .ok_or_else(|| AttestError::Malformed(format!("unknown tenant_id {tenant_id:?}")))?;
-        if policy.identity_regexps.is_empty() {
-            return Err(AttestError::Malformed(
-                "policy has no identity_regexps".to_owned(),
-            ));
-        }
-        let regex = if policy.identity_regexps.len() == 1 {
-            policy.identity_regexps[0].clone()
-        } else {
-            policy
-                .identity_regexps
-                .iter()
-                .map(|pattern| format!("(?:{pattern})"))
-                .collect::<Vec<_>>()
-                .join("|")
-        };
+        let regex = compose_identity_regexps(&policy.identity_regexps)?;
         let issuer = policy
             .oidc_issuers
             .first()
             .ok_or_else(|| AttestError::Malformed("policy has no oidc_issuers".to_owned()))?;
         Ok(ExpectedIdentity::doc_hidden_inline(regex, issuer.clone()))
+    }
+}
+
+fn compose_identity_regexps(patterns: &[String]) -> Result<String, AttestError> {
+    if patterns.is_empty() {
+        return Err(AttestError::Malformed(
+            "policy has no identity_regexps".to_owned(),
+        ));
+    }
+    if patterns.len() == 1 {
+        return Ok(patterns[0].clone());
+    }
+    Ok(patterns
+        .iter()
+        .map(|pattern| format!("(?:{pattern})"))
+        .collect::<Vec<_>>()
+        .join("|"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{compose_identity_regexps, AttestError};
+
+    #[test]
+    fn compose_identity_regexps_preserves_single_and_groups_multiple() -> Result<(), AttestError> {
+        assert_eq!(
+            compose_identity_regexps(&["^single$".to_string()])?,
+            "^single$"
+        );
+        assert_eq!(
+            compose_identity_regexps(&["one.*".to_string(), "two.*".to_string()])?,
+            "(?:one.*)|(?:two.*)"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn compose_identity_regexps_rejects_empty_patterns() {
+        assert!(matches!(
+            compose_identity_regexps(&[]),
+            Err(AttestError::Malformed(message)) if message.contains("identity_regexps")
+        ));
     }
 }
 

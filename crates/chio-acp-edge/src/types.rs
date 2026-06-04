@@ -77,6 +77,59 @@ pub enum AcpTaskStatus {
     Cancelled,
 }
 
+impl AcpTaskStatus {
+    pub fn is_terminal(self) -> bool {
+        matches!(self, Self::Completed | Self::Failed | Self::Cancelled)
+    }
+}
+
+/// Result of handling a JSON-RPC message.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AcpJsonRpcResponse {
+    value: Option<Value>,
+}
+
+impl AcpJsonRpcResponse {
+    pub fn response(value: Value) -> Self {
+        Self { value: Some(value) }
+    }
+
+    pub fn notification() -> Self {
+        Self { value: None }
+    }
+
+    pub fn from_optional(value: Option<Value>) -> Self {
+        Self { value }
+    }
+
+    pub fn as_value(&self) -> Option<&Value> {
+        self.value.as_ref()
+    }
+
+    pub fn get(&self, key: &str) -> Option<&Value> {
+        self.value.as_ref().and_then(|value| value.get(key))
+    }
+
+    pub fn into_value(self) -> Option<Value> {
+        self.value
+    }
+
+    pub fn is_notification(&self) -> bool {
+        self.value.is_none()
+    }
+}
+
+impl std::ops::Index<&str> for AcpJsonRpcResponse {
+    type Output = Value;
+
+    fn index(&self, index: &str) -> &Self::Output {
+        match self.value.as_ref() {
+            Some(value) => &value[index],
+            None => panic!("JSON-RPC notification has no response"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AcpInvocationTask {

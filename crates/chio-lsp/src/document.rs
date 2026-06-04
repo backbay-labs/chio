@@ -103,11 +103,7 @@ impl DocumentCache {
     }
 
     pub fn replace(&self, uri: &Url, text: String, version: i32) -> Option<DocumentEntry> {
-        let language = self
-            .inner
-            .get(uri)
-            .map(|e| e.language)
-            .unwrap_or_else(|| DocumentLanguage::detect(uri, None));
+        let language = self.inner.get(uri).map(|e| e.language)?;
         let entry = DocumentEntry::new(text, version, language);
         self.inner.insert(uri.clone(), entry.clone());
         Some(entry)
@@ -189,6 +185,18 @@ mod tests {
 
         let closed = cache.close(&uri).expect("close returns prior entry");
         assert_eq!(closed.version, 2);
+        assert!(cache.is_empty());
+    }
+
+    #[test]
+    fn replace_unknown_document_does_not_insert() {
+        let cache = DocumentCache::new();
+        let uri = Url::parse("file:///tmp/proj/chio.yaml").unwrap();
+
+        let updated = cache.replace(&uri, "version: 2\n".to_string(), 2);
+
+        assert!(updated.is_none());
+        assert!(cache.get(&uri).is_none());
         assert!(cache.is_empty());
     }
 }

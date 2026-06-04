@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use chio_test_support::loopback::{reserve_listen_addr, skip_when_loopback_bind_denied};
 use reqwest::blocking::Client;
 
 fn unique_revocation_db_path(prefix: &str) -> PathBuf {
@@ -29,13 +30,6 @@ fn workspace_root() -> PathBuf {
         .nth(2)
         .expect("workspace root")
         .to_path_buf()
-}
-
-fn reserve_listen_addr() -> std::net::SocketAddr {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind temp listener");
-    let addr = listener.local_addr().expect("listener addr");
-    drop(listener);
-    addr
 }
 
 struct ServerGuard {
@@ -176,6 +170,10 @@ fn trust_revoke_and_status_use_persisted_revocation_db() {
 
 #[test]
 fn trust_revoke_and_status_can_target_control_service() {
+    if skip_when_loopback_bind_denied("trust_revoke_and_status_can_target_control_service") {
+        return;
+    }
+
     let dir = unique_dir("chio-cli-trust-service");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");

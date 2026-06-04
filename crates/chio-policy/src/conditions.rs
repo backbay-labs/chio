@@ -12,29 +12,14 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// Maximum allowed nesting depth for compound conditions.
-const MAX_NESTING_DEPTH: usize = 8;
-
 /// Rule-block names a condition may gate. Must stay in sync with the fields
-/// of `models::Rules` and the match arms in `apply_conditions`.
+/// of `models::Rules`.
 /// `validate_condition_keys` rejects any condition key outside this set so a
 /// misspelled key cannot silently leave a rule active.
-pub const CONDITIONABLE_RULE_BLOCKS: [&str; 14] = [
-    "forbidden_paths",
-    "path_allowlist",
-    "egress",
-    "secret_patterns",
-    "patch_integrity",
-    "shell_commands",
-    "tool_access",
-    "computer_use",
-    "remote_desktop_channels",
-    "input_injection",
-    "browser_automation",
-    "code_execution",
-    "velocity",
-    "human_in_loop",
-];
+pub use crate::models::RULE_BLOCK_NAMES as CONDITIONABLE_RULE_BLOCKS;
+
+/// Maximum allowed nesting depth for compound conditions.
+const MAX_NESTING_DEPTH: usize = 8;
 
 /// Reject condition maps whose keys are not known rule-block names. The
 /// reference evaluator calls this at the start of `evaluate_with_context`;

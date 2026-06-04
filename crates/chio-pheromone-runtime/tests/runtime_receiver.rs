@@ -758,6 +758,28 @@ fn peer_weights_loader_rejects_unknown_fields_before_serde() {
 }
 
 #[test]
+fn peer_weights_loader_rejects_duplicate_kernel_ids() {
+    let value = serde_json::json!({
+        "schema": "chio.pheromone.peer-weights.v1",
+        "reputationEpoch": 42,
+        "weights": [
+            {
+                "kernelId": "did:chio:llamaworks",
+                "weight": 1.0
+            },
+            {
+                "kernelId": "did:chio:llamaworks",
+                "weight": 0.5
+            }
+        ]
+    });
+
+    let err = peer_weights_from_json(&serde_json::to_string(&value).unwrap()).unwrap_err();
+
+    assert_eq!(err.code(), "invalid_field");
+}
+
+#[test]
 fn runtime_policy_loader_rejects_overlapping_scarcity_windows() {
     let mut value = runtime_policy_value();
     let mut overlapping = value["admission"]["scarcityPolicies"][0].clone();

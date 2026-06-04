@@ -166,12 +166,7 @@ impl LocalAuthorizationServer {
         }
 
         let scopes = resolve_requested_scopes(form.scope.as_deref(), &self.supported_scopes)?;
-        let code = format!(
-            "code-{}",
-            sha256_hex(
-                format!("{}:{}:{}", form.client_id, form.redirect_uri, unix_now()).as_bytes()
-            )
-        );
+        let code = generate_authorization_code();
         let grant = AuthorizationCodeGrant {
             client_id: form.client_id.clone(),
             redirect_uri: form.redirect_uri.clone(),
@@ -689,6 +684,11 @@ fn pkce_s256(verifier: &str) -> String {
     URL_SAFE_NO_PAD.encode(hasher.finalize())
 }
 
+fn generate_authorization_code() -> String {
+    let entropy = Keypair::generate().public_key().to_hex();
+    format!("code-{}", sha256_hex(entropy.as_bytes()))
+}
+
 fn sign_jwt(keypair: &Keypair, claims: &serde_json::Value) -> String {
     let header = URL_SAFE_NO_PAD.encode(
         serde_json::to_vec(&json!({
@@ -834,6 +834,12 @@ fn validate_session_auth_context(
         return Err(plain_http_error(
             StatusCode::FORBIDDEN,
             "authenticated transport does not match session",
+        ));
+    }
+    if request_auth_context.origin != session_auth_context.origin {
+        return Err(plain_http_error(
+            StatusCode::FORBIDDEN,
+            "authenticated origin does not match session",
         ));
     }
 

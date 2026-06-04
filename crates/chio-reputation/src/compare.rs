@@ -256,17 +256,28 @@ pub fn build_imported_reputation_signal(
     let mut accepted = true;
     let mut reasons = Vec::new();
 
-    if issuer_identity.issuer.is_empty() {
+    if !validate_imported_identity_field("share id", &provenance.share_id, true, &mut reasons) {
         accepted = false;
-        reasons.push("imported evidence share is missing issuer identity".to_string());
     }
-    if provenance.partner.trim().is_empty() {
+    if !validate_imported_identity_field("issuer identity", &provenance.issuer, true, &mut reasons)
+    {
         accepted = false;
-        reasons.push("imported evidence share is missing partner boundary identity".to_string());
     }
-    if policy.require_signer_identity && issuer_identity.signer_public_key.is_empty() {
+    if !validate_imported_identity_field(
+        "partner boundary identity",
+        &provenance.partner,
+        true,
+        &mut reasons,
+    ) {
         accepted = false;
-        reasons.push("imported evidence share is missing signer identity".to_string());
+    }
+    if !validate_imported_identity_field(
+        "signer identity",
+        &provenance.signer_public_key,
+        policy.require_signer_identity,
+        &mut reasons,
+    ) {
+        accepted = false;
     }
     if policy.require_proofs && !provenance.require_proofs {
         accepted = false;
@@ -276,12 +287,12 @@ pub fn build_imported_reputation_signal(
         && !policy
             .allowed_issuers
             .iter()
-            .any(|issuer| issuer == &provenance.issuer)
+            .any(|issuer| issuer == &issuer_identity.issuer)
     {
         accepted = false;
         reasons.push(format!(
             "issuer `{}` falls outside the imported-trust allowlist",
-            provenance.issuer
+            issuer_identity.issuer
         ));
     }
     if !policy.allowed_signer_public_keys.is_empty()
@@ -293,7 +304,7 @@ pub fn build_imported_reputation_signal(
         accepted = false;
         reasons.push(format!(
             "signer `{}` falls outside the imported-trust signer allowlist",
-            provenance.signer_public_key
+            issuer_identity.signer_public_key
         ));
     }
     if let Some(max_age_days) = policy.max_signal_age_days {
@@ -336,6 +347,34 @@ pub fn build_imported_reputation_signal(
         scorecard,
         attenuated_composite_score,
     }
+}
+
+fn validate_imported_identity_field(
+    label: &str,
+    value: &str,
+    required: bool,
+    reasons: &mut Vec<String>,
+) -> bool {
+    if value.trim().is_empty() {
+        if required {
+            reasons.push(format!("imported evidence share is missing {label}"));
+            return false;
+        }
+        return true;
+    }
+    if value.trim() != value {
+        reasons.push(format!(
+            "imported evidence share {label} must not contain surrounding whitespace"
+        ));
+        return false;
+    }
+    if value.chars().any(char::is_control) {
+        reasons.push(format!(
+            "imported evidence share {label} must not contain control characters"
+        ));
+        return false;
+    }
+    true
 }
 
 fn imported_trust_mode_label(mode: ImportedTrustMode) -> &'static str {
@@ -404,6 +443,42 @@ mod imported_trust_tests {
             .reasons
             .iter()
             .any(|reason| reason.contains("signer")));
+    }
+
+    #[test]
+    fn imported_signal_rejects_ambiguous_identity_material() {
+        let mut provenance = sample_provenance();
+        provenance.share_id = " ".to_string();
+        provenance.issuer = " operator-alpha".to_string();
+        provenance.partner = "operator-beta ".to_string();
+        provenance.signer_public_key = " ed25519:issuer-alpha".to_string();
+
+        let signal = build_imported_reputation_signal(
+            "subject-1",
+            provenance,
+            &LocalReputationCorpus::default(),
+            300,
+            &ReputationConfig::default(),
+            &ImportedTrustPolicy::default(),
+        );
+
+        assert!(!signal.accepted);
+        assert!(signal
+            .reasons
+            .iter()
+            .any(|reason| reason.contains("share id")));
+        assert!(signal
+            .reasons
+            .iter()
+            .any(|reason| reason.contains("issuer identity")));
+        assert!(signal
+            .reasons
+            .iter()
+            .any(|reason| reason.contains("partner boundary identity")));
+        assert!(signal
+            .reasons
+            .iter()
+            .any(|reason| reason.contains("signer identity")));
     }
 
     #[test]

@@ -1,4 +1,5 @@
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct A2aToolInput {
     #[serde(default)]
     message: Option<String>,
@@ -37,6 +38,7 @@ struct A2aToolInput {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct A2aGetTaskToolInput {
     id: String,
     #[serde(default, alias = "historyLength")]
@@ -44,11 +46,13 @@ struct A2aGetTaskToolInput {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct A2aSubscribeTaskToolInput {
     id: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct A2aCancelTaskToolInput {
     id: String,
     #[serde(default)]
@@ -56,6 +60,7 @@ struct A2aCancelTaskToolInput {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct A2aAuthenticationInfoToolInput {
     scheme: String,
     #[serde(default)]
@@ -63,6 +68,7 @@ struct A2aAuthenticationInfoToolInput {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct A2aCreatePushNotificationConfigToolInput {
     task_id: String,
     #[serde(default)]
@@ -75,12 +81,14 @@ struct A2aCreatePushNotificationConfigToolInput {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct A2aPushNotificationConfigRefToolInput {
     task_id: String,
     id: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct A2aListPushNotificationConfigsToolInput {
     task_id: String,
     #[serde(default, alias = "pageSize")]
@@ -140,6 +148,48 @@ enum A2aSecuritySchemeKind {
     Unsupported(String),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct A2aSkillInputSurface {
+    accepts_text: bool,
+    accepts_json: bool,
+}
+
+impl A2aSkillInputSurface {
+    fn from_modes(modes: &[String]) -> Self {
+        let mut surface = Self {
+            accepts_text: false,
+            accepts_json: false,
+        };
+        if modes.is_empty() {
+            surface.accepts_text = true;
+            surface.accepts_json = true;
+            return surface;
+        }
+        for mode in modes {
+            let essence = input_mode_essence(mode);
+            if essence.eq_ignore_ascii_case("text") || essence.eq_ignore_ascii_case("text/plain") {
+                surface.accepts_text = true;
+            } else if essence.eq_ignore_ascii_case("json")
+                || essence.eq_ignore_ascii_case("application/json")
+            {
+                surface.accepts_json = true;
+            }
+        }
+        surface
+    }
+
+    fn is_projectable(self) -> bool {
+        self.accepts_text || self.accepts_json
+    }
+}
+
+fn input_mode_essence(mode: &str) -> &str {
+    match mode.split_once(';') {
+        Some((essence, _parameters)) => essence.trim(),
+        None => mode.trim(),
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum AdapterError {
     #[error("invalid A2A URL: {0}")]
@@ -156,6 +206,9 @@ pub enum AdapterError {
 
     #[error("A2A agent card advertised no skills")]
     NoSkillsAdvertised,
+
+    #[error("A2A agent card advertised skills but none expose a Chio-projectable input mode")]
+    NoProjectableSkillsAdvertised,
 
     #[error("invalid A2A tool input: {0}")]
     InvalidToolInput(String),
@@ -187,6 +240,20 @@ fn build_manifest(
         A2aProtocolBinding::JsonRpc => "JSONRPC",
         A2aProtocolBinding::HttpJson => "HTTP+JSON",
     };
+    let tools = agent_card
+        .skills
+        .iter()
+        .filter_map(|skill| projectable_skill_input_surface(agent_card, skill).map(|_| skill))
+        .map(|skill| build_tool_definition(agent_card, skill))
+        .collect::<Result<Vec<_>, _>>()?;
+    if tools.is_empty() {
+        return if agent_card.skills.is_empty() {
+            Err(AdapterError::NoSkillsAdvertised)
+        } else {
+            Err(AdapterError::NoProjectableSkillsAdvertised)
+        };
+    }
+
     let manifest = ToolManifest {
         schema: "chio.manifest.v1".to_string(),
         server_id: server_id.to_string(),
@@ -196,7 +263,7 @@ fn build_manifest(
             agent_card.description
         )),
         version: server_version.to_string(),
-        tools: agent_card.skills.iter().map(build_tool_definition).collect(),
+        tools,
         server_tools: Vec::new(),
         required_permissions: None,
         public_key: public_key.to_string(),
@@ -206,7 +273,11 @@ fn build_manifest(
     Ok(manifest)
 }
 
-fn build_tool_definition(skill: &A2aAgentSkill) -> ToolDefinition {
+fn build_tool_definition(
+    agent_card: &A2aAgentCard,
+    skill: &A2aAgentSkill,
+) -> Result<ToolDefinition, AdapterError> {
+    let input_surface = skill_input_surface(agent_card, skill)?;
     let mut description = skill.description.clone();
     if !skill.tags.is_empty() {
         description.push_str(&format!("\n\nTags: {}", skill.tags.join(", ")));
@@ -215,144 +286,161 @@ fn build_tool_definition(skill: &A2aAgentSkill) -> ToolDefinition {
         description.push_str(&format!("\n\nExamples: {}", examples.join(" | ")));
     }
 
-    ToolDefinition {
+    let mut input_schema = json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "message": {
+                "type": "string",
+                "description": "Plain-text user content to send as an A2A text Part."
+            },
+            "data": {
+                "description": "Structured JSON payload to send as an A2A data Part."
+            },
+            "context_id": { "type": "string" },
+            "task_id": { "type": "string" },
+            "reference_task_ids": {
+                "type": "array",
+                "items": { "type": "string" }
+            },
+            "metadata": {
+                "type": "object",
+                "description": "Top-level A2A SendMessageRequest metadata. The adapter will merge metadata.chio.targetSkillId."
+            },
+            "message_metadata": {
+                "type": "object",
+                "description": "Metadata attached directly to the A2A Message."
+            },
+            "history_length": {
+                "type": "integer",
+                "minimum": 0
+            },
+            "return_immediately": { "type": "boolean" },
+            "stream": {
+                "type": "boolean",
+                "description": "When true, use A2A SendStreamingMessage and surface each A2A StreamResponse as one Chio stream chunk."
+            },
+            "get_task": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "id": { "type": "string" },
+                    "history_length": {
+                        "type": "integer",
+                        "minimum": 0
+                    }
+                },
+                "required": ["id"],
+                "description": "Adapter-local follow-up mode that issues A2A GetTask instead of SendMessage."
+            },
+            "subscribe_task": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "id": { "type": "string" }
+                },
+                "required": ["id"],
+                "description": "Adapter-local streaming follow-up mode that issues A2A SubscribeToTask instead of SendMessage."
+            },
+            "cancel_task": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "id": { "type": "string" },
+                    "metadata": { "type": "object" }
+                },
+                "required": ["id"],
+                "description": "Adapter-local follow-up mode that issues A2A CancelTask."
+            },
+            "create_push_notification_config": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "task_id": { "type": "string" },
+                    "id": { "type": "string" },
+                    "url": { "type": "string" },
+                    "token": { "type": "string" },
+                    "authentication": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                            "scheme": { "type": "string" },
+                            "credentials": { "type": "string" }
+                        },
+                        "required": ["scheme"]
+                    }
+                },
+                "required": ["task_id", "url"],
+                "description": "Adapter-local follow-up mode that issues A2A CreateTaskPushNotificationConfig."
+            },
+            "get_push_notification_config": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "task_id": { "type": "string" },
+                    "id": { "type": "string" }
+                },
+                "required": ["task_id", "id"],
+                "description": "Adapter-local follow-up mode that issues A2A GetTaskPushNotificationConfig."
+            },
+            "list_push_notification_configs": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "task_id": { "type": "string" },
+                    "page_size": { "type": "integer", "minimum": 0 },
+                    "page_token": { "type": "string" }
+                },
+                "required": ["task_id"],
+                "description": "Adapter-local follow-up mode that issues A2A ListTaskPushNotificationConfigs."
+            },
+            "delete_push_notification_config": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "task_id": { "type": "string" },
+                    "id": { "type": "string" }
+                },
+                "required": ["task_id", "id"],
+                "description": "Adapter-local follow-up mode that issues A2A DeleteTaskPushNotificationConfig."
+            }
+        }
+    });
+    let properties = input_schema
+        .get_mut("properties")
+        .and_then(Value::as_object_mut)
+        .ok_or_else(|| {
+            AdapterError::Protocol(
+                "internal A2A input schema template omitted properties".to_string(),
+            )
+        })?;
+    if !input_surface.accepts_text {
+        properties.remove("message");
+    }
+    if !input_surface.accepts_json {
+        properties.remove("data");
+    }
+    let mut one_of = vec![
+        json!({ "required": ["delete_push_notification_config"] }),
+        json!({ "required": ["list_push_notification_configs"] }),
+        json!({ "required": ["get_push_notification_config"] }),
+        json!({ "required": ["create_push_notification_config"] }),
+        json!({ "required": ["cancel_task"] }),
+        json!({ "required": ["subscribe_task"] }),
+        json!({ "required": ["get_task"] }),
+    ];
+    append_send_message_schema_requirement(&mut one_of, input_surface)?;
+    input_schema
+        .as_object_mut()
+        .ok_or_else(|| {
+            AdapterError::Protocol("internal A2A input schema template was not an object".to_string())
+        })?
+        .insert("oneOf".to_string(), Value::Array(one_of));
+
+    Ok(ToolDefinition {
         name: skill.id.clone(),
         description,
-        input_schema: json!({
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-                "message": {
-                    "type": "string",
-                    "description": "Plain-text user content to send as an A2A text Part."
-                },
-                "data": {
-                    "description": "Structured JSON payload to send as an A2A data Part."
-                },
-                "context_id": { "type": "string" },
-                "task_id": { "type": "string" },
-                "reference_task_ids": {
-                    "type": "array",
-                    "items": { "type": "string" }
-                },
-                "metadata": {
-                    "type": "object",
-                    "description": "Top-level A2A SendMessageRequest metadata. The adapter will merge metadata.chio.targetSkillId."
-                },
-                "message_metadata": {
-                    "type": "object",
-                    "description": "Metadata attached directly to the A2A Message."
-                },
-                "history_length": {
-                    "type": "integer",
-                    "minimum": 0
-                },
-                "return_immediately": { "type": "boolean" },
-                "stream": {
-                    "type": "boolean",
-                    "description": "When true, use A2A SendStreamingMessage and surface each A2A StreamResponse as one Chio stream chunk."
-                },
-                "get_task": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "properties": {
-                        "id": { "type": "string" },
-                        "history_length": {
-                            "type": "integer",
-                            "minimum": 0
-                        }
-                    },
-                    "required": ["id"],
-                    "description": "Adapter-local follow-up mode that issues A2A GetTask instead of SendMessage."
-                },
-                "subscribe_task": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "properties": {
-                        "id": { "type": "string" }
-                    },
-                    "required": ["id"],
-                    "description": "Adapter-local streaming follow-up mode that issues A2A SubscribeToTask instead of SendMessage."
-                },
-                "cancel_task": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "properties": {
-                        "id": { "type": "string" },
-                        "metadata": { "type": "object" }
-                    },
-                    "required": ["id"],
-                    "description": "Adapter-local follow-up mode that issues A2A CancelTask."
-                },
-                "create_push_notification_config": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "properties": {
-                        "task_id": { "type": "string" },
-                        "id": { "type": "string" },
-                        "url": { "type": "string" },
-                        "token": { "type": "string" },
-                        "authentication": {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "properties": {
-                                "scheme": { "type": "string" },
-                                "credentials": { "type": "string" }
-                            },
-                            "required": ["scheme"]
-                        }
-                    },
-                    "required": ["task_id", "url"],
-                    "description": "Adapter-local follow-up mode that issues A2A CreateTaskPushNotificationConfig."
-                },
-                "get_push_notification_config": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "properties": {
-                        "task_id": { "type": "string" },
-                        "id": { "type": "string" }
-                    },
-                    "required": ["task_id", "id"],
-                    "description": "Adapter-local follow-up mode that issues A2A GetTaskPushNotificationConfig."
-                },
-                "list_push_notification_configs": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "properties": {
-                        "task_id": { "type": "string" },
-                        "page_size": { "type": "integer", "minimum": 0 },
-                        "page_token": { "type": "string" }
-                    },
-                    "required": ["task_id"],
-                    "description": "Adapter-local follow-up mode that issues A2A ListTaskPushNotificationConfigs."
-                },
-                "delete_push_notification_config": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "properties": {
-                        "task_id": { "type": "string" },
-                        "id": { "type": "string" }
-                    },
-                    "required": ["task_id", "id"],
-                    "description": "Adapter-local follow-up mode that issues A2A DeleteTaskPushNotificationConfig."
-                }
-            },
-            "oneOf": [
-                { "required": ["delete_push_notification_config"] },
-                { "required": ["list_push_notification_configs"] },
-                { "required": ["get_push_notification_config"] },
-                { "required": ["create_push_notification_config"] },
-                { "required": ["cancel_task"] },
-                { "required": ["subscribe_task"] },
-                { "required": ["get_task"] },
-                {
-                    "anyOf": [
-                        { "required": ["message"] },
-                        { "required": ["data"] }
-                    ]
-                }
-            ]
-        }),
+        input_schema,
         output_schema: Some(json!({
             "type": "object",
             "properties": {
@@ -370,7 +458,52 @@ fn build_tool_definition(skill: &A2aAgentSkill) -> ToolDefinition {
         pricing: None,
         has_side_effects: true,
         latency_hint: Some(LatencyHint::Moderate),
+    })
+}
+
+fn append_send_message_schema_requirement(
+    one_of: &mut Vec<Value>,
+    input_surface: A2aSkillInputSurface,
+) -> Result<(), AdapterError> {
+    let mut send_requirements = Vec::new();
+    if input_surface.accepts_text {
+        send_requirements.push(json!({ "required": ["message"] }));
     }
+    if input_surface.accepts_json {
+        send_requirements.push(json!({ "required": ["data"] }));
+    }
+    if send_requirements.is_empty() {
+        return Err(AdapterError::Protocol(
+            "A2A SendMessage schema requires text or JSON input support".to_string(),
+        ));
+    }
+    one_of.push(json!({ "anyOf": send_requirements }));
+    Ok(())
+}
+
+fn skill_input_surface(
+    agent_card: &A2aAgentCard,
+    skill: &A2aAgentSkill,
+) -> Result<A2aSkillInputSurface, AdapterError> {
+    projectable_skill_input_surface(agent_card, skill).ok_or_else(|| {
+        AdapterError::Protocol(format!(
+            "A2A skill `{}` does not advertise a Chio-projectable input mode",
+            skill.id
+        ))
+    })
+}
+
+fn projectable_skill_input_surface(
+    agent_card: &A2aAgentCard,
+    skill: &A2aAgentSkill,
+) -> Option<A2aSkillInputSurface> {
+    let modes = skill
+        .input_modes
+        .as_ref()
+        .filter(|modes| !modes.is_empty())
+        .unwrap_or(&agent_card.default_input_modes);
+    let surface = A2aSkillInputSurface::from_modes(modes);
+    surface.is_projectable().then_some(surface)
 }
 
 fn interface_origin(url: &str) -> Result<String, AdapterError> {
@@ -418,9 +551,15 @@ fn validate_partner_policy(
         }
     }
     for skill_id in &policy.required_skills {
-        if !agent_card.skills.iter().any(|skill| &skill.id == skill_id) {
+        let Some(skill) = agent_card.skills.iter().find(|skill| &skill.id == skill_id) else {
             return Err(AdapterError::PartnerAdmission(format!(
                 "partner `{}` requires advertised skill `{skill_id}`, but it was missing from the Agent Card",
+                policy.partner_id
+            )));
+        };
+        if projectable_skill_input_surface(agent_card, skill).is_none() {
+            return Err(AdapterError::PartnerAdmission(format!(
+                "partner `{}` requires advertised skill `{skill_id}`, but it does not expose a Chio-projectable input mode",
                 policy.partner_id
             )));
         }

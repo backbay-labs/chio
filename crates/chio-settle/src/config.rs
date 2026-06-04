@@ -48,19 +48,18 @@ impl SettlementEvidenceConfig {
         }
 
         if !self.durable_receipts {
-            return Err(SettlementError::InvalidInput(
-                "web3 settlement requires durable local receipt storage".to_string(),
+            return Err(SettlementError::invalid_input(
+                "web3 settlement requires durable local receipt storage",
             ));
         }
         if !self.checkpoint_statements {
-            return Err(SettlementError::InvalidInput(
-                "web3 settlement requires kernel-signed checkpoint statements".to_string(),
+            return Err(SettlementError::invalid_input(
+                "web3 settlement requires kernel-signed checkpoint statements",
             ));
         }
         if !self.signer_matches_receipts {
-            return Err(SettlementError::InvalidInput(
-                "web3 settlement requires checkpoint signer equality with receipt kernel keys"
-                    .to_string(),
+            return Err(SettlementError::invalid_input(
+                "web3 settlement requires checkpoint signer equality with receipt kernel keys",
             ));
         }
         Ok(())
@@ -107,8 +106,8 @@ impl SettlementOracleConfig {
             .as_deref()
             .is_some_and(|value| value.trim().is_empty())
         {
-            return Err(SettlementError::InvalidInput(
-                "settlement oracle price_resolver_contract must not be empty".to_string(),
+            return Err(SettlementError::invalid_input(
+                "settlement oracle price_resolver_contract must not be empty",
             ));
         }
 
@@ -171,24 +170,24 @@ impl Default for SettlementPolicyConfig {
 impl SettlementPolicyConfig {
     pub fn validate(&self) -> Result<(), SettlementError> {
         if self.tiers.is_empty() {
-            return Err(SettlementError::InvalidInput(
-                "settlement policy requires at least one amount tier".to_string(),
+            return Err(SettlementError::invalid_input(
+                "settlement policy requires at least one amount tier",
             ));
         }
         if self.token_minor_unit_decimals < self.chio_minor_unit_decimals {
-            return Err(SettlementError::InvalidInput(
-                "token decimals must be >= Chio monetary minor-unit decimals".to_string(),
+            return Err(SettlementError::invalid_input(
+                "token decimals must be >= Chio monetary minor-unit decimals",
             ));
         }
         let mut last_bound = 0_u64;
         for (index, tier) in self.tiers.iter().enumerate() {
             if tier.upper_bound_units < last_bound {
-                return Err(SettlementError::InvalidInput(format!(
+                return Err(SettlementError::invalid_input(format!(
                     "settlement tier {index} upper bound regresses"
                 )));
             }
             if tier.min_confirmations == 0 {
-                return Err(SettlementError::InvalidInput(format!(
+                return Err(SettlementError::invalid_input(format!(
                     "settlement tier {index} must require at least one confirmation"
                 )));
             }
@@ -257,7 +256,7 @@ impl SettlementChainConfig {
             ),
         ] {
             if value.trim().is_empty() {
-                return Err(SettlementError::InvalidInput(format!(
+                return Err(SettlementError::invalid_input(format!(
                     "settlement config {label} is required"
                 )));
             }
@@ -273,7 +272,7 @@ impl SettlementChainConfig {
         self.egress_contract
             .validate_dispatchable_with_pinned_dns()
             .map_err(|error| {
-                SettlementError::InvalidInput(format!(
+                SettlementError::invalid_input(format!(
                     "invalid settlement RPC HttpEgressContract: {error}"
                 ))
             })?;
@@ -285,7 +284,7 @@ impl SettlementChainConfig {
         self.egress_contract
             .enforce_url(&self.rpc_url, 0)
             .map_err(|error| {
-                SettlementError::InvalidInput(format!(
+                SettlementError::invalid_input(format!(
                     "settlement RPC URL is not allowed by HttpEgressContract: {error}"
                 ))
             })?;
@@ -304,13 +303,13 @@ fn devnet_rpc_egress_contract_for_url(
     rpc_url: &str,
 ) -> Result<HttpEgressContract, SettlementError> {
     let url = Url::parse(rpc_url)
-        .map_err(|error| SettlementError::InvalidInput(format!("invalid RPC URL: {error}")))?;
+        .map_err(|error| SettlementError::invalid_input(format!("invalid RPC URL: {error}")))?;
     let host = url
         .host_str()
-        .ok_or_else(|| SettlementError::InvalidInput("RPC URL must include a host".to_string()))?;
+        .ok_or_else(|| SettlementError::invalid_input("RPC URL must include a host"))?;
     if !rpc_host_is_loopback(host) {
-        return Err(SettlementError::InvalidInput(
-            "devnet settlement RPC egress contract requires a loopback RPC URL".to_string(),
+        return Err(SettlementError::invalid_input(
+            "devnet settlement RPC egress contract requires a loopback RPC URL",
         ));
     }
 
@@ -331,12 +330,12 @@ fn devnet_rpc_egress_contract_for_url(
     contract
         .validate_dispatchable_with_pinned_dns()
         .map_err(|error| {
-            SettlementError::InvalidInput(format!(
+            SettlementError::invalid_input(format!(
                 "invalid settlement RPC HttpEgressContract: {error}"
             ))
         })?;
     contract.enforce_url_with_dns(rpc_url, 0).map_err(|error| {
-        SettlementError::InvalidInput(format!(
+        SettlementError::invalid_input(format!(
             "settlement RPC URL is not allowed by HttpEgressContract: {error}"
         ))
     })?;

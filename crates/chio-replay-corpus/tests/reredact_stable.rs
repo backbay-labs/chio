@@ -1,4 +1,4 @@
-use chio_replay_corpus::reredact_default;
+use chio_replay_corpus::{reredact_default, DEFAULT_REDACTION_PASS_ID};
 
 #[test]
 fn default_reredaction_is_stable_for_fixture_blessing() -> Result<(), Box<dyn std::error::Error>> {
@@ -9,7 +9,7 @@ fn default_reredaction_is_stable_for_fixture_blessing() -> Result<(), Box<dyn st
     let second = reredact_default(payload)?;
 
     assert_eq!(first, second);
-    assert_eq!(first.pass_id, "redactors@1.4.0+default");
+    assert_eq!(first.pass_id, DEFAULT_REDACTION_PASS_ID);
     assert!(!first.matches.is_empty());
 
     let body = String::from_utf8(first.bytes)?;

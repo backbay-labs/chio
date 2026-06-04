@@ -855,7 +855,7 @@ pub(crate) fn build_capital_execution_instruction_artifact_from_store(
         )
     });
 
-    Ok(CapitalExecutionInstructionArtifact {
+    let artifact = CapitalExecutionInstructionArtifact {
         schema: CAPITAL_EXECUTION_INSTRUCTION_ARTIFACT_SCHEMA.to_string(),
         instruction_id,
         issued_at,
@@ -884,7 +884,11 @@ pub(crate) fn build_capital_execution_instruction_artifact_from_store(
         support_boundary: CapitalExecutionInstructionSupportBoundary::default(),
         evidence_refs,
         description,
-    })
+    };
+    artifact
+        .validate()
+        .map_err(capital_execution_validation_error)?;
+    Ok(artifact)
 }
 
 fn validate_capital_execution_instruction_request(
@@ -930,94 +934,43 @@ pub(crate) fn validate_capital_execution_envelope(
     rail: &CapitalExecutionRail,
     issued_at: u64,
 ) -> Result<(), TrustHttpError> {
-    if authority_chain.is_empty() {
-        return Err(TrustHttpError::bad_request(
-            "capital execution requires at least one authorityChain step",
-        ));
-    }
-    if rail.rail_id.trim().is_empty() {
-        return Err(TrustHttpError::bad_request(
-            "capital execution requires rail.railId",
-        ));
-    }
-    if rail.custody_provider_id.trim().is_empty() {
-        return Err(TrustHttpError::bad_request(
-            "capital execution requires rail.custodyProviderId",
-        ));
-    }
-    if execution_window.not_before > execution_window.not_after {
-        return Err(TrustHttpError::bad_request(
-            "capital execution executionWindow requires notBefore <= notAfter",
-        ));
-    }
-    if execution_window.not_after < issued_at {
-        return Err(TrustHttpError::new(
-            StatusCode::CONFLICT,
-            "capital execution executionWindow is already expired",
-        ));
-    }
-    for step in authority_chain {
-        if step.principal_id.trim().is_empty() {
-            return Err(TrustHttpError::bad_request(
-                "capital execution authorityChain principalId cannot be empty",
-            ));
-        }
-        if step.approved_at > step.expires_at {
-            return Err(TrustHttpError::bad_request(
-                "capital execution authorityChain requires approvedAt <= expiresAt",
-            ));
-        }
-        if step.expires_at < issued_at {
-            return Err(TrustHttpError::new(
-                StatusCode::CONFLICT,
-                format!(
-                    "capital execution authority step `{}` is stale at issuance time",
-                    step.principal_id
-                ),
-            ));
-        }
-        if step.expires_at < execution_window.not_after {
-            return Err(TrustHttpError::new(
-                StatusCode::CONFLICT,
-                format!(
-                    "capital execution authority step `{}` expires before the execution window closes",
-                    step.principal_id
-                ),
-            ));
-        }
-    }
-    ensure_capital_execution_custodian_authority(authority_chain, rail)?;
-    Ok(())
+    chio_kernel::validate_capital_execution_envelope(
+        authority_chain,
+        execution_window,
+        rail,
+        issued_at,
+    )
+    .map_err(capital_execution_validation_error)
 }
 
 pub(crate) fn ensure_capital_execution_owner_authority(
     authority_chain: &[CapitalExecutionAuthorityStep],
     owner_role: CapitalExecutionRole,
 ) -> Result<(), TrustHttpError> {
-    if authority_chain.iter().any(|step| step.role == owner_role) {
-        Ok(())
-    } else {
-        Err(TrustHttpError::new(
-            StatusCode::CONFLICT,
-            "capital execution authorityChain is missing source-owner approval",
-        ))
-    }
+    chio_kernel::ensure_capital_execution_owner_authority(authority_chain, owner_role)
+        .map_err(capital_execution_validation_error)
 }
 
 pub(crate) fn ensure_capital_execution_custodian_authority(
     authority_chain: &[CapitalExecutionAuthorityStep],
     rail: &CapitalExecutionRail,
 ) -> Result<(), TrustHttpError> {
-    if authority_chain.iter().any(|step| {
-        step.role == CapitalExecutionRole::Custodian
-            && step.principal_id == rail.custody_provider_id
-    }) {
-        Ok(())
+    chio_kernel::ensure_capital_execution_custodian_authority(authority_chain, rail)
+        .map_err(capital_execution_validation_error)
+}
+
+fn capital_execution_validation_error(message: String) -> TrustHttpError {
+    if message.contains("already expired")
+        || message.contains("stale")
+        || message.contains("expires before")
+        || message.contains("missing source-owner")
+        || message.contains("missing the custody-provider")
+        || message.contains("does not match intended amount")
+        || message.contains("falls outside the execution window")
+    {
+        TrustHttpError::new(StatusCode::CONFLICT, message)
     } else {
-        Err(TrustHttpError::new(
-            StatusCode::CONFLICT,
-            "capital execution authorityChain is missing the custody-provider execution step",
-        ))
+        TrustHttpError::bad_request(message)
     }
 }
 

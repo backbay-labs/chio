@@ -1,7 +1,7 @@
 //! The `SqlQueryGuard` implementation.
 //!
 //! The guard listens for `ToolAction::DatabaseQuery { database, query }` via
-//! [`chio_guards::extract_action`] and enforces four knobs defined by
+//! [`chio_guards::extract_action_checked`] and enforces four knobs defined by
 //! [`SqlGuardConfig`]: operation allowlist, table allowlist, per-table
 //! column allowlist, and regex predicate denylist.  Failures route through
 //! [`SqlGuardDenyReason`](crate::error::SqlGuardDenyReason) so downstream
@@ -18,7 +18,7 @@
 use regex::{Regex, RegexBuilder};
 use tracing::warn;
 
-use chio_guards::{extract_action, ToolAction};
+use chio_guards::{extract_action_checked, ToolAction};
 use chio_kernel::{GuardContext, KernelError, Verdict};
 
 use crate::config::{SqlGuardConfig, SqlOperation};
@@ -302,7 +302,10 @@ impl chio_kernel::Guard for SqlQueryGuard {
     }
 
     fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
-        let action = extract_action(&ctx.request.tool_name, &ctx.request.arguments);
+        let action = match extract_action_checked(&ctx.request.tool_name, &ctx.request.arguments) {
+            Ok(action) => action,
+            Err(_) => return Ok(Verdict::Deny),
+        };
         let (database, query) = match &action {
             ToolAction::DatabaseQuery { database, query } => (database.as_str(), query.as_str()),
             _ => return Ok(Verdict::Allow),
@@ -329,7 +332,28 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
 
+    use chio_core::capability::{CapabilityToken, CapabilityTokenBody, ChioScope};
+    use chio_core::crypto::Keypair;
+    use chio_kernel::{Guard, ToolCallRequest};
+
     use crate::config::{SqlDialect, SqlGuardConfig, SqlOperation};
+
+    fn test_capability() -> CapabilityToken {
+        let kp = Keypair::generate();
+        CapabilityToken::sign(
+            CapabilityTokenBody {
+                id: "cap-sql-guard".into(),
+                issuer: kp.public_key(),
+                subject: kp.public_key(),
+                scope: ChioScope::default(),
+                issued_at: 0,
+                expires_at: u64::MAX,
+                delegation_chain: vec![],
+            },
+            &kp,
+        )
+        .unwrap()
+    }
 
     fn cfg_select_orders() -> SqlGuardConfig {
         SqlGuardConfig {
@@ -344,6 +368,41 @@ mod tests {
     fn allow_select_from_allowed_table() {
         let g = SqlQueryGuard::new(cfg_select_orders());
         g.analyze("SELECT id FROM orders").expect("allowed");
+    }
+
+    #[test]
+    fn evaluate_denies_malformed_database_query_arguments() {
+        let guard = SqlQueryGuard::new(SqlGuardConfig {
+            allow_all: true,
+            ..Default::default()
+        });
+        let request = ToolCallRequest {
+            request_id: "req-sql-malformed-action".to_string(),
+            capability: test_capability(),
+            tool_name: "sql".to_string(),
+            server_id: "srv".to_string(),
+            agent_id: "agent".to_string(),
+            arguments: serde_json::json!({"query": ["SELECT id FROM orders"]}),
+            dpop_proof: None,
+            governed_intent: None,
+            approval_token: None,
+            model_metadata: None,
+            federated_origin_kernel_id: None,
+        };
+        let scope = ChioScope::default();
+        let agent_id = String::from("agent");
+        let server_id = String::from("srv");
+        let verdict = guard
+            .evaluate(&GuardContext {
+                request: &request,
+                scope: &scope,
+                agent_id: &agent_id,
+                server_id: &server_id,
+                session_filesystem_roots: None,
+                matched_grant_index: None,
+            })
+            .unwrap();
+        assert_eq!(verdict, Verdict::Deny);
     }
 
     #[test]

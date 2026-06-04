@@ -26,6 +26,7 @@ use chio_core::receipt::{
 };
 use chio_kernel::{BudgetStore, CapabilityAuthority, LocalCapabilityAuthority, ReceiptStore};
 use chio_store_sqlite::{SqliteBudgetStore, SqliteReceiptStore};
+use chio_test_support::loopback::{reserve_listen_addr, skip_when_loopback_bind_denied};
 use reqwest::blocking::Client;
 
 fn unique_dir(prefix: &str) -> PathBuf {
@@ -46,13 +47,6 @@ fn workspace_root() -> PathBuf {
 
 fn fixture_path(name: &str) -> PathBuf {
     workspace_root().join("examples/policies").join(name)
-}
-
-fn reserve_listen_addr() -> std::net::SocketAddr {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind temp listener");
-    let addr = listener.local_addr().expect("listener addr");
-    drop(listener);
-    addr
 }
 
 struct ServerGuard {
@@ -537,6 +531,12 @@ fn federation_policy_cli_supports_upsert_list_get_and_delete() {
 
 #[test]
 fn trust_service_evaluates_permissionless_federation_policy_with_reputation_gate() {
+    if skip_when_loopback_bind_denied(
+        "trust_service_evaluates_permissionless_federation_policy_with_reputation_gate",
+    ) {
+        return;
+    }
+
     let dir = unique_dir("chio-cli-federation-policy-http");
     fs::create_dir_all(&dir).expect("create temp dir");
     let federation_policies_file = dir.join("federation-policies.json");
@@ -644,6 +644,12 @@ fn trust_service_evaluates_permissionless_federation_policy_with_reputation_gate
 
 #[test]
 fn trust_service_enforces_permissionless_federation_anti_sybil_controls() {
+    if skip_when_loopback_bind_denied(
+        "trust_service_enforces_permissionless_federation_anti_sybil_controls",
+    ) {
+        return;
+    }
+
     let dir = unique_dir("chio-cli-federation-policy-anti-sybil");
     fs::create_dir_all(&dir).expect("create temp dir");
     let federation_policies_file = dir.join("federation-policies.json");

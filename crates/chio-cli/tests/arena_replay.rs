@@ -87,6 +87,32 @@ fn arena_replay_rejects_path_traversal_scenario_id() {
 }
 
 #[test]
+fn arena_replay_rejects_parent_directory_segment_scenario_id() {
+    let tmp = tempfile::tempdir().unwrap();
+    let bundle_root = tmp.path().join("target").join("arena");
+    std::fs::create_dir_all(&bundle_root).unwrap();
+    let out = Command::new(cargo_bin())
+        .args([
+            "arena",
+            "replay",
+            "..",
+            "--output-root",
+            bundle_root.to_str().unwrap(),
+        ])
+        .output()
+        .expect("arena replay parent segment");
+    assert!(
+        !out.status.success(),
+        "parent segment id should fail closed"
+    );
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    assert!(
+        stderr.contains("scenario id") || stderr.contains("ASCII"),
+        "expected invalid scenario id error, got {stderr}"
+    );
+}
+
+#[test]
 fn arena_replay_accepts_explicit_bundle_dir() {
     let tmp = tempfile::tempdir().unwrap();
     let custom_dir = tmp.path().join("custom-bundle");

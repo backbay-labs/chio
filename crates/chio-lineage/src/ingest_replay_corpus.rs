@@ -47,11 +47,20 @@ pub struct CorpusReceiptRow {
 pub enum CorpusIngestError {
     #[error("invalid corpus row JSON: {0}")]
     InvalidJson(#[from] serde_json::Error),
+    #[error("invalid corpus field at row {row_index}: {field}")]
+    InvalidField {
+        row_index: usize,
+        field: &'static str,
+    },
 }
 
 /// Project a corpus row set into a lineage graph. Deterministic in row
 /// order; idempotent on duplicate rows (graph dedups by node and edge keys).
-pub fn ingest_corpus(rows: &[CorpusReceiptRow]) -> LineageGraph {
+pub fn ingest_corpus(rows: &[CorpusReceiptRow]) -> Result<LineageGraph, CorpusIngestError> {
+    for (row_index, row) in rows.iter().enumerate() {
+        validate_row(row, row_index)?;
+    }
+
     let mut graph = LineageGraph::empty();
     let mut seen_nodes = std::collections::HashSet::new();
     let mut seen_edges = std::collections::HashSet::new();
@@ -208,7 +217,7 @@ pub fn ingest_corpus(rows: &[CorpusReceiptRow]) -> LineageGraph {
         }
     }
 
-    graph
+    Ok(graph)
 }
 
 fn signed_lineage_statement_verifies(row: &CorpusReceiptRow, parent: &str) -> bool {
@@ -221,19 +230,106 @@ fn signed_lineage_statement_verifies(row: &CorpusReceiptRow, parent: &str) -> bo
         && matches!(statement.verify_signature(), Ok(true))
 }
 
+fn validate_row(row: &CorpusReceiptRow, row_index: usize) -> Result<(), CorpusIngestError> {
+    validate_required_field(&row.receipt_id, row_index, "receipt_id")?;
+    validate_optional_field(
+        row.parent_receipt_id.as_deref(),
+        row_index,
+        "parent_receipt_id",
+    )?;
+    validate_optional_field(row.capability_id.as_deref(), row_index, "capability_id")?;
+    validate_optional_field(
+        row.parent_capability_id.as_deref(),
+        row_index,
+        "parent_capability_id",
+    )?;
+    validate_optional_field(row.tool_name.as_deref(), row_index, "tool_name")?;
+    validate_optional_field(row.tenant_id.as_deref(), row_index, "tenant_id")?;
+    Ok(())
+}
+
+fn validate_required_field(
+    value: &str,
+    row_index: usize,
+    field: &'static str,
+) -> Result<(), CorpusIngestError> {
+    if value.is_empty() || value.trim() != value {
+        return Err(CorpusIngestError::InvalidField { row_index, field });
+    }
+    Ok(())
+}
+
+fn validate_optional_field(
+    value: Option<&str>,
+    row_index: usize,
+    field: &'static str,
+) -> Result<(), CorpusIngestError> {
+    if let Some(value) = value {
+        validate_required_field(value, row_index, field)?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn empty_corpus_yields_empty_graph() {
-        let g = ingest_corpus(&[]);
+    fn empty_corpus_yields_empty_graph() -> Result<(), CorpusIngestError> {
+        let g = ingest_corpus(&[])?;
         assert!(g.nodes.is_empty());
         assert!(g.edges.is_empty());
+        Ok(())
     }
 
     #[test]
-    fn boolean_lineage_hint_does_not_upgrade_to_verified() {
+    fn corpus_rows_reject_blank_or_padded_natural_keys() {
+        fn row() -> CorpusReceiptRow {
+            CorpusReceiptRow {
+                receipt_id: "child".into(),
+                parent_receipt_id: Some("parent".into()),
+                capability_id: Some("cap.child".into()),
+                parent_capability_id: Some("cap.parent".into()),
+                tool_name: Some("tool.run".into()),
+                tenant_id: Some("tenant-a".into()),
+                recorded_at: None,
+                signed_lineage_statement: None,
+            }
+        }
+
+        fn assert_rejected(field: &'static str, configure: impl FnOnce(&mut CorpusReceiptRow)) {
+            let mut bad = row();
+            configure(&mut bad);
+            let result = ingest_corpus(&[bad]);
+
+            assert!(matches!(
+                result,
+                Err(CorpusIngestError::InvalidField { field: actual, .. }) if actual == field
+            ));
+        }
+
+        assert_rejected("receipt_id", |row| {
+            row.receipt_id = " ".into();
+        });
+        assert_rejected("parent_receipt_id", |row| {
+            row.parent_receipt_id = Some(" parent".into());
+        });
+        assert_rejected("capability_id", |row| {
+            row.capability_id = Some("cap.child ".into());
+        });
+        assert_rejected("parent_capability_id", |row| {
+            row.parent_capability_id = Some("\t".into());
+        });
+        assert_rejected("tool_name", |row| {
+            row.tool_name = Some(" tool.run".into());
+        });
+        assert_rejected("tenant_id", |row| {
+            row.tenant_id = Some("tenant-a ".into());
+        });
+    }
+
+    #[test]
+    fn boolean_lineage_hint_does_not_upgrade_to_verified() -> Result<(), CorpusIngestError> {
         let rows = vec![CorpusReceiptRow {
             receipt_id: "child".into(),
             parent_receipt_id: Some("parent".into()),
@@ -244,7 +340,7 @@ mod tests {
             recorded_at: None,
             signed_lineage_statement: None,
         }];
-        let g = ingest_corpus(&rows);
+        let g = ingest_corpus(&rows)?;
         let edge = g
             .edges
             .iter()
@@ -253,6 +349,7 @@ mod tests {
         if let Some(e) = edge {
             assert_eq!(e.evidence_class, EvidenceClass::Observed);
         }
+        Ok(())
     }
 
     #[test]
@@ -291,7 +388,7 @@ mod tests {
             recorded_at: None,
             signed_lineage_statement: Some(statement),
         }];
-        let g = ingest_corpus(&rows);
+        let g = ingest_corpus(&rows)?;
         let edge = g
             .edges
             .iter()
@@ -340,7 +437,7 @@ mod tests {
             recorded_at: None,
             signed_lineage_statement: Some(statement),
         }];
-        let g = ingest_corpus(&rows);
+        let g = ingest_corpus(&rows)?;
         let edge = g
             .edges
             .iter()
@@ -351,7 +448,7 @@ mod tests {
     }
 
     #[test]
-    fn ingest_is_deterministic_and_idempotent() {
+    fn ingest_is_deterministic_and_idempotent() -> Result<(), CorpusIngestError> {
         let row = CorpusReceiptRow {
             receipt_id: "r1".into(),
             parent_receipt_id: None,
@@ -363,7 +460,7 @@ mod tests {
             signed_lineage_statement: None,
         };
         let rows = vec![row.clone(), row.clone(), row];
-        let g = ingest_corpus(&rows);
+        let g = ingest_corpus(&rows)?;
         // Three rows but every fact is the same, so dedup applies.
         // Expected: 1 receipt + 2 capabilities (x and root) + 1 tool call = 4 nodes.
         assert_eq!(g.nodes.len(), 4);
@@ -382,5 +479,6 @@ mod tests {
                 .count(),
             1
         );
+        Ok(())
     }
 }

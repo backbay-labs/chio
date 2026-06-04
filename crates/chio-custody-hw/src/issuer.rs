@@ -34,14 +34,15 @@
 //!
 //! 1. Audience pin match.
 //! 2. User-verification bit.
-//! 3. Per-subject rate limit ([`IssuanceRateLimiter`]). A flood is denied
+//! 3. Verified credential id and request challenge nonce canonicality.
+//! 4. Per-subject rate limit ([`IssuanceRateLimiter`]). A flood is denied
 //!    before the oracle, nonce store, or signer are touched.
-//! 4. Revocation cascade ([`CredentialRevocationOracle`]). A revoked
+//! 5. Revocation cascade ([`CredentialRevocationOracle`]). A revoked
 //!    credential (or one revoked transitively through its parent) is
 //!    denied before recording the nonce or signing.
-//! 5. Replay nonce store ([`PasskeyNonceStore`]). A replayed
+//! 6. Replay nonce store ([`PasskeyNonceStore`]). A replayed
 //!    `(credential_id, challenge_nonce)` is denied before signing.
-//! 6. Signature over the canonical-JSON envelope.
+//! 7. Signature over the canonical-JSON envelope.
 
 use std::sync::Arc;
 
@@ -52,7 +53,7 @@ use serde::{Deserialize, Serialize};
 use crate::capability::{PasskeyCapability, ScopeSet};
 use crate::error::CustodyError;
 use crate::mint::sign_capability;
-use crate::nonce_store::{PasskeyNonceStore, RecordOutcome};
+use crate::nonce_store::{PasskeyNonceStore, RecordOutcome, MAX_NONCE_KEY_BYTES};
 use crate::rate_limit::{IssuanceRateLimiter, RateLimitOutcome};
 use crate::revocation::CredentialRevocationOracle;
 use crate::verifier::VerifiedAssertion;
@@ -105,6 +106,34 @@ pub struct IssuerService {
     rate_limiter: Option<Arc<dyn IssuanceRateLimiter>>,
     nonce_store: Option<Arc<dyn PasskeyNonceStore>>,
     revocation: Option<Arc<dyn CredentialRevocationOracle>>,
+}
+
+fn validate_base64url_transport_field(label: &str, value: &str) -> Result<(), CustodyError> {
+    if value.is_empty() {
+        return Err(CustodyError::AssertionRejected(format!(
+            "{label} must be a non-empty base64url-no-pad string"
+        )));
+    }
+    if value.trim() != value {
+        return Err(CustodyError::AssertionRejected(format!(
+            "{label} must not have surrounding whitespace"
+        )));
+    }
+    if value.len() > MAX_NONCE_KEY_BYTES {
+        return Err(CustodyError::AssertionRejected(format!(
+            "{label} length {} exceeds {MAX_NONCE_KEY_BYTES} bytes",
+            value.len()
+        )));
+    }
+    if !value
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
+    {
+        return Err(CustodyError::AssertionRejected(format!(
+            "{label} must contain only base64url-no-pad characters"
+        )));
+    }
+    Ok(())
 }
 
 impl IssuerService {
@@ -222,6 +251,9 @@ impl IssuerService {
             return Err(CustodyError::UserVerificationRequired);
         }
 
+        validate_base64url_transport_field("credential_id", &verified.credential_id_b64)?;
+        validate_base64url_transport_field("challenge_nonce", &request.challenge_nonce)?;
+
         // Rate limiting. The cheapest abuse gate runs first so a flood is
         // shed before the oracle, nonce store, or signer are touched. A
         // limited subject (or a lock/clock fault inside the limiter)
@@ -230,9 +262,9 @@ impl IssuerService {
             match limiter.check_and_record(&verified.credential_id_b64, now)? {
                 RateLimitOutcome::Allowed => {}
                 RateLimitOutcome::Limited => {
-                    return Err(CustodyError::RateLimited {
-                        subject: verified.credential_id_b64.clone(),
-                    });
+                    return Err(CustodyError::rate_limited(
+                        verified.credential_id_b64.clone(),
+                    ));
                 }
             }
         }
@@ -342,6 +374,42 @@ mod tests {
             "issued capability MUST be signed; the issuer never emits an unsigned artifact"
         );
         assert_eq!(resp.capability.credential_id, "AAAA");
+    }
+
+    #[test]
+    fn mint_rejects_blank_verified_credential_id() {
+        let svc = issuer("urn:chio:audience:kernel", 1);
+        let req = MintRequest {
+            audience: "urn:chio:audience:kernel".into(),
+            scope_set: ScopeSet::new(["tool:read"]),
+            challenge_nonce: "n".into(),
+        };
+        let mut assertion = verified();
+        assertion.credential_id_b64 = " ".into();
+
+        let res = svc.mint_capability(&assertion, &req, fixed_now());
+
+        assert!(matches!(
+            res,
+            Err(CustodyError::AssertionRejected(message)) if message.contains("credential")
+        ));
+    }
+
+    #[test]
+    fn mint_rejects_malformed_challenge_nonce_without_nonce_store() {
+        let svc = issuer("urn:chio:audience:kernel", 1);
+        let req = MintRequest {
+            audience: "urn:chio:audience:kernel".into(),
+            scope_set: ScopeSet::new(["tool:read"]),
+            challenge_nonce: "bad nonce".into(),
+        };
+
+        let res = svc.mint_capability(&verified(), &req, fixed_now());
+
+        assert!(matches!(
+            res,
+            Err(CustodyError::AssertionRejected(message)) if message.contains("challenge_nonce")
+        ));
     }
 
     #[test]

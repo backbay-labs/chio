@@ -65,8 +65,17 @@ use chio_kernel::{
     UnderwritingDecisionListReport, UnderwritingDecisionReport, UnderwritingSimulationReport,
 };
 use chio_store_sqlite::{SqliteBudgetStore, SqliteReceiptStore};
+use chio_test_support::loopback::{reserve_listen_addr, skip_when_loopback_bind_denied};
 use reqwest::blocking::Client;
 use rusqlite::Connection;
+
+macro_rules! skip_when_loopback_denied {
+    ($test_name:ident) => {
+        if skip_when_loopback_bind_denied(stringify!($test_name)) {
+            return;
+        }
+    };
+}
 
 // --- Test helpers ---
 
@@ -217,13 +226,6 @@ fn sample_enterprise_runtime_attestation() -> RuntimeAttestationEvidence {
             }
         })),
     }
-}
-
-fn reserve_listen_addr() -> std::net::SocketAddr {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind temp listener");
-    let addr = listener.local_addr().expect("listener addr");
-    drop(listener);
-    addr
 }
 
 struct ServerGuard {
@@ -1989,6 +1991,7 @@ fn setup_with_receipts(prefix: &str) -> TestSetup {
 /// GET /v1/receipts/query with no filters returns all stored receipts and correct totalCount.
 #[test]
 fn test_receipt_query_no_filters() {
+    skip_when_loopback_denied!(test_receipt_query_no_filters);
     let setup = setup_with_receipts("chio-rq-no-filters");
 
     let response = setup
@@ -2023,6 +2026,7 @@ fn test_receipt_query_no_filters() {
 /// GET /v1/receipts/query?capabilityId=cap-1 returns only receipts with capability_id == "cap-1".
 #[test]
 fn test_receipt_query_filter_capability() {
+    skip_when_loopback_denied!(test_receipt_query_filter_capability);
     let setup = setup_with_receipts("chio-rq-filter-cap");
 
     let response = setup
@@ -2058,6 +2062,7 @@ fn test_receipt_query_filter_capability() {
 
 #[test]
 fn test_receipt_query_surfaces_governed_transaction_metadata() {
+    skip_when_loopback_denied!(test_receipt_query_surfaces_governed_transaction_metadata);
     let dir = unique_dir("chio-rq-governed");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -2143,6 +2148,7 @@ fn test_receipt_query_surfaces_governed_transaction_metadata() {
 
 #[test]
 fn test_receipt_query_surfaces_x402_payment_metadata() {
+    skip_when_loopback_denied!(test_receipt_query_surfaces_x402_payment_metadata);
     let dir = unique_dir("chio-rq-x402");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -2222,6 +2228,7 @@ fn test_receipt_query_surfaces_x402_payment_metadata() {
 
 #[test]
 fn test_receipt_query_surfaces_acp_payment_metadata() {
+    skip_when_loopback_denied!(test_receipt_query_surfaces_acp_payment_metadata);
     let dir = unique_dir("chio-rq-acp");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -2306,6 +2313,7 @@ fn test_receipt_query_surfaces_acp_payment_metadata() {
 
 #[test]
 fn receipt_query_surfaces_financial_hold_lineage_and_guarantee_level() {
+    skip_when_loopback_denied!(receipt_query_surfaces_financial_hold_lineage_and_guarantee_level);
     let dir = unique_dir("chio-rq-budget-lineage");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -2413,6 +2421,7 @@ fn receipt_query_surfaces_financial_hold_lineage_and_guarantee_level() {
 /// Two requests with cursor yield non-overlapping sequential results.
 #[test]
 fn test_receipt_query_cursor_pagination() {
+    skip_when_loopback_denied!(test_receipt_query_cursor_pagination);
     let setup = setup_with_receipts("chio-rq-cursor");
 
     // First page: limit=2
@@ -2475,6 +2484,7 @@ fn test_receipt_query_cursor_pagination() {
 /// totalCount reflects the full filtered set, not just the page size.
 #[test]
 fn test_receipt_query_total_count() {
+    skip_when_loopback_denied!(test_receipt_query_total_count);
     let setup = setup_with_receipts("chio-rq-total-count");
 
     // Fetch only 1 receipt but total should be 5.
@@ -2504,6 +2514,7 @@ fn test_receipt_query_total_count() {
 /// Request without Authorization header returns 401.
 #[test]
 fn test_receipt_query_requires_auth() {
+    skip_when_loopback_denied!(test_receipt_query_requires_auth);
     let setup = setup_with_receipts("chio-rq-auth");
 
     // No Authorization header.
@@ -2557,6 +2568,7 @@ fn prepopulate_lineage(db_path: &Path, entries: &[(&CapabilityToken, Option<&str
 /// GET /v1/lineage/:capability_id returns 200 with matching snapshot fields.
 #[test]
 fn test_lineage_get_capability_snapshot() {
+    skip_when_loopback_denied!(test_lineage_get_capability_snapshot);
     let dir = unique_dir("chio-lineage-get");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -2621,6 +2633,7 @@ fn test_lineage_get_capability_snapshot() {
 /// GET /v1/lineage/:capability_id/chain returns root-first delegation chain.
 #[test]
 fn test_lineage_get_delegation_chain() {
+    skip_when_loopback_denied!(test_lineage_get_delegation_chain);
     let dir = unique_dir("chio-lineage-chain");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -2699,6 +2712,7 @@ fn test_lineage_get_delegation_chain() {
 /// GET /v1/lineage/:capability_id returns 404 for unknown capability_id.
 #[test]
 fn test_lineage_not_found() {
+    skip_when_loopback_denied!(test_lineage_not_found);
     let setup = setup_with_receipts("chio-lineage-404");
 
     let response = setup
@@ -2723,6 +2737,7 @@ fn test_lineage_not_found() {
 /// GET /v1/lineage/:capability_id requires Authorization header.
 #[test]
 fn test_lineage_requires_auth() {
+    skip_when_loopback_denied!(test_lineage_requires_auth);
     let setup = setup_with_receipts("chio-lineage-auth");
 
     let response = setup
@@ -2743,6 +2758,7 @@ fn test_lineage_requires_auth() {
 /// GET /v1/receipts/query?agentSubject=<hex> filters receipts by agent subject.
 #[test]
 fn test_agent_subject_filter_via_http() {
+    skip_when_loopback_denied!(test_agent_subject_filter_via_http);
     let dir = unique_dir("chio-agent-filter");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -2854,6 +2870,7 @@ fn test_agent_subject_filter_via_http() {
 /// GET /v1/agents/:subject_key/receipts returns receipts for the given agent.
 #[test]
 fn test_agent_receipts_endpoint() {
+    skip_when_loopback_denied!(test_agent_receipts_endpoint);
     let dir = unique_dir("chio-agent-receipts");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -2962,6 +2979,7 @@ fn test_agent_receipts_endpoint() {
 /// GET /v1/receipts/analytics returns aggregate metrics over the receipt corpus.
 #[test]
 fn test_receipt_analytics_endpoint() {
+    skip_when_loopback_denied!(test_receipt_analytics_endpoint);
     let setup = setup_with_receipts("chio-receipt-analytics");
 
     let response = setup
@@ -3009,6 +3027,7 @@ fn test_receipt_analytics_endpoint() {
 /// root/leaf aggregation and lineage-complete chains.
 #[test]
 fn test_cost_attribution_report_endpoint() {
+    skip_when_loopback_denied!(test_cost_attribution_report_endpoint);
     let dir = unique_dir("chio-cost-attribution");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -3148,6 +3167,7 @@ fn test_cost_attribution_report_endpoint() {
 /// GET /v1/reports/operator composes activity, budget pressure, and compliance readiness.
 #[test]
 fn test_operator_report_endpoint() {
+    skip_when_loopback_denied!(test_operator_report_endpoint);
     let dir = unique_dir("chio-operator-report");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -3416,6 +3436,7 @@ fn test_operator_report_endpoint() {
 
 #[test]
 fn test_settlement_reconciliation_report_and_action_endpoint() {
+    skip_when_loopback_denied!(test_settlement_reconciliation_report_and_action_endpoint);
     let dir = unique_dir("chio-settlement-reconciliation");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -3598,6 +3619,7 @@ fn test_settlement_reconciliation_report_and_action_endpoint() {
 
 #[test]
 fn test_metered_billing_reconciliation_report_and_action_endpoint() {
+    skip_when_loopback_denied!(test_metered_billing_reconciliation_report_and_action_endpoint);
     let dir = unique_dir("chio-metered-billing-reconciliation");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -3925,6 +3947,7 @@ fn test_metered_billing_reconciliation_report_and_action_endpoint() {
 
 #[test]
 fn test_authorization_context_report_and_cli() {
+    skip_when_loopback_denied!(test_authorization_context_report_and_cli);
     let dir = unique_dir("chio-authorization-context");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -4242,6 +4265,9 @@ fn test_authorization_context_report_and_cli() {
 
 #[test]
 fn authorization_context_report_does_not_mark_asserted_call_chain_as_sender_bound() {
+    skip_when_loopback_denied!(
+        authorization_context_report_does_not_mark_asserted_call_chain_as_sender_bound
+    );
     let dir = unique_dir("chio-authorization-context-asserted-call-chain");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -4333,6 +4359,7 @@ fn authorization_context_report_does_not_mark_asserted_call_chain_as_sender_boun
 
 #[test]
 fn test_authorization_metadata_and_review_pack_surfaces() {
+    skip_when_loopback_denied!(test_authorization_metadata_and_review_pack_surfaces);
     let dir = unique_dir("chio-authorization-review-pack");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -4622,6 +4649,9 @@ fn test_authorization_metadata_and_review_pack_surfaces() {
 
 #[test]
 fn test_authorization_context_report_rejects_invalid_chio_oauth_profile_projection() {
+    skip_when_loopback_denied!(
+        test_authorization_context_report_rejects_invalid_chio_oauth_profile_projection
+    );
     let dir = unique_dir("chio-authorization-context-invalid");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -4752,6 +4782,9 @@ fn test_authorization_context_report_rejects_invalid_chio_oauth_profile_projecti
 
 #[test]
 fn test_authorization_context_report_rejects_missing_sender_binding_material() {
+    skip_when_loopback_denied!(
+        test_authorization_context_report_rejects_missing_sender_binding_material
+    );
     let dir = unique_dir("chio-authorization-context-missing-sender");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -4817,6 +4850,9 @@ fn test_authorization_context_report_rejects_missing_sender_binding_material() {
 
 #[test]
 fn test_authorization_context_report_rejects_missing_issuer_binding_material() {
+    skip_when_loopback_denied!(
+        test_authorization_context_report_rejects_missing_issuer_binding_material
+    );
     let dir = unique_dir("chio-authorization-context-missing-issuer");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -4904,6 +4940,9 @@ fn test_authorization_context_report_rejects_missing_issuer_binding_material() {
 
 #[test]
 fn test_authorization_context_report_rejects_incomplete_runtime_assurance_projection() {
+    skip_when_loopback_denied!(
+        test_authorization_context_report_rejects_incomplete_runtime_assurance_projection
+    );
     let dir = unique_dir("chio-authorization-context-invalid-assurance");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -5043,6 +5082,9 @@ fn test_authorization_context_report_rejects_incomplete_runtime_assurance_projec
 
 #[test]
 fn test_authorization_context_report_rejects_invalid_delegated_call_chain_projection() {
+    skip_when_loopback_denied!(
+        test_authorization_context_report_rejects_invalid_delegated_call_chain_projection
+    );
     let dir = unique_dir("chio-authorization-context-invalid-call-chain");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -5182,6 +5224,7 @@ fn test_authorization_context_report_rejects_invalid_delegated_call_chain_projec
 /// Shared evidence references appear in operator reports, the direct query endpoint, and CLI output.
 #[test]
 fn test_shared_evidence_reporting_surfaces() {
+    skip_when_loopback_denied!(test_shared_evidence_reporting_surfaces);
     let dir = unique_dir("chio-shared-evidence-report");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -5497,6 +5540,7 @@ fn test_shared_evidence_reporting_surfaces() {
 /// Behavioral feeds expose signed risk-facing exports over both trust-control and local CLI.
 #[test]
 fn test_behavioral_feed_export_surfaces() {
+    skip_when_loopback_denied!(test_behavioral_feed_export_surfaces);
     let dir = unique_dir("chio-behavioral-feed");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -5755,6 +5799,7 @@ fn test_behavioral_feed_export_surfaces() {
 
 #[test]
 fn test_runtime_attestation_appraisal_export_surfaces() {
+    skip_when_loopback_denied!(test_runtime_attestation_appraisal_export_surfaces);
     let dir = unique_dir("chio-runtime-appraisal");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -5934,6 +5979,7 @@ extensions:
 
 #[test]
 fn test_runtime_attestation_appraisal_result_import_export_surfaces() {
+    skip_when_loopback_denied!(test_runtime_attestation_appraisal_result_import_export_surfaces);
     let dir = unique_dir("chio-runtime-appraisal-result");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -6188,6 +6234,7 @@ extensions:
 #[test]
 fn test_runtime_attestation_appraisal_result_qualification_covers_mixed_providers_and_fail_closed_imports(
 ) {
+    skip_when_loopback_denied!(test_runtime_attestation_appraisal_result_qualification_covers_mixed_providers_and_fail_closed_imports);
     struct ProviderCase {
         name: &'static str,
         attestation: RuntimeAttestationEvidence,
@@ -6538,6 +6585,7 @@ fn test_runtime_attestation_appraisal_result_qualification_covers_mixed_provider
 
 #[test]
 fn test_exposure_ledger_report_surfaces() {
+    skip_when_loopback_denied!(test_exposure_ledger_report_surfaces);
     let dir = unique_dir("chio-exposure-ledger");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -6742,6 +6790,7 @@ fn test_exposure_ledger_report_surfaces() {
 
 #[test]
 fn test_exposure_ledger_requires_anchor() {
+    skip_when_loopback_denied!(test_exposure_ledger_requires_anchor);
     let dir = unique_dir("chio-exposure-ledger-anchor");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -6786,6 +6835,7 @@ fn test_exposure_ledger_requires_anchor() {
 
 #[test]
 fn test_exposure_ledger_rejects_contradictory_currency_row() {
+    skip_when_loopback_denied!(test_exposure_ledger_rejects_contradictory_currency_row);
     let dir = unique_dir("chio-exposure-ledger-currency-conflict");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -6859,6 +6909,7 @@ fn test_exposure_ledger_rejects_contradictory_currency_row() {
 
 #[test]
 fn test_credit_scorecard_report_surfaces() {
+    skip_when_loopback_denied!(test_credit_scorecard_report_surfaces);
     let dir = unique_dir("chio-credit-scorecard");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -7042,6 +7093,7 @@ fn test_credit_scorecard_report_surfaces() {
 
 #[test]
 fn test_credit_scorecard_requires_agent_subject() {
+    skip_when_loopback_denied!(test_credit_scorecard_requires_agent_subject);
     let dir = unique_dir("chio-credit-scorecard-anchor");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -7086,6 +7138,7 @@ fn test_credit_scorecard_requires_agent_subject() {
 
 #[test]
 fn test_credit_scorecard_requires_matching_history() {
+    skip_when_loopback_denied!(test_credit_scorecard_requires_matching_history);
     let dir = unique_dir("chio-credit-scorecard-history");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -7130,6 +7183,7 @@ fn test_credit_scorecard_requires_matching_history() {
 
 #[test]
 fn test_credit_facility_report_issue_and_list_surfaces() {
+    skip_when_loopback_denied!(test_credit_facility_report_issue_and_list_surfaces);
     let dir = unique_dir("chio-credit-facility-grant");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -7325,6 +7379,7 @@ fn test_credit_facility_report_issue_and_list_surfaces() {
 
 #[test]
 fn test_credit_issue_endpoints_require_service_auth() {
+    skip_when_loopback_denied!(test_credit_issue_endpoints_require_service_auth);
     let dir = unique_dir("chio-credit-issue-auth");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -7406,6 +7461,7 @@ fn test_credit_issue_endpoints_require_service_auth() {
 
 #[test]
 fn test_credit_issue_endpoints_require_receipt_db_configuration() {
+    skip_when_loopback_denied!(test_credit_issue_endpoints_require_receipt_db_configuration);
     let dir = unique_dir("chio-credit-issue-missing-receipt-db");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let revocation_db_path = dir.join("revocations.sqlite3");
@@ -7476,6 +7532,7 @@ fn test_credit_issue_endpoints_require_receipt_db_configuration() {
 
 #[test]
 fn test_trust_control_report_endpoints_require_service_auth() {
+    skip_when_loopback_denied!(test_trust_control_report_endpoints_require_service_auth);
     let dir = unique_dir("chio-trust-report-auth");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -7519,6 +7576,9 @@ fn test_trust_control_report_endpoints_require_service_auth() {
 
 #[test]
 fn test_trust_control_report_endpoints_require_receipt_db_configuration() {
+    skip_when_loopback_denied!(
+        test_trust_control_report_endpoints_require_receipt_db_configuration
+    );
     let dir = unique_dir("chio-trust-report-missing-receipt-db");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let revocation_db_path = dir.join("revocations.sqlite3");
@@ -7615,6 +7675,7 @@ fn test_trust_control_report_endpoints_require_receipt_db_configuration() {
 
 #[test]
 fn test_credit_facility_report_denies_missing_prerequisites() {
+    skip_when_loopback_denied!(test_credit_facility_report_denies_missing_prerequisites);
     let dir = unique_dir("chio-credit-facility-prerequisites");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -7700,6 +7761,7 @@ fn test_credit_facility_report_denies_missing_prerequisites() {
 
 #[test]
 fn test_credit_facility_report_manual_review_for_mixed_currency_book() {
+    skip_when_loopback_denied!(test_credit_facility_report_manual_review_for_mixed_currency_book);
     let dir = unique_dir("chio-credit-facility-mixed-currency");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -7796,6 +7858,9 @@ fn test_credit_facility_report_manual_review_for_mixed_currency_book() {
 
 #[test]
 fn test_credit_facility_report_manual_review_for_mixed_runtime_assurance_provenance() {
+    skip_when_loopback_denied!(
+        test_credit_facility_report_manual_review_for_mixed_runtime_assurance_provenance
+    );
     let dir = unique_dir("chio-credit-facility-mixed-runtime-provenance");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -7894,6 +7959,7 @@ fn test_credit_facility_report_manual_review_for_mixed_runtime_assurance_provena
 
 #[test]
 fn test_credit_backtest_report_surfaces_drift_and_failure_modes() {
+    skip_when_loopback_denied!(test_credit_backtest_report_surfaces_drift_and_failure_modes);
     let dir = unique_dir("chio-credit-backtest");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -8095,6 +8161,7 @@ fn test_credit_backtest_report_surfaces_drift_and_failure_modes() {
 
 #[test]
 fn test_credit_bond_issue_and_list_surfaces() {
+    skip_when_loopback_denied!(test_credit_bond_issue_and_list_surfaces);
     let dir = unique_dir("chio-credit-bond-lock");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -8331,6 +8398,7 @@ fn test_credit_bond_issue_and_list_surfaces() {
 
 #[test]
 fn test_credit_bond_report_hold_and_release_semantics() {
+    skip_when_loopback_denied!(test_credit_bond_report_hold_and_release_semantics);
     let dir = unique_dir("chio-credit-bond-hold-release");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -8467,6 +8535,7 @@ fn test_credit_bond_report_hold_and_release_semantics() {
 
 #[test]
 fn test_credit_bond_report_impairs_and_fails_closed_on_mixed_currency() {
+    skip_when_loopback_denied!(test_credit_bond_report_impairs_and_fails_closed_on_mixed_currency);
     let dir = unique_dir("chio-credit-bond-impair-mixed");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -8646,6 +8715,7 @@ fn test_credit_bond_report_impairs_and_fails_closed_on_mixed_currency() {
 
 #[test]
 fn test_credit_loss_lifecycle_issue_and_list_surfaces() {
+    skip_when_loopback_denied!(test_credit_loss_lifecycle_issue_and_list_surfaces);
     let dir = unique_dir("chio-credit-loss-lifecycle");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -8885,6 +8955,9 @@ fn test_credit_loss_lifecycle_issue_and_list_surfaces() {
 
 #[test]
 fn test_credit_loss_lifecycle_recovery_write_off_and_release_fail_closed() {
+    skip_when_loopback_denied!(
+        test_credit_loss_lifecycle_recovery_write_off_and_release_fail_closed
+    );
     let dir = unique_dir("chio-credit-loss-lifecycle-release");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -9259,6 +9332,9 @@ fn test_credit_loss_lifecycle_recovery_write_off_and_release_fail_closed() {
 
 #[test]
 fn test_credit_loss_lifecycle_reserve_slash_requires_valid_execution_metadata() {
+    skip_when_loopback_denied!(
+        test_credit_loss_lifecycle_reserve_slash_requires_valid_execution_metadata
+    );
     let dir = unique_dir("chio-credit-loss-lifecycle-slash");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -9554,6 +9630,7 @@ fn test_credit_loss_lifecycle_reserve_slash_requires_valid_execution_metadata() 
 
 #[test]
 fn test_credit_bonded_execution_simulation_report_surfaces() {
+    skip_when_loopback_denied!(test_credit_bonded_execution_simulation_report_surfaces);
     let dir = unique_dir("chio-credit-bonded-execution-simulation");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -9852,6 +9929,7 @@ fn test_credit_bonded_execution_simulation_report_surfaces() {
 
 #[test]
 fn test_provider_risk_package_export_surfaces() {
+    skip_when_loopback_denied!(test_provider_risk_package_export_surfaces);
     let dir = unique_dir("chio-provider-risk-package");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -10040,6 +10118,7 @@ fn test_provider_risk_package_export_surfaces() {
 
 #[test]
 fn test_capital_book_report_export_surfaces() {
+    skip_when_loopback_denied!(test_capital_book_report_export_surfaces);
     let dir = unique_dir("chio-capital-book");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -10353,6 +10432,9 @@ fn test_capital_book_report_export_surfaces() {
 
 #[test]
 fn test_capital_book_report_rejects_mixed_currency_and_missing_counterparty() {
+    skip_when_loopback_denied!(
+        test_capital_book_report_rejects_mixed_currency_and_missing_counterparty
+    );
     let dir = unique_dir("chio-capital-book-negative");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -10467,6 +10549,7 @@ fn test_capital_book_report_rejects_mixed_currency_and_missing_counterparty() {
 
 #[test]
 fn test_capital_instruction_issue_surfaces() {
+    skip_when_loopback_denied!(test_capital_instruction_issue_surfaces);
     let dir = unique_dir("chio-capital-instruction");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -10710,6 +10793,7 @@ fn test_capital_instruction_issue_surfaces() {
 
 #[test]
 fn test_capital_instruction_issue_rejects_stale_authority_and_mismatch() {
+    skip_when_loopback_denied!(test_capital_instruction_issue_rejects_stale_authority_and_mismatch);
     let dir = unique_dir("chio-capital-instruction-negative");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -10937,6 +11021,7 @@ fn test_capital_instruction_issue_rejects_stale_authority_and_mismatch() {
 
 #[test]
 fn test_capital_allocation_issue_surfaces() {
+    skip_when_loopback_denied!(test_capital_allocation_issue_surfaces);
     let dir = unique_dir("chio-capital-allocation");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -11175,6 +11260,7 @@ fn test_capital_allocation_issue_surfaces() {
 
 #[test]
 fn test_capital_allocation_issue_fail_closed_and_boundary_outcomes() {
+    skip_when_loopback_denied!(test_capital_allocation_issue_fail_closed_and_boundary_outcomes);
     let dir = unique_dir("chio-capital-allocation-boundaries");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -11516,6 +11602,7 @@ fn test_capital_allocation_issue_fail_closed_and_boundary_outcomes() {
 
 #[test]
 fn test_liability_provider_registry_issue_list_and_resolve_surfaces() {
+    skip_when_loopback_denied!(test_liability_provider_registry_issue_list_and_resolve_surfaces);
     let dir = unique_dir("chio-liability-provider-registry");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -11781,6 +11868,7 @@ fn run_large_stack_test(name: &str, test_fn: fn()) {
 
 #[test]
 fn test_liability_market_quote_and_bind_workflow_surfaces() {
+    skip_when_loopback_denied!(test_liability_market_quote_and_bind_workflow_surfaces);
     run_large_stack_test(
         "test_liability_market_quote_and_bind_workflow_surfaces",
         test_liability_market_quote_and_bind_workflow_surfaces_inner,
@@ -12096,6 +12184,7 @@ fn test_liability_market_quote_and_bind_workflow_surfaces_inner() {
 
 #[test]
 fn test_liability_market_pricing_authority_and_auto_bind_surfaces() {
+    skip_when_loopback_denied!(test_liability_market_pricing_authority_and_auto_bind_surfaces);
     run_large_stack_test(
         "test_liability_market_pricing_authority_and_auto_bind_surfaces",
         test_liability_market_pricing_authority_and_auto_bind_surfaces_inner,
@@ -12513,6 +12602,9 @@ fn test_liability_market_pricing_authority_and_auto_bind_surfaces_inner() {
 
 #[test]
 fn test_liability_market_auto_bind_rejects_stale_provider_and_out_of_envelope_quotes() {
+    skip_when_loopback_denied!(
+        test_liability_market_auto_bind_rejects_stale_provider_and_out_of_envelope_quotes
+    );
     run_large_stack_test(
         "test_liability_market_auto_bind_rejects_stale_provider_and_out_of_envelope_quotes",
         test_liability_market_auto_bind_rejects_stale_provider_and_out_of_envelope_quotes_inner,
@@ -12975,6 +13067,9 @@ fn test_liability_market_auto_bind_rejects_stale_provider_and_out_of_envelope_qu
 
 #[test]
 fn test_liability_market_rejects_stale_provider_expired_quote_and_placement_mismatch() {
+    skip_when_loopback_denied!(
+        test_liability_market_rejects_stale_provider_expired_quote_and_placement_mismatch
+    );
     run_large_stack_test(
         "test_liability_market_rejects_stale_provider_expired_quote_and_placement_mismatch",
         test_liability_market_rejects_stale_provider_expired_quote_and_placement_mismatch_inner,
@@ -13401,6 +13496,7 @@ fn test_liability_market_rejects_stale_provider_expired_quote_and_placement_mism
 
 #[test]
 fn test_liability_claim_workflow_surfaces() {
+    skip_when_loopback_denied!(test_liability_claim_workflow_surfaces);
     run_large_stack_test(
         "test_liability_claim_workflow_surfaces",
         test_liability_claim_workflow_surfaces_inner,
@@ -14284,6 +14380,7 @@ fn test_liability_claim_workflow_surfaces_inner() {
 
 #[test]
 fn test_liability_claim_rejects_oversized_claims_and_invalid_disputes() {
+    skip_when_loopback_denied!(test_liability_claim_rejects_oversized_claims_and_invalid_disputes);
     let dir = unique_dir("chio-liability-claims-negative");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -14689,6 +14786,7 @@ fn test_liability_claim_rejects_oversized_claims_and_invalid_disputes() {
 
 #[test]
 fn test_underwriting_policy_input_export_surfaces() {
+    skip_when_loopback_denied!(test_underwriting_policy_input_export_surfaces);
     let dir = unique_dir("chio-underwriting-input");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -14835,6 +14933,7 @@ fn test_underwriting_policy_input_export_surfaces() {
 
 #[test]
 fn test_underwriting_policy_input_requires_anchor() {
+    skip_when_loopback_denied!(test_underwriting_policy_input_requires_anchor);
     let setup = setup_with_receipts("chio-underwriting-anchor");
 
     let response = setup
@@ -14859,6 +14958,7 @@ fn test_underwriting_policy_input_requires_anchor() {
 
 #[test]
 fn test_underwriting_decision_report_surfaces() {
+    skip_when_loopback_denied!(test_underwriting_decision_report_surfaces);
     let dir = unique_dir("chio-underwriting-decision");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -14987,6 +15087,7 @@ fn test_underwriting_decision_report_surfaces() {
 
 #[test]
 fn test_underwriting_decision_steps_up_without_receipt_history() {
+    skip_when_loopback_denied!(test_underwriting_decision_steps_up_without_receipt_history);
     let setup = setup_with_receipts("chio-underwriting-decision-empty");
 
     let response = setup
@@ -15020,6 +15121,7 @@ fn test_underwriting_decision_steps_up_without_receipt_history() {
 
 #[test]
 fn test_underwriting_decision_requires_anchor() {
+    skip_when_loopback_denied!(test_underwriting_decision_requires_anchor);
     let setup = setup_with_receipts("chio-underwriting-decision-anchor");
 
     let response = setup
@@ -15049,6 +15151,7 @@ fn test_underwriting_decision_requires_anchor() {
 
 #[test]
 fn test_underwriting_decision_issue_requires_anchor() {
+    skip_when_loopback_denied!(test_underwriting_decision_issue_requires_anchor);
     let setup = setup_with_receipts("chio-underwriting-issue-anchor");
 
     let response = setup
@@ -15083,6 +15186,7 @@ fn test_underwriting_decision_issue_requires_anchor() {
 
 #[test]
 fn test_underwriting_decision_links_failed_settlement_evidence() {
+    skip_when_loopback_denied!(test_underwriting_decision_links_failed_settlement_evidence);
     let dir = unique_dir("chio-underwriting-failed-settlement");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -15163,6 +15267,7 @@ fn test_underwriting_decision_links_failed_settlement_evidence() {
 
 #[test]
 fn test_underwriting_simulation_report_surfaces() {
+    skip_when_loopback_denied!(test_underwriting_simulation_report_surfaces);
     let dir = unique_dir("chio-underwriting-simulation");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -15300,6 +15405,7 @@ fn test_underwriting_simulation_report_surfaces() {
 
 #[test]
 fn test_underwriting_decision_issue_and_list_surfaces() {
+    skip_when_loopback_denied!(test_underwriting_decision_issue_and_list_surfaces);
     let dir = unique_dir("chio-underwriting-issue");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -15481,6 +15587,9 @@ fn test_underwriting_decision_issue_and_list_surfaces() {
 
 #[test]
 fn test_underwriting_decision_issue_with_mixed_currency_exposure_withholds_premium() {
+    skip_when_loopback_denied!(
+        test_underwriting_decision_issue_with_mixed_currency_exposure_withholds_premium
+    );
     let dir = unique_dir("chio-underwriting-mixed-currency");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -15577,6 +15686,9 @@ fn test_underwriting_decision_issue_with_mixed_currency_exposure_withholds_premi
 
 #[test]
 fn test_underwriting_decision_list_partitions_premium_totals_by_currency() {
+    skip_when_loopback_denied!(
+        test_underwriting_decision_list_partitions_premium_totals_by_currency
+    );
     let dir = unique_dir("chio-underwriting-premium-currencies");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -15691,6 +15803,7 @@ fn test_underwriting_decision_list_partitions_premium_totals_by_currency() {
 
 #[test]
 fn test_underwriting_appeal_and_supersession_lifecycle() {
+    skip_when_loopback_denied!(test_underwriting_appeal_and_supersession_lifecycle);
     let dir = unique_dir("chio-underwriting-appeal");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -15872,6 +15985,7 @@ fn test_underwriting_appeal_and_supersession_lifecycle() {
 
 #[test]
 fn test_underwriting_rejected_appeal_cannot_link_replacement_decision() {
+    skip_when_loopback_denied!(test_underwriting_rejected_appeal_cannot_link_replacement_decision);
     let dir = unique_dir("chio-underwriting-appeal-rejected-replacement");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -15996,6 +16110,7 @@ fn test_underwriting_rejected_appeal_cannot_link_replacement_decision() {
 /// This verifies API routes take priority over the SPA catch-all.
 #[test]
 fn test_api_routes_not_shadowed_by_spa() {
+    skip_when_loopback_denied!(test_api_routes_not_shadowed_by_spa);
     let setup = setup_with_receipts("chio-api-priority");
 
     let response = setup

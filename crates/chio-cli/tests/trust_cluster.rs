@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::net::{SocketAddr, TcpListener};
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Mutex, OnceLock};
@@ -22,6 +22,7 @@ use chio_core::session::{OperationKind, OperationTerminalState, RequestId, Sessi
 use chio_core::{canonical_json_bytes, sha256_hex};
 use chio_kernel::BudgetStore;
 use chio_store_sqlite::SqliteBudgetStore;
+use chio_test_support::loopback::{reserve_listen_addr, skip_when_loopback_bind_denied};
 use reqwest::blocking::Client;
 use reqwest::header::AUTHORIZATION;
 use serde_json::{json, Value};
@@ -98,13 +99,6 @@ fn workspace_root() -> PathBuf {
         .nth(2)
         .expect("workspace root")
         .to_path_buf()
-}
-
-fn reserve_listen_addr() -> SocketAddr {
-    let listener = TcpListener::bind("127.0.0.1:0").expect("bind temp listener");
-    let addr = listener.local_addr().expect("listener addr");
-    drop(listener);
-    addr
 }
 
 fn reserve_cluster_nodes(count: usize) -> Vec<(SocketAddr, String)> {
@@ -1538,6 +1532,12 @@ fn run_trust_control_cluster_proving_scenario(run_index: usize, run_total: usize
 #[test]
 #[ignore = "flaky on CI: trust-cluster quorum race; passes locally"]
 fn trust_control_cluster_replicates_state_and_fails_closed_without_quorum() {
+    if skip_when_loopback_bind_denied(
+        "trust_control_cluster_replicates_state_and_fails_closed_without_quorum",
+    ) {
+        return;
+    }
+
     let _test_lock = trust_cluster_test_lock();
     run_trust_control_cluster_proving_scenario(1, 1);
 }
@@ -1545,6 +1545,12 @@ fn trust_control_cluster_replicates_state_and_fails_closed_without_quorum() {
 #[test]
 #[ignore = "slow scenario: exercises trust-control runtime assurance issuance"]
 fn trust_cluster_runtime_assurance_policy_gates_capability_issuance() {
+    if skip_when_loopback_bind_denied(
+        "trust_cluster_runtime_assurance_policy_gates_capability_issuance",
+    ) {
+        return;
+    }
+
     let _test_lock = trust_cluster_test_lock();
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
@@ -1701,6 +1707,12 @@ extensions:
 
 #[test]
 fn trust_control_cluster_internal_status_requires_signed_node_identity() {
+    if skip_when_loopback_bind_denied(
+        "trust_control_cluster_internal_status_requires_signed_node_identity",
+    ) {
+        return;
+    }
+
     let _test_lock = trust_cluster_test_lock();
     let dir = unique_test_dir().join("cluster-node-identity");
     fs::create_dir_all(&dir).expect("create test dir");
@@ -1781,6 +1793,12 @@ fn trust_control_cluster_internal_status_requires_signed_node_identity() {
 
 #[test]
 fn trust_control_cluster_requires_quorum_and_heals_after_partition() {
+    if skip_when_loopback_bind_denied(
+        "trust_control_cluster_requires_quorum_and_heals_after_partition",
+    ) {
+        return;
+    }
+
     let _test_lock = trust_cluster_test_lock();
     let dir = unique_test_dir().join("quorum-heal");
     fs::create_dir_all(&dir).expect("create test dir");
@@ -1985,6 +2003,12 @@ fn trust_control_cluster_requires_quorum_and_heals_after_partition() {
 
 #[test]
 fn trust_control_cluster_rejects_stale_authority_term_after_failover_and_restart() {
+    if skip_when_loopback_bind_denied(
+        "trust_control_cluster_rejects_stale_authority_term_after_failover_and_restart",
+    ) {
+        return;
+    }
+
     let _test_lock = trust_cluster_test_lock();
     let dir = unique_test_dir().join("authority-fence-failover");
     fs::create_dir_all(&dir).expect("create test dir");
@@ -2220,6 +2244,12 @@ fn trust_control_cluster_rejects_stale_authority_term_after_failover_and_restart
 #[cfg(unix)]
 #[test]
 fn trust_control_cluster_failed_quorum_does_not_leave_orphaned_exposure() {
+    if skip_when_loopback_bind_denied(
+        "trust_control_cluster_failed_quorum_does_not_leave_orphaned_exposure",
+    ) {
+        return;
+    }
+
     let _test_lock = trust_cluster_test_lock();
     let dir = unique_test_dir().join("budget-quorum-commit-timeout");
     fs::create_dir_all(&dir).expect("create test dir");
@@ -2327,6 +2357,12 @@ fn trust_control_cluster_failed_quorum_does_not_leave_orphaned_exposure() {
 
 #[test]
 fn trust_control_cluster_replicates_denied_budget_events_without_usage_rows() {
+    if skip_when_loopback_bind_denied(
+        "trust_control_cluster_replicates_denied_budget_events_without_usage_rows",
+    ) {
+        return;
+    }
+
     let _test_lock = trust_cluster_test_lock();
     let dir = unique_test_dir().join("denied-budget-events");
     fs::create_dir_all(&dir).expect("create test dir");
@@ -2476,6 +2512,12 @@ fn trust_control_cluster_replicates_denied_budget_events_without_usage_rows() {
 
 #[test]
 fn trust_control_cluster_late_joiner_catches_up_from_snapshot_and_compacts() {
+    if skip_when_loopback_bind_denied(
+        "trust_control_cluster_late_joiner_catches_up_from_snapshot_and_compacts",
+    ) {
+        return;
+    }
+
     let _test_lock = trust_cluster_test_lock();
     let dir = unique_test_dir().join("late-joiner");
     fs::create_dir_all(&dir).expect("create test dir");
@@ -2658,6 +2700,12 @@ fn trust_control_cluster_late_joiner_catches_up_from_snapshot_and_compacts() {
 
 #[test]
 fn trust_control_cluster_snapshot_replays_holds_and_mutation_events() {
+    if skip_when_loopback_bind_denied(
+        "trust_control_cluster_snapshot_replays_holds_and_mutation_events",
+    ) {
+        return;
+    }
+
     let _test_lock = trust_cluster_test_lock();
     let dir = unique_test_dir().join("snapshot-budget-holds");
     fs::create_dir_all(&dir).expect("create test dir");
@@ -2893,6 +2941,11 @@ fn trust_control_cluster_snapshot_replays_holds_and_mutation_events() {
 
 #[test]
 fn trust_control_cluster_multi_region_partition_qualification() {
+    if skip_when_loopback_bind_denied("trust_control_cluster_multi_region_partition_qualification")
+    {
+        return;
+    }
+
     let _test_lock = trust_cluster_test_lock();
     let dir = unique_test_dir().join("multi-region-qualification");
     fs::create_dir_all(&dir).expect("create test dir");
@@ -3143,6 +3196,10 @@ fn trust_control_cluster_multi_region_partition_qualification() {
 #[test]
 #[ignore = "slow scenario: repeats the full failover scenario"]
 fn trust_control_cluster_repeat_run_qualification() {
+    if skip_when_loopback_bind_denied("trust_control_cluster_repeat_run_qualification") {
+        return;
+    }
+
     let _test_lock = trust_cluster_test_lock();
     for run_index in 1..=TRUST_CLUSTER_QUALIFICATION_RUNS {
         run_trust_control_cluster_proving_scenario(run_index, TRUST_CLUSTER_QUALIFICATION_RUNS);

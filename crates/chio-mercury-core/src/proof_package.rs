@@ -15,6 +15,7 @@ use crate::bundle::MercuryBundleManifest;
 use crate::receipt_metadata::{
     MercuryApprovalState, MercuryContractError, MercuryDisclosurePolicy, MercuryReceiptMetadata,
 };
+use crate::validation::ensure_non_empty;
 
 pub const MERCURY_PUBLICATION_PROFILE_SCHEMA: &str = "chio.mercury.publication_profile.v1";
 pub const MERCURY_PROOF_PACKAGE_SCHEMA: &str = "chio.mercury.proof_package.v1";
@@ -86,16 +87,12 @@ impl MercuryPublicationProfile {
                 }
             }
             CHECKPOINT_CONTINUITY_APPEND_ONLY => {
-                if self
-                    .trust_anchor
-                    .as_deref()
-                    .map(|anchor| anchor.trim().is_empty())
-                    .unwrap_or(true)
-                {
-                    return Err(MercuryContractError::Validation(
+                let trust_anchor = self.trust_anchor.as_deref().ok_or_else(|| {
+                    MercuryContractError::Validation(
                         "publication_profile.checkpoint_continuity=append_only requires publication_profile.trust_anchor".to_string(),
-                    ));
-                }
+                    )
+                })?;
+                ensure_non_empty("publication_profile.trust_anchor", trust_anchor)?;
             }
             other => {
                 return Err(MercuryContractError::Validation(format!(
@@ -817,14 +814,6 @@ fn canonical_json(
         .map_err(|error| MercuryContractError::Validation(format!("{field}: {error}")))
 }
 
-fn ensure_non_empty(field: &'static str, value: &str) -> Result<(), MercuryContractError> {
-    if value.trim().is_empty() {
-        Err(MercuryContractError::EmptyField(field))
-    } else {
-        Ok(())
-    }
-}
-
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
@@ -1027,6 +1016,29 @@ mod tests {
         assert_eq!(report.package_kind, MercuryPackageKind::Proof);
         assert_eq!(report.workflow_id, "workflow-release-control");
         assert_eq!(report.receipt_count, 1);
+    }
+
+    #[test]
+    fn proof_package_rejects_padded_package_id() {
+        let mut package = MercuryProofPackage::build(
+            sample_bundle(),
+            "manifest-sha256-proof",
+            "chio.evidence_export_manifest.v1",
+            1_775_137_700,
+            1_775_137_800,
+            MercuryPublicationProfile::pilot_default(),
+            None,
+            vec![sample_mercury_bundle_manifest()],
+        )
+        .expect("proof package");
+        package.package_id = format!(" {} ", package.package_id);
+
+        let error = package.validate().expect_err("padded package id");
+
+        assert!(matches!(
+            error,
+            MercuryContractError::PaddedField("package_id")
+        ));
     }
 
     #[test]

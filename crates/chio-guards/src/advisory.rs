@@ -279,10 +279,11 @@ impl AdvisoryGuard for AnomalyAdvisoryGuard {
     fn evaluate(&self, ctx: &GuardContext) -> Result<Vec<AdvisorySignal>, KernelError> {
         let mut signals = Vec::new();
 
-        let tool_counts = self
+        let snapshot = self
             .journal
-            .tool_counts()
+            .snapshot()
             .map_err(|e| KernelError::Internal(format!("anomaly advisory journal error: {e}")))?;
+        let tool_counts = &snapshot.tool_counts;
 
         // Check if current tool has been invoked excessively.
         if let Some(count) = tool_counts.get(&ctx.request.tool_name) {
@@ -309,10 +310,7 @@ impl AdvisoryGuard for AnomalyAdvisoryGuard {
         }
 
         // Check delegation depth.
-        let data_flow = self
-            .journal
-            .data_flow()
-            .map_err(|e| KernelError::Internal(format!("anomaly advisory journal error: {e}")))?;
+        let data_flow = &snapshot.data_flow;
 
         if data_flow.max_delegation_depth >= self.depth_threshold {
             signals.push(AdvisorySignal {
@@ -357,9 +355,10 @@ impl AdvisoryGuard for DataTransferAdvisoryGuard {
     }
 
     fn evaluate(&self, _ctx: &GuardContext) -> Result<Vec<AdvisorySignal>, KernelError> {
-        let flow = self.journal.data_flow().map_err(|e| {
+        let snapshot = self.journal.snapshot().map_err(|e| {
             KernelError::Internal(format!("data-transfer advisory journal error: {e}"))
         })?;
+        let flow = snapshot.data_flow;
 
         let total = flow
             .total_bytes_read

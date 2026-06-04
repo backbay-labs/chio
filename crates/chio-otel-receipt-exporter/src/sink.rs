@@ -193,6 +193,7 @@ impl ReceiptStoreSink {
     ) -> Result<CanonicalChioReceipt, OTelReceiptExportError> {
         validate_trace_id(&span.trace_id)?;
         validate_span_id(&span.span_id)?;
+        let source_receipt_id = optional_source_receipt_id(span)?;
 
         let sanitized_attributes = strip_denied_attributes(&span.attributes);
         let sanitized_attribute_map = attributes_to_map(&sanitized_attributes);
@@ -213,22 +214,19 @@ impl ReceiptStoreSink {
         }))
         .map_err(OTelReceiptExportError::Sign)?;
         validate_span_verdict(span)?;
+        let capability_id = optional_routing_attribute(span, "chio.capability.id")?
+            .unwrap_or_else(|| self.config.default_capability_id.clone());
+        let tool_server = optional_routing_attribute(span, ATTR_CHIO_SERVER_ID)?
+            .unwrap_or_else(|| self.config.default_tool_server.clone());
+        let tool_name = optional_routing_attribute(span, ATTR_GEN_AI_TOOL_NAME)?
+            .unwrap_or_else(|| self.config.default_tool_name.clone());
 
         let body = ChioReceiptBody {
             id: next_receipt_id(),
             timestamp: timestamp_from_span(span),
-            capability_id: span
-                .attribute_string("chio.capability.id")
-                .map(str::to_string)
-                .unwrap_or_else(|| self.config.default_capability_id.clone()),
-            tool_server: span
-                .attribute_string(ATTR_CHIO_SERVER_ID)
-                .map(str::to_string)
-                .unwrap_or_else(|| self.config.default_tool_server.clone()),
-            tool_name: span
-                .attribute_string(ATTR_GEN_AI_TOOL_NAME)
-                .map(str::to_string)
-                .unwrap_or_else(|| self.config.default_tool_name.clone()),
+            capability_id,
+            tool_server,
+            tool_name,
             action,
             decision: None,
             receipt_kind: ReceiptKind::TraceObservation,
@@ -240,7 +238,11 @@ impl ReceiptStoreSink {
             content_hash: sha256_hex(canonical_span.as_bytes()),
             policy_hash: self.config.policy_hash.clone(),
             evidence: Vec::new(),
-            metadata: Some(receipt_metadata(span, &sanitized_attributes)),
+            metadata: Some(receipt_metadata(
+                span,
+                &sanitized_attributes,
+                source_receipt_id,
+            )),
             trust_level: TrustLevel::Verified,
             tenant_id: self.config.tenant_id.clone(),
             kernel_key: self.config.signing_keypair.public_key(),
@@ -250,6 +252,50 @@ impl ReceiptStoreSink {
             .map_err(OTelReceiptExportError::Sign)?;
         CanonicalChioReceipt::from_receipt(receipt)
     }
+}
+
+fn optional_source_receipt_id(span: &OtlpSpan) -> Result<Option<&str>, OTelReceiptExportError> {
+    match span.attribute_value(ATTR_CHIO_RECEIPT_ID) {
+        None => Ok(None),
+        Some(serde_json::Value::String(value)) if is_chio_receipt_id(value) => {
+            Ok(Some(value.as_str()))
+        }
+        Some(serde_json::Value::String(_)) => Err(OTelReceiptExportError::InvalidSpan(format!(
+            "{ATTR_CHIO_RECEIPT_ID} must be a 64-character lowercase hex receipt id"
+        ))),
+        Some(value) => Err(OTelReceiptExportError::InvalidSpan(format!(
+            "{ATTR_CHIO_RECEIPT_ID} must be a string, got {value}"
+        ))),
+    }
+}
+
+fn optional_routing_attribute(
+    span: &OtlpSpan,
+    key: &str,
+) -> Result<Option<String>, OTelReceiptExportError> {
+    match span.attribute_value(key) {
+        None => Ok(None),
+        Some(serde_json::Value::String(value)) if is_non_empty_unpadded(value) => {
+            Ok(Some(value.clone()))
+        }
+        Some(serde_json::Value::String(_)) => Err(OTelReceiptExportError::InvalidSpan(format!(
+            "{key} must be a non-empty unpadded string"
+        ))),
+        Some(value) => Err(OTelReceiptExportError::InvalidSpan(format!(
+            "{key} must be a string, got {value}"
+        ))),
+    }
+}
+
+fn is_non_empty_unpadded(value: &str) -> bool {
+    !value.is_empty() && value.trim() == value
+}
+
+fn is_chio_receipt_id(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .chars()
+            .all(|char| matches!(char, '0'..='9' | 'a'..='f'))
 }
 
 fn validate_export_batch_limits(
@@ -282,6 +328,7 @@ fn validate_export_batch_limits(
 fn receipt_metadata(
     span: &OtlpSpan,
     sanitized_attributes: &[crate::ingress::OtlpAttribute],
+    source_receipt_id: Option<&str>,
 ) -> serde_json::Value {
     let mut metadata = serde_json::json!({
         "provenance": {
@@ -300,7 +347,7 @@ fn receipt_metadata(
         }
     });
 
-    if let Some(source_receipt_id) = span.attribute_string(ATTR_CHIO_RECEIPT_ID) {
+    if let Some(source_receipt_id) = source_receipt_id {
         if let Some(object) = metadata.as_object_mut() {
             object.insert(
                 "correlation".to_string(),

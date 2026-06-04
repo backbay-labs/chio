@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use chio_test_support::loopback::{reserve_listen_addr, skip_when_loopback_bind_denied};
 use reqwest::blocking::Client;
 use rusqlite::Connection;
 
@@ -29,13 +30,6 @@ fn unique_dir(prefix: &str) -> PathBuf {
         .expect("system time before unix epoch")
         .as_nanos();
     std::env::temp_dir().join(format!("{prefix}-{nonce}"))
-}
-
-fn reserve_listen_addr() -> std::net::SocketAddr {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind temp listener");
-    let addr = listener.local_addr().expect("listener addr");
-    drop(listener);
-    addr
 }
 
 struct ServerGuard {
@@ -146,6 +140,10 @@ fn check_command_persists_receipt_to_sqlite() {
 
 #[test]
 fn check_command_persists_receipt_via_control_service() {
+    if skip_when_loopback_bind_denied("check_command_persists_receipt_via_control_service") {
+        return;
+    }
+
     let dir = unique_dir("chio-cli-check-control");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");

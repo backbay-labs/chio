@@ -21,6 +21,7 @@ use chio_kernel::{
     LocalCapabilityAuthority, ReceiptStore, StoredToolReceipt,
 };
 use chio_store_sqlite::{SqliteBudgetStore, SqliteCapabilityAuthority, SqliteReceiptStore};
+use chio_test_support::loopback::{reserve_listen_addr, skip_when_loopback_bind_denied};
 use reqwest::blocking::Client;
 
 fn unique_dir(prefix: &str) -> PathBuf {
@@ -48,13 +49,6 @@ fn workspace_root() -> PathBuf {
 
 fn fixture_path(name: &str) -> PathBuf {
     workspace_root().join("examples/policies").join(name)
-}
-
-fn reserve_listen_addr() -> std::net::SocketAddr {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind temp listener");
-    let addr = listener.local_addr().expect("listener addr");
-    drop(listener);
-    addr
 }
 
 struct ServerGuard {
@@ -376,6 +370,10 @@ fn seed_subject_history(
 
 #[test]
 fn trust_service_exposes_local_reputation_scorecard() {
+    if skip_when_loopback_bind_denied("trust_service_exposes_local_reputation_scorecard") {
+        return;
+    }
+
     let dir = unique_dir("chio-cli-local-reputation-http");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -445,6 +443,10 @@ fn trust_service_exposes_local_reputation_scorecard() {
 
 #[test]
 fn trust_service_exposes_reputation_compare_over_http() {
+    if skip_when_loopback_bind_denied("trust_service_exposes_reputation_compare_over_http") {
+        return;
+    }
+
     let dir = unique_dir("chio-cli-reputation-compare-direct-http");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -775,6 +777,11 @@ fn cli_reputation_compare_reports_drift_against_fresh_passport() {
 
 #[test]
 fn cli_reputation_compare_supports_control_service_local_view() {
+    if skip_when_loopback_bind_denied("cli_reputation_compare_supports_control_service_local_view")
+    {
+        return;
+    }
+
     let dir = unique_dir("chio-cli-reputation-compare-http");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -855,6 +862,12 @@ fn cli_reputation_compare_supports_control_service_local_view() {
 
 #[test]
 fn trust_service_reputation_views_include_imported_trust_provenance() {
+    if skip_when_loopback_bind_denied(
+        "trust_service_reputation_views_include_imported_trust_provenance",
+    ) {
+        return;
+    }
+
     let dir = unique_dir("chio-cli-reputation-imported-trust-http");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -951,6 +964,12 @@ fn trust_service_reputation_views_include_imported_trust_provenance() {
 
 #[test]
 fn trust_service_portable_reputation_issue_and_evaluate_respects_local_weighting() {
+    if skip_when_loopback_bind_denied(
+        "trust_service_portable_reputation_issue_and_evaluate_respects_local_weighting",
+    ) {
+        return;
+    }
+
     let dir = unique_dir("chio-cli-portable-reputation-http");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");

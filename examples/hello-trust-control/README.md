@@ -23,10 +23,13 @@ This example teaches the control surfaces directly:
 ## Files
 
 ```text
+ARCHITECTURE.md
 README.md
 policy.yaml
 run-trust.sh
 smoke.sh
+test_verify_artifacts.py
+verify_artifacts.py
 ```
 
 ## Run
@@ -41,4 +44,10 @@ Run the full trust + receipt verification smoke flow:
 
 ```bash
 ./smoke.sh
+```
+
+Run the artifact verifier tests:
+
+```bash
+python3 -m unittest discover -s . -p 'test_*.py'
 ```

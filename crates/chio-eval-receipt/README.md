@@ -12,6 +12,11 @@ It verifies a bundle end to end:
 Verification fails closed: any envelope, corpus, or signature mismatch is
 rejected.
 
+Envelope validation is closed over `spec/eval/receipt-format.v1.json`: unknown
+root or nested fields, missing required sections, empty required strings, and
+invalid closed enum values are rejected before receipt or bundle signatures are
+trusted.
+
 ## Library
 
 - `verify_bundle` / `verify_fixture_bundle` parse and verify a bundle JSON

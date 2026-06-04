@@ -41,6 +41,9 @@ impl OtelProbe {
     }
 
     fn validate_url(raw: &str) -> Result<(), String> {
+        if raw.trim() != raw {
+            return Err("endpoint must not have surrounding whitespace".to_string());
+        }
         let normalized = if raw.starts_with("http://") || raw.starts_with("https://") {
             raw.to_string()
         } else {
@@ -108,6 +111,14 @@ mod tests {
     #[test]
     fn invalid_url_warns() {
         let probe = OtelProbe::default().with_endpoint("::not a url::");
+        let report = probe.run(&ProbeConfig::default());
+        assert_eq!(report.severity, ProbeSeverity::Warning);
+        assert_eq!(report.code, "urn:chio:error:cli:doctor-otel-unresolved");
+    }
+
+    #[test]
+    fn padded_endpoint_warns() {
+        let probe = OtelProbe::default().with_endpoint("https://otel.example/v1/traces ");
         let report = probe.run(&ProbeConfig::default());
         assert_eq!(report.severity, ProbeSeverity::Warning);
         assert_eq!(report.code, "urn:chio:error:cli:doctor-otel-unresolved");

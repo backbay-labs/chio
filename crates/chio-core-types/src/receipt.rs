@@ -21,8 +21,12 @@ use crate::crypto::{
 use crate::error::{Error, Result};
 use crate::oracle::OracleConversionEvidence;
 use crate::runtime_attestation::AttestationVerifierFamily;
+use crate::schema_binding::ensure_schema_matches;
 use crate::session::{
     OperationKind, OperationTerminalState, RequestId, SessionAnchorReference, SessionId,
+};
+use crate::signer_binding::{
+    ensure_backend_matches_embedded_key, ensure_keypair_matches_embedded_key,
 };
 
 /// Current signed receipt schema.
@@ -628,6 +632,7 @@ impl ChioReceipt {
     pub fn sign(body: ChioReceiptBody, keypair: &Keypair) -> Result<Self> {
         let mut body = body;
         body.validate_signable_semantics()?;
+        ensure_keypair_matches_embedded_key(&body.kernel_key, keypair, "receipt", "kernel_key")?;
         bind_receipt_signing_nonce(&mut body);
         body.id = chio_receipt_id(&body)?;
         let signing_body = ChioReceiptSigningBody::from(&body);
@@ -664,6 +669,7 @@ impl ChioReceipt {
     pub fn sign_with_backend(body: ChioReceiptBody, backend: &dyn SigningBackend) -> Result<Self> {
         let mut body = body;
         body.validate_signable_semantics()?;
+        ensure_backend_matches_embedded_key(&body.kernel_key, backend, "receipt", "kernel_key")?;
         bind_receipt_signing_nonce(&mut body);
         body.id = chio_receipt_id(&body)?;
         let signing_body = ChioReceiptSigningBody::from(&body);
@@ -859,6 +865,12 @@ fn parent_set_hash_for_normalized(parent_receipt_ids: &[String]) -> Result<Strin
 
 impl ChildRequestReceipt {
     pub fn sign(body: ChildRequestReceiptBody, keypair: &Keypair) -> Result<Self> {
+        ensure_keypair_matches_embedded_key(
+            &body.kernel_key,
+            keypair,
+            "child request receipt",
+            "kernel_key",
+        )?;
         let (signature, _bytes) = keypair.sign_canonical(&body)?;
         Ok(Self {
             id: body.id,
@@ -882,6 +894,12 @@ impl ChildRequestReceipt {
         body: ChildRequestReceiptBody,
         backend: &dyn SigningBackend,
     ) -> Result<Self> {
+        ensure_backend_matches_embedded_key(
+            &body.kernel_key,
+            backend,
+            "child request receipt",
+            "kernel_key",
+        )?;
         let (signature, _bytes) = sign_canonical_with_backend(backend, &body)?;
         Ok(Self {
             id: body.id,
@@ -1052,6 +1070,17 @@ pub struct ReceiptLineageStatement {
 
 impl ReceiptLineageStatement {
     pub fn sign(body: ReceiptLineageStatementBody, keypair: &Keypair) -> Result<Self> {
+        ensure_schema_matches(
+            &body.schema,
+            CHIO_RECEIPT_LINEAGE_STATEMENT_SCHEMA,
+            "receipt lineage statement",
+        )?;
+        ensure_keypair_matches_embedded_key(
+            &body.kernel_key,
+            keypair,
+            "receipt lineage statement",
+            "kernel_key",
+        )?;
         let (signature, _bytes) = keypair.sign_canonical(&body)?;
         Ok(Self {
             schema: body.schema,
@@ -1091,6 +1120,11 @@ impl ReceiptLineageStatement {
     }
 
     pub fn verify_signature(&self) -> Result<bool> {
+        ensure_schema_matches(
+            &self.schema,
+            CHIO_RECEIPT_LINEAGE_STATEMENT_SCHEMA,
+            "receipt lineage statement",
+        )?;
         let body = self.body();
         self.kernel_key.verify_canonical(&body, &self.signature)
     }
@@ -2195,13 +2229,10 @@ mod tests {
     fn receipt_wrong_key_fails() {
         let kp = Keypair::generate();
         let other_kp = Keypair::generate();
-        // Body claims kernel_key is other_kp but we sign with kp
-        let body = ChioReceiptBody {
-            kernel_key: other_kp.public_key(),
-            ..make_receipt_body(&kp)
-        };
-        let receipt = ChioReceipt::sign(body, &kp).unwrap();
-        // Verify against embedded kernel_key (other_kp) should fail
+        let body = make_receipt_body(&kp);
+        let mut receipt = ChioReceipt::sign(body, &kp).unwrap();
+        receipt.kernel_key = other_kp.public_key();
+        // Tampering the embedded verifier key after signing should fail.
         assert!(!receipt.verify_signature().unwrap());
     }
 

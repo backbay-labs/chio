@@ -149,6 +149,23 @@ pub(crate) fn write_cli_error(
     }
 }
 
+fn write_bytes(writer: &mut impl Write, bytes: &[u8], context: &str) -> Result<(), CliError> {
+    writer
+        .write_all(bytes)
+        .map_err(|err| CliError::Other(format!("{context} write: {err}")))
+}
+
+fn write_pretty_json_line<T: serde::Serialize>(
+    writer: &mut impl Write,
+    value: &T,
+    context: &str,
+) -> Result<(), CliError> {
+    let bytes = serde_json::to_vec_pretty(value)
+        .map_err(|err| CliError::Other(format!("{context} serialize: {err}")))?;
+    write_bytes(writer, &bytes, context)?;
+    write_bytes(writer, b"\n", context)
+}
+
 pub(crate) fn parse_market_tier(value: &str) -> Result<chio_reputation::ReputationTier, CliError> {
     match value {
         "tier0" | "tier_0" => Ok(chio_reputation::ReputationTier::Tier0),
@@ -176,17 +193,12 @@ pub(crate) fn cmd_market_list(
     };
     let report = market::market_list(catalog, &context)
         .map_err(|err| CliError::Other(format!("market list: {err}")))?;
+    let mut stdout = std::io::stdout();
     if json {
-        let bytes = serde_json::to_vec_pretty(&report)
-            .map_err(|err| CliError::Other(format!("market list serialize: {err}")))?;
-        std::io::Write::write_all(&mut std::io::stdout(), &bytes)
-            .map_err(|err| CliError::Other(format!("market list write: {err}")))?;
-        std::io::Write::write_all(&mut std::io::stdout(), b"\n")
-            .map_err(|err| CliError::Other(format!("market list write: {err}")))?;
+        write_pretty_json_line(&mut stdout, &report, "market list")?;
     } else {
         let table = market::render_list_table(&report);
-        std::io::Write::write_all(&mut std::io::stdout(), table.as_bytes())
-            .map_err(|err| CliError::Other(format!("market list write: {err}")))?;
+        write_bytes(&mut stdout, table.as_bytes(), "market list")?;
     }
     Ok(())
 }
@@ -208,17 +220,12 @@ pub(crate) fn cmd_market_info(
     };
     let report = market::market_info(catalog, &context, reference, publisher_revoked)
         .map_err(|err| CliError::Other(format!("market info: {err}")))?;
+    let mut stdout = std::io::stdout();
     if json {
-        let bytes = serde_json::to_vec_pretty(&report)
-            .map_err(|err| CliError::Other(format!("market info serialize: {err}")))?;
-        std::io::Write::write_all(&mut std::io::stdout(), &bytes)
-            .map_err(|err| CliError::Other(format!("market info write: {err}")))?;
-        std::io::Write::write_all(&mut std::io::stdout(), b"\n")
-            .map_err(|err| CliError::Other(format!("market info write: {err}")))?;
+        write_pretty_json_line(&mut stdout, &report, "market info")?;
     } else {
         let text = market::render_info_text(&report);
-        std::io::Write::write_all(&mut std::io::stdout(), text.as_bytes())
-            .map_err(|err| CliError::Other(format!("market info write: {err}")))?;
+        write_bytes(&mut stdout, text.as_bytes(), "market info")?;
     }
     Ok(())
 }
@@ -243,13 +250,9 @@ pub(crate) fn cmd_market_install(
     let record =
         market::market_install(catalog, bundle_dir, &context, reference, publisher_revoked)
             .map_err(|err| CliError::Other(format!("market install: {err}")))?;
+    let mut stdout = std::io::stdout();
     if json {
-        let bytes = serde_json::to_vec_pretty(&record)
-            .map_err(|err| CliError::Other(format!("market install serialize: {err}")))?;
-        std::io::Write::write_all(&mut std::io::stdout(), &bytes)
-            .map_err(|err| CliError::Other(format!("market install write: {err}")))?;
-        std::io::Write::write_all(&mut std::io::stdout(), b"\n")
-            .map_err(|err| CliError::Other(format!("market install write: {err}")))?;
+        write_pretty_json_line(&mut stdout, &record, "market install")?;
     } else {
         let line = format!(
             "installed {} for tenant {} at {} {} (limit {} {})\n",
@@ -260,8 +263,7 @@ pub(crate) fn cmd_market_install(
             record.credit_limit_units,
             record.credit_limit_currency,
         );
-        std::io::Write::write_all(&mut std::io::stdout(), line.as_bytes())
-            .map_err(|err| CliError::Other(format!("market install write: {err}")))?;
+        write_bytes(&mut stdout, line.as_bytes(), "market install")?;
     }
     Ok(())
 }
@@ -1841,4 +1843,29 @@ pub(crate) fn write_chio_attest_report(
         std::io::stdout().write_all(b"\n")?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod dispatch_output_tests {
+    use super::*;
+
+    #[test]
+    fn write_pretty_json_line_preserves_pretty_json_and_trailing_newline() {
+        let mut output = Vec::new();
+        write_pretty_json_line(
+            &mut output,
+            &serde_json::json!({
+                "schema": "chio.test/v1",
+                "allowed": true
+            }),
+            "test output",
+        )
+        .unwrap_or_else(|error| panic!("write JSON line: {error}"));
+
+        let rendered = String::from_utf8(output)
+            .unwrap_or_else(|error| panic!("rendered output is UTF-8: {error}"));
+        assert!(rendered.ends_with('\n'));
+        assert!(rendered.contains("\n  \"schema\": \"chio.test/v1\""));
+        assert!(rendered.contains("\n  \"allowed\": true"));
+    }
 }

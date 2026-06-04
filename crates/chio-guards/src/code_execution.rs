@@ -45,7 +45,7 @@ use serde::{Deserialize, Serialize};
 
 use chio_kernel::{Guard, GuardContext, KernelError, Verdict};
 
-use crate::action::{extract_action, ToolAction};
+use crate::action::{extract_action_checked, ToolAction};
 
 /// Default dangerous module names (Python-focused; matches are case
 /// sensitive and use word boundaries).
@@ -269,7 +269,10 @@ impl Guard for CodeExecutionGuard {
             return Ok(Verdict::Allow);
         }
 
-        let action = extract_action(&ctx.request.tool_name, &ctx.request.arguments);
+        let action = match extract_action_checked(&ctx.request.tool_name, &ctx.request.arguments) {
+            Ok(action) => action,
+            Err(_) => return Ok(Verdict::Deny),
+        };
         let (language, code) = match action {
             ToolAction::CodeExecution { language, code } => (language, code),
             _ => return Ok(Verdict::Allow),

@@ -174,6 +174,40 @@ fn verify_passport_rejects_invalid_envelope_bytes() {
 }
 
 #[test]
+fn verify_passport_rejects_unknown_envelope_and_body_fields() {
+    let issuer = Keypair::generate();
+    let envelope = build_envelope(&issuer, "did:chio:agent-unknown", ISSUED_AT, EXPIRES_AT);
+    let clock = FixedClock::new(ISSUED_AT + 1);
+    let trusted = [issuer.public_key()];
+
+    let mut envelope_value = serde_json::to_value(&envelope).expect("envelope value");
+    envelope_value
+        .as_object_mut()
+        .expect("envelope object")
+        .insert("unsignedHint".to_string(), serde_json::json!("admin"));
+    let envelope_bytes = serde_json::to_vec(&envelope_value).expect("unknown envelope bytes");
+    assert!(matches!(
+        verify_passport(&envelope_bytes, &trusted, &clock),
+        Err(VerifyError::InvalidEnvelope(_))
+    ));
+
+    let mut body_value = serde_json::to_value(&envelope).expect("body value envelope");
+    body_value
+        .as_object_mut()
+        .expect("envelope object")
+        .get_mut("body")
+        .expect("body field")
+        .as_object_mut()
+        .expect("body object")
+        .insert("unsignedRole".to_string(), serde_json::json!("admin"));
+    let body_bytes = serde_json::to_vec(&body_value).expect("unknown body bytes");
+    assert!(matches!(
+        verify_passport(&body_bytes, &trusted, &clock),
+        Err(VerifyError::InvalidEnvelope(_))
+    ));
+}
+
+#[test]
 fn envelope_roundtrips_through_serde() {
     let issuer = Keypair::generate();
     let envelope = build_envelope(&issuer, "did:chio:agent-10", ISSUED_AT, EXPIRES_AT);

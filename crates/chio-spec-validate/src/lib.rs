@@ -23,11 +23,11 @@
 //!
 //! The workspace pulls `jsonschema` with `default-features = false` and
 //! only the `resolve-file` feature enabled. Absolute `http://` and
-//! `https://` `$ref` URIs resolve only when they match local schema `$id`
-//! resources registered from `spec/schemas/`; unregistered network refs fail
-//! with `Unknown scheme` or "feature is required" rather than reaching the
-//! network. This is verified by the `http_ref_in_schema_does_not_fetch_network`
-//! test.
+//! `https://` `$ref` URIs resolve only when they match Chio schema namespaces
+//! registered from `spec/schemas/`; unregistered network refs fail with
+//! `Unknown scheme`, "feature is required", or the local retriever rejection
+//! rather than reaching the network. This is verified by the
+//! `http_ref_in_schema_does_not_fetch_network` test.
 
 #![forbid(unsafe_code)]
 
@@ -37,6 +37,11 @@ use std::path::{Path, PathBuf};
 
 use jsonschema::{Retrieve, Uri};
 use serde_json::Value;
+
+const CHIO_SCHEMA_URI_PREFIXES: &[&str] = &[
+    "https://chio.world/schemas/",
+    "https://chio-protocol.dev/schemas/",
+];
 
 /// Errors surfaced by [`validate`] and helpers.
 #[derive(Debug)]
@@ -185,25 +190,47 @@ impl Retrieve for LocalSchemaRetriever {
         uri: &Uri<String>,
     ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
         match uri.scheme().as_str() {
-            "https" if uri.as_str().starts_with("https://chio.world/schemas/") => {
-                let relative = uri
-                    .path()
-                    .as_str()
-                    .strip_prefix("/schemas/")
-                    .ok_or("Chio schema URI path must start with /schemas/")?;
-                let path = join_schema_path(&self.schema_root, relative)?;
-                let file = fs::File::open(&path)?;
-                Ok(serde_json::from_reader(file)?)
+            "https" => {
+                let Some(relative) = local_chio_schema_relative_path(uri) else {
+                    return Err("unregistered network schema reference is not resolved".into());
+                };
+                let path = resolve_chio_schema_path(&self.schema_root, uri.as_str(), relative)?;
+                read_local_schema_file(&self.schema_root, &path)
             }
             "file" => {
                 let path = PathBuf::from(uri.path().as_str());
-                let file = fs::File::open(path)?;
-                Ok(serde_json::from_reader(file)?)
+                read_local_schema_file(&self.schema_root, &path)
             }
-            "http" | "https" => Err("unregistered network schema reference is not resolved".into()),
+            "http" => Err("unregistered network schema reference is not resolved".into()),
             scheme => Err(format!("Unknown scheme {scheme}").into()),
         }
     }
+}
+
+fn local_chio_schema_relative_path(uri: &Uri<String>) -> Option<&str> {
+    if CHIO_SCHEMA_URI_PREFIXES
+        .iter()
+        .any(|prefix| uri.as_str().starts_with(prefix))
+    {
+        uri.path().as_str().strip_prefix("/schemas/")
+    } else {
+        None
+    }
+}
+
+fn resolve_chio_schema_path(
+    schema_root: &Path,
+    uri: &str,
+    relative: &str,
+) -> Result<PathBuf, Box<dyn std::error::Error + Send + Sync>> {
+    let path = join_schema_path(schema_root, relative)?;
+    if path.is_file() {
+        return Ok(path);
+    }
+    if let Some(path) = find_schema_by_id(schema_root, uri)? {
+        return Ok(path);
+    }
+    Err(format!("Chio schema URI is not registered locally: {uri}").into())
 }
 
 fn join_schema_path(
@@ -221,6 +248,65 @@ fn join_schema_path(
         path.push(segment);
     }
     Ok(path)
+}
+
+fn find_schema_by_id(
+    schema_root: &Path,
+    uri: &str,
+) -> Result<Option<PathBuf>, Box<dyn std::error::Error + Send + Sync>> {
+    let target = uri.trim_end_matches('/');
+    let mut pending = vec![schema_root.to_path_buf()];
+    while let Some(dir) = pending.pop() {
+        let mut entries = Vec::new();
+        for entry in fs::read_dir(&dir)? {
+            entries.push(entry?);
+        }
+        entries.sort_by_key(|entry| entry.path());
+        for entry in entries {
+            let path = entry.path();
+            let file_type = entry.file_type()?;
+            if file_type.is_dir() {
+                pending.push(path);
+            } else if file_type.is_file()
+                && is_json_file(&path)
+                && schema_file_id_matches(&path, target)?
+            {
+                return Ok(Some(path));
+            }
+        }
+    }
+    Ok(None)
+}
+
+fn schema_file_id_matches(
+    path: &Path,
+    target: &str,
+) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+    let file = fs::File::open(path)?;
+    let value: Value = serde_json::from_reader(file)?;
+    let Some(id) = value.get("$id").and_then(Value::as_str) else {
+        return Ok(false);
+    };
+    Ok(id.trim_end_matches('/') == target)
+}
+
+fn is_json_file(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension == "json")
+}
+
+fn read_local_schema_file(
+    schema_root: &Path,
+    path: &Path,
+) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    let canonical_path = fs::canonicalize(path)?;
+    let canonical_root = fs::canonicalize(schema_root)?;
+    if !canonical_path.starts_with(&canonical_root) {
+        return Err("schema reference resolves outside schema root".into());
+    }
+    let file = fs::File::open(canonical_path)?;
+    Ok(serde_json::from_reader(file)?)
 }
 
 #[cfg(test)]
@@ -285,6 +371,7 @@ mod tests {
     #[test]
     fn absolute_id_sibling_schema_ref_resolves_from_local_files() {
         let root = unique_temp_dir("chio-spec-validate-sibling-ref");
+        let _ = fs::remove_dir_all(&root);
         let schema_dir = root.join("spec/schemas/test/v1");
         fs::create_dir_all(&schema_dir)
             .unwrap_or_else(|err| panic!("failed to create {}: {err}", schema_dir.display()));
@@ -330,6 +417,119 @@ mod tests {
         fs::remove_dir_all(&root)
             .unwrap_or_else(|err| panic!("failed to remove {}: {err}", root.display()));
         result.unwrap_or_else(|err| panic!("absolute $id sibling ref should resolve: {err}"));
+    }
+
+    #[test]
+    fn protocol_dev_absolute_schema_id_resolves_from_local_registry() {
+        let root = unique_temp_dir("chio-spec-validate-protocol-dev-ref");
+        let _ = fs::remove_dir_all(&root);
+        let schema_dir = root.join("spec/schemas/test/v1");
+        fs::create_dir_all(&schema_dir)
+            .unwrap_or_else(|err| panic!("failed to create {}: {err}", schema_dir.display()));
+        let schema_path = schema_dir.join("root.schema.json");
+        let sibling_path = schema_dir.join("sibling.schema.json");
+        let doc_path = root.join("doc.json");
+        fs::write(
+            &schema_path,
+            serde_json::to_vec_pretty(&json!({
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "$id": "https://chio-protocol.dev/schemas/test/v1/root/v1",
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name"],
+                "properties": {
+                    "name": {
+                        "$ref": "https://chio-protocol.dev/schemas/test/v1/sibling/v1#/$defs/name"
+                    }
+                }
+            }))
+            .unwrap_or_else(|err| panic!("failed to encode root schema: {err}")),
+        )
+        .unwrap_or_else(|err| panic!("failed to write {}: {err}", schema_path.display()));
+        fs::write(
+            &sibling_path,
+            serde_json::to_vec_pretty(&json!({
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "$id": "https://chio-protocol.dev/schemas/test/v1/sibling/v1",
+                "$defs": {
+                    "name": {
+                        "type": "string",
+                        "minLength": 1
+                    }
+                }
+            }))
+            .unwrap_or_else(|err| panic!("failed to encode sibling schema: {err}")),
+        )
+        .unwrap_or_else(|err| panic!("failed to write {}: {err}", sibling_path.display()));
+        fs::write(&doc_path, br#"{"name":"kernel-a"}"#)
+            .unwrap_or_else(|err| panic!("failed to write {}: {err}", doc_path.display()));
+
+        let result = validate(&schema_path, &doc_path);
+        fs::remove_dir_all(&root)
+            .unwrap_or_else(|err| panic!("failed to remove {}: {err}", root.display()));
+        result.unwrap_or_else(|err| {
+            panic!("protocol.dev absolute $id ref should resolve locally: {err}")
+        });
+    }
+
+    #[test]
+    fn file_ref_outside_schema_root_is_rejected() {
+        let root = unique_temp_dir("chio-spec-validate-file-ref-outside");
+        let _ = fs::remove_dir_all(&root);
+        let schema_dir = root.join("spec/schemas/test/v1");
+        let outside_dir = root.join("outside");
+        fs::create_dir_all(&schema_dir)
+            .unwrap_or_else(|err| panic!("failed to create {}: {err}", schema_dir.display()));
+        fs::create_dir_all(&outside_dir)
+            .unwrap_or_else(|err| panic!("failed to create {}: {err}", outside_dir.display()));
+        let schema_path = schema_dir.join("root.schema.json");
+        let outside_schema = outside_dir.join("outside.schema.json");
+        let doc_path = root.join("doc.json");
+
+        fs::write(
+            &outside_schema,
+            serde_json::to_vec_pretty(&json!({
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object"
+            }))
+            .unwrap_or_else(|err| panic!("failed to encode outside schema: {err}")),
+        )
+        .unwrap_or_else(|err| panic!("failed to write {}: {err}", outside_schema.display()));
+        fs::write(
+            &schema_path,
+            serde_json::to_vec_pretty(&json!({
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "$id": "https://chio.world/schemas/test/v1/root.schema.json",
+                "$ref": file_uri(&outside_schema)
+            }))
+            .unwrap_or_else(|err| panic!("failed to encode root schema: {err}")),
+        )
+        .unwrap_or_else(|err| panic!("failed to write {}: {err}", schema_path.display()));
+        fs::write(&doc_path, br#"{}"#)
+            .unwrap_or_else(|err| panic!("failed to write {}: {err}", doc_path.display()));
+
+        let result = validate(&schema_path, &doc_path);
+        fs::remove_dir_all(&root)
+            .unwrap_or_else(|err| panic!("failed to remove {}: {err}", root.display()));
+
+        match result {
+            Err(ValidateError::SchemaCompile(_, message)) => {
+                assert!(
+                    message.contains("outside schema root"),
+                    "expected schema-root rejection, got: {message}"
+                );
+            }
+            Err(error) => panic!("expected SchemaCompile rejection, got {error}"),
+            Ok(()) => panic!("file:// ref outside schema root should fail closed"),
+        }
+    }
+
+    fn file_uri(path: &Path) -> String {
+        let mut value = path.to_string_lossy().replace('\\', "/");
+        if !value.starts_with('/') {
+            value.insert(0, '/');
+        }
+        format!("file://{value}")
     }
 
     fn unique_temp_dir(label: &str) -> PathBuf {

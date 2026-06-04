@@ -99,6 +99,12 @@ pub enum CustodyError {
 }
 
 impl CustodyError {
+    pub(crate) fn rate_limited(subject: impl Into<String>) -> Self {
+        Self::RateLimited {
+            subject: subject.into(),
+        }
+    }
+
     /// Stable `urn:chio:error:custody:*` code for this error variant.
     ///
     /// Consumed by HTTP / JSON-RPC translation layers; the string codes are
@@ -199,5 +205,15 @@ mod tests {
             URN_INTERNAL_ENCODING,
             "internal encoding errors must NOT alias to assertion-rejected"
         );
+    }
+
+    #[test]
+    fn rate_limited_constructor_preserves_subject_and_urn() {
+        let error = CustodyError::rate_limited("credential-1");
+        assert_eq!(error.urn(), URN_RATE_LIMITED);
+        assert!(matches!(
+            error,
+            CustodyError::RateLimited { subject } if subject == "credential-1"
+        ));
     }
 }

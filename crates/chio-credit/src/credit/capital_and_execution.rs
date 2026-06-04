@@ -43,30 +43,26 @@ impl Default for CapitalBookQuery {
 impl CapitalBookQuery {
     #[must_use]
     pub fn receipt_limit_or_default(&self) -> usize {
-        self.receipt_limit
-            .unwrap_or(100)
-            .clamp(1, MAX_EXPOSURE_LEDGER_RECEIPT_LIMIT)
+        bounded_limit_or_default(self.receipt_limit, 100, MAX_EXPOSURE_LEDGER_RECEIPT_LIMIT)
     }
 
     #[must_use]
     pub fn facility_limit_or_default(&self) -> usize {
-        self.facility_limit
-            .unwrap_or(10)
-            .clamp(1, MAX_CREDIT_FACILITY_LIST_LIMIT)
+        bounded_limit_or_default(self.facility_limit, 10, MAX_CREDIT_FACILITY_LIST_LIMIT)
     }
 
     #[must_use]
     pub fn bond_limit_or_default(&self) -> usize {
-        self.bond_limit
-            .unwrap_or(10)
-            .clamp(1, MAX_CREDIT_BOND_LIST_LIMIT)
+        bounded_limit_or_default(self.bond_limit, 10, MAX_CREDIT_BOND_LIST_LIMIT)
     }
 
     #[must_use]
     pub fn loss_event_limit_or_default(&self) -> usize {
-        self.loss_event_limit
-            .unwrap_or(25)
-            .clamp(1, MAX_CREDIT_LOSS_LIFECYCLE_LIST_LIMIT)
+        bounded_limit_or_default(
+            self.loss_event_limit,
+            25,
+            MAX_CREDIT_LOSS_LIFECYCLE_LIST_LIMIT,
+        )
     }
 
     #[must_use]
@@ -439,8 +435,246 @@ pub struct CapitalExecutionInstructionArtifact {
     pub description: String,
 }
 
+impl CapitalExecutionInstructionArtifact {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema != CAPITAL_EXECUTION_INSTRUCTION_ARTIFACT_SCHEMA {
+            return Err(format!(
+                "capital instruction schema must be {CAPITAL_EXECUTION_INSTRUCTION_ARTIFACT_SCHEMA}"
+            ));
+        }
+        validate_non_empty_clean(&self.instruction_id, "capital instruction instructionId")?;
+        self.query.validate()?;
+        validate_non_empty_clean(&self.subject_key, "capital instruction subjectKey")?;
+        validate_non_empty_clean(&self.source_id, "capital instruction sourceId")?;
+        validate_non_empty_clean(&self.counterparty_id, "capital instruction counterpartyId")?;
+        validate_capital_execution_envelope(
+            &self.authority_chain,
+            &self.execution_window,
+            &self.rail,
+            self.issued_at,
+        )?;
+        ensure_capital_execution_owner_authority(&self.authority_chain, self.owner_role)?;
+        validate_capital_instruction_action_shape(self)?;
+        validate_capital_instruction_reconciliation(self)?;
+        Ok(())
+    }
+}
+
 pub type SignedCapitalExecutionInstruction =
     SignedExportEnvelope<CapitalExecutionInstructionArtifact>;
+
+pub fn validate_capital_execution_envelope(
+    authority_chain: &[CapitalExecutionAuthorityStep],
+    execution_window: &CapitalExecutionWindow,
+    rail: &CapitalExecutionRail,
+    issued_at: u64,
+) -> Result<(), String> {
+    if authority_chain.is_empty() {
+        return Err("capital execution requires at least one authorityChain step".to_string());
+    }
+    validate_non_empty_clean(&rail.rail_id, "capital execution rail.railId")?;
+    validate_non_empty_clean(
+        &rail.custody_provider_id,
+        "capital execution rail.custodyProviderId",
+    )?;
+    if execution_window.not_before > execution_window.not_after {
+        return Err(
+            "capital execution executionWindow requires notBefore <= notAfter".to_string(),
+        );
+    }
+    if execution_window.not_after < issued_at {
+        return Err("capital execution executionWindow is already expired".to_string());
+    }
+    for step in authority_chain {
+        validate_non_empty_clean(
+            &step.principal_id,
+            "capital execution authorityChain principalId",
+        )?;
+        if step.approved_at > step.expires_at {
+            return Err(
+                "capital execution authorityChain requires approvedAt <= expiresAt".to_string(),
+            );
+        }
+        if step.approved_at > issued_at {
+            return Err(format!(
+                "capital execution authority step `{}` approvedAt is after instruction issuance",
+                step.principal_id
+            ));
+        }
+        if step.expires_at < issued_at {
+            return Err(format!(
+                "capital execution authority step `{}` is stale at issuance time",
+                step.principal_id
+            ));
+        }
+        if step.expires_at < execution_window.not_after {
+            return Err(format!(
+                "capital execution authority step `{}` expires before the execution window closes",
+                step.principal_id
+            ));
+        }
+    }
+    ensure_capital_execution_custodian_authority(authority_chain, rail)
+}
+
+pub fn ensure_capital_execution_owner_authority(
+    authority_chain: &[CapitalExecutionAuthorityStep],
+    owner_role: CapitalExecutionRole,
+) -> Result<(), String> {
+    if authority_chain.iter().any(|step| step.role == owner_role) {
+        Ok(())
+    } else {
+        Err("capital execution authorityChain is missing source-owner approval".to_string())
+    }
+}
+
+pub fn ensure_capital_execution_custodian_authority(
+    authority_chain: &[CapitalExecutionAuthorityStep],
+    rail: &CapitalExecutionRail,
+) -> Result<(), String> {
+    if authority_chain.iter().any(|step| {
+        step.role == CapitalExecutionRole::Custodian
+            && step.principal_id == rail.custody_provider_id
+    }) {
+        Ok(())
+    } else {
+        Err(
+            "capital execution authorityChain is missing the custody-provider execution step"
+                .to_string(),
+        )
+    }
+}
+
+fn validate_capital_instruction_action_shape(
+    artifact: &CapitalExecutionInstructionArtifact,
+) -> Result<(), String> {
+    match artifact.action {
+        CapitalExecutionInstructionAction::TransferFunds => {
+            if artifact.source_kind != CapitalBookSourceKind::FacilityCommitment {
+                return Err(
+                    "transfer_funds instructions require sourceKind=facility_commitment"
+                        .to_string(),
+                );
+            }
+            validate_present_clean(
+                artifact.governed_receipt_id.as_deref(),
+                "capital instruction governedReceiptId",
+            )?;
+            validate_present_clean(
+                artifact.completion_flow_row_id.as_deref(),
+                "capital instruction completionFlowRowId",
+            )?;
+        }
+        CapitalExecutionInstructionAction::LockReserve
+        | CapitalExecutionInstructionAction::HoldReserve
+        | CapitalExecutionInstructionAction::ReleaseReserve => {
+            if artifact.source_kind != CapitalBookSourceKind::ReserveBook {
+                return Err("reserve instructions require sourceKind=reserve_book".to_string());
+            }
+            if artifact.governed_receipt_id.is_some() || artifact.completion_flow_row_id.is_some() {
+                return Err(
+                    "governed receipt provenance is only valid for transfer_funds instructions"
+                        .to_string(),
+                );
+            }
+        }
+        CapitalExecutionInstructionAction::CancelInstruction => {
+            if artifact.amount.is_some() {
+                return Err("cancel_instruction does not accept an amount".to_string());
+            }
+            validate_present_clean(
+                artifact.related_instruction_id.as_deref(),
+                "capital instruction relatedInstructionId",
+            )?;
+            if artifact.observed_execution.is_some() {
+                return Err(
+                    "cancel_instruction cannot carry observedExecution movement data".to_string(),
+                );
+            }
+        }
+    }
+    if artifact.action != CapitalExecutionInstructionAction::CancelInstruction {
+        let amount = artifact.amount.as_ref().ok_or_else(|| {
+            "capital instructions require amount for non-cancel actions".to_string()
+        })?;
+        validate_positive_amount(amount, "capital instruction amount")?;
+    }
+    Ok(())
+}
+
+fn validate_capital_instruction_reconciliation(
+    artifact: &CapitalExecutionInstructionArtifact,
+) -> Result<(), String> {
+    match (&artifact.observed_execution, &artifact.amount) {
+        (Some(observed), Some(intended)) => {
+            validate_non_empty_clean(
+                &observed.external_reference_id,
+                "capital instruction observedExecution externalReferenceId",
+            )?;
+            validate_positive_amount(&observed.amount, "capital instruction observedExecution amount")?;
+            if &observed.amount != intended {
+                return Err(
+                    "capital instruction observedExecution amount does not match intended amount"
+                        .to_string(),
+                );
+            }
+            if observed.observed_at < artifact.execution_window.not_before
+                || observed.observed_at > artifact.execution_window.not_after
+            {
+                return Err(
+                    "capital instruction observedExecution timestamp falls outside the execution window"
+                        .to_string(),
+                );
+            }
+            if artifact.reconciled_state != CapitalExecutionReconciledState::Matched {
+                return Err(
+                    "capital instruction observedExecution requires reconciledState=matched"
+                        .to_string(),
+                );
+            }
+        }
+        (Some(_), None) => {
+            return Err(
+                "observedExecution is only valid when the instruction carries an intended amount"
+                    .to_string(),
+            );
+        }
+        (None, _) => {
+            if artifact.reconciled_state != CapitalExecutionReconciledState::NotObserved {
+                return Err(
+                    "capital instruction without observedExecution requires reconciledState=not_observed"
+                        .to_string(),
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_present_clean(value: Option<&str>, label: &str) -> Result<(), String> {
+    let value = value.ok_or_else(|| format!("{label} is required"))?;
+    validate_non_empty_clean(value, label)
+}
+
+fn validate_non_empty_clean(value: &str, label: &str) -> Result<(), String> {
+    if value.trim().is_empty() {
+        return Err(format!("{label} cannot be empty"));
+    }
+    if value.trim() != value {
+        return Err(format!("{label} cannot contain surrounding whitespace"));
+    }
+    if value.chars().any(char::is_control) {
+        return Err(format!("{label} cannot contain control characters"));
+    }
+    Ok(())
+}
+
+fn validate_positive_amount(amount: &MonetaryAmount, label: &str) -> Result<(), String> {
+    if amount.units == 0 {
+        return Err(format!("{label} must be greater than zero"));
+    }
+    validate_non_empty_clean(&amount.currency, &format!("{label} currency"))
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -716,6 +950,81 @@ mod tests {
     use super::*;
     use crate::crypto::Keypair;
 
+    fn valid_capital_instruction_artifact() -> CapitalExecutionInstructionArtifact {
+        CapitalExecutionInstructionArtifact {
+            schema: CAPITAL_EXECUTION_INSTRUCTION_ARTIFACT_SCHEMA.to_string(),
+            instruction_id: "cei-validator-1".to_string(),
+            issued_at: 10,
+            query: CapitalBookQuery {
+                agent_subject: Some("subject-1".to_string()),
+                ..CapitalBookQuery::default()
+            },
+            subject_key: "subject-1".to_string(),
+            source_id: "capital-source:bond:cbd-1".to_string(),
+            source_kind: CapitalBookSourceKind::ReserveBook,
+            governed_receipt_id: None,
+            completion_flow_row_id: None,
+            action: CapitalExecutionInstructionAction::LockReserve,
+            owner_role: CapitalExecutionRole::OperatorTreasury,
+            counterparty_role: CapitalExecutionRole::AgentCounterparty,
+            counterparty_id: "subject-1".to_string(),
+            amount: Some(MonetaryAmount {
+                units: 400,
+                currency: "USD".to_string(),
+            }),
+            authority_chain: vec![
+                CapitalExecutionAuthorityStep {
+                    role: CapitalExecutionRole::OperatorTreasury,
+                    principal_id: "treasury-1".to_string(),
+                    approved_at: 9,
+                    expires_at: 20,
+                    note: None,
+                },
+                CapitalExecutionAuthorityStep {
+                    role: CapitalExecutionRole::Custodian,
+                    principal_id: "custodian-1".to_string(),
+                    approved_at: 9,
+                    expires_at: 20,
+                    note: None,
+                },
+            ],
+            execution_window: CapitalExecutionWindow {
+                not_before: 10,
+                not_after: 20,
+            },
+            rail: CapitalExecutionRail {
+                kind: CapitalExecutionRailKind::Manual,
+                rail_id: "rail-1".to_string(),
+                custody_provider_id: "custodian-1".to_string(),
+                source_account_ref: Some("reserve-main".to_string()),
+                destination_account_ref: None,
+                jurisdiction: Some("US-NY".to_string()),
+            },
+            intended_state: CapitalExecutionIntendedState::PendingExecution,
+            reconciled_state: CapitalExecutionReconciledState::Matched,
+            related_instruction_id: None,
+            observed_execution: Some(CapitalExecutionObservation {
+                observed_at: 12,
+                external_reference_id: "wire-1".to_string(),
+                amount: MonetaryAmount {
+                    units: 400,
+                    currency: "USD".to_string(),
+                },
+            }),
+            support_boundary: CapitalExecutionInstructionSupportBoundary::default(),
+            evidence_refs: Vec::new(),
+            description: "lock reserve".to_string(),
+        }
+    }
+
+    #[test]
+    fn bounded_limit_helper_preserves_default_and_clamps_edges() {
+        assert_eq!(bounded_limit_or_default(None, 50, 100), 50);
+        assert_eq!(bounded_limit_or_default(Some(0), 50, 100), 1);
+        assert_eq!(bounded_limit_or_default(Some(75), 50, 100), 75);
+        assert_eq!(bounded_limit_or_default(Some(250), 50, 100), 100);
+    }
+
     #[test]
     fn exposure_ledger_query_clamps_limits() {
         let query = ExposureLedgerQuery {
@@ -751,6 +1060,45 @@ mod tests {
                 .validate()
                 .unwrap_err()
                 .contains("require at least one anchor")
+        );
+    }
+
+    #[test]
+    fn capital_execution_instruction_requires_source_owner_authority() {
+        let mut artifact = valid_capital_instruction_artifact();
+        let owner_role = artifact.owner_role;
+        artifact
+            .authority_chain
+            .retain(|step| step.role != owner_role);
+
+        let error = artifact
+            .validate()
+            .expect_err("missing source-owner authority must reject");
+        assert!(error.contains("source-owner approval"));
+    }
+
+    #[test]
+    fn exposure_ledger_query_rejects_blank_filter_values() {
+        let query = ExposureLedgerQuery {
+            agent_subject: Some(" ".to_string()),
+            ..ExposureLedgerQuery::default()
+        };
+        assert!(
+            query
+                .validate()
+                .unwrap_err()
+                .contains("--agent-subject must be non-empty")
+        );
+
+        let query = ExposureLedgerQuery {
+            tool_server: Some(" tool-server ".to_string()),
+            ..ExposureLedgerQuery::default()
+        };
+        assert!(
+            query
+                .validate()
+                .unwrap_err()
+                .contains("--tool-server must not contain surrounding whitespace")
         );
     }
 
@@ -908,6 +1256,113 @@ mod tests {
         assert!(policy.require_delegated_call_chain);
         assert!(policy.deny_if_bond_not_active);
         assert!(policy.deny_if_outstanding_delinquency);
+    }
+
+    #[test]
+    fn capital_execution_instruction_artifact_validates_authority_and_reconciliation() {
+        let artifact = valid_capital_instruction_artifact();
+        artifact.validate().unwrap();
+    }
+
+    #[test]
+    fn capital_execution_instruction_rejects_control_character_identities() {
+        let mut artifact = valid_capital_instruction_artifact();
+        artifact.instruction_id = "cei-1\ncei-2".to_string();
+        let error = match artifact.validate() {
+            Ok(_) => panic!("expected control-character instruction id to fail"),
+            Err(error) => error,
+        };
+        assert!(error.contains("instructionId"));
+        assert!(error.contains("control characters"));
+
+        let mut artifact = valid_capital_instruction_artifact();
+        artifact.subject_key = "subject-1\nsubject-2".to_string();
+        let error = match artifact.validate() {
+            Ok(_) => panic!("expected control-character subject key to fail"),
+            Err(error) => error,
+        };
+        assert!(error.contains("subjectKey"));
+        assert!(error.contains("control characters"));
+
+        let mut artifact = valid_capital_instruction_artifact();
+        artifact.rail.rail_id = "rail-1\nrail-2".to_string();
+        let error = match artifact.validate() {
+            Ok(_) => panic!("expected control-character rail id to fail"),
+            Err(error) => error,
+        };
+        assert!(error.contains("railId"));
+        assert!(error.contains("control characters"));
+
+        let mut artifact = valid_capital_instruction_artifact();
+        artifact.authority_chain[0].principal_id = "principal-1\nprincipal-2".to_string();
+        let error = match artifact.validate() {
+            Ok(_) => panic!("expected control-character authority principal to fail"),
+            Err(error) => error,
+        };
+        assert!(error.contains("principalId"));
+        assert!(error.contains("control characters"));
+    }
+
+    #[test]
+    fn capital_execution_envelope_rejects_stale_authority() {
+        let mut artifact = valid_capital_instruction_artifact();
+        artifact.execution_window.not_after = 30;
+        let error = validate_capital_execution_envelope(
+            &artifact.authority_chain,
+            &artifact.execution_window,
+            &artifact.rail,
+            21,
+        )
+        .unwrap_err();
+
+        assert!(error.contains("stale"));
+    }
+
+    #[test]
+    fn capital_execution_envelope_rejects_future_dated_authority_approval() {
+        let mut artifact = valid_capital_instruction_artifact();
+        artifact.authority_chain[0].approved_at = artifact.issued_at + 1;
+
+        let error = validate_capital_execution_envelope(
+            &artifact.authority_chain,
+            &artifact.execution_window,
+            &artifact.rail,
+            artifact.issued_at,
+        )
+        .unwrap_err();
+
+        assert!(error.contains("approvedAt"));
+        assert!(error.contains("after instruction issuance"));
+    }
+
+    #[test]
+    fn capital_instruction_artifact_rejects_transfer_without_completion_flow() {
+        let mut artifact = valid_capital_instruction_artifact();
+        artifact.source_kind = CapitalBookSourceKind::FacilityCommitment;
+        artifact.action = CapitalExecutionInstructionAction::TransferFunds;
+        artifact.governed_receipt_id = Some("rcpt-1".to_string());
+        artifact.completion_flow_row_id = None;
+
+        let error = artifact.validate().unwrap_err();
+
+        assert!(error.contains("completionFlowRowId"));
+    }
+
+    #[test]
+    fn capital_instruction_artifact_rejects_observed_execution_amount_mismatch() {
+        let mut artifact = valid_capital_instruction_artifact();
+        artifact.observed_execution = Some(CapitalExecutionObservation {
+            observed_at: 12,
+            external_reference_id: "wire-1".to_string(),
+            amount: MonetaryAmount {
+                units: 401,
+                currency: "USD".to_string(),
+            },
+        });
+
+        let error = artifact.validate().unwrap_err();
+
+        assert!(error.contains("does not match intended amount"));
     }
 
     #[test]

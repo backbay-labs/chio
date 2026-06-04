@@ -12,6 +12,7 @@
 
 use std::collections::BTreeSet;
 
+use chio_core::Keypair;
 use chio_egress_contract::HttpEgressContract;
 use chio_openapi_mcp_bridge::{BridgeConfig, BridgeError, BridgedResponse, OpenApiMcpBridge};
 use serde_json::json;
@@ -48,7 +49,7 @@ fn bridge_rejects_oversize_dispatcher_response_via_enforce_attempt() {
         server_id: "svc".to_string(),
         server_name: "svc".to_string(),
         server_version: "1.0".to_string(),
-        public_key: "00".to_string(),
+        public_key: Keypair::from_seed(&[43u8; 32]).public_key().to_hex(),
         base_url: "http://127.0.0.1:18080".to_string(),
         egress_contract: Some(tight_response_size_contract()),
     };
@@ -60,6 +61,7 @@ fn bridge_rejects_oversize_dispatcher_response_via_enforce_attempt() {
         Ok(BridgedResponse {
             status: 200,
             body: json!({ "payload": "x".repeat(512) }),
+            observed_body_bytes: Some(1024),
             is_error: false,
         })
     }));

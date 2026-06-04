@@ -143,6 +143,17 @@ pub fn verify_capability_with_floor(
     crypto_floor: CapabilityCryptoFloor,
     budgets: &mut dyn BudgetRegistry,
 ) -> Result<VerifiedCapability, CapabilityError> {
+    let verified = verify_capability_base(token, trusted_issuers, clock, crypto_floor)?;
+    admit_delegated_budget(token, budgets)?;
+    Ok(verified)
+}
+
+fn verify_capability_base(
+    token: &CapabilityToken,
+    trusted_issuers: &[PublicKey],
+    clock: &dyn Clock,
+    crypto_floor: CapabilityCryptoFloor,
+) -> Result<VerifiedCapability, CapabilityError> {
     // Issuer trust check. The legacy kernel also trusts its own public key
     // and the set returned by the capability authority; callers must
     // provide the full trust set they care about.
@@ -173,6 +184,21 @@ pub fn verify_capability_with_floor(
         TimeWindowStatus::Expired => return Err(CapabilityError::Expired),
     }
 
+    Ok(VerifiedCapability {
+        id: token.id.clone(),
+        subject_hex: token.subject.to_hex(),
+        issuer_hex: token.issuer.to_hex(),
+        scope: token.scope.clone(),
+        issued_at: token.issued_at,
+        expires_at: token.expires_at,
+        evaluated_at: now,
+    })
+}
+
+pub(crate) fn admit_delegated_budget(
+    token: &CapabilityToken,
+    budgets: &mut dyn BudgetRegistry,
+) -> Result<(), CapabilityError> {
     // Sibling-sum budget split. Only fires for tokens that carry a
     // delegation chain; root-issued tokens have nothing to split.
     //
@@ -190,15 +216,7 @@ pub fn verify_capability_with_floor(
         )?;
     }
 
-    Ok(VerifiedCapability {
-        id: token.id.clone(),
-        subject_hex: token.subject.to_hex(),
-        issuer_hex: token.issuer.to_hex(),
-        scope: token.scope.clone(),
-        issued_at: token.issued_at,
-        expires_at: token.expires_at,
-        evaluated_at: now,
-    })
+    Ok(())
 }
 
 /// Verify a capability token while enforcing the configured crypto floor.
@@ -290,15 +308,8 @@ pub fn verify_capability_with_floor_and_trust_root(
     crypto_floor: CapabilityCryptoFloor,
     trust_root_scope_hash: &ScopeHash,
 ) -> Result<VerifiedCapability, CapabilityError> {
-    let mut budgets = NoopBudgetRegistry;
-    let verified =
-        verify_capability_with_floor(token, trusted_issuers, clock, crypto_floor, &mut budgets)?;
-
-    if token.requires_chain_binding() {
-        token
-            .validate_chain_binding(trust_root_scope_hash)
-            .map_err(|err| CapabilityError::AttenuationViolation(err.to_string()))?;
-    }
+    let verified = verify_capability_base(token, trusted_issuers, clock, crypto_floor)?;
+    verify_chain_binding_with_trust_root(token, trust_root_scope_hash)?;
 
     Ok(verified)
 }
@@ -315,22 +326,8 @@ pub fn verify_capability_with_floor_and_resolver(
     crypto_floor: CapabilityCryptoFloor,
     trust_root: &dyn TrustRootResolver,
 ) -> Result<VerifiedCapability, CapabilityError> {
-    let mut budgets = NoopBudgetRegistry;
-    let verified =
-        verify_capability_with_floor(token, trusted_issuers, clock, crypto_floor, &mut budgets)?;
-
-    if token.requires_chain_binding() {
-        let issuer_root = trust_root
-            .trust_root_scope_hash(&token.issuer)
-            .ok_or_else(|| {
-                CapabilityError::AttenuationViolation(
-                    "chain-binding: no trust-root scope hash registered for issuer".to_string(),
-                )
-            })?;
-        token
-            .validate_chain_binding(&issuer_root)
-            .map_err(|err| CapabilityError::AttenuationViolation(err.to_string()))?;
-    }
+    let verified = verify_capability_base(token, trusted_issuers, clock, crypto_floor)?;
+    verify_chain_binding_with_resolver(token, trust_root)?;
 
     Ok(verified)
 }
@@ -345,17 +342,29 @@ pub fn verify_capability_full(
     trust_root: &dyn TrustRootResolver,
     budgets: &mut dyn BudgetRegistry,
 ) -> Result<VerifiedCapability, CapabilityError> {
+    let verified = verify_capability_base(token, trusted_issuers, clock, crypto_floor)?;
+    verify_chain_binding_with_negotiation(token, peer, trust_root)?;
+    admit_delegated_budget(token, budgets)?;
+    Ok(verified)
+}
+
+fn verify_chain_binding_with_trust_root(
+    token: &CapabilityToken,
+    trust_root_scope_hash: &ScopeHash,
+) -> Result<(), CapabilityError> {
     if token.requires_chain_binding() {
-        let chain_binding_enabled = peer
-            .features
-            .get(chio_core_types::capability::capability_features::DELEGATION_CHAIN_BINDING)
-            .copied()
-            .unwrap_or(true);
-        if !chain_binding_enabled {
-            return Err(CapabilityError::AttenuationViolation(
-                "chain-binding: peer disabled delegation_chain_binding; attenuated tokens are rejected".to_string(),
-            ));
-        }
+        token
+            .validate_chain_binding(trust_root_scope_hash)
+            .map_err(|err| CapabilityError::AttenuationViolation(err.to_string()))?;
+    }
+    Ok(())
+}
+
+fn verify_chain_binding_with_resolver(
+    token: &CapabilityToken,
+    trust_root: &dyn TrustRootResolver,
+) -> Result<(), CapabilityError> {
+    if token.requires_chain_binding() {
         let issuer_root = trust_root
             .trust_root_scope_hash(&token.issuer)
             .ok_or_else(|| {
@@ -367,13 +376,28 @@ pub fn verify_capability_full(
             .validate_chain_binding(&issuer_root)
             .map_err(|err| CapabilityError::AttenuationViolation(err.to_string()))?;
     }
+    Ok(())
+}
 
-    // Step 3: legacy signature, issuer-trust, crypto-floor, time-bound
-    // verification, AND sibling-sum budget admission. The legacy
-    // function chains issuer -> signature/floor -> time-window -> budget
-    // admit at the end (matching the sibling-sum hook position). Returns a
-    // verified capability projection on success.
-    verify_capability_with_floor(token, trusted_issuers, clock, crypto_floor, budgets)
+fn verify_chain_binding_with_negotiation(
+    token: &CapabilityToken,
+    peer: &CapabilityNegotiation,
+    trust_root: &dyn TrustRootResolver,
+) -> Result<(), CapabilityError> {
+    if token.requires_chain_binding() {
+        let chain_binding_enabled = peer
+            .features
+            .get(chio_core_types::capability::capability_features::DELEGATION_CHAIN_BINDING)
+            .copied()
+            .unwrap_or(true);
+        if !chain_binding_enabled {
+            return Err(CapabilityError::AttenuationViolation(
+                "chain-binding: peer disabled delegation_chain_binding; attenuated tokens are rejected".to_string(),
+            ));
+        }
+        verify_chain_binding_with_resolver(token, trust_root)?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -386,6 +410,38 @@ mod tests {
         DelegationLinkBody,
     };
     use chio_core_types::crypto::Keypair;
+    use core::cell::Cell;
+
+    struct CountingTrustRootResolver {
+        issuer: PublicKey,
+        root: ScopeHash,
+        calls: Cell<u32>,
+    }
+
+    impl CountingTrustRootResolver {
+        fn new(issuer: PublicKey, root: ScopeHash) -> Self {
+            Self {
+                issuer,
+                root,
+                calls: Cell::new(0),
+            }
+        }
+
+        fn calls(&self) -> u32 {
+            self.calls.get()
+        }
+    }
+
+    impl TrustRootResolver for CountingTrustRootResolver {
+        fn trust_root_scope_hash(&self, issuer: &PublicKey) -> Option<ScopeHash> {
+            self.calls.set(self.calls.get() + 1);
+            if issuer == &self.issuer {
+                Some(self.root.clone())
+            } else {
+                None
+            }
+        }
+    }
 
     #[test]
     fn pq_required_rejects_classical_capability() {
@@ -478,6 +534,13 @@ mod tests {
         .expect("sign attenuated token")
     }
 
+    fn counting_resolver_for(issuer: &Keypair) -> CountingTrustRootResolver {
+        CountingTrustRootResolver::new(
+            issuer.public_key(),
+            scope_hash(&ChioScope::default()).expect("trust root hash"),
+        )
+    }
+
     #[test]
     fn full_verifier_rejects_attenuated_token_when_chain_binding_feature_is_disabled() {
         let issuer = Keypair::generate();
@@ -514,6 +577,82 @@ mod tests {
         .expect_err("attenuated token must fail when chain binding is disabled");
 
         assert!(matches!(err, CapabilityError::AttenuationViolation(_)));
+    }
+
+    #[test]
+    fn full_verifier_rejects_untrusted_attenuated_token_before_resolver_lookup() {
+        let issuer = Keypair::generate();
+        let subject = Keypair::generate();
+        let token = make_attenuated_token("cap-untrusted-before-resolver", &issuer, &subject);
+        let clock = crate::FixedClock::new(150);
+        let peer = CapabilityNegotiation::t1_default();
+        let resolver = counting_resolver_for(&issuer);
+        let mut budgets = NoopBudgetRegistry;
+
+        let err = verify_capability_full(
+            &token,
+            &[],
+            &clock,
+            CapabilityCryptoFloor::AllowClassical,
+            &peer,
+            &resolver,
+            &mut budgets,
+        )
+        .expect_err("untrusted attenuated token must fail before chain binding");
+
+        assert_eq!(err, CapabilityError::UntrustedIssuer);
+        assert_eq!(resolver.calls(), 0);
+    }
+
+    #[test]
+    fn full_verifier_rejects_tampered_attenuated_token_before_resolver_lookup() {
+        let issuer = Keypair::generate();
+        let subject = Keypair::generate();
+        let mut token = make_attenuated_token("cap-tampered-before-resolver", &issuer, &subject);
+        token.id.push_str("-tampered");
+        let clock = crate::FixedClock::new(150);
+        let peer = CapabilityNegotiation::t1_default();
+        let resolver = counting_resolver_for(&issuer);
+        let mut budgets = NoopBudgetRegistry;
+
+        let err = verify_capability_full(
+            &token,
+            &[issuer.public_key()],
+            &clock,
+            CapabilityCryptoFloor::AllowClassical,
+            &peer,
+            &resolver,
+            &mut budgets,
+        )
+        .expect_err("tampered attenuated token must fail before chain binding");
+
+        assert_eq!(err, CapabilityError::InvalidSignature);
+        assert_eq!(resolver.calls(), 0);
+    }
+
+    #[test]
+    fn full_verifier_rejects_expired_attenuated_token_before_resolver_lookup() {
+        let issuer = Keypair::generate();
+        let subject = Keypair::generate();
+        let token = make_attenuated_token("cap-expired-before-resolver", &issuer, &subject);
+        let clock = crate::FixedClock::new(201);
+        let peer = CapabilityNegotiation::t1_default();
+        let resolver = counting_resolver_for(&issuer);
+        let mut budgets = NoopBudgetRegistry;
+
+        let err = verify_capability_full(
+            &token,
+            &[issuer.public_key()],
+            &clock,
+            CapabilityCryptoFloor::AllowClassical,
+            &peer,
+            &resolver,
+            &mut budgets,
+        )
+        .expect_err("expired attenuated token must fail before chain binding");
+
+        assert_eq!(err, CapabilityError::Expired);
+        assert_eq!(resolver.calls(), 0);
     }
 
     #[test]

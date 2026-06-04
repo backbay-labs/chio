@@ -400,9 +400,14 @@ pub fn validate_extension_inventory(
             &point.official_component_ids,
             "extension_points.official_component_ids",
         )?;
-        if point.policy_activation_required
-            && point.allowed_evidence_modes == [ExtensionEvidenceMode::None]
-        {
+        let admits_evidence = admits_evidence_capable_mode(&point.allowed_evidence_modes);
+        if admits_evidence && !point.policy_activation_required {
+            return Err(ExtensionContractError::InvalidGuardrail(format!(
+                "extension point {} admits evidence-capable modes without local policy activation",
+                point.id
+            )));
+        }
+        if point.policy_activation_required && !admits_evidence {
             return Err(ExtensionContractError::InvalidGuardrail(format!(
                 "extension point {} requires policy activation but admits no evidence-capable mode",
                 point.id
@@ -478,6 +483,23 @@ pub fn validate_official_stack_package(
         .iter()
         .map(|component| (component.id.as_str(), component))
         .collect();
+    for component in &package.components {
+        for point_id in &component.extension_point_ids {
+            let point = points_by_id
+                .get(point_id.as_str())
+                .ok_or_else(|| ExtensionContractError::UnknownReference(point_id.clone()))?;
+            if !point
+                .official_component_ids
+                .iter()
+                .any(|component_id| component_id == &component.id)
+            {
+                return Err(ExtensionContractError::UnknownReference(format!(
+                    "{} -> {}",
+                    component.id, point_id
+                )));
+            }
+        }
+    }
     let mut profile_ids = HashSet::new();
     for profile in &package.profiles {
         ensure_non_empty(&profile.id, "official_stack.profiles.id")?;
@@ -514,10 +536,18 @@ pub fn validate_official_stack_package(
 
     for point in &inventory.extension_points {
         for component_id in &point.official_component_ids {
-            if !components_by_id.contains_key(component_id.as_str()) {
-                return Err(ExtensionContractError::UnknownReference(
-                    component_id.clone(),
-                ));
+            let component = components_by_id
+                .get(component_id.as_str())
+                .ok_or_else(|| ExtensionContractError::UnknownReference(component_id.clone()))?;
+            if !component
+                .extension_point_ids
+                .iter()
+                .any(|point_id| point_id == &point.id)
+            {
+                return Err(ExtensionContractError::UnknownReference(format!(
+                    "{} -> {}",
+                    point.id, component_id
+                )));
             }
         }
     }
@@ -607,28 +637,7 @@ pub fn validate_extension_manifest(
             "extensions must not claim trust widening".to_string(),
         ));
     }
-    if manifest.runtime.evidence_mode != ExtensionEvidenceMode::None {
-        if !manifest.runtime.requires_subject_binding {
-            return Err(ExtensionContractError::InvalidGuardrail(
-                "evidence-capable extensions must require subject binding".to_string(),
-            ));
-        }
-        if !manifest.runtime.requires_signer_verification {
-            return Err(ExtensionContractError::InvalidGuardrail(
-                "evidence-capable extensions must require signer verification".to_string(),
-            ));
-        }
-        if !manifest.runtime.requires_freshness_check {
-            return Err(ExtensionContractError::InvalidGuardrail(
-                "evidence-capable extensions must require freshness checks".to_string(),
-            ));
-        }
-        if !manifest.runtime.requires_local_policy_activation {
-            return Err(ExtensionContractError::InvalidGuardrail(
-                "evidence-capable extensions must require local policy activation".to_string(),
-            ));
-        }
-    }
+    validate_evidence_runtime_guardrails(&manifest.runtime)?;
 
     Ok(())
 }
@@ -1000,6 +1009,41 @@ where
     Ok(())
 }
 
+fn validate_evidence_runtime_guardrails(
+    runtime: &ExtensionRuntimeEnvelope,
+) -> Result<(), ExtensionContractError> {
+    if runtime.evidence_mode == ExtensionEvidenceMode::None {
+        return Ok(());
+    }
+    if !runtime.requires_subject_binding {
+        return Err(ExtensionContractError::InvalidGuardrail(
+            "evidence-capable extensions must require subject binding".to_string(),
+        ));
+    }
+    if !runtime.requires_signer_verification {
+        return Err(ExtensionContractError::InvalidGuardrail(
+            "evidence-capable extensions must require signer verification".to_string(),
+        ));
+    }
+    if !runtime.requires_freshness_check {
+        return Err(ExtensionContractError::InvalidGuardrail(
+            "evidence-capable extensions must require freshness checks".to_string(),
+        ));
+    }
+    if !runtime.requires_local_policy_activation {
+        return Err(ExtensionContractError::InvalidGuardrail(
+            "evidence-capable extensions must require local policy activation".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn admits_evidence_capable_mode(modes: &[ExtensionEvidenceMode]) -> bool {
+    modes
+        .iter()
+        .any(|mode| *mode != ExtensionEvidenceMode::None)
+}
+
 fn negotiation_rejection(
     code: ExtensionNegotiationRejectionCode,
     detail: impl Into<String>,
@@ -1226,6 +1270,17 @@ mod tests {
     }
 
     #[test]
+    fn inventory_rejects_evidence_capable_points_without_policy_activation() {
+        let mut inventory = sample_inventory();
+        inventory.extension_points[1].policy_activation_required = false;
+
+        assert!(matches!(
+            validate_extension_inventory(&inventory),
+            Err(ExtensionContractError::InvalidGuardrail(_))
+        ));
+    }
+
+    #[test]
     fn inventory_validation_rejects_remaining_shape_and_guardrail_errors() {
         let mut inventory = sample_inventory();
         inventory.schema = "chio.extension-inventory.v9".to_string();
@@ -1371,6 +1426,42 @@ mod tests {
         );
         assert_eq!(report.outcome, ExtensionNegotiationOutcome::Accepted);
         assert!(report.reasons.is_empty());
+    }
+
+    #[test]
+    fn official_stack_validation_rejects_inventory_components_that_do_not_implement_the_point() {
+        let mut inventory = sample_inventory();
+        inventory.extension_points[0].official_component_ids =
+            vec!["chio.native-chio-service".to_string()];
+
+        assert!(matches!(
+            validate_official_stack_package(&inventory, &sample_official_stack()),
+            Err(ExtensionContractError::UnknownReference(_))
+        ));
+    }
+
+    #[test]
+    fn official_stack_validation_rejects_components_not_advertised_by_inventory() {
+        let mut package = sample_official_stack();
+        package.components[0].extension_point_ids =
+            vec!["chio.kernel.tool_server_connection".to_string()];
+
+        assert!(matches!(
+            validate_official_stack_package(&sample_inventory(), &package),
+            Err(ExtensionContractError::UnknownReference(_))
+        ));
+    }
+
+    #[test]
+    fn negotiation_rejects_unreciprocated_official_component_edges() {
+        let mut package = sample_official_stack();
+        package.components[0].extension_point_ids =
+            vec!["chio.kernel.tool_server_connection".to_string()];
+
+        let report = negotiate_extension(&sample_inventory(), &package, &sample_manifest());
+        assert_eq!(report.outcome, ExtensionNegotiationOutcome::Rejected);
+        assert!(rejection_codes(&report)
+            .contains(&ExtensionNegotiationRejectionCode::MalformedOfficialStack));
     }
 
     #[test]
@@ -1657,6 +1748,45 @@ mod tests {
             validate_extension_manifest(&manifest),
             Err(ExtensionContractError::InvalidGuardrail(_))
         ));
+    }
+
+    #[test]
+    fn evidence_runtime_guardrail_helper_preserves_fail_closed_requirements() {
+        let mut runtime = sample_manifest().runtime;
+        runtime.evidence_mode = ExtensionEvidenceMode::None;
+        assert!(validate_evidence_runtime_guardrails(&runtime).is_ok());
+
+        runtime.evidence_mode = ExtensionEvidenceMode::ImportOnly;
+        runtime.requires_subject_binding = true;
+        runtime.requires_signer_verification = true;
+        runtime.requires_freshness_check = true;
+        runtime.requires_local_policy_activation = true;
+        assert!(validate_evidence_runtime_guardrails(&runtime).is_ok());
+
+        let cases: [(&str, fn(&mut ExtensionRuntimeEnvelope)); 4] = [
+            ("subject binding", |runtime| {
+                runtime.requires_subject_binding = false;
+            }),
+            ("signer verification", |runtime| {
+                runtime.requires_signer_verification = false;
+            }),
+            ("freshness checks", |runtime| {
+                runtime.requires_freshness_check = false;
+            }),
+            ("local policy activation", |runtime| {
+                runtime.requires_local_policy_activation = false;
+            }),
+        ];
+        for (expected_detail, remove_guardrail) in cases {
+            let mut runtime = runtime.clone();
+            remove_guardrail(&mut runtime);
+            let Err(ExtensionContractError::InvalidGuardrail(message)) =
+                validate_evidence_runtime_guardrails(&runtime)
+            else {
+                panic!("missing guardrail should fail closed: {expected_detail}");
+            };
+            assert!(message.contains(expected_detail));
+        }
     }
 
     #[test]

@@ -774,14 +774,37 @@ pub fn parse_authority_input(raw: &str) -> Result<Vec<String>, BindingError> {
         ));
     }
     if trimmed.starts_with('[') {
-        return serde_json::from_str::<Vec<String>>(trimmed).map_err(|error| {
+        let values = serde_json::from_str::<Vec<String>>(trimmed).map_err(|error| {
             BindingError::new(
                 "invalid_authority_input",
                 format!("authority input must be hex or JSON array of hex: {error}"),
             )
-        });
+        })?;
+        return normalize_authority_array(values);
     }
     Ok(alloc::vec![trimmed.to_string()])
+}
+
+fn normalize_authority_array(values: Vec<String>) -> Result<Vec<String>, BindingError> {
+    if values.is_empty() {
+        return Err(BindingError::new(
+            "invalid_authority_input",
+            "authority input array was empty",
+        ));
+    }
+
+    let mut normalized = Vec::with_capacity(values.len());
+    for value in values {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            return Err(BindingError::new(
+                "invalid_authority_input",
+                "authority input array contained an empty key",
+            ));
+        }
+        normalized.push(trimmed.to_string());
+    }
+    Ok(normalized)
 }
 
 // ---------------------------------------------------------------------------
@@ -1420,6 +1443,16 @@ mod tests {
         assert_eq!(multi, std::vec!["aa".to_string(), "bb".to_string()]);
 
         assert!(parse_authority_input("").is_err());
+    }
+
+    #[test]
+    fn parse_authority_input_rejects_empty_array() {
+        let result = parse_authority_input("[]");
+
+        assert!(matches!(
+            result,
+            Err(BindingError { code, .. }) if code == "invalid_authority_input"
+        ));
     }
 
     fn make_signed_receipt(seed: [u8; 32]) -> chio_core_types::receipt::ChioReceipt {

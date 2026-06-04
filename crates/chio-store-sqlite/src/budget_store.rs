@@ -507,9 +507,17 @@ impl SqliteBudgetStore {
                     Ok(SqliteBudgetHold {
                         hold_id: row.get(0)?,
                         capability_id: row.get(1)?,
-                        grant_index: row.get::<_, i64>(2)?.max(0) as usize,
-                        authorized_exposure_units: row.get::<_, i64>(3)?.max(0) as u64,
-                        remaining_exposure_units: row.get::<_, i64>(4)?.max(0) as u64,
+                        grant_index: budget_usize_from_row(row, 2, "grant_index")?,
+                        authorized_exposure_units: budget_u64_from_row(
+                            row,
+                            3,
+                            "authorized_exposure_units",
+                        )?,
+                        remaining_exposure_units: budget_u64_from_row(
+                            row,
+                            4,
+                            "remaining_exposure_units",
+                        )?,
                         invocation_count_debited: row.get::<_, i64>(5)? > 0,
                         disposition: HoldDisposition::parse(&disposition).ok_or_else(|| {
                             rusqlite::Error::FromSqlConversionFailure(
@@ -885,10 +893,10 @@ impl SqliteBudgetStore {
                 |row| {
                     Ok((
                         row.get::<_, String>(0)?,
-                        row.get::<_, i64>(1)?.max(0) as usize,
+                        budget_usize_from_row(row, 1, "grant_index")?,
                         row.get::<_, String>(2)?,
                         row.get::<_, Option<i64>>(3)?,
-                        row.get::<_, Option<i64>>(4)?,
+                        optional_budget_u32_from_row(row, 4, "max_invocations")?,
                     ))
                 },
             )
@@ -906,7 +914,7 @@ impl SqliteBudgetStore {
         let mutation_matches = existing_capability_id == capability_id
             && existing_grant_index == grant_index
             && existing_kind == BudgetMutationKind::IncrementInvocation.as_str()
-            && existing_max_invocations.map(|value| value.max(0) as u32) == max_invocations;
+            && existing_max_invocations == max_invocations;
         if !mutation_matches {
             return Err(BudgetStoreError::Invariant(format!(
                 "budget event_id `{event_id}` was reused for a different mutation"
@@ -1025,17 +1033,17 @@ impl SqliteBudgetStore {
                     Ok((
                         row.get::<_, Option<String>>(0)?,
                         row.get::<_, String>(1)?,
-                        row.get::<_, i64>(2)?.max(0) as usize,
+                        budget_usize_from_row(row, 2, "grant_index")?,
                         row.get::<_, String>(3)?,
                         row.get::<_, Option<i64>>(4)?,
-                        row.get::<_, i64>(5)?.max(0) as u64,
-                        row.get::<_, i64>(6)?.max(0) as u64,
-                        row.get::<_, Option<i64>>(7)?,
-                        row.get::<_, Option<i64>>(8)?,
-                        row.get::<_, Option<i64>>(9)?,
-                        row.get::<_, i64>(10)?.max(0) as u32,
-                        row.get::<_, i64>(11)?.max(0) as u64,
-                        row.get::<_, i64>(12)?.max(0) as u64,
+                        budget_u64_from_row(row, 5, "exposure_units")?,
+                        budget_u64_from_row(row, 6, "realized_spend_units")?,
+                        optional_budget_u32_from_row(row, 7, "max_invocations")?,
+                        optional_budget_u64_from_row(row, 8, "max_exposure_per_invocation")?,
+                        optional_budget_u64_from_row(row, 9, "max_total_exposure_units")?,
+                        budget_u32_from_row(row, 10, "invocation_count_after")?,
+                        budget_u64_from_row(row, 11, "total_cost_exposed_after")?,
+                        budget_u64_from_row(row, 12, "total_cost_realized_spend_after")?,
                         authority,
                     ))
                 },
@@ -1060,12 +1068,9 @@ impl SqliteBudgetStore {
         else {
             return Ok(None);
         };
-        let max_invocations_matches =
-            existing_max_invocations.map(|value| value.max(0) as u32) == max_invocations;
-        let max_per_matches = existing_max_exposure_per_invocation.map(|value| value.max(0) as u64)
-            == max_cost_per_invocation;
-        let max_total_matches = existing_max_total_exposure_units.map(|value| value.max(0) as u64)
-            == max_total_cost_units;
+        let max_invocations_matches = existing_max_invocations == max_invocations;
+        let max_per_matches = existing_max_exposure_per_invocation == max_cost_per_invocation;
+        let max_total_matches = existing_max_total_exposure_units == max_total_cost_units;
         let mutation_matches = existing_capability_id == capability_id
             && existing_grant_index == grant_index
             && existing_kind == kind.as_str()
@@ -1095,9 +1100,9 @@ impl SqliteBudgetStore {
                     params![capability_id, grant_index as i64],
                     |row| {
                         Ok((
-                            row.get::<_, i64>(0)?.max(0) as u32,
-                            row.get::<_, i64>(1)?.max(0) as u64,
-                            row.get::<_, i64>(2)?.max(0) as u64,
+                            budget_u32_from_row(row, 0, "invocation_count")?,
+                            budget_u64_from_row(row, 1, "total_cost_exposed")?,
+                            budget_u64_from_row(row, 2, "total_cost_realized_spend")?,
                         ))
                     },
                 )
@@ -1250,9 +1255,9 @@ impl SqliteBudgetStore {
                 params![capability_id, grant_index as i64],
                 |row| {
                     Ok((
-                        row.get::<_, i64>(0)?.max(0) as u32,
-                        row.get::<_, i64>(1)?.max(0) as u64,
-                        row.get::<_, i64>(2)?.max(0) as u64,
+                        budget_u32_from_row(row, 0, "invocation_count")?,
+                        budget_u64_from_row(row, 1, "total_cost_exposed")?,
+                        budget_u64_from_row(row, 2, "total_cost_realized_spend")?,
                     ))
                 },
             )
@@ -1426,7 +1431,7 @@ impl BudgetStore for SqliteBudgetStore {
             return Ok(existing_allowed.unwrap_or(false));
         }
 
-        let row: Option<(i64, u64, u64)> = transaction
+        let row: Option<(u32, u64, u64)> = transaction
             .query_row(
                 r#"
                 SELECT invocation_count, total_cost_exposed, total_cost_realized_spend
@@ -1436,15 +1441,14 @@ impl BudgetStore for SqliteBudgetStore {
                 params![capability_id, grant_index as i64],
                 |row| {
                     Ok((
-                        row.get(0)?,
-                        row.get::<_, i64>(1)?.max(0) as u64,
-                        row.get::<_, i64>(2)?.max(0) as u64,
+                        budget_u32_from_row(row, 0, "invocation_count")?,
+                        budget_u64_from_row(row, 1, "total_cost_exposed")?,
+                        budget_u64_from_row(row, 2, "total_cost_realized_spend")?,
                     ))
                 },
             )
             .optional()?;
         let (current_count, current_exposed, current_realized) = row.unwrap_or((0, 0, 0));
-        let current_count = current_count.max(0) as u32;
 
         if let Some(hold_id) = hold_id {
             let retry_follows_rollback = match event_id {
@@ -1470,10 +1474,14 @@ impl BudgetStore for SqliteBudgetStore {
                             params![capability_id, grant_index as i64],
                             |row| {
                                 Ok((
-                                    row.get::<_, i64>(0)?.max(0) as u64,
-                                    row.get::<_, i64>(1)?.max(0) as u32,
-                                    row.get::<_, i64>(2)?.max(0) as u64,
-                                    row.get::<_, i64>(3)?.max(0) as u64,
+                                    budget_u64_from_row(row, 0, "seq")?,
+                                    budget_u32_from_row(row, 1, "invocation_count")?,
+                                    budget_u64_from_row(row, 2, "total_cost_exposed")?,
+                                    budget_u64_from_row(
+                                        row,
+                                        3,
+                                        "total_cost_realized_spend",
+                                    )?,
                                 ))
                             },
                         )
@@ -1585,10 +1593,14 @@ impl BudgetStore for SqliteBudgetStore {
                                     params![capability_id, grant_index as i64],
                                     |row| {
                                         Ok((
-                                            row.get::<_, i64>(0)?.max(0) as u64,
-                                            row.get::<_, i64>(1)?.max(0) as u32,
-                                            row.get::<_, i64>(2)?.max(0) as u64,
-                                            row.get::<_, i64>(3)?.max(0) as u64,
+                                            budget_u64_from_row(row, 0, "seq")?,
+                                            budget_u32_from_row(row, 1, "invocation_count")?,
+                                            budget_u64_from_row(row, 2, "total_cost_exposed")?,
+                                            budget_u64_from_row(
+                                                row,
+                                                3,
+                                                "total_cost_realized_spend",
+                                            )?,
                                         ))
                                     },
                                 )
@@ -1655,10 +1667,14 @@ impl BudgetStore for SqliteBudgetStore {
                                 params![capability_id, grant_index as i64],
                                 |row| {
                                     Ok((
-                                        row.get::<_, i64>(0)?.max(0) as u64,
-                                        row.get::<_, i64>(1)?.max(0) as u32,
-                                        row.get::<_, i64>(2)?.max(0) as u64,
-                                        row.get::<_, i64>(3)?.max(0) as u64,
+                                        budget_u64_from_row(row, 0, "seq")?,
+                                        budget_u32_from_row(row, 1, "invocation_count")?,
+                                        budget_u64_from_row(row, 2, "total_cost_exposed")?,
+                                        budget_u64_from_row(
+                                            row,
+                                            3,
+                                            "total_cost_realized_spend",
+                                        )?,
                                     ))
                                 },
                             )
@@ -1876,9 +1892,9 @@ impl BudgetStore for SqliteBudgetStore {
                 params![capability_id, grant_index as i64],
                 |row| {
                     Ok((
-                        row.get::<_, i64>(0)?,
-                        row.get::<_, i64>(1)?.max(0) as u64,
-                        row.get::<_, i64>(2)?.max(0) as u64,
+                        budget_u32_from_row(row, 0, "invocation_count")?,
+                        budget_u64_from_row(row, 1, "total_cost_exposed")?,
+                        budget_u64_from_row(row, 2, "total_cost_realized_spend")?,
                     ))
                 },
             )
@@ -1892,7 +1908,7 @@ impl BudgetStore for SqliteBudgetStore {
             ));
         };
 
-        if invocation_count <= 0 {
+        if invocation_count == 0 {
             transaction.rollback()?;
             return Err(BudgetStoreError::Invariant(
                 "cannot reverse charge with zero invocation_count".to_string(),
@@ -1962,7 +1978,7 @@ impl BudgetStore for SqliteBudgetStore {
             None,
             None,
             None,
-            (invocation_count - 1).max(0) as u32,
+            invocation_count - 1,
             new_total_cost_exposed,
             total_cost_realized_spend,
         )?;
@@ -2058,9 +2074,9 @@ impl BudgetStore for SqliteBudgetStore {
                 params![capability_id, grant_index as i64],
                 |row| {
                     Ok((
-                        row.get::<_, i64>(0)?,
-                        row.get::<_, i64>(1)?.max(0) as u64,
-                        row.get::<_, i64>(2)?.max(0) as u64,
+                        budget_u32_from_row(row, 0, "invocation_count")?,
+                        budget_u64_from_row(row, 1, "total_cost_exposed")?,
+                        budget_u64_from_row(row, 2, "total_cost_realized_spend")?,
                     ))
                 },
             )
@@ -2141,7 +2157,7 @@ impl BudgetStore for SqliteBudgetStore {
             None,
             None,
             None,
-            invocation_count.max(0) as u32,
+            invocation_count,
             new_total_cost_exposed,
             total_cost_realized_spend,
         )?;
@@ -2254,9 +2270,9 @@ impl BudgetStore for SqliteBudgetStore {
                 params![capability_id, grant_index as i64],
                 |row| {
                     Ok((
-                        row.get::<_, i64>(0)?,
-                        row.get::<_, i64>(1)?.max(0) as u64,
-                        row.get::<_, i64>(2)?.max(0) as u64,
+                        budget_u32_from_row(row, 0, "invocation_count")?,
+                        budget_u64_from_row(row, 1, "total_cost_exposed")?,
+                        budget_u64_from_row(row, 2, "total_cost_realized_spend")?,
                     ))
                 },
             )
@@ -2270,7 +2286,7 @@ impl BudgetStore for SqliteBudgetStore {
             ));
         };
 
-        if invocation_count <= 0 {
+        if invocation_count == 0 {
             transaction.rollback()?;
             return Err(BudgetStoreError::Invariant(
                 "cannot settle charge with zero invocation_count".to_string(),
@@ -2348,7 +2364,7 @@ impl BudgetStore for SqliteBudgetStore {
             None,
             None,
             None,
-            invocation_count.max(0) as u32,
+            invocation_count,
             new_total_cost_exposed,
             new_total_cost_realized_spend,
         )?;
@@ -2471,14 +2487,14 @@ fn checked_committed_cost_units(
 }
 
 fn record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<BudgetUsageRecord> {
-    let total_cost_exposed = row.get::<_, i64>(5)?.max(0) as u64;
-    let total_cost_realized_spend = row.get::<_, i64>(6)?.max(0) as u64;
+    let total_cost_exposed = budget_u64_from_row(row, 5, "total_cost_exposed")?;
+    let total_cost_realized_spend = budget_u64_from_row(row, 6, "total_cost_realized_spend")?;
     Ok(BudgetUsageRecord {
         capability_id: row.get(0)?,
-        grant_index: row.get::<_, i64>(1)?.max(0) as u32,
-        invocation_count: row.get::<_, i64>(2)?.max(0) as u32,
+        grant_index: budget_u32_from_row(row, 1, "grant_index")?,
+        invocation_count: budget_u32_from_row(row, 2, "invocation_count")?,
         updated_at: row.get(3)?,
-        seq: row.get::<_, i64>(4)?.max(0) as u64,
+        seq: budget_u64_from_row(row, 4, "seq")?,
         total_cost_exposed,
         total_cost_realized_spend,
     })
@@ -2501,30 +2517,132 @@ fn mutation_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<BudgetM
         event_id: row.get(0)?,
         hold_id: row.get(1)?,
         capability_id: row.get(2)?,
-        grant_index: row.get::<_, i64>(3)?.max(0) as u32,
+        grant_index: budget_u32_from_row(row, 3, "grant_index")?,
         kind,
         allowed: row.get::<_, Option<i64>>(5)?.map(|value| value > 0),
         recorded_at: row.get(6)?,
-        event_seq: row.get::<_, i64>(7)?.max(0) as u64,
-        usage_seq: row
-            .get::<_, Option<i64>>(8)?
-            .map(|value| value.max(0) as u64),
-        exposure_units: row.get::<_, i64>(9)?.max(0) as u64,
-        realized_spend_units: row.get::<_, i64>(10)?.max(0) as u64,
-        max_invocations: row
-            .get::<_, Option<i64>>(11)?
-            .map(|value| value.max(0) as u32),
-        max_cost_per_invocation: row
-            .get::<_, Option<i64>>(12)?
-            .map(|value| value.max(0) as u64),
-        max_total_cost_units: row
-            .get::<_, Option<i64>>(13)?
-            .map(|value| value.max(0) as u64),
-        invocation_count_after: row.get::<_, i64>(14)?.max(0) as u32,
-        total_cost_exposed_after: row.get::<_, i64>(15)?.max(0) as u64,
-        total_cost_realized_spend_after: row.get::<_, i64>(16)?.max(0) as u64,
+        event_seq: budget_u64_from_row(row, 7, "event_seq")?,
+        usage_seq: optional_budget_u64_from_row(row, 8, "usage_seq")?,
+        exposure_units: budget_u64_from_row(row, 9, "exposure_units")?,
+        realized_spend_units: budget_u64_from_row(row, 10, "realized_spend_units")?,
+        max_invocations: optional_budget_u32_from_row(row, 11, "max_invocations")?,
+        max_cost_per_invocation: optional_budget_u64_from_row(
+            row,
+            12,
+            "max_exposure_per_invocation",
+        )?,
+        max_total_cost_units: optional_budget_u64_from_row(row, 13, "max_total_exposure_units")?,
+        invocation_count_after: budget_u32_from_row(row, 14, "invocation_count_after")?,
+        total_cost_exposed_after: budget_u64_from_row(row, 15, "total_cost_exposed_after")?,
+        total_cost_realized_spend_after: budget_u64_from_row(
+            row,
+            16,
+            "total_cost_realized_spend_after",
+        )?,
         authority,
     })
+}
+
+fn budget_i64_from_row(
+    row: &rusqlite::Row<'_>,
+    index: usize,
+    field_name: &'static str,
+) -> rusqlite::Result<i64> {
+    let value = row.get::<_, i64>(index)?;
+    if value < 0 {
+        return Err(negative_budget_field_error(index, field_name, value));
+    }
+    Ok(value)
+}
+
+fn budget_u64_from_row(
+    row: &rusqlite::Row<'_>,
+    index: usize,
+    field_name: &'static str,
+) -> rusqlite::Result<u64> {
+    Ok(budget_i64_from_row(row, index, field_name)? as u64)
+}
+
+fn budget_u32_from_row(
+    row: &rusqlite::Row<'_>,
+    index: usize,
+    field_name: &'static str,
+) -> rusqlite::Result<u32> {
+    let value = budget_i64_from_row(row, index, field_name)?;
+    u32::try_from(value).map_err(|_| budget_field_overflow_error(index, field_name, value))
+}
+
+fn budget_usize_from_row(
+    row: &rusqlite::Row<'_>,
+    index: usize,
+    field_name: &'static str,
+) -> rusqlite::Result<usize> {
+    let value = budget_i64_from_row(row, index, field_name)?;
+    usize::try_from(value).map_err(|_| budget_field_overflow_error(index, field_name, value))
+}
+
+fn optional_budget_i64_from_row(
+    row: &rusqlite::Row<'_>,
+    index: usize,
+    field_name: &'static str,
+) -> rusqlite::Result<Option<i64>> {
+    let Some(value) = row.get::<_, Option<i64>>(index)? else {
+        return Ok(None);
+    };
+    if value < 0 {
+        return Err(negative_budget_field_error(index, field_name, value));
+    }
+    Ok(Some(value))
+}
+
+fn optional_budget_u64_from_row(
+    row: &rusqlite::Row<'_>,
+    index: usize,
+    field_name: &'static str,
+) -> rusqlite::Result<Option<u64>> {
+    Ok(optional_budget_i64_from_row(row, index, field_name)?.map(|value| value as u64))
+}
+
+fn optional_budget_u32_from_row(
+    row: &rusqlite::Row<'_>,
+    index: usize,
+    field_name: &'static str,
+) -> rusqlite::Result<Option<u32>> {
+    optional_budget_i64_from_row(row, index, field_name)?
+        .map(|value| {
+            u32::try_from(value).map_err(|_| budget_field_overflow_error(index, field_name, value))
+        })
+        .transpose()
+}
+
+fn negative_budget_field_error(
+    index: usize,
+    field_name: &'static str,
+    value: i64,
+) -> rusqlite::Error {
+    rusqlite::Error::FromSqlConversionFailure(
+        index,
+        rusqlite::types::Type::Integer,
+        Box::new(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("budget field `{field_name}` was negative: {value}"),
+        )),
+    )
+}
+
+fn budget_field_overflow_error(
+    index: usize,
+    field_name: &'static str,
+    value: i64,
+) -> rusqlite::Error {
+    rusqlite::Error::FromSqlConversionFailure(
+        index,
+        rusqlite::types::Type::Integer,
+        Box::new(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("budget field `{field_name}` exceeded target integer range: {value}"),
+        )),
+    )
 }
 
 fn sqlite_budget_event_authority(
@@ -2772,18 +2890,18 @@ fn current_budget_replication_seq(
     let next_seq = transaction.query_row(
         "SELECT next_seq FROM budget_replication_meta WHERE singleton = 1",
         [],
-        |row| row.get::<_, i64>(0),
+        |row| budget_u64_from_row(row, 0, "next_seq"),
     )?;
-    Ok(next_seq.max(0) as u64)
+    Ok(next_seq)
 }
 
 fn max_budget_usage_seq(transaction: &rusqlite::Transaction<'_>) -> Result<u64, BudgetStoreError> {
     let max_seq = transaction.query_row(
         "SELECT COALESCE(MAX(seq), 0) FROM capability_grant_budgets",
         [],
-        |row| row.get::<_, i64>(0),
+        |row| budget_u64_from_row(row, 0, "seq"),
     )?;
-    Ok(max_seq.max(0) as u64)
+    Ok(max_seq)
 }
 
 fn max_budget_mutation_event_seq(
@@ -2792,9 +2910,9 @@ fn max_budget_mutation_event_seq(
     let max_seq = transaction.query_row(
         "SELECT COALESCE(MAX(event_seq), 0) FROM budget_mutation_events",
         [],
-        |row| row.get::<_, i64>(0),
+        |row| budget_u64_from_row(row, 0, "event_seq"),
     )?;
-    Ok(max_seq.max(0) as u64)
+    Ok(max_seq)
 }
 
 fn set_budget_replication_seq(
@@ -2877,6 +2995,40 @@ mod tests {
         let records = reopened.list_usages(10, Some("cap-1")).unwrap();
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].invocation_count, 2);
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn budget_usage_query_rejects_negative_persisted_counter() {
+        let path = unique_db_path("chio-budget-negative-usage");
+        let store = SqliteBudgetStore::open(&path).unwrap();
+        store
+            .upsert_usage(&usage_record("cap-negative", 0, 1, 10, 1, 0, 0))
+            .unwrap();
+        {
+            let connection = store.connection().unwrap();
+            connection
+                .execute(
+                    r#"
+                    UPDATE capability_grant_budgets
+                    SET invocation_count = -1
+                    WHERE capability_id = 'cap-negative' AND grant_index = 0
+                    "#,
+                    [],
+                )
+                .unwrap();
+        }
+
+        let error = store
+            .list_all_usages()
+            .expect_err("negative persisted budget counters must fail closed");
+        assert!(
+            error
+                .to_string()
+                .contains("budget field `invocation_count` was negative"),
+            "unexpected error: {error}"
+        );
 
         let _ = fs::remove_file(path);
     }

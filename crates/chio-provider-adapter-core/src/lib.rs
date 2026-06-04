@@ -1,10 +1,11 @@
 #![forbid(unsafe_code)]
 
 pub mod http;
+mod sse;
 
 use chio_core::LoadedWeightsUnavailable;
 use chio_tool_call_fabric::{DenyReason, ProviderError, ProviderId, ToolInvocation, VerdictResult};
-use serde_json::Value;
+pub use sse::{parse_sse_frames, SseFrame, SseParseOptions, UnknownSseFieldPolicy};
 
 /// Common adapter identity surface used by conformance and refactor helpers.
 pub trait Provider {
@@ -36,205 +37,6 @@ impl GatedStream {
             verdicts,
         }
     }
-}
-
-/// Parsed SSE frame with original bytes retained for exact forwarding.
-///
-/// `done` is set when the frame's `data` payload equals the stream terminator
-/// configured through [`SseParseOptions::with_done_sentinel`] (for example the
-/// OpenAI `[DONE]` marker). Terminator frames carry `data: None` so callers do
-/// not attempt to parse the sentinel string as JSON, while `raw` still holds the
-/// original bytes for byte-exact forwarding.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SseFrame {
-    pub event: Option<String>,
-    pub data: Option<Value>,
-    pub raw: Vec<u8>,
-    pub done: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum UnknownSseFieldPolicy {
-    Ignore,
-    Reject,
-}
-
-/// Parser configuration shared by every SSE-forwarding adapter.
-///
-/// The two boolean knobs cover the provider-specific SSE behaviors:
-///
-/// - `done_sentinel`: when set, a `data` payload equal to this string yields a
-///   frame with `done = true` and `data = None` instead of being parsed as JSON.
-/// - `cross_check_event_type`: when true, a frame that carries both an explicit
-///   `event:` name and a JSON `type` field requires the two to agree, infers a
-///   missing `event:` name from the `type` field, and rejects a data frame that
-///   resolves to no event name at all.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SseParseOptions {
-    pub provider_label: &'static str,
-    pub unknown_field_policy: UnknownSseFieldPolicy,
-    pub done_sentinel: Option<&'static str>,
-    pub cross_check_event_type: bool,
-}
-
-impl SseParseOptions {
-    pub const fn ignoring_unknown(provider_label: &'static str) -> Self {
-        Self {
-            provider_label,
-            unknown_field_policy: UnknownSseFieldPolicy::Ignore,
-            done_sentinel: None,
-            cross_check_event_type: false,
-        }
-    }
-
-    pub const fn rejecting_unknown(provider_label: &'static str) -> Self {
-        Self {
-            provider_label,
-            unknown_field_policy: UnknownSseFieldPolicy::Reject,
-            done_sentinel: None,
-            cross_check_event_type: false,
-        }
-    }
-
-    /// Treat a `data` payload equal to `sentinel` as a stream terminator.
-    pub const fn with_done_sentinel(mut self, sentinel: &'static str) -> Self {
-        self.done_sentinel = Some(sentinel);
-        self
-    }
-
-    /// Require an explicit `event:` name to match the JSON `type` field, infer a
-    /// missing name from `type`, and reject data frames that resolve to no name.
-    pub const fn with_event_type_cross_check(mut self) -> Self {
-        self.cross_check_event_type = true;
-        self
-    }
-}
-
-pub fn parse_sse_frames(
-    raw: &[u8],
-    options: SseParseOptions,
-) -> Result<Vec<SseFrame>, ProviderError> {
-    let text = std::str::from_utf8(raw).map_err(|error| {
-        ProviderError::Malformed(format!(
-            "{} SSE bytes were not UTF-8: {error}",
-            options.provider_label
-        ))
-    })?;
-    let mut frames = Vec::new();
-    let mut lines: Vec<String> = Vec::new();
-
-    for line in text.lines() {
-        let line = line.strip_suffix('\r').unwrap_or(line);
-        if line.is_empty() {
-            if !lines.is_empty() {
-                frames.push(parse_sse_frame(&lines, options)?);
-                lines.clear();
-            }
-        } else {
-            lines.push(line.to_string());
-        }
-    }
-    if !lines.is_empty() {
-        frames.push(parse_sse_frame(&lines, options)?);
-    }
-    Ok(frames)
-}
-
-fn parse_sse_frame(lines: &[String], options: SseParseOptions) -> Result<SseFrame, ProviderError> {
-    let mut data_lines: Vec<String> = Vec::new();
-    let mut event: Option<String> = None;
-    let mut raw: Vec<u8> = Vec::new();
-
-    for line in lines {
-        raw.extend_from_slice(line.as_bytes());
-        raw.push(b'\n');
-
-        if line.starts_with(':') {
-            continue;
-        }
-        let (field, value) = match line.split_once(':') {
-            Some((field, value)) => (field, value),
-            None => match options.unknown_field_policy {
-                UnknownSseFieldPolicy::Ignore => (line.as_str(), ""),
-                UnknownSseFieldPolicy::Reject => {
-                    return Err(ProviderError::Malformed(format!(
-                        "{} SSE line `{line}` was missing `:`",
-                        options.provider_label
-                    )));
-                }
-            },
-        };
-        let value = value.strip_prefix(' ').unwrap_or(value);
-        match field {
-            "data" => data_lines.push(value.to_string()),
-            "event" => event = Some(value.to_string()),
-            "id" | "retry" => {}
-            _ => match options.unknown_field_policy {
-                UnknownSseFieldPolicy::Ignore => {}
-                UnknownSseFieldPolicy::Reject => {
-                    return Err(ProviderError::Malformed(format!(
-                        "{} SSE field `{field}` is not supported",
-                        options.provider_label
-                    )));
-                }
-            },
-        }
-    }
-    raw.push(b'\n');
-
-    let data_text = data_lines.join("\n");
-    if let Some(sentinel) = options.done_sentinel {
-        if data_text == sentinel {
-            return Ok(SseFrame {
-                event,
-                data: None,
-                raw,
-                done: true,
-            });
-        }
-    }
-
-    let data = if data_lines.is_empty() {
-        None
-    } else {
-        Some(serde_json::from_str::<Value>(&data_text).map_err(|error| {
-            ProviderError::Malformed(format!(
-                "{} SSE data was not JSON: {error}",
-                options.provider_label
-            ))
-        })?)
-    };
-
-    if options.cross_check_event_type {
-        let inferred_event = data
-            .as_ref()
-            .and_then(|data| data.get("type"))
-            .and_then(Value::as_str);
-        if let (Some(existing), Some(data_type)) = (event.as_deref(), inferred_event) {
-            if existing != data_type {
-                return Err(ProviderError::Malformed(format!(
-                    "{} SSE event `{existing}` did not match data type `{data_type}`",
-                    options.provider_label
-                )));
-            }
-        }
-        if event.is_none() {
-            event = inferred_event.map(ToString::to_string);
-        }
-        if data.is_some() && event.is_none() {
-            return Err(ProviderError::Malformed(format!(
-                "{} SSE data frame was missing event name",
-                options.provider_label
-            )));
-        }
-    }
-
-    Ok(SseFrame {
-        event,
-        data,
-        raw,
-        done: false,
-    })
 }
 
 pub fn loaded_weights_unavailable(
@@ -301,6 +103,7 @@ pub fn deny_reason_text(reason: &DenyReason) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::Value;
 
     #[test]
     fn sse_parser_ignores_unknown_fields_when_configured() {
@@ -347,6 +150,22 @@ mod tests {
         assert!(frames[1].data.is_none());
         // The terminator bytes are still retained verbatim for forwarding.
         assert!(frames[1].raw.windows(6).any(|w| w == b"[DONE]"));
+    }
+
+    #[test]
+    fn sse_parser_retains_original_crlf_frame_bytes() {
+        let raw = b"event: response.completed\r\ndata: {\"type\":\"response.completed\"}\r\n\r\ndata: [DONE]\r\n\r\n";
+        let options = SseParseOptions::ignoring_unknown("OpenAI")
+            .with_done_sentinel("[DONE]")
+            .with_event_type_cross_check();
+        let frames = parse_sse_frames(raw, options)
+            .unwrap_or_else(|error| panic!("CRLF frames should parse: {error}"));
+
+        assert_eq!(
+            frames[0].raw,
+            b"event: response.completed\r\ndata: {\"type\":\"response.completed\"}\r\n\r\n"
+        );
+        assert_eq!(frames[1].raw, b"data: [DONE]\r\n\r\n");
     }
 
     #[test]

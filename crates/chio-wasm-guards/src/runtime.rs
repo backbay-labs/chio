@@ -327,48 +327,57 @@ impl WasmGuard {
             .map(|g| format!("{}:{}", g.server_id, g.tool_name))
             .collect();
 
-        let action = chio_guards::extract_action(&ctx.request.tool_name, &ctx.request.arguments);
-
-        let (action_type, extracted_path, extracted_target) = match &action {
-            ToolAction::FileAccess(path) => (Some("file_access".into()), Some(path.clone()), None),
-            ToolAction::FileWrite(path, _) => (Some("file_write".into()), Some(path.clone()), None),
-            ToolAction::NetworkEgress(host, _) => {
-                (Some("network_egress".into()), None, Some(host.clone()))
-            }
-            ToolAction::ShellCommand(_) => (Some("shell_command".into()), None, None),
-            ToolAction::McpTool(_, _) => (Some("mcp_tool".into()), None, None),
-            ToolAction::Patch(path, _) => (Some("patch".into()), Some(path.clone()), None),
-            ToolAction::CodeExecution { language, .. } => {
-                (Some("code_execution".into()), None, Some(language.clone()))
-            }
-            ToolAction::BrowserAction { verb, target } => (
-                Some("browser_action".into()),
-                None,
-                target.clone().or_else(|| Some(verb.clone())),
-            ),
-            ToolAction::DatabaseQuery { database, .. } => {
-                (Some("database_query".into()), None, Some(database.clone()))
-            }
-            ToolAction::ExternalApiCall { service, endpoint } => (
-                Some("external_api_call".into()),
-                None,
-                Some(format!("{service}:{endpoint}")),
-            ),
-            ToolAction::MemoryWrite { store, key } => (
-                Some("memory_write".into()),
-                None,
-                Some(format!("{store}/{key}")),
-            ),
-            ToolAction::MemoryRead { store, key } => (
-                Some("memory_read".into()),
-                None,
-                Some(match key {
-                    Some(k) => format!("{store}/{k}"),
-                    None => store.clone(),
-                }),
-            ),
-            ToolAction::Unknown => (Some("unknown".into()), None, None),
-        };
+        let (action_type, extracted_path, extracted_target) =
+            match chio_guards::extract_action_checked(
+                &ctx.request.tool_name,
+                &ctx.request.arguments,
+            ) {
+                Ok(action) => match &action {
+                    ToolAction::FileAccess(path) => {
+                        (Some("file_access".into()), Some(path.clone()), None)
+                    }
+                    ToolAction::FileWrite(path, _) => {
+                        (Some("file_write".into()), Some(path.clone()), None)
+                    }
+                    ToolAction::NetworkEgress(host, _) => {
+                        (Some("network_egress".into()), None, Some(host.clone()))
+                    }
+                    ToolAction::ShellCommand(_) => (Some("shell_command".into()), None, None),
+                    ToolAction::McpTool(_, _) => (Some("mcp_tool".into()), None, None),
+                    ToolAction::Patch(path, _) => (Some("patch".into()), Some(path.clone()), None),
+                    ToolAction::CodeExecution { language, .. } => {
+                        (Some("code_execution".into()), None, Some(language.clone()))
+                    }
+                    ToolAction::BrowserAction { verb, target } => (
+                        Some("browser_action".into()),
+                        None,
+                        target.clone().or_else(|| Some(verb.clone())),
+                    ),
+                    ToolAction::DatabaseQuery { database, .. } => {
+                        (Some("database_query".into()), None, Some(database.clone()))
+                    }
+                    ToolAction::ExternalApiCall { service, endpoint } => (
+                        Some("external_api_call".into()),
+                        None,
+                        Some(format!("{service}:{endpoint}")),
+                    ),
+                    ToolAction::MemoryWrite { store, key } => (
+                        Some("memory_write".into()),
+                        None,
+                        Some(format!("{store}/{key}")),
+                    ),
+                    ToolAction::MemoryRead { store, key } => (
+                        Some("memory_read".into()),
+                        None,
+                        Some(match key {
+                            Some(k) => format!("{store}/{k}"),
+                            None => store.clone(),
+                        }),
+                    ),
+                    ToolAction::Unknown => (Some("unknown".into()), None, None),
+                },
+                Err(err) => (Some("malformed_arguments".into()), None, Some(err.field)),
+            };
 
         let filesystem_roots = ctx
             .session_filesystem_roots
@@ -407,6 +416,16 @@ impl Guard for WasmGuard {
 
     fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
         let request = Self::build_request(ctx);
+        if request.action_type.as_deref() == Some("malformed_arguments") {
+            warn!(
+                guard = %self.name,
+                tool_name = %request.tool_name,
+                field = %request.extracted_target.as_deref().unwrap_or("unknown"),
+                "WASM guard host action extraction failed, failing closed"
+            );
+            return Ok(Verdict::Deny);
+        }
+
         let loaded = self.loaded.load_full();
         let span = guard_evaluate_span(
             &self.name,
@@ -2725,22 +2744,27 @@ mod tests {
     use chio_core::capability::ChioScope;
     use chio_kernel::{GuardContext, ToolCallRequest};
 
+    fn make_test_capability() -> chio_core::capability::CapabilityToken {
+        let keypair = chio_core::crypto::Keypair::generate();
+        chio_core::capability::CapabilityToken::sign(
+            chio_core::capability::CapabilityTokenBody {
+                id: "cap-1".to_string(),
+                issuer: keypair.public_key(),
+                subject: keypair.public_key(),
+                scope: ChioScope::default(),
+                issued_at: 0,
+                expires_at: u64::MAX,
+                delegation_chain: vec![],
+            },
+            &keypair,
+        )
+        .unwrap()
+    }
+
     fn make_test_request() -> ToolCallRequest {
         ToolCallRequest {
             request_id: "req-1".to_string(),
-            capability: chio_core::capability::CapabilityToken::sign(
-                chio_core::capability::CapabilityTokenBody {
-                    id: "cap-1".to_string(),
-                    issuer: chio_core::crypto::Keypair::generate().public_key(),
-                    subject: chio_core::crypto::Keypair::generate().public_key(),
-                    scope: ChioScope::default(),
-                    issued_at: 0,
-                    expires_at: u64::MAX,
-                    delegation_chain: vec![],
-                },
-                &chio_core::crypto::Keypair::generate(),
-            )
-            .unwrap(),
+            capability: make_test_capability(),
             tool_name: "test_tool".to_string(),
             server_id: "test_server".to_string(),
             agent_id: "agent-1".to_string(),
@@ -2831,6 +2855,37 @@ mod tests {
     }
 
     #[test]
+    fn malformed_action_denies_before_backend_even_for_advisory_guard() {
+        let mut backend = MockWasmBackend::allowing();
+        backend.load_module(b"fake", 1000).unwrap();
+
+        let guard = WasmGuard::new("test-malformed".to_string(), Box::new(backend), true, None);
+
+        let request = make_test_request_with(
+            "filesystem",
+            serde_json::json!({
+                "path": ["/etc/shadow"],
+                "file": "/home/user/project/src/main.rs"
+            }),
+        );
+        let scope = ChioScope::default();
+        let agent_id = "agent-1".to_string();
+        let server_id = "test_server".to_string();
+
+        let ctx = GuardContext {
+            request: &request,
+            scope: &scope,
+            agent_id: &agent_id,
+            server_id: &server_id,
+            session_filesystem_roots: None,
+            matched_grant_index: None,
+        };
+
+        let result = guard.evaluate(&ctx);
+        assert!(matches!(result, Ok(Verdict::Deny)));
+    }
+
+    #[test]
     fn runtime_manages_multiple_guards() {
         let mut runtime = WasmGuardRuntime::new();
         assert_eq!(runtime.guard_count(), 0);
@@ -2910,19 +2965,7 @@ mod tests {
     fn make_test_request_with(tool_name: &str, arguments: serde_json::Value) -> ToolCallRequest {
         ToolCallRequest {
             request_id: "req-1".to_string(),
-            capability: chio_core::capability::CapabilityToken::sign(
-                chio_core::capability::CapabilityTokenBody {
-                    id: "cap-1".to_string(),
-                    issuer: chio_core::crypto::Keypair::generate().public_key(),
-                    subject: chio_core::crypto::Keypair::generate().public_key(),
-                    scope: ChioScope::default(),
-                    issued_at: 0,
-                    expires_at: u64::MAX,
-                    delegation_chain: vec![],
-                },
-                &chio_core::crypto::Keypair::generate(),
-            )
-            .unwrap(),
+            capability: make_test_capability(),
             tool_name: tool_name.to_string(),
             server_id: "test_server".to_string(),
             agent_id: "agent-1".to_string(),
@@ -3003,6 +3046,34 @@ mod tests {
             req.extracted_path.is_none(),
             "network_egress should not set extracted_path"
         );
+    }
+
+    #[test]
+    fn build_request_action_type_malformed_arguments() {
+        let request = make_test_request_with(
+            "filesystem",
+            serde_json::json!({
+                "path": ["/etc/shadow"],
+                "file": "/home/user/project/src/main.rs"
+            }),
+        );
+        let scope = ChioScope::default();
+        let agent_id = "agent-1".to_string();
+        let server_id = "test_server".to_string();
+
+        let ctx = GuardContext {
+            request: &request,
+            scope: &scope,
+            agent_id: &agent_id,
+            server_id: &server_id,
+            session_filesystem_roots: None,
+            matched_grant_index: None,
+        };
+
+        let req = WasmGuard::build_request(&ctx);
+        assert_eq!(req.action_type.as_deref(), Some("malformed_arguments"));
+        assert_eq!(req.extracted_target.as_deref(), Some("path"));
+        assert!(req.extracted_path.is_none());
     }
 
     #[test]

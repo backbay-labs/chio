@@ -326,6 +326,42 @@ fn hosted_mcp_rejects_session_reuse_when_authorization_context_drifts() {
 }
 
 #[test]
+fn hosted_mcp_rejects_session_reuse_when_origin_drifts() {
+    let server = support::start_http_server("test-token");
+    let session = server
+        .initialize_session_with_token_and_origin("test-token", Some("http://localhost:3000"));
+
+    let response = server.post_json_with_token_and_origin(
+        "test-token",
+        Some(&session.id),
+        Some(&session.protocol_version),
+        Some("http://localhost:4000"),
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 88,
+            "method": "tools/list",
+            "params": {}
+        }),
+    );
+
+    assert_eq!(response.status(), reqwest::StatusCode::FORBIDDEN);
+    assert!(response
+        .text()
+        .expect("origin drift body")
+        .contains("authenticated origin does not match session"));
+
+    let tools = server.list_tools_with_token_and_origin(
+        "test-token",
+        &session,
+        Some("http://localhost:3000"),
+    );
+    assert_eq!(
+        tools["result"]["tools"][0]["name"].as_str(),
+        Some("echo_json")
+    );
+}
+
+#[test]
 fn hosted_mcp_dedicated_sessions_require_exact_oauth_bearer_continuity() {
     let issuer = "https://issuer.example";
     let audience = "chio-mcp";

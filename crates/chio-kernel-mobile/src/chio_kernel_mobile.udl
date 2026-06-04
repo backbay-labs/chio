@@ -177,6 +177,7 @@ dictionary PortablePassportMetadata {
 interface ChioMobileError {
     InvalidJson(string message);
     InvalidHex(string message);
+    WeakEntropy(string message);
     InvalidCapability(string message);
     InvalidPassport(string message);
     AttestationUnavailable(string message);

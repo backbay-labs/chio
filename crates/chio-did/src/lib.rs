@@ -31,7 +31,7 @@ pub enum DidError {
     #[error("did:chio identifiers must start with did:chio:")]
     InvalidPrefix,
 
-    #[error("did:chio method-specific identifier must be exactly 64 hex characters")]
+    #[error("did:chio method-specific identifier must be exactly 64 lowercase hex characters")]
     InvalidMethodSpecificId,
 
     #[error("invalid did:chio public key: {0}")]
@@ -132,17 +132,17 @@ impl FromStr for DidChio {
         let suffix = value
             .strip_prefix(DID_CHIO_PREFIX)
             .ok_or(DidError::InvalidPrefix)?;
-        if suffix.len() != 64
-            || !suffix
-                .chars()
-                .all(|character| character.is_ascii_hexdigit())
-        {
+        if suffix.len() != 64 || !suffix.bytes().all(is_lower_hex_byte) {
             return Err(DidError::InvalidMethodSpecificId);
         }
         let public_key = PublicKey::from_hex(suffix)
             .map_err(|error| DidError::InvalidPublicKey(error.to_string()))?;
         Self::from_public_key(public_key)
     }
+}
+
+fn is_lower_hex_byte(byte: u8) -> bool {
+    byte.is_ascii_digit() || matches!(byte, b'a'..=b'f')
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -203,8 +203,13 @@ impl DidService {
         service_endpoint: impl Into<String>,
     ) -> Result<Self, DidError> {
         let service_endpoint = service_endpoint.into();
-        Url::parse(&service_endpoint)
+        let parsed = Url::parse(&service_endpoint)
             .map_err(|error| DidError::InvalidServiceEndpoint(error.to_string()))?;
+        if parsed.scheme() != "https" {
+            return Err(DidError::InvalidServiceEndpoint(
+                "service endpoint must use https".to_string(),
+            ));
+        }
         Ok(Self {
             id: id.into(),
             service_type: service_type.into(),
@@ -217,11 +222,7 @@ impl DidService {
         ordinal: usize,
         service_endpoint: impl Into<String>,
     ) -> Result<Self, DidError> {
-        let fragment = if ordinal == 0 {
-            "receipt-log".to_string()
-        } else {
-            format!("receipt-log-{}", ordinal + 1)
-        };
+        let fragment = service_fragment("receipt-log", ordinal);
         Self::new(
             format!("{}#{fragment}", did.as_str()),
             RECEIPT_LOG_SERVICE_TYPE,
@@ -234,16 +235,20 @@ impl DidService {
         ordinal: usize,
         service_endpoint: impl Into<String>,
     ) -> Result<Self, DidError> {
-        let fragment = if ordinal == 0 {
-            "passport-status".to_string()
-        } else {
-            format!("passport-status-{}", ordinal + 1)
-        };
+        let fragment = service_fragment("passport-status", ordinal);
         Self::new(
             format!("{}#{fragment}", did.as_str()),
             PASSPORT_STATUS_SERVICE_TYPE,
             service_endpoint,
         )
+    }
+}
+
+fn service_fragment(base: &str, ordinal: usize) -> String {
+    if ordinal == 0 {
+        base.to_string()
+    } else {
+        format!("{base}-{}", ordinal + 1)
     }
 }
 
@@ -262,18 +267,25 @@ mod tests {
     }
 
     #[test]
-    fn parses_and_canonicalizes_did_chio_identifier() {
+    fn parses_canonical_did_chio_identifier() {
         let canonical = fixed_did().to_string();
-        let uppercase = canonical
-            .to_uppercase()
-            .replacen("DID:CHIO:", "did:chio:", 1);
-        let parsed = DidChio::from_str(&uppercase).expect("did");
+        let parsed = DidChio::from_str(&canonical).expect("did");
         assert_eq!(parsed.to_string(), canonical);
     }
 
     #[test]
     fn rejects_invalid_method_specific_id() {
         let error = DidChio::from_str("did:chio:not-hex").expect_err("invalid did");
+        assert!(matches!(error, DidError::InvalidMethodSpecificId));
+    }
+
+    #[test]
+    fn rejects_uppercase_method_specific_id() {
+        let canonical = fixed_did().to_string();
+        let uppercase_suffix = canonical[DID_CHIO_PREFIX.len()..].to_uppercase();
+        let did = format!("{DID_CHIO_PREFIX}{uppercase_suffix}");
+
+        let error = DidChio::from_str(&did).expect_err("uppercase hex must reject");
         assert!(matches!(error, DidError::InvalidMethodSpecificId));
     }
 
@@ -311,6 +323,13 @@ mod tests {
     }
 
     #[test]
+    fn service_fragment_uses_unsuffixed_first_entry_and_one_based_suffixes() {
+        assert_eq!(service_fragment("receipt-log", 0), "receipt-log");
+        assert_eq!(service_fragment("receipt-log", 1), "receipt-log-2");
+        assert_eq!(service_fragment("passport-status", 9), "passport-status-10");
+    }
+
+    #[test]
     fn attaches_validated_receipt_log_services_deterministically() {
         let did = fixed_did();
         let options = ResolveOptions::default()
@@ -336,5 +355,23 @@ mod tests {
         let error =
             DidService::receipt_log(&did, 0, "not-a-url").expect_err("invalid service endpoint");
         assert!(matches!(error, DidError::InvalidServiceEndpoint(_)));
+    }
+
+    #[test]
+    fn rejects_non_https_service_endpoints() {
+        let did = fixed_did();
+
+        for endpoint in [
+            "http://trust.example.com/v1/receipts",
+            "file:///var/lib/chio/receipts.sqlite3",
+            "ftp://trust.example.com/receipts",
+        ] {
+            let error = DidService::receipt_log(&did, 0, endpoint)
+                .expect_err("non-https service endpoint must reject");
+            assert!(
+                matches!(error, DidError::InvalidServiceEndpoint(_)),
+                "endpoint {endpoint:?} returned {error:?}"
+            );
+        }
     }
 }

@@ -340,6 +340,48 @@ fn denylist_pattern_forces_redaction() {
     assert!(!r.sanitized.contains("internal-abcdef"));
 }
 
+#[test]
+fn denylist_exact_cannot_be_downgraded_by_secret_keep_default() {
+    let mut strategies = HashMap::new();
+    strategies.insert(SensitiveCategory::Secret, RedactionStrategy::Keep);
+    strategies.insert(SensitiveCategory::Pii, RedactionStrategy::Keep);
+    strategies.insert(SensitiveCategory::Internal, RedactionStrategy::Keep);
+    let cfg = OutputSanitizerConfig {
+        redaction_strategies: strategies,
+        denylist: DenylistConfig {
+            exact: vec!["CONFIDENTIAL_TAG".to_string()],
+            patterns: vec![],
+        },
+        ..Default::default()
+    };
+    let s = sanitizer_with_config(cfg);
+    let r = s.sanitize_text("this message is CONFIDENTIAL_TAG bye");
+    assert!(r.was_redacted);
+    assert!(!r.sanitized.contains("CONFIDENTIAL_TAG"));
+    assert_eq!(r.redactions[0].strategy, RedactionStrategy::Mask);
+}
+
+#[test]
+fn denylist_pattern_cannot_be_downgraded_by_secret_keep_default() {
+    let mut strategies = HashMap::new();
+    strategies.insert(SensitiveCategory::Secret, RedactionStrategy::Keep);
+    strategies.insert(SensitiveCategory::Pii, RedactionStrategy::Keep);
+    strategies.insert(SensitiveCategory::Internal, RedactionStrategy::Keep);
+    let cfg = OutputSanitizerConfig {
+        redaction_strategies: strategies,
+        denylist: DenylistConfig {
+            exact: vec![],
+            patterns: vec![r"internal-[a-z]{6}".to_string()],
+        },
+        ..Default::default()
+    };
+    let s = sanitizer_with_config(cfg);
+    let r = s.sanitize_text("code: internal-abcdef");
+    assert!(r.was_redacted);
+    assert!(!r.sanitized.contains("internal-abcdef"));
+    assert_eq!(r.redactions[0].strategy, RedactionStrategy::Mask);
+}
+
 // ---------------------------------------------------------------------------
 // Overlap resolution
 // ---------------------------------------------------------------------------

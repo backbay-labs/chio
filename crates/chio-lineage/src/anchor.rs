@@ -309,6 +309,10 @@ pub fn is_lowercase_hex_signature_payload(signature_hex: &str) -> bool {
             .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
+fn is_canonical_signing_algorithm_label(algorithm: &str) -> bool {
+    !algorithm.is_empty() && algorithm.chars().all(|ch| !ch.is_whitespace())
+}
+
 /// Pin a frontier with a PQ signature payload.
 ///
 /// The payload shape is validated and the signature must verify against
@@ -322,6 +326,9 @@ pub fn pin_frontier_signed(
 ) -> Result<AnchoredFrontier, AnchorError> {
     if algorithm.trim().is_empty() {
         return Err(AnchorError::EmptySigningAlgorithm);
+    }
+    if !is_canonical_signing_algorithm_label(algorithm) {
+        return Err(AnchorError::InvalidSigningAlgorithmLabel);
     }
     if signature_hex.is_empty() {
         return Err(AnchorError::EmptySignaturePayload);
@@ -364,9 +371,16 @@ pub fn verify_frontier_signature(
     if frontier.digest != expected_digest {
         return Err(AnchorError::DigestMismatch);
     }
-    let SigningState::Signed { signature_hex, .. } = &frontier.signing else {
+    let SigningState::Signed {
+        algorithm,
+        signature_hex,
+    } = &frontier.signing
+    else {
         return Err(AnchorError::UnsignedFrontier);
     };
+    if !is_canonical_signing_algorithm_label(algorithm) {
+        return Err(AnchorError::InvalidSigningAlgorithmLabel);
+    }
     if !is_lowercase_hex_signature_payload(signature_hex) {
         return Err(AnchorError::SignaturePayloadNotHex);
     }
@@ -384,6 +398,9 @@ pub enum AnchorError {
     /// The signing algorithm label was empty.
     #[error("signing algorithm label was empty")]
     EmptySigningAlgorithm,
+    /// The signing algorithm label contained whitespace.
+    #[error("signing algorithm label was not canonical")]
+    InvalidSigningAlgorithmLabel,
     /// The signature payload was empty.
     #[error("signature payload was empty")]
     EmptySignaturePayload,
@@ -539,6 +556,16 @@ mod tests {
     }
 
     #[test]
+    fn pin_signed_rejects_whitespace_wrapped_algorithm_label() {
+        let g = LineageGraph::empty();
+        let keypair = Keypair::from_seed(&[7_u8; 32]);
+        let err = pin_frontier_signed(&g, " ed25519 ", &keypair.public_key(), "deadbeef")
+            .err()
+            .unwrap_or(AnchorError::EmptySignaturePayload);
+        assert_eq!(err, AnchorError::InvalidSigningAlgorithmLabel);
+    }
+
+    #[test]
     fn pin_signed_rejects_unparseable_payload() {
         let g = LineageGraph::empty();
         let keypair = Keypair::from_seed(&[7_u8; 32]);
@@ -572,5 +599,26 @@ mod tests {
             .err()
             .unwrap_or(AnchorError::EmptySignaturePayload);
         assert_eq!(err, AnchorError::SignatureVerificationFailed);
+    }
+
+    #[test]
+    fn verify_signed_frontier_rejects_noncanonical_algorithm_label() {
+        let g = LineageGraph::empty();
+        let keypair = Keypair::from_seed(&[7_u8; 32]);
+        let signature = keypair.sign(&frontier_signature_message(&g));
+        let signature_hex = signature.to_hex();
+        let mut pinned = pin_frontier_signed(&g, "ed25519", &keypair.public_key(), &signature_hex)
+            .unwrap_or_else(|error| panic!("signed pin should verify: {error}"));
+        pinned.signing = SigningState::Signed {
+            algorithm: "ed25519\n".to_string(),
+            signature_hex,
+        };
+
+        let err = verify_frontier_signature(&pinned, &g, &keypair.public_key())
+            .err()
+            .unwrap_or(AnchorError::EmptySignaturePayload);
+
+        assert_eq!(err, AnchorError::InvalidSigningAlgorithmLabel);
+        assert!(!pinned.is_signed_by(&g, &keypair.public_key()));
     }
 }

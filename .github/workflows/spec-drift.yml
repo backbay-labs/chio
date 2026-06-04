@@ -64,6 +64,9 @@ jobs:
       - name: Run codegen-check (all four lanes)
         run: make codegen-check
 
+      - name: Run editor snippet regen check
+        run: cargo xtask snippets regen --check
+
       - name: Assert no drift in generated files
         run: |
           set -euo pipefail

@@ -9,6 +9,15 @@ pub const CHIO_WALL_GUARD_OUTCOME_SCHEMA: &str = "chio.wall.guard_outcome.v1";
 pub const CHIO_WALL_DENIED_ACCESS_RECORD_SCHEMA: &str = "chio.wall.denied_access_record.v1";
 pub const CHIO_WALL_BUYER_REVIEW_PACKAGE_SCHEMA: &str = "chio.wall.buyer_review_package.v1";
 pub const CHIO_WALL_CONTROL_PACKAGE_SCHEMA: &str = "chio.wall.control_package.v1";
+const REQUIRED_CONTROL_PACKAGE_ARTIFACTS: [ChioWallArtifactKind; 7] = [
+    ChioWallArtifactKind::ControlProfile,
+    ChioWallArtifactKind::PolicySnapshot,
+    ChioWallArtifactKind::AuthorizationContext,
+    ChioWallArtifactKind::GuardOutcome,
+    ChioWallArtifactKind::DeniedAccessRecord,
+    ChioWallArtifactKind::BuyerReviewPackage,
+    ChioWallArtifactKind::ChioEvidenceExport,
+];
 
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 pub enum ChioWallContractError {
@@ -21,6 +30,8 @@ pub enum ChioWallContractError {
     MissingField(&'static str),
     #[error("field `{0}` must not be empty")]
     EmptyField(&'static str),
+    #[error("field `{0}` must not have surrounding whitespace")]
+    PaddedField(&'static str),
     #[error("validation error: {0}")]
     Validation(String),
     #[error("json error: {0}")]
@@ -441,16 +452,30 @@ impl ChioWallControlPackage {
                 )));
             }
         }
+        for required in REQUIRED_CONTROL_PACKAGE_ARTIFACTS {
+            if !artifact_kinds.contains(&required) {
+                return Err(ChioWallContractError::Validation(format!(
+                    "control_package.artifacts missing artifact kind {required:?}",
+                )));
+            }
+        }
         Ok(())
     }
 }
 
 fn ensure_non_empty(field: &'static str, value: &str) -> Result<(), ChioWallContractError> {
     if value.trim().is_empty() {
-        Err(ChioWallContractError::EmptyField(field))
-    } else {
-        Ok(())
+        return Err(ChioWallContractError::EmptyField(field));
     }
+    if value.trim() != value {
+        return Err(ChioWallContractError::PaddedField(field));
+    }
+    if value.chars().any(char::is_control) {
+        return Err(ChioWallContractError::Validation(format!(
+            "{field} must not contain control characters"
+        )));
+    }
+    Ok(())
 }
 
 fn ensure_non_empty_list(
@@ -463,6 +488,19 @@ fn ensure_non_empty_list(
     if values.iter().any(|value| value.trim().is_empty()) {
         return Err(ChioWallContractError::Validation(format!(
             "{field} must not contain empty values"
+        )));
+    }
+    if values.iter().any(|value| value.trim() != value) {
+        return Err(ChioWallContractError::Validation(format!(
+            "{field} must not contain padded values"
+        )));
+    }
+    if values
+        .iter()
+        .any(|value| value.chars().any(char::is_control))
+    {
+        return Err(ChioWallContractError::Validation(format!(
+            "{field} must not contain control characters"
         )));
     }
     Ok(())
@@ -616,16 +654,61 @@ mod tests {
             profile_file: "control-profile.json".to_string(),
             buyer_review_package_file: "buyer-review-package.json".to_string(),
             chio_evidence_dir: "chio-evidence".to_string(),
-            artifacts: vec![ChioWallArtifact {
-                artifact_kind: ChioWallArtifactKind::ControlProfile,
-                relative_path: "control-profile.json".to_string(),
-            }],
+            artifacts: vec![
+                ChioWallArtifact {
+                    artifact_kind: ChioWallArtifactKind::ControlProfile,
+                    relative_path: "control-profile.json".to_string(),
+                },
+                ChioWallArtifact {
+                    artifact_kind: ChioWallArtifactKind::PolicySnapshot,
+                    relative_path: "policy-snapshot.json".to_string(),
+                },
+                ChioWallArtifact {
+                    artifact_kind: ChioWallArtifactKind::AuthorizationContext,
+                    relative_path: "authorization-context.json".to_string(),
+                },
+                ChioWallArtifact {
+                    artifact_kind: ChioWallArtifactKind::GuardOutcome,
+                    relative_path: "guard-outcome.json".to_string(),
+                },
+                ChioWallArtifact {
+                    artifact_kind: ChioWallArtifactKind::DeniedAccessRecord,
+                    relative_path: "denied-access-record.json".to_string(),
+                },
+                ChioWallArtifact {
+                    artifact_kind: ChioWallArtifactKind::BuyerReviewPackage,
+                    relative_path: "buyer-review-package.json".to_string(),
+                },
+                ChioWallArtifact {
+                    artifact_kind: ChioWallArtifactKind::ChioEvidenceExport,
+                    relative_path: "chio-evidence".to_string(),
+                },
+            ],
         }
     }
 
     #[test]
     fn control_profile_validates() {
         assert_valid(sample_profile().validate(), "profile validates");
+    }
+
+    #[test]
+    fn control_profile_rejects_padded_profile_id() {
+        let mut profile = sample_profile();
+        profile.profile_id = " chio-wall-profile ".to_string();
+        let error = validation_error(profile.validate(), "padded profile id rejected");
+        assert!(matches!(
+            error,
+            ChioWallContractError::PaddedField("control_profile.profile_id")
+        ));
+    }
+
+    #[test]
+    fn control_profile_rejects_control_character_profile_id() {
+        let mut profile = sample_profile();
+        profile.profile_id = "chio-wall\nprofile".to_string();
+        let error = validation_error(profile.validate(), "control profile id rejected");
+        assert!(error.to_string().contains("control characters"));
     }
 
     #[test]
@@ -653,6 +736,17 @@ mod tests {
         snapshot.allowed_tools = vec!["research_news.read".to_string(), "   ".to_string()];
         let error = validation_error(snapshot.validate(), "empty allowlist entry rejected");
         assert!(error.to_string().contains("must not contain empty values"));
+    }
+
+    #[test]
+    fn policy_snapshot_rejects_padded_allowed_tool_entries() {
+        let mut snapshot = sample_policy_snapshot();
+        snapshot.allowed_tools = vec![
+            "research_news.read".to_string(),
+            " execution_oms.submit_order ".to_string(),
+        ];
+        let error = validation_error(snapshot.validate(), "padded allowlist entry rejected");
+        assert!(error.to_string().contains("padded values"));
     }
 
     #[test]
@@ -728,5 +822,20 @@ mod tests {
             "empty artifact path should fail validation",
         );
         assert!(error.to_string().contains("relative_path"));
+    }
+
+    #[test]
+    fn control_package_requires_complete_artifact_set() {
+        let mut package = sample_control_package();
+        package
+            .artifacts
+            .retain(|artifact| artifact.artifact_kind != ChioWallArtifactKind::ChioEvidenceExport);
+
+        let error = validation_error(
+            package.validate(),
+            "incomplete control package artifacts should fail validation",
+        );
+
+        assert!(error.to_string().contains("missing artifact kind"));
     }
 }

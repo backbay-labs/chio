@@ -10,6 +10,9 @@ readme = "README.md"
 publish = false
 autobenches = false
 
+[package.metadata.chio]
+public_entrypoint = true
+
 [lib]
 name = "chio_kernel"
 

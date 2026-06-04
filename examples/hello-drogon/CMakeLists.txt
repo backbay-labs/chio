@@ -33,14 +33,30 @@ if(NOT TARGET ChioDrogon::chio_drogon)
   return()
 endif()
 
+add_library(hello_drogon_app
+  src/hello_app.cpp
+)
+target_include_directories(hello_drogon_app PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(hello_drogon_app PUBLIC ChioDrogon::chio_drogon)
+target_compile_features(hello_drogon_app PUBLIC cxx_std_17)
+
 add_executable(hello_drogon main.cpp)
-target_link_libraries(hello_drogon PRIVATE ChioDrogon::chio_drogon)
+target_link_libraries(hello_drogon PRIVATE hello_drogon_app)
 target_compile_features(hello_drogon PRIVATE cxx_std_17)
 
+enable_testing()
+add_executable(hello_drogon_contract_tests src/hello_app_test.cpp)
+target_link_libraries(hello_drogon_contract_tests PRIVATE hello_drogon_app)
+add_test(NAME hello_drogon_contract_tests COMMAND hello_drogon_contract_tests)
+
 if(MSVC)
+  target_compile_options(hello_drogon_app PRIVATE /W4)
   target_compile_options(hello_drogon PRIVATE /W4)
+  target_compile_options(hello_drogon_contract_tests PRIVATE /W4)
 else()
+  target_compile_options(hello_drogon_app PRIVATE -Wall -Wextra -Wpedantic)
   target_compile_options(hello_drogon PRIVATE -Wall -Wextra -Wpedantic)
+  target_compile_options(hello_drogon_contract_tests PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
 file(WRITE "${HELLO_DROGON_READY_FILE}" "hello_drogon target configured\n")

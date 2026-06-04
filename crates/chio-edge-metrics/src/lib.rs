@@ -26,13 +26,121 @@ pub const RECEIPT_WRITE_OUTCOME_DENY: &str = "deny";
 pub const RECEIPT_WRITE_OUTCOME_PENDING_APPROVAL: &str = "pending_approval";
 pub const RECEIPT_WRITE_OUTCOME_ERROR: &str = "error";
 
+/// Stable exporter order for receipt-write outcome samples.
+pub const RECEIPT_WRITE_OUTCOMES: [ReceiptWriteOutcome; 4] = [
+    ReceiptWriteOutcome::Allow,
+    ReceiptWriteOutcome::Deny,
+    ReceiptWriteOutcome::PendingApproval,
+    ReceiptWriteOutcome::Error,
+];
+
+/// Closed outcome taxonomy for [`CHIO_RECEIPT_WRITE_TOTAL`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ReceiptWriteOutcome {
+    Allow,
+    Deny,
+    PendingApproval,
+    Error,
+}
+
+impl ReceiptWriteOutcome {
+    /// Stable Prometheus label value for this outcome.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Allow => RECEIPT_WRITE_OUTCOME_ALLOW,
+            Self::Deny => RECEIPT_WRITE_OUTCOME_DENY,
+            Self::PendingApproval => RECEIPT_WRITE_OUTCOME_PENDING_APPROVAL,
+            Self::Error => RECEIPT_WRITE_OUTCOME_ERROR,
+        }
+    }
+
+    /// Parse a stable receipt-write outcome label.
+    #[must_use]
+    pub fn from_label(label: &str) -> Option<Self> {
+        match label {
+            RECEIPT_WRITE_OUTCOME_ALLOW => Some(Self::Allow),
+            RECEIPT_WRITE_OUTCOME_DENY => Some(Self::Deny),
+            RECEIPT_WRITE_OUTCOME_PENDING_APPROVAL => Some(Self::PendingApproval),
+            RECEIPT_WRITE_OUTCOME_ERROR => Some(Self::Error),
+            _ => None,
+        }
+    }
+}
+
 /// Map a kernel [`Verdict`] to its receipt-write outcome label.
 #[must_use]
 pub fn receipt_write_outcome_for_verdict(verdict: Verdict) -> &'static str {
+    receipt_write_outcome_value_for_verdict(verdict).as_str()
+}
+
+/// Map a kernel [`Verdict`] to its typed receipt-write outcome.
+#[must_use]
+pub fn receipt_write_outcome_value_for_verdict(verdict: Verdict) -> ReceiptWriteOutcome {
     match verdict {
-        Verdict::Allow => RECEIPT_WRITE_OUTCOME_ALLOW,
-        Verdict::Deny => RECEIPT_WRITE_OUTCOME_DENY,
-        Verdict::PendingApproval => RECEIPT_WRITE_OUTCOME_PENDING_APPROVAL,
+        Verdict::Allow => ReceiptWriteOutcome::Allow,
+        Verdict::Deny => ReceiptWriteOutcome::Deny,
+        Verdict::PendingApproval => ReceiptWriteOutcome::PendingApproval,
+    }
+}
+
+/// Point-in-time per-outcome counter values for one edge sink.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReceiptWriteSnapshot {
+    pub allow: u64,
+    pub deny: u64,
+    pub pending_approval: u64,
+    pub error: u64,
+}
+
+/// One labelled receipt-write counter sample from a snapshot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReceiptWriteSample {
+    pub outcome: ReceiptWriteOutcome,
+    pub total: u64,
+}
+
+impl ReceiptWriteSample {
+    /// Stable Prometheus label value for this sample.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        self.outcome.as_str()
+    }
+}
+
+impl ReceiptWriteSnapshot {
+    /// Return the count for a typed outcome.
+    #[must_use]
+    pub const fn total(self, outcome: ReceiptWriteOutcome) -> u64 {
+        match outcome {
+            ReceiptWriteOutcome::Allow => self.allow,
+            ReceiptWriteOutcome::Deny => self.deny,
+            ReceiptWriteOutcome::PendingApproval => self.pending_approval,
+            ReceiptWriteOutcome::Error => self.error,
+        }
+    }
+
+    /// Return all samples in the stable exporter order.
+    #[must_use]
+    pub const fn samples(self) -> [ReceiptWriteSample; 4] {
+        [
+            ReceiptWriteSample {
+                outcome: ReceiptWriteOutcome::Allow,
+                total: self.allow,
+            },
+            ReceiptWriteSample {
+                outcome: ReceiptWriteOutcome::Deny,
+                total: self.deny,
+            },
+            ReceiptWriteSample {
+                outcome: ReceiptWriteOutcome::PendingApproval,
+                total: self.pending_approval,
+            },
+            ReceiptWriteSample {
+                outcome: ReceiptWriteOutcome::Error,
+                total: self.error,
+            },
+        ]
     }
 }
 
@@ -62,7 +170,25 @@ impl ReceiptWriteCounters {
 
     /// Record the receipt-write outcome implied by a kernel [`Verdict`].
     pub fn record_verdict(&self, verdict: Verdict) {
-        self.record(receipt_write_outcome_for_verdict(verdict));
+        self.record_outcome(receipt_write_outcome_value_for_verdict(verdict));
+    }
+
+    /// Record a typed receipt-write outcome at the edge sink boundary.
+    pub fn record_outcome(&self, outcome: ReceiptWriteOutcome) {
+        match outcome {
+            ReceiptWriteOutcome::Allow => {
+                increment_saturating(&self.allow);
+            }
+            ReceiptWriteOutcome::Deny => {
+                increment_saturating(&self.deny);
+            }
+            ReceiptWriteOutcome::PendingApproval => {
+                increment_saturating(&self.pending_approval);
+            }
+            ReceiptWriteOutcome::Error => {
+                increment_saturating(&self.error);
+            }
+        }
     }
 
     /// Record a receipt-write outcome at the edge sink boundary.
@@ -74,19 +200,19 @@ impl ReceiptWriteCounters {
     /// Unknown values are recorded under the error counter so the gauge does
     /// not silently drop emissions.
     pub fn record(&self, outcome: &str) {
+        self.record_outcome(
+            ReceiptWriteOutcome::from_label(outcome).unwrap_or(ReceiptWriteOutcome::Error),
+        );
+    }
+
+    /// Read the current count for a typed outcome.
+    #[must_use]
+    pub fn total_outcome(&self, outcome: ReceiptWriteOutcome) -> u64 {
         match outcome {
-            RECEIPT_WRITE_OUTCOME_ALLOW => {
-                self.allow.fetch_add(1, Ordering::Relaxed);
-            }
-            RECEIPT_WRITE_OUTCOME_DENY => {
-                self.deny.fetch_add(1, Ordering::Relaxed);
-            }
-            RECEIPT_WRITE_OUTCOME_PENDING_APPROVAL => {
-                self.pending_approval.fetch_add(1, Ordering::Relaxed);
-            }
-            _ => {
-                self.error.fetch_add(1, Ordering::Relaxed);
-            }
+            ReceiptWriteOutcome::Allow => self.allow.load(Ordering::Relaxed),
+            ReceiptWriteOutcome::Deny => self.deny.load(Ordering::Relaxed),
+            ReceiptWriteOutcome::PendingApproval => self.pending_approval.load(Ordering::Relaxed),
+            ReceiptWriteOutcome::Error => self.error.load(Ordering::Relaxed),
         }
     }
 
@@ -94,11 +220,19 @@ impl ReceiptWriteCounters {
     /// the error counter, mirroring [`Self::record`].
     #[must_use]
     pub fn total(&self, outcome: &str) -> u64 {
-        match outcome {
-            RECEIPT_WRITE_OUTCOME_ALLOW => self.allow.load(Ordering::Relaxed),
-            RECEIPT_WRITE_OUTCOME_DENY => self.deny.load(Ordering::Relaxed),
-            RECEIPT_WRITE_OUTCOME_PENDING_APPROVAL => self.pending_approval.load(Ordering::Relaxed),
-            _ => self.error.load(Ordering::Relaxed),
+        self.total_outcome(
+            ReceiptWriteOutcome::from_label(outcome).unwrap_or(ReceiptWriteOutcome::Error),
+        )
+    }
+
+    /// Snapshot all counters for one edge sink.
+    #[must_use]
+    pub fn snapshot(&self) -> ReceiptWriteSnapshot {
+        ReceiptWriteSnapshot {
+            allow: self.total_outcome(ReceiptWriteOutcome::Allow),
+            deny: self.total_outcome(ReceiptWriteOutcome::Deny),
+            pending_approval: self.total_outcome(ReceiptWriteOutcome::PendingApproval),
+            error: self.total_outcome(ReceiptWriteOutcome::Error),
         }
     }
 
@@ -114,17 +248,12 @@ impl ReceiptWriteCounters {
         output.push_str("# TYPE ");
         output.push_str(CHIO_RECEIPT_WRITE_TOTAL);
         output.push_str(" counter\n");
-        for outcome in [
-            RECEIPT_WRITE_OUTCOME_ALLOW,
-            RECEIPT_WRITE_OUTCOME_DENY,
-            RECEIPT_WRITE_OUTCOME_PENDING_APPROVAL,
-            RECEIPT_WRITE_OUTCOME_ERROR,
-        ] {
+        for sample in self.snapshot().samples() {
             output.push_str(CHIO_RECEIPT_WRITE_TOTAL);
             output.push_str("{outcome=\"");
-            output.push_str(outcome);
+            output.push_str(sample.label());
             output.push_str("\"} ");
-            output.push_str(&self.total(outcome).to_string());
+            output.push_str(&sample.total.to_string());
             output.push('\n');
         }
         output
@@ -135,6 +264,12 @@ impl Default for ReceiptWriteCounters {
     fn default() -> Self {
         Self::new()
     }
+}
+
+fn increment_saturating(counter: &AtomicU64) {
+    let _ = counter.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+        Some(value.saturating_add(1))
+    });
 }
 
 #[cfg(test)]
@@ -157,6 +292,19 @@ mod tests {
     }
 
     #[test]
+    fn receipt_write_outcomes_are_rendered_in_stable_order() {
+        assert_eq!(
+            RECEIPT_WRITE_OUTCOMES,
+            [
+                ReceiptWriteOutcome::Allow,
+                ReceiptWriteOutcome::Deny,
+                ReceiptWriteOutcome::PendingApproval,
+                ReceiptWriteOutcome::Error,
+            ]
+        );
+    }
+
+    #[test]
     fn counters_are_isolated_per_instance() {
         let a = ReceiptWriteCounters::new();
         let b = ReceiptWriteCounters::new();
@@ -171,6 +319,91 @@ mod tests {
         counters.record("totally-unknown");
         assert_eq!(counters.total(RECEIPT_WRITE_OUTCOME_ERROR), 1);
         assert_eq!(counters.total("totally-unknown"), 1);
+    }
+
+    #[test]
+    fn typed_outcomes_round_trip_to_stable_labels() {
+        assert_eq!(
+            ReceiptWriteOutcome::Allow.as_str(),
+            RECEIPT_WRITE_OUTCOME_ALLOW
+        );
+        assert_eq!(
+            ReceiptWriteOutcome::Deny.as_str(),
+            RECEIPT_WRITE_OUTCOME_DENY
+        );
+        assert_eq!(
+            ReceiptWriteOutcome::PendingApproval.as_str(),
+            RECEIPT_WRITE_OUTCOME_PENDING_APPROVAL
+        );
+        assert_eq!(
+            ReceiptWriteOutcome::Error.as_str(),
+            RECEIPT_WRITE_OUTCOME_ERROR
+        );
+        assert_eq!(
+            ReceiptWriteOutcome::from_label(RECEIPT_WRITE_OUTCOME_PENDING_APPROVAL),
+            Some(ReceiptWriteOutcome::PendingApproval)
+        );
+        assert_eq!(ReceiptWriteOutcome::from_label("bad-label"), None);
+    }
+
+    #[test]
+    fn snapshot_exposes_typed_totals_without_string_lookup() {
+        let counters = ReceiptWriteCounters::new();
+        counters.record_outcome(ReceiptWriteOutcome::Allow);
+        counters.record_outcome(ReceiptWriteOutcome::PendingApproval);
+        counters.record("bad-label");
+
+        let snapshot = counters.snapshot();
+
+        assert_eq!(snapshot.total(ReceiptWriteOutcome::Allow), 1);
+        assert_eq!(snapshot.total(ReceiptWriteOutcome::Deny), 0);
+        assert_eq!(snapshot.total(ReceiptWriteOutcome::PendingApproval), 1);
+        assert_eq!(snapshot.total(ReceiptWriteOutcome::Error), 1);
+    }
+
+    #[test]
+    fn snapshot_samples_preserve_stable_order_and_totals() {
+        let counters = ReceiptWriteCounters::new();
+        counters.record_outcome(ReceiptWriteOutcome::Allow);
+        counters.record_outcome(ReceiptWriteOutcome::Allow);
+        counters.record_outcome(ReceiptWriteOutcome::Deny);
+        counters.record_outcome(ReceiptWriteOutcome::PendingApproval);
+        counters.record("unknown-label");
+
+        let samples = counters.snapshot().samples();
+
+        assert_eq!(
+            samples,
+            [
+                ReceiptWriteSample {
+                    outcome: ReceiptWriteOutcome::Allow,
+                    total: 2,
+                },
+                ReceiptWriteSample {
+                    outcome: ReceiptWriteOutcome::Deny,
+                    total: 1,
+                },
+                ReceiptWriteSample {
+                    outcome: ReceiptWriteOutcome::PendingApproval,
+                    total: 1,
+                },
+                ReceiptWriteSample {
+                    outcome: ReceiptWriteOutcome::Error,
+                    total: 1,
+                },
+            ]
+        );
+        assert_eq!(samples[0].label(), RECEIPT_WRITE_OUTCOME_ALLOW);
+    }
+
+    #[test]
+    fn receipt_write_counters_saturate_instead_of_wrapping() {
+        let counters = ReceiptWriteCounters::new();
+        counters.allow.store(u64::MAX, Ordering::Relaxed);
+
+        counters.record(RECEIPT_WRITE_OUTCOME_ALLOW);
+
+        assert_eq!(counters.total(RECEIPT_WRITE_OUTCOME_ALLOW), u64::MAX);
     }
 
     #[test]

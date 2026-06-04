@@ -12,20 +12,21 @@ fn openai_batch_tool_call_without_verdict_fails_replay() -> Result<(), Box<dyn s
         .filter(|line| !line.contains(r#""direction":"kernel_verdict""#))
         .collect::<Vec<_>>()
         .join("\n");
-    let temp_path = std::env::temp_dir().join(format!(
-        "chio-openai-verdictless-{}.ndjson",
-        std::process::id()
-    ));
+    let temp_root =
+        std::env::temp_dir().join(format!("chio-openai-verdictless-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&temp_root);
+    std::fs::create_dir_all(&temp_root)?;
+    let temp_path = temp_root.join("openai_basic_single_tool_call.ndjson");
     std::fs::write(&temp_path, format!("{fixture_without_verdict}\n"))?;
 
     let error = match replay_openai_fixture(&temp_path) {
         Ok(_) => {
-            let _ = std::fs::remove_file(temp_path);
+            let _ = std::fs::remove_dir_all(&temp_root);
             panic!("verdictless tool call must fail");
         }
         Err(error) => error,
     };
-    let _ = std::fs::remove_file(temp_path);
+    let _ = std::fs::remove_dir_all(&temp_root);
     assert!(
         error.to_string().contains("unexpected invocation"),
         "unexpected error: {error}"

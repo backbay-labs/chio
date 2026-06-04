@@ -58,7 +58,33 @@ pub use weights::{WeightsCardConfig, WeightsCardLoadError, WeightsCardRequired};
 /// Detect whether a YAML string is a HushSpec document by checking for the
 /// `hushspec` top-level key. This enables auto-detection when loading policies.
 pub fn is_hushspec_format(yaml: &str) -> bool {
-    // Quick check without full parse: look for "hushspec:" at the start of a line
-    yaml.lines()
-        .any(|line| line.starts_with("hushspec:") || line.starts_with("\"hushspec\""))
+    yaml.lines().any(line_starts_with_hushspec_key)
+}
+
+fn line_starts_with_hushspec_key(line: &str) -> bool {
+    let Some(rest) = line
+        .strip_prefix("hushspec")
+        .or_else(|| line.strip_prefix("\"hushspec\""))
+        .or_else(|| line.strip_prefix("'hushspec'"))
+    else {
+        return false;
+    };
+
+    rest.trim_start().starts_with(':')
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hushspec_format_detection_requires_a_top_level_mapping_key() {
+        assert!(is_hushspec_format("hushspec: \"0.1.0\""));
+        assert!(is_hushspec_format("\"hushspec\": \"0.1.0\""));
+        assert!(is_hushspec_format("hushspec : \"0.1.0\""));
+
+        assert!(!is_hushspec_format("\"hushspec\"\nname: not-a-policy"));
+        assert!(!is_hushspec_format("not_hushspec: true"));
+        assert!(!is_hushspec_format("  hushspec: nested"));
+    }
 }

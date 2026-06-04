@@ -19,31 +19,6 @@ cp -R "${EXAMPLE_ROOT}/fixtures/minimal-evidence" "${TAMPERED_DIR}"
 
 "${CHIO_BIN}" evidence verify --input "${INPUT_DIR}" --json > "${ARTIFACT_ROOT}/verify.json"
 
-python3 - "${ARTIFACT_ROOT}/verify.json" "${INPUT_DIR}/receipts.ndjson" "${INPUT_DIR}/capability-lineage.ndjson" "${ARTIFACT_ROOT}/summary.json" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-verify = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-receipt_record = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8").splitlines()[0])
-lineage_record = json.loads(Path(sys.argv[3]).read_text(encoding="utf-8").splitlines()[0])
-
-assert verify["toolReceipts"] == 1, verify
-assert verify["capabilityLineage"] == 1, verify
-
-summary = {
-    "example": "hello-receipt-verify",
-    "receipt_id": receipt_record["receipt"]["id"],
-    "capability_id": receipt_record["receipt"]["capability_id"],
-    "tool_name": receipt_record["receipt"]["tool_name"],
-    "subject_key": lineage_record["subject_key"],
-    "issuer_key": lineage_record["issuer_key"],
-    "verified": True,
-}
-
-Path(sys.argv[4]).write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
-PY
-
 python3 - "${TAMPERED_DIR}/query.json" <<'PY'
 from pathlib import Path
 import sys
@@ -56,16 +31,10 @@ if "${CHIO_BIN}" evidence verify --input "${TAMPERED_DIR}" --json > "${ARTIFACT_
   exit 1
 fi
 
-python3 - "${ARTIFACT_ROOT}/tamper-err.json" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-assert payload["code"] == "urn:chio:error:attest:provenance-missing", payload
-assert payload["context"]["legacy_string_code"] == "CHIO-ATTEST-PROVENANCE-MISSING", payload
-assert "hash mismatch" in payload["message"], payload
-PY
+python3 "${EXAMPLE_ROOT}/verify_artifacts.py" \
+  "${ARTIFACT_ROOT}" \
+  --write-summary \
+  > "${ARTIFACT_ROOT}/artifact-validation.json"
 
 RECEIPT_ID="$(python3 - "${ARTIFACT_ROOT}/summary.json" <<'PY'
 import json

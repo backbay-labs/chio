@@ -69,6 +69,18 @@
 
 #define CHIO_FFI_ERROR_DUPLICATE_SERVER_TOOL 22
 
+#define CHIO_FFI_ERROR_INVALID_TOOL_NAME 23
+
+#define CHIO_FFI_ERROR_INVALID_INPUT_SCHEMA 24
+
+#define CHIO_FFI_ERROR_INVALID_OUTPUT_SCHEMA 25
+
+#define CHIO_FFI_ERROR_INVALID_MANIFEST_FIELD 26
+
+#define CHIO_FFI_ERROR_INVALID_REQUIRED_PERMISSION 27
+
+#define CHIO_FFI_ERROR_DUPLICATE_REQUIRED_PERMISSION 28
+
 #define CHIO_FFI_ERROR_INTERNAL 255
 
 typedef struct {
@@ -115,6 +127,9 @@ ChioFfiResult chio_verify_capability_json(const char *input_json,
                                           uint32_t max_delegation_depth);
 
 ChioFfiResult chio_verify_receipt_json(const char *input_json);
+
+ChioFfiResult chio_verify_receipt_json_with_trusted_signers(const char *input_json,
+                                                            const char *trusted_signers_json);
 
 ChioFfiResult chio_verify_manifest_json(const char *input_json);
 

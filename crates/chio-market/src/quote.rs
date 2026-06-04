@@ -274,6 +274,27 @@ pub struct LiabilityQuoteResponseArtifact {
 
 impl LiabilityQuoteResponseArtifact {
     pub fn validate(&self) -> Result<(), String> {
+        if self.schema != crate::LIABILITY_QUOTE_RESPONSE_ARTIFACT_SCHEMA {
+            return Err(format!(
+                "unsupported liability quote response schema: {}",
+                self.schema
+            ));
+        }
+        let quote_response_id = self.quote_response_id.trim();
+        if quote_response_id.is_empty() {
+            return Err("quote response requires quote_response_id".to_string());
+        }
+        if quote_response_id != self.quote_response_id {
+            return Err(
+                "quote response quote_response_id must not have leading or trailing whitespace"
+                    .to_string(),
+            );
+        }
+        if self.quote_response_id.chars().any(char::is_control) {
+            return Err(
+                "quote response quote_response_id must not include control characters".to_string(),
+            );
+        }
         if !self.quote_request.verify_signature().map_err(|error| {
             format!("quote response quote_request signature verification failed: {error}")
         })? {

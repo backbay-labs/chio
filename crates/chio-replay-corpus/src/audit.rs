@@ -14,6 +14,7 @@ pub const TEE_BLESS_EVENT: &str = "tee.bless";
 pub const TEE_BLESS_CAPABILITY: &str = "chio:tee/bless@1";
 
 const ED25519_SIGNATURE_PREFIX: &str = "ed25519:";
+const RECEIPTS_ROOT_HEX_LEN: usize = 64;
 
 /// Operator identity recorded for a bless event.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -92,6 +93,43 @@ impl TeeBlessAuditBody {
             control_plane_capability: TEE_BLESS_CAPABILITY.to_string(),
         }
     }
+
+    /// Validate required audit fields before the body is signed.
+    pub fn validate(&self) -> Result<(), BlessAuditError> {
+        if self.event != TEE_BLESS_EVENT {
+            return Err(BlessAuditError::InvalidAuditBody(
+                "tee.bless audit event name is invalid".to_string(),
+            ));
+        }
+        if self.control_plane_capability != TEE_BLESS_CAPABILITY {
+            return Err(BlessAuditError::InvalidAuditBody(
+                "tee.bless audit capability is invalid".to_string(),
+            ));
+        }
+        validate_required_audit_field(&self.ts, "ts")?;
+        validate_required_audit_field(&self.operator.id, "operator.id")?;
+        validate_required_audit_field(&self.operator.git_user, "operator.git_user")?;
+        validate_required_audit_field(&self.capture.path, "capture.path")?;
+        validate_required_audit_field(&self.fixture.family, "fixture.family")?;
+        validate_required_audit_field(&self.fixture.name, "fixture.name")?;
+        validate_required_audit_field(&self.fixture.path, "fixture.path")?;
+        validate_required_audit_field(&self.fixture.receipts_root, "fixture.receipts_root")?;
+        validate_required_audit_field(&self.redaction_pass_id, "redaction_pass_id")?;
+        validate_capture_counts(&self.capture)?;
+        validate_receipts_root(&self.fixture.receipts_root)?;
+        if self.capture.frames_after_dedupe > self.capture.frames_in {
+            return Err(BlessAuditError::InvalidAuditBody(
+                "capture.frames_after_dedupe must not exceed capture.frames_in".to_string(),
+            ));
+        }
+        if self.capture.frames_after_redact > self.capture.frames_after_dedupe {
+            return Err(BlessAuditError::InvalidAuditBody(
+                "capture.frames_after_redact must not exceed capture.frames_after_dedupe"
+                    .to_string(),
+            ));
+        }
+        Ok(())
+    }
 }
 
 /// Signed `tee.bless` event as persisted to the receipt store.
@@ -108,6 +146,7 @@ pub struct TeeBlessAuditEntry {
 impl TeeBlessAuditEntry {
     /// Sign a `tee.bless` body with an Ed25519 operator key.
     pub fn sign(body: TeeBlessAuditBody, keypair: &Keypair) -> Result<Self, BlessAuditError> {
+        body.validate()?;
         let (signature, _) = keypair.sign_canonical(&body)?;
         Ok(Self {
             body,
@@ -169,6 +208,9 @@ pub fn write_tee_bless_audit_entry(
 /// Errors emitted by bless audit helpers.
 #[derive(Debug, Error)]
 pub enum BlessAuditError {
+    /// Audit body failed validation before signing.
+    #[error("invalid tee.bless audit body: {0}")]
+    InvalidAuditBody(String),
     /// Signature did not use the required `ed25519:<hex>` envelope.
     #[error("tee.bless signature must use ed25519:<hex> form, got {0}")]
     InvalidSignaturePrefix(String),
@@ -184,4 +226,54 @@ pub enum BlessAuditError {
         #[source]
         source: io::Error,
     },
+}
+
+fn validate_required_audit_field(value: &str, field: &str) -> Result<(), BlessAuditError> {
+    if value.trim().is_empty() {
+        return Err(BlessAuditError::InvalidAuditBody(format!(
+            "{field} must not be empty"
+        )));
+    }
+    if value.trim() != value {
+        return Err(BlessAuditError::InvalidAuditBody(format!(
+            "{field} must not contain surrounding whitespace"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_capture_counts(capture: &BlessCapture) -> Result<(), BlessAuditError> {
+    if capture.frames_in == 0 {
+        return Err(BlessAuditError::InvalidAuditBody(
+            "capture.frames_in must be greater than zero".to_string(),
+        ));
+    }
+    if capture.frames_after_dedupe == 0 {
+        return Err(BlessAuditError::InvalidAuditBody(
+            "capture.frames_after_dedupe must be greater than zero".to_string(),
+        ));
+    }
+    if capture.frames_after_redact == 0 {
+        return Err(BlessAuditError::InvalidAuditBody(
+            "capture.frames_after_redact must be greater than zero".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_receipts_root(value: &str) -> Result<(), BlessAuditError> {
+    if value.len() != RECEIPTS_ROOT_HEX_LEN {
+        return Err(BlessAuditError::InvalidAuditBody(format!(
+            "fixture.receipts_root must be {RECEIPTS_ROOT_HEX_LEN} lowercase hex characters"
+        )));
+    }
+    if !value
+        .bytes()
+        .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err(BlessAuditError::InvalidAuditBody(
+            "fixture.receipts_root must be lowercase hex".to_string(),
+        ));
+    }
+    Ok(())
 }

@@ -29,13 +29,16 @@ use chio_core::{
 use chio_kernel::{
     KernelError, NestedFlowBridge, PromptProvider, ResourceProvider, ToolServerConnection,
 };
-use chio_manifest::{ToolDefinition, ToolManifest};
+use chio_manifest::ToolManifest;
 use tracing::warn;
+use url::Url;
 
 pub mod edge {
     pub use chio_mcp_edge::{ChioMcpEdge, McpEdgeConfig, McpExposedTool};
 }
+mod framing;
 pub mod loaded_weights;
+mod manifest;
 pub mod native;
 pub mod transport;
 
@@ -210,7 +213,11 @@ impl McpTransport for SerializedMcpTransport {
     }
 
     fn drain_notifications(&self) -> Vec<serde_json::Value> {
-        self.inner.drain_notifications()
+        self.with_request_gate(|inner| Ok(inner.drain_notifications()))
+            .unwrap_or_else(|error| {
+                warn!(error = %error, "wrapped MCP notification drain failed");
+                vec![]
+            })
     }
 }
 
@@ -237,40 +244,9 @@ impl McpAdapter {
     }
 
     /// Query the MCP server for its tool list and generate a Chio manifest.
-    ///
-    /// Each MCP tool becomes a `ToolDefinition` in the manifest. Since MCP
-    /// tools provide no side-effect metadata, all adapted tools are marked
-    /// `has_side_effects: true` (fail-closed).
     pub fn generate_manifest(&self) -> Result<ToolManifest, AdapterError> {
         let mcp_tools = self.transport.list_tools()?;
-
-        let tools: Vec<ToolDefinition> = mcp_tools
-            .into_iter()
-            .map(|t| ToolDefinition {
-                name: t.name,
-                description: t.description.unwrap_or_default(),
-                input_schema: t.input_schema,
-                output_schema: t.output_schema,
-                pricing: None,
-                has_side_effects: infer_has_side_effects(t.annotations.as_ref()),
-                latency_hint: None,
-            })
-            .collect();
-
-        let manifest = ToolManifest {
-            schema: "chio.manifest.v1".into(),
-            server_id: self.config.server_id.clone(),
-            name: self.config.server_name.clone(),
-            description: Some("MCP server adapted to Chio protocol".into()),
-            version: self.config.server_version.clone(),
-            tools,
-            server_tools: Vec::new(),
-            required_permissions: None,
-            public_key: self.config.public_key.clone(),
-        };
-
-        chio_manifest::validate_manifest(&manifest)?;
-        Ok(manifest)
+        manifest::generate_manifest(&self.config, mcp_tools)
     }
 
     pub fn capabilities(&self) -> McpServerCapabilities {
@@ -299,19 +275,7 @@ impl McpAdapter {
             self.transport
                 .call_tool_with_nested_flow(tool_name, arguments, nested_flow_bridge)?;
 
-        let mut output = serde_json::Map::new();
-        output.insert(
-            "content".to_string(),
-            serde_json::Value::Array(result.content),
-        );
-        if let Some(structured_content) = result.structured_content {
-            output.insert("structuredContent".to_string(), structured_content);
-        }
-        if let Some(is_error) = result.is_error {
-            output.insert("isError".to_string(), serde_json::Value::Bool(is_error));
-        }
-
-        Ok(serde_json::Value::Object(output))
+        Ok(mcp_tool_result_to_chio_value(result))
     }
 
     pub fn list_resources(&self) -> Result<Vec<ResourceDefinition>, AdapterError> {
@@ -428,6 +392,15 @@ impl ToolServerConnection for AdaptedMcpServer {
         arguments: serde_json::Value,
         nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
     ) -> Result<serde_json::Value, KernelError> {
+        if !self
+            .manifest
+            .tools
+            .iter()
+            .any(|tool| tool.name == tool_name)
+        {
+            return Err(KernelError::ToolNotRegistered(tool_name.to_string()));
+        }
+
         self.adapter
             .invoke_with_nested_flow(tool_name, arguments, nested_flow_bridge)
             .map_err(map_tool_invocation_error)
@@ -501,6 +474,23 @@ impl PromptProvider for AdaptedMcpPromptProvider {
     }
 }
 
+fn mcp_tool_result_to_chio_value(result: McpToolResult) -> serde_json::Value {
+    let mut output = serde_json::Map::new();
+    output.insert(
+        "content".to_string(),
+        serde_json::Value::Array(result.content),
+    );
+    if let Some(structured_content) = result.structured_content {
+        output.insert("structuredContent".to_string(), structured_content);
+    }
+    output.insert(
+        "isError".to_string(),
+        serde_json::Value::Bool(result.is_error.unwrap_or(false)),
+    );
+
+    serde_json::Value::Object(output)
+}
+
 fn map_tool_invocation_error(error: AdapterError) -> KernelError {
     match error {
         AdapterError::RequestCancelled { request_id, reason } => {
@@ -537,14 +527,7 @@ fn parse_url_elicitation_required_error(
             "upstream MCP URL-required error must include at least one elicitation".to_string(),
         );
     }
-    if elicitations
-        .iter()
-        .any(|elicitation| !matches!(elicitation, CreateElicitationOperation::Url { .. }))
-    {
-        return Err(
-            "upstream MCP URL-required error must include only URL-mode elicitations".to_string(),
-        );
-    }
+    validate_url_required_elicitations(&elicitations)?;
 
     Ok(KernelError::UrlElicitationsRequired {
         message,
@@ -552,22 +535,80 @@ fn parse_url_elicitation_required_error(
     })
 }
 
-fn infer_has_side_effects(annotations: Option<&serde_json::Value>) -> bool {
-    annotations
-        .and_then(|value| value.get("readOnlyHint"))
-        .and_then(serde_json::Value::as_bool)
-        .map(|read_only| !read_only)
-        .unwrap_or(true)
+fn validate_url_required_elicitations(
+    elicitations: &[CreateElicitationOperation],
+) -> Result<(), String> {
+    for (index, elicitation) in elicitations.iter().enumerate() {
+        let CreateElicitationOperation::Url {
+            message,
+            url,
+            elicitation_id,
+            ..
+        } = elicitation
+        else {
+            return Err(
+                "upstream MCP URL-required error must include only URL-mode elicitations"
+                    .to_string(),
+            );
+        };
+
+        validate_unpadded_text(&format!("data.elicitations[{index}].message"), message)?;
+        validate_unpadded_text(&format!("data.elicitations[{index}].url"), url)?;
+        validate_unpadded_text(
+            &format!("data.elicitations[{index}].elicitationId"),
+            elicitation_id,
+        )?;
+        validate_browser_url(&format!("data.elicitations[{index}].url"), url)?;
+    }
+    Ok(())
+}
+
+fn validate_unpadded_text(field: &str, value: &str) -> Result<(), String> {
+    if value.trim().is_empty() {
+        return Err(format!("{field} must not be empty"));
+    }
+    if value.trim() != value {
+        return Err(format!(
+            "{field} must not include leading or trailing whitespace"
+        ));
+    }
+    if value.chars().any(|ch| ch.is_control()) {
+        return Err(format!("{field} must not include control characters"));
+    }
+    Ok(())
+}
+
+fn validate_browser_url(field: &str, value: &str) -> Result<(), String> {
+    let parsed =
+        Url::parse(value).map_err(|error| format!("{field} is not a valid URL: {error}"))?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err(format!("{field} must use http or https"));
+    }
+    if parsed.host_str().is_none() {
+        return Err(format!("{field} must include a host"));
+    }
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err(format!("{field} must not include userinfo"));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
+    use super::manifest::infer_has_side_effects;
     use super::*;
     use chio_core::session::CreateElicitationOperation;
     use chio_kernel::KernelError;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Condvar, Mutex as StdMutex};
 
     use chio_test_support::prelude::*;
+
+    fn valid_test_public_key() -> String {
+        chio_core::Keypair::from_seed(&[13u8; 32])
+            .public_key()
+            .to_hex()
+    }
 
     #[derive(Clone)]
     enum MockCallBehavior {
@@ -586,7 +627,7 @@ mod tests {
     struct MockTransport {
         tools: Vec<McpToolInfo>,
         call_behavior: MockCallBehavior,
-        call_count: AtomicUsize,
+        call_count: std::sync::Arc<AtomicUsize>,
         resources: Vec<ResourceDefinition>,
         resource_templates: Vec<ResourceTemplateDefinition>,
         prompts: Vec<chio_core::PromptDefinition>,
@@ -598,7 +639,7 @@ mod tests {
             Self {
                 tools,
                 call_behavior,
-                call_count: AtomicUsize::new(0),
+                call_count: std::sync::Arc::new(AtomicUsize::new(0)),
                 resources: vec![],
                 resource_templates: vec![],
                 prompts: vec![],
@@ -624,6 +665,10 @@ mod tests {
         fn with_prompts(mut self, prompts: Vec<chio_core::PromptDefinition>) -> Self {
             self.prompts = prompts;
             self
+        }
+
+        fn call_count_handle(&self) -> std::sync::Arc<AtomicUsize> {
+            self.call_count.clone()
         }
     }
 
@@ -735,12 +780,71 @@ mod tests {
         }
     }
 
+    struct BlockingDrainProbeTransport {
+        entered_call_tx: StdMutex<Option<std::sync::mpsc::Sender<()>>>,
+        release: (StdMutex<bool>, Condvar),
+    }
+
+    impl BlockingDrainProbeTransport {
+        fn new(entered_call_tx: std::sync::mpsc::Sender<()>) -> Self {
+            Self {
+                entered_call_tx: StdMutex::new(Some(entered_call_tx)),
+                release: (StdMutex::new(false), Condvar::new()),
+            }
+        }
+
+        fn release_call(&self) {
+            let (released, cvar) = &self.release;
+            let mut released = released
+                .lock()
+                .unwrap_or_else(|error| panic!("release mutex poisoned: {error}"));
+            *released = true;
+            cvar.notify_all();
+        }
+    }
+
+    impl McpTransport for BlockingDrainProbeTransport {
+        fn list_tools(&self) -> Result<Vec<McpToolInfo>, AdapterError> {
+            Ok(vec![])
+        }
+
+        fn call_tool(
+            &self,
+            _tool_name: &str,
+            _arguments: serde_json::Value,
+        ) -> Result<McpToolResult, AdapterError> {
+            if let Some(tx) = self
+                .entered_call_tx
+                .lock()
+                .unwrap_or_else(|error| panic!("entered-call mutex poisoned: {error}"))
+                .take()
+            {
+                let _ = tx.send(());
+            }
+
+            let (released, cvar) = &self.release;
+            let released = released
+                .lock()
+                .unwrap_or_else(|error| panic!("release mutex poisoned: {error}"));
+            let _released = cvar
+                .wait_while(released, |released| !*released)
+                .unwrap_or_else(|error| panic!("release condvar poisoned: {error}"));
+            Ok(success_result("released"))
+        }
+
+        fn drain_notifications(&self) -> Vec<serde_json::Value> {
+            vec![serde_json::json!({
+                "method": "notifications/probe"
+            })]
+        }
+    }
+
     fn default_config() -> McpAdapterConfig {
         McpAdapterConfig {
             server_id: "mcp-test".into(),
             server_name: "Test".into(),
             server_version: "0.1.0".into(),
-            public_key: "aabbccdd".into(),
+            public_key: valid_test_public_key(),
         }
     }
 
@@ -764,6 +868,38 @@ mod tests {
         }
     }
 
+    #[test]
+    fn mcp_tool_result_to_chio_value_preserves_content_and_optional_fields() {
+        let result = McpToolResult {
+            content: vec![serde_json::json!({"type": "text", "text": "hello"})],
+            structured_content: Some(serde_json::json!({"answer": 42})),
+            is_error: Some(true),
+        };
+
+        let output = mcp_tool_result_to_chio_value(result);
+
+        assert_eq!(output["content"][0]["text"], "hello");
+        assert_eq!(output["structuredContent"]["answer"], 42);
+        assert_eq!(output["isError"], true);
+    }
+
+    #[test]
+    fn mcp_tool_result_to_chio_value_defaults_absent_is_error_to_false() {
+        let output = mcp_tool_result_to_chio_value(success_result("ok"));
+
+        assert_eq!(output["content"][0]["text"], "ok");
+        assert!(output.get("structuredContent").is_none());
+        assert_eq!(output["isError"], false);
+
+        let output = mcp_tool_result_to_chio_value(McpToolResult {
+            content: vec![],
+            structured_content: None,
+            is_error: None,
+        });
+        assert_eq!(output["isError"], false);
+        assert!(output.get("structuredContent").is_none());
+    }
+
     // ---- Manifest generation tests ----
 
     #[test]
@@ -785,7 +921,7 @@ mod tests {
             server_id: "mcp-fs".into(),
             server_name: "Filesystem MCP".into(),
             server_version: "1.0.0".into(),
-            public_key: "aabbccdd".into(),
+            public_key: valid_test_public_key(),
         };
 
         let adapter = McpAdapter::new(config, Box::new(transport));
@@ -795,11 +931,54 @@ mod tests {
 
         assert_eq!(manifest.tools.len(), 1);
         assert_eq!(manifest.tools[0].name, "read_file");
+        assert_eq!(manifest.tools[0].description, "Read File\n\nRead a file");
         assert_eq!(
             manifest.tools[0].output_schema,
             Some(serde_json::json!({"type": "string"}))
         );
         assert!(!manifest.tools[0].has_side_effects);
+    }
+
+    #[test]
+    fn manifest_uses_mcp_title_when_description_is_absent() {
+        let transport = MockTransport::simple(
+            vec![McpToolInfo {
+                name: "search_docs".into(),
+                title: Some("Search Docs".into()),
+                description: None,
+                input_schema: serde_json::json!({"type": "object"}),
+                output_schema: None,
+                annotations: None,
+                execution: None,
+            }],
+            MockCallBehavior::Success(success_result("ok")),
+        );
+        let adapter = McpAdapter::new(default_config(), Box::new(transport));
+
+        let manifest = adapter.generate_manifest().test_unwrap();
+
+        assert_eq!(manifest.tools[0].description, "Search Docs");
+    }
+
+    #[test]
+    fn manifest_description_only_tools_remain_unchanged() {
+        let transport = MockTransport::simple(
+            vec![McpToolInfo {
+                name: "describe".into(),
+                title: None,
+                description: Some("Existing description".into()),
+                input_schema: serde_json::json!({"type": "object"}),
+                output_schema: None,
+                annotations: None,
+                execution: None,
+            }],
+            MockCallBehavior::Success(success_result("ok")),
+        );
+        let adapter = McpAdapter::new(default_config(), Box::new(transport));
+
+        let manifest = adapter.generate_manifest().test_unwrap();
+
+        assert_eq!(manifest.tools[0].description, "Existing description");
     }
 
     #[test]
@@ -871,12 +1050,84 @@ mod tests {
     }
 
     #[test]
+    fn manifest_conflicting_readonly_and_destructive_annotations_fail_closed() {
+        let tool_conflicting = McpToolInfo {
+            name: "conflicting".into(),
+            title: None,
+            description: Some("Conflicting safety hints".into()),
+            input_schema: serde_json::json!({"type": "object"}),
+            output_schema: None,
+            annotations: Some(serde_json::json!({
+                "readOnlyHint": true,
+                "destructiveHint": true,
+            })),
+            execution: None,
+        };
+        let transport = MockTransport::simple(
+            vec![tool_conflicting],
+            MockCallBehavior::Success(success_result("ok")),
+        );
+        let adapter = McpAdapter::new(default_config(), Box::new(transport));
+
+        let manifest = adapter.generate_manifest().test_unwrap();
+
+        assert!(
+            manifest.tools[0].has_side_effects,
+            "destructiveHint=true must override readOnlyHint=true"
+        );
+    }
+
+    #[test]
     fn manifest_empty_tools_list_rejected() {
         let transport =
             MockTransport::simple(vec![], MockCallBehavior::Success(success_result("ok")));
         let adapter = McpAdapter::new(default_config(), Box::new(transport));
         let err = adapter.generate_manifest().test_unwrap_err();
         assert!(matches!(err, AdapterError::ManifestError(_)));
+    }
+
+    #[test]
+    fn manifest_rejects_non_object_mcp_input_schema() {
+        let transport = MockTransport::simple(
+            vec![McpToolInfo {
+                name: "bad_schema".into(),
+                title: None,
+                description: Some("Bad schema".into()),
+                input_schema: serde_json::json!(["not", "an", "object"]),
+                output_schema: None,
+                annotations: None,
+                execution: None,
+            }],
+            MockCallBehavior::Success(success_result("ok")),
+        );
+        let adapter = McpAdapter::new(default_config(), Box::new(transport));
+
+        let err = adapter.generate_manifest().test_unwrap_err();
+
+        assert!(matches!(err, AdapterError::ParseError(_)));
+        assert!(err.to_string().contains("inputSchema"));
+    }
+
+    #[test]
+    fn manifest_rejects_non_object_mcp_output_schema() {
+        let transport = MockTransport::simple(
+            vec![McpToolInfo {
+                name: "bad_output".into(),
+                title: None,
+                description: Some("Bad output schema".into()),
+                input_schema: serde_json::json!({"type": "object"}),
+                output_schema: Some(serde_json::json!("not an object")),
+                annotations: None,
+                execution: None,
+            }],
+            MockCallBehavior::Success(success_result("ok")),
+        );
+        let adapter = McpAdapter::new(default_config(), Box::new(transport));
+
+        let err = adapter.generate_manifest().test_unwrap_err();
+
+        assert!(matches!(err, AdapterError::ParseError(_)));
+        assert!(err.to_string().contains("outputSchema"));
     }
 
     #[test]
@@ -894,11 +1145,12 @@ mod tests {
 
     #[test]
     fn manifest_carries_server_metadata() {
+        let public_key = valid_test_public_key();
         let config = McpAdapterConfig {
             server_id: "my-server".into(),
             server_name: "My Server".into(),
             server_version: "2.0.0".into(),
-            public_key: "deadbeef".into(),
+            public_key: public_key.clone(),
         };
         let transport = MockTransport::simple(
             vec![text_tool_info("t")],
@@ -911,7 +1163,7 @@ mod tests {
         assert_eq!(manifest.server_id, "my-server");
         assert_eq!(manifest.name, "My Server");
         assert_eq!(manifest.version, "2.0.0");
-        assert_eq!(manifest.public_key, "deadbeef");
+        assert_eq!(manifest.public_key, public_key);
     }
 
     // ---- Invocation tests ----
@@ -965,7 +1217,7 @@ mod tests {
     }
 
     #[test]
-    fn invoke_omits_is_error_when_none() {
+    fn invoke_defaults_missing_is_error_to_false() {
         let result = McpToolResult {
             content: vec![serde_json::json!({"type": "text", "text": "ok"})],
             structured_content: None,
@@ -976,7 +1228,7 @@ mod tests {
         let output = adapter
             .invoke("t", serde_json::json!({}))
             .unwrap_or_else(|e| panic!("{e}"));
-        assert!(output.get("isError").is_none());
+        assert_eq!(output["isError"], false);
     }
 
     #[test]
@@ -1094,6 +1346,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn adapted_server_rejects_manifest_unknown_tool_without_contacting_upstream() {
+        let transport = MockTransport::simple(
+            vec![text_tool_info("known_tool")],
+            MockCallBehavior::Success(success_result("unexpected")),
+        );
+        let call_count = transport.call_count_handle();
+        let adapted = AdaptedMcpServer::new(McpAdapter::new(default_config(), Box::new(transport)))
+            .unwrap_or_else(|e| panic!("adapted server: {e}"));
+
+        let error = adapted
+            .invoke("unlisted_tool", serde_json::json!({}), None)
+            .await
+            .test_unwrap_err();
+
+        assert!(matches!(
+            error,
+            KernelError::ToolNotRegistered(ref tool) if tool == "unlisted_tool"
+        ));
+        assert_eq!(call_count.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
     async fn adapted_server_maps_url_required_errors_into_kernel_errors() {
         let transport = MockTransport::simple(
             vec![McpToolInfo {
@@ -1122,7 +1396,7 @@ mod tests {
             server_id: "mcp-auth".into(),
             server_name: "Auth".into(),
             server_version: "0.1.0".into(),
-            public_key: "aabbccdd".into(),
+            public_key: valid_test_public_key(),
         };
 
         let adapted = AdaptedMcpServer::new(McpAdapter::new(config, Box::new(transport)))
@@ -1171,6 +1445,55 @@ mod tests {
             Some(serde_json::json!({"elicitations": []})),
         );
         assert!(err.is_err());
+    }
+
+    #[test]
+    fn url_elicitation_error_rejects_malformed_url_elicitations() {
+        let cases = [
+            (
+                serde_json::json!({
+                    "elicitations": [{
+                        "mode": "url",
+                        "message": "Authorize",
+                        "url": "https://example.com/authorize",
+                        "elicitationId": " elicit-auth "
+                    }]
+                }),
+                "data.elicitations[0].elicitationId must not include leading or trailing whitespace",
+            ),
+            (
+                serde_json::json!({
+                    "elicitations": [{
+                        "mode": "url",
+                        "message": "Authorize",
+                        "url": "javascript:alert(1)",
+                        "elicitationId": "elicit-auth"
+                    }]
+                }),
+                "data.elicitations[0].url must use http or https",
+            ),
+            (
+                serde_json::json!({
+                    "elicitations": [{
+                        "mode": "url",
+                        "message": "Authorize",
+                        "url": "https://user:secret@example.com/authorize",
+                        "elicitationId": "elicit-auth"
+                    }]
+                }),
+                "data.elicitations[0].url must not include userinfo",
+            ),
+        ];
+
+        for (data, expected) in cases {
+            let err =
+                parse_url_elicitation_required_error("bad URL elicitation".into(), Some(data))
+                    .test_unwrap_err();
+            assert!(
+                err.contains(expected),
+                "expected error containing {expected:?}, got {err:?}"
+            );
+        }
     }
 
     // ---- AdaptedMcpServer ToolServerConnection ----
@@ -1527,11 +1850,45 @@ mod tests {
     }
 
     #[test]
-    fn serialized_transport_drains_notifications() {
-        let inner = MockTransport::simple(vec![], MockCallBehavior::Success(success_result("ok")));
-        let serialized = SerializedMcpTransport::from_arc(Arc::new(inner));
-        let notifications = serialized.drain_notifications();
-        assert!(notifications.is_empty());
+    fn serialized_transport_serializes_notification_drain_with_active_request() {
+        let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+        let inner = Arc::new(BlockingDrainProbeTransport::new(entered_tx));
+        let serialized = Arc::new(SerializedMcpTransport::from_arc(inner.clone()));
+
+        let call_serialized = serialized.clone();
+        let call_thread =
+            std::thread::spawn(move || call_serialized.call_tool("t", serde_json::json!({})));
+        entered_rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .unwrap_or_else(|error| panic!("serialized call did not enter transport: {error}"));
+
+        let (drained_tx, drained_rx) = std::sync::mpsc::channel();
+        let drain_serialized = serialized.clone();
+        let drain_thread = std::thread::spawn(move || {
+            let notifications = drain_serialized.drain_notifications();
+            let _ = drained_tx.send(notifications);
+        });
+
+        assert!(
+            drained_rx
+                .recv_timeout(std::time::Duration::from_millis(50))
+                .is_err(),
+            "notification drain bypassed the active request gate"
+        );
+
+        inner.release_call();
+        let call_result = call_thread
+            .join()
+            .unwrap_or_else(|_| panic!("call thread panicked"));
+        call_result.unwrap_or_else(|error| panic!("call_tool failed: {error}"));
+        let notifications = drained_rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .unwrap_or_else(|error| panic!("drain did not complete after release: {error}"));
+        assert_eq!(notifications.len(), 1);
+        assert_eq!(notifications[0]["method"], "notifications/probe");
+        drain_thread
+            .join()
+            .unwrap_or_else(|_| panic!("drain thread panicked"));
     }
 
     // ---- Chunked output tests ----
@@ -1755,6 +2112,24 @@ mod tests {
     #[test]
     fn infer_side_effects_readonly_non_bool_defaults_true() {
         let ann = serde_json::json!({"readOnlyHint": "yes"});
+        assert!(infer_has_side_effects(Some(&ann)));
+    }
+
+    #[test]
+    fn infer_side_effects_destructive_true_overrides_readonly_true() {
+        let ann = serde_json::json!({
+            "readOnlyHint": true,
+            "destructiveHint": true,
+        });
+        assert!(infer_has_side_effects(Some(&ann)));
+    }
+
+    #[test]
+    fn infer_side_effects_malformed_destructive_hint_fails_closed() {
+        let ann = serde_json::json!({
+            "readOnlyHint": true,
+            "destructiveHint": "no",
+        });
         assert!(infer_has_side_effects(Some(&ann)));
     }
 

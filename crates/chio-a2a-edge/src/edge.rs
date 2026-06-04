@@ -33,15 +33,44 @@ pub struct ChioA2aEdgeCompatibility<'a> {
     edge: &'a mut ChioA2aEdge,
 }
 
+fn validate_execution_context(execution: &A2aKernelExecutionContext) -> Result<(), A2aEdgeError> {
+    validate_execution_agent_id(&execution.agent_id)
+}
+
+fn validate_execution_agent_id(agent_id: &str) -> Result<(), A2aEdgeError> {
+    if agent_id.trim().is_empty() {
+        return Err(A2aEdgeError::InvalidRequest(
+            "A2A execution agent_id must not be empty".to_string(),
+        ));
+    }
+    if agent_id.trim() != agent_id {
+        return Err(A2aEdgeError::InvalidRequest(
+            "A2A execution agent_id must not include leading or trailing whitespace".to_string(),
+        ));
+    }
+    if agent_id.chars().any(|character| character.is_control()) {
+        return Err(A2aEdgeError::InvalidRequest(
+            "A2A execution agent_id must not include control characters".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 impl ChioA2aEdge {
     /// Create a new A2A edge from Chio tool manifests.
     pub fn new(config: A2aEdgeConfig, manifests: Vec<ToolManifest>) -> Result<Self, A2aEdgeError> {
+        config.validate_for_agent_card()?;
+
         let mut skills = Vec::new();
         let mut skill_fidelity = BTreeMap::new();
         let mut skill_bindings = BTreeMap::new();
         let mut ambiguous_skill_ids = BTreeMap::new();
         let mut tool_name_counts = BTreeMap::new();
         let mut published_id_counts = BTreeMap::new();
+
+        for manifest in &manifests {
+            chio_manifest::validate_manifest(manifest)?;
+        }
 
         for manifest in &manifests {
             for tool in &manifest.tools {
@@ -170,6 +199,10 @@ impl ChioA2aEdge {
             other => (-32603, other.to_string()),
         };
 
+        Self::jsonrpc_error_payload(id, code, &message)
+    }
+
+    fn jsonrpc_error_payload(id: Value, code: i64, message: &str) -> Value {
         json!({
             "jsonrpc": "2.0",
             "id": id,
@@ -238,16 +271,19 @@ impl ChioA2aEdge {
 
     fn prune_deferred_tasks(&mut self) {
         let now = unix_now_millis();
-        self.tasks.retain(|_, task| {
-            task.response.status == TaskStatus::Working && task.expires_at_ms > now
-        });
+        self.tasks.retain(|_, task| task.expires_at_ms > now);
     }
 
     fn ensure_deferred_task_capacity(&mut self) -> Result<(), A2aEdgeError> {
         self.prune_deferred_tasks();
-        if self.tasks.len() >= MAX_DEFERRED_A2A_TASKS {
+        let active_count = self
+            .tasks
+            .values()
+            .filter(|task| !task.response.status.is_terminal())
+            .count();
+        if active_count >= MAX_DEFERRED_A2A_TASKS {
             return Err(A2aEdgeError::InvalidRequest(
-                "too many deferred tasks are pending".to_string(),
+                "too many deferred tasks are retained".to_string(),
             ));
         }
         Ok(())
@@ -265,9 +301,10 @@ impl ChioA2aEdge {
         kernel: &ChioKernel,
         execution: &A2aKernelExecutionContext,
     ) -> Result<TaskResponse, A2aEdgeError> {
+        validate_execution_context(execution)?;
         let binding = self.resolve_skill_binding(skill_id)?;
 
-        let arguments = extract_arguments_from_message(&request.message);
+        let arguments = extract_arguments_from_message(&request.message)?;
         let task_id = self.next_task_id();
         let request = CrossProtocolExecutionRequest {
             origin_request_id: task_id.clone(),
@@ -302,8 +339,9 @@ impl ChioA2aEdge {
         execution: &A2aKernelExecutionContext,
         reason: impl Into<String>,
     ) -> Result<TaskResponse, A2aEdgeError> {
+        validate_execution_context(execution)?;
         let binding = self.resolve_skill_binding(skill_id)?;
-        let arguments = extract_arguments_from_message(&request.message);
+        let arguments = extract_arguments_from_message(&request.message)?;
         let task_id = self.next_task_id();
         let request = CrossProtocolExecutionRequest {
             origin_request_id: task_id.clone(),
@@ -336,6 +374,7 @@ impl ChioA2aEdge {
         request: &SendMessageRequest,
         execution: &A2aKernelExecutionContext,
     ) -> Result<TaskResponse, A2aEdgeError> {
+        validate_execution_context(execution)?;
         let binding = self.resolve_skill_binding(skill_id)?;
         self.ensure_deferred_task_capacity()?;
         let task_id = self.next_task_id();
@@ -347,7 +386,7 @@ impl ChioA2aEdge {
             target_server_id: binding.server_id,
             target_tool_name: binding.tool_name,
             agent_id: execution.agent_id.clone(),
-            arguments: extract_arguments_from_message(&request.message),
+            arguments: extract_arguments_from_message(&request.message)?,
             capability: execution.capability.clone(),
             source_envelope: build_a2a_source_envelope(skill_id, request)?,
             dpop_proof: execution.dpop_proof.clone(),
@@ -395,7 +434,7 @@ impl ChioA2aEdge {
             binding.tool_name
         };
 
-        let arguments = extract_arguments_from_message(&request.message);
+        let arguments = extract_arguments_from_message(&request.message)?;
         let task_id = self.next_task_id();
 
         let invoke_result =
@@ -448,12 +487,24 @@ impl ChioA2aEdge {
         message: Value,
         kernel: &ChioKernel,
         execution: &A2aKernelExecutionContext,
-    ) -> Value {
-        let method = message.get("method").and_then(Value::as_str).unwrap_or("");
-        let id = message.get("id").cloned().unwrap_or(Value::Null);
-        let params = message.get("params").cloned().unwrap_or_else(|| json!({}));
+    ) -> A2aJsonRpcResponse {
+        let A2aJsonRpcEnvelope { id, method, params } =
+            match Self::parse_jsonrpc_envelope(&message) {
+                Ok(envelope) => envelope,
+                Err(response) => return A2aJsonRpcResponse::from_optional(response),
+            };
+        let should_respond = id.is_some();
+        let id = id.unwrap_or(Value::Null);
+        if let Err(response) = Self::ensure_jsonrpc_params_object_for_supported_method(
+            &id,
+            &method,
+            &params,
+            &["message/send", "message/stream", "task/get", "task/cancel"],
+        ) {
+            return A2aJsonRpcResponse::from_optional(should_respond.then_some(response));
+        }
 
-        match method {
+        let response = match method.as_str() {
             "message/send" => self.handle_jsonrpc_send_message(id, params, kernel, execution),
             "message/stream" => self.handle_jsonrpc_stream_message(id, params, execution),
             "task/get" => self.handle_jsonrpc_task_get(id, params, kernel, execution),
@@ -466,7 +517,8 @@ impl ChioA2aEdge {
                     "message": "method not found"
                 }
             }),
-        }
+        };
+        A2aJsonRpcResponse::from_optional(should_respond.then_some(response))
     }
 
     /// Handle a JSON-RPC A2A request through the direct passthrough path.
@@ -479,12 +531,24 @@ impl ChioA2aEdge {
         &mut self,
         message: Value,
         server: &dyn ToolServerConnection,
-    ) -> Value {
-        let method = message.get("method").and_then(Value::as_str).unwrap_or("");
-        let id = message.get("id").cloned().unwrap_or(Value::Null);
-        let params = message.get("params").cloned().unwrap_or_else(|| json!({}));
+    ) -> A2aJsonRpcResponse {
+        let A2aJsonRpcEnvelope { id, method, params } =
+            match Self::parse_jsonrpc_envelope(&message) {
+                Ok(envelope) => envelope,
+                Err(response) => return A2aJsonRpcResponse::from_optional(response),
+            };
+        let should_respond = id.is_some();
+        let id = id.unwrap_or(Value::Null);
+        if let Err(response) = Self::ensure_jsonrpc_params_object_for_supported_method(
+            &id,
+            &method,
+            &params,
+            &["message/send", "message/stream"],
+        ) {
+            return A2aJsonRpcResponse::from_optional(should_respond.then_some(response));
+        }
 
-        match method {
+        let response = match method.as_str() {
             "message/send" => self.handle_jsonrpc_send_message_passthrough(id, params, server),
             "message/stream" => self.jsonrpc_stream_not_supported(id),
             _ => json!({
@@ -495,7 +559,8 @@ impl ChioA2aEdge {
                     "message": "method not found"
                 }
             }),
-        }
+        };
+        A2aJsonRpcResponse::from_optional(should_respond.then_some(response))
     }
 
     #[cfg(any(test, feature = "compatibility-surface"))]
@@ -505,46 +570,11 @@ impl ChioA2aEdge {
         params: Value,
         server: &dyn ToolServerConnection,
     ) -> Value {
-        let skill_id_from_metadata = params
-            .get("metadata")
-            .and_then(|m| m.get("chio"))
-            .and_then(|a| a.get("targetSkillId"))
-            .and_then(Value::as_str)
-            .map(String::from);
-
-        let skill_id = skill_id_from_metadata.or_else(|| {
-            // Try to find a single skill if there's only one
-            if self.skills.len() == 1 {
-                self.skills.first().map(|s| s.id.clone())
-            } else {
-                None
-            }
-        });
-
-        let Some(skill_id) = skill_id else {
-            return json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "error": {
-                    "code": -32602,
-                    "message": "metadata.chio.targetSkillId is required when multiple skills are exposed"
-                }
-            });
-        };
-
-        let request = match serde_json::from_value::<SendMessageRequest>(params.clone()) {
-            Ok(req) => req,
-            Err(e) => {
-                return json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "error": {
-                        "code": -32602,
-                        "message": format!("invalid SendMessage request: {e}")
-                    }
-                });
-            }
-        };
+        let (skill_id, request) =
+            match self.parse_jsonrpc_send_message_params(params, "SendMessage") {
+                Ok(parsed) => parsed,
+                Err(error) => return Self::jsonrpc_error_response(id, error),
+            };
 
         match self.handle_send_message_passthrough(&skill_id, &request, server) {
             Ok(response) => json!({
@@ -563,45 +593,11 @@ impl ChioA2aEdge {
         kernel: &ChioKernel,
         execution: &A2aKernelExecutionContext,
     ) -> Value {
-        let skill_id_from_metadata = params
-            .get("metadata")
-            .and_then(|m| m.get("chio"))
-            .and_then(|a| a.get("targetSkillId"))
-            .and_then(Value::as_str)
-            .map(String::from);
-
-        let skill_id = skill_id_from_metadata.or_else(|| {
-            if self.skills.len() == 1 {
-                self.skills.first().map(|s| s.id.clone())
-            } else {
-                None
-            }
-        });
-
-        let Some(skill_id) = skill_id else {
-            return json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "error": {
-                    "code": -32602,
-                    "message": "metadata.chio.targetSkillId is required when multiple skills are exposed"
-                }
-            });
-        };
-
-        let request = match serde_json::from_value::<SendMessageRequest>(params.clone()) {
-            Ok(req) => req,
-            Err(error) => {
-                return json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "error": {
-                        "code": -32602,
-                        "message": format!("invalid SendMessage request: {error}")
-                    }
-                });
-            }
-        };
+        let (skill_id, request) =
+            match self.parse_jsonrpc_send_message_params(params, "SendMessage") {
+                Ok(parsed) => parsed,
+                Err(error) => return Self::jsonrpc_error_response(id, error),
+            };
 
         match self.handle_send_message(&skill_id, &request, kernel, execution) {
             Ok(response) => json!({
@@ -619,45 +615,11 @@ impl ChioA2aEdge {
         params: Value,
         execution: &A2aKernelExecutionContext,
     ) -> Value {
-        let skill_id_from_metadata = params
-            .get("metadata")
-            .and_then(|m| m.get("chio"))
-            .and_then(|a| a.get("targetSkillId"))
-            .and_then(Value::as_str)
-            .map(String::from);
-
-        let skill_id = skill_id_from_metadata.or_else(|| {
-            if self.skills.len() == 1 {
-                self.skills.first().map(|s| s.id.clone())
-            } else {
-                None
-            }
-        });
-
-        let Some(skill_id) = skill_id else {
-            return json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "error": {
-                    "code": -32602,
-                    "message": "metadata.chio.targetSkillId is required when multiple skills are exposed"
-                }
-            });
-        };
-
-        let request = match serde_json::from_value::<SendMessageRequest>(params.clone()) {
-            Ok(req) => req,
-            Err(error) => {
-                return json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "error": {
-                        "code": -32602,
-                        "message": format!("invalid SendStreamingMessage request: {error}")
-                    }
-                });
-            }
-        };
+        let (skill_id, request) =
+            match self.parse_jsonrpc_send_message_params(params, "SendStreamingMessage") {
+                Ok(parsed) => parsed,
+                Err(error) => return Self::jsonrpc_error_response(id, error),
+            };
 
         match self.handle_stream_message(&skill_id, &request, execution) {
             Ok(response) => json!({
@@ -677,25 +639,22 @@ impl ChioA2aEdge {
         execution: &A2aKernelExecutionContext,
     ) -> Value {
         self.prune_deferred_tasks();
-        let Some(task_id) = params.get("taskId").and_then(Value::as_str) else {
-            return json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "error": {
-                    "code": -32602,
-                    "message": "task/get requires params.taskId"
-                }
-            });
+        let task_id = match Self::parse_jsonrpc_task_id_params(&params, "task/get") {
+            Ok(task_id) => task_id,
+            Err(error) => return Self::jsonrpc_error_response(id, error),
         };
+        if let Err(error) = validate_execution_context(execution) {
+            return Self::jsonrpc_error_response(id, error);
+        }
 
-        match self.resolve_task(task_id, execution) {
+        match self.resolve_task(&task_id, execution) {
             Ok(response) => json!({
                 "jsonrpc": "2.0",
                 "id": id,
                 "result": serde_json::to_value(&response).unwrap_or(Value::Null)
             }),
-            Err(A2aEdgeError::InvalidRequest(_)) if self.tasks.contains_key(task_id) => {
-                self.complete_task(task_id, kernel, execution, id)
+            Err(A2aEdgeError::InvalidRequest(_)) if self.tasks.contains_key(&task_id) => {
+                self.complete_task(&task_id, kernel, execution, id)
             }
             Err(error) => Self::jsonrpc_error_response(id, error),
         }
@@ -708,6 +667,9 @@ impl ChioA2aEdge {
         execution: &A2aKernelExecutionContext,
         id: Value,
     ) -> Value {
+        if let Err(error) = validate_execution_context(execution) {
+            return Self::jsonrpc_error_response(id, error);
+        }
         let Some(task) = self.tasks.get(task_id).cloned() else {
             return Self::jsonrpc_error_response(
                 id,
@@ -720,16 +682,32 @@ impl ChioA2aEdge {
                 A2aEdgeError::InvalidRequest("task is not owned by the current agent".to_string()),
             );
         }
+        if task.response.status != TaskStatus::Working {
+            return json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": serde_json::to_value(&task.response).unwrap_or(Value::Null)
+            });
+        }
 
         let orchestrated = match execute_orchestrated_a2a_request(kernel, task.request) {
             Ok(orchestrated) => orchestrated,
             Err(error) => return Self::jsonrpc_error_response(id, error),
         };
         let response = task_response_from_orchestrated(task_id.to_string(), orchestrated);
-        if let Some(task) = self.tasks.get_mut(task_id) {
-            task.response = response.clone();
-        }
-        self.tasks.remove(task_id);
+        let response = match self.tasks.get_mut(task_id) {
+            Some(task) if task.response.status == TaskStatus::Working => {
+                task.response = response;
+                task.response.clone()
+            }
+            Some(task) => task.response.clone(),
+            None => {
+                return Self::jsonrpc_error_response(
+                    id,
+                    A2aEdgeError::ToolNotFound(task_id.to_string()),
+                );
+            }
+        };
         json!({
             "jsonrpc": "2.0",
             "id": id,
@@ -744,18 +722,15 @@ impl ChioA2aEdge {
         execution: &A2aKernelExecutionContext,
     ) -> Value {
         self.prune_deferred_tasks();
-        let Some(task_id) = params.get("taskId").and_then(Value::as_str) else {
-            return json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "error": {
-                    "code": -32602,
-                    "message": "task/cancel requires params.taskId"
-                }
-            });
+        let task_id = match Self::parse_jsonrpc_task_id_params(&params, "task/cancel") {
+            Ok(task_id) => task_id,
+            Err(error) => return Self::jsonrpc_error_response(id, error),
         };
+        if let Err(error) = validate_execution_context(execution) {
+            return Self::jsonrpc_error_response(id, error);
+        }
 
-        let Some(task) = self.tasks.get_mut(task_id) else {
+        let Some(task) = self.tasks.get_mut(&task_id) else {
             return Self::jsonrpc_error_response(
                 id,
                 A2aEdgeError::ToolNotFound(task_id.to_string()),
@@ -776,7 +751,6 @@ impl ChioA2aEdge {
                     "deferred_task_poll",
                 ));
                 let response = task.response.clone();
-                self.tasks.remove(task_id);
                 json!({
                     "jsonrpc": "2.0",
                     "id": id,
@@ -846,7 +820,7 @@ impl ChioA2aEdgeCompatibility<'_> {
         &mut self,
         message: Value,
         server: &dyn ToolServerConnection,
-    ) -> Value {
+    ) -> A2aJsonRpcResponse {
         self.edge.handle_jsonrpc_passthrough(message, server)
     }
 

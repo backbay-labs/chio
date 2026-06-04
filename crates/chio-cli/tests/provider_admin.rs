@@ -7,6 +7,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use chio_test_support::loopback::{reserve_listen_addr, skip_when_loopback_bind_denied};
 use reqwest::blocking::Client;
 
 static TRUST_SERVICE_START_LOCK: Mutex<()> = Mutex::new(());
@@ -25,13 +26,6 @@ fn workspace_root() -> PathBuf {
         .nth(2)
         .expect("workspace root")
         .to_path_buf()
-}
-
-fn reserve_listen_addr() -> std::net::SocketAddr {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind temp listener");
-    let addr = listener.local_addr().expect("listener addr");
-    drop(listener);
-    addr
 }
 
 struct ServerGuard {
@@ -320,6 +314,12 @@ fn provider_admin_cli_supports_upsert_list_get_and_delete() {
 
 #[test]
 fn provider_admin_http_lists_invalid_provider_records_with_validation_errors() {
+    if skip_when_loopback_bind_denied(
+        "provider_admin_http_lists_invalid_provider_records_with_validation_errors",
+    ) {
+        return;
+    }
+
     let dir = unique_dir("chio-cli-provider-admin-http");
     fs::create_dir_all(&dir).expect("create temp dir");
     let registry_path = dir.join("enterprise-providers.json");
@@ -377,6 +377,12 @@ fn provider_admin_http_lists_invalid_provider_records_with_validation_errors() {
 
 #[test]
 fn provider_admin_cli_supports_remote_reserved_identifier_paths() {
+    if skip_when_loopback_bind_denied(
+        "provider_admin_cli_supports_remote_reserved_identifier_paths",
+    ) {
+        return;
+    }
+
     let dir = unique_dir("chio-cli-provider-admin-remote-reserved");
     fs::create_dir_all(&dir).expect("create temp dir");
     let registry_path = dir.join("enterprise-providers.json");
@@ -479,6 +485,12 @@ fn provider_admin_cli_supports_remote_reserved_identifier_paths() {
 
 #[test]
 fn passport_policy_admin_cli_supports_remote_upsert_list_get_and_delete() {
+    if skip_when_loopback_bind_denied(
+        "passport_policy_admin_cli_supports_remote_upsert_list_get_and_delete",
+    ) {
+        return;
+    }
+
     let dir = unique_dir("chio-cli-passport-policy-admin-http");
     fs::create_dir_all(&dir).expect("create temp dir");
     let verifier_policies_path = dir.join("verifier-policies.json");
@@ -619,6 +631,12 @@ fn passport_policy_admin_cli_supports_remote_upsert_list_get_and_delete() {
 
 #[test]
 fn trust_service_health_reports_enterprise_and_verifier_policy_state() {
+    if skip_when_loopback_bind_denied(
+        "trust_service_health_reports_enterprise_and_verifier_policy_state",
+    ) {
+        return;
+    }
+
     let dir = unique_dir("chio-cli-trust-health");
     fs::create_dir_all(&dir).expect("create temp dir");
     let enterprise_providers_path = dir.join("enterprise-providers.json");

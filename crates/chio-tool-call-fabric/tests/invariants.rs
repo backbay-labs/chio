@@ -4,7 +4,7 @@
 //!
 //!   (a) `ToolInvocation` round-trips canonical JSON.
 //!   (b) `ProvenanceStamp` round-trips.
-//!   (c) `Principal` round-trips for all three variants.
+//!   (c) `Principal` round-trips for all provider-specific variants.
 //!   (d) lift then lower preserves invocation identity.
 //!   (e) `VerdictResult::Deny` always carries a `receipt_id`.
 //!   (f) `ProviderError` Display is em-dash-free.
@@ -32,11 +32,11 @@ use std::time::{Duration, SystemTime};
 use chio_core::canonical::canonical_json_bytes;
 use chio_tool_call_fabric::{
     DenyReason, Principal, ProvenanceStamp, ProviderError, ProviderId, ReceiptId, Redaction,
-    ToolInvocation, VerdictResult,
+    ToolInvocation, ToolInvocationValidationError, VerdictResult,
 };
 use proptest::collection::vec as prop_vec;
 use proptest::prelude::*;
-use proptest::test_runner::Config as ProptestConfig;
+use proptest::test_runner::{Config as ProptestConfig, FileFailurePersistence};
 
 /// Per-property budget. 64 cases per property keeps the full suite well under
 /// the 30s CI budget shared with the kernel replay-invariance suite.
@@ -49,7 +49,33 @@ fn arb_provider_id() -> impl Strategy<Value = ProviderId> {
         Just(ProviderId::OpenAi),
         Just(ProviderId::Anthropic),
         Just(ProviderId::Bedrock),
+        Just(ProviderId::Gemini),
+        Just(ProviderId::Mistral),
+        Just(ProviderId::Groq),
+        Just(ProviderId::Ollama),
+        Just(ProviderId::Cohere),
     ]
+}
+
+fn sample_invocation() -> ToolInvocation {
+    ToolInvocation {
+        provider: ProviderId::OpenAi,
+        tool_name: "get_weather".to_string(),
+        arguments: canonical_json_bytes(&serde_json::json!({
+            "location": "San Francisco, CA",
+            "unit": "celsius",
+        }))
+        .expect("sample arguments canonicalise"),
+        provenance: ProvenanceStamp {
+            provider: ProviderId::OpenAi,
+            request_id: "resp_sample".to_string(),
+            api_version: "responses.2026-04-25".to_string(),
+            principal: Principal::OpenAiOrg {
+                org_id: "org_chio_demo".to_string(),
+            },
+            received_at: SystemTime::UNIX_EPOCH + Duration::from_millis(1_745_452_800_000),
+        },
+    }
 }
 
 fn arb_principal() -> impl Strategy<Value = Principal> {
@@ -176,11 +202,246 @@ fn arb_provider_error() -> impl Strategy<Value = ProviderError> {
     ]
 }
 
+#[test]
+fn validation_rejects_provider_mismatch_between_invocation_and_provenance() {
+    let mut invocation = sample_invocation();
+    invocation.provenance.provider = ProviderId::Anthropic;
+
+    let error = invocation.validate().unwrap_err();
+    assert!(matches!(
+        error,
+        ToolInvocationValidationError::ProviderMismatch {
+            invocation: ProviderId::OpenAi,
+            provenance: ProviderId::Anthropic,
+        }
+    ));
+}
+
+#[test]
+fn validation_rejects_cross_provider_principal() {
+    let mut invocation = sample_invocation();
+    invocation.provenance.principal = Principal::BedrockIam {
+        caller_arn: "arn:aws:iam::123456789012:role/chio".to_string(),
+        account_id: "123456789012".to_string(),
+        assumed_role_session_arn: None,
+    };
+
+    let error = invocation.validate().unwrap_err();
+    assert!(matches!(
+        error,
+        ToolInvocationValidationError::InvalidIdentity {
+            field: "provenance.principal",
+            ..
+        }
+    ));
+}
+
+#[test]
+fn validation_rejects_non_canonical_argument_bytes() {
+    let mut invocation = sample_invocation();
+    invocation.arguments = br#"{"unit":"celsius","location":"San Francisco, CA"}"#.to_vec();
+
+    let error = invocation.validate().unwrap_err();
+    assert!(matches!(
+        error,
+        ToolInvocationValidationError::NonCanonicalArguments
+    ));
+}
+
+#[test]
+fn validation_rejects_empty_or_padded_tool_names() {
+    for tool_name in ["", "   ", " get_weather", "get_weather "] {
+        let mut invocation = sample_invocation();
+        invocation.tool_name = tool_name.to_string();
+
+        let error = invocation.validate().unwrap_err();
+        assert!(matches!(
+            error,
+            ToolInvocationValidationError::InvalidIdentity {
+                field: "tool_name",
+                ..
+            }
+        ));
+    }
+}
+
+#[test]
+fn validation_rejects_empty_or_padded_provenance_identity_fields() {
+    for request_id in ["", "   ", " resp_sample", "resp_sample "] {
+        let mut invocation = sample_invocation();
+        invocation.provenance.request_id = request_id.to_string();
+
+        let error = invocation.validate().unwrap_err();
+        assert!(matches!(
+            error,
+            ToolInvocationValidationError::InvalidIdentity {
+                field: "provenance.request_id",
+                ..
+            }
+        ));
+    }
+
+    for api_version in ["", "   ", " responses.2026-04-25", "responses.2026-04-25 "] {
+        let mut invocation = sample_invocation();
+        invocation.provenance.api_version = api_version.to_string();
+
+        let error = invocation.validate().unwrap_err();
+        assert!(matches!(
+            error,
+            ToolInvocationValidationError::InvalidIdentity {
+                field: "provenance.api_version",
+                ..
+            }
+        ));
+    }
+}
+
+#[test]
+fn validation_rejects_control_characters_in_invocation_identity_fields() {
+    for (field, tool_name, request_id, api_version) in [
+        (
+            "tool_name",
+            "get\nweather",
+            "resp_sample",
+            "responses.2026-04-25",
+        ),
+        (
+            "provenance.request_id",
+            "get_weather",
+            "resp\rsample",
+            "responses.2026-04-25",
+        ),
+        (
+            "provenance.api_version",
+            "get_weather",
+            "resp_sample",
+            "responses\0v1",
+        ),
+    ] {
+        let mut invocation = sample_invocation();
+        invocation.tool_name = tool_name.to_string();
+        invocation.provenance.request_id = request_id.to_string();
+        invocation.provenance.api_version = api_version.to_string();
+
+        let error = invocation.validate().unwrap_err();
+        assert!(matches!(
+            error,
+            ToolInvocationValidationError::InvalidIdentity {
+                field: actual,
+                ..
+            } if actual == field
+        ));
+    }
+}
+
+#[test]
+fn validation_rejects_control_characters_in_principal_fields() {
+    let cases = vec![
+        (
+            ProviderId::OpenAi,
+            Principal::OpenAiOrg {
+                org_id: "org\nbad".to_string(),
+            },
+            "provenance.principal.org_id",
+        ),
+        (
+            ProviderId::Anthropic,
+            Principal::AnthropicWorkspace {
+                workspace_id: "workspace\nbad".to_string(),
+            },
+            "provenance.principal.workspace_id",
+        ),
+        (
+            ProviderId::Bedrock,
+            Principal::BedrockIam {
+                caller_arn: "arn:aws:iam::123456789012:role/chio\nbad".to_string(),
+                account_id: "123456789012".to_string(),
+                assumed_role_session_arn: None,
+            },
+            "provenance.principal.caller_arn",
+        ),
+        (
+            ProviderId::Bedrock,
+            Principal::BedrockIam {
+                caller_arn: "arn:aws:iam::123456789012:role/chio".to_string(),
+                account_id: "123456789012\n".to_string(),
+                assumed_role_session_arn: None,
+            },
+            "provenance.principal.account_id",
+        ),
+        (
+            ProviderId::Bedrock,
+            Principal::BedrockIam {
+                caller_arn: "arn:aws:iam::123456789012:role/chio".to_string(),
+                account_id: "123456789012".to_string(),
+                assumed_role_session_arn: Some(
+                    "arn:aws:sts::123456789012:assumed-role/chio/session\nbad".to_string(),
+                ),
+            },
+            "provenance.principal.assumed_role_session_arn",
+        ),
+        (
+            ProviderId::Gemini,
+            Principal::GeminiProject {
+                project_id: "gemini\nbad".to_string(),
+            },
+            "provenance.principal.project_id",
+        ),
+        (
+            ProviderId::Groq,
+            Principal::GroqProject {
+                project_id: "groq\nbad".to_string(),
+            },
+            "provenance.principal.project_id",
+        ),
+        (
+            ProviderId::Mistral,
+            Principal::MistralProject {
+                project_id: "mistral\nbad".to_string(),
+            },
+            "provenance.principal.project_id",
+        ),
+        (
+            ProviderId::Cohere,
+            Principal::CohereOrg {
+                org_id: "cohere\nbad".to_string(),
+            },
+            "provenance.principal.org_id",
+        ),
+        (
+            ProviderId::Ollama,
+            Principal::OllamaHost {
+                host: "http://localhost\nbad".to_string(),
+            },
+            "provenance.principal.host",
+        ),
+    ];
+
+    for (provider, principal, field) in cases {
+        let mut invocation = sample_invocation();
+        invocation.provider = provider;
+        invocation.provenance.provider = provider;
+        invocation.provenance.principal = principal;
+
+        let error = invocation.validate().unwrap_err();
+        assert!(matches!(
+            error,
+            ToolInvocationValidationError::InvalidIdentity {
+                field: actual,
+                ..
+            } if actual == field
+        ));
+    }
+}
+
 // -- properties -----------------------------------------------------------
 
 proptest! {
     #![proptest_config(ProptestConfig {
         cases: PROPTEST_BUDGET_CASES,
+        failure_persistence: Some(Box::new(FileFailurePersistence::Direct(
+            "crates/chio-tool-call-fabric/proptest-regressions/invariants.txt",
+        ))),
         ..ProptestConfig::default()
     })]
 
@@ -219,7 +480,7 @@ proptest! {
         prop_assert_eq!(stamp, canon_back);
     }
 
-    /// (c) `Principal` round-trips for all three variants.
+    /// (c) `Principal` round-trips for all provider-specific variants.
     #[test]
     fn invariant_c_principal_round_trips_all_variants(p in arb_principal()) {
         let json = serde_json::to_string(&p).expect("principal to_string");

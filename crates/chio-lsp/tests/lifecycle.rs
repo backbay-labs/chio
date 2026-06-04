@@ -54,3 +54,15 @@ fn document_cache_round_trip_preserves_language_classification() {
     assert!(cache.get(&chio_yaml).is_none());
     assert_eq!(cache.len(), 2);
 }
+
+#[test]
+fn document_cache_ignores_change_for_unopened_uri() {
+    let cache = DocumentCache::new();
+    let uri = Url::parse("file:///proj/chio.yaml").expect("valid url");
+
+    let updated = cache.replace(&uri, "version: 1\npolicy: ./policy.yaml\n".to_string(), 1);
+
+    assert!(updated.is_none());
+    assert!(cache.get(&uri).is_none());
+    assert!(cache.is_empty());
+}

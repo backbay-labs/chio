@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::ffi::OsString;
 use std::fs;
@@ -111,6 +111,12 @@ pub enum PromoteError {
     /// Run has no receipts.
     #[error("arena run has no receipts")]
     EmptyRun,
+    /// Run contains a receipt for a step not present in the scenario.
+    #[error("arena run receipt references unknown scenario step {step_id}")]
+    UnknownReceiptStep {
+        /// Receipt step id.
+        step_id: String,
+    },
     /// Canonical JSON failed.
     #[error("canonical JSON failed: {0}")]
     Canonical(#[from] chio_core::Error),
@@ -156,6 +162,7 @@ pub fn write_arena_bundle(
     if run.receipts.is_empty() {
         return Err(PromoteError::EmptyRun);
     }
+    validate_run_receipts_belong_to_scenario(scenario, run)?;
 
     remove_existing_manifest(dir)?;
     let frames = run
@@ -399,6 +406,25 @@ fn adversarial_class_dirname(class: &str) -> String {
         .collect()
 }
 
+fn validate_run_receipts_belong_to_scenario(
+    scenario: &Scenario,
+    run: &ArenaRun,
+) -> Result<(), PromoteError> {
+    let scenario_steps = scenario
+        .steps
+        .iter()
+        .map(|step| step.id.as_str())
+        .collect::<BTreeSet<_>>();
+    for receipt in &run.receipts {
+        if !scenario_steps.contains(receipt.step_id.as_str()) {
+            return Err(PromoteError::UnknownReceiptStep {
+                step_id: receipt.step_id.clone(),
+            });
+        }
+    }
+    Ok(())
+}
+
 /// Auto-promote failing arena scenarios to the fixture corpus under
 /// `tests/replay/fixtures/arena/<class>/<hash>.json`.
 ///
@@ -435,6 +461,7 @@ pub fn promote_to_fixtures(
             run_id: run.scenario_id.clone(),
         });
     }
+    validate_run_receipts_belong_to_scenario(scenario, run)?;
     if cap == 0 {
         return Err(PromoteError::ZeroCap);
     }
@@ -499,6 +526,7 @@ pub fn promote_to_adversarial_suite(
             run_id: run.scenario_id.clone(),
         });
     }
+    validate_run_receipts_belong_to_scenario(scenario, run)?;
 
     let family = adversarial_class_dirname(class);
     let live_root = workspace_root

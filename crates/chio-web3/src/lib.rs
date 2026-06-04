@@ -442,6 +442,12 @@ pub enum Web3ContractError {
     InvalidQualificationCase(String),
 }
 
+impl Web3ContractError {
+    fn invalid_settlement(message: impl Into<String>) -> Self {
+        Self::InvalidSettlement(message.into())
+    }
+}
+
 pub fn validate_web3_identity_binding(
     binding: &SignedWeb3IdentityBinding,
 ) -> Result<(), Web3ContractError> {
@@ -1141,20 +1147,20 @@ pub fn validate_web3_settlement_dispatch(
         "web3_settlement_dispatch.settlement_amount",
     )?;
     if !dispatch.support_boundary.real_dispatch_supported {
-        return Err(Web3ContractError::InvalidSettlement(
-            "web3 settlement dispatch must explicitly mark real dispatch as supported".to_string(),
+        return Err(Web3ContractError::invalid_settlement(
+            "web3 settlement dispatch must explicitly mark real dispatch as supported",
         ));
     }
     if !dispatch.support_boundary.custody_boundary_explicit {
-        return Err(Web3ContractError::InvalidSettlement(
-            "web3 settlement dispatch must keep custody boundaries explicit".to_string(),
+        return Err(Web3ContractError::invalid_settlement(
+            "web3 settlement dispatch must keep custody boundaries explicit",
         ));
     }
     if dispatch.settlement_path == Web3SettlementPath::MerkleProof
         && !dispatch.support_boundary.anchor_proof_required
     {
-        return Err(Web3ContractError::InvalidSettlement(
-            "Merkle-proof settlement dispatch must require anchor proof reconciliation".to_string(),
+        return Err(Web3ContractError::invalid_settlement(
+            "Merkle-proof settlement dispatch must require anchor proof reconciliation",
         ));
     }
     if dispatch.capital_instruction.body.schema != CAPITAL_EXECUTION_INSTRUCTION_ARTIFACT_SCHEMA {
@@ -1165,14 +1171,13 @@ pub fn validate_web3_settlement_dispatch(
     if dispatch.capital_instruction.body.action
         == CapitalExecutionInstructionAction::CancelInstruction
     {
-        return Err(Web3ContractError::InvalidSettlement(
-            "web3 settlement dispatch cannot use cancel_instruction as the primary action"
-                .to_string(),
+        return Err(Web3ContractError::invalid_settlement(
+            "web3 settlement dispatch cannot use cancel_instruction as the primary action",
         ));
     }
     if dispatch.capital_instruction.body.rail.kind != CapitalExecutionRailKind::Web3 {
-        return Err(Web3ContractError::InvalidSettlement(
-            "web3 settlement dispatch requires capital_instruction rail.kind = web3".to_string(),
+        return Err(Web3ContractError::invalid_settlement(
+            "web3 settlement dispatch requires capital_instruction rail.kind = web3",
         ));
     }
     let Some(amount) = dispatch.capital_instruction.body.amount.as_ref() else {
@@ -1181,25 +1186,22 @@ pub fn validate_web3_settlement_dispatch(
         ));
     };
     if amount != &dispatch.settlement_amount {
-        return Err(Web3ContractError::InvalidSettlement(
-            "web3 settlement dispatch settlement_amount must match capital_instruction amount"
-                .to_string(),
+        return Err(Web3ContractError::invalid_settlement(
+            "web3 settlement dispatch settlement_amount must match capital_instruction amount",
         ));
     }
     if dispatch.capital_instruction.body.reconciled_state
         != CapitalExecutionReconciledState::NotObserved
     {
-        return Err(Web3ContractError::InvalidSettlement(
-            "web3 settlement dispatch capital_instruction must remain unreconciled until execution receipt"
-                .to_string(),
+        return Err(Web3ContractError::invalid_settlement(
+            "web3 settlement dispatch capital_instruction must remain unreconciled until execution receipt",
         ));
     }
     validate_transfer_completion_flow_binding(&dispatch.capital_instruction.body)?;
     if let Some(bond) = dispatch.bond.as_ref() {
         if bond.body.lifecycle_state != CreditBondLifecycleState::Active {
-            return Err(Web3ContractError::InvalidSettlement(
-                "web3 settlement dispatch requires an active bond when bond backing is present"
-                    .to_string(),
+            return Err(Web3ContractError::invalid_settlement(
+                "web3 settlement dispatch requires an active bond when bond backing is present",
             ));
         }
     }
@@ -1230,26 +1232,26 @@ pub fn validate_web3_settlement_execution_receipt(
         "web3_settlement_receipt.settled_amount",
     )?;
     if receipt.observed_execution.amount.currency != receipt.dispatch.settlement_amount.currency {
-        return Err(Web3ContractError::InvalidSettlement(
-            "observed execution currency must match dispatch settlement currency".to_string(),
+        return Err(Web3ContractError::invalid_settlement(
+            "observed execution currency must match dispatch settlement currency",
         ));
     }
     if receipt.settled_amount.currency != receipt.dispatch.settlement_amount.currency {
-        return Err(Web3ContractError::InvalidSettlement(
-            "settled amount currency must match dispatch settlement currency".to_string(),
+        return Err(Web3ContractError::invalid_settlement(
+            "settled amount currency must match dispatch settlement currency",
         ));
     }
     if receipt.observed_execution.amount != receipt.settled_amount {
-        return Err(Web3ContractError::InvalidSettlement(
-            "observed execution amount must equal settled_amount".to_string(),
+        return Err(Web3ContractError::invalid_settlement(
+            "observed execution amount must equal settled_amount",
         ));
     }
     if let Some(anchor_proof) = receipt.reconciled_anchor_proof.as_ref() {
         validate_anchor_inclusion_proof(anchor_proof)?;
         if let Some(chain_anchor) = anchor_proof.chain_anchor.as_ref() {
             if chain_anchor.chain_id != receipt.dispatch.chain_id {
-                return Err(Web3ContractError::InvalidSettlement(
-                    "anchor proof chain_id must match settlement dispatch chain_id".to_string(),
+                return Err(Web3ContractError::invalid_settlement(
+                    "anchor proof chain_id must match settlement dispatch chain_id",
                 ));
             }
         }
@@ -1269,33 +1271,31 @@ pub fn validate_web3_settlement_execution_receipt(
         )
         && receipt.oracle_evidence.is_none()
     {
-        return Err(Web3ContractError::InvalidSettlement(
-            "receipt requires oracle_evidence for FX-sensitive settlement paths".to_string(),
+        return Err(Web3ContractError::invalid_settlement(
+            "receipt requires oracle_evidence for FX-sensitive settlement paths",
         ));
     }
 
     match receipt.lifecycle_state {
         Web3SettlementLifecycleState::PendingDispatch
         | Web3SettlementLifecycleState::EscrowLocked => {
-            return Err(Web3ContractError::InvalidSettlement(
-                "execution receipts must record an observed terminal or reconciled lifecycle state"
-                    .to_string(),
+            return Err(Web3ContractError::invalid_settlement(
+                "execution receipts must record an observed terminal or reconciled lifecycle state",
             ));
         }
         Web3SettlementLifecycleState::PartiallySettled => {
             if receipt.settled_amount.units == 0
                 || receipt.settled_amount.units >= receipt.dispatch.settlement_amount.units
             {
-                return Err(Web3ContractError::InvalidSettlement(
-                    "partially_settled receipts must settle a non-zero amount smaller than the dispatch amount"
-                        .to_string(),
+                return Err(Web3ContractError::invalid_settlement(
+                    "partially_settled receipts must settle a non-zero amount smaller than the dispatch amount",
                 ));
             }
         }
         Web3SettlementLifecycleState::Settled => {
             if receipt.settled_amount != receipt.dispatch.settlement_amount {
-                return Err(Web3ContractError::InvalidSettlement(
-                    "settled receipts must match the dispatch settlement amount".to_string(),
+                return Err(Web3ContractError::invalid_settlement(
+                    "settled receipts must match the dispatch settlement amount",
                 ));
             }
         }
@@ -1305,9 +1305,8 @@ pub fn validate_web3_settlement_execution_receipt(
                 "web3_settlement_receipt.reversal_of",
             )?;
             if !receipt.dispatch.support_boundary.reversal_supported {
-                return Err(Web3ContractError::InvalidSettlement(
-                    "receipt records reversal state but dispatch did not declare reversal support"
-                        .to_string(),
+                return Err(Web3ContractError::invalid_settlement(
+                    "receipt records reversal state but dispatch did not declare reversal support",
                 ));
             }
         }
@@ -1327,8 +1326,8 @@ pub fn validate_web3_settlement_execution_receipt(
             Web3SettlementLifecycleState::TimedOut | Web3SettlementLifecycleState::Failed
         );
     if must_have_anchor && receipt.reconciled_anchor_proof.is_none() {
-        return Err(Web3ContractError::InvalidSettlement(
-            "receipt requires reconciled anchor proof for the selected settlement path".to_string(),
+        return Err(Web3ContractError::invalid_settlement(
+            "receipt requires reconciled anchor proof for the selected settlement path",
         ));
     }
 
@@ -1406,10 +1405,14 @@ fn checkpoint_statement_body(statement: &Web3CheckpointStatement) -> Web3Checkpo
 
 fn ensure_non_empty(value: &str, field: &'static str) -> Result<(), Web3ContractError> {
     if value.trim().is_empty() {
-        Err(Web3ContractError::MissingField(field))
-    } else {
-        Ok(())
+        return Err(Web3ContractError::MissingField(field));
     }
+    if value.trim() != value {
+        return Err(Web3ContractError::InvalidBinding(format!(
+            "{field} must not contain surrounding whitespace"
+        )));
+    }
+    Ok(())
 }
 
 fn validate_transfer_completion_flow_binding(
@@ -1442,9 +1445,8 @@ fn validate_transfer_completion_flow_binding(
     )?;
     let expected_row_id = format!("economic-completion-flow:{governed_receipt_id}");
     if completion_flow_row_id != expected_row_id {
-        return Err(Web3ContractError::InvalidSettlement(
-            "web3 settlement dispatch completion_flow_row_id must match governed_receipt_id"
-                .to_string(),
+        return Err(Web3ContractError::invalid_settlement(
+            "web3 settlement dispatch completion_flow_row_id must match governed_receipt_id",
         ));
     }
     Ok(())
@@ -1478,12 +1480,26 @@ where
 
 fn ensure_money(amount: &MonetaryAmount, field: &'static str) -> Result<(), Web3ContractError> {
     if amount.units == 0 {
-        return Err(Web3ContractError::InvalidSettlement(format!(
+        return Err(Web3ContractError::invalid_settlement(format!(
             "{field} must be non-zero"
         )));
     }
-    ensure_non_empty(&amount.currency, field)
-        .map_err(|_| Web3ContractError::InvalidSettlement(format!("{field} currency is required")))
+    if amount.currency.trim().is_empty() {
+        return Err(Web3ContractError::invalid_settlement(format!(
+            "{field} currency is required"
+        )));
+    }
+    if amount.currency.len() != 3
+        || !amount
+            .currency
+            .chars()
+            .all(|character| character.is_ascii_uppercase())
+    {
+        return Err(Web3ContractError::invalid_settlement(format!(
+            "{field} currency must be a 3-letter uppercase code"
+        )));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1877,6 +1893,17 @@ mod tests {
     }
 
     #[test]
+    fn identity_binding_rejects_padded_chain_scope() {
+        let mut binding = sample_binding();
+        binding.certificate.chain_scope[0] = " eip155:8453".to_string();
+        assert!(matches!(
+            validate_web3_identity_binding(&binding),
+            Err(Web3ContractError::InvalidBinding(message))
+                if message.contains("binding.chain_scope")
+        ));
+    }
+
+    #[test]
     fn anchor_inclusion_proof_verifies_receipt_and_merkle_root() {
         verify_anchor_inclusion_proof(&sample_anchor_inclusion_proof()).unwrap();
     }
@@ -1908,6 +1935,25 @@ mod tests {
         assert!(matches!(
             validate_web3_settlement_dispatch(&dispatch),
             Err(Web3ContractError::InvalidSettlement(_))
+        ));
+    }
+
+    #[test]
+    fn web3_dispatch_rejects_lowercase_settlement_currency() {
+        let mut dispatch = sample_dispatch();
+        dispatch.settlement_amount.currency = "usd".to_string();
+        dispatch
+            .capital_instruction
+            .body
+            .amount
+            .as_mut()
+            .unwrap()
+            .currency = "usd".to_string();
+
+        assert!(matches!(
+            validate_web3_settlement_dispatch(&dispatch),
+            Err(Web3ContractError::InvalidSettlement(message))
+                if message.contains("currency")
         ));
     }
 
@@ -1951,6 +1997,16 @@ mod tests {
         assert!(matches!(
             validate_web3_settlement_execution_receipt(&receipt),
             Err(Web3ContractError::InvalidSettlement(_))
+        ));
+    }
+
+    #[test]
+    fn invalid_settlement_constructor_preserves_message() {
+        let error = Web3ContractError::invalid_settlement("settlement amount must match");
+        assert!(matches!(
+            error,
+            Web3ContractError::InvalidSettlement(message)
+                if message == "settlement amount must match"
         ));
     }
 

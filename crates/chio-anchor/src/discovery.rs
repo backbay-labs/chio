@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     bundle::{verify_proof_bundle, AnchorLaneKind, AnchorProofBundle, AnchorVerificationReport},
+    evm::parse_validated_evm_anchor_target,
     ops::{AnchorEmergencyMode, AnchorLaneHealthStatus, AnchorRuntimeReport},
     AnchorError, AnchorServiceConfig,
 };
@@ -144,32 +145,43 @@ pub fn build_anchor_discovery_artifact(
             "binding certificate does not include anchor purpose".to_string(),
         ));
     }
+    let validated_targets = config
+        .evm_targets
+        .iter()
+        .map(parse_validated_evm_anchor_target)
+        .collect::<Result<Vec<_>, _>>()?;
     validate_binding_covers_targets(config, binding)?;
 
     let chains: Vec<AnchorDiscoveryChain> = config
         .evm_targets
         .iter()
-        .map(|target| AnchorDiscoveryChain {
+        .zip(validated_targets.iter())
+        .map(|(target, validated)| AnchorDiscoveryChain {
             chain_id: target.chain_id.clone(),
             contract_address: target.contract_address.clone(),
             operator_address: target.operator_address.clone(),
             publisher_address: target.publisher_address.clone(),
-            requires_delegate_authorization: target.publisher_address != target.operator_address,
+            requires_delegate_authorization: validated.publisher != validated.operator,
         })
         .collect();
     let root_publication_ownership = config
         .evm_targets
         .iter()
-        .map(|target| RootPublicationOwnership {
-            chain_id: target.chain_id.clone(),
-            root_owner_address: target.operator_address.clone(),
-            publisher_address: target.publisher_address.clone(),
-            delegate_publication_allowed: target.publisher_address != target.operator_address,
-            ownership_rule: if target.publisher_address == target.operator_address {
-                "operator-published".to_string()
-            } else {
-                "operator-owned-root delegate-published-via-root-registry-authorization".to_string()
-            },
+        .zip(validated_targets.iter())
+        .map(|(target, validated)| {
+            let delegate_publication_allowed = validated.publisher != validated.operator;
+            RootPublicationOwnership {
+                chain_id: target.chain_id.clone(),
+                root_owner_address: target.operator_address.clone(),
+                publisher_address: target.publisher_address.clone(),
+                delegate_publication_allowed,
+                ownership_rule: if delegate_publication_allowed {
+                    "operator-owned-root delegate-published-via-root-registry-authorization"
+                        .to_string()
+                } else {
+                    "operator-published".to_string()
+                },
+            }
         })
         .collect();
 
@@ -300,8 +312,15 @@ pub fn build_anchor_discovery_artifact_with_runtime(
 
     let mut artifact = build_anchor_discovery_artifact(config, binding)?;
     let chain_runtime = build_chain_runtime_states(config, runtime_report, freshness_window_secs);
-    artifact.service.service_endpoint.publication_policy =
-        Some(build_publication_policy(config, runtime_report));
+    let delegate_publication_allowed = artifact
+        .root_publication_ownership
+        .iter()
+        .any(|ownership| ownership.delegate_publication_allowed);
+    artifact.service.service_endpoint.publication_policy = Some(build_publication_policy(
+        config,
+        runtime_report,
+        delegate_publication_allowed,
+    ));
     artifact.service.service_endpoint.chain_runtime = chain_runtime.clone();
     artifact.service.service_endpoint.current_freshness = Some(aggregate_current_freshness(
         runtime_report,
@@ -314,6 +333,7 @@ pub fn build_anchor_discovery_artifact_with_runtime(
 fn build_publication_policy(
     config: &AnchorServiceConfig,
     runtime_report: &AnchorRuntimeReport,
+    delegate_publication_allowed: bool,
 ) -> AnchorDiscoveryPublicationPolicy {
     let mut secondary_lanes = Vec::new();
     if !config.ots_calendars.is_empty() {
@@ -327,10 +347,7 @@ fn build_publication_policy(
         secondary_lanes,
         requires_trust_anchor_binding: true,
         requires_witness_or_immutable_anchor_reference: true,
-        delegate_publication_allowed: config
-            .evm_targets
-            .iter()
-            .any(|target| target.publisher_address != target.operator_address),
+        delegate_publication_allowed,
         emergency_mode: runtime_report.controls.mode,
     }
 }
@@ -607,9 +624,9 @@ mod tests {
             evm_targets: vec![EvmAnchorTarget {
                 chain_id: "eip155:8453".to_string(),
                 rpc_url: "https://rpc.example".to_string(),
-                contract_address: "0xabc".to_string(),
+                contract_address: "0x1000000000000000000000000000000000000001".to_string(),
                 operator_address: "0x1111111111111111111111111111111111111111".to_string(),
-                publisher_address: "0xfeed".to_string(),
+                publisher_address: "0x2000000000000000000000000000000000000002".to_string(),
             }],
             ots_calendars: Vec::new(),
             solana_cluster: None,
@@ -684,6 +701,19 @@ mod tests {
         assert!(error
             .to_string()
             .contains("does not match operator address"));
+    }
+
+    #[test]
+    fn discovery_artifact_rejects_malformed_evm_target_metadata() {
+        let binding = sample_binding();
+        let mut config = sample_config();
+        config.evm_targets[0].contract_address = "0xabc".to_string();
+
+        let error = build_anchor_discovery_artifact(&config, &binding)
+            .test_expect_err("malformed discovery target should fail closed");
+
+        assert!(matches!(error, crate::AnchorError::InvalidInput(_)));
+        assert!(error.to_string().contains("contract address"));
     }
 
     #[test]

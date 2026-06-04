@@ -276,6 +276,14 @@ impl OpenMarketEvidenceReference {
         if let Some(uri) = self.uri.as_deref() {
             validate_non_empty(uri, &format!("{field}.uri"))?;
         }
+        if let Some(sha256) = self.sha256.as_deref() {
+            let sha256_field = format!("{field}.sha256");
+            if !is_sha256_hex(sha256) {
+                return Err(format!(
+                    "{sha256_field} must be a 64-character SHA-256 hex digest"
+                ));
+            }
+        }
         Ok(())
     }
 }
@@ -1187,6 +1195,10 @@ fn validate_non_empty(value: &str, field: &str) -> Result<(), String> {
     }
 }
 
+fn is_sha256_hex(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1905,6 +1917,20 @@ mod tests {
         .test_expect_err("blank operator ids rejected");
 
         assert!(error.contains("scope.allowed_listing_operator_ids[0]"));
+    }
+
+    #[test]
+    fn open_market_evidence_reference_rejects_invalid_sha256() {
+        let error = OpenMarketEvidenceReference {
+            kind: OpenMarketEvidenceKind::External,
+            reference_id: "incident-1".to_string(),
+            uri: None,
+            sha256: Some("not-a-digest".to_string()),
+        }
+        .validate("evidence")
+        .test_expect_err("invalid evidence sha256 rejected");
+
+        assert!(error.contains("evidence.sha256"));
     }
 
     #[test]

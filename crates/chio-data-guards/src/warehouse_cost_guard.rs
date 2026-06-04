@@ -50,7 +50,7 @@ use serde_json::Value;
 use thiserror::Error;
 use tracing::warn;
 
-use chio_guards::{extract_action, ToolAction};
+use chio_guards::{extract_action_checked, ToolAction};
 use chio_kernel::{GuardContext, KernelError, Verdict};
 use chio_metering::CostDimension;
 
@@ -347,7 +347,10 @@ impl chio_kernel::Guard for WarehouseCostGuard {
     fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
         let tool = &ctx.request.tool_name;
         let args = &ctx.request.arguments;
-        let action = extract_action(tool, args);
+        let action = match extract_action_checked(tool, args) {
+            Ok(action) => action,
+            Err(_) => return Ok(Verdict::Deny),
+        };
 
         let database = match &action {
             ToolAction::DatabaseQuery { database, .. } => database.clone(),
@@ -730,6 +733,47 @@ mod tests {
             server_id: "srv".to_string(),
             agent_id: "agent".to_string(),
             arguments: serde_json::json!({"query": "SELECT 1"}),
+            dpop_proof: None,
+            governed_intent: None,
+            approval_token: None,
+            model_metadata: None,
+            federated_origin_kernel_id: None,
+        };
+        let scope = ChioScope::default();
+        let agent_id = String::from("agent");
+        let server_id = String::from("srv");
+        let verdict = guard
+            .evaluate(&GuardContext {
+                request: &request,
+                scope: &scope,
+                agent_id: &agent_id,
+                server_id: &server_id,
+                session_filesystem_roots: None,
+                matched_grant_index: None,
+            })
+            .unwrap();
+        assert_eq!(verdict, Verdict::Deny);
+    }
+
+    #[test]
+    fn evaluate_denies_malformed_warehouse_action_arguments() {
+        let guard = WarehouseCostGuard::new(WarehouseCostGuardConfig {
+            allow_all: true,
+            ..Default::default()
+        });
+        let request = ToolCallRequest {
+            request_id: "req-warehouse-malformed-action".to_string(),
+            capability: test_capability(),
+            tool_name: "bigquery".to_string(),
+            server_id: "srv".to_string(),
+            agent_id: "agent".to_string(),
+            arguments: serde_json::json!({
+                "query": ["SELECT 1"],
+                "dry_run": {
+                    "bytes_scanned": 1024,
+                    "estimated_cost_usd": "0.01"
+                }
+            }),
             dpop_proof: None,
             governed_intent: None,
             approval_token: None,

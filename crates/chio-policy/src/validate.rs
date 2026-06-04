@@ -52,21 +52,7 @@ pub fn validate(spec: &HushSpec) -> ValidationResult {
     if let Some(rules) = &spec.rules {
         validate_rules(rules, &mut errors);
 
-        if rules.forbidden_paths.is_none()
-            && rules.path_allowlist.is_none()
-            && rules.egress.is_none()
-            && rules.secret_patterns.is_none()
-            && rules.patch_integrity.is_none()
-            && rules.shell_commands.is_none()
-            && rules.tool_access.is_none()
-            && rules.computer_use.is_none()
-            && rules.remote_desktop_channels.is_none()
-            && rules.input_injection.is_none()
-            && rules.browser_automation.is_none()
-            && rules.code_execution.is_none()
-            && rules.velocity.is_none()
-            && rules.human_in_loop.is_none()
-        {
+        if !rules.has_configured_blocks() {
             warnings.push("no rules configured".to_string());
         }
     } else {
@@ -91,13 +77,26 @@ fn validate_rules(rules: &Rules, errors: &mut Vec<ValidationError>) {
             errors,
         );
         let mut seen = HashSet::new();
-        for pattern in &secret_patterns.patterns {
-            if !seen.insert(&pattern.name) {
-                errors.push(ValidationError::DuplicatePatternName(pattern.name.clone()));
+        for (index, pattern) in secret_patterns.patterns.iter().enumerate() {
+            let name_field = format!("rules.secret_patterns.patterns[{index}].name");
+            let trimmed_name = pattern.name.trim();
+            if trimmed_name.is_empty() {
+                errors.push(ValidationError::Custom(format!(
+                    "{name_field} must not be empty"
+                )));
+            } else if trimmed_name != pattern.name {
+                errors.push(ValidationError::Custom(format!(
+                    "{name_field} must not have leading or trailing whitespace"
+                )));
+            }
+            if !trimmed_name.is_empty() && !seen.insert(trimmed_name.to_string()) {
+                errors.push(ValidationError::DuplicatePatternName(
+                    trimmed_name.to_string(),
+                ));
             }
             validate_regex(
                 &pattern.pattern,
-                &format!("rules.secret_patterns.patterns.{}", pattern.name),
+                &format!("rules.secret_patterns.patterns[{index}].pattern"),
                 errors,
             );
         }
@@ -716,7 +715,7 @@ rules:
 
         let result = validate(&spec);
 
-        assert_error_contains(&result, "rules.secret_patterns.patterns.broken");
+        assert_error_contains(&result, "rules.secret_patterns.patterns[0].pattern");
         assert_error_contains(&result, "must be at most 512 characters");
         assert_error_contains(
             &result,

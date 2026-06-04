@@ -3,11 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node server.mjs"
+    "start": "node server.mjs",
+    "test": "node --test server.test.mjs"
   },
   "dependencies": {
     "@chio-protocol/elysia": "file:../../sdks/typescript/packages/elysia",
     "elysia": "^1.4.28"
   }
 }
-

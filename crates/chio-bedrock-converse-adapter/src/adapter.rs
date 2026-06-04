@@ -21,7 +21,7 @@ use chio_tool_call_fabric::{
 };
 use serde_json::{json, Value};
 
-use crate::{BedrockAdapter, ToolResultBlock, ToolResultStatus, ToolUseBlock};
+use crate::{BedrockAdapter, ToolResultBlock, ToolUseBlock};
 
 const TOOL_CONFIG_FIELD: &str = "toolConfig";
 const TOOL_USE_FIELD: &str = "toolUse";
@@ -50,7 +50,10 @@ impl BedrockAdapter {
         let mut invocations = Vec::new();
         for block in blocks {
             if let Some(tool_use) = tool_use_from_block(&block)? {
-                if !declared_tools.is_empty() && !declared_tools.contains(&tool_use.name) {
+                if declared_tools
+                    .as_ref()
+                    .is_some_and(|names| !names.contains(&tool_use.name))
+                {
                     return Err(ProviderError::Malformed(format!(
                         "bedrock toolUse `{}` was not declared in toolConfig",
                         tool_use.name
@@ -85,18 +88,30 @@ impl BedrockAdapter {
         let tool_use_id = non_empty_str(tool_use_id, TOOL_USE_ID_FIELD)?;
         let block = match verdict {
             VerdictResult::Allow { redactions, .. } => {
-                let content = bedrock_content_from_tool_result(result, &redactions)?;
-                ToolResultBlock {
-                    tool_use_id: tool_use_id.to_string(),
-                    content,
-                    status: ToolResultStatus::Success,
-                }
+                let content = parse_tool_result_content(result)?;
+                lower_allow_tool_result(tool_use_id, content, &redactions)?
             }
-            VerdictResult::Deny { reason, receipt_id } => ToolResultBlock {
-                tool_use_id: tool_use_id.to_string(),
-                content: deny_content(&reason, &receipt_id)?,
-                status: ToolResultStatus::Error,
-            },
+            VerdictResult::Deny { reason, receipt_id } => {
+                lower_deny_tool_result(tool_use_id, &reason, &receipt_id)?
+            }
+        };
+
+        provider_response_from_tool_result(block)
+    }
+
+    fn lower_pending_tool_result(
+        &self,
+        pending: PendingToolResult,
+        verdict: VerdictResult,
+    ) -> Result<ProviderResponse, ProviderError> {
+        let tool_use_id = non_empty_str(&pending.tool_use_id, TOOL_USE_ID_FIELD)?;
+        let block = match verdict {
+            VerdictResult::Allow { redactions, .. } => {
+                lower_allow_tool_result(tool_use_id, pending.content, &redactions)?
+            }
+            VerdictResult::Deny { reason, receipt_id } => {
+                lower_deny_tool_result(tool_use_id, &reason, &receipt_id)?
+            }
         };
 
         provider_response_from_tool_result(block)
@@ -123,31 +138,8 @@ impl BedrockAdapter {
         verdict: VerdictResult,
         result: ToolResult,
     ) -> Result<ProviderResponse, ProviderError> {
-        let payload: Value = serde_json::from_slice(&result.0).map_err(|error| {
-            ProviderError::BadToolArgs(format!(
-                "bedrock ToolResult payload was not valid JSON: {error}"
-            ))
-        })?;
-        let tool_use_id = payload
-            .get(TOOL_USE_ID_FIELD)
-            .and_then(Value::as_str)
-            .ok_or_else(|| {
-                ProviderError::Malformed(
-                    "bedrock ProviderAdapter::lower requires ToolResult JSON with toolUseId"
-                        .to_string(),
-                )
-            })?
-            .to_string();
-        let content = payload
-            .get(CONTENT_FIELD)
-            .cloned()
-            .unwrap_or_else(|| strip_tool_use_id(payload));
-
-        self.lower_tool_result(
-            &tool_use_id,
-            verdict,
-            ToolResult(json_bytes(&content, "bedrock ToolResult content")?),
-        )
+        let pending = pending_tool_result(result)?;
+        self.lower_pending_tool_result(pending, verdict)
     }
 
     fn invocation_from_tool_use(
@@ -174,6 +166,38 @@ impl BedrockAdapter {
             },
         })
     }
+}
+
+struct PendingToolResult {
+    tool_use_id: String,
+    content: Value,
+}
+
+fn pending_tool_result(result: ToolResult) -> Result<PendingToolResult, ProviderError> {
+    let payload: Value = serde_json::from_slice(&result.0).map_err(|error| {
+        ProviderError::BadToolArgs(format!(
+            "bedrock ToolResult payload was not valid JSON: {error}"
+        ))
+    })?;
+    let tool_use_id = payload
+        .get(TOOL_USE_ID_FIELD)
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            ProviderError::Malformed(
+                "bedrock ProviderAdapter::lower requires ToolResult JSON with toolUseId"
+                    .to_string(),
+            )
+        })?
+        .to_string();
+    let content = payload
+        .get(CONTENT_FIELD)
+        .cloned()
+        .unwrap_or_else(|| strip_tool_use_id(payload));
+
+    Ok(PendingToolResult {
+        tool_use_id,
+        content,
+    })
 }
 
 impl ProviderAdapter for BedrockAdapter {
@@ -235,12 +259,14 @@ fn unwrap_envelope(value: Value) -> Result<Value, ProviderError> {
     Ok(value)
 }
 
-fn declared_tool_names(payload: &Value) -> Result<BTreeSet<String>, ProviderError> {
-    let mut names = BTreeSet::new();
+fn declared_tool_names(payload: &Value) -> Result<Option<BTreeSet<String>>, ProviderError> {
     if let Some(tool_config) = payload.get(TOOL_CONFIG_FIELD) {
+        let mut names = BTreeSet::new();
         parse_tool_config(tool_config, &mut names)?;
+        Ok(Some(names))
+    } else {
+        Ok(None)
     }
-    Ok(names)
 }
 
 fn parse_tool_config(value: &Value, names: &mut BTreeSet<String>) -> Result<(), ProviderError> {
@@ -328,13 +354,17 @@ fn validate_tool_use(tool_use: ToolUseBlock) -> Result<ToolUseBlock, ProviderErr
     Ok(tool_use)
 }
 
-fn bedrock_content_from_tool_result(
-    result: ToolResult,
-    redactions: &[Redaction],
-) -> Result<Value, ProviderError> {
+fn parse_tool_result_content(result: ToolResult) -> Result<Value, ProviderError> {
     let value: Value = serde_json::from_slice(&result.0).map_err(|error| {
         ProviderError::BadToolArgs(format!("bedrock tool result was not valid JSON: {error}"))
     })?;
+    Ok(value)
+}
+
+fn bedrock_content_from_value(
+    value: Value,
+    redactions: &[Redaction],
+) -> Result<Value, ProviderError> {
     let value = apply_redactions(value, redactions, "Bedrock toolResult content")?;
 
     if looks_like_bedrock_content(&value) {
@@ -430,16 +460,91 @@ fn strip_tool_use_id(mut value: Value) -> Value {
 fn non_empty_str<'a>(value: &'a str, field: &str) -> Result<&'a str, ProviderError> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
-        Err(ProviderError::Malformed(format!(
+        return Err(ProviderError::Malformed(format!(
             "bedrock {field} must not be empty"
-        )))
-    } else {
-        Ok(trimmed)
+        )));
     }
+    if trimmed != value {
+        return Err(ProviderError::Malformed(format!(
+            "bedrock {field} must not contain surrounding whitespace"
+        )));
+    }
+    Ok(value)
+}
+
+fn lower_allow_tool_result(
+    tool_use_id: &str,
+    content: Value,
+    redactions: &[Redaction],
+) -> Result<ToolResultBlock, ProviderError> {
+    Ok(ToolResultBlock::allow(
+        tool_use_id,
+        bedrock_content_from_value(content, redactions)?,
+    ))
+}
+
+fn lower_deny_tool_result(
+    tool_use_id: &str,
+    reason: &DenyReason,
+    receipt_id: &ReceiptId,
+) -> Result<ToolResultBlock, ProviderError> {
+    Ok(ToolResultBlock::deny(
+        tool_use_id,
+        deny_content(reason, receipt_id)?,
+    ))
 }
 
 fn json_bytes(value: &Value, context: &str) -> Result<Vec<u8>, ProviderError> {
     serde_json::to_vec(value).map_err(|error| {
         ProviderError::Malformed(format!("failed to serialize {context}: {error}"))
     })
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
+mod tests {
+    use std::sync::Arc;
+
+    use serde_json::json;
+
+    use super::*;
+    use crate::{transport, BedrockAdapterConfig};
+
+    fn adapter() -> BedrockAdapter {
+        let cfg = BedrockAdapterConfig::new(
+            "bedrock-1",
+            "Bedrock Converse",
+            "0.1.0",
+            "deadbeef",
+            "arn:aws:iam::123456789012:role/ChioAgentRole",
+            "123456789012",
+        );
+        BedrockAdapter::new(cfg, Arc::new(transport::MockTransport::new())).unwrap()
+    }
+
+    #[test]
+    fn lower_pending_tool_result_applies_allow_redactions() {
+        let adapter = adapter();
+        let pending = PendingToolResult {
+            tool_use_id: "tooluse_weather_1".to_string(),
+            content: json!({"token": "secret", "ok": true}),
+        };
+        let verdict = VerdictResult::Allow {
+            redactions: vec![Redaction {
+                path: "/token".to_string(),
+                replacement: "[redacted]".to_string(),
+            }],
+            receipt_id: ReceiptId("rcpt_allow_redacted".to_string()),
+        };
+
+        let response = adapter.lower_pending_tool_result(pending, verdict).unwrap();
+        let value: Value = serde_json::from_slice(&response.0).unwrap();
+
+        assert_eq!(value["toolResult"]["toolUseId"], "tooluse_weather_1");
+        assert_eq!(value["toolResult"]["status"], "success");
+        assert_eq!(
+            value["toolResult"]["content"],
+            json!([{"json": {"token": "[redacted]", "ok": true}}])
+        );
+    }
 }

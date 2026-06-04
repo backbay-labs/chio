@@ -7,8 +7,8 @@ Chio monorepo.
 
 It pairs with two other surfaces:
 
-- `crates/chio-conformance/README.md` - quickstart for the published
-  crate and its bundled fixture tree.
+- `crates/chio-conformance/README.md` - quickstart for the
+  source-installable crate and its bundled fixture tree.
 - `spec/PROTOCOL.md` - normative wire-level protocol specification that
   the conformance suite checks against. The external-consumer flow
   described below is the published surface of that contract.
@@ -23,13 +23,14 @@ You will need:
 
 - A Rust toolchain at the workspace MSRV (stable, see `rust-toolchain.toml`
   for the exact pin) so that `cargo install` can build the harness.
-- Network access to crates.io and to `github.com/backbay-labs/chio/releases`
-  (the default `peers.lock.toml` URLs point at GitHub release assets).
+- Network access to crates.io for third-party dependencies and to
+  `github.com/backbay-labs/chio/releases` (the default `peers.lock.toml`
+  URLs point at GitHub release assets).
 - One of the following, depending on which peer you intend to verify:
   - Python 3.10+ if you plan to run the bundled Python peer from source.
   - Node.js 20+ if you plan to run the bundled Node.js peer from source.
   - A Go 1.22+ toolchain or a C++23 compiler for the in-repo Go and C++
-    peers (these are not bundled in the published crate; see "Peer
+    peers (these are not bundled in the source-installed crate; see "Peer
     coverage" below).
   - Or, no peer toolchain at all if you fetch the pre-built peer
     binaries via `chio conformance fetch-peers`.
@@ -42,7 +43,7 @@ The full external-consumer flow is three commands.
 # 1. Install the chio CLI (which provides the `chio conformance` subcommand)
 #    plus the conformance harness library / runner binaries.
 cargo install --git https://github.com/backbay-labs/chio chio-cli
-cargo install chio-conformance
+cargo install --git https://github.com/backbay-labs/chio chio-conformance
 
 # 2. Fetch sha256-pinned peer binaries for the languages you care about.
 chio conformance fetch-peers --language python
@@ -66,28 +67,27 @@ earlier draft that conflated the two.
 # `chio` binary (the surface this guide demonstrates).
 cargo install --git https://github.com/backbay-labs/chio chio-cli
 
-# Bundled harness + scenarios + reference peers (published on crates.io).
-cargo install chio-conformance
+# Bundled harness + scenarios + reference peers.
+cargo install --git https://github.com/backbay-labs/chio chio-conformance
 ```
 
-`chio-cli` is `publish = false` while it stabilises; install it
-directly from the git source until it lands on crates.io. After both
-crates are installed, every `chio conformance ...` invocation in this
-guide works as written.
+`chio-cli` and `chio-conformance` are `publish = false` while the Rust
+registry dependency graph stabilises; install both directly from the git
+source until they land on crates.io. After both crates are installed, every
+`chio conformance ...` invocation in this guide works as written.
 
-The published `chio-conformance` crate bundles:
+The source-installable `chio-conformance` crate bundles:
 
 - The Rust harness library (`chio_conformance`).
 - The `chio-conformance-runner`, `chio-conformance-report`, and the
   native runner binaries for direct use without the higher-level CLI.
 - The full scenario tree under `tests/conformance/scenarios/**`
-  (vendored into the published crate via a symlinked subtree at
+  (vendored into the installable package via a symlinked subtree at
   `crates/chio-conformance/tests/conformance/`).
 - The reference Python peer (`tests/conformance/peers/python/**`) and
   Node.js peer (`tests/conformance/peers/js/**`).
 
-If you are building from a source checkout instead of crates.io, the
-in-repo equivalent is:
+If you are building from a source checkout, the in-repo equivalent is:
 
 ```bash
 cargo install --path crates/chio-cli
@@ -97,8 +97,8 @@ cargo install --path crates/chio-conformance
 The in-repo build keeps the `in-repo-fixtures` feature (default on) so
 that `default_run_options()` resolves scenario and fixture paths against
 the workspace root via `chio_conformance::default_repo_root()`.
-External consumers building from crates.io can either keep the feature
-on (the included fixture tree rides along) or disable it via
+External consumers building from git source can either keep the feature on
+(the included fixture tree rides along) or disable it via
 `--no-default-features` and supply their own paths through
 `ConformanceRunOptions`.
 
@@ -247,9 +247,9 @@ fixtures the harness serves to the peer:
 - `notifications` - server-initiated notifications.
 - `chio-extensions` - Chio-specific protocol extensions on top of MCP.
 
-The scenarios travel inside the published crate via the `Cargo.toml`
-`include` directive, so `cargo install chio-conformance` downloads the
-full corpus in one step.
+The scenarios travel inside the source-installable crate via the
+`Cargo.toml` `include` directive, so a git or path install carries the full
+corpus in one step.
 
 ## Peer coverage
 
@@ -294,9 +294,9 @@ The `chio conformance fetch-peers` subcommand looks for
    default).
 5. `./peers.lock.toml` (cwd-relative).
 
-The runtime resolver mirrors the kernel cache-dir strategy so
-`cargo install`-installed binaries do not depend on the compile-time
-`CARGO_MANIFEST_DIR` of the crate that is no longer on disk.
+The runtime resolver mirrors the kernel cache-dir strategy so installed
+binaries do not depend on the compile-time `CARGO_MANIFEST_DIR` of the
+crate that is no longer on disk.
 
 ## Unpublished peer entries
 
@@ -317,7 +317,7 @@ no consumer-facing change is required.
 
 ## Troubleshooting
 
-### `cargo install chio-conformance` fails on a build dependency
+### `cargo install --git ... chio-conformance` fails on a build dependency
 
 The crate pulls in `reqwest` with `rustls`, `tiny_http`, and `sha2`.
 On bare CI images you may need to install OpenSSL development headers
@@ -340,7 +340,7 @@ itself is intact, then either:
 
 ### `chio conformance run --peer cpp` cannot find the C++ peer
 
-The C++ peer is not bundled in the published crate. Either:
+The C++ peer is not bundled in the source-installed crate. Either:
 
 - Run `chio conformance fetch-peers --language cpp` first to download
   the pre-built peer binary into `./.chio-peers/cpp/`, or
@@ -350,19 +350,20 @@ The C++ peer is not bundled in the published crate. Either:
 
 ### A scenario is green locally but red in `external-consumer-smoke`
 
-The nightly smoke job runs against the published crate (not the in-repo
-path). A divergence usually means a fixture file is missing from the
-crate's `include` list. Check the `include = [...]` array in
-`crates/chio-conformance/Cargo.toml` and add the missing path; the
-fixture is always wrong if the in-repo runner is happy and the
-published runner is not.
+The nightly smoke job runs a path install on a fresh runner. A divergence
+usually means a fixture file is missing from the crate's `include` list or
+from the source-install packaging path. Check the `include = [...]` array in
+`crates/chio-conformance/Cargo.toml` and add the missing path; the fixture is
+always wrong if the in-repo runner is happy and the fresh install is not.
 
 ## Continuous-integration story
 
 For the Chio project itself, the `external-consumer-smoke` job in
 `.github/workflows/conformance-matrix.yml` runs nightly on a fresh
-GitHub-hosted runner against the published crate, so any drift between
-the source tree and crates.io is caught within 24 hours.
+GitHub-hosted runner against a path-installed crate. That catches drift between
+the source tree and the installable package shape within 24 hours. A separate
+registry smoke should replace it only after `chio-conformance` has a
+registry-public dependency closure.
 
 External consumers can copy the same pattern into their own CI:
 
@@ -371,7 +372,7 @@ External consumers can copy the same pattern into their own CI:
   run: cargo install --git https://github.com/backbay-labs/chio chio-cli
 
 - name: Install Chio conformance harness
-  run: cargo install chio-conformance --version 0.1.0
+  run: cargo install --git https://github.com/backbay-labs/chio chio-conformance
 
 - name: Fetch pinned peer binaries
   run: chio conformance fetch-peers --language python
@@ -397,7 +398,7 @@ External consumers can copy the same pattern into their own CI:
 
 ## What the harness provides
 
-- A publishable `chio-conformance` crate (`cargo install chio-conformance`).
+- A source-installable `chio-conformance` crate.
 - The `chio conformance run` subcommand.
 - A snapshot-tested JSON report shape.
 - The `chio conformance fetch-peers` subcommand plus `peers.lock.toml`.

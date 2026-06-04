@@ -244,6 +244,32 @@ data: {"type":"message_stop"}
 }
 
 #[test]
+fn allowed_tool_use_stream_preserves_original_crlf_frame_bytes() {
+    let adapter = adapter();
+    let stream = concat!(
+        "event: content_block_start\r\n",
+        "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_crlf\",\"name\":\"get_weather\",\"input\":{}}}\r\n",
+        "\r\n",
+        "event: content_block_delta\r\n",
+        "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"location\\\":\\\"LA\\\"}\"}}\r\n",
+        "\r\n",
+        "event: content_block_stop\r\n",
+        "data: {\"type\":\"content_block_stop\",\"index\":0}\r\n",
+        "\r\n",
+        "event: message_stop\r\n",
+        "data: {\"type\":\"message_stop\"}\r\n",
+        "\r\n",
+    )
+    .as_bytes();
+
+    let gated = adapter
+        .gate_sse_stream(stream, |_invocation| Ok(allow_verdict()))
+        .expect("CRLF stream should gate successfully");
+
+    assert_eq!(gated.bytes, stream);
+}
+
+#[test]
 fn batch_lift_lower_behavior_still_round_trips() {
     let adapter = adapter();
     let invocations = adapter

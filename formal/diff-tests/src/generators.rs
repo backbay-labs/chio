@@ -698,8 +698,7 @@ pub fn arb_paired_scope() -> impl Strategy<Value = (SpecChioScope, chio_core::ca
 pub fn arb_paired_normalized_scope() -> impl Strategy<Value = (SpecChioScope, NormalizedScope)> {
     arb_spec_scope().prop_map(|spec| {
         let impl_scope = spec_scope_to_impl(&spec);
-        let normalized =
-            NormalizedScope::try_from(&impl_scope).expect("supported spec surface normalizes");
+        let normalized = normalize_scope(&impl_scope);
         (spec, normalized)
     })
 }
@@ -728,10 +727,8 @@ pub fn arb_paired_normalized_scope_pair() -> impl Strategy<
     (arb_spec_scope(), arb_spec_scope()).prop_map(|(spec_a, spec_b)| {
         let impl_a = spec_scope_to_impl(&spec_a);
         let impl_b = spec_scope_to_impl(&spec_b);
-        let normalized_a =
-            NormalizedScope::try_from(&impl_a).expect("supported spec surface normalizes");
-        let normalized_b =
-            NormalizedScope::try_from(&impl_b).expect("supported spec surface normalizes");
+        let normalized_a = normalize_scope(&impl_a);
+        let normalized_b = normalize_scope(&impl_b);
         ((spec_a, normalized_a), (spec_b, normalized_b))
     })
 }
@@ -749,10 +746,23 @@ pub fn arb_paired_normalized_grant() -> impl Strategy<Value = (SpecToolGrant, No
 {
     arb_spec_tool_grant().prop_map(|spec| {
         let impl_grant = spec_grant_to_impl(&spec);
-        let normalized =
-            NormalizedToolGrant::try_from(&impl_grant).expect("supported spec surface normalizes");
+        let normalized = normalize_tool_grant(&impl_grant);
         (spec, normalized)
     })
+}
+
+fn normalize_scope(scope: &chio_core::capability::ChioScope) -> NormalizedScope {
+    match NormalizedScope::try_from(scope) {
+        Ok(normalized) => normalized,
+        Err(error) => panic!("supported spec scope surface failed to normalize: {error:?}"),
+    }
+}
+
+fn normalize_tool_grant(grant: &chio_core::capability::ToolGrant) -> NormalizedToolGrant {
+    match NormalizedToolGrant::try_from(grant) {
+        Ok(normalized) => normalized,
+        Err(error) => panic!("supported spec grant surface failed to normalize: {error:?}"),
+    }
 }
 
 fn spec_resource_to_impl(grant: &SpecResourceGrant) -> chio_core::capability::ResourceGrant {

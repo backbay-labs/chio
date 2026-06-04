@@ -358,9 +358,16 @@ impl RuntimeAttestationAppraisalResult {
         report: &RuntimeAttestationAppraisalReport,
     ) -> ChioResult<Self> {
         let issuer = issuer.into();
-        if issuer.trim().is_empty() {
+        let trimmed_issuer = issuer.trim();
+        if trimmed_issuer.is_empty() {
             return Err(crate::Error::CanonicalJson(
                 "runtime attestation appraisal result issuer must not be empty".to_string(),
+            ));
+        }
+        if trimmed_issuer != issuer {
+            return Err(crate::Error::CanonicalJson(
+                "runtime attestation appraisal result issuer must not contain surrounding whitespace"
+                    .to_string(),
             ));
         }
         let appraisal = report.appraisal.artifact.clone().ok_or_else(|| {

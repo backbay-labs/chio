@@ -95,6 +95,48 @@ fn runtime_workflow_report_requires_structured_step_evidence(
 }
 
 #[test]
+fn runtime_workflow_report_rejects_unsafe_evidence_paths() -> Result<(), Box<dyn std::error::Error>>
+{
+    let report = RuntimeWorkflowRunReport {
+        schema: CHIO_RUNTIME_WORKFLOW_RUN_REPORT_SCHEMA.to_string(),
+        run_id: "runtime-loopback-7-2".to_string(),
+        accepted: true,
+        failure_code: None,
+        generated_at_unix_ms: 1_800_000_001_000,
+        admission_report_sha256: "1".repeat(64),
+        evidence_paths: vec!["../runtime-admission-report-1.json".to_string()],
+        step_evidence: vec![RuntimeStepEvidence {
+            schema: CHIO_RUNTIME_STEP_EVIDENCE_SCHEMA.to_string(),
+            step_index: 0,
+            admission_id: "adm-live-1".to_string(),
+            admission_report_sha256: "1".repeat(64),
+            tool_receipt_id: "receipt-live-1".to_string(),
+            tool_receipt_sha256: "2".repeat(64),
+            output_sha256: "3".repeat(64),
+            bilateral_dsse_sha256: "4".repeat(64),
+            workflow_step_sha256: "5".repeat(64),
+            parent_receipt_sha256: None,
+            consistency_anchor: "chio:consistency:wf-live-1:0".to_string(),
+            destructive: false,
+            lease_id: None,
+            governance_receipt_id: None,
+        }],
+        proof_regeneration_report_sha256: Some("6".repeat(64)),
+    };
+
+    let error = match validate_runtime_workflow_run_report(&report) {
+        Ok(()) => {
+            return Err(io::Error::other("unsafe evidence path unexpectedly accepted").into());
+        }
+        Err(error) => error,
+    };
+    assert!(error
+        .to_string()
+        .contains("runtime_workflow_invalid_evidence_path"));
+    Ok(())
+}
+
+#[test]
 fn runtime_workflow_report_rejects_placeholder_success_path(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let report = RuntimeWorkflowRunReport {

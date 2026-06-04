@@ -17,6 +17,7 @@ use chio_core::receipt::{
 };
 use chio_kernel::{BudgetStore, CapabilityAuthority, LocalCapabilityAuthority, ReceiptStore};
 use chio_store_sqlite::{SqliteBudgetStore, SqliteReceiptStore};
+use chio_test_support::loopback::{reserve_listen_addr, skip_when_loopback_bind_denied};
 use reqwest::blocking::Client;
 
 fn unique_dir(prefix: &str) -> PathBuf {
@@ -33,13 +34,6 @@ fn workspace_root() -> PathBuf {
         .nth(2)
         .expect("workspace root")
         .to_path_buf()
-}
-
-fn reserve_listen_addr() -> std::net::SocketAddr {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind temp listener");
-    let addr = listener.local_addr().expect("listener addr");
-    drop(listener);
-    addr
 }
 
 struct ServerGuard {
@@ -931,6 +925,12 @@ fn create_evidence_federation_policy(
 
 #[test]
 fn trust_service_federated_issue_consumes_challenge_bound_passport_response() {
+    if skip_when_loopback_bind_denied(
+        "trust_service_federated_issue_consumes_challenge_bound_passport_response",
+    ) {
+        return;
+    }
+
     let dir = unique_dir("chio-cli-federated-issue");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -1103,6 +1103,12 @@ fn trust_service_federated_issue_consumes_challenge_bound_passport_response() {
 
 #[test]
 fn trust_service_federated_issue_supports_stored_verifier_policy_references_and_replay_safety() {
+    if skip_when_loopback_bind_denied(
+        "trust_service_federated_issue_supports_stored_verifier_policy_references_and_replay_safety",
+    ) {
+        return;
+    }
+
     let dir = unique_dir("chio-cli-federated-issue-policy-ref");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -1281,6 +1287,12 @@ fn trust_service_federated_issue_supports_stored_verifier_policy_references_and_
 
 #[test]
 fn trust_service_federated_issue_requires_embedded_or_stored_verifier_policy() {
+    if skip_when_loopback_bind_denied(
+        "trust_service_federated_issue_requires_embedded_or_stored_verifier_policy",
+    ) {
+        return;
+    }
+
     let dir = unique_dir("chio-cli-federated-issue-no-policy");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -1367,6 +1379,12 @@ fn trust_service_federated_issue_requires_embedded_or_stored_verifier_policy() {
 
 #[test]
 fn trust_service_federated_issue_rejects_scope_outside_delegation_policy() {
+    if skip_when_loopback_bind_denied(
+        "trust_service_federated_issue_rejects_scope_outside_delegation_policy",
+    ) {
+        return;
+    }
+
     let dir = unique_dir("chio-cli-federated-issue-scope-deny");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -1496,6 +1514,12 @@ fn trust_service_federated_issue_rejects_scope_outside_delegation_policy() {
 
 #[test]
 fn trust_service_federated_issue_supports_multi_hop_imported_upstream_parent() {
+    if skip_when_loopback_bind_denied(
+        "trust_service_federated_issue_supports_multi_hop_imported_upstream_parent",
+    ) {
+        return;
+    }
+
     let dir = unique_dir("chio-cli-federated-issue-multi-hop");
     std::fs::create_dir_all(&dir).expect("create temp dir");
 
@@ -1850,6 +1874,12 @@ fn trust_service_federated_issue_supports_multi_hop_imported_upstream_parent() {
 
 #[test]
 fn federated_issue_enterprise_policy_allows_and_returns_enterprise_audit() {
+    if skip_when_loopback_bind_denied(
+        "federated_issue_enterprise_policy_allows_and_returns_enterprise_audit",
+    ) {
+        return;
+    }
+
     let harness = setup_enterprise_federated_issue_case(
         "chio-cli-enterprise-federated-allow",
         "org-789",
@@ -1907,6 +1937,10 @@ fn federated_issue_enterprise_policy_allows_and_returns_enterprise_audit() {
 
 #[test]
 fn federated_issue_scim_deprovisioned_identity_fails_closed() {
+    if skip_when_loopback_bind_denied("federated_issue_scim_deprovisioned_identity_fails_closed") {
+        return;
+    }
+
     let dir = unique_dir("chio-cli-enterprise-federated-scim-deprovision");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");
@@ -2076,6 +2110,12 @@ fn federated_issue_scim_deprovisioned_identity_fails_closed() {
 
 #[test]
 fn federated_issue_enterprise_policy_denies_organization_mismatch() {
+    if skip_when_loopback_bind_denied(
+        "federated_issue_enterprise_policy_denies_organization_mismatch",
+    ) {
+        return;
+    }
+
     let harness = setup_enterprise_federated_issue_case(
         "chio-cli-enterprise-federated-org-deny",
         "org-789",
@@ -2106,6 +2146,10 @@ fn federated_issue_enterprise_policy_denies_organization_mismatch() {
 
 #[test]
 fn federated_issue_enterprise_policy_denies_missing_group() {
+    if skip_when_loopback_bind_denied("federated_issue_enterprise_policy_denies_missing_group") {
+        return;
+    }
+
     let harness = setup_enterprise_federated_issue_case(
         "chio-cli-enterprise-federated-group-deny",
         "org-789",
@@ -2137,6 +2181,10 @@ fn federated_issue_enterprise_policy_denies_missing_group() {
 
 #[test]
 fn federated_issue_enterprise_policy_denies_missing_role() {
+    if skip_when_loopback_bind_denied("federated_issue_enterprise_policy_denies_missing_role") {
+        return;
+    }
+
     let harness = setup_enterprise_federated_issue_case(
         "chio-cli-enterprise-federated-role-deny",
         "org-789",
@@ -2168,6 +2216,12 @@ fn federated_issue_enterprise_policy_denies_missing_role() {
 
 #[test]
 fn federated_issue_no_provider_record_still_allows_enterprise_observability() {
+    if skip_when_loopback_bind_denied(
+        "federated_issue_no_provider_record_still_allows_enterprise_observability",
+    ) {
+        return;
+    }
+
     let harness = setup_enterprise_federated_issue_case(
         "chio-cli-enterprise-federated-no-provider-record",
         "org-789",
@@ -2206,6 +2260,12 @@ fn federated_issue_no_provider_record_still_allows_enterprise_observability() {
 
 #[test]
 fn federated_issue_enterprise_provider_lane_does_not_fallback_when_provider_record_is_invalid() {
+    if skip_when_loopback_bind_denied(
+        "federated_issue_enterprise_provider_lane_does_not_fallback_when_provider_record_is_invalid",
+    ) {
+        return;
+    }
+
     let mut invalid_provider = enterprise_provider_record("enterprise-login", true, "org-789");
     invalid_provider["provenance"]["trust_material_ref"] = serde_json::Value::Null;
     let harness = setup_enterprise_federated_issue_case(

@@ -226,7 +226,13 @@ fn split_path_and_query(http: &ProtoHttpRequest) -> (String, String) {
 /// Envoy uppercases methods but defensive callers may pass lower-case or
 /// mixed-case values; we normalise to uppercase and reject empty strings.
 fn normalise_method(method: &str) -> Result<String, TranslateError> {
-    if method.trim().is_empty() {
+    let trimmed = method.trim();
+    if trimmed.is_empty()
+        || trimmed != method
+        || method
+            .bytes()
+            .any(|byte| byte.is_ascii_control() || byte.is_ascii_whitespace())
+    {
         return Err(TranslateError::InvalidHttpMethod(method.to_string()));
     }
     Ok(method.to_ascii_uppercase())
@@ -631,6 +637,13 @@ mod tests {
         let check = mk_check("", "/foo", &[], "", None);
         let err = check_request_to_tool_call(&check).unwrap_err();
         assert_eq!(err, TranslateError::InvalidHttpMethod(String::new()));
+    }
+
+    #[test]
+    fn translate_method_with_surrounding_whitespace_rejected() {
+        let check = mk_check(" GET ", "/foo", &[], "", None);
+        let err = check_request_to_tool_call(&check).unwrap_err();
+        assert_eq!(err, TranslateError::InvalidHttpMethod(" GET ".to_string()));
     }
 
     #[test]

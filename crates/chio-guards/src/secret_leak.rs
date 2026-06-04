@@ -8,7 +8,7 @@ use thiserror::Error;
 
 use chio_kernel::{GuardContext, KernelError, Verdict};
 
-use crate::action::{extract_action, ToolAction};
+use crate::action::{extract_action_checked, ToolAction};
 
 /// Pattern definition for secret detection.
 pub struct SecretPattern {
@@ -299,7 +299,10 @@ impl chio_kernel::Guard for SecretLeakGuard {
             return Ok(Verdict::Allow);
         }
 
-        let action = extract_action(&ctx.request.tool_name, &ctx.request.arguments);
+        let action = match extract_action_checked(&ctx.request.tool_name, &ctx.request.arguments) {
+            Ok(action) => action,
+            Err(_) => return Ok(Verdict::Deny),
+        };
 
         let (path, content) = match &action {
             ToolAction::FileWrite(p, c) => (p.as_str(), c.as_slice()),

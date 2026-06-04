@@ -139,9 +139,7 @@ fn lower_hex_string(len: usize) -> impl Strategy<Value = String> {
 }
 
 fn invocation_strategy() -> impl Strategy<Value = serde_json::Value> {
-    // Keep the invocation simple and JSON-stable. Real frames carry a
-    // ToolInvocation object; for round-trip purposes any JSON value works.
-    // Strings are bounded to keep canonical-JSON round trip costs small.
+    // Keep the invocation object simple and JSON-stable.
     let string_strategy = proptest::collection::vec(any::<char>(), 0..=8)
         .prop_map(|chars| chars.into_iter().collect::<String>())
         .prop_map(serde_json::Value::String);
@@ -151,6 +149,7 @@ fn invocation_strategy() -> impl Strategy<Value = serde_json::Value> {
         (-1_000_000i64..1_000_000).prop_map(|n| serde_json::Value::Number(n.into())),
         string_strategy,
     ]
+    .prop_map(|value| serde_json::json!({ "value": value }))
 }
 
 fn provenance_strategy() -> impl Strategy<Value = Provenance> {

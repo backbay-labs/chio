@@ -269,6 +269,68 @@ fn scalar_start_only_input_fails_closed_before_verdict() {
 }
 
 #[test]
+fn streaming_tool_use_id_with_surrounding_whitespace_fails_closed() {
+    let adapter = adapter();
+    let stream = json!([
+        {
+            "contentBlockStart": {
+                "contentBlockIndex": 0,
+                "start": {
+                    "toolUse": {
+                        "toolUseId": " tooluse_padded_1 ",
+                        "name": "get_weather"
+                    }
+                }
+            }
+        },
+        {"contentBlockStop": {"contentBlockIndex": 0}}
+    ]);
+    let mut calls = 0;
+    let err = adapter
+        .gate_converse_stream(&stream_bytes(stream), |_invocation| {
+            calls += 1;
+            Ok(allow_verdict())
+        })
+        .expect_err("streaming toolUseId padding must fail closed");
+
+    assert_eq!(calls, 0);
+    assert!(err.to_string().contains(
+        "contentBlockStart.start.toolUse.toolUseId must not contain surrounding whitespace"
+    ));
+}
+
+#[test]
+fn streaming_tool_use_name_with_surrounding_whitespace_fails_closed() {
+    let adapter = adapter();
+    let stream = json!([
+        {
+            "contentBlockStart": {
+                "contentBlockIndex": 0,
+                "start": {
+                    "toolUse": {
+                        "toolUseId": "tooluse_padded_name_1",
+                        "name": " get_weather "
+                    }
+                }
+            }
+        },
+        {"contentBlockStop": {"contentBlockIndex": 0}}
+    ]);
+    let mut calls = 0;
+    let err = adapter
+        .gate_converse_stream(&stream_bytes(stream), |_invocation| {
+            calls += 1;
+            Ok(allow_verdict())
+        })
+        .expect_err("streaming toolUse name padding must fail closed");
+
+    assert_eq!(calls, 0);
+    assert!(err
+        .to_string()
+        .contains("contentBlockStart.start.toolUse.name must not contain surrounding whitespace"));
+}
+
+#[test]
 fn malformed_json_event_fails_closed() {
     let adapter = adapter();
     let err = adapter

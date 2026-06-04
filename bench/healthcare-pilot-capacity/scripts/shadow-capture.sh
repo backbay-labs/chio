@@ -41,6 +41,11 @@ if [ -z "$SIDECAR_URL" ] || [ -z "$OUTPUT" ]; then
   exit 2
 fi
 
+if [[ "$SIDECAR_URL" == *\"* || "$SIDECAR_URL" == *\\* || "$SIDECAR_URL" == *[[:cntrl:]]* ]]; then
+  printf 'shadow-capture: sidecar url contains characters unsafe for JSON manifest\n' >&2
+  exit 2
+fi
+
 case "$DURATION_SECONDS" in
   ''|*[!0-9]*)
     printf 'shadow-capture: duration must be an integer number of seconds\n' >&2

@@ -10,10 +10,10 @@ use oci_distribution::Reference;
 use serde::{Deserialize, Serialize};
 
 use crate::oci::{
-    has_explicit_registry, GuardRegistryClient, GuardRegistryError, RegistryCredentials, Result,
-    GUARD_ARTIFACT_MEDIA_TYPE, GUARD_CONFIG_MEDIA_TYPE, GUARD_MANIFEST_LAYER_MEDIA_TYPE,
-    GUARD_MANIFEST_LAYER_ROLE, GUARD_MODULE_LAYER_MEDIA_TYPE, GUARD_MODULE_LAYER_ROLE,
-    GUARD_WIT_LAYER_MEDIA_TYPE, GUARD_WIT_LAYER_ROLE, OCI_SCHEME,
+    has_explicit_registry, has_explicit_tag, GuardRegistryClient, GuardRegistryError,
+    RegistryCredentials, Result, GUARD_ARTIFACT_MEDIA_TYPE, GUARD_CONFIG_MEDIA_TYPE,
+    GUARD_MANIFEST_LAYER_MEDIA_TYPE, GUARD_MANIFEST_LAYER_ROLE, GUARD_MODULE_LAYER_MEDIA_TYPE,
+    GUARD_MODULE_LAYER_ROLE, GUARD_WIT_LAYER_MEDIA_TYPE, GUARD_WIT_LAYER_ROLE, OCI_SCHEME,
 };
 
 /// Current Chio guard WIT world pinned by the v2 artifact schema.
@@ -51,7 +51,7 @@ impl GuardPublishRef {
 
     /// Return the publish tag.
     pub fn tag(&self) -> &str {
-        self.reference.tag().unwrap_or("latest")
+        self.reference.tag().unwrap_or("")
     }
 }
 
@@ -73,9 +73,13 @@ impl FromStr for GuardPublishRef {
             return Err(GuardRegistryError::MissingRegistry);
         }
 
+        let has_explicit_tag = has_explicit_tag(without_scheme);
         let reference = without_scheme.parse::<Reference>()?;
         if reference.digest().is_some() {
             return Err(GuardRegistryError::PublishReferencePinnedByDigest);
+        }
+        if !has_explicit_tag {
+            return Err(GuardRegistryError::PublishReferenceMissingTag);
         }
 
         Ok(Self { reference })
@@ -234,5 +238,20 @@ fn push_response(push: PushResponse, config_digest: String) -> GuardPublishRespo
         config_url: push.config_url,
         manifest_url: push.manifest_url,
         config_digest,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn publish_ref_requires_explicit_tag() {
+        let result = "oci://ghcr.io/chio/tool-gate".parse::<GuardPublishRef>();
+
+        assert!(matches!(
+            result,
+            Err(GuardRegistryError::PublishReferenceMissingTag)
+        ));
     }
 }

@@ -1,5 +1,6 @@
 use chio_attest_buyer::{
-    buyer_attestation_packet_from_json, verify_buyer_attestation_review_package,
+    buyer_attestation_packet_from_json, buyer_attestation_review_package_from_json,
+    verify_buyer_attestation_review_package,
     verify_buyer_attestation_review_package_with_proof_replay_json, BuyerAttestationError,
     BuyerAttestationReviewPackage,
 };
@@ -49,6 +50,56 @@ fn buyer_error_boundary_is_chio_owned() {
         Err(error) => error,
     };
     assert_eq!(error.code(), "runtime_admission_json");
+}
+
+#[test]
+fn json_constructors_reject_malformed_typed_values() -> Result<(), Box<dyn std::error::Error>> {
+    let packet_json = serde_json::json!({
+        "schema": "chio.attest.buyer-attestation-packet.v0",
+        "packetId": "buyer-packet:constructor-boundary",
+        "buyerId": "did:chio:buyer",
+        "capabilityId": "capability:buyer:constructor-boundary",
+        "treatyScopeSha256": "11".repeat(32),
+        "ladderIntersectionSha256": "22".repeat(32),
+        "crossBoundaryAdmissionReportSha256": "33".repeat(32),
+        "continuationSha256": "44".repeat(32),
+        "receiptLineageStatementSha256": "55".repeat(32),
+        "bilateralInvocationSha256": "66".repeat(32),
+        "bilateralDsseSha256": "77".repeat(32),
+        "workflowReceiptSha256": "88".repeat(32),
+        "proofPackageSha256": "99".repeat(32),
+        "verifierReportSha256": "aa".repeat(32),
+        "budgetRefs": [],
+        "settlementClaimed": false
+    })
+    .to_string();
+    let Err(error) = buyer_attestation_packet_from_json(&packet_json) else {
+        return Err("unsupported packet schema parsed successfully".into());
+    };
+    assert_eq!(error.code(), "unsupported_buyer_attestation_packet_schema");
+
+    let package_json = serde_json::json!({
+        "schema": "chio.attest.buyer-attestation-review-package.v1",
+        "packageId": "buyer-review:constructor-boundary",
+        "packetId": "buyer-packet:constructor-boundary",
+        "buyerId": "did:chio:buyer",
+        "generatedAtUnixMs": 1_766_000_000_000_u64,
+        "artifacts": [{
+            "role": "proof_package",
+            "relativePath": "../proof-package.json",
+            "artifactSha256": "bb".repeat(32),
+            "byteCount": 1
+        }]
+    })
+    .to_string();
+    let Err(error) = buyer_attestation_review_package_from_json(&package_json) else {
+        return Err("unsafe review artifact path parsed successfully".into());
+    };
+    assert_eq!(
+        error.code(),
+        "chio_attest_buyer_review_artifact_unsafe_path"
+    );
+    Ok(())
 }
 
 #[test]

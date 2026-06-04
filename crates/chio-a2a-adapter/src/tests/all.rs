@@ -2,7 +2,7 @@
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use std::io::{Read, Write};
+    use std::io::{BufRead, BufReader, Read, Write};
     use std::net::TcpListener;
     use std::path::PathBuf;
     use std::sync::Once;
@@ -112,6 +112,94 @@ mod tests {
         );
     }
 
+    #[test]
+    fn jsonrpc_result_decoder_preserves_fail_closed_error_precedence() {
+        let version_error = decode_jsonrpc_result(
+            A2aJsonRpcResponse::<Value> {
+                jsonrpc: "1.0".to_string(),
+                result: None,
+                error: Some(A2aJsonRpcError {
+                    code: -32000,
+                    message: "remote denied".to_string(),
+                }),
+            },
+            "GetTask",
+        )
+        .expect_err("unexpected protocol version should fail before remote error");
+        assert!(
+            version_error
+                .to_string()
+                .contains("unexpected JSON-RPC version 1.0"),
+            "unexpected version error: {version_error}"
+        );
+
+        let remote_error = decode_jsonrpc_result(
+            A2aJsonRpcResponse::<Value> {
+                jsonrpc: "2.0".to_string(),
+                result: None,
+                error: Some(A2aJsonRpcError {
+                    code: -32001,
+                    message: "remote denied".to_string(),
+                }),
+            },
+            "GetTask",
+        )
+        .expect_err("remote JSON-RPC error should fail before missing result");
+        assert!(
+            remote_error
+                .to_string()
+                .contains("A2A JSON-RPC error -32001: remote denied"),
+            "unexpected remote error: {remote_error}"
+        );
+
+        let missing_result = decode_jsonrpc_result(
+            A2aJsonRpcResponse::<Value> {
+                jsonrpc: "2.0".to_string(),
+                result: None,
+                error: None,
+            },
+            "GetTask",
+        )
+        .expect_err("missing result should fail closed");
+        assert!(
+            missing_result
+                .to_string()
+                .contains("A2A JSON-RPC GetTask response omitted `result`"),
+            "unexpected missing-result error: {missing_result}"
+        );
+
+        let missing_unlabeled_result = decode_jsonrpc_result(
+            A2aJsonRpcResponse::<Value> {
+                jsonrpc: "2.0".to_string(),
+                result: None,
+                error: None,
+            },
+            "",
+        )
+        .expect_err("unlabeled response without result should fail closed");
+        assert!(
+            missing_unlabeled_result
+                .to_string()
+                .contains("A2A JSON-RPC response omitted `result`"),
+            "unexpected unlabeled missing-result error: {missing_unlabeled_result}"
+        );
+    }
+
+    #[test]
+    fn jsonrpc_result_decoder_returns_present_result() {
+        let value = decode_jsonrpc_result(
+            A2aJsonRpcResponse {
+                jsonrpc: "2.0".to_string(),
+                result: Some(json!({ "ok": true })),
+                error: None,
+            },
+            "GetTask",
+        )
+        .expect("present result should decode");
+
+        assert_eq!(value, json!({ "ok": true }));
+    }
+
     #[tokio::test]
     async fn adapter_discovers_jsonrpc_and_invokes_skill() {
         let Some(server) = FakeA2aServer::spawn_jsonrpc() else {
@@ -153,6 +241,32 @@ mod tests {
         assert!(requests[1].contains("A2A-Version: 1.0"));
         assert!(requests[1].contains("\"method\":\"SendMessage\""));
         assert!(requests[1].contains("\"targetSkillId\":\"research\""));
+        server.join();
+    }
+
+    #[tokio::test]
+    async fn adapter_jsonrpc_send_message_missing_result_names_method() {
+        let Some(server) = FakeA2aServer::spawn_jsonrpc_missing_send_message_result() else {
+            return;
+        };
+        let manifest_key = Keypair::generate();
+        let adapter = A2aAdapter::discover(
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
+                .with_timeout(Duration::from_secs(2)),
+        )
+        .expect("discover JSONRPC adapter");
+
+        let error = adapter
+            .invoke("research", json!({ "message": "hello" }), None)
+            .await
+            .expect_err("missing SendMessage result should fail closed");
+
+        assert!(
+            error
+                .to_string()
+                .contains("A2A JSON-RPC SendMessage response omitted `result`"),
+            "unexpected missing-result error: {error}"
+        );
         server.join();
     }
 
@@ -513,6 +627,128 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn adapter_rejects_malformed_request_auth_material_before_discovery() {
+        let public_key = Keypair::generate().public_key().to_hex();
+        let base_url = "http://127.0.0.1:9";
+        let cases = vec![
+            (
+                "bad header name",
+                test_adapter_config(base_url, public_key.clone())
+                    .with_request_header(" X-Partner", "secret-header"),
+                "request header",
+            ),
+            (
+                "bad header name separator",
+                test_adapter_config(base_url, public_key.clone())
+                    .with_request_header("X=Partner", "secret-header"),
+                "request header",
+            ),
+            (
+                "bad header value",
+                test_adapter_config(base_url, public_key.clone())
+                    .with_request_header("X-Partner", "secret\r\nInjected: yes"),
+                "request header value",
+            ),
+            (
+                "bad query name",
+                test_adapter_config(base_url, public_key.clone())
+                    .with_request_query_param(" partner", "secret-query"),
+                "request query parameter",
+            ),
+            (
+                "bad API key query value",
+                test_adapter_config(base_url, public_key.clone())
+                    .with_api_key_query_param("partner", " secret-query"),
+                "request query parameter value",
+            ),
+            (
+                "bad bearer token",
+                test_adapter_config(base_url, public_key.clone()).with_bearer_token(" secret"),
+                "bearer token",
+            ),
+            (
+                "bad bearer token internal whitespace",
+                test_adapter_config(base_url, public_key.clone()).with_bearer_token("abc def"),
+                "bearer token",
+            ),
+            (
+                "bad authorization bearer token internal whitespace",
+                test_adapter_config(base_url, public_key.clone())
+                    .with_request_header("Authorization", "Bearer abc def"),
+                "bearer token",
+            ),
+            (
+                "bad authorization scheme",
+                test_adapter_config(base_url, public_key.clone())
+                    .with_request_header("Authorization", "\u{e9}\u{e9}\u{e9}\u{e9}"),
+                "authorization scheme",
+            ),
+            (
+                "bad authorization scheme separator",
+                test_adapter_config(base_url, public_key.clone())
+                    .with_request_header("Authorization", "Bearer=opaque"),
+                "authorization scheme",
+            ),
+            (
+                "bad cookie name",
+                test_adapter_config(base_url, public_key.clone())
+                    .with_request_cookie("partner session", "secret-cookie"),
+                "request cookie name",
+            ),
+            (
+                "bad cookie name separator",
+                test_adapter_config(base_url, public_key.clone())
+                    .with_request_cookie("partner=session", "secret-cookie"),
+                "request cookie name",
+            ),
+            (
+                "bad cookie value",
+                test_adapter_config(base_url, public_key.clone())
+                    .with_request_cookie("partner_session", "secret-cookie; injected=yes"),
+                "request cookie value",
+            ),
+            (
+                "bad OAuth client id",
+                test_adapter_config(base_url, public_key.clone())
+                    .with_oauth_client_credentials("", "client-secret"),
+                "OAuth client id",
+            ),
+            (
+                "bad OAuth client id padding",
+                test_adapter_config(base_url, public_key.clone())
+                    .with_oauth_client_credentials(" client-id", "client-secret"),
+                "OAuth client id",
+            ),
+            (
+                "bad OAuth client secret padding",
+                test_adapter_config(base_url, public_key.clone())
+                    .with_oauth_client_credentials("client-id", " client-secret"),
+                "OAuth client credential",
+            ),
+            (
+                "bad OAuth client secret control",
+                test_adapter_config(base_url, public_key)
+                    .with_oauth_client_credentials("client-id", "client\nsecret"),
+                "OAuth client credential",
+            ),
+        ];
+
+        for (label, config, expected) in cases {
+            let error = A2aAdapter::discover(config.with_timeout(Duration::from_millis(10)))
+                .expect_err(label);
+            let message = error.to_string();
+            assert!(
+                message.contains(expected),
+                "{label}: expected `{expected}`, got `{message}`"
+            );
+            assert!(
+                !message.contains("secret") && !message.contains("Injected"),
+                "{label}: auth material leaked in `{message}`"
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn partner_policy_rejects_wrong_tenant_on_discovery() {
         let Some(server) = FakeA2aServer::spawn_jsonrpc_bearer_required() else {
             return;
@@ -531,6 +767,28 @@ mod tests {
             .to_string()
             .contains("requires tenant `tenant-required`"));
         server.join();
+    }
+
+    #[tokio::test]
+    async fn partner_policy_rejects_required_skill_filtered_by_input_modes() {
+        let mut adapter = local_test_adapter(
+            A2aAgentCapabilities::default(),
+            A2aProtocolBinding::JsonRpc,
+            None,
+        );
+        adapter.agent_card.skills[0].input_modes = Some(vec!["image/png".to_string()]);
+        let policy = A2aPartnerPolicy::new("partner-alpha").require_skill("research");
+
+        let error = validate_partner_policy(
+            &policy,
+            &adapter.agent_card,
+            &adapter.selected_interface,
+        )
+        .expect_err("required non-projectable skill should fail partner admission");
+
+        assert!(error
+            .to_string()
+            .contains("does not expose a Chio-projectable input mode"));
     }
 
     #[tokio::test]
@@ -612,6 +870,338 @@ mod tests {
 
         let _ = fs::remove_file(registry_path);
         server.join();
+    }
+
+    #[tokio::test]
+    async fn task_registry_rejects_follow_up_from_different_partner() {
+        let registry_path = unique_path("chio-a2a-task-registry-partner", ".json");
+        let Some(server) = FakeA2aServer::spawn_jsonrpc_task_follow_up() else {
+            return;
+        };
+        let manifest_key = Keypair::generate();
+        let adapter = A2aAdapter::discover(
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
+                .with_partner_policy(A2aPartnerPolicy::new("partner-alpha"))
+                .with_task_registry_file(&registry_path)
+                .with_timeout(Duration::from_secs(2)),
+        )
+        .expect("discover adapter");
+
+        adapter
+            .invoke(
+                "research",
+                json!({
+                    "message": "Begin partner-bound research task",
+                    "return_immediately": true
+                }),
+                None,
+            )
+            .await
+            .expect("initial invoke");
+
+        let adapter_for_other_partner = A2aAdapter {
+            manifest: adapter.manifest.clone(),
+            agent_card: adapter.agent_card.clone(),
+            agent_card_url: adapter.agent_card_url.clone(),
+            selected_interface: adapter.selected_interface.clone(),
+            selected_binding: adapter.selected_binding,
+            configured_headers: adapter.configured_headers.clone(),
+            configured_query_params: adapter.configured_query_params.clone(),
+            configured_cookies: adapter.configured_cookies.clone(),
+            oauth_client_credentials: adapter.oauth_client_credentials.clone(),
+            oauth_scopes: adapter.oauth_scopes.clone(),
+            oauth_token_endpoint_override: adapter.oauth_token_endpoint_override.clone(),
+            transport_config: adapter.transport_config.clone(),
+            token_cache: Mutex::new(Vec::new()),
+            timeout: adapter.timeout,
+            request_counter: AtomicU64::new(0),
+            partner_policy: Some(A2aPartnerPolicy::new("partner-beta")),
+            task_registry: Some(A2aTaskRegistry::open(&registry_path).expect("reopen registry")),
+        };
+        let error = adapter_for_other_partner
+            .invoke(
+                "research",
+                json!({
+                    "get_task": {
+                        "id": "task-1"
+                    }
+                }),
+                None,
+            )
+            .await
+            .expect_err("partner mismatch must fail closed before remote follow-up");
+
+        let agent_card_url = format!("{}/.well-known/agent-card.json", server.base_url());
+        let _ = ureq::get(&agent_card_url).call().expect("unblock fake server");
+        assert!(
+            error.to_string().contains("partner `partner-alpha`"),
+            "unexpected partner-mismatch error: {error}"
+        );
+        let requests = server.requests();
+        assert_eq!(
+            requests.len(),
+            3,
+            "mismatched partner must not dispatch a follow-up request"
+        );
+        assert!(
+            requests[2].starts_with("GET /.well-known/agent-card.json"),
+            "third request should only unblock the fake server, got: {}",
+            requests[2].lines().next().unwrap_or_default()
+        );
+
+        let _ = fs::remove_file(registry_path);
+        server.join();
+    }
+
+    #[test]
+    fn task_registry_rejects_conflicting_reobserved_task_binding() {
+        let registry_path = unique_path("chio-a2a-task-registry-conflict", ".json");
+        let registry = A2aTaskRegistry::open(&registry_path).expect("open task registry");
+        let selected_interface = A2aAgentInterface {
+            url: "http://localhost:9000/rpc".to_string(),
+            protocol_binding: "JSONRPC".to_string(),
+            protocol_version: "1.0".to_string(),
+            tenant: Some("tenant-alpha".to_string()),
+        };
+        let selected_binding = A2aProtocolBinding::JsonRpc;
+        let first_context = A2aTaskRecordContext {
+            source: "send_message",
+            tool_name: "research",
+            server_id: "srv-a2a",
+            selected_interface: &selected_interface,
+            selected_binding: &selected_binding,
+            partner: "partner-alpha",
+        };
+        registry
+            .record_from_value(
+                &json!({
+                    "task": {
+                        "id": "task-1",
+                        "status": { "state": "TASK_STATE_WORKING" }
+                    }
+                }),
+                &first_context,
+            )
+            .expect("record initial task binding");
+
+        let conflicting_context = A2aTaskRecordContext {
+            source: "send_message",
+            tool_name: "clinical_search",
+            server_id: "srv-a2a",
+            selected_interface: &selected_interface,
+            selected_binding: &selected_binding,
+            partner: "partner-alpha",
+        };
+        let error = registry
+            .record_from_value(
+                &json!({
+                    "task": {
+                        "id": "task-1",
+                        "status": { "state": "TASK_STATE_WORKING" }
+                    }
+                }),
+                &conflicting_context,
+            )
+            .expect_err("conflicting task ownership must fail closed");
+
+        assert!(error.to_string().contains("attempted to rebind"));
+        let reloaded = registry.load().expect("reload task registry");
+        let record = reloaded.tasks.get("task-1").expect("task remains recorded");
+        assert_eq!(record.tool_name, "research");
+
+        let _ = fs::remove_file(registry_path);
+    }
+
+    #[test]
+    fn task_registry_persists_valid_batch_records_before_rebind_conflict() {
+        let registry_path = unique_path("chio-a2a-task-registry-batch-conflict", ".json");
+        let registry = A2aTaskRegistry::open(&registry_path).expect("open task registry");
+        let selected_interface = A2aAgentInterface {
+            url: "http://localhost:9000/rpc".to_string(),
+            protocol_binding: "JSONRPC".to_string(),
+            protocol_version: "1.0".to_string(),
+            tenant: Some("tenant-alpha".to_string()),
+        };
+        let selected_binding = A2aProtocolBinding::JsonRpc;
+        let first_context = A2aTaskRecordContext {
+            source: "send_message",
+            tool_name: "clinical_search",
+            server_id: "srv-a2a",
+            selected_interface: &selected_interface,
+            selected_binding: &selected_binding,
+            partner: "partner-alpha",
+        };
+        registry
+            .record_from_value(
+                &json!({
+                    "task": {
+                        "id": "task-conflict",
+                        "status": { "state": "TASK_STATE_WORKING" }
+                    }
+                }),
+                &first_context,
+            )
+            .expect("record initial task binding");
+
+        let research_context = A2aTaskRecordContext {
+            source: "send_message",
+            tool_name: "research",
+            server_id: "srv-a2a",
+            selected_interface: &selected_interface,
+            selected_binding: &selected_binding,
+            partner: "partner-alpha",
+        };
+        let error = registry
+            .record_from_value(
+                &json!({
+                    "task": {
+                        "id": "task-new",
+                        "status": { "state": "TASK_STATE_WORKING" }
+                    },
+                    "statusUpdate": {
+                        "taskId": "task-conflict",
+                        "status": { "state": "TASK_STATE_COMPLETED" }
+                    }
+                }),
+                &research_context,
+            )
+            .expect_err("rebind conflict should still be reported");
+
+        assert!(error.to_string().contains("attempted to rebind"));
+        let reloaded = registry.load().expect("reload task registry");
+        let new_record = reloaded
+            .tasks
+            .get("task-new")
+            .expect("non-conflicting task from same batch should persist");
+        assert_eq!(new_record.tool_name, "research");
+        assert_eq!(
+            new_record.last_state.as_deref(),
+            Some("TASK_STATE_WORKING")
+        );
+        let conflict_record = reloaded
+            .tasks
+            .get("task-conflict")
+            .expect("conflicting task remains recorded");
+        assert_eq!(conflict_record.tool_name, "clinical_search");
+        assert_eq!(
+            conflict_record.last_state.as_deref(),
+            Some("TASK_STATE_WORKING")
+        );
+
+        let _ = fs::remove_file(registry_path);
+    }
+
+    #[test]
+    fn task_registry_rejects_malformed_task_observation_before_persisting() {
+        let registry_path = unique_path("chio-a2a-task-registry-malformed", ".json");
+        let registry = A2aTaskRegistry::open(&registry_path).expect("open task registry");
+        let selected_interface = A2aAgentInterface {
+            url: "http://localhost:9000/rpc".to_string(),
+            protocol_binding: "JSONRPC".to_string(),
+            protocol_version: "1.0".to_string(),
+            tenant: Some("tenant-alpha".to_string()),
+        };
+        let selected_binding = A2aProtocolBinding::JsonRpc;
+        let context = A2aTaskRecordContext {
+            source: "send_message",
+            tool_name: "research",
+            server_id: "srv-a2a",
+            selected_interface: &selected_interface,
+            selected_binding: &selected_binding,
+            partner: "partner-alpha",
+        };
+
+        let error = registry
+            .record_from_value(
+                &json!({
+                    "task": {
+                        "id": "",
+                        "status": { "state": "TASK_STATE_WORKING" }
+                    }
+                }),
+                &context,
+            )
+            .expect_err("malformed task observation must fail closed");
+
+        assert!(
+            error.to_string().contains("id` must not be empty"),
+            "unexpected malformed-observation error: {error}"
+        );
+        let reloaded = registry.load().expect("reload task registry");
+        assert!(
+            reloaded.tasks.is_empty(),
+            "malformed observations must not be persisted"
+        );
+
+        let _ = fs::remove_file(registry_path);
+    }
+
+    #[test]
+    fn task_registry_preserves_observed_task_ids_exactly() {
+        let registry_path = unique_path("chio-a2a-task-registry-observed-task-id", ".json");
+        let registry = A2aTaskRegistry::open(&registry_path).expect("open task registry");
+        let selected_interface = A2aAgentInterface {
+            url: "http://localhost:9000/rpc".to_string(),
+            protocol_binding: "JSONRPC".to_string(),
+            protocol_version: "1.0".to_string(),
+            tenant: Some("tenant-alpha".to_string()),
+        };
+        let selected_binding = A2aProtocolBinding::JsonRpc;
+        let context = A2aTaskRecordContext {
+            source: "send_message",
+            tool_name: "research",
+            server_id: "srv-a2a",
+            selected_interface: &selected_interface,
+            selected_binding: &selected_binding,
+            partner: "partner-alpha",
+        };
+
+        registry
+            .record_from_value(
+                &json!({
+                    "task": {
+                        "id": " task-1 ",
+                        "status": { "state": "TASK_STATE_WORKING" }
+                    },
+                    "statusUpdate": {
+                        "taskId": "\ttask-1\n",
+                        "status": { "state": "TASK_STATE_COMPLETED" }
+                    },
+                    "artifactUpdate": {
+                        "taskId": " task-1 ",
+                        "artifact": { "artifactId": "artifact-1" }
+                    }
+                }),
+                &context,
+            )
+            .expect("record padded task observations");
+
+        let reloaded = registry.load().expect("reload task registry");
+        assert_eq!(
+            reloaded.tasks.len(),
+            2,
+            "distinct observed task ids must not be collapsed before follow-up lookup"
+        );
+        let record = reloaded
+            .tasks
+            .get(" task-1 ")
+            .expect("exact task response id is recorded");
+        assert_eq!(record.task_id, " task-1 ");
+        assert_eq!(record.last_state.as_deref(), Some("TASK_STATE_WORKING"));
+        assert!(reloaded.tasks.contains_key("\ttask-1\n"));
+        let follow_up_context = A2aTaskFollowUpContext {
+            operation: "get_task.id",
+            tool_name: "research",
+            server_id: "srv-a2a",
+            selected_interface: &selected_interface,
+            selected_binding: &selected_binding,
+            partner: "partner-alpha",
+        };
+        registry
+            .validate_follow_up(" task-1 ", &follow_up_context)
+            .expect("exact follow-up id should match exact observation");
+
+        let _ = fs::remove_file(registry_path);
     }
 
     #[tokio::test]
@@ -793,6 +1383,59 @@ mod tests {
             .contains("mutually exclusive with SendMessage and `get_task` fields"));
     }
 
+    #[test]
+    fn parse_tool_input_rejects_unknown_top_level_fields() {
+        let error = parse_tool_input(json!({
+            "message": "hello",
+            "typoed_field": true
+        }))
+        .expect_err("unknown top-level tool input fields must fail closed");
+
+        let message = error.to_string();
+        assert!(
+            message.contains("unknown field") && message.contains("typoed_field"),
+            "unexpected unknown-field error: {message}"
+        );
+    }
+
+    #[test]
+    fn parse_tool_input_rejects_unknown_follow_up_fields() {
+        let error = parse_tool_input(json!({
+            "get_task": {
+                "id": "task-1",
+                "extra": true
+            }
+        }))
+        .expect_err("unknown follow-up fields must fail closed");
+
+        let message = error.to_string();
+        assert!(
+            message.contains("unknown field") && message.contains("extra"),
+            "unexpected unknown-field error: {message}"
+        );
+    }
+
+    #[test]
+    fn parse_tool_input_rejects_unknown_push_authentication_fields() {
+        let error = parse_tool_input(json!({
+            "create_push_notification_config": {
+                "task_id": "task-1",
+                "url": "https://callback.example/hook",
+                "authentication": {
+                    "scheme": "bearer",
+                    "extra": true
+                }
+            }
+        }))
+        .expect_err("unknown nested push authentication fields must fail closed");
+
+        let message = error.to_string();
+        assert!(
+            message.contains("unknown field") && message.contains("extra"),
+            "unexpected unknown-field error: {message}"
+        );
+    }
+
     #[tokio::test]
     async fn build_send_message_request_propagates_interface_tenant() {
         let agent_card = A2aAgentCard {
@@ -909,6 +1552,350 @@ mod tests {
         assert!(error
             .to_string()
             .contains("state transition history support"));
+    }
+
+    #[tokio::test]
+    async fn build_send_message_request_rejects_text_when_skill_declares_json_only_input() {
+        let mut adapter = local_test_adapter(
+            A2aAgentCapabilities::default(),
+            A2aProtocolBinding::JsonRpc,
+            None,
+        );
+        adapter.agent_card.skills[0].input_modes = Some(vec!["application/json".to_string()]);
+
+        let error = adapter
+            .build_send_message_request(
+                &adapter.agent_card.skills[0],
+                A2aSendToolInput {
+                    message: Some("hello".to_string()),
+                    data: None,
+                    context_id: None,
+                    task_id: None,
+                    reference_task_ids: None,
+                    metadata: None,
+                    message_metadata: None,
+                    history_length: None,
+                    return_immediately: None,
+                    stream: false,
+                },
+            )
+            .expect_err("JSON-only A2A skill must reject text parts");
+        assert!(
+            error.to_string().contains("text input mode"),
+            "unexpected input-mode error: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn build_send_message_request_rejects_data_when_skill_declares_text_only_input() {
+        let mut adapter = local_test_adapter(
+            A2aAgentCapabilities::default(),
+            A2aProtocolBinding::JsonRpc,
+            None,
+        );
+        adapter.agent_card.skills[0].input_modes = Some(vec!["text/plain".to_string()]);
+
+        let error = adapter
+            .build_send_message_request(
+                &adapter.agent_card.skills[0],
+                A2aSendToolInput {
+                    message: None,
+                    data: Some(json!({ "query": "hello" })),
+                    context_id: None,
+                    task_id: None,
+                    reference_task_ids: None,
+                    metadata: None,
+                    message_metadata: None,
+                    history_length: None,
+                    return_immediately: None,
+                    stream: false,
+                },
+            )
+            .expect_err("text-only A2A skill must reject JSON data parts");
+        assert!(
+            error.to_string().contains("JSON input mode"),
+            "unexpected input-mode error: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn build_manifest_projects_skill_input_modes_into_tool_schema() {
+        let mut adapter = local_test_adapter(
+            A2aAgentCapabilities::default(),
+            A2aProtocolBinding::JsonRpc,
+            None,
+        );
+        adapter.agent_card.skills[0].input_modes = Some(vec!["application/json".to_string()]);
+
+        let manifest = build_manifest(
+            "tenant-test",
+            "0.1.0",
+            &Keypair::generate().public_key().to_hex(),
+            &adapter.agent_card,
+            &A2aProtocolBinding::JsonRpc,
+        )
+        .expect("build manifest");
+        let properties = manifest.tools[0]
+            .input_schema
+            .get("properties")
+            .and_then(Value::as_object)
+            .expect("manifest input schema exposes properties");
+
+        assert!(!properties.contains_key("message"));
+        assert!(properties.contains_key("data"));
+    }
+
+    #[tokio::test]
+    async fn build_manifest_accepts_parameterized_json_input_mode() {
+        let mut adapter = local_test_adapter(
+            A2aAgentCapabilities::default(),
+            A2aProtocolBinding::JsonRpc,
+            None,
+        );
+        adapter.agent_card.skills[0].input_modes =
+            Some(vec!["application/json; charset=utf-8".to_string()]);
+
+        let manifest = build_manifest(
+            "tenant-test",
+            "0.1.0",
+            &Keypair::generate().public_key().to_hex(),
+            &adapter.agent_card,
+            &A2aProtocolBinding::JsonRpc,
+        )
+        .expect("parameterized JSON mode should project to manifest data input");
+        let properties = manifest.tools[0]
+            .input_schema
+            .get("properties")
+            .and_then(Value::as_object)
+            .expect("manifest input schema exposes properties");
+
+        assert!(!properties.contains_key("message"));
+        assert!(properties.contains_key("data"));
+    }
+
+    #[tokio::test]
+    async fn build_manifest_skips_non_projectable_skills() {
+        let mut adapter = local_test_adapter(
+            A2aAgentCapabilities::default(),
+            A2aProtocolBinding::JsonRpc,
+            None,
+        );
+        let mut image_skill = adapter.agent_card.skills[0].clone();
+        image_skill.id = "image-only".to_string();
+        image_skill.name = "Image Only".to_string();
+        image_skill.input_modes = Some(vec!["image/png".to_string()]);
+        adapter.agent_card.skills.push(image_skill);
+
+        let manifest = build_manifest(
+            "tenant-test",
+            "0.1.0",
+            &Keypair::generate().public_key().to_hex(),
+            &adapter.agent_card,
+            &A2aProtocolBinding::JsonRpc,
+        )
+        .expect("mixed projectable and non-projectable skills should build manifest");
+
+        assert_eq!(manifest.tools.len(), 1);
+        assert_eq!(manifest.tools[0].name, "research");
+    }
+
+    #[tokio::test]
+    async fn build_manifest_rejects_when_no_skills_are_projectable() {
+        let mut adapter = local_test_adapter(
+            A2aAgentCapabilities::default(),
+            A2aProtocolBinding::JsonRpc,
+            None,
+        );
+        adapter.agent_card.skills[0].input_modes = Some(vec!["image/png".to_string()]);
+
+        let error = build_manifest(
+            "tenant-test",
+            "0.1.0",
+            &Keypair::generate().public_key().to_hex(),
+            &adapter.agent_card,
+            &A2aProtocolBinding::JsonRpc,
+        )
+        .expect_err("non-projectable skills should fail manifest construction");
+
+        assert!(matches!(error, AdapterError::NoProjectableSkillsAdvertised));
+        assert!(error
+            .to_string()
+            .contains("none expose a Chio-projectable input mode"));
+    }
+
+    #[tokio::test]
+    async fn invoke_rejects_raw_skill_filtered_from_manifest() {
+        let mut adapter = local_test_adapter(
+            A2aAgentCapabilities::default(),
+            A2aProtocolBinding::JsonRpc,
+            None,
+        );
+        let mut image_skill = adapter.agent_card.skills[0].clone();
+        image_skill.id = "image-only".to_string();
+        image_skill.name = "Image Only".to_string();
+        image_skill.input_modes = Some(vec!["image/png".to_string()]);
+        adapter.agent_card.skills.push(image_skill);
+
+        assert_eq!(adapter.tool_names(), vec!["research".to_string()]);
+
+        let error = adapter
+            .invoke(
+                "image-only",
+                json!({
+                    "get_task": { "id": "task-1" }
+                }),
+                None,
+            )
+            .await
+            .expect_err("non-manifest skill should not be invokable");
+
+        assert!(matches!(
+            error,
+            KernelError::ToolNotRegistered(ref tool_name) if tool_name == "image-only"
+        ));
+    }
+
+    #[tokio::test]
+    async fn invoke_stream_rejects_raw_skill_filtered_from_manifest() {
+        let mut adapter = local_test_adapter(
+            A2aAgentCapabilities {
+                streaming: true,
+                push_notifications: false,
+                state_transition_history: false,
+            },
+            A2aProtocolBinding::JsonRpc,
+            None,
+        );
+        let mut image_skill = adapter.agent_card.skills[0].clone();
+        image_skill.id = "image-only".to_string();
+        image_skill.name = "Image Only".to_string();
+        image_skill.input_modes = Some(vec!["image/png".to_string()]);
+        adapter.agent_card.skills.push(image_skill);
+
+        assert_eq!(adapter.tool_names(), vec!["research".to_string()]);
+
+        let error = adapter
+            .invoke_stream(
+                "image-only",
+                json!({
+                    "subscribe_task": { "id": "task-1" }
+                }),
+                None,
+            )
+            .await
+            .expect_err("non-manifest skill should not be stream-invokable");
+
+        assert!(matches!(
+            error,
+            KernelError::ToolNotRegistered(ref tool_name) if tool_name == "image-only"
+        ));
+    }
+
+    #[tokio::test]
+    async fn build_send_message_request_accepts_parameterized_text_and_json_input_modes() {
+        let mut adapter = local_test_adapter(
+            A2aAgentCapabilities::default(),
+            A2aProtocolBinding::JsonRpc,
+            None,
+        );
+        adapter.agent_card.skills[0].input_modes = Some(vec![
+            "text/plain; charset=utf-8".to_string(),
+            "application/json; charset=utf-8".to_string(),
+        ]);
+
+        let request = adapter
+            .build_send_message_request(
+                &adapter.agent_card.skills[0],
+                A2aSendToolInput {
+                    message: Some("hello".to_string()),
+                    data: Some(json!({ "query": "hello" })),
+                    context_id: None,
+                    task_id: None,
+                    reference_task_ids: None,
+                    metadata: None,
+                    message_metadata: None,
+                    history_length: None,
+                    return_immediately: None,
+                    stream: false,
+                },
+            )
+            .expect("parameterized text and JSON modes should admit both part shapes");
+
+        assert_eq!(request.message.parts.len(), 2);
+        assert_eq!(
+            request.message.parts[0].media_type.as_deref(),
+            Some("text/plain")
+        );
+        assert_eq!(
+            request.message.parts[1].media_type.as_deref(),
+            Some("application/json")
+        );
+    }
+
+    #[tokio::test]
+    async fn empty_default_input_modes_accept_text_and_json() {
+        let mut adapter = local_test_adapter(
+            A2aAgentCapabilities::default(),
+            A2aProtocolBinding::JsonRpc,
+            None,
+        );
+        adapter.agent_card.default_input_modes.clear();
+        adapter.agent_card.skills[0].input_modes = None;
+
+        let manifest = build_manifest(
+            "tenant-test",
+            "0.1.0",
+            &Keypair::generate().public_key().to_hex(),
+            &adapter.agent_card,
+            &A2aProtocolBinding::JsonRpc,
+        )
+        .expect("empty default input modes should fall back to text and JSON");
+        let properties = manifest.tools[0]
+            .input_schema
+            .get("properties")
+            .and_then(Value::as_object)
+            .expect("manifest input schema exposes properties");
+        assert!(properties.contains_key("message"));
+        assert!(properties.contains_key("data"));
+
+        let request = adapter
+            .build_send_message_request(
+                &adapter.agent_card.skills[0],
+                A2aSendToolInput {
+                    message: Some("hello".to_string()),
+                    data: Some(json!({ "query": "hello" })),
+                    context_id: None,
+                    task_id: None,
+                    reference_task_ids: None,
+                    metadata: None,
+                    message_metadata: None,
+                    history_length: None,
+                    return_immediately: None,
+                    stream: false,
+                },
+            )
+            .expect("empty default input modes should admit text and JSON parts");
+
+        assert_eq!(request.message.parts.len(), 2);
+    }
+
+    #[test]
+    fn send_message_schema_requirement_rejects_empty_surface() {
+        let mut one_of = Vec::new();
+        let error = append_send_message_schema_requirement(
+            &mut one_of,
+            A2aSkillInputSurface {
+                accepts_text: false,
+                accepts_json: false,
+            },
+        )
+        .expect_err("empty send surface must not emit an empty anyOf schema");
+
+        assert!(
+            error.to_string().contains("SendMessage schema requires"),
+            "unexpected schema invariant error: {error}"
+        );
+        assert!(one_of.is_empty());
     }
 
     #[tokio::test]
@@ -1222,6 +2209,164 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn adapter_blocking_registry_conflict_rejects_rebound_task_response() {
+        let registry_path = unique_path("chio-a2a-http-blocking-conflict", ".json");
+        let Some(server) = FakeA2aServer::spawn_http_json() else {
+            return;
+        };
+        let manifest_key = Keypair::generate();
+        let adapter = A2aAdapter::discover(
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
+                .with_task_registry_file(&registry_path)
+                .with_timeout(Duration::from_secs(2)),
+        )
+        .expect("discover HTTP+JSON adapter");
+        seed_a2a_task(&adapter, "clinical_search", "task-1");
+
+        let error = adapter
+            .invoke(
+                "research",
+                json!({
+                    "data": { "query": "hypertension staging guidelines" },
+                    "return_immediately": true
+                }),
+                None,
+            )
+            .await
+            .expect_err("registry conflict should fail the blocking response");
+        server.join();
+
+        assert!(error.to_string().contains("attempted to rebind"));
+        assert!(
+            adapter
+                .validate_task_binding("research", "task-1", "test_follow_up")
+                .is_err(),
+            "conflicting registry binding must still deny future follow-up"
+        );
+
+        let _ = fs::remove_file(registry_path);
+    }
+
+    #[tokio::test]
+    async fn adapter_streaming_registry_conflict_rejects_rebound_stream() {
+        let registry_path = unique_path("chio-a2a-jsonrpc-stream-conflict", ".json");
+        let Some(server) = FakeA2aServer::spawn_jsonrpc_streaming_complete() else {
+            return;
+        };
+        let manifest_key = Keypair::generate();
+        let adapter = A2aAdapter::discover(
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
+                .with_task_registry_file(&registry_path)
+                .with_timeout(Duration::from_secs(2)),
+        )
+        .expect("discover JSONRPC adapter");
+        seed_a2a_task(&adapter, "clinical_search", "task-1");
+
+        let error = adapter
+            .invoke_stream(
+                "research",
+                json!({
+                    "message": "Stream the answer",
+                    "stream": true
+                }),
+                None,
+            )
+            .await
+            .expect_err("registry conflict should fail the stream response");
+        server.join();
+
+        assert!(error.to_string().contains("attempted to rebind"));
+        assert!(
+            adapter
+                .validate_task_binding("research", "task-1", "test_follow_up")
+                .is_err(),
+            "conflicting registry binding must still deny future follow-up"
+        );
+
+        let _ = fs::remove_file(registry_path);
+    }
+
+    #[tokio::test]
+    async fn adapter_streaming_registry_corruption_fails_closed() {
+        let registry_path = unique_path("chio-a2a-jsonrpc-stream-corrupt", ".json");
+        let Some(server) = FakeA2aServer::spawn_jsonrpc_streaming_complete() else {
+            return;
+        };
+        let manifest_key = Keypair::generate();
+        let adapter = A2aAdapter::discover(
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
+                .with_task_registry_file(&registry_path)
+                .with_timeout(Duration::from_secs(2)),
+        )
+        .expect("discover JSONRPC adapter");
+        fs::write(&registry_path, b"{not-json").expect("corrupt task registry");
+
+        let stream_result = adapter
+            .invoke_stream(
+                "research",
+                json!({
+                    "message": "Stream the answer",
+                    "stream": true
+                }),
+                None,
+            )
+            .await;
+        server.join();
+
+        let error = stream_result.expect_err("corrupt stream registry should fail closed");
+        assert!(
+            error
+                .to_string()
+                .contains("failed to parse A2A task registry"),
+            "unexpected stream error: {error}"
+        );
+
+        let _ = fs::remove_file(registry_path);
+    }
+
+    #[tokio::test]
+    async fn adapter_streaming_registry_corruption_with_rebind_phrase_fails_closed() {
+        let registry_path = unique_path(
+            "chio-a2a-jsonrpc-stream-attempted to rebind-corrupt",
+            ".json",
+        );
+        let Some(server) = FakeA2aServer::spawn_jsonrpc_streaming_complete() else {
+            return;
+        };
+        let manifest_key = Keypair::generate();
+        let adapter = A2aAdapter::discover(
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
+                .with_task_registry_file(&registry_path)
+                .with_timeout(Duration::from_secs(2)),
+        )
+        .expect("discover JSONRPC adapter");
+        fs::write(&registry_path, b"{not-json").expect("corrupt task registry");
+
+        let stream_result = adapter
+            .invoke_stream(
+                "research",
+                json!({
+                    "message": "Stream the answer",
+                    "stream": true
+                }),
+                None,
+            )
+            .await;
+        server.join();
+
+        let error = stream_result
+            .expect_err("corrupt stream registry path text must not bypass fail-closed handling");
+        assert!(
+            error
+                .to_string()
+                .contains("failed to parse A2A task registry"),
+            "unexpected stream error: {error}"
+        );
+
+        let _ = fs::remove_file(registry_path);
+    }
+
+    #[tokio::test]
     async fn adapter_http_json_streaming_invocation_returns_complete_stream() {
         let Some(server) = FakeA2aServer::spawn_http_json_streaming_complete() else {
             return;
@@ -1328,6 +2473,111 @@ mod tests {
         let error = parse_sse_stream(body.as_bytes(), Ok).unwrap_err();
 
         assert!(error.to_string().contains("line"));
+    }
+
+    #[tokio::test]
+    async fn sse_parser_rejects_oversized_delimiterless_line() {
+        let body = format!("data: {}", "x".repeat(MAX_SSE_LINE_BYTES + 1));
+
+        let error = parse_sse_stream(body.as_bytes(), Ok).unwrap_err();
+
+        assert!(error.to_string().contains("line"));
+    }
+
+    #[tokio::test]
+    async fn sse_parser_charges_oversized_line_against_response_limit() {
+        let body = format!("data: {}\n", "x".repeat(MAX_SSE_LINE_BYTES + 1));
+
+        let error = parse_sse_stream_with_limit(body.as_bytes(), 8, Ok).unwrap_err();
+        let message = error.to_string();
+
+        assert!(message.contains("response bytes"));
+        assert!(!message.contains("line"));
+    }
+
+    #[tokio::test]
+    async fn sse_parser_charges_delimiterless_line_against_response_limit() {
+        let body = format!("data: {}", "x".repeat(MAX_SSE_LINE_BYTES + 1));
+
+        let error = parse_sse_stream_with_limit(body.as_bytes(), 8, Ok).unwrap_err();
+        let message = error.to_string();
+
+        assert!(message.contains("response bytes"));
+        assert!(!message.contains("line"));
+    }
+
+    #[tokio::test]
+    async fn sse_line_reader_consumes_chunk_on_response_limit_error() {
+        let body = b"data: overflow\nnext: event\n";
+        let mut reader = BufReader::new(body.as_slice());
+        let mut line = String::new();
+        let mut total_bytes = 0;
+
+        let error = read_sse_line(&mut reader, &mut line, &mut total_bytes, 8).unwrap_err();
+
+        assert!(error.to_string().contains("response bytes"));
+        assert!(line.is_empty());
+        assert_eq!(total_bytes, "data: overflow\n".len() as u64);
+        assert_eq!(reader.fill_buf().unwrap(), b"next: event\n");
+    }
+
+    #[tokio::test]
+    async fn sse_line_reader_consumes_chunk_on_byte_counter_overflow_error() {
+        let body = b"data: overflow\nnext: event\n";
+        let mut reader = BufReader::new(body.as_slice());
+        let mut line = String::new();
+        let mut total_bytes = u64::MAX;
+
+        let error =
+            read_sse_line(&mut reader, &mut line, &mut total_bytes, u64::MAX).unwrap_err();
+
+        assert!(error.to_string().contains("byte counter overflowed"));
+        assert!(line.is_empty());
+        assert_eq!(total_bytes, u64::MAX);
+        assert_eq!(reader.fill_buf().unwrap(), b"next: event\n");
+    }
+
+    #[tokio::test]
+    async fn sse_parser_preserves_utf8_split_across_reads() {
+        struct OneByteReader {
+            bytes: Vec<u8>,
+            offset: usize,
+        }
+
+        impl Read for OneByteReader {
+            fn read(&mut self, output: &mut [u8]) -> std::io::Result<usize> {
+                if self.offset >= self.bytes.len() || output.is_empty() {
+                    return Ok(0);
+                }
+                output[0] = self.bytes[self.offset];
+                self.offset += 1;
+                Ok(1)
+            }
+        }
+
+        let text = "caf\u{00e9}";
+        let terminal = json!({
+            "message": {
+                "messageId": "msg-utf8",
+                "role": "agent",
+                "parts": [{ "text": text }]
+            }
+        });
+        let body = format!("data: {}\n\n", serde_json::to_string(&terminal).unwrap());
+
+        let parsed = parse_sse_stream(
+            OneByteReader {
+                bytes: body.into_bytes(),
+                offset: 0,
+            },
+            Ok,
+        )
+        .unwrap();
+
+        let ToolServerStreamResult::Complete(stream) = parsed else {
+            panic!("expected terminal stream to complete");
+        };
+        assert_eq!(stream.chunks[0].data["message"]["parts"][0]["text"], text);
     }
 
     #[tokio::test]
@@ -1801,6 +3051,140 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn adapter_rejects_push_notification_callback_url_userinfo_before_dispatch() {
+        let registry_path = unique_path("chio-a2a-userinfo-push", ".json");
+        let Some(server) = FakeA2aServer::spawn_jsonrpc_push_notification_capability_only() else {
+            return;
+        };
+        let manifest_key = Keypair::generate();
+        let adapter = A2aAdapter::discover(
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
+                .with_task_registry_file(&registry_path)
+                .with_timeout(Duration::from_secs(2)),
+        )
+        .expect("discover JSONRPC adapter");
+        seed_a2a_task(&adapter, "research", "task-1");
+
+        let error = adapter
+            .invoke(
+                "research",
+                json!({
+                    "create_push_notification_config": {
+                        "task_id": "task-1",
+                        "url": "https://user:secret@callbacks.example.com/chio"
+                    }
+                }),
+                None,
+            )
+            .await
+            .expect_err("callback URL userinfo should fail closed");
+        assert!(error
+            .to_string()
+            .contains("push notification URL must not include userinfo"));
+        assert_eq!(server.requests().len(), 1);
+        server.join();
+    }
+
+    #[tokio::test]
+    async fn adapter_rejects_push_notification_callback_url_fragment_before_dispatch() {
+        let registry_path = unique_path("chio-a2a-fragment-push", ".json");
+        let Some(server) = FakeA2aServer::spawn_jsonrpc_push_notification_capability_only() else {
+            return;
+        };
+        let manifest_key = Keypair::generate();
+        let adapter = A2aAdapter::discover(
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
+                .with_task_registry_file(&registry_path)
+                .with_timeout(Duration::from_secs(2)),
+        )
+        .expect("discover JSONRPC adapter");
+        seed_a2a_task(&adapter, "research", "task-1");
+
+        let error = adapter
+            .invoke(
+                "research",
+                json!({
+                    "create_push_notification_config": {
+                        "task_id": "task-1",
+                        "url": "https://callbacks.example.com/chio#secret"
+                    }
+                }),
+                None,
+            )
+            .await
+            .expect_err("callback URL fragment should fail closed");
+        assert!(error
+            .to_string()
+            .contains("push notification URL must not include a fragment"));
+        assert_eq!(server.requests().len(), 1);
+        server.join();
+    }
+
+    #[tokio::test]
+    async fn adapter_rejects_malformed_push_notification_auth_material_before_dispatch() {
+        let registry_path = unique_path("chio-a2a-push-auth-material", ".json");
+        let Some(server) = FakeA2aServer::spawn_jsonrpc_push_notification_capability_only() else {
+            return;
+        };
+        let manifest_key = Keypair::generate();
+        let adapter = A2aAdapter::discover(
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
+                .with_task_registry_file(&registry_path)
+                .with_timeout(Duration::from_secs(2)),
+        )
+        .expect("discover JSONRPC adapter");
+        seed_a2a_task(&adapter, "research", "task-1");
+
+        for (input, expected_error) in [
+            (
+                json!({
+                    "task_id": "task-1",
+                    "url": "https://callbacks.example.com/chio",
+                    "token": " "
+                }),
+                "`create_push_notification_config.token` must be a non-empty unpadded string without control characters",
+            ),
+            (
+                json!({
+                    "task_id": "task-1",
+                    "url": "https://callbacks.example.com/chio",
+                    "authentication": {
+                        "scheme": "bearer\n",
+                        "credentials": "callback-secret"
+                    }
+                }),
+                "`authentication.scheme` must be a non-empty HTTP token",
+            ),
+            (
+                json!({
+                    "task_id": "task-1",
+                    "url": "https://callbacks.example.com/chio",
+                    "authentication": {
+                        "scheme": "bearer",
+                        "credentials": " callback-secret "
+                    }
+                }),
+                "`authentication.credentials` must be a non-empty unpadded string without control characters",
+            ),
+        ] {
+            let error = adapter
+                .invoke(
+                    "research",
+                    json!({ "create_push_notification_config": input }),
+                    None,
+                )
+                .await
+                .expect_err("malformed push notification auth material should fail closed");
+            assert!(
+                error.to_string().contains(expected_error),
+                "unexpected push auth material error: {error}"
+            );
+            assert_eq!(server.requests().len(), 1);
+        }
+        server.join();
+    }
+
+    #[tokio::test]
     async fn adapter_oauth2_client_credentials_fetches_token_and_caches_it() {
         let Some(server) = FakeA2aServer::spawn_jsonrpc_oauth_client_credentials_required() else {
             return;
@@ -1929,6 +3313,216 @@ mod tests {
             message.contains("body-bearing request rejected cross-origin redirect"),
             "expected body-bearing redirect rejection, got: {message}"
         );
+    }
+
+    #[test]
+    fn oauth_client_credentials_rejects_token_response_without_bearer_type() {
+        let Some(listener) = bind_fake_a2a_listener("OAuth token type listener") else {
+            return;
+        };
+        let address = listener.local_addr().expect("token listener address");
+        let base_url = format!("http://{address}");
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept token request");
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .expect("set token read timeout");
+            let request = read_http_request(&mut stream);
+            assert!(request.starts_with("POST /oauth/token HTTP/1.1"));
+            assert!(request.contains("grant_type=client_credentials"));
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 49\r\nConnection: close\r\n\r\n{{\"access_token\":\"opaque-token\",\"expires_in\":3600}}"
+            )
+            .expect("write token response");
+        });
+
+        let transport_config = A2aTransportConfig {
+            default_tls_config: None,
+            mutual_tls_config: None,
+            egress_contract: Some(test_egress_contract(&base_url)),
+        };
+        let token_endpoint =
+            Url::parse(&format!("{base_url}/oauth/token")).expect("token endpoint URL");
+        let credentials = A2aOAuthClientCredentials {
+            client_id: "client-id".to_string(),
+            client_secret: "client-secret".to_string(),
+        };
+
+        let error = request_client_credentials_token(
+            &token_endpoint,
+            &credentials,
+            &["a2a.invoke".to_string()],
+            Duration::from_secs(2),
+            &transport_config,
+        )
+        .expect_err("token response without bearer token_type must fail closed");
+
+        handle.join().expect("join token type server");
+        assert!(
+            error.to_string().contains("token_type"),
+            "unexpected token response error: {error}"
+        );
+    }
+
+    #[test]
+    fn oauth_client_credentials_rejects_padded_access_token() {
+        let Some(listener) = bind_fake_a2a_listener("OAuth padded access token listener") else {
+            return;
+        };
+        let address = listener.local_addr().expect("token listener address");
+        let base_url = format!("http://{address}");
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept token request");
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .expect("set token read timeout");
+            let request = read_http_request(&mut stream);
+            assert!(request.starts_with("POST /oauth/token HTTP/1.1"));
+            assert!(request.contains("grant_type=client_credentials"));
+            let body =
+                r#"{"access_token":" opaque-token ","token_type":"bearer","expires_in":3600}"#;
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body,
+            )
+            .expect("write token response");
+        });
+
+        let transport_config = A2aTransportConfig {
+            default_tls_config: None,
+            mutual_tls_config: None,
+            egress_contract: Some(test_egress_contract(&base_url)),
+        };
+        let token_endpoint =
+            Url::parse(&format!("{base_url}/oauth/token")).expect("token endpoint URL");
+        let credentials = A2aOAuthClientCredentials {
+            client_id: "client-id".to_string(),
+            client_secret: "client-secret".to_string(),
+        };
+
+        let error = request_client_credentials_token(
+            &token_endpoint,
+            &credentials,
+            &["a2a.invoke".to_string()],
+            Duration::from_secs(2),
+            &transport_config,
+        )
+        .expect_err("padded access_token must fail closed");
+
+        handle.join().expect("join padded access token server");
+        assert!(
+            error.to_string().contains("surrounding whitespace"),
+            "unexpected token response error: {error}"
+        );
+    }
+
+    #[test]
+    fn oauth_client_credentials_rejects_control_access_token() {
+        let Some(listener) = bind_fake_a2a_listener("OAuth control access token listener") else {
+            return;
+        };
+        let address = listener.local_addr().expect("token listener address");
+        let base_url = format!("http://{address}");
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept token request");
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .expect("set token read timeout");
+            let request = read_http_request(&mut stream);
+            assert!(request.starts_with("POST /oauth/token HTTP/1.1"));
+            assert!(request.contains("grant_type=client_credentials"));
+            let body =
+                r#"{"access_token":"opaque\n-token","token_type":"bearer","expires_in":3600}"#;
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body,
+            )
+            .expect("write token response");
+        });
+
+        let transport_config = A2aTransportConfig {
+            default_tls_config: None,
+            mutual_tls_config: None,
+            egress_contract: Some(test_egress_contract(&base_url)),
+        };
+        let token_endpoint =
+            Url::parse(&format!("{base_url}/oauth/token")).expect("token endpoint URL");
+        let credentials = A2aOAuthClientCredentials {
+            client_id: "client-id".to_string(),
+            client_secret: "client-secret".to_string(),
+        };
+
+        let error = request_client_credentials_token(
+            &token_endpoint,
+            &credentials,
+            &["a2a.invoke".to_string()],
+            Duration::from_secs(2),
+            &transport_config,
+        )
+        .expect_err("control access_token must fail closed");
+
+        handle.join().expect("join control access token server");
+        assert!(
+            error.to_string().contains("whitespace or control"),
+            "unexpected token response error: {error}"
+        );
+    }
+
+    #[test]
+    fn oauth_client_credentials_accepts_padded_bearer_token_type() {
+        let Some(listener) = bind_fake_a2a_listener("OAuth padded token type listener") else {
+            return;
+        };
+        let address = listener.local_addr().expect("token listener address");
+        let base_url = format!("http://{address}");
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept token request");
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .expect("set token read timeout");
+            let request = read_http_request(&mut stream);
+            assert!(request.starts_with("POST /oauth/token HTTP/1.1"));
+            assert!(request.contains("grant_type=client_credentials"));
+            let body =
+                r#"{"access_token":"opaque-token","token_type":"  bEaReR  ","expires_in":3600}"#;
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body,
+            )
+            .expect("write token response");
+        });
+
+        let transport_config = A2aTransportConfig {
+            default_tls_config: None,
+            mutual_tls_config: None,
+            egress_contract: Some(test_egress_contract(&base_url)),
+        };
+        let token_endpoint =
+            Url::parse(&format!("{base_url}/oauth/token")).expect("token endpoint URL");
+        let credentials = A2aOAuthClientCredentials {
+            client_id: "client-id".to_string(),
+            client_secret: "client-secret".to_string(),
+        };
+
+        let token = request_client_credentials_token(
+            &token_endpoint,
+            &credentials,
+            &["a2a.invoke".to_string()],
+            Duration::from_secs(2),
+            &transport_config,
+        )
+        .expect("padded bearer token_type is accepted");
+
+        handle.join().expect("join padded token type server");
+        assert_eq!(token.access_token, "opaque-token");
+        assert_eq!(token.token_type.as_deref(), Some("  bEaReR  "));
     }
 
     #[tokio::test]
@@ -2182,6 +3776,31 @@ mod tests {
         assert!(requests[1].starts_with("POST /message:send?a2a_key=secret-key "));
         assert!(!requests[1].contains("Authorization: Bearer"));
         server.join();
+    }
+
+    #[test]
+    fn adapter_api_key_query_security_rejects_empty_value_before_dispatch() {
+        let mut adapter = local_test_adapter(
+            A2aAgentCapabilities::default(),
+            A2aProtocolBinding::HttpJson,
+            None,
+        );
+        let (security_schemes, security_requirements) =
+            agent_card_security_metadata(TestScenario::ApiKeyQueryRequired, "http://localhost");
+        adapter.agent_card.security_schemes = Some(security_schemes);
+        adapter.agent_card.security_requirements = Some(security_requirements);
+        adapter.configured_query_params = vec![A2aRequestQueryParam {
+            name: "a2a_key".to_string(),
+            value: String::new(),
+            sensitive: false,
+        }];
+
+        let error = adapter
+            .resolve_request_auth(&adapter.agent_card.skills[0])
+            .expect_err("empty API key query value should fail closed before dispatch");
+        assert!(error
+            .to_string()
+            .contains("request query parameter value"));
     }
 
     #[tokio::test]
@@ -3280,6 +4899,7 @@ mod tests {
         OAuthClientCredentialsRequired,
         OAuthClientCredentialsSingleInvoke,
         OpenIdClientCredentialsRequired,
+        MissingSendMessageResult,
         StreamingComplete,
         StreamingIncomplete,
         SubscribeComplete,
@@ -3310,6 +4930,10 @@ mod tests {
 
         fn spawn_jsonrpc_task_follow_up() -> Option<Self> {
             Self::spawn(TestBinding::JsonRpc, TestScenario::TaskFollowUp)
+        }
+
+        fn spawn_jsonrpc_missing_send_message_result() -> Option<Self> {
+            Self::spawn(TestBinding::JsonRpc, TestScenario::MissingSendMessageResult)
         }
 
         fn spawn_http_json() -> Option<Self> {
@@ -3432,6 +5056,7 @@ mod tests {
                     TestScenario::OAuthClientCredentialsRequired => 4,
                     TestScenario::OAuthClientCredentialsSingleInvoke => 3,
                     TestScenario::OpenIdClientCredentialsRequired => 4,
+                    TestScenario::MissingSendMessageResult => 2,
                     TestScenario::StreamingComplete
                     | TestScenario::StreamingIncomplete
                     | TestScenario::SubscribeComplete
@@ -3907,9 +5532,14 @@ mod tests {
                                 }]
                             }
                         }
-                    })
+                        })
                     .into()
                 }
+                TestScenario::MissingSendMessageResult => json!({
+                    "jsonrpc": "2.0",
+                    "id": 1
+                })
+                .into(),
                 TestScenario::OAuthClientCredentialsRequired
                 | TestScenario::OAuthClientCredentialsSingleInvoke => {
                     assert!(request.contains("Authorization: Bearer oauth-access-token"));
@@ -4117,6 +5747,9 @@ mod tests {
             | TestScenario::OpenIdClientCredentialsRequired => {
                 panic!("unexpected blocking send for OAuth/OpenID scenario")
             }
+            TestScenario::MissingSendMessageResult => {
+                panic!("unexpected HTTP send for JSON-RPC malformed-result scenario")
+            }
             TestScenario::StreamingComplete
             | TestScenario::StreamingIncomplete
             | TestScenario::SubscribeComplete
@@ -4237,7 +5870,7 @@ mod tests {
                 assert!(request.contains("a2a.invoke"));
                 json!({
                     "access_token": "oauth-access-token",
-                    "token_type": "Bearer",
+                    "token_type": "  Bearer  ",
                     "expires_in": 3600
                 })
                 .into()
@@ -4397,6 +6030,7 @@ mod tests {
             | TestScenario::CancelTask
             | TestScenario::PushNotificationCrud
             | TestScenario::PushNotificationCapabilityOnly
+            | TestScenario::MissingSendMessageResult
             | TestScenario::StreamingComplete
             | TestScenario::StreamingIncomplete
             | TestScenario::SubscribeComplete

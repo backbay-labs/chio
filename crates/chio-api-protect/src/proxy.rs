@@ -32,9 +32,9 @@ use chio_core_types::receipt::{
 use chio_http_core::{
     client_builder_with_contract, handle_batch_respond, handle_get_approval, handle_list_pending,
     handle_respond, http_status_metadata_decision, http_status_metadata_final, send_with_contract,
-    ApprovalAdmin, ApprovalHandlerError, AuthMethod, BatchRespondRequest, CallerIdentity,
-    ChioHttpRequest, EvaluateResponse, HealthResponse, HttpEgressContract, HttpMethod, HttpReceipt,
-    HttpReceiptBody, PendingQuery, RespondRequest, SidecarStatus, Verdict, VerifyReceiptResponse,
+    ApprovalAdmin, ApprovalHandlerError, BatchRespondRequest, CallerIdentity, ChioHttpRequest,
+    EvaluateResponse, HealthResponse, HttpEgressContract, HttpMethod, HttpReceipt, HttpReceiptBody,
+    PendingQuery, RespondRequest, SidecarStatus, Verdict, VerifyReceiptResponse,
 };
 use chio_kernel::{ApprovalOutcome, ApprovalRequest, ApprovalStore, InMemoryApprovalStore};
 use chio_openapi::{ChioExtensions, DefaultPolicy};
@@ -78,7 +78,7 @@ mod tests {
         GovernedApprovalToken, GovernedApprovalTokenBody,
     };
     use chio_http_core::{
-        http_status_scope, RespondResponse, CHIO_HTTP_STATUS_SCOPE_DECISION,
+        http_status_scope, AuthMethod, RespondResponse, CHIO_HTTP_STATUS_SCOPE_DECISION,
         CHIO_HTTP_STATUS_SCOPE_FINAL,
     };
     use chio_kernel::{ApprovalOutcome, ApprovalRequest};
@@ -566,6 +566,43 @@ paths:
             forwarded_query_string(Some(&query)).as_deref(),
             Some("source=test&mode=full")
         );
+    }
+
+    #[test]
+    fn extract_caller_identity_rejects_blank_or_padded_credentials() {
+        for (header_name, header_value) in [
+            ("authorization", "Bearer "),
+            ("authorization", "Bearer token-with-padding "),
+            ("authorization", "Bearer token\nwith-control"),
+            ("x-api-key", ""),
+            ("x-api-key", " api-key-with-padding"),
+            ("x-api-key", "api-key\nwith-control"),
+        ] {
+            let mut headers = HashMap::new();
+            headers.insert(header_name.to_string(), header_value.to_string());
+
+            let caller = extract_caller_identity(&headers);
+
+            assert!(
+                matches!(caller.auth_method, AuthMethod::Anonymous),
+                "expected anonymous caller for {header_name}: {header_value:?}, got {caller:?}"
+            );
+            assert_eq!(caller.subject, "anonymous");
+        }
+    }
+
+    #[test]
+    fn chio_transport_header_helpers_are_case_insensitive() {
+        let token = signed_capability_token_json(&Keypair::generate(), "cap-header-case");
+        let mut headers = HashMap::new();
+        headers.insert("X-CHIO-CAPABILITY".to_string(), token.clone());
+        let query = HashMap::new();
+
+        assert_eq!(
+            extract_presented_capability_from_maps(&headers, &query),
+            Some(token.as_str())
+        );
+        assert!(!should_forward_request_header("X-CHIO-CAPABILITY"));
     }
 
     #[tokio::test]

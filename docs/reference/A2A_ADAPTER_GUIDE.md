@@ -82,6 +82,13 @@ Task-history semantics are also fail-closed. Chio will only send
 `historyLength` on `SendMessage` or `GetTask` when the Agent Card advertises
 `capabilities.stateTransitionHistory = true`.
 
+Skill input modes are projected into the generated Chio tool schema. A skill
+that advertises only `application/json` accepts the `data` field but not
+`message`; a skill that advertises only `text` or `text/plain` accepts
+`message` but not `data`. Invocation also checks the selected skill before
+serializing an A2A part, so unsupported text or JSON payloads fail locally
+instead of being sent upstream.
+
 Lifecycle payload validation is fail-closed too. `SendMessage` task responses,
 `GetTask` results, streamed `task` objects, `statusUpdate` events, and
 `artifactUpdate` events must contain the required lifecycle fields Chio relies
@@ -289,7 +296,7 @@ and you want discovery to fail closed instead of silently adapting:
 - `with_required_tenant(...)` rejects the partner if the selected interface
   advertises a different tenant
 - `require_skill(...)` rejects the partner if the Agent Card does not expose
-  the required skill ids
+  the required skill ids as Chio-projectable tools
 - `require_security_scheme(...)` rejects the partner if the required scheme is
   missing or not referenced by the Agent Card security requirements
 - `allow_interface_origin(...)` rejects the partner if no supported interface

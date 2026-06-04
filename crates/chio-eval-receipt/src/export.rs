@@ -28,12 +28,17 @@ const CORPUS_NAME: &str = "chio-verdict-matrix";
 pub enum ExportError {
     /// A required field was empty or whitespace-only.
     EmptyField(&'static str),
+    /// A required identity field had surrounding whitespace.
+    PaddedField(&'static str),
 }
 
 impl std::fmt::Display for ExportError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::EmptyField(field) => write!(formatter, "required export field is empty: {field}"),
+            Self::PaddedField(field) => {
+                write!(formatter, "required export field is padded: {field}")
+            }
         }
     }
 }
@@ -78,18 +83,18 @@ impl EvalRunMeta {
     /// Validate and own eval-run metadata.
     pub fn from_parts(parts: EvalRunMetaParts<'_>) -> Result<Self, ExportError> {
         Ok(Self {
-            bundle_id: required("bundle_id", parts.bundle_id)?,
-            created_at: required("created_at", parts.created_at)?,
-            producer_commit: required("producer_commit", parts.producer_commit)?,
-            workflow_run_url: required("workflow_run_url", parts.workflow_run_url)?,
-            run_id: required("run_id", parts.run_id)?,
-            partner: required("partner", parts.partner)?,
-            partner_slug: required("partner_slug", parts.partner_slug)?,
-            pipeline: required("pipeline", parts.pipeline)?,
-            pipeline_language: required("pipeline_language", parts.pipeline_language)?,
-            model_under_eval: required("model_under_eval", parts.model_under_eval)?,
-            scorer_name: required("scorer_name", parts.scorer_name)?,
-            scorer_version: required("scorer_version", parts.scorer_version)?,
+            bundle_id: required_text("bundle_id", parts.bundle_id)?,
+            created_at: required_text("created_at", parts.created_at)?,
+            producer_commit: required_text("producer_commit", parts.producer_commit)?,
+            workflow_run_url: required_text("workflow_run_url", parts.workflow_run_url)?,
+            run_id: required_text("run_id", parts.run_id)?,
+            partner: required_text("partner", parts.partner)?,
+            partner_slug: required_text("partner_slug", parts.partner_slug)?,
+            pipeline: required_text("pipeline", parts.pipeline)?,
+            pipeline_language: required_text("pipeline_language", parts.pipeline_language)?,
+            model_under_eval: required_text("model_under_eval", parts.model_under_eval)?,
+            scorer_name: required_text("scorer_name", parts.scorer_name)?,
+            scorer_version: required_text("scorer_version", parts.scorer_version)?,
         })
     }
 }
@@ -120,12 +125,12 @@ impl Receipt {
     /// Validate and own a receipt wrapper input.
     pub fn from_parts(parts: ReceiptParts<'_>) -> Result<Self, ExportError> {
         Ok(Self {
-            scenario_id: required("scenario_id", parts.scenario_id)?,
-            category: required("category", parts.category)?,
-            verdict: required("verdict", parts.verdict)?,
-            receipt_payload: required("receipt_payload", parts.receipt_payload)?,
-            trace_id: required("trace_id", parts.trace_id)?,
-            sample_id: required("sample_id", parts.sample_id)?,
+            scenario_id: required_text("scenario_id", parts.scenario_id)?,
+            category: required_text("category", parts.category)?,
+            verdict: required_text("verdict", parts.verdict)?,
+            receipt_payload: required_payload("receipt_payload", parts.receipt_payload)?,
+            trace_id: required_text("trace_id", parts.trace_id)?,
+            sample_id: required_text("sample_id", parts.sample_id)?,
         })
     }
 
@@ -223,7 +228,18 @@ pub fn export_scenario_run(receipts: &[Receipt], run_meta: EvalRunMeta) -> Bundl
     }
 }
 
-fn required(field: &'static str, value: &str) -> Result<String, ExportError> {
+fn required_text(field: &'static str, value: &str) -> Result<String, ExportError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        Err(ExportError::EmptyField(field))
+    } else if trimmed != value {
+        Err(ExportError::PaddedField(field))
+    } else {
+        Ok(value.to_owned())
+    }
+}
+
+fn required_payload(field: &'static str, value: &str) -> Result<String, ExportError> {
     if value.trim().is_empty() {
         Err(ExportError::EmptyField(field))
     } else {
@@ -296,6 +312,26 @@ mod tests {
         });
 
         assert_eq!(result, Err(ExportError::EmptyField("run_id")));
+    }
+
+    #[test]
+    fn metadata_constructor_rejects_padded_fields() {
+        let result = EvalRunMeta::from_parts(EvalRunMetaParts {
+            bundle_id: "urn:chio:eval-bundle:metr:test",
+            created_at: "2026-05-02T00:00:00Z",
+            producer_commit: "abc123",
+            workflow_run_url: "local",
+            run_id: " metr-run-001 ",
+            partner: "METR",
+            partner_slug: "metr",
+            pipeline: "vivaria-trace-postprocess",
+            pipeline_language: "python",
+            model_under_eval: "model",
+            scorer_name: "rubric",
+            scorer_version: "v1",
+        });
+
+        assert_eq!(result, Err(ExportError::PaddedField("run_id")));
     }
 
     fn sample_meta() -> Result<EvalRunMeta, ExportError> {

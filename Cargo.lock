@@ -3310,6 +3310,7 @@ version = "0.1.0"
 dependencies = [
  "chio-guard-sdk",
  "chio-guard-sdk-macros",
+ "serde_json",
 ]
 
 [[package]]
@@ -3318,6 +3319,7 @@ version = "0.1.0"
 dependencies = [
  "chio-guard-sdk",
  "chio-guard-sdk-macros",
+ "serde_json",
 ]
 
 [[package]]
@@ -3490,28 +3492,16 @@ dependencies = [
 name = "chio-hosted-mcp"
 version = "0.1.0"
 dependencies = [
- "async-stream",
- "axum 0.8.8",
  "base64 0.22.1",
  "chio-control-plane",
  "chio-core-types",
  "chio-kernel",
- "chio-mcp-adapter",
  "chio-mcp-remote",
  "chio-siem",
- "chio-store-sqlite",
- "p256 0.13.2",
- "p384",
  "reqwest 0.13.2",
- "rsa",
- "rusqlite",
- "serde",
  "serde_json",
  "sha2 0.10.9",
- "subtle",
  "tokio",
- "tracing",
- "ureq 2.12.1",
  "url",
 ]
 
@@ -3755,6 +3745,7 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "tracing",
+ "url",
 ]
 
 [[package]]
@@ -6471,6 +6462,7 @@ dependencies = [
  "chio-kernel",
  "chio-manifest",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -6483,6 +6475,7 @@ dependencies = [
  "chio-kernel",
  "chio-manifest",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -6495,6 +6488,7 @@ dependencies = [
  "chio-manifest",
  "chio-mcp-edge",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -13673,6 +13667,7 @@ dependencies = [
 name = "zed-chio"
 version = "0.1.0"
 dependencies = [
+ "serde_json",
  "toml 0.8.23",
  "zed_extension_api",
 ]

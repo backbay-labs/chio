@@ -1,5 +1,5 @@
 use chio_mcp_adapter_integration::{
-    emit_tool_call_receipt, verify_tool_call_receipt, StreamableHttpTransport,
+    emit_tool_call_receipt, verify_tool_call_receipt, McpReceiptError, StreamableHttpTransport,
 };
 use chio_mcp_edge::{McpToolInfo, McpToolResult, McpTransport};
 use serde_json::json;
@@ -60,4 +60,47 @@ fn streamable_http_transport_round_trip_emits_receipt() -> Result<(), Box<dyn st
     assert_eq!(exchanges[0].headers["mcp-protocol-version"], "2025-06-18");
     assert_eq!(exchanges[1].body["method"], "tools/call");
     Ok(())
+}
+
+#[test]
+fn streamable_http_exchange_log_redacts_bearer_token() -> Result<(), Box<dyn std::error::Error>> {
+    let transport = StreamableHttpTransport::builder()
+        .endpoint_path("/mcp")
+        .bearer_token("sensitive-token")
+        .tool(tool_info(), tool_result())
+        .build()?;
+
+    transport.list_tools()?;
+
+    let exchanges = transport.exchange_log()?;
+    assert_eq!(exchanges[0].headers["authorization"], "Bearer <redacted>");
+    assert!(!format!("{:?}", exchanges).contains("sensitive-token"));
+    Ok(())
+}
+
+#[test]
+fn streamable_http_transport_rejects_padded_bearer_token() {
+    let result = StreamableHttpTransport::builder()
+        .endpoint_path("/mcp")
+        .bearer_token(" sensitive-token")
+        .build();
+
+    let Err(error) = result else {
+        panic!("padded bearer token should fail closed");
+    };
+    assert!(error.to_string().contains("bearer token"));
+}
+
+#[test]
+fn receipt_emission_rejects_padded_capability_id() {
+    let error = emit_tool_call_receipt(
+        " cap-mcp-a",
+        "tenant-a",
+        "chio.receipt.issue",
+        json!({}),
+        json!({}),
+    )
+    .err();
+
+    assert_eq!(error, Some(McpReceiptError::MissingCapabilityId));
 }

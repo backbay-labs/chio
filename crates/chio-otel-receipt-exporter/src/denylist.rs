@@ -3,11 +3,13 @@ use chio_kernel::otel::{ATTR_CHIO_RECEIPT_ID, ATTR_GEN_AI_TOOL_CALL_ID};
 use crate::ingress::{OtlpAttribute, OtlpGrpcTraceExport, OtlpResourceSpans, OtlpSpan};
 
 pub const ATTR_CHIO_REPLAY_RUN_ID: &str = "chio.replay.run_id";
+pub const ATTR_CHIO_TENANT_ID: &str = "chio.tenant.id";
 
-pub const PROMETHEUS_DENIED_ATTRIBUTES: [&str; 3] = [
+pub const PROMETHEUS_DENIED_ATTRIBUTES: [&str; 4] = [
     ATTR_GEN_AI_TOOL_CALL_ID,
     ATTR_CHIO_RECEIPT_ID,
     ATTR_CHIO_REPLAY_RUN_ID,
+    ATTR_CHIO_TENANT_ID,
 ];
 
 pub fn denied_attribute_keys() -> &'static [&'static str] {

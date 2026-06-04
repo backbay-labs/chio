@@ -21,6 +21,7 @@ pub struct A2aAdapter {
 
 impl A2aAdapter {
     pub fn discover(config: A2aAdapterConfig) -> Result<Self, AdapterError> {
+        config.validate_request_auth_material()?;
         let agent_card_url = normalize_agent_card_url(&config.agent_card_url)?;
         let transport_config = A2aTransportConfig {
             default_tls_config: build_optional_default_tls_config(&config.tls_root_ca_pems)?,
@@ -144,14 +145,16 @@ impl A2aAdapter {
                 "{operation} requires an A2A task registry before task `{task_id}` can be used by tool `{tool_name}`"
             )));
         };
-        registry.validate_follow_up(
-            task_id,
-            tool_name,
-            self.server_id(),
-            &self.selected_interface,
-            &self.selected_binding,
+        let partner = self.partner_label();
+        let context = A2aTaskFollowUpContext {
             operation,
-        )
+            tool_name,
+            server_id: self.server_id(),
+            selected_interface: &self.selected_interface,
+            selected_binding: &self.selected_binding,
+            partner: partner.as_str(),
+        };
+        registry.validate_follow_up(task_id, &context)
     }
 
     fn record_task_activity(
@@ -172,7 +175,43 @@ impl A2aAdapter {
             selected_binding: &self.selected_binding,
             partner: partner.as_str(),
         };
-        registry.record_from_value(response, &context)
+        Self::record_classified_task_activity(registry, response, &context)
+    }
+
+    fn record_stream_task_activity(
+        &self,
+        tool_name: &str,
+        response: &Value,
+        source: &str,
+    ) -> Result<(), AdapterError> {
+        validate_stream_response(response.clone())?;
+        let Some(registry) = self.task_registry.as_ref() else {
+            return Ok(());
+        };
+        let partner = self.partner_label();
+        let context = A2aTaskRecordContext {
+            source,
+            tool_name,
+            server_id: self.server_id(),
+            selected_interface: &self.selected_interface,
+            selected_binding: &self.selected_binding,
+            partner: partner.as_str(),
+        };
+        Self::record_classified_task_activity(registry, response, &context)
+    }
+
+    fn record_classified_task_activity(
+        registry: &A2aTaskRegistry,
+        response: &Value,
+        context: &A2aTaskRecordContext<'_>,
+    ) -> Result<(), AdapterError> {
+        if let Err(error) = registry.record_from_value_classified(response, context) {
+            match error {
+                A2aTaskRegistryRecordError::RebindConflict(error) => return Err(error),
+                A2aTaskRegistryRecordError::Fatal(error) => return Err(error),
+            }
+        }
+        Ok(())
     }
 
     fn resolve_request_auth(
@@ -301,6 +340,7 @@ impl A2aAdapter {
                             supported = false;
                             break;
                         };
+                        validate_url_auth_value("request query parameter value", &query_param.value)?;
                         query_params.push(query_param);
                         Ok(None)
                     }
@@ -405,7 +445,7 @@ impl A2aAdapter {
             &self.transport_config,
         )?;
         if let Some(token_type) = response.token_type.as_deref() {
-            if !token_type.eq_ignore_ascii_case("bearer") {
+            if !token_type.trim().eq_ignore_ascii_case("bearer") {
                 return Err(AdapterError::AuthNegotiation(format!(
                     "token endpoint for `{scheme_name}` returned unsupported token type `{token_type}`"
                 )));
@@ -648,6 +688,19 @@ impl A2aAdapter {
         if input.history_length.is_some() {
             self.ensure_state_transition_history_supported()?;
         }
+        let input_surface = skill_input_surface(&self.agent_card, skill)?;
+        if input.message.is_some() && !input_surface.accepts_text {
+            return Err(AdapterError::InvalidToolInput(format!(
+                "A2A skill `{}` does not advertise a text input mode compatible with text parts",
+                skill.id
+            )));
+        }
+        if input.data.is_some() && !input_surface.accepts_json {
+            return Err(AdapterError::InvalidToolInput(format!(
+                "A2A skill `{}` does not advertise a JSON input mode compatible with data parts",
+                skill.id
+            )));
+        }
         let mut parts = Vec::new();
         if let Some(message) = input.message {
             parts.push(A2aPart {
@@ -746,21 +799,7 @@ impl A2aAdapter {
             self.timeout,
             &self.transport_config,
         )?;
-        if response.jsonrpc != "2.0" {
-            return Err(AdapterError::Protocol(format!(
-                "unexpected JSON-RPC version {}",
-                response.jsonrpc
-            )));
-        }
-        if let Some(error) = response.error {
-            return Err(AdapterError::Remote(format!(
-                "A2A JSON-RPC error {}: {}",
-                error.code, error.message
-            )));
-        }
-        let task = response.result.ok_or_else(|| {
-            AdapterError::Protocol("A2A JSON-RPC GetTask response omitted `result`".to_string())
-        })?;
+        let task = decode_jsonrpc_result(response, "GetTask")?;
         validate_task_response(task)
     }
 
@@ -810,21 +849,7 @@ impl A2aAdapter {
             self.timeout,
             &self.transport_config,
         )?;
-        if response.jsonrpc != "2.0" {
-            return Err(AdapterError::Protocol(format!(
-                "unexpected JSON-RPC version {}",
-                response.jsonrpc
-            )));
-        }
-        if let Some(error) = response.error {
-            return Err(AdapterError::Remote(format!(
-                "A2A JSON-RPC error {}: {}",
-                error.code, error.message
-            )));
-        }
-        let task = response.result.ok_or_else(|| {
-            AdapterError::Protocol("A2A JSON-RPC CancelTask response omitted `result`".to_string())
-        })?;
+        let task = decode_jsonrpc_result(response, "CancelTask")?;
         validate_task_response(task)
     }
 
@@ -874,24 +899,7 @@ impl A2aAdapter {
             self.timeout,
             &self.transport_config,
         )?;
-        if response.jsonrpc != "2.0" {
-            return Err(AdapterError::Protocol(format!(
-                "unexpected JSON-RPC version {}",
-                response.jsonrpc
-            )));
-        }
-        if let Some(error) = response.error {
-            return Err(AdapterError::Remote(format!(
-                "A2A JSON-RPC error {}: {}",
-                error.code, error.message
-            )));
-        }
-        response.result.ok_or_else(|| {
-            AdapterError::Protocol(
-                "A2A JSON-RPC CreateTaskPushNotificationConfig response omitted `result`"
-                    .to_string(),
-            )
-        })
+        decode_jsonrpc_result(response, "CreateTaskPushNotificationConfig")
     }
 
     fn create_push_notification_config_http_json(
@@ -940,23 +948,7 @@ impl A2aAdapter {
             self.timeout,
             &self.transport_config,
         )?;
-        if response.jsonrpc != "2.0" {
-            return Err(AdapterError::Protocol(format!(
-                "unexpected JSON-RPC version {}",
-                response.jsonrpc
-            )));
-        }
-        if let Some(error) = response.error {
-            return Err(AdapterError::Remote(format!(
-                "A2A JSON-RPC error {}: {}",
-                error.code, error.message
-            )));
-        }
-        response.result.ok_or_else(|| {
-            AdapterError::Protocol(
-                "A2A JSON-RPC GetTaskPushNotificationConfig response omitted `result`".to_string(),
-            )
-        })
+        decode_jsonrpc_result(response, "GetTaskPushNotificationConfig")
     }
 
     fn get_push_notification_config_http_json(
@@ -1005,24 +997,7 @@ impl A2aAdapter {
             self.timeout,
             &self.transport_config,
         )?;
-        if response.jsonrpc != "2.0" {
-            return Err(AdapterError::Protocol(format!(
-                "unexpected JSON-RPC version {}",
-                response.jsonrpc
-            )));
-        }
-        if let Some(error) = response.error {
-            return Err(AdapterError::Remote(format!(
-                "A2A JSON-RPC error {}: {}",
-                error.code, error.message
-            )));
-        }
-        response.result.ok_or_else(|| {
-            AdapterError::Protocol(
-                "A2A JSON-RPC ListTaskPushNotificationConfigs response omitted `result`"
-                    .to_string(),
-            )
-        })
+        decode_jsonrpc_result(response, "ListTaskPushNotificationConfigs")
     }
 
     fn list_push_notification_configs_http_json(
@@ -1120,7 +1095,10 @@ impl A2aAdapter {
             },
             task_id: validate_identifier("create_push_notification_config.task_id", input.task_id)?,
             url: validate_notification_target_url(input.url.as_str())?,
-            token: input.token.filter(|value| !value.trim().is_empty()),
+            token: validate_optional_push_auth_material(
+                "create_push_notification_config.token",
+                input.token,
+            )?,
             authentication: validate_authentication_info(input.authentication)?,
         })
     }
@@ -1208,21 +1186,7 @@ impl A2aAdapter {
             self.timeout,
             &self.transport_config,
         )?;
-        if response.jsonrpc != "2.0" {
-            return Err(AdapterError::Protocol(format!(
-                "unexpected JSON-RPC version {}",
-                response.jsonrpc
-            )));
-        }
-        if let Some(error) = response.error {
-            return Err(AdapterError::Remote(format!(
-                "A2A JSON-RPC error {}: {}",
-                error.code, error.message
-            )));
-        }
-        let response = response.result.ok_or_else(|| {
-            AdapterError::Protocol("A2A JSON-RPC response omitted `result`".to_string())
-        })?;
+        let response = decode_jsonrpc_result(response, "SendMessage")?;
         validate_send_message_response(response)
     }
 
@@ -1311,6 +1275,44 @@ impl A2aAdapter {
             Ok,
         )
     }
+
+    fn manifest_skill(&self, tool_name: &str) -> Option<&A2aAgentSkill> {
+        if !self.manifest.tools.iter().any(|tool| tool.name == tool_name) {
+            return None;
+        }
+        self.agent_card
+            .skills
+            .iter()
+            .find(|skill| skill.id == tool_name)
+    }
+}
+
+fn decode_jsonrpc_result<T>(
+    response: A2aJsonRpcResponse<T>,
+    method: &str,
+) -> Result<T, AdapterError> {
+    if response.jsonrpc != "2.0" {
+        return Err(AdapterError::Protocol(format!(
+            "unexpected JSON-RPC version {}",
+            response.jsonrpc
+        )));
+    }
+    if let Some(error) = response.error {
+        return Err(AdapterError::Remote(format!(
+            "A2A JSON-RPC error {}: {}",
+            error.code, error.message
+        )));
+    }
+    response.result.ok_or_else(|| {
+        let response_label = if method.is_empty() {
+            "response".to_string()
+        } else {
+            format!("{method} response")
+        };
+        AdapterError::Protocol(format!(
+            "A2A JSON-RPC {response_label} omitted `result`"
+        ))
+    })
 }
 
 #[async_trait::async_trait]
@@ -1333,12 +1335,7 @@ impl ToolServerConnection for A2aAdapter {
         arguments: Value,
         _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
     ) -> Result<Value, KernelError> {
-        let Some(skill) = self
-            .agent_card
-            .skills
-            .iter()
-            .find(|skill| skill.id == tool_name)
-        else {
+        let Some(skill) = self.manifest_skill(tool_name) else {
             return Err(KernelError::ToolNotRegistered(tool_name.to_string()));
         };
         let response = self
@@ -1353,12 +1350,7 @@ impl ToolServerConnection for A2aAdapter {
         arguments: Value,
         _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
     ) -> Result<Option<ToolServerStreamResult>, KernelError> {
-        let Some(skill) = self
-            .agent_card
-            .skills
-            .iter()
-            .find(|skill| skill.id == tool_name)
-        else {
+        let Some(skill) = self.manifest_skill(tool_name) else {
             return Err(KernelError::ToolNotRegistered(tool_name.to_string()));
         };
         let invocation = parse_tool_input(arguments)
@@ -1397,7 +1389,7 @@ impl ToolServerConnection for A2aAdapter {
                     ToolServerStreamResult::Complete(stream)
                     | ToolServerStreamResult::Incomplete { stream, .. } => {
                         for chunk in &stream.chunks {
-                            self.record_task_activity(tool_name, &chunk.data, "stream_event")
+                            self.record_stream_task_activity(tool_name, &chunk.data, "stream_event")
                                 .map_err(|error| KernelError::ToolServerError(error.to_string()))?;
                         }
                     }
@@ -1425,7 +1417,11 @@ impl ToolServerConnection for A2aAdapter {
                     ToolServerStreamResult::Complete(stream)
                     | ToolServerStreamResult::Incomplete { stream, .. } => {
                         for chunk in &stream.chunks {
-                            self.record_task_activity(tool_name, &chunk.data, "subscribe_event")
+                            self.record_stream_task_activity(
+                                tool_name,
+                                &chunk.data,
+                                "subscribe_event",
+                            )
                                 .map_err(|error| KernelError::ToolServerError(error.to_string()))?;
                         }
                     }

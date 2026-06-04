@@ -18,6 +18,8 @@ pub enum RevocationOracleError {
     SignatureVerificationFailed,
     #[error("invalid epoch transition")]
     InvalidEpochTransition,
+    #[error("invalid revocation key: {0}")]
+    InvalidRevocationKey(String),
     #[error("serialization failed: {0}")]
     Serialization(String),
 }

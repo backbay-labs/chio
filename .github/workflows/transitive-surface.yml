@@ -1,0 +1,127 @@
+name: Transitive Surface
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/transitive-surface.yml"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/chio-bindings-ffi/**"
+      - "crates/chio-binding-helpers/**"
+      - "crates/chio-core-types/**"
+      - "crates/chio-core/**"
+      - "crates/chio-kernel-core/**"
+      - "crates/chio-kernel/**"
+      - "crates/chio-guards/**"
+      - "crates/chio-data-guards/**"
+      - "crates/chio-wasm-guards/**"
+      - "crates/chio-policy/**"
+      - "crates/chio-manifest/**"
+      - "crates/chio-http-core/**"
+      - "crates/chio-http-session/**"
+      - "crates/chio-mcp-adapter/**"
+      - "crates/chio-mcp-edge/**"
+      - "crates/chio-a2a-adapter/**"
+      - "crates/chio-a2a-edge/**"
+      - "crates/chio-acp-edge/**"
+      - "crates/chio-acp-proxy/**"
+      - "crates/chio-openapi-mcp-bridge/**"
+      - "crates/chio-cross-protocol/**"
+      - "crates/chio-ag-ui-proxy/**"
+      - "examples/**"
+      - "sdks/**"
+      - "tests/abi/**"
+      - "scripts/check-chio-cpp.sh"
+      - "scripts/check-transitive-surface.sh"
+  pull_request:
+    paths:
+      - ".github/workflows/transitive-surface.yml"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/chio-bindings-ffi/**"
+      - "crates/chio-binding-helpers/**"
+      - "crates/chio-core-types/**"
+      - "crates/chio-core/**"
+      - "crates/chio-kernel-core/**"
+      - "crates/chio-kernel/**"
+      - "crates/chio-guards/**"
+      - "crates/chio-data-guards/**"
+      - "crates/chio-wasm-guards/**"
+      - "crates/chio-policy/**"
+      - "crates/chio-manifest/**"
+      - "crates/chio-http-core/**"
+      - "crates/chio-http-session/**"
+      - "crates/chio-mcp-adapter/**"
+      - "crates/chio-mcp-edge/**"
+      - "crates/chio-a2a-adapter/**"
+      - "crates/chio-a2a-edge/**"
+      - "crates/chio-acp-edge/**"
+      - "crates/chio-acp-proxy/**"
+      - "crates/chio-openapi-mcp-bridge/**"
+      - "crates/chio-cross-protocol/**"
+      - "crates/chio-ag-ui-proxy/**"
+      - "examples/**"
+      - "sdks/**"
+      - "tests/abi/**"
+      - "scripts/check-chio-cpp.sh"
+      - "scripts/check-transitive-surface.sh"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('pr-{0}-transitive-surface', github.ref) || format('main-{0}-transitive-surface', github.sha) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CHIO_TRANSITIVE_INSTALL_DEPS: "1"
+  CHIO_TRANSITIVE_BIND_TESTS: "1"
+  CHIO_TRANSITIVE_JVM_TESTS: "1"
+  CHIO_CPP_REQUIRE_CBINDGEN: "0"
+
+jobs:
+  transitive-surface:
+    name: SDKs and examples
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "1.3.3"
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: "1.23.0"
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+
+      - name: Install native build dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential cmake
+
+      - name: Run transitive surface checks
+        run: ./scripts/check-transitive-surface.sh

@@ -39,6 +39,17 @@
   expected_verdict: "deny"
   deny_reason_contains: "write to /etc blocked"
 
+- name: "deny_write_without_path_evidence"
+  request:
+    tool_name: "write_file"
+    server_id: "conformance-server"
+    agent_id: "conformance-agent"
+    arguments: {}
+    scopes: []
+    action_type: "file_write"
+  expected_verdict: "deny"
+  deny_reason_contains: "missing normalized path evidence"
+
 - name: "allow_write_to_tmp"
   request:
     tool_name: "write_file"
@@ -48,4 +59,15 @@
     scopes: []
     action_type: "file_write"
     extracted_path: "/tmp/data.txt"
+  expected_verdict: "allow"
+
+- name: "allow_write_to_etcetera_sibling"
+  request:
+    tool_name: "write_file"
+    server_id: "conformance-server"
+    agent_id: "conformance-agent"
+    arguments: {}
+    scopes: []
+    action_type: "file_write"
+    extracted_path: "/etcetera/passwd"
   expected_verdict: "allow"

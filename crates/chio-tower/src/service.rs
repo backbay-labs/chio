@@ -1,6 +1,5 @@
 //! Chio tower Service implementation.
 
-use std::collections::HashMap;
 use std::task::{Context, Poll};
 
 use bytes::{Buf, Bytes, BytesMut};
@@ -9,6 +8,7 @@ use sha2::{Digest, Sha256};
 use tower_service::Service;
 
 use crate::evaluator::{ChioEvaluator, EvaluationInput};
+use crate::request_metadata::RequestMetadata;
 
 /// Default upper bound on buffered request body size (8 MiB).
 ///
@@ -86,15 +86,7 @@ where
         Box::pin(async move {
             let method = req.method().as_str().to_string();
             let path = req.uri().path().to_string();
-            let query: HashMap<String, String> = req
-                .uri()
-                .query()
-                .map(|raw| {
-                    url::form_urlencoded::parse(raw.as_bytes())
-                        .map(|(key, value)| (key.into_owned(), value.into_owned()))
-                        .collect()
-                })
-                .unwrap_or_default();
+            let request_metadata = RequestMetadata::parse(req.uri().query());
             let headers = req.headers().clone();
 
             // Extract caller identity up front. The transport-layer body-size
@@ -120,15 +112,24 @@ where
             };
 
             // Evaluate the request.
-            let prepared = match evaluator.prepare(EvaluationInput {
+            let evaluation_input = EvaluationInput {
                 method: &method,
                 path: &path,
-                query: &query,
+                query: request_metadata.query(),
                 caller,
                 headers: &headers,
                 body_hash,
                 body_length,
-            }) {
+            };
+            let prepared = match request_metadata.presented_capability_override() {
+                Some(presented_capability) => evaluator.prepare_with_presented_capability(
+                    evaluation_input,
+                    Some(presented_capability),
+                ),
+                None => evaluator.prepare(evaluation_input),
+            };
+
+            let prepared = match prepared {
                 Ok(r) => r,
                 Err(e) => {
                     if evaluator.is_fail_open() {
@@ -352,7 +353,9 @@ mod tests {
     use bytes::Bytes;
     use chio_core_types::capability::{CapabilityToken, CapabilityTokenBody, ChioScope};
     use chio_core_types::crypto::Keypair;
-    use chio_http_core::{http_status_scope, HttpReceipt, CHIO_HTTP_STATUS_SCOPE_FINAL};
+    use chio_http_core::{
+        http_authority_tool_grant, http_status_scope, HttpReceipt, CHIO_HTTP_STATUS_SCOPE_FINAL,
+    };
     use http_body_util::{BodyExt, Full};
     use tower::ServiceExt;
 
@@ -365,7 +368,10 @@ mod tests {
                 id: id.to_string(),
                 issuer: issuer.public_key(),
                 subject: issuer.public_key(),
-                scope: ChioScope::default(),
+                scope: ChioScope {
+                    grants: vec![http_authority_tool_grant()],
+                    ..ChioScope::default()
+                },
                 issued_at: now.saturating_sub(60),
                 expires_at: now + 3600,
                 delegation_chain: Vec::new(),
@@ -418,6 +424,51 @@ mod tests {
             .get::<HttpReceipt>()
             .unwrap_or_else(|| panic!("missing receipt extension"));
         assert_eq!(receipt.response_status, 200);
+        assert_eq!(
+            http_status_scope(receipt.metadata.as_ref()),
+            Some(CHIO_HTTP_STATUS_SCOPE_FINAL)
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn service_denies_duplicate_query_capability_even_when_one_value_is_valid() {
+        let (kp, evaluator) = make_service();
+
+        let inner = tower::service_fn(|_req: http::Request<TestBody>| async {
+            Ok::<http::Response<TestBody>, Box<dyn std::error::Error + Send + Sync>>(
+                http::Response::new(Full::new(Bytes::new())),
+            )
+        });
+
+        let mut service = ChioService::new(inner, evaluator);
+        let valid_capability = url::form_urlencoded::byte_serialize(
+            valid_capability_token_json("cap-query", &kp).as_bytes(),
+        )
+        .collect::<String>();
+        let req = http::Request::builder()
+            .method("GET")
+            .uri(format!(
+                "/pets?chio_capability=not-json&chio_capability={valid_capability}"
+            ))
+            .body(Full::new(Bytes::new()))
+            .unwrap_or_else(|e| panic!("build failed: {e}"));
+
+        let resp: http::Response<TestBody> = service
+            .ready()
+            .await
+            .unwrap_or_else(|e| panic!("ready failed: {e}"))
+            .call(req)
+            .await
+            .unwrap_or_else(|e| panic!("call failed: {e}"));
+
+        assert_eq!(resp.status(), http::StatusCode::FORBIDDEN);
+        assert!(resp.headers().contains_key("x-chio-receipt-id"));
+        let receipt = resp
+            .extensions()
+            .get::<HttpReceipt>()
+            .unwrap_or_else(|| panic!("missing receipt extension"));
+        assert!(receipt.is_denied());
+        assert_eq!(receipt.response_status, 403);
         assert_eq!(
             http_status_scope(receipt.metadata.as_ref()),
             Some(CHIO_HTTP_STATUS_SCOPE_FINAL)

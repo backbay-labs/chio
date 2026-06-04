@@ -13,6 +13,63 @@ use crate::BUNDLE_SCHEMA_ID;
 
 const TEST_SIGNATURE_KIND: &str = "test-sha256";
 
+const ROOT_FIELDS: &[&str] = &[
+    "schema",
+    "bundle_id",
+    "created_at",
+    "producer",
+    "eval_run",
+    "corpus",
+    "receipts",
+    "partner_review",
+    "signatures",
+];
+const ROOT_REQUIRED_FIELDS: &[&str] = &[
+    "schema",
+    "bundle_id",
+    "created_at",
+    "producer",
+    "eval_run",
+    "corpus",
+    "receipts",
+    "signatures",
+];
+const PRODUCER_FIELDS: &[&str] = &["name", "repository", "commit", "workflow_run_url"];
+const EVAL_RUN_FIELDS: &[&str] = &[
+    "run_id",
+    "partner",
+    "partner_slug",
+    "pipeline",
+    "pipeline_language",
+    "model_under_eval",
+    "scorer_name",
+    "scorer_version",
+];
+const CORPUS_FIELDS: &[&str] = &["name", "scenario_count", "corpus_sha256", "manifest_path"];
+const RECEIPT_FIELDS: &[&str] = &[
+    "scenario_id",
+    "category",
+    "verdict",
+    "receipt_payload",
+    "receipt_sha256",
+    "evidence",
+];
+const EVIDENCE_FIELDS: &[&str] = &["trace_id", "sample_id"];
+const PARTNER_REVIEW_FIELDS: &[&str] = &[
+    "feedback_ref",
+    "review_window_days",
+    "reviewer_role",
+    "disposition",
+];
+const SIGNATURE_FIELDS: &[&str] = &[
+    "kind",
+    "key_id",
+    "signature",
+    "certificate",
+    "signed_payload",
+];
+const SIGNATURE_REQUIRED_FIELDS: &[&str] = &["kind", "key_id", "signature", "signed_payload"];
+
 const LOCAL_TEST_RECEIPT_FIXTURE_HASHES: &[(&str, &str)] = &[
     (
         "capability-subset-001-read-exact",
@@ -125,6 +182,7 @@ fn verify_bundle_with_mode(
     if schema != BUNDLE_SCHEMA_ID {
         return Err(BundleError::SchemaMismatch(schema.to_owned()));
     }
+    verify_schema_envelope(object)?;
 
     let bundle_id = str_field(object, "bundle_id")?.to_owned();
     verify_corpus(object)?;
@@ -281,6 +339,213 @@ fn verify_signatures(value: &Value, mode: VerificationMode) -> Result<(), Bundle
         }
     }
     Ok(())
+}
+
+fn verify_schema_envelope(object: &Map<String, Value>) -> Result<(), BundleError> {
+    verify_allowed_fields("bundle root", object, ROOT_FIELDS)?;
+    verify_required_fields(object, ROOT_REQUIRED_FIELDS)?;
+    non_empty_str_field(object, "bundle_id", "bundle root.bundle_id")?;
+    non_empty_str_field(object, "created_at", "bundle root.created_at")?;
+    verify_producer_shape(object_field(object, "producer")?)?;
+    verify_eval_run_shape(object_field(object, "eval_run")?)?;
+    verify_corpus_shape(object_field(object, "corpus")?)?;
+    verify_receipts_shape(array_field(object, "receipts")?)?;
+    if let Some(partner_review) = object.get("partner_review") {
+        let partner_review = partner_review
+            .as_object()
+            .ok_or(BundleError::WrongType("partner_review"))?;
+        verify_partner_review_shape(partner_review)?;
+    }
+    verify_signatures_shape(array_field(object, "signatures")?)
+}
+
+fn verify_producer_shape(producer: &Map<String, Value>) -> Result<(), BundleError> {
+    verify_allowed_fields("producer", producer, PRODUCER_FIELDS)?;
+    verify_required_fields(producer, PRODUCER_FIELDS)?;
+    for &field in PRODUCER_FIELDS {
+        non_empty_str_field(producer, field, prefixed_field("producer", field))?;
+    }
+    Ok(())
+}
+
+fn verify_eval_run_shape(eval_run: &Map<String, Value>) -> Result<(), BundleError> {
+    verify_allowed_fields("eval_run", eval_run, EVAL_RUN_FIELDS)?;
+    verify_required_fields(eval_run, EVAL_RUN_FIELDS)?;
+    for &field in EVAL_RUN_FIELDS {
+        non_empty_str_field(eval_run, field, prefixed_field("eval_run", field))?;
+    }
+    enum_str_field(
+        eval_run,
+        "pipeline_language",
+        "eval_run.pipeline_language",
+        &["python", "go", "rust"],
+    )?;
+    Ok(())
+}
+
+fn verify_corpus_shape(corpus: &Map<String, Value>) -> Result<(), BundleError> {
+    verify_allowed_fields("corpus", corpus, CORPUS_FIELDS)?;
+    verify_required_fields(corpus, CORPUS_FIELDS)?;
+    non_empty_str_field(corpus, "name", "corpus.name")?;
+    number_field(corpus, "scenario_count")?;
+    sha256_field(corpus, "corpus_sha256", "corpus.corpus_sha256")?;
+    non_empty_str_field(corpus, "manifest_path", "corpus.manifest_path")?;
+    Ok(())
+}
+
+fn verify_receipts_shape(receipts: &[Value]) -> Result<(), BundleError> {
+    if receipts.is_empty() {
+        return Err(BundleError::EmptyReceipts);
+    }
+    for receipt in receipts {
+        let receipt = receipt
+            .as_object()
+            .ok_or(BundleError::WrongType("receipts[]"))?;
+        verify_allowed_fields("receipts[]", receipt, RECEIPT_FIELDS)?;
+        verify_required_fields(receipt, RECEIPT_FIELDS)?;
+        non_empty_str_field(receipt, "scenario_id", "receipts[].scenario_id")?;
+        non_empty_str_field(receipt, "category", "receipts[].category")?;
+        enum_str_field(receipt, "verdict", "receipts[].verdict", &["allow", "deny"])?;
+        non_empty_str_field(receipt, "receipt_payload", "receipts[].receipt_payload")?;
+        sha256_field(receipt, "receipt_sha256", "receipts[].receipt_sha256")?;
+        let evidence = object_field(receipt, "evidence")?;
+        verify_allowed_fields("receipts[].evidence", evidence, EVIDENCE_FIELDS)?;
+        verify_required_fields(evidence, EVIDENCE_FIELDS)?;
+        non_empty_str_field(evidence, "trace_id", "receipts[].evidence.trace_id")?;
+        non_empty_str_field(evidence, "sample_id", "receipts[].evidence.sample_id")?;
+    }
+    Ok(())
+}
+
+fn verify_partner_review_shape(review: &Map<String, Value>) -> Result<(), BundleError> {
+    verify_allowed_fields("partner_review", review, PARTNER_REVIEW_FIELDS)?;
+    verify_required_fields(review, PARTNER_REVIEW_FIELDS)?;
+    non_empty_str_field(review, "feedback_ref", "partner_review.feedback_ref")?;
+    number_field(review, "review_window_days")?;
+    non_empty_str_field(review, "reviewer_role", "partner_review.reviewer_role")?;
+    enum_str_field(
+        review,
+        "disposition",
+        "partner_review.disposition",
+        &["accepted", "accepted-with-notes", "no-format-change"],
+    )?;
+    Ok(())
+}
+
+fn verify_signatures_shape(signatures: &[Value]) -> Result<(), BundleError> {
+    if signatures.is_empty() {
+        return Err(BundleError::EmptySignatures);
+    }
+    for signature in signatures {
+        let signature = signature
+            .as_object()
+            .ok_or(BundleError::WrongType("signatures[]"))?;
+        verify_allowed_fields("signatures[]", signature, SIGNATURE_FIELDS)?;
+        verify_required_fields(signature, SIGNATURE_REQUIRED_FIELDS)?;
+        non_empty_str_field(signature, "kind", "signatures[].kind")?;
+        non_empty_str_field(signature, "key_id", "signatures[].key_id")?;
+        non_empty_str_field(signature, "signature", "signatures[].signature")?;
+        non_empty_str_field(signature, "signed_payload", "signatures[].signed_payload")?;
+        if signature.get("certificate").is_some() {
+            str_field(signature, "certificate")?;
+        }
+    }
+    Ok(())
+}
+
+fn verify_allowed_fields(
+    context: &'static str,
+    object: &Map<String, Value>,
+    allowed: &[&str],
+) -> Result<(), BundleError> {
+    for key in object.keys() {
+        if !allowed.contains(&key.as_str()) {
+            return Err(BundleError::SchemaMismatch(format!(
+                "unexpected field in {context}: {key}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn verify_required_fields(
+    object: &Map<String, Value>,
+    required: &[&'static str],
+) -> Result<(), BundleError> {
+    for field in required {
+        if !object.contains_key(*field) {
+            return Err(BundleError::MissingField(field));
+        }
+    }
+    Ok(())
+}
+
+fn non_empty_str_field<'a>(
+    object: &'a Map<String, Value>,
+    field: &'static str,
+    context: &'static str,
+) -> Result<&'a str, BundleError> {
+    let value = str_field(object, field)?;
+    if value.trim().is_empty() {
+        Err(BundleError::SchemaMismatch(format!(
+            "{context} must not be empty"
+        )))
+    } else {
+        Ok(value)
+    }
+}
+
+fn enum_str_field<'a>(
+    object: &'a Map<String, Value>,
+    field: &'static str,
+    context: &'static str,
+    allowed: &[&str],
+) -> Result<&'a str, BundleError> {
+    let value = non_empty_str_field(object, field, context)?;
+    if allowed.contains(&value) {
+        Ok(value)
+    } else {
+        Err(BundleError::SchemaMismatch(format!(
+            "{context} has unsupported value {value}"
+        )))
+    }
+}
+
+fn sha256_field<'a>(
+    object: &'a Map<String, Value>,
+    field: &'static str,
+    context: &'static str,
+) -> Result<&'a str, BundleError> {
+    let value = non_empty_str_field(object, field, context)?;
+    if value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    {
+        Ok(value)
+    } else {
+        Err(BundleError::SchemaMismatch(format!(
+            "{context} must be lowercase SHA-256 hex"
+        )))
+    }
+}
+
+fn prefixed_field(prefix: &'static str, field: &'static str) -> &'static str {
+    match (prefix, field) {
+        ("producer", "name") => "producer.name",
+        ("producer", "repository") => "producer.repository",
+        ("producer", "commit") => "producer.commit",
+        ("producer", "workflow_run_url") => "producer.workflow_run_url",
+        ("eval_run", "run_id") => "eval_run.run_id",
+        ("eval_run", "partner") => "eval_run.partner",
+        ("eval_run", "partner_slug") => "eval_run.partner_slug",
+        ("eval_run", "pipeline") => "eval_run.pipeline",
+        ("eval_run", "pipeline_language") => "eval_run.pipeline_language",
+        ("eval_run", "model_under_eval") => "eval_run.model_under_eval",
+        ("eval_run", "scorer_name") => "eval_run.scorer_name",
+        ("eval_run", "scorer_version") => "eval_run.scorer_version",
+        _ => field,
+    }
 }
 
 /// Return the deterministic local fixture signature for a bundle JSON value.
@@ -453,6 +718,144 @@ mod tests {
     }
 
     #[test]
+    fn rejects_schema_forbidden_root_extension() -> Result<(), BundleError> {
+        let signed = signed_bundle_with_mutation(|value| {
+            value
+                .as_object_mut()
+                .ok_or(BundleError::WrongType("bundle root"))?
+                .insert(
+                    "attacker_claim".to_owned(),
+                    Value::String("forged".to_owned()),
+                );
+            Ok(())
+        })?;
+
+        let err = verify_fixture_bundle(&signed).err();
+
+        assert!(matches!(
+            err,
+            Some(BundleError::SchemaMismatch(detail))
+                if detail.contains("bundle root") && detail.contains("attacker_claim")
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_schema_forbidden_evidence_extension() -> Result<(), BundleError> {
+        let signed = signed_bundle_with_mutation(|value| {
+            let evidence = value
+                .as_object_mut()
+                .ok_or(BundleError::WrongType("bundle root"))?
+                .get_mut("receipts")
+                .and_then(Value::as_array_mut)
+                .and_then(|receipts| receipts.first_mut())
+                .and_then(Value::as_object_mut)
+                .and_then(|receipt| receipt.get_mut("evidence"))
+                .and_then(Value::as_object_mut)
+                .ok_or(BundleError::WrongType("receipts[].evidence"))?;
+            evidence.insert(
+                "attacker_trace_url".to_owned(),
+                Value::String("https://example.invalid/trace".to_owned()),
+            );
+            Ok(())
+        })?;
+
+        let err = verify_fixture_bundle(&signed).err();
+
+        assert!(matches!(
+            err,
+            Some(BundleError::SchemaMismatch(detail))
+                if detail.contains("receipts[].evidence")
+                    && detail.contains("attacker_trace_url")
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_invalid_pipeline_language_with_recomputed_signature() -> Result<(), BundleError> {
+        let signed = signed_bundle_with_mutation(|value| {
+            value
+                .as_object_mut()
+                .ok_or(BundleError::WrongType("bundle root"))?
+                .get_mut("eval_run")
+                .and_then(Value::as_object_mut)
+                .ok_or(BundleError::WrongType("eval_run"))?
+                .insert(
+                    "pipeline_language".to_owned(),
+                    Value::String("bash".to_owned()),
+                );
+            Ok(())
+        })?;
+
+        let err = verify_fixture_bundle(&signed).err();
+
+        assert!(matches!(
+            err,
+            Some(BundleError::SchemaMismatch(detail))
+                if detail.contains("eval_run.pipeline_language") && detail.contains("bash")
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_whitespace_only_required_identity_fields_with_recomputed_signature(
+    ) -> Result<(), BundleError> {
+        let signed = signed_bundle_with_mutation(|value| {
+            value
+                .as_object_mut()
+                .ok_or(BundleError::WrongType("bundle root"))?
+                .get_mut("producer")
+                .and_then(Value::as_object_mut)
+                .ok_or(BundleError::WrongType("producer"))?
+                .insert("name".to_owned(), Value::String("   ".to_owned()));
+            Ok(())
+        })?;
+        let err = verify_fixture_bundle(&signed).err();
+        assert!(matches!(
+            err,
+            Some(BundleError::SchemaMismatch(detail)) if detail.contains("producer.name")
+        ));
+
+        let signed = signed_bundle_with_mutation(|value| {
+            value
+                .as_object_mut()
+                .ok_or(BundleError::WrongType("bundle root"))?
+                .get_mut("eval_run")
+                .and_then(Value::as_object_mut)
+                .ok_or(BundleError::WrongType("eval_run"))?
+                .insert("run_id".to_owned(), Value::String("\t".to_owned()));
+            Ok(())
+        })?;
+        let err = verify_fixture_bundle(&signed).err();
+        assert!(matches!(
+            err,
+            Some(BundleError::SchemaMismatch(detail)) if detail.contains("eval_run.run_id")
+        ));
+
+        let signed = signed_bundle_with_mutation(|value| {
+            value
+                .as_object_mut()
+                .ok_or(BundleError::WrongType("bundle root"))?
+                .get_mut("receipts")
+                .and_then(Value::as_array_mut)
+                .and_then(|receipts| receipts.first_mut())
+                .and_then(Value::as_object_mut)
+                .and_then(|receipt| receipt.get_mut("evidence"))
+                .and_then(Value::as_object_mut)
+                .ok_or(BundleError::WrongType("receipts[].evidence"))?
+                .insert("trace_id".to_owned(), Value::String("\n".to_owned()));
+            Ok(())
+        })?;
+        let err = verify_fixture_bundle(&signed).err();
+        assert!(matches!(
+            err,
+            Some(BundleError::SchemaMismatch(detail))
+                if detail.contains("receipts[].evidence.trace_id")
+        ));
+        Ok(())
+    }
+
+    #[test]
     fn rejects_recomputed_test_sha256_with_forged_receipt_payload() -> Result<(), BundleError> {
         let forged_payload =
             "{\"scenario_id\":\"capability-subset-001-read-exact\",\"verdict\":\"deny\"}";
@@ -523,6 +926,22 @@ mod tests {
             .map_err(|err| BundleError::Canonicalization(err.to_string()))?;
         serde_json::to_string(&receipt)
             .map_err(|err| BundleError::Canonicalization(err.to_string()))
+    }
+
+    fn signed_bundle_with_mutation(
+        mutate: impl FnOnce(&mut Value) -> Result<(), BundleError>,
+    ) -> Result<String, BundleError> {
+        let unsigned = unsigned_bundle_json()?;
+        let mut value: Value =
+            serde_json::from_str(&unsigned).map_err(|err| BundleError::Json(err.to_string()))?;
+        mutate(&mut value)?;
+        let unsigned = serde_json::to_string_pretty(&value)
+            .map_err(|err| BundleError::Canonicalization(err.to_string()))?;
+        let signature = test_signature_for_bundle_json(&unsigned)?;
+        Ok(unsigned.replace(
+            "\"signature\": \"SIGNATURE_PLACEHOLDER\"",
+            &format!("\"signature\": \"{signature}\""),
+        ))
     }
 
     fn signed_bundle_with_receipt_payload(payload: &str) -> Result<String, BundleError> {

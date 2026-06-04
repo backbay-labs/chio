@@ -41,6 +41,8 @@ use chio_core_types::capability::MonetaryAmount;
 use chio_core_types::crypto::{sha256_hex, PublicKey, Signature};
 use chio_underwriting::{price_premium, LookbackWindow, PremiumInputs, PremiumQuote};
 
+use crate::validate_positive_money;
+
 /// Lane identifier used for insurance-flow settlement commitments. Matches
 /// the `lane_kind` convention used elsewhere in the chio-settle stack.
 pub const INSURANCE_CLAIM_LANE_KIND: &str = "chio.insurance.claim.v1";
@@ -78,6 +80,20 @@ pub struct ReceiptFingerprint {
     /// SHA-256 of the canonical receipt body. Used for tamper-evidence
     /// in the evidence bundle.
     pub body_sha256: String,
+}
+
+impl ReceiptFingerprint {
+    /// Validate that the fingerprint can be used as a stable evidence key.
+    pub fn validate(&self) -> Result<(), InsuranceFlowError> {
+        validate_clean_required(
+            &self.receipt_id,
+            "claim evidence receipt fingerprint receipt_id",
+        )?;
+        validate_clean_required(
+            &self.body_sha256,
+            "claim evidence receipt fingerprint body_sha256",
+        )
+    }
 }
 
 /// Trait implemented by callers (typically the kernel-side control plane)
@@ -314,6 +330,7 @@ impl BoundPolicy {
         receipts: &dyn ReceiptEvidenceSource,
         settlement_sink: &dyn ClaimSettlementSink,
     ) -> Result<ClaimDecision, InsuranceFlowError> {
+        evidence.validate()?;
         if evidence.policy_id != self.policy_id {
             return Err(InsuranceFlowError::PolicyUnavailable(format!(
                 "claim evidence policy_id `{}` does not match policy `{}`",
@@ -420,6 +437,7 @@ impl BoundPolicy {
             operator_identity: format!("chio-market:insurance-flow:{}", self.agent_id),
             settlement_amount: payable_amount.clone(),
         };
+        request.validate()?;
 
         let settlement_reference = settlement_sink
             .submit(request.clone())
@@ -462,6 +480,30 @@ pub struct ClaimEvidence {
     /// flow itself is chain-agnostic; the settle runtime routes
     /// according to this value.
     pub settlement_chain_id: String,
+}
+
+impl ClaimEvidence {
+    /// Validate fields that must be well-formed before receipt lookup or
+    /// settlement handoff can be attempted.
+    pub fn validate(&self) -> Result<(), InsuranceFlowError> {
+        validate_clean_required(&self.claim_id, "claim evidence claim_id")?;
+        validate_clean_required(&self.policy_id, "claim evidence policy_id")?;
+        validate_positive_money(&self.requested_amount, "claim evidence requested_amount")
+            .map_err(InsuranceFlowError::InvalidInput)?;
+        if self.incident_description.trim().is_empty() {
+            return Err(InsuranceFlowError::InvalidInput(
+                "claim evidence incident_description must be non-empty".to_string(),
+            ));
+        }
+        validate_clean_required(
+            &self.settlement_chain_id,
+            "claim evidence settlement_chain_id",
+        )?;
+        for fingerprint in &self.supporting_receipts {
+            fingerprint.validate()?;
+        }
+        Ok(())
+    }
 }
 
 /// Resolution of a filed claim.
@@ -554,6 +596,35 @@ pub struct ClaimSettlementRequest {
     pub operator_identity: String,
     /// Amount to settle, in minor units + currency.
     pub settlement_amount: MonetaryAmount,
+}
+
+impl ClaimSettlementRequest {
+    /// Validate the settlement-shaped handoff before it leaves chio-market.
+    pub fn validate(&self) -> Result<(), InsuranceFlowError> {
+        validate_clean_required(&self.chain_id, "claim settlement request chain_id")?;
+        if self.lane_kind != INSURANCE_CLAIM_LANE_KIND {
+            return Err(InsuranceFlowError::InvalidInput(format!(
+                "claim settlement request lane_kind must be {INSURANCE_CLAIM_LANE_KIND}"
+            )));
+        }
+        validate_clean_required(
+            &self.capability_commitment,
+            "claim settlement request capability_commitment",
+        )?;
+        validate_clean_required(
+            &self.receipt_reference,
+            "claim settlement request receipt_reference",
+        )?;
+        validate_clean_required(
+            &self.operator_identity,
+            "claim settlement request operator_identity",
+        )?;
+        validate_positive_money(
+            &self.settlement_amount,
+            "claim settlement request settlement_amount",
+        )
+        .map_err(InsuranceFlowError::InvalidInput)
+    }
 }
 
 /// Settlement artifact returned when a claim is approved. Wraps the
@@ -664,6 +735,20 @@ fn compute_policy_id(
         InsuranceFlowError::InvalidInput(format!("failed to canonicalize policy identity: {error}"))
     })?;
     Ok(format!("insp-{}", sha256_hex(&canonical)))
+}
+
+fn validate_clean_required(value: &str, field_name: &str) -> Result<(), InsuranceFlowError> {
+    if value.trim().is_empty() {
+        return Err(InsuranceFlowError::InvalidInput(format!(
+            "{field_name} must be non-empty"
+        )));
+    }
+    if value.trim() != value {
+        return Err(InsuranceFlowError::InvalidInput(format!(
+            "{field_name} must not contain surrounding whitespace"
+        )));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -854,6 +939,119 @@ mod tests {
             "one settlement request should be submitted"
         );
         assert_eq!(events[0].settlement_amount.currency, "USD");
+    }
+
+    #[test]
+    fn claim_settlement_request_validation_rejects_non_claim_or_empty_handoff() {
+        let request = ClaimSettlementRequest {
+            chain_id: "ethereum-mainnet".to_string(),
+            lane_kind: INSURANCE_CLAIM_LANE_KIND.to_string(),
+            capability_commitment: "policy-1".to_string(),
+            receipt_reference: "rcpt-1".to_string(),
+            operator_identity: "chio-market:insurance-flow:agent-1".to_string(),
+            settlement_amount: MonetaryAmount {
+                units: 100,
+                currency: "USD".to_string(),
+            },
+        };
+        request.validate().unwrap();
+
+        let mut wrong_lane = request.clone();
+        wrong_lane.lane_kind = "evm_dual_signature".to_string();
+        let error = wrong_lane.validate().unwrap_err();
+        assert!(matches!(error, InsuranceFlowError::InvalidInput(_)));
+        assert!(error.to_string().contains("lane_kind"));
+
+        let mut empty_receipt = request.clone();
+        empty_receipt.receipt_reference = " ".to_string();
+        let error = empty_receipt.validate().unwrap_err();
+        assert!(matches!(error, InsuranceFlowError::InvalidInput(_)));
+        assert!(error.to_string().contains("receipt_reference"));
+
+        let mut zero_amount = request;
+        zero_amount.settlement_amount.units = 0;
+        let error = zero_amount.validate().unwrap_err();
+        assert!(matches!(error, InsuranceFlowError::InvalidInput(_)));
+        assert!(error.to_string().contains("settlement_amount"));
+    }
+
+    #[test]
+    fn file_claim_rejects_malformed_evidence_before_settlement_sink() {
+        let keypair = Keypair::generate();
+        let policy = quote_and_bind(
+            "agent-clean",
+            "tool:exec",
+            window(),
+            &static_source(950),
+            1_000_600,
+            60 * 60 * 24 * 30,
+        )
+        .unwrap();
+        let (fingerprint, resolved) = fake_receipt(&keypair, "rcpt-malformed");
+        let receipts = InMemoryReceiptSource {
+            entries: std::collections::BTreeMap::from([(fingerprint.receipt_id.clone(), resolved)]),
+        };
+
+        let valid_evidence = ClaimEvidence {
+            claim_id: "claim-valid".to_string(),
+            policy_id: policy.policy_id.clone(),
+            requested_amount: MonetaryAmount {
+                units: 100,
+                currency: "USD".to_string(),
+            },
+            incident_description: "covered incident".to_string(),
+            supporting_receipts: vec![fingerprint],
+            settlement_chain_id: "ethereum-mainnet".to_string(),
+        };
+
+        let cases = [
+            (
+                "padded claim id",
+                ClaimEvidence {
+                    claim_id: " claim-valid".to_string(),
+                    ..valid_evidence.clone()
+                },
+            ),
+            (
+                "zero requested amount",
+                ClaimEvidence {
+                    requested_amount: MonetaryAmount {
+                        units: 0,
+                        currency: "USD".to_string(),
+                    },
+                    ..valid_evidence.clone()
+                },
+            ),
+            (
+                "empty settlement chain",
+                ClaimEvidence {
+                    settlement_chain_id: String::new(),
+                    ..valid_evidence.clone()
+                },
+            ),
+            (
+                "empty receipt fingerprint",
+                ClaimEvidence {
+                    supporting_receipts: vec![ReceiptFingerprint {
+                        receipt_id: String::new(),
+                        body_sha256: "sha256-body".to_string(),
+                    }],
+                    ..valid_evidence
+                },
+            ),
+        ];
+
+        for (label, evidence) in cases {
+            let sink = CapturingSink::new();
+            let error = policy
+                .file_claim(&evidence, 1_001_000, &receipts, &sink)
+                .unwrap_err();
+            assert!(
+                matches!(error, InsuranceFlowError::InvalidInput(_)),
+                "{label}: unexpected error {error:?}"
+            );
+            assert!(sink.events().is_empty(), "{label}: sink should not run");
+        }
     }
 
     #[test]

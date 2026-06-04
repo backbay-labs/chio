@@ -225,6 +225,9 @@ impl WorkflowReceipt {
 
     /// Verify the receipt signature.
     pub fn verify(&self) -> Result<bool, chio_core::Error> {
+        if self.schema != WORKFLOW_RECEIPT_SCHEMA {
+            return Ok(false);
+        }
         self.kernel_key
             .verify_canonical(&self.body(), &self.signature)
     }
@@ -371,6 +374,31 @@ mod tests {
 
         let mut receipt = WorkflowReceipt::sign(body, &kp).unwrap();
         receipt.duration_ms = 999; // tamper
+        assert!(!receipt.verify().unwrap());
+    }
+
+    #[test]
+    fn unsupported_receipt_schema_fails_verification() {
+        let kp = Keypair::generate();
+        let body = WorkflowReceiptBody {
+            id: "wf-unsupported-schema".to_string(),
+            schema: "chio.workflow-receipt.v0".to_string(),
+            started_at: 1000,
+            completed_at: 2000,
+            skill_id: "s".to_string(),
+            skill_version: "1.0".to_string(),
+            agent_id: "a".to_string(),
+            session_id: None,
+            capability_id: "c".to_string(),
+            outcome: WorkflowOutcome::Completed,
+            steps: vec![],
+            total_cost: None,
+            duration_ms: 500,
+            kernel_key: kp.public_key(),
+        };
+
+        let receipt = WorkflowReceipt::sign(body, &kp).unwrap();
+
         assert!(!receipt.verify().unwrap());
     }
 

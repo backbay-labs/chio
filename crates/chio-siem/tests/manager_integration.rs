@@ -12,7 +12,7 @@ use chio_core::crypto::Keypair;
 use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction};
 use chio_siem::event::SiemEvent;
 use chio_siem::exporter::{ExportError, ExportFuture};
-use chio_siem::manager::{ExporterManager, SiemConfig};
+use chio_siem::manager::{ExporterManager, SiemConfig, SiemError};
 use chio_siem::ratelimit::RateLimitConfig;
 use chio_siem::Exporter;
 use rusqlite::{params, Connection};
@@ -253,6 +253,32 @@ impl Exporter for TimedCountingExporter {
 }
 
 // -- Tests --------------------------------------------------------------------
+
+#[test]
+fn manager_rejects_zero_batch_size() {
+    let db_path = unique_db_path("zero-batch");
+    let conn = create_db(&db_path);
+    drop(conn);
+
+    let config = SiemConfig {
+        db_path: db_path.clone(),
+        batch_size: 0,
+        ..SiemConfig::default()
+    };
+
+    let error = match ExporterManager::new(config) {
+        Ok(_) => panic!("zero batch_size unexpectedly accepted"),
+        Err(error) => error,
+    };
+
+    assert!(matches!(error, SiemError::ConfigError(_)));
+    assert!(
+        error.to_string().contains("batch_size"),
+        "unexpected error: {error}"
+    );
+
+    let _ = std::fs::remove_file(&db_path);
+}
 
 /// ExporterManager exports all receipts and cursor tracks progress across runs.
 #[tokio::test]

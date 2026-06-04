@@ -372,55 +372,55 @@ impl PriceOracleConfig {
 
     pub fn validate(&self) -> Result<(), PriceOracleError> {
         if self.refresh_interval_seconds == 0 {
-            return Err(PriceOracleError::InvalidConfiguration(
-                "refresh_interval_seconds must be non-zero".to_string(),
+            return Err(PriceOracleError::invalid_configuration(
+                "refresh_interval_seconds must be non-zero",
             ));
         }
         if self.fallback == Some(self.primary) {
-            return Err(PriceOracleError::InvalidConfiguration(
-                "primary and fallback backends must be different".to_string(),
+            return Err(PriceOracleError::invalid_configuration(
+                "primary and fallback backends must be different",
             ));
         }
         if self.pairs.is_empty() {
-            return Err(PriceOracleError::InvalidConfiguration(
-                "price oracle config must define at least one supported pair".to_string(),
+            return Err(PriceOracleError::invalid_configuration(
+                "price oracle config must define at least one supported pair",
             ));
         }
         if self.operator.chains.is_empty() {
-            return Err(PriceOracleError::InvalidConfiguration(
-                "operator config must define at least one chain".to_string(),
+            return Err(PriceOracleError::invalid_configuration(
+                "operator config must define at least one chain",
             ));
         }
         self.egress_contract
             .validate_dispatchable_with_pinned_dns()
             .map_err(|error| {
-                PriceOracleError::InvalidConfiguration(format!(
+                PriceOracleError::invalid_configuration(format!(
                     "price oracle HttpEgressContract is not dispatchable with pinned DNS: {error}"
                 ))
             })?;
         self.egress_contract
             .enforce_url_with_dns(&self.pyth.hermes_url, 0)
             .map_err(|error| {
-                PriceOracleError::InvalidConfiguration(format!(
+                PriceOracleError::invalid_configuration(format!(
                     "HttpEgressContract rejects Pyth Hermes URL: {error}"
                 ))
             })?;
         let mut seen_chains = BTreeSet::new();
         for chain in &self.operator.chains {
             if !seen_chains.insert(chain.chain_id) {
-                return Err(PriceOracleError::InvalidConfiguration(format!(
+                return Err(PriceOracleError::invalid_configuration(format!(
                     "duplicate chain_id {} in operator chain config",
                     chain.chain_id
                 )));
             }
             if chain.label.trim().is_empty() || chain.caip2.trim().is_empty() {
-                return Err(PriceOracleError::InvalidConfiguration(format!(
+                return Err(PriceOracleError::invalid_configuration(format!(
                     "chain {} must define both label and caip2",
                     chain.chain_id
                 )));
             }
             if chain.rpc_endpoint.trim().is_empty() {
-                return Err(PriceOracleError::InvalidConfiguration(format!(
+                return Err(PriceOracleError::invalid_configuration(format!(
                     "chain {} rpc_endpoint must be non-empty",
                     chain.chain_id
                 )));
@@ -428,13 +428,13 @@ impl PriceOracleConfig {
             self.egress_contract
                 .enforce_url_with_dns(&chain.rpc_endpoint, 0)
                 .map_err(|error| {
-                    PriceOracleError::InvalidConfiguration(format!(
+                    PriceOracleError::invalid_configuration(format!(
                         "HttpEgressContract rejects chain {} RPC endpoint: {error}",
                         chain.chain_id
                     ))
                 })?;
             if chain.sequencer_uptime_feed.is_some() && chain.sequencer_grace_period_seconds == 0 {
-                return Err(PriceOracleError::InvalidConfiguration(format!(
+                return Err(PriceOracleError::invalid_configuration(format!(
                     "chain {} sequencer_grace_period_seconds must be non-zero",
                     chain.chain_id
                 )));
@@ -444,25 +444,25 @@ impl PriceOracleConfig {
         let mut seen_pairs = BTreeSet::new();
         for pair in &self.pairs {
             if pair.base.trim().is_empty() || pair.quote.trim().is_empty() {
-                return Err(PriceOracleError::InvalidConfiguration(
-                    "pair base/quote must be non-empty".to_string(),
+                return Err(PriceOracleError::invalid_configuration(
+                    "pair base/quote must be non-empty",
                 ));
             }
             if !seen_pairs.insert(pair.pair()) {
-                return Err(PriceOracleError::InvalidConfiguration(format!(
+                return Err(PriceOracleError::invalid_configuration(format!(
                     "duplicate pair configuration for {}",
                     pair.pair()
                 )));
             }
             if self.operator.chain(pair.chain_id).is_none() {
-                return Err(PriceOracleError::InvalidConfiguration(format!(
+                return Err(PriceOracleError::invalid_configuration(format!(
                     "{} references unknown chain_id {}",
                     pair.pair(),
                     pair.chain_id
                 )));
             }
             if pair.policy.max_age_seconds == 0 {
-                return Err(PriceOracleError::InvalidConfiguration(format!(
+                return Err(PriceOracleError::invalid_configuration(format!(
                     "{} max_age_seconds must be non-zero",
                     pair.pair()
                 )));
@@ -470,7 +470,7 @@ impl PriceOracleConfig {
             if pair.policy.twap_enabled
                 && (pair.policy.twap_window_seconds == 0 || pair.policy.twap_max_observations == 0)
             {
-                return Err(PriceOracleError::InvalidConfiguration(format!(
+                return Err(PriceOracleError::invalid_configuration(format!(
                     "{} TWAP settings must be non-zero when enabled",
                     pair.pair()
                 )));
@@ -478,13 +478,13 @@ impl PriceOracleConfig {
             if pair.policy.degraded_mode.enabled
                 && pair.policy.degraded_mode.max_stale_age_seconds == 0
             {
-                return Err(PriceOracleError::InvalidConfiguration(format!(
+                return Err(PriceOracleError::invalid_configuration(format!(
                     "{} degraded-mode max_stale_age_seconds must be non-zero when enabled",
                     pair.pair()
                 )));
             }
             if matches!(self.primary, OracleBackendKind::Chainlink) && pair.chainlink.is_none() {
-                return Err(PriceOracleError::InvalidConfiguration(format!(
+                return Err(PriceOracleError::invalid_configuration(format!(
                     "{} requires a Chainlink feed for the configured primary backend",
                     pair.pair()
                 )));
@@ -495,7 +495,7 @@ impl PriceOracleConfig {
             let pair = self
                 .pair(&pair_override.base, &pair_override.quote)
                 .ok_or_else(|| {
-                    PriceOracleError::InvalidConfiguration(format!(
+                    PriceOracleError::invalid_configuration(format!(
                         "operator override references unsupported pair {}",
                         pair_override.pair()
                     ))
@@ -503,13 +503,13 @@ impl PriceOracleConfig {
             if let Some(kind) = pair_override.force_backend {
                 match kind {
                     OracleBackendKind::Chainlink if pair.chainlink.is_none() => {
-                        return Err(PriceOracleError::InvalidConfiguration(format!(
+                        return Err(PriceOracleError::invalid_configuration(format!(
                             "{} override forces Chainlink but no Chainlink feed is configured",
                             pair.pair()
                         )));
                     }
                     OracleBackendKind::Pyth if pair.pyth.is_none() => {
-                        return Err(PriceOracleError::InvalidConfiguration(format!(
+                        return Err(PriceOracleError::invalid_configuration(format!(
                             "{} override forces Pyth but no Pyth feed is configured",
                             pair.pair()
                         )));
@@ -519,7 +519,7 @@ impl PriceOracleConfig {
             }
             if let Some(degraded_mode) = pair_override.degraded_mode.as_ref() {
                 if degraded_mode.enabled && degraded_mode.max_stale_age_seconds == 0 {
-                    return Err(PriceOracleError::InvalidConfiguration(format!(
+                    return Err(PriceOracleError::invalid_configuration(format!(
                         "{} override degraded-mode max_stale_age_seconds must be non-zero when enabled",
                         pair.pair()
                     )));

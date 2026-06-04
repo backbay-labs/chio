@@ -16,6 +16,8 @@
 
 use std::collections::BTreeMap;
 
+mod dispatch;
+
 #[cfg(feature = "fuzz")]
 pub mod fuzz;
 
@@ -23,7 +25,13 @@ use chio_egress_contract::HttpEgressContract;
 use chio_kernel::{KernelError, NestedFlowBridge, ToolServerConnection};
 use chio_manifest::ToolManifest;
 use chio_mcp_edge::McpToolInfo;
-use chio_openapi::{ChioExtensions, GeneratorConfig, ManifestGenerator, OpenApiError, OpenApiSpec};
+use chio_openapi::{GeneratorConfig, ManifestGenerator, OpenApiError, OpenApiSpec};
+#[cfg(test)]
+use dispatch::expand_route_path;
+use dispatch::{
+    bridged_tool_response, build_route_dispatches, dispatch_url, enforce_bridged_response_body,
+    enforce_dispatch_contract, enforce_no_redirect_response, RouteDispatch,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -101,6 +109,12 @@ pub struct BridgedResponse {
     pub status: u16,
     /// Response body.
     pub body: Value,
+    /// Raw response body byte count observed by the dispatcher before JSON
+    /// parsing or normalization. Live dispatchers must provide this so the
+    /// egress contract is enforced against upstream bytes, not reserialized
+    /// JSON.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observed_body_bytes: Option<u64>,
     /// Whether the response indicates an error.
     pub is_error: bool,
 }
@@ -109,37 +123,12 @@ pub struct BridgedResponse {
 ///
 /// Bridge users provide a function that performs the actual HTTP call.
 /// This allows the bridge to remain transport-agnostic (no reqwest dependency).
+/// Dispatchers must perform a single-hop request and return 3xx redirects
+/// without following them internally. A dispatcher that follows redirects
+/// violates the bridge egress contract. Live dispatchers must also populate
+/// `BridgedResponse::observed_body_bytes` with the upstream body byte count.
 pub type HttpDispatcher =
     dyn Fn(&str, &str, &Value) -> Result<BridgedResponse, BridgeError> + Send + Sync;
-
-fn enforce_dispatch_contract<'a>(
-    contract: Option<&'a HttpEgressContract>,
-    url: &str,
-) -> Result<&'a HttpEgressContract, BridgeError> {
-    let contract = contract.ok_or_else(|| {
-        BridgeError::UpstreamError(
-            "OpenAPI bridge dispatcher requires an HttpEgressContract".to_string(),
-        )
-    })?;
-    contract.enforce_url_with_dns(url, 0).map_err(|err| {
-        BridgeError::UpstreamError(format!("HttpEgressContract rejects bridge URL: {err}"))
-    })?;
-    Ok(contract)
-}
-
-fn enforce_bridged_response_body(
-    contract: &HttpEgressContract,
-    response: &BridgedResponse,
-) -> Result<(), BridgeError> {
-    let body_bytes = serde_json::to_vec(&response.body)
-        .map(|bytes| bytes.len() as u64)
-        .map_err(|err| {
-            BridgeError::UpstreamError(format!("failed to measure bridge response body: {err}"))
-        })?;
-    contract.enforce_response_bytes(body_bytes).map_err(|err| {
-        BridgeError::UpstreamError(format!("HttpEgressContract rejects bridge response: {err}"))
-    })
-}
 
 /// The OpenAPI-MCP bridge.
 ///
@@ -148,8 +137,7 @@ fn enforce_bridged_response_body(
 pub struct OpenApiMcpBridge {
     config: BridgeConfig,
     manifest: ToolManifest,
-    /// Maps tool name to its route binding.
-    route_bindings: BTreeMap<String, RouteBinding>,
+    route_dispatches: BTreeMap<String, RouteDispatch>,
     /// Optional HTTP dispatcher for live calls.
     dispatcher: Option<Box<HttpDispatcher>>,
 }
@@ -178,26 +166,7 @@ impl OpenApiMcpBridge {
             ));
         }
 
-        let mut route_bindings = BTreeMap::new();
-        for (path, path_item) in &spec.paths {
-            for (method_str, operation) in &path_item.operations {
-                let extensions = ChioExtensions::from_operation(&operation.raw);
-                if !extensions.should_publish() {
-                    continue;
-                }
-                let tool_name = operation
-                    .operation_id
-                    .clone()
-                    .unwrap_or_else(|| format!("{} {}", method_str.to_uppercase(), path));
-                route_bindings.insert(
-                    tool_name,
-                    RouteBinding {
-                        method: method_str.to_uppercase(),
-                        path: path.clone(),
-                    },
-                );
-            }
-        }
+        let route_dispatches = build_route_dispatches(spec)?;
 
         let manifest = ToolManifest {
             schema: "chio.manifest.v1".to_string(),
@@ -219,12 +188,16 @@ impl OpenApiMcpBridge {
         Ok(Self {
             config,
             manifest,
-            route_bindings,
+            route_dispatches,
             dispatcher: None,
         })
     }
 
     /// Set the HTTP dispatcher function.
+    ///
+    /// The dispatcher must not follow redirects internally. Return redirect
+    /// responses to the bridge so they can be rejected instead of performing an
+    /// ungated second network hop.
     pub fn set_dispatcher(&mut self, dispatcher: Box<HttpDispatcher>) {
         self.dispatcher = Some(dispatcher);
     }
@@ -241,7 +214,9 @@ impl OpenApiMcpBridge {
 
     /// Get the route binding for a tool.
     pub fn route_binding(&self, tool_name: &str) -> Option<&RouteBinding> {
-        self.route_bindings.get(tool_name)
+        self.route_dispatches
+            .get(tool_name)
+            .map(RouteDispatch::binding)
     }
 
     /// List all tool names exposed by this bridge.
@@ -271,34 +246,23 @@ impl OpenApiMcpBridge {
     /// Invoke a bridged tool. A dispatcher is required so the kernel cannot
     /// sign successful receipts for simulated side effects.
     pub fn invoke_tool(&self, tool_name: &str, arguments: Value) -> Result<Value, BridgeError> {
-        let binding = self
-            .route_bindings
+        let dispatch = self
+            .route_dispatches
             .get(tool_name)
             .ok_or_else(|| BridgeError::ToolNotFound(tool_name.to_string()))?;
 
         if let Some(dispatcher) = &self.dispatcher {
-            let url = format!("{}{}", self.config.base_url, binding.path);
+            let binding = dispatch.binding();
+            let url = dispatch_url(&self.config.base_url, dispatch, &arguments)?;
             // HttpEgressContract: gate the dispatcher invocation on the typed
             // egress contract. The bridge stays transport-agnostic, so we
             // validate URL and DNS pre-flight, then enforce the response-byte
             // ceiling post-dispatch. Missing contract state fails closed.
             let contract = enforce_dispatch_contract(self.config.egress_contract.as_ref(), &url)?;
             let response = dispatcher(&binding.method, &url, &arguments)?;
+            enforce_no_redirect_response(&response)?;
             enforce_bridged_response_body(contract, &response)?;
-            Ok(json!({
-                "content": [{
-                    "type": "text",
-                    "text": serde_json::to_string(&response.body)
-                        .unwrap_or_else(|_| "{}".to_string()),
-                }],
-                "isError": response.is_error,
-                "structuredContent": {
-                    "httpStatus": response.status,
-                    "method": binding.method,
-                    "path": binding.path,
-                    "body": response.body,
-                }
-            }))
+            Ok(bridged_tool_response(binding, response))
         } else {
             Err(BridgeError::Kernel(
                 "OpenAPI bridge requires a dispatcher for live tool invocation".to_string(),
@@ -344,7 +308,7 @@ impl ToolServerConnection for BridgeToolServer<'_> {
 pub struct OwnedBridgeToolServer {
     config: BridgeConfig,
     manifest: ToolManifest,
-    route_bindings: BTreeMap<String, RouteBinding>,
+    route_dispatches: BTreeMap<String, RouteDispatch>,
     dispatcher: Option<Box<HttpDispatcher>>,
 }
 
@@ -354,39 +318,28 @@ impl OwnedBridgeToolServer {
         Self {
             config: bridge.config,
             manifest: bridge.manifest,
-            route_bindings: bridge.route_bindings,
+            route_dispatches: bridge.route_dispatches,
             dispatcher: bridge.dispatcher,
         }
     }
 
     fn invoke_tool(&self, tool_name: &str, arguments: Value) -> Result<Value, BridgeError> {
-        let binding = self
-            .route_bindings
+        let dispatch = self
+            .route_dispatches
             .get(tool_name)
             .ok_or_else(|| BridgeError::ToolNotFound(tool_name.to_string()))?;
 
         if let Some(dispatcher) = &self.dispatcher {
-            let url = format!("{}{}", self.config.base_url, binding.path);
+            let binding = dispatch.binding();
+            let url = dispatch_url(&self.config.base_url, dispatch, &arguments)?;
             // HttpEgressContract: validate URL pre-flight and enforce the
             // response-byte ceiling post-dispatch. Missing contract state
             // fails closed for live dispatchers.
             let contract = enforce_dispatch_contract(self.config.egress_contract.as_ref(), &url)?;
             let response = dispatcher(&binding.method, &url, &arguments)?;
+            enforce_no_redirect_response(&response)?;
             enforce_bridged_response_body(contract, &response)?;
-            Ok(json!({
-                "content": [{
-                    "type": "text",
-                    "text": serde_json::to_string(&response.body)
-                        .unwrap_or_else(|_| "{}".to_string()),
-                }],
-                "isError": response.is_error,
-                "structuredContent": {
-                    "httpStatus": response.status,
-                    "method": binding.method,
-                    "path": binding.path,
-                    "body": response.body,
-                }
-            }))
+            Ok(bridged_tool_response(binding, response))
         } else {
             Err(BridgeError::Kernel(
                 "OpenAPI bridge requires a dispatcher for live tool invocation".to_string(),
@@ -426,6 +379,12 @@ impl ToolServerConnection for OwnedBridgeToolServer {
 mod tests {
     use super::*;
 
+    fn valid_test_public_key() -> String {
+        chio_core::Keypair::from_seed(&[17u8; 32])
+            .public_key()
+            .to_hex()
+    }
+
     const PETSTORE_SPEC: &str = r#"{
         "openapi": "3.0.3",
         "info": {
@@ -455,6 +414,7 @@ mod tests {
                     "operationId": "createPet",
                     "summary": "Create a pet",
                     "requestBody": {
+                        "required": true,
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -517,7 +477,7 @@ mod tests {
             server_id: "petstore-bridge".to_string(),
             server_name: "Petstore Bridge".to_string(),
             server_version: "1.0.0".to_string(),
-            public_key: "aabbccdd".to_string(),
+            public_key: valid_test_public_key(),
             base_url: "https://api.example.com".to_string(),
             egress_contract: None,
         }
@@ -525,9 +485,88 @@ mod tests {
 
     fn petstore_config_with_egress() -> BridgeConfig {
         let mut config = petstore_config();
-        config.base_url = "https://203.0.113.10".to_string();
-        config.egress_contract = Some(HttpEgressContract::permissive_for_tests("203.0.113.10"));
+        config.base_url = "https://93.184.216.34".to_string();
+        config.egress_contract = Some(HttpEgressContract::permissive_for_tests("93.184.216.34"));
         config
+    }
+
+    fn required_query_spec() -> &'static str {
+        r#"{
+            "openapi": "3.0.3",
+            "info": { "title": "Search API", "version": "1.0.0" },
+            "paths": {
+                "/search": {
+                    "get": {
+                        "operationId": "searchPets",
+                        "parameters": [
+                            {
+                                "name": "q",
+                                "in": "query",
+                                "required": true,
+                                "schema": { "type": "string" }
+                            },
+                            {
+                                "name": "page",
+                                "in": "query",
+                                "schema": { "type": "integer" }
+                            }
+                        ],
+                        "responses": { "200": { "description": "OK" } }
+                    }
+                }
+            }
+        }"#
+    }
+
+    fn optional_request_body_spec() -> &'static str {
+        r#"{
+            "openapi": "3.0.3",
+            "info": { "title": "Optional Body API", "version": "1.0.0" },
+            "paths": {
+                "/optional-body": {
+                    "post": {
+                        "operationId": "optionalBody",
+                        "requestBody": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "name": { "type": "string" }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "responses": { "200": { "description": "OK" } }
+                    }
+                }
+            }
+        }"#
+    }
+
+    #[test]
+    fn bridged_tool_response_preserves_metadata_and_body() {
+        let binding = RouteBinding {
+            method: "GET".to_string(),
+            path: "/pets".to_string(),
+        };
+        let response = BridgedResponse {
+            status: 202,
+            body: json!({"ok": true}),
+            observed_body_bytes: Some(64),
+            is_error: false,
+        };
+
+        let result = bridged_tool_response(&binding, response);
+
+        assert_eq!(result["content"][0]["type"], "text");
+        assert_eq!(result["content"][0]["text"], r#"{"ok":true}"#);
+        assert_eq!(result["isError"], false);
+        assert_eq!(result["structuredContent"]["httpStatus"], 202);
+        assert_eq!(result["structuredContent"]["method"], "GET");
+        assert_eq!(result["structuredContent"]["path"], "/pets");
+        assert_eq!(result["structuredContent"]["body"]["ok"], true);
     }
 
     #[test]
@@ -599,6 +638,7 @@ mod tests {
                     "url": url,
                     "pets": [{"name": "Fido"}]
                 }),
+                observed_body_bytes: Some(64),
                 is_error: false,
             })
         }));
@@ -616,6 +656,7 @@ mod tests {
             Ok(BridgedResponse {
                 status: 404,
                 body: json!({"error": "not found"}),
+                observed_body_bytes: Some(64),
                 is_error: true,
             })
         }));
@@ -633,6 +674,7 @@ mod tests {
             Ok(BridgedResponse {
                 status: 200,
                 body: json!({"ok": true}),
+                observed_body_bytes: Some(64),
                 is_error: false,
             })
         }));
@@ -653,11 +695,51 @@ mod tests {
             Ok(BridgedResponse {
                 status: 200,
                 body: json!({"oversized": "response"}),
+                observed_body_bytes: Some(64),
                 is_error: false,
             })
         }));
         let error = bridge.invoke_tool("listPets", json!({})).unwrap_err();
         assert!(format!("{error}").contains("response size"));
+    }
+
+    #[test]
+    fn bridge_dispatcher_response_body_cap_uses_observed_raw_bytes() {
+        let mut config = petstore_config_with_egress();
+        config
+            .egress_contract
+            .as_mut()
+            .expect("egress contract")
+            .max_response_bytes = 16;
+        let mut bridge = OpenApiMcpBridge::from_spec(PETSTORE_SPEC, config).unwrap();
+        bridge.set_dispatcher(Box::new(|_method, _url, _args| {
+            Ok(BridgedResponse {
+                status: 200,
+                body: json!({"ok": true}),
+                observed_body_bytes: Some(128),
+                is_error: false,
+            })
+        }));
+        let error = bridge.invoke_tool("listPets", json!({})).unwrap_err();
+        assert!(format!("{error}").contains("response size"));
+    }
+
+    #[test]
+    fn bridge_dispatcher_requires_observed_response_body_bytes() {
+        let mut bridge =
+            OpenApiMcpBridge::from_spec(PETSTORE_SPEC, petstore_config_with_egress()).unwrap();
+        bridge.set_dispatcher(Box::new(|_method, _url, _args| {
+            Ok(BridgedResponse {
+                status: 200,
+                body: json!({"ok": true}),
+                observed_body_bytes: None,
+                is_error: false,
+            })
+        }));
+
+        let error = bridge.invoke_tool("listPets", json!({})).unwrap_err();
+
+        assert!(format!("{error}").contains("observed_body_bytes"));
     }
 
     #[test]
@@ -730,12 +812,13 @@ mod tests {
             Ok(BridgedResponse {
                 status: 200,
                 body: json!({"ok": true}),
+                observed_body_bytes: Some(64),
                 is_error: false,
             })
         }));
         let owned = OwnedBridgeToolServer::from_bridge(bridge);
         let result = owned
-            .invoke("createPet", json!({"name": "Buddy"}), None)
+            .invoke("createPet", json!({"body": {"name": "Buddy"}}), None)
             .await
             .unwrap();
         assert_eq!(result["structuredContent"]["httpStatus"], 200);
@@ -783,6 +866,7 @@ mod tests {
             Ok(BridgedResponse {
                 status: 200,
                 body: json!({"receivedUrl": url}),
+                observed_body_bytes: Some(64),
                 is_error: false,
             })
         }));
@@ -792,7 +876,325 @@ mod tests {
         let url = result["structuredContent"]["body"]["receivedUrl"]
             .as_str()
             .unwrap_or("");
-        assert!(url.starts_with("https://203.0.113.10"));
+        assert!(url.starts_with("https://93.184.216.34"));
+    }
+
+    #[test]
+    fn bridge_dispatcher_expands_path_parameters() {
+        let mut bridge =
+            OpenApiMcpBridge::from_spec(PETSTORE_SPEC, petstore_config_with_egress()).unwrap();
+        bridge.set_dispatcher(Box::new(|_method, url, _args| {
+            Ok(BridgedResponse {
+                status: 200,
+                body: json!({"receivedUrl": url}),
+                observed_body_bytes: Some(64),
+                is_error: false,
+            })
+        }));
+
+        let result = bridge
+            .invoke_tool("getPet", json!({"petId": "pet-42"}))
+            .unwrap();
+
+        assert_eq!(
+            result["structuredContent"]["body"]["receivedUrl"],
+            "https://93.184.216.34/pets/pet-42"
+        );
+    }
+
+    #[test]
+    fn bridge_dispatcher_rejects_dot_segment_path_parameters() {
+        let mut bridge =
+            OpenApiMcpBridge::from_spec(PETSTORE_SPEC, petstore_config_with_egress()).unwrap();
+        bridge.set_dispatcher(Box::new(|_method, _url, _args| {
+            panic!("dispatcher must not run when path parameter is a dot segment")
+        }));
+
+        for pet_id in [".", ".."] {
+            let error = bridge
+                .invoke_tool("getPet", json!({"petId": pet_id}))
+                .unwrap_err();
+            assert!(format!("{error}").contains("must not be a dot segment"));
+        }
+    }
+
+    #[test]
+    fn bridge_rejects_declared_path_parameter_missing_from_template() {
+        let spec = r#"{
+            "openapi": "3.0.3",
+            "info": { "title": "Bad API", "version": "1" },
+            "paths": {
+                "/pets": {
+                    "get": {
+                        "operationId": "getPet",
+                        "parameters": [
+                            { "name": "petId", "in": "path", "required": true, "schema": { "type": "string" } }
+                        ],
+                        "responses": { "200": { "description": "OK" } }
+                    }
+                }
+            }
+        }"#;
+
+        let error = match OpenApiMcpBridge::from_spec(spec, petstore_config()) {
+            Ok(_) => panic!("bridge should reject unused declared path parameters"),
+            Err(error) => error,
+        };
+
+        assert!(format!("{error}").contains("declares unused path parameter `petId`"));
+    }
+
+    #[test]
+    fn bridge_dispatcher_rejects_redirect_responses() {
+        let mut bridge =
+            OpenApiMcpBridge::from_spec(PETSTORE_SPEC, petstore_config_with_egress()).unwrap();
+        bridge.set_dispatcher(Box::new(|_method, _url, _args| {
+            Ok(BridgedResponse {
+                status: 302,
+                body: json!({"location": "https://169.254.169.254/latest/meta-data"}),
+                observed_body_bytes: Some(64),
+                is_error: true,
+            })
+        }));
+
+        let error = bridge
+            .invoke_tool("getPet", json!({"petId": "pet-42"}))
+            .unwrap_err();
+
+        assert!(format!("{error}").contains("must not follow redirects"));
+    }
+
+    #[test]
+    fn bridge_dispatcher_normalizes_base_url_trailing_slash() {
+        let mut config = petstore_config_with_egress();
+        config.base_url = "https://93.184.216.34/".to_string();
+        let mut bridge = OpenApiMcpBridge::from_spec(PETSTORE_SPEC, config).unwrap();
+        bridge.set_dispatcher(Box::new(|_method, url, _args| {
+            Ok(BridgedResponse {
+                status: 200,
+                body: json!({"receivedUrl": url}),
+                observed_body_bytes: Some(64),
+                is_error: false,
+            })
+        }));
+
+        let result = bridge
+            .invoke_tool("getPet", json!({"petId": "pet-42"}))
+            .unwrap();
+
+        assert_eq!(
+            result["structuredContent"]["body"]["receivedUrl"],
+            "https://93.184.216.34/pets/pet-42"
+        );
+    }
+
+    #[test]
+    fn bridge_dispatcher_appends_declared_query_parameters() {
+        let spec = r#"{
+            "openapi": "3.0.3",
+            "info": { "title": "Search API", "version": "1.0.0" },
+            "paths": {
+                "/pets/{petId}/notes": {
+                    "get": {
+                        "operationId": "searchPetNotes",
+                        "parameters": [
+                            {
+                                "name": "petId",
+                                "in": "path",
+                                "required": true,
+                                "schema": { "type": "string" }
+                            },
+                            {
+                                "name": "q",
+                                "in": "query",
+                                "required": true,
+                                "schema": { "type": "string" }
+                            },
+                            {
+                                "name": "limit",
+                                "in": "query",
+                                "schema": { "type": "integer" }
+                            }
+                        ],
+                        "responses": { "200": { "description": "OK" } }
+                    }
+                }
+            }
+        }"#;
+        let mut bridge = OpenApiMcpBridge::from_spec(spec, petstore_config_with_egress()).unwrap();
+        bridge.set_dispatcher(Box::new(|_method, url, _args| {
+            Ok(BridgedResponse {
+                status: 200,
+                body: json!({"receivedUrl": url}),
+                observed_body_bytes: Some(64),
+                is_error: false,
+            })
+        }));
+
+        let result = bridge
+            .invoke_tool(
+                "searchPetNotes",
+                json!({
+                    "petId": "pet 42",
+                    "q": "needs follow up",
+                    "limit": 10,
+                    "ignored": "not declared in OpenAPI"
+                }),
+            )
+            .unwrap();
+
+        assert_eq!(
+            result["structuredContent"]["body"]["receivedUrl"],
+            "https://93.184.216.34/pets/pet%2042/notes?q=needs%20follow%20up&limit=10"
+        );
+    }
+
+    #[test]
+    fn bridge_dispatcher_rejects_missing_required_query_parameter() {
+        let mut bridge =
+            OpenApiMcpBridge::from_spec(required_query_spec(), petstore_config_with_egress())
+                .unwrap();
+        bridge.set_dispatcher(Box::new(|_method, _url, _args| {
+            panic!("dispatcher must not run when required query parameter is missing")
+        }));
+
+        let error = bridge
+            .invoke_tool("searchPets", json!({"page": 2}))
+            .unwrap_err();
+
+        assert!(format!("{error}").contains("missing required query parameter `q`"));
+    }
+
+    #[test]
+    fn bridge_dispatcher_rejects_missing_request_body_before_dispatcher() {
+        let mut bridge =
+            OpenApiMcpBridge::from_spec(PETSTORE_SPEC, petstore_config_with_egress()).unwrap();
+        bridge.set_dispatcher(Box::new(|_method, _url, _args| {
+            panic!("dispatcher must not run when required request body is missing")
+        }));
+
+        let error = bridge
+            .invoke_tool("createPet", json!({"name": "no-body"}))
+            .unwrap_err();
+
+        assert!(format!("{error}").contains("missing required request body `body`"));
+    }
+
+    #[test]
+    fn bridge_dispatcher_allows_missing_optional_request_body() {
+        let mut bridge = OpenApiMcpBridge::from_spec(
+            optional_request_body_spec(),
+            petstore_config_with_egress(),
+        )
+        .unwrap();
+        bridge.set_dispatcher(Box::new(|method, url, args| {
+            assert_eq!(method, "POST");
+            assert_eq!(url, "https://93.184.216.34/optional-body");
+            assert!(args.get("body").is_none());
+            Ok(BridgedResponse {
+                status: 200,
+                body: json!({"ok": true}),
+                observed_body_bytes: Some(11),
+                is_error: false,
+            })
+        }));
+
+        let result = bridge.invoke_tool("optionalBody", json!({})).unwrap();
+
+        assert_eq!(result["structuredContent"]["body"]["ok"], true);
+    }
+
+    #[test]
+    fn bridge_dispatcher_rejects_null_or_empty_required_query_parameter() {
+        let mut bridge =
+            OpenApiMcpBridge::from_spec(required_query_spec(), petstore_config_with_egress())
+                .unwrap();
+        bridge.set_dispatcher(Box::new(|_method, _url, _args| {
+            panic!("dispatcher must not run when required query parameter is empty")
+        }));
+
+        for arguments in [json!({"q": null}), json!({"q": []})] {
+            let error = bridge.invoke_tool("searchPets", arguments).unwrap_err();
+            assert!(format!("{error}").contains("missing required query parameter `q`"));
+        }
+    }
+
+    #[tokio::test]
+    async fn owned_bridge_tool_server_rejects_missing_required_query_parameter() {
+        let mut bridge =
+            OpenApiMcpBridge::from_spec(required_query_spec(), petstore_config_with_egress())
+                .unwrap();
+        bridge.set_dispatcher(Box::new(|_method, _url, _args| {
+            panic!("dispatcher must not run when owned bridge is missing a required query")
+        }));
+        let owned = OwnedBridgeToolServer::from_bridge(bridge);
+
+        let error = owned
+            .invoke("searchPets", json!({"page": 2}), None)
+            .await
+            .unwrap_err();
+
+        assert!(format!("{error}").contains("missing required query parameter `q`"));
+    }
+
+    #[tokio::test]
+    async fn owned_bridge_tool_server_rejects_missing_request_body_before_dispatcher() {
+        let mut bridge =
+            OpenApiMcpBridge::from_spec(PETSTORE_SPEC, petstore_config_with_egress()).unwrap();
+        bridge.set_dispatcher(Box::new(|_method, _url, _args| {
+            panic!("dispatcher must not run when owned bridge is missing a required body")
+        }));
+        let owned = OwnedBridgeToolServer::from_bridge(bridge);
+
+        let error = owned
+            .invoke("createPet", json!({"name": "no-body"}), None)
+            .await
+            .unwrap_err();
+
+        assert!(format!("{error}").contains("missing required request body `body`"));
+    }
+
+    #[test]
+    fn bridge_dispatcher_rejects_missing_path_parameter() {
+        let mut bridge =
+            OpenApiMcpBridge::from_spec(PETSTORE_SPEC, petstore_config_with_egress()).unwrap();
+        bridge.set_dispatcher(Box::new(|_method, _url, _args| {
+            panic!("dispatcher must not run when path parameter is missing")
+        }));
+
+        let error = bridge.invoke_tool("getPet", json!({})).unwrap_err();
+
+        assert!(format!("{error}").contains("missing path parameter `petId`"));
+    }
+
+    #[test]
+    fn bridge_rejects_undeclared_path_template_parameter() {
+        let spec = r#"{
+            "openapi": "3.0.3",
+            "info": { "title": "Bad Paths", "version": "1.0.0" },
+            "paths": {
+                "/pets/{petId}": {
+                    "get": {
+                        "operationId": "getPet",
+                        "responses": { "200": { "description": "OK" } }
+                    }
+                }
+            }
+        }"#;
+
+        let error = match OpenApiMcpBridge::from_spec(spec, petstore_config()) {
+            Ok(_) => panic!("undeclared path template parameter must reject at ingest"),
+            Err(error) => error,
+        };
+
+        assert!(format!("{error}").contains("undeclared path parameter `petId`"));
+    }
+
+    #[test]
+    fn expand_route_path_rejects_unmatched_closing_brace() {
+        let error = expand_route_path("/pets/{petId}}", &json!({"petId": "42"})).unwrap_err();
+
+        assert!(format!("{error}").contains("unmatched"));
     }
 
     #[test]

@@ -278,14 +278,10 @@ impl ChioOpenAiAdapter {
             match binding {
                 Some((server_id, name)) => (server_id.clone(), name.clone()),
                 None => {
-                    return ToolCallResult {
-                        tool_call_id: tool_call.id.clone(),
-                        name: tool_call.function.name.clone(),
-                        content: format!("Error: function '{}' not found", tool_call.function.name),
-                        denied: true,
-                        receipt_ref: None,
-                        receipt: None,
-                    };
+                    return denied_tool_call_result(
+                        tool_call,
+                        format!("Error: function '{}' not found", tool_call.function.name),
+                    );
                 }
             }
         };
@@ -293,14 +289,10 @@ impl ChioOpenAiAdapter {
         let arguments = match serde_json::from_str::<Value>(&tool_call.function.arguments) {
             Ok(args) => args,
             Err(e) => {
-                return ToolCallResult {
-                    tool_call_id: tool_call.id.clone(),
-                    name: tool_call.function.name.clone(),
-                    content: format!("Error: failed to parse arguments: {e}"),
-                    denied: true,
-                    receipt_ref: None,
-                    receipt: None,
-                };
+                return denied_tool_call_result(
+                    tool_call,
+                    format!("Error: failed to parse arguments: {e}"),
+                );
             }
         };
 
@@ -328,27 +320,19 @@ impl ChioOpenAiAdapter {
         ) {
             Ok(plan) => plan,
             Err(error) => {
-                return ToolCallResult {
-                    tool_call_id: tool_call.id.clone(),
-                    name: tool_call.function.name.clone(),
-                    content: format!("Error: failed to plan authoritative route: {error}"),
-                    denied: true,
-                    receipt_ref: None,
-                    receipt: None,
-                };
+                return denied_tool_call_result(
+                    tool_call,
+                    format!("Error: failed to plan authoritative route: {error}"),
+                );
             }
         };
         let route_metadata = match route_selection_metadata(&route_plan.evidence) {
             Ok(metadata) => metadata,
             Err(error) => {
-                return ToolCallResult {
-                    tool_call_id: tool_call.id.clone(),
-                    name: tool_call.function.name.clone(),
-                    content: format!("Error: failed to serialize route selection: {error}"),
-                    denied: true,
-                    receipt_ref: None,
-                    receipt: None,
-                };
+                return denied_tool_call_result(
+                    tool_call,
+                    format!("Error: failed to serialize route selection: {error}"),
+                );
             }
         };
 
@@ -366,14 +350,7 @@ impl ChioOpenAiAdapter {
                     receipt: Some(response.receipt),
                 }
             }
-            Err(error) => ToolCallResult {
-                tool_call_id: tool_call.id.clone(),
-                name: tool_call.function.name.clone(),
-                content: format!("Error: {error}"),
-                denied: true,
-                receipt_ref: None,
-                receipt: None,
-            },
+            Err(error) => denied_tool_call_result(tool_call, format!("Error: {error}")),
         }
     }
 
@@ -488,15 +465,17 @@ fn required_string_field(
     field: &str,
     context: &str,
 ) -> Result<String, OpenAiAdapterError> {
-    value
-        .get(field)
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToOwned::to_owned)
-        .ok_or_else(|| {
-            OpenAiAdapterError::InvalidRequest(format!("{context} missing non-empty {field}"))
-        })
+    let Some(value) = value.get(field).and_then(Value::as_str) else {
+        return Err(OpenAiAdapterError::InvalidRequest(format!(
+            "{context} missing non-empty {field}"
+        )));
+    };
+    if value.trim().is_empty() {
+        return Err(OpenAiAdapterError::InvalidRequest(format!(
+            "{context} missing non-empty {field}"
+        )));
+    }
+    Ok(value.to_string())
 }
 
 fn validate_tool_call(
@@ -506,6 +485,11 @@ fn validate_tool_call(
     if call.id.trim().is_empty() {
         return Err(OpenAiAdapterError::InvalidRequest(format!(
             "{context} missing non-empty call_id"
+        )));
+    }
+    if call.id.trim() != call.id {
+        return Err(OpenAiAdapterError::InvalidRequest(format!(
+            "{context} call_id must not contain surrounding whitespace"
         )));
     }
     if call.call_type != "function" {
@@ -519,12 +503,31 @@ fn validate_tool_call(
             "{context} missing non-empty function.name"
         )));
     }
+    if call.function.name.trim() != call.function.name {
+        return Err(OpenAiAdapterError::InvalidRequest(format!(
+            "{context} function.name must not contain surrounding whitespace"
+        )));
+    }
     if call.function.arguments.trim().is_empty() {
         return Err(OpenAiAdapterError::InvalidRequest(format!(
             "{context} missing non-empty function.arguments"
         )));
     }
     Ok(call)
+}
+
+fn denied_tool_call_result(
+    tool_call: &OpenAiToolCall,
+    content: impl Into<String>,
+) -> ToolCallResult {
+    ToolCallResult {
+        tool_call_id: tool_call.id.clone(),
+        name: tool_call.function.name.clone(),
+        content: content.into(),
+        denied: true,
+        receipt_ref: None,
+        receipt: None,
+    }
 }
 
 fn render_response_content(output: &Option<ToolCallOutput>, reason: Option<&str>) -> String {
@@ -567,6 +570,10 @@ mod tests {
 
     struct MockToolServer {
         response: Value,
+    }
+
+    fn valid_test_public_key() -> String {
+        Keypair::from_seed(&[23u8; 32]).public_key().to_hex()
     }
 
     #[async_trait::async_trait]
@@ -652,7 +659,7 @@ mod tests {
             ],
             server_tools: Vec::new(),
             required_permissions: None,
-            public_key: "aabbccdd".to_string(),
+            public_key: valid_test_public_key(),
         }
     }
 
@@ -661,7 +668,7 @@ mod tests {
             server_id: "openai-test".to_string(),
             server_name: "OpenAI Test".to_string(),
             server_version: "1.0.0".to_string(),
-            public_key: "aabbccdd".to_string(),
+            public_key: valid_test_public_key(),
         }
     }
 
@@ -680,6 +687,19 @@ mod tests {
                 arguments: r#"{"location": "San Francisco"}"#.to_string(),
             },
         }
+    }
+
+    #[test]
+    fn denied_tool_call_result_preserves_call_identity_without_receipt() {
+        let call = weather_tool_call();
+        let result = denied_tool_call_result(&call, "Error: blocked");
+
+        assert_eq!(result.tool_call_id, "call_abc123");
+        assert_eq!(result.name, "get_weather");
+        assert_eq!(result.content, "Error: blocked");
+        assert!(result.denied);
+        assert!(result.receipt_ref.is_none());
+        assert!(result.receipt.is_none());
     }
 
     fn test_kernel_config() -> KernelConfig {
@@ -755,7 +775,7 @@ mod tests {
             tools: vec![],
             server_tools: Vec::new(),
             required_permissions: None,
-            public_key: "aabb".to_string(),
+            public_key: valid_test_public_key(),
         };
         let err = ChioOpenAiAdapter::new(test_config(), vec![empty_manifest]).unwrap_err();
         assert!(matches!(err, OpenAiAdapterError::InvalidRequest(_)));
@@ -1013,7 +1033,7 @@ mod tests {
             }],
             server_tools: Vec::new(),
             required_permissions: None,
-            public_key: "aabb".to_string(),
+            public_key: valid_test_public_key(),
         };
         let adapter = ChioOpenAiAdapter::new(test_config(), vec![manifest]).unwrap();
         let mut kernel = ChioKernel::new(test_kernel_config());

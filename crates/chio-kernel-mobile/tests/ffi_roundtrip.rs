@@ -349,6 +349,28 @@ fn sign_receipt_rejects_bad_seed_hex() {
 }
 
 #[test]
+fn sign_receipt_rejects_zero_seed() {
+    let zero_seed = [0u8; 32];
+    let keypair = Keypair::from_seed(&zero_seed);
+    let body = make_receipt_body(&keypair);
+    let body_json_result = serde_json::to_string(&body);
+    assert!(
+        body_json_result.is_ok(),
+        "receipt body fixture should serialize"
+    );
+    let body_json = body_json_result.unwrap_or_default();
+
+    let result = sign_receipt(body_json, "00".repeat(32));
+    assert!(
+        matches!(result, Err(ChioMobileError::WeakEntropy { .. })),
+        "zero seed must return WeakEntropy"
+    );
+    if let Err(ChioMobileError::WeakEntropy { message }) = result {
+        assert!(message.contains("all-zero Ed25519 seed"));
+    }
+}
+
+#[test]
 fn verify_capability_happy_path() {
     let subject = Keypair::generate();
     let issuer = Keypair::generate();

@@ -6,9 +6,9 @@
 use crate::conditions::{evaluate_condition, validate_condition_keys, Condition, RuntimeContext};
 use crate::models::{
     ComputerUseMode, ComputerUseRule, DefaultAction, ForbiddenPathsRule, HushSpec,
-    InputInjectionRule, OriginMatch, OriginProfile, PatchIntegrityRule, PathAllowlistRule,
-    PostureExtension, RemoteDesktopChannelsRule, SecretPatternsRule, ShellCommandsRule,
-    TransitionTrigger,
+    InputInjectionRule, OriginDefaultBehavior, OriginMatch, OriginProfile, PatchIntegrityRule,
+    PathAllowlistRule, PostureExtension, RemoteDesktopChannelsRule, SecretPatternsRule,
+    ShellCommandsRule, TransitionTrigger,
 };
 use crate::regex_safety::{compile_generated_policy_regex, policy_regex_is_match};
 use serde::{Deserialize, Serialize};

@@ -148,7 +148,7 @@ impl PremiumInputs {
                 self.currency
             ));
         }
-        if self.behavioral_threshold.is_nan() || self.behavioral_threshold < 0.0 {
+        if !self.behavioral_threshold.is_finite() || self.behavioral_threshold < 0.0 {
             return Err(
                 "premium behavioral_threshold must be a finite non-negative number".to_string(),
             );
@@ -581,6 +581,20 @@ mod tests {
     fn invalid_inputs_decline() {
         let mut bad = inputs(Some(950), None);
         bad.base_rate_cents = 0;
+        let quote = price_premium("agent-x", "scope", window(), &bad);
+        assert!(matches!(
+            quote,
+            PremiumQuote::Declined {
+                reason: PremiumDeclineReason::InvalidInputs,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn non_finite_behavioral_threshold_declines() {
+        let mut bad = inputs(Some(950), Some(8.0));
+        bad.behavioral_threshold = f64::INFINITY;
         let quote = price_premium("agent-x", "scope", window(), &bad);
         assert!(matches!(
             quote,

@@ -39,14 +39,14 @@ pub const WORKFLOW_GRANT_ISSUE_ACTION_CLASS_ID: &str = "workflow.grant_issue";
 pub const WORKFLOW_AGGREGATE_PUBLISH_ACTION_CLASS_ID: &str = "workflow.aggregate_publish";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TrustedBbsIssuer {
     pub issuer_fingerprint: String,
     pub public_key_hex: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TrustedIssuerRegistryDocument {
     pub schema: String,
     pub issuers: Vec<TrustedBbsIssuer>,
@@ -127,7 +127,7 @@ impl From<ChioActionClassKind> for ActionClassKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ChioTrustedActionClass {
     pub action_class_id: String,
     pub tool_name: String,
@@ -135,7 +135,7 @@ pub struct ChioTrustedActionClass {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ChioTrustedWorkflowIntersection {
     pub intersection_id: String,
     pub sha256: String,
@@ -150,7 +150,7 @@ pub enum ChioAuthorityStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ChioTrustedLeaseAuthority {
     pub issuer: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -166,7 +166,7 @@ pub struct ChioTrustedLeaseAuthority {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ChioTrustedGovernanceAuthority {
     pub authorizing_kernel: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -182,14 +182,14 @@ pub struct ChioTrustedGovernanceAuthority {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ChioPinnedRevocationEpoch {
     pub now_unix_ms: u64,
     pub epoch_height: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ChioRevocationCheckpoint {
     pub schema: String,
     pub checkpoint_id: String,
@@ -209,7 +209,7 @@ pub enum ChioRevocationMaterial {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ChioDisclosurePolicy {
     pub projection_version: String,
     pub ciphersuite: String,
@@ -219,7 +219,7 @@ pub struct ChioDisclosurePolicy {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ChioVerificationContext {
     pub schema: String,
     pub audience: String,
@@ -283,7 +283,7 @@ impl ChioVerificationContext {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ChioVerifierTrustBundleDocument {
     pub schema: String,
     pub trusted_bbs_issuers: Vec<TrustedBbsIssuer>,
@@ -603,7 +603,7 @@ impl ChioVerifierTrustBundle {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ChioProofClaims {
     pub bbs_reveal_set: bool,
     pub hidden_range_predicates: bool,
@@ -624,7 +624,7 @@ impl ChioProofClaims {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PeerLadderBinding {
     pub kernel_id: String,
     pub public_key: PublicKey,
@@ -632,14 +632,14 @@ pub struct PeerLadderBinding {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct VendorKeyBinding {
     pub vendor_id: String,
     pub public_key: PublicKey,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkflowPairwiseIntersectionRef {
     pub peer_kernel_id: String,
     pub intersection_id: String,
@@ -647,7 +647,7 @@ pub struct WorkflowPairwiseIntersectionRef {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkflowStepClassBinding {
     pub step_index: usize,
     pub tool_name: String,
@@ -656,14 +656,14 @@ pub struct WorkflowStepClassBinding {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkflowRequiredVendorSigner {
     pub vendor_id: String,
     pub public_key: PublicKey,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkflowIntersectionArtifact {
     pub schema: String,
     pub intersection_id: String,
@@ -676,7 +676,7 @@ pub struct WorkflowIntersectionArtifact {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LeaseScopeBindingArtifact {
     pub schema: String,
     pub lease_id: String,
@@ -780,7 +780,7 @@ pub struct ChioProofPackage {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct VerifierCheck {
     pub code: String,
     pub name: String,
@@ -790,7 +790,7 @@ pub struct VerifierCheck {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct VerifierFailure {
     pub code: String,
     pub phase: String,
@@ -798,7 +798,7 @@ pub struct VerifierFailure {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct VerifierReport {
     pub schema: String,
     pub package_sha256: String,
@@ -856,7 +856,7 @@ fn validate_trust_field(value: &str, field: &str) -> Result<(), ChioPackageError
 }
 
 fn validate_sha256_hex(value: &str, field: &str) -> Result<(), ChioPackageError> {
-    if value.len() != 64 || !is_lower_hex(value) {
+    if !is_lower_sha256_hex(value) {
         return Err(ChioPackageError::TrustBundle(format!(
             "{field} must be a lowercase 64-character SHA-256 hex digest"
         )));
@@ -883,16 +883,16 @@ fn validate_scope_field(value: &str, field: &str) -> Result<(), ChioPackageError
 }
 
 fn validate_context_field(value: &str, field: &str) -> Result<(), ChioPackageError> {
-    if value.is_empty() {
+    if value.is_empty() || value.trim() != value {
         return Err(ChioPackageError::VerificationContext(format!(
-            "{field} must be non-empty"
+            "{field} must be non-empty and unpadded"
         )));
     }
     Ok(())
 }
 
 fn validate_sha256_hex_for_scope(value: &str, field: &str) -> Result<(), ChioPackageError> {
-    if value.len() != 64 || !is_lower_hex(value) {
+    if !is_lower_sha256_hex(value) {
         return Err(ChioPackageError::LeaseScopeBinding(format!(
             "{field} must be a lowercase 64-character SHA-256 hex digest"
         )));
@@ -1112,6 +1112,10 @@ fn is_lower_hex(value: &str) -> bool {
     value
         .bytes()
         .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn is_lower_sha256_hex(value: &str) -> bool {
+    value.len() == 64 && is_lower_hex(value)
 }
 
 fn canonical_sha256<T: Serialize>(value: &T) -> Result<String, ChioPackageError> {
@@ -2457,6 +2461,14 @@ mod tests {
     use chio_core_types::crypto::Keypair;
     use chio_core_types::receipt::SignedExportEnvelope;
 
+    #[test]
+    fn lower_sha256_hex_helper_accepts_exact_lowercase_digest_only() {
+        assert!(is_lower_sha256_hex(&"a".repeat(64)));
+        assert!(!is_lower_sha256_hex(&"A".repeat(64)));
+        assert!(!is_lower_sha256_hex(&"a".repeat(63)));
+        assert!(!is_lower_sha256_hex(&format!("{}g", "a".repeat(63))));
+    }
+
     fn trust_bundle_document_from_fixture() -> ChioVerifierTrustBundleDocument {
         serde_json::from_str(include_str!(
             "../../../examples/chio-3vendor/fixtures/verifier-trust-bundle.json"
@@ -2526,6 +2538,26 @@ mod tests {
     }
 
     #[test]
+    fn verification_context_rejects_blank_or_padded_fields() {
+        let mut context = verification_context_from_fixture();
+        context.challenge = " ".to_string();
+        let error = context.validate().unwrap_err();
+        assert!(error.to_string().contains("verificationContext.challenge"));
+
+        let mut context = verification_context_from_fixture();
+        context.audience = format!("{} ", context.audience);
+        let error = context.validate().unwrap_err();
+        assert!(error.to_string().contains("verificationContext.audience"));
+
+        let mut context = verification_context_from_fixture();
+        context.proof_purpose = format!(" {}", context.proof_purpose);
+        let error = context.validate().unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("verificationContext.proofPurpose"));
+    }
+
+    #[test]
     fn proof_package_parser_rejects_treaty_bilateral_side_channel() {
         let mut package: serde_json::Value = serde_json::from_str(include_str!(
             "../../../examples/chio-3vendor/fixtures/buyer-auditor-proof-package.json"
@@ -2535,6 +2567,29 @@ mod tests {
         let err = proof_package_from_json(&package.to_string())
             .expect_err("canonical proof package parser must reject unknown side-channel fields");
         assert!(err.to_string().contains("treatyBilateralEnvelopes"));
+    }
+
+    #[test]
+    fn verifier_trust_bundle_parser_rejects_unknown_fields() {
+        let mut document = serde_json::to_value(trust_bundle_document_from_fixture())
+            .expect("trust bundle serializes");
+        document["ignoredTrustRoot"] = serde_json::json!({
+            "issuer": "did:chio:ignored"
+        });
+        let error = verifier_trust_bundle_from_json(
+            &serde_json::to_string(&document).expect("trust bundle json serializes"),
+        )
+        .expect_err("trust bundle parser accepted unknown top-level trust field");
+        assert!(error.to_string().contains("ignoredTrustRoot"));
+
+        let mut nested = serde_json::to_value(trust_bundle_document_from_fixture())
+            .expect("trust bundle serializes");
+        nested["leaseAuthorities"][0]["shadowStatus"] = serde_json::json!("active");
+        let error = verifier_trust_bundle_from_json(
+            &serde_json::to_string(&nested).expect("trust bundle json serializes"),
+        )
+        .expect_err("trust bundle parser accepted unknown nested authority field");
+        assert!(error.to_string().contains("shadowStatus"));
     }
 
     #[test]

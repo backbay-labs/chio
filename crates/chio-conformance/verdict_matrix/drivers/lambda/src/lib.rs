@@ -131,7 +131,19 @@ pub fn resolve_scenario_root() -> Result<PathBuf, String> {
 }
 
 pub fn load_scenarios(root: &Path) -> Result<Vec<Scenario>, String> {
-    if !root.is_dir() {
+    let root_metadata = fs::symlink_metadata(root).map_err(|err| {
+        format!(
+            "failed to inspect scenario root `{}`: {err}",
+            root.display()
+        )
+    })?;
+    if root_metadata.file_type().is_symlink() {
+        return Err(format!(
+            "refusing symlinked verdict-matrix scenario root `{}`",
+            root.display()
+        ));
+    }
+    if !root_metadata.is_dir() {
         return Err(format!(
             "scenario root `{}` does not exist or is not a directory",
             root.display()
@@ -164,9 +176,20 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
     for entry in read {
         let entry = entry.map_err(|err| format!("read_dir entry failed: {err}"))?;
         let path = entry.path();
-        if path.is_dir() {
+        let file_type = entry
+            .file_type()
+            .map_err(|err| format!("failed to inspect {}: {err}", path.display()))?;
+        if file_type.is_symlink() {
+            return Err(format!(
+                "refusing symlink in verdict-matrix scenario tree `{}`",
+                path.display()
+            ));
+        }
+        if file_type.is_dir() {
             walk(&path, out)?;
-        } else if path.extension().and_then(|ext| ext.to_str()) == Some("json") {
+        } else if file_type.is_file()
+            && path.extension().and_then(|ext| ext.to_str()) == Some("json")
+        {
             out.push(path);
         }
     }
@@ -465,6 +488,8 @@ pub fn expected_tuple_map(scenarios: &[Scenario]) -> BTreeMap<String, VerdictTup
 
 #[cfg(test)]
 mod tests {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
     use super::*;
 
     fn scenario(id: &str) -> Scenario {
@@ -485,6 +510,55 @@ mod tests {
                 scope_set: vec!["tool:read".to_string()],
             },
         }
+    }
+
+    fn unique_dir(prefix: &str) -> Result<PathBuf, String> {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|err| format!("system clock before unix epoch: {err}"))?
+            .as_nanos();
+        Ok(std::env::temp_dir().join(format!("{prefix}-{nonce}")))
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn load_scenarios_rejects_symlinked_scenario_file() -> Result<(), String> {
+        let root = unique_dir("chio-lambda-driver-scenarios")?;
+        let outside = unique_dir("chio-lambda-driver-outside")?;
+        fs::create_dir_all(&root)
+            .map_err(|err| format!("failed to create {}: {err}", root.display()))?;
+        fs::create_dir_all(&outside)
+            .map_err(|err| format!("failed to create {}: {err}", outside.display()))?;
+        fs::write(
+            outside.join("escape.json"),
+            r#"{
+              "schema": "chio.verdict-matrix.scenario.v1",
+              "id": "escaped-scenario",
+              "category": "capability",
+              "script": {
+                "operation": "tool.call",
+                "tool": "files.read",
+                "input_json": "{}",
+                "capability_scopes": ["tool:read"]
+              },
+              "expected": {
+                "verdict": "allow",
+                "reason_code": "urn:chio:error:none",
+                "scope_set": ["tool:read"]
+              }
+            }"#,
+        )
+        .map_err(|err| format!("failed to write outside scenario: {err}"))?;
+        std::os::unix::fs::symlink(outside.join("escape.json"), root.join("escape.json"))
+            .map_err(|err| format!("failed to create symlink: {err}"))?;
+
+        match load_scenarios(&root) {
+            Ok(scenarios) => panic!("symlinked scenario should fail closed: {scenarios:?}"),
+            Err(error) => assert!(error.contains("symlink")),
+        }
+        let _ = fs::remove_dir_all(root);
+        let _ = fs::remove_dir_all(outside);
+        Ok(())
     }
 
     #[test]

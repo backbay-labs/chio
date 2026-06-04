@@ -14,10 +14,11 @@ Minimal Go `chi` example using [`chio-go-http`](../../sdks/go/chio-go-http/).
 
 ```text
 README.md
+ARCHITECTURE.md
 go.mod
 main.go
+main_test.go
 openapi.yaml
-policy.yaml
 run.sh
 smoke.sh
 ```
@@ -35,3 +36,14 @@ Run the full end-to-end smoke flow:
 ```bash
 ./smoke.sh
 ```
+
+Run the package-local Chi route tests:
+
+```bash
+go test ./...
+```
+
+The route tests exercise the Chi router without Chio middleware so payload
+validation is checked without a live sidecar. The smoke flow remains the
+authority for live sidecar evaluation, capability gating, receipt verification,
+and persisted receipt evidence.

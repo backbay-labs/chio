@@ -115,7 +115,7 @@
       "minLength": 1,
       "maxLength": 128,
       "pattern": "^[a-z0-9][a-z0-9._@+-]*$",
-      "description": "Identifier for the redactor pipeline that produced this frame, e.g. redactors@1.4.0+default."
+      "description": "Identifier for the redactor pipeline that produced this frame, e.g. redactors@1.5.0+default."
     },
     "verdict": {
       "type": "string",

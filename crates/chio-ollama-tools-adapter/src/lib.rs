@@ -26,6 +26,8 @@ pub mod native;
 pub mod streaming;
 pub mod transport;
 
+mod response;
+
 use std::sync::Arc;
 use std::time::SystemTime;
 
@@ -121,6 +123,16 @@ impl OllamaAdapter {
         &self.transport
     }
 
+    pub(crate) fn ensure_supported_api_version(&self) -> Result<(), ProviderError> {
+        if self.config.api_version != OLLAMA_API_VERSION {
+            return Err(ProviderError::Malformed(format!(
+                "Ollama adapter supports only API version {OLLAMA_API_VERSION}; configured {}",
+                self.config.api_version
+            )));
+        }
+        Ok(())
+    }
+
     /// Post a non-streaming `/api/chat` request to the Ollama daemon and lift
     /// every `tool_calls` entry from the response.
     ///
@@ -129,6 +141,7 @@ impl OllamaAdapter {
     /// [`lift_batch`](OllamaAdapter::lift_batch). Transport-layer failures are
     /// classified into the fabric [`ProviderError`] taxonomy and fail closed.
     pub async fn chat(&self, request_body: &[u8]) -> Result<Vec<ToolInvocation>, ProviderError> {
+        self.ensure_supported_api_version()?;
         let response = self
             .transport
             .post_json(OLLAMA_CHAT_PATH, request_body)
@@ -154,6 +167,7 @@ impl OllamaAdapter {
     where
         F: FnMut(&ToolInvocation) -> Result<VerdictResult, ProviderError>,
     {
+        self.ensure_supported_api_version()?;
         let body = self
             .transport
             .post_ndjson(OLLAMA_CHAT_PATH, request_body)
@@ -165,7 +179,8 @@ impl OllamaAdapter {
     /// Lift every Ollama `tool_calls` entry in a non-streaming `/api/chat`
     /// response payload.
     pub fn lift_batch(&self, raw: ProviderRequest) -> Result<Vec<ToolInvocation>, ProviderError> {
-        let calls = tool_calls(raw)?;
+        self.ensure_supported_api_version()?;
+        let calls = response::tool_calls(raw)?;
         if calls.is_empty() {
             return Err(ProviderError::Malformed(
                 "Ollama /api/chat payload did not contain tool_calls entries".to_string(),
@@ -183,6 +198,7 @@ impl OllamaAdapter {
         index: usize,
         call: &ToolCallPart,
     ) -> Result<ToolInvocation, ProviderError> {
+        self.ensure_supported_api_version()?;
         validate_tool_call(call)?;
         let arguments = canonical_json_bytes(&call.function.arguments).map_err(|error| {
             ProviderError::BadToolArgs(format!(
@@ -213,34 +229,46 @@ impl OllamaAdapter {
         verdict: VerdictResult,
         result: ToolResult,
     ) -> Result<ToolResultMessage, ProviderError> {
+        self.ensure_supported_api_version()?;
         let tool_name = non_empty_str(tool_name, "tool_call.function.name")?;
         match verdict {
             VerdictResult::Allow { redactions, .. } => {
-                let value = parse_value(&result.0)?;
-                let value = apply_redactions(value, &redactions, "Ollama tool_result")?;
-                let content = canonical_json_bytes(&value).map_err(|error| {
-                    ProviderError::Malformed(format!(
-                        "Ollama tool_result canonical encoding failed: {error}"
-                    ))
-                })?;
-                let content = String::from_utf8(content).map_err(|error| {
-                    ProviderError::Malformed(format!(
-                        "Ollama tool_result canonical bytes were not UTF-8: {error}"
-                    ))
-                })?;
-                Ok(ToolResultMessage::new(tool_name, content))
+                lower_allow_tool_message(tool_name, result, &redactions)
             }
-            VerdictResult::Deny { reason, .. } => {
-                let payload = deny_payload(&reason);
-                let content = serde_json::to_string(&payload).map_err(|error| {
-                    ProviderError::Malformed(format!(
-                        "Ollama deny payload encoding failed: {error}"
-                    ))
-                })?;
-                Ok(ToolResultMessage::new(tool_name, content))
-            }
+            VerdictResult::Deny { reason, .. } => lower_deny_tool_message(tool_name, &reason),
         }
     }
+}
+
+fn lower_allow_tool_message(
+    tool_name: &str,
+    result: ToolResult,
+    redactions: &[Redaction],
+) -> Result<ToolResultMessage, ProviderError> {
+    let value = parse_value(&result.0)?;
+    let value = apply_redactions(value, redactions, "Ollama tool_result")?;
+    let content = canonical_json_bytes(&value).map_err(|error| {
+        ProviderError::Malformed(format!(
+            "Ollama tool_result canonical encoding failed: {error}"
+        ))
+    })?;
+    let content = String::from_utf8(content).map_err(|error| {
+        ProviderError::Malformed(format!(
+            "Ollama tool_result canonical bytes were not UTF-8: {error}"
+        ))
+    })?;
+    Ok(ToolResultMessage::new(tool_name, content))
+}
+
+fn lower_deny_tool_message(
+    tool_name: &str,
+    reason: &DenyReason,
+) -> Result<ToolResultMessage, ProviderError> {
+    let payload = deny_payload(reason);
+    let content = serde_json::to_string(&payload).map_err(|error| {
+        ProviderError::Malformed(format!("Ollama deny payload encoding failed: {error}"))
+    })?;
+    Ok(ToolResultMessage::new(tool_name, content))
 }
 
 impl chio_provider_adapter_core::Provider for OllamaAdapter {
@@ -264,50 +292,8 @@ pub enum OllamaAdapterError {
     Transport(#[from] chio_provider_adapter_core::http::HttpTransportError),
 }
 
-fn tool_calls(raw: ProviderRequest) -> Result<Vec<ToolCallPart>, ProviderError> {
-    let value: Value = serde_json::from_slice(&raw.0).map_err(|error| {
-        ProviderError::Malformed(format!("Ollama /api/chat payload was not JSON: {error}"))
-    })?;
-    let body = response_body(value);
-    extract_tool_calls(&body)
-}
-
-fn response_body(value: Value) -> Value {
-    for field in ["body", "response", "payload"] {
-        if let Some(nested) = value.get(field) {
-            if let Some(obj) = nested.as_object() {
-                return Value::Object(obj.clone());
-            }
-        }
-    }
-    value
-}
-
-fn extract_tool_calls(body: &Value) -> Result<Vec<ToolCallPart>, ProviderError> {
-    let message = match body.get("message") {
-        Some(value) => value,
-        None => return Ok(Vec::new()),
-    };
-    let array = match message.get("tool_calls").and_then(Value::as_array) {
-        Some(array) => array,
-        None => return Ok(Vec::new()),
-    };
-    let mut calls = Vec::with_capacity(array.len());
-    for entry in array {
-        let parsed: ToolCallPart = serde_json::from_value(entry.clone()).map_err(|error| {
-            ProviderError::Malformed(format!("Ollama tool_call entry was malformed: {error}"))
-        })?;
-        calls.push(parsed);
-    }
-    Ok(calls)
-}
-
 fn validate_tool_call(call: &ToolCallPart) -> Result<(), ProviderError> {
-    if call.function.name.trim().is_empty() {
-        return Err(ProviderError::Malformed(
-            "Ollama tool_call.function.name was empty".to_string(),
-        ));
-    }
+    non_empty_str(&call.function.name, "tool_call.function.name")?;
     if !call.function.arguments.is_object() {
         return Err(ProviderError::BadToolArgs(format!(
             "Ollama tool_call `{}` arguments were not a JSON object",
@@ -373,8 +359,12 @@ fn non_empty_str<'a>(value: &'a str, field: &str) -> Result<&'a str, ProviderErr
         Err(ProviderError::Malformed(format!(
             "Ollama {field} must not be empty"
         )))
+    } else if trimmed != value {
+        Err(ProviderError::Malformed(format!(
+            "Ollama {field} must not contain surrounding whitespace"
+        )))
     } else {
-        Ok(trimmed)
+        Ok(value)
     }
 }
 
@@ -394,12 +384,56 @@ mod tests {
         )
     }
 
+    fn config_with_api_version(api_version: &str) -> OllamaAdapterConfig {
+        let mut cfg = config();
+        cfg.api_version = api_version.to_string();
+        cfg
+    }
+
     fn mock() -> Arc<transport::MockTransport> {
         Arc::new(transport::MockTransport::new("mock://ollama"))
     }
 
     fn adapter() -> OllamaAdapter {
         OllamaAdapter::new(config(), mock())
+    }
+
+    fn tool_call_payload() -> Value {
+        json!({
+            "message": {
+                "role": "assistant",
+                "tool_calls": [
+                    {"function": {"name": "get_weather", "arguments": {"city": "Paris"}}}
+                ]
+            }
+        })
+    }
+
+    fn tool_call_stream() -> Vec<u8> {
+        let mut ndjson = serde_json::to_vec(&tool_call_payload()).unwrap();
+        ndjson.push(b'\n');
+        ndjson
+    }
+
+    fn raw_payload(value: Value) -> ProviderRequest {
+        ProviderRequest(serde_json::to_vec(&value).unwrap())
+    }
+
+    fn allow_verdict() -> VerdictResult {
+        VerdictResult::Allow {
+            redactions: vec![],
+            receipt_id: chio_tool_call_fabric::ReceiptId("rcpt_api_pin".into()),
+        }
+    }
+
+    fn assert_api_version_drift(error: ProviderError) {
+        match error {
+            ProviderError::Malformed(message) => {
+                assert!(message.contains("Ollama adapter supports only API version 2025-04"));
+                assert!(message.contains("configured 2024-12"));
+            }
+            other => panic!("expected Malformed API version drift, got {other:?}"),
+        }
     }
 
     #[test]
@@ -414,6 +448,94 @@ mod tests {
         let adapter = adapter();
         assert_eq!(adapter.provider(), ProviderId::Ollama);
         assert_eq!(adapter.api_version(), "2025-04");
+    }
+
+    #[tokio::test]
+    async fn chat_rejects_api_version_drift_before_transport_call() {
+        let mock = mock();
+        mock.push_json_response(serde_json::to_vec(&tool_call_payload()).unwrap());
+        let adapter = OllamaAdapter::new(config_with_api_version("2024-12"), mock.clone());
+
+        let err = adapter
+            .chat(b"{\"model\":\"llama3.2:1b\",\"stream\":false}")
+            .await
+            .expect_err("drifted Ollama API version must fail before transport");
+
+        assert_api_version_drift(err);
+        assert!(mock.calls().is_empty());
+    }
+
+    #[tokio::test]
+    async fn chat_stream_rejects_api_version_drift_before_transport_call() {
+        let mock = mock();
+        mock.push_response(chio_provider_adapter_core::http::HttpResponse::new(
+            200,
+            tool_call_stream(),
+            Some("application/x-ndjson".to_string()),
+        ));
+        let adapter = OllamaAdapter::new(config_with_api_version("2024-12"), mock.clone());
+
+        let err = adapter
+            .chat_stream(b"{\"stream\":true}", |_invocation| Ok(allow_verdict()))
+            .await
+            .expect_err("drifted Ollama API version must fail before stream transport");
+
+        assert_api_version_drift(err);
+        assert!(mock.calls().is_empty());
+    }
+
+    #[test]
+    fn lift_batch_rejects_api_version_drift_before_provenance_stamp() {
+        let adapter = OllamaAdapter::new(config_with_api_version("2024-12"), mock());
+
+        let err = adapter
+            .lift_batch(raw_payload(tool_call_payload()))
+            .expect_err("drifted Ollama API version must fail before provenance stamping");
+
+        assert_api_version_drift(err);
+    }
+
+    #[test]
+    fn gate_sse_stream_rejects_api_version_drift_before_evaluator() {
+        let adapter = OllamaAdapter::new(config_with_api_version("2024-12"), mock());
+        let evaluated = std::cell::Cell::new(false);
+
+        let err = adapter
+            .gate_sse_stream(&tool_call_stream(), |_invocation| {
+                evaluated.set(true);
+                Ok(allow_verdict())
+            })
+            .expect_err("drifted Ollama API version must fail before stream evaluation");
+
+        assert_api_version_drift(err);
+        assert!(!evaluated.get());
+    }
+
+    #[test]
+    fn invocation_from_tool_call_rejects_api_version_drift_before_provenance_stamp() {
+        let adapter = OllamaAdapter::new(config_with_api_version("2024-12"), mock());
+        let call = ToolCallPart::new("get_weather", json!({"city": "Paris"}));
+
+        let err = adapter
+            .invocation_from_tool_call(0, &call)
+            .expect_err("drifted Ollama API version must fail before provenance stamping");
+
+        assert_api_version_drift(err);
+    }
+
+    #[test]
+    fn lower_tool_message_rejects_api_version_drift() {
+        let adapter = OllamaAdapter::new(config_with_api_version("2024-12"), mock());
+
+        let err = adapter
+            .lower_tool_message(
+                "get_weather",
+                allow_verdict(),
+                ToolResult(b"{\"temp\":18}".to_vec()),
+            )
+            .expect_err("drifted Ollama API version must fail before lowering");
+
+        assert_api_version_drift(err);
     }
 
     #[tokio::test]
@@ -516,6 +638,92 @@ mod tests {
     }
 
     #[test]
+    fn lift_batch_extracts_tool_calls_from_string_body_envelope() {
+        let adapter = adapter();
+        let payload = json!({
+            "body": r#"{"message":{"role":"assistant","tool_calls":[{"function":{"name":"get_weather","arguments":{"city":"Paris"}}}]}}"#
+        });
+        let raw = ProviderRequest(serde_json::to_vec(&payload).unwrap());
+
+        let invocations = adapter.lift_batch(raw).unwrap();
+
+        assert_eq!(invocations.len(), 1);
+        assert_eq!(invocations[0].tool_name, "get_weather");
+        assert_eq!(invocations[0].provider, ProviderId::Ollama);
+    }
+
+    #[test]
+    fn lift_batch_classifies_policy_refusal_as_content_policy() {
+        let adapter = adapter();
+        let payload = json!({
+            "done_reason": "stop",
+            "policy": "refusal"
+        });
+        let raw = ProviderRequest(serde_json::to_vec(&payload).unwrap());
+        let err = adapter.lift_batch(raw).unwrap_err();
+
+        assert!(matches!(err, ProviderError::ContentPolicy(_)));
+    }
+
+    #[test]
+    fn gate_sse_stream_classifies_policy_refusal_before_forwarding() {
+        let adapter = adapter();
+        let ndjson = br#"{"done":true,"done_reason":"stop","policy":"refusal"}
+"#;
+        let err = adapter
+            .gate_sse_stream(ndjson, |_invocation| {
+                Ok(VerdictResult::Allow {
+                    redactions: vec![],
+                    receipt_id: chio_tool_call_fabric::ReceiptId("rcpt_refusal".into()),
+                })
+            })
+            .unwrap_err();
+
+        assert!(matches!(err, ProviderError::ContentPolicy(_)));
+    }
+
+    #[test]
+    fn lift_batch_rejects_tool_call_name_with_surrounding_whitespace() {
+        let adapter = adapter();
+        let payload = json!({
+            "message": {
+                "role": "assistant",
+                "tool_calls": [
+                    {"function": {"name": " get_weather ", "arguments": {"city": "Paris"}}}
+                ]
+            }
+        });
+        let raw = ProviderRequest(serde_json::to_vec(&payload).unwrap());
+        let err = adapter.lift_batch(raw).unwrap_err();
+
+        assert!(err.to_string().contains("surrounding whitespace"));
+    }
+
+    #[test]
+    fn lift_batch_rejects_malformed_envelope_before_outer_tool_calls() {
+        let adapter = adapter();
+        let payload = json!({
+            "body": 42,
+            "message": {
+                "role": "assistant",
+                "tool_calls": [
+                    {"function": {"name": "unsafe_outer", "arguments": {"source": "outer"}}}
+                ]
+            }
+        });
+        let raw = ProviderRequest(serde_json::to_vec(&payload).unwrap());
+
+        let err = adapter.lift_batch(raw).unwrap_err();
+
+        match err {
+            ProviderError::Malformed(message) => {
+                assert!(message.contains("envelope field `body`"));
+            }
+            other => panic!("expected Malformed, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn lift_batch_rejects_payload_without_tool_calls() {
         let adapter = adapter();
         let payload = json!({"message": {"role": "assistant", "content": "no tools"}});
@@ -541,6 +749,23 @@ mod tests {
         assert_eq!(msg.role, "tool");
         assert_eq!(msg.name, "get_weather");
         assert!(msg.content.contains("\"temp\""));
+    }
+
+    #[test]
+    fn lower_allow_tool_message_helper_applies_redactions_and_canonicalizes() {
+        let msg = lower_allow_tool_message(
+            "get_weather",
+            ToolResult(br#"{"token":"secret","ok":true}"#.to_vec()),
+            &[Redaction {
+                path: "/token".to_string(),
+                replacement: "[redacted]".to_string(),
+            }],
+        )
+        .unwrap();
+
+        assert_eq!(msg.role, "tool");
+        assert_eq!(msg.name, "get_weather");
+        assert_eq!(msg.content, r#"{"ok":true,"token":"[redacted]"}"#);
     }
 
     #[test]

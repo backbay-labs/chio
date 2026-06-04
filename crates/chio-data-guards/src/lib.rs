@@ -12,7 +12,7 @@
 //! # Relationship to `chio-guards`
 //!
 //! `chio-data-guards` is a *sibling* of `chio-guards`.  It reuses the
-//! [`chio_kernel::Guard`] trait and the [`chio_guards::extract_action`]
+//! [`chio_kernel::Guard`] trait and the [`chio_guards::extract_action_checked`]
 //! dispatcher; it does not redefine either.  Pipelines compose the two
 //! crates transparently:
 //!

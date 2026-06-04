@@ -381,6 +381,14 @@ pub enum BudgetDecision {
 /// Errors from tree construction and serialization.
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum BudgetError {
+    /// A node contains internally inconsistent limits.
+    #[error("invalid limits for node `{node}`: {message}")]
+    InvalidLimits {
+        /// The node whose limits are invalid.
+        node: BudgetNodeId,
+        /// Human-readable validation message.
+        message: String,
+    },
     /// Insertion would create a cycle; the parent chain already includes
     /// the inserted node.
     #[error("cycle detected while inserting node `{node}` (conflicts with ancestor)")]
@@ -451,6 +459,7 @@ impl BudgetTree {
                 node: node.id.clone(),
             });
         }
+        validate_limits(&node)?;
         if let Some(parent) = &node.parent {
             if !self.nodes.contains_key(parent) {
                 return Err(BudgetError::MissingParent {
@@ -493,6 +502,7 @@ impl BudgetTree {
     /// parent graph must be acyclic.
     pub fn validate(&self) -> Result<(), BudgetError> {
         for node in self.nodes.values() {
+            validate_limits(node)?;
             if let Some(parent) = &node.parent {
                 if !self.nodes.contains_key(parent) {
                     return Err(BudgetError::MissingParent {
@@ -737,6 +747,23 @@ impl BudgetTree {
     }
 }
 
+fn validate_limits(node: &BudgetNode) -> Result<(), BudgetError> {
+    if node.limits.max_spend_units.is_some() {
+        let valid_currency = node
+            .limits
+            .currency
+            .as_deref()
+            .is_some_and(|currency| !currency.trim().is_empty());
+        if !valid_currency {
+            return Err(BudgetError::InvalidLimits {
+                node: node.id.clone(),
+                message: "max_spend_units requires non-empty currency".to_string(),
+            });
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -787,6 +814,67 @@ mod tests {
             ))
             .unwrap_err();
         assert!(matches!(err, BudgetError::MissingParent { .. }));
+    }
+
+    #[test]
+    fn spend_limits_require_currency_at_insert() {
+        let mut tree = BudgetTree::new();
+        let result = tree.insert(leaf(
+            "org/no-currency",
+            None,
+            BudgetLimits {
+                max_spend_units: Some(100),
+                currency: None,
+                ..BudgetLimits::default()
+            },
+            BudgetWindow::Daily,
+        ));
+
+        assert!(matches!(
+            result,
+            Err(BudgetError::InvalidLimits { ref node, .. }) if node.as_str() == "org/no-currency"
+        ));
+
+        let mut blank = BudgetTree::new();
+        let result = blank.insert(leaf(
+            "org/blank-currency",
+            None,
+            BudgetLimits {
+                max_spend_units: Some(100),
+                currency: Some(" \t".to_string()),
+                ..BudgetLimits::default()
+            },
+            BudgetWindow::Daily,
+        ));
+
+        assert!(matches!(
+            result,
+            Err(BudgetError::InvalidLimits { ref node, .. }) if node.as_str() == "org/blank-currency"
+        ));
+    }
+
+    #[test]
+    fn deserialize_rejects_spend_limit_without_currency() {
+        let encoded = serde_json::json!({
+            "version": 1,
+            "nodes": [{
+                "id": "org/no-currency",
+                "limits": {
+                    "max_spend_units": 100
+                },
+                "window": {
+                    "kind": "daily"
+                },
+                "enabled": true
+            }]
+        });
+
+        let result = BudgetTree::deserialize(encoded);
+
+        assert!(matches!(
+            result,
+            Err(BudgetError::InvalidLimits { ref node, .. }) if node.as_str() == "org/no-currency"
+        ));
     }
 
     #[test]

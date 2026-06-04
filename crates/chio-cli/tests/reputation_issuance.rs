@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use chio_test_support::loopback::{reserve_listen_addr, skip_when_loopback_bind_denied};
 use reqwest::blocking::Client;
 
 fn unique_dir(prefix: &str) -> PathBuf {
@@ -24,13 +25,6 @@ fn workspace_root() -> PathBuf {
 
 fn fixture_path(name: &str) -> PathBuf {
     workspace_root().join("examples/policies").join(name)
-}
-
-fn reserve_listen_addr() -> std::net::SocketAddr {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind temp listener");
-    let addr = listener.local_addr().expect("listener addr");
-    drop(listener);
-    addr
 }
 
 struct ServerGuard {
@@ -93,6 +87,10 @@ fn wait_for_trust_service(client: &Client, base_url: &str) {
 
 #[test]
 fn trust_service_enforces_reputation_gated_issuance_policy() {
+    if skip_when_loopback_bind_denied("trust_service_enforces_reputation_gated_issuance_policy") {
+        return;
+    }
+
     let dir = unique_dir("chio-cli-reputation-issuance");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");

@@ -265,7 +265,7 @@ mod tests {
             },
             request_blob_sha256: "a".repeat(64),
             response_blob_sha256: "b".repeat(64),
-            redaction_pass_id: "redactors@1.4.0+default".to_string(),
+            redaction_pass_id: "redactors@1.5.0+default".to_string(),
             verdict: Verdict::Allow,
             deny_reason: None,
             would_have_blocked: false,

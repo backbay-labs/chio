@@ -1,12 +1,12 @@
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PassportPresentationOptions {
     pub issuer_allowlist: BTreeSet<String>,
     pub max_credentials: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PassportPresentationChallengeArgs {
     pub verifier: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -22,7 +22,7 @@ pub struct PassportPresentationChallengeArgs {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PassportPresentationChallenge {
     pub schema: String,
     pub verifier: String,
@@ -42,7 +42,7 @@ pub struct PassportPresentationChallenge {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PresentationProof {
     #[serde(rename = "type")]
     pub proof_type: String,
@@ -53,7 +53,7 @@ pub struct PresentationProof {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PassportPresentationResponse {
     pub schema: String,
     pub challenge: PassportPresentationChallenge,
@@ -62,7 +62,7 @@ pub struct PassportPresentationResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PassportPresentationVerification {
     pub subject: String,
     pub verifier: String,
@@ -453,6 +453,7 @@ pub fn create_passport_presentation_challenge_with_reference(
     if issued_at > expires_at {
         return Err(CredentialError::InvalidChallengeValidityWindow);
     }
+    validate_challenge_identity_fields(&verifier, &nonce)?;
     if let Some(policy) = &policy {
         policy.validate()?;
     }
@@ -478,6 +479,7 @@ pub fn verify_passport_presentation_challenge(
     if !is_supported_passport_presentation_challenge_schema(&challenge.schema) {
         return Err(CredentialError::InvalidChallengeSchema);
     }
+    validate_challenge_identity_fields(&challenge.verifier, &challenge.nonce)?;
 
     let issued_at = unix_from_rfc3339(&challenge.issued_at)?;
     let expires_at = unix_from_rfc3339(&challenge.expires_at)?;
@@ -492,6 +494,24 @@ pub fn verify_passport_presentation_challenge(
     }
     if let Some(policy) = &challenge.policy {
         policy.validate()?;
+    }
+    Ok(())
+}
+
+fn validate_challenge_identity_fields(verifier: &str, nonce: &str) -> Result<(), CredentialError> {
+    let verifier_trimmed = verifier.trim();
+    if verifier_trimmed.is_empty()
+        || verifier_trimmed != verifier
+        || verifier.chars().any(char::is_control)
+    {
+        return Err(CredentialError::MissingChallengeVerifier);
+    }
+    let nonce_trimmed = nonce.trim();
+    if nonce_trimmed.is_empty()
+        || nonce_trimmed != nonce
+        || nonce.chars().any(char::is_control)
+    {
+        return Err(CredentialError::MissingChallengeNonce);
     }
     Ok(())
 }

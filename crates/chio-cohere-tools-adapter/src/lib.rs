@@ -114,6 +114,22 @@ impl CohereAdapter {
         &self.transport
     }
 
+    pub(crate) fn ensure_supported_api_version(&self) -> Result<(), ProviderError> {
+        if self.config.api_version != COHERE_API_VERSION {
+            return Err(ProviderError::Malformed(format!(
+                "Cohere adapter supports only API version {COHERE_API_VERSION}; configured {}",
+                self.config.api_version
+            )));
+        }
+        if self.transport.api_version() != COHERE_API_VERSION {
+            return Err(ProviderError::Malformed(format!(
+                "Cohere adapter supports only API version {COHERE_API_VERSION}; transport advertised {}",
+                self.transport.api_version()
+            )));
+        }
+        Ok(())
+    }
+
     /// Proxy a Cohere `/v2/chat` request to the upstream endpoint and lift the
     /// tool calls from the buffered response.
     ///
@@ -123,6 +139,7 @@ impl CohereAdapter {
     /// Transport-layer failures are mapped into the [`ProviderError`] taxonomy
     /// so a failed request never reads as an empty success.
     pub async fn chat(&self, request_body: &[u8]) -> Result<Vec<ToolInvocation>, ProviderError> {
+        self.ensure_supported_api_version()?;
         let response = self.transport.send_chat(request_body).await?;
         self.lift_batch(response)
     }
@@ -140,6 +157,7 @@ impl CohereAdapter {
     where
         F: FnMut(&ToolInvocation) -> Result<VerdictResult, ProviderError>,
     {
+        self.ensure_supported_api_version()?;
         let body = self.transport.send_chat_stream(request_body).await?;
         self.gate_sse_stream(&body, evaluate)
     }
@@ -147,6 +165,7 @@ impl CohereAdapter {
     /// Lift every Cohere `tool_calls` block in a non-streaming `/v2/chat`
     /// response payload.
     pub fn lift_batch(&self, raw: ProviderRequest) -> Result<Vec<ToolInvocation>, ProviderError> {
+        self.ensure_supported_api_version()?;
         let calls = tool_calls(raw)?;
         if calls.is_empty() {
             return Err(ProviderError::Malformed(
@@ -163,6 +182,7 @@ impl CohereAdapter {
         &self,
         call: &ToolCallBlock,
     ) -> Result<ToolInvocation, ProviderError> {
+        self.ensure_supported_api_version()?;
         validate_tool_call(call)?;
         let parsed_args: Value =
             serde_json::from_str(&call.function.arguments).map_err(|error| {
@@ -206,32 +226,13 @@ impl CohereAdapter {
         verdict: VerdictResult,
         result: ToolResult,
     ) -> Result<ToolResultMessage, ProviderError> {
+        self.ensure_supported_api_version()?;
         let tool_call_id = non_empty_str(tool_call_id, "tool_call_id")?;
         match verdict {
             VerdictResult::Allow { redactions, .. } => {
-                let value = parse_value(&result.0)?;
-                let value = apply_redactions(value, &redactions, "Cohere tool_result")?;
-                let canonical = canonical_json_bytes(&value).map_err(|error| {
-                    ProviderError::Malformed(format!(
-                        "Cohere tool_result canonical encoding failed: {error}"
-                    ))
-                })?;
-                let text = String::from_utf8(canonical).map_err(|error| {
-                    ProviderError::Malformed(format!(
-                        "Cohere tool_result canonical bytes were not UTF-8: {error}"
-                    ))
-                })?;
-                Ok(ToolResultMessage::new(tool_call_id, text))
+                lower_allow_tool_message(tool_call_id, result, &redactions)
             }
-            VerdictResult::Deny { reason, .. } => {
-                let payload = deny_payload(&reason);
-                let text = serde_json::to_string(&payload).map_err(|error| {
-                    ProviderError::Malformed(format!(
-                        "Cohere deny payload encoding failed: {error}"
-                    ))
-                })?;
-                Ok(ToolResultMessage::new(tool_call_id, text))
-            }
+            VerdictResult::Deny { reason, .. } => lower_deny_tool_message(tool_call_id, &reason),
         }
     }
 }
@@ -261,19 +262,29 @@ fn tool_calls(raw: ProviderRequest) -> Result<Vec<ToolCallBlock>, ProviderError>
     let value: Value = serde_json::from_slice(&raw.0).map_err(|error| {
         ProviderError::Malformed(format!("Cohere /v2/chat payload was not JSON: {error}"))
     })?;
-    let body = response_body(value);
+    let body = response_body(value)?;
     extract_tool_calls(&body)
 }
 
-fn response_body(value: Value) -> Value {
+fn response_body(value: Value) -> Result<Value, ProviderError> {
     for field in ["body", "response", "payload"] {
         if let Some(nested) = value.get(field) {
-            if let Some(obj) = nested.as_object() {
-                return Value::Object(obj.clone());
-            }
+            return nested_response_body(nested).ok_or_else(|| {
+                ProviderError::Malformed(format!(
+                    "Cohere /v2/chat envelope field `{field}` was not a JSON object or string body"
+                ))
+            });
         }
     }
-    value
+    Ok(value)
+}
+
+fn nested_response_body(value: &Value) -> Option<Value> {
+    match value {
+        Value::Object(_) => Some(value.clone()),
+        Value::String(body) => serde_json::from_str(body).ok(),
+        _ => None,
+    }
 }
 
 fn extract_tool_calls(body: &Value) -> Result<Vec<ToolCallBlock>, ProviderError> {
@@ -296,22 +307,14 @@ fn extract_tool_calls(body: &Value) -> Result<Vec<ToolCallBlock>, ProviderError>
 }
 
 fn validate_tool_call(call: &ToolCallBlock) -> Result<(), ProviderError> {
-    if call.id.trim().is_empty() {
-        return Err(ProviderError::Malformed(
-            "Cohere tool_call id was empty".to_string(),
-        ));
-    }
+    non_empty_str(&call.id, "tool_call id")?;
     if call.kind != "function" {
         return Err(ProviderError::Malformed(format!(
             "Cohere tool_call kind `{}` is not supported on the v2 surface",
             call.kind
         )));
     }
-    if call.function.name.trim().is_empty() {
-        return Err(ProviderError::Malformed(
-            "Cohere tool_call.function.name was empty".to_string(),
-        ));
-    }
+    non_empty_str(&call.function.name, "tool_call.function.name")?;
     Ok(())
 }
 
@@ -348,6 +351,41 @@ fn apply_redactions(
     Ok(value)
 }
 
+fn lower_allow_tool_message(
+    tool_call_id: &str,
+    result: ToolResult,
+    redactions: &[Redaction],
+) -> Result<ToolResultMessage, ProviderError> {
+    let value = parse_value(&result.0)?;
+    let value = apply_redactions(value, redactions, "Cohere tool_result")?;
+    let text = canonical_tool_result_text(&value)?;
+    Ok(ToolResultMessage::new(tool_call_id, text))
+}
+
+fn lower_deny_tool_message(
+    tool_call_id: &str,
+    reason: &DenyReason,
+) -> Result<ToolResultMessage, ProviderError> {
+    let payload = deny_payload(reason);
+    let text = serde_json::to_string(&payload).map_err(|error| {
+        ProviderError::Malformed(format!("Cohere deny payload encoding failed: {error}"))
+    })?;
+    Ok(ToolResultMessage::new(tool_call_id, text))
+}
+
+fn canonical_tool_result_text(value: &Value) -> Result<String, ProviderError> {
+    let canonical = canonical_json_bytes(value).map_err(|error| {
+        ProviderError::Malformed(format!(
+            "Cohere tool_result canonical encoding failed: {error}"
+        ))
+    })?;
+    String::from_utf8(canonical).map_err(|error| {
+        ProviderError::Malformed(format!(
+            "Cohere tool_result canonical bytes were not UTF-8: {error}"
+        ))
+    })
+}
+
 fn deny_payload(reason: &DenyReason) -> Value {
     let text = match reason {
         DenyReason::PolicyDeny { rule_id } => format!("policy_deny: {rule_id}"),
@@ -364,19 +402,52 @@ fn deny_payload(reason: &DenyReason) -> Value {
 fn non_empty_str<'a>(value: &'a str, field: &str) -> Result<&'a str, ProviderError> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
-        Err(ProviderError::Malformed(format!(
+        return Err(ProviderError::Malformed(format!(
             "Cohere {field} must not be empty"
-        )))
-    } else {
-        Ok(trimmed)
+        )));
     }
+    if trimmed != value {
+        return Err(ProviderError::Malformed(format!(
+            "Cohere {field} must not contain surrounding whitespace"
+        )));
+    }
+    Ok(value)
 }
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
     use serde_json::json;
+
+    struct DriftedTransport {
+        called: Arc<AtomicBool>,
+    }
+
+    impl DriftedTransport {
+        fn new(called: Arc<AtomicBool>) -> Self {
+            Self { called }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl transport::Transport for DriftedTransport {
+        fn api_version(&self) -> &str {
+            "2024-12"
+        }
+
+        async fn send_chat(&self, _body: &[u8]) -> Result<ProviderRequest, ProviderError> {
+            self.called.store(true, Ordering::SeqCst);
+            Ok(raw_payload(tool_call_payload()))
+        }
+
+        async fn send_chat_stream(&self, _body: &[u8]) -> Result<Vec<u8>, ProviderError> {
+            self.called.store(true, Ordering::SeqCst);
+            Ok(b"event: tool-call-end\ndata: {\"tool_call\":{\"id\":\"call_api_pin\",\"type\":\"function\",\"function\":{\"name\":\"get_weather\",\"arguments\":\"{\\\"city\\\":\\\"Paris\\\"}\"}}}\n\n".to_vec())
+        }
+    }
 
     fn config() -> CohereAdapterConfig {
         CohereAdapterConfig::new(
@@ -386,6 +457,44 @@ mod tests {
             "deadbeef",
             "org_chio_demo",
         )
+    }
+
+    fn config_with_api_version(api_version: &str) -> CohereAdapterConfig {
+        let mut cfg = config();
+        cfg.api_version = api_version.to_string();
+        cfg
+    }
+
+    fn tool_call_payload() -> Value {
+        json!({
+            "message": {
+                "role": "assistant",
+                "tool_calls": [
+                    {
+                        "id": "call_api_pin",
+                        "type": "function",
+                        "function": {
+                            "name": "get_weather",
+                            "arguments": "{\"city\":\"Paris\"}"
+                        }
+                    }
+                ]
+            }
+        })
+    }
+
+    fn raw_payload(value: Value) -> ProviderRequest {
+        ProviderRequest(serde_json::to_vec(&value).unwrap())
+    }
+
+    fn assert_api_version_drift(error: ProviderError) {
+        match error {
+            ProviderError::Malformed(message) => {
+                assert!(message.contains("Cohere adapter supports only API version 2025-04"));
+                assert!(message.contains("2024-12"));
+            }
+            other => panic!("expected Malformed API version drift, got {other:?}"),
+        }
     }
 
     #[test]
@@ -402,6 +511,111 @@ mod tests {
         let adapter = CohereAdapter::new(cfg, Arc::new(transport));
         assert_eq!(adapter.provider(), ProviderId::Cohere);
         assert_eq!(adapter.api_version(), "2025-04");
+    }
+
+    #[tokio::test]
+    async fn chat_rejects_api_version_drift_before_transport_call() {
+        let cfg = config_with_api_version("2024-12");
+        let mock = Arc::new(transport::MockTransport::new());
+        mock.push_chat_response(serde_json::to_vec(&tool_call_payload()).unwrap());
+        let adapter = CohereAdapter::new(cfg, mock.clone());
+
+        let err = adapter
+            .chat(b"{\"model\":\"command-r\",\"messages\":[],\"tools\":[]}")
+            .await
+            .expect_err("drifted Cohere API version must fail before transport");
+
+        assert_api_version_drift(err);
+        assert!(mock.calls().is_empty());
+    }
+
+    #[tokio::test]
+    async fn chat_stream_rejects_api_version_drift_before_transport_call() {
+        let cfg = config_with_api_version("2024-12");
+        let mock = Arc::new(transport::MockTransport::new());
+        mock.push_response(chio_provider_adapter_core::http::HttpResponse::new(
+            200,
+            b"event: tool-call-end\ndata: {\"tool_call\":{\"id\":\"call_api_pin\",\"type\":\"function\",\"function\":{\"name\":\"get_weather\",\"arguments\":\"{\\\"city\\\":\\\"Paris\\\"}\"}}}\n\n".to_vec(),
+            Some("text/event-stream".to_string()),
+        ));
+        let adapter = CohereAdapter::new(cfg, mock.clone());
+
+        let err = adapter
+            .chat_stream(b"{\"stream\":true}", |_invocation| {
+                Ok(VerdictResult::Allow {
+                    redactions: vec![],
+                    receipt_id: chio_tool_call_fabric::ReceiptId("rcpt_pin".to_string()),
+                })
+            })
+            .await
+            .expect_err("drifted Cohere API version must fail before stream transport");
+
+        assert_api_version_drift(err);
+        assert!(mock.calls().is_empty());
+    }
+
+    #[tokio::test]
+    async fn chat_rejects_transport_api_version_drift_before_send() {
+        let called = Arc::new(AtomicBool::new(false));
+        let transport = Arc::new(DriftedTransport::new(called.clone()));
+        let adapter = CohereAdapter::new(config(), transport);
+
+        let err = adapter
+            .chat(b"{\"model\":\"command-r\",\"messages\":[],\"tools\":[]}")
+            .await
+            .expect_err("drifted Cohere transport API version must fail before send");
+
+        assert_api_version_drift(err);
+        assert!(!called.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn chat_stream_rejects_transport_api_version_drift_before_send() {
+        let called = Arc::new(AtomicBool::new(false));
+        let transport = Arc::new(DriftedTransport::new(called.clone()));
+        let adapter = CohereAdapter::new(config(), transport);
+
+        let err = adapter
+            .chat_stream(b"{\"stream\":true}", |_invocation| {
+                Ok(VerdictResult::Allow {
+                    redactions: vec![],
+                    receipt_id: chio_tool_call_fabric::ReceiptId("rcpt_pin".to_string()),
+                })
+            })
+            .await
+            .expect_err("drifted Cohere transport API version must fail before stream send");
+
+        assert_api_version_drift(err);
+        assert!(!called.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn lift_batch_rejects_api_version_drift_before_provenance_stamp() {
+        let cfg = config_with_api_version("2024-12");
+        let adapter = CohereAdapter::new(cfg, Arc::new(transport::MockTransport::new()));
+
+        let err = adapter
+            .lift_batch(raw_payload(tool_call_payload()))
+            .expect_err("drifted Cohere API version must fail before provenance stamping");
+
+        assert_api_version_drift(err);
+    }
+
+    #[test]
+    fn lower_tool_message_rejects_api_version_drift() {
+        let cfg = config_with_api_version("2024-12");
+        let adapter = CohereAdapter::new(cfg, Arc::new(transport::MockTransport::new()));
+        let verdict = VerdictResult::Allow {
+            redactions: vec![],
+            receipt_id: chio_tool_call_fabric::ReceiptId("rcpt_pin".to_string()),
+        };
+        let result = ToolResult(b"{\"temp\":18}".to_vec());
+
+        let err = adapter
+            .lower_tool_message("call_api_pin", verdict, result)
+            .expect_err("drifted Cohere API version must fail before lowering");
+
+        assert_api_version_drift(err);
     }
 
     #[test]
@@ -433,6 +647,61 @@ mod tests {
     }
 
     #[test]
+    fn lift_batch_rejects_malformed_envelope_before_outer_tool_calls() {
+        let cfg = config();
+        let adapter = CohereAdapter::new(cfg, Arc::new(transport::MockTransport::new()));
+        let payload = json!({
+            "body": 42,
+            "message": {
+                "role": "assistant",
+                "tool_calls": [
+                    {
+                        "id": "call_outer",
+                        "type": "function",
+                        "function": {
+                            "name": "get_weather",
+                            "arguments": "{\"city\":\"Paris\"}"
+                        }
+                    }
+                ]
+            }
+        });
+        let raw = ProviderRequest(serde_json::to_vec(&payload).unwrap());
+        let err = adapter.lift_batch(raw).unwrap_err();
+
+        assert!(err.to_string().contains("envelope field `body`"));
+    }
+
+    #[test]
+    fn lift_batch_rejects_tool_call_name_with_surrounding_whitespace() {
+        let cfg = config();
+        let adapter = CohereAdapter::new(cfg, Arc::new(transport::MockTransport::new()));
+        let payload = json!({
+            "message": {
+                "role": "assistant",
+                "tool_calls": [
+                    {
+                        "id": "call_padded_name",
+                        "type": "function",
+                        "function": {
+                            "name": " get_weather ",
+                            "arguments": "{}"
+                        }
+                    }
+                ]
+            }
+        });
+        let raw = ProviderRequest(serde_json::to_vec(&payload).unwrap());
+        let err = adapter
+            .lift_batch(raw)
+            .expect_err("whitespace-padded tool name must fail closed");
+
+        assert!(err
+            .to_string()
+            .contains("tool_call.function.name must not contain surrounding whitespace"));
+    }
+
+    #[test]
     fn lift_batch_rejects_payload_without_tool_calls() {
         let cfg = config();
         let adapter = CohereAdapter::new(cfg, Arc::new(transport::MockTransport::new()));
@@ -461,6 +730,26 @@ mod tests {
         assert_eq!(msg.tool_call_id, "call_1");
         assert_eq!(msg.content.len(), 1);
         assert!(msg.content[0].text.contains("\"temp\""));
+    }
+
+    #[test]
+    fn lower_allow_tool_message_helper_applies_redactions_and_canonicalizes() {
+        let message = lower_allow_tool_message(
+            "call_1",
+            ToolResult(br#"{"z":1,"token":"secret"}"#.to_vec()),
+            &[Redaction {
+                path: "/token".to_string(),
+                replacement: "[redacted]".to_string(),
+            }],
+        )
+        .unwrap();
+
+        assert_eq!(message.role, "tool");
+        assert_eq!(message.tool_call_id, "call_1");
+        assert_eq!(
+            message.content[0].text,
+            "{\"token\":\"[redacted]\",\"z\":1}"
+        );
     }
 
     #[test]

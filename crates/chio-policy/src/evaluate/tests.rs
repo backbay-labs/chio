@@ -9,9 +9,9 @@ mod tests {
     use crate::models::{
         ComputerUseMode, ComputerUseRule, DefaultAction, EgressRule, Extensions,
         ForbiddenPathsRule, HushSpec, InputInjectionRule, OriginMatch, OriginProfile,
-        OriginsExtension, PatchIntegrityRule, PostureExtension, PostureState, PostureTransition,
-        RemoteDesktopChannelsRule, Rules, SecretPattern, SecretPatternsRule, Severity,
-        ShellCommandsRule, ToolAccessRule, WorkloadIdentityMatch,
+        OriginDefaultBehavior, OriginsExtension, PatchIntegrityRule, PostureExtension,
+        PostureState, PostureTransition, RemoteDesktopChannelsRule, Rules, SecretPattern,
+        SecretPatternsRule, Severity, ShellCommandsRule, ToolAccessRule, WorkloadIdentityMatch,
     };
 
     use super::{
@@ -115,6 +115,55 @@ mod tests {
             posture: None,
             args_size: None,
             runtime_attestation: None,
+        }
+    }
+
+    fn workload_identity_spec_with_path_prefixes(path_prefixes: Vec<&str>) -> HushSpec {
+        spec_with_rules(Rules {
+            tool_access: Some(ToolAccessRule {
+                enabled: true,
+                allow: vec!["payments.charge".to_string()],
+                block: Vec::new(),
+                require_confirmation: Vec::new(),
+                default: DefaultAction::Allow,
+                max_args_size: None,
+                require_runtime_assurance_tier: None,
+                prefer_runtime_assurance_tier: None,
+                require_workload_identity: Some(WorkloadIdentityMatch {
+                    scheme: Some(WorkloadIdentityScheme::Spiffe),
+                    trust_domain: Some("prod.chio".to_string()),
+                    path_prefixes: path_prefixes
+                        .into_iter()
+                        .map(str::to_string)
+                        .collect(),
+                    credential_kinds: vec![WorkloadCredentialKind::X509Svid],
+                }),
+                prefer_workload_identity: None,
+            }),
+            ..Rules::default()
+        })
+    }
+
+    fn workload_identity_tool_call(path: &str) -> EvaluationAction {
+        EvaluationAction {
+            action_type: "tool_call".to_string(),
+            target: Some("payments.charge".to_string()),
+            content: None,
+            origin: None,
+            posture: None,
+            args_size: None,
+            runtime_attestation: Some(RuntimeAttestationContext {
+                tier: RuntimeAssuranceTier::Verified,
+                valid: true,
+                verifier: Some("verifier.chio".to_string()),
+                workload_identity: Some(WorkloadIdentity {
+                    scheme: WorkloadIdentityScheme::Spiffe,
+                    credential_kind: WorkloadCredentialKind::X509Svid,
+                    uri: format!("spiffe://prod.chio{path}"),
+                    trust_domain: "prod.chio".to_string(),
+                    path: path.to_string(),
+                }),
+            }),
         }
     }
 
@@ -487,6 +536,145 @@ mod tests {
     }
 
     #[test]
+    fn origin_default_deny_blocks_unmatched_origin_before_base_rules_allow() {
+        let mut spec = enterprise_origin_spec(vec![origin_profile(
+            "trusted",
+            OriginMatch {
+                provider: Some("trusted-provider".to_string()),
+                tenant_id: Some("tenant-1".to_string()),
+                organization_id: None,
+                space_id: None,
+                space_type: None,
+                visibility: None,
+                external_participants: None,
+                tags: Vec::new(),
+                groups: Vec::new(),
+                roles: Vec::new(),
+                sensitivity: None,
+                actor_role: None,
+            },
+        )]);
+        spec.rules = Some(Rules {
+            tool_access: Some(ToolAccessRule {
+                enabled: true,
+                allow: Vec::new(),
+                block: Vec::new(),
+                require_confirmation: Vec::new(),
+                default: DefaultAction::Allow,
+                max_args_size: None,
+                require_runtime_assurance_tier: None,
+                prefer_runtime_assurance_tier: None,
+                require_workload_identity: None,
+                prefer_workload_identity: None,
+            }),
+            ..Rules::default()
+        });
+        let origins = spec
+            .extensions
+            .as_mut()
+            .and_then(|extensions| extensions.origins.as_mut())
+            .expect("test spec should contain origins extension");
+        origins.default_behavior = Some(OriginDefaultBehavior::Deny);
+
+        let mut request = action("tool_call", "read_file");
+        request.origin = Some(OriginContext {
+            provider: Some("untrusted-provider".to_string()),
+            tenant_id: Some("tenant-1".to_string()),
+            organization_id: None,
+            space_id: None,
+            space_type: None,
+            visibility: None,
+            external_participants: None,
+            tags: Vec::new(),
+            groups: Vec::new(),
+            roles: Vec::new(),
+            sensitivity: None,
+            actor_role: None,
+        });
+
+        let result = evaluate(&spec, &request);
+
+        assert_eq!(result.decision, Decision::Deny);
+        assert_eq!(
+            result.matched_rule.as_deref(),
+            Some("extensions.origins.default_behavior")
+        );
+
+        let missing_origin_result = evaluate(&spec, &action("tool_call", "read_file"));
+        assert_eq!(missing_origin_result.decision, Decision::Deny);
+        assert_eq!(
+            missing_origin_result.reason.as_deref(),
+            Some("origin context is required by origins policy")
+        );
+    }
+
+    #[test]
+    fn origin_minimal_profile_preserves_base_rule_fallback_for_unmatched_origin() {
+        let mut spec = enterprise_origin_spec(vec![origin_profile(
+            "trusted",
+            OriginMatch {
+                provider: Some("trusted-provider".to_string()),
+                tenant_id: None,
+                organization_id: None,
+                space_id: None,
+                space_type: None,
+                visibility: None,
+                external_participants: None,
+                tags: Vec::new(),
+                groups: Vec::new(),
+                roles: Vec::new(),
+                sensitivity: None,
+                actor_role: None,
+            },
+        )]);
+        spec.rules = Some(Rules {
+            tool_access: Some(ToolAccessRule {
+                enabled: true,
+                allow: Vec::new(),
+                block: Vec::new(),
+                require_confirmation: Vec::new(),
+                default: DefaultAction::Allow,
+                max_args_size: None,
+                require_runtime_assurance_tier: None,
+                prefer_runtime_assurance_tier: None,
+                require_workload_identity: None,
+                prefer_workload_identity: None,
+            }),
+            ..Rules::default()
+        });
+        let origins = spec
+            .extensions
+            .as_mut()
+            .and_then(|extensions| extensions.origins.as_mut())
+            .expect("test spec should contain origins extension");
+        origins.default_behavior = Some(OriginDefaultBehavior::MinimalProfile);
+
+        let mut action = action("tool_call", "read_file");
+        action.origin = Some(OriginContext {
+            provider: Some("untrusted-provider".to_string()),
+            tenant_id: None,
+            organization_id: None,
+            space_id: None,
+            space_type: None,
+            visibility: None,
+            external_participants: None,
+            tags: Vec::new(),
+            groups: Vec::new(),
+            roles: Vec::new(),
+            sensitivity: None,
+            actor_role: None,
+        });
+
+        let result = evaluate(&spec, &action);
+
+        assert_eq!(result.decision, Decision::Allow);
+        assert_eq!(
+            result.matched_rule.as_deref(),
+            Some("rules.tool_access.default")
+        );
+    }
+
+    #[test]
     fn tool_access_workload_identity_requirement_denies_mismatched_identity() {
         let spec = HushSpec {
             hushspec: "1.0".to_string(),
@@ -549,6 +737,29 @@ mod tests {
                 .as_deref()
                 .is_some_and(|reason| reason.contains("workload identity")),
             "expected workload-identity denial reason"
+        );
+    }
+
+    #[test]
+    fn tool_access_workload_identity_requirement_allows_exact_and_child_segment_prefixes() {
+        let exact_spec = workload_identity_spec_with_path_prefixes(vec!["/payments"]);
+        let exact_result = evaluate(&exact_spec, &workload_identity_tool_call("/payments"));
+        assert_eq!(exact_result.decision, Decision::Allow);
+
+        let child_spec = workload_identity_spec_with_path_prefixes(vec!["/payments/"]);
+        let child_result = evaluate(&child_spec, &workload_identity_tool_call("/payments/worker"));
+        assert_eq!(child_result.decision, Decision::Allow);
+    }
+
+    #[test]
+    fn tool_access_workload_identity_requirement_denies_sibling_prefix_confusion() {
+        let spec = workload_identity_spec_with_path_prefixes(vec!["/payments"]);
+        let result = evaluate(&spec, &workload_identity_tool_call("/payments-v2/worker"));
+
+        assert_eq!(result.decision, Decision::Deny);
+        assert_eq!(
+            result.matched_rule.as_deref(),
+            Some("rules.tool_access.require_workload_identity")
         );
     }
 

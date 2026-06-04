@@ -22,6 +22,9 @@ pub use fixture_writer::{
 };
 pub use reredact::{reredact_default, ReredactedPayload};
 
+/// Redaction pass identifier replay fixtures are normalized against.
+pub const DEFAULT_REDACTION_PASS_ID: &str = chio_tee::DEFAULT_REDACTION_PASS_ID;
+
 /// Errors surfaced by replay corpus normalization helpers.
 #[derive(Debug, thiserror::Error)]
 pub enum ReplayCorpusError {

@@ -3,11 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node server.mjs"
+    "start": "node server.mjs",
+    "test": "node --test server.test.mjs"
   },
   "dependencies": {
     "@chio-protocol/express": "file:../../sdks/typescript/packages/express",
     "express": "^5.1.0"
   }
 }
-

@@ -17,6 +17,7 @@ use chio_attest_buyer_core::{
 use chio_core_types::canonical::canonical_json_bytes;
 use chio_core_types::crypto::{sha256_hex, Keypair, PublicKey};
 use chio_core_types::receipt::SignedExportEnvelope;
+use chio_federation::Keyid;
 use chio_governance::{
     CapabilityLeaseActionClass, CapabilityLeaseArtifact, GovernanceReceiptArtifact,
     GovernanceReceiptCaseKind, SignedCapabilityLease, SignedGovernanceReceipt,
@@ -196,8 +197,12 @@ impl AuthorityProfileDocument {
         for authority in &self.lease_authorities {
             validate_non_empty(&authority.issuer, "leaseAuthorities.issuer")
                 .map_err(ChioAuthorityError::Profile)?;
-            validate_required_key_id(authority.key_id.as_deref(), "leaseAuthorities.keyId")
-                .map_err(ChioAuthorityError::Profile)?;
+            validate_key_id_matches_public_key(
+                authority.key_id.as_deref(),
+                &authority.public_key,
+                "leaseAuthorities.keyId",
+            )
+            .map_err(ChioAuthorityError::Profile)?;
             let (valid_from, valid_until) = required_window(
                 authority.valid_from_unix_ms,
                 authority.valid_until_unix_ms,
@@ -234,8 +239,12 @@ impl AuthorityProfileDocument {
                 "governanceAuthorities.authorizingKernel",
             )
             .map_err(ChioAuthorityError::Profile)?;
-            validate_required_key_id(authority.key_id.as_deref(), "governanceAuthorities.keyId")
-                .map_err(ChioAuthorityError::Profile)?;
+            validate_key_id_matches_public_key(
+                authority.key_id.as_deref(),
+                &authority.public_key,
+                "governanceAuthorities.keyId",
+            )
+            .map_err(ChioAuthorityError::Profile)?;
             let (valid_from, valid_until) = required_window(
                 authority.valid_from_unix_ms,
                 authority.valid_until_unix_ms,
@@ -325,8 +334,12 @@ impl ChioRevocationAuthority {
     fn validate(&self) -> Result<(), ChioAuthorityError> {
         validate_non_empty(&self.authority_id, "revocationAuthority.authorityId")
             .map_err(ChioAuthorityError::Profile)?;
-        validate_non_empty(&self.key_id, "revocationAuthority.keyId")
-            .map_err(ChioAuthorityError::Profile)?;
+        validate_key_id_matches_public_key(
+            Some(&self.key_id),
+            &self.public_key,
+            "revocationAuthority.keyId",
+        )
+        .map_err(ChioAuthorityError::Profile)?;
         if self.valid_until_unix_ms <= self.valid_from_unix_ms {
             return Err(ChioAuthorityError::Profile(
                 "revocation authority validity window is empty".to_string(),
@@ -514,6 +527,49 @@ impl PeerPinsDocument {
             return Err(ChioAuthorityError::TrustBundle(
                 "peer pins must include peers, vendors, and action classes".to_string(),
             ));
+        }
+        let mut peer_kernel_ids = BTreeSet::new();
+        for peer in &self.peers {
+            validate_non_empty(&peer.kernel_id, "peer.kernelId")
+                .map_err(ChioAuthorityError::TrustBundle)?;
+            peer.ladder_manifest_ref
+                .validate()
+                .map_err(|error| ChioAuthorityError::TrustBundle(error.to_string()))?;
+            if !peer_kernel_ids.insert(peer.kernel_id.as_str()) {
+                return Err(ChioAuthorityError::TrustBundle(
+                    "duplicate peer kernel id".to_string(),
+                ));
+            }
+        }
+
+        let mut vendor_ids = BTreeSet::new();
+        for vendor in &self.vendors {
+            validate_non_empty(&vendor.vendor_id, "vendor.vendorId")
+                .map_err(ChioAuthorityError::TrustBundle)?;
+            if !vendor_ids.insert(vendor.vendor_id.as_str()) {
+                return Err(ChioAuthorityError::TrustBundle(
+                    "duplicate vendor id".to_string(),
+                ));
+            }
+        }
+
+        let mut action_class_ids = BTreeSet::new();
+        let mut action_tool_names = BTreeSet::new();
+        for action_class in &self.action_classes {
+            validate_non_empty(&action_class.action_class_id, "actionClass.actionClassId")
+                .map_err(ChioAuthorityError::TrustBundle)?;
+            validate_non_empty(&action_class.tool_name, "actionClass.toolName")
+                .map_err(ChioAuthorityError::TrustBundle)?;
+            if !action_class_ids.insert(action_class.action_class_id.as_str()) {
+                return Err(ChioAuthorityError::TrustBundle(
+                    "duplicate action class id".to_string(),
+                ));
+            }
+            if !action_tool_names.insert(action_class.tool_name.as_str()) {
+                return Err(ChioAuthorityError::TrustBundle(
+                    "duplicate action class tool name".to_string(),
+                ));
+            }
         }
         ensure_reference_workflow_classes(&self.action_classes)?;
         Ok(())
@@ -1006,9 +1062,18 @@ fn ensure_reference_workflow_classes(
     Ok(())
 }
 
-fn validate_required_key_id(value: Option<&str>, field: &str) -> Result<(), String> {
+fn validate_key_id_matches_public_key(
+    value: Option<&str>,
+    public_key: &PublicKey,
+    field: &str,
+) -> Result<(), String> {
     let key_id = value.ok_or_else(|| format!("{field} is required"))?;
-    validate_non_empty(key_id, field)
+    validate_non_empty(key_id, field)?;
+    let expected = Keyid::from_public_key(public_key).0;
+    if key_id != expected {
+        return Err(format!("{field} does not match public key"));
+    }
+    Ok(())
 }
 
 fn validate_non_empty(value: &str, field: &str) -> Result<(), String> {
@@ -1019,10 +1084,14 @@ fn validate_non_empty(value: &str, field: &str) -> Result<(), String> {
 }
 
 fn validate_sha256(value: &str, field: &str) -> Result<(), String> {
-    if value.len() != 64 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+    if !is_sha256_hex_shape(value) {
         return Err(format!("{field} must be a SHA-256 lowercase hex digest"));
     }
     validate_lowercase_hex(value, field)
+}
+
+fn is_sha256_hex_shape(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 fn validate_hex(value: &str, field: &str) -> Result<(), String> {
@@ -1080,6 +1149,20 @@ mod tests {
 
     fn key_id(public_key: &PublicKey) -> String {
         Keyid::from_public_key(public_key).0
+    }
+
+    fn different_key_id(public_key: &PublicKey) -> String {
+        let current = key_id(public_key);
+        let replacement = if current.starts_with('f') { '0' } else { 'f' };
+        format!("{replacement}{}", &current[1..])
+    }
+
+    #[test]
+    fn sha256_hex_shape_helper_accepts_exact_hex_before_lowercase_validation() {
+        assert!(crate::is_sha256_hex_shape(&"a".repeat(64)));
+        assert!(crate::is_sha256_hex_shape(&"A".repeat(64)));
+        assert!(!crate::is_sha256_hex_shape(&"a".repeat(63)));
+        assert!(!crate::is_sha256_hex_shape(&format!("{}g", "a".repeat(63))));
     }
 
     fn profile() -> AuthorityProfileDocument {
@@ -1190,6 +1273,38 @@ mod tests {
                     governance_issued_at_unix_ms: Some(NOW - 4_000),
                     governance_expires_at_unix_ms: Some(NOW + 10_000),
                     step_sha256: Some("e".repeat(64)),
+                },
+            ],
+        }
+    }
+
+    fn peer_pins() -> PeerPinsDocument {
+        PeerPinsDocument {
+            schema: PEER_PINS_SCHEMA.to_string(),
+            peers: vec![chio_attest_buyer_core::PeerLadderBinding {
+                kernel_id: "did:chio:vendor-a".to_string(),
+                public_key: key(21).public_key(),
+                ladder_manifest_ref: LadderManifestRef {
+                    manifest_id: "ladder:vendor-a".to_string(),
+                    sha256: "f".repeat(64),
+                    issued_at_unix_ms: NOW - 1_000,
+                    expires_at_unix_ms: NOW + 60_000,
+                },
+            }],
+            vendors: vec![VendorKeyBinding {
+                vendor_id: "vendor-a".to_string(),
+                public_key: key(21).public_key(),
+            }],
+            action_classes: vec![
+                ChioTrustedActionClass {
+                    action_class_id: WORKFLOW_GRANT_ISSUE_ACTION_CLASS_ID.to_string(),
+                    tool_name: WORKFLOW_GRANT_ISSUE_ACTION_CLASS_ID.to_string(),
+                    kind: chio_attest_buyer_core::ChioActionClassKind::Routine,
+                },
+                ChioTrustedActionClass {
+                    action_class_id: WORKFLOW_AGGREGATE_PUBLISH_ACTION_CLASS_ID.to_string(),
+                    tool_name: WORKFLOW_AGGREGATE_PUBLISH_ACTION_CLASS_ID.to_string(),
+                    kind: chio_attest_buyer_core::ChioActionClassKind::Routine,
                 },
             ],
         }
@@ -1331,6 +1446,16 @@ mod tests {
     }
 
     #[test]
+    fn peer_pins_reject_duplicate_peer_kernel_ids_before_bundle_assembly() {
+        let mut peer_pins = peer_pins();
+        peer_pins.peers.push(peer_pins.peers[0].clone());
+
+        let error = peer_pins.validate().unwrap_err();
+
+        assert!(error.to_string().contains("duplicate peer kernel id"));
+    }
+
+    #[test]
     fn inactive_authority_fails_before_signing() {
         let mut profile = profile();
         profile.lease_authorities[0].status = Some(ChioAuthorityStatus::Inactive);
@@ -1353,6 +1478,35 @@ mod tests {
         assert!(error
             .to_string()
             .contains("governanceAuthorities.keyId is required"));
+    }
+
+    #[test]
+    fn profile_rejects_authority_key_ids_that_do_not_match_public_keys() {
+        let mut lease_profile = profile();
+        lease_profile.lease_authorities[0].key_id = Some(different_key_id(
+            &lease_profile.lease_authorities[0].public_key,
+        ));
+        let error = lease_profile.validate().unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("leaseAuthorities.keyId does not match public key"));
+
+        let mut governance_profile = profile();
+        governance_profile.governance_authorities[0].key_id = Some(different_key_id(
+            &governance_profile.governance_authorities[0].public_key,
+        ));
+        let error = governance_profile.validate().unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("governanceAuthorities.keyId does not match public key"));
+
+        let mut revocation_profile = profile();
+        revocation_profile.revocation_authority.key_id =
+            different_key_id(&revocation_profile.revocation_authority.public_key);
+        let error = revocation_profile.validate().unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("revocationAuthority.keyId does not match public key"));
     }
 
     #[test]

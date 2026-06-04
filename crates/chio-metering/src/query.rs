@@ -235,7 +235,17 @@ fn record_matches_query(record: &CostMetadata, query: &CostQuery) -> bool {
 fn build_groups(records: &[&CostMetadata], group_by: &GroupBy) -> Vec<CostGroup> {
     use std::collections::BTreeMap;
 
-    let mut map: BTreeMap<String, (u64, u64, u64, Option<String>, u64)> = BTreeMap::new();
+    #[derive(Default)]
+    struct GroupAccumulator {
+        receipt_count: u64,
+        compute_ms: u64,
+        data_bytes: u64,
+        currency: Option<String>,
+        money_units: u64,
+        mixed_currency: bool,
+    }
+
+    let mut map: BTreeMap<String, GroupAccumulator> = BTreeMap::new();
 
     for r in records {
         let key = match group_by {
@@ -248,32 +258,42 @@ fn build_groups(records: &[&CostMetadata], group_by: &GroupBy) -> Vec<CostGroup>
             GroupBy::None => continue,
         };
 
-        let entry = map.entry(key).or_insert_with(|| (0, 0, 0, None, 0));
+        let entry = map.entry(key).or_default();
 
-        entry.0 = entry.0.saturating_add(1);
-        entry.1 = entry.1.saturating_add(r.total_compute_time_ms());
-        entry.2 = entry.2.saturating_add(r.total_data_bytes());
+        entry.receipt_count = entry.receipt_count.saturating_add(1);
+        entry.compute_ms = entry.compute_ms.saturating_add(r.total_compute_time_ms());
+        entry.data_bytes = entry.data_bytes.saturating_add(r.total_data_bytes());
 
         if let Some(ref cost) = r.total_monetary_cost {
-            if entry.3.is_none() {
-                entry.3 = Some(cost.currency.clone());
-            }
-            if entry.3.as_ref() == Some(&cost.currency) {
-                entry.4 = entry.4.saturating_add(cost.units);
+            match entry.currency.as_ref() {
+                None => {
+                    entry.currency = Some(cost.currency.clone());
+                    entry.money_units = cost.units;
+                }
+                Some(currency) if currency == &cost.currency => {
+                    entry.money_units = entry.money_units.saturating_add(cost.units);
+                }
+                Some(_) => {
+                    entry.mixed_currency = true;
+                }
             }
         }
     }
 
     map.into_iter()
-        .map(|(key, (count, compute, data, currency, money))| CostGroup {
+        .map(|(key, accumulator)| CostGroup {
             key,
-            receipt_count: count,
-            total_compute_time_ms: compute,
-            total_data_bytes: data,
-            total_monetary_cost: currency.map(|c| MonetaryAmount {
-                units: money,
-                currency: c,
-            }),
+            receipt_count: accumulator.receipt_count,
+            total_compute_time_ms: accumulator.compute_ms,
+            total_data_bytes: accumulator.data_bytes,
+            total_monetary_cost: if accumulator.mixed_currency {
+                None
+            } else {
+                accumulator.currency.map(|currency| MonetaryAmount {
+                    units: accumulator.money_units,
+                    currency,
+                })
+            },
         })
         .collect()
 }
@@ -379,6 +399,25 @@ mod tests {
         let a1_group = result.groups.iter().find(|g| g.key == "a1").unwrap();
         assert_eq!(a1_group.receipt_count, 2);
         assert_eq!(a1_group.total_monetary_cost.as_ref().unwrap().units, 125);
+    }
+
+    #[test]
+    fn query_group_by_agent_mixed_currency_has_no_total() {
+        let usd = make_record("r1", 1000, "a1", "s1", "t1", 50);
+        let mut eur = make_record("r2", 2000, "a1", "s1", "t2", 100);
+        eur.total_monetary_cost = Some(MonetaryAmount {
+            units: 100,
+            currency: "EUR".to_string(),
+        });
+        let records = vec![usd, eur];
+        let query = CostQuery {
+            group_by: GroupBy::Agent,
+            ..Default::default()
+        };
+        let result = execute_cost_query(&records, &query);
+        let group = result.groups.iter().find(|g| g.key == "a1").unwrap();
+
+        assert!(group.total_monetary_cost.is_none());
     }
 
     #[test]

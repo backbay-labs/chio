@@ -7,7 +7,7 @@ use glob::Pattern;
 
 use chio_kernel::{GuardContext, KernelError, Verdict};
 
-use crate::action::{extract_action, ToolAction};
+use crate::action::{extract_action_checked, ToolAction};
 
 /// Errors produced when building an [`EgressAllowlistGuard`].
 #[derive(Debug, thiserror::Error)]
@@ -121,7 +121,10 @@ impl chio_kernel::Guard for EgressAllowlistGuard {
     }
 
     fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
-        let action = extract_action(&ctx.request.tool_name, &ctx.request.arguments);
+        let action = match extract_action_checked(&ctx.request.tool_name, &ctx.request.arguments) {
+            Ok(action) => action,
+            Err(_) => return Ok(Verdict::Deny),
+        };
 
         let host = match &action {
             ToolAction::NetworkEgress(h, _) => h.as_str(),

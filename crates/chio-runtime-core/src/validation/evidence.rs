@@ -80,6 +80,9 @@ pub fn validate_runtime_workflow_run_report(
         "runtime_workflow_missing_failure_code",
         "runtime_workflow_unexpected_failure_code",
     )?;
+    for path in &report.evidence_paths {
+        validate_relative_evidence_path(path, "runtime_workflow_invalid_evidence_path")?;
+    }
     if report.accepted && report.step_evidence.is_empty() {
         return Err(ChioRuntimeError::Rejected {
             code: "runtime_workflow_missing_step_evidence",
@@ -165,23 +168,25 @@ pub(crate) fn validate_relative_evidence_path(
     path: &str,
     code: &'static str,
 ) -> Result<(), ChioRuntimeError> {
-    let trimmed = path.trim();
-    if trimmed.is_empty()
-        || trimmed != path
-        || path.starts_with('/')
-        || path.contains('\\')
-        || path.contains(':')
-        || path.contains("//")
-        || path
-            .split('/')
-            .any(|part| part.is_empty() || part == "." || part == "..")
-    {
+    if !is_safe_relative_evidence_path(path) {
         return Err(ChioRuntimeError::Rejected {
             code,
             detail: format!("runtime evidence path {path:?} is not a safe relative path"),
         });
     }
     Ok(())
+}
+
+fn is_safe_relative_evidence_path(path: &str) -> bool {
+    path.trim() == path
+        && !path.is_empty()
+        && !path.starts_with('/')
+        && !path.contains('\\')
+        && !path.contains(':')
+        && !path.contains("//")
+        && path
+            .split('/')
+            .all(|part| !part.is_empty() && part != "." && part != "..")
 }
 
 pub(super) fn validate_runtime_step_evidence(
@@ -250,4 +255,28 @@ fn is_runtime_evidence_manifest_schema(schema: &str) -> bool {
 
 fn is_runtime_step_evidence_schema(schema: &str) -> bool {
     matches!(schema, CHIO_RUNTIME_STEP_EVIDENCE_SCHEMA)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn relative_evidence_path_helper_accepts_only_safe_paths() {
+        for path in ["workflow-run-report.json", "steps/workflow-step-1.json"] {
+            assert!(super::is_safe_relative_evidence_path(path), "{path}");
+        }
+
+        for path in [
+            "",
+            " workflow-run-report.json",
+            "workflow-run-report.json ",
+            "/workflow-run-report.json",
+            "steps\\workflow-run-report.json",
+            "C:workflow-run-report.json",
+            "steps//workflow-run-report.json",
+            "steps/./workflow-run-report.json",
+            "steps/../workflow-run-report.json",
+        ] {
+            assert!(!super::is_safe_relative_evidence_path(path), "{path}");
+        }
+    }
 }

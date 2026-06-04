@@ -13,6 +13,7 @@ use std::pin::Pin;
 use std::time::SystemTime;
 
 use chio_core::canonical::canonical_json_bytes;
+use chio_manifest::ServerTool;
 use chio_tool_call_fabric::{
     DenyReason, Principal, ProvenanceStamp, ProviderAdapter, ProviderError, ProviderId,
     ProviderRequest, ProviderResponse, Redaction, ToolInvocation, ToolResult, VerdictResult,
@@ -20,12 +21,6 @@ use chio_tool_call_fabric::{
 use serde_json::{json, Value};
 
 use crate::{AnthropicAdapter, ToolResultBlock, ToolUseBlock};
-
-const SERVER_TOOL_NAMES: [&str; 3] = [
-    "computer_use_20241022",
-    "bash_20241022",
-    "text_editor_20241022",
-];
 
 impl AnthropicAdapter {
     /// Lift every Anthropic `tool_use` content block in a non-streaming
@@ -110,12 +105,29 @@ impl AnthropicAdapter {
         match verdict {
             VerdictResult::Allow { redactions, .. } => {
                 let content = parse_tool_result_content(result)?;
-                let content = apply_redactions(content, &redactions, "Anthropic tool_result")?;
-                Ok(ToolResultBlock::allow(tool_use_id, content))
+                lower_allow_tool_result(tool_use_id, content, &redactions)
             }
-            VerdictResult::Deny { reason, .. } => {
-                Ok(ToolResultBlock::deny(tool_use_id, deny_content(&reason)))
+            VerdictResult::Deny { reason, .. } => Ok(lower_deny_tool_result(tool_use_id, &reason)),
+        }
+    }
+
+    fn lower_pending_tool_result(
+        &self,
+        pending: PendingToolResult,
+        verdict: VerdictResult,
+    ) -> Result<ToolResultBlock, ProviderError> {
+        let tool_use_id = non_empty_str(&pending.tool_use_id, "tool_use_id")?;
+        match verdict {
+            VerdictResult::Allow { redactions, .. } => {
+                let content = pending.content.ok_or_else(|| {
+                    ProviderError::Malformed(
+                        "Anthropic ProviderAdapter::lower allow path requires ToolResult content"
+                            .to_string(),
+                    )
+                })?;
+                lower_allow_tool_result(tool_use_id, content, &redactions)
             }
+            VerdictResult::Deny { reason, .. } => Ok(lower_deny_tool_result(tool_use_id, &reason)),
         }
     }
 }
@@ -151,26 +163,7 @@ impl ProviderAdapter for AnthropicAdapter {
     {
         Box::pin(async move {
             let pending = parse_tool_result_envelope(result)?;
-            let block = match verdict {
-                verdict @ VerdictResult::Allow { .. } => {
-                    let content = pending.content.ok_or_else(|| {
-                        ProviderError::Malformed(
-                            "Anthropic ProviderAdapter::lower allow path requires ToolResult content"
-                                .to_string(),
-                        )
-                    })?;
-                    self.lower_tool_result_block(
-                        &pending.tool_use_id,
-                        verdict,
-                        ToolResult(json_bytes(&content, "Anthropic tool_result content")?),
-                    )?
-                }
-                verdict @ VerdictResult::Deny { .. } => self.lower_tool_result_block(
-                    &pending.tool_use_id,
-                    verdict,
-                    ToolResult(b"null".to_vec()),
-                )?,
-            };
+            let block = self.lower_pending_tool_result(pending, verdict)?;
             serde_json::to_vec(&block)
                 .map(ProviderResponse)
                 .map_err(|error| {
@@ -253,16 +246,8 @@ fn validate_tool_use_block(block: &ToolUseBlock) -> Result<(), ProviderError> {
             block.block_type
         )));
     }
-    if block.id.trim().is_empty() {
-        return Err(ProviderError::Malformed(
-            "Anthropic tool_use id was empty".to_string(),
-        ));
-    }
-    if block.name.trim().is_empty() {
-        return Err(ProviderError::Malformed(
-            "Anthropic tool_use name was empty".to_string(),
-        ));
-    }
+    validate_provider_identifier(&block.id, "tool_use id")?;
+    validate_provider_identifier(&block.name, "tool_use name")?;
     if !block.input.is_object() {
         return Err(ProviderError::BadToolArgs(format!(
             "Anthropic tool_use `{}` input was not a JSON object",
@@ -272,8 +257,23 @@ fn validate_tool_use_block(block: &ToolUseBlock) -> Result<(), ProviderError> {
     Ok(())
 }
 
+fn validate_provider_identifier(value: &str, field: &str) -> Result<(), ProviderError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(ProviderError::Malformed(format!(
+            "Anthropic {field} was empty"
+        )));
+    }
+    if trimmed != value {
+        return Err(ProviderError::Malformed(format!(
+            "Anthropic {field} must not contain surrounding whitespace"
+        )));
+    }
+    Ok(())
+}
+
 fn ensure_server_tool_feature(name: &str) -> Result<(), ProviderError> {
-    if SERVER_TOOL_NAMES.contains(&name) && !cfg!(feature = "computer-use") {
+    if ServerTool::from_anthropic_wire_name(name).is_some() && !cfg!(feature = "computer-use") {
         return Err(ProviderError::Malformed(format!(
             "Anthropic server tool `{name}` requires the `computer-use` cargo feature"
         )));
@@ -357,21 +357,32 @@ fn apply_redaction(
     Ok(())
 }
 
-fn json_bytes(value: &Value, context: &str) -> Result<Vec<u8>, ProviderError> {
-    serde_json::to_vec(value).map_err(|error| {
-        ProviderError::Malformed(format!("failed to serialize {context}: {error}"))
-    })
-}
-
 fn non_empty_str<'a>(value: &'a str, field: &str) -> Result<&'a str, ProviderError> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
         Err(ProviderError::Malformed(format!(
             "Anthropic {field} must not be empty"
         )))
+    } else if trimmed != value {
+        Err(ProviderError::Malformed(format!(
+            "Anthropic {field} must not contain surrounding whitespace"
+        )))
     } else {
-        Ok(trimmed)
+        Ok(value)
     }
+}
+
+fn lower_allow_tool_result(
+    tool_use_id: &str,
+    content: Value,
+    redactions: &[Redaction],
+) -> Result<ToolResultBlock, ProviderError> {
+    let content = apply_redactions(content, redactions, "Anthropic tool_result")?;
+    Ok(ToolResultBlock::allow(tool_use_id, content))
+}
+
+fn lower_deny_tool_result(tool_use_id: &str, reason: &DenyReason) -> ToolResultBlock {
+    ToolResultBlock::deny(tool_use_id, deny_content(reason))
 }
 
 fn deny_content(reason: &DenyReason) -> Value {
@@ -385,4 +396,95 @@ fn deny_content(reason: &DenyReason) -> Value {
         DenyReason::BudgetExceeded => "budget_exceeded".to_string(),
     };
     json!([{ "type": "text", "text": text }])
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use std::sync::Arc;
+
+    use chio_tool_call_fabric::{ReceiptId, Redaction};
+    use serde_json::json;
+
+    use super::*;
+    use crate::transport::MockTransport;
+    use crate::AnthropicAdapterConfig;
+
+    fn adapter() -> AnthropicAdapter {
+        let config = AnthropicAdapterConfig::new(
+            "anthropic-1",
+            "Anthropic Messages",
+            "0.1.0",
+            "deadbeef",
+            "wks_chio_demo",
+        );
+        AnthropicAdapter::new(config, Arc::new(MockTransport::new()))
+    }
+
+    #[test]
+    fn lower_pending_tool_result_applies_allow_redactions() {
+        let adapter = adapter();
+        let pending = PendingToolResult {
+            tool_use_id: "toolu_weather_1".to_string(),
+            content: Some(json!([{ "type": "text", "text": "secret" }])),
+        };
+        let verdict = VerdictResult::Allow {
+            redactions: vec![Redaction {
+                path: "/0/text".to_string(),
+                replacement: "[redacted]".to_string(),
+            }],
+            receipt_id: ReceiptId("rcpt_allow_redacted".to_string()),
+        };
+
+        let block = adapter.lower_pending_tool_result(pending, verdict).unwrap();
+
+        assert_eq!(block.tool_use_id, "toolu_weather_1");
+        assert!(!block.is_error);
+        assert_eq!(block.content[0]["text"], "[redacted]");
+    }
+
+    #[test]
+    fn lower_pending_tool_result_requires_content_on_allow() {
+        let adapter = adapter();
+        let pending = PendingToolResult {
+            tool_use_id: "toolu_weather_1".to_string(),
+            content: None,
+        };
+        let verdict = VerdictResult::Allow {
+            redactions: vec![],
+            receipt_id: ReceiptId("rcpt_allow_missing_content".to_string()),
+        };
+
+        let error = adapter
+            .lower_pending_tool_result(pending, verdict)
+            .expect_err("allow lowering without content must fail closed");
+
+        assert!(error
+            .to_string()
+            .contains("allow path requires ToolResult content"));
+    }
+
+    #[test]
+    fn lift_rejects_tool_use_name_with_surrounding_whitespace() {
+        let adapter = adapter();
+        let raw = ProviderRequest(
+            serde_json::to_vec(&json!({
+                "content": [{
+                    "type": "tool_use",
+                    "id": "toolu_server_tool",
+                    "name": " bash_20241022 ",
+                    "input": {}
+                }]
+            }))
+            .unwrap(),
+        );
+
+        let error = adapter
+            .lift_batch(raw)
+            .expect_err("whitespace-padded tool name must fail closed");
+
+        assert!(error
+            .to_string()
+            .contains("tool_use name must not contain surrounding whitespace"));
+    }
 }

@@ -2,10 +2,8 @@
 
 use std::fs;
 use std::io::Read;
-use std::net::{SocketAddr, TcpListener};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_core::capability::{
@@ -33,6 +31,7 @@ use chio_did::DidChio;
 use chio_kernel::build_checkpoint;
 use chio_reputation::{LocalReputationScorecard, MetricValue};
 use chio_store_sqlite::SqliteReceiptStore;
+use chio_test_support::loopback::{reserve_listen_addr, skip_when_loopback_bind_denied};
 use reqwest::blocking::Client;
 use reqwest::header::CONTENT_TYPE;
 
@@ -61,26 +60,6 @@ fn workspace_root() -> PathBuf {
         .nth(2)
         .expect("workspace root")
         .to_path_buf()
-}
-
-fn reserve_listen_addr() -> SocketAddr {
-    static NEXT_PORT_OFFSET: AtomicU32 = AtomicU32::new(0);
-    const TEST_PORT_BASE: u32 = 15_000;
-    const TEST_PORT_SPAN: u32 = 10_000;
-
-    let process_offset = std::process::id() % TEST_PORT_SPAN;
-    for _ in 0..TEST_PORT_SPAN {
-        let offset = NEXT_PORT_OFFSET.fetch_add(1, Ordering::Relaxed);
-        let port = TEST_PORT_BASE + ((process_offset + offset) % TEST_PORT_SPAN);
-        let addr = SocketAddr::from(([127, 0, 0, 1], port as u16));
-        if let Ok(listener) = TcpListener::bind(addr) {
-            let addr = listener.local_addr().expect("listener addr");
-            drop(listener);
-            return addr;
-        }
-    }
-
-    panic!("could not reserve local passport test port");
 }
 
 struct ServerGuard {
@@ -2229,6 +2208,12 @@ fn passport_issuance_offer_rejects_unsupported_configuration_id() {
 
 #[test]
 fn passport_issuance_remote_roundtrip_uses_public_metadata_and_remote_registry() {
+    if skip_when_loopback_bind_denied(
+        "passport_issuance_remote_roundtrip_uses_public_metadata_and_remote_registry",
+    ) {
+        return;
+    }
+
     let passport_path = unique_path("passport-issuance-remote", ".json");
     let issuance_registry_path = unique_path("passport-issuance-remote-registry", ".json");
     let offer_path = unique_path("passport-issuance-remote-offer", ".json");
@@ -2501,6 +2486,12 @@ fn passport_oid4vci_local_offer_token_and_credential_roundtrip_is_replay_safe() 
 
 #[test]
 fn passport_oid4vci_remote_metadata_and_fail_closed_profile_validation() {
+    if skip_when_loopback_bind_denied(
+        "passport_oid4vci_remote_metadata_and_fail_closed_profile_validation",
+    ) {
+        return;
+    }
+
     let passport_path = unique_path("passport-oid4vci-remote", ".json");
     let offer_path = unique_path("passport-oid4vci-remote-offer", ".json");
     let token_path = unique_path("passport-oid4vci-remote-token", ".json");
@@ -2847,6 +2838,12 @@ fn passport_issuance_metadata_rejects_public_status_distribution_without_cache_t
 
 #[test]
 fn passport_issuance_remote_requires_published_status_and_exposes_public_resolution() {
+    if skip_when_loopback_bind_denied(
+        "passport_issuance_remote_requires_published_status_and_exposes_public_resolution",
+    ) {
+        return;
+    }
+
     let passport_path = unique_path("passport-issuance-remote-status", ".json");
     let issuance_registry_path = unique_path("passport-issuance-remote-status-registry", ".json");
     let status_registry_path = unique_path("passport-status-remote-registry", ".json");
@@ -3078,6 +3075,12 @@ fn passport_issuance_remote_requires_published_status_and_exposes_public_resolut
 
 #[test]
 fn passport_public_holder_transport_fetch_submit_and_fail_closed_on_replay() {
+    if skip_when_loopback_bind_denied(
+        "passport_public_holder_transport_fetch_submit_and_fail_closed_on_replay",
+    ) {
+        return;
+    }
+
     let passport_path = unique_path("passport-public-holder-transport", ".json");
     let challenge_path = unique_path("passport-public-holder-transport-challenge", ".json");
     let response_path = unique_path("passport-public-holder-transport-response", ".json");
@@ -3253,6 +3256,12 @@ fn passport_public_holder_transport_fetch_submit_and_fail_closed_on_replay() {
 
 #[test]
 fn passport_external_http_issuance_and_verifier_roundtrip_is_interop_qualified() {
+    if skip_when_loopback_bind_denied(
+        "passport_external_http_issuance_and_verifier_roundtrip_is_interop_qualified",
+    ) {
+        return;
+    }
+
     let passport_path = unique_path("passport-http-interop", ".json");
     let issuance_registry_path = unique_path("passport-http-interop-registry", ".json");
     let challenge_db_path = unique_path("passport-http-interop-challenges", ".sqlite3");
@@ -3443,6 +3452,10 @@ fn passport_external_http_issuance_and_verifier_roundtrip_is_interop_qualified()
 
 #[test]
 fn passport_portable_sd_jwt_metadata_and_issuance_roundtrip() {
+    if skip_when_loopback_bind_denied("passport_portable_sd_jwt_metadata_and_issuance_roundtrip") {
+        return;
+    }
+
     let passport_path = unique_path("passport-portable-http", ".json");
     let authority_seed_path = unique_path("passport-portable-issuer", ".seed");
     let issuance_registry_path = unique_path("passport-portable-registry", ".json");
@@ -3638,6 +3651,12 @@ fn passport_portable_sd_jwt_metadata_and_issuance_roundtrip() {
 
 #[test]
 fn passport_portable_jwt_vc_json_metadata_and_issuance_roundtrip() {
+    if skip_when_loopback_bind_denied(
+        "passport_portable_jwt_vc_json_metadata_and_issuance_roundtrip",
+    ) {
+        return;
+    }
+
     let passport_path = unique_path("passport-portable-jwt-vc-http", ".json");
     let authority_seed_path = unique_path("passport-portable-jwt-vc-issuer", ".seed");
     let issuance_registry_path = unique_path("passport-portable-jwt-vc-registry", ".json");
@@ -3796,6 +3815,10 @@ fn passport_portable_jwt_vc_json_metadata_and_issuance_roundtrip() {
 
 #[test]
 fn passport_issuance_rejects_mixed_portable_profile_request() {
+    if skip_when_loopback_bind_denied("passport_issuance_rejects_mixed_portable_profile_request") {
+        return;
+    }
+
     let passport_path = unique_path("passport-portable-mixed-profile", ".json");
     let authority_seed_path = unique_path("passport-portable-mixed-profile-issuer", ".seed");
     let issuance_registry_path = unique_path("passport-portable-mixed-profile-registry", ".json");
@@ -3898,6 +3921,12 @@ fn passport_issuance_rejects_mixed_portable_profile_request() {
 
 #[test]
 fn passport_oid4vp_request_uri_and_direct_post_roundtrip_is_replay_safe() {
+    if skip_when_loopback_bind_denied(
+        "passport_oid4vp_request_uri_and_direct_post_roundtrip_is_replay_safe",
+    ) {
+        return;
+    }
+
     let passport_path = unique_path("passport-oid4vp-portable", ".json");
     let authority_seed_path = unique_path("passport-oid4vp-authority", ".seed");
     let issuance_registry_path = unique_path("passport-oid4vp-registry", ".json");
@@ -4198,6 +4227,12 @@ fn passport_oid4vp_request_uri_and_direct_post_roundtrip_is_replay_safe() {
 
 #[test]
 fn passport_oid4vp_cli_holder_adapter_supports_same_device_and_cross_device_launches() {
+    if skip_when_loopback_bind_denied(
+        "passport_oid4vp_cli_holder_adapter_supports_same_device_and_cross_device_launches",
+    ) {
+        return;
+    }
+
     let passport_path = unique_path("passport-oid4vp-cli", ".json");
     let authority_seed_path = unique_path("passport-oid4vp-cli-authority", ".seed");
     let issuance_registry_path = unique_path("passport-oid4vp-cli-registry", ".json");
@@ -4475,6 +4510,12 @@ fn passport_oid4vp_cli_holder_adapter_supports_same_device_and_cross_device_laun
 
 #[test]
 fn passport_oid4vp_public_verifier_metadata_and_rotation_preserve_active_request_truth() {
+    if skip_when_loopback_bind_denied(
+        "passport_oid4vp_public_verifier_metadata_and_rotation_preserve_active_request_truth",
+    ) {
+        return;
+    }
+
     let passport_path = unique_path("passport-oid4vp-rotation", ".json");
     let authority_db_path = unique_path("passport-oid4vp-rotation-authority", ".sqlite3");
     let issuance_registry_path = unique_path("passport-oid4vp-rotation-registry", ".json");
@@ -4705,6 +4746,12 @@ fn passport_oid4vp_public_verifier_metadata_and_rotation_preserve_active_request
 
 #[test]
 fn passport_portable_sd_jwt_status_reference_projects_active_superseded_and_revoked_states() {
+    if skip_when_loopback_bind_denied(
+        "passport_portable_sd_jwt_status_reference_projects_active_superseded_and_revoked_states",
+    ) {
+        return;
+    }
+
     let passport_a_path = unique_path("passport-portable-lifecycle-a", ".json");
     let passport_b_path = unique_path("passport-portable-lifecycle-b", ".json");
     let authority_seed_path = unique_path("passport-portable-lifecycle-issuer", ".seed");
@@ -4961,6 +5008,12 @@ fn passport_portable_sd_jwt_status_reference_projects_active_superseded_and_revo
 
 #[test]
 fn passport_portable_lifecycle_stale_state_fails_closed_on_offer_and_public_resolution() {
+    if skip_when_loopback_bind_denied(
+        "passport_portable_lifecycle_stale_state_fails_closed_on_offer_and_public_resolution",
+    ) {
+        return;
+    }
+
     let passport_path = unique_path("passport-portable-lifecycle-stale", ".json");
     let authority_seed_path = unique_path("passport-portable-lifecycle-stale-issuer", ".seed");
     let issuance_registry_path = unique_path("passport-portable-lifecycle-stale-registry", ".json");
@@ -5120,6 +5173,12 @@ fn passport_issuance_local_portable_offer_requires_signing_seed() {
 
 #[test]
 fn passport_portable_metadata_endpoints_require_signing_key_configuration() {
+    if skip_when_loopback_bind_denied(
+        "passport_portable_metadata_endpoints_require_signing_key_configuration",
+    ) {
+        return;
+    }
+
     let issuance_registry_path = unique_path("passport-portable-metadata-registry", ".json");
     let listen = reserve_listen_addr();
     let base_url = format!("http://{}", listen);
@@ -5178,6 +5237,12 @@ fn passport_portable_metadata_endpoints_require_signing_key_configuration() {
 
 #[test]
 fn passport_public_discovery_endpoints_require_authority_signing_key() {
+    if skip_when_loopback_bind_denied(
+        "passport_public_discovery_endpoints_require_authority_signing_key",
+    ) {
+        return;
+    }
+
     let issuance_registry_path = unique_path("passport-public-discovery-registry", ".json");
     let listen = reserve_listen_addr();
     let base_url = format!("http://{}", listen);
@@ -5210,6 +5275,12 @@ fn passport_public_discovery_endpoints_require_authority_signing_key() {
 
 #[test]
 fn passport_public_discovery_surfaces_are_signed_and_informational_only() {
+    if skip_when_loopback_bind_denied(
+        "passport_public_discovery_surfaces_are_signed_and_informational_only",
+    ) {
+        return;
+    }
+
     let issuance_registry_path = unique_path("passport-public-discovery-portable", ".json");
     let verifier_db_path = unique_path("passport-public-discovery-verifier", ".sqlite");
     let status_registry_path = unique_path("passport-public-discovery-status", ".json");

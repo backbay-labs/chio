@@ -42,7 +42,9 @@ pub fn fuzz_openapi_ingest(data: &[u8]) {
         server_id: "fuzz-bridge".to_string(),
         server_name: "Fuzz Bridge".to_string(),
         server_version: "0.0.0".to_string(),
-        public_key: "00".to_string(),
+        public_key: chio_core::Keypair::from_seed(&[19u8; 32])
+            .public_key()
+            .to_hex(),
         base_url: "https://fuzz.invalid".to_string(),
         egress_contract: None,
     };

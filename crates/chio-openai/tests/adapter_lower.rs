@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll, Wake, Waker};
 
 use chio_core::canonical::canonical_json_bytes;
-use chio_openai::adapter::OpenAiAdapter;
+use chio_openai::adapter::{OpenAiAdapter, OpenAiAdapterConfig};
 use chio_tool_call_fabric::{
     DenyReason, ProviderAdapter, ProviderError, ProviderRequest, ReceiptId, Redaction, ToolResult,
     VerdictResult,
@@ -38,6 +38,44 @@ fn tool_result(value: Value) -> ToolResult {
 
 fn response_json(bytes: &[u8]) -> Value {
     serde_json::from_slice(bytes).unwrap()
+}
+
+fn config_with_api_version(api_version: &str) -> OpenAiAdapterConfig {
+    let mut config = OpenAiAdapterConfig::new("org_chio_demo");
+    config.api_version = api_version.to_string();
+    config
+}
+
+fn assert_api_version_drift(error: ProviderError) {
+    match error {
+        ProviderError::Malformed(message) => {
+            assert!(
+                message.contains("OpenAI adapter supports only API version responses.2026-04-25")
+            );
+            assert!(message.contains("configured responses.2025-01-01"));
+        }
+        other => panic!("expected Malformed API version drift, got {other:?}"),
+    }
+}
+
+#[test]
+fn lower_rejects_api_version_drift_before_provider_serialization() {
+    let adapter = OpenAiAdapter::new(config_with_api_version("responses.2025-01-01"));
+    let result = tool_result(json!({
+        "call_id": "call_weather_1",
+        "output": {"forecast": "sunny"}
+    }));
+    let verdict = VerdictResult::Allow {
+        redactions: vec![],
+        receipt_id: ReceiptId("rcpt_allow_1".to_string()),
+    };
+
+    let err = match block_on(adapter.lower(verdict, result)) {
+        Ok(_) => panic!("drifted OpenAI Responses API version must fail before lowering"),
+        Err(err) => err,
+    };
+
+    assert_api_version_drift(err);
 }
 
 #[test]

@@ -46,6 +46,14 @@ impl DeadLetterQueue {
     /// If the queue is already at capacity, the oldest entry is dropped and
     /// a tracing::error is emitted before the new entry is inserted.
     pub fn push(&mut self, event: FailedEvent) {
+        if self.max_capacity == 0 {
+            tracing::error!(
+                exporter = %event.exporter_name,
+                failed_at = event.failed_at,
+                "DLQ at zero capacity -- dropped failed event"
+            );
+            return;
+        }
         if self.inner.len() >= self.max_capacity {
             let dropped = self.inner.pop_front();
             if let Some(dropped_event) = dropped {

@@ -7,7 +7,7 @@ use regex::Regex;
 
 use chio_kernel::{GuardContext, KernelError, Verdict};
 
-use crate::action::{extract_action, ToolAction};
+use crate::action::{extract_action_checked, ToolAction};
 use crate::forbidden_path::ForbiddenPathGuard;
 
 fn default_forbidden_patterns() -> Vec<String> {
@@ -30,6 +30,17 @@ pub struct ShellCommandGuard {
     forbidden_regexes: Vec<Regex>,
     forbidden_path: ForbiddenPathGuard,
     enforce_forbidden_paths: bool,
+    fail_closed: bool,
+}
+
+/// Errors from operator-supplied shell-command guard configuration.
+#[derive(Debug, thiserror::Error)]
+pub enum ShellCommandConfigError {
+    #[error("invalid shell-command forbidden pattern {pattern:?}: {source}")]
+    InvalidPattern {
+        pattern: String,
+        source: regex::Error,
+    },
 }
 
 impl ShellCommandGuard {
@@ -37,17 +48,56 @@ impl ShellCommandGuard {
         Self::with_patterns(default_forbidden_patterns(), true)
     }
 
+    /// Build a guard from operator-supplied regex patterns.
+    ///
+    /// This compatibility constructor preserves the historical return type.
+    /// Invalid regex configuration creates a deny-all guard so direct callers
+    /// cannot accidentally widen access by dropping a malformed pattern.
     pub fn with_patterns(patterns: Vec<String>, enforce_forbidden_paths: bool) -> Self {
-        let forbidden_regexes = patterns.iter().filter_map(|p| Regex::new(p).ok()).collect();
+        match Self::try_with_patterns(patterns, enforce_forbidden_paths) {
+            Ok(guard) => guard,
+            Err(_) => Self::fail_closed(enforce_forbidden_paths),
+        }
+    }
 
-        Self {
+    /// Build a guard from operator-supplied regex patterns, rejecting invalid
+    /// configuration before it reaches the runtime guard pipeline.
+    pub fn try_with_patterns(
+        patterns: Vec<String>,
+        enforce_forbidden_paths: bool,
+    ) -> Result<Self, ShellCommandConfigError> {
+        let forbidden_regexes = patterns
+            .iter()
+            .map(|pattern| {
+                Regex::new(pattern).map_err(|source| ShellCommandConfigError::InvalidPattern {
+                    pattern: pattern.clone(),
+                    source,
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(Self {
             forbidden_regexes,
             forbidden_path: ForbiddenPathGuard::new(),
             enforce_forbidden_paths,
+            fail_closed: false,
+        })
+    }
+
+    fn fail_closed(enforce_forbidden_paths: bool) -> Self {
+        Self {
+            forbidden_regexes: Vec::new(),
+            forbidden_path: ForbiddenPathGuard::new(),
+            enforce_forbidden_paths,
+            fail_closed: true,
         }
     }
 
     pub fn is_forbidden(&self, commandline: &str) -> bool {
+        if self.fail_closed {
+            return true;
+        }
+
         let tokens = shlex_split_best_effort(commandline);
         if is_recursive_rm_root(&tokens) {
             return true;
@@ -82,17 +132,33 @@ impl ShellCommandGuard {
         }
 
         let mut out: Vec<String> = Vec::new();
-
-        for segment in tokens.split(|token| is_shell_separator(token)) {
-            push_segment_path_candidates(&mut out, segment);
-        }
-
-        // Windows drive-rooted paths.
-        for p in extract_windows_paths_best_effort(commandline) {
-            push_path_candidate(&mut out, &p);
-        }
-
+        push_candidate_paths_with_depth(&mut out, commandline, tokens, 0);
         out
+    }
+}
+
+fn push_candidate_paths_with_depth(
+    out: &mut Vec<String>,
+    commandline: &str,
+    tokens: &[String],
+    depth: usize,
+) {
+    for segment in tokens.split(|token| is_shell_separator(token)) {
+        let expanded_segment = expand_env_split_string_options(segment);
+        for expanded_shell_segment in expanded_segment.split(|token| is_shell_separator(token)) {
+            push_segment_path_candidates(out, expanded_shell_segment);
+            if depth < MAX_SHELL_COMMAND_NESTING {
+                if let Some(command_string) = shell_command_string(expanded_shell_segment) {
+                    let nested = shlex_split_best_effort(command_string);
+                    push_candidate_paths_with_depth(out, command_string, &nested, depth + 1);
+                }
+            }
+        }
+    }
+
+    // Windows drive-rooted paths.
+    for p in extract_windows_paths_best_effort(commandline) {
+        push_path_candidate(out, &p);
     }
 }
 
@@ -144,7 +210,10 @@ impl chio_kernel::Guard for ShellCommandGuard {
     }
 
     fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
-        let action = extract_action(&ctx.request.tool_name, &ctx.request.arguments);
+        let action = match extract_action_checked(&ctx.request.tool_name, &ctx.request.arguments) {
+            Ok(action) => action,
+            Err(_) => return Ok(Verdict::Deny),
+        };
 
         let commandline = match &action {
             ToolAction::ShellCommand(cmd) => cmd.as_str(),
@@ -159,12 +228,26 @@ impl chio_kernel::Guard for ShellCommandGuard {
     }
 }
 
+const MAX_SHELL_COMMAND_NESTING: usize = 4;
+
 fn is_recursive_rm_root(tokens: &[String]) -> bool {
+    is_recursive_rm_root_with_depth(tokens, 0)
+}
+
+fn is_recursive_rm_root_with_depth(tokens: &[String], depth: usize) -> bool {
     for segment in tokens.split(|token| is_shell_separator(token)) {
         let expanded_segment = expand_env_split_string_options(segment);
         for expanded_shell_segment in expanded_segment.split(|token| is_shell_separator(token)) {
             if segment_has_recursive_rm_root(expanded_shell_segment) {
                 return true;
+            }
+            if depth < MAX_SHELL_COMMAND_NESTING {
+                if let Some(command_string) = shell_command_string(expanded_shell_segment) {
+                    let nested = shlex_split_best_effort(command_string);
+                    if is_recursive_rm_root_with_depth(&nested, depth + 1) {
+                        return true;
+                    }
+                }
             }
         }
     }
@@ -258,6 +341,11 @@ fn expand_env_split_string_options(tokens: &[String]) -> Vec<String> {
 }
 
 fn executable_rm_index(tokens: &[String]) -> Option<usize> {
+    let index = executable_command_index(tokens)?;
+    (tokens[index] == "rm").then_some(index)
+}
+
+fn executable_command_index(tokens: &[String]) -> Option<usize> {
     let mut index = 0usize;
     while index < tokens.len() {
         let token = tokens[index].as_str();
@@ -322,10 +410,60 @@ fn executable_rm_index(tokens: &[String]) -> Option<usize> {
             continue;
         }
 
-        return (token == "rm").then_some(index);
+        return Some(index);
     }
 
     None
+}
+
+fn shell_command_string(tokens: &[String]) -> Option<&str> {
+    let index = executable_command_index(tokens)?;
+    if !is_shell_interpreter(tokens[index].as_str()) {
+        return None;
+    }
+    shell_c_argument(&tokens[index + 1..])
+}
+
+fn is_shell_interpreter(command: &str) -> bool {
+    let name = command.rsplit(['/', '\\']).next().unwrap_or(command);
+    matches!(name, "sh" | "bash" | "zsh" | "dash" | "ksh")
+}
+
+fn shell_c_argument(tokens: &[String]) -> Option<&str> {
+    let mut index = 0usize;
+    while index < tokens.len() {
+        let token = tokens[index].as_str();
+        if token == "--" {
+            return None;
+        }
+        if token == "-c" || short_shell_options_include_c(token) {
+            return tokens.get(index + 1).map(String::as_str);
+        }
+        if shell_option_takes_value(token) {
+            index += 2;
+            continue;
+        }
+        if token.starts_with('-') && token != "-" {
+            index += 1;
+            continue;
+        }
+        return None;
+    }
+    None
+}
+
+fn short_shell_options_include_c(token: &str) -> bool {
+    token
+        .strip_prefix('-')
+        .filter(|value| !value.is_empty() && !value.starts_with('-'))
+        .is_some_and(|value| value.chars().any(|ch| ch == 'c'))
+}
+
+fn shell_option_takes_value(token: &str) -> bool {
+    matches!(
+        token,
+        "-o" | "+o" | "-O" | "+O" | "--rcfile" | "--init-file"
+    )
 }
 
 fn is_sudo_option(token: &str) -> bool {
@@ -699,6 +837,14 @@ mod tests {
     }
 
     #[test]
+    fn blocks_quote_obfuscated_rm_rf_root_inside_shell_command_string() {
+        let guard = ShellCommandGuard::new();
+        assert!(guard.is_forbidden("sh -c \"rm -r'f' /\""));
+        assert!(guard.is_forbidden("bash -lc \"sudo rm -r'f' /\""));
+        assert!(!guard.is_forbidden("sh -c \"echo rm -r'f' /\""));
+    }
+
+    #[test]
     fn allows_non_executing_wrapper_modes_before_rm_text() {
         let guard = ShellCommandGuard::new();
         assert!(!guard.is_forbidden("sudo -V rm -r'f' /"));
@@ -771,6 +917,18 @@ mod tests {
     }
 
     #[test]
+    fn blocks_forbidden_paths_inside_shell_command_strings() {
+        let guard = ShellCommandGuard::new();
+        assert!(guard.is_forbidden("sh -c \"cat .env\""));
+        assert!(guard.is_forbidden("sh -c \"cat ~/.ssh/id_rsa\""));
+        assert!(guard.is_forbidden("bash -lc \"echo ok; cat ~/.aws/credentials\""));
+        assert!(guard.is_forbidden(
+            "sudo --user nobody sh -c \"tool --config=/home/user/.aws/credentials\""
+        ));
+        assert!(guard.is_forbidden("zsh -c \"echo hi > ~/.ssh/id_rsa\""));
+    }
+
+    #[test]
     fn blocks_redirection_to_forbidden_path() {
         let guard = ShellCommandGuard::new();
         assert!(guard.is_forbidden("echo hi > ~/.ssh/id_rsa"));
@@ -799,6 +957,12 @@ mod tests {
         assert!(!guard.is_forbidden("git status"));
         assert!(!guard.is_forbidden("ls -la"));
         assert!(!guard.is_forbidden("cargo test"));
+    }
+
+    #[test]
+    fn invalid_operator_regex_fails_closed() {
+        let guard = ShellCommandGuard::with_patterns(vec!["[".to_string()], false);
+        assert!(guard.is_forbidden("echo harmless"));
     }
 
     #[test]

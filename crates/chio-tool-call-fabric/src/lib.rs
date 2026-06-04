@@ -1,7 +1,7 @@
 //! Chio tool-call fabric: provider-agnostic types and traits for LLM tool-call dispatch.
 //!
-//! This crate is the load-bearing contract between Chio and its three native
-//! provider adapters (OpenAI Responses, Anthropic Messages, Bedrock Converse).
+//! This crate is the load-bearing contract between Chio and its native
+//! provider adapters.
 //! Each adapter lifts its native tool-call shape into [`ToolInvocation`] and
 //! lowers the kernel's [`VerdictResult`] back into provider-native bytes via
 //! the [`ProviderAdapter`] trait below.
@@ -20,18 +20,22 @@
 
 #![forbid(unsafe_code)]
 
+pub mod adapter;
+pub mod error;
 pub mod provenance;
 pub mod stream;
+pub mod types;
 
-use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
-use std::time::SystemTime;
-use thiserror::Error;
-
+pub use adapter::{ProviderAdapter, ProviderRequest, ProviderResponse, ToolResult};
+pub use error::ProviderError;
 pub use provenance::{sign_provenance, verify_signed_provenance, SignedProvenance};
 pub use stream::{
     BlockKind, BufferedBlock, StreamError, StreamEvent, StreamPhase,
     DEFAULT_MAX_BUFFERED_BLOCK_BYTES, DEFAULT_MAX_BUFFERED_RAW_FRAMES,
+};
+pub use types::{
+    DenyReason, Principal, ProvenanceStamp, ProviderId, ReceiptId, Redaction, ToolInvocation,
+    ToolInvocationValidationError, VerdictResult,
 };
 
 /// Compatibility marker. The wire-level `provider` field uses the snake-case
@@ -40,174 +44,12 @@ pub use stream::{
 /// string to read.
 pub const FABRIC_VERSION: &str = "0.1.0";
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
-#[serde(rename_all = "snake_case")]
-pub enum ProviderId {
-    OpenAi,
-    Anthropic,
-    Bedrock,
-    Gemini,
-    Mistral,
-    Groq,
-    Ollama,
-    Cohere,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum Principal {
-    OpenAiOrg {
-        org_id: String,
-    },
-    AnthropicWorkspace {
-        workspace_id: String,
-    },
-    BedrockIam {
-        caller_arn: String,
-        account_id: String,
-        assumed_role_session_arn: Option<String>,
-    },
-    /// Google Gemini calls are scoped to a Google Cloud project.
-    GeminiProject {
-        project_id: String,
-    },
-    /// Groq's OpenAI-compatible API scopes calls to a project.
-    GroqProject {
-        project_id: String,
-    },
-    /// Mistral's La Plateforme scopes calls to a project.
-    MistralProject {
-        project_id: String,
-    },
-    /// Cohere calls are scoped to an organization.
-    CohereOrg {
-        org_id: String,
-    },
-    /// Ollama runs as a local daemon with no upstream identity provider; the
-    /// host (or instance label) is the only stable provenance handle.
-    OllamaHost {
-        host: String,
-    },
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ProvenanceStamp {
-    pub provider: ProviderId,
-    pub request_id: String,
-    pub api_version: String,
-    pub principal: Principal,
-    pub received_at: SystemTime,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ToolInvocation {
-    pub provider: ProviderId,
-    pub tool_name: String,
-    /// Canonical-JSON bytes (RFC 8785). Stored as raw bytes so the kernel can
-    /// hash without re-serializing.
-    pub arguments: Vec<u8>,
-    pub provenance: ProvenanceStamp,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct Redaction {
-    pub path: String,
-    pub replacement: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ReceiptId(pub String);
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum DenyReason {
-    PolicyDeny { rule_id: String },
-    GuardDeny { guard_id: String, detail: String },
-    CapabilityExpired,
-    PrincipalUnknown,
-    BudgetExceeded,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(tag = "verdict", rename_all = "snake_case")]
-pub enum VerdictResult {
-    Allow {
-        redactions: Vec<Redaction>,
-        receipt_id: ReceiptId,
-    },
-    Deny {
-        reason: DenyReason,
-        receipt_id: ReceiptId,
-    },
-}
-
-#[derive(Debug, Error)]
-pub enum ProviderError {
-    #[error("rate limited by upstream: retry after {retry_after_ms}ms")]
-    RateLimited { retry_after_ms: u64 },
-    #[error("upstream content policy denied request: {0}")]
-    ContentPolicy(String),
-    #[error("tool arguments failed schema validation: {0}")]
-    BadToolArgs(String),
-    #[error("upstream 5xx ({status}): {body}")]
-    Upstream5xx { status: u16, body: String },
-    #[error("transport timeout after {ms}ms")]
-    TransportTimeout { ms: u64 },
-    #[error("verdict latency budget exceeded ({observed_ms}ms > {budget_ms}ms); fail-closed")]
-    VerdictBudgetExceeded { observed_ms: u64, budget_ms: u64 },
-    #[error("malformed upstream payload: {0}")]
-    Malformed(String),
-    #[error(transparent)]
-    Other(#[from] anyhow::Error),
-}
-
-/// Raw upstream request payload bytes.
-///
-/// Adapters wrap whatever the native SDK or HTTP client surfaced for an
-/// outgoing request. The fabric never inspects these bytes; they exist purely
-/// as opaque material that adapters lift into [`ToolInvocation`].
-pub struct ProviderRequest(pub Vec<u8>);
-
-/// Raw upstream response payload bytes.
-///
-/// Lower returns these so the caller can hand the bytes back to the upstream
-/// transport without the fabric mediating wire-format details.
-pub struct ProviderResponse(pub Vec<u8>);
-
-/// Canonical-JSON tool output bytes (RFC 8785).
-///
-/// Tool execution results are passed back through [`ProviderAdapter::lower`]
-/// in canonical form so downstream auditors see byte-identical material
-/// regardless of which provider produced or consumed the call.
-pub struct ToolResult(pub Vec<u8>);
-
-/// Provider-agnostic adapter contract.
-///
-/// Each native adapter (OpenAI, Anthropic, Bedrock) implements this trait
-/// to lift an upstream request into a normalized [`ToolInvocation`] and to
-/// lower a kernel [`VerdictResult`] plus tool result back into the wire
-/// format the upstream expects.
-///
-/// The trait is intentionally minimal so it stays dyn-compatible and so the
-/// streaming state machine in `stream.rs` can wrap any
-/// implementer uniformly.
-#[async_trait]
-pub trait ProviderAdapter: Send + Sync {
-    fn provider(&self) -> ProviderId;
-    fn api_version(&self) -> &str;
-    async fn lift(&self, raw: ProviderRequest) -> Result<ToolInvocation, ProviderError>;
-    async fn lower(
-        &self,
-        verdict: VerdictResult,
-        result: ToolResult,
-    ) -> Result<ProviderResponse, ProviderError>;
-}
-
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use std::time::Duration;
+    use async_trait::async_trait;
+    use std::time::{Duration, SystemTime};
 
     fn sample_stamp() -> ProvenanceStamp {
         ProvenanceStamp {

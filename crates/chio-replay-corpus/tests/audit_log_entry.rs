@@ -3,7 +3,8 @@ use std::fs;
 use chio_core::Keypair;
 use chio_replay_corpus::{
     write_fixture, write_tee_bless_audit_entry, BlessCapture, BlessFixture, BlessOperator,
-    TeeBlessAuditBody, TeeBlessAuditEntry, TEE_BLESS_CAPABILITY, TEE_BLESS_EVENT,
+    TeeBlessAuditBody, TeeBlessAuditEntry, DEFAULT_REDACTION_PASS_ID, TEE_BLESS_CAPABILITY,
+    TEE_BLESS_EVENT,
 };
 use chio_tee_frame::{Frame, FrameInputs, Otel, Provenance, Upstream, UpstreamSystem, Verdict};
 use serde_json::{json, Value};
@@ -32,7 +33,7 @@ fn frame(
         },
         request_blob_sha256: "c".repeat(64),
         response_blob_sha256: "d".repeat(64),
-        redaction_pass_id: "redactors@1.4.0+default".to_string(),
+        redaction_pass_id: DEFAULT_REDACTION_PASS_ID.to_string(),
         verdict,
         deny_reason: None,
         would_have_blocked: false,
@@ -87,7 +88,7 @@ fn tee_bless_audit_event_records_required_fields_and_verifies_signature(
         operator,
         capture,
         fixture,
-        "redactors@1.4.0+default",
+        DEFAULT_REDACTION_PASS_ID,
     );
     let keypair = Keypair::from_seed(&[7u8; 32]);
     let entry = TeeBlessAuditEntry::sign(body, &keypair)?;
@@ -123,7 +124,7 @@ fn tee_bless_audit_event_records_required_fields_and_verifies_signature(
     assert_eq!(value["fixture"]["name"], "tool_call_with_pii");
     assert_eq!(value["fixture"]["path"], fixture_path);
     assert_eq!(value["fixture"]["receipts_root"], summary.root_hex);
-    assert_eq!(value["redaction_pass_id"], "redactors@1.4.0+default");
+    assert_eq!(value["redaction_pass_id"], DEFAULT_REDACTION_PASS_ID);
     assert_eq!(value["control_plane_capability"], TEE_BLESS_CAPABILITY);
     assert!(value["signature"]
         .as_str()
@@ -133,4 +134,98 @@ fn tee_bless_audit_event_records_required_fields_and_verifies_signature(
     assert!(stored_entry.verify_signature(&keypair.public_key())?);
 
     Ok(())
+}
+
+#[test]
+fn tee_bless_audit_signing_rejects_blank_operator_identity() {
+    let body = TeeBlessAuditBody::new(
+        "2026-04-25T18:02:11.418Z",
+        BlessOperator {
+            id: " ".to_string(),
+            git_user: "alice@chio.world".to_string(),
+        },
+        BlessCapture {
+            path: "captures/01JTEE00000000000000000000.ndjson".to_string(),
+            frames_in: 1,
+            frames_after_dedupe: 1,
+            frames_after_redact: 1,
+        },
+        BlessFixture {
+            family: "openai_responses_shadow".to_string(),
+            name: "tool_call_with_pii".to_string(),
+            path: "tests/replay/fixtures/openai_responses_shadow/tool_call_with_pii/".to_string(),
+            receipts_root: "a".repeat(64),
+        },
+        DEFAULT_REDACTION_PASS_ID,
+    );
+    let keypair = Keypair::from_seed(&[7u8; 32]);
+
+    let error =
+        TeeBlessAuditEntry::sign(body, &keypair).expect_err("blank operator id must not be signed");
+
+    assert!(error.to_string().contains("operator.id"));
+}
+
+#[test]
+fn tee_bless_audit_signing_rejects_malformed_receipts_root() {
+    let body = TeeBlessAuditBody::new(
+        "2026-04-25T18:02:11.418Z",
+        BlessOperator {
+            id: "did:web:integrations.chio.world:alice".to_string(),
+            git_user: "alice@chio.world".to_string(),
+        },
+        BlessCapture {
+            path: "captures/01JTEE00000000000000000000.ndjson".to_string(),
+            frames_in: 1,
+            frames_after_dedupe: 1,
+            frames_after_redact: 1,
+        },
+        BlessFixture {
+            family: "openai_responses_shadow".to_string(),
+            name: "tool_call_with_pii".to_string(),
+            path: "tests/replay/fixtures/openai_responses_shadow/tool_call_with_pii/".to_string(),
+            receipts_root: "A".repeat(64),
+        },
+        DEFAULT_REDACTION_PASS_ID,
+    );
+    let keypair = Keypair::from_seed(&[7u8; 32]);
+
+    let error = match TeeBlessAuditEntry::sign(body, &keypair) {
+        Ok(_) => panic!("uppercase receipts_root must not be signed"),
+        Err(error) => error,
+    };
+
+    assert!(error.to_string().contains("fixture.receipts_root"));
+}
+
+#[test]
+fn tee_bless_audit_signing_rejects_zero_capture_counts() {
+    let body = TeeBlessAuditBody::new(
+        "2026-04-25T18:02:11.418Z",
+        BlessOperator {
+            id: "did:web:integrations.chio.world:alice".to_string(),
+            git_user: "alice@chio.world".to_string(),
+        },
+        BlessCapture {
+            path: "captures/01JTEE00000000000000000000.ndjson".to_string(),
+            frames_in: 0,
+            frames_after_dedupe: 0,
+            frames_after_redact: 0,
+        },
+        BlessFixture {
+            family: "openai_responses_shadow".to_string(),
+            name: "tool_call_with_pii".to_string(),
+            path: "tests/replay/fixtures/openai_responses_shadow/tool_call_with_pii/".to_string(),
+            receipts_root: "a".repeat(64),
+        },
+        DEFAULT_REDACTION_PASS_ID,
+    );
+    let keypair = Keypair::from_seed(&[7u8; 32]);
+
+    let error = match TeeBlessAuditEntry::sign(body, &keypair) {
+        Ok(_) => panic!("zero-frame bless audit must not be signed"),
+        Err(error) => error,
+    };
+
+    assert!(error.to_string().contains("frames_in"));
 }

@@ -119,7 +119,7 @@ fn metrics_manifest_with_schema(input_schema: Value) -> ToolManifest {
         }],
         server_tools: Vec::new(),
         required_permissions: None,
-        public_key: "metrics-test".to_string(),
+        public_key: Keypair::from_seed(&[42u8; 32]).public_key().to_hex(),
     }
 }
 

@@ -17,6 +17,7 @@ use chio_core::session::{OperationKind, OperationTerminalState, RequestId, Sessi
 use chio_core::sha256_hex;
 use chio_kernel::{build_checkpoint, ReceiptStore};
 use chio_store_sqlite::SqliteReceiptStore;
+use chio_test_support::loopback::{reserve_listen_addr, skip_when_loopback_bind_denied};
 use reqwest::blocking::Client;
 
 fn unique_path(prefix: &str, suffix: &str) -> PathBuf {
@@ -33,13 +34,6 @@ fn workspace_root() -> PathBuf {
         .nth(2)
         .expect("workspace root")
         .to_path_buf()
-}
-
-fn reserve_listen_addr() -> std::net::SocketAddr {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind temp listener");
-    let addr = listener.local_addr().expect("listener addr");
-    drop(listener);
-    addr
 }
 
 struct ServerGuard {
@@ -780,6 +774,12 @@ fn evidence_export_rejects_scope_outside_federation_policy() {
 
 #[test]
 fn evidence_export_supports_remote_trust_control_with_federation_policy() {
+    if skip_when_loopback_bind_denied(
+        "evidence_export_supports_remote_trust_control_with_federation_policy",
+    ) {
+        return;
+    }
+
     let dir = unique_path("evidence-export-remote", "");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let receipt_db_path = dir.join("receipts.sqlite3");

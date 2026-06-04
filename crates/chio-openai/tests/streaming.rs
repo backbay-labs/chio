@@ -2,7 +2,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use chio_core::canonical::canonical_json_bytes;
-use chio_openai::adapter::OpenAiAdapter;
+use chio_openai::adapter::{OpenAiAdapter, OpenAiAdapterConfig};
 use chio_tool_call_fabric::{
     DenyReason, ProviderError, ProviderId, ReceiptId, VerdictResult,
     DEFAULT_MAX_BUFFERED_RAW_FRAMES,
@@ -42,6 +42,40 @@ fn tool_call_stream() -> &'static str {
         "event: response.completed\n",
         "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_stream_1\"}}\n\n",
     )
+}
+
+fn config_with_api_version(api_version: &str) -> OpenAiAdapterConfig {
+    let mut config = OpenAiAdapterConfig::new("org_chio_demo");
+    config.api_version = api_version.to_string();
+    config
+}
+
+fn assert_api_version_drift(error: ProviderError) {
+    match error {
+        ProviderError::Malformed(message) => {
+            assert!(
+                message.contains("OpenAI adapter supports only API version responses.2026-04-25")
+            );
+            assert!(message.contains("configured responses.2025-01-01"));
+        }
+        other => panic!("expected Malformed API version drift, got {other:?}"),
+    }
+}
+
+#[test]
+fn gate_sse_stream_rejects_api_version_drift_before_evaluator() {
+    let adapter = OpenAiAdapter::new(config_with_api_version("responses.2025-01-01"));
+    let mut evaluated = false;
+
+    let err = adapter
+        .gate_sse_stream(tool_call_stream().as_bytes(), |_| {
+            evaluated = true;
+            Ok(allow_verdict())
+        })
+        .expect_err("drifted OpenAI Responses API version must fail before stream evaluation");
+
+    assert_api_version_drift(err);
+    assert!(!evaluated);
 }
 
 #[test]

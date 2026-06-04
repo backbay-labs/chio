@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+use std::fmt::Debug;
 use std::fs;
 use std::path::Path;
 
@@ -23,7 +25,7 @@ use chio_wall_core::{
     CHIO_WALL_POLICY_SNAPSHOT_SCHEMA,
 };
 use chrono::Utc;
-use serde::Serialize;
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 const CHIO_WALL_WORKFLOW_ID: &str = "workflow-information-domain-barrier";
 const CHIO_WALL_WORKFLOW_BOUNDARY: &str =
@@ -48,7 +50,7 @@ fn chio_wall_request_id() -> String {
     format!("chio-wall-request-{}-01", current_utc_date())
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 struct ChioWallExportSummary {
     workflow_id: String,
@@ -113,8 +115,83 @@ fn write_json_file<T: serde::Serialize>(path: &Path, value: &T) -> Result<(), Cl
     Ok(())
 }
 
+fn read_json_file<T: DeserializeOwned>(path: &Path) -> Result<T, CliError> {
+    let bytes =
+        fs::read(path).map_err(|error| CliError::Other(format!("{}: {error}", path.display())))?;
+    serde_json::from_slice(&bytes)
+        .map_err(|error| CliError::Other(format!("{}: {error}", path.display())))
+}
+
+fn ensure_file_exists(path: &Path) -> Result<(), CliError> {
+    if !path.is_file() {
+        return Err(CliError::Other(format!(
+            "required Chio-Wall artifact file is missing: {}",
+            path.display()
+        )));
+    }
+    Ok(())
+}
+
+fn ensure_non_empty_directory(path: &Path) -> Result<(), CliError> {
+    if !path.is_dir() {
+        return Err(CliError::Other(format!(
+            "required Chio-Wall evidence directory is missing: {}",
+            path.display()
+        )));
+    }
+    if fs::read_dir(path)?.next().is_none() {
+        return Err(CliError::Other(format!(
+            "required Chio-Wall evidence directory is empty: {}",
+            path.display()
+        )));
+    }
+    Ok(())
+}
+
+fn ensure_only_expected_package_entries(
+    output: &Path,
+    expected_entries: &[&'static str],
+) -> Result<(), CliError> {
+    let expected = expected_entries.iter().copied().collect::<BTreeSet<_>>();
+    for entry in fs::read_dir(output)? {
+        let entry = entry?;
+        let entry_name = entry.file_name().into_string().map_err(|_| {
+            CliError::Other(format!(
+                "unexpected non-UTF-8 Chio-Wall package entry: {}",
+                entry.path().display()
+            ))
+        })?;
+        if !expected.contains(entry_name.as_str()) {
+            return Err(CliError::Other(format!(
+                "unexpected Chio-Wall package entry: {}",
+                entry.path().display()
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn ensure_equal<T: Debug + PartialEq>(
+    field: &'static str,
+    actual: &T,
+    expected: &T,
+) -> Result<(), CliError> {
+    if actual != expected {
+        return Err(CliError::Other(format!(
+            "{field} mismatch: expected {expected:?}, got {actual:?}"
+        )));
+    }
+    Ok(())
+}
+
 fn ensure_empty_directory(path: &Path) -> Result<(), CliError> {
     if path.exists() {
+        if fs::symlink_metadata(path)?.file_type().is_symlink() {
+            return Err(CliError::Other(format!(
+                "output path must not be a symlink: {}",
+                path.display()
+            )));
+        }
         if !path.is_dir() {
             return Err(CliError::Other(format!(
                 "output path must be a directory: {}",
@@ -435,6 +512,300 @@ fn write_chio_evidence_package(
     Ok(())
 }
 
+fn expected_artifact_path(kind: ChioWallArtifactKind) -> &'static str {
+    match kind {
+        ChioWallArtifactKind::ControlProfile => "control-profile.json",
+        ChioWallArtifactKind::PolicySnapshot => "policy-snapshot.json",
+        ChioWallArtifactKind::AuthorizationContext => "authorization-context.json",
+        ChioWallArtifactKind::GuardOutcome => "guard-outcome.json",
+        ChioWallArtifactKind::DeniedAccessRecord => "denied-access-record.json",
+        ChioWallArtifactKind::BuyerReviewPackage => "buyer-review-package.json",
+        ChioWallArtifactKind::ChioEvidenceExport => "chio-evidence",
+    }
+}
+
+fn validate_contract(
+    label: &'static str,
+    result: Result<(), chio_wall_core::ChioWallContractError>,
+) -> Result<(), CliError> {
+    result.map_err(|error| CliError::Other(format!("{label}: {error}")))
+}
+
+fn verify_control_path_export(
+    output: &Path,
+    summary: &ChioWallExportSummary,
+) -> Result<(), CliError> {
+    let control_profile_path = output.join("control-profile.json");
+    let policy_snapshot_path = output.join("policy-snapshot.json");
+    let authorization_context_path = output.join("authorization-context.json");
+    let guard_outcome_path = output.join("guard-outcome.json");
+    let denied_access_record_path = output.join("denied-access-record.json");
+    let buyer_review_package_path = output.join("buyer-review-package.json");
+    let control_package_path = output.join("control-package.json");
+    let control_path_summary_path = output.join("control-path-summary.json");
+    let chio_evidence_dir = output.join("chio-evidence");
+    let expected_entries = [
+        "control-profile.json",
+        "policy-snapshot.json",
+        "authorization-context.json",
+        "guard-outcome.json",
+        "denied-access-record.json",
+        "buyer-review-package.json",
+        "control-package.json",
+        "control-path-summary.json",
+        "chio-evidence",
+    ];
+
+    for path in [
+        &control_profile_path,
+        &policy_snapshot_path,
+        &authorization_context_path,
+        &guard_outcome_path,
+        &denied_access_record_path,
+        &buyer_review_package_path,
+        &control_package_path,
+        &control_path_summary_path,
+    ] {
+        ensure_file_exists(path)?;
+    }
+    ensure_non_empty_directory(&chio_evidence_dir)?;
+    ensure_only_expected_package_entries(output, &expected_entries)?;
+
+    let control_profile: ChioWallControlProfile = read_json_file(&control_profile_path)?;
+    let policy_snapshot: ChioWallPolicySnapshot = read_json_file(&policy_snapshot_path)?;
+    let authorization_context: ChioWallAuthorizationContext =
+        read_json_file(&authorization_context_path)?;
+    let guard_outcome: ChioWallGuardOutcome = read_json_file(&guard_outcome_path)?;
+    let denied_access_record: ChioWallDeniedAccessRecord =
+        read_json_file(&denied_access_record_path)?;
+    let buyer_review_package: ChioWallBuyerReviewPackage =
+        read_json_file(&buyer_review_package_path)?;
+    let control_package: ChioWallControlPackage = read_json_file(&control_package_path)?;
+    let on_disk_summary: ChioWallExportSummary = read_json_file(&control_path_summary_path)?;
+
+    validate_contract("control-profile.json", control_profile.validate())?;
+    validate_contract("policy-snapshot.json", policy_snapshot.validate())?;
+    validate_contract(
+        "authorization-context.json",
+        authorization_context.validate(),
+    )?;
+    validate_contract("guard-outcome.json", guard_outcome.validate())?;
+    validate_contract("denied-access-record.json", denied_access_record.validate())?;
+    validate_contract("buyer-review-package.json", buyer_review_package.validate())?;
+    validate_contract("control-package.json", control_package.validate())?;
+
+    ensure_equal("control-path-summary.json", &on_disk_summary, summary)?;
+    ensure_equal(
+        "summary.control_profile_file",
+        &summary.control_profile_file,
+        &control_profile_path.display().to_string(),
+    )?;
+    ensure_equal(
+        "summary.policy_snapshot_file",
+        &summary.policy_snapshot_file,
+        &policy_snapshot_path.display().to_string(),
+    )?;
+    ensure_equal(
+        "summary.authorization_context_file",
+        &summary.authorization_context_file,
+        &authorization_context_path.display().to_string(),
+    )?;
+    ensure_equal(
+        "summary.guard_outcome_file",
+        &summary.guard_outcome_file,
+        &guard_outcome_path.display().to_string(),
+    )?;
+    ensure_equal(
+        "summary.denied_access_record_file",
+        &summary.denied_access_record_file,
+        &denied_access_record_path.display().to_string(),
+    )?;
+    ensure_equal(
+        "summary.buyer_review_package_file",
+        &summary.buyer_review_package_file,
+        &buyer_review_package_path.display().to_string(),
+    )?;
+    ensure_equal(
+        "summary.control_package_file",
+        &summary.control_package_file,
+        &control_package_path.display().to_string(),
+    )?;
+    ensure_equal(
+        "summary.chio_evidence_dir",
+        &summary.chio_evidence_dir,
+        &chio_evidence_dir.display().to_string(),
+    )?;
+
+    ensure_equal(
+        "control_profile.workflow_id",
+        &control_profile.workflow_id,
+        &authorization_context.workflow_id,
+    )?;
+    ensure_equal(
+        "control_profile.buyer_motion",
+        &control_profile.buyer_motion,
+        &authorization_context.buyer_motion,
+    )?;
+    ensure_equal(
+        "control_profile.control_surface",
+        &control_profile.control_surface,
+        &authorization_context.control_surface,
+    )?;
+    ensure_equal(
+        "control_profile.source_domain",
+        &control_profile.source_domain,
+        &authorization_context.source_domain,
+    )?;
+    ensure_equal(
+        "control_profile.protected_domain",
+        &control_profile.protected_domain,
+        &authorization_context.requested_domain,
+    )?;
+    ensure_equal(
+        "policy_snapshot.policy_id",
+        &policy_snapshot.policy_id,
+        &authorization_context.policy_reference,
+    )?;
+    ensure_equal(
+        "policy_snapshot.allowed_tools",
+        &policy_snapshot.allowed_tools,
+        &guard_outcome.allowed_tools,
+    )?;
+    ensure_equal(
+        "guard_outcome.request_id",
+        &guard_outcome.request_id,
+        &authorization_context.request_id,
+    )?;
+    ensure_equal(
+        "guard_outcome.workflow_id",
+        &guard_outcome.workflow_id,
+        &authorization_context.workflow_id,
+    )?;
+    ensure_equal(
+        "guard_outcome.matched_policy",
+        &guard_outcome.matched_policy,
+        &authorization_context.policy_reference,
+    )?;
+    ensure_equal(
+        "guard_outcome.evaluated_tool",
+        &guard_outcome.evaluated_tool,
+        &authorization_context.tool_name,
+    )?;
+    ensure_equal(
+        "denied_access_record.request_id",
+        &denied_access_record.request_id,
+        &authorization_context.request_id,
+    )?;
+    ensure_equal(
+        "denied_access_record.workflow_id",
+        &denied_access_record.workflow_id,
+        &authorization_context.workflow_id,
+    )?;
+    ensure_equal(
+        "denied_access_record.source_domain",
+        &denied_access_record.source_domain,
+        &authorization_context.source_domain,
+    )?;
+    ensure_equal(
+        "denied_access_record.requested_domain",
+        &denied_access_record.requested_domain,
+        &authorization_context.requested_domain,
+    )?;
+    ensure_equal(
+        "denied_access_record.tool_name",
+        &denied_access_record.tool_name,
+        &authorization_context.tool_name,
+    )?;
+
+    ensure_equal(
+        "buyer_review_package.workflow_id",
+        &buyer_review_package.workflow_id,
+        &control_package.workflow_id,
+    )?;
+    ensure_equal(
+        "buyer_review_package.buyer_motion",
+        &buyer_review_package.buyer_motion,
+        &control_package.buyer_motion,
+    )?;
+    ensure_equal(
+        "buyer_review_package.control_surface",
+        &buyer_review_package.control_surface,
+        &control_package.control_surface,
+    )?;
+    ensure_equal(
+        "buyer_review_package.control_owner",
+        &buyer_review_package.control_owner,
+        &control_package.control_owner,
+    )?;
+    ensure_equal(
+        "buyer_review_package.support_owner",
+        &buyer_review_package.support_owner,
+        &control_package.support_owner,
+    )?;
+    ensure_equal(
+        "buyer_review_package.control_package_file",
+        &buyer_review_package.control_package_file,
+        &relative_display(output, &control_package_path)?,
+    )?;
+    ensure_equal(
+        "buyer_review_package.authorization_context_file",
+        &buyer_review_package.authorization_context_file,
+        &relative_display(output, &authorization_context_path)?,
+    )?;
+    ensure_equal(
+        "buyer_review_package.policy_snapshot_file",
+        &buyer_review_package.policy_snapshot_file,
+        &relative_display(output, &policy_snapshot_path)?,
+    )?;
+    ensure_equal(
+        "buyer_review_package.guard_outcome_file",
+        &buyer_review_package.guard_outcome_file,
+        &relative_display(output, &guard_outcome_path)?,
+    )?;
+    ensure_equal(
+        "buyer_review_package.denied_access_record_file",
+        &buyer_review_package.denied_access_record_file,
+        &relative_display(output, &denied_access_record_path)?,
+    )?;
+    ensure_equal(
+        "buyer_review_package.chio_evidence_dir",
+        &buyer_review_package.chio_evidence_dir,
+        &relative_display(output, &chio_evidence_dir)?,
+    )?;
+    ensure_equal(
+        "control_package.profile_file",
+        &control_package.profile_file,
+        &relative_display(output, &control_profile_path)?,
+    )?;
+    ensure_equal(
+        "control_package.buyer_review_package_file",
+        &control_package.buyer_review_package_file,
+        &relative_display(output, &buyer_review_package_path)?,
+    )?;
+    ensure_equal(
+        "control_package.chio_evidence_dir",
+        &control_package.chio_evidence_dir,
+        &relative_display(output, &chio_evidence_dir)?,
+    )?;
+
+    for artifact in &control_package.artifacts {
+        let expected_path = expected_artifact_path(artifact.artifact_kind);
+        ensure_equal(
+            "control_package.artifacts[].relative_path",
+            &artifact.relative_path,
+            &expected_path.to_string(),
+        )?;
+        let path = output.join(&artifact.relative_path);
+        if artifact.artifact_kind == ChioWallArtifactKind::ChioEvidenceExport {
+            ensure_non_empty_directory(&path)?;
+        } else {
+            ensure_file_exists(&path)?;
+        }
+    }
+
+    Ok(())
+}
+
 fn export_control_path(output: &Path) -> Result<ChioWallExportSummary, CliError> {
     ensure_empty_directory(output)?;
 
@@ -577,6 +948,7 @@ fn export_control_path(output: &Path) -> Result<ChioWallExportSummary, CliError>
         chio_evidence_dir: output.join("chio-evidence").display().to_string(),
     };
     write_json_file(&output.join("control-path-summary.json"), &summary)?;
+    verify_control_path_export(output, &summary)?;
 
     Ok(summary)
 }
@@ -762,6 +1134,21 @@ mod tests {
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn ensure_empty_directory_rejects_symlink_dir() {
+        let target = unique_test_dir("chio-wall-output-target");
+        let link = unique_test_dir("chio-wall-output-link");
+        fs::create_dir_all(&target).expect("create target dir");
+        std::os::unix::fs::symlink(&target, &link).expect("create output symlink");
+
+        let error = ensure_empty_directory(&link).expect_err("symlink dir should fail");
+
+        assert!(error.to_string().contains("symlink"));
+        let _ = fs::remove_file(link);
+        let _ = fs::remove_dir_all(target);
+    }
+
     #[test]
     fn validate_pipeline_emits_bounded_control_room_decision() {
         let output = unique_test_dir("chio-wall-validate-unit");
@@ -796,6 +1183,36 @@ mod tests {
             .iter()
             .any(|item| item.as_str() == Some("generic barrier-platform breadth")));
 
+        let _ = fs::remove_dir_all(output);
+    }
+
+    #[test]
+    fn control_path_export_reconciliation_rejects_missing_artifact_file() {
+        let output = unique_test_dir("chio-wall-export-reconcile");
+        let summary = export_control_path(&output).expect("export control path");
+        fs::remove_file(output.join("guard-outcome.json")).expect("remove guard outcome");
+
+        let error = verify_control_path_export(&output, &summary)
+            .expect_err("missing guard outcome should fail reconciliation");
+
+        assert!(error.to_string().contains("guard-outcome.json"));
+        let _ = fs::remove_dir_all(output);
+    }
+
+    #[test]
+    fn control_path_export_reconciliation_rejects_unexpected_top_level_artifact() {
+        let output = unique_test_dir("chio-wall-export-closed");
+        let summary = export_control_path(&output).expect("export control path");
+        fs::write(output.join(".chio-wall-receipts.sqlite3"), b"stale db")
+            .expect("write undeclared artifact");
+
+        let error = verify_control_path_export(&output, &summary)
+            .expect_err("undeclared top-level artifact should fail reconciliation");
+
+        assert!(error
+            .to_string()
+            .contains("unexpected Chio-Wall package entry"));
+        assert!(error.to_string().contains(".chio-wall-receipts.sqlite3"));
         let _ = fs::remove_dir_all(output);
     }
 

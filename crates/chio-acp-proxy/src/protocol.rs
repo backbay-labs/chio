@@ -100,6 +100,38 @@ pub struct RequestPermissionParams {
     pub options: Vec<PermissionOption>,
 }
 
+impl RequestPermissionParams {
+    pub(crate) fn validate_boundary(&self) -> Result<(), AcpProxyError> {
+        validate_non_empty_protocol_field(
+            "session/request_permission",
+            "sessionId",
+            &self.session_id,
+        )?;
+        for (index, option) in self.options.iter().enumerate() {
+            let field_name = format!("options[{index}].optionId");
+            validate_non_empty_protocol_field(
+                "session/request_permission",
+                &field_name,
+                &option.option_id,
+            )?;
+        }
+        Ok(())
+    }
+}
+
+/// Parameters for `session/cancel`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionCancelParams {
+    pub session_id: String,
+}
+
+impl SessionCancelParams {
+    pub(crate) fn validate_boundary(&self) -> Result<(), AcpProxyError> {
+        validate_non_empty_protocol_field("session/cancel", "sessionId", &self.session_id)
+    }
+}
+
 /// A single permission option presented to the user.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -121,6 +153,12 @@ pub struct ReadTextFileParams {
     pub limit: Option<u64>,
 }
 
+impl ReadTextFileParams {
+    pub(crate) fn validate_boundary(&self) -> Result<(), AcpProxyError> {
+        validate_non_empty_protocol_field("fs/read_text_file", "sessionId", &self.session_id)
+    }
+}
+
 /// Parameters for `fs/write_text_file`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -128,6 +166,12 @@ pub struct WriteTextFileParams {
     pub session_id: String,
     pub path: String,
     pub content: String,
+}
+
+impl WriteTextFileParams {
+    pub(crate) fn validate_boundary(&self) -> Result<(), AcpProxyError> {
+        validate_non_empty_protocol_field("fs/write_text_file", "sessionId", &self.session_id)
+    }
 }
 
 /// Parameters for `terminal/create`.
@@ -144,12 +188,25 @@ pub struct CreateTerminalParams {
     pub cwd: Option<String>,
 }
 
+impl CreateTerminalParams {
+    pub(crate) fn validate_boundary(&self) -> Result<(), AcpProxyError> {
+        validate_non_empty_protocol_field("terminal/create", "sessionId", &self.session_id)
+    }
+}
+
 /// Parameters for `terminal/kill`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct KillTerminalParams {
     pub session_id: String,
     pub terminal_id: String,
+}
+
+impl KillTerminalParams {
+    pub(crate) fn validate_boundary(&self) -> Result<(), AcpProxyError> {
+        validate_non_empty_protocol_field("terminal/kill", "sessionId", &self.session_id)?;
+        validate_non_empty_protocol_field("terminal/kill", "terminalId", &self.terminal_id)
+    }
 }
 
 /// Parameters for `terminal/release`.
@@ -160,12 +217,25 @@ pub struct ReleaseTerminalParams {
     pub terminal_id: String,
 }
 
+impl ReleaseTerminalParams {
+    pub(crate) fn validate_boundary(&self) -> Result<(), AcpProxyError> {
+        validate_non_empty_protocol_field("terminal/release", "sessionId", &self.session_id)?;
+        validate_non_empty_protocol_field("terminal/release", "terminalId", &self.terminal_id)
+    }
+}
+
 /// A `session/update` notification payload.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionUpdateNotification {
     pub session_id: String,
     pub update: Value,
+}
+
+impl SessionUpdateNotification {
+    pub(crate) fn validate_boundary(&self) -> Result<(), AcpProxyError> {
+        validate_non_empty_protocol_field("session/update", "sessionId", &self.session_id)
+    }
 }
 
 /// Typed session update events that the proxy cares about.
@@ -178,6 +248,7 @@ pub struct SessionUpdateNotification {
 pub enum SessionUpdate {
     ToolCall(ToolCallEvent),
     ToolCallUpdate(ToolCallUpdateEvent),
+    MalformedToolCall(String),
     AgentMessageChunk(Value),
     AgentThoughtChunk(Value),
     Plan(Value),
@@ -203,6 +274,16 @@ pub struct ToolCallEvent {
     pub extra: BTreeMap<String, Value>,
 }
 
+impl ToolCallEvent {
+    pub(crate) fn validate_receipt_boundary(&self) -> Result<(), AcpProxyError> {
+        validate_non_empty_protocol_field(
+            "session/update",
+            "update.toolCallId",
+            &self.tool_call_id,
+        )
+    }
+}
+
 /// A tool call update event observed in a session update.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -214,8 +295,64 @@ pub struct ToolCallUpdateEvent {
     pub extra: BTreeMap<String, Value>,
 }
 
+impl ToolCallUpdateEvent {
+    pub(crate) fn validate_receipt_boundary(&self) -> Result<(), AcpProxyError> {
+        validate_non_empty_protocol_field(
+            "session/update",
+            "update.toolCallId",
+            &self.tool_call_id,
+        )
+    }
+}
+
+fn validate_non_empty_protocol_field(
+    method_name: &str,
+    field_name: &str,
+    value: &str,
+) -> Result<(), AcpProxyError> {
+    if value.trim().is_empty() {
+        return Err(AcpProxyError::Protocol(format!(
+            "invalid {method_name} params: {field_name} must be a non-empty string"
+        )));
+    }
+    if value.trim() != value || value.chars().any(|character| character.is_control()) {
+        return Err(AcpProxyError::Protocol(format!(
+            "invalid {method_name} params: {field_name} must be a non-empty unpadded string"
+        )));
+    }
+    Ok(())
+}
+
 /// Attempt to parse a session update `Value` into a typed `SessionUpdate`.
 pub fn parse_session_update(value: &Value) -> SessionUpdate {
+    let tool_call_id = value.get("toolCallId");
+    if let Some(tool_call_id) = tool_call_id {
+        if !tool_call_id.is_string() {
+            return SessionUpdate::MalformedToolCall(
+                "invalid session/update params: update.toolCallId must be a string".to_string(),
+            );
+        }
+    }
+
+    // Try tool_call first (has title field)
+    if tool_call_id.is_some() && value.get("title").is_some() {
+        return match serde_json::from_value::<ToolCallEvent>(value.clone()) {
+            Ok(event) => SessionUpdate::ToolCall(event),
+            Err(err) => SessionUpdate::MalformedToolCall(format!(
+                "invalid session/update params: malformed tool call update: {err}"
+            )),
+        };
+    }
+    // Try tool_call_update (has toolCallId but no title)
+    if tool_call_id.is_some() {
+        return match serde_json::from_value::<ToolCallUpdateEvent>(value.clone()) {
+            Ok(event) => SessionUpdate::ToolCallUpdate(event),
+            Err(err) => SessionUpdate::MalformedToolCall(format!(
+                "invalid session/update params: malformed tool call update: {err}"
+            )),
+        };
+    }
+
     // Check for a discriminator field "type" used by non-tool-call updates.
     if let Some(update_type) = value.get("type").and_then(|v| v.as_str()) {
         match update_type {
@@ -232,18 +369,6 @@ pub fn parse_session_update(value: &Value) -> SessionUpdate {
         }
     }
 
-    // Try tool_call first (has title field)
-    if value.get("toolCallId").is_some() && value.get("title").is_some() {
-        if let Ok(event) = serde_json::from_value::<ToolCallEvent>(value.clone()) {
-            return SessionUpdate::ToolCall(event);
-        }
-    }
-    // Try tool_call_update (has toolCallId but no title)
-    if value.get("toolCallId").is_some() {
-        if let Ok(event) = serde_json::from_value::<ToolCallUpdateEvent>(value.clone()) {
-            return SessionUpdate::ToolCallUpdate(event);
-        }
-    }
     SessionUpdate::Other(value.clone())
 }
 
@@ -256,12 +381,20 @@ pub fn extract_method(msg: &Value) -> Option<AcpMethod> {
 
 /// Build a JSON-RPC error response for a given request id.
 pub fn json_rpc_error(id: Option<&Value>, code: i64, message: &str) -> Value {
+    let response_id = json_rpc_response_id(id);
     serde_json::json!({
         "jsonrpc": "2.0",
-        "id": id.cloned().unwrap_or(Value::Null),
+        "id": response_id,
         "error": {
             "code": code,
             "message": message
         }
     })
+}
+
+fn json_rpc_response_id(id: Option<&Value>) -> Value {
+    match id {
+        Some(value) if value.is_string() || value.is_number() || value.is_null() => value.clone(),
+        _ => Value::Null,
+    }
 }

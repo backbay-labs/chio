@@ -383,6 +383,37 @@ fn live_deposit_without_scarcity_policy_is_rejected() {
 }
 
 #[test]
+fn deposit_nonce_must_be_non_empty_and_unpadded() {
+    let passport_key = key(1);
+    let kernel_key = key(2);
+    let mut body = body(&passport_key);
+    body.nonce = " nonce-001".to_string();
+    let deposit = sign_deposit(body, &passport_key).expect("sign padded nonce deposit");
+
+    let err = InMemoryPheromoneSubstrate::new()
+        .deposit(deposit, &live_context(&passport_key, &kernel_key))
+        .expect_err("padded nonce must fail closed");
+
+    assert_eq!(err.code(), "invalid_field");
+}
+
+#[test]
+fn deposit_treaty_scope_must_be_unique() {
+    let passport_key = key(1);
+    let kernel_key = key(2);
+    let mut body = body(&passport_key);
+    body.treaty_scope
+        .push("treaty:buyer-llamaworks:support-ops".to_string());
+    let deposit = sign_deposit(body, &passport_key).expect("sign duplicate treaty deposit");
+
+    let err = InMemoryPheromoneSubstrate::new()
+        .deposit(deposit, &live_context(&passport_key, &kernel_key))
+        .expect_err("duplicate treaty scope must fail closed");
+
+    assert_eq!(err.code(), "invalid_field");
+}
+
+#[test]
 fn workflow_context_tamper_invalidates_signature() {
     let passport_key = key(1);
     let kernel_key = key(2);

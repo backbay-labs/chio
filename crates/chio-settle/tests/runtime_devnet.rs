@@ -568,6 +568,7 @@ async fn runtime_devnet_executes_merkle_refund_and_dual_sign_paths(
         create_amount.units,
         &accounts.beneficiary,
     );
+    let canonical_receipt_id = receipt.id.clone();
     let receipt_bytes = canonical_json_bytes(&receipt.body())?;
     let receipt_leaf = receipt_bytes.clone();
     let tree = MerkleTree::from_leaves(std::slice::from_ref(&receipt_leaf))?;
@@ -611,7 +612,7 @@ async fn runtime_devnet_executes_merkle_refund_and_dual_sign_paths(
     };
     let anchor_proof = build_anchor_inclusion_proof_from_evidence_bundle(
         &evidence_bundle,
-        "rcpt-runtime-1",
+        &canonical_receipt_id,
         Some(chain_anchor),
         binding.clone(),
     )?;

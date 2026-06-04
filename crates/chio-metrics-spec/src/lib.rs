@@ -35,6 +35,45 @@ pub struct MetricDescriptor {
     pub buckets: &'static [&'static str],
 }
 
+/// Semantic validation failure for metric descriptors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MetricValidationError {
+    InvalidMetricName {
+        name: &'static str,
+    },
+    InvalidLabelName {
+        metric: &'static str,
+        label: &'static str,
+    },
+    DuplicateLabelName {
+        metric: &'static str,
+        label: &'static str,
+    },
+    UnexpectedBuckets {
+        metric: &'static str,
+        kind: MetricKind,
+    },
+    MissingHistogramBuckets {
+        metric: &'static str,
+    },
+    InvalidHistogramBucket {
+        metric: &'static str,
+        bucket: &'static str,
+    },
+    NonIncreasingHistogramBucket {
+        metric: &'static str,
+        previous: &'static str,
+        bucket: &'static str,
+    },
+    DuplicateMetricName {
+        metric: &'static str,
+    },
+    RegistryNotSorted {
+        previous: &'static str,
+        current: &'static str,
+    },
+}
+
 /// Declare a metric descriptor from a const name.
 ///
 /// The macro intentionally accepts a single name expression plus literal
@@ -452,6 +491,128 @@ pub fn is_registered_metric(name: &str) -> bool {
     descriptor_for(name).is_some()
 }
 
+pub fn validate_metric_descriptor(
+    descriptor: &MetricDescriptor,
+) -> Result<(), MetricValidationError> {
+    if !is_prometheus_metric_name(descriptor.name) {
+        return Err(MetricValidationError::InvalidMetricName {
+            name: descriptor.name,
+        });
+    }
+
+    for (index, label) in descriptor.labels.iter().enumerate() {
+        if !is_prometheus_label_name(label) {
+            return Err(MetricValidationError::InvalidLabelName {
+                metric: descriptor.name,
+                label,
+            });
+        }
+        if descriptor.labels[..index].contains(label) {
+            return Err(MetricValidationError::DuplicateLabelName {
+                metric: descriptor.name,
+                label,
+            });
+        }
+    }
+
+    match descriptor.kind {
+        MetricKind::Histogram => validate_histogram_buckets(descriptor),
+        MetricKind::Counter | MetricKind::Gauge => {
+            if descriptor.buckets.is_empty() {
+                Ok(())
+            } else {
+                Err(MetricValidationError::UnexpectedBuckets {
+                    metric: descriptor.name,
+                    kind: descriptor.kind,
+                })
+            }
+        }
+    }
+}
+
+pub fn validate_registry() -> Result<(), MetricValidationError> {
+    let mut previous = None;
+    for descriptor in REGISTRY {
+        validate_metric_descriptor(descriptor)?;
+        if let Some(previous_name) = previous {
+            if descriptor.name == previous_name {
+                return Err(MetricValidationError::DuplicateMetricName {
+                    metric: descriptor.name,
+                });
+            }
+            if descriptor.name < previous_name {
+                return Err(MetricValidationError::RegistryNotSorted {
+                    previous: previous_name,
+                    current: descriptor.name,
+                });
+            }
+        }
+        previous = Some(descriptor.name);
+    }
+    Ok(())
+}
+
+#[must_use]
+pub fn is_prometheus_metric_name(name: &str) -> bool {
+    let mut bytes = name.bytes();
+    let Some(first) = bytes.next() else {
+        return false;
+    };
+    (first.is_ascii_alphabetic() || matches!(first, b'_' | b':'))
+        && bytes.all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b':'))
+}
+
+#[must_use]
+pub fn is_prometheus_label_name(name: &str) -> bool {
+    if name.starts_with("__") {
+        return false;
+    }
+    let mut bytes = name.bytes();
+    let Some(first) = bytes.next() else {
+        return false;
+    };
+    (first.is_ascii_alphabetic() || first == b'_')
+        && bytes.all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+}
+
+fn validate_histogram_buckets(descriptor: &MetricDescriptor) -> Result<(), MetricValidationError> {
+    if descriptor.buckets.is_empty() {
+        return Err(MetricValidationError::MissingHistogramBuckets {
+            metric: descriptor.name,
+        });
+    }
+
+    let mut previous_value = None;
+    let mut previous_bucket = "";
+    for bucket in descriptor.buckets {
+        let Ok(value) = bucket.parse::<f64>() else {
+            return Err(MetricValidationError::InvalidHistogramBucket {
+                metric: descriptor.name,
+                bucket,
+            });
+        };
+        if !value.is_finite() {
+            return Err(MetricValidationError::InvalidHistogramBucket {
+                metric: descriptor.name,
+                bucket,
+            });
+        }
+        if let Some(previous) = previous_value {
+            if value <= previous {
+                return Err(MetricValidationError::NonIncreasingHistogramBucket {
+                    metric: descriptor.name,
+                    previous: previous_bucket,
+                    bucket,
+                });
+            }
+        }
+        previous_value = Some(value);
+        previous_bucket = bucket;
+    }
+
+    Ok(())
+}
+
 #[must_use]
 pub fn registry_snapshot() -> String {
     let mut output = String::new();
@@ -500,6 +661,104 @@ mod tests {
             );
             previous = descriptor.name;
         }
+    }
+
+    #[test]
+    fn registry_metric_and_label_names_are_prometheus_safe() {
+        for descriptor in REGISTRY {
+            assert!(
+                is_prometheus_metric_name(descriptor.name),
+                "invalid metric name {}",
+                descriptor.name
+            );
+            for label in descriptor.labels {
+                assert!(
+                    is_prometheus_label_name(label),
+                    "invalid label name {label} on {}",
+                    descriptor.name
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn registry_descriptors_pass_runtime_validation() {
+        assert_eq!(validate_registry(), Ok(()));
+        for descriptor in REGISTRY {
+            assert_eq!(validate_metric_descriptor(descriptor), Ok(()));
+        }
+    }
+
+    #[test]
+    fn descriptor_validation_rejects_malformed_histogram_buckets() {
+        let unordered = MetricDescriptor {
+            name: "chio_bad_latency_seconds",
+            help: "Bad latency buckets.",
+            kind: MetricKind::Histogram,
+            labels: &[],
+            buckets: &["0.1", "0.05"],
+        };
+        assert_eq!(
+            validate_metric_descriptor(&unordered),
+            Err(MetricValidationError::NonIncreasingHistogramBucket {
+                metric: "chio_bad_latency_seconds",
+                previous: "0.1",
+                bucket: "0.05",
+            })
+        );
+
+        let invalid = MetricDescriptor {
+            name: "chio_bad_latency_seconds",
+            help: "Bad latency buckets.",
+            kind: MetricKind::Histogram,
+            labels: &[],
+            buckets: &["NaN"],
+        };
+        assert_eq!(
+            validate_metric_descriptor(&invalid),
+            Err(MetricValidationError::InvalidHistogramBucket {
+                metric: "chio_bad_latency_seconds",
+                bucket: "NaN",
+            })
+        );
+    }
+
+    #[test]
+    fn descriptor_validation_rejects_bucket_kind_mismatches() {
+        let counter = MetricDescriptor {
+            name: "chio_bad_total",
+            help: "Bad counter buckets.",
+            kind: MetricKind::Counter,
+            labels: &[],
+            buckets: &["1"],
+        };
+        assert_eq!(
+            validate_metric_descriptor(&counter),
+            Err(MetricValidationError::UnexpectedBuckets {
+                metric: "chio_bad_total",
+                kind: MetricKind::Counter,
+            })
+        );
+
+        let histogram = MetricDescriptor {
+            name: "chio_bad_latency_seconds",
+            help: "Missing latency buckets.",
+            kind: MetricKind::Histogram,
+            labels: &[],
+            buckets: &[],
+        };
+        assert_eq!(
+            validate_metric_descriptor(&histogram),
+            Err(MetricValidationError::MissingHistogramBuckets {
+                metric: "chio_bad_latency_seconds",
+            })
+        );
+    }
+
+    #[test]
+    fn prometheus_label_names_reject_reserved_internal_prefix() {
+        assert!(!is_prometheus_label_name("__name__"));
+        assert!(!is_prometheus_label_name("__tenant_id"));
     }
 
     #[test]

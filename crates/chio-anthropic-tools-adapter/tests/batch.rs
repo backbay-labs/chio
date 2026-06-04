@@ -313,6 +313,44 @@ fn lower_without_pending_tool_use_fails_closed() {
 }
 
 #[test]
+fn lower_tool_result_block_rejects_whitespace_padded_tool_use_id() {
+    let adapter = adapter();
+    let err = adapter
+        .lower_tool_result_block(
+            " toolu_weather_1 ",
+            allow_verdict(),
+            ToolResult(br#"[{"type":"text","text":"72F"}]"#.to_vec()),
+        )
+        .expect_err("lowering must not normalize provider tool_use_id");
+
+    assert!(err
+        .to_string()
+        .contains("tool_use_id must not contain surrounding whitespace"));
+}
+
+#[test]
+fn trait_lower_rejects_whitespace_padded_tool_use_id() {
+    let adapter = adapter();
+    let result = block_on(
+        adapter.lower(
+            allow_verdict(),
+            ToolResult(
+                br#"{"tool_use_id":" toolu_weather_1 ","content":[{"type":"text","text":"72F"}]}"#
+                    .to_vec(),
+            ),
+        ),
+    );
+    let err = match result {
+        Ok(_) => panic!("trait lower must not normalize provider tool_use_id"),
+        Err(error) => error,
+    };
+
+    assert!(err
+        .to_string()
+        .contains("tool_use_id must not contain surrounding whitespace"));
+}
+
+#[test]
 fn lower_allow_applies_redactions_before_provider_serialization() {
     let adapter = adapter();
     let response = block_on(

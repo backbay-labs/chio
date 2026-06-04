@@ -24,7 +24,8 @@ use chio_core::receipt::{
     ReceiptLineageStatementBody, SettlementStatus, SignedExportEnvelope, ToolCallAction,
 };
 use chio_core::session::{
-    OperationKind, OperationTerminalState, RequestId, SessionAnchorReference, SessionId,
+    OperationKind, OperationTerminalState, RequestId, RequestLineageMode, RequestLineageRecord,
+    SessionAnchorReference, SessionId,
 };
 use chio_kernel::checkpoint::build_checkpoint_publication;
 use chio_kernel::{
@@ -101,6 +102,29 @@ fn sample_child_receipt() -> ChildRequestReceipt {
     .test_unwrap()
 }
 
+fn request_lineage_json(
+    request_id: &str,
+    session_anchor_id: &str,
+    parent_request_id: Option<&str>,
+) -> serde_json::Value {
+    let mut record = RequestLineageRecord::new(
+        RequestId::new(request_id),
+        SessionAnchorReference::new(session_anchor_id, format!("{session_anchor_id}-hash")),
+        OperationKind::ToolCall,
+        if parent_request_id.is_some() {
+            RequestLineageMode::LocalChild
+        } else {
+            RequestLineageMode::Root
+        },
+        1_710_000_000,
+    );
+    if let Some(parent_request_id) = parent_request_id {
+        record = record.with_parent_request_id(RequestId::new(parent_request_id));
+    }
+
+    serde_json::to_value(record).test_unwrap()
+}
+
 #[test]
 fn sqlite_receipt_store_persists_across_reopen() {
     let path = unique_db_path("chio-receipts");
@@ -117,6 +141,34 @@ fn sqlite_receipt_store_persists_across_reopen() {
     let reopened = SqliteReceiptStore::open(&path).test_unwrap();
     assert_eq!(reopened.tool_receipt_count().test_unwrap(), 1);
     assert_eq!(reopened.child_receipt_count().test_unwrap(), 1);
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn request_lineage_record_persistence_rejects_unsupported_schema() {
+    let path = unique_db_path("chio-request-lineage-schema");
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+    let mut lineage_json = request_lineage_json("req-schema", "anchor-schema", None);
+    lineage_json["schema"] = serde_json::Value::String("chio.request_lineage.v1".to_string());
+
+    let result = store.record_request_lineage_record(
+        "sess-schema",
+        "req-schema",
+        None,
+        Some("anchor-schema"),
+        1_710_000_000,
+        Some("req-schema-fingerprint"),
+        &lineage_json,
+    );
+
+    let error = match result {
+        Ok(()) => panic!("unsupported request lineage schema should fail"),
+        Err(error) => error,
+    };
+    assert!(error
+        .to_string()
+        .contains("unsupported request lineage record schema"));
 
     let _ = fs::remove_file(path);
 }
@@ -4521,10 +4573,7 @@ fn receipt_lineage_verification_backfills_from_governed_call_chain_metadata() {
             Some("anchor-child-lineage"),
             2_091,
             Some("req-parent-lineage-fingerprint"),
-            &serde_json::json!({
-                "schema": "chio.request_lineage.v1",
-                "requestId": "req-parent-lineage"
-            }),
+            &request_lineage_json("req-parent-lineage", "anchor-child-lineage", None),
         )
         .test_unwrap();
     store
@@ -4535,11 +4584,11 @@ fn receipt_lineage_verification_backfills_from_governed_call_chain_metadata() {
             Some("anchor-child-lineage"),
             2_092,
             Some("req-child-lineage-fingerprint"),
-            &serde_json::json!({
-                "schema": "chio.request_lineage.v1",
-                "requestId": "req-child-lineage",
-                "parentRequestId": "req-parent-lineage"
-            }),
+            &request_lineage_json(
+                "req-child-lineage",
+                "anchor-child-lineage",
+                Some("req-parent-lineage"),
+            ),
         )
         .test_unwrap();
 

@@ -17,9 +17,12 @@ This example does not start trust, issue capabilities, or run an app surface. It
 ## Files
 
 ```text
+ARCHITECTURE.md
 README.md
 fixtures/minimal-evidence/
 smoke.sh
+test_verify_artifacts.py
+verify_artifacts.py
 ```
 
 ## Run
@@ -28,6 +31,12 @@ Verify the captured package and run the tamper check:
 
 ```bash
 ./smoke.sh
+```
+
+Run the offline artifact verifier tests:
+
+```bash
+python3 -m unittest discover -s . -p 'test_*.py'
 ```
 
 ## Note

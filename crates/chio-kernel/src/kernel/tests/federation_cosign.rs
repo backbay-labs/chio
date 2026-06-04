@@ -644,11 +644,14 @@ fn federated_request_with_fresh_peer_but_missing_cosigner_fails_closed_post_disp
         .map(|d| d.as_secs())
         .unwrap_or(0);
     let peer = handshake_and_pin(&trust, origin_kernel_id, &origin_kp, now);
-    let kernel = kernel.with_federation_peers(vec![peer]);
+    let mut kernel = kernel.with_federation_peers(vec![peer]);
 
     // NOTE: deliberately do NOT call `set_federation_cosigner` here.
     // The pre-dispatch gate sees a fresh peer pin and passes; the
     // post-dispatch federation hop must then refuse fail-closed.
+    // Install treaty material so the test reaches the missing-cosigner
+    // branch instead of the earlier runtime-admission fail-closed branch.
+    kernel.set_runtime_admission_hook(std::sync::Arc::new(TreatyDsseAdmissionHook));
 
     let agent_kp = make_keypair();
     let cap = make_capability(

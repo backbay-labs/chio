@@ -2,6 +2,7 @@ use chio_core::capability::CapabilityToken;
 pub use chio_kernel::capability_lineage::{
     CapabilityLineageError, CapabilitySnapshot, StoredCapabilitySnapshot,
 };
+use rusqlite::types::Type;
 use rusqlite::{params, OptionalExtension, Row};
 
 use crate::receipt_store::SqliteReceiptStore;
@@ -11,12 +12,39 @@ fn snapshot_from_row(row: &Row<'_>) -> rusqlite::Result<CapabilitySnapshot> {
         capability_id: row.get::<_, String>(0)?,
         subject_key: row.get::<_, String>(1)?,
         issuer_key: row.get::<_, String>(2)?,
-        issued_at: row.get::<_, i64>(3)?.max(0) as u64,
-        expires_at: row.get::<_, i64>(4)?.max(0) as u64,
+        issued_at: non_negative_u64_from_column(row, 3, "issued_at")?,
+        expires_at: non_negative_u64_from_column(row, 4, "expires_at")?,
         grants_json: row.get::<_, String>(5)?,
-        delegation_depth: row.get::<_, i64>(6)?.max(0) as u64,
+        delegation_depth: non_negative_u64_from_column(row, 6, "delegation_depth")?,
         parent_capability_id: row.get::<_, Option<String>>(7)?,
     })
+}
+
+fn non_negative_u64_from_column(
+    row: &Row<'_>,
+    column: usize,
+    field_name: &'static str,
+) -> rusqlite::Result<u64> {
+    let value = row.get::<_, i64>(column)?;
+    if value < 0 {
+        return Err(negative_lineage_integer_error(column, field_name, value));
+    }
+    Ok(value as u64)
+}
+
+fn negative_lineage_integer_error(
+    column: usize,
+    field_name: &'static str,
+    value: i64,
+) -> rusqlite::Error {
+    rusqlite::Error::FromSqlConversionFailure(
+        column,
+        Type::Integer,
+        Box::new(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("capability_lineage.{field_name} must be non-negative, got {value}"),
+        )),
+    )
 }
 
 impl SqliteReceiptStore {
@@ -44,10 +72,9 @@ impl SqliteReceiptStore {
                 .query_row(
                     "SELECT delegation_depth FROM capability_lineage WHERE capability_id = ?1",
                     params![parent_id],
-                    |row: &Row<'_>| row.get::<_, i64>(0),
+                    |row: &Row<'_>| non_negative_u64_from_column(row, 0, "delegation_depth"),
                 )
-                .optional()?
-                .map(|d: i64| d.max(0) as u64);
+                .optional()?;
 
             parent_depth.map(|d| d.saturating_add(1)).unwrap_or(1)
         } else {
@@ -315,15 +342,15 @@ impl SqliteReceiptStore {
 
         let rows = stmt.query_map(params![after_seq as i64, limit as i64], |row| {
             Ok(StoredCapabilitySnapshot {
-                seq: row.get::<_, i64>(0)?.max(0) as u64,
+                seq: non_negative_u64_from_column(row, 0, "rowid")?,
                 snapshot: CapabilitySnapshot {
                     capability_id: row.get::<_, String>(1)?,
                     subject_key: row.get::<_, String>(2)?,
                     issuer_key: row.get::<_, String>(3)?,
-                    issued_at: row.get::<_, i64>(4)?.max(0) as u64,
-                    expires_at: row.get::<_, i64>(5)?.max(0) as u64,
+                    issued_at: non_negative_u64_from_column(row, 4, "issued_at")?,
+                    expires_at: non_negative_u64_from_column(row, 5, "expires_at")?,
                     grants_json: row.get::<_, String>(6)?,
-                    delegation_depth: row.get::<_, i64>(7)?.max(0) as u64,
+                    delegation_depth: non_negative_u64_from_column(row, 7, "delegation_depth")?,
                     parent_capability_id: row.get::<_, Option<String>>(8)?,
                 },
             })
@@ -471,6 +498,133 @@ mod tests {
 
         let result = store.get_lineage("nonexistent-cap").unwrap();
         assert!(result.is_none());
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn get_lineage_rejects_negative_persisted_unsigned_fields() {
+        let path = unique_db_path("cl-corrupt-read");
+        let store = SqliteReceiptStore::open(&path).unwrap();
+        let connection = store.connection().unwrap();
+        connection
+            .execute(
+                r#"
+                INSERT INTO capability_lineage (
+                    capability_id,
+                    subject_key,
+                    issuer_key,
+                    issued_at,
+                    expires_at,
+                    grants_json,
+                    delegation_depth,
+                    parent_capability_id
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL)
+                "#,
+                params![
+                    "cap-corrupt-read",
+                    "subject",
+                    "issuer",
+                    -1_i64,
+                    2_000_i64,
+                    "{}",
+                    0_i64
+                ],
+            )
+            .unwrap();
+        drop(connection);
+
+        let error = store.get_lineage("cap-corrupt-read").unwrap_err();
+        assert!(error.to_string().contains("issued_at"));
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn record_child_snapshot_rejects_negative_parent_depth() {
+        let path = unique_db_path("cl-corrupt-parent");
+        let store = SqliteReceiptStore::open(&path).unwrap();
+        let connection = store.connection().unwrap();
+        connection
+            .execute(
+                r#"
+                INSERT INTO capability_lineage (
+                    capability_id,
+                    subject_key,
+                    issuer_key,
+                    issued_at,
+                    expires_at,
+                    grants_json,
+                    delegation_depth,
+                    parent_capability_id
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL)
+                "#,
+                params![
+                    "cap-corrupt-parent",
+                    "subject",
+                    "issuer",
+                    1_000_i64,
+                    2_000_i64,
+                    "{}",
+                    -1_i64
+                ],
+            )
+            .unwrap();
+        drop(connection);
+
+        let subject_kp = Keypair::generate();
+        let issuer_kp = Keypair::generate();
+        let child = make_token(
+            "cap-child-from-corrupt",
+            &subject_kp,
+            &issuer_kp,
+            1_100,
+            1_900,
+        );
+        let error = store
+            .record_capability_snapshot(&child, Some("cap-corrupt-parent"))
+            .unwrap_err();
+        assert!(error.to_string().contains("delegation_depth"));
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn lineage_replication_rejects_negative_snapshot_fields() {
+        let path = unique_db_path("cl-corrupt-repl");
+        let store = SqliteReceiptStore::open(&path).unwrap();
+        let connection = store.connection().unwrap();
+        connection
+            .execute(
+                r#"
+                INSERT INTO capability_lineage (
+                    capability_id,
+                    subject_key,
+                    issuer_key,
+                    issued_at,
+                    expires_at,
+                    grants_json,
+                    delegation_depth,
+                    parent_capability_id
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL)
+                "#,
+                params![
+                    "cap-corrupt-repl",
+                    "subject",
+                    "issuer",
+                    1_000_i64,
+                    -2_000_i64,
+                    "{}",
+                    0_i64
+                ],
+            )
+            .unwrap();
+        drop(connection);
+
+        let error = store
+            .list_capability_snapshots_after_seq(0, 10)
+            .unwrap_err();
+        assert!(error.to_string().contains("expires_at"));
 
         let _ = fs::remove_file(path);
     }

@@ -11,31 +11,12 @@ fn apply_conditions(
 
     if let Some(rules) = &mut effective.rules {
         for (block_name, condition) in conditions {
-            if !evaluate_condition(condition, context) {
-                // Block names must stay in sync with
-                // conditions::CONDITIONABLE_RULE_BLOCKS (the set the load-time
-                // validator accepts) and the fields of models::Rules.
-                match block_name.as_str() {
-                    "forbidden_paths" => rules.forbidden_paths = None,
-                    "path_allowlist" => rules.path_allowlist = None,
-                    "egress" => rules.egress = None,
-                    "secret_patterns" => rules.secret_patterns = None,
-                    "patch_integrity" => rules.patch_integrity = None,
-                    "shell_commands" => rules.shell_commands = None,
-                    "tool_access" => rules.tool_access = None,
-                    "computer_use" => rules.computer_use = None,
-                    "remote_desktop_channels" => rules.remote_desktop_channels = None,
-                    "input_injection" => rules.input_injection = None,
-                    "browser_automation" => rules.browser_automation = None,
-                    "code_execution" => rules.code_execution = None,
-                    "velocity" => rules.velocity = None,
-                    "human_in_loop" => rules.human_in_loop = None,
-                    _ => debug_assert!(
-                        false,
-                        "unknown condition block name `{block_name}`; \
-                         validate_condition_keys should have rejected it"
-                    ),
-                }
+            if !evaluate_condition(condition, context) && !rules.clear_block(block_name) {
+                debug_assert!(
+                    false,
+                    "unknown condition block name `{block_name}`; \
+                     validate_condition_keys should have rejected it"
+                );
             }
         }
     }
@@ -427,9 +408,32 @@ fn workload_identity_matches(
             || expected
                 .path_prefixes
                 .iter()
-                .any(|prefix| actual.path.starts_with(prefix)))
+                .any(|prefix| workload_identity_path_matches_prefix(prefix, &actual.path)))
         && (expected.credential_kinds.is_empty()
             || expected.credential_kinds.contains(&actual.credential_kind))
+}
+
+fn workload_identity_path_matches_prefix(expected_prefix: &str, actual_path: &str) -> bool {
+    if !actual_path.starts_with('/') || actual_path.contains("//") {
+        return false;
+    }
+
+    let prefix = if expected_prefix == "/" {
+        expected_prefix
+    } else {
+        expected_prefix.trim_end_matches('/')
+    };
+    if prefix == "/" {
+        return true;
+    }
+    if prefix.is_empty() || !prefix.starts_with('/') || prefix.contains("//") {
+        return false;
+    }
+
+    actual_path == prefix
+        || actual_path
+            .strip_prefix(prefix)
+            .is_some_and(|suffix| suffix.starts_with('/'))
 }
 
 fn evaluate_egress(
@@ -1276,6 +1280,33 @@ fn next_posture_state(posture: &PostureExtension, current: &str, signal: &str) -
 // ---------------------------------------------------------------------------
 // Origin profile selection
 // ---------------------------------------------------------------------------
+
+fn origin_admission_denial(
+    spec: &HushSpec,
+    origin: Option<&OriginContext>,
+    matched_profile: Option<&OriginProfile>,
+) -> Option<EvaluationResult> {
+    if matched_profile.is_some() {
+        return None;
+    }
+
+    let origins = spec.extensions.as_ref()?.origins.as_ref()?;
+    if origins.default_behavior.unwrap_or_default() == OriginDefaultBehavior::MinimalProfile {
+        return None;
+    }
+
+    let reason = if origin.is_some() {
+        "origin context did not match any configured origin profile"
+    } else {
+        "origin context is required by origins policy"
+    };
+    Some(deny_result(
+        Some("extensions.origins.default_behavior".to_string()),
+        Some(reason.to_string()),
+        None,
+        None,
+    ))
+}
 
 fn select_origin_profile<'a>(
     spec: &'a HushSpec,

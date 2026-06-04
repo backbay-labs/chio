@@ -19,7 +19,9 @@ framework-specific integrations.
 
 ```text
 README.md
+ARCHITECTURE.md
 app.py
+test_app.py
 openapi.yaml
 run.sh
 smoke.sh
@@ -37,6 +39,12 @@ Run the full trust + sidecar smoke flow:
 
 ```bash
 ./smoke.sh
+```
+
+Run the upstream app tests:
+
+```bash
+python3 -m unittest discover -s .
 ```
 
 Use the shared verification flow from

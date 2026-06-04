@@ -100,8 +100,9 @@ issue_demo_capability() {
   local service_token="$2"
   local output_json="$3"
   local tool_name="${4:-hello_write}"
+  local server_id="${5:-http-sidecar-client}"
 
-  python3 - "${control_url}" "${service_token}" "${output_json}" "${tool_name}" <<'PY'
+  python3 - "${control_url}" "${service_token}" "${output_json}" "${tool_name}" "${server_id}" <<'PY'
 import json
 import sys
 import urllib.request
@@ -111,13 +112,14 @@ control_url = sys.argv[1].rstrip("/")
 token = sys.argv[2]
 output_path = Path(sys.argv[3])
 tool_name = sys.argv[4]
+server_id = sys.argv[5]
 
 payload = {
     "subjectPublicKey": "00" * 32,
     "scope": {
         "grants": [
             {
-                "server_id": "http-sidecar-client",
+                "server_id": server_id,
                 "tool_name": tool_name,
                 "operations": ["invoke"],
                 "constraints": [],

@@ -93,6 +93,12 @@ pub enum CredentialError {
     #[error("challenge issuance date must be before or equal to expiration date")]
     InvalidChallengeValidityWindow,
 
+    #[error("challenge verifier must be non-empty")]
+    MissingChallengeVerifier,
+
+    #[error("challenge nonce must be non-empty")]
+    MissingChallengeNonce,
+
     #[error("challenge is not yet valid")]
     ChallengeNotYetValid,
 
@@ -173,7 +179,7 @@ pub enum CredentialError {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AttestationWindow {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub since: Option<u64>,
@@ -181,7 +187,7 @@ pub struct AttestationWindow {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ChioCredentialEvidence {
     pub query: AttestationWindow,
     pub receipt_count: usize,
@@ -196,7 +202,7 @@ pub struct ChioCredentialEvidence {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EnterpriseIdentityProvenance {
     pub provider_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -247,26 +253,21 @@ impl EnterpriseIdentityProvenance {
     }
 
     fn validate(&self) -> Result<(), CredentialError> {
-        if self.provider_id.trim().is_empty() {
-            return Err(CredentialError::MissingEnterpriseIdentityProvenanceField {
-                field: "providerId",
-            });
-        }
-        if self.provider_kind.trim().is_empty() {
-            return Err(CredentialError::MissingEnterpriseIdentityProvenanceField {
-                field: "providerKind",
-            });
-        }
-        if self.principal.trim().is_empty() {
-            return Err(CredentialError::MissingEnterpriseIdentityProvenanceField {
-                field: "principal",
-            });
-        }
-        if self.subject_key.trim().is_empty() {
-            return Err(CredentialError::MissingEnterpriseIdentityProvenanceField {
-                field: "subjectKey",
-            });
-        }
+        require_enterprise_identity_provenance_field(&self.provider_id, "providerId")?;
+        require_enterprise_identity_provenance_field(&self.provider_kind, "providerKind")?;
+        require_enterprise_identity_provenance_field(&self.principal, "principal")?;
+        require_enterprise_identity_provenance_field(&self.subject_key, "subjectKey")?;
+        Ok(())
+    }
+}
+
+fn require_enterprise_identity_provenance_field(
+    value: &str,
+    field: &'static str,
+) -> Result<(), CredentialError> {
+    if value.trim().is_empty() {
+        Err(CredentialError::MissingEnterpriseIdentityProvenanceField { field })
+    } else {
         Ok(())
     }
 }
@@ -278,7 +279,7 @@ impl From<&EnterpriseIdentityContext> for EnterpriseIdentityProvenance {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReputationCredentialSubject {
     pub id: String,
     pub metrics: LocalReputationScorecard,
@@ -301,7 +302,7 @@ pub struct UnsignedReputationCredential {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CredentialProof {
     #[serde(rename = "type")]
     pub proof_type: String,

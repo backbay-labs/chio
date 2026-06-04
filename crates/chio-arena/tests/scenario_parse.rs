@@ -130,6 +130,19 @@ fn rejects_unknown_step_agent() {
 }
 
 #[test]
+fn rejects_duplicate_guard_ids() {
+    let input = valid_scenario().replace(
+        "[[steps]]",
+        "[[guards]]\nid = \"native-allowlist\"\nmode = \"observe\"\nconfig_ref = \"guards/duplicate.toml\"\n\n[[steps]]",
+    );
+    let err = parse_scenario_str(&input).err();
+    assert!(
+        matches!(err, Some(ScenarioError::DuplicateGuard(_))),
+        "expected DuplicateGuard, got {err:?}",
+    );
+}
+
+#[test]
 fn rejects_inline_secret_marker() {
     let input = valid_scenario().replace(
         "arguments = { path = \"/tmp/chio-arena.txt\" }",

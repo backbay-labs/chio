@@ -7,8 +7,8 @@
 //!
 //! Coverage:
 //!
-//! - secrets: AWS access keys, JWTs, Stripe live/test keys, generic
-//!   high-entropy `[A-Za-z0-9_]{32,}` runs.
+//! - secrets: AWS access keys, JWTs, Stripe live/test keys, OpenAI-style
+//!   `sk-...` keys, generic high-entropy `[A-Za-z0-9_]{32,}` runs.
 //! - basic PII: email, US E.164 phone, US SSN, credit-card (Luhn-checked).
 //! - bearer tokens: `Authorization: Bearer <...>` strips the token body.
 //!
@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// Tenants reading the manifest can pin redactor behaviour by exact
 /// `pass_id`. Bumped when default coverage changes.
-pub const PASS_ID: &str = "redactors@1.4.0+default";
+pub const PASS_ID: &str = "redactors@1.5.0+default";
 
 /// Mirror of the WIT `redact-class` flags.
 ///
@@ -91,7 +91,7 @@ pub struct RedactionMatch {
 /// Mirrors WIT `redaction-manifest`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RedactionManifest {
-    /// e.g. `"redactors@1.4.0+default"`.
+    /// e.g. `"redactors@1.5.0+default"`.
     pub pass_id: String,
     pub matches: Vec<RedactionMatch>,
     pub elapsed_micros: u64,
@@ -170,6 +170,7 @@ const PATTERN_AWS_KEY: &str = r"(?-u)\bAKIA[0-9A-Z]{16}\b";
 const PATTERN_JWT: &str = r"(?-u)\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b";
 const PATTERN_STRIPE: &str = r"(?-u)\bsk_(?:live|test)_[0-9A-Za-z]{24,}\b";
 const PATTERN_STRIPE_PUB: &str = r"(?-u)\bpk_(?:live|test)_[0-9A-Za-z]{24,}\b";
+const PATTERN_OPENAI_KEY: &str = r"(?-u)\bsk-(?:proj-)?[A-Za-z0-9_-]{32,}\b";
 const PATTERN_HIGH_ENTROPY: &str = r"(?-u)\b[A-Za-z0-9_]{32,}\b";
 const PATTERN_EMAIL: &str = r"(?-u)\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b";
 // US phone: optional +1, then (xxx) xxx-xxxx OR xxx-xxx-xxxx OR xxx.xxx.xxxx OR xxx xxx xxxx.
@@ -192,6 +193,7 @@ const DEFAULT_PATTERNS: &[(&str, &str)] = &[
     ("secrets.jwt", PATTERN_JWT),
     ("secrets.stripe", PATTERN_STRIPE),
     ("secrets.stripe-pub", PATTERN_STRIPE_PUB),
+    ("secrets.openai-key", PATTERN_OPENAI_KEY),
     ("secrets.high-entropy", PATTERN_HIGH_ENTROPY),
     ("pii.email", PATTERN_EMAIL),
     ("pii.phone-us", PATTERN_PHONE_US),
@@ -231,6 +233,7 @@ static AWS_KEY: LazyLock<Option<Regex>> = LazyLock::new(|| try_compile(PATTERN_A
 static JWT: LazyLock<Option<Regex>> = LazyLock::new(|| try_compile(PATTERN_JWT));
 static STRIPE: LazyLock<Option<Regex>> = LazyLock::new(|| try_compile(PATTERN_STRIPE));
 static STRIPE_PUB: LazyLock<Option<Regex>> = LazyLock::new(|| try_compile(PATTERN_STRIPE_PUB));
+static OPENAI_KEY: LazyLock<Option<Regex>> = LazyLock::new(|| try_compile(PATTERN_OPENAI_KEY));
 static HIGH_ENTROPY: LazyLock<Option<Regex>> = LazyLock::new(|| try_compile(PATTERN_HIGH_ENTROPY));
 
 static EMAIL: LazyLock<Option<Regex>> = LazyLock::new(|| try_compile(PATTERN_EMAIL));
@@ -263,13 +266,17 @@ pub fn redact_payload(
             ("secrets.jwt", JWT.as_ref()),
             ("secrets.stripe", STRIPE.as_ref()),
             ("secrets.stripe-pub", STRIPE_PUB.as_ref()),
+            ("secrets.openai-key", OPENAI_KEY.as_ref()),
             ("secrets.high-entropy", HIGH_ENTROPY.as_ref()),
         ] {
             if let Some(re) = re {
                 collect(payload, re, label, &mut matches, &mut spans, |label| {
                     if label == "secrets.high-entropy" {
                         "[REDACTED-BEARER]".to_string()
-                    } else if label == "secrets.stripe" || label == "secrets.stripe-pub" {
+                    } else if label == "secrets.stripe"
+                        || label == "secrets.stripe-pub"
+                        || label == "secrets.openai-key"
+                    {
                         "[REDACTED-API-KEY]".to_string()
                     } else {
                         format!("<redacted:{label}>")
@@ -530,6 +537,20 @@ mod tests {
     }
 
     #[test]
+    fn openai_project_key_is_redacted_as_whole_secret() {
+        let payload = b"OPENAI_API_KEY=sk-proj-abcdefghijklmnopqrstuvwxyzABCDE_1234567890 end";
+        let out = redact_payload(payload, full()).unwrap();
+        let body = String::from_utf8(out.bytes).unwrap();
+        assert!(body.contains("[REDACTED-API-KEY]"));
+        assert!(!body.contains("sk-proj-"));
+        assert!(out
+            .manifest
+            .matches
+            .iter()
+            .any(|m| m.class == "secrets.openai-key"));
+    }
+
+    #[test]
     fn pk_live_stripe_key_is_redacted() {
         let payload = b"pk_live_abcdefghijklmnopqrstuvwx";
         let out = redact_payload(payload, full()).unwrap();
@@ -640,6 +661,7 @@ mod tests {
             &JWT,
             &STRIPE,
             &STRIPE_PUB,
+            &OPENAI_KEY,
             &HIGH_ENTROPY,
             &EMAIL,
             &PHONE_US,
@@ -669,6 +691,7 @@ mod tests {
             ("secrets.jwt", &JWT),
             ("secrets.stripe", &STRIPE),
             ("secrets.stripe-pub", &STRIPE_PUB),
+            ("secrets.openai-key", &OPENAI_KEY),
             ("secrets.high-entropy", &HIGH_ENTROPY),
             ("pii.email", &EMAIL),
             ("pii.phone-us", &PHONE_US),

@@ -142,24 +142,7 @@ pub fn openai_fixture_dir() -> PathBuf {
 
 /// Return all OpenAI NDJSON fixture paths in deterministic order.
 pub fn openai_fixture_paths() -> Result<Vec<PathBuf>, ReplayError> {
-    let root = openai_fixture_dir();
-    let entries = fs::read_dir(&root).map_err(|source| ReplayError::ReadFixtureDir {
-        path: root.clone(),
-        source,
-    })?;
-    let mut paths = Vec::new();
-    for entry in entries {
-        let entry = entry.map_err(|source| ReplayError::ReadFixtureDir {
-            path: root.clone(),
-            source,
-        })?;
-        let path = entry.path();
-        if path.extension().and_then(|ext| ext.to_str()) == Some("ndjson") {
-            paths.push(path);
-        }
-    }
-    paths.sort();
-    Ok(paths)
+    fixture_paths_for_dir(openai_fixture_dir())
 }
 
 /// Return the Anthropic fixture corpus path.
@@ -169,24 +152,7 @@ pub fn anthropic_fixture_dir() -> PathBuf {
 
 /// Return all Anthropic NDJSON fixture paths in deterministic order.
 pub fn anthropic_fixture_paths() -> Result<Vec<PathBuf>, ReplayError> {
-    let root = anthropic_fixture_dir();
-    let entries = fs::read_dir(&root).map_err(|source| ReplayError::ReadFixtureDir {
-        path: root.clone(),
-        source,
-    })?;
-    let mut paths = Vec::new();
-    for entry in entries {
-        let entry = entry.map_err(|source| ReplayError::ReadFixtureDir {
-            path: root.clone(),
-            source,
-        })?;
-        let path = entry.path();
-        if path.extension().and_then(|ext| ext.to_str()) == Some("ndjson") {
-            paths.push(path);
-        }
-    }
-    paths.sort();
-    Ok(paths)
+    fixture_paths_for_dir(anthropic_fixture_dir())
 }
 
 /// Return the Bedrock fixture corpus path.
@@ -196,7 +162,10 @@ pub fn bedrock_fixture_dir() -> PathBuf {
 
 /// Return all Bedrock NDJSON fixture paths in deterministic order.
 pub fn bedrock_fixture_paths() -> Result<Vec<PathBuf>, ReplayError> {
-    let root = bedrock_fixture_dir();
+    fixture_paths_for_dir(bedrock_fixture_dir())
+}
+
+fn fixture_paths_for_dir(root: PathBuf) -> Result<Vec<PathBuf>, ReplayError> {
     let entries = fs::read_dir(&root).map_err(|source| ReplayError::ReadFixtureDir {
         path: root.clone(),
         source,
@@ -255,6 +224,18 @@ pub fn load_fixture(path: impl AsRef<Path>) -> Result<ProviderCaptureFixture, Re
         return Err(invalid_fixture(
             &path,
             "fixture_id changed within one NDJSON file",
+        ));
+    }
+    validate_fixture_id_matches_filename(&path, &fixture_id)?;
+
+    let provider = first.provider.clone();
+    if records
+        .iter()
+        .any(|record| record.provider.as_str() != provider.as_str())
+    {
+        return Err(invalid_fixture(
+            &path,
+            "provider changed within one NDJSON file",
         ));
     }
 
@@ -980,6 +961,7 @@ fn assert_replayed_invocations(
             )
         })?;
         let actual = comparable_invocation(
+            &fixture.path,
             invocation,
             expected_invocation.provenance.received_at.clone(),
         )?;
@@ -1261,7 +1243,9 @@ fn anthropic_server_tool_manifest() -> chio_manifest::ToolManifest {
             ServerTool::TextEditor,
         ],
         required_permissions: None,
-        public_key: "deadbeef".to_string(),
+        public_key: chio_core::Keypair::from_seed(&[31u8; 32])
+            .public_key()
+            .to_hex(),
     }
 }
 
@@ -1333,17 +1317,49 @@ fn validate_record(path: &Path, record: &CaptureRecord) -> Result<(), ReplayErro
         ));
     }
 
-    if record.provider.is_empty() {
-        return Err(invalid_fixture(path, "provider was empty"));
-    }
+    validate_record_identifier(path, &record.provider, "provider")?;
+    validate_record_identifier(path, &record.fixture_id, "fixture_id")?;
 
     Ok(())
 }
 
+fn validate_fixture_id_matches_filename(path: &Path, fixture_id: &str) -> Result<(), ReplayError> {
+    let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) else {
+        return Err(invalid_fixture(
+            path,
+            "fixture filename was not valid UTF-8",
+        ));
+    };
+    if fixture_id != stem {
+        return Err(invalid_fixture(path, "fixture_id did not match filename"));
+    }
+    Ok(())
+}
+
+fn validate_record_identifier(path: &Path, value: &str, field: &str) -> Result<(), ReplayError> {
+    if value.trim().is_empty() {
+        return Err(invalid_fixture(path, format!("{field} was empty")));
+    }
+    if value.trim() != value {
+        return Err(invalid_fixture(
+            path,
+            format!("{field} had surrounding whitespace"),
+        ));
+    }
+    Ok(())
+}
+
 fn comparable_invocation(
+    path: &Path,
     invocation: &ToolInvocation,
     received_at: Value,
 ) -> Result<ComparableInvocation, ReplayError> {
+    invocation.validate().map_err(|error| {
+        invalid_fixture(
+            path,
+            format!("adapter produced invalid fabric invocation: {error}"),
+        )
+    })?;
     Ok(ComparableInvocation {
         provider: invocation.provider,
         tool_name: invocation.tool_name.clone(),
@@ -1609,10 +1625,18 @@ fn required_field<'a>(
     value: Option<&'a str>,
     field: &str,
 ) -> Result<&'a str, ReplayError> {
-    value
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| invalid_fixture(path, format!("record was missing {field}")))
+    let value =
+        value.ok_or_else(|| invalid_fixture(path, format!("record was missing {field}")))?;
+    if value.trim().is_empty() {
+        return Err(invalid_fixture(path, format!("record was missing {field}")));
+    }
+    if value.trim() != value {
+        return Err(invalid_fixture(
+            path,
+            format!("{field} had surrounding whitespace"),
+        ));
+    }
+    Ok(value)
 }
 
 fn invalid_fixture(path: impl AsRef<Path>, message: impl Into<String>) -> ReplayError {
@@ -1644,5 +1668,173 @@ where
             Poll::Ready(output) => return output,
             Poll::Pending => std::thread::yield_now(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fixture_paths_for_dir_filters_ndjson_and_sorts() -> Result<(), Box<dyn std::error::Error>> {
+        let root = std::env::temp_dir().join(format!(
+            "chio-provider-conformance-paths-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root)?;
+        fs::write(root.join("b.ndjson"), "{}\n")?;
+        fs::write(root.join("a.ndjson"), "{}\n")?;
+        fs::write(root.join("notes.txt"), "ignored\n")?;
+
+        let paths = fixture_paths_for_dir(root.clone())?;
+
+        assert_eq!(paths, vec![root.join("a.ndjson"), root.join("b.ndjson")]);
+        fs::remove_dir_all(&root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn load_fixture_rejects_empty_fixture_id() -> Result<(), Box<dyn std::error::Error>> {
+        let path = std::env::temp_dir().join(format!(
+            "chio-provider-conformance-empty-id-{}.ndjson",
+            std::process::id()
+        ));
+        fs::write(
+            &path,
+            format!(
+                r#"{{"schema":"{CAPTURE_SCHEMA}","fixture_id":"","direction":"upstream_request","provider":"openai","payload":{{}}}}"#
+            ),
+        )?;
+
+        let error = match load_fixture(&path) {
+            Ok(_) => {
+                let _ = fs::remove_file(&path);
+                panic!("empty fixture_id must fail closed");
+            }
+            Err(error) => error,
+        };
+
+        fs::remove_file(&path)?;
+        assert!(error.to_string().contains("fixture_id was empty"));
+        Ok(())
+    }
+
+    #[test]
+    fn load_fixture_rejects_spaced_fixture_id() -> Result<(), Box<dyn std::error::Error>> {
+        let path = std::env::temp_dir().join(format!(
+            "chio-provider-conformance-spaced-id-{}.ndjson",
+            std::process::id()
+        ));
+        fs::write(
+            &path,
+            format!(
+                r#"{{"schema":"{CAPTURE_SCHEMA}","fixture_id":" spaced ","direction":"upstream_request","provider":"openai","payload":{{}}}}"#
+            ),
+        )?;
+
+        let error = match load_fixture(&path) {
+            Ok(_) => {
+                let _ = fs::remove_file(&path);
+                panic!("spaced fixture_id must fail closed");
+            }
+            Err(error) => error,
+        };
+
+        fs::remove_file(&path)?;
+        assert!(
+            error
+                .to_string()
+                .contains("fixture_id had surrounding whitespace"),
+            "unexpected error: {error}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn load_fixture_rejects_fixture_id_that_does_not_match_filename(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let path = std::env::temp_dir().join(format!(
+            "chio-provider-conformance-id-drift-{}.ndjson",
+            std::process::id()
+        ));
+        fs::write(
+            &path,
+            format!(
+                r#"{{"schema":"{CAPTURE_SCHEMA}","fixture_id":"different_fixture","direction":"upstream_request","provider":"openai","payload":{{}}}}"#
+            ),
+        )?;
+
+        let error = match load_fixture(&path) {
+            Ok(_) => {
+                let _ = fs::remove_file(&path);
+                panic!("fixture_id must be bound to the filename stem");
+            }
+            Err(error) => error,
+        };
+
+        fs::remove_file(&path)?;
+        assert!(
+            error
+                .to_string()
+                .contains("fixture_id did not match filename"),
+            "unexpected error: {error}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn load_fixture_rejects_provider_drift_within_file() -> Result<(), Box<dyn std::error::Error>> {
+        let root = std::env::temp_dir().join(format!(
+            "chio-provider-conformance-provider-drift-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root)?;
+        let path = root.join("provider_drift.ndjson");
+        fs::write(
+            &path,
+            format!(
+                r#"{{"schema":"{CAPTURE_SCHEMA}","fixture_id":"provider_drift","direction":"upstream_request","provider":"openai","payload":{{}}}}
+{{"schema":"{CAPTURE_SCHEMA}","fixture_id":"provider_drift","direction":"upstream_response","provider":"anthropic","payload":{{}}}}
+"#
+            ),
+        )?;
+
+        let error = match load_fixture(&path) {
+            Ok(_) => {
+                let _ = fs::remove_dir_all(&root);
+                panic!("provider drift must fail closed");
+            }
+            Err(error) => error,
+        };
+
+        fs::remove_dir_all(&root)?;
+        assert!(
+            error
+                .to_string()
+                .contains("provider changed within one NDJSON file"),
+            "unexpected error: {error}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn required_field_rejects_surrounding_whitespace() {
+        let error = match required_field(
+            Path::new("fixture.ndjson"),
+            Some(" call_1 "),
+            "invocation_id",
+        ) {
+            Ok(_) => panic!("spaced invocation_id must fail closed"),
+            Err(error) => error,
+        };
+
+        assert!(
+            error
+                .to_string()
+                .contains("invocation_id had surrounding whitespace"),
+            "unexpected error: {error}"
+        );
     }
 }

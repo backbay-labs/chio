@@ -12,7 +12,7 @@
 //! feature re-enables `std`-backed error impls via `thiserror`, along with
 //! the `std` feature on every transitive dependency.
 
-#![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(all(not(feature = "std"), not(test)), no_std)]
 
 extern crate alloc;
 
@@ -32,8 +32,10 @@ pub mod plan;
 pub mod pq;
 pub mod receipt;
 pub mod runtime_attestation;
+mod schema_binding;
 pub mod session;
 pub mod signed_artifact;
+mod signer_binding;
 
 pub use canonical::{
     canonical_json_bytes, canonical_json_string, canonicalize, CanonicalBytes, CanonicalJsonWitness,

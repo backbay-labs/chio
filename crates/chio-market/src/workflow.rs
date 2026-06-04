@@ -3,9 +3,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    LiabilityCoverageClass, SignedLiabilityAutoBindDecision, SignedLiabilityBoundCoverage,
-    SignedLiabilityPlacement, SignedLiabilityPricingAuthority, SignedLiabilityQuoteRequest,
-    SignedLiabilityQuoteResponse, MAX_LIABILITY_MARKET_WORKFLOW_LIMIT,
+    bounded_market_query_limit, LiabilityCoverageClass, SignedLiabilityAutoBindDecision,
+    SignedLiabilityBoundCoverage, SignedLiabilityPlacement, SignedLiabilityPricingAuthority,
+    SignedLiabilityQuoteRequest, SignedLiabilityQuoteResponse, MAX_LIABILITY_MARKET_WORKFLOW_LIMIT,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -44,9 +44,7 @@ impl Default for LiabilityMarketWorkflowQuery {
 impl LiabilityMarketWorkflowQuery {
     #[must_use]
     pub fn limit_or_default(&self) -> usize {
-        self.limit
-            .unwrap_or(50)
-            .clamp(1, MAX_LIABILITY_MARKET_WORKFLOW_LIMIT)
+        bounded_market_query_limit(self.limit, MAX_LIABILITY_MARKET_WORKFLOW_LIMIT)
     }
 
     #[must_use]

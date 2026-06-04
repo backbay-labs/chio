@@ -54,7 +54,7 @@ pub const PORTABLE_PASSPORT_SCHEMA: &str = "chio.portable-agent-passport.v1";
 /// on top -- relying parties only need to know they received bytes
 /// signed by a trusted issuer inside the validity window.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PortablePassportBody {
     /// Schema identifier; must equal [`PORTABLE_PASSPORT_SCHEMA`].
     pub schema: String,
@@ -73,7 +73,7 @@ pub struct PortablePassportBody {
 
 /// Signed portable passport envelope.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PortablePassportEnvelope {
     pub body: PortablePassportBody,
     pub signature: Signature,

@@ -33,20 +33,21 @@
 //! tool dispatch stay outside this module and outside the present proof claim.
 
 use alloc::string::{String, ToString};
-use alloc::vec::Vec;
 
-use chio_core_types::capability::{CapabilityCryptoFloor, CapabilityNegotiation, CapabilityToken};
+use chio_core_types::capability::{
+    CapabilityCryptoFloor, CapabilityNegotiation, CapabilityToken, ChioScope,
+};
 use chio_core_types::crypto::PublicKey;
 
 use crate::budget_split::{BudgetRegistry, NoopBudgetRegistry};
 use crate::capability_verify::{
-    verify_capability_full, verify_capability_with_floor, CapabilityError, TrustRootResolver,
-    VerifiedCapability,
+    admit_delegated_budget, verify_capability_full, verify_capability_with_floor, CapabilityError,
+    TrustRootResolver, VerifiedCapability,
 };
 use crate::clock::Clock;
 use crate::guard::{Guard, GuardContext, PortableToolCallRequest};
 use crate::normalized::{NormalizationError, NormalizedEvaluationVerdict};
-use crate::scope::{resolve_matching_grants, MatchedGrant};
+use crate::scope::resolve_matching_grants;
 use crate::Verdict;
 
 /// Inputs to [`evaluate`]. Grouped into a struct so the call site stays
@@ -203,6 +204,36 @@ impl KernelCoreError {
     }
 }
 
+fn out_of_scope_error(request: &PortableToolCallRequest) -> KernelCoreError {
+    KernelCoreError::OutOfScope {
+        tool: request.tool_name.clone(),
+        server: request.server_id.clone(),
+    }
+}
+
+fn resolve_matched_grant_index(
+    scope: &ChioScope,
+    request: &PortableToolCallRequest,
+) -> Result<usize, KernelCoreError> {
+    let matches = match resolve_matching_grants(
+        scope,
+        &request.tool_name,
+        &request.server_id,
+        &request.arguments,
+    ) {
+        Ok(matches) => matches,
+        Err(crate::ScopeMatchError::OutOfScope) => return Err(out_of_scope_error(request)),
+        Err(crate::ScopeMatchError::ConstraintError(reason)) => {
+            return Err(KernelCoreError::ConstraintError { reason });
+        }
+    };
+
+    matches
+        .first()
+        .map(|matched| matched.index)
+        .ok_or_else(|| out_of_scope_error(request))
+}
+
 /// Primary entry point for the portable kernel core.
 ///
 /// Performs in order:
@@ -245,7 +276,8 @@ pub fn evaluate_with_crypto_floor(
 
 /// Evaluate with both a configured crypto floor and a sibling-sum budget
 /// registry. Hosted kernels that track delegated children should call this
-/// so an oversubscribed sibling fails closed at the verify step.
+/// so an oversubscribed sibling fails closed after the request is otherwise
+/// allowed.
 pub fn evaluate_with_crypto_floor_and_budgets(
     input: EvaluateInput<'_>,
     crypto_floor: CapabilityCryptoFloor,
@@ -259,12 +291,13 @@ pub fn evaluate_with_crypto_floor_and_budgets(
         return deny(core_err, None, None);
     }
 
+    let mut verify_only_budgets = NoopBudgetRegistry;
     let verified = match verify_capability_with_floor(
         input.capability,
         input.trusted_issuers,
         input.clock,
         crypto_floor,
-        budgets,
+        &mut verify_only_budgets,
     ) {
         Ok(verified) => verified,
         Err(error) => {
@@ -273,86 +306,7 @@ pub fn evaluate_with_crypto_floor_and_budgets(
         }
     };
 
-    // Step 2: subject binding.
-    if verified.subject_hex != input.request.agent_id {
-        let core_err = KernelCoreError::SubjectMismatch {
-            expected: verified.subject_hex.clone(),
-            actual: input.request.agent_id.clone(),
-        };
-        return deny(core_err, None, Some(verified));
-    }
-
-    // Step 3: scope match.
-    let matches: Vec<MatchedGrant<'_>> = match resolve_matching_grants(
-        &verified.scope,
-        &input.request.tool_name,
-        &input.request.server_id,
-        &input.request.arguments,
-    ) {
-        Ok(matches) if matches.is_empty() => {
-            let core_err = KernelCoreError::OutOfScope {
-                tool: input.request.tool_name.clone(),
-                server: input.request.server_id.clone(),
-            };
-            return deny(core_err, None, Some(verified));
-        }
-        Ok(matches) => matches,
-        Err(crate::ScopeMatchError::OutOfScope) => {
-            let core_err = KernelCoreError::OutOfScope {
-                tool: input.request.tool_name.clone(),
-                server: input.request.server_id.clone(),
-            };
-            return deny(core_err, None, Some(verified));
-        }
-        Err(crate::ScopeMatchError::ConstraintError(reason)) => {
-            return deny(
-                KernelCoreError::ConstraintError { reason },
-                None,
-                Some(verified),
-            );
-        }
-    };
-    // Safe: guarded above.
-    let matched_grant_index = matches[0].index;
-
-    // Step 4: guard pipeline.
-    let ctx = GuardContext {
-        request: input.request,
-        scope: &verified.scope,
-        agent_id: &input.request.agent_id,
-        server_id: &input.request.server_id,
-        session_filesystem_roots: input.session_filesystem_roots,
-        matched_grant_index: Some(matched_grant_index),
-    };
-
-    for guard in input.guards {
-        match guard.evaluate(&ctx) {
-            Ok(Verdict::Allow) => {}
-            Ok(Verdict::Deny) | Ok(Verdict::PendingApproval) => {
-                // PendingApproval is reserved for the full kernel orchestration
-                // layer (chio-kernel::approval::ApprovalGuard); if a legacy sync
-                // guard surfaces it here we fail closed.
-                let core_err = KernelCoreError::GuardDenied {
-                    guard: guard.name().to_string(),
-                };
-                return deny(core_err, Some(matched_grant_index), Some(verified));
-            }
-            Err(error) => {
-                let core_err = KernelCoreError::GuardError {
-                    guard: guard.name().to_string(),
-                    reason: error.deny_reason(),
-                };
-                return deny(core_err, Some(matched_grant_index), Some(verified));
-            }
-        }
-    }
-
-    EvaluationVerdict {
-        verdict: Verdict::Allow,
-        reason: None,
-        matched_grant_index: Some(matched_grant_index),
-        verified: Some(verified),
-    }
+    finish_verified_evaluation(input, verified, budgets)
 }
 
 /// Full current-semantics evaluation entry point.
@@ -397,6 +351,14 @@ pub fn evaluate_with_full_floor(
         }
     };
 
+    finish_verified_evaluation(input, verified, budgets)
+}
+
+fn finish_verified_evaluation(
+    input: EvaluateInput<'_>,
+    verified: VerifiedCapability,
+    budgets: &mut dyn BudgetRegistry,
+) -> EvaluationVerdict {
     // Step 2: subject binding.
     if verified.subject_hex != input.request.agent_id {
         let core_err = KernelCoreError::SubjectMismatch {
@@ -407,37 +369,10 @@ pub fn evaluate_with_full_floor(
     }
 
     // Step 3: scope match.
-    let matches: Vec<MatchedGrant<'_>> = match resolve_matching_grants(
-        &verified.scope,
-        &input.request.tool_name,
-        &input.request.server_id,
-        &input.request.arguments,
-    ) {
-        Ok(matches) if matches.is_empty() => {
-            let core_err = KernelCoreError::OutOfScope {
-                tool: input.request.tool_name.clone(),
-                server: input.request.server_id.clone(),
-            };
-            return deny(core_err, None, Some(verified));
-        }
-        Ok(matches) => matches,
-        Err(crate::ScopeMatchError::OutOfScope) => {
-            let core_err = KernelCoreError::OutOfScope {
-                tool: input.request.tool_name.clone(),
-                server: input.request.server_id.clone(),
-            };
-            return deny(core_err, None, Some(verified));
-        }
-        Err(crate::ScopeMatchError::ConstraintError(reason)) => {
-            return deny(
-                KernelCoreError::ConstraintError { reason },
-                None,
-                Some(verified),
-            );
-        }
+    let matched_grant_index = match resolve_matched_grant_index(&verified.scope, input.request) {
+        Ok(index) => index,
+        Err(error) => return deny(error, None, Some(verified)),
     };
-    // Safe: guarded above.
-    let matched_grant_index = matches[0].index;
 
     // Step 4: guard pipeline.
     let ctx = GuardContext {
@@ -453,6 +388,9 @@ pub fn evaluate_with_full_floor(
         match guard.evaluate(&ctx) {
             Ok(Verdict::Allow) => {}
             Ok(Verdict::Deny) | Ok(Verdict::PendingApproval) => {
+                // PendingApproval is reserved for the full kernel orchestration
+                // layer (chio-kernel::approval::ApprovalGuard); if a sync guard
+                // surfaces it here we fail closed.
                 let core_err = KernelCoreError::GuardDenied {
                     guard: guard.name().to_string(),
                 };
@@ -468,21 +406,11 @@ pub fn evaluate_with_full_floor(
         }
     }
 
-    if let Some(parent_link) = input.capability.delegation_chain.last() {
-        let proposed_share = input
-            .capability
-            .budget_share_bps
-            .unwrap_or(crate::budget_split::MAX_BUDGET_SHARE_BPS);
-        if let Err(error) = budgets.try_admit_child(
-            parent_link.capability_id.as_str(),
-            input.capability.id.clone(),
-            proposed_share,
-        ) {
-            let core_err = KernelCoreError::InvalidCapability(
-                crate::capability_verify::CapabilityError::BudgetSplitRejected(error),
-            );
-            return deny(core_err, Some(matched_grant_index), Some(verified));
-        }
+    // Step 5: mutate delegated sibling budget only after every deny-capable
+    // local check has passed.
+    if let Err(error) = admit_delegated_budget(input.capability, budgets) {
+        let core_err = KernelCoreError::InvalidCapability(error);
+        return deny(core_err, Some(matched_grant_index), Some(verified));
     }
 
     EvaluationVerdict {
@@ -503,5 +431,199 @@ fn deny(
         reason: Some(error.deny_reason()),
         matched_grant_index,
         verified,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{BudgetRegistry, InMemoryBudgetRegistry, MAX_BUDGET_SHARE_BPS};
+    use alloc::vec;
+    use chio_core_types::capability::{
+        CapabilityToken, CapabilityTokenBody, ChioScope, DelegationLink, DelegationLinkBody,
+        Operation, ToolGrant,
+    };
+    use chio_core_types::crypto::Keypair;
+
+    fn grant(server_id: &str, tool_name: &str) -> ToolGrant {
+        ToolGrant {
+            server_id: server_id.to_string(),
+            tool_name: tool_name.to_string(),
+            operations: vec![Operation::Invoke],
+            constraints: vec![],
+            max_invocations: None,
+            max_cost_per_invocation: None,
+            max_total_cost: None,
+            dpop_required: None,
+        }
+    }
+
+    fn request() -> PortableToolCallRequest {
+        PortableToolCallRequest {
+            request_id: "req-1".to_string(),
+            tool_name: "echo".to_string(),
+            server_id: "srv-a".to_string(),
+            agent_id: "agent-1".to_string(),
+            arguments: serde_json::json!({"msg":"hello"}),
+        }
+    }
+
+    fn delegated_capability(
+        issuer: &Keypair,
+        subject: &Keypair,
+        parent_capability_id: &str,
+    ) -> CapabilityToken {
+        let parent_link = match DelegationLink::sign(
+            DelegationLinkBody {
+                capability_id: parent_capability_id.to_string(),
+                delegator: issuer.public_key(),
+                delegatee: issuer.public_key(),
+                attenuations: vec![],
+                timestamp: 100,
+                scope_hash: None,
+            },
+            issuer,
+        ) {
+            Ok(link) => link,
+            Err(error) => panic!("failed to sign parent delegation link: {error:?}"),
+        };
+
+        match CapabilityToken::sign(
+            CapabilityTokenBody {
+                id: "child-capability".to_string(),
+                issuer: issuer.public_key(),
+                subject: subject.public_key(),
+                scope: ChioScope {
+                    grants: vec![grant("srv-a", "echo")],
+                    resource_grants: vec![],
+                    prompt_grants: vec![],
+                },
+                issued_at: 100,
+                expires_at: 200,
+                delegation_chain: vec![parent_link],
+            },
+            issuer,
+        ) {
+            Ok(token) => token,
+            Err(error) => panic!("failed to sign delegated capability: {error:?}"),
+        }
+    }
+
+    #[test]
+    fn resolve_matched_grant_index_uses_scope_specificity_order() {
+        let scope = ChioScope {
+            grants: vec![grant("*", "*"), grant("srv-a", "echo")],
+            resource_grants: vec![],
+            prompt_grants: vec![],
+        };
+
+        let matched_index = resolve_matched_grant_index(&scope, &request());
+
+        assert_eq!(matched_index, Ok(1));
+    }
+
+    #[test]
+    fn resolve_matched_grant_index_maps_missing_grant_to_request_identity() {
+        let scope = ChioScope {
+            grants: vec![grant("srv-b", "echo")],
+            resource_grants: vec![],
+            prompt_grants: vec![],
+        };
+
+        let error = resolve_matched_grant_index(&scope, &request());
+
+        assert_eq!(
+            error,
+            Err(KernelCoreError::OutOfScope {
+                tool: "echo".to_string(),
+                server: "srv-a".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn budget_admission_waits_until_subject_scope_and_guards_allow() {
+        let issuer = Keypair::generate();
+        let subject = Keypair::generate();
+        let wrong_agent = Keypair::generate();
+        let parent_capability_id = "parent-capability";
+        let capability = delegated_capability(&issuer, &subject, parent_capability_id);
+        let mut request = request();
+        request.agent_id = wrong_agent.public_key().to_hex();
+        let trusted = [issuer.public_key()];
+        let clock = crate::FixedClock::new(150);
+        let guards: [&dyn Guard; 0] = [];
+        let mut budgets = InMemoryBudgetRegistry::new();
+        if let Err(error) =
+            budgets.register_parent(parent_capability_id.to_string(), MAX_BUDGET_SHARE_BPS)
+        {
+            panic!("failed to register parent budget split: {error:?}");
+        }
+
+        let verdict = evaluate_with_crypto_floor_and_budgets(
+            EvaluateInput {
+                request: &request,
+                capability: &capability,
+                trusted_issuers: &trusted,
+                clock: &clock,
+                guards: &guards,
+                session_filesystem_roots: None,
+            },
+            CapabilityCryptoFloor::AllowClassical,
+            &mut budgets,
+        );
+
+        assert!(verdict.is_deny());
+        let split = match budgets.split(parent_capability_id) {
+            Some(split) => split,
+            None => panic!("registered parent budget split was missing"),
+        };
+        assert_eq!(split.current_total_child_bps(), 0);
+        assert!(split.children.is_empty());
+    }
+
+    #[test]
+    fn full_floor_budget_admission_waits_until_subject_scope_and_guards_allow() {
+        let issuer = Keypair::generate();
+        let subject = Keypair::generate();
+        let wrong_agent = Keypair::generate();
+        let parent_capability_id = "parent-capability-full";
+        let capability = delegated_capability(&issuer, &subject, parent_capability_id);
+        let mut request = request();
+        request.agent_id = wrong_agent.public_key().to_hex();
+        let trusted = [issuer.public_key()];
+        let clock = crate::FixedClock::new(150);
+        let guards: [&dyn Guard; 0] = [];
+        let peer = CapabilityNegotiation::t1_default();
+        let trust_roots = |_issuer: &chio_core_types::crypto::PublicKey| None;
+        let mut budgets = InMemoryBudgetRegistry::new();
+        if let Err(error) =
+            budgets.register_parent(parent_capability_id.to_string(), MAX_BUDGET_SHARE_BPS)
+        {
+            panic!("failed to register parent budget split: {error:?}");
+        }
+
+        let verdict = evaluate_with_full_floor(
+            EvaluateInput {
+                request: &request,
+                capability: &capability,
+                trusted_issuers: &trusted,
+                clock: &clock,
+                guards: &guards,
+                session_filesystem_roots: None,
+            },
+            CapabilityCryptoFloor::AllowClassical,
+            &peer,
+            &trust_roots,
+            &mut budgets,
+        );
+
+        assert!(verdict.is_deny());
+        let split = match budgets.split(parent_capability_id) {
+            Some(split) => split,
+            None => panic!("registered parent budget split was missing"),
+        };
+        assert_eq!(split.current_total_child_bps(), 0);
+        assert!(split.children.is_empty());
     }
 }

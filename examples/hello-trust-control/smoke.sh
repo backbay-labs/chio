@@ -64,16 +64,6 @@ PY
   --json \
   > "${ARTIFACT_ROOT}/status-before.json"
 
-python3 - "${ARTIFACT_ROOT}/status-before.json" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-assert payload["capability_id"], payload
-assert payload["revoked"] is False, payload
-PY
-
 "${CHIO_BIN}" \
   --control-url "${CONTROL_URL}" \
   --control-token "${SERVICE_TOKEN}" \
@@ -81,17 +71,6 @@ PY
   --capability-id "${CAPABILITY_ID}" \
   --json \
   > "${ARTIFACT_ROOT}/revoke.json"
-
-python3 - "${ARTIFACT_ROOT}/revoke.json" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-assert payload["capability_id"], payload
-assert payload["revoked"] is True, payload
-assert payload["newly_revoked"] is True, payload
-PY
 
 "${CHIO_BIN}" \
   --control-url "${CONTROL_URL}" \
@@ -101,16 +80,6 @@ PY
   --json \
   > "${ARTIFACT_ROOT}/status-after.json"
 
-python3 - "${ARTIFACT_ROOT}/status-after.json" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-assert payload["capability_id"], payload
-assert payload["revoked"] is True, payload
-PY
-
 "${CHIO_BIN}" check \
   --policy "${EXAMPLE_ROOT}/policy.yaml" \
   --tool read_file \
@@ -119,22 +88,16 @@ PY
   --json \
   > "${ARTIFACT_ROOT}/check.json"
 
-python3 - "${ARTIFACT_ROOT}/check.json" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-assert payload["tool"] == "read_file", payload
-assert payload["verdict"].lower() == "allow", payload
-assert payload["receipt_id"], payload
-assert payload["policy_hash"], payload
-PY
-
-"${CHIO_BIN}" receipt --receipt-db "${CHECK_RECEIPT_DB}" list --limit 20 > "${ARTIFACT_ROOT}/receipts.ndjson"
+"${CHIO_BIN}" receipt \
+  --receipt-db "${CHECK_RECEIPT_DB}" \
+  list \
+  --admin-all \
+  --limit 20 \
+  > "${ARTIFACT_ROOT}/receipts.ndjson"
 
 "${CHIO_BIN}" evidence export \
   --receipt-db "${CHECK_RECEIPT_DB}" \
+  --admin-all \
   --output "${EVIDENCE_DIR}"
 
 "${CHIO_BIN}" evidence verify \
@@ -142,38 +105,12 @@ PY
   --json \
   > "${ARTIFACT_ROOT}/verify.json"
 
-python3 - "${ARTIFACT_ROOT}/verify.json" <<'PY'
-import json
-import sys
-from pathlib import Path
+python3 "${EXAMPLE_ROOT}/verify_artifacts.py" \
+  "${ARTIFACT_ROOT}" \
+  --write-summary \
+  > "${ARTIFACT_ROOT}/artifact-validation.json"
 
-payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-assert payload["toolReceipts"] == 1, payload
-assert payload["verifiedFiles"] >= 1, payload
-PY
-
-python3 - "${ARTIFACT_ROOT}" "${CAPABILITY_ID}" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-artifact_root = Path(sys.argv[1])
-capability_id = sys.argv[2]
-check = json.loads((artifact_root / "check.json").read_text(encoding="utf-8"))
-verify = json.loads((artifact_root / "verify.json").read_text(encoding="utf-8"))
-summary = {
-    "example": "hello-trust-control",
-    "capability_id": capability_id,
-    "receipt_id": check["receipt_id"],
-    "tool": check["tool"],
-    "verdict": check["verdict"],
-    "evidence_verified": True,
-    "tool_receipts": verify["toolReceipts"],
-}
-(artifact_root / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
-PY
-
-RECEIPT_ID="$(python3 - "${ARTIFACT_ROOT}/check.json" <<'PY'
+RECEIPT_ID="$(python3 - "${ARTIFACT_ROOT}/summary.json" <<'PY'
 import json
 import sys
 from pathlib import Path

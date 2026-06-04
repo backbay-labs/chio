@@ -22,16 +22,24 @@ use chio_kernel::{
     ChioKernel, LateSessionEvent, NestedFlowClient, PeerCapabilities, SessionOperationResponse,
     ToolCallOutput, ToolCallRequest, ToolCallResponse, ToolCallStream, ToolServerEvent, Verdict,
 };
-use chio_manifest::{LatencyHint, ToolDefinition, ToolManifest};
+use chio_manifest::ToolManifest;
+#[cfg(test)]
+use chio_manifest::{LatencyHint, ToolDefinition};
 use chrono::{SecondsFormat, Utc};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::{json, Value};
 
+#[path = "runtime/discovery.rs"]
+mod discovery;
+#[path = "runtime/framing.rs"]
+pub(crate) mod framing;
 #[path = "runtime/nested_flow.rs"]
 mod nested_flow;
 #[path = "runtime/protocol.rs"]
 mod protocol;
 
+pub use discovery::McpExposedTool;
+use discovery::{build_exposed_tool_bindings, ExposedToolBinding};
 use nested_flow::*;
 use protocol::*;
 
@@ -56,6 +64,7 @@ const MAX_BACKGROUND_TASKS_PER_TICK: usize = 8;
 const RELATED_TASK_META_KEY: &str = "io.modelcontextprotocol/related-task";
 const MAX_DEFERRED_MCP_TASKS: usize = 1024;
 const DEFAULT_MCP_TASK_TTL_MILLIS: u64 = 5 * 60 * 1000;
+const MAX_MCP_TASK_TTL_MILLIS: u64 = 60 * 60 * 1000;
 
 #[derive(Debug, Clone)]
 pub struct McpEdgeConfig {
@@ -452,34 +461,6 @@ fn negotiate_protocol_version(id: &Value, params: &Value) -> Result<&'static str
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct McpExposedTool {
-    pub name: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub title: Option<String>,
-    pub description: String,
-    #[serde(rename = "inputSchema")]
-    pub input_schema: Value,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        rename = "outputSchema"
-    )]
-    pub output_schema: Option<Value>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub annotations: Option<Value>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub execution: Option<Value>,
-}
-
-#[derive(Debug, Clone)]
-struct ExposedToolBinding {
-    tool: McpExposedTool,
-    server_id: String,
-    tool_name: String,
-}
-
 #[derive(Debug, Clone)]
 enum EdgeState {
     Uninitialized,
@@ -709,27 +690,7 @@ impl ChioMcpEdge {
         capabilities: Vec<CapabilityToken>,
         manifests: Vec<ToolManifest>,
     ) -> Result<Self, AdapterError> {
-        let mut tool_index = BTreeMap::new();
-        let mut tools = Vec::new();
-
-        for manifest in manifests {
-            for tool in manifest.tools {
-                if tool_index.contains_key(&tool.name) {
-                    return Err(AdapterError::ManifestError(
-                        chio_manifest::ManifestError::DuplicateToolName(tool.name),
-                    ));
-                }
-
-                let exposed_name = tool.name.clone();
-                let binding = ExposedToolBinding {
-                    tool: manifest_tool_to_mcp_tool(tool),
-                    server_id: manifest.server_id.clone(),
-                    tool_name: exposed_name.clone(),
-                };
-                tool_index.insert(exposed_name, tools.len());
-                tools.push(binding);
-            }
-        }
+        let (tools, tool_index) = build_exposed_tool_bindings(manifests)?;
 
         Ok(Self {
             config,
@@ -813,29 +774,18 @@ impl ChioMcpEdge {
     }
 
     pub fn handle_jsonrpc(&mut self, message: Value) -> Option<Value> {
-        if message.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
-            return Some(jsonrpc_error(
-                Value::Null,
-                JSONRPC_INVALID_REQUEST,
-                "invalid jsonrpc envelope",
-            ));
-        }
-
-        let method = match message.get("method").and_then(Value::as_str) {
-            Some(method) => method,
-            None => {
-                return Some(jsonrpc_error(
-                    message.get("id").cloned().unwrap_or(Value::Null),
-                    JSONRPC_INVALID_REQUEST,
-                    "request missing method",
-                ))
-            }
+        let JsonRpcEnvelope { id, method, params } = match parse_jsonrpc_envelope(&message) {
+            Ok(envelope) => envelope,
+            Err(response) => return Some(response),
         };
-
-        let params = message.get("params").cloned().unwrap_or_else(|| json!({}));
-        match message.get("id").cloned() {
-            Some(id) => Some(self.handle_request(id, method, params)),
-            None => self.handle_notification(method, params),
+        match id {
+            Some(id) => {
+                if let Err(response) = ensure_known_request_params_object(&id, &method, &params) {
+                    return Some(response);
+                }
+                Some(self.handle_request(id, &method, params))
+            }
+            None => self.handle_known_notification(&method, params),
         }
     }
 
@@ -857,31 +807,18 @@ impl ChioMcpEdge {
         reader: &mut R,
         writer: &mut W,
     ) -> Option<Value> {
-        if message.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
-            return Some(jsonrpc_error(
-                Value::Null,
-                JSONRPC_INVALID_REQUEST,
-                "invalid jsonrpc envelope",
-            ));
-        }
-
-        let method = match message.get("method").and_then(Value::as_str) {
-            Some(method) => method,
-            None => {
-                return Some(jsonrpc_error(
-                    message.get("id").cloned().unwrap_or(Value::Null),
-                    JSONRPC_INVALID_REQUEST,
-                    "request missing method",
-                ))
-            }
+        let JsonRpcEnvelope { id, method, params } = match parse_jsonrpc_envelope(&message) {
+            Ok(envelope) => envelope,
+            Err(response) => return Some(response),
         };
-
-        let params = message.get("params").cloned().unwrap_or_else(|| json!({}));
-        match message.get("id").cloned() {
+        match id {
             Some(id) => {
-                Some(self.handle_request_with_transport(id, method, params, reader, writer))
+                if let Err(response) = ensure_known_request_params_object(&id, &method, &params) {
+                    return Some(response);
+                }
+                Some(self.handle_request_with_transport(id, &method, params, reader, writer))
             }
-            None => self.handle_notification(method, params),
+            None => self.handle_known_notification(&method, params),
         }
     }
 
@@ -892,31 +829,20 @@ impl ChioMcpEdge {
         cancel_rx: &mpsc::Receiver<Value>,
         writer: &mut W,
     ) -> Option<Value> {
-        if message.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
-            return Some(jsonrpc_error(
-                Value::Null,
-                JSONRPC_INVALID_REQUEST,
-                "invalid jsonrpc envelope",
-            ));
-        }
-
-        let method = match message.get("method").and_then(Value::as_str) {
-            Some(method) => method,
-            None => {
-                return Some(jsonrpc_error(
-                    message.get("id").cloned().unwrap_or(Value::Null),
-                    JSONRPC_INVALID_REQUEST,
-                    "request missing method",
+        let JsonRpcEnvelope { id, method, params } = match parse_jsonrpc_envelope(&message) {
+            Ok(envelope) => envelope,
+            Err(response) => return Some(response),
+        };
+        match id {
+            Some(id) => {
+                if let Err(response) = ensure_known_request_params_object(&id, &method, &params) {
+                    return Some(response);
+                }
+                Some(self.handle_request_with_transport_channel(
+                    id, &method, params, client_rx, cancel_rx, writer,
                 ))
             }
-        };
-
-        let params = message.get("params").cloned().unwrap_or_else(|| json!({}));
-        match message.get("id").cloned() {
-            Some(id) => Some(self.handle_request_with_transport_channel(
-                id, method, params, client_rx, cancel_rx, writer,
-            )),
-            None => self.handle_notification(method, params),
+            None => self.handle_known_notification(&method, params),
         }
     }
 
@@ -1062,6 +988,14 @@ impl ChioMcpEdge {
             ),
             _ => self.handle_request(id, method, params),
         }
+    }
+
+    fn handle_known_notification(&mut self, method: &str, params: Value) -> Option<Value> {
+        if !known_notification_params_are_object(method, &params) {
+            return None;
+        }
+
+        self.handle_notification(method, params)
     }
 
     fn handle_notification(&mut self, method: &str, _params: Value) -> Option<Value> {

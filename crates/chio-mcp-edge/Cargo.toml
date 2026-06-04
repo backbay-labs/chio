@@ -9,6 +9,9 @@ repository.workspace = true
 readme = "README.md"
 publish = false
 
+[package.metadata.chio]
+public_entrypoint = true
+
 [lib]
 name = "chio_mcp_edge"
 

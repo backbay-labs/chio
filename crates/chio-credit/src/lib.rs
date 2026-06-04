@@ -67,6 +67,29 @@ pub const MAX_CREDIT_LOSS_LIFECYCLE_LIST_LIMIT: usize = 100;
 pub const MAX_CREDIT_BACKTEST_WINDOW_LIMIT: usize = 24;
 pub const MAX_CREDIT_PROVIDER_LOSS_LIMIT: usize = 25;
 
+fn bounded_limit_or_default(limit: Option<usize>, default: usize, max: usize) -> usize {
+    limit.unwrap_or(default).clamp(1, max)
+}
+
+fn validate_optional_query_filter(
+    value: &Option<String>,
+    flag: &'static str,
+) -> Result<(), String> {
+    if let Some(value) = value {
+        if value.trim().is_empty() {
+            return Err(format!(
+                "exposure ledger query filter {flag} must be non-empty"
+            ));
+        }
+        if value.trim() != value {
+            return Err(format!(
+                "exposure ledger query filter {flag} must not contain surrounding whitespace"
+            ));
+        }
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ExposureLedgerQuery {
@@ -106,16 +129,12 @@ impl Default for ExposureLedgerQuery {
 impl ExposureLedgerQuery {
     #[must_use]
     pub fn receipt_limit_or_default(&self) -> usize {
-        self.receipt_limit
-            .unwrap_or(100)
-            .clamp(1, MAX_EXPOSURE_LEDGER_RECEIPT_LIMIT)
+        bounded_limit_or_default(self.receipt_limit, 100, MAX_EXPOSURE_LEDGER_RECEIPT_LIMIT)
     }
 
     #[must_use]
     pub fn decision_limit_or_default(&self) -> usize {
-        self.decision_limit
-            .unwrap_or(50)
-            .clamp(1, MAX_EXPOSURE_LEDGER_DECISION_LIMIT)
+        bounded_limit_or_default(self.decision_limit, 50, MAX_EXPOSURE_LEDGER_DECISION_LIMIT)
     }
 
     #[must_use]
@@ -127,6 +146,10 @@ impl ExposureLedgerQuery {
     }
 
     pub fn validate(&self) -> Result<(), String> {
+        validate_optional_query_filter(&self.capability_id, "--capability")?;
+        validate_optional_query_filter(&self.agent_subject, "--agent-subject")?;
+        validate_optional_query_filter(&self.tool_server, "--tool-server")?;
+        validate_optional_query_filter(&self.tool_name, "--tool-name")?;
         if self.capability_id.is_none()
             && self.agent_subject.is_none()
             && self.tool_server.is_none()
@@ -630,9 +653,7 @@ impl Default for CreditFacilityListQuery {
 impl CreditFacilityListQuery {
     #[must_use]
     pub fn limit_or_default(&self) -> usize {
-        self.limit
-            .unwrap_or(50)
-            .clamp(1, MAX_CREDIT_FACILITY_LIST_LIMIT)
+        bounded_limit_or_default(self.limit, 50, MAX_CREDIT_FACILITY_LIST_LIMIT)
     }
 
     #[must_use]
@@ -835,9 +856,7 @@ impl Default for CreditBondListQuery {
 impl CreditBondListQuery {
     #[must_use]
     pub fn limit_or_default(&self) -> usize {
-        self.limit
-            .unwrap_or(50)
-            .clamp(1, MAX_CREDIT_BOND_LIST_LIMIT)
+        bounded_limit_or_default(self.limit, 50, MAX_CREDIT_BOND_LIST_LIMIT)
     }
 
     #[must_use]
@@ -1109,9 +1128,7 @@ impl Default for CreditLossLifecycleListQuery {
 impl CreditLossLifecycleListQuery {
     #[must_use]
     pub fn limit_or_default(&self) -> usize {
-        self.limit
-            .unwrap_or(50)
-            .clamp(1, MAX_CREDIT_LOSS_LIFECYCLE_LIST_LIMIT)
+        bounded_limit_or_default(self.limit, 50, MAX_CREDIT_LOSS_LIFECYCLE_LIST_LIMIT)
     }
 
     #[must_use]
@@ -1198,16 +1215,12 @@ impl Default for CreditBacktestQuery {
 impl CreditBacktestQuery {
     #[must_use]
     pub fn receipt_limit_or_default(&self) -> usize {
-        self.receipt_limit
-            .unwrap_or(100)
-            .clamp(1, MAX_EXPOSURE_LEDGER_RECEIPT_LIMIT)
+        bounded_limit_or_default(self.receipt_limit, 100, MAX_EXPOSURE_LEDGER_RECEIPT_LIMIT)
     }
 
     #[must_use]
     pub fn decision_limit_or_default(&self) -> usize {
-        self.decision_limit
-            .unwrap_or(50)
-            .clamp(1, MAX_EXPOSURE_LEDGER_DECISION_LIMIT)
+        bounded_limit_or_default(self.decision_limit, 50, MAX_EXPOSURE_LEDGER_DECISION_LIMIT)
     }
 
     #[must_use]
@@ -1217,9 +1230,7 @@ impl CreditBacktestQuery {
 
     #[must_use]
     pub fn window_count_or_default(&self) -> usize {
-        self.window_count
-            .unwrap_or(4)
-            .clamp(1, MAX_CREDIT_BACKTEST_WINDOW_LIMIT)
+        bounded_limit_or_default(self.window_count, 4, MAX_CREDIT_BACKTEST_WINDOW_LIMIT)
     }
 
     #[must_use]
@@ -1367,24 +1378,22 @@ impl Default for CreditProviderRiskPackageQuery {
 impl CreditProviderRiskPackageQuery {
     #[must_use]
     pub fn recent_loss_limit_or_default(&self) -> usize {
-        self.recent_loss_limit
-            .unwrap_or(10)
-            .clamp(1, MAX_CREDIT_PROVIDER_LOSS_LIMIT)
+        bounded_limit_or_default(self.recent_loss_limit, 10, MAX_CREDIT_PROVIDER_LOSS_LIMIT)
     }
 
     #[must_use]
     pub fn normalized(&self) -> Self {
         let mut normalized = self.clone();
-        normalized.receipt_limit = Some(
-            self.receipt_limit
-                .unwrap_or(100)
-                .clamp(1, MAX_EXPOSURE_LEDGER_RECEIPT_LIMIT),
-        );
-        normalized.decision_limit = Some(
-            self.decision_limit
-                .unwrap_or(50)
-                .clamp(1, MAX_EXPOSURE_LEDGER_DECISION_LIMIT),
-        );
+        normalized.receipt_limit = Some(bounded_limit_or_default(
+            self.receipt_limit,
+            100,
+            MAX_EXPOSURE_LEDGER_RECEIPT_LIMIT,
+        ));
+        normalized.decision_limit = Some(bounded_limit_or_default(
+            self.decision_limit,
+            50,
+            MAX_EXPOSURE_LEDGER_DECISION_LIMIT,
+        ));
         normalized.recent_loss_limit = Some(self.recent_loss_limit_or_default());
         normalized
     }

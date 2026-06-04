@@ -6,18 +6,17 @@
 //! libFuzzer instrumentation.
 //!
 //! [`fuzz_mcp_envelope_parse`] drives arbitrary bytes through the adapter's MCP
-//! envelope parse path. MCP uses newline-delimited JSON-RPC over stdin/stdout
-//! (see `crates/chio-mcp-adapter/src/transport.rs::read_line`), so the parse
-//! contract is two-stage: split the byte stream into newline-terminated lines,
-//! then `serde_json::from_str` each non-empty line into a `serde_json::Value`
-//! envelope. Both stages must surface bad inputs as errors rather than panics.
+//! envelope parse path. MCP uses newline-delimited JSON-RPC over stdin/stdout,
+//! so the fuzz entrypoint routes arbitrary bytes through the same internal
+//! frame decoder that production stdio transport uses. Delimiter, size, UTF-8,
+//! and JSON errors must surface as errors rather than panics.
 //!
 //! Companion entry point: the edge crate's
 //! `chio_mcp_edge::fuzz::fuzz_mcp_envelope_decode` carries the full
 //! decode-then-evaluator-dispatch pipeline. This adapter-side wrapper is retained
 //! as a smaller seam targeting only the transport-side parse path.
 
-use std::io::BufRead;
+use std::io::BufReader;
 
 /// Drive arbitrary bytes through the adapter's MCP envelope parse path.
 ///
@@ -25,30 +24,32 @@ use std::io::BufRead;
 /// what `chio_mcp_adapter::transport::StdioMcpTransport`'s reader thread
 /// receives from an upstream MCP subprocess. The wrapper:
 ///
-/// 1. Wraps the byte slice in a `BufRead` and iterates `read_line` to mirror
-///    the per-line framing used by the real transport.
-/// 2. Trims each line and feeds the trimmed contents to
-///    `serde_json::from_str::<serde_json::Value>`. Empty trimmed lines are
-///    skipped to match the real loop's behaviour on blank framing bytes.
+/// 1. Wraps the byte slice in a `BufRead`.
+/// 2. Iterates the shared production frame decoder used by
+///    `StdioMcpTransport`.
 ///
 /// Errors at every step are silently consumed: the trust-boundary contract
-/// guarantees the only outcomes are `Err(serde_json::Error)` (good),
-/// successful `Ok(Value)` (good), or a panic / abort (which libFuzzer reports
+/// guarantees the only outcomes are an `AdapterError` (good), a successfully
+/// decoded frame (good), clean EOF, or a panic / abort (which libFuzzer reports
 /// as a crash).
 pub fn fuzz_mcp_envelope_parse(data: &[u8]) {
-    let mut reader = std::io::BufReader::new(data);
+    let mut reader = BufReader::new(data);
     loop {
-        let mut line = String::new();
-        match reader.read_line(&mut line) {
-            Ok(0) => return,
-            Ok(_) => {
-                let trimmed = line.trim();
-                if trimmed.is_empty() {
-                    continue;
-                }
-                let _ = serde_json::from_str::<serde_json::Value>(trimmed);
-            }
+        match crate::framing::read_jsonrpc_frame(&mut reader) {
+            Ok(Some(_frame)) => continue,
+            Ok(None) => return,
             Err(_) => return,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fuzz_entrypoint_uses_strict_framing_without_panicking() {
+        fuzz_mcp_envelope_parse(b"\n{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}\n");
+        fuzz_mcp_envelope_parse(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}");
     }
 }

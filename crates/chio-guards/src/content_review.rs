@@ -39,7 +39,7 @@ use serde_json::Value;
 use chio_core::capability::Constraint;
 use chio_kernel::{Guard, GuardContext, KernelError, Verdict};
 
-use crate::action::{extract_action, ToolAction};
+use crate::action::{extract_action_checked, ToolAction};
 
 /// Errors produced when building a [`ContentReviewGuard`].
 #[derive(Debug, thiserror::Error)]
@@ -272,7 +272,10 @@ impl Guard for ContentReviewGuard {
             return Ok(Verdict::Allow);
         }
 
-        let action = extract_action(&ctx.request.tool_name, &ctx.request.arguments);
+        let action = match extract_action_checked(&ctx.request.tool_name, &ctx.request.arguments) {
+            Ok(action) => action,
+            Err(_) => return Ok(Verdict::Deny),
+        };
         let (service, endpoint) = match action {
             ToolAction::ExternalApiCall { service, endpoint } => (service, endpoint),
             _ => return Ok(Verdict::Allow),

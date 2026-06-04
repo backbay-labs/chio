@@ -100,6 +100,10 @@ pub enum GuardRegistryError {
     #[error("guard publish reference must be tag-addressed, not pinned by digest")]
     PublishReferencePinnedByDigest,
 
+    /// The publish reference did not carry an explicit tag.
+    #[error("guard publish reference must include an explicit tag")]
+    PublishReferenceMissingTag,
+
     /// The artifact config could not be serialized.
     #[error("failed to serialize guard artifact config: {0}")]
     ConfigSerialize(#[from] serde_json::Error),
@@ -284,7 +288,7 @@ pub(crate) fn has_explicit_registry(reference: &str) -> bool {
     first_component == "localhost" || first_component.contains('.') || first_component.contains(':')
 }
 
-fn has_explicit_tag(reference: &str) -> bool {
+pub(crate) fn has_explicit_tag(reference: &str) -> bool {
     let last_component = reference.rsplit('/').next().unwrap_or(reference);
     let name = last_component
         .split_once('@')

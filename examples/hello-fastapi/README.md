@@ -22,8 +22,10 @@ same local sidecar model.
 
 ```text
 README.md
+ARCHITECTURE.md
 pyproject.toml
 app.py
+test_app.py
 openapi.yaml
 policy.yaml
 run.sh
@@ -44,9 +46,17 @@ Run the full end-to-end smoke flow:
 ./smoke.sh
 ```
 
+Run the package-local FastAPI route tests:
+
+```bash
+uv run --project . python -m unittest discover -s . -p 'test_*.py'
+```
+
 Keep the same verification contract as the sidecar-first path: safe route
 allows, governed route denies without a capability, governed route allows with
-a capability, and the smoke flow lists persisted receipts.
+a capability, and the smoke flow lists persisted receipts. Route tests run with
+the Chio middleware disabled so request-schema failures are caught without
+requiring a live sidecar.
 
 Like `hello-openapi-sidecar`, this is a direct HTTP app example rather than an
 MCP hosted-session example. It does not exercise `initialize`,

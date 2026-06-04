@@ -2,6 +2,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+use crate::_generated::error_codes::{lookup_error_code, ErrorCodeSpec};
 use crate::{Code, Domain, Severity};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -28,6 +29,11 @@ impl Diagnostic {
             message: message.into(),
             help: None,
         }
+    }
+
+    #[must_use]
+    pub fn from_spec(spec: &ErrorCodeSpec, message: impl Into<String>) -> Self {
+        Self::new(spec.urn, spec.domain, spec.severity, message).with_help(spec.help)
     }
 
     #[must_use]
@@ -59,6 +65,12 @@ impl Diagnostic {
     #[must_use]
     pub fn help(&self) -> Option<&str> {
         self.help.as_deref()
+    }
+
+    #[must_use]
+    pub fn registry_spec(&self) -> Option<&'static ErrorCodeSpec> {
+        let spec = lookup_error_code(self.code.as_str())?;
+        (self.domain == spec.domain && self.severity == spec.severity).then_some(spec)
     }
 
     #[must_use]
@@ -102,6 +114,11 @@ impl ChioError {
     }
 
     #[must_use]
+    pub fn from_spec(spec: &ErrorCodeSpec, message: impl Into<String>) -> Self {
+        Diagnostic::from_spec(spec, message).into_error()
+    }
+
+    #[must_use]
     pub fn diagnostic(&self) -> &Diagnostic {
         &self.diagnostic
     }
@@ -130,6 +147,11 @@ impl ChioError {
     pub fn help(&self) -> Option<&str> {
         self.diagnostic.help()
     }
+
+    #[must_use]
+    pub fn registry_spec(&self) -> Option<&'static ErrorCodeSpec> {
+        self.diagnostic.registry_spec()
+    }
 }
 
 impl From<Diagnostic> for ChioError {
@@ -149,6 +171,11 @@ pub fn diagnostic(
 }
 
 #[must_use]
+pub fn diagnostic_from_spec(spec: &ErrorCodeSpec, message: impl Into<String>) -> Diagnostic {
+    Diagnostic::from_spec(spec, message)
+}
+
+#[must_use]
 pub fn error(
     code: impl Into<Code>,
     domain: Domain,
@@ -156,4 +183,9 @@ pub fn error(
     message: impl Into<String>,
 ) -> ChioError {
     ChioError::new(code, domain, severity, message)
+}
+
+#[must_use]
+pub fn error_from_spec(spec: &ErrorCodeSpec, message: impl Into<String>) -> ChioError {
+    ChioError::from_spec(spec, message)
 }

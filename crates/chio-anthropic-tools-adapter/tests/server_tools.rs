@@ -7,6 +7,14 @@ use chio_manifest::{LatencyHint, ServerTool, ToolDefinition, ToolManifest, TOOL_
 use chio_tool_call_fabric::{ProviderError, ProviderRequest};
 use serde_json::json;
 
+type TestResult = Result<(), Box<dyn std::error::Error>>;
+
+fn valid_test_public_key() -> String {
+    chio_core::Keypair::from_seed(&[29u8; 32])
+        .public_key()
+        .to_hex()
+}
+
 fn config() -> AnthropicAdapterConfig {
     AnthropicAdapterConfig::new(
         "anthropic-1",
@@ -35,7 +43,7 @@ fn manifest(server_tools: Vec<ServerTool>) -> ToolManifest {
         }],
         server_tools,
         required_permissions: None,
-        public_key: "deadbeef".to_string(),
+        public_key: valid_test_public_key(),
     }
 }
 
@@ -56,8 +64,7 @@ fn tool_use_payload(name: &str) -> Result<ProviderRequest, serde_json::Error> {
 
 #[test]
 #[cfg(not(feature = "computer-use"))]
-fn server_tools_fail_closed_without_computer_use_feature() -> Result<(), Box<dyn std::error::Error>>
-{
+fn server_tools_fail_closed_without_computer_use_feature() -> TestResult {
     let adapter = AnthropicAdapter::new_with_manifest(
         config(),
         Arc::new(MockTransport::new()),
@@ -74,8 +81,26 @@ fn server_tools_fail_closed_without_computer_use_feature() -> Result<(), Box<dyn
 }
 
 #[test]
+#[cfg(not(feature = "computer-use"))]
+fn date_suffixed_server_tools_need_computer_use_feature() -> TestResult {
+    let adapter = AnthropicAdapter::new_with_manifest(
+        config(),
+        Arc::new(MockTransport::new()),
+        &manifest(vec![ServerTool::Bash]),
+    )?;
+    let result = adapter.lift_batch(tool_use_payload("bash_20250124")?);
+
+    assert!(matches!(
+        result,
+        Err(ProviderError::Malformed(message))
+            if message.contains("requires the `computer-use` cargo feature")
+    ));
+    Ok(())
+}
+
+#[test]
 #[cfg(feature = "computer-use")]
-fn server_tools_fail_closed_without_manifest_allowlist() -> Result<(), Box<dyn std::error::Error>> {
+fn server_tools_fail_closed_without_manifest_allowlist() -> TestResult {
     let adapter = AnthropicAdapter::new(config(), Arc::new(MockTransport::new()));
     let result = adapter.lift_batch(tool_use_payload("bash_20241022")?);
 
@@ -89,8 +114,7 @@ fn server_tools_fail_closed_without_manifest_allowlist() -> Result<(), Box<dyn s
 
 #[test]
 #[cfg(feature = "computer-use")]
-fn server_tools_manifest_allowlist_allows_matching_tool() -> Result<(), Box<dyn std::error::Error>>
-{
+fn server_tools_manifest_allowlist_allows_matching_tool() -> TestResult {
     let adapter = AnthropicAdapter::new_with_manifest(
         config(),
         Arc::new(MockTransport::new()),
@@ -105,8 +129,22 @@ fn server_tools_manifest_allowlist_allows_matching_tool() -> Result<(), Box<dyn 
 
 #[test]
 #[cfg(feature = "computer-use")]
-fn server_tools_manifest_allowlist_denies_unlisted_peer() -> Result<(), Box<dyn std::error::Error>>
-{
+fn server_tools_manifest_allows_date_suffixed_family() -> TestResult {
+    let adapter = AnthropicAdapter::new_with_manifest(
+        config(),
+        Arc::new(MockTransport::new()),
+        &manifest(vec![ServerTool::Bash]),
+    )?;
+    let invocations = adapter.lift_batch(tool_use_payload("bash_20250124")?)?;
+
+    assert_eq!(invocations.len(), 1);
+    assert_eq!(invocations[0].tool_name, "bash_20250124");
+    Ok(())
+}
+
+#[test]
+#[cfg(feature = "computer-use")]
+fn server_tools_manifest_allowlist_denies_unlisted_peer() -> TestResult {
     let adapter = AnthropicAdapter::new_with_manifest(
         config(),
         Arc::new(MockTransport::new()),
@@ -123,7 +161,7 @@ fn server_tools_manifest_allowlist_denies_unlisted_peer() -> Result<(), Box<dyn 
 }
 
 #[test]
-fn server_tools_gate_ignores_regular_custom_tools() -> Result<(), Box<dyn std::error::Error>> {
+fn server_tools_gate_ignores_regular_custom_tools() -> TestResult {
     let adapter = AnthropicAdapter::new(config(), Arc::new(MockTransport::new()));
     let invocations = adapter.lift_batch(tool_use_payload("regular_tool")?)?;
 

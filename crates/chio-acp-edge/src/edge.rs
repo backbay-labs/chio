@@ -31,6 +31,29 @@ pub struct ChioAcpEdgeCompatibility<'a> {
     edge: &'a ChioAcpEdge,
 }
 
+fn validate_execution_context(execution: &AcpKernelExecutionContext) -> Result<(), AcpEdgeError> {
+    validate_execution_agent_id(&execution.agent_id)
+}
+
+fn validate_execution_agent_id(agent_id: &str) -> Result<(), AcpEdgeError> {
+    if agent_id.trim().is_empty() {
+        return Err(AcpEdgeError::InvalidRequest(
+            "ACP execution agent_id must not be empty".to_string(),
+        ));
+    }
+    if agent_id.trim() != agent_id {
+        return Err(AcpEdgeError::InvalidRequest(
+            "ACP execution agent_id must not include leading or trailing whitespace".to_string(),
+        ));
+    }
+    if agent_id.chars().any(|character| character.is_control()) {
+        return Err(AcpEdgeError::InvalidRequest(
+            "ACP execution agent_id must not include control characters".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 impl ChioAcpEdge {
     /// Create a new ACP edge from Chio tool manifests.
     pub fn new(config: AcpEdgeConfig, manifests: Vec<ToolManifest>) -> Result<Self, AcpEdgeError> {
@@ -38,6 +61,10 @@ impl ChioAcpEdge {
         let mut capability_fidelity = BTreeMap::new();
         let mut capability_bindings = BTreeMap::new();
         let mut capability_sources: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+
+        for manifest in &manifests {
+            chio_manifest::validate_manifest(manifest)?;
+        }
 
         for manifest in &manifests {
             for tool in &manifest.tools {
@@ -111,16 +138,22 @@ impl ChioAcpEdge {
 
     fn prune_deferred_tasks(&self) {
         let now = current_unix_millis();
-        self.tasks.borrow_mut().retain(|_, task| {
-            task.task.status == AcpTaskStatus::Working && task.expires_at_ms > now
-        });
+        self.tasks
+            .borrow_mut()
+            .retain(|_, task| task.expires_at_ms > now);
     }
 
     fn ensure_deferred_task_capacity(&self) -> Result<(), AcpEdgeError> {
         self.prune_deferred_tasks();
-        if self.tasks.borrow().len() >= MAX_DEFERRED_ACP_TASKS {
+        let active_count = self
+            .tasks
+            .borrow()
+            .values()
+            .filter(|task| !task.task.status.is_terminal())
+            .count();
+        if active_count >= MAX_DEFERRED_ACP_TASKS {
             return Err(AcpEdgeError::InvalidRequest(
-                "too many deferred tasks are pending".to_string(),
+                "too many deferred tasks are retained".to_string(),
             ));
         }
         Ok(())
@@ -159,6 +192,24 @@ impl ChioAcpEdge {
         })
     }
 
+    fn dpop_proof_matches_kernel_permission_preview(
+        kernel: &ChioKernel,
+        proof: &dpop::DpopProof,
+        capability: &CapabilityToken,
+        binding: &CapabilityBinding,
+        arguments: &Value,
+    ) -> bool {
+        kernel
+            .verify_dpop_for_permission_preview(
+                proof,
+                capability,
+                &binding.server_id,
+                &binding.tool_name,
+                arguments,
+            )
+            .is_ok()
+    }
+
     /// List all capabilities.
     pub fn capabilities(&self) -> &[AcpCapability] {
         &self.capabilities
@@ -189,13 +240,39 @@ impl ChioAcpEdge {
     /// Evaluate a permission request against an explicit capability token.
     ///
     /// This is a truthful permission preview for deployments that already have
-    /// authenticated capability context but are not yet dispatching the tool
-    /// call itself.
+    /// authenticated capability context but are not yet dispatching the tool call
+    /// itself. DPoP-required grants need kernel policy context and fail closed
+    /// here; use [`evaluate_permission_with_kernel`](Self::evaluate_permission_with_kernel)
+    /// for kernel-backed previews.
     pub fn evaluate_permission(
         &self,
         request: &PermissionRequest,
         execution: &AcpKernelExecutionContext,
     ) -> PermissionDecision {
+        self.evaluate_permission_with_dpop_policy(request, execution, None)
+    }
+
+    /// Evaluate a permission request against the same kernel DPoP policy that
+    /// authoritative invocation will use.
+    pub fn evaluate_permission_with_kernel(
+        &self,
+        request: &PermissionRequest,
+        kernel: &ChioKernel,
+        execution: &AcpKernelExecutionContext,
+    ) -> PermissionDecision {
+        self.evaluate_permission_with_dpop_policy(request, execution, Some(kernel))
+    }
+
+    fn evaluate_permission_with_dpop_policy(
+        &self,
+        request: &PermissionRequest,
+        execution: &AcpKernelExecutionContext,
+        kernel: Option<&ChioKernel>,
+    ) -> PermissionDecision {
+        if validate_execution_context(execution).is_err() {
+            return PermissionDecision::Deny;
+        }
+
         let Some(binding) = self.capability_bindings.get(&request.capability_id) else {
             return PermissionDecision::Deny;
         };
@@ -210,15 +287,50 @@ impl ChioAcpEdge {
             return PermissionDecision::Deny;
         }
 
-        match capability_matches_request(
+        let model_metadata = execution.model_metadata.as_ref();
+        let matches_request = match capability_matches_request_with_model_metadata(
             &execution.capability,
             &binding.tool_name,
             &binding.server_id,
             &request.arguments,
+            model_metadata,
         ) {
-            Ok(true) => PermissionDecision::Allow,
-            Ok(false) | Err(_) => PermissionDecision::Deny,
+            Ok(matches) => matches,
+            Err(_) => return PermissionDecision::Deny,
+        };
+        if !matches_request {
+            return PermissionDecision::Deny;
         }
+
+        let requires_dpop = match capability_request_requires_dpop_with_model_metadata(
+            &execution.capability,
+            &binding.tool_name,
+            &binding.server_id,
+            &request.arguments,
+            model_metadata,
+        ) {
+            Ok(requires) => requires,
+            Err(_) => return PermissionDecision::Deny,
+        };
+        if requires_dpop {
+            let Some(proof) = execution.dpop_proof.as_ref() else {
+                return PermissionDecision::Deny;
+            };
+            let Some(kernel) = kernel else {
+                return PermissionDecision::Deny;
+            };
+            if !Self::dpop_proof_matches_kernel_permission_preview(
+                kernel,
+                proof,
+                &execution.capability,
+                binding,
+                &request.arguments,
+            ) {
+                return PermissionDecision::Deny;
+            }
+        }
+
+        PermissionDecision::Allow
     }
 
     /// Evaluate a permission request using the config-only passthrough preview path.
@@ -250,6 +362,7 @@ impl ChioAcpEdge {
         kernel: &ChioKernel,
         execution: &AcpKernelExecutionContext,
     ) -> Result<AcpInvocationResult, AcpEdgeError> {
+        validate_execution_context(execution)?;
         let binding = self.capability_binding(capability_id)?;
         let request_suffix = current_unix_timestamp();
         let request = self.build_execution_request(
@@ -281,6 +394,7 @@ impl ChioAcpEdge {
         execution: &AcpKernelExecutionContext,
         reason: impl Into<String>,
     ) -> Result<AcpInvocationResult, AcpEdgeError> {
+        validate_execution_context(execution)?;
         let binding = self.capability_binding(capability_id)?;
         let request_suffix = current_unix_timestamp();
         let request = self.build_execution_request(
@@ -315,6 +429,7 @@ impl ChioAcpEdge {
         kernel: &ChioKernel,
         execution: &AcpKernelExecutionContext,
     ) -> Result<AcpInvocationResult, AcpEdgeError> {
+        validate_execution_context(execution)?;
         let binding = self.capability_binding(capability_id)?;
         let request_suffix = current_unix_timestamp();
         let request = self.build_execution_request(
@@ -392,12 +507,24 @@ impl ChioAcpEdge {
         message: Value,
         kernel: &ChioKernel,
         execution: &AcpKernelExecutionContext,
-    ) -> Value {
-        let method = message.get("method").and_then(Value::as_str).unwrap_or("");
-        let id = message.get("id").cloned().unwrap_or(Value::Null);
-        let params = message.get("params").cloned().unwrap_or_else(|| json!({}));
+    ) -> AcpJsonRpcResponse {
+        let AcpJsonRpcEnvelope { id, method, params } =
+            match Self::parse_jsonrpc_envelope(&message) {
+                Ok(envelope) => envelope,
+                Err(response) => return AcpJsonRpcResponse::from_optional(response),
+            };
+        let should_respond = id.is_some();
+        let id = id.unwrap_or(Value::Null);
+        if let Err(response) = Self::ensure_jsonrpc_params_object_for_known_method(
+            &id,
+            &method,
+            &params,
+            ACP_JSONRPC_KNOWN_METHODS,
+        ) {
+            return AcpJsonRpcResponse::from_optional(should_respond.then_some(response));
+        }
 
-        match method {
+        let response = match method.as_str() {
             "session/list_capabilities" => {
                 json!({
                     "jsonrpc": "2.0",
@@ -410,18 +537,20 @@ impl ChioAcpEdge {
                 })
             }
             "session/request_permission" => {
-                let cap_id = params
-                    .get("capabilityId")
-                    .and_then(Value::as_str)
-                    .unwrap_or("");
-                let request = PermissionRequest {
-                    capability_id: cap_id.to_string(),
-                    arguments: params
-                        .get("arguments")
-                        .cloned()
-                        .unwrap_or_else(|| json!({})),
+                let request = match Self::jsonrpc_permission_request(&params) {
+                    Ok(request) => request,
+                    Err(error) => {
+                        return AcpJsonRpcResponse::from_optional(
+                            should_respond.then_some(Self::jsonrpc_error_response(id, error)),
+                        )
+                    }
                 };
-                let decision = self.evaluate_permission(&request, execution);
+                if let Err(error) = validate_execution_context(execution) {
+                    return AcpJsonRpcResponse::from_optional(
+                        should_respond.then_some(Self::jsonrpc_error_response(id, error)),
+                    );
+                }
+                let decision = self.evaluate_permission_with_kernel(&request, kernel, execution);
                 json!({
                     "jsonrpc": "2.0",
                     "id": id,
@@ -433,15 +562,21 @@ impl ChioAcpEdge {
                 })
             }
             "tool/invoke" => {
-                let cap_id = params
-                    .get("capabilityId")
-                    .and_then(Value::as_str)
-                    .unwrap_or("");
-                let arguments = params
-                    .get("arguments")
-                    .cloned()
-                    .unwrap_or_else(|| json!({}));
-                match self.invoke(cap_id, arguments, kernel, execution) {
+                let (capability_id, arguments) =
+                    match Self::jsonrpc_invocation_params(&params, "tool/invoke") {
+                        Ok(parsed) => parsed,
+                        Err(error) => {
+                            return AcpJsonRpcResponse::from_optional(
+                                should_respond.then_some(Self::jsonrpc_error_response(id, error)),
+                            )
+                        }
+                    };
+                if let Err(error) = validate_execution_context(execution) {
+                    return AcpJsonRpcResponse::from_optional(
+                        should_respond.then_some(Self::jsonrpc_error_response(id, error)),
+                    );
+                }
+                match self.invoke(&capability_id, arguments, kernel, execution) {
                     Ok(result) => json!({
                         "jsonrpc": "2.0",
                         "id": id,
@@ -469,7 +604,8 @@ impl ChioAcpEdge {
                     "message": "method not found"
                 }
             }),
-        }
+        };
+        AcpJsonRpcResponse::from_optional(should_respond.then_some(response))
     }
 
     /// Handle a JSON-RPC ACP request through the direct passthrough path.
@@ -481,12 +617,24 @@ impl ChioAcpEdge {
         &self,
         message: Value,
         server: &dyn ToolServerConnection,
-    ) -> Value {
-        let method = message.get("method").and_then(Value::as_str).unwrap_or("");
-        let id = message.get("id").cloned().unwrap_or(Value::Null);
-        let params = message.get("params").cloned().unwrap_or_else(|| json!({}));
+    ) -> AcpJsonRpcResponse {
+        let AcpJsonRpcEnvelope { id, method, params } =
+            match Self::parse_jsonrpc_envelope(&message) {
+                Ok(envelope) => envelope,
+                Err(response) => return AcpJsonRpcResponse::from_optional(response),
+            };
+        let should_respond = id.is_some();
+        let id = id.unwrap_or(Value::Null);
+        if let Err(response) = Self::ensure_jsonrpc_params_object_for_known_method(
+            &id,
+            &method,
+            &params,
+            ACP_JSONRPC_KNOWN_METHODS,
+        ) {
+            return AcpJsonRpcResponse::from_optional(should_respond.then_some(response));
+        }
 
-        match method {
+        let response = match method.as_str() {
             "session/list_capabilities" => {
                 json!({
                     "jsonrpc": "2.0",
@@ -499,16 +647,13 @@ impl ChioAcpEdge {
                 })
             }
             "session/request_permission" => {
-                let cap_id = params
-                    .get("capabilityId")
-                    .and_then(Value::as_str)
-                    .unwrap_or("");
-                let request = PermissionRequest {
-                    capability_id: cap_id.to_string(),
-                    arguments: params
-                        .get("arguments")
-                        .cloned()
-                        .unwrap_or_else(|| json!({})),
+                let request = match Self::jsonrpc_permission_request(&params) {
+                    Ok(request) => request,
+                    Err(error) => {
+                        return AcpJsonRpcResponse::from_optional(
+                            should_respond.then_some(Self::jsonrpc_error_response(id, error)),
+                        )
+                    }
                 };
                 let decision = self.evaluate_permission_passthrough(&request);
                 json!({
@@ -522,15 +667,16 @@ impl ChioAcpEdge {
                 })
             }
             "tool/invoke" => {
-                let cap_id = params
-                    .get("capabilityId")
-                    .and_then(Value::as_str)
-                    .unwrap_or("");
-                let arguments = params
-                    .get("arguments")
-                    .cloned()
-                    .unwrap_or_else(|| json!({}));
-                match self.invoke_passthrough(cap_id, arguments, server) {
+                let (capability_id, arguments) =
+                    match Self::jsonrpc_invocation_params(&params, "tool/invoke") {
+                        Ok(parsed) => parsed,
+                        Err(error) => {
+                            return AcpJsonRpcResponse::from_optional(
+                                should_respond.then_some(Self::jsonrpc_error_response(id, error)),
+                            )
+                        }
+                    };
+                match self.invoke_passthrough(&capability_id, arguments, server) {
                     Ok(result) => json!({
                         "jsonrpc": "2.0",
                         "id": id,
@@ -573,7 +719,8 @@ impl ChioAcpEdge {
                     "message": "method not found"
                 }
             }),
-        }
+        };
+        AcpJsonRpcResponse::from_optional(should_respond.then_some(response))
     }
 
     fn handle_jsonrpc_stream(
@@ -582,15 +729,15 @@ impl ChioAcpEdge {
         params: Value,
         execution: &AcpKernelExecutionContext,
     ) -> Value {
-        let cap_id = params
-            .get("capabilityId")
-            .and_then(Value::as_str)
-            .unwrap_or("");
-        let arguments = params
-            .get("arguments")
-            .cloned()
-            .unwrap_or_else(|| json!({}));
-        match self.start_stream_task(cap_id, arguments, execution) {
+        let (capability_id, arguments) =
+            match Self::jsonrpc_invocation_params(&params, "tool/stream") {
+                Ok(parsed) => parsed,
+                Err(error) => return Self::jsonrpc_error_response(id, error),
+            };
+        if let Err(error) = validate_execution_context(execution) {
+            return Self::jsonrpc_error_response(id, error);
+        }
+        match self.start_stream_task(&capability_id, arguments, execution) {
             Ok(task) => json!({
                 "jsonrpc": "2.0",
                 "id": id,
@@ -615,17 +762,14 @@ impl ChioAcpEdge {
         params: Value,
         execution: &AcpKernelExecutionContext,
     ) -> Value {
-        let Some(task_id) = params.get("taskId").and_then(Value::as_str) else {
-            return json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "error": {
-                    "code": -32602,
-                    "message": "tool/cancel requires params.taskId"
-                }
-            });
+        let task_id = match Self::jsonrpc_task_id_params(&params, "tool/cancel") {
+            Ok(task_id) => task_id,
+            Err(error) => return Self::jsonrpc_error_response(id, error),
         };
-        match self.cancel_stream_task(task_id, execution) {
+        if let Err(error) = validate_execution_context(execution) {
+            return Self::jsonrpc_error_response(id, error);
+        }
+        match self.cancel_stream_task(&task_id, execution) {
             Ok(task) => json!({
                 "jsonrpc": "2.0",
                 "id": id,
@@ -651,17 +795,14 @@ impl ChioAcpEdge {
         kernel: &ChioKernel,
         execution: &AcpKernelExecutionContext,
     ) -> Value {
-        let Some(task_id) = params.get("taskId").and_then(Value::as_str) else {
-            return json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "error": {
-                    "code": -32602,
-                    "message": "tool/resume requires params.taskId"
-                }
-            });
+        let task_id = match Self::jsonrpc_task_id_params(&params, "tool/resume") {
+            Ok(task_id) => task_id,
+            Err(error) => return Self::jsonrpc_error_response(id, error),
         };
-        match self.resume_stream_task(task_id, kernel, execution) {
+        if let Err(error) = validate_execution_context(execution) {
+            return Self::jsonrpc_error_response(id, error);
+        }
+        match self.resume_stream_task(&task_id, kernel, execution) {
             Ok((task, result)) => json!({
                 "jsonrpc": "2.0",
                 "id": id,
@@ -687,6 +828,7 @@ impl ChioAcpEdge {
         arguments: Value,
         execution: &AcpKernelExecutionContext,
     ) -> Result<AcpInvocationTask, AcpEdgeError> {
+        validate_execution_context(execution)?;
         let binding = self.capability_binding(capability_id)?;
         self.ensure_deferred_task_capacity()?;
         let task_id = self.next_task_id();
@@ -726,6 +868,7 @@ impl ChioAcpEdge {
         task_id: &str,
         execution: &AcpKernelExecutionContext,
     ) -> Result<AcpInvocationTask, AcpEdgeError> {
+        validate_execution_context(execution)?;
         self.prune_deferred_tasks();
         let mut tasks = self.tasks.borrow_mut();
         let task = tasks
@@ -743,9 +886,7 @@ impl ChioAcpEdge {
                 task.task.metadata = Some(cancelled_stream_task_metadata(
                     "cross_protocol_orchestrator",
                 ));
-                let task_view = task.task.clone();
-                tasks.remove(task_id);
-                Ok(task_view)
+                Ok(task.task.clone())
             }
             AcpTaskStatus::Cancelled => Ok(task.task.clone()),
             status => Err(AcpEdgeError::InvalidRequest(format!(
@@ -760,6 +901,7 @@ impl ChioAcpEdge {
         kernel: &ChioKernel,
         execution: &AcpKernelExecutionContext,
     ) -> Result<(AcpInvocationTask, Value), AcpEdgeError> {
+        validate_execution_context(execution)?;
         self.prune_deferred_tasks();
         let task_snapshot = {
             let tasks = self.tasks.borrow();
@@ -790,7 +932,6 @@ impl ChioAcpEdge {
                 task.result = Some(result.clone());
                 let task_view = task.task.clone();
                 let result_value = serde_json::to_value(&result).unwrap_or(Value::Null);
-                tasks.remove(task_id);
                 return Ok((task_view, result_value));
             }
         }
@@ -838,7 +979,11 @@ impl ChioAcpEdgeCompatibility<'_> {
     ///
     /// This compatibility helper exposes config-preview and direct tool
     /// invocation, but marks both as non-authoritative.
-    pub fn handle_jsonrpc(&self, message: Value, server: &dyn ToolServerConnection) -> Value {
+    pub fn handle_jsonrpc(
+        &self,
+        message: Value,
+        server: &dyn ToolServerConnection,
+    ) -> AcpJsonRpcResponse {
         self.edge.handle_jsonrpc_passthrough(message, server)
     }
 }

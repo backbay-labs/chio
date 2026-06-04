@@ -73,6 +73,22 @@ pub enum BiddingError {
     TokenSignatureInvalid,
 }
 
+fn invalid_request(message: impl Into<String>) -> BiddingError {
+    BiddingError::InvalidRequest(message.into())
+}
+
+fn validate_required_field(value: &str, field: &str) -> Result<(), BiddingError> {
+    if value.trim().is_empty() {
+        Err(invalid_request(format!("{field} must not be empty")))
+    } else if value.trim() != value {
+        Err(invalid_request(format!(
+            "{field} must not contain surrounding whitespace"
+        )))
+    } else {
+        Ok(())
+    }
+}
+
 /// A bid request issued by an agent.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -89,31 +105,22 @@ pub struct BidRequest {
 impl BidRequest {
     pub fn validate(&self) -> Result<(), BiddingError> {
         if self.schema != BID_REQUEST_SCHEMA {
-            return Err(BiddingError::InvalidRequest(format!(
+            return Err(invalid_request(format!(
                 "unsupported bid request schema: {}",
                 self.schema
             )));
         }
-        if self.agent_id.trim().is_empty() {
-            return Err(BiddingError::InvalidRequest(
-                "agent_id must not be empty".to_string(),
-            ));
-        }
-        if self.listing_id.trim().is_empty() {
-            return Err(BiddingError::InvalidRequest(
-                "listing_id must not be empty".to_string(),
-            ));
-        }
+        validate_required_field(&self.agent_id, "agent_id")?;
+        validate_required_field(&self.listing_id, "listing_id")?;
         if self.max_price_per_call.units == 0 {
-            return Err(BiddingError::InvalidRequest(
-                "max_price_per_call.units must be greater than zero".to_string(),
+            return Err(invalid_request(
+                "max_price_per_call.units must be greater than zero",
             ));
         }
-        if self.max_price_per_call.currency.trim().is_empty() {
-            return Err(BiddingError::InvalidRequest(
-                "max_price_per_call.currency must not be empty".to_string(),
-            ));
-        }
+        validate_required_field(
+            &self.max_price_per_call.currency,
+            "max_price_per_call.currency",
+        )?;
         if self.window_seconds == 0 {
             return Err(BiddingError::WindowOutOfBounds);
         }
@@ -136,21 +143,12 @@ pub struct RequestedScope {
 
 impl RequestedScope {
     pub fn validate(&self) -> Result<(), BiddingError> {
-        if self.server_id.trim().is_empty() {
-            return Err(BiddingError::InvalidRequest(
-                "requested_scope.server_id must not be empty".to_string(),
-            ));
-        }
-        if self.tool_name.trim().is_empty() {
-            return Err(BiddingError::InvalidRequest(
-                "requested_scope.tool_name must not be empty".to_string(),
-            ));
-        }
-        if self.capability_scope_prefix.trim().is_empty() {
-            return Err(BiddingError::InvalidRequest(
-                "requested_scope.capability_scope_prefix must not be empty".to_string(),
-            ));
-        }
+        validate_required_field(&self.server_id, "requested_scope.server_id")?;
+        validate_required_field(&self.tool_name, "requested_scope.tool_name")?;
+        validate_required_field(
+            &self.capability_scope_prefix,
+            "requested_scope.capability_scope_prefix",
+        )?;
         Ok(())
     }
 }
@@ -332,7 +330,7 @@ pub fn bid(
         delegation_chain: Vec::new(),
     };
     let token = CapabilityToken::sign(token_body, context.issuer_keypair)
-        .map_err(|error| BiddingError::InvalidRequest(error.to_string()))?;
+        .map_err(|error| invalid_request(error.to_string()))?;
 
     let bid_digest = canonical_digest(&request.body)?;
 
@@ -347,7 +345,7 @@ pub fn bid(
         expires_at,
     };
     SignedAskResponse::sign(ask, context.issuer_keypair)
-        .map_err(|error| BiddingError::InvalidRequest(error.to_string()))
+        .map_err(|error| invalid_request(error.to_string()))
 }
 
 /// Record bid acceptance against an existing settlement receipt identifier.
@@ -361,16 +359,12 @@ pub fn accept(
     accepted_at: u64,
 ) -> Result<AcceptedBid, BiddingError> {
     if ask.body.schema != ASK_RESPONSE_SCHEMA {
-        return Err(BiddingError::InvalidRequest(format!(
+        return Err(invalid_request(format!(
             "unsupported ask response schema: {}",
             ask.body.schema
         )));
     }
-    if bid_receipt_id.trim().is_empty() {
-        return Err(BiddingError::InvalidRequest(
-            "bid_receipt_id must not be empty".to_string(),
-        ));
-    }
+    validate_required_field(bid_receipt_id, "bid_receipt_id")?;
     match ask.verify_signature() {
         Ok(true) => {}
         _ => return Err(BiddingError::PricingSignatureInvalid),
@@ -388,8 +382,8 @@ pub fn accept(
         return Err(BiddingError::WindowOutOfBounds);
     }
     if accepted_at < ask.body.issued_at {
-        return Err(BiddingError::InvalidRequest(
-            "accepted_at must not precede ask issued_at".to_string(),
+        return Err(invalid_request(
+            "accepted_at must not precede ask issued_at",
         ));
     }
     if accepted_at >= ask.body.expires_at {
@@ -428,8 +422,7 @@ fn capability_scope_covers(candidate: &str, advertised: &str) -> bool {
 }
 
 fn canonical_digest<T: serde::Serialize>(value: &T) -> Result<String, BiddingError> {
-    let bytes = canonical_json_bytes(value)
-        .map_err(|error| BiddingError::InvalidRequest(error.to_string()))?;
+    let bytes = canonical_json_bytes(value).map_err(|error| invalid_request(error.to_string()))?;
     Ok(sha256_hex(&bytes))
 }
 
@@ -446,6 +439,34 @@ mod tests {
     };
 
     use chio_test_support::prelude::*;
+
+    #[test]
+    fn invalid_request_helper_preserves_variant_message() {
+        assert_eq!(
+            invalid_request("agent_id must not be empty"),
+            BiddingError::InvalidRequest("agent_id must not be empty".to_string())
+        );
+    }
+
+    #[test]
+    fn bid_request_rejects_padded_required_fields() {
+        let mut request = bid_request(" agent-alpha", 200, 300, 120);
+        let error = request
+            .validate()
+            .test_expect_err("padded agent id rejected");
+        assert!(
+            matches!(error, BiddingError::InvalidRequest(message) if message.contains("agent_id"))
+        );
+
+        request = bid_request("agent-alpha", 200, 300, 120);
+        request.requested_scope.tool_name = "search ".to_string();
+        let error = request
+            .validate()
+            .test_expect_err("padded tool name rejected");
+        assert!(
+            matches!(error, BiddingError::InvalidRequest(message) if message.contains("tool_name"))
+        );
+    }
 
     fn namespace(keypair: &Keypair) -> GenericNamespaceOwnership {
         GenericNamespaceOwnership {

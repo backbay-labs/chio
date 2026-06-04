@@ -12,11 +12,15 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chio_provider_adapter_core::http::{
-    AuthScheme, HttpTransport, HttpTransportConfig, HttpTransportError, DEFAULT_TIMEOUT,
+    AuthScheme, HttpTransport, HttpTransportConfig, HttpTransportError,
 };
 
 /// Pinned Ollama API version. Bumping requires re-recording conformance fixtures.
 pub const OLLAMA_API_VERSION: &str = "2025-04";
+
+/// Header stamped on every outbound Ollama request to bind captures to the API
+/// snapshot asserted by replay fixtures.
+pub const OLLAMA_API_VERSION_HEADER: &str = "x-ollama-api-version";
 
 /// Default Ollama daemon host (localhost only by default).
 pub const OLLAMA_CHAT_HOST: &str = "http://localhost:11434";
@@ -76,12 +80,13 @@ fn resolve_config(host: Option<&str>, api_key: Option<&str>) -> HttpTransportCon
         Some(value) if !value.trim().is_empty() => AuthScheme::Bearer(value.to_string()),
         _ => AuthScheme::None,
     };
-    HttpTransportConfig {
-        base_url,
-        auth,
-        extra_headers: Vec::new(),
-        timeout: DEFAULT_TIMEOUT,
-    }
+    pinned_config(base_url, auth)
+}
+
+fn pinned_config(base_url: impl Into<String>, auth: AuthScheme) -> HttpTransportConfig {
+    HttpTransportConfig::new(base_url)
+        .with_auth(auth)
+        .with_header(OLLAMA_API_VERSION_HEADER, OLLAMA_API_VERSION)
 }
 
 /// Construct a live [`HttpTransport`] against the configured Ollama daemon.
@@ -110,7 +115,7 @@ pub fn live_transport_with_timeout(
 pub fn live_transport_for(
     base_url: impl Into<String>,
 ) -> Result<Arc<dyn Transport>, HttpTransportError> {
-    let config = HttpTransportConfig::new(base_url).with_auth(AuthScheme::None);
+    let config = pinned_config(base_url, AuthScheme::None);
     let transport = HttpTransport::new(config)?;
     Ok(Arc::new(transport))
 }
@@ -119,6 +124,14 @@ pub fn live_transport_for(
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
+
+    fn api_version_header(config: &HttpTransportConfig) -> Option<&str> {
+        config
+            .extra_headers
+            .iter()
+            .find(|(name, _)| name == OLLAMA_API_VERSION_HEADER)
+            .map(|(_, value)| value.as_str())
+    }
 
     #[test]
     fn pinned_constants_are_correct() {
@@ -132,6 +145,7 @@ mod tests {
         let config = resolve_config(None, None);
         assert_eq!(config.base_url, OLLAMA_CHAT_HOST);
         assert_eq!(config.auth, AuthScheme::None);
+        assert_eq!(api_version_header(&config), Some(OLLAMA_API_VERSION));
     }
 
     #[test]
@@ -139,6 +153,7 @@ mod tests {
         let config = resolve_config(Some("   "), Some(""));
         assert_eq!(config.base_url, OLLAMA_CHAT_HOST);
         assert_eq!(config.auth, AuthScheme::None);
+        assert_eq!(api_version_header(&config), Some(OLLAMA_API_VERSION));
     }
 
     #[test]
@@ -146,6 +161,7 @@ mod tests {
         let config = resolve_config(Some("http://remote-ollama:11434"), Some("gateway-token"));
         assert_eq!(config.base_url, "http://remote-ollama:11434");
         assert_eq!(config.auth, AuthScheme::Bearer("gateway-token".to_string()));
+        assert_eq!(api_version_header(&config), Some(OLLAMA_API_VERSION));
     }
 
     #[tokio::test]

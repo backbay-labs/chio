@@ -938,8 +938,18 @@ pub(crate) fn parse_tenant_read_tokens(specs: &[String]) -> Result<std::collecti
                 "--tenant-read-token must use tenant=token form".to_string(),
             )
         })?;
-        let tenant = tenant.trim();
-        let token = token.trim();
+        if tenant.trim() != tenant || token.trim() != token {
+            return Err(CliError::cli_other_error(
+                "--tenant-read-token tenant and token must not contain surrounding whitespace"
+                    .to_string(),
+            ));
+        }
+        if tenant.chars().any(char::is_control) || token.chars().any(char::is_control) {
+            return Err(CliError::cli_other_error(
+                "--tenant-read-token tenant and token must not contain control characters"
+                    .to_string(),
+            ));
+        }
         if tenant.is_empty() || token.is_empty() {
             return Err(CliError::cli_other_error(
                 "--tenant-read-token tenant and token must be non-empty".to_string(),
@@ -2297,6 +2307,38 @@ mod runtime_local_error_domain_tests {
         );
 
         assert_registry_error(&error, "urn:chio:error:cli:other", "cli");
+    }
+
+    #[test]
+    fn tenant_read_token_mapping_rejects_surrounding_whitespace() {
+        for spec in [" tenant-a=read-token", "tenant-a=read-token "] {
+            let error = must_err(
+                parse_tenant_read_tokens(&[spec.to_string()]),
+                "tenant token mapping with surrounding whitespace should fail closed",
+            );
+
+            let message = error.to_string();
+            assert!(
+                message.contains("surrounding whitespace"),
+                "unexpected tenant token validation error for {spec}: {message}"
+            );
+        }
+    }
+
+    #[test]
+    fn tenant_read_token_mapping_rejects_control_characters() {
+        for spec in ["tenant-\na=read-token", "tenant-a=read\u{7f}token"] {
+            let error = must_err(
+                parse_tenant_read_tokens(&[spec.to_string()]),
+                "tenant token mapping with control characters should fail closed",
+            );
+
+            let message = error.to_string();
+            assert!(
+                message.contains("control characters"),
+                "unexpected tenant token validation error for {spec:?}: {message}"
+            );
+        }
     }
 
     #[test]

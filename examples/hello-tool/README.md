@@ -10,6 +10,7 @@ This example is the maintained native-side landing zone for wrapped-MCP-to-nativ
 - one prompt (`compose_greeting`)
 - manifest signing with a real generated keypair
 - advertised manifest pricing for pre-invocation budget planning
+- a reusable library boundary with a thin binary wrapper
 
 ## Why this example exists
 
@@ -33,6 +34,10 @@ This example shows the next step after that adapter layer:
 | late upstream notifications | `NativeChioService::emit_event()` and `drain_events()` |
 
 The example is intentionally small. If you need resource templates, advanced completion, or transport bootstrapping, drop down to the lower-level traits and edge types directly.
+
+The service construction and demo flow live in `src/lib.rs`; `src/main.rs`
+only handles process exit behavior. That keeps the adoption surface testable
+without requiring downstream users to copy a binary-only module.
 
 ## Pricing
 

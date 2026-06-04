@@ -2,6 +2,7 @@ extern crate alloc;
 
 use alloc::string::ToString;
 use alloc::vec;
+use alloc::vec::Vec;
 
 use chio_core_types::capability::{CapabilityToken, ChioScope, Operation, ToolGrant};
 use chio_core_types::crypto::{PublicKey, Signature, SigningAlgorithm, SigningBackend};

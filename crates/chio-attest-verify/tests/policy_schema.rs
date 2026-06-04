@@ -23,6 +23,18 @@ signature = "AAAA"
 "#
 }
 
+fn assert_malformed_contains(err: AttestError, needle: &str) {
+    let (is_malformed, message) = match err {
+        AttestError::Malformed(message) => (true, message),
+        other => (false, format!("{other:?}")),
+    };
+
+    assert!(
+        is_malformed && message.contains(needle),
+        "expected Malformed containing {needle}, got: {message}"
+    );
+}
+
 #[test]
 fn parses_minimal_policy() {
     let policy =
@@ -64,6 +76,31 @@ signature = "AAAA"
         }
         other => panic!("expected Malformed, got {other:?}"),
     }
+}
+
+#[test]
+fn rejects_blank_or_padded_policy_text_fields() {
+    let toml = r#"
+tenant_id = "acme"
+version = 1
+identity_regexps = [""]
+oidc_issuers = ["https://token.actions.githubusercontent.com"]
+signed_at = "2026-04-01T00:00:00Z"
+signature = "AAAA"
+"#;
+    let err = TenantPolicy::from_toml_slice(toml.as_bytes()).unwrap_err();
+    assert_malformed_contains(err, "identity_regexp");
+
+    let toml = r#"
+tenant_id = "acme"
+version = 1
+identity_regexps = ["https://github\\.com/acme/.*"]
+oidc_issuers = [" https://token.actions.githubusercontent.com"]
+signed_at = "2026-04-01T00:00:00Z"
+signature = "AAAA"
+"#;
+    let err = TenantPolicy::from_toml_slice(toml.as_bytes()).unwrap_err();
+    assert_malformed_contains(err, "oidc_issuer");
 }
 
 #[test]

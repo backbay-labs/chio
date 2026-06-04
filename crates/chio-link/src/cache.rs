@@ -23,6 +23,7 @@ impl PriceCache {
         rate: ExchangeRate,
         now: u64,
     ) -> Result<(), PriceOracleError> {
+        rate.ensure_matches_pair(pair)?;
         rate.ensure_fresh(now)?;
         let key = pair.pair();
         let entry = self.entries.entry(key).or_insert_with(|| CacheEntry {
@@ -45,6 +46,7 @@ impl PriceCache {
             return Ok(None);
         };
         trim_observations(entry, pair, now);
+        entry.latest.ensure_matches_pair(pair)?;
         entry.latest.ensure_fresh(now)?;
         if !pair.policy.twap_enabled || entry.observations.len() <= 1 {
             return Ok(Some(entry.latest.clone()));

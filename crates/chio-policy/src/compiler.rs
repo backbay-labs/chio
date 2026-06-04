@@ -98,6 +98,8 @@ pub fn compile_policy_with_source(
     policy: &HushSpec,
     source_path: Option<&Path>,
 ) -> Result<CompiledPolicy, CompileError> {
+    ensure_compilable_policy(policy)?;
+
     let mut builder = PipelineBuilder::new();
     let mut post_invocation = PostInvocationPipeline::new();
     let source_dir = source_path.and_then(|path| path.parent());
@@ -112,6 +114,23 @@ pub fn compile_policy_with_source(
         default_scope,
         guard_names,
     })
+}
+
+fn ensure_compilable_policy(policy: &HushSpec) -> Result<(), CompileError> {
+    let validation = crate::validate::validate(policy);
+    if validation.is_valid() {
+        return Ok(());
+    }
+
+    let messages = validation
+        .errors
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("; ");
+    Err(CompileError::Invalid(format!(
+        "HushSpec validation failed: {messages}"
+    )))
 }
 
 // ---------------------------------------------------------------------------
@@ -632,9 +651,17 @@ fn compile_scope(policy: &HushSpec) -> Result<ChioScope, CompileError> {
         return Ok(permissive_scope());
     }
 
+    let human_in_loop = rules.human_in_loop.as_ref();
+
     if ta.default == DefaultAction::Allow {
-        if tool_access_can_safely_widen_to_wildcard(ta) {
+        if default_allow_has_unrepresentable_selective_confirmation(ta, human_in_loop) {
+            return Ok(ChioScope::default());
+        }
+        if tool_access_can_safely_widen_to_wildcard(ta, human_in_loop) {
             return Ok(permissive_scope());
+        }
+        if tool_access_can_emit_constrained_wildcard(ta, human_in_loop) {
+            return constrained_wildcard_scope(ta, human_in_loop);
         }
         return Ok(ChioScope::default());
     }
@@ -648,10 +675,19 @@ fn compile_scope(policy: &HushSpec) -> Result<ChioScope, CompileError> {
         return Ok(ChioScope::default());
     }
 
-    // Each allowed tool pattern becomes a grant on a wildcard server
-    let human_in_loop = rules.human_in_loop.as_ref();
-    let mut grants = Vec::with_capacity(ta.allow.len());
+    let mut allowed_tool_patterns = Vec::with_capacity(ta.allow.len());
     for tool_pattern in &ta.allow {
+        if !confirmation_overlap(tool_pattern, &ta.block)? {
+            allowed_tool_patterns.push(tool_pattern);
+        }
+    }
+    if allowed_tool_patterns.is_empty() {
+        return Ok(ChioScope::default());
+    }
+
+    // Each allowed tool pattern becomes a grant on a wildcard server
+    let mut grants = Vec::with_capacity(allowed_tool_patterns.len());
+    for tool_pattern in allowed_tool_patterns {
         grants.push(ToolGrant {
             server_id: "*".to_string(),
             tool_name: tool_pattern.clone(),
@@ -686,6 +722,25 @@ fn permissive_scope() -> ChioScope {
     }
 }
 
+fn constrained_wildcard_scope(
+    rule: &ToolAccessRule,
+    human_in_loop: Option<&HumanInLoopRule>,
+) -> Result<ChioScope, CompileError> {
+    Ok(ChioScope {
+        grants: vec![ToolGrant {
+            server_id: "*".to_string(),
+            tool_name: "*".to_string(),
+            operations: vec![Operation::Invoke],
+            constraints: compile_tool_constraints(rule, "*", human_in_loop)?,
+            max_invocations: None,
+            max_cost_per_invocation: None,
+            max_total_cost: None,
+            dpop_required: None,
+        }],
+        ..ChioScope::default()
+    })
+}
+
 fn compile_custom_secret_patterns(rule: &SecretPatternsRule) -> Vec<CustomSecretPattern> {
     rule.patterns
         .iter()
@@ -706,15 +761,58 @@ fn compile_output_sanitizer_config(rule: &SecretPatternsRule) -> OutputSanitizer
     config
 }
 
-fn tool_access_can_safely_widen_to_wildcard(rule: &ToolAccessRule) -> bool {
+fn tool_access_can_safely_widen_to_wildcard(
+    rule: &ToolAccessRule,
+    human_in_loop: Option<&HumanInLoopRule>,
+) -> bool {
     rule.allow.is_empty()
         && rule.block.is_empty()
         && rule.require_confirmation.is_empty()
         && rule.max_args_size.is_none()
         && rule.require_runtime_assurance_tier.is_none()
-        && rule.prefer_runtime_assurance_tier.is_none()
         && rule.require_workload_identity.is_none()
         && rule.prefer_workload_identity.is_none()
+        && !human_in_loop_requires_scope_constraints(human_in_loop)
+}
+
+fn default_allow_has_unrepresentable_selective_confirmation(
+    rule: &ToolAccessRule,
+    human_in_loop: Option<&HumanInLoopRule>,
+) -> bool {
+    confirmation_requires_selective_scope(&rule.require_confirmation)
+        || human_in_loop.is_some_and(|rule| {
+            rule.enabled && confirmation_requires_selective_scope(&rule.require_confirmation)
+        })
+}
+
+fn human_in_loop_requires_scope_constraints(human_in_loop: Option<&HumanInLoopRule>) -> bool {
+    human_in_loop.is_some_and(|rule| {
+        rule.enabled
+            && (confirmation_applies_to_all_tools(&rule.require_confirmation)
+                || rule.approve_above.is_some())
+    })
+}
+
+fn confirmation_applies_to_all_tools(patterns: &[String]) -> bool {
+    patterns.iter().any(|pattern| pattern == "*")
+}
+
+fn confirmation_requires_selective_scope(patterns: &[String]) -> bool {
+    !patterns.is_empty() && !confirmation_applies_to_all_tools(patterns)
+}
+
+fn tool_access_can_emit_constrained_wildcard(
+    rule: &ToolAccessRule,
+    human_in_loop: Option<&HumanInLoopRule>,
+) -> bool {
+    rule.allow.is_empty()
+        && rule.block.is_empty()
+        && rule.require_workload_identity.is_none()
+        && rule.prefer_workload_identity.is_none()
+        && (rule.max_args_size.is_some()
+            || rule.require_runtime_assurance_tier.is_some()
+            || confirmation_applies_to_all_tools(&rule.require_confirmation)
+            || human_in_loop_requires_scope_constraints(human_in_loop))
 }
 
 fn compile_tool_constraints(
@@ -727,18 +825,17 @@ fn compile_tool_constraints(
         constraints.push(Constraint::MaxArgsSize(max_args_size));
     }
 
-    // Determine approval threshold. tool_access.require_confirmation always
-    // forces threshold=0 (approval required for every invocation). A
-    // top-level `rules.human_in_loop` with `require_confirmation` globs that
-    // match this tool does the same. Otherwise, if `human_in_loop` is
-    // enabled and declares an `approve_above` threshold, use that threshold.
+    // Determine approval threshold. require_confirmation forces threshold=0
+    // when it matches the compiled grant. A wildcard grant can only carry
+    // confirmation when the source pattern applies to all tools; selective
+    // confirmations stay in the policy evaluator instead of being widened.
     let mut approval_threshold: Option<u64> = None;
-    if confirmation_overlap(tool_pattern, &rule.require_confirmation)? {
+    if confirmation_matches_compiled_grant(tool_pattern, &rule.require_confirmation)? {
         approval_threshold = Some(0);
     }
     if let Some(hil) = human_in_loop {
         if hil.enabled {
-            if confirmation_overlap(tool_pattern, &hil.require_confirmation)? {
+            if confirmation_matches_compiled_grant(tool_pattern, &hil.require_confirmation)? {
                 approval_threshold = Some(0);
             } else if approval_threshold.is_none() {
                 if let Some(threshold) = hil.approve_above {
@@ -751,13 +848,20 @@ fn compile_tool_constraints(
         constraints.push(Constraint::RequireApprovalAbove { threshold_units });
     }
 
-    if let Some(tier) = rule
-        .require_runtime_assurance_tier
-        .or(rule.prefer_runtime_assurance_tier)
-    {
+    if let Some(tier) = rule.require_runtime_assurance_tier {
         constraints.push(Constraint::MinimumRuntimeAssurance(tier));
     }
     Ok(constraints)
+}
+
+fn confirmation_matches_compiled_grant(
+    tool_pattern: &str,
+    confirmation_patterns: &[String],
+) -> Result<bool, CompileError> {
+    if tool_pattern == "*" {
+        return Ok(confirmation_applies_to_all_tools(confirmation_patterns));
+    }
+    confirmation_overlap(tool_pattern, confirmation_patterns)
 }
 
 /// Translate a `VelocityRule` into optional `VelocityConfig` +
@@ -870,6 +974,7 @@ fn glob_matches(pattern: &str, target: &str) -> Result<bool, CompileError> {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
+    use chio_core::capability::RuntimeAssuranceTier;
     use std::path::PathBuf;
 
     fn sample_threat_intel_pattern_db() -> &'static str {
@@ -909,6 +1014,40 @@ name: empty
         assert!(compiled.guard_names.is_empty());
         assert_eq!(compiled.default_scope.grants.len(), 1);
         assert_eq!(compiled.default_scope.grants[0].tool_name, "*");
+    }
+
+    #[test]
+    fn compile_rejects_validation_errors_before_materializing_policy() {
+        let spec = HushSpec::parse(
+            r#"
+hushspec: "9.9.9"
+rules:
+  tool_access:
+    enabled: true
+    allow: [read_file]
+    default: block
+    max_args_size: 0
+"#,
+        )
+        .unwrap();
+
+        let error = match compile_policy(&spec) {
+            Ok(_) => panic!("invalid policy should fail compilation"),
+            Err(error) => error,
+        };
+        let message = error.to_string();
+        assert!(
+            message.contains("HushSpec validation failed"),
+            "unexpected error: {error}"
+        );
+        assert!(
+            message.contains("unsupported hushspec version"),
+            "unexpected error: {error}"
+        );
+        assert!(
+            message.contains("rules.tool_access.max_args_size must be >= 1"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]
@@ -1087,7 +1226,7 @@ rules:
         assert!(
             error
                 .to_string()
-                .contains("invalid patch integrity forbidden pattern"),
+                .contains("rules.patch_integrity.forbidden_patterns[0]"),
             "unexpected error: {error}"
         );
     }
@@ -1386,6 +1525,25 @@ rules:
     }
 
     #[test]
+    fn compile_tool_access_scope_omits_only_allow_entries_overlapping_block() {
+        let spec = HushSpec::parse(
+            r#"
+hushspec: "0.1.0"
+rules:
+  tool_access:
+    enabled: true
+    allow: [read_file, shell_exec]
+    block: [shell_exec]
+    default: block
+"#,
+        )
+        .unwrap();
+        let compiled = compile_policy(&spec).unwrap();
+        assert_eq!(compiled.default_scope.grants.len(), 1);
+        assert_eq!(compiled.default_scope.grants[0].tool_name, "read_file");
+    }
+
+    #[test]
     fn compile_tool_access_scope_preserves_representable_security_constraints() {
         let spec = HushSpec::parse(
             r#"
@@ -1409,6 +1567,162 @@ rules:
                 Constraint::RequireApprovalAbove { threshold_units: 0 }
             ]
         );
+    }
+
+    #[test]
+    fn compile_tool_access_default_allow_selective_confirmation_fails_closed() {
+        let spec = HushSpec::parse(
+            r#"
+hushspec: "0.1.0"
+rules:
+  tool_access:
+    enabled: true
+    require_confirmation: [git_push]
+    default: allow
+"#,
+        )
+        .unwrap();
+        let compiled = compile_policy(&spec).unwrap();
+
+        assert!(compiled.default_scope.grants.is_empty());
+    }
+
+    #[test]
+    fn compile_tool_access_default_allow_global_confirmation_emits_constrained_wildcard() {
+        let spec = HushSpec::parse(
+            r#"
+hushspec: "0.1.0"
+rules:
+  tool_access:
+    enabled: true
+    require_confirmation: ["*"]
+    default: allow
+"#,
+        )
+        .unwrap();
+        let compiled = compile_policy(&spec).unwrap();
+
+        assert_eq!(compiled.default_scope.grants.len(), 1);
+        let grant = &compiled.default_scope.grants[0];
+        assert_eq!(grant.server_id, "*");
+        assert_eq!(grant.tool_name, "*");
+        assert_eq!(
+            grant.constraints,
+            vec![Constraint::RequireApprovalAbove { threshold_units: 0 }]
+        );
+    }
+
+    #[test]
+    fn compile_tool_access_default_allow_max_args_size_emits_constrained_wildcard() {
+        let spec = HushSpec::parse(
+            r#"
+hushspec: "0.1.0"
+rules:
+  tool_access:
+    enabled: true
+    max_args_size: 2048
+    default: allow
+"#,
+        )
+        .unwrap();
+        let compiled = compile_policy(&spec).unwrap();
+
+        assert_eq!(compiled.default_scope.grants.len(), 1);
+        let grant = &compiled.default_scope.grants[0];
+        assert_eq!(grant.server_id, "*");
+        assert_eq!(grant.tool_name, "*");
+        assert_eq!(grant.constraints, vec![Constraint::MaxArgsSize(2048)]);
+    }
+
+    #[test]
+    fn compile_tool_access_default_allow_max_args_size_with_selective_confirmation_fails_closed() {
+        let spec = HushSpec::parse(
+            r#"
+hushspec: "0.1.0"
+rules:
+  tool_access:
+    enabled: true
+    max_args_size: 2048
+    require_confirmation: [git_push]
+    default: allow
+"#,
+        )
+        .unwrap();
+        let compiled = compile_policy(&spec).unwrap();
+
+        assert!(compiled.default_scope.grants.is_empty());
+    }
+
+    #[test]
+    fn compile_tool_access_default_allow_runtime_assurance_emits_constrained_wildcard() {
+        let spec = HushSpec::parse(
+            r#"
+hushspec: "0.1.0"
+rules:
+  tool_access:
+    enabled: true
+    require_runtime_assurance_tier: attested
+    default: allow
+"#,
+        )
+        .unwrap();
+        let compiled = compile_policy(&spec).unwrap();
+
+        assert_eq!(compiled.default_scope.grants.len(), 1);
+        let grant = &compiled.default_scope.grants[0];
+        assert_eq!(grant.server_id, "*");
+        assert_eq!(grant.tool_name, "*");
+        assert_eq!(
+            grant.constraints,
+            vec![Constraint::MinimumRuntimeAssurance(
+                RuntimeAssuranceTier::Attested
+            )]
+        );
+    }
+
+    #[test]
+    fn compile_tool_access_default_allow_runtime_assurance_preference_stays_warning_only() {
+        let spec = HushSpec::parse(
+            r#"
+hushspec: "0.1.0"
+rules:
+  tool_access:
+    enabled: true
+    prefer_runtime_assurance_tier: attested
+    default: allow
+"#,
+        )
+        .unwrap();
+        let compiled = compile_policy(&spec).unwrap();
+
+        assert_eq!(compiled.default_scope.grants.len(), 1);
+        let grant = &compiled.default_scope.grants[0];
+        assert_eq!(grant.server_id, "*");
+        assert_eq!(grant.tool_name, "*");
+        assert!(grant.constraints.is_empty());
+    }
+
+    #[test]
+    fn compile_tool_access_allow_runtime_assurance_preference_does_not_harden_grant() {
+        let spec = HushSpec::parse(
+            r#"
+hushspec: "0.1.0"
+rules:
+  tool_access:
+    enabled: true
+    allow: [payments.charge]
+    prefer_runtime_assurance_tier: attested
+    default: block
+"#,
+        )
+        .unwrap();
+        let compiled = compile_policy(&spec).unwrap();
+
+        assert_eq!(compiled.default_scope.grants.len(), 1);
+        let grant = &compiled.default_scope.grants[0];
+        assert_eq!(grant.server_id, "*");
+        assert_eq!(grant.tool_name, "payments.charge");
+        assert!(grant.constraints.is_empty());
     }
 
     #[test]

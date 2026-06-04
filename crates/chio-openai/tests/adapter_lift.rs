@@ -7,7 +7,9 @@ use std::task::{Context, Poll, Wake, Waker};
 
 use chio_core::canonical::canonical_json_bytes;
 use chio_openai::adapter::{OpenAiAdapter, OpenAiAdapterConfig, OPENAI_RESPONSES_API_VERSION};
-use chio_tool_call_fabric::{Principal, ProviderAdapter, ProviderId, ProviderRequest};
+use chio_tool_call_fabric::{
+    Principal, ProviderAdapter, ProviderError, ProviderId, ProviderRequest,
+};
 use serde_json::{json, Value};
 
 struct NoopWaker;
@@ -33,6 +35,24 @@ fn raw(value: Value) -> ProviderRequest {
     ProviderRequest(serde_json::to_vec(&value).unwrap())
 }
 
+fn config_with_api_version(api_version: &str) -> OpenAiAdapterConfig {
+    let mut config = OpenAiAdapterConfig::new("org_config");
+    config.api_version = api_version.to_string();
+    config
+}
+
+fn assert_api_version_drift(error: ProviderError) {
+    match error {
+        ProviderError::Malformed(message) => {
+            assert!(
+                message.contains("OpenAI adapter supports only API version responses.2026-04-25")
+            );
+            assert!(message.contains("configured responses.2025-01-01"));
+        }
+        other => panic!("expected Malformed API version drift, got {other:?}"),
+    }
+}
+
 #[test]
 fn adapter_reports_openai_provider_and_snapshot_pin() {
     let adapter = OpenAiAdapter::new(OpenAiAdapterConfig::new("org_config"));
@@ -40,6 +60,24 @@ fn adapter_reports_openai_provider_and_snapshot_pin() {
     assert_eq!(adapter.provider(), ProviderId::OpenAi);
     assert_eq!(adapter.api_version(), OPENAI_RESPONSES_API_VERSION);
     assert_eq!(adapter.api_version(), "responses.2026-04-25");
+}
+
+#[test]
+fn lift_batch_rejects_api_version_drift_before_provenance_stamp() {
+    let adapter = OpenAiAdapter::new(config_with_api_version("responses.2025-01-01"));
+
+    let err = adapter
+        .lift_batch(raw(json!({
+            "output": [{
+                "type": "function_call",
+                "call_id": "call_drift_1",
+                "name": "get_weather",
+                "arguments": "{\"location\":\"NYC\"}"
+            }]
+        })))
+        .expect_err("drifted OpenAI Responses API version must fail before provenance stamping");
+
+    assert_api_version_drift(err);
 }
 
 #[test]
@@ -115,6 +153,47 @@ fn lift_reads_org_id_from_header_envelope() {
             org_id: "org_from_header".to_string()
         }
     );
+}
+
+#[test]
+fn lift_rejects_malformed_org_header_before_config_fallback() {
+    let adapter = OpenAiAdapter::new(OpenAiAdapterConfig::new("org_config"));
+    let err = block_on(adapter.lift(raw(json!({
+        "headers": {
+            "OpenAI-Organization": 42
+        },
+        "body": {
+            "output": [
+                {
+                    "type": "function_call",
+                    "call_id": "call_search_1",
+                    "name": "search_web",
+                    "arguments": "{\"query\":\"chio\"}"
+                }
+            ]
+        }
+    }))))
+    .expect_err("malformed explicit organization header must fail closed");
+
+    assert!(err.to_string().contains("OpenAI organization header"));
+}
+
+#[test]
+fn lift_rejects_function_call_name_with_surrounding_whitespace() {
+    let adapter = OpenAiAdapter::new(OpenAiAdapterConfig::new("org_config"));
+    let err = block_on(adapter.lift(raw(json!({
+        "output": [
+            {
+                "type": "function_call",
+                "call_id": "call_search_1",
+                "name": " search_web ",
+                "arguments": "{\"query\":\"chio\"}"
+            }
+        ]
+    }))))
+    .expect_err("whitespace-padded function names must fail closed");
+
+    assert!(err.to_string().contains("surrounding whitespace"));
 }
 
 #[test]

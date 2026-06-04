@@ -27,7 +27,120 @@
 
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, ItemFn};
+use syn::{parse_macro_input, Error, FnArg, ItemFn, ReturnType, Type};
+
+fn validate_guard_fn(input_fn: &ItemFn) -> syn::Result<()> {
+    let sig = &input_fn.sig;
+
+    if sig.ident != "evaluate" {
+        return Err(Error::new_spanned(
+            &sig.ident,
+            "#[chio_guard] must annotate a function named evaluate",
+        ));
+    }
+
+    if let Some(asyncness) = &sig.asyncness {
+        return Err(Error::new_spanned(
+            asyncness,
+            "#[chio_guard] does not support async guard functions",
+        ));
+    }
+
+    if let Some(constness) = &sig.constness {
+        return Err(Error::new_spanned(
+            constness,
+            "#[chio_guard] does not support const guard functions",
+        ));
+    }
+
+    if let Some(unsafety) = &sig.unsafety {
+        return Err(Error::new_spanned(
+            unsafety,
+            "#[chio_guard] guard functions must be safe functions",
+        ));
+    }
+
+    if let Some(abi) = &sig.abi {
+        return Err(Error::new_spanned(
+            abi,
+            "#[chio_guard] guard functions must use the Rust ABI",
+        ));
+    }
+
+    if !sig.generics.params.is_empty() || sig.generics.where_clause.is_some() {
+        return Err(Error::new_spanned(
+            &sig.generics,
+            "#[chio_guard] does not support generic guard functions",
+        ));
+    }
+
+    if sig.variadic.is_some() {
+        return Err(Error::new_spanned(
+            &sig.variadic,
+            "#[chio_guard] does not support variadic guard functions",
+        ));
+    }
+
+    let mut inputs = sig.inputs.iter();
+    let Some(input) = inputs.next() else {
+        return Err(Error::new_spanned(
+            &sig.ident,
+            "#[chio_guard] requires exactly one GuardRequest argument",
+        ));
+    };
+    if inputs.next().is_some() {
+        return Err(Error::new_spanned(
+            &sig.inputs,
+            "#[chio_guard] requires exactly one GuardRequest argument",
+        ));
+    }
+
+    match input {
+        FnArg::Typed(pat_type) if type_path_ends_with_ident(&pat_type.ty, "GuardRequest") => {}
+        FnArg::Typed(pat_type) => {
+            return Err(Error::new_spanned(
+                &pat_type.ty,
+                "#[chio_guard] argument type must be GuardRequest",
+            ));
+        }
+        FnArg::Receiver(receiver) => {
+            return Err(Error::new_spanned(
+                receiver,
+                "#[chio_guard] cannot annotate methods",
+            ));
+        }
+    }
+
+    match &sig.output {
+        ReturnType::Type(_, ty) if type_path_ends_with_ident(ty, "GuardVerdict") => {}
+        ReturnType::Type(_, ty) => {
+            return Err(Error::new_spanned(
+                ty,
+                "#[chio_guard] return type must be GuardVerdict",
+            ));
+        }
+        ReturnType::Default => {
+            return Err(Error::new_spanned(
+                &sig.ident,
+                "#[chio_guard] return type must be GuardVerdict",
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn type_path_ends_with_ident(ty: &Type, ident: &str) -> bool {
+    match ty {
+        Type::Path(type_path) if type_path.qself.is_none() => type_path
+            .path
+            .segments
+            .last()
+            .map(|segment| segment.ident == ident)
+            .unwrap_or(false),
+        _ => false,
+    }
+}
 
 /// Attribute macro that generates the full ABI surface for a Chio WASM guard.
 ///
@@ -46,6 +159,9 @@ use syn::{parse_macro_input, ItemFn};
 #[proc_macro_attribute]
 pub fn chio_guard(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let input_fn = parse_macro_input!(item as ItemFn);
+    if let Err(err) = validate_guard_fn(&input_fn) {
+        return err.to_compile_error().into();
+    }
 
     let fn_name = &input_fn.sig.ident;
     let fn_block = &input_fn.block;
@@ -85,4 +201,28 @@ pub fn chio_guard(_attr: TokenStream, item: TokenStream) -> TokenStream {
     };
 
     TokenStream::from(expanded)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validation_accepts_plain_evaluate_function() -> syn::Result<()> {
+        let input_fn: ItemFn = syn::parse_str(
+            "fn evaluate(req: GuardRequest) -> GuardVerdict { GuardVerdict::allow() }",
+        )?;
+
+        assert!(validate_guard_fn(&input_fn).is_ok());
+        Ok(())
+    }
+
+    #[test]
+    fn validation_rejects_non_evaluate_function_name() -> syn::Result<()> {
+        let input_fn: ItemFn =
+            syn::parse_str("fn gate(req: GuardRequest) -> GuardVerdict { GuardVerdict::allow() }")?;
+
+        assert!(validate_guard_fn(&input_fn).is_err());
+        Ok(())
+    }
 }

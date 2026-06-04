@@ -21,6 +21,8 @@ pub enum ChioMobileError {
     InvalidJson { message: String },
     /// A hex-encoded key or seed failed to decode.
     InvalidHex { message: String },
+    /// A signing seed decoded successfully but is unsafe to use.
+    WeakEntropy { message: String },
     /// Capability verification (signature, issuer trust, or time
     /// bounds) failed.
     InvalidCapability { message: String },
@@ -52,6 +54,7 @@ impl ChioMobileError {
         match self {
             ChioMobileError::InvalidJson { message }
             | ChioMobileError::InvalidHex { message }
+            | ChioMobileError::WeakEntropy { message }
             | ChioMobileError::InvalidCapability { message }
             | ChioMobileError::InvalidPassport { message }
             | ChioMobileError::AttestationUnavailable { message }
@@ -69,6 +72,7 @@ impl fmt::Display for ChioMobileError {
         let tag = match self {
             ChioMobileError::InvalidJson { .. } => "invalid json",
             ChioMobileError::InvalidHex { .. } => "invalid hex",
+            ChioMobileError::WeakEntropy { .. } => "weak entropy",
             ChioMobileError::InvalidCapability { .. } => "invalid capability",
             ChioMobileError::InvalidPassport { .. } => "invalid passport",
             ChioMobileError::AttestationUnavailable { .. } => "attestation unavailable",

@@ -9,6 +9,9 @@ repository.workspace = true
 readme = "README.md"
 publish = false
 
+[package.metadata.chio]
+public_entrypoint = true
+
 [lib]
 name = "chio_mcp_adapter"
 
@@ -24,6 +27,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
+url = { workspace = true }
 # `arbitrary` is gated behind the `fuzz` feature so production builds stay
 # free of fuzz instrumentation. Pulled in by `fuzz/fuzz_targets/mcp_envelope_decode.rs`
 # via `chio-mcp-adapter = { features = ["fuzz"] }`.

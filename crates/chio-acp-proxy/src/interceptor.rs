@@ -202,8 +202,7 @@ impl MessageInterceptor {
             // in-flight tool call associated with the session is
             // implicitly cancelled.
             (_, Some(AcpMethod::SessionCancel)) => {
-                self.intercept_session_cancel(message);
-                Ok(InterceptResult::Forward(message.clone()))
+                self.intercept_session_cancel(message)
             }
             // -- New ACP methods: forward unchanged (no guard needed) --
             (_, Some(AcpMethod::Authenticate))
@@ -256,15 +255,32 @@ impl MessageInterceptor {
 
     // -- private handlers --
 
-    fn intercept_fs_read(&self, message: &Value) -> Result<InterceptResult, AcpProxyError> {
-        let params = message
+    fn jsonrpc_params<'a>(
+        message: &'a Value,
+        method_name: &str,
+    ) -> Result<&'a Value, AcpProxyError> {
+        message
             .get("params")
-            .ok_or_else(|| AcpProxyError::Protocol("missing params in fs/read_text_file".into()))?;
+            .ok_or_else(|| AcpProxyError::Protocol(format!("missing params in {method_name}")))
+    }
+
+    fn decode_jsonrpc_params<T>(
+        params: &Value,
+        method_name: &str,
+    ) -> Result<T, AcpProxyError>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        serde_json::from_value(params.clone())
+            .map_err(|e| AcpProxyError::Protocol(format!("invalid {method_name} params: {e}")))
+    }
+
+    fn intercept_fs_read(&self, message: &Value) -> Result<InterceptResult, AcpProxyError> {
+        let params = Self::jsonrpc_params(message, "fs/read_text_file")?;
 
         let read_params: ReadTextFileParams =
-            serde_json::from_value(params.clone()).map_err(|e| {
-                AcpProxyError::Protocol(format!("invalid fs/read_text_file params: {e}"))
-            })?;
+            Self::decode_jsonrpc_params(params, "fs/read_text_file")?;
+        read_params.validate_boundary()?;
         let authorization_parameter_hash = authorization_parameter_hash(params)?;
 
         let capability_context = match self.check_capability_gate(
@@ -288,7 +304,7 @@ impl MessageInterceptor {
             CapabilityGate::Skip => None,
             CapabilityGate::Allow(context) => Some(context),
             CapabilityGate::Block(response) => {
-                self.clear_capability_context(&read_params.session_id);
+                self.clear_request_capability_context(&read_params.session_id, params);
                 return Ok(InterceptResult::Block(response));
             }
         };
@@ -301,7 +317,7 @@ impl MessageInterceptor {
                 Ok(InterceptResult::Forward(message.clone()))
             }
             Err(err) => {
-                self.clear_capability_context(&read_params.session_id);
+                self.clear_request_capability_context(&read_params.session_id, params);
                 let id = message.get("id");
                 let error_response = json_rpc_error(id, ACP_ERROR_ACCESS_DENIED, &err.to_string());
                 tracing::warn!(path = %read_params.path, "fs read blocked");
@@ -311,14 +327,11 @@ impl MessageInterceptor {
     }
 
     fn intercept_fs_write(&self, message: &Value) -> Result<InterceptResult, AcpProxyError> {
-        let params = message.get("params").ok_or_else(|| {
-            AcpProxyError::Protocol("missing params in fs/write_text_file".into())
-        })?;
+        let params = Self::jsonrpc_params(message, "fs/write_text_file")?;
 
         let write_params: WriteTextFileParams =
-            serde_json::from_value(params.clone()).map_err(|e| {
-                AcpProxyError::Protocol(format!("invalid fs/write_text_file params: {e}"))
-            })?;
+            Self::decode_jsonrpc_params(params, "fs/write_text_file")?;
+        write_params.validate_boundary()?;
         let authorization_parameter_hash = authorization_parameter_hash(params)?;
 
         let capability_context = match self.check_capability_gate(
@@ -342,7 +355,7 @@ impl MessageInterceptor {
             CapabilityGate::Skip => None,
             CapabilityGate::Allow(context) => Some(context),
             CapabilityGate::Block(response) => {
-                self.clear_capability_context(&write_params.session_id);
+                self.clear_request_capability_context(&write_params.session_id, params);
                 return Ok(InterceptResult::Block(response));
             }
         };
@@ -355,7 +368,7 @@ impl MessageInterceptor {
                 Ok(InterceptResult::Forward(message.clone()))
             }
             Err(err) => {
-                self.clear_capability_context(&write_params.session_id);
+                self.clear_request_capability_context(&write_params.session_id, params);
                 let id = message.get("id");
                 let error_response = json_rpc_error(id, ACP_ERROR_ACCESS_DENIED, &err.to_string());
                 tracing::warn!(path = %write_params.path, "fs write blocked");
@@ -365,12 +378,11 @@ impl MessageInterceptor {
     }
 
     fn intercept_terminal_create(&self, message: &Value) -> Result<InterceptResult, AcpProxyError> {
-        let params = message
-            .get("params")
-            .ok_or_else(|| AcpProxyError::Protocol("missing params in terminal/create".into()))?;
+        let params = Self::jsonrpc_params(message, "terminal/create")?;
 
-        let term_params: CreateTerminalParams = serde_json::from_value(params.clone())
-            .map_err(|e| AcpProxyError::Protocol(format!("invalid terminal/create params: {e}")))?;
+        let term_params: CreateTerminalParams =
+            Self::decode_jsonrpc_params(params, "terminal/create")?;
+        term_params.validate_boundary()?;
         let authorization_parameter_hash = authorization_parameter_hash(params)?;
 
         let capability_context = match self.check_capability_gate(
@@ -394,7 +406,7 @@ impl MessageInterceptor {
             CapabilityGate::Skip => None,
             CapabilityGate::Allow(context) => Some(context),
             CapabilityGate::Block(response) => {
-                self.clear_capability_context(&term_params.session_id);
+                self.clear_request_capability_context(&term_params.session_id, params);
                 return Ok(InterceptResult::Block(response));
             }
         };
@@ -402,6 +414,12 @@ impl MessageInterceptor {
         match self
             .terminal_guard
             .check_command(&term_params.command, &term_params.args)
+            .and_then(|()| {
+                term_params
+                    .cwd
+                    .as_deref()
+                    .map_or(Ok(()), |cwd| self.fs_guard.check_cwd(cwd))
+            })
         {
             Ok(()) => {
                 if let Some(ref context) = capability_context {
@@ -410,7 +428,7 @@ impl MessageInterceptor {
                 Ok(InterceptResult::Forward(message.clone()))
             }
             Err(err) => {
-                self.clear_capability_context(&term_params.session_id);
+                self.clear_request_capability_context(&term_params.session_id, params);
                 let id = message.get("id");
                 let error_response = json_rpc_error(id, ACP_ERROR_ACCESS_DENIED, &err.to_string());
                 tracing::warn!(command = %term_params.command, "terminal create blocked");
@@ -430,23 +448,19 @@ impl MessageInterceptor {
         op: TerminalLifecycleOp,
     ) -> Result<InterceptResult, AcpProxyError> {
         let method_name = op.method_name();
-        let params = message
-            .get("params")
-            .ok_or_else(|| AcpProxyError::Protocol(format!("missing params in {method_name}")))?;
+        let params = Self::jsonrpc_params(message, method_name)?;
 
         let (session_id, terminal_id) = match op {
             TerminalLifecycleOp::Kill => {
                 let parsed: KillTerminalParams =
-                    serde_json::from_value(params.clone()).map_err(|e| {
-                        AcpProxyError::Protocol(format!("invalid {method_name} params: {e}"))
-                    })?;
+                    Self::decode_jsonrpc_params(params, method_name)?;
+                parsed.validate_boundary()?;
                 (parsed.session_id, parsed.terminal_id)
             }
             TerminalLifecycleOp::Release => {
                 let parsed: ReleaseTerminalParams =
-                    serde_json::from_value(params.clone()).map_err(|e| {
-                        AcpProxyError::Protocol(format!("invalid {method_name} params: {e}"))
-                    })?;
+                    Self::decode_jsonrpc_params(params, method_name)?;
+                parsed.validate_boundary()?;
                 (parsed.session_id, parsed.terminal_id)
             }
         };
@@ -539,17 +553,16 @@ impl MessageInterceptor {
     ) -> Result<InterceptResult, AcpProxyError> {
         // Parse permission params for logging/mapping.
         if let Some(params) = message.get("params") {
-            if let Ok(perm_params) =
-                serde_json::from_value::<RequestPermissionParams>(params.clone())
-            {
-                for option in &perm_params.options {
-                    let mapped = self.permission_mapper.map_option(option);
-                    tracing::info!(
-                        option_id = %mapped.original_option_id,
-                        decision = ?mapped.chio_decision,
-                        "permission mapped"
-                    );
-                }
+            let perm_params: RequestPermissionParams =
+                Self::decode_jsonrpc_params(params, "session/request_permission")?;
+            perm_params.validate_boundary()?;
+            for option in &perm_params.options {
+                let mapped = self.permission_mapper.map_option(option);
+                tracing::info!(
+                    option_id = %mapped.original_option_id,
+                    decision = ?mapped.chio_decision,
+                    "permission mapped"
+                );
             }
         }
         // Forward the permission request to the client for user decision.
@@ -557,85 +570,86 @@ impl MessageInterceptor {
     }
 
     fn intercept_session_update(&self, message: &Value) -> Result<InterceptResult, AcpProxyError> {
-        let params = message.get("params");
-        let notification = params
-            .and_then(|p| serde_json::from_value::<SessionUpdateNotification>(p.clone()).ok());
+        let params = Self::jsonrpc_params(message, "session/update")?;
+        let notif: SessionUpdateNotification =
+            Self::decode_jsonrpc_params(params, "session/update")?;
+        notif.validate_boundary()?;
 
-        if let Some(ref notif) = notification {
-            let update = parse_session_update(&notif.update);
-            match update {
-                SessionUpdate::ToolCall(ref event) => {
-                    let capability_context = self
-                        .lookup_tool_capability_context(&notif.session_id, &event.tool_call_id)
-                        .or_else(|| {
-                            // The originating ACP fs/terminal-create request had
-                            // no toolCallId, so the CryptographicallyEnforced
-                            // context was buffered per session. Bind it now when
-                            // exactly one pending context matches the event's
-                            // kind (and re-index it under the resolved
-                            // tool_call_id so the terminal session/update can
-                            // find it the same way).
-                            self.bind_pending_capability_context(
-                                &notif.session_id,
-                                &event.tool_call_id,
-                                event.kind.as_deref(),
-                            )
-                        });
-                    let receipt = self.receipt_logger.log_tool_call(
-                        &notif.session_id,
-                        event,
-                        capability_context.as_ref(),
-                    );
+        let update = parse_session_update(&notif.update);
+        match update {
+            SessionUpdate::ToolCall(ref event) => {
+                event.validate_receipt_boundary()?;
+                let capability_context = self
+                    .lookup_tool_capability_context(&notif.session_id, &event.tool_call_id)
+                    .or_else(|| {
+                        // The originating ACP fs/terminal-create request had
+                        // no toolCallId, so the CryptographicallyEnforced
+                        // context was buffered per session. Bind it now when
+                        // exactly one pending context matches the event's
+                        // kind (and re-index it under the resolved
+                        // tool_call_id so the terminal session/update can
+                        // find it the same way).
+                        self.bind_pending_capability_context(
+                            &notif.session_id,
+                            &event.tool_call_id,
+                            event.kind.as_deref(),
+                        )
+                    });
+                let receipt = self.receipt_logger.log_tool_call(
+                    &notif.session_id,
+                    event,
+                    capability_context.as_ref(),
+                );
+                if let Some(block) = self.sign_or_block(message.get("id"), &receipt) {
+                    return Ok(InterceptResult::Block(block));
+                }
+                tracing::info!(
+                    tool_call_id = %receipt.tool_call_id,
+                    status = %receipt.status,
+                    "tool call receipt"
+                );
+                return Ok(InterceptResult::ForwardWithReceipt(
+                    message.clone(),
+                    Box::new(receipt),
+                ));
+            }
+            SessionUpdate::ToolCallUpdate(ref event) => {
+                event.validate_receipt_boundary()?;
+                let capability_context =
+                    self.lookup_tool_capability_context(&notif.session_id, &event.tool_call_id);
+                if let Some(receipt) = self.receipt_logger.log_tool_call_update(
+                    &notif.session_id,
+                    event,
+                    capability_context.as_ref(),
+                ) {
                     if let Some(block) = self.sign_or_block(message.get("id"), &receipt) {
                         return Ok(InterceptResult::Block(block));
+                    }
+                    if should_clear_capability_context(&receipt.status) {
+                        self.clear_tool_capability_context(&notif.session_id, &event.tool_call_id);
                     }
                     tracing::info!(
                         tool_call_id = %receipt.tool_call_id,
                         status = %receipt.status,
-                        "tool call receipt"
+                        "tool call update receipt"
                     );
                     return Ok(InterceptResult::ForwardWithReceipt(
                         message.clone(),
                         Box::new(receipt),
                     ));
                 }
-                SessionUpdate::ToolCallUpdate(ref event) => {
-                    let capability_context =
-                        self.lookup_tool_capability_context(&notif.session_id, &event.tool_call_id);
-                    if let Some(receipt) = self.receipt_logger.log_tool_call_update(
-                        &notif.session_id,
-                        event,
-                        capability_context.as_ref(),
-                    ) {
-                        if let Some(block) = self.sign_or_block(message.get("id"), &receipt) {
-                            return Ok(InterceptResult::Block(block));
-                        }
-                        if should_clear_capability_context(&receipt.status) {
-                            self.clear_tool_capability_context(
-                                &notif.session_id,
-                                &event.tool_call_id,
-                            );
-                        }
-                        tracing::info!(
-                            tool_call_id = %receipt.tool_call_id,
-                            status = %receipt.status,
-                            "tool call update receipt"
-                        );
-                        return Ok(InterceptResult::ForwardWithReceipt(
-                            message.clone(),
-                            Box::new(receipt),
-                        ));
-                    }
-                }
-                SessionUpdate::AgentMessageChunk(_)
-                | SessionUpdate::AgentThoughtChunk(_)
-                | SessionUpdate::Plan(_)
-                | SessionUpdate::AvailableCommandsUpdate(_)
-                | SessionUpdate::CurrentModeUpdate(_)
-                | SessionUpdate::ConfigOptionUpdate(_)
-                | SessionUpdate::SessionInfoUpdate(_)
-                | SessionUpdate::Other(_) => {}
             }
+            SessionUpdate::MalformedToolCall(ref message) => {
+                return Err(AcpProxyError::Protocol(message.clone()));
+            }
+            SessionUpdate::AgentMessageChunk(_)
+            | SessionUpdate::AgentThoughtChunk(_)
+            | SessionUpdate::Plan(_)
+            | SessionUpdate::AvailableCommandsUpdate(_)
+            | SessionUpdate::CurrentModeUpdate(_)
+            | SessionUpdate::ConfigOptionUpdate(_)
+            | SessionUpdate::SessionInfoUpdate(_)
+            | SessionUpdate::Other(_) => {}
         }
 
         Ok(InterceptResult::Forward(message.clone()))
@@ -659,6 +673,13 @@ impl MessageInterceptor {
                         "capability checker allowed access without a capability_id",
                     ));
                 };
+                if !is_valid_checker_evidence_id(&capability_id) {
+                    return CapabilityGate::Block(json_rpc_error(
+                        id,
+                        ACP_ERROR_ACCESS_DENIED,
+                        "capability checker allowed access with malformed capability_id",
+                    ));
+                }
                 if request
                     .authorization_correlation_id
                     .as_deref()
@@ -689,16 +710,32 @@ impl MessageInterceptor {
                         "capability checker allowed access without a tool_call_id binding",
                     ));
                 }
-                if verdict.receipt_id.as_deref().is_none_or(str::is_empty)
-                    || verdict
-                        .receipt_request_id
-                        .as_deref()
-                        .is_none_or(str::is_empty)
-                {
+                let Some(receipt_id) = verdict.receipt_id else {
                     return CapabilityGate::Block(json_rpc_error(
                         id,
                         ACP_ERROR_ACCESS_DENIED,
                         "capability checker allowed access without a signed authorization receipt and request id",
+                    ));
+                };
+                let Some(receipt_request_id) = verdict.receipt_request_id else {
+                    return CapabilityGate::Block(json_rpc_error(
+                        id,
+                        ACP_ERROR_ACCESS_DENIED,
+                        "capability checker allowed access without a signed authorization receipt and request id",
+                    ));
+                };
+                if !is_valid_checker_evidence_id(&receipt_id) {
+                    return CapabilityGate::Block(json_rpc_error(
+                        id,
+                        ACP_ERROR_ACCESS_DENIED,
+                        "capability checker allowed access with malformed signed authorization receipt id",
+                    ));
+                }
+                if !is_valid_checker_evidence_id(&receipt_request_id) {
+                    return CapabilityGate::Block(json_rpc_error(
+                        id,
+                        ACP_ERROR_ACCESS_DENIED,
+                        "capability checker allowed access with malformed signed authorization request id",
                     ));
                 }
                 CapabilityGate::Allow(AcpCapabilityAuditContext {
@@ -709,8 +746,8 @@ impl MessageInterceptor {
                     authorization_operation: Some(request.operation.clone()),
                     authorization_resource: Some(request.resource.clone()),
                     authorization_parameter_hash: Some(request.authorization_parameter_hash.clone()),
-                    authorization_receipt_id: verdict.receipt_id,
-                    authorization_request_id: verdict.receipt_request_id,
+                    authorization_receipt_id: Some(receipt_id),
+                    authorization_request_id: Some(receipt_request_id),
                 })
             }
             Ok(verdict) => {
@@ -879,13 +916,9 @@ impl MessageInterceptor {
         Some(bound_context)
     }
 
-    fn clear_capability_context(&self, session_id: &str) {
-        if let Ok(mut contexts) = self.live_capability_contexts.lock() {
-            let tool_prefix = format!("tool:{session_id}:");
-            contexts.retain(|key, _| !key.starts_with(&tool_prefix));
-        }
-        if let Ok(mut pending) = self.pending_capability_contexts.lock() {
-            pending.remove(session_id);
+    fn clear_request_capability_context(&self, session_id: &str, params: &Value) {
+        if let Some(tool_call_id) = extract_tool_call_id(params) {
+            self.clear_tool_capability_context(session_id, &tool_call_id);
         }
     }
 
@@ -903,20 +936,12 @@ impl MessageInterceptor {
     /// before their pending `fs/read` / `terminal/create` requests bind to
     /// a `session/update` would leak captured authorization material for
     /// the lifetime of the proxy.
-    fn intercept_session_cancel(&self, message: &Value) {
-        let Some(params) = message.get("params") else {
-            return;
-        };
-        let session_id = params
-            .get("sessionId")
-            .and_then(Value::as_str)
-            .or_else(|| params.get("session_id").and_then(Value::as_str));
-        let Some(session_id) = session_id else {
-            return;
-        };
-        if session_id.trim().is_empty() {
-            return;
-        }
+    fn intercept_session_cancel(&self, message: &Value) -> Result<InterceptResult, AcpProxyError> {
+        let params = Self::jsonrpc_params(message, "session/cancel")?;
+        let cancel_params: SessionCancelParams =
+            Self::decode_jsonrpc_params(params, "session/cancel")?;
+        cancel_params.validate_boundary()?;
+        let session_id = cancel_params.session_id.as_str();
         let pending_drained = self
             .pending_capability_contexts
             .lock()
@@ -935,6 +960,7 @@ impl MessageInterceptor {
                 "session/cancel cleared pending capability contexts"
             );
         }
+        Ok(InterceptResult::Forward(message.clone()))
     }
 }
 
@@ -1030,6 +1056,11 @@ fn authorization_parameter_hash(params: &Value) -> Result<String, AcpProxyError>
 /// binding at the capability gate.
 fn requires_tool_call_id_binding(operation: &str) -> bool {
     matches!(operation, "terminal_kill" | "terminal_release")
+}
+
+fn is_valid_checker_evidence_id(value: &str) -> bool {
+    let trimmed = value.trim();
+    !trimmed.is_empty() && trimmed == value && !value.chars().any(char::is_control)
 }
 
 fn authorization_correlation_id(

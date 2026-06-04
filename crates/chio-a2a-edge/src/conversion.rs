@@ -1,24 +1,41 @@
 // Message/argument conversion helpers and Chio metadata envelope builders
 // shared across the kernel and compatibility surfaces.
 
-/// Extract arguments from A2A message parts.
-fn extract_arguments_from_message(message: &A2aMessage) -> Value {
+/// Extract validated tool arguments from A2A message parts.
+fn extract_arguments_from_message(message: &A2aMessage) -> Result<Value, A2aEdgeError> {
+    if message.parts.is_empty() {
+        return Err(A2aEdgeError::InvalidRequest(
+            "message.parts must contain at least one part".to_string(),
+        ));
+    }
+
     let mut text_parts = Vec::new();
     let mut data_part = None;
 
     for part in &message.parts {
         match part {
             A2aPart::Text { text } => text_parts.push(text.clone()),
-            A2aPart::Data { data } => data_part = Some(data.clone()),
+            A2aPart::Data { data } => {
+                if !data.is_object() {
+                    return Err(A2aEdgeError::InvalidRequest(
+                        "message.parts data part must be a JSON object".to_string(),
+                    ));
+                }
+                if data_part.replace(data.clone()).is_some() {
+                    return Err(A2aEdgeError::InvalidRequest(
+                        "message.parts must contain at most one data part".to_string(),
+                    ));
+                }
+            }
         }
     }
 
     if let Some(data) = data_part {
-        data
+        Ok(data)
     } else {
-        json!({
+        Ok(json!({
             "message": text_parts.join("\n"),
-        })
+        }))
     }
 }
 

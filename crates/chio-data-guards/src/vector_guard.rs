@@ -7,9 +7,9 @@
 //!
 //! 1. **Collection allowlist.** A query to a collection that is not on the
 //!    operator's allowlist is denied.
-//! 2. **Namespace scoping.** A query whose `namespace` field disagrees
-//!    with the grant's active namespace is denied.  Empty/missing
-//!    namespaces collapse to a single shared bucket.
+//! 2. **Namespace scoping.** A query whose `namespace` field falls
+//!    outside the configured namespace allowlist is denied. Missing
+//!    namespaces deny when namespace enforcement is configured.
 //! 3. **Operation class.** Upsert, delete, or index-mutation verbs are
 //!    denied when the active grant carries
 //!    [`SqlOperationClass::ReadOnly`](chio_core::capability::SqlOperationClass::ReadOnly).
@@ -64,7 +64,7 @@ use serde_json::Value;
 use tracing::warn;
 
 use chio_core::capability::{ChioScope, Constraint, SqlOperationClass, ToolGrant};
-use chio_guards::{extract_action, ToolAction};
+use chio_guards::{extract_action_checked, ToolAction};
 use chio_kernel::{GuardContext, KernelError, Verdict};
 use thiserror::Error;
 
@@ -97,7 +97,7 @@ pub enum VectorGuardDenyReason {
     NoConfig,
 
     /// The request targets a namespace that is not permitted by the
-    /// active grant.
+    /// configured namespace allowlist.
     #[error("namespace '{namespace}' is not in the allowlist")]
     NamespaceNotAllowed {
         /// The offending namespace name.
@@ -499,7 +499,10 @@ impl chio_kernel::Guard for VectorDbGuard {
     fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
         let tool = &ctx.request.tool_name;
         let args = &ctx.request.arguments;
-        let action = extract_action(tool, args);
+        let action = match extract_action_checked(tool, args) {
+            Ok(action) => action,
+            Err(_) => return Ok(Verdict::Deny),
+        };
 
         let database = match &action {
             ToolAction::DatabaseQuery { database, .. } => database.clone(),
@@ -645,11 +648,10 @@ fn max_rows_for_request(scope: &ChioScope, matched_grant_index: Option<usize>) -
     min
 }
 
-/// Walk `keys` over the top level of `value` and return the first string
-/// we find.
+/// Walk `keys` over `value` and return the first string we find.
 fn pick_string(value: &Value, keys: &[String]) -> Option<String> {
     for key in keys {
-        if let Some(s) = value.get(key).and_then(|v| v.as_str()) {
+        if let Some(s) = lookup_path(value, key).and_then(|v| v.as_str()) {
             if !s.is_empty() {
                 return Some(s.to_string());
             }
@@ -658,21 +660,39 @@ fn pick_string(value: &Value, keys: &[String]) -> Option<String> {
     None
 }
 
-/// Walk `keys` over the top level of `value` and return the first unsigned
-/// integer.
+/// Walk `keys` over `value` and return the first unsigned integer.
 fn pick_number(value: &Value, keys: &[String]) -> Option<u64> {
     for key in keys {
-        if let Some(n) = value.get(key).and_then(|v| v.as_u64()) {
+        if let Some(n) = lookup_path(value, key).and_then(|v| v.as_u64()) {
             return Some(n);
         }
         // Accept stringified numbers too for SDKs that over-quote.
-        if let Some(s) = value.get(key).and_then(|v| v.as_str()) {
+        if let Some(s) = lookup_path(value, key).and_then(|v| v.as_str()) {
             if let Ok(n) = s.parse::<u64>() {
                 return Some(n);
             }
         }
     }
     None
+}
+
+fn lookup_path<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
+    if path.is_empty() {
+        return None;
+    }
+
+    if let Some(exact) = value.get(path) {
+        return Some(exact);
+    }
+
+    let mut cursor = value;
+    for segment in path.split('.') {
+        if segment.is_empty() {
+            return None;
+        }
+        cursor = cursor.get(segment)?;
+    }
+    Some(cursor)
 }
 
 /// Convenience: turn a hash-set style vec into a normalised lower-case set
@@ -926,6 +946,41 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_denies_malformed_vector_action_arguments() {
+        let guard = VectorDbGuard::new(VectorGuardConfig {
+            allow_all: true,
+            ..Default::default()
+        });
+        let request = ToolCallRequest {
+            request_id: "req-vector-malformed-action".to_string(),
+            capability: test_capability(),
+            tool_name: "vector_query".to_string(),
+            server_id: "srv".to_string(),
+            agent_id: "agent".to_string(),
+            arguments: serde_json::json!({"collection": ["docs"], "top_k": 5}),
+            dpop_proof: None,
+            governed_intent: None,
+            approval_token: None,
+            model_metadata: None,
+            federated_origin_kernel_id: None,
+        };
+        let scope = ChioScope::default();
+        let agent_id = String::from("agent");
+        let server_id = String::from("srv");
+        let verdict = guard
+            .evaluate(&GuardContext {
+                request: &request,
+                scope: &scope,
+                agent_id: &agent_id,
+                server_id: &server_id,
+                session_filesystem_roots: None,
+                matched_grant_index: None,
+            })
+            .unwrap();
+        assert_eq!(verdict, Verdict::Deny);
+    }
+
+    #[test]
     fn extract_call_parses_defaults() {
         let g = VectorDbGuard::new(base_cfg());
         let args = serde_json::json!({
@@ -942,11 +997,51 @@ mod tests {
     }
 
     #[test]
+    fn extract_call_parses_nested_custom_field_paths() {
+        let g = VectorDbGuard::new(VectorGuardConfig {
+            collection_allowlist: vec!["docs".into()],
+            field_paths: VectorFieldPaths {
+                collection: vec!["request.index".into()],
+                namespace: vec!["request.routing.tenant".into()],
+                operation: vec!["request.operation".into()],
+                top_k: vec!["request.options.limit".into()],
+            },
+            ..Default::default()
+        });
+        let args = serde_json::json!({
+            "request": {
+                "index": "Docs",
+                "routing": {"tenant": "tenant-a"},
+                "operation": "query",
+                "options": {"limit": "42"}
+            }
+        });
+        let call = g.extract_call(&args).unwrap();
+        assert_eq!(call.collection, "docs");
+        assert_eq!(call.namespace.as_deref(), Some("tenant-a"));
+        assert_eq!(call.operation.as_deref(), Some("query"));
+        assert_eq!(call.top_k, Some(42));
+    }
+
+    #[test]
     fn extract_call_missing_collection_errors() {
         let g = VectorDbGuard::new(base_cfg());
         let args = serde_json::json!({"namespace": "tenant-a"});
         let err = g.extract_call(&args).unwrap_err();
         assert!(matches!(err, VectorGuardDenyReason::ParseError { .. }));
+    }
+
+    #[test]
+    fn lookup_path_prefers_exact_top_level_key() {
+        let args = serde_json::json!({
+            "request.index": "flat",
+            "request": {"index": "nested"}
+        });
+        assert_eq!(
+            lookup_path(&args, "request.index"),
+            Some(&serde_json::json!("flat"))
+        );
+        assert!(lookup_path(&args, "request..index").is_none());
     }
 
     #[test]

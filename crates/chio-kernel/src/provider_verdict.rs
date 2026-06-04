@@ -201,10 +201,11 @@ mod tests {
     }
 
     fn synthetic_receipt(id: &str, decision: Decision) -> ChioReceipt {
-        // Build a minimal unsigned receipt for the conversion tests. These
+        // Build a minimal signed receipt for the conversion tests. These
         // tests only exercise the structural mapping from kernel verdict
         // to fabric verdict; signature verification is covered by the
         // kernel's own receipt tests.
+        let kp = chio_core::crypto::Keypair::generate();
         let body = chio_core::receipt::ChioReceiptBody {
             id: id.to_string(),
             timestamp: 1_700_000_000,
@@ -228,9 +229,8 @@ mod tests {
             metadata: None,
             trust_level: Default::default(),
             tenant_id: None,
-            kernel_key: chio_core::crypto::Keypair::generate().public_key(),
+            kernel_key: kp.public_key(),
         };
-        let kp = chio_core::crypto::Keypair::generate();
         ChioReceipt::sign(body, &kp).unwrap()
     }
 

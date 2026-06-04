@@ -28,6 +28,8 @@ if [[ -f "${example_build_dir}/hello-drogon.skip" ]]; then
   echo "hello-drogon example skipped: $(tr -d '\n' < "${example_build_dir}/hello-drogon.skip")"
 else
   cmake --build "${example_build_dir}" --target hello_drogon
+  cmake --build "${example_build_dir}" --target hello_drogon_contract_tests
+  ctest --test-dir "${example_build_dir}" --output-on-failure
 fi
 
 bash -n examples/hello-drogon/run.sh examples/hello-drogon/smoke.sh

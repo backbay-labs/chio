@@ -25,6 +25,7 @@ impl GeminiAdapter {
     where
         F: FnMut(&ToolInvocation) -> Result<VerdictResult, ProviderError>,
     {
+        self.ensure_supported_api_version()?;
         let frames = parse_sse_frames(raw, SseParseOptions::rejecting_unknown("Gemini"))?;
         let mut output: Vec<u8> = Vec::new();
         let mut invocations = Vec::new();

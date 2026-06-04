@@ -38,7 +38,7 @@ use serde_json::Value;
 
 use chio_kernel::{Guard, GuardContext, KernelError, Verdict};
 
-use crate::action::{extract_action, ToolAction};
+use crate::action::{extract_action_checked, ToolAction};
 
 /// Default allowed verbs (open browser session, navigate, read state).
 pub fn default_allowed_verbs() -> Vec<String> {
@@ -252,7 +252,10 @@ impl Guard for BrowserAutomationGuard {
             return Ok(Verdict::Allow);
         }
 
-        let action = extract_action(&ctx.request.tool_name, &ctx.request.arguments);
+        let action = match extract_action_checked(&ctx.request.tool_name, &ctx.request.arguments) {
+            Ok(action) => action,
+            Err(_) => return Ok(Verdict::Deny),
+        };
         let (verb, target) = match action {
             ToolAction::BrowserAction { verb, target } => (verb, target),
             _ => return Ok(Verdict::Allow),

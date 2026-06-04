@@ -10,7 +10,7 @@ is accepted. A missing contract fails closed with `HttpEgressError::MissingContr
 
 The contract enforces:
 
-- Allowed URL schemes (e.g. `https`).
+- Allowed HTTP URL schemes (`http` and `https`).
 - Explicit authority allowlist (exact normalized host:port pairs).
 - Address-class blocks: loopback, link-local, IPv6 ULA, and RFC1918 private
   networks can each be independently denied.

@@ -112,6 +112,29 @@ fn tool_gate_denies_dangerous_tool() {
 }
 
 #[test]
+fn tool_gate_denies_padded_tool_name() {
+    let wasm_bytes = load_example_wasm("chio_example_tool_gate");
+    let engine = create_shared_engine().unwrap();
+    let mut backend = WasmtimeBackend::with_engine(engine);
+    backend.load_module(&wasm_bytes, 1_000_000).unwrap();
+
+    let verdict = backend.evaluate(&make_request(" dangerous_tool ")).unwrap();
+    assert!(
+        verdict.is_deny(),
+        "expected Deny for padded dangerous_tool, got {verdict:?}"
+    );
+    match verdict {
+        GuardVerdict::Deny { reason: Some(r) } => {
+            assert!(
+                r.contains("not canonical"),
+                "expected reason to mention canonical tool names, got: {r}"
+            );
+        }
+        other => panic!("expected Deny with reason, got {other:?}"),
+    }
+}
+
+#[test]
 fn tool_gate_denies_rm_rf() {
     let wasm_bytes = load_example_wasm("chio_example_tool_gate");
     let engine = create_shared_engine().unwrap();
@@ -207,6 +230,35 @@ fn enriched_inspector_denies_write_to_etc() {
 }
 
 #[test]
+fn enriched_inspector_denies_file_write_without_path_evidence() {
+    let wasm_bytes = load_example_wasm("chio_example_enriched_inspector");
+    let engine = create_shared_engine().unwrap();
+    let mut backend = WasmtimeBackend::with_engine(engine);
+    backend.load_module(&wasm_bytes, 1_000_000).unwrap();
+
+    let verdict = backend
+        .evaluate(&make_enriched_request(
+            "write_file",
+            Some("file_write"),
+            None,
+        ))
+        .unwrap();
+    assert!(
+        verdict.is_deny(),
+        "expected Deny for file_write without path evidence, got {verdict:?}"
+    );
+    match verdict {
+        GuardVerdict::Deny { reason: Some(r) } => {
+            assert!(
+                r.contains("missing normalized path evidence"),
+                "expected reason to mention missing path evidence, got: {r}"
+            );
+        }
+        other => panic!("expected Deny with reason, got {other:?}"),
+    }
+}
+
+#[test]
 fn enriched_inspector_allows_write_to_tmp() {
     let wasm_bytes = load_example_wasm("chio_example_enriched_inspector");
     let engine = create_shared_engine().unwrap();
@@ -223,6 +275,26 @@ fn enriched_inspector_allows_write_to_tmp() {
     assert!(
         verdict.is_allow(),
         "expected Allow for file_write to /tmp, got {verdict:?}"
+    );
+}
+
+#[test]
+fn enriched_inspector_allows_write_to_etcetera_sibling() {
+    let wasm_bytes = load_example_wasm("chio_example_enriched_inspector");
+    let engine = create_shared_engine().unwrap();
+    let mut backend = WasmtimeBackend::with_engine(engine);
+    backend.load_module(&wasm_bytes, 1_000_000).unwrap();
+
+    let verdict = backend
+        .evaluate(&make_enriched_request(
+            "write_file",
+            Some("file_write"),
+            Some("/etcetera/passwd"),
+        ))
+        .unwrap();
+    assert!(
+        verdict.is_allow(),
+        "expected Allow for file_write to /etcetera sibling, got {verdict:?}"
     );
 }
 
@@ -254,4 +326,25 @@ fn enriched_inspector_denies_write_to_configured_path() {
         }
         other => panic!("expected Deny with reason, got {other:?}"),
     }
+}
+
+#[test]
+fn enriched_inspector_allows_configured_path_sibling() {
+    let wasm_bytes = load_example_wasm("chio_example_enriched_inspector");
+    let engine = create_shared_engine().unwrap();
+    let config = HashMap::from([("blocked_path".to_string(), "/var/secret".to_string())]);
+    let mut backend = WasmtimeBackend::with_engine_and_config(engine, config);
+    backend.load_module(&wasm_bytes, 1_000_000).unwrap();
+
+    let verdict = backend
+        .evaluate(&make_enriched_request(
+            "write_file",
+            Some("file_write"),
+            Some("/var/secrets/key.pem"),
+        ))
+        .unwrap();
+    assert!(
+        verdict.is_allow(),
+        "expected Allow for configured blocked-path sibling, got {verdict:?}"
+    );
 }

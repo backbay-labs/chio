@@ -7,7 +7,7 @@
 use chio_kernel::{GuardContext, KernelError, Verdict};
 use glob::Pattern;
 
-use crate::action::{extract_action, ToolAction};
+use crate::action::{extract_action_checked, ToolAction};
 use crate::path_normalization::{
     normalize_path_for_policy, normalize_path_for_policy_lexical_absolute,
     normalize_path_for_policy_with_fs,
@@ -183,7 +183,13 @@ impl chio_kernel::Guard for PathAllowlistGuard {
     }
 
     fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
-        let action = extract_action(&ctx.request.tool_name, &ctx.request.arguments);
+        if !self.enabled && ctx.session_filesystem_roots.is_none() {
+            return Ok(Verdict::Allow);
+        }
+        let action = match extract_action_checked(&ctx.request.tool_name, &ctx.request.arguments) {
+            Ok(action) => action,
+            Err(_) => return Ok(Verdict::Deny),
+        };
         let Some(path) = action.filesystem_path() else {
             return Ok(Verdict::Allow);
         };
@@ -266,6 +272,22 @@ mod tests {
         }
     }
 
+    fn make_test_capability(
+        kp: &chio_core::crypto::Keypair,
+        scope: &chio_core::capability::ChioScope,
+    ) -> chio_core::capability::CapabilityToken {
+        let cap_body = chio_core::capability::CapabilityTokenBody {
+            id: "cap-test".to_string(),
+            issuer: kp.public_key(),
+            subject: kp.public_key(),
+            scope: scope.clone(),
+            issued_at: 0,
+            expires_at: u64::MAX,
+            delegation_chain: vec![],
+        };
+        chio_core::capability::CapabilityToken::sign(cap_body, kp).expect("sign cap")
+    }
+
     #[test]
     fn allows_paths_inside_scope() {
         let guard = PathAllowlistGuard::with_config(enabled_config(
@@ -325,6 +347,51 @@ mod tests {
     }
 
     #[test]
+    fn disabled_guard_without_session_roots_allows_malformed_filesystem_actions() {
+        let guard = PathAllowlistGuard::new();
+        let kp = chio_core::crypto::Keypair::generate();
+        let scope = chio_core::capability::ChioScope::default();
+        let agent_id = kp.public_key().to_hex();
+        let server_id = "srv-test".to_string();
+        let cap = make_test_capability(&kp, &scope);
+        let ctx = make_guard_context(
+            "read_file",
+            serde_json::json!({}),
+            &scope,
+            &agent_id,
+            &server_id,
+            cap,
+            None,
+        );
+
+        let result = guard.evaluate(&ctx).expect("evaluate should not error");
+        assert_eq!(result, Verdict::Allow);
+    }
+
+    #[test]
+    fn disabled_guard_with_session_roots_denies_malformed_filesystem_actions() {
+        let guard = PathAllowlistGuard::new();
+        let kp = chio_core::crypto::Keypair::generate();
+        let scope = chio_core::capability::ChioScope::default();
+        let agent_id = kp.public_key().to_hex();
+        let server_id = "srv-test".to_string();
+        let cap = make_test_capability(&kp, &scope);
+        let session_roots = vec!["/workspace/project".to_string()];
+        let ctx = make_guard_context(
+            "read_file",
+            serde_json::json!({}),
+            &scope,
+            &agent_id,
+            &server_id,
+            cap,
+            Some(session_roots.as_slice()),
+        );
+
+        let result = guard.evaluate(&ctx).expect("evaluate should not error");
+        assert_eq!(result, Verdict::Deny);
+    }
+
+    #[test]
     fn evaluate_denies_write_outside_allowlist() {
         let guard = PathAllowlistGuard::with_config(enabled_config(
             vec!["**/repo/**"],
@@ -355,6 +422,61 @@ mod tests {
             server_id: server_id.clone(),
             agent_id: agent_id.clone(),
             arguments: serde_json::json!({"path": "/etc/passwd", "content": "bad"}),
+            dpop_proof: None,
+            governed_intent: None,
+            approval_token: None,
+            model_metadata: None,
+            federated_origin_kernel_id: None,
+        };
+
+        let ctx = chio_kernel::GuardContext {
+            request: &request,
+            scope: &scope,
+            agent_id: &agent_id,
+            server_id: &server_id,
+            session_filesystem_roots: None,
+            matched_grant_index: None,
+        };
+
+        let result = guard.evaluate(&ctx).expect("evaluate should not error");
+        assert_eq!(result, Verdict::Deny);
+    }
+
+    #[test]
+    fn evaluate_denies_acp_write_text_file_outside_allowlist() {
+        let guard = PathAllowlistGuard::with_config(enabled_config(
+            vec!["**/repo/**"],
+            vec!["**/repo/**"],
+            vec![],
+        ));
+
+        let kp = chio_core::crypto::Keypair::generate();
+        let scope = chio_core::capability::ChioScope::default();
+        let agent_id = kp.public_key().to_hex();
+        let server_id = "srv-test".to_string();
+
+        let cap_body = chio_core::capability::CapabilityTokenBody {
+            id: "cap-test".to_string(),
+            issuer: kp.public_key(),
+            subject: kp.public_key(),
+            scope: scope.clone(),
+            issued_at: 0,
+            expires_at: u64::MAX,
+            delegation_chain: vec![],
+        };
+        let cap = chio_core::capability::CapabilityToken::sign(cap_body, &kp).expect("sign cap");
+
+        let request = chio_kernel::ToolCallRequest {
+            request_id: "req-test".to_string(),
+            capability: cap,
+            tool_name: "fs/write_text_file".to_string(),
+            server_id: server_id.clone(),
+            agent_id: agent_id.clone(),
+            arguments: serde_json::json!({
+                "sessionId": "sess-1",
+                "path": "/etc/passwd",
+                "content": "bad"
+            }),
             dpop_proof: None,
             governed_intent: None,
             approval_token: None,

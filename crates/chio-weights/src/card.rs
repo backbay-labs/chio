@@ -55,9 +55,14 @@ impl<'de> Deserialize<'de> for StringSet {
         let items = Vec::<String>::deserialize(deserializer)?;
         let mut set = BTreeSet::new();
         for item in items {
-            if item.is_empty() {
+            if item.trim().is_empty() {
                 return Err(de::Error::custom(
                     "string set entries must be non-empty strings",
+                ));
+            }
+            if item.trim() != item {
+                return Err(de::Error::custom(
+                    "string set entries must not contain surrounding whitespace",
                 ));
             }
             if set.contains(&item) {
@@ -123,8 +128,20 @@ impl StringSet {
         &self.0
     }
 
-    fn contains_empty(&self) -> bool {
-        self.0.iter().any(String::is_empty)
+    fn validate_entries(&self, field: &'static str) -> Result<(), WeightsError> {
+        for item in &self.0 {
+            if item.trim().is_empty() {
+                return Err(WeightsError::SchemaRejected(format!(
+                    "{field} entries must be non-empty strings"
+                )));
+            }
+            if item.trim() != item {
+                return Err(WeightsError::SchemaRejected(format!(
+                    "{field} entries must not contain surrounding whitespace"
+                )));
+            }
+        }
+        Ok(())
     }
 }
 
@@ -201,28 +218,17 @@ impl ModelCard {
                 self.card_version
             )));
         }
-        if self.weights_hash.len() != 64 || !self.weights_hash.bytes().all(is_lowercase_hex_byte) {
+        if !is_lowercase_sha256_hex(&self.weights_hash) {
             return Err(WeightsError::SchemaRejected(format!(
                 "weights_hash must be 64 lowercase hex chars, got {:?}",
                 self.weights_hash
             )));
         }
-        if self.allowed_capability_set.contains_empty() {
-            return Err(WeightsError::SchemaRejected(
-                "allowed_capability_set entries must be non-empty strings".to_string(),
-            ));
-        }
-        if self.banned_tools.contains_empty() {
-            return Err(WeightsError::SchemaRejected(
-                "banned_tools entries must be non-empty strings".to_string(),
-            ));
-        }
-        if self.training_data_class.is_empty() {
-            return Err(WeightsError::MissingField("training_data_class"));
-        }
-        if self.issuer.is_empty() {
-            return Err(WeightsError::MissingField("issuer"));
-        }
+        self.allowed_capability_set
+            .validate_entries("allowed_capability_set")?;
+        self.banned_tools.validate_entries("banned_tools")?;
+        validate_required_text_field(&self.training_data_class, "training_data_class")?;
+        validate_required_text_field(&self.issuer, "issuer")?;
         if self.expires_at < self.issued_at {
             return Err(WeightsError::SchemaRejected(format!(
                 "expires_at ({}) precedes issued_at ({})",
@@ -281,6 +287,23 @@ fn is_lowercase_hex_byte(b: u8) -> bool {
     matches!(b, b'0'..=b'9' | b'a'..=b'f')
 }
 
+#[inline]
+fn is_lowercase_sha256_hex(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(is_lowercase_hex_byte)
+}
+
+fn validate_required_text_field(value: &str, field: &'static str) -> Result<(), WeightsError> {
+    if value.trim().is_empty() {
+        return Err(WeightsError::MissingField(field));
+    }
+    if value.trim() != value {
+        return Err(WeightsError::SchemaRejected(format!(
+            "{field} must not contain surrounding whitespace"
+        )));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -331,6 +354,20 @@ mod tests {
     }
 
     #[test]
+    fn lowercase_sha256_hex_helper_accepts_only_exact_lowercase_digest() {
+        assert!(is_lowercase_sha256_hex(
+            "0000000000000000000000000000000000000000000000000000000000000001"
+        ));
+        assert!(!is_lowercase_sha256_hex(
+            "ABCDEF0000000000000000000000000000000000000000000000000000000001"
+        ));
+        assert!(!is_lowercase_sha256_hex("abcdef"));
+        assert!(!is_lowercase_sha256_hex(
+            "000000000000000000000000000000000000000000000000000000000000000g"
+        ));
+    }
+
+    #[test]
     fn validate_rejects_uppercase_weights_hash() {
         let issued = fixed_issued_at();
         let res = ModelCard::new(
@@ -373,6 +410,38 @@ mod tests {
             issued + chrono::Duration::days(1),
         );
         assert!(matches!(res, Err(WeightsError::MissingField(_))));
+    }
+
+    #[test]
+    fn validate_rejects_blank_or_padded_required_text_fields() {
+        let issued = fixed_issued_at();
+        let blank_training = ModelCard::new(
+            "0000000000000000000000000000000000000000000000000000000000000001",
+            StringSet::default(),
+            StringSet::default(),
+            " ",
+            "https://example.com/issuer",
+            issued,
+            issued + chrono::Duration::days(1),
+        );
+        assert!(matches!(
+            blank_training,
+            Err(WeightsError::MissingField("training_data_class"))
+        ));
+
+        let padded_issuer = ModelCard::new(
+            "0000000000000000000000000000000000000000000000000000000000000001",
+            StringSet::default(),
+            StringSet::default(),
+            "public-internet",
+            " https://example.com/issuer",
+            issued,
+            issued + chrono::Duration::days(1),
+        );
+        assert!(matches!(
+            padded_issuer,
+            Err(WeightsError::SchemaRejected(message)) if message.contains("issuer")
+        ));
     }
 
     #[test]
@@ -454,6 +523,38 @@ mod tests {
             issued + chrono::Duration::days(1),
         );
         assert!(matches!(res, Err(WeightsError::SchemaRejected(_))));
+    }
+
+    #[test]
+    fn new_rejects_blank_or_padded_set_entries() {
+        let issued = fixed_issued_at();
+        let blank = ModelCard::new(
+            "0000000000000000000000000000000000000000000000000000000000000001",
+            StringSet::new([" "]),
+            StringSet::default(),
+            "public-internet",
+            "https://example.com/issuer",
+            issued,
+            issued + chrono::Duration::days(1),
+        );
+        assert!(matches!(
+            blank,
+            Err(WeightsError::SchemaRejected(message)) if message.contains("allowed_capability_set")
+        ));
+
+        let padded = ModelCard::new(
+            "0000000000000000000000000000000000000000000000000000000000000001",
+            StringSet::default(),
+            StringSet::new([" tool:exec"]),
+            "public-internet",
+            "https://example.com/issuer",
+            issued,
+            issued + chrono::Duration::days(1),
+        );
+        assert!(matches!(
+            padded,
+            Err(WeightsError::SchemaRejected(message)) if message.contains("banned_tools")
+        ));
     }
 
     #[test]

@@ -97,7 +97,11 @@ impl ManifestGenerator {
             .or_else(|| operation.description.clone())
             .unwrap_or_else(|| format!("{} {}", method, path));
 
-        let input_schema = build_input_schema(params, &operation.request_body_schema);
+        let input_schema = build_input_schema(
+            params,
+            &operation.request_body_schema,
+            operation.request_body_required,
+        );
 
         let output_schema = if self.config.include_output_schemas {
             build_output_schema(&operation.response_schemas)
@@ -165,7 +169,11 @@ fn merge_parameters(path_params: &[Parameter], op_params: &[Parameter]) -> Vec<P
 
 /// Build a JSON Schema object from path/query parameters and an optional
 /// request body schema.
-fn build_input_schema(params: &[Parameter], request_body: &Option<Value>) -> Value {
+fn build_input_schema(
+    params: &[Parameter],
+    request_body: &Option<Value>,
+    request_body_required: bool,
+) -> Value {
     let mut properties = serde_json::Map::new();
     let mut required = Vec::new();
 
@@ -205,7 +213,9 @@ fn build_input_schema(params: &[Parameter], request_body: &Option<Value>) -> Val
     // If there is a request body, add it as a "body" property.
     if let Some(body_schema) = request_body {
         properties.insert("body".to_string(), body_schema.clone());
-        required.push(Value::String("body".to_string()));
+        if request_body_required {
+            required.push(Value::String("body".to_string()));
+        }
     }
 
     let mut schema = serde_json::Map::new();
@@ -460,6 +470,55 @@ mod tests {
             .and_then(|p| p.as_object())
             .unwrap();
         assert!(props.contains_key("body"));
+        let required = create_pet
+            .input_schema
+            .get("required")
+            .and_then(Value::as_array)
+            .unwrap();
+        let required_names: Vec<&str> = required.iter().filter_map(Value::as_str).collect();
+        assert!(required_names.contains(&"body"));
+    }
+
+    #[test]
+    fn input_schema_keeps_optional_request_body_optional() {
+        let input = r##"{
+            "openapi": "3.0.3",
+            "info": { "title": "T", "version": "1" },
+            "paths": {
+                "/pets": {
+                    "post": {
+                        "operationId": "createPet",
+                        "requestBody": {
+                            "content": {
+                                "application/json": {
+                                    "schema": { "type": "object" }
+                                }
+                            }
+                        },
+                        "responses": { "201": { "description": "Created" } }
+                    }
+                }
+            }
+        }"##;
+
+        let spec = OpenApiSpec::parse(input).unwrap();
+        let gen = ManifestGenerator::new(GeneratorConfig::default());
+        let tools = gen.generate_tools(&spec);
+
+        let create_pet = tools.iter().find(|tool| tool.name == "createPet").unwrap();
+        let props = create_pet
+            .input_schema
+            .get("properties")
+            .and_then(Value::as_object)
+            .unwrap();
+        assert!(props.contains_key("body"));
+        let required_names: Vec<&str> = create_pet
+            .input_schema
+            .get("required")
+            .and_then(Value::as_array)
+            .map(|required| required.iter().filter_map(Value::as_str).collect())
+            .unwrap_or_default();
+        assert!(!required_names.contains(&"body"));
     }
 
     #[test]

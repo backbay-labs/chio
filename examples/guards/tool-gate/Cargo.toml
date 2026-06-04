@@ -11,5 +11,8 @@ crate-type = ["cdylib"]
 chio-guard-sdk = { path = "../../../crates/chio-guard-sdk" }
 chio-guard-sdk-macros = { path = "../../../crates/chio-guard-sdk-macros" }
 
+[dev-dependencies]
+serde_json = { workspace = true }
+
 [lints]
 workspace = true

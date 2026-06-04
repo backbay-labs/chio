@@ -117,6 +117,7 @@ impl SqliteReceiptStore {
     ) -> Result<u64, ReceiptStoreError> {
         ensure_child_receipt_verified(receipt)?;
         let raw_json = serde_json::to_string(receipt)?;
+        let lineage_json = child_receipt_request_lineage_json(receipt)?;
         let mut connection = self.connection()?;
         ensure_checkpoint_transparency_guards(&connection)?;
         validate_claim_receipt_log_entries(&connection)?;
@@ -186,7 +187,7 @@ impl SqliteReceiptStore {
             receipt.timestamp,
             None,
             CHILD_RECEIPT_BACKFILL_SOURCE_KIND,
-            &serde_json::from_str::<serde_json::Value>(&raw_json)?,
+            &lineage_json,
         )?;
         tx.commit()?;
         Ok(entry_seq)

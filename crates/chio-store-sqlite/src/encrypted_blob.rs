@@ -152,6 +152,8 @@ pub enum BlobStoreError {
     Io(String),
     /// Tenant ids must be present before a blob can be persisted.
     EmptyTenantId,
+    /// Tenant ids must be exact storage scope keys.
+    InvalidTenantId,
     /// Stored nonce length was not the required 12 bytes.
     InvalidNonceLength(usize),
     /// The handle did not identify a row in its tenant scope.
@@ -167,6 +169,9 @@ impl std::fmt::Display for BlobStoreError {
             Self::Sqlite(error) => write!(f, "sqlite encrypted blob error: {error}"),
             Self::Io(error) => write!(f, "sqlite encrypted blob io error: {error}"),
             Self::EmptyTenantId => f.write_str("tenant id must not be empty"),
+            Self::InvalidTenantId => {
+                f.write_str("tenant id must be unpadded and contain no control characters")
+            }
             Self::InvalidNonceLength(len) => {
                 write!(f, "encrypted blob nonce must be 12 bytes, got {len}")
             }
@@ -445,8 +450,12 @@ fn blob_aad(blob_id: &str, tenant_id: &str, created_at: i64) -> Vec<u8> {
 }
 
 fn validate_tenant_id(tenant_id: &TenantId) -> Result<(), BlobStoreError> {
-    if tenant_id.as_str().trim().is_empty() {
+    let value = tenant_id.as_str();
+    if value.trim().is_empty() {
         return Err(BlobStoreError::EmptyTenantId);
+    }
+    if value.trim() != value || value.chars().any(char::is_control) {
+        return Err(BlobStoreError::InvalidTenantId);
     }
     Ok(())
 }
@@ -518,6 +527,32 @@ mod tests {
             error,
             BlobStoreError::Decrypt(DecryptError::AuthenticationFailed)
         ));
+    }
+
+    #[test]
+    fn write_rejects_padded_or_control_tenant_id_before_persistence() {
+        let store = SqliteEncryptedBlobStore::open_in_memory().unwrap();
+        let key = TenantKey::from_bytes([9; 32]);
+
+        for tenant in [" tenant-a", "tenant-a ", "tenant-a\n"] {
+            let error = store
+                .write_encrypted_blob(&TenantId::new(tenant), &key, b"payload")
+                .expect_err("malformed tenant id must fail closed");
+            assert!(
+                error.to_string().contains("tenant id"),
+                "unexpected tenant validation error: {error}"
+            );
+        }
+
+        let count: i64 = store
+            .pool
+            .get()
+            .unwrap()
+            .query_row("SELECT COUNT(*) FROM chio_encrypted_blobs", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(count, 0);
     }
 
     #[test]

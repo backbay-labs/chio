@@ -26,3 +26,27 @@ impl Default for A2aEdgeConfig {
         }
     }
 }
+
+impl A2aEdgeConfig {
+    fn validate_for_agent_card(&self) -> Result<(), A2aEdgeError> {
+        reject_invalid_agent_card_field("name", &self.agent_name)?;
+        reject_invalid_agent_card_field("version", &self.agent_version)?;
+        reject_invalid_agent_card_field("endpoint URL", &self.endpoint_url)?;
+        reject_invalid_agent_card_field("protocol binding", &self.protocol_binding)?;
+        Ok(())
+    }
+}
+
+fn reject_invalid_agent_card_field(field: &str, value: &str) -> Result<(), A2aEdgeError> {
+    if value.trim().is_empty() {
+        return Err(A2aEdgeError::InvalidRequest(format!(
+            "agent card {field} must not be empty"
+        )));
+    }
+    if value.trim() != value {
+        return Err(A2aEdgeError::InvalidRequest(format!(
+            "agent card {field} must not include leading or trailing whitespace"
+        )));
+    }
+    Ok(())
+}

@@ -14,11 +14,25 @@ pub const HOST_CALL_METRIC_LABEL_VALUES: &[&str] = &[
 
 #[must_use]
 pub fn normalize_host_call_metric_label(host_fn: &str) -> Option<&'static str> {
-    match host_fn {
-        HOST_CALL_LOG => Some(HOST_CALL_LOG),
-        HOST_CALL_GET_CONFIG => Some(HOST_CALL_GET_CONFIG),
-        HOST_CALL_GET_TIME_UNIX_SECS => Some(HOST_CALL_GET_TIME_UNIX_SECS),
-        HOST_CALL_FETCH_BLOB => Some(HOST_CALL_FETCH_BLOB),
-        _ => None,
+    canonical_host_call_metric_label(host_fn)
+}
+
+fn canonical_host_call_metric_label(host_fn: &str) -> Option<&'static str> {
+    HOST_CALL_METRIC_LABEL_VALUES
+        .iter()
+        .copied()
+        .find(|label| *label == host_fn)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn canonical_host_call_metric_label_accepts_declared_labels_only() {
+        for label in HOST_CALL_METRIC_LABEL_VALUES {
+            assert_eq!(canonical_host_call_metric_label(label), Some(*label));
+        }
+        assert_eq!(canonical_host_call_metric_label("unknown"), None);
     }
 }

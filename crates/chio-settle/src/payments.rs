@@ -118,15 +118,15 @@ pub fn build_x402_payment_requirements(
     accepted_tokens: Vec<String>,
     settlement_mode: X402SettlementMode,
 ) -> Result<X402PaymentRequirements, SettlementError> {
-    if facilitator_url.trim().is_empty() || resource.trim().is_empty() {
-        return Err(SettlementError::InvalidInput(
-            "x402 compatibility requires facilitator URL and resource".to_string(),
-        ));
-    }
+    validate_x402_field("facilitator URL", facilitator_url)?;
+    validate_x402_field("resource", resource)?;
     if accepted_tokens.is_empty() {
         return Err(SettlementError::InvalidInput(
             "x402 compatibility requires at least one accepted token".to_string(),
         ));
+    }
+    for (index, token) in accepted_tokens.iter().enumerate() {
+        validate_x402_field(&format!("accepted token {index}"), token)?;
     }
     Ok(X402PaymentRequirements {
         version: "x402".to_string(),
@@ -148,6 +148,20 @@ pub fn build_x402_payment_requirements(
         settlement_mode,
         governed_authorization_required: true,
     })
+}
+
+fn validate_x402_field(label: &str, value: &str) -> Result<(), SettlementError> {
+    if value.trim().is_empty() {
+        return Err(SettlementError::InvalidInput(format!(
+            "x402 compatibility requires {label}"
+        )));
+    }
+    if value.trim() != value || value.chars().any(char::is_whitespace) {
+        return Err(SettlementError::InvalidInput(format!(
+            "x402 compatibility {label} must not contain whitespace"
+        )));
+    }
+    Ok(())
 }
 
 pub fn prepare_transfer_with_authorization(
@@ -357,6 +371,22 @@ mod tests {
 
         assert!(requirements.governed_authorization_required);
         assert_eq!(requirements.dispatch_id, dispatch.dispatch_id);
+    }
+
+    #[test]
+    fn x402_requirements_reject_blank_accepted_tokens() {
+        let dispatch = sample_dispatch();
+
+        let error = build_x402_payment_requirements(
+            &dispatch,
+            "https://facilitator.example/x402",
+            "https://tool.example/v1/run",
+            vec!["USDC".to_string(), " ".to_string()],
+            X402SettlementMode::PrepaidAuthorization,
+        )
+        .test_unwrap_err();
+
+        assert!(error.to_string().contains("accepted token"));
     }
 
     #[test]

@@ -43,6 +43,9 @@ pub enum CaptureError {
     /// computed.
     #[error("signing payload error: {0}")]
     SigningPayload(String),
+    /// Capture run id was empty, padded, or contained non-filename-safe bytes.
+    #[error("invalid capture run_id: {0}")]
+    InvalidRunId(String),
     /// Filesystem error creating the captures directory or appending a line.
     #[error("io error writing capture {path}: {source}")]
     Io {
@@ -201,6 +204,8 @@ impl CaptureWriter {
     /// Open (creating if necessary) the capture file for `run_id` under
     /// `${runtime_dir}/captures/`.
     pub fn open(runtime_dir: &Path, run_id: &str) -> Result<Self, CaptureError> {
+        validate_run_id(run_id)?;
+
         let captures_dir = runtime_dir.join("captures");
         fs::create_dir_all(&captures_dir).map_err(|source| CaptureError::Io {
             path: captures_dir.clone(),
@@ -247,6 +252,25 @@ impl CaptureWriter {
     }
 }
 
+fn validate_run_id(run_id: &str) -> Result<(), CaptureError> {
+    let is_filename_safe = !run_id.is_empty()
+        && run_id == run_id.trim()
+        && run_id != "."
+        && run_id != ".."
+        && run_id.bytes().all(|byte| {
+            matches!(
+                byte,
+                b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'_' | b'.'
+            )
+        });
+
+    if is_filename_safe {
+        Ok(())
+    } else {
+        Err(CaptureError::InvalidRunId(run_id.to_string()))
+    }
+}
+
 impl std::fmt::Debug for CaptureWriter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("CaptureWriter")
@@ -281,7 +305,7 @@ mod tests {
             },
             request_blob_sha256: "a".repeat(64),
             response_blob_sha256: "b".repeat(64),
-            redaction_pass_id: "redactors@1.4.0+default".to_string(),
+            redaction_pass_id: crate::DEFAULT_REDACTION_PASS_ID.to_string(),
             verdict: Verdict::Allow,
             deny_reason: None,
             would_have_blocked: false,
@@ -351,5 +375,14 @@ mod tests {
             let parsed: Frame = serde_json::from_str(line).test_unwrap();
             assert_eq!(parsed.tee_id, "tee-capture-test");
         }
+    }
+
+    #[test]
+    fn writer_rejects_path_traversal_run_id() {
+        let dir = tempfile::tempdir().test_unwrap();
+        let err = CaptureWriter::open(dir.path(), "../escape").test_unwrap_err();
+
+        assert!(matches!(err, CaptureError::InvalidRunId(run_id) if run_id == "../escape"));
+        assert!(!dir.path().join("escape.ndjson").exists());
     }
 }

@@ -1061,10 +1061,10 @@ pub fn build_guard_pipeline(config: &GuardPolicyConfig) -> Result<GuardPipeline,
             if sc.forbidden_patterns.is_empty() {
                 pipeline.add(Box::new(ShellCommandGuard::new()));
             } else {
-                pipeline.add(Box::new(ShellCommandGuard::with_patterns(
-                    sc.forbidden_patterns.clone(),
-                    true,
-                )));
+                pipeline.add(Box::new(
+                    ShellCommandGuard::try_with_patterns(sc.forbidden_patterns.clone(), true)
+                        .map_err(|error| PolicyError::Invalid(error.to_string()))?,
+                ));
             }
         }
     }
@@ -2048,6 +2048,31 @@ guards:
             error
                 .to_string()
                 .contains("invalid patch integrity forbidden pattern"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn build_pipeline_rejects_invalid_shell_command_patterns() {
+        let policy = parse_policy(
+            r#"
+guards:
+  shell_command:
+    enabled: true
+    forbidden_patterns:
+      - "["
+"#,
+        )
+        .test_unwrap();
+
+        let error = match build_guard_pipeline(&policy.guards) {
+            Ok(_) => panic!("invalid shell command patterns should fail"),
+            Err(error) => error,
+        };
+        assert!(
+            error
+                .to_string()
+                .contains("invalid shell-command forbidden pattern"),
             "unexpected error: {error}"
         );
     }

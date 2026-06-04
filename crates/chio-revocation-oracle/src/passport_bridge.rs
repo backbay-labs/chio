@@ -79,27 +79,15 @@ impl PassportRevocationEvent {
     ) -> Result<Self, PassportRevocationBridgeError> {
         let passport_id = passport_id.into();
         let subject = subject.into();
-        if passport_id.is_empty() {
-            return Err(PassportRevocationBridgeError::MalformedEvent(
-                "passport_id must be non-empty".to_string(),
-            ));
-        }
-        if subject.is_empty() {
-            return Err(PassportRevocationBridgeError::MalformedEvent(
-                "subject must be non-empty".to_string(),
-            ));
-        }
+        validate_event_text("passport_id", &passport_id)?;
+        validate_event_text("subject", &subject)?;
         if revoked_at_unix_ms == 0 {
             return Err(PassportRevocationBridgeError::MalformedEvent(
                 "revoked_at_unix_ms must be non-zero on a Revoked record".to_string(),
             ));
         }
         if let Some(reason) = revoked_reason.as_deref() {
-            if reason.trim().is_empty() {
-                return Err(PassportRevocationBridgeError::MalformedEvent(
-                    "revoked_reason must be non-empty when present".to_string(),
-                ));
-            }
+            validate_event_text("revoked_reason", reason)?;
         }
         Ok(Self {
             passport_id,
@@ -121,6 +109,16 @@ impl PassportRevocationEvent {
             EpochNonce::new(nonce_value),
         )
     }
+}
+
+fn validate_event_text(field: &str, value: &str) -> Result<(), PassportRevocationBridgeError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() || trimmed != value {
+        return Err(PassportRevocationBridgeError::MalformedEvent(format!(
+            "{field} must be non-empty and unpadded"
+        )));
+    }
+    Ok(())
 }
 
 /// Errors raised by the passport bridge. Every variant is fail-closed:
@@ -209,6 +207,25 @@ mod tests {
     #[test]
     fn new_rejects_empty_subject() {
         let err = PassportRevocationEvent::new("p", "", 1, None).expect_err("empty subject");
+        match err {
+            PassportRevocationBridgeError::MalformedEvent(msg) => assert!(msg.contains("subject")),
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn new_rejects_padded_required_fields() {
+        let err = PassportRevocationEvent::new(" passport-7", "did:chio:subject-7", 1, None)
+            .expect_err("padded passport-id");
+        match err {
+            PassportRevocationBridgeError::MalformedEvent(msg) => {
+                assert!(msg.contains("passport_id"))
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+
+        let err = PassportRevocationEvent::new("passport-7", "did:chio:subject-7 ", 1, None)
+            .expect_err("padded subject");
         match err {
             PassportRevocationBridgeError::MalformedEvent(msg) => assert!(msg.contains("subject")),
             other => panic!("unexpected: {other:?}"),

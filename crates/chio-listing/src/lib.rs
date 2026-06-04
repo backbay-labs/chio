@@ -397,6 +397,13 @@ mod tests {
         .assess(100, 200);
         assert_eq!(freshness.state, GenericListingFreshnessState::Stale);
         assert_eq!(freshness.age_secs, 100);
+
+        let freshness = GenericListingFreshnessWindow {
+            max_age_secs: 30,
+            valid_until: 250,
+        }
+        .assess(200, 100);
+        assert_eq!(freshness.state, GenericListingFreshnessState::Stale);
     }
 
     #[test]

@@ -1,5 +1,6 @@
 use chio_errors::{
-    diagnostic, error, lookup_string_code, lookup_string_code_matches, Code, Domain, Severity,
+    diagnostic, diagnostic_from_spec, error, error_from_spec, lookup_error_code,
+    lookup_string_code, lookup_string_code_matches, ChioError, Code, Diagnostic, Domain, Severity,
 };
 
 #[test]
@@ -97,6 +98,78 @@ fn error_helper_builds_chio_error() {
     assert_eq!(err.domain(), Domain::Policy);
     assert_eq!(err.severity(), Severity::Fatal);
     assert_eq!(err.message(), "policy denied request");
+}
+
+#[test]
+fn registry_bound_constructors_preserve_registry_metadata() {
+    let spec = match lookup_error_code("urn:chio:error:capability:expired") {
+        Some(spec) => spec,
+        None => panic!("registry fixture should contain capability expired"),
+    };
+
+    let diagnostic = Diagnostic::from_spec(spec, "token expired before evaluation");
+
+    assert_eq!(diagnostic.code().as_str(), spec.urn);
+    assert_eq!(diagnostic.domain(), spec.domain);
+    assert_eq!(diagnostic.severity(), spec.severity);
+    assert_eq!(diagnostic.message(), "token expired before evaluation");
+    assert_eq!(diagnostic.help(), Some(spec.help));
+    assert_eq!(diagnostic.registry_spec(), Some(spec));
+
+    let helper_diagnostic = diagnostic_from_spec(spec, "retry with a fresh grant");
+    assert_eq!(helper_diagnostic.code().as_str(), spec.urn);
+    assert_eq!(helper_diagnostic.help(), Some(spec.help));
+
+    let err = ChioError::from_spec(spec, "capability is stale");
+    assert_eq!(err.code().as_str(), spec.urn);
+    assert_eq!(err.domain(), spec.domain);
+    assert_eq!(err.severity(), spec.severity);
+    assert_eq!(err.help(), Some(spec.help));
+    assert_eq!(err.registry_spec(), Some(spec));
+
+    let helper_error = error_from_spec(spec, "capability is stale");
+    assert_eq!(helper_error.code().as_str(), spec.urn);
+    assert_eq!(helper_error.help(), Some(spec.help));
+}
+
+#[test]
+fn registry_spec_rejects_registered_code_with_mismatched_metadata() {
+    let spec = match lookup_error_code("urn:chio:error:capability:expired") {
+        Some(spec) => spec,
+        None => panic!("registry fixture should contain capability expired"),
+    };
+
+    let wrong_domain = diagnostic(
+        spec.urn,
+        Domain::Manifest,
+        spec.severity,
+        "registered code with wrong domain",
+    );
+    assert_eq!(wrong_domain.registry_spec(), None);
+
+    let wrong_severity = diagnostic(
+        spec.urn,
+        spec.domain,
+        Severity::Fatal,
+        "registered code with wrong severity",
+    );
+    assert_eq!(wrong_severity.registry_spec(), None);
+
+    let err = wrong_domain.into_error();
+    assert_eq!(err.registry_spec(), None);
+}
+
+#[test]
+fn free_form_diagnostic_keeps_unregistered_code_compatibility() {
+    let diagnostic = diagnostic(
+        "CHIO-LOCAL-ONLY",
+        Domain::Cli,
+        Severity::Error,
+        "legacy local diagnostic",
+    );
+
+    assert_eq!(diagnostic.code().as_str(), "CHIO-LOCAL-ONLY");
+    assert_eq!(diagnostic.registry_spec(), None);
 }
 
 #[test]

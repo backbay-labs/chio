@@ -18,6 +18,8 @@ use url::Url;
 use crate::capability::{ModelMetadata, ProvenanceEvidenceClass};
 use crate::crypto::{canonical_json_bytes, sha256_hex, Keypair, PublicKey, Signature};
 use crate::error::Result;
+use crate::schema_binding::ensure_schema_matches;
+use crate::signer_binding::ensure_keypair_matches_embedded_key;
 use crate::{AgentId, CapabilityToken, ServerId};
 
 /// Opaque identifier for a logical runtime session.
@@ -647,6 +649,13 @@ pub struct SessionAnchor {
 
 impl SessionAnchor {
     pub fn sign(body: SessionAnchorBody, keypair: &Keypair) -> Result<Self> {
+        ensure_schema_matches(&body.schema, CHIO_SESSION_ANCHOR_SCHEMA, "session anchor")?;
+        ensure_keypair_matches_embedded_key(
+            &body.kernel_key,
+            keypair,
+            "session anchor",
+            "kernel_key",
+        )?;
         let (signature, _bytes) = keypair.sign_canonical(&body)?;
         Ok(Self {
             schema: body.schema,
@@ -682,6 +691,7 @@ impl SessionAnchor {
     }
 
     pub fn verify_signature(&self) -> Result<bool> {
+        ensure_schema_matches(&self.schema, CHIO_SESSION_ANCHOR_SCHEMA, "session anchor")?;
         let body = self.body();
         self.kernel_key.verify_canonical(&body, &self.signature)
     }
@@ -779,6 +789,14 @@ impl RequestLineageRecord {
             continuation_token_id: None,
             started_at,
         }
+    }
+
+    pub fn validate_schema(&self) -> Result<()> {
+        ensure_schema_matches(
+            &self.schema,
+            CHIO_REQUEST_LINEAGE_RECORD_SCHEMA,
+            "request lineage record",
+        )
     }
 
     #[must_use]
@@ -2155,6 +2173,21 @@ mod tests {
             decoded.continuation_token_id.as_deref(),
             Some("continuation-1")
         );
+        assert!(decoded.validate_schema().is_ok());
+    }
+
+    #[test]
+    fn request_lineage_record_rejects_unknown_schema() {
+        let mut record = RequestLineageRecord::new(
+            RequestId::new("req-schema"),
+            SessionAnchorReference::new("anchor-1", "anchor-hash-1"),
+            OperationKind::ToolCall,
+            RequestLineageMode::LocalChild,
+            1_710_000_030,
+        );
+        record.schema = "chio.request_lineage_record.v999".to_string();
+
+        assert!(record.validate_schema().is_err());
     }
 
     #[test]

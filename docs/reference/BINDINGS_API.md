@@ -61,6 +61,9 @@ The current public export surface is:
 - `receipt_body_canonical_json`
 - `verify_receipt`
 - `verify_receipt_json`
+- `verify_receipt_with_trusted_signers`
+- `verify_receipt_with_trusted_signer_hex`
+- `verify_receipt_json_with_trusted_signer_hex`
 - `ReceiptDecisionKind`
 - `ReceiptVerification`
 
@@ -110,6 +113,10 @@ The current stable bindings error codes are:
 - `invalid_proof_index`
 - `empty_manifest`
 - `duplicate_tool_name`
+- `invalid_tool_name`
+- `invalid_input_schema`
+- `invalid_output_schema`
+- `duplicate_server_tool`
 - `unsupported_schema`
 - `manifest_verification_failed`
 

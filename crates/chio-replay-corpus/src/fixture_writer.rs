@@ -122,10 +122,8 @@ pub fn scenario_from_dir(dir: &Path) -> Result<ReplayScenario, WriterError> {
                 };
                 normal_components.push(text.to_string());
             }
-            Component::CurDir
-            | Component::ParentDir
-            | Component::RootDir
-            | Component::Prefix(_) => {}
+            Component::ParentDir => return Err(WriterError::InvalidScenarioDir(dir.to_path_buf())),
+            Component::CurDir | Component::RootDir | Component::Prefix(_) => {}
         }
     }
 
@@ -226,28 +224,18 @@ fn ensure_existing_shape_allows_write(dir: &Path) -> Result<(), WriterError> {
         Ok(meta) if !meta.is_dir() => Err(WriterError::TargetNotDirectory(dir.to_path_buf())),
         Ok(_) => verify_exact_shape_or_empty(dir),
         Err(source) if source.kind() == io::ErrorKind::NotFound => Ok(()),
-        Err(source) => Err(WriterError::Io {
-            path: dir.to_path_buf(),
-            source,
-        }),
+        Err(source) => Err(io_error(dir, source)),
     }
 }
 
 fn verify_exact_shape_or_empty(dir: &Path) -> Result<(), WriterError> {
-    let mut entries = fs::read_dir(dir).map_err(|source| WriterError::Io {
-        path: dir.to_path_buf(),
-        source,
-    })?;
+    let mut entries = fs::read_dir(dir).map_err(|source| io_error(dir, source))?;
     entries.try_for_each(|entry| {
-        let entry = entry.map_err(|source| WriterError::Io {
-            path: dir.to_path_buf(),
-            source,
-        })?;
+        let entry = entry.map_err(|source| io_error(dir, source))?;
         let path = entry.path();
-        let file_type = entry.file_type().map_err(|source| WriterError::Io {
-            path: path.clone(),
-            source,
-        })?;
+        let file_type = entry
+            .file_type()
+            .map_err(|source| io_error(path.clone(), source))?;
         if !file_type.is_file() || !is_fixture_filename(&entry.file_name()) {
             return Err(WriterError::ExtraEntry(path));
         }
@@ -257,20 +245,13 @@ fn verify_exact_shape_or_empty(dir: &Path) -> Result<(), WriterError> {
 
 fn verify_exact_shape(dir: &Path) -> Result<(), WriterError> {
     let mut seen = BTreeSet::new();
-    let entries = fs::read_dir(dir).map_err(|source| WriterError::Io {
-        path: dir.to_path_buf(),
-        source,
-    })?;
+    let entries = fs::read_dir(dir).map_err(|source| io_error(dir, source))?;
     for entry in entries {
-        let entry = entry.map_err(|source| WriterError::Io {
-            path: dir.to_path_buf(),
-            source,
-        })?;
+        let entry = entry.map_err(|source| io_error(dir, source))?;
         let path = entry.path();
-        let file_type = entry.file_type().map_err(|source| WriterError::Io {
-            path: path.clone(),
-            source,
-        })?;
+        let file_type = entry
+            .file_type()
+            .map_err(|source| io_error(path.clone(), source))?;
         let name = entry.file_name();
         if !file_type.is_file() || !is_fixture_filename(&name) {
             return Err(WriterError::ExtraEntry(path));
@@ -395,20 +376,17 @@ impl FixtureSet {
         if self.receipt_count == 0 {
             return Err(WriterError::EmptyCapture);
         }
-        fs::create_dir_all(&self.dir).map_err(|source| WriterError::Io {
-            path: self.dir.clone(),
-            source,
-        })?;
+        fs::create_dir_all(&self.dir).map_err(|source| io_error(self.dir.clone(), source))?;
 
         let receipts_path = self.dir.join(RECEIPTS_FILENAME);
         let checkpoint_path = self.dir.join(CHECKPOINT_FILENAME);
         let root_path = self.dir.join(ROOT_FILENAME);
         let root_hex = hex::encode(root);
         if root_hex.len() != ROOT_HEX_LEN {
-            return Err(WriterError::Io {
-                path: root_path,
-                source: io::Error::new(io::ErrorKind::InvalidData, "root hex length drifted"),
-            });
+            return Err(io_error(
+                root_path,
+                io::Error::new(io::ErrorKind::InvalidData, "root hex length drifted"),
+            ));
         }
 
         let staged = [
@@ -427,10 +405,7 @@ impl FixtureSet {
         for ((path, _), tmp) in staged.iter().zip(tmp_paths.iter()) {
             if let Err(err) = fs::rename(tmp, path) {
                 cleanup_tmp(&tmp_paths);
-                return Err(WriterError::Io {
-                    path: path.clone(),
-                    source: err,
-                });
+                return Err(io_error(path.clone(), err));
             }
         }
 
@@ -460,18 +435,10 @@ fn stage_file(path: &Path, bytes: &[u8]) -> Result<(), WriterError> {
         .write(true)
         .truncate(true)
         .open(path)
-        .map_err(|source| WriterError::Io {
-            path: path.to_path_buf(),
-            source,
-        })?;
-    file.write_all(bytes).map_err(|source| WriterError::Io {
-        path: path.to_path_buf(),
-        source,
-    })?;
-    file.sync_all().map_err(|source| WriterError::Io {
-        path: path.to_path_buf(),
-        source,
-    })?;
+        .map_err(|source| io_error(path, source))?;
+    file.write_all(bytes)
+        .map_err(|source| io_error(path, source))?;
+    file.sync_all().map_err(|source| io_error(path, source))?;
     Ok(())
 }
 
@@ -484,10 +451,14 @@ fn cleanup_tmp(paths: &[PathBuf]) {
 fn file_size(path: &Path) -> Result<u64, WriterError> {
     fs::metadata(path)
         .map(|meta| meta.len())
-        .map_err(|source| WriterError::Io {
-            path: path.to_path_buf(),
-            source,
-        })
+        .map_err(|source| io_error(path, source))
+}
+
+fn io_error(path: impl Into<PathBuf>, source: io::Error) -> WriterError {
+    WriterError::Io {
+        path: path.into(),
+        source,
+    }
 }
 
 #[cfg(test)]
@@ -517,7 +488,7 @@ mod tests {
             },
             request_blob_sha256: "a".repeat(64),
             response_blob_sha256: "b".repeat(64),
-            redaction_pass_id: "redactors@1.4.0+default".to_string(),
+            redaction_pass_id: crate::DEFAULT_REDACTION_PASS_ID.to_string(),
             verdict,
             deny_reason: match verdict {
                 Verdict::Allow => None,
@@ -586,6 +557,16 @@ mod tests {
     }
 
     #[test]
+    fn rejects_parent_dir_components_that_change_target_directory() {
+        let tmp = tempfile::TempDir::new().test_unwrap();
+        let dir = tmp.path().join("family").join("name").join("..");
+
+        let err = scenario_from_dir(&dir).test_unwrap_err();
+
+        assert!(matches!(err, WriterError::InvalidScenarioDir(_)));
+    }
+
+    #[test]
     fn root_matches_receipts_without_final_lf_plus_checkpoint() {
         let tmp = tempfile::TempDir::new().test_unwrap();
         let dir = tmp.path().join("family").join("name");
@@ -604,5 +585,24 @@ mod tests {
         let receipts_without_lf = &receipts[..receipts.len() - 1];
         let root = root_bytes(receipts_without_lf, &checkpoint);
         assert_eq!(hex::encode(root), summary.root_hex);
+    }
+
+    #[test]
+    fn io_error_helper_preserves_path_and_kind() {
+        let path = PathBuf::from("family/name/root.hex");
+        let error = io_error(
+            path.clone(),
+            io::Error::new(io::ErrorKind::PermissionDenied, "denied"),
+        );
+        match error {
+            WriterError::Io {
+                path: actual,
+                source,
+            } => {
+                assert_eq!(actual, path);
+                assert_eq!(source.kind(), io::ErrorKind::PermissionDenied);
+            }
+            other => panic!("expected WriterError::Io, got {other:?}"),
+        }
     }
 }

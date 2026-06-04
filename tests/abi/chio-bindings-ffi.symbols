@@ -11,4 +11,5 @@ chio_verify_capability_json
 chio_verify_json_signature_ed25519
 chio_verify_manifest_json
 chio_verify_receipt_json
+chio_verify_receipt_json_with_trusted_signers
 chio_verify_utf8_message_ed25519

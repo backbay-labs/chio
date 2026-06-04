@@ -12,10 +12,12 @@ Minimal Spring Boot example using [`sdks/jvm/chio-spring-boot`](../../sdks/jvm/c
 ## Files
 
 ```text
+ARCHITECTURE.md
 README.md
 build.gradle.kts
 settings.gradle.kts
 src/main/kotlin/...
+src/test/kotlin/...
 openapi.yaml
 policy.yaml
 run.sh
@@ -34,4 +36,10 @@ Run the full end-to-end smoke flow:
 
 ```bash
 ./smoke.sh
+```
+
+Run route-level tests without a sidecar:
+
+```bash
+../../sdks/jvm/gradlew --no-daemon -p . test
 ```

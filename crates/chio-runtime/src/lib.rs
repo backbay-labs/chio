@@ -554,6 +554,14 @@ pub struct JsonRuntimeTrustFloorStateStore {
     inner: chio_runtime_core::JsonRuntimeTrustFloorStateStore,
 }
 
+impl fmt::Debug for JsonRuntimeTrustFloorStateStore {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("JsonRuntimeTrustFloorStateStore")
+            .finish_non_exhaustive()
+    }
+}
+
 impl JsonRuntimeTrustFloorStateStore {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, ChioRuntimeError> {
         wrap_runtime(chio_runtime_core::JsonRuntimeTrustFloorStateStore::open(
@@ -566,6 +574,14 @@ impl JsonRuntimeTrustFloorStateStore {
 pub struct LayeredRuntimeAdmissionStore<'a> {
     admission_store: &'a dyn ChioRuntimeAdmissionStore,
     trust_floor_store: &'a dyn ChioRuntimeTrustFloorStore,
+}
+
+impl fmt::Debug for LayeredRuntimeAdmissionStore<'_> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("LayeredRuntimeAdmissionStore")
+            .finish_non_exhaustive()
+    }
 }
 
 impl<'a> LayeredRuntimeAdmissionStore<'a> {
@@ -583,6 +599,14 @@ impl<'a> LayeredRuntimeAdmissionStore<'a> {
 
 pub struct SqliteRuntimeOrchestrationStore {
     inner: chio_runtime_core::SqliteRuntimeOrchestrationStore,
+}
+
+impl fmt::Debug for SqliteRuntimeOrchestrationStore {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SqliteRuntimeOrchestrationStore")
+            .finish_non_exhaustive()
+    }
 }
 
 impl SqliteRuntimeOrchestrationStore {
@@ -1285,7 +1309,9 @@ pub fn runtime_artifact_retention_profile_from_json(
 pub fn runtime_provider_bindings_from_json(
     json: &str,
 ) -> Result<RuntimeProviderBindingsDocument, ChioRuntimeError> {
-    wrap_runtime(chio_runtime_core::runtime_provider_bindings_from_json(json))
+    let document = wrap_runtime(chio_runtime_core::runtime_provider_bindings_from_json(json))?;
+    validate_runtime_provider_bindings(&document)?;
+    Ok(document)
 }
 
 pub fn runtime_orchestration_plan_json(

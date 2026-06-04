@@ -8,7 +8,7 @@ use std::io;
 
 use chio_kernel::{GuardContext, KernelError, Verdict};
 
-use crate::action::{extract_action, ToolAction};
+use crate::action::{extract_action_checked, ToolAction};
 
 /// Default behavior when a tool is not in either list.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -156,7 +156,10 @@ impl chio_kernel::Guard for McpToolGuard {
             return Ok(Verdict::Allow);
         }
 
-        let action = extract_action(&ctx.request.tool_name, &ctx.request.arguments);
+        let action = match extract_action_checked(&ctx.request.tool_name, &ctx.request.arguments) {
+            Ok(action) => action,
+            Err(_) => return Ok(Verdict::Deny),
+        };
 
         let (tool_name, args) = match &action {
             ToolAction::McpTool(name, args) => (name.as_str(), args),

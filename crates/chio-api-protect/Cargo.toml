@@ -6,10 +6,14 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+readme = "README.md"
 publish = false
 
 [lib]
 name = "chio_api_protect"
+
+[package.metadata.chio]
+public_entrypoint = true
 
 [dependencies]
 chio-core-types = { path = "../chio-core-types" }

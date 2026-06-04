@@ -268,6 +268,11 @@ impl AdversarialCase {
         if self.expected_reason.trim().is_empty() {
             return Err(CaseError::EmptyField("expected_reason"));
         }
+        if !is_valid_expected_reason(&self.expected_reason) {
+            return Err(CaseError::InvalidExpectedReason(
+                self.expected_reason.clone(),
+            ));
+        }
         if self.threat_id.trim().is_empty() {
             return Err(CaseError::EmptyField("threat_id"));
         }
@@ -387,6 +392,8 @@ pub enum CaseError {
     EmptyField(&'static str),
     #[error("adversarial case id {0} is not schema-compliant")]
     InvalidCaseId(String),
+    #[error("adversarial case expected_reason {0} is not schema-compliant")]
+    InvalidExpectedReason(String),
     #[error("adversarial case threat_id {0} is not schema-compliant")]
     InvalidThreatId(String),
     #[error("adversarial case artifact must be a non-empty object")]
@@ -406,6 +413,15 @@ fn is_valid_case_id(id: &str) -> bool {
         && chars.all(|ch| {
             ch.is_ascii_lowercase() || ch.is_ascii_digit() || matches!(ch, '.' | '_' | '-')
         })
+}
+
+fn is_valid_expected_reason(reason: &str) -> bool {
+    let mut chars = reason.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    first.is_ascii_lowercase()
+        && chars.all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_')
 }
 
 fn is_valid_threat_id(threat_id: &str) -> bool {
@@ -597,6 +613,44 @@ mod tests {
         .err();
 
         assert!(matches!(err, Some(CaseError::InvalidThreatId(_))));
+    }
+
+    #[test]
+    fn rejects_padded_expected_reason() {
+        let err = AdversarialCase::from_slice(
+            br#"{
+              "schema_version": 1,
+              "id": "bad-reason",
+              "class": "scope_superset",
+              "expected_verdict": "DENY",
+              "expected_reason": " scope_superset ",
+              "threat_id": "delegation_chain_abuse",
+              "pending": false,
+              "artifact": { "scope": "*" }
+            }"#,
+        )
+        .err();
+
+        assert!(matches!(err, Some(CaseError::InvalidExpectedReason(_))));
+    }
+
+    #[test]
+    fn rejects_control_character_expected_reason() {
+        let err = AdversarialCase::from_slice(
+            br#"{
+              "schema_version": 1,
+              "id": "bad-reason-control",
+              "class": "scope_superset",
+              "expected_verdict": "DENY",
+              "expected_reason": "scope_superset\nadmin",
+              "threat_id": "delegation_chain_abuse",
+              "pending": false,
+              "artifact": { "scope": "*" }
+            }"#,
+        )
+        .err();
+
+        assert!(matches!(err, Some(CaseError::InvalidExpectedReason(_))));
     }
 
     #[test]

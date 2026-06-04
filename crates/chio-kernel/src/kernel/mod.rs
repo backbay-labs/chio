@@ -1431,6 +1431,28 @@ impl BudgetChargeResult {
     }
 }
 
+pub(crate) enum PreExecutionBudgetMutation {
+    None,
+    Invocation { grant_index: usize },
+    Charge(BudgetChargeResult),
+}
+
+impl PreExecutionBudgetMutation {
+    fn charge_result(&self) -> Option<&BudgetChargeResult> {
+        match self {
+            Self::Charge(charge) => Some(charge),
+            Self::None | Self::Invocation { .. } => None,
+        }
+    }
+
+    fn into_charge_result(self) -> Option<BudgetChargeResult> {
+        match self {
+            Self::Charge(charge) => Some(charge),
+            Self::None | Self::Invocation { .. } => None,
+        }
+    }
+}
+
 struct SessionNestedFlowBridge<'a, C> {
     sessions: &'a DashMap<SessionId, Arc<Session>>,
     child_receipts: &'a mut Vec<ChildRequestReceipt>,

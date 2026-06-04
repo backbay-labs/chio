@@ -85,12 +85,7 @@ impl VerdictScenario {
                 reason: format!("schema must be `{SCENARIO_SCHEMA}`"),
             });
         }
-        if self.id.trim().is_empty() {
-            return Err(DriverError::InvalidScenario {
-                id: self.id.clone(),
-                reason: String::from("id must not be empty"),
-            });
-        }
+        validate_identity_field(&self.id, "id", &self.id)?;
         if self.title.trim().is_empty() {
             return Err(DriverError::InvalidScenario {
                 id: self.id.clone(),
@@ -103,12 +98,14 @@ impl VerdictScenario {
                 reason: String::from("description must not be empty"),
             });
         }
-        if self.expected.reason_code.trim().is_empty() {
-            return Err(DriverError::InvalidScenario {
-                id: self.id.clone(),
-                reason: String::from("expected.reason_code must not be empty"),
-            });
-        }
+        validate_identity_values(&self.id, "tags entry", &self.tags)?;
+        validate_identity_values(&self.id, "requires entry", &self.requires)?;
+        validate_identity_field(&self.id, "expected.reason_code", &self.expected.reason_code)?;
+        validate_identity_values(
+            &self.id,
+            "expected.scope_set entry",
+            &self.expected.scope_set,
+        )?;
         self.script.validate(&self.id)
     }
 }
@@ -138,25 +135,15 @@ pub struct ScenarioScript {
 
 impl ScenarioScript {
     fn validate(&self, id: &str) -> Result<(), DriverError> {
-        if self.operation.trim().is_empty() {
-            return Err(DriverError::InvalidScenario {
-                id: id.to_string(),
-                reason: String::from("script.operation must not be empty"),
-            });
-        }
-        if self.tool.trim().is_empty() {
-            return Err(DriverError::InvalidScenario {
-                id: id.to_string(),
-                reason: String::from("script.tool must not be empty"),
-            });
-        }
+        validate_identity_field(id, "script.operation", &self.operation)?;
+        validate_identity_field(id, "script.tool", &self.tool)?;
+        validate_identity_values(
+            id,
+            "script.capability_scopes entry",
+            &self.capability_scopes,
+        )?;
         if let Some(required_scope) = &self.required_scope {
-            if required_scope.trim().is_empty() {
-                return Err(DriverError::InvalidScenario {
-                    id: id.to_string(),
-                    reason: String::from("script.required_scope must not be empty"),
-                });
-            }
+            validate_identity_field(id, "script.required_scope", required_scope)?;
         }
         if let Err(source) = serde_json::from_str::<Value>(&self.input_json) {
             return Err(DriverError::InvalidScenario {
@@ -166,6 +153,35 @@ impl ScenarioScript {
         }
         Ok(())
     }
+}
+
+fn validate_identity_values(id: &str, label: &str, values: &[String]) -> Result<(), DriverError> {
+    for value in values {
+        validate_identity_field(id, label, value)?;
+    }
+    Ok(())
+}
+
+fn validate_identity_field(id: &str, label: &str, value: &str) -> Result<(), DriverError> {
+    if value.trim().is_empty() {
+        return Err(DriverError::InvalidScenario {
+            id: id.to_string(),
+            reason: format!("{label} must not be empty"),
+        });
+    }
+    if value.trim() != value {
+        return Err(DriverError::InvalidScenario {
+            id: id.to_string(),
+            reason: format!("{label} must not contain surrounding whitespace"),
+        });
+    }
+    if value.chars().any(char::is_control) {
+        return Err(DriverError::InvalidScenario {
+            id: id.to_string(),
+            reason: format!("{label} must not contain control characters"),
+        });
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Default)]
@@ -879,4 +895,90 @@ pub fn category_counts(scenarios: &[VerdictScenario]) -> BTreeMap<ScenarioCatego
         *counts.entry(scenario.category).or_insert(0) += 1;
     }
     counts
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn valid_scenario() -> VerdictScenario {
+        VerdictScenario {
+            schema: SCENARIO_SCHEMA.to_string(),
+            id: "scenario-a".to_string(),
+            title: "Scenario A".to_string(),
+            category: ScenarioCategory::Capability,
+            description: "A valid capability scenario.".to_string(),
+            tags: vec!["capability_subset".to_string()],
+            requires: vec![RUST_KERNEL_DRIVER.to_string()],
+            artifacts: vec!["fixtures/scenario-a.json".to_string()],
+            timeout_ms: Some(1_000),
+            script: ScenarioScript {
+                operation: "tool.call".to_string(),
+                tool: "files.read".to_string(),
+                input_json: r#"{"path":"README.md"}"#.to_string(),
+                capability_scopes: vec!["tool:read".to_string()],
+                required_scope: Some("tool:read".to_string()),
+                revoked: false,
+                replay_nonce_status: ReplayNonceStatus::Fresh,
+                redaction_action: RedactionAction::None,
+                redaction_phase: RedactionPhase::Input,
+                source_fixture: Some("fixtures/scenario-a.ndjson".to_string()),
+                extra: BTreeMap::new(),
+            },
+            expected: VerdictTuple {
+                verdict: Verdict::Allow,
+                reason_code: REASON_NONE.to_string(),
+                scope_set: vec!["tool:read".to_string()],
+            },
+        }
+    }
+
+    fn assert_invalid(scenario: VerdictScenario, expected_reason: &str) {
+        let Err(error) = scenario.validate() else {
+            assert!(
+                false,
+                "scenario validation accepted an invalid identity field"
+            );
+            return;
+        };
+        assert!(
+            error.to_string().contains(expected_reason),
+            "unexpected validation error: {error}"
+        );
+    }
+
+    #[test]
+    fn scenario_validation_rejects_padded_identity_fields() {
+        let mut scenario = valid_scenario();
+        scenario.id = " scenario-a".to_string();
+        assert_invalid(scenario, "id must not contain surrounding whitespace");
+
+        let mut scenario = valid_scenario();
+        scenario.expected.reason_code = format!(" {REASON_NONE}");
+        assert_invalid(
+            scenario,
+            "expected.reason_code must not contain surrounding whitespace",
+        );
+
+        let mut scenario = valid_scenario();
+        scenario.script.operation = "tool.call ".to_string();
+        assert_invalid(
+            scenario,
+            "script.operation must not contain surrounding whitespace",
+        );
+
+        let mut scenario = valid_scenario();
+        scenario.script.tool = " files.read".to_string();
+        assert_invalid(
+            scenario,
+            "script.tool must not contain surrounding whitespace",
+        );
+
+        let mut scenario = valid_scenario();
+        scenario.script.required_scope = Some(" tool:read".to_string());
+        assert_invalid(
+            scenario,
+            "script.required_scope must not contain surrounding whitespace",
+        );
+    }
 }

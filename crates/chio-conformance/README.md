@@ -8,14 +8,15 @@ HTTP edge, and renders a Markdown compatibility report.
 It is the same harness Chio uses internally to keep the kernel, the
 TypeScript reference peer, the Python reference peer, the C++ peer (via
 `chio-cpp-kernel-ffi`) and Go peer in agreement on the wire shape defined
-by `spec/schemas/chio-wire/v1/`. The crate is now packaged so that external
-implementers can run the same scenarios without checking out the Chio
-monorepo.
+by `spec/schemas/chio-wire/v1/`. The crate is source-installable from the
+Chio repository so external implementers can run the same scenarios without a
+manual monorepo checkout. It is not listed as registry-public yet because its
+non-dev dependency graph still includes private Chio workspace crates.
 
 ## Quickstart
 
 ```bash
-cargo install chio-conformance
+cargo install --git https://github.com/backbay-labs/chio chio-conformance
 chio-conformance-runner \
     --peer python \
     --scenarios-dir <path/to/scenarios> \
@@ -37,11 +38,16 @@ external-consumer flow.
 ## Bundled fixtures
 
 The crate ships with the same fixture tree it exercises in CI. The Cargo
-`include` directive bundles the following paths into the published crate:
+`include` directive keeps the following paths in the installable package:
 
 - `tests/conformance/scenarios/**` - JSON scenario descriptors covering
   `mcp_core`, `auth`, `tasks`, `nested_callbacks`, `notifications`, and
   `chio-extensions`.
+- `tests/conformance/fixtures/mcp_core/**` - the default MCP policy and
+  mock upstream server used by `default_run_options()`.
+- `tests/conformance/native/scenarios/**` - native capability, delegation,
+  receipt, revocation, DPoP, and governed-transaction scenarios used by
+  `default_native_run_options()`.
 - `tests/conformance/peers/python/**` - reference Python peer (server and
   client) used by the `--peer python` mode.
 - `tests/conformance/peers/js/**` - reference Node.js peer used by the
@@ -70,9 +76,11 @@ C++ P0 scenario coverage (`mcp_core` and `auth`) is covered by the
 
 - `in-repo-fixtures` (default): keep the historical Chio repository layout
   for resolving fixture and scenario paths through `default_repo_root()`
-  and `default_run_options()`. Disable via `--no-default-features` when
-  driving the runner with explicit absolute paths through
-  `ConformanceRunOptions`.
+  and `default_run_options()`. When the crate is consumed from a package
+  without the monorepo root, the same defaults fall back to the bundled
+  crate-local `tests/conformance/` tree. Disable via
+  `--no-default-features` when driving the runner with explicit absolute
+  paths through `ConformanceRunOptions`.
 
 ## Library entry points
 

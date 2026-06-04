@@ -89,6 +89,43 @@ fn runtime_cli_hash_helpers_return_chio_error_results() {
 }
 
 #[test]
+fn runtime_provider_bindings_from_json_revalidates_public_payloads(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let json = r#"{
+        "schema": "chio.runtime.provider-bindings.v1",
+        "bindings": [
+            {
+                "providerId": "provider-vendor-b",
+                "localKernelId": "kernel.vendor-b",
+                "serverId": "vendor-ledger",
+                "toolName": "close_account",
+                "discoveryAllowed": false
+            },
+            {
+                "providerId": "provider-vendor-b",
+                "localKernelId": "kernel.vendor-b",
+                "serverId": "vendor-ledger-backup",
+                "toolName": "close_account",
+                "discoveryAllowed": false
+            }
+        ]
+    }"#;
+
+    let error = match chio_runtime::runtime_provider_bindings_from_json(json) {
+        Ok(_) => {
+            return Err(std::io::Error::other("duplicate provider binding accepted").into());
+        }
+        Err(error) => error,
+    };
+    assert_eq!(error.code(), "runtime_provider_duplicate_id");
+    assert_eq!(
+        std::any::type_name_of_val(&error),
+        "chio_runtime::ChioRuntimeError"
+    );
+    Ok(())
+}
+
+#[test]
 fn runtime_cli_helper_reexports_are_not_historical_error_reexports() {
     let lib = include_str!("../src/lib.rs");
     for helper in [
@@ -147,4 +184,15 @@ fn runtime_admission_store_boundary_is_chio_owned() {
         !lib.contains("S: chio_runtime_core::RuntimeAdmissionStore"),
         "ChioRuntimeAdmissionHook must be bounded by the Chio-owned store trait"
     );
+}
+
+#[test]
+fn runtime_public_store_wrappers_are_debuggable() {
+    fn assert_debug<T: std::fmt::Debug>() {}
+
+    assert_debug::<chio_runtime::InMemoryRuntimeAdmissionStore>();
+    assert_debug::<chio_runtime::JsonRuntimeAdmissionStore>();
+    assert_debug::<chio_runtime::JsonRuntimeTrustFloorStateStore>();
+    assert_debug::<chio_runtime::LayeredRuntimeAdmissionStore<'static>>();
+    assert_debug::<chio_runtime::SqliteRuntimeOrchestrationStore>();
 }

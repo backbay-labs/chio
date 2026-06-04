@@ -175,6 +175,8 @@ pub enum ScenarioError {
     DuplicateAgent(String),
     #[error("duplicate step id {0}")]
     DuplicateStep(String),
+    #[error("duplicate guard id {0}")]
+    DuplicateGuard(String),
     #[error("step {step_id} references unknown agent {agent_id}")]
     UnknownStepAgent { step_id: String, agent_id: String },
     #[error("budget references unknown agent {agent_id}")]
@@ -276,8 +278,12 @@ pub fn validate_scenario(scenario: &Scenario) -> Result<(), ScenarioError> {
         reject_inline_secret(&format!("steps.{}.arguments", step.id), &step.arguments)?;
     }
 
+    let mut guards = BTreeSet::new();
     for guard in &scenario.guards {
         validate_id(&guard.id)?;
+        if !guards.insert(guard.id.clone()) {
+            return Err(ScenarioError::DuplicateGuard(guard.id.clone()));
+        }
         reject_inline_secret(
             &format!("guards.{}.config_ref", guard.id),
             &guard.config_ref,

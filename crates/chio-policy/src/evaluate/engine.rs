@@ -15,6 +15,9 @@ pub fn evaluate(spec: &HushSpec, action: &EvaluationAction) -> EvaluationResult 
 
     let matched_profile = select_origin_profile(spec, action.origin.as_ref());
     let origin_profile_id = matched_profile.map(|profile| profile.id.clone());
+    if let Some(denied) = origin_admission_denial(spec, action.origin.as_ref(), matched_profile) {
+        return denied;
+    }
     let posture = resolve_posture(spec, matched_profile, action.posture.as_ref());
 
     if let Some(denied) = posture_capability_guard(action, &posture, spec, &origin_profile_id) {
@@ -69,6 +72,9 @@ pub fn evaluate_with_context(
 
     let matched_profile = select_origin_profile(spec, action.origin.as_ref());
     let origin_profile_id = matched_profile.map(|profile| profile.id.clone());
+    if let Some(denied) = origin_admission_denial(spec, action.origin.as_ref(), matched_profile) {
+        return denied;
+    }
     let posture = resolve_posture(spec, matched_profile, action.posture.as_ref());
 
     if let Some(denied) = posture_capability_guard(action, &posture, spec, &origin_profile_id) {

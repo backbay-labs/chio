@@ -105,6 +105,10 @@ pub enum ReverifyError {
     /// shadowing them with a second entry that overwrites the first).
     #[error("duplicate entry {0} inside bundle archive (required basenames must appear once)")]
     DuplicateEntry(&'static str),
+    /// A required basename was present, but as a symlink, hardlink,
+    /// directory, device, or other non-regular tar entry.
+    #[error("required entry {0} is not a regular file inside bundle archive")]
+    NonRegularEntry(&'static str),
 }
 
 /// Result of a successful [`reverify_bundle`] call.
@@ -234,6 +238,9 @@ fn extract_required_entries(path: &Path) -> Result<HashMap<String, Vec<u8>>, Rev
         } else {
             continue;
         };
+        if !entry.header().entry_type().is_file() {
+            return Err(ReverifyError::NonRegularEntry(required));
+        }
         let mut buf = Vec::new();
         entry
             .read_to_end(&mut buf)
@@ -755,6 +762,55 @@ mod reverify_tests {
         assert!(
             matches!(err, ReverifyError::DuplicateEntry(name) if name == ROOT_FILENAME),
             "expected DuplicateEntry(root.hex), got {err:?}"
+        );
+    }
+
+    #[test]
+    fn required_symlink_entry_rejected() {
+        let td = TempDir::new().unwrap();
+        let (_receipts, checkpoint, root) = make_stub_golden("symlink_receipts");
+        let path = td.path().join("v0.1.0.tgz");
+        let file = std::fs::File::create(&path).unwrap();
+        let encoder = GzEncoder::new(file, Compression::default());
+        let mut builder = tar::Builder::new(encoder);
+        for (name, bytes) in [
+            (CHECKPOINT_FILENAME, checkpoint.as_slice()),
+            (ROOT_FILENAME, root.as_slice()),
+        ] {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(bytes.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            let entry_path = format!("replay-bundle/{name}");
+            builder
+                .append_data(&mut header, &entry_path, bytes)
+                .unwrap();
+        }
+        let mut header = tar::Header::new_gnu();
+        header.set_entry_type(tar::EntryType::Symlink);
+        header.set_size(0);
+        header.set_mode(0o777);
+        header.set_cksum();
+        builder
+            .append_link(
+                &mut header,
+                "replay-bundle/receipts.ndjson",
+                "replay-bundle/checkpoint.json",
+            )
+            .unwrap();
+        builder.into_inner().unwrap().finish().unwrap();
+        let bytes = std::fs::read(&path).unwrap();
+        let bundle = FetchedBundle {
+            tag: "v0.1.0".to_string(),
+            path,
+            sha256: sha256_of_bytes(&bytes),
+        };
+        let entry = entry_for("v0.1.0", CompatLevel::Supported);
+
+        let err = reverify_bundle(&bundle, &entry).expect_err("symlink entry must reject");
+        assert!(
+            matches!(err, ReverifyError::NonRegularEntry(name) if name == RECEIPTS_FILENAME),
+            "expected NonRegularEntry(receipts.ndjson), got {err:?}"
         );
     }
 }

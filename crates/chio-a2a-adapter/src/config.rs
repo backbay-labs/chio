@@ -9,6 +9,7 @@ struct A2aRequestHeader {
 struct A2aRequestQueryParam {
     name: String,
     value: String,
+    sensitive: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -172,6 +173,7 @@ impl A2aAdapterConfig {
             &mut self.request_query_params,
             param_name.into(),
             value.into(),
+            false,
         );
         self
     }
@@ -186,6 +188,7 @@ impl A2aAdapterConfig {
             &mut self.request_query_params,
             param_name.into(),
             value.into(),
+            true,
         );
         self
     }
@@ -290,4 +293,160 @@ impl A2aAdapterConfig {
         self.task_registry_path = Some(path.into());
         self
     }
+
+    fn validate_request_auth_material(&self) -> Result<(), AdapterError> {
+        for header in &self.request_headers {
+            validate_http_header_name("request header", &header.name)?;
+            validate_header_value("request header value", &header.value)?;
+            validate_authorization_header_material(header)?;
+        }
+        for query_param in &self.request_query_params {
+            validate_url_component_name("request query parameter", &query_param.name)?;
+            if query_param.sensitive {
+                validate_url_auth_value("request query parameter value", &query_param.value)?;
+            }
+        }
+        for cookie in &self.request_cookies {
+            validate_http_token("request cookie name", &cookie.name)?;
+            validate_cookie_value("request cookie value", &cookie.value)?;
+        }
+        if let Some(credentials) = self.oauth_client_credentials.as_ref() {
+            validate_oauth_client_credential("OAuth client id", &credentials.client_id)?;
+            validate_oauth_client_credential("OAuth client credential", &credentials.client_secret)?;
+        }
+        Ok(())
+    }
+}
+
+fn validate_authorization_header_material(header: &A2aRequestHeader) -> Result<(), AdapterError> {
+    if !header.name.eq_ignore_ascii_case("Authorization") {
+        return Ok(());
+    }
+    let (scheme, token) = header
+        .value
+        .split_once(' ')
+        .unwrap_or((header.value.as_str(), ""));
+    validate_http_token("authorization scheme", scheme)?;
+    if !scheme.eq_ignore_ascii_case("Bearer") {
+        return Ok(());
+    }
+    validate_bearer_token_value("bearer token", token)
+}
+
+fn validate_http_header_name(field: &str, value: &str) -> Result<(), AdapterError> {
+    validate_http_token(field, value)
+}
+
+fn validate_http_token(field: &str, value: &str) -> Result<(), AdapterError> {
+    if value.is_empty() || value.trim() != value || !value.bytes().all(is_http_token_byte) {
+        return Err(AdapterError::AuthNegotiation(format!(
+            "invalid A2A {field} in configuration"
+        )));
+    }
+    Ok(())
+}
+
+fn is_http_token_byte(byte: u8) -> bool {
+    matches!(
+        byte,
+        b'A'..=b'Z'
+            | b'a'..=b'z'
+            | b'0'..=b'9'
+            | b'!'
+            | b'#'
+            | b'$'
+            | b'%'
+            | b'&'
+            | b'\''
+            | b'*'
+            | b'+'
+            | b'-'
+            | b'.'
+            | b'^'
+            | b'_'
+            | b'`'
+            | b'|'
+            | b'~'
+    )
+}
+
+fn validate_header_value(field: &str, value: &str) -> Result<(), AdapterError> {
+    if value.is_empty()
+        || value.trim() != value
+        || value.bytes().any(|byte| byte < 0x20 || byte == 0x7f)
+    {
+        return Err(AdapterError::AuthNegotiation(format!(
+            "invalid A2A {field} in configuration"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_url_component_name(field: &str, value: &str) -> Result<(), AdapterError> {
+    if value.is_empty()
+        || value.trim() != value
+        || value
+            .chars()
+            .any(|character| character.is_ascii_control())
+    {
+        return Err(AdapterError::AuthNegotiation(format!(
+            "invalid A2A {field} in configuration"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_url_auth_value(field: &str, value: &str) -> Result<(), AdapterError> {
+    if value.is_empty()
+        || value.trim() != value
+        || value
+            .chars()
+            .any(|character| character.is_ascii_control())
+    {
+        return Err(AdapterError::AuthNegotiation(format!(
+            "invalid A2A {field} in configuration"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_oauth_client_credential(field: &str, value: &str) -> Result<(), AdapterError> {
+    if value.is_empty()
+        || value.trim() != value
+        || value.chars().any(|character| character.is_control())
+    {
+        return Err(AdapterError::AuthNegotiation(format!(
+            "invalid A2A {field} in configuration"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_bearer_token_value(field: &str, value: &str) -> Result<(), AdapterError> {
+    validate_url_auth_value(field, value)?;
+    if bearer_token_contains_forbidden_character(value) {
+        return Err(AdapterError::AuthNegotiation(format!(
+            "invalid A2A {field} in configuration"
+        )));
+    }
+    Ok(())
+}
+
+fn bearer_token_contains_forbidden_character(value: &str) -> bool {
+    value
+        .chars()
+        .any(|character| character.is_whitespace() || character.is_control())
+}
+
+fn validate_cookie_value(field: &str, value: &str) -> Result<(), AdapterError> {
+    if value.is_empty()
+        || value.trim() != value
+        || value.contains(';')
+        || value.bytes().any(|byte| byte < 0x20 || byte == 0x7f)
+    {
+        return Err(AdapterError::AuthNegotiation(format!(
+            "invalid A2A {field} in configuration"
+        )));
+    }
+    Ok(())
 }

@@ -8,7 +8,9 @@ use chio_credentials::{
     respond_to_passport_presentation_challenge, verify_agent_passport,
     verify_passport_presentation_challenge, verify_passport_presentation_response,
     verify_signed_passport_verifier_policy, AgentPassport, AttestationWindow,
-    ChioCredentialEvidence, CredentialError, PassportPresentationOptions, PassportVerifierPolicy,
+    ChioCredentialEvidence, CredentialError, PassportPresentationChallenge,
+    PassportPresentationOptions, PassportPresentationResponse, PassportVerifierPolicy,
+    SignedPassportVerifierPolicy,
 };
 use chio_did::DidChio;
 use chio_reputation::{
@@ -142,6 +144,23 @@ fn sample_passport() -> (Keypair, AgentPassport) {
     (holder, passport)
 }
 
+fn insert_unknown_field(document: &mut serde_json::Value, field: &str) {
+    match document {
+        serde_json::Value::Object(object) => {
+            object.insert(field.to_string(), serde_json::json!(true));
+        }
+        other => panic!("expected JSON object, got {other:?}"),
+    }
+}
+
+fn assert_unknown_field_error(error: serde_json::Error, document_name: &str) {
+    let message = error.to_string();
+    assert!(
+        message.contains("unknown field"),
+        "{document_name} accepted unknown field with error {message:?}"
+    );
+}
+
 #[test]
 fn unsupported_passport_schema_variants_fail_closed_before_signature_checks() {
     let (_holder, passport) = sample_passport();
@@ -242,4 +261,55 @@ fn unsupported_challenge_and_response_schema_variants_fail_closed() {
             "schema {schema:?} returned {error:?}"
         );
     }
+}
+
+#[test]
+fn native_wire_documents_reject_unknown_fields_before_verification() {
+    let (holder, passport) = sample_passport();
+    let mut passport_json = serde_json::to_value(&passport).test_ok("serialize passport");
+    insert_unknown_field(&mut passport_json, "shadowTrustTier");
+    let error = serde_json::from_value::<AgentPassport>(passport_json)
+        .test_err("passport unknown field must reject");
+    assert_unknown_field_error(error, "passport");
+
+    let policy_signer = Keypair::from_seed(&[23_u8; 32]);
+    let signed_policy = create_signed_passport_verifier_policy(
+        &policy_signer,
+        "rp-default",
+        "https://verifier.example.com",
+        ISSUED_AT,
+        VALID_UNTIL,
+        PassportVerifierPolicy::default(),
+    )
+    .test_ok("create signed policy");
+    let mut signed_policy_json =
+        serde_json::to_value(&signed_policy).test_ok("serialize signed policy");
+    insert_unknown_field(&mut signed_policy_json, "ambientOverride");
+    let error = serde_json::from_value::<SignedPassportVerifierPolicy>(signed_policy_json)
+        .test_err("signed policy unknown field must reject");
+    assert_unknown_field_error(error, "signed policy");
+
+    let challenge = create_passport_presentation_challenge(
+        "https://verifier.example.com",
+        "nonce-123",
+        ISSUED_AT,
+        VALID_UNTIL,
+        PassportPresentationOptions::default(),
+        None,
+    )
+    .test_ok("create challenge");
+    let mut challenge_json = serde_json::to_value(&challenge).test_ok("serialize challenge");
+    insert_unknown_field(&mut challenge_json, "relaxedNonce");
+    let error = serde_json::from_value::<PassportPresentationChallenge>(challenge_json)
+        .test_err("challenge unknown field must reject");
+    assert_unknown_field_error(error, "challenge");
+
+    let response =
+        respond_to_passport_presentation_challenge(&holder, &passport, &challenge, VERIFY_NOW)
+            .test_ok("respond to challenge");
+    let mut response_json = serde_json::to_value(&response).test_ok("serialize response");
+    insert_unknown_field(&mut response_json, "holderOverride");
+    let error = serde_json::from_value::<PassportPresentationResponse>(response_json)
+        .test_err("response unknown field must reject");
+    assert_unknown_field_error(error, "response");
 }

@@ -74,6 +74,18 @@ impl ExchangeRate {
         pair_key(&self.base, &self.quote)
     }
 
+    pub fn ensure_matches_pair(&self, pair: &PairConfig) -> Result<(), PriceOracleError> {
+        if self.base != pair.base || self.quote != pair.quote {
+            return Err(PriceOracleError::InvalidFeed(format!(
+                "oracle backend returned {}/{} for {}",
+                self.base,
+                self.quote,
+                pair.pair()
+            )));
+        }
+        Ok(())
+    }
+
     #[must_use]
     pub fn age_seconds(&self, now: u64) -> u64 {
         now.saturating_sub(self.updated_at)
@@ -88,6 +100,12 @@ impl ExchangeRate {
         if self.rate_denominator == 0 {
             return Err(PriceOracleError::InvalidFeed(format!(
                 "{} returned a zero rate denominator",
+                self.pair()
+            )));
+        }
+        if self.updated_at > now {
+            return Err(PriceOracleError::InvalidFeed(format!(
+                "{} returned a future updated_at timestamp",
                 self.pair()
             )));
         }
@@ -210,6 +228,12 @@ pub enum PriceOracleError {
     InvalidFeed(String),
     #[error("arithmetic overflow: {0}")]
     ArithmeticOverflow(String),
+}
+
+impl PriceOracleError {
+    pub(crate) fn invalid_configuration(message: impl Into<String>) -> Self {
+        Self::InvalidConfiguration(message.into())
+    }
 }
 
 pub trait PriceOracle: Send + Sync {
@@ -610,13 +634,15 @@ impl ChioLinkOracle {
                     kind
                 )));
             }
-            return backend.read_rate(pair, now).await;
+            return read_validated_backend_rate(backend.as_ref(), pair, now).await;
         }
 
-        match self.primary.read_rate(pair, now).await {
+        match read_validated_backend_rate(self.primary.as_ref(), pair, now).await {
             Ok(primary_rate) => {
                 if let Some(secondary) = self.secondary_backend_for_pair(pair, &pair_override) {
-                    if let Ok(secondary_rate) = secondary.read_rate(pair, now).await {
+                    if let Ok(secondary_rate) =
+                        read_validated_backend_rate(secondary.as_ref(), pair, now).await
+                    {
                         ensure_within_threshold(
                             &primary_rate,
                             &secondary_rate,
@@ -630,7 +656,7 @@ impl ChioLinkOracle {
             }
             Err(primary_error) => {
                 if let Some(secondary) = self.secondary_backend_for_pair(pair, &pair_override) {
-                    secondary.read_rate(pair, now).await
+                    read_validated_backend_rate(secondary.as_ref(), pair, now).await
                 } else {
                     Err(primary_error)
                 }
@@ -806,6 +832,17 @@ fn pair_supports_backend(pair: &PairConfig, kind: OracleBackendKind) -> bool {
         OracleBackendKind::Chainlink => pair.chainlink.is_some(),
         OracleBackendKind::Pyth => pair.pyth.is_some(),
     }
+}
+
+async fn read_validated_backend_rate(
+    backend: &dyn OracleBackend,
+    pair: &PairConfig,
+    now: u64,
+) -> Result<ExchangeRate, PriceOracleError> {
+    let rate = backend.read_rate(pair, now).await?;
+    rate.ensure_matches_pair(pair)?;
+    rate.ensure_fresh(now)?;
+    Ok(rate)
 }
 
 fn degraded_rate_if_allowed(
@@ -1060,6 +1097,28 @@ mod tests {
         config
     }
 
+    #[test]
+    fn invalid_configuration_constructor_preserves_message() {
+        let error = PriceOracleError::invalid_configuration("bad oracle config");
+        assert!(matches!(
+            error,
+            PriceOracleError::InvalidConfiguration(message) if message == "bad oracle config"
+        ));
+    }
+
+    #[test]
+    fn future_rate_updates_fail_closed() {
+        let now = now_unix().test_unwrap("now");
+        let mut rate = sample_rate("chainlink", "feed-1", 300_000);
+        rate.updated_at = now + 1;
+
+        assert!(matches!(
+            rate.ensure_fresh(now),
+            Err(PriceOracleError::InvalidFeed(message))
+                if message.contains("future updated_at")
+        ));
+    }
+
     #[tokio::test]
     async fn falls_back_when_primary_is_unavailable() {
         let config = test_config();
@@ -1127,6 +1186,41 @@ mod tests {
             error,
             PriceOracleError::CircuitBreakerTripped { .. }
         ));
+    }
+
+    #[tokio::test]
+    async fn backend_pair_mismatch_fails_closed_before_cache_insert() {
+        let config = test_config();
+        let mut mismatched = sample_rate(
+            "chainlink",
+            "0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70",
+            300_000,
+        );
+        mismatched.quote = "EUR".to_string();
+        let primary = Arc::new(StaticBackend::new(
+            OracleBackendKind::Chainlink,
+            [("ETH/USD".to_string(), Ok(mismatched))],
+        ));
+        let oracle = ChioLinkOracle::new_with_backends(config, primary, None).test_unwrap("oracle");
+
+        let error = oracle
+            .refresh_pair("ETH", "USD")
+            .await
+            .test_unwrap_err("pair mismatch must fail closed");
+
+        assert!(matches!(
+            error,
+            PriceOracleError::InvalidFeed(message)
+                if message.contains("returned ETH/EUR for ETH/USD")
+        ));
+        assert!(
+            oracle
+                .cached_rate("ETH", "USD")
+                .await
+                .test_unwrap("cache lookup")
+                .is_none(),
+            "mismatched backend rates must not enter the cache"
+        );
     }
 
     #[tokio::test]

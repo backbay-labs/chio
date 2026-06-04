@@ -9,6 +9,7 @@
 use std::path::PathBuf;
 use std::process::Command;
 
+use chio_test_support::loopback::loopback_bind_available;
 use insta::{assert_json_snapshot, assert_snapshot};
 use tempfile::TempDir;
 
@@ -72,6 +73,10 @@ fn conformance_run_python_report_shape_is_stable() {
         return;
     }
     if !python3_supports_chio_sdk() {
+        return;
+    }
+    if !loopback_bind_available() {
+        eprintln!("skipping Python conformance live harness: loopback bind denied");
         return;
     }
 

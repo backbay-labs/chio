@@ -19,7 +19,7 @@ use core::cmp::Ordering;
 use core::marker::PhantomData;
 
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 use crate::error::{Error, Result};
 
@@ -117,41 +117,69 @@ pub fn canonical_json_string<T: Serialize>(value: &T) -> Result<String> {
 
 /// Canonicalize a `serde_json::Value` to an RFC 8785 string.
 pub fn canonicalize(value: &Value) -> Result<String> {
-    match value {
-        Value::Object(map) => {
-            let mut pairs: Vec<_> = map.iter().collect();
-            // RFC 8785: sort object keys by UTF-16 code unit comparison.
-            pairs.sort_by(|(a, _), (b, _)| cmp_utf16_code_units(a.as_str(), b.as_str()));
+    let mut out = String::new();
+    write_canonical_value(value, &mut out)?;
+    Ok(out)
+}
 
-            let mut out = String::from("{");
-            for (idx, (k, v)) in pairs.into_iter().enumerate() {
-                if idx > 0 {
-                    out.push(',');
-                }
-                out.push('"');
-                out.push_str(&escape_json_string(k));
-                out.push_str("\":");
-                out.push_str(&canonicalize(v)?);
-            }
-            out.push('}');
-            Ok(out)
+fn write_canonical_value(value: &Value, out: &mut String) -> Result<()> {
+    match value {
+        Value::Object(map) => write_canonical_object(map, out),
+        Value::Array(arr) => write_canonical_array(arr, out),
+        Value::String(s) => {
+            out.push('"');
+            out.push_str(&escape_json_string(s));
+            out.push('"');
+            Ok(())
         }
-        Value::Array(arr) => {
-            let mut out = String::from("[");
-            for (idx, v) in arr.iter().enumerate() {
-                if idx > 0 {
-                    out.push(',');
-                }
-                out.push_str(&canonicalize(v)?);
-            }
-            out.push(']');
-            Ok(out)
+        Value::Number(n) => {
+            out.push_str(&canonicalize_number(n)?);
+            Ok(())
         }
-        Value::String(s) => Ok(format!("\"{}\"", escape_json_string(s))),
-        Value::Number(n) => canonicalize_number(n),
-        Value::Bool(b) => Ok(b.to_string()),
-        Value::Null => Ok("null".to_string()),
+        Value::Bool(true) => {
+            out.push_str("true");
+            Ok(())
+        }
+        Value::Bool(false) => {
+            out.push_str("false");
+            Ok(())
+        }
+        Value::Null => {
+            out.push_str("null");
+            Ok(())
+        }
     }
+}
+
+fn write_canonical_object(map: &Map<String, Value>, out: &mut String) -> Result<()> {
+    let mut pairs: Vec<_> = map.iter().collect();
+    // RFC 8785: sort object keys by UTF-16 code unit comparison.
+    pairs.sort_by(|(a, _), (b, _)| cmp_utf16_code_units(a.as_str(), b.as_str()));
+
+    out.push('{');
+    for (idx, (key, value)) in pairs.into_iter().enumerate() {
+        if idx > 0 {
+            out.push(',');
+        }
+        out.push('"');
+        out.push_str(&escape_json_string(key));
+        out.push_str("\":");
+        write_canonical_value(value, out)?;
+    }
+    out.push('}');
+    Ok(())
+}
+
+fn write_canonical_array(values: &[Value], out: &mut String) -> Result<()> {
+    out.push('[');
+    for (idx, value) in values.iter().enumerate() {
+        if idx > 0 {
+            out.push(',');
+        }
+        write_canonical_value(value, out)?;
+    }
+    out.push(']');
+    Ok(())
 }
 
 /// Compare two strings by UTF-16 code unit values, as required by RFC 8785.
@@ -568,6 +596,33 @@ mod tests {
         let canonical = canonicalize(&value)?;
 
         assert_eq!(wrapped.as_ref(), canonical.as_bytes());
+
+        Ok(())
+    }
+
+    #[test]
+    fn write_canonical_value_matches_public_canonicalize() -> Result<()> {
+        let value = serde_json::json!({
+            "z": [{"b": 2, "a": 1}, true, null],
+            "a": "\u{000f}\u{2028}",
+            "\u{e000}": 1,
+            "\u{10437}": 2,
+        });
+        let expected = concat!(
+            r#"{"a":"\u000f"#,
+            "\u{2028}",
+            r#"","z":[{"a":1,"b":2},true,null],""#,
+            "\u{10437}",
+            r#"":2,""#,
+            "\u{e000}",
+            r#"":1}"#,
+        );
+        let canonical = canonicalize(&value)?;
+        let mut written = String::new();
+        write_canonical_value(&value, &mut written)?;
+
+        assert_eq!(canonical, expected);
+        assert_eq!(written, expected);
 
         Ok(())
     }

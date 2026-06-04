@@ -32,6 +32,9 @@ Result<std::string> verify_capability_json(std::string_view input_json,
                                            std::uint64_t now_secs,
                                            std::uint32_t max_delegation_depth);
 Result<std::string> verify_receipt_json(std::string_view input_json);
+Result<std::string> verify_receipt_json_with_trusted_signers(
+    std::string_view input_json,
+    const std::vector<std::string>& trusted_signers_hex);
 Result<std::string> verify_manifest_json(std::string_view input_json);
 
 }  // namespace chio::invariants

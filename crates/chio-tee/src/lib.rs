@@ -50,5 +50,8 @@ pub use runner::{
 pub use spool::{SpoolError, SpooledTraffic, TeeBlobSpool};
 pub use tap::{TapError, TapResult, TrafficTap};
 
+/// Redaction pass identifier emitted by the bundled default redactor.
+pub const DEFAULT_REDACTION_PASS_ID: &str = chio_data_guards_redactors_default::PASS_ID;
+
 /// Version reported by `chio-tee --version`.
 pub const TEE_VERSION: &str = env!("CARGO_PKG_VERSION");

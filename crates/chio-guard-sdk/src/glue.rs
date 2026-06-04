@@ -11,7 +11,10 @@
 
 use std::cell::RefCell;
 
-use crate::types::{GuardRequest, GuardVerdict, GuestDenyResponse, VERDICT_ALLOW, VERDICT_DENY};
+use crate::types::{
+    normalize_deny_reason, GuardRequest, GuardVerdict, GuestDenyResponse, VERDICT_ALLOW,
+    VERDICT_DENY,
+};
 
 // ---------------------------------------------------------------------------
 // Thread-local deny reason storage
@@ -72,6 +75,7 @@ pub fn encode_verdict(verdict: GuardVerdict) -> i32 {
             VERDICT_ALLOW
         }
         GuardVerdict::Deny { reason } => {
+            let reason = normalize_deny_reason(reason);
             LAST_DENY_REASON.with(|cell| {
                 if let Ok(mut r) = cell.try_borrow_mut() {
                     *r = Some(reason);
@@ -174,6 +178,19 @@ mod tests {
     fn encode_verdict_deny_returns_one_and_stores_reason() {
         let code = super::encode_verdict(GuardVerdict::deny("blocked"));
         assert_eq!(code, VERDICT_DENY);
+    }
+
+    #[test]
+    fn encode_verdict_deny_replaces_blank_reason() {
+        super::encode_verdict(GuardVerdict::Deny {
+            reason: " \t\n".to_string(),
+        });
+
+        let reason = super::serialize_deny_reason()
+            .and_then(|bytes| serde_json::from_slice::<GuestDenyResponse>(&bytes).ok())
+            .map(|resp| resp.reason);
+
+        assert_eq!(reason.as_deref(), Some("guard denied request"));
     }
 
     #[test]

@@ -166,9 +166,10 @@ impl PeerDirectory {
         if document.schema != PHEROMONE_PEER_DIRECTORY_SCHEMA {
             return Err(PheromoneRelayError::UnsupportedSchema(document.schema));
         }
-        if document.local_kernel_id.trim().is_empty() {
+        let local_kernel_id = document.local_kernel_id.trim();
+        if local_kernel_id.is_empty() || local_kernel_id != document.local_kernel_id {
             return Err(PheromoneRelayError::PeerDirectoryStale(
-                "local kernel id is empty".to_string(),
+                "local kernel id is empty or padded".to_string(),
             ));
         }
         if now_unix_ms < document.issued_at_unix_ms || now_unix_ms >= document.expires_at_unix_ms {
@@ -179,9 +180,10 @@ impl PeerDirectory {
         let mut peers = BTreeMap::new();
         let mut endpoints = BTreeSet::new();
         for peer in &document.peers {
-            if peer.kernel_id.trim().is_empty() {
+            let peer_kernel_id = peer.kernel_id.trim();
+            if peer_kernel_id.is_empty() || peer_kernel_id != peer.kernel_id {
                 return Err(PheromoneRelayError::UnknownPeer(
-                    "peer kernel id is empty".to_string(),
+                    "peer kernel id is empty or padded".to_string(),
                 ));
             }
             if peers.contains_key(&peer.kernel_id) {

@@ -43,7 +43,7 @@ impl<E: ExternalGuard> ScopedAsyncGuard<E> {
     pub fn new(adapter: AsyncGuardAdapter<E>, tool_patterns: Vec<String>) -> Self {
         Self {
             adapter,
-            tool_patterns,
+            tool_patterns: normalize_tool_patterns(tool_patterns),
         }
     }
 
@@ -124,6 +124,16 @@ impl<E: ExternalGuard> ScopedAsyncGuard<E> {
     }
 }
 
+fn normalize_tool_patterns(patterns: Vec<String>) -> Vec<String> {
+    patterns
+        .into_iter()
+        .filter_map(|pattern| {
+            let trimmed = pattern.trim();
+            (!trimmed.is_empty()).then(|| trimmed.to_string())
+        })
+        .collect()
+}
+
 impl<E: ExternalGuard> Guard for ScopedAsyncGuard<E> {
     fn name(&self) -> &str {
         self.adapter.name()
@@ -184,6 +194,7 @@ fn wildcard_matches(pattern: &str, target: &str) -> bool {
 mod tests {
     use super::*;
     use async_trait::async_trait;
+    use chio_core_types::{CapabilityToken, CapabilityTokenBody, ChioScope, Keypair};
     use std::sync::Arc;
 
     struct AllowExternalGuard;
@@ -203,6 +214,23 @@ mod tests {
         }
     }
 
+    struct DenyExternalGuard;
+
+    #[async_trait]
+    impl ExternalGuard for DenyExternalGuard {
+        fn name(&self) -> &str {
+            "deny-external"
+        }
+
+        fn cache_key(&self, _ctx: &GuardCallContext) -> Option<String> {
+            None
+        }
+
+        async fn eval(&self, _ctx: &GuardCallContext) -> Result<Verdict, ExternalGuardError> {
+            Ok(Verdict::Deny)
+        }
+    }
+
     #[tokio::test(flavor = "current_thread")]
     async fn scoped_async_guard_uses_fallback_runtime_on_current_thread_tokio() {
         let adapter = AsyncGuardAdapter::builder(Arc::new(AllowExternalGuard)).build();
@@ -219,5 +247,56 @@ mod tests {
             .expect("current-thread fallback should evaluate guard");
 
         assert!(matches!(verdict, Verdict::Allow));
+    }
+
+    #[test]
+    fn scoped_async_guard_blank_patterns_do_not_disable_guard() {
+        let adapter = AsyncGuardAdapter::builder(Arc::new(DenyExternalGuard)).build();
+        let guard = ScopedAsyncGuard::new(
+            adapter,
+            vec![String::new(), " \t\n".to_string(), "  ".to_string()],
+        );
+        let keypair = Keypair::generate();
+        let scope = ChioScope::default();
+        let agent_id = keypair.public_key().to_hex();
+        let server_id = "srv-test".to_string();
+        let cap_body = CapabilityTokenBody {
+            id: "cap-test".to_string(),
+            issuer: keypair.public_key(),
+            subject: keypair.public_key(),
+            scope: scope.clone(),
+            issued_at: 0,
+            expires_at: u64::MAX,
+            delegation_chain: vec![],
+        };
+        let capability =
+            CapabilityToken::sign(cap_body, &keypair).expect("test capability should sign");
+        let request = chio_kernel::ToolCallRequest {
+            request_id: "req-test".to_string(),
+            capability,
+            tool_name: "send_email".to_string(),
+            server_id: server_id.clone(),
+            agent_id: agent_id.clone(),
+            arguments: serde_json::json!({"to": "ops@example.com"}),
+            dpop_proof: None,
+            governed_intent: None,
+            approval_token: None,
+            model_metadata: None,
+            federated_origin_kernel_id: None,
+        };
+        let context = GuardContext {
+            request: &request,
+            scope: &scope,
+            agent_id: &agent_id,
+            server_id: &server_id,
+            session_filesystem_roots: None,
+            matched_grant_index: None,
+        };
+
+        let verdict = guard
+            .evaluate(&context)
+            .expect("scoped guard should evaluate");
+
+        assert_eq!(verdict, Verdict::Deny);
     }
 }

@@ -1352,6 +1352,7 @@ dependencies = [
 name = "chio-revocation-oracle"
 version = "0.1.0"
 dependencies = [
+ "chio-core-types",
  "rs_merkle",
  "serde",
  "serde_json",

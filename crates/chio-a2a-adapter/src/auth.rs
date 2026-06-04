@@ -53,7 +53,7 @@ fn request_client_credentials_token(
         sensitive: true,
     };
     let basic_body = build_client_credentials_form(scopes, None);
-    match post_form_json::<A2aOAuthTokenResponse>(
+    let response = match post_form_json::<A2aOAuthTokenResponse>(
         token_endpoint,
         basic_body.as_str(),
         &[basic_header],
@@ -61,7 +61,7 @@ fn request_client_credentials_token(
         transport_config,
         A2aTlsMode::Default,
     ) {
-        Ok(response) => Ok(response),
+        Ok(response) => response,
         Err(AdapterError::Remote(message))
             if message.starts_with("HTTP 400:") || message.starts_with("HTTP 401:") =>
         {
@@ -76,10 +76,41 @@ fn request_client_credentials_token(
                 timeout,
                 transport_config,
                 A2aTlsMode::Default,
-            )
+            )?
         }
-        Err(error) => Err(error),
+        Err(error) => return Err(error),
+    };
+    validate_oauth_token_response(response)
+}
+
+fn validate_oauth_token_response(
+    response: A2aOAuthTokenResponse,
+) -> Result<A2aOAuthTokenResponse, AdapterError> {
+    if response.access_token.trim().is_empty() {
+        return Err(AdapterError::AuthNegotiation(
+            "OAuth token endpoint returned empty access_token".to_string(),
+        ));
     }
+    if response.access_token.trim() != response.access_token {
+        return Err(AdapterError::AuthNegotiation(
+            "OAuth token endpoint returned access_token with surrounding whitespace".to_string(),
+        ));
+    }
+    if bearer_token_contains_forbidden_character(&response.access_token) {
+        return Err(AdapterError::AuthNegotiation(
+            "OAuth token endpoint returned access_token with whitespace or control characters"
+                .to_string(),
+        ));
+    }
+    let token_type = response.token_type.as_deref().ok_or_else(|| {
+        AdapterError::AuthNegotiation("OAuth token endpoint omitted token_type".to_string())
+    })?;
+    if !token_type.trim().eq_ignore_ascii_case("bearer") {
+        return Err(AdapterError::AuthNegotiation(format!(
+            "OAuth token endpoint returned unsupported token_type `{token_type}`"
+        )));
+    }
+    Ok(response)
 }
 
 fn build_client_credentials_form(scopes: &[String], credentials: Option<(&str, &str)>) -> String {

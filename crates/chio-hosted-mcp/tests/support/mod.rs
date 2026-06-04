@@ -15,7 +15,7 @@ use base64::Engine;
 use chio_core::crypto::Keypair;
 use chio_hosted_mcp::RemoteServeHttpConfig;
 use reqwest::blocking::{Client, Response};
-use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE};
+use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, ORIGIN};
 use serde_json::{json, Value};
 
 const SESSION_IDLE_EXPIRY_ENV: &str = "CHIO_MCP_SESSION_IDLE_EXPIRY_MILLIS";
@@ -155,10 +155,19 @@ impl TestServer {
     }
 
     pub fn initialize_session_with_token(&self, token: &str) -> SessionHandle {
-        let response = self.post_json_with_token(
+        self.initialize_session_with_token_and_origin(token, None)
+    }
+
+    pub fn initialize_session_with_token_and_origin(
+        &self,
+        token: &str,
+        origin: Option<&str>,
+    ) -> SessionHandle {
+        let response = self.post_json_with_token_and_origin(
             token,
             None,
             Some("2025-11-25"),
+            origin,
             &json!({
                 "jsonrpc": "2.0",
                 "id": 1,
@@ -195,10 +204,11 @@ impl TestServer {
             .expect("protocol version")
             .to_string();
 
-        let initialized = self.post_json_with_token(
+        let initialized = self.post_json_with_token_and_origin(
             token,
             Some(&session_id),
             Some(&protocol_version),
+            origin,
             &json!({
                 "jsonrpc": "2.0",
                 "method": "notifications/initialized"
@@ -217,10 +227,20 @@ impl TestServer {
     }
 
     pub fn list_tools_with_token(&self, token: &str, session: &SessionHandle) -> Value {
-        let response = self.post_json_with_token(
+        self.list_tools_with_token_and_origin(token, session, None)
+    }
+
+    pub fn list_tools_with_token_and_origin(
+        &self,
+        token: &str,
+        session: &SessionHandle,
+        origin: Option<&str>,
+    ) -> Value {
+        let response = self.post_json_with_token_and_origin(
             token,
             Some(&session.id),
             Some(&session.protocol_version),
+            origin,
             &json!({
                 "jsonrpc": "2.0",
                 "id": 2,
@@ -277,6 +297,17 @@ impl TestServer {
         protocol_version: Option<&str>,
         body: &Value,
     ) -> Response {
+        self.post_json_with_token_and_origin(token, session_id, protocol_version, None, body)
+    }
+
+    pub fn post_json_with_token_and_origin(
+        &self,
+        token: &str,
+        session_id: Option<&str>,
+        protocol_version: Option<&str>,
+        origin: Option<&str>,
+        body: &Value,
+    ) -> Response {
         let mut request = self
             .client
             .post(format!("{}/mcp", self.base_url))
@@ -290,6 +321,9 @@ impl TestServer {
         }
         if let Some(protocol_version) = protocol_version {
             request = request.header("MCP-Protocol-Version", protocol_version);
+        }
+        if let Some(origin) = origin {
+            request = request.header(ORIGIN, origin);
         }
 
         request.send().expect("send HTTP MCP request")
@@ -488,23 +522,12 @@ fn build_client() -> Client {
         .expect("build reqwest client")
 }
 
-fn spawn_static_bearer_server_thread(
-    dir: &Path,
-    listen: SocketAddr,
-    token: &str,
-    tuning: LifecycleTuning,
-) -> ServerGuard {
+pub fn base_remote_config(dir: &Path, listen: SocketAddr) -> RemoteServeHttpConfig {
     let policy_path = write_policy(dir);
     let script_path = write_mock_server_script(dir);
-    let receipt_db_path = dir.join("remote-receipts.sqlite3");
-    let revocation_db_path = dir.join("remote-revocations.sqlite3");
-    let authority_seed_path = dir.join("remote-authority.seed");
-    let session_db_path = tuning
-        .session_db_path
-        .unwrap_or_else(|| dir.join("remote-session-tombstones.sqlite3"));
-    let config = RemoteServeHttpConfig {
+    RemoteServeHttpConfig {
         listen,
-        auth_token: Some(token.to_string()),
+        auth_token: None,
         auth_jwt_public_key: None,
         auth_jwt_discovery_url: None,
         auth_introspection_url: None,
@@ -529,12 +552,12 @@ fn spawn_static_bearer_server_thread(
         auth_subject: "operator".to_string(),
         auth_code_ttl_secs: 300,
         auth_access_token_ttl_secs: 600,
-        receipt_db_path: Some(receipt_db_path),
-        revocation_db_path: Some(revocation_db_path),
-        authority_seed_path: Some(authority_seed_path),
+        receipt_db_path: Some(dir.join("remote-receipts.sqlite3")),
+        revocation_db_path: Some(dir.join("remote-revocations.sqlite3")),
+        authority_seed_path: Some(dir.join("remote-authority.seed")),
         authority_db_path: None,
         budget_db_path: None,
-        session_db_path: Some(session_db_path),
+        session_db_path: Some(dir.join("remote-session-tombstones.sqlite3")),
         policy_path,
         server_id: "wrapped-http-mock".to_string(),
         server_name: "Wrapped HTTP Mock".to_string(),
@@ -546,23 +569,22 @@ fn spawn_static_bearer_server_thread(
         wrapped_command: "python3".to_string(),
         wrapped_args: vec![script_path.to_string_lossy().into_owned()],
         egress_contract: None,
-    };
-
-    let (result_tx, result_rx) = mpsc::channel();
-    let thread = thread::spawn(move || {
-        let result = std::panic::catch_unwind(|| chio_hosted_mcp::serve_http(config));
-        let exit_result = match result {
-            Ok(Ok(())) => Err("hosted MCP server exited unexpectedly".to_string()),
-            Ok(Err(error)) => Err(error.to_string()),
-            Err(_) => Err("hosted MCP server panicked".to_string()),
-        };
-        let _ = result_tx.send(exit_result);
-    });
-
-    ServerGuard {
-        _thread: thread,
-        result_rx,
     }
+}
+
+fn spawn_static_bearer_server_thread(
+    dir: &Path,
+    listen: SocketAddr,
+    token: &str,
+    tuning: LifecycleTuning,
+) -> ServerGuard {
+    let mut config = base_remote_config(dir, listen);
+    let session_db_path = tuning
+        .session_db_path
+        .unwrap_or_else(|| dir.join("remote-session-tombstones.sqlite3"));
+    config.auth_token = Some(token.to_string());
+    config.session_db_path = Some(session_db_path);
+    spawn_server_thread(config)
 }
 
 fn spawn_jwt_http_server_thread(
@@ -573,57 +595,12 @@ fn spawn_jwt_http_server_thread(
     audience: &str,
     admin_token: &str,
 ) -> ServerGuard {
-    let policy_path = write_policy(dir);
-    let script_path = write_mock_server_script(dir);
-    let receipt_db_path = dir.join("remote-receipts.sqlite3");
-    let revocation_db_path = dir.join("remote-revocations.sqlite3");
-    let authority_seed_path = dir.join("remote-authority.seed");
-    let config = RemoteServeHttpConfig {
-        listen,
-        auth_token: None,
-        auth_jwt_public_key: Some(jwt_public_key_hex.to_string()),
-        auth_jwt_discovery_url: None,
-        auth_introspection_url: None,
-        auth_introspection_client_id: None,
-        auth_introspection_client_secret: None,
-        auth_jwt_provider_profile: None,
-        auth_server_seed_path: None,
-        identity_federation_seed_path: None,
-        enterprise_providers_file: None,
-        auth_jwt_issuer: Some(issuer.to_string()),
-        auth_jwt_audience: Some(audience.to_string()),
-        admin_token: Some(admin_token.to_string()),
-        control_url: None,
-        control_token: None,
-        public_base_url: None,
-        auth_servers: vec![],
-        auth_authorization_endpoint: None,
-        auth_token_endpoint: None,
-        auth_registration_endpoint: None,
-        auth_jwks_uri: None,
-        auth_scopes: vec!["mcp:invoke".to_string()],
-        auth_subject: "operator".to_string(),
-        auth_code_ttl_secs: 300,
-        auth_access_token_ttl_secs: 600,
-        receipt_db_path: Some(receipt_db_path),
-        revocation_db_path: Some(revocation_db_path),
-        authority_seed_path: Some(authority_seed_path),
-        authority_db_path: None,
-        budget_db_path: None,
-        session_db_path: Some(dir.join("remote-session-tombstones.sqlite3")),
-        policy_path,
-        server_id: "wrapped-http-mock".to_string(),
-        server_name: "Wrapped HTTP Mock".to_string(),
-        server_version: "0.1.0".to_string(),
-        manifest_public_key: None,
-        page_size: 50,
-        tools_list_changed: false,
-        shared_hosted_owner: false,
-        wrapped_command: "python3".to_string(),
-        wrapped_args: vec![script_path.to_string_lossy().into_owned()],
-        egress_contract: None,
-    };
-
+    let mut config = base_remote_config(dir, listen);
+    config.auth_jwt_public_key = Some(jwt_public_key_hex.to_string());
+    config.auth_jwt_issuer = Some(issuer.to_string());
+    config.auth_jwt_audience = Some(audience.to_string());
+    config.admin_token = Some(admin_token.to_string());
+    config.auth_scopes = vec!["mcp:invoke".to_string()];
     spawn_server_thread(config)
 }
 
@@ -632,60 +609,14 @@ fn spawn_local_oauth_http_server_thread(
     listen: SocketAddr,
     admin_token: &str,
 ) -> ServerGuard {
-    let policy_path = write_policy(dir);
-    let script_path = write_mock_server_script(dir);
-    let receipt_db_path = dir.join("remote-receipts.sqlite3");
-    let revocation_db_path = dir.join("remote-revocations.sqlite3");
-    let authority_seed_path = dir.join("remote-authority.seed");
+    let mut config = base_remote_config(dir, listen);
     let auth_server_seed_path = dir.join("auth-server.seed");
     let public_base_url = format!("http://{listen}");
-    let audience = format!("{public_base_url}/mcp");
-    let config = RemoteServeHttpConfig {
-        listen,
-        auth_token: None,
-        auth_jwt_public_key: None,
-        auth_jwt_discovery_url: None,
-        auth_introspection_url: None,
-        auth_introspection_client_id: None,
-        auth_introspection_client_secret: None,
-        auth_jwt_provider_profile: None,
-        auth_server_seed_path: Some(auth_server_seed_path),
-        identity_federation_seed_path: None,
-        enterprise_providers_file: None,
-        auth_jwt_issuer: None,
-        auth_jwt_audience: Some(audience),
-        admin_token: Some(admin_token.to_string()),
-        control_url: None,
-        control_token: None,
-        public_base_url: Some(public_base_url),
-        auth_servers: vec![],
-        auth_authorization_endpoint: None,
-        auth_token_endpoint: None,
-        auth_registration_endpoint: None,
-        auth_jwks_uri: None,
-        auth_scopes: vec!["mcp:invoke".to_string()],
-        auth_subject: "operator".to_string(),
-        auth_code_ttl_secs: 300,
-        auth_access_token_ttl_secs: 600,
-        receipt_db_path: Some(receipt_db_path),
-        revocation_db_path: Some(revocation_db_path),
-        authority_seed_path: Some(authority_seed_path),
-        authority_db_path: None,
-        budget_db_path: None,
-        session_db_path: Some(dir.join("remote-session-tombstones.sqlite3")),
-        policy_path,
-        server_id: "wrapped-http-mock".to_string(),
-        server_name: "Wrapped HTTP Mock".to_string(),
-        server_version: "0.1.0".to_string(),
-        manifest_public_key: None,
-        page_size: 50,
-        tools_list_changed: false,
-        shared_hosted_owner: false,
-        wrapped_command: "python3".to_string(),
-        wrapped_args: vec![script_path.to_string_lossy().into_owned()],
-        egress_contract: None,
-    };
-
+    config.auth_server_seed_path = Some(auth_server_seed_path);
+    config.auth_jwt_audience = Some(format!("{public_base_url}/mcp"));
+    config.admin_token = Some(admin_token.to_string());
+    config.public_base_url = Some(public_base_url);
+    config.auth_scopes = vec!["mcp:invoke".to_string()];
     spawn_server_thread(config)
 }
 

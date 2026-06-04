@@ -183,6 +183,7 @@ fn custom_field_paths_picked_up() {
         &guard,
         "bigquery",
         serde_json::json!({
+            "query": "SELECT id FROM small",
             "bq_stats": {"total_bytes": 1024, "usd": "0.00"}
         }),
     );

@@ -97,7 +97,12 @@ assert body["error"] == "chio_access_denied", body
 assert body["receipt_id"], body
 PY
 
-issue_demo_capability "${CONTROL_URL}" "${SERVICE_TOKEN}" "${ARTIFACT_ROOT}/capability.json" "hello_fastify_write"
+issue_demo_capability \
+  "${CONTROL_URL}" \
+  "${SERVICE_TOKEN}" \
+  "${ARTIFACT_ROOT}/capability.json" \
+  "authorize_http_request" \
+  "chio_http_authority"
 materialize_capability_token "${ARTIFACT_ROOT}/capability.json" "${ARTIFACT_ROOT}/capability.token"
 
 ENCODED_CAPABILITY="$(python3 - "${ARTIFACT_ROOT}/capability.token" <<'PY'
@@ -124,13 +129,68 @@ body = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 assert body["message"] == "hello", body
 assert body["count"] == 2, body
 assert body["receipt_id"], body
+assert body["body_cached"] is True, body
 PY
-
-"${CHIO_BIN}" receipt list --receipt-db "${RECEIPT_STORE}" --limit 20 > "${ARTIFACT_ROOT}/receipts.ndjson"
 
 HELLO_RECEIPT_ID="$(header_value "${ARTIFACT_ROOT}/hello.headers" "x-chio-receipt-id")"
 DENY_RECEIPT_ID="$(header_value "${ARTIFACT_ROOT}/deny.headers" "x-chio-receipt-id")"
 ALLOW_RECEIPT_ID="$(header_value "${ARTIFACT_ROOT}/allow.headers" "x-chio-receipt-id")"
+
+python3 - \
+  "${RECEIPT_STORE}" \
+  "${ARTIFACT_ROOT}/receipts.ndjson" \
+  "${ARTIFACT_ROOT}/receipt-summary.json" \
+  "${HELLO_RECEIPT_ID}" \
+  "${DENY_RECEIPT_ID}" \
+  "${ALLOW_RECEIPT_ID}" <<'PY'
+import json
+import sqlite3
+import sys
+from pathlib import Path
+
+receipt_store = Path(sys.argv[1])
+output_path = Path(sys.argv[2])
+summary_path = Path(sys.argv[3])
+expected_ids = set(sys.argv[4:])
+
+with sqlite3.connect(receipt_store) as db:
+    rows = db.execute("SELECT receipt_json FROM http_receipts ORDER BY rowid ASC").fetchall()
+
+receipts = [json.loads(row[0]) for row in rows]
+receipt_ids = {receipt["id"] for receipt in receipts}
+missing = expected_ids - receipt_ids
+assert not missing, {"missing": sorted(missing), "stored": sorted(receipt_ids)}
+
+decisions = {
+    (
+        receipt.get("method"),
+        receipt.get("route_pattern"),
+        receipt.get("verdict", {}).get("verdict"),
+        receipt.get("response_status"),
+    ): receipt["id"]
+    for receipt in receipts
+}
+assert ("GET", "/hello", "allow", 200) in decisions, decisions
+assert ("POST", "/echo", "deny", 403) in decisions, decisions
+assert ("POST", "/echo", "allow", 200) in decisions, decisions
+
+output_path.write_text(
+    "".join(json.dumps(receipt, separators=(",", ":")) + "\n" for receipt in receipts),
+    encoding="utf-8",
+)
+summary_path.write_text(
+    json.dumps(
+        {
+            "hello": decisions[("GET", "/hello", "allow", 200)],
+            "deny": decisions[("POST", "/echo", "deny", 403)],
+            "allow": decisions[("POST", "/echo", "allow", 200)],
+        },
+        indent=2,
+    )
+    + "\n",
+    encoding="utf-8",
+)
+PY
 
 cat <<EOF
 hello-fastify smoke passed

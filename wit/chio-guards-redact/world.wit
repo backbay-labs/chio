@@ -44,7 +44,7 @@ interface redact {
 
     /// Manifest summarizing a redaction pass; signed into the frame.
     record redaction-manifest {
-        /// e.g. "m06-redactors@1.4.0+default".
+        /// e.g. "m06-redactors@1.5.0+default".
         pass-id: string,
         matches: list<redaction-match>,
         elapsed-micros: u64,

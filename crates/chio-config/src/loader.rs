@@ -3,7 +3,7 @@
 use std::fs;
 use std::path::Path;
 
-use crate::interpolation::interpolate;
+use crate::interpolation::interpolate_for_loader;
 use crate::schema::ChioConfig;
 use crate::validation::validate;
 use crate::ConfigError;
@@ -24,7 +24,7 @@ pub fn load_from_file(path: &Path) -> Result<ChioConfig, ConfigError> {
 ///
 /// Useful for testing and for configs embedded in other formats.
 pub fn load_from_str(yaml: &str) -> Result<ChioConfig, ConfigError> {
-    let interpolated = interpolate(yaml)?;
+    let interpolated = interpolate_for_loader(yaml)?;
     let config: ChioConfig =
         serde_yml::from_str(&interpolated).map_err(|e| ConfigError::Parse(e.to_string()))?;
     validate(&config)?;
@@ -143,6 +143,32 @@ adapters:
 "#;
         let config = load_from_str(yaml).unwrap_or_else(|e| panic!("load should work: {e}"));
         assert_eq!(config.kernel.log_level, "warn");
+    }
+
+    #[test]
+    fn unsafe_interpolation_value_is_rejected_before_yaml_parse() {
+        env::set_var(
+            "CHIO_TEST_INJECTED_SIGNING_KEY",
+            "generate\"\nadapters:\n  - id: injected",
+        );
+        let yaml = r#"
+kernel:
+  signing_key: "${CHIO_TEST_INJECTED_SIGNING_KEY}"
+
+adapters:
+  - id: "test"
+    protocol: "openapi"
+    upstream: "http://localhost:8000"
+"#;
+        let err = load_error(load_from_str(yaml));
+        match err {
+            ConfigError::Interpolation(msg) => {
+                assert!(msg.contains("CHIO_TEST_INJECTED_SIGNING_KEY"));
+                assert!(msg.contains("unsafe interpolation values"));
+            }
+            other => panic!("wrong error variant: {other}"),
+        }
+        env::remove_var("CHIO_TEST_INJECTED_SIGNING_KEY");
     }
 
     #[test]

@@ -54,6 +54,9 @@ pub enum OtelIngestError {
     /// Frame schema version is not recognised. Fail-closed.
     #[error("unsupported OTEL ingest schema: expected {expected}, got {actual}")]
     SchemaMismatch { expected: String, actual: String },
+    /// A required natural-key field was empty or whitespace-padded.
+    #[error("invalid required OTEL field: {field}")]
+    InvalidRequiredField { field: &'static str },
 }
 
 /// In-memory ingest. Folds frames into a [`LineageGraph`], deduplicating
@@ -88,6 +91,9 @@ impl OtelIngest {
                 actual: frame.schema_version,
             });
         }
+        validate_required_field(&frame.receipt_id, "receipt_id")?;
+        validate_required_field(&frame.trace_id, "trace_id")?;
+        validate_required_field(&frame.span_id, "span_id")?;
 
         // Tool call node. OTEL is caller-asserted until correlated.
         let tool_id = format!("tool:{}:{}", frame.trace_id, frame.span_id);
@@ -184,6 +190,13 @@ impl OtelIngest {
     }
 }
 
+fn validate_required_field(value: &str, field: &'static str) -> Result<(), OtelIngestError> {
+    if value.is_empty() || value.trim() != value || value.chars().any(char::is_control) {
+        return Err(OtelIngestError::InvalidRequiredField { field });
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -224,6 +237,39 @@ mod tests {
         // Nothing was ingested.
         assert!(ingest.graph().nodes.is_empty());
         assert!(ingest.graph().edges.is_empty());
+    }
+
+    #[test]
+    fn required_frame_ids_must_be_non_empty_and_unpadded() {
+        fn assert_rejected(field: &str, configure: impl FnOnce(&mut OtelReceiptFrame)) {
+            let mut bad = frame();
+            configure(&mut bad);
+            let mut ingest = OtelIngest::new();
+            let res = ingest.ingest_frame(bad);
+
+            assert!(matches!(
+                res,
+                Err(OtelIngestError::InvalidRequiredField { field: actual }) if actual == field
+            ));
+            assert!(ingest.graph().nodes.is_empty());
+            assert!(ingest.graph().edges.is_empty());
+        }
+
+        assert_rejected("receipt_id", |frame| {
+            frame.receipt_id = " ".into();
+        });
+        assert_rejected("trace_id", |frame| {
+            frame.trace_id = " t1".into();
+        });
+        assert_rejected("span_id", |frame| {
+            frame.span_id = "s1 ".into();
+        });
+        assert_rejected("receipt_id", |frame| {
+            frame.receipt_id = "receipt\nbad".into();
+        });
+        assert_rejected("span_id", |frame| {
+            frame.span_id = "span\0bad".into();
+        });
     }
 
     #[test]

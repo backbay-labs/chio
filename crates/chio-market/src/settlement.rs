@@ -12,9 +12,10 @@ use crate::credit::{
 use crate::receipt::SignedExportEnvelope;
 
 use crate::{
-    liability_claim_adjudication_payable_amount, validate_positive_money, verify_signed_artifact,
-    SignedLiabilityClaimAdjudication, SignedLiabilityClaimDispute, SignedLiabilityClaimPackage,
-    SignedLiabilityClaimResponse, MAX_LIABILITY_CLAIM_WORKFLOW_LIMIT,
+    bounded_market_query_limit, liability_claim_adjudication_payable_amount,
+    validate_positive_money, verify_signed_artifact, SignedLiabilityClaimAdjudication,
+    SignedLiabilityClaimDispute, SignedLiabilityClaimPackage, SignedLiabilityClaimResponse,
+    MAX_LIABILITY_CLAIM_WORKFLOW_LIMIT,
 };
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -621,9 +622,7 @@ impl Default for LiabilityClaimWorkflowQuery {
 impl LiabilityClaimWorkflowQuery {
     #[must_use]
     pub fn limit_or_default(&self) -> usize {
-        self.limit
-            .unwrap_or(50)
-            .clamp(1, MAX_LIABILITY_CLAIM_WORKFLOW_LIMIT)
+        bounded_market_query_limit(self.limit, MAX_LIABILITY_CLAIM_WORKFLOW_LIMIT)
     }
 
     #[must_use]

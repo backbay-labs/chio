@@ -358,7 +358,7 @@ impl ShadowRunner {
             },
             request_blob_sha256,
             response_blob_sha256,
-            redaction_pass_id: chio_data_guards_redactors_default::PASS_ID.to_string(),
+            redaction_pass_id: crate::DEFAULT_REDACTION_PASS_ID.to_string(),
             verdict,
             deny_reason: deny_reason.clone(),
             would_have_blocked,
@@ -683,7 +683,7 @@ mod tests {
             },
         );
 
-        let err = runner.after_kernel(&req, &rcpt).unwrap_err();
+        let err = runner.after_kernel(&req, &rcpt).test_unwrap_err();
         assert!(err.to_string().contains("enforce"));
         // The frame is still persisted for audit despite the rejection.
         let body = std::fs::read_to_string(runner.capture_path()).test_unwrap();

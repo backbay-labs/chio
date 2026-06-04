@@ -59,6 +59,7 @@ The adapter projects upstream Ollama failures onto
 | Field | Value |
 |---|---|
 | Pinned API version | `2025-04` |
+| Outbound pin header | `x-ollama-api-version: 2025-04` |
 | Default endpoint | `http://localhost:11434` |
 | ProviderId | `ProviderId::Ollama` |
 

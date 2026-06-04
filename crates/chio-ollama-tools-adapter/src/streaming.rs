@@ -10,7 +10,7 @@ use chio_provider_adapter_core::ensure_streaming_allow_no_redactions;
 use chio_tool_call_fabric::{ProviderError, ToolInvocation, VerdictResult};
 use serde_json::Value;
 
-use crate::{native::ToolCallPart, OllamaAdapter};
+use crate::{native::ToolCallPart, response, OllamaAdapter};
 
 /// Result of gating one Ollama NDJSON stream payload.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,6 +33,7 @@ impl OllamaAdapter {
     where
         F: FnMut(&ToolInvocation) -> Result<VerdictResult, ProviderError>,
     {
+        self.ensure_supported_api_version()?;
         let text = std::str::from_utf8(raw).map_err(|error| {
             ProviderError::Malformed(format!("Ollama NDJSON stream was not UTF-8: {error}"))
         })?;
@@ -49,6 +50,7 @@ impl OllamaAdapter {
             let frame: Value = serde_json::from_str(trimmed).map_err(|error| {
                 ProviderError::Malformed(format!("Ollama NDJSON line was not JSON: {error}"))
             })?;
+            response::classify_content_policy(&frame)?;
 
             if let Some(array) = frame
                 .get("message")
@@ -56,12 +58,7 @@ impl OllamaAdapter {
                 .and_then(Value::as_array)
             {
                 for entry in array {
-                    let parsed: ToolCallPart =
-                        serde_json::from_value(entry.clone()).map_err(|error| {
-                            ProviderError::Malformed(format!(
-                                "Ollama tool_call entry was malformed: {error}"
-                            ))
-                        })?;
+                    let parsed: ToolCallPart = response::tool_call_part(entry)?;
                     let invocation = self.invocation_from_tool_call(tool_index, &parsed)?;
                     let verdict = evaluate(&invocation)?;
                     ensure_streaming_allow_no_redactions(

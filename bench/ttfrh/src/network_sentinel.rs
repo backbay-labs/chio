@@ -68,6 +68,7 @@ impl Allowlist {
     /// every loopback host listed in the embedded constant. Avoids a
     /// full TOML parser dependency in the bench crate.
     pub fn matches_manifest(&self, manifest: &str) -> bool {
+        let manifest = strip_toml_comments(manifest);
         for host in &self.global_hosts {
             if !manifest.contains(&format!("\"{host}\"")) {
                 return false;
@@ -98,6 +99,172 @@ impl Allowlist {
             .find(|entry| entry.template == template)
             .map(|entry| &entry.hosts)
     }
+}
+
+fn strip_toml_comments(manifest: &str) -> String {
+    const BASIC_MULTILINE_DELIMITER: &str = "\"\"\"";
+    const LITERAL_MULTILINE_DELIMITER: &str = "'''";
+
+    let mut stripped = String::with_capacity(manifest.len());
+    let mut mode = TomlStringMode::Bare;
+    let mut index = 0;
+    while index < manifest.len() {
+        let Some(rest) = manifest.get(index..) else {
+            break;
+        };
+        match mode {
+            TomlStringMode::Bare => {
+                if rest.starts_with(BASIC_MULTILINE_DELIMITER) {
+                    stripped.push_str(BASIC_MULTILINE_DELIMITER);
+                    index += BASIC_MULTILINE_DELIMITER.len();
+                    mode = TomlStringMode::MultilineBasic { escaped: false };
+                    continue;
+                }
+                if rest.starts_with(LITERAL_MULTILINE_DELIMITER) {
+                    stripped.push_str(LITERAL_MULTILINE_DELIMITER);
+                    index += LITERAL_MULTILINE_DELIMITER.len();
+                    mode = TomlStringMode::MultilineLiteral;
+                    continue;
+                }
+                let Some((ch, width)) = next_toml_char(rest) else {
+                    break;
+                };
+                match ch {
+                    '"' => {
+                        stripped.push(ch);
+                        index += width;
+                        mode = TomlStringMode::Basic { escaped: false };
+                    }
+                    '\'' => {
+                        stripped.push(ch);
+                        index += width;
+                        mode = TomlStringMode::Literal;
+                    }
+                    '#' => {
+                        while let Some((comment_ch, comment_width)) =
+                            manifest.get(index..).and_then(next_toml_char)
+                        {
+                            if comment_ch == '\n' {
+                                break;
+                            }
+                            index += comment_width;
+                        }
+                    }
+                    _ => {
+                        stripped.push(ch);
+                        index += width;
+                    }
+                }
+            }
+            TomlStringMode::Basic { escaped } => {
+                let Some((ch, width)) = next_toml_char(rest) else {
+                    break;
+                };
+                stripped.push(ch);
+                index += width;
+                mode = if ch == '\n' || (!escaped && ch == '"') {
+                    TomlStringMode::Bare
+                } else if !escaped && ch == '\\' {
+                    TomlStringMode::Basic { escaped: true }
+                } else {
+                    TomlStringMode::Basic { escaped: false }
+                };
+            }
+            TomlStringMode::Literal => {
+                let Some((ch, width)) = next_toml_char(rest) else {
+                    break;
+                };
+                stripped.push(ch);
+                index += width;
+                if ch == '\n' || ch == '\'' {
+                    mode = TomlStringMode::Bare;
+                }
+            }
+            TomlStringMode::MultilineBasic { escaped } => {
+                if !escaped {
+                    match multiline_quote_prefix(rest, '"') {
+                        MultilineQuotePrefix::ClosingDelimiter(count) => {
+                            stripped.extend(std::iter::repeat_n('"', count));
+                            index += count;
+                            mode = TomlStringMode::Bare;
+                            continue;
+                        }
+                        MultilineQuotePrefix::ContentQuotes(count) => {
+                            stripped.extend(std::iter::repeat_n('"', count));
+                            index += count;
+                            continue;
+                        }
+                        MultilineQuotePrefix::None => {}
+                    }
+                }
+                let Some((ch, width)) = next_toml_char(rest) else {
+                    break;
+                };
+                stripped.push(ch);
+                index += width;
+                mode = if escaped {
+                    TomlStringMode::MultilineBasic { escaped: false }
+                } else if ch == '\\' {
+                    TomlStringMode::MultilineBasic { escaped: true }
+                } else {
+                    TomlStringMode::MultilineBasic { escaped: false }
+                };
+            }
+            TomlStringMode::MultilineLiteral => {
+                match multiline_quote_prefix(rest, '\'') {
+                    MultilineQuotePrefix::ClosingDelimiter(count) => {
+                        stripped.extend(std::iter::repeat_n('\'', count));
+                        index += count;
+                        mode = TomlStringMode::Bare;
+                        continue;
+                    }
+                    MultilineQuotePrefix::ContentQuotes(count) => {
+                        stripped.extend(std::iter::repeat_n('\'', count));
+                        index += count;
+                        continue;
+                    }
+                    MultilineQuotePrefix::None => {}
+                }
+                let Some((ch, width)) = next_toml_char(rest) else {
+                    break;
+                };
+                stripped.push(ch);
+                index += width;
+            }
+        }
+    }
+
+    stripped
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MultilineQuotePrefix {
+    None,
+    ContentQuotes(usize),
+    ClosingDelimiter(usize),
+}
+
+fn multiline_quote_prefix(rest: &str, quote: char) -> MultilineQuotePrefix {
+    let quote_count = rest.chars().take_while(|ch| *ch == quote).count();
+    match quote_count {
+        0..=2 => MultilineQuotePrefix::None,
+        3 => MultilineQuotePrefix::ClosingDelimiter(3),
+        4 | 5 => MultilineQuotePrefix::ContentQuotes(quote_count - 3),
+        _ => MultilineQuotePrefix::ClosingDelimiter(quote_count),
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TomlStringMode {
+    Bare,
+    Basic { escaped: bool },
+    Literal,
+    MultilineBasic { escaped: bool },
+    MultilineLiteral,
+}
+
+fn next_toml_char(input: &str) -> Option<(char, usize)> {
+    input.chars().next().map(|ch| (ch, ch.len_utf8()))
 }
 
 /// Result of running the sentinel against a captured hostname stream.
@@ -281,6 +448,150 @@ mod tests {
         let manifest = include_str!("../sentinel/allowlist.toml");
         let allowlist = Allowlist::embedded();
         assert!(allowlist.matches_manifest(manifest));
+    }
+
+    #[test]
+    fn manifest_match_ignores_commented_hosts() {
+        let manifest = r#"
+# "127.0.0.1"
+global_hosts = ["localhost", "::1"]
+
+[templates.next-ai-sdk-receipts]
+hosts = []
+
+[templates.fastapi-langchain]
+hosts = []
+
+[templates.cloudflare-worker]
+hosts = []
+"#;
+        let allowlist = Allowlist::embedded();
+        assert!(!allowlist.matches_manifest(manifest));
+    }
+
+    #[test]
+    fn manifest_match_preserves_hash_inside_quoted_hosts() {
+        let manifest = r#"
+global_hosts = ["127.0.0.1", "localhost", "::1", "server#1.example.com"] # comment
+
+[templates.next-ai-sdk-receipts]
+hosts = []
+
+[templates.fastapi-langchain]
+hosts = []
+
+[templates.cloudflare-worker]
+hosts = []
+"#;
+        let mut allowlist = Allowlist::embedded();
+        allowlist
+            .global_hosts
+            .insert("server#1.example.com".to_string());
+
+        assert!(allowlist.matches_manifest(manifest));
+    }
+
+    #[test]
+    fn comment_stripping_preserves_hash_inside_multiline_strings() {
+        let manifest = concat!(
+            "note = \"\"\"\n",
+            "basic # not a comment\n",
+            "\"\"\"\n",
+            "literal = '''\n",
+            "literal # not a comment\n",
+            "'''\n",
+            "# real comment\n",
+        );
+
+        let stripped = strip_toml_comments(manifest);
+
+        assert!(stripped.contains("basic # not a comment"));
+        assert!(stripped.contains("literal # not a comment"));
+        assert!(!stripped.contains("# real comment"));
+    }
+
+    #[test]
+    fn comment_stripping_handles_basic_quote_next_to_multiline_delimiter() {
+        let manifest = concat!(
+            "quote = \"\"\"\"quoted # not a comment\"\"\"\" # trailing comment\n",
+            "# real comment\n",
+        );
+
+        let stripped = strip_toml_comments(manifest);
+
+        assert!(stripped.contains("quoted # not a comment"));
+        assert!(!stripped.contains("# trailing comment"));
+        assert!(!stripped.contains("# real comment"));
+    }
+
+    #[test]
+    fn comment_stripping_handles_literal_quote_next_to_multiline_delimiter() {
+        let manifest = concat!(
+            "quote = ''''quoted # not a comment'''' # trailing comment\n",
+            "# real comment\n",
+        );
+
+        let stripped = strip_toml_comments(manifest);
+
+        assert!(stripped.contains("quoted # not a comment"));
+        assert!(!stripped.contains("# trailing comment"));
+        assert!(!stripped.contains("# real comment"));
+    }
+
+    #[test]
+    fn comment_stripping_consumes_oversized_basic_multiline_quote_runs() {
+        for quote_count in [6, 7] {
+            let closing = "\"".repeat(quote_count);
+            let manifest = format!(
+                "quote = \"\"\"quoted{closing} # trailing comment\n\
+                 next = \"hash # not a comment\"\n\
+                 # real comment\n"
+            );
+
+            let stripped = strip_toml_comments(&manifest);
+
+            assert!(stripped.contains("quoted"), "{stripped}");
+            assert!(
+                stripped.contains("hash # not a comment"),
+                "{quote_count}: {stripped}"
+            );
+            assert!(
+                !stripped.contains("# trailing comment"),
+                "{quote_count}: {stripped}"
+            );
+            assert!(
+                !stripped.contains("# real comment"),
+                "{quote_count}: {stripped}"
+            );
+        }
+    }
+
+    #[test]
+    fn comment_stripping_consumes_oversized_literal_multiline_quote_runs() {
+        for quote_count in [6, 7] {
+            let closing = "'".repeat(quote_count);
+            let manifest = format!(
+                "quote = '''quoted{closing} # trailing comment\n\
+                 next = 'hash # not a comment'\n\
+                 # real comment\n"
+            );
+
+            let stripped = strip_toml_comments(&manifest);
+
+            assert!(stripped.contains("quoted"), "{stripped}");
+            assert!(
+                stripped.contains("hash # not a comment"),
+                "{quote_count}: {stripped}"
+            );
+            assert!(
+                !stripped.contains("# trailing comment"),
+                "{quote_count}: {stripped}"
+            );
+            assert!(
+                !stripped.contains("# real comment"),
+                "{quote_count}: {stripped}"
+            );
+        }
     }
 
     #[test]

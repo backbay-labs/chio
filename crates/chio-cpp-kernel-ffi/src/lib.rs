@@ -291,15 +291,42 @@ fn decode_trusted_issuers(values: &[String]) -> Result<Vec<PublicKey>, KernelFfi
     Ok(trusted)
 }
 
+fn validate_capability_trust_roots(
+    roots: &std::collections::BTreeMap<String, ScopeHash>,
+) -> Result<(), KernelFfiError> {
+    for (issuer_hex, scope_hash) in roots {
+        public_key_from_hex(issuer_hex, "capability trust root issuer")?;
+        validate_trust_root_scope_hash("capability_trust_roots[].scope_hash", scope_hash)?;
+    }
+    Ok(())
+}
+
+fn validate_trust_root_scope_hash(field: &str, value: &str) -> Result<(), KernelFfiError> {
+    if value.trim().is_empty() || value.trim() != value || value.chars().any(char::is_control) {
+        return Err(KernelFfiError::InvalidCapability(format!(
+            "{field} must be non-empty, unpadded, and control-free"
+        )));
+    }
+    Ok(())
+}
+
 fn seed_budget_registry(
     budgets: &mut InMemoryBudgetRegistry,
     snapshots: &[ParentBudgetSnapshot],
 ) -> Result<(), KernelFfiError> {
     for snapshot in snapshots {
+        validate_budget_token_id(
+            "parent_budget_snapshots[].parent_token_id",
+            &snapshot.parent_token_id,
+        )?;
         budgets
             .register_parent(snapshot.parent_token_id.clone(), snapshot.parent_share_bps)
             .map_err(|error| budget_seed_error("parent budget snapshot", &error))?;
         for child in &snapshot.admitted_children {
+            validate_budget_token_id(
+                "parent_budget_snapshots[].admitted_children[].child_token_id",
+                &child.child_token_id,
+            )?;
             budgets
                 .try_admit_child(
                     snapshot.parent_token_id.as_str(),
@@ -308,6 +335,15 @@ fn seed_budget_registry(
                 )
                 .map_err(|error| budget_seed_error("admitted child budget snapshot", &error))?;
         }
+    }
+    Ok(())
+}
+
+fn validate_budget_token_id(field: &str, value: &str) -> Result<(), KernelFfiError> {
+    if value.trim().is_empty() || value.trim() != value {
+        return Err(KernelFfiError::InvalidCapability(format!(
+            "{field} must be non-empty and unpadded"
+        )));
     }
     Ok(())
 }
@@ -332,6 +368,7 @@ fn evaluate_json_str(request_json: &str) -> Result<String, KernelFfiError> {
         .map_err(|error| KernelFfiError::invalid_json("capability token", error))?;
 
     let trusted = decode_trusted_issuers(&parsed.trusted_issuers)?;
+    validate_capability_trust_roots(&parsed.capability_trust_roots)?;
 
     let portable_request = PortableToolCallRequest {
         request_id: parsed.request.request_id,
@@ -474,6 +511,7 @@ fn verify_capability_with_parts(
     capability_trust_roots: std::collections::BTreeMap<String, ScopeHash>,
     parent_budget_snapshots: &[ParentBudgetSnapshot],
 ) -> Result<String, KernelFfiError> {
+    validate_capability_trust_roots(&capability_trust_roots)?;
     let fixed_clock = now_secs.and_then(fixed_clock_from_secs);
     let system_clock = SystemClock;
     let clock: &dyn Clock = match &fixed_clock {
@@ -791,6 +829,25 @@ mod tests {
         })
     }
 
+    #[test]
+    fn seed_budget_registry_rejects_blank_parent_token_id() {
+        let snapshot = ParentBudgetSnapshot {
+            parent_token_id: " ".to_string(),
+            parent_share_bps: 10_000,
+            admitted_children: Vec::new(),
+        };
+        let mut registry = InMemoryBudgetRegistry::new();
+
+        let error = seed_budget_registry(&mut registry, &[snapshot]).unwrap_err();
+
+        match error {
+            KernelFfiError::InvalidCapability(message) => {
+                assert!(message.contains("parent_token_id"));
+            }
+            other => panic!("expected InvalidCapability, got {other:?}"),
+        }
+    }
+
     fn evaluate_envelope_at(
         tool_name: &str,
         issued_at: u64,
@@ -992,6 +1049,61 @@ mod tests {
         match error {
             KernelFfiError::InvalidCapability(message) => {
                 assert!(message.contains("sibling-sum budget split"));
+            }
+            other => panic!("expected InvalidCapability, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn verify_capability_context_rejects_malformed_trust_root_issuer() {
+        let subject = Keypair::generate();
+        let issuer = Keypair::generate();
+        let capability = make_capability_at(&subject, &issuer, ISSUED_AT, EXPIRES_AT);
+        let envelope = json!({
+            "token": capability,
+            "trusted_issuers": [issuer.public_key().to_hex()],
+            "now_secs": ISSUED_AT as i64 + 1,
+            "capability_trust_roots": {
+                "not-a-public-key": "scope-hash"
+            }
+        });
+
+        let error = verify_capability_with_context_json_str(&envelope.to_string()).unwrap_err();
+
+        match error {
+            KernelFfiError::InvalidHex(message) => {
+                assert!(message.contains("capability trust root issuer"));
+            }
+            other => panic!("expected InvalidHex, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn evaluate_rejects_empty_trust_root_scope_hash() {
+        let subject = Keypair::generate();
+        let issuer = Keypair::generate();
+        let capability = make_capability_at(&subject, &issuer, ISSUED_AT, EXPIRES_AT);
+        let envelope = json!({
+            "capability": capability,
+            "trusted_issuers": [issuer.public_key().to_hex()],
+            "request": {
+                "request_id": "req-trust-root-empty",
+                "tool_name": "echo",
+                "server_id": "srv-a",
+                "agent_id": subject.public_key().to_hex(),
+                "arguments": {"msg": "hello"}
+            },
+            "now_secs": ISSUED_AT + 1,
+            "capability_trust_roots": {
+                issuer.public_key().to_hex(): ""
+            }
+        });
+
+        let error = evaluate_json_str(&envelope.to_string()).unwrap_err();
+
+        match error {
+            KernelFfiError::InvalidCapability(message) => {
+                assert!(message.contains("capability_trust_roots"));
             }
             other => panic!("expected InvalidCapability, got {other:?}"),
         }

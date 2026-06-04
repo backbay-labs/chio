@@ -10,5 +10,14 @@
     <ProjectReference Include="../../sdks/dotnet/ChioMiddleware/src/ChioMiddleware.csproj" />
   </ItemGroup>
 
-</Project>
+  <ItemGroup>
+    <Compile Remove="tests/**/*.cs" />
+  </ItemGroup>
 
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>HelloChio.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+</Project>

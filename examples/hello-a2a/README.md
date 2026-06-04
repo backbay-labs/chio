@@ -8,12 +8,15 @@ Minimal A2A example using [`crates/chio-a2a-edge`](../../crates/chio-a2a-edge/).
 - authoritative `message/send`
 - deferred `message/stream` followed by `task/get`
 - receipt-bearing metadata on terminal results
+- direct library-level tests for the same JSON-RPC lifecycle
 
 ## Files
 
 ```text
 README.md
 Cargo.toml
+ARCHITECTURE.md
+src/lib.rs
 src/main.rs
 run-edge.sh
 smoke.sh
@@ -38,3 +41,7 @@ Run the smoke flow:
 ```bash
 ./smoke.sh
 ```
+
+The reusable demo state, Agent Card generation, stdio loop, and JSON-RPC mode
+dispatch live in `src/lib.rs`. `src/main.rs` only maps the selected mode to a
+process exit code.

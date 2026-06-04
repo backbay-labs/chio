@@ -16,6 +16,18 @@ pub const VERDICT_ALLOW: i32 = 0;
 /// Return code from the guest `evaluate` function indicating "deny".
 pub const VERDICT_DENY: i32 = 1;
 
+/// Fallback reason used when a deny verdict supplies only whitespace.
+pub const DEFAULT_DENY_REASON: &str = "guard denied request";
+
+pub(crate) fn normalize_deny_reason(reason: impl AsRef<str>) -> String {
+    let trimmed = reason.as_ref().trim();
+    if trimmed.is_empty() {
+        DEFAULT_DENY_REASON.to_owned()
+    } else {
+        trimmed.to_owned()
+    }
+}
+
 // ---------------------------------------------------------------------------
 // GuardRequest
 // ---------------------------------------------------------------------------
@@ -83,8 +95,9 @@ impl GuardVerdict {
     /// Create a Deny verdict with a reason.
     #[must_use]
     pub fn deny(reason: impl Into<String>) -> Self {
+        let reason = reason.into();
         Self::Deny {
-            reason: reason.into(),
+            reason: normalize_deny_reason(reason),
         }
     }
 }
@@ -233,6 +246,15 @@ mod tests {
             GuardVerdict::Deny { reason } => assert_eq!(reason, "not permitted"),
             GuardVerdict::Allow => panic!("expected Deny"),
         }
+    }
+
+    #[test]
+    fn guard_verdict_deny_constructor_normalizes_blank_reason() {
+        let v = GuardVerdict::deny(" \t\n");
+        assert!(matches!(
+            v,
+            GuardVerdict::Deny { reason } if reason == DEFAULT_DENY_REASON
+        ));
     }
 
     #[test]

@@ -411,6 +411,21 @@ pub fn peer_weights_from_json(
             document.schema
         )));
     }
+    let mut kernel_ids = BTreeSet::new();
+    for entry in &document.weights {
+        let kernel_id = entry.kernel_id.trim();
+        if kernel_id.is_empty() || kernel_id != entry.kernel_id {
+            return Err(PheromoneRuntimeError::InvalidField(
+                "peer weight kernel id must be non-empty and unpadded".to_string(),
+            ));
+        }
+        if !kernel_ids.insert(entry.kernel_id.as_str()) {
+            return Err(PheromoneRuntimeError::InvalidField(format!(
+                "peer weight kernel id {} is duplicated",
+                entry.kernel_id
+            )));
+        }
+    }
     Ok(StaticPeerWeightProvider::new(
         document.reputation_epoch,
         document
@@ -606,11 +621,35 @@ fn build_receive_report(
 }
 
 fn frame_failure_code(error: &PheromoneRuntimeError) -> &'static str {
-    match error {
-        PheromoneRuntimeError::Sqlite(_) | PheromoneRuntimeError::StorePoisoned => {
-            "storage_commit_failed"
-        }
-        _ => error.code(),
+    if is_storage_commit_error(error) {
+        "storage_commit_failed"
+    } else {
+        error.code()
+    }
+}
+
+fn is_storage_commit_error(error: &PheromoneRuntimeError) -> bool {
+    matches!(
+        error,
+        PheromoneRuntimeError::Sqlite(_) | PheromoneRuntimeError::StorePoisoned
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PheromoneRuntimeError;
+
+    #[test]
+    fn storage_commit_error_helper_selects_only_storage_failures() {
+        assert!(super::is_storage_commit_error(
+            &PheromoneRuntimeError::Sqlite("disk full".to_string())
+        ));
+        assert!(super::is_storage_commit_error(
+            &PheromoneRuntimeError::StorePoisoned
+        ));
+        assert!(!super::is_storage_commit_error(
+            &PheromoneRuntimeError::InvalidField("bad frame".to_string())
+        ));
     }
 }
 

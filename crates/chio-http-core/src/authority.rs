@@ -19,7 +19,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use thiserror::Error;
 
+#[cfg(test)]
+use crate::authority_projection::MALFORMED_CHIO_TOOLS_PATH_REASON;
 use crate::{
+    authority_projection::{
+        capability_binding, HttpKernelAuthorizationRequest, HttpKernelCapabilityState,
+    },
     http_status_metadata_decision, http_status_metadata_final, CallerIdentity, ChioHttpRequest,
     HttpMethod, HttpReceipt, HttpReceiptBody, Verdict, CHIO_KERNEL_RECEIPT_ID_KEY,
 };
@@ -29,7 +34,6 @@ pub const HTTP_AUTHORITY_SERVER_ID: &str = "chio_http_authority";
 /// Tool name for HTTP-sidecar capability grants.
 pub const HTTP_AUTHORITY_TOOL_NAME: &str = "authorize_http_request";
 const HTTP_AUTHORITY_TTL_SECS: u64 = 60;
-const MALFORMED_CHIO_TOOLS_PATH_REASON: &str = "malformed /chio/tools path identity";
 
 #[must_use]
 pub fn http_authority_tool_grant() -> ToolGrant {
@@ -43,157 +47,6 @@ pub fn http_authority_tool_grant() -> ToolGrant {
         max_total_cost: None,
         dpop_required: None,
     }
-}
-
-enum ChioToolsPathIdentity {
-    NotToolsPath,
-    Malformed,
-    Identity {
-        server_id: String,
-        tool_name: String,
-    },
-}
-
-struct CapabilityBinding {
-    requested_tool_server: Option<String>,
-    requested_tool_name: Option<String>,
-    requested_arguments: Option<Value>,
-    invalid_reason: Option<String>,
-    policy: HttpAuthorityPolicy,
-}
-
-fn chio_tools_path_identity(path: &str) -> ChioToolsPathIdentity {
-    let Some(rest) = path.strip_prefix("/chio/tools/") else {
-        return ChioToolsPathIdentity::NotToolsPath;
-    };
-    let Some((server_id, tool_name)) = rest.split_once('/') else {
-        return ChioToolsPathIdentity::Malformed;
-    };
-    if server_id.is_empty() || tool_name.is_empty() || tool_name.contains('/') {
-        return ChioToolsPathIdentity::Malformed;
-    }
-    let Some(server_id) = decode_path_identity_segment(server_id) else {
-        return ChioToolsPathIdentity::Malformed;
-    };
-    let Some(tool_name) = decode_path_identity_segment(tool_name) else {
-        return ChioToolsPathIdentity::Malformed;
-    };
-    ChioToolsPathIdentity::Identity {
-        server_id,
-        tool_name,
-    }
-}
-
-fn decode_path_identity_segment(segment: &str) -> Option<String> {
-    let mut decoded = Vec::with_capacity(segment.len());
-    let bytes = segment.as_bytes();
-    let mut index = 0;
-    while index < bytes.len() {
-        if bytes[index] == b'%' {
-            let high = hex_value(*bytes.get(index + 1)?)?;
-            let low = hex_value(*bytes.get(index + 2)?)?;
-            decoded.push((high << 4) | low);
-            index += 3;
-        } else {
-            decoded.push(bytes[index]);
-            index += 1;
-        }
-    }
-    let decoded = String::from_utf8(decoded).ok()?;
-    if decoded.is_empty() {
-        return None;
-    }
-    Some(decoded)
-}
-
-fn hex_value(byte: u8) -> Option<u8> {
-    match byte {
-        b'0'..=b'9' => Some(byte - b'0'),
-        b'a'..=b'f' => Some(byte - b'a' + 10),
-        b'A'..=b'F' => Some(byte - b'A' + 10),
-        _ => None,
-    }
-}
-
-fn request_field_capability_binding(input: &HttpAuthorityInput<'_>) -> CapabilityBinding {
-    CapabilityBinding {
-        requested_tool_server: input.requested_tool_server.map(str::to_owned),
-        requested_tool_name: input.requested_tool_name.map(str::to_owned),
-        requested_arguments: input.requested_arguments.cloned(),
-        invalid_reason: None,
-        policy: input.policy,
-    }
-}
-
-fn has_sidecar_tool_identity(input: &HttpAuthorityInput<'_>) -> bool {
-    input.requested_tool_server.is_some() && input.requested_tool_name.is_some()
-}
-
-fn http_authority_capability_binding(
-    input: &HttpAuthorityInput<'_>,
-    caller_identity_hash: &str,
-) -> CapabilityBinding {
-    let arguments = serde_json::to_value(HttpKernelAuthorizationRequest {
-        request_id: input.request_id.clone(),
-        method: input.method,
-        route_pattern: input.route_pattern.clone(),
-        path: input.path.to_string(),
-        content_hash: input.body_hash.clone().unwrap_or_default(),
-        caller_identity_hash: caller_identity_hash.to_string(),
-        session_id: input.session_id.clone(),
-        policy: input.policy,
-        capability: HttpKernelCapabilityState {
-            id: None,
-            invalid_reason: None,
-        },
-    })
-    .unwrap_or(Value::Null);
-
-    CapabilityBinding {
-        requested_tool_server: Some(HTTP_AUTHORITY_SERVER_ID.to_string()),
-        requested_tool_name: Some(HTTP_AUTHORITY_TOOL_NAME.to_string()),
-        requested_arguments: Some(arguments),
-        invalid_reason: None,
-        policy: input.policy,
-    }
-}
-
-fn capability_binding(
-    input: &HttpAuthorityInput<'_>,
-    caller_identity_hash: &str,
-) -> CapabilityBinding {
-    if has_sidecar_tool_identity(input) {
-        match chio_tools_path_identity(input.path) {
-            ChioToolsPathIdentity::Identity {
-                server_id,
-                tool_name,
-            } => {
-                return CapabilityBinding {
-                    requested_tool_server: Some(server_id),
-                    requested_tool_name: Some(tool_name),
-                    requested_arguments: input.requested_arguments.cloned(),
-                    invalid_reason: None,
-                    policy: HttpAuthorityPolicy::DenyByDefault,
-                };
-            }
-            ChioToolsPathIdentity::Malformed => {
-                return CapabilityBinding {
-                    requested_tool_server: None,
-                    requested_tool_name: None,
-                    requested_arguments: input.requested_arguments.cloned(),
-                    invalid_reason: Some(MALFORMED_CHIO_TOOLS_PATH_REASON.to_string()),
-                    policy: HttpAuthorityPolicy::DenyByDefault,
-                };
-            }
-            ChioToolsPathIdentity::NotToolsPath => {}
-        }
-    }
-
-    if input.policy != HttpAuthorityPolicy::DenyByDefault {
-        return request_field_capability_binding(input);
-    }
-
-    http_authority_capability_binding(input, caller_identity_hash)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -308,28 +161,6 @@ struct RequestedToolInvocation<'a> {
     server_id: &'a str,
     tool_name: &'a str,
     arguments: &'a Value,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct HttpKernelAuthorizationRequest {
-    request_id: String,
-    method: HttpMethod,
-    route_pattern: String,
-    path: String,
-    content_hash: String,
-    caller_identity_hash: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    session_id: Option<String>,
-    policy: HttpAuthorityPolicy,
-    capability: HttpKernelCapabilityState,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct HttpKernelCapabilityState {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    invalid_reason: Option<String>,
 }
 
 struct HttpAuthorizationServer;
@@ -2204,59 +2035,5 @@ mod tests {
             result.receipt.evidence[0].details.as_deref(),
             Some("capability does not authorize tool increment on server math")
         );
-    }
-
-    #[test]
-    fn chio_tools_path_identity_parses_reserved_prefix() {
-        let ChioToolsPathIdentity::Identity {
-            server_id,
-            tool_name,
-        } = chio_tools_path_identity("/chio/tools/matrix/files.read")
-        else {
-            panic!("expected identity");
-        };
-        assert_eq!(server_id, "matrix");
-        assert_eq!(tool_name, "files.read");
-    }
-
-    #[test]
-    fn chio_tools_path_identity_rejects_missing_tool_segment() {
-        assert!(matches!(
-            chio_tools_path_identity("/chio/tools/matrix"),
-            ChioToolsPathIdentity::Malformed
-        ));
-    }
-
-    #[test]
-    fn chio_tools_path_identity_requires_trailing_slash_prefix() {
-        assert!(matches!(
-            chio_tools_path_identity("/chio/tools"),
-            ChioToolsPathIdentity::NotToolsPath
-        ));
-    }
-
-    #[test]
-    fn chio_tools_path_identity_rejects_nested_tool_segments() {
-        assert!(matches!(
-            chio_tools_path_identity("/chio/tools/matrix/files/read"),
-            ChioToolsPathIdentity::Malformed
-        ));
-    }
-
-    #[test]
-    fn chio_tools_path_identity_rejects_incomplete_percent_encoding() {
-        assert!(decode_path_identity_segment("terminal%2").is_none());
-        assert!(matches!(
-            chio_tools_path_identity("/chio/tools/acp/terminal%2"),
-            ChioToolsPathIdentity::Malformed
-        ));
-    }
-
-    #[test]
-    fn chio_tools_path_identity_non_tools_path_is_not_tools_path() {
-        assert!(matches!(
-            chio_tools_path_identity("/pets/42"),
-            ChioToolsPathIdentity::NotToolsPath
-        ));
     }
 }

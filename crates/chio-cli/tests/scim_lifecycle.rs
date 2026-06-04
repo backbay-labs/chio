@@ -11,6 +11,7 @@ use chio_control_plane::scim_lifecycle::{
 };
 use chio_core::capability::{ChioScope, Operation, ToolGrant};
 use chio_core::crypto::Keypair;
+use chio_test_support::loopback::{reserve_listen_addr, skip_when_loopback_bind_denied};
 use reqwest::blocking::Client;
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
 use serde_json::{json, Value};
@@ -29,13 +30,6 @@ fn workspace_root() -> PathBuf {
         .nth(2)
         .expect("workspace root")
         .to_path_buf()
-}
-
-fn reserve_listen_addr() -> std::net::SocketAddr {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind temp listener");
-    let addr = listener.local_addr().expect("listener addr");
-    drop(listener);
-    addr
 }
 
 struct ServerGuard {
@@ -255,6 +249,12 @@ fn scim_user_payload(provider_id: &str) -> Value {
 
 #[test]
 fn trust_service_scim_post_users_creates_chio_identity_with_attributes_and_entitlements() {
+    if skip_when_loopback_bind_denied(
+        "trust_service_scim_post_users_creates_chio_identity_with_attributes_and_entitlements",
+    ) {
+        return;
+    }
+
     let dir = unique_dir("chio-cli-scim-create");
     fs::create_dir_all(&dir).expect("create temp dir");
     let providers_path = dir.join("enterprise-providers.json");
@@ -325,6 +325,12 @@ fn trust_service_scim_post_users_creates_chio_identity_with_attributes_and_entit
 
 #[test]
 fn trust_service_scim_delete_users_deactivates_identity_revokes_capabilities_and_emits_receipt() {
+    if skip_when_loopback_bind_denied(
+        "trust_service_scim_delete_users_deactivates_identity_revokes_capabilities_and_emits_receipt",
+    ) {
+        return;
+    }
+
     let dir = unique_dir("chio-cli-scim-delete");
     fs::create_dir_all(&dir).expect("create temp dir");
     let providers_path = dir.join("enterprise-providers.json");

@@ -447,11 +447,11 @@ fn resolve_passport_lifecycle(
     at: u64,
     passport_statuses_file: Option<&Path>,
     control_url: Option<&str>,
-    control_token: Option<&str>,
+    _control_token: Option<&str>,
     required: bool,
 ) -> Result<Option<PassportLifecycleResolution>, CliError> {
     if let Some(url) = control_url {
-        let client = crate::trust_control::build_client(url, control_token.unwrap_or_default())?;
+        let client = crate::trust_control::build_public_client(url)?;
         let passport_id = passport_artifact_id(passport).map_err(|error| {
             CliError::policy_error(format!("failed to derive passport artifact id: {error}"))
         })?;
@@ -1075,10 +1075,10 @@ pub(crate) fn cmd_passport_issuance_metadata(
     passport_status_cache_ttl_secs: Option<u64>,
     json_output: bool,
     control_url: Option<&str>,
-    control_token: Option<&str>,
+    _control_token: Option<&str>,
 ) -> Result<(), CliError> {
     let metadata = if let Some(url) = control_url {
-        crate::trust_control::build_client(url, control_token.unwrap_or_default())?
+        crate::trust_control::build_public_client(url)?
             .passport_issuer_metadata()?
     } else {
         local_passport_issuer_metadata(
@@ -1184,7 +1184,7 @@ pub(crate) fn cmd_passport_issuance_token_redeem(
     passport_issuance_offers_file: Option<&Path>,
     json_output: bool,
     control_url: Option<&str>,
-    control_token: Option<&str>,
+    _control_token: Option<&str>,
 ) -> Result<(), CliError> {
     let offer = load_oid4vci_offer(offer_path)?;
     let request = Oid4vciTokenRequest {
@@ -1192,7 +1192,7 @@ pub(crate) fn cmd_passport_issuance_token_redeem(
         pre_authorized_code: offer.pre_authorized_code()?.to_string(),
     };
     let token = if let Some(url) = control_url {
-        crate::trust_control::build_client(url, control_token.unwrap_or_default())?
+        crate::trust_control::build_public_client(url)?
             .redeem_passport_issuance_token(&request)?
     } else {
         let metadata = default_oid4vci_passport_issuer_metadata_with_status_distribution(
@@ -1235,12 +1235,12 @@ pub(crate) fn cmd_passport_issuance_credential_redeem(
     format: Option<&str>,
     json_output: bool,
     control_url: Option<&str>,
-    control_token: Option<&str>,
+    _control_token: Option<&str>,
 ) -> Result<(), CliError> {
     let offer = load_oid4vci_offer(offer_path)?;
     let token = load_oid4vci_token(token_path)?;
     let metadata = if let Some(url) = control_url {
-        crate::trust_control::build_client(url, control_token.unwrap_or_default())?
+        crate::trust_control::build_public_client(url)?
             .passport_issuer_metadata()?
     } else {
         local_passport_issuer_metadata(&offer.credential_issuer, signing_seed_file, None, None)?
@@ -1268,7 +1268,7 @@ pub(crate) fn cmd_passport_issuance_credential_redeem(
             .unwrap_or_default(),
     };
     let response = if let Some(url) = control_url {
-        crate::trust_control::build_client(url, control_token.unwrap_or_default())?
+        crate::trust_control::build_public_client(url)?
             .redeem_passport_issuance_credential(&token.access_token, &request)?
     } else {
         let path = require_passport_issuance_registry_path(passport_issuance_offers_file)?;
@@ -2269,11 +2269,12 @@ pub(crate) fn cmd_passport_status_resolve(
     control_token: Option<&str>,
 ) -> Result<(), CliError> {
     let resolution = if let Some(url) = control_url {
-        let client = crate::trust_control::build_client(url, control_token.unwrap_or_default())?;
         if control_token.is_some() {
-            client.resolve_passport_status(passport_id)?
+            crate::trust_control::build_client(url, control_token.unwrap_or_default())?
+                .resolve_passport_status(passport_id)?
         } else {
-            client.public_resolve_passport_status(passport_id)?
+            crate::trust_control::build_public_client(url)?
+                .public_resolve_passport_status(passport_id)?
         }
     } else {
         let path = require_passport_status_registry_path(passport_statuses_file)?;

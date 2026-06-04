@@ -304,14 +304,24 @@ fn resolve_schema_path(
     }
     let rel = uri.strip_prefix(SCHEMA_URI_PREFIX)?;
     let direct = schemas_root.join(rel);
-    if direct.is_file() {
+    if schema_path_is_file_under_root(&direct, schemas_root) {
         return Some(direct);
     }
     let with_suffix = schemas_root.join(format!("{}.schema.json", rel.trim_end_matches('/')));
-    if with_suffix.is_file() {
+    if schema_path_is_file_under_root(&with_suffix, schemas_root) {
         return Some(with_suffix);
     }
     None
+}
+
+fn schema_path_is_file_under_root(path: &Path, schemas_root: &Path) -> bool {
+    let Ok(root) = schemas_root.canonicalize() else {
+        return false;
+    };
+    let Ok(candidate) = path.canonicalize() else {
+        return false;
+    };
+    candidate.is_file() && candidate.starts_with(root)
 }
 
 fn collect_scenario_files(scenarios_dir: &Path) -> Result<Vec<PathBuf>, XtaskError> {
@@ -1943,6 +1953,27 @@ impl Drop for TempDir {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn resolve_schema_path_rejects_legacy_prefix_traversal() {
+        let temp = match TempDir::new("xtask-schema-resolve") {
+            Ok(temp) => temp,
+            Err(err) => panic!("failed to create temp dir: {err}"),
+        };
+        let schemas_root = temp.path().join("schemas");
+        if let Err(err) = fs::create_dir_all(&schemas_root) {
+            panic!("failed to create schemas dir: {err}");
+        }
+        let outside_schema = temp.path().join("outside.schema.json");
+        if let Err(err) = fs::write(&outside_schema, "{}") {
+            panic!("failed to write outside schema: {err}");
+        }
+
+        let uri = format!("{SCHEMA_URI_PREFIX}../outside");
+        let index = SchemaIndex::new();
+
+        assert!(resolve_schema_path(&uri, &index, &schemas_root).is_none());
+    }
 
     #[test]
     fn pascal_case_handles_kebab_and_snake() {

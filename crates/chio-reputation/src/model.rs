@@ -160,7 +160,9 @@ impl Default for ReputationConfig {
 
 impl ReputationConfig {
     /// Builder: replace the trusted-kernel-key set with the supplied keys.
-    /// Each item is the hex form returned by `PublicKey::to_hex()`.
+    /// Each accepted item is the exact hex form returned by
+    /// `PublicKey::to_hex()`. Empty or whitespace-padded inputs are ignored so
+    /// malformed trust anchors cannot make the config appear trusted.
     ///
     /// Returns `self` for chaining, e.g.
     /// ```ignore
@@ -178,7 +180,10 @@ impl ReputationConfig {
     {
         self.trusted_kernel_keys = trusted_kernel_keys
             .into_iter()
-            .map(Into::into)
+            .filter_map(|trusted_kernel_key| {
+                let trusted_kernel_key = trusted_kernel_key.into();
+                is_non_empty_unpadded(&trusted_kernel_key).then_some(trusted_kernel_key)
+            })
             .collect();
         self
     }
@@ -190,6 +195,10 @@ impl ReputationConfig {
     pub fn has_trusted_kernel_keys(&self) -> bool {
         !self.trusted_kernel_keys.is_empty()
     }
+}
+
+fn is_non_empty_unpadded(value: &str) -> bool {
+    !value.is_empty() && value.trim() == value
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

@@ -6,6 +6,7 @@
 //! receipt-construction and signing sequences are unchanged.
 
 use crate::budget_store::BudgetReverseHoldDecision;
+use chio_log_redact::redacted;
 
 use super::*;
 
@@ -206,6 +207,46 @@ impl ChioKernel {
         )
     }
 
+    /// Verify a DPoP proof for non-mutating permission preview.
+    ///
+    /// This mirrors invocation DPoP policy and checks that the nonce store and
+    /// config are installed, but deliberately avoids inserting the nonce so a
+    /// later authoritative invocation can still spend it.
+    pub fn verify_dpop_for_permission_preview(
+        &self,
+        proof: &dpop::DpopProof,
+        cap: &CapabilityToken,
+        expected_tool_server: &str,
+        expected_tool_name: &str,
+        arguments: &serde_json::Value,
+    ) -> Result<(), KernelError> {
+        if self.dpop_nonce_store.is_none() {
+            return Err(KernelError::DpopVerificationFailed(
+                "kernel DPoP nonce store not configured".to_string(),
+            ));
+        }
+
+        let config = self.dpop_config.as_ref().ok_or_else(|| {
+            KernelError::DpopVerificationFailed("kernel DPoP config not configured".to_string())
+        })?;
+
+        let args_bytes = canonical_json_bytes(arguments).map_err(|e| {
+            KernelError::DpopVerificationFailed(format!(
+                "failed to serialize arguments for action hash: {e}"
+            ))
+        })?;
+        let action_hash = sha256_hex(&args_bytes);
+
+        dpop::verify_dpop_proof_stateless(
+            proof,
+            cap,
+            expected_tool_server,
+            expected_tool_name,
+            &action_hash,
+            config,
+        )
+    }
+
     /// Run all registered guards. Fail-closed: any error from a guard is
     /// treated as a deny.
     pub(crate) fn run_guards(
@@ -337,6 +378,37 @@ impl ChioKernel {
             return Ok(());
         };
         hook.release_reserved(metadata)
+    }
+
+    pub(crate) fn release_runtime_admission_reservations_for_pre_dispatch_denial(
+        &self,
+        metadata: Option<serde_json::Value>,
+    ) -> Option<serde_json::Value> {
+        let metadata_value = metadata?;
+        let Some(hook) = self.runtime_admission_hook.as_ref() else {
+            return Some(metadata_value);
+        };
+
+        match hook.release_reserved(&metadata_value) {
+            Ok(()) => Some(metadata_value),
+            Err(error) => {
+                let reason = error.to_string();
+                warn!(
+                    hook = hook.name(),
+                    reason = %redacted!(&reason),
+                    "runtime admission reservation release failed on pre-dispatch denial"
+                );
+                merge_metadata_objects(
+                    Some(metadata_value),
+                    Some(serde_json::json!({
+                        "chio_runtime": {
+                            "reservation_release_failed": true,
+                            "reservation_release_failure_reason": reason
+                        }
+                    })),
+                )
+            }
+        }
     }
 
     /// Forward the validated request and optionally report actual invocation cost.

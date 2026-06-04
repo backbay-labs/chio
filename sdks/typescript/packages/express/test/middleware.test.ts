@@ -56,6 +56,11 @@ function allowResponse(): EvaluateResponse {
       method: "POST",
       caller_identity_hash: "a".repeat(64),
       verdict: { verdict: "allow" },
+      receipt_kind: "mediated_decision",
+      boundary_class: "prevent",
+      tool_origin: "caller_executed",
+      redaction_mode: "none",
+      trust_level: "mediated",
       evidence: [],
       response_status: 200,
       timestamp: 1_700_000_000,
@@ -68,6 +73,22 @@ function allowResponse(): EvaluateResponse {
   };
 }
 
+function verifyResponse() {
+  return {
+    signature_valid: true,
+    signer_trusted: true,
+    receipt_id_valid: true,
+    parameter_hash_valid: true,
+    receipt_kind: "mediated_decision",
+    boundary_class: "prevent",
+    trust_level: "mediated",
+    result: "allow",
+    authorized: true,
+    signer_key_hex: "d".repeat(64),
+    ok: true,
+  };
+}
+
 async function startMockSidecar(): Promise<{ server: http.Server; url: string }> {
   const server = http.createServer((req, res) => {
     if (req.method === "POST" && req.url === "/chio/evaluate") {
@@ -75,6 +96,15 @@ async function startMockSidecar(): Promise<{ server: http.Server; url: string }>
       req.on("end", () => {
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(allowResponse()));
+      });
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/chio/verify") {
+      req.resume();
+      req.on("end", () => {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(verifyResponse()));
       });
       return;
     }
@@ -154,7 +184,7 @@ describe("chio() middleware", () => {
     }
   });
 
-  it("fail-open passthroughs do not synthesize Chio receipts", async () => {
+  it("fails closed when legacy onSidecarError is allow", async () => {
     const app = express();
     app.use(
       chio({
@@ -176,16 +206,9 @@ describe("chio() middleware", () => {
 
     try {
       const resp = await request(server, "GET", "/test");
-      expect(resp.status).toBe(200);
+      expect(resp.status).toBe(502);
       expect(resp.headers["x-chio-receipt-id"]).toBeUndefined();
-      expect(JSON.parse(resp.body)).toEqual({
-        hasChioResult: false,
-        chioPassthrough: {
-          mode: "allow_without_receipt",
-          error: "chio_sidecar_unreachable",
-          message: expect.stringContaining("sidecar"),
-        },
-      });
+      expect(JSON.parse(resp.body).error).toBe("chio_sidecar_unreachable");
     } finally {
       server.close();
     }

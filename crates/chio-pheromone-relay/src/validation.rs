@@ -102,8 +102,23 @@ pub(crate) fn u64_from_i64(value: i64, field: &str) -> Result<u64, PheromoneRela
 }
 
 pub(crate) fn is_sha256_hex(value: &str) -> bool {
-    value.len() == 64
-        && value
-            .chars()
-            .all(|ch| ch.is_ascii_digit() || matches!(ch, 'a'..='f'))
+    value.len() == 64 && value.as_bytes().iter().all(|byte| is_lower_hex_byte(*byte))
+}
+
+fn is_lower_hex_byte(byte: u8) -> bool {
+    byte.is_ascii_digit() || matches!(byte, b'a'..=b'f')
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn lower_hex_byte_helper_accepts_digest_alphabet_only() {
+        for byte in b"0123456789abcdef" {
+            assert!(super::is_lower_hex_byte(*byte), "{byte}");
+        }
+
+        for byte in b"ABCDEFg:-" {
+            assert!(!super::is_lower_hex_byte(*byte), "{byte}");
+        }
+    }
 }

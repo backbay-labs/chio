@@ -29,6 +29,18 @@ pub struct EvmAnchorTarget {
     pub publisher_address: String,
 }
 
+impl EvmAnchorTarget {
+    pub fn validate(&self) -> Result<(), AnchorError> {
+        parse_validated_evm_anchor_target(self).map(|_| ())
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ValidatedEvmAnchorTarget {
+    pub(crate) operator: Address,
+    pub(crate) publisher: Address,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct PreparedEvmRootPublication {
@@ -109,6 +121,7 @@ pub fn prepare_root_publication(
     checkpoint: &KernelCheckpoint,
     binding: &SignedWeb3IdentityBinding,
 ) -> Result<PreparedEvmRootPublication, AnchorError> {
+    let validated_target = parse_validated_evm_anchor_target(target)?;
     if !binding
         .certificate
         .purpose
@@ -135,10 +148,8 @@ pub fn prepare_root_publication(
             binding.certificate.settlement_address, target.operator_address
         )));
     }
-    let operator = Address::from_str(&target.operator_address)
-        .map_err(|error| AnchorError::InvalidInput(error.to_string()))?;
     let call = IChioRootRegistry::publishRootCall {
-        operator,
+        operator: validated_target.operator,
         merkleRoot: hash_to_b256(&checkpoint.body.merkle_root),
         checkpointSeq: checkpoint.body.checkpoint_seq,
         batchStartSeq: checkpoint.body.batch_start_seq,
@@ -160,7 +171,7 @@ pub fn prepare_root_publication(
         merkle_root: checkpoint.body.merkle_root,
         operator_key_hash: operator_key_hash_hex(binding),
         call_data: format!("0x{}", hex::encode(call.abi_encode())),
-        requires_delegate_authorization: target.publisher_address != target.operator_address,
+        requires_delegate_authorization: validated_target.publisher != validated_target.operator,
     })
 }
 
@@ -169,6 +180,7 @@ pub fn prepare_delegate_registration(
     delegate_address: &str,
     expires_at: u64,
 ) -> Result<PreparedDelegateRegistration, AnchorError> {
+    parse_validated_evm_anchor_target(target)?;
     if delegate_address.trim().is_empty() {
         return Err(AnchorError::InvalidInput(
             "delegate address is required".to_string(),
@@ -254,6 +266,7 @@ pub async fn confirm_root_publication(
     tx_hash: &str,
     egress_contract: &HttpEgressContract,
 ) -> Result<EvmPublicationReceipt, AnchorError> {
+    let validated_target = parse_validated_evm_anchor_target(target)?;
     let receipt = rpc_call(
         &target.rpc_url,
         egress_contract,
@@ -283,10 +296,8 @@ pub async fn confirm_root_publication(
         )));
     }
 
-    let operator = Address::from_str(&target.operator_address)
-        .map_err(|error| AnchorError::InvalidInput(error.to_string()))?;
     let get_root = IChioRootRegistry::getRootCall {
-        operator,
+        operator: validated_target.operator,
         checkpointSeq: checkpoint.body.checkpoint_seq,
     };
     let root_result = rpc_call(
@@ -333,14 +344,11 @@ pub async fn inspect_publication_guard(
     target: &EvmAnchorTarget,
     egress_contract: &HttpEgressContract,
 ) -> Result<EvmPublicationGuard, AnchorError> {
-    let operator = Address::from_str(&target.operator_address)
-        .map_err(|error| AnchorError::InvalidInput(error.to_string()))?;
-    let publisher = Address::from_str(&target.publisher_address)
-        .map_err(|error| AnchorError::InvalidInput(error.to_string()))?;
+    let validated_target = parse_validated_evm_anchor_target(target)?;
 
     let auth_call = IChioRootRegistry::isAuthorizedPublisherCall {
-        operator,
-        publisher,
+        operator: validated_target.operator,
+        publisher: validated_target.publisher,
     };
     let auth_response = rpc_call(
         &target.rpc_url,
@@ -364,7 +372,9 @@ pub async fn inspect_publication_guard(
         IChioRootRegistry::isAuthorizedPublisherCall::abi_decode_returns(&auth_bytes)
             .map_err(|error| AnchorError::Serialization(error.to_string()))?;
 
-    let seq_call = IChioRootRegistry::getLatestSeqCall { operator };
+    let seq_call = IChioRootRegistry::getLatestSeqCall {
+        operator: validated_target.operator,
+    };
     let seq_response = rpc_call(
         &target.rpc_url,
         egress_contract,
@@ -393,7 +403,7 @@ pub async fn inspect_publication_guard(
         latest_checkpoint_seq,
         next_checkpoint_seq_min: latest_checkpoint_seq.saturating_add(1),
         publisher_authorized,
-        requires_delegate_authorization: target.publisher_address != target.operator_address,
+        requires_delegate_authorization: validated_target.publisher != validated_target.operator,
     })
 }
 
@@ -423,10 +433,18 @@ pub async fn verify_inclusion_onchain(
     proof: &AnchorInclusionProof,
     egress_contract: &HttpEgressContract,
 ) -> Result<bool, AnchorError> {
+    let validated_target = parse_validated_evm_anchor_target(target)?;
     verify_anchor_inclusion_proof(proof)
         .map_err(|error| AnchorError::Verification(error.to_string()))?;
-    let operator = Address::from_str(&proof.key_binding_certificate.certificate.settlement_address)
-        .map_err(|error| AnchorError::InvalidInput(error.to_string()))?;
+    let operator = parse_nonzero_evm_address(
+        "proof binding settlement address",
+        &proof.key_binding_certificate.certificate.settlement_address,
+    )?;
+    if operator != validated_target.operator {
+        return Err(AnchorError::Verification(
+            "proof binding settlement address does not match anchor target operator".to_string(),
+        ));
+    }
     let receipt_bytes = canonical_json_bytes(&proof.receipt.body())
         .map_err(|error| AnchorError::Serialization(error.to_string()))?;
     let leaf = leaf_hash(&receipt_bytes);
@@ -533,6 +551,78 @@ pub fn evm_anchor_devnet_rpc_egress_contract(
     rpc_url: &str,
 ) -> Result<HttpEgressContract, AnchorError> {
     devnet_rpc_egress_contract_for_url("chio-anchor-evm-devnet-rpc", rpc_url)
+}
+
+pub(crate) fn parse_validated_evm_anchor_target(
+    target: &EvmAnchorTarget,
+) -> Result<ValidatedEvmAnchorTarget, AnchorError> {
+    validate_evm_chain_id(&target.chain_id)?;
+    validate_evm_rpc_url(&target.rpc_url)?;
+    let _contract = parse_nonzero_evm_address("contract address", &target.contract_address)?;
+    let operator = parse_nonzero_evm_address("operator address", &target.operator_address)?;
+    let publisher = parse_nonzero_evm_address("publisher address", &target.publisher_address)?;
+    Ok(ValidatedEvmAnchorTarget {
+        operator,
+        publisher,
+    })
+}
+
+fn validate_evm_chain_id(chain_id: &str) -> Result<(), AnchorError> {
+    let suffix = chain_id.strip_prefix("eip155:").ok_or_else(|| {
+        AnchorError::InvalidInput(
+            "EVM anchor chain_id must use the eip155:<decimal-chain-id> format".to_string(),
+        )
+    })?;
+    if suffix.is_empty() || !suffix.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err(AnchorError::InvalidInput(
+            "EVM anchor chain_id must use a non-empty decimal eip155 chain id".to_string(),
+        ));
+    }
+    if suffix.len() > 1 && suffix.starts_with('0') {
+        return Err(AnchorError::InvalidInput(
+            "EVM anchor chain_id must be canonical and omit leading zeroes".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_evm_rpc_url(rpc_url: &str) -> Result<(), AnchorError> {
+    if rpc_url.trim() != rpc_url {
+        return Err(AnchorError::InvalidInput(
+            "anchor EVM RPC URL must not include surrounding whitespace".to_string(),
+        ));
+    }
+    let url = Url::parse(rpc_url).map_err(|error| {
+        AnchorError::InvalidInput(format!("invalid anchor EVM RPC URL: {error}"))
+    })?;
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err(AnchorError::InvalidInput(
+            "anchor EVM RPC URL must use http or https".to_string(),
+        ));
+    }
+    if url.host_str().is_none() {
+        return Err(AnchorError::InvalidInput(
+            "anchor EVM RPC URL must include a host".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn parse_nonzero_evm_address(label: &str, address: &str) -> Result<Address, AnchorError> {
+    if address.trim() != address {
+        return Err(AnchorError::InvalidInput(format!(
+            "{label} must not include surrounding whitespace"
+        )));
+    }
+    let parsed = Address::from_str(address).map_err(|error| {
+        AnchorError::InvalidInput(format!("{label} is not a valid EVM address: {error}"))
+    })?;
+    if parsed == Address::from([0_u8; 20]) {
+        return Err(AnchorError::InvalidInput(format!(
+            "{label} must not be the zero address"
+        )));
+    }
+    Ok(parsed)
 }
 
 fn validate_rpc_egress_contract(
@@ -956,6 +1046,70 @@ mod tests {
     }
 
     #[test]
+    fn evm_anchor_target_validation_rejects_malformed_boundary_fields() {
+        let target = sample_target("http://127.0.0.1:8545");
+        target.validate().test_expect("sample target is valid");
+
+        let mut bad_chain = target.clone();
+        bad_chain.chain_id = "8453".to_string();
+        let chain_error = bad_chain
+            .validate()
+            .test_expect_err("non-CAIP EVM chain id should fail");
+        assert!(chain_error.to_string().contains("eip155"));
+
+        let mut bad_rpc = target.clone();
+        bad_rpc.rpc_url = "ws://127.0.0.1:8545".to_string();
+        let rpc_error = bad_rpc
+            .validate()
+            .test_expect_err("non-HTTP RPC URL should fail");
+        assert!(rpc_error.to_string().contains("http or https"));
+
+        let mut bad_contract = target.clone();
+        bad_contract.contract_address = "0xabc".to_string();
+        let contract_error = bad_contract
+            .validate()
+            .test_expect_err("short contract address should fail");
+        assert!(contract_error.to_string().contains("contract address"));
+
+        let mut zero_publisher = target;
+        zero_publisher.publisher_address = "0x0000000000000000000000000000000000000000".to_string();
+        let publisher_error = zero_publisher
+            .validate()
+            .test_expect_err("zero publisher address should fail");
+        assert!(publisher_error.to_string().contains("publisher address"));
+        assert!(publisher_error.to_string().contains("zero address"));
+    }
+
+    #[test]
+    fn prepare_root_publication_rejects_invalid_contract_and_publisher_addresses() {
+        let checkpoint = sample_checkpoint();
+        let binding = sample_binding();
+        let mut invalid_contract = sample_target("http://127.0.0.1:8545");
+        invalid_contract.contract_address = "0xabc".to_string();
+
+        let contract_error = prepare_root_publication(&invalid_contract, &checkpoint, &binding)
+            .test_expect_err("invalid contract address should fail");
+
+        assert!(matches!(
+            contract_error,
+            crate::AnchorError::InvalidInput(_)
+        ));
+        assert!(contract_error.to_string().contains("contract address"));
+
+        let mut invalid_publisher = sample_target("http://127.0.0.1:8545");
+        invalid_publisher.publisher_address = "invalid-publisher".to_string();
+
+        let publisher_error = prepare_root_publication(&invalid_publisher, &checkpoint, &binding)
+            .test_expect_err("invalid publisher address should fail");
+
+        assert!(matches!(
+            publisher_error,
+            crate::AnchorError::InvalidInput(_)
+        ));
+        assert!(publisher_error.to_string().contains("publisher address"));
+    }
+
+    #[test]
     fn prepare_delegate_registration_rejects_invalid_delegate_inputs() {
         let target = sample_target("http://127.0.0.1:8545");
 
@@ -970,6 +1124,22 @@ mod tests {
         let invalid = prepare_delegate_registration(&target, "invalid-address", 30)
             .test_expect_err("invalid delegate address should fail");
         assert!(matches!(invalid, crate::AnchorError::InvalidInput(_)));
+    }
+
+    #[test]
+    fn prepare_delegate_registration_rejects_invalid_target_boundary() {
+        let mut target = sample_target("http://127.0.0.1:8545");
+        target.contract_address = "0xabc".to_string();
+
+        let error = prepare_delegate_registration(
+            &target,
+            "0x1000000000000000000000000000000000000004",
+            30,
+        )
+        .test_expect_err("invalid target contract should fail before delegate registration");
+
+        assert!(matches!(error, crate::AnchorError::InvalidInput(_)));
+        assert!(error.to_string().contains("contract address"));
     }
 
     #[tokio::test]
@@ -1400,6 +1570,22 @@ mod tests {
         assert!(verified);
         assert_eq!(requests.len(), 1);
         assert_eq!(requests[0]["method"], "eth_call");
+    }
+
+    #[tokio::test]
+    async fn verify_inclusion_onchain_rejects_target_operator_mismatch() {
+        let mut target = sample_target("http://127.0.0.1:8545");
+        target.operator_address = "0x1000000000000000000000000000000000000009".to_string();
+        let proof = sample_primary_proof();
+        let egress_contract = sample_rpc_contract("http://127.0.0.1:8545");
+
+        let error = verify_inclusion_onchain(&target, &proof, &egress_contract)
+            .await
+            .test_expect_err("target operator mismatch should fail before RPC");
+
+        assert!(error
+            .to_string()
+            .contains("does not match anchor target operator"));
     }
 
     #[test]

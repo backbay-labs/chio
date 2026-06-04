@@ -102,5 +102,17 @@ fn entitlement_and_metering_fail_closed() -> Result<(), Box<dyn std::error::Erro
         Some(MeteringError::QuantityMustBePositive)
     );
 
+    let mut padded_store = EntitlementStore::default();
+    let padded_error = padded_store
+        .insert(EntitlementRecord {
+            customer_identifier: " customer-123".to_string(),
+            ..record()
+        })
+        .err();
+    assert_eq!(
+        padded_error,
+        Some(EntitlementError::MissingCustomerIdentifier)
+    );
+
     Ok(())
 }

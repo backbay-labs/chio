@@ -25,12 +25,17 @@ paths:
             schema:
               type: object
               required: [message]
+              additionalProperties: false
               properties:
                 message:
                   type: string
+                  minLength: 1
                 count:
                   type: integer
+                  minimum: 1
+                  default: 1
       responses:
         "200":
           description: Echo payload
-
+        "400":
+          description: Invalid echo payload

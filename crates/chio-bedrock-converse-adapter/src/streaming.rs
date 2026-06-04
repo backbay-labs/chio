@@ -473,8 +473,12 @@ fn required_non_empty_string(
         Err(ProviderError::Malformed(format!(
             "Bedrock {display} must not be empty"
         )))
+    } else if trimmed != raw {
+        Err(ProviderError::Malformed(format!(
+            "Bedrock {display} must not contain surrounding whitespace"
+        )))
     } else {
-        Ok(trimmed.to_string())
+        Ok(raw.to_string())
     }
 }
 

@@ -118,7 +118,7 @@ pub fn verify_tool_call_receipt(receipt: &serde_json::Value) -> bool {
 }
 
 fn validate_non_empty(value: &str, error: McpReceiptError) -> Result<(), McpReceiptError> {
-    if value.trim().is_empty() {
+    if value.trim().is_empty() || value.trim() != value {
         return Err(error);
     }
     Ok(())

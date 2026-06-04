@@ -10,7 +10,8 @@ pub const SUPPORTED_RECEIPT_SCHEMA: &str = "chio.receipt/v1";
 
 /// Redaction-pass identifier this build can replay against receipts.
 /// Mirrors `replay/validate.rs::SUPPORTED_REDACTION_PASS_ID` (frame side).
-pub const SUPPORTED_RECEIPT_REDACTION_PASS_ID: &str = "redactors@1.4.0+default";
+pub const SUPPORTED_RECEIPT_REDACTION_PASS_ID: &str =
+    chio_replay_corpus::DEFAULT_REDACTION_PASS_ID;
 
 /// Failure shape from the raw-Value gate helpers.
 #[derive(Debug, Clone, PartialEq, Eq)]

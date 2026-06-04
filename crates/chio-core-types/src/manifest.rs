@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::capability::MonetaryAmount;
 use crate::crypto::{Keypair, PublicKey, Signature};
 use crate::error::Result;
+use crate::signer_binding::ensure_keypair_matches_embedded_key;
 
 /// A Chio tool server manifest. Signed by the server's Ed25519 key.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,6 +42,12 @@ pub struct ToolManifestBody {
 impl ToolManifest {
     /// Sign a manifest body with the server's keypair.
     pub fn sign(body: ToolManifestBody, keypair: &Keypair) -> Result<Self> {
+        ensure_keypair_matches_embedded_key(
+            &body.server_key,
+            keypair,
+            "tool manifest",
+            "server_key",
+        )?;
         let (signature, _bytes) = keypair.sign_canonical(&body)?;
         Ok(Self {
             server_id: body.server_id,
@@ -192,11 +199,12 @@ mod tests {
         let other_kp = Keypair::generate();
         let body = ToolManifestBody {
             server_id: "srv-files".to_string(),
-            server_key: other_kp.public_key(), // key does not match signer
+            server_key: kp.public_key(),
             tools: vec![sample_tool()],
             required_capabilities: vec![],
         };
-        let manifest = ToolManifest::sign(body, &kp).unwrap();
+        let mut manifest = ToolManifest::sign(body, &kp).unwrap();
+        manifest.server_key = other_kp.public_key();
         assert!(!manifest.verify_signature().unwrap());
     }
 

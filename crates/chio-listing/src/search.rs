@@ -29,7 +29,8 @@ impl GenericListingFreshnessWindow {
     #[must_use]
     pub fn assess(&self, generated_at: u64, now: u64) -> GenericListingReplicaFreshness {
         let age_secs = now.saturating_sub(generated_at);
-        let state = if age_secs > self.max_age_secs || now > self.valid_until {
+        let state = if generated_at > now || age_secs > self.max_age_secs || now > self.valid_until
+        {
             GenericListingFreshnessState::Stale
         } else {
             GenericListingFreshnessState::Fresh

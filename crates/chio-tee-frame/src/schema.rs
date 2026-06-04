@@ -40,6 +40,8 @@ pub enum SchemaError {
     UpstreamOperation(String),
     #[error("upstream.api_version length must be 1..=32, got {0:?}")]
     UpstreamApiVersion(String),
+    #[error("invocation must be a JSON object")]
+    InvocationObject,
     #[error("provenance.otel.trace_id must be 32 lowercase hex chars, got {0:?}")]
     TraceId(String),
     #[error("provenance.otel.span_id must be 16 lowercase hex chars, got {0:?}")]
@@ -73,6 +75,7 @@ pub fn validate(frame: &Frame) -> Result<(), SchemaError> {
     validate_upstream_operation(&frame.upstream.operation)?;
     validate_upstream_api_version(&frame.upstream.api_version)?;
     let _ = frame.upstream.system; // enum already constrains the value.
+    validate_invocation(&frame.invocation)?;
     validate_trace_id(&frame.provenance.otel.trace_id)?;
     validate_span_id(&frame.provenance.otel.span_id)?;
     validate_blob_hash(&frame.request_blob_sha256)
@@ -250,30 +253,41 @@ fn validate_upstream_api_version(value: &str) -> Result<(), SchemaError> {
     Ok(())
 }
 
+fn validate_invocation(value: &serde_json::Value) -> Result<(), SchemaError> {
+    if value.is_object() {
+        Ok(())
+    } else {
+        Err(SchemaError::InvocationObject)
+    }
+}
+
 fn validate_trace_id(value: &str) -> Result<(), SchemaError> {
-    if value.len() != 32 || !value.chars().all(is_lower_hex) {
+    if !is_lower_hex_len(value, 32) {
         return Err(SchemaError::TraceId(value.to_string()));
     }
     Ok(())
 }
 
 fn validate_span_id(value: &str) -> Result<(), SchemaError> {
-    if value.len() != 16 || !value.chars().all(is_lower_hex) {
+    if !is_lower_hex_len(value, 16) {
         return Err(SchemaError::SpanId(value.to_string()));
     }
     Ok(())
 }
 
 fn validate_blob_hash(value: &str) -> Result<(), &str> {
-    if value.len() == 64 && value.chars().all(is_lower_hex) {
+    if is_lower_hex_len(value, 64) {
         Ok(())
     } else {
         Err(value)
     }
 }
 
-fn is_lower_hex(c: char) -> bool {
-    matches!(c, '0'..='9' | 'a'..='f')
+fn is_lower_hex_len(value: &str, expected_len: usize) -> bool {
+    value.len() == expected_len
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
 }
 
 fn validate_redaction_pass_id(value: &str) -> Result<(), SchemaError> {
@@ -416,7 +430,7 @@ mod tests {
             },
             request_blob_sha256: "a".repeat(64),
             response_blob_sha256: "b".repeat(64),
-            redaction_pass_id: "redactors@1.4.0+default".to_string(),
+            redaction_pass_id: "redactors@1.5.0+default".to_string(),
             verdict: Verdict::Allow,
             deny_reason: None,
             would_have_blocked: false,
@@ -530,6 +544,22 @@ mod tests {
         let mut f = good_frame();
         f.tenant_sig = "A".repeat(86);
         assert!(matches!(validate(&f), Err(SchemaError::TenantSig(_))));
+    }
+
+    #[test]
+    fn invocation_must_be_json_object() {
+        let mut f = good_frame();
+        f.invocation = serde_json::Value::String("not-an-object".to_string());
+        assert!(matches!(validate(&f), Err(SchemaError::InvocationObject)));
+    }
+
+    #[test]
+    fn lower_hex_len_accepts_only_exact_lowercase_ascii_hex() {
+        assert!(is_lower_hex_len(&"a".repeat(64), 64));
+        assert!(is_lower_hex_len("0123456789abcdef0123456789abcdef", 32));
+        assert!(!is_lower_hex_len(&"a".repeat(63), 64));
+        assert!(!is_lower_hex_len(&"A".repeat(64), 64));
+        assert!(!is_lower_hex_len(&"g".repeat(64), 64));
     }
 
     #[test]

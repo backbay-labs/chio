@@ -9,7 +9,7 @@ use regex::Regex;
 
 use chio_kernel::{GuardContext, KernelError, Verdict};
 
-use crate::action::{extract_action, ToolAction};
+use crate::action::{extract_action_checked, ToolAction};
 
 /// Errors produced when building a [`PatchIntegrityGuard`].
 #[derive(Debug, thiserror::Error)]
@@ -196,7 +196,10 @@ impl chio_kernel::Guard for PatchIntegrityGuard {
             return Ok(Verdict::Allow);
         }
 
-        let action = extract_action(&ctx.request.tool_name, &ctx.request.arguments);
+        let action = match extract_action_checked(&ctx.request.tool_name, &ctx.request.arguments) {
+            Ok(action) => action,
+            Err(_) => return Ok(Verdict::Deny),
+        };
 
         let diff = match &action {
             ToolAction::Patch(_, diff) => diff.as_str(),

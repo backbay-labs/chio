@@ -87,12 +87,13 @@ impl<'a> TargetProtocolRegistry<'a> {
         &self,
         tool: &ToolDefinition,
     ) -> Result<DiscoveryProtocol, String> {
-        let target =
-            schema_string_extension(&tool.input_schema, "x-chio-target-protocol").or_else(|| {
-                tool.output_schema
-                    .as_ref()
-                    .and_then(|schema| schema_string_extension(schema, "x-chio-target-protocol"))
-            });
+        let target = match schema_string_extension(&tool.input_schema, "x-chio-target-protocol")? {
+            Some(value) => Some(value),
+            None => match tool.output_schema.as_ref() {
+                Some(schema) => schema_string_extension(schema, "x-chio-target-protocol")?,
+                None => None,
+            },
+        };
 
         match target {
             Some(value) => parse_discovery_protocol(&value),
@@ -907,16 +908,12 @@ impl<'a> CrossProtocolOrchestrator<'a> {
         bridge: &B,
         request: CrossProtocolExecutionRequest,
     ) -> Result<OrchestratedToolCall, BridgeError> {
+        validate_execution_request_boundary(&request)?;
         let source_protocol = bridge.source_protocol();
         let provided_ref = bridge.extract_capability_ref(&request.source_envelope)?;
         let capability_ref = match provided_ref {
             Some(cap_ref) => {
-                if cap_ref.chio_capability_id != request.capability.id {
-                    return Err(BridgeError::CapabilityRefMismatch {
-                        expected: request.capability.id.clone(),
-                        actual: cap_ref.chio_capability_id,
-                    });
-                }
+                validate_provided_capability_ref(&cap_ref, &request.capability, source_protocol)?;
                 cap_ref
             }
             None => CrossProtocolCapabilityRef::from_capability(
@@ -1224,6 +1221,61 @@ fn build_route_evidence(
     })
 }
 
+fn validate_execution_request_boundary(
+    request: &CrossProtocolExecutionRequest,
+) -> Result<(), BridgeError> {
+    validate_request_identity_field("origin_request_id", &request.origin_request_id)?;
+    validate_request_identity_field("kernel_request_id", &request.kernel_request_id)?;
+    validate_request_identity_field("target_server_id", &request.target_server_id)?;
+    validate_request_identity_field("target_tool_name", &request.target_tool_name)?;
+    validate_request_identity_field("agent_id", &request.agent_id)?;
+    Ok(())
+}
+
+fn validate_request_identity_field(field_name: &str, value: &str) -> Result<(), BridgeError> {
+    if value.trim().is_empty() {
+        return Err(BridgeError::InvalidRequest(format!(
+            "{field_name} must be a non-empty string"
+        )));
+    }
+    if value.trim() != value || value.chars().any(char::is_control) {
+        return Err(BridgeError::InvalidRequest(format!(
+            "{field_name} must be unpadded and contain no control characters"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_provided_capability_ref(
+    cap_ref: &CrossProtocolCapabilityRef,
+    capability: &CapabilityToken,
+    source_protocol: DiscoveryProtocol,
+) -> Result<(), BridgeError> {
+    if cap_ref.origin_protocol != source_protocol {
+        return Err(BridgeError::InvalidRequest(format!(
+            "capabilityRef originProtocol {} does not match source protocol {}",
+            cap_ref.origin_protocol, source_protocol
+        )));
+    }
+
+    if cap_ref.chio_capability_id != capability.id {
+        return Err(BridgeError::CapabilityRefMismatch {
+            expected: capability.id.clone(),
+            actual: cap_ref.chio_capability_id.clone(),
+        });
+    }
+
+    let expected_hash = parent_capability_hash(capability)?;
+    if cap_ref.parent_capability_hash != expected_hash {
+        return Err(BridgeError::InvalidRequest(
+            "capabilityRef parentCapabilityHash does not match active capability lineage"
+                .to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
 #[derive(Debug, Default)]
 struct RoutePlanningHints {
     preferred_target_protocol: Option<DiscoveryProtocol>,
@@ -1278,17 +1330,16 @@ fn build_route_candidate(
     registry: &TargetProtocolRegistry<'_>,
     availability: &BTreeMap<DiscoveryProtocol, RouteAvailabilityStatus>,
 ) -> RouteCandidateEvidence {
-    let registry_availability = if registry.supports_target_protocol(target_protocol) {
-        RouteAvailabilityStatus::available()
+    let availability = if registry.supports_target_protocol(target_protocol) {
+        availability
+            .get(&target_protocol)
+            .cloned()
+            .unwrap_or_else(RouteAvailabilityStatus::available)
     } else {
         RouteAvailabilityStatus::unavailable(format!(
             "target protocol `{target_protocol}` is not registered"
         ))
     };
-    let availability = availability
-        .get(&target_protocol)
-        .cloned()
-        .unwrap_or(registry_availability);
 
     RouteCandidateEvidence {
         route_id: format!("{}-route", target_protocol.as_str()),
@@ -1454,12 +1505,22 @@ fn render_protocol_output(
     }
 }
 
-fn schema_bool_extension(schema: &Value, key: &str) -> Option<bool> {
-    schema.as_object()?.get(key)?.as_bool()
+fn schema_extension<'a>(schema: &'a Value, key: &str) -> Option<&'a Value> {
+    schema.as_object()?.get(key)
 }
 
-fn schema_string_extension(schema: &Value, key: &str) -> Option<String> {
-    schema.as_object()?.get(key)?.as_str().map(str::to_string)
+fn schema_bool_extension(schema: &Value, key: &str) -> Option<bool> {
+    schema_extension(schema, key)?.as_bool()
+}
+
+fn schema_string_extension(schema: &Value, key: &str) -> Result<Option<String>, String> {
+    let Some(value) = schema_extension(schema, key) else {
+        return Ok(None);
+    };
+    value
+        .as_str()
+        .map(|value| Some(value.to_string()))
+        .ok_or_else(|| format!("{key} must be a string when present"))
 }
 
 #[cfg(test)]
@@ -1766,6 +1827,209 @@ mod tests {
             None,
         );
         assert!(target_protocol_for_tool(&tool).is_err());
+    }
+
+    #[test]
+    fn target_protocol_rejects_non_string_extension_value() {
+        let tool = semantic_tool(
+            "echo",
+            Some(LatencyHint::Instant),
+            json!({
+                "type": "object",
+                "x-chio-target-protocol": 42
+            }),
+            None,
+        );
+        let err = target_protocol_for_tool(&tool).unwrap_err();
+
+        assert!(err.contains("x-chio-target-protocol must be a string"));
+    }
+
+    #[test]
+    fn orchestrator_rejects_empty_origin_request_id_before_signed_lineage() {
+        let (issuer, kernel) = test_kernel();
+        let subject = Keypair::generate();
+        let orchestrator = CrossProtocolOrchestrator::new(&kernel);
+
+        let err = orchestrator
+            .execute(
+                &MockBridge,
+                CrossProtocolExecutionRequest {
+                    origin_request_id: " ".to_string(),
+                    kernel_request_id: "a2a-empty-origin-kernel-1".to_string(),
+                    target_protocol: DiscoveryProtocol::Native,
+                    target_server_id: "test-srv".to_string(),
+                    target_tool_name: "echo".to_string(),
+                    agent_id: subject.public_key().to_hex(),
+                    arguments: json!({"message":"hello"}),
+                    capability: capability_for_tool(&issuer, &subject, "test-srv", "echo"),
+                    source_envelope: json!({
+                        "message": {"role":"user"},
+                        "metadata": { "chio": { "targetSkillId": "echo" } }
+                    }),
+                    dpop_proof: None,
+                    governed_intent: None,
+                    approval_token: None,
+                    model_metadata: None,
+                },
+            )
+            .unwrap_err();
+
+        assert_eq!(
+            err.to_string(),
+            "invalid request envelope: origin_request_id must be a non-empty string"
+        );
+    }
+
+    #[test]
+    fn orchestrator_rejects_padded_or_control_execution_identity_before_signed_lineage() {
+        let (issuer, kernel) = test_kernel();
+        let subject = Keypair::generate();
+        let orchestrator = CrossProtocolOrchestrator::new(&kernel);
+        let capability = capability_for_tool(&issuer, &subject, "test-srv", "echo");
+        let agent_id = subject.public_key().to_hex();
+
+        let cases = [
+            ("origin_request_id", " a2a-padded-origin "),
+            ("kernel_request_id", "kernel\ncontrol"),
+            ("target_server_id", " test-srv "),
+            ("target_tool_name", "echo\rcontrol"),
+            ("agent_id", " agent-padded "),
+        ];
+
+        for (field_name, malformed_value) in cases {
+            let mut request = CrossProtocolExecutionRequest {
+                origin_request_id: "a2a-valid-origin".to_string(),
+                kernel_request_id: "a2a-valid-kernel".to_string(),
+                target_protocol: DiscoveryProtocol::Native,
+                target_server_id: "test-srv".to_string(),
+                target_tool_name: "echo".to_string(),
+                agent_id: agent_id.clone(),
+                arguments: json!({"message":"hello"}),
+                capability: capability.clone(),
+                source_envelope: json!({
+                    "message": {"role":"user"},
+                    "metadata": { "chio": { "targetSkillId": "echo" } }
+                }),
+                dpop_proof: None,
+                governed_intent: None,
+                approval_token: None,
+                model_metadata: None,
+            };
+
+            match field_name {
+                "origin_request_id" => request.origin_request_id = malformed_value.to_string(),
+                "kernel_request_id" => request.kernel_request_id = malformed_value.to_string(),
+                "target_server_id" => request.target_server_id = malformed_value.to_string(),
+                "target_tool_name" => request.target_tool_name = malformed_value.to_string(),
+                "agent_id" => request.agent_id = malformed_value.to_string(),
+                _ => unreachable!("test case uses only request identity fields"),
+            }
+
+            let err = orchestrator.execute(&MockBridge, request).unwrap_err();
+
+            assert_eq!(
+                err.to_string(),
+                format!(
+                    "invalid request envelope: {field_name} must be unpadded and contain no control characters"
+                )
+            );
+        }
+    }
+
+    #[test]
+    fn orchestrator_rejects_forged_capability_ref_parent_hash() {
+        let (issuer, kernel) = test_kernel();
+        let subject = Keypair::generate();
+        let orchestrator = CrossProtocolOrchestrator::new(&kernel);
+        let capability = capability_for_tool(&issuer, &subject, "test-srv", "echo");
+
+        let err = orchestrator
+            .execute(
+                &MockBridge,
+                CrossProtocolExecutionRequest {
+                    origin_request_id: "a2a-forged-cap-ref".to_string(),
+                    kernel_request_id: "a2a-forged-cap-ref-kernel-1".to_string(),
+                    target_protocol: DiscoveryProtocol::Native,
+                    target_server_id: "test-srv".to_string(),
+                    target_tool_name: "echo".to_string(),
+                    agent_id: subject.public_key().to_hex(),
+                    arguments: json!({"message":"hello"}),
+                    capability,
+                    source_envelope: json!({
+                        "message": {"role":"user"},
+                        "metadata": {
+                            "chio": {
+                                "targetSkillId": "echo",
+                                "capabilityRef": {
+                                    "chioCapabilityId": "cap-test-srv-echo",
+                                    "originProtocol": "a2a",
+                                    "protocolContext": {"targetSkillId": "echo"},
+                                    "parentCapabilityHash": "forged-parent-hash"
+                                }
+                            }
+                        }
+                    }),
+                    dpop_proof: None,
+                    governed_intent: None,
+                    approval_token: None,
+                    model_metadata: None,
+                },
+            )
+            .unwrap_err();
+
+        assert_eq!(
+            err.to_string(),
+            "invalid request envelope: capabilityRef parentCapabilityHash does not match active capability lineage"
+        );
+    }
+
+    #[test]
+    fn orchestrator_rejects_capability_ref_origin_protocol_drift() {
+        let (issuer, kernel) = test_kernel();
+        let subject = Keypair::generate();
+        let orchestrator = CrossProtocolOrchestrator::new(&kernel);
+        let capability = capability_for_tool(&issuer, &subject, "test-srv", "echo");
+        let parent_hash = parent_capability_hash(&capability).unwrap();
+
+        let err = orchestrator
+            .execute(
+                &MockBridge,
+                CrossProtocolExecutionRequest {
+                    origin_request_id: "a2a-drifted-cap-ref".to_string(),
+                    kernel_request_id: "a2a-drifted-cap-ref-kernel-1".to_string(),
+                    target_protocol: DiscoveryProtocol::Native,
+                    target_server_id: "test-srv".to_string(),
+                    target_tool_name: "echo".to_string(),
+                    agent_id: subject.public_key().to_hex(),
+                    arguments: json!({"message":"hello"}),
+                    capability,
+                    source_envelope: json!({
+                        "message": {"role":"user"},
+                        "metadata": {
+                            "chio": {
+                                "targetSkillId": "echo",
+                                "capabilityRef": {
+                                    "chioCapabilityId": "cap-test-srv-echo",
+                                    "originProtocol": "acp",
+                                    "protocolContext": {"targetSkillId": "echo"},
+                                    "parentCapabilityHash": parent_hash
+                                }
+                            }
+                        }
+                    }),
+                    dpop_proof: None,
+                    governed_intent: None,
+                    approval_token: None,
+                    model_metadata: None,
+                },
+            )
+            .unwrap_err();
+
+        assert_eq!(
+            err.to_string(),
+            "invalid request envelope: capabilityRef originProtocol acp does not match source protocol a2a"
+        );
     }
 
     #[test]
@@ -2241,6 +2505,53 @@ mod tests {
             Some(
                 "governed intent disallowed projected protocols and no native route was available"
             )
+        );
+    }
+
+    #[test]
+    fn plan_authoritative_route_denies_unregistered_target_even_when_marked_available() {
+        let registry = TargetProtocolRegistry::new(DiscoveryProtocol::Native);
+        let mut availability = BTreeMap::new();
+        availability.insert(DiscoveryProtocol::Mcp, RouteAvailabilityStatus::available());
+
+        let planning = plan_authoritative_route(
+            "req-route-unregistered-available",
+            DiscoveryProtocol::A2a,
+            DiscoveryProtocol::Mcp,
+            None,
+            &registry,
+            &availability,
+        )
+        .unwrap();
+
+        assert_eq!(planning.selected_target_protocol, None);
+        assert_eq!(planning.evidence.decision, RouteSelectionDecision::Deny);
+        assert_eq!(planning.evidence.selected_target_protocol, None);
+        assert_eq!(planning.evidence.candidates.len(), 1);
+        assert!(!planning.evidence.candidates[0].available);
+        assert_eq!(
+            planning.evidence.candidates[0]
+                .availability_reason
+                .as_deref(),
+            Some("target protocol `mcp` is not registered")
+        );
+    }
+
+    #[test]
+    fn schema_extension_returns_named_extension_only_for_object_schema() {
+        let schema = json!({
+            "type": "object",
+            "x-chio-publish": false
+        });
+
+        assert_eq!(
+            schema_extension(&schema, "x-chio-publish"),
+            Some(&Value::Bool(false))
+        );
+        assert_eq!(schema_extension(&schema, "x-chio-missing"), None);
+        assert_eq!(
+            schema_extension(&Value::String("not-object".to_string()), "x"),
+            None
         );
     }
 

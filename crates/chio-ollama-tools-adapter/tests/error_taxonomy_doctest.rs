@@ -79,7 +79,12 @@ fn readme_taxonomy_table_covers_adapter_visible_classes() -> Result<(), String> 
 #[test]
 fn current_adapter_paths_match_documented_classes() -> Result<(), String> {
     let classes = classes(&taxonomy_rows()?);
-    for required in ["BadToolArgs", "Malformed", "VerdictBudgetExceeded"] {
+    for required in [
+        "ContentPolicy",
+        "BadToolArgs",
+        "Malformed",
+        "VerdictBudgetExceeded",
+    ] {
         if !classes.contains(required) {
             return Err(format!(
                 "README taxonomy did not cover current class {required}"
@@ -88,6 +93,12 @@ fn current_adapter_paths_match_documented_classes() -> Result<(), String> {
     }
 
     let adapter = adapter();
+
+    let content_policy = adapter.lift_batch(raw(json!({
+        "done_reason": "stop",
+        "policy": "refusal"
+    }))?);
+    require_provider_error(content_policy, "ContentPolicy")?;
 
     let bad_args = adapter.lift_batch(raw(json!({
         "message": {

@@ -20,6 +20,10 @@ fn strip_removes_high_cardinality_prometheus_attributes() {
             value: serde_json::json!("run-1"),
         },
         OtlpAttribute {
+            key: "chio.tenant.id".to_string(),
+            value: serde_json::json!("tenant-spoofed"),
+        },
+        OtlpAttribute {
             key: "gen_ai.system".to_string(),
             value: serde_json::json!("openai"),
         },
@@ -32,6 +36,7 @@ fn strip_removes_high_cardinality_prometheus_attributes() {
     assert!(is_denied_attribute(ATTR_GEN_AI_TOOL_CALL_ID));
     assert!(is_denied_attribute(ATTR_CHIO_RECEIPT_ID));
     assert!(is_denied_attribute("chio.replay.run_id"));
+    assert!(is_denied_attribute("chio.tenant.id"));
 }
 
 #[test]

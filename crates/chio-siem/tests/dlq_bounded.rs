@@ -87,3 +87,15 @@ fn dlq_empty_operations() {
         "DLQ must still be empty after draining nothing"
     );
 }
+
+/// Zero-capacity queues drop every incoming event and never retain entries.
+#[test]
+fn dlq_zero_capacity_drops_incoming() {
+    let mut dlq = DeadLetterQueue::new(0);
+
+    dlq.push(make_failed_event("error-0"));
+
+    assert!(dlq.is_empty());
+    assert_eq!(dlq.len(), 0);
+    assert!(dlq.drain().is_empty());
+}

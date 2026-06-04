@@ -11,7 +11,8 @@ use chio_core::session::{
     OperationContext, RequestId, RootDefinition, SessionOperation, ToolCallOperation,
 };
 use chio_guards::{
-    EgressAllowlistGuard, ForbiddenPathGuard, GuardPipeline, PathAllowlistGuard, ShellCommandGuard,
+    EgressAllowlistGuard, ForbiddenPathGuard, GuardPipeline, InternalNetworkGuard,
+    PathAllowlistGuard, ShellCommandGuard,
 };
 use chio_kernel::{
     ChioKernel, Guard, KernelConfig, KernelError, SessionOperationResponse, ToolCallRequest,
@@ -129,6 +130,23 @@ async fn forbidden_path_blocks_etc_shadow() {
 }
 
 #[tokio::test]
+async fn acp_fs_read_text_file_blocks_etc_shadow() {
+    let (mut kernel, _kp) = make_kernel();
+    kernel.add_guard(Box::new(ForbiddenPathGuard::new()));
+
+    let agent_kp = make_keypair();
+    let req = make_request(
+        &kernel,
+        &agent_kp,
+        "fs/read_text_file",
+        serde_json::json!({"sessionId": "sess-1", "path": "/etc/shadow"}),
+    );
+
+    let resp = kernel.evaluate_tool_call(&req).await.unwrap();
+    assert_eq!(resp.verdict, Verdict::Deny);
+}
+
+#[tokio::test]
 async fn forbidden_path_allows_normal_file() {
     let (mut kernel, _kp) = make_kernel();
     kernel.add_guard(Box::new(ForbiddenPathGuard::new()));
@@ -146,6 +164,26 @@ async fn forbidden_path_allows_normal_file() {
 }
 
 #[tokio::test]
+async fn forbidden_path_denies_malformed_primary_path_alias() {
+    let (mut kernel, _kp) = make_kernel();
+    kernel.add_guard(Box::new(ForbiddenPathGuard::new()));
+
+    let agent_kp = make_keypair();
+    let req = make_request(
+        &kernel,
+        &agent_kp,
+        "filesystem",
+        serde_json::json!({
+            "path": ["/etc/shadow"],
+            "file": "/home/user/project/src/main.rs"
+        }),
+    );
+
+    let resp = kernel.evaluate_tool_call(&req).await.unwrap();
+    assert_eq!(resp.verdict, Verdict::Deny);
+}
+
+#[tokio::test]
 async fn shell_command_blocks_rm_rf() {
     let (mut kernel, _kp) = make_kernel();
     kernel.add_guard(Box::new(ShellCommandGuard::new()));
@@ -156,6 +194,26 @@ async fn shell_command_blocks_rm_rf() {
         &agent_kp,
         "bash",
         serde_json::json!({"command": "rm -rf /"}),
+    );
+
+    let resp = kernel.evaluate_tool_call(&req).await.unwrap();
+    assert_eq!(resp.verdict, Verdict::Deny);
+}
+
+#[tokio::test]
+async fn shell_command_denies_malformed_primary_command_alias() {
+    let (mut kernel, _kp) = make_kernel();
+    kernel.add_guard(Box::new(ShellCommandGuard::new()));
+
+    let agent_kp = make_keypair();
+    let req = make_request(
+        &kernel,
+        &agent_kp,
+        "bash",
+        serde_json::json!({
+            "command": ["rm", "-rf", "/"],
+            "cmd": "git status"
+        }),
     );
 
     let resp = kernel.evaluate_tool_call(&req).await.unwrap();
@@ -197,6 +255,26 @@ async fn egress_allowlist_blocks_evil_com() {
 }
 
 #[tokio::test]
+async fn egress_allowlist_denies_malformed_primary_url_alias() {
+    let (mut kernel, _kp) = make_kernel();
+    kernel.add_guard(Box::new(EgressAllowlistGuard::new()));
+
+    let agent_kp = make_keypair();
+    let req = make_request(
+        &kernel,
+        &agent_kp,
+        "http_request",
+        serde_json::json!({
+            "url": {"host": "169.254.169.254"},
+            "uri": "https://api.github.com/repos"
+        }),
+    );
+
+    let resp = kernel.evaluate_tool_call(&req).await.unwrap();
+    assert_eq!(resp.verdict, Verdict::Deny);
+}
+
+#[tokio::test]
 async fn egress_allowlist_allows_github_api() {
     let (mut kernel, _kp) = make_kernel();
     kernel.add_guard(Box::new(EgressAllowlistGuard::new()));
@@ -211,6 +289,23 @@ async fn egress_allowlist_allows_github_api() {
 
     let resp = kernel.evaluate_tool_call(&req).await.unwrap();
     assert_eq!(resp.verdict, Verdict::Allow);
+}
+
+#[tokio::test]
+async fn internal_network_denies_invalid_explicit_port() {
+    let (mut kernel, _kp) = make_kernel();
+    kernel.add_guard(Box::new(InternalNetworkGuard::new()));
+
+    let agent_kp = make_keypair();
+    let req = make_request(
+        &kernel,
+        &agent_kp,
+        "http_request",
+        serde_json::json!({"url": "http://127.0.0.1:notaport/latest"}),
+    );
+
+    let resp = kernel.evaluate_tool_call(&req).await.unwrap();
+    assert_eq!(resp.verdict, Verdict::Deny);
 }
 
 #[tokio::test]

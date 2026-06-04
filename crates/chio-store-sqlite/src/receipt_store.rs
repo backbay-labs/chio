@@ -16,7 +16,9 @@ use chio_core::receipt::{
     ChildRequestReceipt, ChioReceipt, Decision, FinancialReceiptMetadata,
     GovernedTransactionReceiptMetadata, ReceiptAttributionMetadata, SettlementStatus,
 };
-use chio_core::session::OperationTerminalState;
+use chio_core::session::{
+    OperationTerminalState, RequestLineageMode, RequestLineageRecord, SessionAnchorReference,
+};
 use chio_kernel::checkpoint::{KernelCheckpoint, KernelCheckpointBody};
 use chio_kernel::cost_attribution::{
     CostAttributionChainHop, CostAttributionQuery, CostAttributionReceiptRow,

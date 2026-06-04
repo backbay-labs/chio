@@ -3,7 +3,10 @@
 // Web Crypto is present in modern browsers and in Node 20+ via `globalThis.crypto`.
 
 export async function sha256Hex(bytes: ArrayBuffer | Uint8Array): Promise<string> {
-  const buf = bytes instanceof Uint8Array ? bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) : bytes;
+  const buf =
+    bytes instanceof Uint8Array
+      ? Uint8Array.from(bytes).buffer
+      : bytes;
   const digest = await crypto.subtle.digest("SHA-256", buf);
   const bytesOut = new Uint8Array(digest);
   let hex = "";

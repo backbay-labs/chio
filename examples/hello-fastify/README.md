@@ -14,8 +14,10 @@ Minimal Fastify example using [`@chio-protocol/fastify`](../../sdks/typescript/p
 
 ```text
 README.md
+ARCHITECTURE.md
 package.json
 server.mjs
+server.test.mjs
 openapi.yaml
 policy.yaml
 run.sh
@@ -35,3 +37,14 @@ Run the full end-to-end smoke flow:
 ```bash
 ./smoke.sh
 ```
+
+Run the package-local Fastify route tests:
+
+```bash
+npm test
+```
+
+The route tests build the app with Chio disabled so payload validation is
+checked without a live sidecar. The smoke flow remains the authority for live
+sidecar evaluation, capability gating, receipt verification, and persisted
+receipt evidence.

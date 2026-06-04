@@ -105,10 +105,7 @@ pub fn tier_from_deltas(deltas: &[ScoreDelta]) -> ReputationTier {
         None => return ReputationTier::Tier0,
     };
 
-    if composed >= TIER_3_THRESHOLD
-        && per_feed_min >= TIER_3_PER_FEED_THRESHOLD
-        && distinct_feed_count(deltas) >= 2
-    {
+    if qualifies_for_tier_3(deltas, composed, per_feed_min) {
         ReputationTier::Tier3
     } else if composed >= TIER_2_THRESHOLD {
         ReputationTier::Tier2
@@ -133,6 +130,35 @@ fn distinct_feed_count(deltas: &[ScoreDelta]) -> usize {
         }
     }
     seen.len()
+}
+
+fn qualifies_for_tier_3(deltas: &[ScoreDelta], composed: f64, per_feed_min: f64) -> bool {
+    composed >= TIER_3_THRESHOLD
+        && per_feed_min >= TIER_3_PER_FEED_THRESHOLD
+        && distinct_feed_count(deltas) >= 2
+}
+
+#[cfg(test)]
+mod tier3_gate_tests {
+    use super::*;
+
+    #[test]
+    fn tier3_helper_requires_score_floor_per_feed_floor_and_two_feeds() {
+        let two_strong = [
+            ScoreDelta::from_value("feed_a", 0.91, 1),
+            ScoreDelta::from_value("feed_b", 0.82, 1),
+        ];
+        assert!(qualifies_for_tier_3(&two_strong, 0.91, 0.82));
+
+        assert!(!qualifies_for_tier_3(&two_strong, 0.89, 0.82));
+        assert!(!qualifies_for_tier_3(&two_strong, 0.91, 0.79));
+
+        let one_feed = [
+            ScoreDelta::from_value("feed_a", 0.95, 1),
+            ScoreDelta::from_value("feed_a", 0.94, 1),
+        ];
+        assert!(!qualifies_for_tier_3(&one_feed, 0.95, 0.94));
+    }
 }
 
 /// Composed-score floor for a tier. Returns `MAX_FEED_DELTA + 1.0` for

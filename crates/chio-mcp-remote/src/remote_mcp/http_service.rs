@@ -7,6 +7,7 @@ pub fn serve_http(config: RemoteServeHttpConfig) -> Result<(), CliError> {
 const MCP_RATE_LIMIT_MAX_REQUESTS: u32 = 600;
 const MCP_RATE_LIMIT_WINDOW: Duration = Duration::from_secs(60);
 const MCP_RATE_LIMIT_MAX_KEYS: usize = 4_096;
+const MCP_MAX_POST_BODY_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Clone)]
 struct McpRateLimiter {
@@ -282,16 +283,9 @@ async fn handle_post(State(state): State<RemoteAppState>, request: Request) -> R
         return response;
     }
 
-    let headers = request.headers().clone();
-    let body = match axum::body::to_bytes(request.into_body(), usize::MAX).await {
+    let (headers, body) = match read_limited_mcp_post_body(request).await {
         Ok(body) => body,
-        Err(error) => {
-            return jsonrpc_http_error(
-                StatusCode::BAD_REQUEST,
-                -32700,
-                &format!("failed to read request body: {error}"),
-            );
-        }
+        Err(response) => return response,
     };
     let message: Value = match serde_json::from_slice(&body) {
         Ok(message) => message,
@@ -318,12 +312,12 @@ async fn handle_post(State(state): State<RemoteAppState>, request: Request) -> R
     }
 
     let session = {
-        let Some(session_id) = session_id_from_headers(&headers) else {
-            return jsonrpc_http_error(
-                StatusCode::BAD_REQUEST,
-                -32600,
-                "request requires MCP-Session-Id",
-            );
+        let session_id = match jsonrpc_session_id_from_headers(
+            &headers,
+            "request requires MCP-Session-Id",
+        ) {
+            Ok(session_id) => session_id,
+            Err(response) => return response,
         };
         let Some(entry) = resolve_session_entry(&state, &session_id).await else {
             return plain_http_error(StatusCode::NOT_FOUND, "unknown MCP session");
@@ -458,7 +452,7 @@ async fn handle_initialize_post(
     headers: &HeaderMap,
     message: Value,
 ) -> Response {
-    if session_id_from_headers(headers).is_some() {
+    if mcp_session_id_header(headers) != McpSessionIdHeader::Missing {
         return jsonrpc_http_error(
             StatusCode::BAD_REQUEST,
             -32600,
@@ -650,12 +644,12 @@ async fn handle_get(State(state): State<RemoteAppState>, request: Request) -> Re
         return response;
     }
 
-    let Some(session_id) = session_id_from_headers(request.headers()) else {
-        return jsonrpc_http_error(
-            StatusCode::BAD_REQUEST,
-            -32600,
-            "GET stream requires MCP-Session-Id",
-        );
+    let session_id = match jsonrpc_session_id_from_headers(
+        request.headers(),
+        "GET stream requires MCP-Session-Id",
+    ) {
+        Ok(session_id) => session_id,
+        Err(response) => return response,
     };
     let session = {
         let Some(entry) = resolve_session_entry(&state, &session_id).await else {
@@ -888,8 +882,10 @@ async fn handle_delete(State(state): State<RemoteAppState>, request: Request) ->
         Err(response) => return response,
     };
 
-    let Some(session_id) = session_id_from_headers(request.headers()) else {
-        return plain_http_error(StatusCode::BAD_REQUEST, "missing MCP-Session-Id");
+    let session_id =
+        match plain_session_id_from_headers(request.headers(), "missing MCP-Session-Id") {
+        Ok(session_id) => session_id,
+        Err(response) => return response,
     };
     let Some(entry) = resolve_session_entry(&state, &session_id).await else {
         return plain_http_error(StatusCode::NOT_FOUND, "unknown MCP session");
@@ -924,6 +920,47 @@ async fn handle_delete(State(state): State<RemoteAppState>, request: Request) ->
     state.sessions.remove_active(&session_id).await;
 
     StatusCode::NO_CONTENT.into_response()
+}
+
+async fn read_limited_mcp_post_body(
+    request: Request,
+) -> Result<(HeaderMap, axum::body::Bytes), Response> {
+    let headers = request.headers().clone();
+    validate_mcp_post_content_length(&headers)?;
+    match axum::body::to_bytes(request.into_body(), MCP_MAX_POST_BODY_BYTES).await {
+        Ok(body) => Ok((headers, body)),
+        Err(error) if error.to_string().contains("length limit") => Err(jsonrpc_http_error(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            -32600,
+            &format!("request body exceeds {MCP_MAX_POST_BODY_BYTES}-byte limit"),
+        )),
+        Err(error) => Err(jsonrpc_http_error(
+            StatusCode::BAD_REQUEST,
+            -32700,
+            &format!("failed to read request body: {error}"),
+        )),
+    }
+}
+
+fn validate_mcp_post_content_length(headers: &HeaderMap) -> Result<(), Response> {
+    let Some(value) = headers.get(axum::http::header::CONTENT_LENGTH) else {
+        return Ok(());
+    };
+    let length = value
+        .to_str()
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .ok_or_else(|| {
+            jsonrpc_http_error(StatusCode::BAD_REQUEST, -32600, "invalid Content-Length")
+        })?;
+    if length > MCP_MAX_POST_BODY_BYTES as u64 {
+        return Err(jsonrpc_http_error(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            -32600,
+            &format!("request body exceeds {MCP_MAX_POST_BODY_BYTES}-byte limit"),
+        ));
+    }
+    Ok(())
 }
 
 fn is_initialize_request(message: &Value) -> bool {
@@ -1035,6 +1072,46 @@ fn parse_remote_session_peer_capabilities(params: &Value) -> PeerCapabilities {
 mod http_service_tests {
     use super::*;
     use serde_json::json;
+
+    #[tokio::test]
+    async fn read_limited_mcp_post_body_rejects_oversized_content_length() {
+        let request = match Request::builder()
+            .method("POST")
+            .uri(MCP_ENDPOINT_PATH)
+            .header(
+                axum::http::header::CONTENT_LENGTH,
+                (MCP_MAX_POST_BODY_BYTES + 1).to_string(),
+            )
+            .body(axum::body::Body::empty())
+        {
+            Ok(request) => request,
+            Err(error) => panic!("failed to build request: {error}"),
+        };
+
+        let Err(response) = read_limited_mcp_post_body(request).await else {
+            panic!("oversized Content-Length should be rejected");
+        };
+        assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    }
+
+    #[tokio::test]
+    async fn read_limited_mcp_post_body_rejects_streaming_body_over_limit() {
+        let request = match Request::builder()
+            .method("POST")
+            .uri(MCP_ENDPOINT_PATH)
+            .body(axum::body::Body::from(vec![
+                b'a';
+                MCP_MAX_POST_BODY_BYTES + 1
+            ])) {
+            Ok(request) => request,
+            Err(error) => panic!("failed to build request: {error}"),
+        };
+
+        let Err(response) = read_limited_mcp_post_body(request).await else {
+            panic!("oversized streaming body should be rejected");
+        };
+        assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    }
 
     #[test]
     fn parse_remote_session_peer_capabilities_honors_progress_and_cancellation_declarations() {
@@ -1174,11 +1251,58 @@ fn should_emit_post_stream_event(
     }
 }
 
-fn session_id_from_headers(headers: &HeaderMap) -> Option<String> {
-    headers
-        .get(HeaderName::from_static(MCP_SESSION_ID_HEADER))
-        .and_then(|value| value.to_str().ok())
-        .map(ToOwned::to_owned)
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum McpSessionIdHeader {
+    Missing,
+    Invalid,
+    Valid(String),
+}
+
+fn mcp_session_id_header(headers: &HeaderMap) -> McpSessionIdHeader {
+    let Some(value) = headers.get(HeaderName::from_static(MCP_SESSION_ID_HEADER)) else {
+        return McpSessionIdHeader::Missing;
+    };
+    let Ok(session_id) = value.to_str() else {
+        return McpSessionIdHeader::Invalid;
+    };
+    if session_id.is_empty() || session_id.trim() != session_id {
+        return McpSessionIdHeader::Invalid;
+    }
+    McpSessionIdHeader::Valid(session_id.to_owned())
+}
+
+fn jsonrpc_session_id_from_headers(
+    headers: &HeaderMap,
+    missing_message: &str,
+) -> Result<String, Response> {
+    match mcp_session_id_header(headers) {
+        McpSessionIdHeader::Valid(session_id) => Ok(session_id),
+        McpSessionIdHeader::Missing => Err(jsonrpc_http_error(
+            StatusCode::BAD_REQUEST,
+            -32600,
+            missing_message,
+        )),
+        McpSessionIdHeader::Invalid => Err(jsonrpc_http_error(
+            StatusCode::BAD_REQUEST,
+            -32600,
+            "invalid MCP-Session-Id",
+        )),
+    }
+}
+
+fn plain_session_id_from_headers(
+    headers: &HeaderMap,
+    missing_message: &str,
+) -> Result<String, Response> {
+    match mcp_session_id_header(headers) {
+        McpSessionIdHeader::Valid(session_id) => Ok(session_id),
+        McpSessionIdHeader::Missing => {
+            Err(plain_http_error(StatusCode::BAD_REQUEST, missing_message))
+        }
+        McpSessionIdHeader::Invalid => {
+            Err(plain_http_error(StatusCode::BAD_REQUEST, "invalid MCP-Session-Id"))
+        }
+    }
 }
 
 async fn resolve_session_entry(
@@ -1212,9 +1336,9 @@ fn build_remote_auth_state(
     )?;
 
     let admin_token = if let Some(token) = config.admin_token.as_deref() {
-        Some(Arc::<str>::from(token.to_string()))
+        Some(validated_static_bearer_token(token, "--admin-token")?)
     } else if let Some(token) = config.auth_token.as_deref() {
-        Some(Arc::<str>::from(token.to_string()))
+        Some(validated_static_bearer_token(token, "--auth-token")?)
     } else {
         return Err(CliError::cli_other_error(
             "bearer-authenticated remote MCP edge requires --admin-token for admin APIs"
@@ -1223,6 +1347,15 @@ fn build_remote_auth_state(
     };
 
     Ok((auth_mode, admin_token))
+}
+
+fn validated_static_bearer_token(token: &str, flag: &str) -> Result<Arc<str>, CliError> {
+    if token.trim().is_empty() || token.trim() != token || token.chars().any(char::is_control) {
+        return Err(CliError::cli_other_error(format!(
+            "{flag} must be non-empty, unpadded, and control-free"
+        )));
+    }
+    Ok(Arc::<str>::from(token.to_string()))
 }
 
 fn build_chio_oauth_authorization_profile_metadata() -> Result<Value, CliError> {
@@ -1568,7 +1701,7 @@ fn build_remote_auth_mode(
 
     if let Some(token) = config.auth_token.as_deref() {
         return Ok(RemoteAuthMode::StaticBearer {
-            token: Arc::<str>::from(token.to_string()),
+            token: validated_static_bearer_token(token, "--auth-token")?,
         });
     }
 

@@ -81,6 +81,7 @@ impl AuthScheme {
 
     /// Build an [`AuthScheme::QueryParam`] reading the secret from `var`.
     pub fn query_param_from_env(param_name: &str, var: &str) -> Result<Self, HttpTransportError> {
+        validate_auth_query_param_name(param_name)?;
         Ok(Self::QueryParam {
             name: param_name.to_string(),
             value: read_required_env(var)?,
@@ -90,7 +91,7 @@ impl AuthScheme {
 
 fn read_required_env(var: &str) -> Result<String, HttpTransportError> {
     match std::env::var(var) {
-        Ok(value) if !value.is_empty() => Ok(value),
+        Ok(value) if !value.trim().is_empty() => Ok(value),
         _ => Err(HttpTransportError::MissingEnvVar {
             var: var.to_string(),
         }),
@@ -247,23 +248,8 @@ impl HttpTransport {
     /// the workspace convention. Default headers (including any header-style
     /// auth) are resolved up front so per-request work is minimal.
     pub fn new(config: HttpTransportConfig) -> Result<Self, HttpTransportError> {
-        let mut default_headers = HeaderMap::new();
-        for (name, value) in &config.extra_headers {
-            insert_header(&mut default_headers, name, value)?;
-        }
-        if let AuthScheme::Bearer(token) = &config.auth {
-            let value = format!("Bearer {token}");
-            let header_value = HeaderValue::from_str(&value).map_err(|error| {
-                HttpTransportError::InvalidHeader {
-                    name: AUTHORIZATION.to_string(),
-                    detail: error.to_string(),
-                }
-            })?;
-            default_headers.insert(AUTHORIZATION, header_value);
-        }
-        if let AuthScheme::Header { name, value } = &config.auth {
-            insert_header(&mut default_headers, name, value)?;
-        }
+        validate_base_url(&config.base_url)?;
+        let default_headers = default_headers_for_config(&config)?;
 
         // CHIO_EGRESS_LINT_ALLOW_DIRECT_REQWEST: shared provider-adapter
         // transport; HttpEgressContract wiring across every adapter is a
@@ -349,6 +335,172 @@ impl HttpTransport {
             content_type,
         })
     }
+}
+
+fn validate_base_url(base_url: &str) -> Result<(), HttpTransportError> {
+    let trimmed = base_url.trim();
+    if trimmed.is_empty() {
+        return Err(invalid_base_url(
+            base_url,
+            "base URL must not be empty".to_string(),
+        ));
+    }
+    if trimmed != base_url {
+        return Err(invalid_base_url(
+            base_url,
+            "base URL must not contain surrounding whitespace".to_string(),
+        ));
+    }
+    let parsed = reqwest::Url::parse(base_url)
+        .map_err(|error| invalid_base_url(base_url, error.to_string()))?;
+    match parsed.scheme() {
+        "http" | "https" => {}
+        scheme => {
+            return Err(invalid_base_url(
+                base_url,
+                format!("base URL scheme `{scheme}` must be http or https"),
+            ));
+        }
+    }
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err(invalid_base_url(
+            base_url,
+            "base URL must not contain username or password material".to_string(),
+        ));
+    }
+    if parsed.query().is_some() {
+        return Err(invalid_base_url(
+            base_url,
+            "base URL must not contain a query string".to_string(),
+        ));
+    }
+    if parsed.fragment().is_some() {
+        return Err(invalid_base_url(
+            base_url,
+            "base URL must not contain a fragment".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn invalid_base_url(base_url: &str, detail: String) -> HttpTransportError {
+    HttpTransportError::InvalidUrl {
+        url: base_url.to_string(),
+        detail,
+    }
+}
+
+fn default_headers_for_config(
+    config: &HttpTransportConfig,
+) -> Result<HeaderMap, HttpTransportError> {
+    validate_auth_scheme(&config.auth)?;
+    let mut headers = HeaderMap::new();
+    for (name, value) in &config.extra_headers {
+        insert_header(&mut headers, name, value)?;
+    }
+    match &config.auth {
+        AuthScheme::Bearer(token) => insert_bearer_header(&mut headers, token)?,
+        AuthScheme::Header { name, value } => insert_header(&mut headers, name, value)?,
+        AuthScheme::QueryParam { .. } | AuthScheme::None => {}
+    }
+    Ok(headers)
+}
+
+fn validate_auth_scheme(auth: &AuthScheme) -> Result<(), HttpTransportError> {
+    match auth {
+        AuthScheme::Bearer(token) => validate_bearer_auth_secret(token),
+        AuthScheme::Header { name, value } => {
+            validate_auth_secret(name, value, "auth header value")
+        }
+        AuthScheme::QueryParam { name, value } => {
+            validate_auth_query_param_name(name)?;
+            validate_auth_secret(name, value, "auth query value")
+        }
+        AuthScheme::None => Ok(()),
+    }
+}
+
+fn validate_auth_query_param_name(name: &str) -> Result<(), HttpTransportError> {
+    if name.is_empty() {
+        return Err(invalid_auth_query_param_name(
+            name,
+            "auth query parameter name must not be empty",
+        ));
+    }
+    if name.trim() != name {
+        return Err(invalid_auth_query_param_name(
+            name,
+            "auth query parameter name must not contain surrounding whitespace",
+        ));
+    }
+    if name
+        .bytes()
+        .any(|byte| byte.is_ascii_control() || byte.is_ascii_whitespace())
+    {
+        return Err(invalid_auth_query_param_name(
+            name,
+            "auth query parameter name must not contain whitespace or control bytes",
+        ));
+    }
+    if name
+        .bytes()
+        .any(|byte| matches!(byte, b'&' | b'=' | b'?' | b'#'))
+    {
+        return Err(invalid_auth_query_param_name(
+            name,
+            "auth query parameter name must not contain query delimiters",
+        ));
+    }
+    Ok(())
+}
+
+fn invalid_auth_query_param_name(name: &str, detail: &str) -> HttpTransportError {
+    HttpTransportError::InvalidHeader {
+        name: name.to_string(),
+        detail: detail.to_string(),
+    }
+}
+
+fn validate_auth_secret(name: &str, value: &str, label: &str) -> Result<(), HttpTransportError> {
+    if value.trim().is_empty() {
+        return Err(HttpTransportError::InvalidHeader {
+            name: name.to_string(),
+            detail: format!("{label} must not be empty"),
+        });
+    }
+    if value.trim() != value {
+        return Err(HttpTransportError::InvalidHeader {
+            name: name.to_string(),
+            detail: format!("{label} must not contain surrounding whitespace"),
+        });
+    }
+    Ok(())
+}
+
+fn validate_bearer_auth_secret(value: &str) -> Result<(), HttpTransportError> {
+    validate_auth_secret(AUTHORIZATION.as_str(), value, "bearer token")?;
+    if value
+        .bytes()
+        .any(|byte| byte.is_ascii_whitespace() || byte.is_ascii_control())
+    {
+        return Err(HttpTransportError::InvalidHeader {
+            name: AUTHORIZATION.to_string(),
+            detail: "bearer token must not contain whitespace or control bytes".to_string(),
+        });
+    }
+    Ok(())
+}
+
+fn insert_bearer_header(headers: &mut HeaderMap, token: &str) -> Result<(), HttpTransportError> {
+    validate_bearer_auth_secret(token)?;
+    let value = format!("Bearer {token}");
+    let header_value =
+        HeaderValue::from_str(&value).map_err(|error| HttpTransportError::InvalidHeader {
+            name: AUTHORIZATION.to_string(),
+            detail: error.to_string(),
+        })?;
+    headers.insert(AUTHORIZATION, header_value);
+    Ok(())
 }
 
 fn insert_header(
@@ -646,6 +798,223 @@ mod tests {
         let scheme = AuthScheme::bearer_from_env("CHIO_TEST_PRESENT_KEY").test_unwrap();
         assert_eq!(scheme, AuthScheme::Bearer("secret-token".to_string()));
         std::env::remove_var("CHIO_TEST_PRESENT_KEY");
+    }
+
+    #[test]
+    fn auth_scheme_from_env_rejects_whitespace_only_value() {
+        std::env::set_var("CHIO_TEST_BLANK_KEY", "   ");
+        let error = AuthScheme::bearer_from_env("CHIO_TEST_BLANK_KEY")
+            .expect_err("a whitespace-only variable must not yield a token");
+        std::env::remove_var("CHIO_TEST_BLANK_KEY");
+
+        assert!(matches!(error, HttpTransportError::MissingEnvVar { .. }));
+    }
+
+    #[test]
+    fn default_headers_for_config_includes_extra_and_bearer_auth() {
+        let config = HttpTransportConfig::new("https://api.example.test")
+            .with_auth(AuthScheme::Bearer("sk-test".to_string()))
+            .with_header("x-provider-version", "2026-05-31");
+
+        let headers = default_headers_for_config(&config).test_unwrap();
+
+        assert_eq!(
+            headers
+                .get(AUTHORIZATION)
+                .test_unwrap()
+                .to_str()
+                .test_unwrap(),
+            "Bearer sk-test"
+        );
+        assert_eq!(
+            headers
+                .get("x-provider-version")
+                .test_unwrap()
+                .to_str()
+                .test_unwrap(),
+            "2026-05-31"
+        );
+    }
+
+    #[test]
+    fn default_headers_for_config_rejects_blank_bearer_auth() {
+        let config = HttpTransportConfig::new("https://api.example.test")
+            .with_auth(AuthScheme::Bearer("   ".to_string()));
+
+        let error = default_headers_for_config(&config)
+            .expect_err("blank direct bearer auth must fail closed");
+
+        assert!(matches!(
+            error,
+            HttpTransportError::InvalidHeader { ref name, .. } if name == AUTHORIZATION.as_str()
+        ));
+        assert!(error.to_string().contains("bearer token"));
+    }
+
+    #[test]
+    fn default_headers_for_config_rejects_whitespace_in_bearer_auth() {
+        for token in ["abc def", "abc\tdef"] {
+            let config = HttpTransportConfig::new("https://api.example.test")
+                .with_auth(AuthScheme::Bearer(token.to_string()));
+
+            let error = default_headers_for_config(&config)
+                .expect_err("whitespace-bearing bearer auth must fail closed");
+
+            assert!(matches!(
+                error,
+                HttpTransportError::InvalidHeader { ref name, .. } if name == AUTHORIZATION.as_str()
+            ));
+            assert!(error.to_string().contains("bearer token"));
+        }
+    }
+
+    #[test]
+    fn http_transport_rejects_blank_or_padded_direct_header_auth() {
+        for value in ["", "   ", " secret", "secret "] {
+            let config = HttpTransportConfig::new("https://api.example.test").with_auth(
+                AuthScheme::Header {
+                    name: "x-api-key".to_string(),
+                    value: value.to_string(),
+                },
+            );
+
+            let error = match HttpTransport::new(config) {
+                Ok(_) => panic!("blank or padded direct header auth must fail closed"),
+                Err(error) => error,
+            };
+
+            assert!(matches!(
+                error,
+                HttpTransportError::InvalidHeader { ref name, .. } if name == "x-api-key"
+            ));
+            assert!(error.to_string().contains("auth header value"));
+        }
+    }
+
+    #[test]
+    fn http_transport_rejects_blank_or_padded_direct_query_auth() {
+        for value in ["", "   ", " secret", "secret "] {
+            let config = HttpTransportConfig::new("https://api.example.test").with_auth(
+                AuthScheme::QueryParam {
+                    name: "key".to_string(),
+                    value: value.to_string(),
+                },
+            );
+
+            let error = match HttpTransport::new(config) {
+                Ok(_) => panic!("blank or padded direct query auth must fail closed"),
+                Err(error) => error,
+            };
+
+            assert!(matches!(
+                error,
+                HttpTransportError::InvalidHeader { ref name, .. } if name == "key"
+            ));
+            assert!(error.to_string().contains("auth query value"));
+        }
+    }
+
+    #[test]
+    fn http_transport_rejects_invalid_direct_query_auth_name() {
+        for name in [
+            "",
+            " key",
+            "key ",
+            "api key",
+            "key=value",
+            "key&other",
+            "key?debug",
+            "key#fragment",
+            "key\n",
+        ] {
+            let config = HttpTransportConfig::new("https://api.example.test").with_auth(
+                AuthScheme::QueryParam {
+                    name: name.to_string(),
+                    value: "secret-value".to_string(),
+                },
+            );
+
+            let error = match HttpTransport::new(config) {
+                Ok(_) => panic!("invalid direct query auth name must fail closed"),
+                Err(error) => error,
+            };
+            let message = error.to_string();
+
+            assert!(matches!(error, HttpTransportError::InvalidHeader { .. }));
+            assert!(message.contains("auth query parameter name"));
+            assert!(
+                !message.contains("secret-value"),
+                "query auth secret leaked in `{message}`"
+            );
+        }
+    }
+
+    #[test]
+    fn query_param_from_env_rejects_invalid_name_before_returning_secret() {
+        std::env::set_var("CHIO_TEST_QUERY_KEY", "secret-value");
+        let error = AuthScheme::query_param_from_env(" key", "CHIO_TEST_QUERY_KEY")
+            .expect_err("invalid query auth name must fail closed");
+        std::env::remove_var("CHIO_TEST_QUERY_KEY");
+        let message = error.to_string();
+
+        assert!(matches!(error, HttpTransportError::InvalidHeader { .. }));
+        assert!(message.contains("auth query parameter name"));
+        assert!(
+            !message.contains("secret-value"),
+            "query auth secret leaked in `{message}`"
+        );
+    }
+
+    #[test]
+    fn http_transport_rejects_blank_base_url_at_construction() {
+        let error = match HttpTransport::new(HttpTransportConfig::new("   ")) {
+            Ok(_) => panic!("blank base URL must fail closed before any request is sent"),
+            Err(error) => error,
+        };
+
+        assert!(matches!(error, HttpTransportError::InvalidUrl { .. }));
+        assert!(error.to_string().contains("base URL"));
+    }
+
+    #[test]
+    fn http_transport_rejects_padded_base_url_at_construction() {
+        let error = match HttpTransport::new(HttpTransportConfig::new(" https://api.example.test "))
+        {
+            Ok(_) => panic!("padded base URL must fail closed before any request is sent"),
+            Err(error) => error,
+        };
+
+        assert!(matches!(error, HttpTransportError::InvalidUrl { .. }));
+        assert!(error.to_string().contains("surrounding whitespace"));
+    }
+
+    #[test]
+    fn http_transport_rejects_non_http_base_url_at_construction() {
+        let error = match HttpTransport::new(HttpTransportConfig::new("file:///tmp/provider.sock"))
+        {
+            Ok(_) => panic!("non-HTTP base URL must fail closed before any request is sent"),
+            Err(error) => error,
+        };
+
+        assert!(matches!(error, HttpTransportError::InvalidUrl { .. }));
+        assert!(error.to_string().contains("http or https"));
+    }
+
+    #[test]
+    fn http_transport_rejects_authority_material_in_base_url() {
+        for base_url in [
+            "https://user:pass@api.example.test",
+            "https://api.example.test?key=secret",
+            "https://api.example.test#fragment",
+        ] {
+            let error = match HttpTransport::new(HttpTransportConfig::new(base_url)) {
+                Ok(_) => panic!("authority material in base URL must fail closed"),
+                Err(error) => error,
+            };
+
+            assert!(matches!(error, HttpTransportError::InvalidUrl { .. }));
+            assert!(error.to_string().contains("base URL"));
+        }
     }
 
     #[test]

@@ -12,8 +12,10 @@ Minimal Elysia example using [`sdks/typescript/packages/elysia`](../../sdks/type
 ## Files
 
 ```text
+ARCHITECTURE.md
 README.md
 package.json
+server.test.mjs
 server.mjs
 openapi.yaml
 policy.yaml
@@ -33,4 +35,10 @@ Run the full end-to-end smoke flow:
 
 ```bash
 ./smoke.sh
+```
+
+Run route-level tests without a sidecar:
+
+```bash
+npm test
 ```

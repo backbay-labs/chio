@@ -60,6 +60,10 @@ pub const MAX_LIABILITY_PROVIDER_LIST_LIMIT: usize = 100;
 pub const MAX_LIABILITY_MARKET_WORKFLOW_LIMIT: usize = 100;
 pub const MAX_LIABILITY_CLAIM_WORKFLOW_LIMIT: usize = 100;
 
+fn bounded_market_query_limit(limit: Option<usize>, max: usize) -> usize {
+    limit.unwrap_or(50).clamp(1, max)
+}
+
 mod claim;
 mod placement;
 mod provider;
@@ -153,6 +157,14 @@ mod tests {
 
     fn require_some<T>(value: Option<T>, context: &'static str) -> T {
         value.unwrap_or_else(|| panic!("{context}"))
+    }
+
+    #[test]
+    fn market_query_limit_helper_clamps_default_and_edges() {
+        assert_eq!(bounded_market_query_limit(None, 100), 50);
+        assert_eq!(bounded_market_query_limit(Some(0), 100), 1);
+        assert_eq!(bounded_market_query_limit(Some(25), 100), 25);
+        assert_eq!(bounded_market_query_limit(Some(500), 100), 100);
     }
 
     fn sample_report() -> LiabilityProviderReport {
@@ -1217,6 +1229,40 @@ mod tests {
     fn liability_quote_response_validates_quoted_terms_path() {
         let fixtures = sample_market_fixtures();
         assert!(fixtures.quote_response.body.validate().is_ok());
+    }
+
+    #[test]
+    fn liability_quote_response_rejects_wrong_schema_and_empty_id() {
+        let fixtures = sample_market_fixtures();
+        let mut response = fixtures.quote_response.body.clone();
+        response.schema = "chio.market.quote-response.v0".to_string();
+        let error = require_err(response.validate(), "wrong quote response schema rejected");
+        assert!(error.contains("unsupported liability quote response schema"));
+
+        let mut response = fixtures.quote_response.body.clone();
+        response.quote_response_id = " ".to_string();
+        let error = require_err(response.validate(), "empty quote response id rejected");
+        assert!(error.contains("quote_response_id"));
+
+        let mut response = fixtures.quote_response.body.clone();
+        response.quote_response_id = " quote-1 ".to_string();
+        let error = require_err(response.validate(), "padded quote response id rejected");
+        assert!(error.contains("quote_response_id"));
+    }
+
+    #[test]
+    fn liability_quote_response_rejects_control_character_id() {
+        let fixtures = sample_market_fixtures();
+        let mut response = fixtures.quote_response.body.clone();
+        response.quote_response_id = "quote-1\nquote-2".to_string();
+
+        let error = require_err(
+            response.validate(),
+            "control-character quote response id rejected",
+        );
+
+        assert!(error.contains("quote_response_id"));
+        assert!(error.contains("control characters"));
     }
 
     #[test]

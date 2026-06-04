@@ -2552,6 +2552,141 @@ fn guard_denies_request() {
 }
 
 #[test]
+fn unlimited_grant_guard_denial_does_not_reverse_budget_store() {
+    struct NoopUnlimitedBudgetStore {
+        inner: InMemoryBudgetStore,
+        reverse_calls: std::sync::atomic::AtomicUsize,
+    }
+
+    impl NoopUnlimitedBudgetStore {
+        fn new() -> Self {
+            Self {
+                inner: InMemoryBudgetStore::new(),
+                reverse_calls: std::sync::atomic::AtomicUsize::new(0),
+            }
+        }
+    }
+
+    impl BudgetStore for NoopUnlimitedBudgetStore {
+        fn try_increment(
+            &self,
+            capability_id: &str,
+            grant_index: usize,
+            max_invocations: Option<u32>,
+        ) -> Result<bool, BudgetStoreError> {
+            if max_invocations.is_none() {
+                return Ok(true);
+            }
+            self.inner
+                .try_increment(capability_id, grant_index, max_invocations)
+        }
+
+        fn try_charge_cost(
+            &self,
+            capability_id: &str,
+            grant_index: usize,
+            max_invocations: Option<u32>,
+            cost_units: u64,
+            max_cost_per_invocation: Option<u64>,
+            max_total_cost_units: Option<u64>,
+        ) -> Result<bool, BudgetStoreError> {
+            self.inner.try_charge_cost(
+                capability_id,
+                grant_index,
+                max_invocations,
+                cost_units,
+                max_cost_per_invocation,
+                max_total_cost_units,
+            )
+        }
+
+        fn reverse_charge_cost(
+            &self,
+            capability_id: &str,
+            grant_index: usize,
+            cost_units: u64,
+        ) -> Result<(), BudgetStoreError> {
+            self.reverse_calls.fetch_add(1, Ordering::SeqCst);
+            self.inner
+                .reverse_charge_cost(capability_id, grant_index, cost_units)
+        }
+
+        fn reduce_charge_cost(
+            &self,
+            capability_id: &str,
+            grant_index: usize,
+            cost_units: u64,
+        ) -> Result<(), BudgetStoreError> {
+            self.inner
+                .reduce_charge_cost(capability_id, grant_index, cost_units)
+        }
+
+        fn settle_charge_cost(
+            &self,
+            capability_id: &str,
+            grant_index: usize,
+            exposed_cost_units: u64,
+            realized_cost_units: u64,
+        ) -> Result<(), BudgetStoreError> {
+            self.inner.settle_charge_cost(
+                capability_id,
+                grant_index,
+                exposed_cost_units,
+                realized_cost_units,
+            )
+        }
+
+        fn list_usages(
+            &self,
+            limit: usize,
+            capability_id: Option<&str>,
+        ) -> Result<Vec<BudgetUsageRecord>, BudgetStoreError> {
+            self.inner.list_usages(limit, capability_id)
+        }
+
+        fn get_usage(
+            &self,
+            capability_id: &str,
+            grant_index: usize,
+        ) -> Result<Option<BudgetUsageRecord>, BudgetStoreError> {
+            self.inner.get_usage(capability_id, grant_index)
+        }
+    }
+
+    let mut kernel = make_kernel(make_config());
+    let budget_store = std::sync::Arc::new(NoopUnlimitedBudgetStore::new());
+    kernel.set_budget_store_handle(budget_store.clone());
+    kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["dangerous"])));
+
+    struct DenyAll;
+    impl Guard for DenyAll {
+        fn name(&self) -> &str {
+            "deny-all"
+        }
+        fn evaluate(&self, _ctx: &GuardContext) -> Result<Verdict, KernelError> {
+            Ok(Verdict::Deny)
+        }
+    }
+    kernel.add_guard(Box::new(DenyAll));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant("srv-a", "dangerous")]),
+        300,
+    );
+    let request = make_request("req-unlimited-deny", &cap, "dangerous", "srv-a");
+
+    let response = kernel.evaluate_tool_call_blocking(&request).unwrap();
+    assert_eq!(response.verdict, Verdict::Deny);
+    let reason = response.reason.as_deref().unwrap_or("");
+    assert!(reason.contains("deny-all"), "reason was: {reason}");
+    assert_eq!(budget_store.reverse_calls.load(Ordering::SeqCst), 0);
+    assert!(budget_store.get_usage(&cap.id, 0).unwrap().is_none());
+}
+
+#[test]
 fn guard_error_treated_as_deny() {
     let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["tool"])));
@@ -5709,6 +5844,85 @@ fn make_sibling_sum_monetary_fixture(prefix: &str) -> SiblingSumMonetaryFixture 
     });
 
     SiblingSumMonetaryFixture {
+        kernel,
+        child_a,
+        child_b,
+        child_a_kp,
+        child_b_kp,
+        path,
+    }
+}
+
+struct SiblingSumInvocationFixture {
+    kernel: ChioKernel,
+    child_a: CapabilityToken,
+    child_b: CapabilityToken,
+    child_a_kp: Keypair,
+    child_b_kp: Keypair,
+    path: PathBuf,
+}
+
+fn make_invocation_limited_grant(server: &str, tool: &str, max_invocations: u32) -> ToolGrant {
+    let mut grant = make_grant(server, tool);
+    grant.max_invocations = Some(max_invocations);
+    grant
+}
+
+fn make_sibling_sum_invocation_fixture(prefix: &str) -> SiblingSumInvocationFixture {
+    let path = unique_receipt_db_path(prefix);
+    let seed_store = SqliteReceiptStore::open(&path).unwrap();
+    let mut kernel = make_kernel(make_monetary_config());
+    kernel.register_tool_server(Box::new(EchoServer::new("limited-srv", vec!["compute"])));
+
+    let parent_kp = make_keypair();
+    let child_a_kp = make_keypair();
+    let child_b_kp = make_keypair();
+    let mut parent_grant = make_invocation_limited_grant("limited-srv", "compute", 1);
+    parent_grant.operations.push(Operation::Delegate);
+    let parent_scope = make_scope(vec![parent_grant]);
+    let child_scope = make_scope(vec![make_invocation_limited_grant(
+        "limited-srv",
+        "compute",
+        1,
+    )]);
+    let parent = make_capability(&kernel, &parent_kp, parent_scope.clone(), 300);
+    seed_store
+        .record_capability_snapshot(&parent, None)
+        .unwrap();
+    drop(seed_store);
+    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    kernel
+        .register_budget_parent(parent.id.clone(), 5_000)
+        .unwrap();
+    kernel.set_capability_trust_root(
+        kernel.config.keypair.public_key(),
+        scope_hash(&parent_scope).unwrap(),
+    );
+
+    let child_a_id = format!("cap-{prefix}-child-a");
+    let child_a = make_v2_delegated_child(V2DelegatedChildInput {
+        kernel: &kernel,
+        parent: &parent,
+        parent_kp: &parent_kp,
+        child_kp: &child_a_kp,
+        parent_scope: &parent_scope,
+        child_scope: child_scope.clone(),
+        id: &child_a_id,
+        share_bps: 4_000,
+    });
+    let child_b_id = format!("cap-{prefix}-child-b");
+    let child_b = make_v2_delegated_child(V2DelegatedChildInput {
+        kernel: &kernel,
+        parent: &parent,
+        parent_kp: &parent_kp,
+        child_kp: &child_b_kp,
+        parent_scope: &parent_scope,
+        child_scope,
+        id: &child_b_id,
+        share_bps: 4_000,
+    });
+
+    SiblingSumInvocationFixture {
         kernel,
         child_a,
         child_b,
@@ -9074,6 +9288,67 @@ fn sibling_sum_denial_reverses_pre_execution_monetary_charge() {
 }
 
 #[test]
+fn sibling_sum_denial_reverses_pre_execution_invocation_increment() {
+    let fixture = make_sibling_sum_invocation_fixture("sibling-sum-invocation-rollback");
+    let kernel = fixture.kernel;
+
+    let allow_response = kernel
+        .evaluate_tool_call_blocking(&ToolCallRequest {
+            request_id: "req-sibling-sum-invocation-rollback-a".to_string(),
+            capability: fixture.child_a.clone(),
+            tool_name: "compute".to_string(),
+            server_id: "limited-srv".to_string(),
+            agent_id: fixture.child_a_kp.public_key().to_hex(),
+            arguments: serde_json::json!({}),
+            dpop_proof: None,
+            governed_intent: None,
+            approval_token: None,
+            model_metadata: None,
+            federated_origin_kernel_id: None,
+        })
+        .unwrap();
+    assert_eq!(
+        allow_response.verdict, Verdict::Allow,
+        "unexpected deny reason: {:?}",
+        allow_response.reason
+    );
+
+    let deny_response = kernel
+        .evaluate_tool_call_blocking(&ToolCallRequest {
+            request_id: "req-sibling-sum-invocation-rollback-b".to_string(),
+            capability: fixture.child_b.clone(),
+            tool_name: "compute".to_string(),
+            server_id: "limited-srv".to_string(),
+            agent_id: fixture.child_b_kp.public_key().to_hex(),
+            arguments: serde_json::json!({}),
+            dpop_proof: None,
+            governed_intent: None,
+            approval_token: None,
+            model_metadata: None,
+            federated_origin_kernel_id: None,
+        })
+        .unwrap();
+    assert_eq!(deny_response.verdict, Verdict::Deny);
+    assert!(deny_response.reason.as_deref().is_some_and(|reason| {
+        reason.contains("sibling-sum") || reason.contains("sibling sum")
+    }));
+
+    let usage = kernel.budget_store.get_usage(&fixture.child_b.id, 0).unwrap();
+    assert_eq!(usage.as_ref().map_or(0, |usage| usage.invocation_count), 0);
+    assert_eq!(
+        usage
+            .as_ref()
+            .map(BudgetUsageRecord::committed_cost_units)
+            .transpose()
+            .unwrap()
+            .unwrap_or(0),
+        0
+    );
+
+    let _ = std::fs::remove_file(fixture.path);
+}
+
+#[test]
 fn nested_hosted_sibling_sum_denial_reverses_pre_execution_monetary_charge() {
     let fixture = make_sibling_sum_monetary_fixture("nested-sibling-sum-rollback");
     let kernel = fixture.kernel;
@@ -9171,6 +9446,145 @@ fn nested_hosted_sibling_sum_denial_reverses_pre_execution_monetary_charge() {
         .unwrap();
     assert_eq!(usage.invocation_count, 0);
     assert_eq!(usage.committed_cost_units().unwrap(), 0);
+
+    let _ = std::fs::remove_file(fixture.path);
+}
+
+#[test]
+fn payment_authorization_denial_releases_delegated_sibling_budget() {
+    let fixture = make_sibling_sum_monetary_fixture("delegated-payment-deny-budget");
+    let mut kernel = fixture.kernel;
+    kernel.set_payment_adapter(Box::new(DecliningPaymentAdapter));
+
+    let denied_response = kernel
+        .evaluate_tool_call_blocking(&ToolCallRequest {
+            request_id: "req-delegated-payment-deny-a".to_string(),
+            capability: fixture.child_a.clone(),
+            tool_name: "compute".to_string(),
+            server_id: "cost-srv".to_string(),
+            agent_id: fixture.child_a_kp.public_key().to_hex(),
+            arguments: serde_json::json!({}),
+            dpop_proof: None,
+            governed_intent: None,
+            approval_token: None,
+            model_metadata: None,
+            federated_origin_kernel_id: None,
+        })
+        .unwrap();
+    assert_eq!(denied_response.verdict, Verdict::Deny);
+    assert!(denied_response
+        .reason
+        .as_deref()
+        .is_some_and(|reason| reason.contains("payment authorization failed")));
+
+    kernel.set_payment_adapter(Box::new(StubPaymentAdapter));
+    let allowed_sibling = kernel
+        .evaluate_tool_call_blocking(&ToolCallRequest {
+            request_id: "req-delegated-payment-deny-b".to_string(),
+            capability: fixture.child_b.clone(),
+            tool_name: "compute".to_string(),
+            server_id: "cost-srv".to_string(),
+            agent_id: fixture.child_b_kp.public_key().to_hex(),
+            arguments: serde_json::json!({}),
+            dpop_proof: None,
+            governed_intent: None,
+            approval_token: None,
+            model_metadata: None,
+            federated_origin_kernel_id: None,
+        })
+        .unwrap();
+    assert_eq!(
+        allowed_sibling.verdict,
+        Verdict::Allow,
+        "payment-denied child must not starve a later sibling: {:?}",
+        allowed_sibling.reason
+    );
+
+    let _ = std::fs::remove_file(fixture.path);
+}
+
+#[test]
+fn nested_payment_authorization_denial_releases_delegated_sibling_budget() {
+    let fixture = make_sibling_sum_monetary_fixture("nested-delegated-payment-deny-budget");
+    let mut kernel = fixture.kernel;
+    kernel.set_payment_adapter(Box::new(DecliningPaymentAdapter));
+    let session_id = kernel.open_session("nested-parent-agent".to_string(), Vec::new());
+    kernel.activate_session(&session_id).unwrap();
+    let parent_context = make_operation_context(
+        &session_id,
+        "req-nested-payment-deny-parent",
+        "nested-parent-agent",
+    );
+    kernel
+        .begin_session_request(&parent_context, OperationKind::ToolCall, true)
+        .unwrap();
+    let mut client = MockNestedFlowClient {
+        roots: Vec::new(),
+        sampled_message: CreateMessageResult {
+            role: "assistant".to_string(),
+            content: serde_json::json!({ "type": "text", "text": "unused" }),
+            model: "unused".to_string(),
+            stop_reason: None,
+        },
+        elicited_content: make_elicited_content(),
+        cancel_parent_on_create_message: false,
+        cancel_child_on_create_message: false,
+        completed_elicitation_ids: Vec::new(),
+        resource_updates: Vec::new(),
+        resources_list_changed_count: 0,
+    };
+
+    let denied_response = kernel
+        .evaluate_tool_call_with_nested_flow_client(
+            &parent_context,
+            &ToolCallRequest {
+                request_id: "req-nested-payment-deny-a".to_string(),
+                capability: fixture.child_a.clone(),
+                tool_name: "compute".to_string(),
+                server_id: "cost-srv".to_string(),
+                agent_id: fixture.child_a_kp.public_key().to_hex(),
+                arguments: serde_json::json!({}),
+                dpop_proof: None,
+                governed_intent: None,
+                approval_token: None,
+                model_metadata: None,
+                federated_origin_kernel_id: None,
+            },
+            &mut client,
+        )
+        .unwrap();
+    assert_eq!(denied_response.verdict, Verdict::Deny);
+    assert!(denied_response
+        .reason
+        .as_deref()
+        .is_some_and(|reason| reason.contains("payment authorization failed")));
+
+    kernel.set_payment_adapter(Box::new(StubPaymentAdapter));
+    let allowed_sibling = kernel
+        .evaluate_tool_call_with_nested_flow_client(
+            &parent_context,
+            &ToolCallRequest {
+                request_id: "req-nested-payment-deny-b".to_string(),
+                capability: fixture.child_b.clone(),
+                tool_name: "compute".to_string(),
+                server_id: "cost-srv".to_string(),
+                agent_id: fixture.child_b_kp.public_key().to_hex(),
+                arguments: serde_json::json!({}),
+                dpop_proof: None,
+                governed_intent: None,
+                approval_token: None,
+                model_metadata: None,
+                federated_origin_kernel_id: None,
+            },
+            &mut client,
+        )
+        .unwrap();
+    assert_eq!(
+        allowed_sibling.verdict,
+        Verdict::Allow,
+        "nested payment-denied child must not starve a later sibling: {:?}",
+        allowed_sibling.reason
+    );
 
     let _ = std::fs::remove_file(fixture.path);
 }

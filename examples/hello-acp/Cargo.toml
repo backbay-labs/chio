@@ -15,3 +15,6 @@ chio-core = { path = "../../crates/chio-core" }
 chio-kernel = { path = "../../crates/chio-kernel" }
 chio-manifest = { path = "../../crates/chio-manifest" }
 serde_json = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

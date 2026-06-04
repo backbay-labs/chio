@@ -8,9 +8,9 @@
 //! [`fuzz_mcp_envelope_decode`] is the canonical "decode -> evaluator dispatch"
 //! trust-boundary pipeline for the MCP edge:
 //!
-//! 1. **Decode stage.** Bytes are interpreted as a newline-delimited JSON-RPC
-//!    stream. Each non-empty trimmed line is fed to
-//!    `serde_json::from_str::<serde_json::Value>` to produce a JSON-RPC envelope.
+//! 1. **Decode stage.** Bytes are interpreted by the same bounded,
+//!    newline-delimited JSON-RPC frame decoder used by the production MCP edge
+//!    stdio runtime.
 //! 2. **Evaluator dispatch stage.** Successfully decoded envelopes are forwarded
 //!    to [`ChioMcpEdge::handle_jsonrpc`], which routes `initialize`, `tools/list`,
 //!    `tools/call`, notifications, and the rest of the MCP method namespace through
@@ -118,28 +118,29 @@ fn make_edge() -> Option<ChioMcpEdge> {
 /// The fixture is rebuilt fresh on every iteration so libFuzzer-injected
 /// sequences cannot poison cross-iteration kernel or session state.
 pub fn fuzz_mcp_envelope_decode(data: &[u8]) {
-    use std::io::BufRead;
-
     let mut reader = std::io::BufReader::new(data);
     let mut edge = match make_edge() {
         Some(edge) => edge,
         None => return,
     };
     loop {
-        let mut line = String::new();
-        match reader.read_line(&mut line) {
-            Ok(0) => return,
-            Ok(_) => {
-                let trimmed = line.trim();
-                if trimmed.is_empty() {
-                    continue;
-                }
-                let Ok(message) = serde_json::from_str::<serde_json::Value>(trimmed) else {
-                    continue;
-                };
+        match crate::runtime::framing::read_jsonrpc_frame(&mut reader) {
+            Ok(Some(message)) => {
                 let _ = edge.handle_jsonrpc(message);
             }
+            Ok(None) => return,
             Err(_) => return,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fuzz_entrypoint_uses_strict_edge_framing_without_panicking() {
+        fuzz_mcp_envelope_decode(b"\n{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}\n");
+        fuzz_mcp_envelope_decode(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}");
     }
 }

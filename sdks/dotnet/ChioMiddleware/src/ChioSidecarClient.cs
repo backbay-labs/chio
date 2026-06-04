@@ -87,10 +87,13 @@ public class ChioSidecarClient : IDisposable
         }
 
         var result = await response.Content.ReadFromJsonAsync<EvaluateResponse>(_jsonOptions);
-        result ??= throw new ChioSidecarException(
-            ChioErrorCodes.EvaluationFailed,
-            "Sidecar returned null response"
-        );
+        if (result is null)
+        {
+            throw new ChioSidecarException(
+                ChioErrorCodes.EvaluationFailed,
+                "Sidecar returned null response"
+            );
+        }
         if (result.Verdict.IsAllowed() || result.Receipt.Verdict.IsAllowed())
         {
             if (!result.Verdict.IsAllowed() || !result.Receipt.IsAuthorized())

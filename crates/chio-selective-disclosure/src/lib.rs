@@ -187,11 +187,34 @@ fn hash_canonical<T: Serialize>(value: &T) -> Result<Vec<u8>, SelectiveDisclosur
     Ok(Sha256::digest(canonical_bytes(value)?).to_vec())
 }
 
+fn is_lower_sha256_hex(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .as_bytes()
+            .iter()
+            .all(|byte| byte.is_ascii_digit() || matches!(*byte, b'a'..=b'f'))
+}
+
+#[cfg(feature = "bbs")]
+fn is_lower_even_hex(value: &str) -> bool {
+    value.len().is_multiple_of(2)
+        && value
+            .as_bytes()
+            .iter()
+            .all(|byte| byte.is_ascii_digit() || matches!(*byte, b'a'..=b'f'))
+}
+
 fn decode_hx_field(field: &str, raw: &str) -> Result<Vec<u8>, SelectiveDisclosureError> {
     if raw.is_empty() {
         return Err(SelectiveDisclosureError::MalformedHexField {
             field: field.to_string(),
             reason: "empty string is not a SHA-256 hex digest".to_string(),
+        });
+    }
+    if !is_lower_sha256_hex(raw) {
+        return Err(SelectiveDisclosureError::MalformedHexField {
+            field: field.to_string(),
+            reason: "expected 64 lowercase SHA-256 hex characters".to_string(),
         });
     }
     let bytes = hex::decode(raw).map_err(|e| SelectiveDisclosureError::MalformedHexField {
@@ -205,6 +228,20 @@ fn decode_hx_field(field: &str, raw: &str) -> Result<Vec<u8>, SelectiveDisclosur
         });
     }
     Ok(bytes)
+}
+
+#[cfg(feature = "bbs")]
+fn decode_message_hex(field: &str, raw: &str) -> Result<Vec<u8>, SelectiveDisclosureError> {
+    if !is_lower_even_hex(raw) {
+        return Err(SelectiveDisclosureError::MalformedHexField {
+            field: field.to_string(),
+            reason: "expected lowercase even-length hex".to_string(),
+        });
+    }
+    hex::decode(raw).map_err(|e| SelectiveDisclosureError::MalformedHexField {
+        field: field.to_string(),
+        reason: e.to_string(),
+    })
 }
 
 fn opt_string_bytes(value: &Option<String>) -> Vec<u8> {
@@ -603,8 +640,7 @@ fn append_len_prefixed(out: &mut Vec<u8>, bytes: &[u8]) {
 
 #[cfg(feature = "bbs")]
 fn bbs_message_bytes(message: &ProjectionMessage) -> Result<Vec<u8>, SelectiveDisclosureError> {
-    let raw = hex::decode(&message.bytes_hex)
-        .map_err(|e| SelectiveDisclosureError::Hex(e.to_string()))?;
+    let raw = decode_message_hex(&message.field, &message.bytes_hex)?;
     let mut out = Vec::new();
     out.extend_from_slice(MESSAGE_DOMAIN_V1);
     out.extend_from_slice(&message.index.to_le_bytes());

@@ -694,7 +694,7 @@ fn sample_manifest() -> ToolManifest {
         ],
         server_tools: Vec::new(),
         required_permissions: None,
-        public_key: "abcd".into(),
+        public_key: Keypair::from_seed(&[7u8; 32]).public_key().to_hex(),
     }
 }
 
@@ -727,8 +727,84 @@ fn streaming_manifest() -> ToolManifest {
         ],
         server_tools: Vec::new(),
         required_permissions: None,
-        public_key: "stream-abcd".into(),
+        public_key: Keypair::from_seed(&[8u8; 32]).public_key().to_hex(),
     }
+}
+
+#[test]
+fn edge_rejects_manifest_with_unsupported_schema_version() {
+    let (kernel, _) = make_kernel();
+    let agent = Keypair::generate();
+    let mut manifest = sample_manifest();
+    manifest.schema = "chio.manifest.v0".into();
+    manifest.public_key = Keypair::from_seed(&[11u8; 32]).public_key().to_hex();
+
+    let err = match ChioMcpEdge::new(
+        McpEdgeConfig::default(),
+        kernel,
+        agent.public_key().to_hex(),
+        vec![],
+        vec![manifest],
+    ) {
+        Ok(_) => panic!("MCP edge discovery must reject unsupported manifest schema versions"),
+        Err(err) => err,
+    };
+
+    assert!(matches!(
+        err,
+        AdapterError::ManifestError(chio_manifest::ManifestError::UnsupportedSchema(schema))
+            if schema == "chio.manifest.v0"
+    ));
+}
+
+#[test]
+fn edge_rejects_non_object_manifest_input_schema() {
+    let (kernel, _) = make_kernel();
+    let agent = Keypair::generate();
+    let mut manifest = sample_manifest();
+    manifest.tools[0].input_schema = json!("not an object");
+
+    let err = match ChioMcpEdge::new(
+        McpEdgeConfig::default(),
+        kernel,
+        agent.public_key().to_hex(),
+        vec![],
+        vec![manifest],
+    ) {
+        Ok(_) => panic!("MCP edge discovery must reject non-object inputSchema"),
+        Err(err) => err,
+    };
+
+    assert!(matches!(
+        err,
+        AdapterError::ManifestError(chio_manifest::ManifestError::InvalidInputSchema(tool_name))
+            if tool_name == "read_file"
+    ));
+}
+
+#[test]
+fn edge_rejects_non_object_manifest_output_schema() {
+    let (kernel, _) = make_kernel();
+    let agent = Keypair::generate();
+    let mut manifest = sample_manifest();
+    manifest.tools[1].output_schema = Some(json!(["not", "an", "object"]));
+
+    let err = match ChioMcpEdge::new(
+        McpEdgeConfig::default(),
+        kernel,
+        agent.public_key().to_hex(),
+        vec![],
+        vec![manifest],
+    ) {
+        Ok(_) => panic!("MCP edge discovery must reject non-object outputSchema"),
+        Err(err) => err,
+    };
+
+    assert!(matches!(
+        err,
+        AdapterError::ManifestError(chio_manifest::ManifestError::InvalidOutputSchema(tool_name))
+            if tool_name == "echo_json"
+    ));
 }
 
 fn make_edge(page_size: usize) -> ChioMcpEdge {
@@ -1418,7 +1494,7 @@ fn make_url_required_edge() -> ChioMcpEdge {
             }],
             server_tools: Vec::new(),
             required_permissions: None,
-            public_key: "url-abcd".into(),
+            public_key: Keypair::from_seed(&[9u8; 32]).public_key().to_hex(),
         }],
     )
     .unwrap()
@@ -1574,6 +1650,49 @@ fn initialize_then_initialized_enters_ready_state() {
 }
 
 #[test]
+fn malformed_initialized_notification_does_not_enter_ready_state() {
+    let mut edge = make_edge(10);
+
+    let initialize = edge
+        .handle_jsonrpc(json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {}
+        }))
+        .unwrap();
+    assert_eq!(
+        initialize["result"]["protocolVersion"],
+        MCP_PROTOCOL_VERSION
+    );
+    assert!(matches!(
+        edge.state,
+        EdgeState::WaitingForInitialized { .. }
+    ));
+
+    let initialized = edge.handle_jsonrpc(json!({
+        "jsonrpc": "2.0",
+        "method": "notifications/initialized",
+        "params": []
+    }));
+    assert!(initialized.is_none());
+    assert!(matches!(
+        edge.state,
+        EdgeState::WaitingForInitialized { .. }
+    ));
+
+    let tools_list = edge
+        .handle_jsonrpc(json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/list",
+            "params": {}
+        }))
+        .unwrap();
+    assert_eq!(tools_list["error"]["code"], JSONRPC_SERVER_NOT_INITIALIZED);
+}
+
+#[test]
 fn initialize_unsupported_protocol_version_rejected() {
     let mut edge = make_edge(10);
 
@@ -1614,6 +1733,26 @@ fn initialize_unsupported_protocol_version_rejected() {
     assert_eq!(
         response["error"]["data"]["supportedProtocolVersions"],
         json!([MCP_PROTOCOL_VERSION])
+    );
+    assert!(matches!(edge.state, EdgeState::Uninitialized));
+}
+
+#[test]
+fn initialize_rejects_non_object_params_without_opening_session() {
+    let mut edge = make_edge(10);
+    let response = edge
+        .handle_jsonrpc(json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": []
+        }))
+        .unwrap();
+
+    assert_eq!(response["error"]["code"], JSONRPC_INVALID_PARAMS);
+    assert_eq!(
+        response["error"]["message"],
+        "initialize params must be an object"
     );
     assert!(matches!(edge.state, EdgeState::Uninitialized));
 }
@@ -1667,6 +1806,27 @@ fn tools_list_is_paginated() {
         .unwrap();
     assert_eq!(second_page["result"]["tools"].as_array().unwrap().len(), 0);
     assert!(second_page["result"]["nextCursor"].is_null());
+}
+
+#[test]
+fn tools_list_rejects_non_object_params() {
+    let mut edge = make_edge(10);
+    initialize_edge(&mut edge);
+
+    let response = edge
+        .handle_jsonrpc(json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/list",
+            "params": []
+        }))
+        .unwrap();
+
+    assert_eq!(response["error"]["code"], JSONRPC_INVALID_PARAMS);
+    assert_eq!(
+        response["error"]["message"],
+        "tools/list params must be an object"
+    );
 }
 
 #[test]
@@ -2427,6 +2587,53 @@ fn task_with_zero_ttl_expires_before_get() {
 }
 
 #[test]
+fn task_creation_rejects_ttl_above_edge_retention_ceiling() {
+    let mut edge = make_streaming_edge(10);
+    edge.set_session_auth_context(SessionAuthContext::streamable_http_static_bearer(
+        "agent",
+        "fingerprint",
+        None,
+    ));
+    let _ = edge.handle_jsonrpc(json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {}
+    }));
+    let _ = edge.handle_jsonrpc(json!({
+        "jsonrpc": "2.0",
+        "method": "notifications/initialized",
+        "params": {}
+    }));
+
+    let rejected = edge
+        .handle_jsonrpc(json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {
+                "name": "stream_file",
+                "arguments": {},
+                "task": { "ttl": u64::MAX }
+            }
+        }))
+        .unwrap();
+
+    assert_eq!(rejected["error"]["code"], JSONRPC_INVALID_PARAMS);
+    assert_eq!(rejected["error"]["message"], "task ttl exceeds maximum");
+
+    let listed = edge
+        .handle_jsonrpc(json!({
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tasks/list",
+            "params": {}
+        }))
+        .unwrap();
+    assert_eq!(listed["result"]["tasks"], json!([]));
+}
+
+#[test]
 fn task_creation_rejects_deferred_task_map_over_cap() {
     let mut edge = make_streaming_edge(10);
     edge.set_session_auth_context(SessionAuthContext::streamable_http_static_bearer(
@@ -2479,6 +2686,43 @@ fn task_creation_rejects_deferred_task_map_over_cap() {
         .as_str()
         .unwrap()
         .contains("too many deferred tasks"));
+}
+
+#[test]
+fn task_methods_reject_malformed_task_ids_before_lookup() {
+    let mut edge = make_streaming_edge(10);
+    let _ = edge.handle_jsonrpc(json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {}
+    }));
+    let _ = edge.handle_jsonrpc(json!({
+        "jsonrpc": "2.0",
+        "method": "notifications/initialized",
+        "params": {}
+    }));
+
+    for (index, method, task_id) in [
+        (10, "tasks/get", ""),
+        (11, "tasks/result", " mcp-edge-task-1"),
+        (12, "tasks/cancel", "mcp-edge-task-1\n"),
+    ] {
+        let rejected = edge
+            .handle_jsonrpc(json!({
+                "jsonrpc": "2.0",
+                "id": index,
+                "method": method,
+                "params": { "taskId": task_id }
+            }))
+            .unwrap();
+
+        assert_eq!(rejected["error"]["code"], JSONRPC_INVALID_PARAMS);
+        assert_eq!(
+            rejected["error"]["message"],
+            "taskId must be a non-empty unpadded string without control characters"
+        );
+    }
 }
 
 #[test]
@@ -2645,6 +2889,40 @@ fn serve_stdio_handles_initialize_and_tools_list_roundtrip() {
     let tools = responses[1]["result"]["tools"].as_array().unwrap();
     assert_eq!(tools.len(), 2);
     assert!(tools.iter().all(|tool| tool["name"] != "write_file"));
+}
+
+#[test]
+fn serve_stdio_malformed_initialized_notification_does_not_enter_ready_state() {
+    let mut edge = make_edge(10);
+    let input = concat!(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}\n",
+        "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\",\"params\":[]}\n",
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\",\"params\":{}}\n"
+    );
+
+    let mut output = Vec::new();
+    edge.serve_stdio(Cursor::new(input.as_bytes()), &mut output)
+        .unwrap();
+
+    let lines = String::from_utf8(output).unwrap();
+    let responses = lines
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).unwrap())
+        .collect::<Vec<_>>();
+
+    assert_eq!(responses.len(), 2);
+    assert_eq!(
+        responses[0]["result"]["protocolVersion"],
+        MCP_PROTOCOL_VERSION
+    );
+    assert_eq!(
+        responses[1]["error"]["code"],
+        JSONRPC_SERVER_NOT_INITIALIZED
+    );
+    assert!(matches!(
+        edge.state,
+        EdgeState::WaitingForInitialized { .. }
+    ));
 }
 
 #[test]
@@ -2835,6 +3113,113 @@ fn serve_message_channels_matches_stdio_for_task_cancellation_flow() {
     normalize_transport_output(&mut channel);
 
     assert_eq!(channel, stdio);
+}
+
+#[test]
+fn channel_pump_does_not_signal_notification_shaped_tasks_cancel() {
+    let (client_tx, client_rx) = mpsc::channel();
+    let (inbound_tx, inbound_rx) = mpsc::channel();
+    let (cancel_tx, cancel_rx) = mpsc::channel();
+    let pump = std::thread::spawn(move || pump_channel_messages(client_rx, inbound_tx, cancel_tx));
+
+    client_tx
+        .send(json!({
+            "jsonrpc": "2.0",
+            "method": "tasks/cancel",
+            "params": {
+                "taskId": "mcp-edge-task-1"
+            }
+        }))
+        .unwrap();
+
+    let inbound = inbound_rx
+        .recv_timeout(Duration::from_secs(1))
+        .unwrap_or_else(|error| panic!("pump did not forward inbound message: {error}"));
+    match inbound {
+        ClientInbound::Message(message) => {
+            assert_eq!(message["method"], "tasks/cancel");
+            assert!(message.get("id").is_none());
+        }
+        ClientInbound::ParseError(_) | ClientInbound::ReadError(_) | ClientInbound::Closed => {
+            panic!("expected forwarded message")
+        }
+    }
+    assert!(
+        cancel_rx.recv_timeout(Duration::from_millis(50)).is_err(),
+        "notification-shaped tasks/cancel entered the cancellation side channel"
+    );
+
+    drop(client_tx);
+    pump.join()
+        .unwrap_or_else(|_| panic!("channel pump thread panicked"));
+}
+
+#[test]
+fn stdio_pump_rejects_delimiterless_jsonrpc_frame() {
+    let (inbound_tx, inbound_rx) = mpsc::channel();
+    let (cancel_tx, cancel_rx) = mpsc::channel();
+    let input = b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}";
+    let pump = std::thread::spawn(move || {
+        pump_client_messages(Cursor::new(&input[..]), inbound_tx, cancel_tx)
+    });
+
+    let inbound = inbound_rx
+        .recv_timeout(Duration::from_secs(1))
+        .unwrap_or_else(|error| panic!("pump did not report parse error: {error}"));
+    match inbound {
+        ClientInbound::ParseError(message) => {
+            assert!(message.contains("newline delimiter"));
+        }
+        ClientInbound::Message(_) | ClientInbound::ReadError(_) | ClientInbound::Closed => {
+            panic!("expected parse error for delimiterless frame")
+        }
+    }
+    assert!(
+        cancel_rx.recv_timeout(Duration::from_millis(50)).is_err(),
+        "delimiterless frame entered cancellation side channel"
+    );
+
+    pump.join()
+        .unwrap_or_else(|_| panic!("stdio pump thread panicked"));
+}
+
+#[test]
+fn stdio_pump_rejects_oversized_jsonrpc_frame() {
+    let (inbound_tx, inbound_rx) = mpsc::channel();
+    let (cancel_tx, cancel_rx) = mpsc::channel();
+    let input = format!("{}\n", "x".repeat(framing::MAX_STDIO_MCP_FRAME_BYTES + 1));
+    let pump = std::thread::spawn(move || {
+        pump_client_messages(Cursor::new(input.into_bytes()), inbound_tx, cancel_tx)
+    });
+
+    let inbound = inbound_rx
+        .recv_timeout(Duration::from_secs(1))
+        .unwrap_or_else(|error| panic!("pump did not report oversized frame: {error}"));
+    match inbound {
+        ClientInbound::ParseError(message) => {
+            assert!(message.contains("exceeded"));
+        }
+        ClientInbound::Message(_) | ClientInbound::ReadError(_) | ClientInbound::Closed => {
+            panic!("expected parse error for oversized frame")
+        }
+    }
+    assert!(
+        cancel_rx.recv_timeout(Duration::from_millis(50)).is_err(),
+        "oversized frame entered cancellation side channel"
+    );
+
+    pump.join()
+        .unwrap_or_else(|_| panic!("stdio pump thread panicked"));
+}
+
+#[test]
+fn read_jsonrpc_line_rejects_delimiterless_frame() {
+    let mut reader = Cursor::new(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}");
+    let err = read_jsonrpc_line(&mut reader).unwrap_err();
+    assert!(
+        matches!(err, AdapterError::ParseError(ref message) if message.contains("newline delimiter")),
+        "expected delimiter parse error, got: {err}"
+    );
 }
 
 #[test]
@@ -3376,6 +3761,73 @@ fn completion_complete_returns_candidates_for_prompt_and_resource_refs() {
     assert_eq!(
         resource_response["result"]["completion"]["values"],
         json!(["architecture", "api"])
+    );
+}
+
+#[test]
+fn completion_complete_rejects_malformed_target_identifiers() {
+    let mut edge = make_edge(10);
+    let _ = edge.handle_jsonrpc(json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {}
+    }));
+    let _ = edge.handle_jsonrpc(json!({
+        "jsonrpc": "2.0",
+        "method": "notifications/initialized",
+        "params": {}
+    }));
+
+    let malformed_prompt_name = edge
+        .handle_jsonrpc(json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "completion/complete",
+            "params": {
+                "ref": { "type": "ref/prompt", "name": "" },
+                "argument": { "name": "topic", "value": "r" },
+                "context": { "arguments": {} }
+            }
+        }))
+        .unwrap();
+    assert_eq!(
+        malformed_prompt_name["error"]["message"],
+        "prompt ref name must be a non-empty unpadded string without control characters"
+    );
+
+    let malformed_resource_uri = edge
+        .handle_jsonrpc(json!({
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "completion/complete",
+            "params": {
+                "ref": { "type": "ref/resource", "uri": " repo://docs/{slug}" },
+                "argument": { "name": "slug", "value": "a" },
+                "context": { "arguments": {} }
+            }
+        }))
+        .unwrap();
+    assert_eq!(
+        malformed_resource_uri["error"]["message"],
+        "resource ref uri must be a non-empty unpadded string without control characters"
+    );
+
+    let malformed_argument_name = edge
+        .handle_jsonrpc(json!({
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "completion/complete",
+            "params": {
+                "ref": { "type": "ref/prompt", "name": "summarize_docs" },
+                "argument": { "name": "topic\n", "value": "r" },
+                "context": { "arguments": {} }
+            }
+        }))
+        .unwrap();
+    assert_eq!(
+        malformed_argument_name["error"]["message"],
+        "completion argument name must be a non-empty unpadded string without control characters"
     );
 }
 

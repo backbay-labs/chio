@@ -30,6 +30,7 @@ fn sample_manifest(server_tools: Vec<ServerTool>) -> ToolManifest {
 
 #[test]
 fn server_tools_default_to_empty_allowlist() -> Result<(), Box<dyn std::error::Error>> {
+    let public_key = Keypair::from_seed(&[12u8; 32]).public_key().to_hex();
     let json = json!({
         "schema": TOOL_MANIFEST_SCHEMA,
         "server_id": "srv-anthropic",
@@ -46,7 +47,7 @@ fn server_tools_default_to_empty_allowlist() -> Result<(), Box<dyn std::error::E
             "latency_hint": "fast"
         }],
         "required_permissions": null,
-        "public_key": "deadbeef"
+        "public_key": public_key
     });
     let manifest: ToolManifest = serde_json::from_value(json)?;
 

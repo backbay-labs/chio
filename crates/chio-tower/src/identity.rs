@@ -16,7 +16,10 @@ pub fn extract_identity(headers: &http::HeaderMap) -> CallerIdentity {
     // 1. Bearer token
     if let Some(auth) = headers.get(http::header::AUTHORIZATION) {
         if let Ok(auth_str) = auth.to_str() {
-            if let Some(token) = auth_str.strip_prefix("Bearer ") {
+            if let Some(token) = auth_str
+                .strip_prefix("Bearer ")
+                .and_then(valid_secret_value)
+            {
                 let token_hash = chio_http_core::sha256_hex(token.as_bytes());
                 let subject = format!("bearer:{}", &token_hash[..16]);
                 return CallerIdentity {
@@ -33,7 +36,10 @@ pub fn extract_identity(headers: &http::HeaderMap) -> CallerIdentity {
     // 2. API key
     for key_header in &["x-api-key", "X-Api-Key", "X-API-Key"] {
         if let Some(key_value) = headers.get(*key_header) {
-            if let Ok(key_str) = key_value.to_str() {
+            if let Ok(key_str) = key_value.to_str().map(valid_secret_value) {
+                let Some(key_str) = key_str else {
+                    continue;
+                };
                 let key_hash = chio_http_core::sha256_hex(key_str.as_bytes());
                 let subject = format!("apikey:{}", &key_hash[..16]);
                 return CallerIdentity {
@@ -79,6 +85,14 @@ pub fn extract_identity(headers: &http::HeaderMap) -> CallerIdentity {
 
     // 4. Anonymous
     CallerIdentity::anonymous()
+}
+
+fn valid_secret_value(value: &str) -> Option<&str> {
+    if value.trim().is_empty() || value.trim() != value {
+        None
+    } else {
+        Some(value)
+    }
 }
 
 #[cfg(test)]
@@ -162,6 +176,27 @@ mod tests {
         let caller = extract_identity(&headers);
         // Basic auth is not recognized, should fall through to anonymous
         assert_eq!(caller.subject, "anonymous");
+    }
+
+    #[test]
+    fn blank_bearer_token_falls_through() {
+        let mut headers = http::HeaderMap::new();
+        headers.insert(
+            http::header::AUTHORIZATION,
+            http::HeaderValue::from_static("Bearer    "),
+        );
+        let caller = extract_identity(&headers);
+        assert_eq!(caller.subject, "anonymous");
+        assert!(matches!(caller.auth_method, AuthMethod::Anonymous));
+    }
+
+    #[test]
+    fn blank_api_key_falls_through() {
+        let mut headers = http::HeaderMap::new();
+        headers.insert("x-api-key", http::HeaderValue::from_static("   "));
+        let caller = extract_identity(&headers);
+        assert_eq!(caller.subject, "anonymous");
+        assert!(matches!(caller.auth_method, AuthMethod::Anonymous));
     }
 
     #[test]

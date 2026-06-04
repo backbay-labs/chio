@@ -18,6 +18,9 @@ use chio_core::capability::MonetaryAmount;
 use chio_core::crypto::{Keypair, PublicKey, Signature};
 use serde::{Deserialize, Serialize};
 
+mod validation;
+pub use validation::validate_manifest;
+
 /// Supported Chio tool-manifest schema identifier.
 pub const TOOL_MANIFEST_SCHEMA: &str = "chio.manifest.v1";
 
@@ -201,6 +204,7 @@ pub enum LatencyHint {
 
 /// A manifest wrapped in its Ed25519 signature.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SignedManifest {
     /// The tool manifest.
     pub manifest: ToolManifest,
@@ -224,8 +228,26 @@ pub enum ManifestError {
     #[error("duplicate tool name: {0}")]
     DuplicateToolName(String),
 
+    #[error("invalid tool name: {0}")]
+    InvalidToolName(String),
+
+    #[error("invalid manifest field: {0}")]
+    InvalidManifestField(&'static str),
+
+    #[error("tool input schema is not a JSON object: {0}")]
+    InvalidInputSchema(String),
+
+    #[error("tool output schema is not a JSON object: {0}")]
+    InvalidOutputSchema(String),
+
     #[error("duplicate server tool allowlist entry: {0}")]
     DuplicateServerTool(String),
+
+    #[error("invalid required permission {field}: {value}")]
+    InvalidRequiredPermission { field: &'static str, value: String },
+
+    #[error("duplicate required permission {field}: {value}")]
+    DuplicateRequiredPermission { field: &'static str, value: String },
 
     #[error("manifest schema version is not supported: {0}")]
     UnsupportedSchema(String),
@@ -234,46 +256,19 @@ pub enum ManifestError {
     VerificationFailed,
 }
 
-/// Validate that a manifest is well-formed (no duplicate tool names, at least
-/// one tool, supported schema version).
-pub fn validate_manifest(manifest: &ToolManifest) -> Result<(), ManifestError> {
-    if manifest.schema != TOOL_MANIFEST_SCHEMA {
-        return Err(ManifestError::UnsupportedSchema(manifest.schema.clone()));
-    }
-    if manifest.tools.is_empty() {
-        return Err(ManifestError::EmptyManifest);
-    }
-
-    let mut seen = std::collections::HashSet::new();
-    for tool in &manifest.tools {
-        if !seen.insert(&tool.name) {
-            return Err(ManifestError::DuplicateToolName(tool.name.clone()));
-        }
-    }
-
-    let mut seen_server_tools = std::collections::HashSet::new();
-    for server_tool in &manifest.server_tools {
-        if !seen_server_tools.insert(*server_tool) {
-            return Err(ManifestError::DuplicateServerTool(
-                server_tool.as_str().to_string(),
-            ));
-        }
-    }
-
-    Ok(())
-}
-
 /// Sign a manifest with an Ed25519 keypair.
 pub fn sign_manifest(
     manifest: &ToolManifest,
     keypair: &Keypair,
 ) -> Result<SignedManifest, ManifestError> {
     validate_manifest(manifest)?;
+    let signer_key = keypair.public_key();
+    ensure_embedded_public_key_matches(manifest, &signer_key)?;
     let (signature, _bytes) = keypair.sign_canonical(manifest)?;
     Ok(SignedManifest {
         manifest: manifest.clone(),
         signature,
-        signer_key: keypair.public_key(),
+        signer_key,
     })
 }
 
@@ -283,12 +278,32 @@ pub fn verify_manifest(
     public_key: &PublicKey,
 ) -> Result<(), ManifestError> {
     validate_manifest(&signed.manifest)?;
+    ensure_embedded_public_key_matches(&signed.manifest, &signed.signer_key)?;
+    if signed.signer_key != *public_key {
+        return Err(ManifestError::VerificationFailed);
+    }
     let valid = public_key.verify_canonical(&signed.manifest, &signed.signature)?;
     if valid {
         Ok(())
     } else {
         Err(ManifestError::VerificationFailed)
     }
+}
+
+fn ensure_embedded_public_key_matches(
+    manifest: &ToolManifest,
+    signer_key: &PublicKey,
+) -> Result<(), ManifestError> {
+    let embedded_key = embedded_public_key(manifest)?;
+    if embedded_key == *signer_key {
+        Ok(())
+    } else {
+        Err(ManifestError::VerificationFailed)
+    }
+}
+
+fn embedded_public_key(manifest: &ToolManifest) -> Result<PublicKey, ManifestError> {
+    PublicKey::from_hex(&manifest.public_key).map_err(|_| ManifestError::VerificationFailed)
 }
 
 #[cfg(test)]
@@ -329,7 +344,7 @@ mod tests {
             }],
             server_tools: Vec::new(),
             required_permissions: None,
-            public_key: "deadbeef".into(),
+            public_key: Keypair::from_seed(&[7u8; 32]).public_key().to_hex(),
         }
     }
 
@@ -361,12 +376,324 @@ mod tests {
     }
 
     #[test]
+    fn validate_rejects_padded_tool_name() {
+        let mut m = sample_manifest();
+        m.tools[0].name = " greet".into();
+
+        assert!(matches!(
+            validate_manifest(&m),
+            Err(ManifestError::InvalidToolName(_))
+        ));
+    }
+
+    #[test]
+    fn validate_allows_unsigned_demo_public_key() {
+        let mut m = sample_manifest();
+        m.public_key = "hello-a2a-manifest".into();
+
+        validate_manifest(&m).unwrap_or_else(|e| panic!("validation: {e}"));
+    }
+
+    #[test]
+    fn validate_rejects_blank_manifest_identity() {
+        let mut m = sample_manifest();
+        m.server_id = " ".into();
+
+        assert!(matches!(
+            validate_manifest(&m),
+            Err(ManifestError::InvalidManifestField("server_id"))
+        ));
+    }
+
+    #[test]
+    fn validate_rejects_padded_manifest_identity() {
+        let mut m = sample_manifest();
+        m.version = " 0.1.0".into();
+
+        assert!(matches!(
+            validate_manifest(&m),
+            Err(ManifestError::InvalidManifestField("version"))
+        ));
+    }
+
+    #[test]
+    fn validate_rejects_manifest_identity_control_characters() {
+        let mut m = sample_manifest();
+        m.server_id = "srv-hello\nbad".into();
+
+        assert!(matches!(
+            validate_manifest(&m),
+            Err(ManifestError::InvalidManifestField("server_id"))
+        ));
+    }
+
+    #[test]
+    fn validate_rejects_tool_name_control_characters() {
+        let mut m = sample_manifest();
+        m.tools[0].name = "greet\nbad".into();
+
+        assert!(matches!(
+            validate_manifest(&m),
+            Err(ManifestError::InvalidToolName(_))
+        ));
+    }
+
+    #[test]
+    fn validate_rejects_non_object_input_schema() {
+        let mut m = sample_manifest();
+        m.tools[0].input_schema = serde_json::json!(["not", "an", "object"]);
+
+        assert!(matches!(
+            validate_manifest(&m),
+            Err(ManifestError::InvalidInputSchema(tool)) if tool == "greet"
+        ));
+    }
+
+    #[test]
+    fn validate_rejects_non_object_output_schema() {
+        let mut m = sample_manifest();
+        m.tools[0].output_schema = Some(serde_json::json!("not an object"));
+
+        assert!(matches!(
+            validate_manifest(&m),
+            Err(ManifestError::InvalidOutputSchema(tool)) if tool == "greet"
+        ));
+    }
+
+    #[test]
+    fn validate_rejects_empty_required_permission_entry() {
+        let mut m = sample_manifest();
+        m.required_permissions = Some(RequiredPermissions {
+            read_paths: Some(vec![String::new()]),
+            write_paths: None,
+            network_hosts: None,
+            environment_variables: None,
+        });
+
+        assert!(matches!(
+            validate_manifest(&m),
+            Err(ManifestError::InvalidRequiredPermission {
+                field: "required_permissions.read_paths",
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn validate_rejects_duplicate_required_permission_entry() {
+        let mut m = sample_manifest();
+        m.required_permissions = Some(RequiredPermissions {
+            read_paths: None,
+            write_paths: None,
+            network_hosts: Some(vec!["api.example.com".into(), "api.example.com".into()]),
+            environment_variables: None,
+        });
+
+        assert!(matches!(
+            validate_manifest(&m),
+            Err(ManifestError::DuplicateRequiredPermission {
+                field: "required_permissions.network_hosts",
+                value,
+            }) if value == "api.example.com"
+        ));
+    }
+
+    #[test]
+    fn validate_rejects_required_permission_control_characters() {
+        let mut m = sample_manifest();
+        m.required_permissions = Some(RequiredPermissions {
+            read_paths: Some(vec!["/tmp/in\nbad".into()]),
+            write_paths: None,
+            network_hosts: None,
+            environment_variables: None,
+        });
+
+        assert!(matches!(
+            validate_manifest(&m),
+            Err(ManifestError::InvalidRequiredPermission {
+                field: "required_permissions.read_paths",
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn validate_rejects_per_invocation_pricing_without_unit_price() {
+        let mut m = sample_manifest();
+        m.tools[0].pricing.as_mut().unwrap().unit_price = None;
+
+        assert!(matches!(
+            validate_manifest(&m),
+            Err(ManifestError::InvalidManifestField(
+                "tools.pricing.unit_price"
+            ))
+        ));
+    }
+
+    #[test]
+    fn validate_rejects_hybrid_pricing_without_base_price() {
+        let mut m = sample_manifest();
+        let pricing = m.tools[0].pricing.as_mut().unwrap();
+        pricing.pricing_model = PricingModel::Hybrid;
+        pricing.base_price = None;
+        pricing.unit_price = Some(MonetaryAmount {
+            units: 10,
+            currency: "USD".to_string(),
+        });
+        pricing.billing_unit = Some("document".to_string());
+
+        assert!(matches!(
+            validate_manifest(&m),
+            Err(ManifestError::InvalidManifestField(
+                "tools.pricing.base_price"
+            ))
+        ));
+    }
+
+    #[test]
+    fn validate_rejects_padded_pricing_billing_unit() {
+        let mut m = sample_manifest();
+        m.tools[0].pricing.as_mut().unwrap().billing_unit = Some(" invocation".to_string());
+
+        assert!(matches!(
+            validate_manifest(&m),
+            Err(ManifestError::InvalidManifestField(
+                "tools.pricing.billing_unit"
+            ))
+        ));
+    }
+
+    #[test]
+    fn validate_rejects_invalid_pricing_currency() {
+        let mut m = sample_manifest();
+        m.tools[0]
+            .pricing
+            .as_mut()
+            .unwrap()
+            .unit_price
+            .as_mut()
+            .unwrap()
+            .currency = "usd".to_string();
+
+        assert!(matches!(
+            validate_manifest(&m),
+            Err(ManifestError::InvalidManifestField(
+                "tools.pricing.currency"
+            ))
+        ));
+    }
+
+    #[test]
     fn sign_and_verify_manifest() {
         let kp = Keypair::generate();
 
-        let m = sample_manifest();
+        let mut m = sample_manifest();
+        m.public_key = kp.public_key().to_hex();
         let signed = sign_manifest(&m, &kp).unwrap_or_else(|e| panic!("sign: {e}"));
         verify_manifest(&signed, &kp.public_key()).unwrap_or_else(|e| panic!("verify: {e}"));
+    }
+
+    #[test]
+    fn sign_manifest_rejects_mismatched_embedded_public_key() {
+        let signer = Keypair::generate();
+        let other = Keypair::generate();
+        let mut m = sample_manifest();
+        m.public_key = other.public_key().to_hex();
+
+        assert!(matches!(
+            sign_manifest(&m, &signer),
+            Err(ManifestError::VerificationFailed)
+        ));
+    }
+
+    #[test]
+    fn sign_manifest_rejects_invalid_embedded_public_key() {
+        let signer = Keypair::generate();
+        let mut m = sample_manifest();
+        m.public_key = "not-a-public-key".into();
+
+        assert!(matches!(
+            sign_manifest(&m, &signer),
+            Err(ManifestError::VerificationFailed)
+        ));
+    }
+
+    #[test]
+    fn verify_manifest_rejects_mismatched_embedded_public_key() {
+        let trusted = Keypair::generate();
+        let other = Keypair::generate();
+        let mut m = sample_manifest();
+        m.public_key = other.public_key().to_hex();
+        let (signature, _bytes) = trusted
+            .sign_canonical(&m)
+            .unwrap_or_else(|e| panic!("sign: {e}"));
+        let signed = SignedManifest {
+            manifest: m,
+            signature,
+            signer_key: trusted.public_key(),
+        };
+
+        assert!(matches!(
+            verify_manifest(&signed, &trusted.public_key()),
+            Err(ManifestError::VerificationFailed)
+        ));
+    }
+
+    #[test]
+    fn verify_manifest_rejects_invalid_embedded_public_key() {
+        let trusted = Keypair::generate();
+        let mut m = sample_manifest();
+        m.public_key = "not-a-public-key".into();
+        let (signature, _bytes) = trusted
+            .sign_canonical(&m)
+            .unwrap_or_else(|e| panic!("sign: {e}"));
+        let signed = SignedManifest {
+            manifest: m,
+            signature,
+            signer_key: trusted.public_key(),
+        };
+
+        assert!(matches!(
+            verify_manifest(&signed, &trusted.public_key()),
+            Err(ManifestError::VerificationFailed)
+        ));
+    }
+
+    #[test]
+    fn verify_manifest_rejects_mismatched_signed_signer_key() {
+        let trusted = Keypair::generate();
+        let other = Keypair::generate();
+
+        let mut m = sample_manifest();
+        m.public_key = trusted.public_key().to_hex();
+        let mut signed = sign_manifest(&m, &trusted).unwrap_or_else(|e| panic!("sign: {e}"));
+        signed.signer_key = other.public_key();
+
+        assert!(matches!(
+            verify_manifest(&signed, &trusted.public_key()),
+            Err(ManifestError::VerificationFailed)
+        ));
+    }
+
+    #[test]
+    fn signed_manifest_rejects_unknown_envelope_fields() {
+        let kp = Keypair::generate();
+        let mut m = sample_manifest();
+        m.public_key = kp.public_key().to_hex();
+        let signed = sign_manifest(&m, &kp).unwrap_or_else(|e| panic!("sign: {e}"));
+        let mut encoded =
+            serde_json::to_value(&signed).unwrap_or_else(|e| panic!("encode signed manifest: {e}"));
+        encoded
+            .as_object_mut()
+            .unwrap_or_else(|| panic!("signed manifest encodes as object"))
+            .insert("unsigned_policy_hint".to_string(), serde_json::json!(true));
+
+        let error = serde_json::from_value::<SignedManifest>(encoded).unwrap_err();
+
+        assert!(
+            error.to_string().contains("unknown field"),
+            "expected unknown-field parse error, got {error}"
+        );
     }
 
     #[test]

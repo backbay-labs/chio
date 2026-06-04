@@ -2,7 +2,7 @@
 
 use std::fs;
 use std::io::{BufRead, BufReader, Read};
-use std::net::{SocketAddr, TcpListener};
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -12,6 +12,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 use base64::Engine;
 use chio_core::crypto::Keypair;
+use chio_test_support::loopback::{reserve_listen_addr, skip_when_loopback_bind_denied};
 use reqwest::blocking::{Client, Response};
 use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE};
 use serde_json::{json, Value};
@@ -32,11 +33,12 @@ fn unique_test_dir() -> PathBuf {
     ))
 }
 
-fn reserve_listen_addr() -> SocketAddr {
-    let listener = TcpListener::bind("127.0.0.1:0").expect("bind temp listener");
-    let addr = listener.local_addr().expect("listener addr");
-    drop(listener);
-    addr
+macro_rules! skip_when_loopback_denied {
+    ($test_name:ident) => {
+        if skip_when_loopback_bind_denied(stringify!($test_name)) {
+            return;
+        }
+    };
 }
 
 struct ServerGuard {
@@ -2038,6 +2040,9 @@ fn initialize_session_with_capabilities(
 
 #[test]
 fn mcp_serve_http_streams_roots_request_after_initialized_when_client_supports_roots() {
+    skip_when_loopback_denied!(
+        mcp_serve_http_streams_roots_request_after_initialized_when_client_supports_roots
+    );
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let listen = reserve_listen_addr();
@@ -2135,6 +2140,7 @@ fn mcp_serve_http_streams_roots_request_after_initialized_when_client_supports_r
 
 #[test]
 fn mcp_serve_http_requires_auth_reuses_sessions_and_supports_delete() {
+    skip_when_loopback_denied!(mcp_serve_http_requires_auth_reuses_sessions_and_supports_delete);
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let listen = reserve_listen_addr();
@@ -2237,6 +2243,9 @@ fn mcp_serve_http_requires_auth_reuses_sessions_and_supports_delete() {
 
 #[test]
 fn mcp_serve_http_session_trust_reports_lifecycle_and_reconnect_contract() {
+    skip_when_loopback_denied!(
+        mcp_serve_http_session_trust_reports_lifecycle_and_reconnect_contract
+    );
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let token = "test-token";
@@ -2339,6 +2348,9 @@ fn mcp_serve_http_session_trust_reports_lifecycle_and_reconnect_contract() {
 
 #[test]
 fn mcp_serve_http_session_trust_reports_request_stream_lease_while_post_stream_is_open() {
+    skip_when_loopback_denied!(
+        mcp_serve_http_session_trust_reports_request_stream_lease_while_post_stream_is_open
+    );
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let listen = reserve_listen_addr();
@@ -2408,6 +2420,7 @@ fn mcp_serve_http_session_trust_reports_request_stream_lease_while_post_stream_i
 
 #[test]
 fn mcp_serve_http_idle_expiry_reaps_sessions_and_blocks_reuse() {
+    skip_when_loopback_denied!(mcp_serve_http_idle_expiry_reaps_sessions_and_blocks_reuse);
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let listen = reserve_listen_addr();
@@ -2480,6 +2493,9 @@ fn mcp_serve_http_idle_expiry_reaps_sessions_and_blocks_reuse() {
 
 #[test]
 fn mcp_serve_http_admin_drain_shutdown_and_delete_have_distinct_terminal_states() {
+    skip_when_loopback_denied!(
+        mcp_serve_http_admin_drain_shutdown_and_delete_have_distinct_terminal_states
+    );
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let listen = reserve_listen_addr();
@@ -2608,6 +2624,7 @@ fn mcp_serve_http_admin_drain_shutdown_and_delete_have_distinct_terminal_states(
 
 #[test]
 fn mcp_serve_http_terminal_tombstones_survive_restart_and_block_reuse() {
+    skip_when_loopback_denied!(mcp_serve_http_terminal_tombstones_survive_restart_and_block_reuse);
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let listen = reserve_listen_addr();
@@ -2772,6 +2789,9 @@ fn mcp_serve_http_terminal_tombstones_survive_restart_and_block_reuse() {
 
 #[test]
 fn mcp_serve_http_ready_sessions_survive_restart_and_resume_authenticated_calls() {
+    skip_when_loopback_denied!(
+        mcp_serve_http_ready_sessions_survive_restart_and_resume_authenticated_calls
+    );
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let listen = reserve_listen_addr();
@@ -2857,6 +2877,9 @@ fn mcp_serve_http_ready_sessions_survive_restart_and_resume_authenticated_calls(
 
 #[test]
 fn mcp_serve_http_ready_sessions_reissue_capabilities_after_policy_tightening() {
+    skip_when_loopback_denied!(
+        mcp_serve_http_ready_sessions_reissue_capabilities_after_policy_tightening
+    );
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let listen = reserve_listen_addr();
@@ -2945,6 +2968,9 @@ fn mcp_serve_http_ready_sessions_reissue_capabilities_after_policy_tightening() 
 #[test]
 #[ignore = "flaky on CI: TTL-bounded session restore race; passes locally"]
 fn mcp_serve_http_restores_sessions_with_fresh_capabilities_after_ttl_expiry() {
+    skip_when_loopback_denied!(
+        mcp_serve_http_restores_sessions_with_fresh_capabilities_after_ttl_expiry
+    );
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let listen = reserve_listen_addr();
@@ -3017,6 +3043,7 @@ fn mcp_serve_http_restores_sessions_with_fresh_capabilities_after_ttl_expiry() {
 
 #[test]
 fn mcp_serve_http_drops_restored_sessions_when_auth_mode_changes() {
+    skip_when_loopback_denied!(mcp_serve_http_drops_restored_sessions_when_auth_mode_changes);
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let listen = reserve_listen_addr();
@@ -3073,6 +3100,7 @@ fn mcp_serve_http_drops_restored_sessions_when_auth_mode_changes() {
 
 #[test]
 fn mcp_serve_http_isolates_multiple_sessions() {
+    skip_when_loopback_denied!(mcp_serve_http_isolates_multiple_sessions);
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let listen = reserve_listen_addr();
@@ -3154,6 +3182,7 @@ fn mcp_serve_http_isolates_multiple_sessions() {
 
 #[test]
 fn mcp_serve_http_get_stream_owns_session_notifications_when_attached() {
+    skip_when_loopback_denied!(mcp_serve_http_get_stream_owns_session_notifications_when_attached);
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let listen = reserve_listen_addr();
@@ -3280,6 +3309,9 @@ fn mcp_serve_http_get_stream_owns_session_notifications_when_attached() {
 
 #[test]
 fn mcp_serve_http_get_stream_replays_retained_notifications_and_rejects_stale_cursor() {
+    skip_when_loopback_denied!(
+        mcp_serve_http_get_stream_replays_retained_notifications_and_rejects_stale_cursor
+    );
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let listen = reserve_listen_addr();
@@ -3440,6 +3472,9 @@ fn mcp_serve_http_get_stream_replays_retained_notifications_and_rejects_stale_cu
 
 #[test]
 fn mcp_serve_http_get_stream_receives_late_wrapped_notifications_after_post_finishes() {
+    skip_when_loopback_denied!(
+        mcp_serve_http_get_stream_receives_late_wrapped_notifications_after_post_finishes
+    );
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let listen = reserve_listen_addr();
@@ -3506,6 +3541,7 @@ fn mcp_serve_http_get_stream_receives_late_wrapped_notifications_after_post_fini
 
 #[test]
 fn mcp_serve_http_returns_error_when_wrapped_stream_ends_mid_call() {
+    skip_when_loopback_denied!(mcp_serve_http_returns_error_when_wrapped_stream_ends_mid_call);
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let listen = reserve_listen_addr();
@@ -3549,6 +3585,9 @@ fn mcp_serve_http_returns_error_when_wrapped_stream_ends_mid_call() {
 
 #[test]
 fn mcp_serve_http_cancels_same_session_tasks_and_blocks_cross_session_cancel() {
+    skip_when_loopback_denied!(
+        mcp_serve_http_cancels_same_session_tasks_and_blocks_cross_session_cancel
+    );
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let listen = reserve_listen_addr();
@@ -3650,6 +3689,7 @@ fn mcp_serve_http_cancels_same_session_tasks_and_blocks_cross_session_cancel() {
 
 #[test]
 fn mcp_serve_http_shared_hosted_owner_reuses_one_upstream_subprocess_and_keeps_sessions_isolated() {
+    skip_when_loopback_denied!(mcp_serve_http_shared_hosted_owner_reuses_one_upstream_subprocess_and_keeps_sessions_isolated);
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let listen = reserve_listen_addr();
@@ -3816,6 +3856,7 @@ fn mcp_serve_http_shared_hosted_owner_reuses_one_upstream_subprocess_and_keeps_s
 
 #[test]
 fn mcp_serve_http_shared_hosted_owner_broadcasts_global_notifications() {
+    skip_when_loopback_denied!(mcp_serve_http_shared_hosted_owner_broadcasts_global_notifications);
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let listen = reserve_listen_addr();
@@ -3908,6 +3949,7 @@ fn mcp_serve_http_shared_hosted_owner_broadcasts_global_notifications() {
 
 #[test]
 fn mcp_serve_http_supports_nested_sampling_over_sse() {
+    skip_when_loopback_denied!(mcp_serve_http_supports_nested_sampling_over_sse);
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let listen = reserve_listen_addr();
@@ -3980,6 +4022,9 @@ fn mcp_serve_http_supports_nested_sampling_over_sse() {
 
 #[test]
 fn mcp_serve_http_parent_cancellation_during_tasks_result_marks_task_cancelled() {
+    skip_when_loopback_denied!(
+        mcp_serve_http_parent_cancellation_during_tasks_result_marks_task_cancelled
+    );
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let listen = reserve_listen_addr();
@@ -4106,6 +4151,7 @@ fn mcp_serve_http_parent_cancellation_during_tasks_result_marks_task_cancelled()
 
 #[test]
 fn mcp_serve_http_admin_receipt_queries_return_tool_and_child_receipts() {
+    skip_when_loopback_denied!(mcp_serve_http_admin_receipt_queries_return_tool_and_child_receipts);
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let listen = reserve_listen_addr();
@@ -4219,6 +4265,7 @@ fn mcp_serve_http_admin_receipt_queries_return_tool_and_child_receipts() {
 
 #[test]
 fn mcp_serve_http_admin_revocation_queries_and_direct_revoke_work() {
+    skip_when_loopback_denied!(mcp_serve_http_admin_revocation_queries_and_direct_revoke_work);
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let token = "test-token";
@@ -4290,6 +4337,7 @@ fn mcp_serve_http_admin_revocation_queries_and_direct_revoke_work() {
 
 #[test]
 fn mcp_serve_http_admin_revocation_denies_future_calls_for_session() {
+    skip_when_loopback_denied!(mcp_serve_http_admin_revocation_denies_future_calls_for_session);
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let token = "test-token";
@@ -4369,6 +4417,9 @@ fn mcp_serve_http_admin_revocation_denies_future_calls_for_session() {
 
 #[test]
 fn mcp_serve_http_admin_authority_rotation_only_affects_future_sessions() {
+    skip_when_loopback_denied!(
+        mcp_serve_http_admin_authority_rotation_only_affects_future_sessions
+    );
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let listen = reserve_listen_addr();
@@ -4448,6 +4499,7 @@ fn mcp_serve_http_admin_authority_rotation_only_affects_future_sessions() {
 
 #[test]
 fn mcp_serve_http_shared_authority_rotation_propagates_across_nodes() {
+    skip_when_loopback_denied!(mcp_serve_http_shared_authority_rotation_propagates_across_nodes);
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let authority_db_path = dir.join("shared-authority.sqlite3");
@@ -4541,6 +4593,9 @@ fn mcp_serve_http_shared_authority_rotation_propagates_across_nodes() {
 
 #[test]
 fn mcp_serve_http_control_service_centralizes_receipts_revocations_and_authority() {
+    skip_when_loopback_denied!(
+        mcp_serve_http_control_service_centralizes_receipts_revocations_and_authority
+    );
     let dir = unique_test_dir();
     let node_a_dir = dir.join("node-a");
     let node_b_dir = dir.join("node-b");
@@ -4795,6 +4850,7 @@ fn mcp_serve_http_control_service_centralizes_receipts_revocations_and_authority
 #[test]
 fn mcp_serve_http_dedicated_jwt_sessions_require_exact_bearer_continuity_and_separate_admin_token()
 {
+    skip_when_loopback_denied!(mcp_serve_http_dedicated_jwt_sessions_require_exact_bearer_continuity_and_separate_admin_token);
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let listen = reserve_listen_addr();
@@ -4893,6 +4949,9 @@ fn mcp_serve_http_dedicated_jwt_sessions_require_exact_bearer_continuity_and_sep
 
 #[test]
 fn mcp_serve_http_shared_owner_jwt_sessions_keep_weak_compatibility_continuity() {
+    skip_when_loopback_denied!(
+        mcp_serve_http_shared_owner_jwt_sessions_keep_weak_compatibility_continuity
+    );
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let issuer = "https://issuer.example";
@@ -4987,6 +5046,9 @@ fn mcp_serve_http_shared_owner_jwt_sessions_keep_weak_compatibility_continuity()
 
 #[test]
 fn mcp_serve_http_identity_federation_derives_stable_subjects_from_jwt_principals() {
+    skip_when_loopback_denied!(
+        mcp_serve_http_identity_federation_derives_stable_subjects_from_jwt_principals
+    );
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let listen = reserve_listen_addr();
@@ -5206,6 +5268,7 @@ fn mcp_serve_http_identity_federation_derives_stable_subjects_from_jwt_principal
 
 #[test]
 fn mcp_serve_http_admin_health_reports_runtime_state() {
+    skip_when_loopback_denied!(mcp_serve_http_admin_health_reports_runtime_state);
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let listen = reserve_listen_addr();
@@ -5264,6 +5327,9 @@ fn mcp_serve_http_admin_health_reports_runtime_state() {
 
 #[test]
 fn mcp_serve_http_oidc_discovery_verifies_jwt_and_uses_azure_ad_profile_mapping() {
+    skip_when_loopback_denied!(
+        mcp_serve_http_oidc_discovery_verifies_jwt_and_uses_azure_ad_profile_mapping
+    );
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let idp_listen = reserve_listen_addr();
@@ -5400,6 +5466,7 @@ fn mcp_serve_http_oidc_discovery_verifies_jwt_and_uses_azure_ad_profile_mapping(
 
 #[test]
 fn mcp_serve_http_oidc_discovery_verifies_rs256_tokens() {
+    skip_when_loopback_denied!(mcp_serve_http_oidc_discovery_verifies_rs256_tokens);
     use rsa::traits::PublicKeyParts as _;
 
     let dir = unique_test_dir();
@@ -5477,6 +5544,7 @@ fn mcp_serve_http_oidc_discovery_verifies_rs256_tokens() {
 
 #[test]
 fn mcp_serve_http_oidc_discovery_verifies_es256_tokens() {
+    skip_when_loopback_denied!(mcp_serve_http_oidc_discovery_verifies_es256_tokens);
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let idp_listen = reserve_listen_addr();
@@ -5555,6 +5623,9 @@ fn mcp_serve_http_oidc_discovery_verifies_es256_tokens() {
 
 #[test]
 fn mcp_serve_http_token_introspection_verifies_opaque_tokens_and_derives_stable_subjects() {
+    skip_when_loopback_denied!(
+        mcp_serve_http_token_introspection_verifies_opaque_tokens_and_derives_stable_subjects
+    );
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let introspection_listen = reserve_listen_addr();
@@ -5712,6 +5783,9 @@ fn mcp_serve_http_token_introspection_verifies_opaque_tokens_and_derives_stable_
 
 #[test]
 fn mcp_serve_http_rejects_session_reuse_when_authenticated_principal_changes() {
+    skip_when_loopback_denied!(
+        mcp_serve_http_rejects_session_reuse_when_authenticated_principal_changes
+    );
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let listen = reserve_listen_addr();
@@ -5784,6 +5858,7 @@ fn mcp_serve_http_rejects_session_reuse_when_authenticated_principal_changes() {
 
 #[test]
 fn mcp_serve_http_rejects_jwt_with_wrong_audience() {
+    skip_when_loopback_denied!(mcp_serve_http_rejects_jwt_with_wrong_audience);
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let listen = reserve_listen_addr();
@@ -5871,6 +5946,9 @@ fn mcp_serve_http_rejects_jwt_with_wrong_audience() {
 
 #[test]
 fn mcp_serve_http_serves_oauth_authorization_server_metadata_for_local_issuer() {
+    skip_when_loopback_denied!(
+        mcp_serve_http_serves_oauth_authorization_server_metadata_for_local_issuer
+    );
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let listen = reserve_listen_addr();
@@ -5949,6 +6027,7 @@ fn mcp_serve_http_serves_oauth_authorization_server_metadata_for_local_issuer() 
 
 #[test]
 fn mcp_serve_http_requires_both_accept_types_and_json_content_type() {
+    skip_when_loopback_denied!(mcp_serve_http_requires_both_accept_types_and_json_content_type);
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let listen = reserve_listen_addr();
@@ -6003,6 +6082,7 @@ fn mcp_serve_http_requires_both_accept_types_and_json_content_type() {
 
 #[test]
 fn mcp_serve_http_sets_explicit_response_mode_headers() {
+    skip_when_loopback_denied!(mcp_serve_http_sets_explicit_response_mode_headers);
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let listen = reserve_listen_addr();
@@ -6121,6 +6201,9 @@ fn mcp_serve_http_sets_explicit_response_mode_headers() {
 
 #[test]
 fn mcp_serve_http_rejects_initialize_with_session_header_without_issuing_session() {
+    skip_when_loopback_denied!(
+        mcp_serve_http_rejects_initialize_with_session_header_without_issuing_session
+    );
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let listen = reserve_listen_addr();
@@ -6161,6 +6244,7 @@ fn mcp_serve_http_rejects_initialize_with_session_header_without_issuing_session
 
 #[test]
 fn mcp_serve_http_rejects_initialize_without_request_id() {
+    skip_when_loopback_denied!(mcp_serve_http_rejects_initialize_without_request_id);
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let listen = reserve_listen_addr();
@@ -6200,6 +6284,7 @@ fn mcp_serve_http_rejects_initialize_without_request_id() {
 
 #[test]
 fn mcp_serve_http_rejects_malformed_jsonrpc_body() {
+    skip_when_loopback_denied!(mcp_serve_http_rejects_malformed_jsonrpc_body);
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
     let listen = reserve_listen_addr();

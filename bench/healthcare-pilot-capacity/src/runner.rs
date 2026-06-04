@@ -205,4 +205,66 @@ mod tests {
         assert_eq!(rows.len(), 3);
         assert!(rows.iter().all(|row| row.contains("pass")));
     }
+
+    #[test]
+    fn shadow_capture_rejects_sidecar_url_that_breaks_json() {
+        let root = std::env::temp_dir().join(format!(
+            "chio-healthcare-pilot-capacity-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        if let Err(error) = std::fs::create_dir_all(&root) {
+            panic!("create temp dir {} failed: {error}", root.display());
+        }
+        let output = root.join("capture.json");
+        let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("scripts")
+            .join("shadow-capture.sh");
+        let status = match std::process::Command::new("bash")
+            .arg(&script)
+            .arg("--sidecar-url")
+            .arg("https://example.invalid/\"bad")
+            .arg("--output")
+            .arg(&output)
+            .status()
+        {
+            Ok(status) => status,
+            Err(error) => panic!("run {} failed: {error}", script.display()),
+        };
+
+        assert!(!status.success());
+        assert!(!output.exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn shadow_capture_rejects_ascii_control_sidecar_url() {
+        let root = std::env::temp_dir().join(format!(
+            "chio-healthcare-pilot-capacity-control-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        if let Err(error) = std::fs::create_dir_all(&root) {
+            panic!("create temp dir {} failed: {error}", root.display());
+        }
+        let output = root.join("capture.json");
+        let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("scripts")
+            .join("shadow-capture.sh");
+        let status = match std::process::Command::new("bash")
+            .arg(&script)
+            .arg("--sidecar-url")
+            .arg("https://example.invalid/\u{000C}bad")
+            .arg("--output")
+            .arg(&output)
+            .status()
+        {
+            Ok(status) => status,
+            Err(error) => panic!("run {} failed: {error}", script.display()),
+        };
+
+        assert!(!status.success());
+        assert!(!output.exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

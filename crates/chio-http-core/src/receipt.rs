@@ -231,6 +231,12 @@ impl HttpReceipt {
     /// Verify the receipt signature against the embedded kernel key.
     pub fn verify_signature(&self) -> chio_core_types::Result<bool> {
         let body = self.body();
+        if body.validate_authority_semantics().is_err() {
+            return Ok(false);
+        }
+        if compute_http_receipt_id(&body)? != self.id {
+            return Ok(false);
+        }
         self.kernel_key.verify_canonical(&body, &self.signature)
     }
 
@@ -441,6 +447,21 @@ mod tests {
         assert!(error
             .to_string()
             .contains("HTTP receipts must be mediated_decision receipts"));
+    }
+
+    #[test]
+    fn verify_signature_rejects_signed_authority_shape_drift() {
+        let kp = test_keypair();
+        let body = sample_body(&kp);
+        let mut receipt = HttpReceipt::sign(body, &kp).test_unwrap();
+        receipt.receipt_kind = ReceiptKind::TraceObservation;
+        receipt.boundary_class = BoundaryClass::DetectOnly;
+        receipt.observation_outcome = Some(ObservationOutcome::Observed);
+        receipt.trust_level = TrustLevel::Verified;
+        let (signature, _) = kp.sign_canonical(&receipt.body()).test_unwrap();
+        receipt.signature = signature;
+
+        assert!(!receipt.verify_signature().test_unwrap());
     }
 
     #[test]

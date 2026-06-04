@@ -132,9 +132,9 @@ pub fn cmd_roots(roots_dir: &Path) -> Result<CliRootsReport, LineageCliError> {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use chio_lineage::ingest_replay_corpus::{CorpusReceiptRow, ingest_corpus};
+    use chio_lineage::ingest_replay_corpus::{CorpusIngestError, CorpusReceiptRow, ingest_corpus};
 
-    fn fixture_graph() -> LineageGraph {
+    fn fixture_graph() -> Result<LineageGraph, CorpusIngestError> {
         ingest_corpus(&[CorpusReceiptRow {
             receipt_id: "r1".into(),
             parent_receipt_id: None,
@@ -148,10 +148,10 @@ mod tests {
     }
 
     #[test]
-    fn query_forward_finds_receipts_from_capability() {
+    fn query_forward_finds_receipts_from_capability() -> Result<(), Box<dyn std::error::Error>> {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("g.json");
-        let g = fixture_graph();
+        let g = fixture_graph()?;
         fs::write(&path, serde_json::to_vec(&g).unwrap()).unwrap();
         let report = cmd_query(
             &path,
@@ -163,20 +163,22 @@ mod tests {
         assert_eq!(report.direction, "forward");
         assert_eq!(report.schema, LINEAGE_CLI_SCHEMA);
         assert!(!report.graph.nodes.is_empty());
+        Ok(())
     }
 
     #[test]
-    fn diff_emits_stable_schema() {
+    fn diff_emits_stable_schema() -> Result<(), Box<dyn std::error::Error>> {
         let dir = tempfile::tempdir().unwrap();
         let lp = dir.path().join("l.json");
         let rp = dir.path().join("r.json");
-        let g = fixture_graph();
+        let g = fixture_graph()?;
         fs::write(&lp, serde_json::to_vec(&g).unwrap()).unwrap();
         fs::write(&rp, serde_json::to_vec(&g).unwrap()).unwrap();
         let report = cmd_diff("v1", &lp, "v2", &rp).unwrap();
         assert_eq!(report.schema, LINEAGE_CLI_SCHEMA);
         assert!(report.diff.only_left.is_empty());
         assert!(report.diff.only_right.is_empty());
+        Ok(())
     }
 
     #[test]

@@ -55,6 +55,23 @@ pub const UNDERWRITING_APPEAL_SCHEMA: &str = "chio.underwriting.appeal.v1";
 pub const MAX_UNDERWRITING_RECEIPT_LIMIT: usize = 200;
 pub const MAX_UNDERWRITING_DECISION_LIMIT: usize = 200;
 
+fn bounded_underwriting_limit(limit: Option<usize>, default: usize, max: usize) -> usize {
+    limit.unwrap_or(default).clamp(1, max)
+}
+
+fn validate_optional_underwriting_filter(value: Option<&str>, field: &str) -> Result<(), String> {
+    let Some(value) = value else {
+        return Ok(());
+    };
+    if value.trim().is_empty() {
+        return Err(format!("{field} must not be empty"));
+    }
+    if value.trim() != value {
+        return Err(format!("{field} must not contain surrounding whitespace"));
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 pub enum UnderwritingRiskClass {
@@ -286,9 +303,7 @@ impl Default for UnderwritingPolicyInputQuery {
 impl UnderwritingPolicyInputQuery {
     #[must_use]
     pub fn receipt_limit_or_default(&self) -> usize {
-        self.receipt_limit
-            .unwrap_or(100)
-            .clamp(1, MAX_UNDERWRITING_RECEIPT_LIMIT)
+        bounded_underwriting_limit(self.receipt_limit, 100, MAX_UNDERWRITING_RECEIPT_LIMIT)
     }
 
     #[must_use]
@@ -299,6 +314,10 @@ impl UnderwritingPolicyInputQuery {
     }
 
     pub fn validate(&self) -> Result<(), String> {
+        validate_optional_underwriting_filter(self.capability_id.as_deref(), "capability_id")?;
+        validate_optional_underwriting_filter(self.agent_subject.as_deref(), "agent_subject")?;
+        validate_optional_underwriting_filter(self.tool_server.as_deref(), "tool_server")?;
+        validate_optional_underwriting_filter(self.tool_name.as_deref(), "tool_name")?;
         if self.capability_id.is_none()
             && self.agent_subject.is_none()
             && self.tool_server.is_none()
@@ -656,9 +675,7 @@ impl Default for UnderwritingDecisionQuery {
 impl UnderwritingDecisionQuery {
     #[must_use]
     pub fn limit_or_default(&self) -> usize {
-        self.limit
-            .unwrap_or(50)
-            .clamp(1, MAX_UNDERWRITING_DECISION_LIMIT)
+        bounded_underwriting_limit(self.limit, 50, MAX_UNDERWRITING_DECISION_LIMIT)
     }
 
     #[must_use]
@@ -1232,6 +1249,14 @@ mod tests {
     }
 
     #[test]
+    fn bounded_underwriting_limit_clamps_default_and_edges() {
+        assert_eq!(bounded_underwriting_limit(None, 100, 200), 100);
+        assert_eq!(bounded_underwriting_limit(Some(0), 100, 200), 1);
+        assert_eq!(bounded_underwriting_limit(Some(250), 100, 200), 200);
+        assert_eq!(bounded_underwriting_limit(Some(75), 100, 200), 75);
+    }
+
+    #[test]
     fn underwriting_query_requires_anchor() {
         let query = UnderwritingPolicyInputQuery::default();
         let error = query.validate().unwrap_err();
@@ -1267,6 +1292,23 @@ mod tests {
         );
         let error = query.validate().unwrap_err();
         assert!(error.contains("since > until"));
+    }
+
+    #[test]
+    fn underwriting_query_rejects_blank_or_padded_filters() {
+        let query = UnderwritingPolicyInputQuery {
+            agent_subject: Some(" ".to_string()),
+            ..UnderwritingPolicyInputQuery::default()
+        };
+        let error = query.validate().unwrap_err();
+        assert!(error.contains("agent_subject"));
+
+        let query = UnderwritingPolicyInputQuery {
+            tool_server: Some("tool-server ".to_string()),
+            ..UnderwritingPolicyInputQuery::default()
+        };
+        let error = query.validate().unwrap_err();
+        assert!(error.contains("tool_server"));
     }
 
     #[test]

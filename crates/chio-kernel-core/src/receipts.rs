@@ -6,6 +6,8 @@
 //! the FIPS-capable signing path available on every adapter.
 
 use alloc::string::ToString;
+#[cfg(kani)]
+use alloc::vec::Vec;
 
 use chio_core_types::crypto::SigningBackend;
 use chio_core_types::receipt::{ChioReceipt, ChioReceiptBody};

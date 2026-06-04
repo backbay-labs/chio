@@ -172,6 +172,18 @@ fn receipt_projection_signs_and_proves_disclosed_fields_with_bbs_selective_discl
 }
 
 #[test]
+fn projection_rejects_uppercase_sha256_digest_fields() {
+    let ed25519 = Keypair::generate();
+    let mut receipt = receipt_fixture(&ed25519);
+    receipt.content_hash = receipt.content_hash.to_uppercase();
+
+    assert!(matches!(
+        project_receipt_body(&receipt),
+        Err(SelectiveDisclosureError::MalformedHexField { field, .. }) if field == "content_hash"
+    ));
+}
+
+#[test]
 fn workflow_and_step_projections_have_stable_versions() {
     let ed25519 = Keypair::generate();
     let workflow = workflow_fixture(&ed25519);
@@ -284,5 +296,28 @@ fn proof_rejects_message_count_inflation_before_bbs_verification() {
     assert!(matches!(
         verify_selective_disclosure_proof(&proof, &registry),
         Err(SelectiveDisclosureError::ProofVerificationFailed)
+    ));
+}
+
+#[test]
+fn proof_rejects_uppercase_disclosed_message_hex() {
+    let ed25519 = Keypair::generate();
+    let receipt = receipt_fixture(&ed25519);
+    let projection = project_receipt_body(&receipt).unwrap();
+    let keypair = generate_bbs_keypair(b"chio-bbs-signing-key-material-0006", b"chio").unwrap();
+    let signed = sign_projection(&projection, &keypair).unwrap();
+    let mut proof = derive_selective_disclosure_proof(
+        &signed,
+        &projection,
+        &keypair,
+        &DisclosureSet(vec![5]),
+        b"auditor-session-nonce",
+    )
+    .unwrap();
+    proof.disclosed[0].bytes_hex = proof.disclosed[0].bytes_hex.to_uppercase();
+
+    assert!(matches!(
+        verify_selective_disclosure_proof(&proof, &registry_for_key(&keypair)),
+        Err(SelectiveDisclosureError::MalformedHexField { field, .. }) if field == "id"
     ));
 }

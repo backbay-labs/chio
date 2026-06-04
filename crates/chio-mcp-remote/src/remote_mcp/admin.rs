@@ -28,11 +28,35 @@ pub(super) fn install_admin_routes(router: Router<RemoteAppState>) -> Router<Rem
         )
 }
 
-async fn handle_admin_authority(State(state): State<RemoteAppState>, request: Request) -> Response {
-    if let Err(response) = validate_origin(request.headers()) {
-        return response;
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_admin_request_accepts_local_origin_and_matching_bearer_token() {
+        let mut headers = HeaderMap::new();
+        headers.insert(ORIGIN, HeaderValue::from_static("http://localhost"));
+        headers.insert(
+            AUTHORIZATION,
+            HeaderValue::from_static("Bearer admin-token"),
+        );
+
+        assert!(validate_admin_request(&headers, Some("admin-token")).is_ok());
     }
-    if let Err(response) = validate_admin_auth(request.headers(), state.admin_token.as_deref()) {
+
+    #[test]
+    fn validate_admin_request_rejects_disallowed_origin_before_bearer_auth() {
+        let mut headers = HeaderMap::new();
+        headers.insert(ORIGIN, HeaderValue::from_static("https://remote.example"));
+
+        let response = validate_admin_request(&headers, Some("admin-token"))
+            .expect_err("origin validation should run before bearer auth");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+}
+
+async fn handle_admin_authority(State(state): State<RemoteAppState>, request: Request) -> Response {
+    if let Err(response) = validate_admin_request(request.headers(), state.admin_token.as_deref()) {
         return response;
     }
 
@@ -43,10 +67,7 @@ async fn handle_admin_authority(State(state): State<RemoteAppState>, request: Re
 }
 
 async fn handle_admin_health(State(state): State<RemoteAppState>, request: Request) -> Response {
-    if let Err(response) = validate_origin(request.headers()) {
-        return response;
-    }
-    if let Err(response) = validate_admin_auth(request.headers(), state.admin_token.as_deref()) {
+    if let Err(response) = validate_admin_request(request.headers(), state.admin_token.as_deref()) {
         return response;
     }
 
@@ -153,10 +174,7 @@ async fn handle_admin_rotate_authority(
     State(state): State<RemoteAppState>,
     request: Request,
 ) -> Response {
-    if let Err(response) = validate_origin(request.headers()) {
-        return response;
-    }
-    if let Err(response) = validate_admin_auth(request.headers(), state.admin_token.as_deref()) {
+    if let Err(response) = validate_admin_request(request.headers(), state.admin_token.as_deref()) {
         return response;
     }
 
@@ -225,10 +243,7 @@ async fn handle_admin_tool_receipts(
     Query(query): Query<AdminToolReceiptQuery>,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = validate_origin(&headers) {
-        return response;
-    }
-    if let Err(response) = validate_admin_auth(&headers, state.admin_token.as_deref()) {
+    if let Err(response) = validate_admin_request(&headers, state.admin_token.as_deref()) {
         return response;
     }
 
@@ -297,10 +312,7 @@ async fn handle_admin_child_receipts(
     Query(query): Query<AdminChildReceiptQuery>,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = validate_origin(&headers) {
-        return response;
-    }
-    if let Err(response) = validate_admin_auth(&headers, state.admin_token.as_deref()) {
+    if let Err(response) = validate_admin_request(&headers, state.admin_token.as_deref()) {
         return response;
     }
 
@@ -372,10 +384,7 @@ async fn handle_admin_budgets(
     Query(query): Query<AdminBudgetQuery>,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = validate_origin(&headers) {
-        return response;
-    }
-    if let Err(response) = validate_admin_auth(&headers, state.admin_token.as_deref()) {
+    if let Err(response) = validate_admin_request(&headers, state.admin_token.as_deref()) {
         return response;
     }
 
@@ -427,10 +436,7 @@ async fn handle_admin_revocations(
     Query(query): Query<AdminRevocationQuery>,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = validate_origin(&headers) {
-        return response;
-    }
-    if let Err(response) = validate_admin_auth(&headers, state.admin_token.as_deref()) {
+    if let Err(response) = validate_admin_request(&headers, state.admin_token.as_deref()) {
         return response;
     }
 
@@ -491,10 +497,7 @@ async fn handle_admin_revoke_capability(
     headers: HeaderMap,
     Json(payload): Json<AdminRevokeCapabilityRequest>,
 ) -> Response {
-    if let Err(response) = validate_origin(&headers) {
-        return response;
-    }
-    if let Err(response) = validate_admin_auth(&headers, state.admin_token.as_deref()) {
+    if let Err(response) = validate_admin_request(&headers, state.admin_token.as_deref()) {
         return response;
     }
 
@@ -531,10 +534,7 @@ async fn handle_admin_session_trust(
     State(state): State<RemoteAppState>,
     request: Request,
 ) -> Response {
-    if let Err(response) = validate_origin(request.headers()) {
-        return response;
-    }
-    if let Err(response) = validate_admin_auth(request.headers(), state.admin_token.as_deref()) {
+    if let Err(response) = validate_admin_request(request.headers(), state.admin_token.as_deref()) {
         return response;
     }
 
@@ -574,10 +574,7 @@ async fn handle_admin_revoke_session_trust(
     State(state): State<RemoteAppState>,
     request: Request,
 ) -> Response {
-    if let Err(response) = validate_origin(request.headers()) {
-        return response;
-    }
-    if let Err(response) = validate_admin_auth(request.headers(), state.admin_token.as_deref()) {
+    if let Err(response) = validate_admin_request(request.headers(), state.admin_token.as_deref()) {
         return response;
     }
 
@@ -629,10 +626,7 @@ async fn handle_admin_revoke_session_trust(
 }
 
 async fn handle_admin_sessions(State(state): State<RemoteAppState>, request: Request) -> Response {
-    if let Err(response) = validate_origin(request.headers()) {
-        return response;
-    }
-    if let Err(response) = validate_admin_auth(request.headers(), state.admin_token.as_deref()) {
+    if let Err(response) = validate_admin_request(request.headers(), state.admin_token.as_deref()) {
         return response;
     }
 
@@ -656,10 +650,7 @@ async fn handle_admin_session_drain(
     State(state): State<RemoteAppState>,
     request: Request,
 ) -> Response {
-    if let Err(response) = validate_origin(request.headers()) {
-        return response;
-    }
-    if let Err(response) = validate_admin_auth(request.headers(), state.admin_token.as_deref()) {
+    if let Err(response) = validate_admin_request(request.headers(), state.admin_token.as_deref()) {
         return response;
     }
 
@@ -698,10 +689,7 @@ async fn handle_admin_session_shutdown(
     State(state): State<RemoteAppState>,
     request: Request,
 ) -> Response {
-    if let Err(response) = validate_origin(request.headers()) {
-        return response;
-    }
-    if let Err(response) = validate_admin_auth(request.headers(), state.admin_token.as_deref()) {
+    if let Err(response) = validate_admin_request(request.headers(), state.admin_token.as_deref()) {
         return response;
     }
 
@@ -734,6 +722,11 @@ async fn handle_admin_session_shutdown(
         "ownership": record.ownership,
     }))
     .into_response()
+}
+
+fn validate_admin_request(headers: &HeaderMap, admin_token: Option<&str>) -> Result<(), Response> {
+    validate_origin(headers)?;
+    validate_admin_auth(headers, admin_token)
 }
 
 fn validate_admin_auth(headers: &HeaderMap, admin_token: Option<&str>) -> Result<(), Response> {

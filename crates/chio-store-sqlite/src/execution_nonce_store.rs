@@ -128,6 +128,11 @@ impl SqliteExecutionNonceStore {
         now: i64,
         expires_at: i64,
     ) -> Result<bool, SqliteExecutionNonceStoreError> {
+        if nonce_id.trim().is_empty() || nonce_id.trim() != nonce_id {
+            return Err(SqliteExecutionNonceStoreError(
+                "nonce_id must be non-empty and unpadded".to_string(),
+            ));
+        }
         let mut conn = self
             .pool
             .get()
@@ -224,6 +229,17 @@ mod tests {
         let store = SqliteExecutionNonceStore::open_in_memory().unwrap();
         assert!(store.try_reserve("a", 1_000, 1_100).unwrap());
         assert!(!store.try_reserve("a", 1_001, 1_100).unwrap());
+    }
+
+    #[test]
+    fn padded_nonce_id_is_rejected() {
+        let store = SqliteExecutionNonceStore::open_in_memory().unwrap();
+        let error = store.try_reserve(" nonce", 1_000, 1_100).unwrap_err();
+
+        assert!(
+            error.to_string().contains("nonce_id"),
+            "expected nonce_id validation error, got {error}"
+        );
     }
 
     #[test]

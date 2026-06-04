@@ -1,7 +1,7 @@
 #![forbid(clippy::unwrap_used)]
 #![forbid(clippy::expect_used)]
 
-use chio_policy::{validate, HushSpec, ValidationResult};
+use chio_policy::{compile_policy, validate, HushSpec, ValidationResult};
 
 fn parse_policy(yaml: &str) -> HushSpec {
     match HushSpec::parse(yaml) {
@@ -48,6 +48,65 @@ rules:
     let result = validate(&spec);
 
     assert_error_contains(&result, "rules.tool_access.max_args_size must be >= 1");
+}
+
+#[test]
+fn empty_secret_pattern_fields_fail_validation() {
+    let spec = parse_policy(
+        r#"
+hushspec: "0.1.0"
+rules:
+  secret_patterns:
+    enabled: true
+    patterns:
+      - name: ""
+        pattern: ""
+        severity: critical
+"#,
+    );
+    let result = validate(&spec);
+
+    assert_error_contains(
+        &result,
+        "rules.secret_patterns.patterns[0].name must not be empty",
+    );
+    assert_error_contains(
+        &result,
+        "rules.secret_patterns.patterns[0].pattern cannot be empty",
+    );
+}
+
+#[test]
+fn compile_policy_rejects_empty_secret_pattern_name_before_guard_materialization() {
+    let spec = parse_policy(
+        r#"
+hushspec: "0.1.0"
+rules:
+  secret_patterns:
+    enabled: true
+    patterns:
+      - name: "   "
+        pattern: "AKIA[0-9A-Z]{16}"
+        severity: critical
+"#,
+    );
+
+    let error = match compile_policy(&spec) {
+        Ok(compiled) => panic!(
+            "empty secret pattern should fail before compiling guards: {:?}",
+            compiled.guard_names
+        ),
+        Err(error) => error,
+    };
+    let message = error.to_string();
+    assert!(
+        message.contains("HushSpec validation failed"),
+        "expected validation compile error, got {message:?}"
+    );
+    assert!(
+        message.contains("rules.secret_patterns.patterns[0].name must not be empty"),
+        "expected empty name validation message, got {message:?}"
+    );
 }
 
 #[test]

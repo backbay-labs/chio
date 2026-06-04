@@ -45,6 +45,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
 
       - name: Install Rust toolchain
         run: |
@@ -73,6 +75,10 @@ jobs:
         run: |
           ./scripts/check-release-inputs.sh
           ./scripts/check-workspace-layering.sh
+          python3 scripts/check-review-slices.py
+          python3 scripts/check-rust-public-surface.py
+          bash scripts/tests/check-rust-public-surface.test.sh
+          python3 scripts/check-architecture-docs.py
           bash ./scripts/check-sre-metrics-registry.sh
           bash ./scripts/check-log-redaction.sh
           bash ./scripts/check-http-egress-contract.sh

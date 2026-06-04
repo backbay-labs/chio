@@ -109,6 +109,29 @@ fn weather_request() -> ConverseRequest {
 }
 
 #[tokio::test]
+async fn converse_rejects_padded_model_id_before_sdk_dispatch() {
+    let client = replay_client(200, converse_response_body());
+    let recorded = client.clone();
+    let adapter = adapter_with_replay(client);
+    let mut request = weather_request();
+    request.model_id = format!(" {MODEL_ID} ");
+
+    let err = adapter
+        .converse(request)
+        .await
+        .expect_err("padded modelId must fail before SDK dispatch");
+
+    assert!(
+        matches!(err, ProviderError::Malformed(_)),
+        "expected Malformed, got {err:?}"
+    );
+    assert!(err
+        .to_string()
+        .contains("request modelId must not contain surrounding whitespace"));
+    assert_eq!(recorded.actual_requests().count(), 0);
+}
+
+#[tokio::test]
 async fn converse_lifts_tool_use_from_real_sdk_response() {
     let client = replay_client(200, converse_response_body());
     let recorded = client.clone();

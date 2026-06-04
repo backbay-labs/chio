@@ -1,7 +1,7 @@
 # OpenTelemetry GenAI demo
 
 This example wires an OTLP collector to Tempo and Jaeger, then validates the
-Chio receipt export path with an ignored Rust integration test. It demonstrates
+Chio receipt export path with a default Rust integration test. It demonstrates
 the OTel GenAI contract (documented in `docs/integrations/otel.md`) that a GenAI tool-call span can be looked up by receipt id
 and that a signed receipt can be looked up by span id.
 
@@ -13,6 +13,7 @@ README.md
 docker-compose.yml
 otel-collector-config.yaml
 tests/bidirectional_lookup.rs
+tests/support/mod.rs
 ```
 
 ## Run the collector demo
@@ -44,20 +45,21 @@ find deploy/dashboards -name '*.json' -print0 | while IFS= read -r -d '' dashboa
 From the repository root:
 
 ```bash
-cargo test --manifest-path examples/otel-genai/Cargo.toml --test bidirectional_lookup -- --ignored
+cargo test -p otel-genai
 ```
 
-The test constructs a decoded OTLP trace export with the `gen_ai.tool.call`
-attributes defined in `docs/integrations/otel.md`, exports it through
-`chio-otel-receipt-exporter`,
-verifies the signed receipt, and builds both lookup directions:
+The default integration test constructs a decoded OTLP trace export with the
+`gen_ai.tool.call` attributes defined in `docs/integrations/otel.md`, exports it
+through `chio-otel-receipt-exporter`, verifies the signed receipt, and builds
+both lookup directions:
 
-- `receipt id -> span id`
+- signed `receipt id -> span id`
 - `span id -> receipt id`
 
-It also checks that high-cardinality attributes forbidden from
-Prometheus-shaped sinks are stripped from the receipt metadata copy while the
-receipt id remains the signed receipt identifier.
+It also checks that high-cardinality attributes forbidden from Prometheus-shaped
+sinks are stripped from the receipt metadata copy while the inbound
+`chio.receipt.id` span attribute is preserved only as
+`metadata.correlation.source_chio_receipt_id`.
 
 ## Expected span attributes
 

@@ -118,12 +118,21 @@ impl ChioEvaluator {
         &self,
         input: EvaluationInput<'_>,
     ) -> Result<PreparedEvaluation, ChioTowerError> {
+        let presented_capability = extract_presented_capability(input.headers, input.query);
+        self.prepare_with_presented_capability(input, presented_capability)
+    }
+
+    pub(crate) fn prepare_with_presented_capability(
+        &self,
+        input: EvaluationInput<'_>,
+        presented_capability: Option<&str>,
+    ) -> Result<PreparedEvaluation, ChioTowerError> {
         let EvaluationInput {
             method,
             path,
             query,
             caller,
-            headers,
+            headers: _headers,
             body_hash,
             body_length,
         } = input;
@@ -141,7 +150,7 @@ impl ChioEvaluator {
                 body_length,
                 session_id: None,
                 capability_id_hint: None,
-                presented_capability: extract_presented_capability(headers, query),
+                presented_capability,
                 requested_tool_server: None,
                 requested_tool_name: None,
                 requested_arguments: None,
@@ -264,7 +273,8 @@ mod tests {
     use super::*;
     use chio_core_types::capability::{CapabilityToken, CapabilityTokenBody, ChioScope};
     use chio_http_core::{
-        http_status_scope, CHIO_HTTP_STATUS_SCOPE_DECISION, CHIO_HTTP_STATUS_SCOPE_FINAL,
+        http_authority_tool_grant, http_status_scope, CHIO_HTTP_STATUS_SCOPE_DECISION,
+        CHIO_HTTP_STATUS_SCOPE_FINAL,
     };
 
     fn valid_capability_token_json(id: &str, issuer: &Keypair) -> String {
@@ -274,7 +284,10 @@ mod tests {
                 id: id.to_string(),
                 issuer: issuer.public_key(),
                 subject: issuer.public_key(),
-                scope: ChioScope::default(),
+                scope: ChioScope {
+                    grants: vec![http_authority_tool_grant()],
+                    ..ChioScope::default()
+                },
                 issued_at: now.saturating_sub(60),
                 expires_at: now + 3600,
                 delegation_chain: Vec::new(),

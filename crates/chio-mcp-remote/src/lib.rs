@@ -5,6 +5,10 @@ pub use chio_control_plane::{CliError, JwtProviderProfile};
 
 #[path = "remote_mcp/admin.rs"]
 mod remote_mcp_admin;
+#[path = "remote_mcp/session_store.rs"]
+mod remote_mcp_session_store;
+
+use remote_mcp_session_store::*;
 
 include!("remote_mcp/session_core.rs");
 include!("remote_mcp/http_service.rs");

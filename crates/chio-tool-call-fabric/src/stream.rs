@@ -230,7 +230,14 @@ impl StreamPhase {
             // Buffering: AppendBytes extends, FinishBlock advances to Emitting,
             // StartBlock is a protocol error (previous block must finish first).
             (StreamPhase::Buffering(block), StreamEvent::AppendBytes { chunk }) => {
-                let projected = block.bytes.len().saturating_add(chunk.len());
+                let Some(projected) = projected_buffer_len(block.bytes.len(), chunk.len()) else {
+                    return Err(StreamError::BufferOverflow {
+                        block_id: block.block_id.clone(),
+                        buffered: block.bytes.len(),
+                        projected: usize::MAX,
+                        limit: max_buffered_bytes,
+                    });
+                };
                 if projected > max_buffered_bytes {
                     return Err(StreamError::BufferOverflow {
                         block_id: block.block_id.clone(),
@@ -295,6 +302,10 @@ impl fmt::Display for StreamPhase {
     }
 }
 
+fn projected_buffer_len(buffered: usize, chunk_len: usize) -> Option<usize> {
+    buffered.checked_add(chunk_len)
+}
+
 fn event_label(ev: &StreamEvent) -> &'static str {
     match ev {
         StreamEvent::StartBlock { .. } => "StartBlock",
@@ -339,6 +350,12 @@ mod tests {
             .unwrap();
         let buf = next.buffered().unwrap();
         assert_eq!(buf.bytes, b"abc");
+    }
+
+    #[test]
+    fn projected_buffer_len_rejects_overflow() {
+        assert_eq!(projected_buffer_len(8, 4), Some(12));
+        assert_eq!(projected_buffer_len(usize::MAX - 1, 4), None);
     }
 
     #[test]

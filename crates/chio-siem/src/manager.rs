@@ -105,6 +105,18 @@ impl ExporterManager {
     /// Opens the SQLite database at `config.db_path` immediately and returns
     /// an error if the file cannot be opened.
     pub fn new(config: SiemConfig) -> Result<Self, SiemError> {
+        if config.batch_size == 0 {
+            return Err(SiemError::ConfigError(
+                "batch_size must be greater than zero".to_string(),
+            ));
+        }
+        if config.poll_interval.is_zero() {
+            return Err(SiemError::ConfigError(
+                "poll_interval must be greater than zero".to_string(),
+            ));
+        }
+        validate_admin_read_context(&config.read_context)?;
+
         let rate_limiter = config
             .rate_limit
             .clone()
@@ -176,14 +188,7 @@ impl ExporterManager {
     async fn poll_once(&mut self) -> Result<(), SiemError> {
         let cursor = self.cursor;
         let batch_size = self.config.batch_size;
-        if !matches!(
-            self.config.read_context.boundary,
-            ReceiptReadBoundary::AdminAll
-        ) {
-            return Err(SiemError::ConfigError(
-                "SIEM receipt polling requires explicit admin receipt read authority".to_string(),
-            ));
-        }
+        validate_admin_read_context(&self.config.read_context)?;
 
         // Lock the connection only for the synchronous DB read; release before any await.
         let rows: Vec<(u64, String)> = {
@@ -386,9 +391,23 @@ fn retry_backoff_ms(base_backoff_ms: u64, attempt: u32) -> u64 {
         .min(MAX_RETRY_BACKOFF_MS)
 }
 
+fn validate_admin_read_context(read_context: &ReceiptReadContext) -> Result<(), SiemError> {
+    if matches!(read_context.boundary, ReceiptReadBoundary::AdminAll) {
+        Ok(())
+    } else {
+        Err(SiemError::ConfigError(
+            "SIEM receipt polling requires explicit admin receipt read authority".to_string(),
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::error::Error;
+
     use super::*;
+
+    type TestResult = Result<(), Box<dyn Error>>;
 
     #[test]
     fn retry_backoff_ms_saturates_at_configured_ceiling() {
@@ -400,5 +419,43 @@ mod tests {
     #[test]
     fn retry_backoff_ms_saturates_overflowing_base_delay() {
         assert_eq!(retry_backoff_ms(u64::MAX, 2), MAX_RETRY_BACKOFF_MS);
+    }
+
+    #[test]
+    fn manager_new_rejects_zero_poll_interval_before_opening_db() {
+        let error = match ExporterManager::new(SiemConfig {
+            db_path: PathBuf::from("/definitely/not/a/chio/receipt/db.sqlite3"),
+            poll_interval: Duration::ZERO,
+            ..SiemConfig::default()
+        }) {
+            Ok(_) => panic!("zero poll interval should be rejected before opening db"),
+            Err(error) => error,
+        };
+
+        assert!(
+            matches!(error, SiemError::ConfigError(message) if message.contains("poll_interval"))
+        );
+    }
+
+    #[test]
+    fn manager_new_rejects_non_admin_read_context_before_opening_db() -> TestResult {
+        let error = match ExporterManager::new(SiemConfig {
+            db_path: PathBuf::from("/definitely/not/a/chio/receipt/db.sqlite3"),
+            read_context: ReceiptReadContext::authenticated_tenant("tenant-a"),
+            ..SiemConfig::default()
+        }) {
+            Ok(_) => {
+                return Err(std::io::Error::other(
+                    "tenant-scoped read context should be rejected before opening db",
+                )
+                .into());
+            }
+            Err(error) => error,
+        };
+
+        assert!(
+            matches!(error, SiemError::ConfigError(message) if message.contains("admin receipt read authority"))
+        );
+        Ok(())
     }
 }

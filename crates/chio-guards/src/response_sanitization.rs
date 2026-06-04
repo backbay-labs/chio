@@ -1342,28 +1342,47 @@ fn strategy_rank(s: &RedactionStrategy) -> u8 {
 
 type ResolvedSpan = (Span, RedactionStrategy, SensitiveCategory, String, String);
 
+fn redaction_strategy_for_finding(
+    finding: &SensitiveDataFinding,
+    defaults: &HashMap<SensitiveCategory, RedactionStrategy>,
+) -> RedactionStrategy {
+    if is_mandatory_redaction_finding(finding) {
+        return non_keep_redaction_strategy(&finding.recommended_action);
+    }
+
+    match &finding.recommended_action {
+        RedactionStrategy::Keep => RedactionStrategy::Keep,
+        RedactionStrategy::Drop | RedactionStrategy::Fingerprint | RedactionStrategy::Tokenize => {
+            finding.recommended_action.clone()
+        }
+        _ => defaults
+            .get(&finding.category)
+            .cloned()
+            .unwrap_or_else(|| finding.recommended_action.clone()),
+    }
+}
+
+fn is_mandatory_redaction_finding(finding: &SensitiveDataFinding) -> bool {
+    finding.detector == "denylist"
+        || finding.detector == "fail_closed"
+        || finding.id.starts_with("denylist_")
+        || finding.id == "redaction_unavailable_fail_closed"
+}
+
+fn non_keep_redaction_strategy(strategy: &RedactionStrategy) -> RedactionStrategy {
+    match strategy {
+        RedactionStrategy::Keep => RedactionStrategy::Mask,
+        _ => strategy.clone(),
+    }
+}
+
 fn resolve_overlaps(
     findings: &[SensitiveDataFinding],
     defaults: &HashMap<SensitiveCategory, RedactionStrategy>,
 ) -> Vec<ResolvedSpan> {
     let mut spans: Vec<ResolvedSpan> = Vec::with_capacity(findings.len());
     for f in findings {
-        // Strategy selection:
-        //   - If the detector recommended Keep, honor it.
-        //   - If the detector asked for a "strong" action (Drop, Fingerprint,
-        //     Tokenize), honor that (overriding category default).
-        //   - Otherwise fall back to the config's per-category default, else
-        //     the detector's recommendation.
-        let strategy = match &f.recommended_action {
-            RedactionStrategy::Keep => RedactionStrategy::Keep,
-            RedactionStrategy::Drop
-            | RedactionStrategy::Fingerprint
-            | RedactionStrategy::Tokenize => f.recommended_action.clone(),
-            _ => defaults
-                .get(&f.category)
-                .cloned()
-                .unwrap_or_else(|| f.recommended_action.clone()),
-        };
+        let strategy = redaction_strategy_for_finding(f, defaults);
         spans.push((
             f.span,
             strategy,

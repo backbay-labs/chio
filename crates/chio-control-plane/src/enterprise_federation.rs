@@ -339,7 +339,12 @@ impl EnterpriseProviderRegistry {
         self.version = ENTERPRISE_PROVIDER_REGISTRY_VERSION.to_string();
 
         let mut normalized = BTreeMap::new();
-        for (_, mut record) in self.providers {
+        for (provider_id, mut record) in self.providers {
+            if provider_id != record.provider_id {
+                return Err(CliError::cli_other_error(
+                    "enterprise provider map key must match provider_id".to_string(),
+                ));
+            }
             record.validation_errors = record.validate();
             normalized.insert(record.provider_id.clone(), record);
         }
@@ -729,6 +734,33 @@ mod tests {
         );
 
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn enterprise_provider_registry_rejects_mismatched_map_key() {
+        let path = temp_registry_path();
+        let mut registry = EnterpriseProviderRegistry {
+            version: ENTERPRISE_PROVIDER_REGISTRY_VERSION.to_string(),
+            providers: BTreeMap::new(),
+        };
+        registry.providers.insert(
+            "oidc-alias".to_string(),
+            provider_record("oidc", EnterpriseProviderKind::OidcJwks),
+        );
+        fs::write(&path, serde_json::to_vec_pretty(&registry).test_unwrap()).test_unwrap();
+
+        let error = must_err(
+            EnterpriseProviderRegistry::load(&path),
+            "provider map key mismatch should fail closed",
+        );
+        let _ = fs::remove_file(path);
+
+        assert!(
+            error
+                .to_string()
+                .contains("enterprise provider map key must match provider_id"),
+            "expected provider key mismatch error, got {error}"
+        );
     }
 
     #[test]

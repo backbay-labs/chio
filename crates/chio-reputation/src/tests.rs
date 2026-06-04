@@ -47,6 +47,27 @@ mod tests {
     }
 
     #[test]
+    fn reputation_config_builder_drops_blank_or_padded_trusted_keys() {
+        let valid_key = "ed25519:4444444444444444444444444444444444444444444444444444444444444444";
+        let config = ReputationConfig::default().with_trusted_kernel_keys([
+            " ".to_string(),
+            format!(" {valid_key}"),
+            valid_key.to_string(),
+            format!("{valid_key} "),
+        ]);
+
+        assert_eq!(config.trusted_kernel_keys.len(), 1);
+        assert!(config.trusted_kernel_keys.contains(valid_key));
+
+        let malformed_only = ReputationConfig::default().with_trusted_kernel_keys([
+            String::new(),
+            " ".to_string(),
+            format!("{valid_key} "),
+        ]);
+        assert!(!malformed_only.has_trusted_kernel_keys());
+    }
+
+    #[test]
     fn empty_trusted_keys_emits_warning_once_on_integrity_check() {
         use chio_core::crypto::Keypair;
         use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction};

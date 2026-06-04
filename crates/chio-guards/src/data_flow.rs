@@ -53,9 +53,10 @@ impl Guard for DataFlowGuard {
     }
 
     fn evaluate(&self, _ctx: &GuardContext) -> Result<Verdict, KernelError> {
-        let flow = self.journal.data_flow().map_err(|e| {
+        let snapshot = self.journal.snapshot().map_err(|e| {
             KernelError::Internal(format!("data-flow guard journal error (fail-closed): {e}"))
         })?;
+        let flow = snapshot.data_flow;
 
         // Check bytes read limit.
         if let Some(max_read) = self.config.max_bytes_read {

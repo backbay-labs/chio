@@ -80,4 +80,5 @@ include!("types.rs");
 include!("bridge.rs");
 include!("conversion.rs");
 include!("edge.rs");
+include!("jsonrpc.rs");
 include!("tests/all.rs");

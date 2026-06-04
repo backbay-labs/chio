@@ -6,7 +6,10 @@
 //! frames only when the verdict allows. A deny verdict or malformed tool-use
 //! frame fails closed and returns no forwarded stream bytes for the block.
 
-use chio_provider_adapter_core::ensure_streaming_allow_no_redactions;
+use chio_provider_adapter_core::{
+    ensure_streaming_allow_no_redactions, parse_sse_frames as parse_shared_sse_frames, SseFrame,
+    SseParseOptions,
+};
 use chio_tool_call_fabric::{
     BlockKind, ProviderError, StreamEvent, StreamPhase, ToolInvocation, VerdictResult,
     DEFAULT_MAX_BUFFERED_BLOCK_BYTES, DEFAULT_MAX_BUFFERED_RAW_FRAMES,
@@ -14,6 +17,10 @@ use chio_tool_call_fabric::{
 use serde_json::Value;
 
 use crate::{AnthropicAdapter, ToolUseBlock};
+
+const ANTHROPIC_SSE_LABEL: &str = "Anthropic";
+const ANTHROPIC_SSE_OPTIONS: SseParseOptions =
+    SseParseOptions::rejecting_unknown(ANTHROPIC_SSE_LABEL);
 
 /// Result of gating one Anthropic event-stream payload.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,7 +47,7 @@ impl AnthropicAdapter {
     where
         F: FnMut(&ToolInvocation) -> Result<VerdictResult, ProviderError>,
     {
-        let frames = parse_sse_frames(raw)?;
+        let frames = parse_anthropic_sse_frames(raw)?;
         let mut gate = StreamGate::new(self);
 
         for frame in frames {
@@ -87,7 +94,7 @@ impl<'a> StreamGate<'a> {
             "message_stop" => self.stop_message(frame),
             "error" => Err(ProviderError::Malformed(format!(
                 "Anthropic SSE error event: {}",
-                frame.data_text()
+                data_text(&frame)
             ))),
             _ => self.forward_or_buffer(frame),
         }
@@ -102,7 +109,7 @@ impl<'a> StreamGate<'a> {
             )));
         }
 
-        let data = frame.required_data("content_block_start")?;
+        let data = required_data(&frame, "content_block_start")?;
         let index = required_index(data, "content_block_start")?;
         let content_block = data.get("content_block").ok_or_else(|| {
             ProviderError::Malformed(
@@ -336,99 +343,21 @@ impl ActiveBlock {
     }
 }
 
-#[derive(Debug, Clone)]
-struct SseFrame {
-    event: Option<String>,
-    data: Option<Value>,
-    raw: Vec<u8>,
-}
-
-impl SseFrame {
-    fn required_data(&self, event: &str) -> Result<&Value, ProviderError> {
-        self.data.as_ref().ok_or_else(|| {
-            ProviderError::Malformed(format!("Anthropic {event} SSE frame was missing data"))
-        })
+fn parse_anthropic_sse_frames(raw: &[u8]) -> Result<Vec<SseFrame>, ProviderError> {
+    let frames = parse_shared_sse_frames(raw, ANTHROPIC_SSE_OPTIONS)?;
+    for frame in &frames {
+        validate_anthropic_sse_frame(frame)?;
     }
-
-    fn data_text(&self) -> String {
-        self.data
-            .as_ref()
-            .map(Value::to_string)
-            .unwrap_or_else(|| "<missing data>".to_string())
-    }
-}
-
-fn parse_sse_frames(raw: &[u8]) -> Result<Vec<SseFrame>, ProviderError> {
-    let text = std::str::from_utf8(raw).map_err(|error| {
-        ProviderError::Malformed(format!("Anthropic SSE bytes were not UTF-8: {error}"))
-    })?;
-    let mut frames = Vec::new();
-    let mut lines = Vec::new();
-
-    for line in text.lines() {
-        let line = line.strip_suffix('\r').unwrap_or(line);
-        if line.is_empty() {
-            if !lines.is_empty() {
-                frames.push(parse_sse_frame(&lines)?);
-                lines.clear();
-            }
-        } else {
-            lines.push(line.to_string());
-        }
-    }
-
-    if !lines.is_empty() {
-        frames.push(parse_sse_frame(&lines)?);
-    }
-
     Ok(frames)
 }
 
-fn parse_sse_frame(lines: &[String]) -> Result<SseFrame, ProviderError> {
-    let mut event = None;
-    let mut data_lines = Vec::new();
-    let mut raw = Vec::new();
-
-    for line in lines {
-        raw.extend_from_slice(line.as_bytes());
-        raw.push(b'\n');
-
-        if line.starts_with(':') {
-            continue;
-        }
-
-        let (field, value) = line.split_once(':').ok_or_else(|| {
-            ProviderError::Malformed(format!("Anthropic SSE line `{line}` was missing `:`"))
-        })?;
-        let value = value.strip_prefix(' ').unwrap_or(value);
-        match field {
-            "event" => event = Some(value.to_string()),
-            "data" => data_lines.push(value.to_string()),
-            "id" | "retry" => {}
-            other => {
-                return Err(ProviderError::Malformed(format!(
-                    "Anthropic SSE field `{other}` is not supported"
-                )));
-            }
-        }
-    }
-    raw.push(b'\n');
-
-    let data = if data_lines.is_empty() {
-        None
-    } else {
-        let data_text = data_lines.join("\n");
-        Some(serde_json::from_str::<Value>(&data_text).map_err(|error| {
-            ProviderError::Malformed(format!("Anthropic SSE data was not JSON: {error}"))
-        })?)
-    };
-
-    if data.is_some() && event.is_none() {
+fn validate_anthropic_sse_frame(frame: &SseFrame) -> Result<(), ProviderError> {
+    if frame.data.is_some() && frame.event.is_none() {
         return Err(ProviderError::Malformed(
             "Anthropic SSE data frame was missing event name".to_string(),
         ));
     }
-    if let (Some(event), Some(data)) = (event.as_deref(), data.as_ref()) {
+    if let (Some(event), Some(data)) = (frame.event.as_deref(), frame.data.as_ref()) {
         if let Some(data_type) = data.get("type").and_then(Value::as_str) {
             if data_type != event {
                 return Err(ProviderError::Malformed(format!(
@@ -437,12 +366,25 @@ fn parse_sse_frame(lines: &[String]) -> Result<SseFrame, ProviderError> {
             }
         }
     }
+    Ok(())
+}
 
-    Ok(SseFrame { event, data, raw })
+fn required_data<'a>(frame: &'a SseFrame, event: &str) -> Result<&'a Value, ProviderError> {
+    frame.data.as_ref().ok_or_else(|| {
+        ProviderError::Malformed(format!("Anthropic {event} SSE frame was missing data"))
+    })
+}
+
+fn data_text(frame: &SseFrame) -> String {
+    frame
+        .data
+        .as_ref()
+        .map(Value::to_string)
+        .unwrap_or_else(|| "<missing data>".to_string())
 }
 
 fn frame_index(frame: &SseFrame, event: &str) -> Result<u64, ProviderError> {
-    required_index(frame.required_data(event)?, event)
+    required_index(required_data(frame, event)?, event)
 }
 
 fn required_index(data: &Value, event: &str) -> Result<u64, ProviderError> {
@@ -470,7 +412,7 @@ fn tool_use_from_content_block(content_block: &Value) -> Result<ToolUseBlock, Pr
 }
 
 fn input_json_delta(frame: &SseFrame) -> Result<&str, ProviderError> {
-    let data = frame.required_data("content_block_delta")?;
+    let data = required_data(frame, "content_block_delta")?;
     let delta = data.get("delta").ok_or_else(|| {
         ProviderError::Malformed("Anthropic content_block_delta was missing delta".to_string())
     })?;

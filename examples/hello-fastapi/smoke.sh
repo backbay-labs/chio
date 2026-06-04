@@ -96,7 +96,12 @@ assert body["status"] == 403, body
 assert body["message"], body
 PY
 
-issue_demo_capability "${CONTROL_URL}" "${SERVICE_TOKEN}" "${ARTIFACT_ROOT}/capability.json" "hello_fastapi_write"
+issue_demo_capability \
+  "${CONTROL_URL}" \
+  "${SERVICE_TOKEN}" \
+  "${ARTIFACT_ROOT}/capability.json" \
+  "authorize_http_request" \
+  "chio_http_authority"
 materialize_capability_token "${ARTIFACT_ROOT}/capability.json" "${ARTIFACT_ROOT}/capability.token"
 
 curl -sS -D "${ARTIFACT_ROOT}/allow.headers" \
@@ -116,11 +121,38 @@ assert body["message"] == "hello", body
 assert body["count"] == 2, body
 PY
 
-"${CHIO_BIN}" receipt list --receipt-db "${RECEIPT_STORE}" --limit 20 > "${ARTIFACT_ROOT}/receipts.ndjson"
-
 HELLO_RECEIPT_ID="$(header_value "${ARTIFACT_ROOT}/hello.headers" "x-chio-receipt")"
 DENY_RECEIPT_ID="$(header_value "${ARTIFACT_ROOT}/deny.headers" "x-chio-receipt")"
 ALLOW_RECEIPT_ID="$(header_value "${ARTIFACT_ROOT}/allow.headers" "x-chio-receipt")"
+
+python3 - \
+  "${RECEIPT_STORE}" \
+  "${ARTIFACT_ROOT}/receipts.ndjson" \
+  "${HELLO_RECEIPT_ID}" \
+  "${DENY_RECEIPT_ID}" \
+  "${ALLOW_RECEIPT_ID}" <<'PY'
+import json
+import sqlite3
+import sys
+from pathlib import Path
+
+receipt_store = Path(sys.argv[1])
+output_path = Path(sys.argv[2])
+expected_ids = set(sys.argv[3:])
+
+with sqlite3.connect(receipt_store) as db:
+    rows = db.execute("SELECT receipt_json FROM http_receipts ORDER BY rowid ASC").fetchall()
+
+receipts = [json.loads(row[0]) for row in rows]
+receipt_ids = {receipt["id"] for receipt in receipts}
+missing = expected_ids - receipt_ids
+assert not missing, {"missing": sorted(missing), "stored": sorted(receipt_ids)}
+
+output_path.write_text(
+    "".join(json.dumps(receipt, separators=(",", ":")) + "\n" for receipt in receipts),
+    encoding="utf-8",
+)
+PY
 
 cat <<EOF
 hello-fastapi smoke passed

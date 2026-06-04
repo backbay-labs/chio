@@ -1,3 +1,4 @@
+use super::framing::read_jsonrpc_frame;
 use super::*;
 
 pub(super) struct KernelResponseToToolResultArgs<'a> {
@@ -11,39 +12,103 @@ pub(super) struct KernelResponseToToolResultArgs<'a> {
     pub related_task_id: Option<&'a str>,
 }
 
-pub(super) fn manifest_tool_to_mcp_tool(tool: ToolDefinition) -> McpExposedTool {
-    let annotations = Some(json!({
-        "readOnlyHint": !tool.has_side_effects,
-        "destructiveHint": tool.has_side_effects,
-    }));
-
-    let mut execution = serde_json::Map::new();
-    execution.insert("taskSupport".to_string(), json!("optional"));
-    if let Some(latency_hint) = tool.latency_hint {
-        execution.insert(
-            "suggestedLatency".to_string(),
-            json!(latency_hint_to_label(latency_hint)),
-        );
-    }
-
-    McpExposedTool {
-        name: tool.name,
-        title: None,
-        description: tool.description,
-        input_schema: tool.input_schema,
-        output_schema: tool.output_schema,
-        annotations,
-        execution: Some(Value::Object(execution)),
-    }
+pub(super) struct JsonRpcEnvelope {
+    pub id: Option<Value>,
+    pub method: String,
+    pub params: Value,
 }
 
-pub(super) fn latency_hint_to_label(latency_hint: LatencyHint) -> &'static str {
-    match latency_hint {
-        LatencyHint::Instant => "instant",
-        LatencyHint::Fast => "fast",
-        LatencyHint::Moderate => "moderate",
-        LatencyHint::Slow => "slow",
+#[derive(Debug, Clone)]
+pub(super) struct RequestedTask {
+    pub(super) ttl: Option<u64>,
+}
+
+pub(super) fn parse_jsonrpc_envelope(message: &Value) -> Result<JsonRpcEnvelope, Value> {
+    if message.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
+        return Err(jsonrpc_error(
+            Value::Null,
+            JSONRPC_INVALID_REQUEST,
+            "invalid jsonrpc envelope",
+        ));
     }
+
+    let id = message.get("id").cloned();
+    if id
+        .as_ref()
+        .is_some_and(|id| !id.is_string() && !id.is_number() && !id.is_null())
+    {
+        return Err(jsonrpc_error(
+            Value::Null,
+            JSONRPC_INVALID_REQUEST,
+            "request id must be string, number, or null",
+        ));
+    }
+
+    let method = message
+        .get("method")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            jsonrpc_error(
+                id.clone().unwrap_or(Value::Null),
+                JSONRPC_INVALID_REQUEST,
+                "request missing method",
+            )
+        })?
+        .to_string();
+    let params = message.get("params").cloned().unwrap_or_else(|| json!({}));
+    Ok(JsonRpcEnvelope { id, method, params })
+}
+
+pub(super) fn ensure_known_request_params_object(
+    id: &Value,
+    method: &str,
+    params: &Value,
+) -> Result<(), Value> {
+    if !known_request_method(method) || params.is_object() {
+        return Ok(());
+    }
+
+    Err(jsonrpc_error(
+        id.clone(),
+        JSONRPC_INVALID_PARAMS,
+        &format!("{method} params must be an object"),
+    ))
+}
+
+pub(super) fn known_notification_params_are_object(method: &str, params: &Value) -> bool {
+    !known_notification_method(method) || params.is_object()
+}
+
+fn known_request_method(method: &str) -> bool {
+    matches!(
+        method,
+        "initialize"
+            | "ping"
+            | "tools/list"
+            | "tools/call"
+            | "tasks/list"
+            | "tasks/get"
+            | "tasks/result"
+            | "tasks/cancel"
+            | "resources/list"
+            | "resources/read"
+            | "resources/subscribe"
+            | "resources/unsubscribe"
+            | "resources/templates/list"
+            | "prompts/list"
+            | "prompts/get"
+            | "completion/complete"
+            | "logging/setLevel"
+    )
+}
+
+fn known_notification_method(method: &str) -> bool {
+    matches!(
+        method,
+        "notifications/initialized"
+            | "notifications/roots/list_changed"
+            | "notifications/cancelled"
+    )
 }
 
 pub(super) fn kernel_response_to_tool_result(args: KernelResponseToToolResultArgs<'_>) -> Value {
@@ -230,30 +295,62 @@ pub(super) fn parse_requested_task(
     id: &Value,
     params: &Value,
 ) -> Result<Option<RequestedTask>, Value> {
-    let Some(task) = params.get("task").cloned() else {
+    let Some(task) = params.get("task") else {
         return Ok(None);
     };
-    serde_json::from_value(task).map(Some).map_err(|_| {
-        jsonrpc_error(
+    let Some(task) = task.as_object() else {
+        return Err(jsonrpc_error(
             id.clone(),
             JSONRPC_INVALID_PARAMS,
             "task must be an object with an optional numeric ttl",
-        )
-    })
+        ));
+    };
+
+    let ttl = match task.get("ttl") {
+        None | Some(Value::Null) => None,
+        Some(Value::Number(number)) => {
+            let Some(ttl) = number.as_u64() else {
+                return Err(jsonrpc_error(
+                    id.clone(),
+                    JSONRPC_INVALID_PARAMS,
+                    "task ttl must be a non-negative integer",
+                ));
+            };
+            if ttl > MAX_MCP_TASK_TTL_MILLIS {
+                return Err(jsonrpc_error(
+                    id.clone(),
+                    JSONRPC_INVALID_PARAMS,
+                    "task ttl exceeds maximum",
+                ));
+            }
+            Some(ttl)
+        }
+        Some(_) => {
+            return Err(jsonrpc_error(
+                id.clone(),
+                JSONRPC_INVALID_PARAMS,
+                "task ttl must be a non-negative integer",
+            ))
+        }
+    };
+
+    Ok(Some(RequestedTask { ttl }))
 }
 
 pub(super) fn parse_task_id(id: &Value, params: &Value) -> Result<String, Value> {
-    params
+    let task_id = params
         .get("taskId")
         .and_then(Value::as_str)
-        .map(ToString::to_string)
         .ok_or_else(|| {
             jsonrpc_error(
                 id.clone(),
                 JSONRPC_INVALID_PARAMS,
                 "taskId must be a string",
             )
-        })
+        })?;
+    let task_id = parse_protocol_identifier(task_id, "taskId")
+        .map_err(|message| jsonrpc_error(id.clone(), JSONRPC_INVALID_PARAMS, message.as_str()))?;
+    Ok(task_id.to_string())
 }
 
 pub(super) fn edge_task_status_label(status: EdgeTaskStatus) -> &'static str {
@@ -563,6 +660,7 @@ pub(super) fn parse_completion_reference(params: &Value) -> Result<CompletionRef
                 .get("name")
                 .and_then(Value::as_str)
                 .ok_or_else(|| "prompt ref requires a name".to_string())?;
+            let name = parse_protocol_identifier(name, "prompt ref name")?;
             Ok(CompletionReference::Prompt {
                 name: name.to_string(),
             })
@@ -572,6 +670,7 @@ pub(super) fn parse_completion_reference(params: &Value) -> Result<CompletionRef
                 .get("uri")
                 .and_then(Value::as_str)
                 .ok_or_else(|| "resource ref requires a uri".to_string())?;
+            let uri = parse_protocol_identifier(uri, "resource ref uri")?;
             Ok(CompletionReference::Resource {
                 uri: uri.to_string(),
             })
@@ -591,6 +690,7 @@ pub(super) fn parse_completion_argument(params: &Value) -> Result<CompletionArgu
         .get("name")
         .and_then(Value::as_str)
         .ok_or_else(|| "completion argument requires a name".to_string())?;
+    let name = parse_protocol_identifier(name, "completion argument name")?;
     let value = argument
         .get("value")
         .and_then(Value::as_str)
@@ -600,6 +700,16 @@ pub(super) fn parse_completion_argument(params: &Value) -> Result<CompletionArgu
         name: name.to_string(),
         value: value.to_string(),
     })
+}
+
+fn parse_protocol_identifier<'a>(value: &'a str, label: &str) -> Result<&'a str, String> {
+    if value.is_empty() || value.trim() != value || value.chars().any(|ch| ch.is_control()) {
+        return Err(format!(
+            "{label} must be a non-empty unpadded string without control characters"
+        ));
+    }
+
+    Ok(value)
 }
 
 pub(super) fn paginate_response(
@@ -853,12 +963,27 @@ pub(super) fn task_cancel_matches_related_task(
         return false;
     };
 
-    message.get("method").and_then(Value::as_str) == Some("tasks/cancel")
+    has_jsonrpc_request_id(message)
+        && message.get("method").and_then(Value::as_str) == Some("tasks/cancel")
         && message
             .get("params")
             .and_then(|params| params.get("taskId"))
             .and_then(Value::as_str)
             == Some(related_task_id)
+}
+
+pub(super) fn is_cancellation_side_channel_signal(message: &Value) -> bool {
+    match message.get("method").and_then(Value::as_str) {
+        Some("notifications/cancelled") => message.get("params").is_some_and(Value::is_object),
+        Some("tasks/cancel") => has_jsonrpc_request_id(message),
+        _ => false,
+    }
+}
+
+fn has_jsonrpc_request_id(message: &Value) -> bool {
+    message
+        .get("id")
+        .is_some_and(|id| id.is_string() || id.is_number() || id.is_null())
 }
 
 pub(super) fn explicit_task_cancel_reason() -> &'static str {
@@ -902,30 +1027,24 @@ pub(super) fn pump_client_messages<R: BufRead>(
     cancel_sender: mpsc::Sender<Value>,
 ) {
     loop {
-        let mut line = String::new();
-        match reader.read_line(&mut line) {
-            Ok(0) => {
+        match read_jsonrpc_frame(&mut reader) {
+            Ok(None) => {
                 let _ = sender.send(ClientInbound::Closed);
                 return;
             }
-            Ok(_) => {}
             Err(error) => {
-                let _ = sender.send(ClientInbound::ReadError(error.to_string()));
-                return;
+                let stop_after_send = matches!(error, AdapterError::ConnectionFailed(_));
+                let inbound = match error {
+                    AdapterError::ConnectionFailed(message) => ClientInbound::ReadError(message),
+                    AdapterError::ParseError(message) => ClientInbound::ParseError(message),
+                    other => ClientInbound::ParseError(other.to_string()),
+                };
+                if sender.send(inbound).is_err() || stop_after_send {
+                    return;
+                }
             }
-        }
-
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        match serde_json::from_str::<Value>(trimmed) {
-            Ok(message) => {
-                let is_cancel_signal = matches!(
-                    message.get("method").and_then(Value::as_str),
-                    Some("notifications/cancelled" | "tasks/cancel")
-                );
+            Ok(Some(message)) => {
+                let is_cancel_signal = is_cancellation_side_channel_signal(&message);
                 if sender
                     .send(ClientInbound::Message(message.clone()))
                     .is_err()
@@ -938,14 +1057,6 @@ pub(super) fn pump_client_messages<R: BufRead>(
                     let _ = cancel_sender.send(message);
                 }
             }
-            Err(error) => {
-                if sender
-                    .send(ClientInbound::ParseError(error.to_string()))
-                    .is_err()
-                {
-                    return;
-                }
-            }
         }
     }
 }
@@ -956,10 +1067,7 @@ pub(super) fn pump_channel_messages(
     cancel_sender: mpsc::Sender<Value>,
 ) {
     while let Ok(message) = receiver.recv() {
-        let is_cancel_signal = matches!(
-            message.get("method").and_then(Value::as_str),
-            Some("notifications/cancelled" | "tasks/cancel")
-        );
+        let is_cancel_signal = is_cancellation_side_channel_signal(&message);
         if sender
             .send(ClientInbound::Message(message.clone()))
             .is_err()
@@ -1040,19 +1148,10 @@ pub(super) fn write_jsonrpc_line(
 }
 
 pub(super) fn read_jsonrpc_line(reader: &mut impl BufRead) -> Result<Value, AdapterError> {
-    let mut line = String::new();
-    let bytes_read = reader.read_line(&mut line).map_err(|error| {
-        AdapterError::ConnectionFailed(format!("failed to read MCP edge request: {error}"))
-    })?;
-
-    if bytes_read == 0 {
-        return Err(AdapterError::ConnectionFailed(
+    read_jsonrpc_frame(reader)?.ok_or_else(|| {
+        AdapterError::ConnectionFailed(
             "MCP client closed connection while request was in flight".into(),
-        ));
-    }
-
-    serde_json::from_str(line.trim()).map_err(|error| {
-        AdapterError::ParseError(format!("failed to parse MCP edge message: {error}"))
+        )
     })
 }
 
@@ -1145,4 +1244,201 @@ pub(super) fn matches_server(pattern: &str, server_id: &str) -> bool {
 
 pub(super) fn matches_name(pattern: &str, tool_name: &str) -> bool {
     pattern == "*" || pattern == tool_name
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::{self, Read};
+    use std::time::Duration;
+
+    use super::*;
+
+    #[test]
+    fn parse_jsonrpc_envelope_preserves_id_method_and_default_params() {
+        let envelope = parse_jsonrpc_envelope(&json!({
+            "jsonrpc": "2.0",
+            "id": "req-1",
+            "method": "tools/list",
+        }))
+        .expect("valid envelope");
+
+        assert_eq!(envelope.id, Some(json!("req-1")));
+        assert_eq!(envelope.method, "tools/list");
+        assert_eq!(envelope.params, json!({}));
+    }
+
+    #[test]
+    fn parse_jsonrpc_envelope_rejects_non_scalar_request_ids() {
+        for invalid_id in [json!(true), json!([]), json!({"nested": "bad"})] {
+            let Err(response) = parse_jsonrpc_envelope(&json!({
+                "jsonrpc": "2.0",
+                "id": invalid_id,
+                "method": "tools/list",
+            })) else {
+                panic!("non-scalar request id must fail closed");
+            };
+
+            assert_eq!(response["id"], Value::Null);
+            assert_eq!(response["error"]["code"], JSONRPC_INVALID_REQUEST);
+            assert_eq!(
+                response["error"]["message"],
+                "request id must be string, number, or null"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_jsonrpc_envelope_returns_structured_errors() {
+        let Err(response) = parse_jsonrpc_envelope(&json!({
+            "jsonrpc": "1.0",
+            "id": "req-1",
+            "method": "tools/list",
+        })) else {
+            panic!("invalid jsonrpc version must fail closed");
+        };
+        assert_eq!(response["id"], Value::Null);
+        assert_eq!(response["error"]["code"], JSONRPC_INVALID_REQUEST);
+        assert_eq!(response["error"]["message"], "invalid jsonrpc envelope");
+
+        let Err(response) = parse_jsonrpc_envelope(&json!({
+            "jsonrpc": "2.0",
+            "id": "req-2",
+        })) else {
+            panic!("missing method must fail closed");
+        };
+        assert_eq!(response["id"], json!("req-2"));
+        assert_eq!(response["error"]["code"], JSONRPC_INVALID_REQUEST);
+        assert_eq!(response["error"]["message"], "request missing method");
+    }
+
+    #[test]
+    fn known_notification_params_gate_rejects_non_object_known_params() {
+        assert!(known_notification_params_are_object(
+            "notifications/initialized",
+            &json!({})
+        ));
+        assert!(known_notification_params_are_object(
+            "notifications/initialized",
+            &json!({"client": "ready"})
+        ));
+        assert!(!known_notification_params_are_object(
+            "notifications/initialized",
+            &json!([])
+        ));
+        assert!(known_notification_params_are_object(
+            "notifications/unknown",
+            &json!([])
+        ));
+    }
+
+    #[test]
+    fn cancelled_notification_side_channel_requires_object_params() {
+        assert!(is_cancellation_side_channel_signal(&json!({
+            "jsonrpc": "2.0",
+            "method": "notifications/cancelled",
+            "params": {
+                "requestId": "edge-client-1"
+            }
+        })));
+        assert!(!is_cancellation_side_channel_signal(&json!({
+            "jsonrpc": "2.0",
+            "method": "notifications/cancelled",
+            "params": []
+        })));
+        assert!(!is_cancellation_side_channel_signal(&json!({
+            "jsonrpc": "2.0",
+            "method": "notifications/cancelled"
+        })));
+    }
+
+    #[derive(Default)]
+    struct OneErrorThenEofReader {
+        emitted_error: bool,
+    }
+
+    impl Read for OneErrorThenEofReader {
+        fn read(&mut self, _buf: &mut [u8]) -> io::Result<usize> {
+            Ok(0)
+        }
+    }
+
+    impl BufRead for OneErrorThenEofReader {
+        fn fill_buf(&mut self) -> io::Result<&[u8]> {
+            if self.emitted_error {
+                Ok(&[])
+            } else {
+                self.emitted_error = true;
+                Err(io::Error::other("synthetic reader failure"))
+            }
+        }
+
+        fn consume(&mut self, _amt: usize) {}
+    }
+
+    #[test]
+    fn pump_client_messages_stops_after_read_error() {
+        let (sender, receiver) = mpsc::channel();
+        let (cancel_sender, _cancel_receiver) = mpsc::channel();
+
+        pump_client_messages(OneErrorThenEofReader::default(), sender, cancel_sender);
+
+        match receiver
+            .recv_timeout(Duration::from_millis(100))
+            .unwrap_or_else(|error| panic!("expected read error from pump: {error}"))
+        {
+            ClientInbound::ReadError(message) => {
+                assert!(message.contains("synthetic reader failure"));
+            }
+            ClientInbound::Message(_) => panic!("expected read error, got message"),
+            ClientInbound::ParseError(message) => {
+                panic!("expected read error, got parse error: {message}")
+            }
+            ClientInbound::Closed => panic!("expected read error, got closed"),
+        }
+        assert!(
+            receiver.recv_timeout(Duration::from_millis(50)).is_err(),
+            "pump should close after read error without emitting EOF"
+        );
+    }
+
+    #[test]
+    fn task_cancel_related_task_requires_request_id() {
+        let notification_shaped_cancel = json!({
+            "jsonrpc": "2.0",
+            "method": "tasks/cancel",
+            "params": {
+                "taskId": "mcp-edge-task-1"
+            }
+        });
+        assert!(!task_cancel_matches_related_task(
+            &notification_shaped_cancel,
+            Some("mcp-edge-task-1")
+        ));
+
+        let malformed_request_id_cancel = json!({
+            "jsonrpc": "2.0",
+            "id": { "nested": "bad" },
+            "method": "tasks/cancel",
+            "params": {
+                "taskId": "mcp-edge-task-1"
+            }
+        });
+        assert!(!task_cancel_matches_related_task(
+            &malformed_request_id_cancel,
+            Some("mcp-edge-task-1")
+        ));
+
+        let request_shaped_cancel = json!({
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "tasks/cancel",
+            "params": {
+                "taskId": "mcp-edge-task-1"
+            }
+        });
+        assert!(task_cancel_matches_related_task(
+            &request_shaped_cancel,
+            Some("mcp-edge-task-1")
+        ));
+    }
 }

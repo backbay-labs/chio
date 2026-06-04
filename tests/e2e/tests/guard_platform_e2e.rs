@@ -65,16 +65,34 @@ struct ObservedMetricValues {
 }
 
 impl ObservedMetricValues {
-    fn from_prometheus(scrape: &str) -> Self {
+    fn from_prometheus(scrape: &str) -> Result<Self, String> {
         let mut values = Self::default();
-        for line in scrape.lines() {
+        for (line_number, line) in scrape.lines().enumerate() {
             if line.starts_with('#') || line.trim().is_empty() {
                 continue;
             }
             let Some((sample, value)) = line.rsplit_once(' ') else {
                 continue;
             };
-            let parsed = value.parse::<f64>().unwrap_or(0.0).max(0.0) as u64;
+            let parsed = value.parse::<f64>().map_err(|error| {
+                format!(
+                    "invalid Prometheus sample value on line {}: {value}: {error}",
+                    line_number + 1
+                )
+            })?;
+            if !parsed.is_finite() {
+                return Err(format!(
+                    "invalid Prometheus sample value on line {}: {value}",
+                    line_number + 1
+                ));
+            }
+            if parsed < 0.0 {
+                return Err(format!(
+                    "negative Prometheus sample value on line {}: {value}",
+                    line_number + 1
+                ));
+            }
+            let parsed = parsed as u64;
             let metric = sample.split_once('{').map_or(sample, |(name, _)| name);
             match metric {
                 "chio_guard_eval_duration_seconds_count" => values.eval_count += parsed,
@@ -89,7 +107,7 @@ impl ObservedMetricValues {
                 _ => {}
             }
         }
-        values
+        Ok(values)
     }
 
     fn assert_activity(&self) {
@@ -98,6 +116,31 @@ impl ObservedMetricValues {
         assert!(self.verdict_total > 0);
         assert!(self.reload_total > 0);
         assert!(self.module_bytes > 0);
+    }
+}
+
+#[test]
+fn prometheus_metric_parser_rejects_invalid_sample_value() {
+    let error =
+        ObservedMetricValues::from_prometheus("chio_guard_eval_duration_seconds_count invalid")
+            .expect_err("invalid metric values should fail the metrics gate");
+
+    assert!(error.contains("invalid"));
+}
+
+#[test]
+fn prometheus_metric_parser_counts_known_guard_samples() {
+    let scrape = "\
+chio_guard_eval_duration_seconds_count{guard_id=\"tool-gate\",verdict=\"allow\"} 32
+chio_guard_fuel_consumed_total{guard_id=\"tool-gate\"} 512
+chio_guard_verdict_total{guard_id=\"tool-gate\",verdict=\"allow\"} 32
+chio_guard_reload_total{guard_id=\"tool-gate\",outcome=\"success\"} 1
+chio_guard_module_bytes{guard_id=\"tool-gate\",epoch=\"2\"} 9
+";
+
+    match ObservedMetricValues::from_prometheus(scrape) {
+        Ok(values) => values.assert_activity(),
+        Err(error) => panic!("synthetic scrape parse failed: {error}"),
     }
 }
 
@@ -269,7 +312,10 @@ fn publish_pull_verify_swap_rollback_and_metrics_gate() {
         );
     }
 
-    ObservedMetricValues::from_prometheus(&metrics_body).assert_activity();
+    match ObservedMetricValues::from_prometheus(&metrics_body) {
+        Ok(_values) => {}
+        Err(error) => panic!("metrics scrape parse failed: {error}"),
+    }
 
     let evidence = guard.guard_evidence_metadata();
     assert!(evidence

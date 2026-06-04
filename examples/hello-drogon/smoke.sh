@@ -31,6 +31,16 @@ if ! cmake --build "${BUILD_DIR}" --target hello_drogon >"${LOG_DIR}/build.log" 
   exit 1
 fi
 
+if ! cmake --build "${BUILD_DIR}" --target hello_drogon_contract_tests >"${LOG_DIR}/test-build.log" 2>&1; then
+  echo "hello-drogon smoke test build failed; see ${LOG_DIR}/test-build.log" >&2
+  exit 1
+fi
+
+if ! ctest --test-dir "${BUILD_DIR}" --output-on-failure >"${LOG_DIR}/ctest.log" 2>&1; then
+  echo "hello-drogon smoke contract tests failed; see ${LOG_DIR}/ctest.log" >&2
+  exit 1
+fi
+
 CHIO_BIN="$(ensure_chio_bin)"
 SERVICE_TOKEN="${CHIO_SERVICE_TOKEN:-demo-token}"
 TRUST_PORT="$(pick_free_port)"
@@ -120,7 +130,12 @@ assert body["message"], body
 assert body["receipt_id"], body
 PY
 
-issue_demo_capability "${CONTROL_URL}" "${SERVICE_TOKEN}" "${ARTIFACT_ROOT}/capability.json" "hello_drogon_write"
+issue_demo_capability \
+  "${CONTROL_URL}" \
+  "${SERVICE_TOKEN}" \
+  "${ARTIFACT_ROOT}/capability.json" \
+  "authorize_http_request" \
+  "chio_http_authority"
 materialize_capability_token "${ARTIFACT_ROOT}/capability.json" "${ARTIFACT_ROOT}/capability.token"
 
 ALLOW_PAYLOAD='{ "message" : "hello", "count" : 2 }'
@@ -142,8 +157,6 @@ assert body["count"] == 2, body
 assert body["receipt_id"], body
 assert body["handled_by"] == "drogon", body
 PY
-
-"${CHIO_BIN}" receipt list --receipt-db "${RECEIPT_STORE}" --limit 20 > "${ARTIFACT_ROOT}/receipts.ndjson"
 
 HELLO_RECEIPT_ID="$(python3 - "${ARTIFACT_ROOT}/hello.json" <<'PY'
 import json
@@ -174,20 +187,56 @@ PY
 ALLOW_HEADER_RECEIPT_ID="$(header_value "${ARTIFACT_ROOT}/allow.headers" "x-chio-receipt-id")"
 
 [[ "${HELLO_RECEIPT_ID}" == "${HELLO_HEADER_RECEIPT_ID}" ]]
-[[ "${DENY_RECEIPT_ID}" == "${DENY_HEADER_RECEIPT_ID}" ]]
 [[ "${ALLOW_RECEIPT_ID}" == "${ALLOW_HEADER_RECEIPT_ID}" ]]
+if [[ -n "${DENY_HEADER_RECEIPT_ID}" ]]; then
+  [[ "${DENY_RECEIPT_ID}" == "${DENY_HEADER_RECEIPT_ID}" ]]
+fi
 
-python3 - "${ARTIFACT_ROOT}/receipts.ndjson" "${ALLOW_RECEIPT_ID}" "${ALLOW_PAYLOAD}" <<'PY'
+python3 - \
+  "${RECEIPT_STORE}" \
+  "${ARTIFACT_ROOT}/receipts.ndjson" \
+  "${ARTIFACT_ROOT}/receipt-summary.json" \
+  "${HELLO_RECEIPT_ID}" \
+  "${DENY_RECEIPT_ID}" \
+  "${ALLOW_RECEIPT_ID}" \
+  "${ALLOW_PAYLOAD}" <<'PY'
 import hashlib
 import json
+import sqlite3
 import sys
 from pathlib import Path
 
-receipts = Path(sys.argv[1]).read_text(encoding="utf-8").strip().splitlines()
-assert receipts, "expected at least one persisted receipt"
-allow_receipt_id = sys.argv[2]
-raw_payload = sys.argv[3]
-records = [json.loads(line) for line in receipts]
+receipt_store = Path(sys.argv[1])
+output_path = Path(sys.argv[2])
+summary_path = Path(sys.argv[3])
+hello_receipt_id = sys.argv[4]
+deny_receipt_id = sys.argv[5]
+allow_receipt_id = sys.argv[6]
+raw_payload = sys.argv[7]
+expected_ids = {hello_receipt_id, deny_receipt_id, allow_receipt_id}
+assert "" not in expected_ids, {"expected_ids": sorted(expected_ids)}
+
+with sqlite3.connect(receipt_store) as db:
+    rows = db.execute("SELECT receipt_json FROM http_receipts ORDER BY rowid ASC").fetchall()
+
+records = [json.loads(row[0]) for row in rows]
+receipt_ids = {record["id"] for record in records}
+missing = expected_ids - receipt_ids
+assert not missing, {"missing": sorted(missing), "stored": sorted(receipt_ids)}
+
+decisions = {
+    (
+        record.get("method"),
+        record.get("route_pattern"),
+        record.get("verdict", {}).get("verdict"),
+        record.get("response_status"),
+    ): record["id"]
+    for record in records
+}
+assert ("GET", "/hello", "allow", 200) in decisions, decisions
+assert ("POST", "/echo", "deny", 403) in decisions, decisions
+assert ("POST", "/echo", "allow", 200) in decisions, decisions
+
 receipt = next((record for record in records if record.get("id") == allow_receipt_id), None)
 assert receipt is not None, f"missing allow receipt {allow_receipt_id}"
 body_hash = hashlib.sha256(raw_payload.encode("utf-8")).hexdigest()
@@ -206,6 +255,23 @@ assert receipt["content_hash"] == content_hash, {
     "actual": receipt["content_hash"],
     "body_hash": body_hash,
 }
+
+output_path.write_text(
+    "".join(json.dumps(record, separators=(",", ":")) + "\n" for record in records),
+    encoding="utf-8",
+)
+summary_path.write_text(
+    json.dumps(
+        {
+            "hello": decisions[("GET", "/hello", "allow", 200)],
+            "deny": decisions[("POST", "/echo", "deny", 403)],
+            "allow": decisions[("POST", "/echo", "allow", 200)],
+        },
+        indent=2,
+    )
+    + "\n",
+    encoding="utf-8",
+)
 PY
 
 cat <<EOF

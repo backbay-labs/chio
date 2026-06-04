@@ -102,9 +102,7 @@ pub enum CliError {
 
 impl CliError {
     pub fn registry_error(spec: &'static ErrorCodeSpec, message: impl Into<String>) -> Self {
-        let diagnostic = chio_errors::diagnostic(spec.urn, spec.domain, spec.severity, message)
-            .with_help(spec.help);
-        Self::Chio(diagnostic.into_error())
+        Self::Chio(ChioError::from_spec(spec, message))
     }
 
     pub fn capability_error(message: impl Into<String>) -> Self {
@@ -286,7 +284,7 @@ impl CliError {
             ),
             Self::Chio(error) => {
                 let diagnostic = error.diagnostic();
-                let spec = chio_errors::lookup_error_code(diagnostic.code().as_str());
+                let spec = diagnostic.registry_spec();
                 StructuredErrorReport::new(
                     diagnostic.code().as_str(),
                     diagnostic.message(),
@@ -691,6 +689,32 @@ mod tests {
         for (err, expected, expected_domain) in cases {
             assert_registry_error(&err, expected, expected_domain);
         }
+    }
+
+    #[test]
+    fn cli_error_report_rejects_mismatched_registry_metadata() {
+        let spec = &chio_errors::_generated::error_codes::CAPABILITY_EXPIRED;
+        let error = CliError::Chio(
+            chio_errors::diagnostic(
+                spec.urn,
+                chio_errors::Domain::Manifest,
+                spec.severity,
+                "registered code with mismatched diagnostic domain",
+            )
+            .into_error(),
+        );
+
+        let report = error.report();
+
+        assert_eq!(report.code, spec.urn);
+        assert_eq!(report.context["domain"], "manifest");
+        assert_eq!(report.context["severity"], spec.severity.as_str());
+        assert_eq!(report.context["string_code"], serde_json::Value::Null);
+        assert_eq!(report.context["stability"], serde_json::Value::Null);
+        assert_eq!(
+            report.suggested_fix,
+            "Inspect the Chio diagnostic and retry after correcting the request."
+        );
     }
 
     #[test]

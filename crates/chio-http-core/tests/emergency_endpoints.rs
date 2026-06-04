@@ -210,6 +210,24 @@ fn missing_admin_token_returns_unauthorized() {
 }
 
 #[test]
+fn unusable_configured_admin_token_never_authorizes_matching_header() {
+    let blank_admin = EmergencyAdmin::new(Arc::new(build_kernel()), String::new());
+    let body = serde_json::to_vec(&serde_json::json!({"reason": "blank token"})).unwrap();
+
+    let blank_error = handle_emergency_stop(&blank_admin, Some(""), &body)
+        .expect_err("blank configured token must fail closed");
+    assert_eq!(blank_error, EmergencyHandlerError::Unauthorized);
+    assert!(!blank_admin.kernel().is_emergency_stopped());
+
+    let control_token = "admin\noperator".to_string();
+    let control_admin = EmergencyAdmin::new(Arc::new(build_kernel()), control_token.clone());
+    let control_error = handle_emergency_stop(&control_admin, Some(&control_token), &body)
+        .expect_err("control-character configured token must fail closed");
+    assert_eq!(control_error, EmergencyHandlerError::Unauthorized);
+    assert!(!control_admin.kernel().is_emergency_stopped());
+}
+
+#[test]
 fn bad_request_body_returns_400_and_does_not_flip_kernel() {
     let admin = admin(build_kernel());
 

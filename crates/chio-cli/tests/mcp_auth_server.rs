@@ -2,7 +2,7 @@
 
 use std::fs;
 use std::io::Read;
-use std::net::{SocketAddr, TcpListener};
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Mutex, OnceLock};
@@ -13,6 +13,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use chio_core::crypto::{sha256_hex, Keypair};
 use chio_kernel::dpop::{DpopProof, DpopProofBody, DPOP_SCHEMA};
+use chio_test_support::loopback::{reserve_listen_addr, skip_when_loopback_bind_denied};
 use reqwest::blocking::{Client, Response};
 use reqwest::header::{HeaderName, HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE, LOCATION};
 use serde_json::{json, Value};
@@ -25,13 +26,6 @@ fn unique_test_dir() -> PathBuf {
         .expect("system time before unix epoch")
         .as_nanos();
     std::env::temp_dir().join(format!("chio-cli-auth-server-{nonce}"))
-}
-
-fn reserve_listen_addr() -> SocketAddr {
-    let listener = TcpListener::bind("127.0.0.1:0").expect("bind temp listener");
-    let addr = listener.local_addr().expect("listener addr");
-    drop(listener);
-    addr
 }
 
 fn auth_server_test_guard() -> std::sync::MutexGuard<'static, ()> {
@@ -373,6 +367,12 @@ fn decode_jwt_payload(token: &str) -> Value {
 
 #[test]
 fn mcp_serve_http_local_auth_server_supports_auth_code_and_token_exchange() {
+    if skip_when_loopback_bind_denied(
+        "mcp_serve_http_local_auth_server_supports_auth_code_and_token_exchange",
+    ) {
+        return;
+    }
+
     let _guard = auth_server_test_guard();
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create test dir");
@@ -745,6 +745,12 @@ fn mcp_serve_http_local_auth_server_supports_auth_code_and_token_exchange() {
 
 #[test]
 fn mcp_serve_http_local_auth_server_rejects_stale_or_mismatched_identity_assertion() {
+    if skip_when_loopback_bind_denied(
+        "mcp_serve_http_local_auth_server_rejects_stale_or_mismatched_identity_assertion",
+    ) {
+        return;
+    }
+
     let _guard = auth_server_test_guard();
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create test dir");
@@ -847,6 +853,12 @@ fn mcp_serve_http_local_auth_server_rejects_stale_or_mismatched_identity_asserti
 
 #[test]
 fn mcp_serve_http_local_auth_server_enforces_dpop_sender_constraint_across_token_and_mcp_runtime() {
+    if skip_when_loopback_bind_denied(
+        "mcp_serve_http_local_auth_server_enforces_dpop_sender_constraint_across_token_and_mcp_runtime",
+    ) {
+        return;
+    }
+
     let _guard = auth_server_test_guard();
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create test dir");
@@ -965,6 +977,12 @@ fn mcp_serve_http_local_auth_server_enforces_dpop_sender_constraint_across_token
 
 #[test]
 fn mcp_serve_http_local_auth_server_enforces_mtls_and_attestation_bound_sender_constraint() {
+    if skip_when_loopback_bind_denied(
+        "mcp_serve_http_local_auth_server_enforces_mtls_and_attestation_bound_sender_constraint",
+    ) {
+        return;
+    }
+
     let _guard = auth_server_test_guard();
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create test dir");
@@ -1099,6 +1117,12 @@ fn mcp_serve_http_local_auth_server_enforces_mtls_and_attestation_bound_sender_c
 
 #[test]
 fn mcp_serve_http_local_auth_server_rejects_attestation_bound_sender_without_dpop_or_mtls() {
+    if skip_when_loopback_bind_denied(
+        "mcp_serve_http_local_auth_server_rejects_attestation_bound_sender_without_dpop_or_mtls",
+    ) {
+        return;
+    }
+
     let _guard = auth_server_test_guard();
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create test dir");

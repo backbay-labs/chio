@@ -28,7 +28,7 @@
 //! enforces at load time.
 
 use alloc::collections::BTreeMap;
-use alloc::string::String;
+use alloc::string::{String, ToString};
 use core::fmt;
 
 /// Hard ceiling on any single token's budget share in basis points.
@@ -57,7 +57,7 @@ pub struct BudgetSplit {
     pub children: BTreeMap<String, u16>,
 }
 
-/// Errors raised by [`BudgetSplit::try_admit_child`].
+/// Errors raised by [`BudgetSplit`] admission and release operations.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BudgetSplitError {
     /// The proposed child share alone exceeds the per-token cap of
@@ -98,6 +98,17 @@ pub enum BudgetSplitError {
         /// The child capability ID that was already present.
         child_id: String,
     },
+    /// The release path was asked to remove a child with a different share
+    /// than the one originally admitted. This is a hard failure because it
+    /// means the caller is no longer unwinding the same delegation edge.
+    ReleaseShareMismatch {
+        /// The child capability ID whose admitted share differed.
+        child_id: String,
+        /// The share supplied by the caller during release.
+        expected_share_bps: u16,
+        /// The share recorded during admission.
+        actual_share_bps: u16,
+    },
 }
 
 impl fmt::Display for BudgetSplitError {
@@ -126,6 +137,14 @@ impl fmt::Display for BudgetSplitError {
             BudgetSplitError::DuplicateChild { child_id } => write!(
                 f,
                 "child capability {child_id} already admitted under this parent with a different share"
+            ),
+            BudgetSplitError::ReleaseShareMismatch {
+                child_id,
+                expected_share_bps,
+                actual_share_bps,
+            } => write!(
+                f,
+                "child capability {child_id} release share {expected_share_bps} bps does not match admitted share {actual_share_bps} bps"
             ),
         }
     }
@@ -192,6 +211,32 @@ impl BudgetSplit {
         self.children.insert(child_id, share_bps);
         Ok(())
     }
+
+    /// Release a child admission previously recorded under this parent.
+    ///
+    /// Missing children are treated as already released so pre-dispatch
+    /// cleanup paths can call this after both admission failures and later
+    /// denial failures without branching on partial state. A mismatched share
+    /// is still rejected because it indicates the caller is trying to unwind
+    /// a different child edge.
+    pub fn release_child(
+        &mut self,
+        child_id: &str,
+        expected_share_bps: u16,
+    ) -> Result<(), BudgetSplitError> {
+        let Some(actual_share_bps) = self.children.get(child_id).copied() else {
+            return Ok(());
+        };
+        if actual_share_bps != expected_share_bps {
+            return Err(BudgetSplitError::ReleaseShareMismatch {
+                child_id: child_id.to_string(),
+                expected_share_bps,
+                actual_share_bps,
+            });
+        }
+        let _ = self.children.remove(child_id);
+        Ok(())
+    }
 }
 
 /// A registry of live [`BudgetSplit`]s, keyed by parent capability id.
@@ -229,6 +274,18 @@ pub trait BudgetRegistry {
         share_bps: u16,
     ) -> Result<(), BudgetSplitError>;
 
+    /// Release a previously admitted child token under the given parent.
+    ///
+    /// Unknown parents and missing children are idempotent no-ops so cleanup
+    /// can safely run after revocation or after an admission attempt that
+    /// failed before mutating the registry. Share mismatches fail closed.
+    fn release_child(
+        &mut self,
+        parent_token_id: &str,
+        child_token_id: &str,
+        expected_share_bps: u16,
+    ) -> Result<(), BudgetSplitError>;
+
     /// Drop the parent's split from the registry. Idempotent; calling
     /// `evict_parent` on an unregistered parent is a no-op so revocation
     /// races do not abort verification.
@@ -259,6 +316,15 @@ impl BudgetRegistry for NoopBudgetRegistry {
         _parent_token_id: &str,
         _child_token_id: String,
         _share_bps: u16,
+    ) -> Result<(), BudgetSplitError> {
+        Ok(())
+    }
+
+    fn release_child(
+        &mut self,
+        _parent_token_id: &str,
+        _child_token_id: &str,
+        _expected_share_bps: u16,
     ) -> Result<(), BudgetSplitError> {
         Ok(())
     }
@@ -332,6 +398,18 @@ impl BudgetRegistry for InMemoryBudgetRegistry {
             None => Err(BudgetSplitError::UnknownParent {
                 parent_token_id: parent_token_id.into(),
             }),
+        }
+    }
+
+    fn release_child(
+        &mut self,
+        parent_token_id: &str,
+        child_token_id: &str,
+        expected_share_bps: u16,
+    ) -> Result<(), BudgetSplitError> {
+        match self.splits.get_mut(parent_token_id) {
+            Some(split) => split.release_child(child_token_id, expected_share_bps),
+            None => Ok(()),
         }
     }
 
@@ -423,6 +501,41 @@ mod tests {
     }
 
     #[test]
+    fn release_child_restores_parent_headroom() {
+        let mut split = BudgetSplit::new("parent".to_string(), 5_000);
+        split
+            .try_admit_child("child-a".to_string(), 4_000)
+            .expect("child admits");
+        assert_eq!(split.current_total_child_bps(), 4_000);
+
+        split
+            .release_child("child-a", 4_000)
+            .expect("matching release succeeds");
+        assert_eq!(split.current_total_child_bps(), 0);
+
+        split
+            .try_admit_child("child-b".to_string(), 5_000)
+            .expect("released child should restore full headroom");
+    }
+
+    #[test]
+    fn release_child_rejects_share_mismatch() {
+        let mut split = BudgetSplit::new("parent".to_string(), 5_000);
+        split
+            .try_admit_child("child-a".to_string(), 4_000)
+            .expect("child admits");
+
+        let error = split
+            .release_child("child-a", 3_000)
+            .expect_err("mismatched release must fail");
+        assert!(matches!(
+            error,
+            BudgetSplitError::ReleaseShareMismatch { .. }
+        ));
+        assert_eq!(split.current_total_child_bps(), 4_000);
+    }
+
+    #[test]
     fn in_memory_registry_rejects_unknown_parent() {
         let mut registry = InMemoryBudgetRegistry::new();
         let err = registry
@@ -448,6 +561,29 @@ mod tests {
             err,
             BudgetSplitError::OversubscribedSiblings { .. }
         ));
+    }
+
+    #[test]
+    fn in_memory_registry_release_is_idempotent_and_restores_headroom() {
+        let mut registry = InMemoryBudgetRegistry::new();
+        registry
+            .register_parent("p".to_string(), 5_000)
+            .expect("register parent snapshot");
+        registry
+            .try_admit_child("p", "child-a".to_string(), 4_000)
+            .expect("child admits");
+        registry
+            .release_child("p", "child-a", 4_000)
+            .expect("matching release succeeds");
+        registry
+            .release_child("p", "child-a", 4_000)
+            .expect("missing child release is idempotent");
+        registry
+            .release_child("missing-parent", "child-a", 4_000)
+            .expect("missing parent release is idempotent");
+        registry
+            .try_admit_child("p", "child-b".to_string(), 5_000)
+            .expect("released child should restore full headroom");
     }
 
     #[test]

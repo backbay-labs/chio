@@ -1,5 +1,5 @@
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AgentPassport {
     pub schema: String,
     pub subject: String,
@@ -39,7 +39,7 @@ impl PassportLifecycleState {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PassportStatusDistribution {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub resolve_urls: Vec<String>,
@@ -84,7 +84,7 @@ impl PassportStatusDistribution {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PassportLifecycleRecord {
     pub passport_id: String,
     pub subject: String,
@@ -107,7 +107,7 @@ pub struct PassportLifecycleRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PassportLifecycleResolution {
     pub passport_id: String,
     pub subject: String,
@@ -397,7 +397,7 @@ fn validate_passport_lifecycle_state_fields(
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PassportVerification {
     pub passport_id: String,
     pub subject: String,
@@ -417,7 +417,7 @@ pub struct PassportVerification {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PassportVerifierPolicy {
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub issuer_allowlist: BTreeSet<String>,
@@ -461,7 +461,7 @@ impl PassportVerifierPolicy {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SignedPassportVerifierPolicyBody {
     pub schema: String,
     pub policy_id: String,
@@ -473,20 +473,20 @@ pub struct SignedPassportVerifierPolicyBody {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SignedPassportVerifierPolicy {
     pub body: SignedPassportVerifierPolicyBody,
     pub signature: Signature,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PassportVerifierPolicyReference {
     pub policy_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CredentialPolicyEvaluation {
     pub index: usize,
     pub issuer: String,
@@ -516,7 +516,7 @@ pub struct CredentialPolicyEvaluation {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PassportPolicyEvaluation {
     pub verification: PassportVerification,
     pub accepted: bool,

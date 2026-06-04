@@ -32,8 +32,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chio_provider_adapter_core::http::{
-    map_transport_error, AuthScheme, HttpTransport, HttpTransportConfig, HttpTransportError,
-    ProviderHttpTransport, DEFAULT_TIMEOUT,
+    map_http_status, map_transport_error, AuthScheme, HttpResponse, HttpTransport,
+    HttpTransportConfig, HttpTransportError, ProviderHttpTransport, DEFAULT_TIMEOUT,
 };
 use chio_tool_call_fabric::{ProviderError, ProviderRequest, ToolInvocation, VerdictResult};
 use serde_json::Value;
@@ -160,11 +160,13 @@ impl OpenAiTransport {
         &self,
         request_body: &[u8],
     ) -> Result<Vec<ToolInvocation>, ProviderError> {
+        self.adapter.ensure_supported_api_version()?;
         let response = self
             .transport
             .post_json(OPENAI_RESPONSES_PATH, request_body)
             .await
             .map_err(map_openai_transport_error)?;
+        classify_openai_http_status(&response)?;
         self.adapter.lift_batch(ProviderRequest(response.body))
     }
 
@@ -181,11 +183,13 @@ impl OpenAiTransport {
         &self,
         request_body: &[u8],
     ) -> Result<ChatCompletionsOutcome, ProviderError> {
+        self.adapter.ensure_supported_api_version()?;
         let response = self
             .transport
             .post_json(OPENAI_CHAT_COMPLETIONS_PATH, request_body)
             .await
             .map_err(map_openai_transport_error)?;
+        classify_openai_http_status(&response)?;
         let value: Value = serde_json::from_slice(&response.body).map_err(|error| {
             ProviderError::Malformed(format!(
                 "OpenAI chat.completions response was not JSON: {error}"
@@ -219,6 +223,7 @@ impl OpenAiTransport {
     where
         F: FnMut(&ToolInvocation) -> Result<VerdictResult, ProviderError>,
     {
+        self.adapter.ensure_supported_api_version()?;
         let body = self
             .transport
             .post_sse(OPENAI_RESPONSES_PATH, request_body)
@@ -286,6 +291,13 @@ fn transport_build_error(error: HttpTransportError) -> ProviderError {
     ProviderError::Malformed(format!(
         "OpenAI transport could not be constructed: {error}"
     ))
+}
+
+fn classify_openai_http_status(response: &HttpResponse) -> Result<(), ProviderError> {
+    if let Some(error) = map_http_status("OpenAI", response.status, &response.body) {
+        return Err(error);
+    }
+    Ok(())
 }
 
 /// Map an outbound transport failure into the fabric error taxonomy, using the
