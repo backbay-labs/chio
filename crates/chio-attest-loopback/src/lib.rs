@@ -1359,6 +1359,58 @@ fn build_proof_package_unchecked(
 }
 
 #[cfg(test)]
+fn resign_bilateral_envelope_unanimous_deny(
+    envelope: &mut DsseEnvelope,
+    buyer_key: &Keypair,
+    vendor_key: &Keypair,
+) -> Result<(), ChioPackageError> {
+    use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+    use base64::Engine;
+    use chio_core_types::crypto::{Ed25519Backend, SigningBackend};
+    use chio_federation::bilateral_dsse::{pae, PAYLOAD_TYPE_IN_TOTO};
+
+    let (mut statement, _) = envelope
+        .decode_statement()
+        .map_err(|error| ChioPackageError::Federation(error.to_string()))?;
+    let summary = statement
+        .predicate
+        .policy_evaluation_summary
+        .as_mut()
+        .ok_or_else(|| {
+            ChioPackageError::Federation(
+                "bilateral envelope missing policy_evaluation_summary".to_string(),
+            )
+        })?;
+    summary.server_a_verdict.verdict = "deny".to_string();
+    summary.server_b_verdict.verdict = "deny".to_string();
+    summary.joint_disposition = Some("deny".to_string());
+    let statement_bytes = statement
+        .canonical_bytes()
+        .map_err(|error| ChioPackageError::Federation(error.to_string()))?;
+    envelope.payload = BASE64_STANDARD.encode(&statement_bytes);
+    let pae_bytes = pae(PAYLOAD_TYPE_IN_TOTO, &statement_bytes);
+    let sig_a = Ed25519Backend::new(buyer_key.clone())
+        .sign_bytes(&pae_bytes)
+        .map_err(|error| ChioPackageError::Federation(error.to_string()))?;
+    let sig_b = Ed25519Backend::new(vendor_key.clone())
+        .sign_bytes(&pae_bytes)
+        .map_err(|error| ChioPackageError::Federation(error.to_string()))?;
+    envelope.signatures[0].sig = BASE64_STANDARD.encode(sig_a.to_bytes());
+    envelope.signatures[1].sig = BASE64_STANDARD.encode(sig_b.to_bytes());
+    Ok(())
+}
+
+#[cfg(test)]
+fn refresh_workflow_step_parent_chain(steps: &mut [StepRecord]) -> Result<(), ChioPackageError> {
+    let mut previous: Option<String> = None;
+    for step in steps.iter_mut() {
+        step.parent_receipt_sha256 = previous.clone();
+        previous = Some(canonical_sha256(step)?);
+    }
+    Ok(())
+}
+
+#[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::unwrap_used)]
 
@@ -1741,5 +1793,37 @@ mod tests {
 
         let error = verify_package(&package, &trust_bundle, &context).unwrap_err();
         assert!(error.to_string().contains("consistency anchor"));
+    }
+
+    #[test]
+    fn bilateral_envelope_deny_verdict_fails_package_verification() {
+        let mut package = fresh_proof_package().expect("fresh package builds");
+        let buyer_key = Keypair::from_seed(&BUYER_SEED);
+        let vendor_key = Keypair::from_seed(&VENDOR_A_SEED);
+        resign_bilateral_envelope_unanimous_deny(
+            &mut package.bilateral_envelopes[0],
+            &buyer_key,
+            &vendor_key,
+        )
+        .expect("deny bilateral envelope resigns");
+        package.workflow_receipt.steps[0].bilateral_dsse_sha256 = Some(
+            canonical_sha256(&package.bilateral_envelopes[0]).expect("envelope hash computes"),
+        );
+        refresh_workflow_step_parent_chain(&mut package.workflow_receipt.steps)
+            .expect("step parent chain refreshes");
+        resign_workflow_receipt(&mut package).expect("workflow resigns");
+        let context = verification_context();
+        let trust_bundle = rebuild_verifier_material(&mut package, &context);
+
+        let error = verify_package(&package, &trust_bundle, &context).unwrap_err();
+        let message = error.to_string();
+        assert!(
+            message.contains("bilateral envelope policy verdict"),
+            "expected admission gate failure, got: {message}"
+        );
+        assert!(
+            message.contains("deny"),
+            "expected deny verdict, got: {message}"
+        );
     }
 }

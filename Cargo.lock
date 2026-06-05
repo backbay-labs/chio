@@ -2725,6 +2725,7 @@ dependencies = [
 name = "chio-attest-loopback"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "chio-attest-buyer-core",
  "chio-core-types",
  "chio-federation",
