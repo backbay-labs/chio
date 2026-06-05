@@ -653,7 +653,7 @@ fn chio_runtime_admission_hook_denies_federated_call_before_dispatch_or_cosign(
     let mut kernel = make_kernel(make_config());
     kernel.set_federation_local_kernel_id(tool_host_kernel_id);
     let path = unique_receipt_db_path("chio-runtime-deny-no-cosign");
-    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path)?));
+    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path)?))?;
 
     let invocations = std::sync::Arc::new(AtomicU64::new(0));
     kernel.register_tool_server(Box::new(SideEffectServer::new(
@@ -730,7 +730,7 @@ fn federated_origin_without_runtime_hook_or_context_fails_closed(
     let mut kernel = make_kernel(make_config());
     kernel.set_federation_local_kernel_id(tool_host_kernel_id);
     let path = unique_receipt_db_path("federated-no-hook-no-context");
-    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path)?));
+    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path)?))?;
 
     let invocations = std::sync::Arc::new(AtomicU64::new(0));
     kernel.register_tool_server(Box::new(SideEffectServer::new(

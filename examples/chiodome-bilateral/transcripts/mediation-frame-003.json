@@ -1,1 +1,0 @@
-{"id":2,"jsonrpc":"2.0","result":{"_meta":{"chio_verified":{"header":"Chio-verified","schema":"urn:chio:attest:tool-call/v1","tool":"echo","verifier":"chio-attest-verify"}},"content":[{"text":"echoed: chiodome-bilateral kb-mcp replay (line 2)","type":"text"}]}}

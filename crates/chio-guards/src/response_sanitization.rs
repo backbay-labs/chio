@@ -909,11 +909,29 @@ impl Clone for OutputSanitizer {
 }
 
 impl OutputSanitizer {
-    pub fn new() -> Self {
-        match Self::with_config(OutputSanitizerConfig::default()) {
-            Ok(sanitizer) => sanitizer,
-            Err(error) => panic!("default output sanitizer config should be valid: {error}"),
+    fn build_default_or_fail_closed() -> Self {
+        Self::with_config(OutputSanitizerConfig::default()).unwrap_or_else(|_| Self {
+            config: OutputSanitizerConfig::default(),
+            allowlist_patterns: vec![],
+            denylist_patterns: vec![],
+            token_vault: Arc::new(TokenVault::default()),
+        })
+    }
+
+    fn clone_with_fresh_vault(&self) -> Self {
+        Self {
+            config: self.config.clone(),
+            allowlist_patterns: self.allowlist_patterns.clone(),
+            denylist_patterns: self.denylist_patterns.clone(),
+            token_vault: Arc::new(TokenVault::new()),
         }
+    }
+
+    pub fn new() -> Self {
+        static DEFAULT: OnceLock<OutputSanitizer> = OnceLock::new();
+        DEFAULT
+            .get_or_init(Self::build_default_or_fail_closed)
+            .clone_with_fresh_vault()
     }
 
     pub fn with_config(config: OutputSanitizerConfig) -> Result<Self, OutputSanitizerConfigError> {
@@ -1688,6 +1706,33 @@ mod tests {
         assert!(is_luhn_valid_card_number("4111 1111 1111 1111"));
         // One digit flipped: no longer valid.
         assert!(!is_luhn_valid_card_number("4111 1111 1111 1112"));
+    }
+
+    #[test]
+    fn output_sanitizer_clone_preserves_token_vault() {
+        let mut config = OutputSanitizerConfig::default();
+        config
+            .redaction_strategies
+            .insert(SensitiveCategory::Pii, RedactionStrategy::Tokenize);
+        let sanitizer = OutputSanitizer::with_config(config).unwrap();
+        let cloned = sanitizer.clone();
+
+        let result = cloned.sanitize_text("Contact john@example.com for access");
+        let token = result
+            .redactions
+            .iter()
+            .find_map(|redaction| {
+                redaction
+                    .replacement
+                    .strip_prefix("[TOKEN:")
+                    .and_then(|value| value.strip_suffix(']'))
+            })
+            .unwrap();
+
+        assert_eq!(
+            sanitizer.token_vault().get(token).as_deref(),
+            Some("john@example.com")
+        );
     }
 
     #[test]

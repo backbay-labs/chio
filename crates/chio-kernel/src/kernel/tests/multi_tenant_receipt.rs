@@ -56,7 +56,7 @@ fn session_tenant_id_is_stamped_on_tool_call_receipt() {
     let scope = make_scope(vec![make_grant("srv-a", "read_file")]);
     let cap = make_capability(&kernel, &agent_kp, scope, 300);
 
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()]);
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()]).unwrap();
     kernel
         .set_session_auth_context(&session_id, oauth_auth_with_enterprise_tenant("tenant-A"))
         .unwrap();
@@ -128,7 +128,7 @@ fn session_without_tenant_id_produces_untagged_receipt() {
     let cap = make_capability(&kernel, &agent_kp, scope, 300);
 
     // Default session auth context is in-process anonymous; no tenant.
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()]);
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()]).unwrap();
     kernel.activate_session(&session_id).unwrap();
 
     let context = make_operation_context(&session_id, "req-notenant", &agent_kp.public_key().to_hex());
@@ -204,7 +204,7 @@ fn tenant_id_falls_back_to_oauth_federated_claims() {
         },
     );
 
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()]);
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()]).unwrap();
     kernel.set_session_auth_context(&session_id, auth).unwrap();
     kernel.activate_session(&session_id).unwrap();
 

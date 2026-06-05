@@ -344,7 +344,13 @@ pub(crate) fn execute_runtime_loopback_step(
                 "Chio runtime loopback receipt store open: {error}"
             ))
         })?;
-    kernel.set_receipt_store(Box::new(receipt_store));
+    kernel
+        .set_receipt_store(Box::new(receipt_store))
+        .map_err(|error| {
+            RuntimeLoopbackError::message(format!(
+                "Chio runtime loopback receipt store install: {error}"
+            ))
+        })?;
     let peer_pin_now_unix_ms = unix_now_ms();
     if let Some(origin_kernel_id) = step.request.origin_kernel_id.as_deref() {
         let origin_key = chio_attest_loopback::runtime_buyer_keypair();

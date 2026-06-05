@@ -1,7 +1,0 @@
-receipt: rcpt-c-refund-demo-0001
-schema: chio.receipt.v1
-identity: legacy_uuidv7_alias
-decision: allow
-policy_hash: policy-c-demo
-scope_diff: requested scope vs granted scope is not embedded in this receipt
-parents: 0

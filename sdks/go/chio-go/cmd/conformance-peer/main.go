@@ -145,11 +145,18 @@ func parseArgs() (cliArgs, error) {
 	flag.StringVar(&args.artifactsDir, "artifacts-dir", "", "")
 	flag.Parse()
 
+	if args.authToken == "" {
+		args.authToken = strings.TrimSpace(os.Getenv("CHIO_CONFORMANCE_AUTH_TOKEN"))
+	}
+	if args.adminToken == "" {
+		args.adminToken = strings.TrimSpace(os.Getenv("CHIO_CONFORMANCE_ADMIN_TOKEN"))
+	}
+
 	switch {
 	case args.baseURL == "":
 		return args, fmt.Errorf("missing required argument --base-url")
 	case args.authToken == "":
-		return args, fmt.Errorf("missing required argument --auth-token")
+		return args, fmt.Errorf("missing required argument --auth-token (or CHIO_CONFORMANCE_AUTH_TOKEN)")
 	case args.scenariosDir == "":
 		return args, fmt.Errorf("missing required argument --scenarios-dir")
 	case args.resultsOutput == "":

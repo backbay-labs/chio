@@ -49,7 +49,7 @@ pub(crate) fn cmd_run(
     let agent_pk = agent_kp.public_key();
     let session_agent_id = agent_pk.to_hex();
     let initial_caps = issue_default_capabilities(&kernel, &agent_pk, &default_capabilities)?;
-    let session_id = kernel.open_session(session_agent_id.clone(), initial_caps.clone());
+    let session_id = kernel.open_session(session_agent_id.clone(), initial_caps.clone())?;
 
     info!(
         capability_count = initial_caps.len(),
@@ -360,7 +360,7 @@ pub(crate) fn cmd_check(
                 ))
             })?,
     };
-    let session_id = kernel.open_session(session_agent_id.clone(), initial_caps);
+    let session_id = kernel.open_session(session_agent_id.clone(), initial_caps)?;
     kernel.activate_session(&session_id)?;
 
     let context = OperationContext::new(

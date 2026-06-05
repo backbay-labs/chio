@@ -12,6 +12,7 @@ publish = false
 name = "chio_federation"
 
 [features]
+demo = []
 pq = ["chio-core-types/pq"]
 # Selective-disclosure auditor view for Chio section-6 BBS+ projection. Default-off
 # so the baseline chio build stays BBS+/BLS12-381-free. The feature

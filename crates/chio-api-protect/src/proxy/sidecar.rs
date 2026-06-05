@@ -773,15 +773,15 @@ pub(crate) async fn sidecar_attenuate_capability_handler(
     // payloads; the body itself is not used because attenuation is not
     // implemented over HTTP yet.
     let _ = axum::body::to_bytes(request.into_body(), 1024 * 1024).await;
-    (
+    sidecar_not_implemented_route_response(
         StatusCode::NOT_IMPLEMENTED,
-        axum::Json(serde_json::json!({
-            "error": "chio_attenuate_not_implemented",
-            "message": "capability attenuation over HTTP is not yet wired; the kernel's `delegate` primitive requires the parent capability subject's private key, which the sidecar does not hold. Use `chio-sdk-python`'s local attenuation helpers, or call the kernel directly until this route lands.",
+        "chio_attenuate_not_implemented",
+        "capability attenuation over HTTP is not yet wired; the kernel's `delegate` primitive requires the parent capability subject's private key, which the sidecar does not hold. Use `chio-sdk-python`'s local attenuation helpers, or call the kernel directly until this route lands.",
+        "not-implemented",
+        serde_json::json!({
             "rfc": "see crates/chio-core-types/src/capability.rs::delegate (feature `delegation`)",
-        })),
+        }),
     )
-        .into_response()
 }
 
 // ---------------------------------------------------------------------------
@@ -1001,6 +1001,12 @@ pub(crate) async fn sidecar_verify_receipt_handler(
 // ---------------------------------------------------------------------------
 // Tool-call evaluation (SDK alias for `evaluate_tool_call`)
 // ---------------------------------------------------------------------------
+//
+// `POST /v1/evaluate` is NOT kernel-mediated authorization. The handler
+// records cap-revocation and parameter-hash alias checks only, signs an
+// `AdvisoryEvaluation` receipt (`TrustLevel::Advisory`), and sets the
+// `chio-trust-level: advisory` response header so v1 authority gates do
+// not mistake the outcome for a mediated allow/deny decision.
 
 /// `POST /v1/evaluate` body shape posted by `chio-sdk-python`'s
 /// `ChioClient.evaluate_tool_call`. Distinct from `/chio/evaluate`'s
@@ -1149,7 +1155,7 @@ pub(crate) async fn sidecar_evaluate_tool_call_handler(
         return internal_json_error_response("chio_receipt_persistence_failed", &error.to_string());
     }
 
-    (StatusCode::OK, axum::Json(receipt)).into_response()
+    sidecar_advisory_tool_call_evaluate_response(receipt)
 }
 
 pub(crate) fn sidecar_bad_request(message: &str) -> (StatusCode, axum::Json<serde_json::Value>) {

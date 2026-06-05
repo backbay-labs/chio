@@ -21,8 +21,9 @@ they have the same epistemic weight:
 
 Where a surface is only proposed, this document now labels it explicitly. In
 particular: `chio mcp serve`, `chio mcp serve-http`, `chio api protect`, the
-HTTP/framework substrate packages, ACP live-path cryptographic receipts, and
-the receipt dashboard ship today. `chio start --config chio.yaml` and the
+HTTP/framework substrate packages, optional ACP kernel-injected signed receipts
+via `AcpProxy::start_with_kernel` (default standalone proxy path remains
+unsigned), and the receipt dashboard ship today. `chio start --config chio.yaml` and the
 stronger market-position claims remain strategic or proposed rather than
 current runtime fact. The shared `CrossProtocolOrchestrator` substrate is no
 longer purely proposed; the stronger technical control-plane thesis is now
@@ -217,7 +218,7 @@ the multi-surface story holds under real operator workloads.
 |------|--------------|-----------------|
 | **Capability tokens** | Attenuated, time-bounded, subject-bound, revocable, with bounded Lean support for attenuation | Shipped in the core model |
 | **Guard evidence** | Composable fail-closed guards with signed evidence capture | Shipped; advanced stateful guards remain planned |
-| **Receipt signing** | Kernel-signed receipts on shipped MCP, A2A, ACP live-path, and HTTP/API substrate flows | Shipped on current live paths; OpenAI remains deferred; generic orchestration remains future |
+| **Receipt signing** | Kernel-signed receipts on MCP, A2A, and HTTP/API substrate flows; ACP signed only when `AcpProxy::start_with_kernel` is used (default ACP proxy path remains unsigned) | [In repo] on qualified paths; OpenAI deferred |
 | **Merkle commitment** | Append-only receipt log with checkpoint publication | Shipped in the receipt architecture |
 | **Formal verification** | Bounded verified-core model, claim registry, and runtime qualification outside that boundary | Real but not full theorem-prover coverage |
 | **Economic primitives** | Budgets, settlement hooks, and insurance-linked framing in the security path | Mixed: some pieces shipped, broader market story is a strategic bet |
@@ -242,15 +243,15 @@ shipping surface.
 
 | Item | Rationale | Crate | Status |
 |------|-----------|-------|--------|
-| ACP kernel integration | Promote chio-acp-proxy from unsigned audit entries to full signed receipts via injected kernel service | `chio-acp-proxy` | [Shipped] |
+| ACP kernel integration | Promote chio-acp-proxy from unsigned audit entries to signed receipts via optional kernel injection (`start_with_kernel`); default standalone path stays unsigned | `chio-acp-proxy` | [Partial] |
 | MCP proxy DX polish | The repo already ships `chio mcp serve` and `chio mcp serve-http`; Tier 1 work is simplifying naming, defaults, and docs further, potentially including an `chio proxy` alias | `chio-cli` | |
 | Unified runtime config | Single `chio.yaml` that configures MCP, A2A, and ACP edges with shared policy | `chio-cli` | [Partial -- flat schema shipped, nested schema proposed. See spec/CONFIGURATION.md] |
 | Symlink fix | Workspace symlink resolution for monorepo consumers | `chio-cli` | |
 
-**Why Tier 1 first:** ACP live-path cryptographic enforcement is now landed, so
-the remaining Tier 1 work is about adoption clarity: wrapped MCP DX polish and
-truthful documentation for the proposed future entry points that still do not
-ship.
+**Why Tier 1 first:** Optional ACP kernel injection is landed, but unsigned
+standalone mode remains the default, so the remaining Tier 1 work is adoption
+clarity, making kernel-attested deployment the obvious path, and truthful docs
+for proposed entry points that still do not ship.
 
 **Runtime-security framing:** Tier 1 is about making deterministic governance
 and signed observability easy to adopt. It is intentionally not framed as full
@@ -264,13 +265,14 @@ These items extend the protocol surface and complete the compliance story.
 |------|-----------|-------|--------|
 | A2A edge crate | Bidirectional bridging: expose Chio tools as A2A Agent Cards | `chio-a2a-edge` | [Shipped] |
 | ACP edge crate | Bidirectional bridging: expose Chio tools as ACP capabilities | `chio-acp-edge` | [Shipped] |
-| MCP adapter completion | Close coverage from 14 tests to 80+, covering streaming, error paths, and edge cases | `chio-mcp-adapter` | [Shipped] |
-| Compliance certificates | Session-scoped, single-artifact proof bundles for auditors (SOC 2, HIPAA, EU AI Act) | `chio-core` | [Shipped] |
+| MCP adapter completion | Raise coverage toward 80+ tests (streaming, error paths, edge cases); see section 10 | `chio-mcp-adapter` | [In repo] |
+| Compliance certificate schema/API | Session-scoped compliance artifact schema and kernel issuance/verification API (not issued SOC 2, HIPAA, or EU AI Act certificates) | `chio-kernel` | [Partial] |
 
 **Why Tier 2 second:** Edge symmetry means every protocol gets both inbound
 adaptation (consume external tools) and outbound exposure (publish Chio tools).
-This is what makes Chio a hub, not just a consumer. Compliance certificates
-are the artifact that enterprise security and legal teams actually want to see.
+This is what makes Chio a hub, not just a consumer. Compliance certificate
+schemas and exports are the technical substrate; issued third-party attestations
+remain a separate engagement.
 
 ### Tier 3: Strategic Bets
 
@@ -281,7 +283,7 @@ These items create new market categories or defensible network effects.
 | Capability attenuation SDK | Programmatic sub-agent delegation with provable subset guarantees | `chio-core` | |
 | Receipt dashboard expansion | The dashboard ships today; the strategic work is adding cross-protocol traces, compliance views, and certificate inspection | `chio-cli/dashboard` | |
 | OpenAI function calling adapter | Deferred caller-executed function-tool mediation surface | Future crate TBD | Blocked until v1 receipt authority and adapter qualification |
-| WASM guard runtime | Custom guards authored in any language compiled to WASM, sandboxed execution | `chio-guards` | [Shipped] |
+| WASM guard runtime | Custom guards authored in any language compiled to WASM, sandboxed execution | `chio-wasm-guards` | [In repo] |
 | Kubernetes admission controller | Enforce Chio capability policies at pod deployment time | `sdks/k8s` | [Shipped] |
 
 **Why Tier 3 last:** These are force multipliers that assume Tier 1 and Tier 2
@@ -369,15 +371,15 @@ previous receipt in the session, creating an ordered, tamper-evident sequence.
 A gap in the chain is detectable. A reordering is detectable. The chain is
 the foundation for session compliance certificates.
 
-### 5.4 Session Compliance Certificates (Shipped)
+### 5.4 Session Compliance Certificates (Partial)
 
-A session compliance certificate is a single artifact that proves:
+Schema and kernel issuance/verification APIs exist. Third-party framework attestations (SOC 2, HIPAA, EU AI Act) are not issued by Chio. A session compliance certificate is designed to prove:
 - Every tool invocation in the session was authorized by a valid capability token
 - Every guard in the pipeline evaluated and produced a signed decision
 - No receipt in the chain was tampered with or reordered
 - The session stayed within its budget, time, and scope constraints
 
-One artifact. One verification. Auditor-ready. The certificate references the
+One artifact. One verification when the full session chain and guards are wired. The certificate references the
 receipt chain root hash and the capability token IDs, so a verifier can
 reconstruct the full evidence independently.
 
@@ -654,7 +656,7 @@ Current shipped and planned integrations, ordered by expected adoption impact.
 | **Python / TypeScript / Go substrate SDKs** | Multi-language middleware and wrapper packages around the Rust kernel | Shipped |
 | **LangChain / LlamaIndex wrappers** | Python packages that inject Chio authorization into existing agent frameworks | Planned |
 | **Kubernetes admission controller** | Enforce Chio capability policies at pod deployment, reject workloads without valid tokens from trusted Chio issuers | Shipped |
-| **WASM guard runtime** | Execute custom guards compiled to WASM in a sandboxed runtime | Planned |
+| **WASM guard runtime** | Execute custom guards compiled to WASM in a sandboxed runtime (`chio-wasm-guards`; see Tier 3) | [In repo] |
 | **HSM integration** | Hardware Security Module support for kernel signing keys (PKCS#11, AWS CloudHSM, Azure HSM) | Planned |
 | **TEE / confidential computing** | Run the Chio kernel inside a Trusted Execution Environment (Intel SGX, AMD SEV, ARM CCA) | Research |
 | **SCIM provisioning** | Sync agent identities and capability grants from enterprise identity providers | Planned |
@@ -672,7 +674,7 @@ Current state and targets for the four protocol surfaces.
 
 | Adapter | Tests (Current) | Grade | Target | Target Grade |
 |---------|-----------------|-------|--------|--------------|
-| `chio-mcp-adapter` | 14 | C | 80+ | A |
+| `chio-mcp-adapter` | 72+ | B | 80+ | A |
 | `chio-a2a-adapter` | 56 | A- | 60+ | Maintain |
 | `chio-acp-proxy` | 129 | A | 130+ | Maintain |
 | `chio-mcp-edge` | 42 | B+ | 60+ | A- |

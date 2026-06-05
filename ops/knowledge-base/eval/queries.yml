@@ -325,7 +325,7 @@ fixtures:
     forbidden_any_paths:
       - .
       - .planning
-      - docs/scratchpad
+      - docs/archive
     max_latency_ms: 2500
 
   - id: graph-impact-delegation-tests
@@ -342,7 +342,7 @@ fixtures:
       - spec/PROTOCOL.md
     forbidden_any_paths:
       - .planning
-      - docs/scratchpad
+      - docs/archive
       - spec/schemas
     max_latency_ms: 2500
 

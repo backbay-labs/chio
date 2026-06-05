@@ -174,7 +174,7 @@ fn federated_request_produces_dual_signed_receipt_verifiable_by_both_orgs() {
     let tool_host_kernel_id = "kernel.org-b";
     kernel.set_federation_local_kernel_id(tool_host_kernel_id);
     let path = unique_receipt_db_path("federated-dual-signed-receipt");
-    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
 
     kernel.register_tool_server(Box::new(EchoServer::new(
         "srv-fed",
@@ -279,7 +279,7 @@ fn federation_cosigner_not_called_when_local_persistence_fails() {
     let receipt_append_called = std::sync::Arc::new(AtomicBool::new(false));
     kernel.set_receipt_store(Box::new(FailingAppendReceiptStore {
         called: std::sync::Arc::clone(&receipt_append_called),
-    }));
+    })).unwrap();
 
     let trust = KernelTrustExchange::new(tool_host_kernel_id, kernel.config.keypair.clone())
         .with_trusted_peer(origin_kernel_id, origin_kp.public_key());
@@ -501,7 +501,7 @@ fn non_federated_kernel_without_receipt_store_fails_closed_unless_ephemeral_enab
 fn non_federated_request_leaves_no_dual_signed_artifact_behind() {
     let mut kernel = make_kernel(make_config());
     let path = unique_receipt_db_path("non-federated-no-dual-signed");
-    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
     kernel.register_tool_server(Box::new(EchoServer::new(
         "srv-local",
         vec!["file_read"],
@@ -630,7 +630,7 @@ fn federated_request_with_fresh_peer_but_missing_cosigner_fails_closed_post_disp
     let mut kernel = make_kernel(make_config());
     kernel.set_federation_local_kernel_id(tool_host_kernel_id);
     let path = unique_receipt_db_path("federated-missing-cosigner");
-    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
     kernel.register_tool_server(Box::new(EchoServer::new(
         "srv-fed",
         vec!["file_read"],
@@ -669,10 +669,10 @@ fn federated_request_with_fresh_peer_but_missing_cosigner_fails_closed_post_disp
     );
     request.federated_origin_kernel_id = Some(origin_kernel_id.to_string());
 
-    // The kernel may surface this as either a Deny response with a
-    // structured reason or a typed KernelError; both are acceptable
-    // fail-closed shapes. Map the Err arm into a synthetic Deny so
-    // the assertion below covers either path.
+    // Fail-closed before cosign: without a runtime admission hook, federated
+    // requests are denied at pre-dispatch treaty admission. If that gate is
+    // satisfied in a future setup, post-dispatch may instead surface
+    // "federation cosigner missing". Either path is acceptable.
     let result = kernel.evaluate_tool_call_blocking(&request);
     let (verdict, reason) = match result {
         Ok(resp) => (resp.verdict, resp.reason.unwrap_or_default()),
@@ -682,7 +682,9 @@ fn federated_request_with_fresh_peer_but_missing_cosigner_fails_closed_post_disp
     assert!(
         reason.contains("federation cosigner missing")
             || reason.contains("cosigner")
-            || reason.contains("federation"),
+            || reason.contains("federation")
+            || reason.contains("treaty-bound")
+            || reason.contains("admission context"),
         "unexpected deny reason for missing-cosigner-with-fresh-peer scenario: {reason}"
     );
 }

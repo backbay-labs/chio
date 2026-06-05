@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cctype>
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -229,6 +230,16 @@ Args parse_args(int argc, char** argv) {
       continue;
     }
     *found->second = argv[i + 1];
+  }
+  if (args.auth_token.empty()) {
+    if (const char* env = std::getenv("CHIO_CONFORMANCE_AUTH_TOKEN")) {
+      args.auth_token = env;
+    }
+  }
+  if (args.admin_token.empty()) {
+    if (const char* env = std::getenv("CHIO_CONFORMANCE_ADMIN_TOKEN")) {
+      args.admin_token = env;
+    }
   }
   if (args.base_url.empty() || args.auth_token.empty() || args.scenarios_dir.empty() ||
       args.results_output.empty() || args.artifacts_dir.empty()) {

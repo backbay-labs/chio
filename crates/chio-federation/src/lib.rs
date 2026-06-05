@@ -14,6 +14,8 @@ pub use chio_open_market as open_market;
 pub mod bilateral;
 pub mod bilateral_dsse;
 pub mod bilateral_verifier;
+#[cfg(any(test, feature = "demo"))]
+pub mod demo;
 pub mod metrics;
 pub mod pheromone_gossip;
 pub mod revocation_gossip;
@@ -67,12 +69,14 @@ pub use bilateral_dsse::{
 pub use bilateral_verifier::{
     verify_bilateral_cosign_invocation, verify_chio_bilateral_invocation,
     verify_treaty_bound_chio_bilateral_invocation, ActionClassKind, CapabilityLeaseRegistry,
-    ChioBilateralVerifierConfig, DemoAllowAllRevocationOracle, DenyListRevocationOracle,
-    GovernanceReceiptStore, InMemoryGovernanceReceiptStore, InMemoryLeaseRegistry,
-    InMemoryReceiptStore, PeerPinSet, PinnedEpoch, PinnedPeer, ReceiptStore,
-    ResolvedGovernanceReceipt, ResolvedLease, RevocationOracle, TreatyBoundBilateralDsseReview,
-    UnknownActionClassPolicy, VerifiedBilateralCoSignInvocation, VerifierConfig, VerifierError,
+    ChioBilateralVerifierConfig, DenyListRevocationOracle, GovernanceReceiptStore,
+    InMemoryGovernanceReceiptStore, InMemoryLeaseRegistry, InMemoryReceiptStore, PeerPinSet,
+    PinnedEpoch, PinnedPeer, ReceiptStore, ResolvedGovernanceReceipt, ResolvedLease,
+    RevocationOracle, TreatyBoundBilateralDsseReview, UnknownActionClassPolicy,
+    VerifiedBilateralCoSignInvocation, VerifierConfig, VerifierError,
 };
+#[cfg(any(test, feature = "demo"))]
+pub use demo::DemoAllowAllRevocationOracle;
 pub use revocation_gossip::{
     respond_to_catchup, RevocationCatchupHistory, RevocationCatchupRequest,
     RevocationCatchupResponse, RevocationGossipBatch, RevocationGossipError,

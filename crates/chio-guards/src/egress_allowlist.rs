@@ -3,6 +3,8 @@
 //! Controls outbound network egress by matching the target domain against a
 //! configured allowlist using simple glob matching.
 
+use std::sync::OnceLock;
+
 use glob::Pattern;
 
 use chio_kernel::{GuardContext, KernelError, Verdict};
@@ -48,17 +50,25 @@ fn default_allow_patterns() -> Vec<String> {
 ///
 /// By default, only well-known AI API and package registry domains are
 /// allowed. All other egress is denied (fail-closed).
+#[derive(Clone)]
 pub struct EgressAllowlistGuard {
     allow_patterns: Vec<Pattern>,
     block_patterns: Vec<Pattern>,
 }
 
 impl EgressAllowlistGuard {
+    fn build_default_or_fail_closed() -> Self {
+        Self::with_lists(default_allow_patterns(), vec![]).unwrap_or_else(|_| Self {
+            allow_patterns: vec![],
+            block_patterns: vec![],
+        })
+    }
+
     pub fn new() -> Self {
-        match Self::with_lists(default_allow_patterns(), vec![]) {
-            Ok(guard) => guard,
-            Err(error) => panic!("default egress patterns must be valid: {error}"),
-        }
+        static DEFAULT: OnceLock<EgressAllowlistGuard> = OnceLock::new();
+        DEFAULT
+            .get_or_init(Self::build_default_or_fail_closed)
+            .clone()
     }
 
     pub fn with_lists(

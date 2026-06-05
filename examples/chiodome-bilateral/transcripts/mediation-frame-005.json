@@ -1,1 +1,0 @@
-{"error":{"code":-32001,"data":{"chio_code":"urn:chio:error:capability:scope-exceeded"},"message":"tool 'delete_record' is not promoted in the chio mcp wrap manifest scaffold"},"id":4,"jsonrpc":"2.0"}

@@ -10,7 +10,7 @@ publish = false
 
 [dependencies]
 chio-core-types = { version = "0.1.0", path = "../../crates/chio-core-types" }
-chio-federation = { version = "0.1.0", path = "../../crates/chio-federation" }
+chio-federation = { version = "0.1.0", path = "../../crates/chio-federation", features = ["demo"] }
 serde_json = { workspace = true }
 
 [lints]

@@ -24,9 +24,7 @@ use sha2::{Digest, Sha256};
 
 use crate::error::WasmGuardError;
 
-// ---------------------------------------------------------------------------
 // Constants
-// ---------------------------------------------------------------------------
 
 /// ABI versions supported by this version of the WASM guard runtime.
 pub const SUPPORTED_ABI_VERSIONS: &[&str] = &["1"];
@@ -48,9 +46,7 @@ pub const SIGNATURE_SUFFIX: &str = ".sig";
 /// string invalidates all previously issued signatures, so keep it stable.
 const SIGNED_MODULE_DOMAIN: &str = "chio-wasm-guard-v1";
 
-// ---------------------------------------------------------------------------
 // GuardManifest
-// ---------------------------------------------------------------------------
 
 /// Parsed representation of a `guard-manifest.yaml` file.
 ///
@@ -94,9 +90,7 @@ pub struct GuardManifest {
     pub allow_unsigned: bool,
 }
 
-// ---------------------------------------------------------------------------
 // SignedWasmModule
-// ---------------------------------------------------------------------------
 
 /// JSON envelope stored in the `.wasm.sig` sidecar alongside a guard binary.
 ///
@@ -118,9 +112,7 @@ pub struct SignedWasmModule {
     pub signature: String,
 }
 
-// ---------------------------------------------------------------------------
 // Public functions
-// ---------------------------------------------------------------------------
 
 /// Load and parse a `guard-manifest.yaml` from the parent directory of the
 /// given WASM file path.
@@ -163,7 +155,6 @@ pub fn verify_wasm_hash(wasm_bytes: &[u8], expected_hex: &str) -> Result<(), Was
     Ok(())
 }
 
-/// Verify that the given ABI version string is in [`SUPPORTED_ABI_VERSIONS`].
 pub fn verify_abi_version(version: &str) -> Result<(), WasmGuardError> {
     if SUPPORTED_ABI_VERSIONS.contains(&version) {
         Ok(())
@@ -175,7 +166,6 @@ pub fn verify_abi_version(version: &str) -> Result<(), WasmGuardError> {
     }
 }
 
-/// Verify that the manifest declares the required WIT world.
 pub fn verify_wit_world(wit_world: Option<&str>) -> Result<(), WasmGuardError> {
     match wit_world.map(str::trim).filter(|world| !world.is_empty()) {
         Some(REQUIRED_WIT_WORLD) => Ok(()),
@@ -192,9 +182,7 @@ pub fn verify_wit_world(wit_world: Option<&str>) -> Result<(), WasmGuardError> {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Signing helpers
-// ---------------------------------------------------------------------------
 
 /// Produce the canonical byte sequence that a signer signs when attesting a
 /// WASM guard module.
@@ -254,8 +242,7 @@ pub fn load_signature_sidecar(wasm_path: &str) -> Result<Option<SignedWasmModule
     Ok(Some(signed))
 }
 
-/// Serialize the sidecar to JSON and write it to
-/// [`signature_sidecar_path`]. Returns the path written.
+/// Serialize the sidecar to JSON and write it to [`signature_sidecar_path`].
 pub fn write_signature_sidecar(
     wasm_path: &str,
     signed: &SignedWasmModule,

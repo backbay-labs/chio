@@ -1,5 +1,10 @@
 # Review Findings and Next Steps
 
+> **Internal engineering backlog:** Findings below are review inputs and
+> prioritization notes for the team. They are **not** a statement of unfixed
+> production bugs for customers or partners. Tracked release risks:
+> [RISK_REGISTER.md](../release/RISK_REGISTER.md).
+
 > **Date**: April 2026
 > **Source**: Six parallel review agents covering blind spots, DX/adoption,
 > economic model, production reality, standards/compliance, and future ideas.
@@ -151,8 +156,8 @@ Chio has 7 economic crates that the documentation effort completely missed:
    trees for enterprise fleet management
 4. **Economic threat model** -- no formal analysis of budget exhaustion
    attacks, price manipulation, or Sybil attacks
-5. **Chiodome fiscal composition** -- the primitives exist for "digital
-   fiscal nation states" but the composition guide is missing
+5. **Federated fiscal composition** -- the primitives exist for namespace-scoped
+   economic zones but the composition guide is missing
 
 ---
 

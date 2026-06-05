@@ -8,9 +8,10 @@
 > `chio api protect`, `chio-openapi`, `chio-sdk-python`, `chio-asgi`,
 > `@chio-protocol/node-http`, `chio-go-http`, `chio-tower`,
 > `chio-spring-boot`, and `ChioMiddleware`, plus the thin FastAPI/Django and
-> Express/Fastify/Elysia wrappers. This document still mixes shipped packaging
-> with forward-looking DX direction. Generic cross-protocol orchestration
-> remains future architecture, not a shipped runtime.
+> Express/Fastify/Elysia wrappers. Phase labels use **[In repo]** for code in
+> this repository; PyPI/npm/crates.io publication is tracked separately in
+> `DX-AND-ADOPTION-ROADMAP.md`. Generic cross-protocol orchestration remains
+> future architecture, not an in-repo runtime.
 
 ## 1. The Problem: Chio Is Not "Just Another MCP Gateway"
 
@@ -173,7 +174,7 @@ each adding depth without breaking the previous level.
 
 ### Level 0: Reverse Proxy / Sidecar (Zero Code)
 
-Current shipped CLI surface:
+Current in-repo CLI surface:
 
 ```bash
 chio api protect --upstream http://localhost:8000 --spec openapi.yaml
@@ -198,7 +199,7 @@ than substrate middleware because the proxy only sees normalized HTTP traffic.
 
 ### Level 1: Framework Middleware (One Import)
 
-Current shipped package examples:
+Current in-repo package examples:
 
 Python (FastAPI):
 ```python
@@ -447,7 +448,7 @@ The current Rust kernel is an asset. A Rust-only packaging story is an
 adoption risk. The sidecar and the first three substrate families are what make
 the kernel reachable for most developers.
 
-### Phase 1: Core + Zero-Code Wedge [Shipped]
+### Phase 1: Core + Zero-Code Wedge [In repo]
 
 | Package | Purpose | Crate / CLI |
 |---------|---------|-------------|
@@ -455,7 +456,7 @@ the kernel reachable for most developers.
 | `chio-openapi` | Import/generate manifests from OpenAPI specs | `crates/chio-openapi` |
 | `chio api protect` | Reverse-proxy / sidecar entrypoint for any HTTP API | `crates/chio-cli` (`chio-api-protect` subcommand) |
 
-### Phase 2: First Substrates (Python, TypeScript, Go) [Shipped]
+### Phase 2: First Substrates (Python, TypeScript, Go) [In repo]
 
 | Package | Language | Covers | Package Name |
 |---------|----------|--------|--------------|
@@ -463,7 +464,7 @@ the kernel reachable for most developers.
 | `@chio-protocol/node-http` | JS/TS/Bun | Fastify, Express, Hono, Elysia | `sdks/typescript/packages/node-http` |
 | `chio-go-http` | Go | net/http, Gin, Echo, Fiber, chi | `sdks/go/chio-go-http` |
 
-### Phase 3: Framework Wrappers (Thin) [Shipped]
+### Phase 3: Framework Wrappers (Thin) [In repo]
 
 | Package | Wraps | Substrate | Package Name |
 |---------|-------|-----------|--------------|
@@ -473,7 +474,7 @@ the kernel reachable for most developers.
 | `@chio-protocol/fastify` | Fastify plugin | `@chio-protocol/node-http` | `sdks/typescript/packages/fastify` |
 | `@chio-protocol/elysia` | Elysia lifecycle plugin | `@chio-protocol/node-http` | `sdks/typescript/packages/elysia` |
 
-### Phase 4: Session Journal + Stateful Guards [Shipped]
+### Phase 4: Session Journal + Stateful Guards [In repo]
 
 | Package / Surface | Purpose | Package Name |
 |-------------------|---------|--------------|
@@ -481,7 +482,7 @@ the kernel reachable for most developers.
 | session-aware guard suite (internal milestone v3.4) | All session-aware deterministic guards (delegation depth, data-flow limits, rotation velocity) | `crates/chio-guards` |
 | signed advisory observations | Emit non-blocking behavioral/risk evidence before default hard-blocking | integrated into guard pipeline |
 
-### Phase 5: Remaining Substrates [Shipped]
+### Phase 5: Remaining Substrates [In repo]
 
 | Package | Language | Covers | Package Name |
 |---------|----------|--------|--------------|
@@ -494,9 +495,9 @@ the kernel reachable for most developers.
 | Package | Protocol | Package Name | Status |
 |---------|----------|--------------|--------|
 | OpenAI caller-executed function tools | OpenAI function calling interception | TBD | Deferred until receipt/read-boundary gates and adapter qualification land |
-| `chio-openapi-mcp-bridge` | OpenAPI-to-MCP bridging with Chio governance | `crates/chio-openapi-mcp-bridge` | Shipped |
-| `chio-a2a-edge` | A2A bidirectional bridging | `crates/chio-a2a-edge` | Shipped |
-| `chio-acp-edge` | ACP bidirectional bridging | `crates/chio-acp-edge` | Shipped |
+| `chio-openapi-mcp-bridge` | OpenAPI-to-MCP bridging with Chio governance | `crates/chio-openapi-mcp-bridge` | In repo |
+| `chio-a2a-edge` | A2A bidirectional bridging | `crates/chio-a2a-edge` | In repo |
+| `chio-acp-edge` | ACP bidirectional bridging | `crates/chio-acp-edge` | In repo |
 
 ## 9. Important Constraint
 

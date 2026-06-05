@@ -1052,9 +1052,19 @@ impl ChioMcpEdge {
             Err(error) => return error,
         };
 
-        let session_id = self
+        let session_id = match self
             .kernel
-            .open_session(self.agent_id.clone(), self.capabilities.clone());
+            .open_session(self.agent_id.clone(), self.capabilities.clone())
+        {
+            Ok(session_id) => session_id,
+            Err(error) => {
+                return jsonrpc_error(
+                    id,
+                    JSONRPC_INTERNAL_ERROR,
+                    &format!("failed to open session: {error}"),
+                );
+            }
+        };
         if let Err(error) = self
             .kernel
             .set_session_auth_context(&session_id, self.session_auth_context.clone())

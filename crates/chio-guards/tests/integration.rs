@@ -417,7 +417,9 @@ async fn filesystem_tool_session_roots_allow_in_root_path() {
     kernel.add_guard(Box::new(PathAllowlistGuard::new()));
 
     let agent_kp = make_keypair();
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![]);
+    let session_id = kernel
+        .open_session(agent_kp.public_key().to_hex(), vec![])
+        .unwrap();
     kernel.activate_session(&session_id).unwrap();
     kernel
         .replace_session_roots(
@@ -475,7 +477,9 @@ async fn filesystem_tool_session_roots_deny_out_of_root_path() {
     kernel.add_guard(Box::new(PathAllowlistGuard::new()));
 
     let agent_kp = make_keypair();
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![]);
+    let session_id = kernel
+        .open_session(agent_kp.public_key().to_hex(), vec![])
+        .unwrap();
     kernel.activate_session(&session_id).unwrap();
     kernel
         .replace_session_roots(
@@ -533,7 +537,9 @@ async fn filesystem_tool_session_roots_fail_closed_when_missing() {
     kernel.add_guard(Box::new(PathAllowlistGuard::new()));
 
     let agent_kp = make_keypair();
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![]);
+    let session_id = kernel
+        .open_session(agent_kp.public_key().to_hex(), vec![])
+        .unwrap();
     kernel.activate_session(&session_id).unwrap();
 
     let scope = ChioScope {

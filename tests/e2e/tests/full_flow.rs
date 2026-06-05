@@ -99,7 +99,9 @@ fn make_kernel_with_guards() -> (ChioKernel, Keypair) {
         retention_config: None,
     };
     let mut kernel = ChioKernel::new(config);
-    kernel.set_receipt_store(Box::new(InMemoryReceiptStore::new()));
+    kernel
+        .set_receipt_store(Box::new(InMemoryReceiptStore::new()))
+        .unwrap();
     kernel.register_tool_server(Box::new(EchoServer("srv")));
     kernel.add_guard(Box::new(GuardPipeline::default_pipeline()));
     (kernel, kp)
@@ -128,7 +130,9 @@ fn make_kernel_bare() -> (ChioKernel, Keypair) {
         retention_config: None,
     };
     let mut kernel = ChioKernel::new(config);
-    kernel.set_receipt_store(Box::new(InMemoryReceiptStore::new()));
+    kernel
+        .set_receipt_store(Box::new(InMemoryReceiptStore::new()))
+        .unwrap();
     kernel.register_tool_server(Box::new(EchoServer("srv")));
     (kernel, kp)
 }

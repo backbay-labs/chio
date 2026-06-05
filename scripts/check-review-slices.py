@@ -194,6 +194,15 @@ SLICES: tuple[ReviewSlice, ...] = (
         ),
     ),
     ReviewSlice(
+        "release-ops-evidence",
+        "release manifests, audit evidence, and operational knowledge-base files",
+        (
+            "audits/**",
+            "ops/**",
+            "releases.toml",
+        ),
+    ),
+    ReviewSlice(
         "ci-tooling-workspace",
         "CI workflows, scripts, workspace metadata, xtask and scanner config",
         (

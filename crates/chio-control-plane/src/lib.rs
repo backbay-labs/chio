@@ -378,11 +378,12 @@ pub fn configure_receipt_store(
             ));
         }
         (Some(path), None) => {
-            kernel.set_receipt_store(Box::new(chio_store_sqlite::SqliteReceiptStore::open(path)?));
+            kernel
+                .set_receipt_store(Box::new(chio_store_sqlite::SqliteReceiptStore::open(path)?))?;
         }
         (None, Some(url)) => {
             let token = require_control_token(control_token)?;
-            kernel.set_receipt_store(trust_control::build_remote_receipt_store(url, token)?);
+            kernel.set_receipt_store(trust_control::build_remote_receipt_store(url, token)?)?;
         }
         (None, None) => {}
     }

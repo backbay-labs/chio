@@ -31,7 +31,9 @@
 //! * [`ReceiptStore`] / [`InMemoryReceiptStore`] - step 7 lookup.
 //! * [`CapabilityLeaseRegistry`] / [`InMemoryLeaseRegistry`] - step 14.
 //! * [`GovernanceReceiptStore`] / [`InMemoryGovernanceReceiptStore`] - step 15.
-//! * [`RevocationOracle`] / [`DemoAllowAllRevocationOracle`] - step 9.
+//! * [`RevocationOracle`] - step 9. Demo-only
+//!   [`crate::demo::DemoAllowAllRevocationOracle`] is available under
+//!   `cfg(any(test, feature = "demo"))`.
 //! * [`PinnedEpoch`] - verifier's wall clock + epoch height.
 //! * [`VerifierConfig`] - bundles the trait objects + epoch.
 //! * [`verify_bilateral_cosign_invocation`] - the canonical verifier for
@@ -276,17 +278,6 @@ impl ReceiptStore for InMemoryReceiptStore {
 /// `peer.revoked_at_epoch`.
 pub trait RevocationOracle: Send + Sync {
     fn is_active_at_epoch(&self, fingerprint: &Keyid, epoch_height: u64) -> bool;
-}
-
-/// Demo-only revocation oracle that treats every passport key as active.
-/// Production verifiers must provide a real revocation source.
-#[derive(Debug, Clone, Default)]
-pub struct DemoAllowAllRevocationOracle;
-
-impl RevocationOracle for DemoAllowAllRevocationOracle {
-    fn is_active_at_epoch(&self, _fingerprint: &Keyid, _epoch_height: u64) -> bool {
-        true
-    }
 }
 
 /// Test-only revocation oracle that lets fixtures explicitly mark a
@@ -1802,6 +1793,7 @@ mod tests {
         BilateralPredicateExtensions, CapabilityLeaseRef, GovernanceReceiptRef, HashRecord,
         PolicyEvaluationSummary, PolicyVerdict, PAYLOAD_TYPE_IN_TOTO,
     };
+    use crate::demo::DemoAllowAllRevocationOracle;
     use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
     use base64::Engine as _;
     use chio_core_types::crypto::{sha256_hex, Ed25519Backend, Keypair, SigningBackend};

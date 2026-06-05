@@ -328,7 +328,9 @@ fn recompute_decision(
     let cap = kernel
         .issue_capability(&agent_pk, ChioScope::default(), 300)
         .map_err(|e| format!("issue replay capability: {e}"))?;
-    let session_id = kernel.open_session(session_agent_id.clone(), vec![cap.clone()]);
+    let session_id = kernel
+        .open_session(session_agent_id.clone(), vec![cap.clone()])
+        .map_err(|error| format!("failed to open replay session: {error}"))?;
     kernel
         .activate_session(&session_id)
         .map_err(|e| format!("activate replay session: {e}"))?;

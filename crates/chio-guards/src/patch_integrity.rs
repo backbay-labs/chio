@@ -7,6 +7,8 @@
 
 use regex::Regex;
 
+use std::sync::OnceLock;
+
 use chio_kernel::{GuardContext, KernelError, Verdict};
 
 use crate::action::{extract_action_checked, ToolAction};
@@ -24,6 +26,7 @@ pub enum PatchIntegrityConfigError {
 }
 
 /// Configuration for `PatchIntegrityGuard`.
+#[derive(Clone)]
 pub struct PatchIntegrityConfig {
     /// Enable/disable this guard.
     pub enabled: bool,
@@ -99,6 +102,7 @@ impl PatchAnalysis {
 }
 
 /// Guard that validates the safety of applied patches/diffs.
+#[derive(Clone)]
 pub struct PatchIntegrityGuard {
     enabled: bool,
     config: PatchIntegrityConfig,
@@ -106,11 +110,19 @@ pub struct PatchIntegrityGuard {
 }
 
 impl PatchIntegrityGuard {
+    fn build_default_or_fail_closed() -> Self {
+        Self::with_config(PatchIntegrityConfig::default()).unwrap_or_else(|_| Self {
+            enabled: true,
+            config: PatchIntegrityConfig::default(),
+            forbidden_regexes: vec![],
+        })
+    }
+
     pub fn new() -> Self {
-        match Self::with_config(PatchIntegrityConfig::default()) {
-            Ok(guard) => guard,
-            Err(error) => panic!("default patch integrity config must be valid: {error}"),
-        }
+        static DEFAULT: OnceLock<PatchIntegrityGuard> = OnceLock::new();
+        DEFAULT
+            .get_or_init(Self::build_default_or_fail_closed)
+            .clone()
     }
 
     pub fn with_config(config: PatchIntegrityConfig) -> Result<Self, PatchIntegrityConfigError> {

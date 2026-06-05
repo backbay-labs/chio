@@ -67,19 +67,20 @@ activation_threshold_percent_per_crate = 65
 required_consecutive_nightly_successes = 2
 observed_consecutive_nightly_successes = 0
 activation_evidence = """
-cycle: v0.0.0-mutation-gate
-target_catch_ratio_percent: 80
-activation_threshold_percent_per_crate: 65
-honest_threshold_applied: true
-reset_rationale: "Reset after readiness review. Prior activation_evidence cited two nightly run URLs whose status_at_capture was 'queued' (never confirmed green) and per-crate kill rates marked pending final full-sweep replay. This debt remains open until real cargo-mutants full-sweep measurement and workflow restoration provide confirmed green nightly run URLs. Until both evidence sets land measured numbers, observed_consecutive_nightly_successes stays at 0 and cycle_end_tag is empty so the gate runs in advisory posture."
+status: advisory
+evidence_pending: true
+gate_mode: advisory
+observed_consecutive_nightly_successes: 0
+required_consecutive_nightly_successes: 2
 nightly_runs: []
 per_crate_kill_rate_percent:
-  chio-policy: "80.21 observed on partial interrupted sweep (314/418 evaluated); target_met=false; recast_non_release=true"
-  chio-credentials: "74.07 observed on partial include-surface subset; target_met=false; recast_non_release=true"
-  chio-attest-verify: "44.12 full below target on prior baseline; target_met=false; recast_non_release=true"
-  chio-kernel-core: "73.58 observed on partial interrupted sweep (62/343 evaluated); target_met=false; recast_non_release=true"
-  chio-guards: "78.18 observed on hand-picked subset; target_met=false; recast_non_release=true"
-  chio-anchor: "69.44 observed on partial interrupted sweep (214/262 evaluated); target_met=false; recast_non_release=true"
+  chio-policy: pending_full_sweep
+  chio-credentials: pending_full_sweep
+  chio-attest-verify: pending_full_sweep
+  chio-kernel-core: pending_full_sweep
+  chio-guards: pending_full_sweep
+  chio-anchor: pending_full_sweep
+note: "Blocking activation requires confirmed green mutants-nightly full sweeps and measured per-crate kill rates. Until then cycle_end_tag stays empty."
 """
 cycle_end_tag = ""
 pr_survivor_issue_budget = 5
@@ -93,19 +94,14 @@ trust_boundary_crates = [
     "chio-anchor",
 ]
 
-[v0_1_0_bounded_chiodome]
-release_status = "parked_non_release"
-integrated_merge_sha = "7f56cf5383fc1caa7a4f06b4cd59e45177f00496"
-fixture_set = "examples/chiodome-bilateral/fixtures/v0.1.0-bounded-chiodome"
-status_note = "This bounded package is parked outside the active release scope. Deterministic fixtures remain evidence artifacts, but no bounded Chiodome package release is claimed until mutation baselines and selective-disclosure proof support are promoted by a future release lane."
-
 [release_audit]
 activation_evidence = """
 m08_internal_readiness_draft:
   release_gate: RELEASE_AUDIT
   classification: internal_readiness_draft
   reclassified_from: external_vendor_final_report
-  draft_url: https://github.com/backbay-labs/chio/blob/main/releases/audit-reports/m08-internal-readiness-draft-2026-05-02.pdf
+  # No draft_url: the PDF is internal-only and not published on GitHub yet.
+  # draft_path is the repo-relative locator for operators with internal access.
   draft_path: releases/audit-reports/m08-internal-readiness-draft-2026-05-02.pdf
   draft_sha256: abcc1423018d42feb119238b394d196075853e2bd4a23a4ca62c7adedf1e723c
   internal_record: retained outside release bundle
@@ -133,6 +129,10 @@ m09_hitrust_i1_readiness_package:
 # were never promoted to a public release: the current baseline is 0.1.0
 # and remains unreleased. The tags, SHAs, and run URLs below are retained
 # only as provenance for the retraction.
+#
+# Canonical publication status lives here, not in gitignored close-bar snapshots
+# under audits/evidence/ (for example close-bar-#9 may still read DONE for
+# v3.18.1-trj3.1 in close-bar-current.json even though that tag was retracted).
 [release_retraction]
 prior_release_tag = "v3.18.1"
 prior_release_sha = "a9006addb7d0217727ef748e9a469b97617e6279"

@@ -87,7 +87,7 @@ fn make_kernel(receipt_store_path: &std::path::Path) -> ChioKernel {
     };
     let mut kernel = ChioKernel::new(config);
     let store = SqliteReceiptStore::open(receipt_store_path).unwrap();
-    kernel.set_receipt_store(Box::new(store));
+    kernel.set_receipt_store(Box::new(store)).unwrap();
     kernel.register_tool_server(Box::new(EchoToolServer {
         server_id: SRV.to_string(),
         invocations: AtomicUsize::new(0),

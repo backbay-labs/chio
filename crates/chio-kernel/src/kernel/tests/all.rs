@@ -2129,7 +2129,7 @@ fn issue_and_use_capability() {
 fn kernel_persists_tool_receipts_to_sqlite_store() {
     let path = unique_receipt_db_path("chio-kernel-tool-receipts");
     let mut kernel = make_kernel(make_config());
-    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
 
     let agent_kp = make_keypair();
@@ -2828,7 +2828,7 @@ fn revoked_ancestor_capability_denies_descendant() {
         .record_capability_snapshot(&parent, None)
         .unwrap();
     drop(seed_store);
-    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
     set_capability_trust_root_for_scope(&kernel, &scope);
     kernel.register_budget_parent(parent.id.clone(), 10_000).unwrap();
 
@@ -2883,7 +2883,7 @@ fn delegated_tool_call_records_observed_capability_lineage() {
         .unwrap();
     drop(seed_store);
 
-    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
     set_capability_trust_root_for_scope(&kernel, &parent_scope);
     kernel.register_budget_parent(parent.id.clone(), 10_000).unwrap();
 
@@ -2942,7 +2942,7 @@ fn delegated_tool_call_without_parent_snapshot_denies() {
     parent_grant.operations.push(Operation::Delegate);
     let parent_scope = make_scope(vec![parent_grant]);
     let parent = make_capability(&kernel, &parent_kp, parent_scope.clone(), 300);
-    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
     set_capability_trust_root_for_scope(&kernel, &parent_scope);
     kernel.register_budget_parent(parent.id.clone(), 10_000).unwrap();
 
@@ -2999,7 +2999,7 @@ fn delegated_tool_call_without_delegate_operation_denies() {
         .record_capability_snapshot(&parent, None)
         .unwrap();
     drop(seed_store);
-    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
     set_capability_trust_root_for_scope(&kernel, &parent_scope);
     kernel.register_budget_parent(parent.id.clone(), 10_000).unwrap();
 
@@ -3067,7 +3067,7 @@ fn delegated_tool_call_with_scope_escalation_denies() {
         .record_capability_snapshot(&parent, None)
         .unwrap();
     drop(seed_store);
-    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
     set_capability_trust_root_for_scope(&kernel, &parent_scope);
     kernel.register_budget_parent(parent.id.clone(), 10_000).unwrap();
 
@@ -3127,7 +3127,7 @@ fn delegated_tool_call_with_delegatee_subject_mismatch_denies() {
         .record_capability_snapshot(&parent, None)
         .unwrap();
     drop(seed_store);
-    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
     set_capability_trust_root_for_scope(&kernel, &parent_scope);
     kernel.register_budget_parent(parent.id.clone(), 10_000).unwrap();
 
@@ -3212,7 +3212,7 @@ fn delegated_tool_call_exceeding_configured_max_depth_denies() {
         .unwrap();
     drop(seed_store);
 
-    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
     set_capability_trust_root_for_scope(&kernel, &delegable_scope);
     kernel.register_budget_parent(parent.id.clone(), 10_000).unwrap();
 
@@ -3290,7 +3290,7 @@ fn delegated_tool_call_with_truncated_ancestor_chain_denies() {
         .unwrap();
     drop(seed_store);
 
-    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
     set_capability_trust_root_for_scope(&kernel, &delegable_scope);
     kernel.register_budget_parent(parent.id.clone(), 10_000).unwrap();
 
@@ -3387,7 +3387,7 @@ fn kernel_guard_registration() {
 #[test]
 fn session_lifecycle_is_hosted_by_kernel() {
     let kernel = make_kernel(make_config());
-    let session_id = kernel.open_session("agent-1".to_string(), Vec::new());
+    let session_id = kernel.open_session("agent-1".to_string(), Vec::new()).unwrap();
 
     assert_eq!(kernel.session_count(), 1);
     assert_eq!(
@@ -3419,8 +3419,8 @@ fn open_session_assigns_unique_ids_across_kernel_instances() {
     let kernel_a = make_kernel(make_config());
     let kernel_b = make_kernel(make_config());
 
-    let session_a = kernel_a.open_session("agent-a".to_string(), Vec::new());
-    let session_b = kernel_b.open_session("agent-b".to_string(), Vec::new());
+    let session_a = kernel_a.open_session("agent-a".to_string(), Vec::new()).unwrap();
+    let session_b = kernel_b.open_session("agent-b".to_string(), Vec::new()).unwrap();
 
     assert_ne!(session_a, session_b);
 }
@@ -3430,7 +3430,7 @@ fn open_session_assigns_unique_ids_across_kernel_instances() {
 #[test]
 fn open_session_id_has_csprng_structure() {
     let kernel = make_kernel(make_config());
-    let session_id = kernel.open_session("agent-a".to_string(), Vec::new());
+    let session_id = kernel.open_session("agent-a".to_string(), Vec::new()).unwrap();
     let raw = session_id.as_str();
 
     let suffix = raw
@@ -3455,7 +3455,7 @@ fn open_session_ids_do_not_collide_across_many_calls() {
     let mut seen = std::collections::HashSet::with_capacity(1024);
     let mut last: Option<SessionId> = None;
     for _ in 0..1024 {
-        let id = kernel.open_session("agent-a".to_string(), Vec::new());
+        let id = kernel.open_session("agent-a".to_string(), Vec::new()).unwrap();
         if let Some(previous) = last.as_ref() {
             assert_ne!(
                 &id, previous,
@@ -3496,7 +3496,7 @@ fn open_session_with_id_rejects_duplicate_ids() {
 #[test]
 fn open_session_with_id_rolls_back_insert_when_anchor_persistence_fails() {
     let mut kernel = make_kernel(make_config());
-    kernel.set_receipt_store(Box::new(FailingSessionAnchorReceiptStore));
+    kernel.set_receipt_store(Box::new(FailingSessionAnchorReceiptStore)).unwrap();
     let session_id = SessionId::new("sess-anchor-fail");
 
     let error = kernel
@@ -3511,7 +3511,7 @@ fn open_session_with_id_rolls_back_insert_when_anchor_persistence_fails() {
     assert_eq!(kernel.session_count(), 0);
     assert!(kernel.session(&session_id).is_none());
 
-    kernel.set_receipt_store(Box::new(AppendOnlyReceiptStore));
+    kernel.set_receipt_store(Box::new(AppendOnlyReceiptStore)).unwrap();
     let opened = kernel
         .open_session_with_id(session_id.clone(), "agent-a".to_string(), Vec::new())
         .unwrap();
@@ -3534,7 +3534,7 @@ fn set_session_auth_context_rolls_back_when_anchor_persistence_fails() {
         .map(|session| session.session_anchor())
         .unwrap();
 
-    kernel.set_receipt_store(Box::new(FailingSessionAnchorReceiptStore));
+    kernel.set_receipt_store(Box::new(FailingSessionAnchorReceiptStore)).unwrap();
     let error = kernel
         .set_session_auth_context(
             &session_id,
@@ -3561,7 +3561,7 @@ fn close_session_persists_anonymous_anchor_and_rejects_late_auth_rotation() {
     let store = RecordingSessionAnchorReceiptStore::default();
     let anchors = std::sync::Arc::clone(&store.anchors);
     let mut kernel = make_kernel(make_config());
-    kernel.set_receipt_store(Box::new(store));
+    kernel.set_receipt_store(Box::new(store)).unwrap();
     let session_id = kernel
         .open_session_with_id(
             SessionId::new("sess-auth-close"),
@@ -3636,7 +3636,7 @@ fn close_session_persists_anonymous_anchor_and_rejects_late_auth_rotation() {
 fn close_session_with_sqlite_store_reuses_initial_anonymous_anchor() {
     let path = unique_receipt_db_path("session-close-anonymous-anchor");
     let mut kernel = make_kernel(make_config());
-    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
     let session_id = kernel
         .open_session_with_id(
             SessionId::new("sess-auth-close-sqlite"),
@@ -3668,7 +3668,7 @@ fn web3_evidence_required_activation_rejects_missing_receipt_store() {
     let mut config = make_config();
     config.require_web3_evidence = true;
     let kernel = make_kernel(config);
-    let session_id = kernel.open_session("agent-1".to_string(), Vec::new());
+    let session_id = kernel.open_session("agent-1".to_string(), Vec::new()).unwrap();
 
     let error = kernel.activate_session(&session_id).unwrap_err();
     assert!(matches!(error, KernelError::Web3EvidenceUnavailable(_)));
@@ -3682,8 +3682,8 @@ fn web3_evidence_required_activation_rejects_checkpoint_disabled() {
     config.require_web3_evidence = true;
     config.checkpoint_batch_size = 0;
     let mut kernel = make_kernel(config);
-    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
-    let session_id = kernel.open_session("agent-1".to_string(), Vec::new());
+    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
+    let session_id = kernel.open_session("agent-1".to_string(), Vec::new()).unwrap();
 
     let error = kernel.activate_session(&session_id).unwrap_err();
     assert!(matches!(error, KernelError::Web3EvidenceUnavailable(_)));
@@ -3697,8 +3697,8 @@ fn web3_evidence_required_activation_rejects_append_only_receipt_store() {
     let mut config = make_config();
     config.require_web3_evidence = true;
     let mut kernel = make_kernel(config);
-    kernel.set_receipt_store(Box::new(AppendOnlyReceiptStore));
-    let session_id = kernel.open_session("agent-1".to_string(), Vec::new());
+    kernel.set_receipt_store(Box::new(AppendOnlyReceiptStore)).unwrap();
+    let session_id = kernel.open_session("agent-1".to_string(), Vec::new()).unwrap();
 
     let error = kernel.activate_session(&session_id).unwrap_err();
     assert!(matches!(error, KernelError::Web3EvidenceUnavailable(_)));
@@ -3713,8 +3713,8 @@ fn web3_evidence_required_activation_allows_checkpoint_capable_store() {
     let mut config = make_config();
     config.require_web3_evidence = true;
     let mut kernel = make_kernel(config);
-    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
-    let session_id = kernel.open_session("agent-1".to_string(), Vec::new());
+    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
+    let session_id = kernel.open_session("agent-1".to_string(), Vec::new()).unwrap();
 
     kernel.activate_session(&session_id).unwrap();
     assert_eq!(
@@ -3734,7 +3734,7 @@ fn session_operation_tool_call_tracks_and_clears_inflight() {
     let scope = make_scope(vec![make_grant("srv-a", "read_file")]);
     let cap = make_capability(&kernel, &agent_kp, scope, 300);
 
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()]);
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()]).unwrap();
     kernel.activate_session(&session_id).unwrap();
 
     let context = make_operation_context(&session_id, "req-1", &agent_kp.public_key().to_hex());
@@ -3764,7 +3764,7 @@ fn session_operation_capability_list_uses_session_snapshot() {
     let scope = make_scope(vec![make_grant("srv-a", "read_file")]);
     let cap = make_capability(&kernel, &agent_kp, scope, 300);
 
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap]);
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap]).unwrap();
     let context = make_operation_context(&session_id, "control-1", &agent_kp.public_key().to_hex());
 
     let response = kernel
@@ -3780,7 +3780,7 @@ fn session_operation_capability_list_uses_session_snapshot() {
 fn session_operation_list_roots_uses_session_snapshot() {
     let kernel = make_kernel(make_config());
     let agent_kp = make_keypair();
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![]);
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![]).unwrap();
     kernel.activate_session(&session_id).unwrap();
     kernel
         .set_session_peer_capabilities(
@@ -3825,7 +3825,7 @@ fn session_operation_list_roots_uses_session_snapshot() {
 fn kernel_exposes_normalized_session_roots_for_later_enforcement() {
     let kernel = make_kernel(make_config());
     let agent_kp = make_keypair();
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![]);
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![]).unwrap();
     kernel.activate_session(&session_id).unwrap();
     kernel
         .replace_session_roots(
@@ -3877,7 +3877,7 @@ fn kernel_exposes_normalized_session_roots_for_later_enforcement() {
 fn begin_child_request_requires_parent_lineage() {
     let kernel = make_kernel(make_config());
     let agent_kp = make_keypair();
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![]);
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![]).unwrap();
     kernel.activate_session(&session_id).unwrap();
 
     let parent_context =
@@ -3904,9 +3904,9 @@ fn begin_child_request_requires_parent_lineage() {
 #[test]
 fn begin_session_request_clears_inflight_when_lineage_persistence_fails() {
     let mut kernel = make_kernel(make_config());
-    kernel.set_receipt_store(Box::new(FailingRequestLineageReceiptStore));
+    kernel.set_receipt_store(Box::new(FailingRequestLineageReceiptStore)).unwrap();
     let agent_kp = make_keypair();
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![]);
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![]).unwrap();
     kernel.activate_session(&session_id).unwrap();
 
     let context = make_operation_context(
@@ -3936,7 +3936,7 @@ fn begin_session_request_clears_inflight_when_lineage_persistence_fails() {
         "failed non-durable start does not leave in-memory lineage"
     );
 
-    kernel.set_receipt_store(Box::new(AppendOnlyReceiptStore));
+    kernel.set_receipt_store(Box::new(AppendOnlyReceiptStore)).unwrap();
     kernel
         .begin_session_request(&context, OperationKind::ToolCall, true)
         .unwrap();
@@ -3945,9 +3945,9 @@ fn begin_session_request_clears_inflight_when_lineage_persistence_fails() {
 #[test]
 fn begin_child_request_clears_child_inflight_when_lineage_persistence_fails() {
     let mut kernel = make_kernel(make_config());
-    kernel.set_receipt_store(Box::new(AppendOnlyReceiptStore));
+    kernel.set_receipt_store(Box::new(AppendOnlyReceiptStore)).unwrap();
     let agent_kp = make_keypair();
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![]);
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![]).unwrap();
     kernel.activate_session(&session_id).unwrap();
 
     let parent_context =
@@ -3955,7 +3955,7 @@ fn begin_child_request_clears_child_inflight_when_lineage_persistence_fails() {
     kernel
         .begin_session_request(&parent_context, OperationKind::ToolCall, true)
         .unwrap();
-    kernel.set_receipt_store(Box::new(FailingRequestLineageReceiptStore));
+    kernel.set_receipt_store(Box::new(FailingRequestLineageReceiptStore)).unwrap();
 
     let child_request_id = RequestId::new("lineage-fail-child");
     let error = kernel
@@ -3993,7 +3993,7 @@ fn begin_child_request_clears_child_inflight_when_lineage_persistence_fails() {
         "failed child start does not leave in-memory lineage"
     );
 
-    kernel.set_receipt_store(Box::new(AppendOnlyReceiptStore));
+    kernel.set_receipt_store(Box::new(AppendOnlyReceiptStore)).unwrap();
     kernel
         .begin_child_request(
             &parent_context,
@@ -4009,7 +4009,7 @@ fn begin_child_request_clears_child_inflight_when_lineage_persistence_fails() {
 fn sampling_validation_requires_policy_and_negotiation() {
     let mut kernel = make_kernel(make_config());
     let agent_kp = make_keypair();
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![]);
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![]).unwrap();
     kernel.activate_session(&session_id).unwrap();
 
     let parent_context =
@@ -4114,7 +4114,7 @@ fn sampling_validation_requires_policy_and_negotiation() {
 fn elicitation_validation_requires_policy_and_form_negotiation() {
     let mut kernel = make_kernel(make_config());
     let agent_kp = make_keypair();
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![]);
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![]).unwrap();
     kernel.activate_session(&session_id).unwrap();
 
     let parent_context = make_operation_context(
@@ -4260,7 +4260,7 @@ fn tool_call_nested_flow_bridge_roundtrips_sampling() {
         make_scope(vec![make_grant("nested", "sample_via_client")]),
         300,
     );
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![capability.clone()]);
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![capability.clone()]).unwrap();
     kernel.activate_session(&session_id).unwrap();
     kernel
         .set_session_peer_capabilities(
@@ -4346,7 +4346,7 @@ fn kernel_persists_child_receipts_to_sqlite_store() {
     let mut config = make_config();
     config.allow_sampling = true;
     let mut kernel = make_kernel(config);
-    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
     kernel.register_tool_server(Box::new(NestedFlowServer {
         id: "nested".to_string(),
     }));
@@ -4358,7 +4358,7 @@ fn kernel_persists_child_receipts_to_sqlite_store() {
         make_scope(vec![make_grant("nested", "sample_via_client")]),
         300,
     );
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![capability.clone()]);
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![capability.clone()]).unwrap();
     kernel.activate_session(&session_id).unwrap();
     kernel
         .set_session_peer_capabilities(
@@ -4456,7 +4456,7 @@ fn tool_call_nested_flow_bridge_roundtrips_elicitation() {
         make_scope(vec![make_grant("nested", "elicit_via_client")]),
         300,
     );
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![capability.clone()]);
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![capability.clone()]).unwrap();
     kernel.activate_session(&session_id).unwrap();
     kernel
         .set_session_peer_capabilities(
@@ -4534,7 +4534,7 @@ fn tool_call_nested_flow_bridge_updates_session_roots() {
         make_scope(vec![make_grant("nested", "roots_via_client")]),
         300,
     );
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![capability.clone()]);
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![capability.clone()]).unwrap();
     kernel.activate_session(&session_id).unwrap();
     kernel
         .set_session_peer_capabilities(
@@ -4614,7 +4614,7 @@ fn tool_call_nested_flow_bridge_propagates_parent_cancellation() {
         make_scope(vec![make_grant("nested", "sample_via_client")]),
         300,
     );
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![capability.clone()]);
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![capability.clone()]).unwrap();
     kernel.activate_session(&session_id).unwrap();
     kernel
         .set_session_peer_capabilities(
@@ -4709,7 +4709,7 @@ fn tool_call_nested_flow_bridge_propagates_child_cancellation() {
         make_scope(vec![make_grant("nested", "sample_via_client")]),
         300,
     );
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![capability.clone()]);
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![capability.clone()]).unwrap();
     kernel.activate_session(&session_id).unwrap();
     kernel
         .set_session_peer_capabilities(
@@ -4825,7 +4825,7 @@ fn session_tool_call_records_incomplete_terminal_state() {
         make_scope(vec![make_grant("broken", "drop_stream")]),
         300,
     );
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![capability.clone()]);
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![capability.clone()]).unwrap();
     kernel.activate_session(&session_id).unwrap();
 
     let context = make_operation_context(
@@ -5039,7 +5039,7 @@ fn tool_call_nested_flow_bridge_filters_resource_notifications_to_session_subscr
     let session_id = kernel.open_session(
         agent_kp.public_key().to_hex(),
         vec![tool_capability.clone(), resource_capability.clone()],
-    );
+    ).unwrap();
     kernel.activate_session(&session_id).unwrap();
     kernel
         .subscribe_session_resource(
@@ -5108,7 +5108,7 @@ fn session_operation_list_resources_filters_to_session_scope() {
     };
     let cap = make_capability(&kernel, &agent_kp, scope, 300);
 
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap]);
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap]).unwrap();
     kernel.activate_session(&session_id).unwrap();
     let context =
         make_operation_context(&session_id, "resources-1", &agent_kp.public_key().to_hex());
@@ -5137,7 +5137,7 @@ fn session_operation_read_resource_enforces_scope() {
     };
     let cap = make_capability(&kernel, &agent_kp, scope, 300);
 
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()]);
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()]).unwrap();
     kernel.activate_session(&session_id).unwrap();
 
     let allowed_context = make_operation_context(
@@ -5190,7 +5190,7 @@ fn session_operation_read_resource_enforces_session_roots_for_filesystem_resourc
     };
     let cap = make_capability(&kernel, &agent_kp, scope, 300);
 
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()]);
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()]).unwrap();
     kernel.activate_session(&session_id).unwrap();
     kernel
         .replace_session_roots(
@@ -5266,7 +5266,7 @@ fn session_operation_read_resource_fails_closed_when_filesystem_roots_are_missin
     };
     let cap = make_capability(&kernel, &agent_kp, scope, 300);
 
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()]);
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()]).unwrap();
     kernel.activate_session(&session_id).unwrap();
 
     let context = make_operation_context(
@@ -5313,7 +5313,7 @@ fn subscribe_session_resource_requires_subscribe_operation() {
     let read_only_cap = make_capability(&kernel, &agent_kp, read_only_scope, 300);
 
     let session_id =
-        kernel.open_session(agent_kp.public_key().to_hex(), vec![read_only_cap.clone()]);
+        kernel.open_session(agent_kp.public_key().to_hex(), vec![read_only_cap.clone()]).unwrap();
     kernel.activate_session(&session_id).unwrap();
 
     let denied = kernel.subscribe_session_resource(
@@ -5364,7 +5364,7 @@ fn unsubscribe_session_resource_is_idempotent() {
     };
     let cap = make_capability(&kernel, &agent_kp, scope, 300);
 
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()]);
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()]).unwrap();
     kernel.activate_session(&session_id).unwrap();
     kernel
         .subscribe_session_resource(
@@ -5402,7 +5402,7 @@ fn session_operation_get_prompt_enforces_scope() {
     };
     let cap = make_capability(&kernel, &agent_kp, scope, 300);
 
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()]);
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()]).unwrap();
     kernel.activate_session(&session_id).unwrap();
 
     let list_context =
@@ -5462,7 +5462,7 @@ fn session_operation_completion_returns_candidates_and_enforces_scope() {
     };
     let cap = make_capability(&kernel, &agent_kp, scope, 300);
 
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()]);
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()]).unwrap();
     kernel.activate_session(&session_id).unwrap();
 
     let prompt_context =
@@ -5811,7 +5811,7 @@ fn make_sibling_sum_monetary_fixture(prefix: &str) -> SiblingSumMonetaryFixture 
         .record_capability_snapshot(&parent, None)
         .unwrap();
     drop(seed_store);
-    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
     kernel
         .register_budget_parent(parent.id.clone(), 5_000)
         .unwrap();
@@ -5890,7 +5890,7 @@ fn make_sibling_sum_invocation_fixture(prefix: &str) -> SiblingSumInvocationFixt
         .record_capability_snapshot(&parent, None)
         .unwrap();
     drop(seed_store);
-    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
     kernel
         .register_budget_parent(parent.id.clone(), 5_000)
         .unwrap();
@@ -7482,7 +7482,7 @@ fn governed_call_chain_receipt_observes_capability_lineage_subjects() {
         .record_capability_snapshot(&root_capability, None)
         .unwrap();
     drop(seed_store);
-    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
     set_capability_trust_root_for_scope(&kernel, &root_scope);
     kernel
         .register_budget_parent(root_capability.id.clone(), 10_000)
@@ -7574,7 +7574,7 @@ fn governed_call_chain_receipt_verifies_signed_upstream_delegator_proof() {
         .record_capability_snapshot(&root_capability, None)
         .unwrap();
     drop(seed_store);
-    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
     set_capability_trust_root_for_scope(&kernel, &root_scope);
     kernel
         .register_budget_parent(root_capability.id.clone(), 10_000)
@@ -7806,7 +7806,7 @@ fn governed_call_chain_receipt_follows_asserted_observed_verified_execution_orde
         .record_capability_snapshot(&root_capability, None)
         .unwrap();
     drop(seed_store);
-    verified_kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    verified_kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
     set_capability_trust_root_for_scope(&verified_kernel, &root_scope);
     verified_kernel
         .register_budget_parent(root_capability.id.clone(), 10_000)
@@ -7910,7 +7910,7 @@ fn governed_request_rejects_upstream_call_chain_proof_subject_mismatch() {
         .record_capability_snapshot(&root_capability, None)
         .unwrap();
     drop(seed_store);
-    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
 
     set_capability_trust_root_for_scope(&kernel, &root_scope);
     kernel
@@ -8002,7 +8002,7 @@ fn governed_request_rejects_call_chain_delegator_subject_that_conflicts_with_cap
         .record_capability_snapshot(&root_capability, None)
         .unwrap();
     drop(seed_store);
-    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
 
     set_capability_trust_root_for_scope(&kernel, &root_scope);
     kernel
@@ -8081,7 +8081,7 @@ fn governed_call_chain_receipt_observes_session_parent_request_lineage() {
         make_scope(vec![make_grant("srv-echo", "delegate")]),
         300,
     );
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![capability.clone()]);
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![capability.clone()]).unwrap();
     kernel.activate_session(&session_id).unwrap();
 
     let parent_context = make_operation_context(
@@ -8175,7 +8175,7 @@ fn cross_kernel_continuation_token_verifies_parent_receipt_hash_and_session_anch
         300,
     );
 
-    let parent_session_id = parent_kernel.open_session(child_kp.public_key().to_hex(), Vec::new());
+    let parent_session_id = parent_kernel.open_session(child_kp.public_key().to_hex(), Vec::new()).unwrap();
     parent_kernel.activate_session(&parent_session_id).unwrap();
     parent_kernel
         .with_session_mut(&parent_session_id, |session| {
@@ -9083,7 +9083,7 @@ fn governed_request_denies_delegated_autonomy_with_expired_bond() {
     store
         .record_credit_bond(&bond, CreditBondLifecycleState::Active)
         .unwrap();
-    kernel.set_receipt_store(Box::new(store));
+    kernel.set_receipt_store(Box::new(store)).unwrap();
 
     let request_id = "req-governed-autonomy-expired-bond";
     let mut intent = make_governed_intent(
@@ -9163,7 +9163,7 @@ fn governed_request_allows_delegated_autonomy_with_active_bond_and_receipt_metad
     store
         .record_credit_bond(&bond, CreditBondLifecycleState::Active)
         .unwrap();
-    kernel.set_receipt_store(Box::new(store));
+    kernel.set_receipt_store(Box::new(store)).unwrap();
 
     let request_id = "req-governed-autonomy-allow";
     let mut intent = make_governed_intent(
@@ -9352,7 +9352,7 @@ fn sibling_sum_denial_reverses_pre_execution_invocation_increment() {
 fn nested_hosted_sibling_sum_denial_reverses_pre_execution_monetary_charge() {
     let fixture = make_sibling_sum_monetary_fixture("nested-sibling-sum-rollback");
     let kernel = fixture.kernel;
-    let session_id = kernel.open_session("nested-parent-agent".to_string(), Vec::new());
+    let session_id = kernel.open_session("nested-parent-agent".to_string(), Vec::new()).unwrap();
     kernel.activate_session(&session_id).unwrap();
     let parent_context = make_operation_context(
         &session_id,
@@ -9508,7 +9508,7 @@ fn nested_payment_authorization_denial_releases_delegated_sibling_budget() {
     let fixture = make_sibling_sum_monetary_fixture("nested-delegated-payment-deny-budget");
     let mut kernel = fixture.kernel;
     kernel.set_payment_adapter(Box::new(DecliningPaymentAdapter));
-    let session_id = kernel.open_session("nested-parent-agent".to_string(), Vec::new());
+    let session_id = kernel.open_session("nested-parent-agent".to_string(), Vec::new()).unwrap();
     kernel.activate_session(&session_id).unwrap();
     let parent_context = make_operation_context(
         &session_id,
@@ -10807,7 +10807,7 @@ fn checkpoint_triggers_at_100_receipts() {
     kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["echo"])));
 
     let store = SqliteReceiptStore::open(&path).unwrap();
-    kernel.set_receipt_store(Box::new(store));
+    kernel.set_receipt_store(Box::new(store)).unwrap();
 
     let grant = make_grant("srv", "echo");
     let cap = kernel
@@ -10858,7 +10858,7 @@ fn concurrent_receipt_checkpointing_keeps_contiguous_batches() {
     kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["echo"])));
 
     let store = SqliteReceiptStore::open(&path).unwrap();
-    kernel.set_receipt_store(Box::new(store));
+    kernel.set_receipt_store(Box::new(store)).unwrap();
 
     let grant = make_grant("srv", "echo");
     let cap = kernel
@@ -10926,7 +10926,7 @@ fn checkpoint_counters_restore_when_store_is_reattached() {
     let grant = make_grant("srv", "echo");
     let mut first_kernel = make_kernel(first_config);
     first_kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["echo"])));
-    first_kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    first_kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
     let cap = first_kernel
         .issue_capability(&agent_kp.public_key(), make_scope(vec![grant]), 3600)
         .unwrap();
@@ -10952,7 +10952,7 @@ fn checkpoint_counters_restore_when_store_is_reattached() {
 
     let mut restarted_kernel = make_kernel(second_config);
     restarted_kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["echo"])));
-    restarted_kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    restarted_kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
     assert_eq!(
         restarted_kernel
             .checkpoint_seq_counter
@@ -11018,8 +11018,8 @@ fn checkpoint_counters_refresh_across_kernels_sharing_store() {
     let mut second_kernel = make_kernel(second_config);
     first_kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["echo"])));
     second_kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["echo"])));
-    first_kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
-    second_kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    first_kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
+    second_kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
 
     let cap = first_kernel
         .issue_capability(&agent_kp.public_key(), make_scope(vec![grant]), 3600)
@@ -11109,7 +11109,7 @@ fn inclusion_proof_verifies_against_stored_checkpoint() {
     kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["echo"])));
 
     let store = SqliteReceiptStore::open(&path).unwrap();
-    kernel.set_receipt_store(Box::new(store));
+    kernel.set_receipt_store(Box::new(store)).unwrap();
 
     let grant = make_grant("srv", "echo");
     let cap = kernel
@@ -11663,7 +11663,7 @@ fn sync_tool_server_event_queue_current_thread_returns_error_not_empty_success()
             "events",
             vec![ToolServerEvent::ResourcesListChanged],
         )));
-        let session_id = kernel.open_session("agent".to_string(), Vec::new());
+        let session_id = kernel.open_session("agent".to_string(), Vec::new()).unwrap();
         kernel.activate_session(&session_id).unwrap();
 
         let error = kernel.queue_session_tool_server_events(&session_id).unwrap_err();

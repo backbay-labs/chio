@@ -78,7 +78,6 @@ NOISY_GRAPH_PATHS = {"", "."}
 NOISY_CONTEXT_DOC_PREFIXES = (
     "docs/archive/",
     "docs/operations/ROADMAP",
-    "docs/scratchpad/",
     "docs/protocols/ADR-",
     "spec/schemas/",
 )

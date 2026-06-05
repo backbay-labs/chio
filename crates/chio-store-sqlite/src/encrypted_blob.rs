@@ -207,13 +207,29 @@ impl From<DecryptError> for BlobStoreError {
     }
 }
 
-/// Encrypt `plaintext` with the tenant key.
-#[must_use]
-pub fn encrypt_blob(tenant_key: &TenantKey, plaintext: &[u8]) -> EncryptedBlob {
-    match try_encrypt_blob(tenant_key, plaintext) {
-        Ok(blob) => blob,
-        Err(()) => panic!("ChaCha20-Poly1305 encryption failed for in-memory blob"),
+/// Encryption failure surfaced without panicking in public helpers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EncryptError {
+    /// AEAD encryption failed.
+    EncryptionFailed,
+}
+
+impl std::fmt::Display for EncryptError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EncryptionFailed => f.write_str("blob encryption failed"),
+        }
     }
+}
+
+impl std::error::Error for EncryptError {}
+
+/// Encrypt `plaintext` with the tenant key.
+pub fn encrypt_blob(
+    tenant_key: &TenantKey,
+    plaintext: &[u8],
+) -> Result<EncryptedBlob, EncryptError> {
+    try_encrypt_blob(tenant_key, plaintext).map_err(|_| EncryptError::EncryptionFailed)
 }
 
 /// Decrypt `blob` with the tenant key.
@@ -476,7 +492,7 @@ mod tests {
     fn encrypt_decrypt_round_trip() {
         let key = TenantKey::from_bytes([7; 32]);
         let plaintext = b"redacted fixture payload";
-        let blob = encrypt_blob(&key, plaintext);
+        let blob = encrypt_blob(&key, plaintext).expect("encrypt with valid key");
         assert_ne!(blob.ciphertext, plaintext);
         let decrypted = decrypt_blob(&key, &blob).expect("decrypt with correct key");
         assert_eq!(decrypted, plaintext);
@@ -486,7 +502,7 @@ mod tests {
     fn decrypt_rejects_wrong_key() {
         let key = TenantKey::from_bytes([7; 32]);
         let wrong_key = TenantKey::from_bytes([8; 32]);
-        let blob = encrypt_blob(&key, b"payload");
+        let blob = encrypt_blob(&key, b"payload").expect("encrypt with valid key");
         let error = decrypt_blob(&wrong_key, &blob).expect_err("wrong key must fail");
         assert_eq!(error, DecryptError::AuthenticationFailed);
     }

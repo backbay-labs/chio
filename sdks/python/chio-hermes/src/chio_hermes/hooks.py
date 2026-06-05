@@ -8,7 +8,7 @@ plain `def`; returning a coroutine would silently drop the body.
 from __future__ import annotations
 
 import json
-import sys
+import logging
 import time
 import warnings
 from collections.abc import Callable
@@ -18,6 +18,8 @@ from chio_adapter_base.redact import RedactionPolicy
 from chio_adapter_base.redact import redact_args as _adapter_base_redact_args
 
 from chio_hermes.runtime import RuntimeHandle
+
+_logger = logging.getLogger(__name__)
 
 PreHook = Callable[..., Any]
 PostHook = Callable[..., None]
@@ -244,10 +246,7 @@ def make_post_tool_call(handle: RuntimeHandle) -> PostHook:
         try:
             handle.receipts.record(record)
         except Exception as exc:  # noqa: BLE001
-            print(
-                f"[chio-hermes] post_tool_call record failed: {exc}",
-                file=sys.stderr,
-            )
+            _logger.warning("post_tool_call record failed: %s", exc)
 
     return post_tool_call
 

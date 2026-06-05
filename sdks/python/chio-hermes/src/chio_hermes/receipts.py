@@ -23,6 +23,7 @@ in chio-hermes 0.2.0; new code should import directly from
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 import threading
@@ -39,6 +40,8 @@ from chio_adapter_base.receipts import append_jsonl as _adapter_base_append_json
 from chio_adapter_base.receipts import (
     canonical_dumps as _adapter_base_canonical_dumps,
 )
+
+_logger = logging.getLogger(__name__)
 
 DEFAULT_RECEIPT_BUFFER_MAX = _ADAPTER_BASE_DEFAULT_RECEIPT_BUFFER_MAX
 
@@ -189,10 +192,7 @@ class ReceiptBuffer:
                 module = sys.modules[__name__]
                 module.append_jsonl(module._resolve_log_path(), receipt)
             except OSError as exc:
-                print(
-                    f"[chio-hermes] receipt JSONL write failed: {exc}",
-                    file=sys.stderr,
-                )
+                _logger.warning("receipt JSONL write failed: %s", exc)
 
     def recent(self, n: int = 5) -> list[dict[str, Any]]:
         # `n <= 0` means "give me nothing"; the historical

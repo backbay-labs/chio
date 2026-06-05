@@ -1,7 +1,20 @@
 # Risk Register
 
-This register tracks the known non-blocking risks that remain after the local
-v1-only pre-release production-candidate closeout.
+This register tracks known risks for the v1-only pre-release candidate.
+See also [REVIEW-FINDINGS-AND-NEXT-STEPS.md](../protocols/REVIEW-FINDINGS-AND-NEXT-STEPS.md)
+for the full engineering backlog.
+
+## Critical engineering backlog (from review)
+
+| Risk | Severity | Mitigation status | Notes |
+| --- | --- | --- | --- |
+| TOCTOU between guard verdict and tool execution in wrapper integrations | CRITICAL | open | Execution nonce or kernel-dispatched execution |
+| Agent memory stores ungoverned (RAG, scratchpads, conversation history) | HIGH | planned | Memory-write constraints and read receipts |
+| Sidecar bypass: agents can call tools without mediation | HIGH | open | Tool-server auth, network enforcement, honest trust taxonomy |
+| No PyPI/npm packages published; SDKs path-only | CRITICAL | open | CI publishing for Python and TypeScript SDKs |
+| No `MockChioClient` or dry-run testing without live kernel | HIGH | planned | `chio_sdk.testing` fixtures |
+
+## Release and qualification risks
 
 | Risk | Current posture | Mitigation |
 | --- | --- | --- |

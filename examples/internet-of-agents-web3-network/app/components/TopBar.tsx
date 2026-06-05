@@ -134,12 +134,6 @@ export function TopBar({
         <button className={`btn-ghost${live ? " live" : ""}`} onClick={onToggleLive}>
           {live ? "Live" : "Review"}
         </button>
-        <button className="btn-ghost" title="download bundle (placeholder)" type="button">
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ opacity: 0.8 }}>
-            <path d="M5 1v6M2 5l3 3 3-3M1 9h8" stroke="currentColor" strokeWidth="1" />
-          </svg>
-          bundle.tar
-        </button>
       </div>
     </div>
   );

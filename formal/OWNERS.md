@@ -1,27 +1,20 @@
-# Formal Verification Ownership Template
+# Formal Verification Ownership
 
-This file is the template for naming the humans on the hook for Chio's
-formal-verification surface (Apalache TLA+ models, Lean4 proofs, Aeneas
-extraction, Kani harnesses, Rust formal-verification glue, and the nightly
-liveness lane). It lives next to the formal artifacts under `formal/` so
-ownership stays close to the code being proved.
-
-Under the current single-owner model, both slots resolve to
-`@bb-connor`. The literal `TBD-primary` and `TBD-backup` placeholders are
-preserved in the rows below so external contributors fill them in when
-they arrive (and so the gate-check grep for those tokens
-continues to pass).
+This file names the humans on the hook for Chio's formal-verification surface
+(Apalache TLA+ models, Lean4 proofs, Aeneas extraction, Kani harnesses, Rust
+formal-verification glue, and the nightly liveness lane). It lives next to the
+formal artifacts under `formal/` so ownership stays close to the code being
+proved.
 
 ## Ownership
 
-| Role            | Handle        | Notes                                              |
-| --------------- | ------------- | -------------------------------------------------- |
-| Primary owner   | TBD-primary   | Resolves to `@bb-connor` under single-owner mode.  |
-| Backup owner    | TBD-backup    | Resolves to `@bb-connor` under single-owner mode.  |
+| Role          | Handle                         | Notes                                    |
+| ------------- | ------------------------------ | ---------------------------------------- |
+| Primary owner | @backbay-labs/chio-maintainers | Chio security team (formal verification) |
+| Backup owner  | @backbay-labs/chio-maintainers | Same team; backup for primary absence    |
 
-When the project staffs up, replace `TBD-primary` and `TBD-backup` with
-real GitHub handles (for example `@alice` and `@bob`) and update
-`CODEOWNERS` so the formal-verification paths route to the new humans.
+Update `CODEOWNERS` when formal-verification paths should route to different
+GitHub handles.
 
 ## Responsibilities
 

@@ -352,15 +352,18 @@ impl ChioKernel {
         self.signing_task.shutdown().await;
     }
 
-    pub fn set_receipt_store(&mut self, receipt_store: Box<dyn ReceiptStore>) {
-        self.set_receipt_store_handle(Arc::from(receipt_store));
+    pub fn set_receipt_store(
+        &mut self,
+        receipt_store: Box<dyn ReceiptStore>,
+    ) -> Result<(), KernelError> {
+        self.set_receipt_store_handle(Arc::from(receipt_store))
     }
 
-    pub fn set_receipt_store_handle(&mut self, receipt_store: Arc<dyn ReceiptStore>) {
+    pub fn set_receipt_store_handle(
+        &mut self,
+        receipt_store: Arc<dyn ReceiptStore>,
+    ) -> Result<(), KernelError> {
         self.try_set_receipt_store_handle(receipt_store)
-            .unwrap_or_else(|error| {
-                panic!("failed to install receipt store: {error}");
-            });
     }
 
     pub fn try_set_receipt_store_handle(

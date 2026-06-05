@@ -1,1 +1,0 @@
-{"id":3,"jsonrpc":"2.0","result":{"_meta":{"chio_verified":{"header":"Chio-verified","schema":"urn:chio:attest:tool-call/v1","tool":"read_file","verifier":"chio-attest-verify"}},"content":[{"text":"stub kb article: hostname","type":"text"}]}}

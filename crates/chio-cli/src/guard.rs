@@ -45,16 +45,17 @@ use chio_guard_sdk_macros::chio_guard;
 
 #[chio_guard]
 fn evaluate(req: GuardRequest) -> GuardVerdict {
-    // TODO: implement your guard logic here.
+    // Replace this stub with real policy logic before shipping.
     //
     // Access request fields:
     //   req.tool_name      -- the tool being invoked
     //   req.action_type    -- pre-extracted action category
     //   req.extracted_path -- normalized file path (if applicable)
     //
-    // Return GuardVerdict::allow() or GuardVerdict::deny("reason").
+    // Return GuardVerdict::allow() only after explicit checks pass.
+    // Default scaffold denies until you implement the guard.
     let _ = &req;
-    GuardVerdict::allow()
+    GuardVerdict::deny("unimplemented guard - deny by default")
 }
 "#;
 
@@ -1078,7 +1079,7 @@ mod tests {
         let lib_rs = fs::read_to_string(project_path.join("src/lib.rs")).unwrap();
         assert!(lib_rs.contains("#[chio_guard]"));
         assert!(lib_rs.contains("fn evaluate(req: GuardRequest) -> GuardVerdict"));
-        assert!(lib_rs.contains("GuardVerdict::allow()"));
+        assert!(lib_rs.contains("unimplemented guard - deny by default"));
 
         // Check guard-manifest.yaml content
         let manifest = fs::read_to_string(project_path.join("guard-manifest.yaml")).unwrap();

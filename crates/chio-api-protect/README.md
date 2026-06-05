@@ -54,6 +54,36 @@ cargo build -p chio-api-protect
 cargo test -p chio-api-protect
 ```
 
+## Sidecar routes that are not production authorization paths
+
+The proxy embeds SDK control routes (`/v1/*`, `/chio/*`) beside the upstream
+reverse proxy. Only some of them perform kernel-mediated HTTP authorization
+(the same evaluation path as mutating upstream requests). The following routes
+must not be used as sole allow/deny gates for tool execution in production:
+
+- **`POST /v1/evaluate`** - tool-call alias for `chio-sdk-python`'s
+  `evaluate_tool_call`. Signs an `AdvisoryEvaluation` receipt after local
+  revocation and parameter-hash checks only. Responses include
+  `chio-trust-level: advisory` and receipt JSON `trust_level: advisory`. This
+  is not kernel-mediated authorization.
+- **`POST /v1/capabilities/attenuate`** - returns HTTP 501 with
+  `chio-route-status: not-implemented` and `chio_route_status: not-implemented`
+  in the JSON body. Capability delegation requires the parent subject's
+  private key, which the sidecar does not hold.
+- **`POST /v1/capabilities/validate`** - verifies the capability token
+  signature, expiry, and local revocation set only; it does not evaluate policy
+  or scope against a concrete tool call.
+- **`POST /v1/capabilities`** and **`POST /v1/capabilities/mint`** - mint
+  sidecar-signed capability tokens for development and SDK ergonomics; minting
+  here is not a substitute for your capability authority in production.
+- **`POST /v1/receipts`** - accepts operator-submitted receipts for logging;
+  submission does not imply the kernel mediated the original action.
+
+Authoritative mediated evaluation for HTTP-shaped requests remains
+**`POST /chio/evaluate`** (and the upstream proxy path that runs the same
+evaluator before forwarding). Kernel-driven tool-call evaluation through the
+sidecar is not wired in this crate yet.
+
 ## House rules
 
 - No em dashes (U+2014) anywhere in code, comments, or documentation.

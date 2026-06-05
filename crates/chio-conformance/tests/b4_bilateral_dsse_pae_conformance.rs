@@ -12,13 +12,14 @@ use std::collections::BTreeMap;
 
 use chio_core::crypto::{sha256_hex, Keypair};
 use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
+use chio_federation::demo::DemoAllowAllRevocationOracle;
 use chio_federation::{
     sign_dsse_envelope, sign_dsse_envelope_with_cosigner, verify_bilateral_cosign_invocation,
     verify_dsse_envelope, ActionClassKind, BilateralPredicateExtensions, CapabilityLeaseRef,
-    DemoAllowAllRevocationOracle, GovernanceReceiptStore, InMemoryGovernanceReceiptStore,
-    InMemoryLeaseRegistry, InMemoryReceiptStore, InProcessCoSigner, PeerPinSet, PinnedEpoch,
-    PinnedPeer, PolicyEvaluationSummary, PolicyVerdict, ReceiptStore, ResolvedLease,
-    RevocationOracle, UnknownActionClassPolicy, VerifierConfig,
+    GovernanceReceiptStore, InMemoryGovernanceReceiptStore, InMemoryLeaseRegistry,
+    InMemoryReceiptStore, InProcessCoSigner, PeerPinSet, PinnedEpoch, PinnedPeer,
+    PolicyEvaluationSummary, PolicyVerdict, ReceiptStore, ResolvedLease, RevocationOracle,
+    UnknownActionClassPolicy, VerifierConfig,
 };
 
 const ORG_A: &str = "did:chio:org-a";

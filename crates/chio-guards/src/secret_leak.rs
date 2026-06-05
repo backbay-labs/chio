@@ -3,6 +3,8 @@
 //! Uses regex patterns to detect common API keys, tokens, passwords, and
 //! private keys in file write content. This is a critical security guard.
 
+use std::sync::OnceLock;
+
 use regex::Regex;
 use thiserror::Error;
 
@@ -102,6 +104,7 @@ fn default_patterns() -> Vec<SecretPattern> {
 }
 
 /// Compiled pattern for matching.
+#[derive(Clone)]
 struct CompiledPattern {
     name: String,
     regex: Regex,
@@ -188,6 +191,7 @@ pub enum SecretLeakConfigError {
 }
 
 /// Guard that detects potential secret exposure in file writes.
+#[derive(Clone)]
 pub struct SecretLeakGuard {
     enabled: bool,
     patterns: Vec<CompiledPattern>,
@@ -195,11 +199,34 @@ pub struct SecretLeakGuard {
 }
 
 impl SecretLeakGuard {
-    pub fn new() -> Self {
+    fn build_default_or_fail_closed() -> Self {
         match Self::with_config(SecretLeakConfig::default()) {
             Ok(guard) => guard,
-            Err(error) => panic!("default secret leak config must be valid: {error}"),
+            Err(_) => Self::unavailable_fail_closed(),
         }
+    }
+
+    fn unavailable_fail_closed() -> Self {
+        let patterns = Regex::new(r"[\s\S]+")
+            .ok()
+            .map(|regex| CompiledPattern {
+                name: "secret_leak_config_unavailable_fail_closed".to_string(),
+                regex,
+            })
+            .into_iter()
+            .collect();
+        Self {
+            enabled: true,
+            patterns,
+            skip_paths: vec![],
+        }
+    }
+
+    pub fn new() -> Self {
+        static DEFAULT: OnceLock<SecretLeakGuard> = OnceLock::new();
+        DEFAULT
+            .get_or_init(Self::build_default_or_fail_closed)
+            .clone()
     }
 
     pub fn with_config(config: SecretLeakConfig) -> Result<Self, SecretLeakConfigError> {

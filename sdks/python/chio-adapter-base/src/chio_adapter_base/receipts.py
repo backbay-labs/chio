@@ -26,8 +26,8 @@ log.
 from __future__ import annotations
 
 import json
+import logging
 import pathlib
-import sys
 import threading
 from collections import deque
 from collections.abc import Callable, Iterator, Mapping
@@ -35,6 +35,8 @@ from typing import Any
 
 DEFAULT_RECEIPT_BUFFER_MAX: int = 1000
 """Mirror of ``chio_hermes.receipts.DEFAULT_RECEIPT_BUFFER_MAX``."""
+
+_logger = logging.getLogger(__name__)
 
 
 def canonical_dumps(record: Mapping[str, Any]) -> bytes:
@@ -175,10 +177,7 @@ class ReceiptBuffer:
                 try:
                     append_jsonl(self._log_path_factory(), record_copy)
                 except OSError as exc:
-                    print(
-                        f"[chio-adapter-base] receipt JSONL write failed: {exc}",
-                        file=sys.stderr,
-                    )
+                    _logger.warning("receipt JSONL write failed: %s", exc)
 
     def recent(self, n: int = 5) -> list[dict[str, Any]]:
         """Return the ``n`` most recently recorded receipts.

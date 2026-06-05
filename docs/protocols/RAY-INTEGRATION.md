@@ -3,8 +3,8 @@
 > **Status**: Tier 3 -- proposed April 2026
 > **Priority**: Exploratory -- Ray's distributed compute model aligns with
 > agent swarm architectures. `ray.remote()` tasks and actors become
-> capability-scoped execution units. Relevant to the chiodome vision of
-> agent congregations as distributed fiscal entities.
+> capability-scoped execution units. Relevant to multi-party agent
+> congregations operating as distributed fiscal entities.
 
 ## 1. Why Ray
 
@@ -361,7 +361,7 @@ sdks/python/chio-ray/
 4. **Multi-tenancy.** Ray clusters often serve multiple teams. Should Chio
    policy be per-namespace (Ray namespace), per-job, or per-actor?
 
-5. **Chiodome alignment.** In the chiodome vision, agent swarms congregate
-   as digital fiscal entities. How does Chio's per-actor capability model
-   map to nation-state-level fiscal sovereignty? Is the placement group
-   the "nation" boundary?
+5. **Federated fiscal alignment.** When agent swarms operate as digital
+   fiscal entities, how does Chio's per-actor capability model map to
+   namespace-level fiscal sovereignty? Is the placement group the economic
+   boundary?

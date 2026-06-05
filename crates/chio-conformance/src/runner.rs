@@ -116,6 +116,49 @@ pub fn default_repo_root() -> PathBuf {
     conformance_fixture_root_from_manifest_dir(Path::new(env!("CARGO_MANIFEST_DIR")))
 }
 
+/// Read a conformance harness token from `var`, or return a local-only default.
+///
+/// When the env var is unset, the fallback uses the `dev-only-conformance-*`
+/// prefix plus a short random suffix. Set `CHIO_CONFORMANCE_AUTH_TOKEN` and
+/// `CHIO_CONFORMANCE_ADMIN_TOKEN` for CI or shared environments.
+fn conformance_token_from_env(var: &str, role: &str) -> String {
+    if let Ok(value) = env::var(var) {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    format!("dev-only-conformance-{role}-{nonce}")
+}
+
+/// Pass conformance tokens through child env vars so shared CI runners do not
+/// expose secrets via `/proc/<pid>/cmdline`.
+fn apply_conformance_auth_env(
+    command: &mut Command,
+    options: &ConformanceRunOptions,
+    auth_mode: ConformanceAuthMode,
+) {
+    command
+        .env("CHIO_CONFORMANCE_AUTH_TOKEN", &options.auth_token)
+        .env("CHIO_CONFORMANCE_ADMIN_TOKEN", &options.admin_token);
+    match auth_mode {
+        ConformanceAuthMode::StaticBearer => {
+            command.env("CHIO_AUTH_TOKEN", &options.auth_token);
+        }
+        ConformanceAuthMode::LocalOAuth => {
+            command
+                .env_remove("CHIO_AUTH_TOKEN")
+                .env_remove("CHIO_MCP_AUTH_TOKEN")
+                .env_remove("CHIO_MCP_ADMIN_TOKEN");
+            command.env("CHIO_ADMIN_TOKEN", &options.admin_token);
+        }
+    }
+}
+
 pub fn default_run_options() -> ConformanceRunOptions {
     let repo_root = default_repo_root();
     ConformanceRunOptions {
@@ -126,8 +169,8 @@ pub fn default_run_options() -> ConformanceRunOptions {
         upstream_server_script: repo_root
             .join("tests/conformance/fixtures/mcp_core/mock_mcp_server.py"),
         auth_mode: ConformanceAuthMode::StaticBearer,
-        auth_token: "conformance-token".to_string(),
-        admin_token: "conformance-admin-token".to_string(),
+        auth_token: conformance_token_from_env("CHIO_CONFORMANCE_AUTH_TOKEN", "auth"),
+        admin_token: conformance_token_from_env("CHIO_CONFORMANCE_ADMIN_TOKEN", "admin"),
         auth_scope: "mcp:invoke".to_string(),
         listen: None,
         peers: vec![PeerTarget::Js, PeerTarget::Python],
@@ -320,10 +363,11 @@ fn spawn_remote_edge(
         listen
     );
 
+    apply_conformance_auth_env(&mut command, options, options.auth_mode);
+
     match options.auth_mode {
         ConformanceAuthMode::StaticBearer => {
-            command.arg("--auth-token").arg(&options.auth_token);
-            command_description.push_str(&format!(" --auth-token {}", options.auth_token));
+            command_description.push_str(" (auth via CHIO_AUTH_TOKEN env)");
         }
         ConformanceAuthMode::LocalOAuth => {
             command
@@ -334,16 +378,13 @@ fn spawn_remote_edge(
                 .arg("--auth-jwt-audience")
                 .arg(format!("{public_base_url}/mcp"))
                 .arg("--auth-scope")
-                .arg(&options.auth_scope)
-                .arg("--admin-token")
-                .arg(&options.admin_token);
+                .arg(&options.auth_scope);
             command_description.push_str(&format!(
-                " --public-base-url {} --auth-server-seed-file {} --auth-jwt-audience {}/mcp --auth-scope {} --admin-token {}",
+                " --public-base-url {} --auth-server-seed-file {} --auth-jwt-audience {}/mcp --auth-scope {} (admin via CHIO_ADMIN_TOKEN env)",
                 public_base_url,
                 auth_server_seed_path.display(),
                 public_base_url,
-                options.auth_scope,
-                options.admin_token
+                options.auth_scope
             ));
         }
     }
@@ -426,6 +467,8 @@ fn run_peer(
         }
     };
 
+    apply_conformance_auth_env(&mut command, options, options.auth_mode);
+
     let status = command
         .arg("--base-url")
         .arg(base_url)
@@ -434,10 +477,6 @@ fn run_peer(
             ConformanceAuthMode::StaticBearer => "static-bearer",
             ConformanceAuthMode::LocalOAuth => "oauth-local",
         })
-        .arg("--auth-token")
-        .arg(&options.auth_token)
-        .arg("--admin-token")
-        .arg(&options.admin_token)
         .arg("--auth-scope")
         .arg(&options.auth_scope)
         .arg("--scenarios-dir")
@@ -575,10 +614,24 @@ pub fn unique_run_dir(prefix: &str) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::conformance_fixture_root_from_manifest_dir;
+    use super::{
+        apply_conformance_auth_env, conformance_fixture_root_from_manifest_dir,
+        default_run_options, ConformanceAuthMode,
+    };
+    use std::ffi::OsStr;
     use std::fs;
     use std::path::Path;
+    use std::process::Command;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn command_env(command: &Command, key: &str) -> Option<Option<String>> {
+        command.get_envs().find_map(|(name, value)| {
+            if name == OsStr::new(key) {
+                return Some(value.map(|raw| raw.to_string_lossy().into_owned()));
+            }
+            None
+        })
+    }
 
     fn unique_test_dir(label: &str) -> std::path::PathBuf {
         let nanos = SystemTime::now()
@@ -636,5 +689,35 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all(package_root);
+    }
+
+    #[test]
+    fn local_oauth_child_env_removes_inherited_static_bearer_token() {
+        let mut options = default_run_options();
+        options.auth_mode = ConformanceAuthMode::LocalOAuth;
+        options.auth_token = "local-auth-token".to_string();
+        options.admin_token = "local-admin-token".to_string();
+        let mut command = Command::new("chio");
+        command.env("CHIO_AUTH_TOKEN", "parent-static-token");
+        command.env("CHIO_MCP_AUTH_TOKEN", "parent-mcp-static-token");
+        command.env("CHIO_MCP_ADMIN_TOKEN", "parent-mcp-admin-token");
+
+        apply_conformance_auth_env(&mut command, &options, options.auth_mode);
+
+        assert_eq!(command_env(&command, "CHIO_AUTH_TOKEN"), Some(None));
+        assert_eq!(command_env(&command, "CHIO_MCP_AUTH_TOKEN"), Some(None));
+        assert_eq!(command_env(&command, "CHIO_MCP_ADMIN_TOKEN"), Some(None));
+        assert_eq!(
+            command_env(&command, "CHIO_ADMIN_TOKEN"),
+            Some(Some("local-admin-token".to_string()))
+        );
+        assert_eq!(
+            command_env(&command, "CHIO_CONFORMANCE_AUTH_TOKEN"),
+            Some(Some("local-auth-token".to_string()))
+        );
+        assert_eq!(
+            command_env(&command, "CHIO_CONFORMANCE_ADMIN_TOKEN"),
+            Some(Some("local-admin-token".to_string()))
+        );
     }
 }

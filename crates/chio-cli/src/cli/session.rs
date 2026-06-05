@@ -545,7 +545,7 @@ mod tests {
         agent_id: &str,
         capabilities: Vec<chio_core::CapabilityToken>,
     ) -> SessionId {
-        let session_id = kernel.open_session(agent_id.to_string(), capabilities);
+        let session_id = kernel.open_session(agent_id.to_string(), capabilities).unwrap();
         kernel.activate_session(&session_id).unwrap();
         session_id
     }

@@ -39,11 +39,10 @@ impl ChioKernel {
         &self,
         agent_id: AgentId,
         issued_capabilities: Vec<CapabilityToken>,
-    ) -> SessionId {
+    ) -> Result<SessionId, KernelError> {
         let session_id = generate_random_session_id();
 
         self.open_session_with_id(session_id, agent_id, issued_capabilities)
-            .unwrap_or_else(|error| panic!("failed to open session: {error}"))
     }
 
     pub fn open_session_with_id(

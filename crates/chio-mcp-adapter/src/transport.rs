@@ -32,6 +32,14 @@ const TASK_POLL_INTERVAL_MILLIS: u64 = 500;
 const MAX_BACKGROUND_TASKS_PER_TICK: usize = 8;
 const MAX_STDIO_MCP_BUFFERED_MESSAGES: usize = 128;
 const RELATED_TASK_META_KEY: &str = "io.modelcontextprotocol/related-task";
+const CHIO_AUTH_ENV_VARS: &[&str] = &[
+    "CHIO_AUTH_TOKEN",
+    "CHIO_ADMIN_TOKEN",
+    "CHIO_MCP_AUTH_TOKEN",
+    "CHIO_MCP_ADMIN_TOKEN",
+    "CHIO_CONFORMANCE_AUTH_TOKEN",
+    "CHIO_CONFORMANCE_ADMIN_TOKEN",
+];
 
 struct TransportInner {
     child: Child,
@@ -42,6 +50,12 @@ struct TransportInner {
 enum RequestMessage {
     Message(serde_json::Value),
     ReadError(String),
+}
+
+fn remove_chio_auth_env(command: &mut Command) {
+    for key in CHIO_AUTH_ENV_VARS {
+        command.env_remove(key);
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -483,15 +497,17 @@ impl StdioMcpTransport {
     /// `command` is the binary to run (e.g. `"npx"`, `"python"`).
     /// `args` are passed as command-line arguments.
     pub fn spawn(command: &str, args: &[&str]) -> Result<Self, AdapterError> {
-        let mut child = Command::new(command)
+        let mut child_command = Command::new(command);
+        child_command
             .args(args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| {
-                AdapterError::ConnectionFailed(format!("failed to spawn {command}: {e}"))
-            })?;
+            .stderr(Stdio::piped());
+        remove_chio_auth_env(&mut child_command);
+
+        let mut child = child_command.spawn().map_err(|e| {
+            AdapterError::ConnectionFailed(format!("failed to spawn {command}: {e}"))
+        })?;
 
         let stdout = child
             .stdout
@@ -1429,6 +1445,16 @@ mod tests {
     use chio_core::session::ElicitationAction;
     use chio_core::RequestId;
 
+    fn command_env(command: &Command, key: &str) -> Option<Option<String>> {
+        command.get_envs().find_map(|(name, value)| {
+            if name == std::ffi::OsStr::new(key) {
+                Some(value.map(|value| value.to_string_lossy().into_owned()))
+            } else {
+                None
+            }
+        })
+    }
+
     struct MockNestedFlowBridge;
 
     impl NestedFlowBridge for MockNestedFlowBridge {
@@ -1495,6 +1521,20 @@ mod tests {
         let trimmed = output.trim_end();
         let parsed: serde_json::Value = serde_json::from_str(trimmed).unwrap();
         assert_eq!(parsed["method"], "test");
+    }
+
+    #[test]
+    fn stdio_transport_child_env_removes_chio_auth_tokens() {
+        let mut command = Command::new("mock-mcp-server");
+        for key in CHIO_AUTH_ENV_VARS {
+            command.env(key, format!("parent-{key}"));
+        }
+
+        remove_chio_auth_env(&mut command);
+
+        for key in CHIO_AUTH_ENV_VARS {
+            assert_eq!(command_env(&command, key), Some(None));
+        }
     }
 
     #[test]

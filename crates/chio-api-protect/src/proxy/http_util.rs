@@ -1,5 +1,14 @@
 use super::*;
 
+/// HTTP response header mirroring the signed receipt's advisory trust level.
+/// Gate clients on this value (or on receipt `trust_level`) before treating
+/// `POST /v1/evaluate` as kernel-mediated authorization.
+pub(crate) const CHIO_TRUST_LEVEL_HEADER: &str = "chio-trust-level";
+
+/// HTTP response header on routes that are documented stubs, not production
+/// authorization paths (for example `POST /v1/capabilities/attenuate`).
+pub(crate) const CHIO_ROUTE_STATUS_HEADER: &str = "chio-route-status";
+
 pub(crate) fn parse_query_params(raw_query: Option<&str>) -> HashMap<String, String> {
     raw_query
         .map(|query| {
@@ -79,6 +88,62 @@ pub(crate) fn internal_json_error_response(error: &str, message: &str) -> Respon
         })),
     )
         .into_response()
+}
+
+pub(crate) fn sidecar_advisory_tool_call_evaluate_response(receipt: ChioReceipt) -> Response {
+    let body = match serde_json::to_vec(&receipt) {
+        Ok(body) => body,
+        Err(error) => {
+            warn!("failed to serialize advisory evaluate receipt: {error}");
+            return internal_json_error_response(
+                "chio_receipt_serialize_failed",
+                &error.to_string(),
+            );
+        }
+    };
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("content-type", "application/json")
+        .header(CHIO_TRUST_LEVEL_HEADER, TrustLevel::Advisory.as_str())
+        .body(Body::from(body))
+        .unwrap_or_else(|_| sidecar_advisory_tool_call_evaluate_json_response(receipt))
+}
+
+pub(crate) fn sidecar_advisory_tool_call_evaluate_json_response(receipt: ChioReceipt) -> Response {
+    let mut response = (StatusCode::OK, axum::Json(receipt)).into_response();
+    response.headers_mut().insert(
+        CHIO_TRUST_LEVEL_HEADER,
+        axum::http::HeaderValue::from_static("advisory"),
+    );
+    response
+}
+
+pub(crate) fn sidecar_not_implemented_route_response(
+    status: StatusCode,
+    error: &str,
+    message: &str,
+    route_status: &str,
+    extra_fields: serde_json::Value,
+) -> Response {
+    let mut body = serde_json::json!({
+        "error": error,
+        "message": message,
+        "chio_route_status": route_status,
+    });
+    if let Some(extra) = extra_fields.as_object() {
+        for (key, value) in extra {
+            body[key] = value.clone();
+        }
+    }
+
+    let body_text = serde_json::to_string(&body).unwrap_or_default();
+    Response::builder()
+        .status(status)
+        .header("content-type", "application/json")
+        .header(CHIO_ROUTE_STATUS_HEADER, route_status)
+        .body(Body::from(body_text))
+        .unwrap_or_else(|_| (status, axum::Json(body)).into_response())
 }
 
 pub(crate) fn extract_presented_capability_from_maps<'a>(

@@ -4,6 +4,34 @@
 **Role:** repo-local pre-release evidence inventory for the current v1-only
 Chio candidate, not a public release-go record
 
+> **Evidence inventory only:** Tables in **Findings Closure** and related
+> sections record internal milestone disposition. They are not publication-ready
+> claims for customers, auditors, or partners. Use [PARTNER_PROOF.md](PARTNER_PROOF.md)
+> for reviewer packaging and [GA_CHECKLIST.md](GA_CHECKLIST.md) for operator gates.
+
+## Internal planning artifacts (not publication evidence)
+
+The following are engineering-planning snapshots only. They are not partner
+proof, external audit evidence, or release-go records:
+
+- `audits/evidence/close-bar-current.json` and
+  `audits/evidence/close-bar-snapshot.json` (gitignored) - machine-readable
+  close-bar row disposition for trajectory closeout tracking
+- `.planning/trajectory-*/closeout/CLOSE-BAR-TRACKER.md` - human tracker for
+  the same rows
+
+Do not cite close-bar JSON or snapshots in partner packages, external
+attestation pages, or public release claims. When a gitignored close-bar
+snapshot disagrees with `releases.toml` (for example, a retracted pre-release
+tag still marked `DONE`), treat `releases.toml` and the release docs in this
+directory as canonical for publication status.
+
+The M08 internal readiness draft PDF
+(`releases/audit-reports/m08-internal-readiness-draft-2026-05-02.pdf`) is
+retained outside the public release bundle until an external vendor review is
+engaged. `releases.toml` records the internal `draft_path` and hash only; there
+is no public GitHub URL for that PDF today.
+
 ## Scope
 
 This audit tracks the current Chio pre-release candidate surface described in
@@ -259,6 +287,8 @@ Primary release docs:
 - [PROTOCOL.md](../../spec/PROTOCOL.md)
 
 ## Findings Closure
+
+Internal evidence inventory (not external closure claims):
 
 | Former gap | Release disposition |
 | --- | --- |

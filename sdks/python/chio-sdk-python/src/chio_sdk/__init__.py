@@ -33,6 +33,15 @@ from chio_sdk.errors import (
     ChioTimeoutError,
     ChioValidationError,
 )
+from chio_sdk.models_approvals import (
+    Approval,
+    ApprovalResponse,
+    ApprovalVerdict,
+    PendingApproval,
+    PendingApprovalList,
+    ResolvedApproval,
+    SubmitApprovalResult,
+)
 from chio_sdk.testing import (
     MockChioClient,
     MockVerdict,
@@ -77,6 +86,14 @@ __all__ = [
     # Models -- identity
     "CallerIdentity",
     "AuthMethod",
+    # Models -- approvals
+    "Approval",
+    "ApprovalResponse",
+    "ApprovalVerdict",
+    "PendingApproval",
+    "PendingApprovalList",
+    "ResolvedApproval",
+    "SubmitApprovalResult",
     # Errors
     "ChioError",
     "ChioConnectionError",

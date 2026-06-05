@@ -1,12 +1,12 @@
 # Chio Partner Proof Package
 
 **Prepared:** 2026-04-02
-**Surface:** current v1-only pre-release Chio production candidate
+**Surface:** current v1-only pre-release Chio candidate
 **Role:** reviewer-facing evidence package, not the authoritative release-go
 record
 
 This document is the compact partner/security-review package for Chio's current
-production candidate. It is derived from the same local evidence set used by
+pre-release candidate. It is derived from the same local evidence set used by
 [RELEASE_AUDIT.md](RELEASE_AUDIT.md) and
 [QUALIFICATION.md](QUALIFICATION.md).
 
@@ -17,9 +17,10 @@ forcing partners to infer the web3 boundary from the broader repository pack.
 
 ## Current Decision
 
-Local technical evidence says **go** for the current Chio candidate. External
-tag/publication remains **on hold** until hosted `CI` and `Release
-Qualification` workflow results are observed on the candidate commit.
+Local technical evidence qualifies the current Chio candidate for **internal
+and partner technical review**. It is not a public GA or production-ship
+decision. External tag/publication remains **on hold** until hosted `CI` and
+`Release Qualification` workflow results are observed on the candidate commit.
 
 For the shipped web3-runtime stack specifically, external deployment and
 publication remain on hold until the hosted web3 bundle is observed on the

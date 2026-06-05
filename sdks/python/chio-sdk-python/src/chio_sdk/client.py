@@ -343,6 +343,20 @@ class ChioClient:
     # Receipt verification
     # ------------------------------------------------------------------
 
+    async def _verify_receipt_integrity(self, receipt: ChioReceipt) -> bool:
+        """Verify signature and structural fields without requiring mediation."""
+        data = await self._post("/v1/receipts/verify", receipt)
+        try:
+            report = VerifyReceiptResponse.model_validate(data)
+        except ValueError:
+            return False
+        return (
+            report.signature_valid
+            and report.signer_trusted
+            and report.receipt_id_valid
+            and report.parameter_hash_valid
+        )
+
     async def verify_receipt(self, receipt: ChioReceipt) -> bool:
         """Ask the sidecar to verify a receipt's authority.
 
@@ -415,6 +429,25 @@ class ChioClient:
         }
         data = await self._post("/v1/evaluate", body)
         receipt = ChioReceipt.model_validate(data)
+        trust_level = getattr(receipt.trust_level, "value", receipt.trust_level)
+        if trust_level == "advisory":
+            if not await self._verify_receipt_integrity(receipt):
+                raise ChioError(
+                    "Chio sidecar returned an advisory receipt that failed "
+                    "integrity checks",
+                    code="INVALID_RECEIPT",
+                )
+            outcome = getattr(
+                receipt.observation_outcome, "value", receipt.observation_outcome
+            )
+            if outcome == "dropped":
+                raise ChioDeniedError(
+                    "Chio sidecar advisory evaluation refused the tool call"
+                )
+            raise ChioDeniedError(
+                "Chio sidecar returned an advisory receipt, not an "
+                "authoritative authorization decision"
+            )
         if not await self.verify_receipt(receipt):
             raise ChioError(
                 "Chio sidecar returned an unverified receipt",

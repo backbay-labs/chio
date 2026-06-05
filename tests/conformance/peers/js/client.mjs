@@ -115,9 +115,24 @@ function parseArgs(argv) {
     }
     out[flag.slice(2).replace(/-([a-z])/g, (_, char) => char.toUpperCase())] = value;
   }
-  for (const required of ["baseUrl", "authToken", "scenariosDir", "resultsOutput", "artifactsDir"]) {
+  for (const required of ["baseUrl", "scenariosDir", "resultsOutput", "artifactsDir"]) {
     if (!out[required]) {
       throw new Error(`missing required argument --${required}`);
+    }
+  }
+  if (!out.authToken) {
+    const authFromEnv = process.env.CHIO_CONFORMANCE_AUTH_TOKEN?.trim() ?? "";
+    if (!authFromEnv) {
+      throw new Error(
+        "missing required argument --auth-token (or CHIO_CONFORMANCE_AUTH_TOKEN)"
+      );
+    }
+    out.authToken = authFromEnv;
+  }
+  if (!out.adminToken) {
+    const adminFromEnv = process.env.CHIO_CONFORMANCE_ADMIN_TOKEN?.trim() ?? "";
+    if (adminFromEnv) {
+      out.adminToken = adminFromEnv;
     }
   }
   out.authMode ??= "static-bearer";

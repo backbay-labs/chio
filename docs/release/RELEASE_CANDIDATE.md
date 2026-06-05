@@ -11,13 +11,8 @@ not define public protocol versions, compatibility levels, or release history.
 The public Chio-owned surface remains v1-only and unreleased.
 
 The current pre-release v1 branch contains locally qualified
-implementation/evidence for the launch-closure, economic-interop,
-underwriting, portable-credential, workload-identity, enterprise-IAM,
-certification-marketplace, credit, exposure, liability, standards-native
-authorization, appraisal, verifier federation, capital-book, reputation,
-open-market, official-stack, web3 settlement, oracle, anchoring, interop,
-runtime-integrity, hosted qualification, and operator-control surfaces that
-were historically tracked through those internal milestones.
+implementation and evidence for the **launch SKU subset** named in the
+sections below (not every internal milestone surface).
 
 It is intentionally limited to behavior backed by the current codebase,
 qualification scripts, and release docs.

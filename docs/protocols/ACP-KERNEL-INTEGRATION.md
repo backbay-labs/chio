@@ -3,11 +3,12 @@
 Technical design specification for integrating `chio-acp-proxy` with the Chio kernel's
 receipt signing and capability validation infrastructure.
 
-**Status**: Design Proposal -- Tier 1 Priority  **Date**: 2026-04-13  **Crate**: `chio-acp-proxy`
+**Status**: [Partial] -- Tier 1 Priority  **Date**: 2026-04-13  **Crate**: `chio-acp-proxy`
 
-> **Status**: Design proposal. The `ReceiptSigner` and `CapabilityChecker` traits
-> described here are not yet implemented. This document specifies the target
-> architecture for kernel integration.
+> **Status**: Partially implemented. `ReceiptSigner`, `CapabilityChecker`,
+> `KernelReceiptSigner`, `KernelCapabilityChecker`, and `AcpProxy::start_with_kernel`
+> exist in `chio-acp-proxy`. Default `AcpProxy::start` remains unsigned standalone
+> mode. This document specifies the full target architecture and deployment posture.
 
 ---
 

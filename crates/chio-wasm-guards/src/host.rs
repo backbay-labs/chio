@@ -22,9 +22,7 @@ use crate::observability::{
     HOST_GET_TIME_UNIX_SECS, HOST_LOG,
 };
 
-// ---------------------------------------------------------------------------
 // bindgen-generated component bindings
-// ---------------------------------------------------------------------------
 
 /// Host-side representation for the `policy-context` bundle resource.
 #[derive(Debug, Clone)]
@@ -53,9 +51,7 @@ pub mod bindings {
 
 pub use self::bindings::{Guard, GuardRequest, Verdict};
 
-// ---------------------------------------------------------------------------
 // Constants
-// ---------------------------------------------------------------------------
 
 /// Maximum number of log entries buffered per guard invocation.
 pub const MAX_LOG_ENTRIES: usize = 256;
@@ -72,9 +68,7 @@ pub const MAX_CONFIG_KEY_LEN: usize = 1024;
 /// Maximum bytes returned by one policy-context bundle read.
 pub const MAX_BUNDLE_READ_BYTES: u32 = 64 * 1024;
 
-// ---------------------------------------------------------------------------
 // WasmHostState
-// ---------------------------------------------------------------------------
 
 /// Per-invocation host state stored in the wasmtime `Store`.
 pub struct WasmHostState {
@@ -93,7 +87,6 @@ pub struct WasmHostState {
 }
 
 impl WasmHostState {
-    /// Create a new host state with the given config and default limits.
     pub fn new(config: HashMap<String, String>) -> Self {
         Self::with_memory_limit(config, MAX_MEMORY_BYTES)
     }
@@ -110,7 +103,6 @@ impl WasmHostState {
         )
     }
 
-    /// Create host state with a custom in-process content bundle store.
     pub fn with_bundle_store(
         config: HashMap<String, String>,
         bundle_store: Arc<dyn BundleStore>,
@@ -118,7 +110,6 @@ impl WasmHostState {
         Self::with_memory_limit_and_bundle_store(config, MAX_MEMORY_BYTES, bundle_store)
     }
 
-    /// Create host state with custom memory and content bundle limits.
     pub fn with_memory_limit_and_bundle_store(
         config: HashMap<String, String>,
         max_memory: usize,
@@ -229,9 +220,7 @@ fn resource_table_error_string(err: ResourceTableError) -> String {
     format!("bundle handle resource table error: {err}")
 }
 
-// ---------------------------------------------------------------------------
 // Shared Engine constructor
-// ---------------------------------------------------------------------------
 
 /// Create a shared wasmtime [`Engine`] with fuel and async component support.
 pub fn create_shared_engine() -> Result<Arc<Engine>, WasmGuardError> {
@@ -243,9 +232,7 @@ pub fn create_shared_engine() -> Result<Arc<Engine>, WasmGuardError> {
     Ok(Arc::new(engine))
 }
 
-// ---------------------------------------------------------------------------
 // Component host import wiring
-// ---------------------------------------------------------------------------
 
 /// Register WIT-generated `chio:guard/guard@0.2.0` host imports.
 pub fn register_component_host_functions<T>(

@@ -3,10 +3,19 @@
 **Status:** Draft
 **Date:** 2026-04-15
 
+> **Registry note:** PyPI/npm/crates.io publication is separate from in-repo
+> integration code; packages may exist in this repository before they appear on
+> a public registry.
+
 > A DX review found four critical adoption blockers: zero packages published to
-> any registry, no way to test without a running kernel, no 5-minute quickstart
-> for non-Rust developers, and zero framework integrations shipping as code.
-> This document plans the fix for each, ordered by impact on time-to-first-tool-call.
+> any registry, sidecar-dependent testing for most SDK paths (Python
+> `chio_sdk.testing` is in-repo but not yet on PyPI), no 5-minute quickstart
+> for non-Rust developers without a git or registry install, and no published
+> agent-framework integrations (CrewAI, AutoGen, LlamaIndex, Vercel AI SDK).
+> HTTP framework wrappers (`chio-fastapi`, `@chio-protocol/express`, and peers)
+> are in-repo; see `HTTP-FRAMEWORK-INTEGRATION-STRATEGY.md` for that surface.
+> This document plans registry publication and agent-framework fixes, ordered by
+> impact on time-to-first-tool-call.
 
 ---
 

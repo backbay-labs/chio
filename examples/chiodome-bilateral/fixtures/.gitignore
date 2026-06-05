@@ -1,4 +1,0 @@
-# Mediation transcripts and kernel-signed receipts produced at runtime by
-# scripts/run-with-kb-mcp.sh land here. They are derived artifacts and
-# MUST NOT be committed (they contain per-run timestamps + signatures).
-kb-receipts/

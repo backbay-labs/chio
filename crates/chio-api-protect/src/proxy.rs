@@ -2461,12 +2461,20 @@ paths:
             .await
             .test_unwrap();
         assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+        assert_eq!(
+            response
+                .headers()
+                .get(CHIO_ROUTE_STATUS_HEADER)
+                .and_then(|value| value.to_str().ok()),
+            Some("not-implemented")
+        );
 
         let bytes = to_bytes(response.into_body(), 1024 * 1024)
             .await
             .test_unwrap();
         let json: serde_json::Value = serde_json::from_slice(&bytes).test_unwrap();
         assert_eq!(json["error"], "chio_attenuate_not_implemented");
+        assert_eq!(json["chio_route_status"], "not-implemented");
     }
 
     #[tokio::test]
@@ -2502,6 +2510,13 @@ paths:
             .await
             .test_unwrap();
         assert_eq!(evaluate_response.status(), StatusCode::OK);
+        assert_eq!(
+            evaluate_response
+                .headers()
+                .get(CHIO_TRUST_LEVEL_HEADER)
+                .and_then(|value| value.to_str().ok()),
+            Some("advisory")
+        );
         let receipt_bytes = to_bytes(evaluate_response.into_body(), 1024 * 1024)
             .await
             .test_unwrap();
@@ -2544,6 +2559,56 @@ paths:
         assert_eq!(verification.boundary_class, "advisory_only");
         assert_eq!(verification.trust_level, "advisory");
         assert_eq!(verification.result, "none");
+    }
+
+    #[test]
+    fn sidecar_advisory_json_fallback_preserves_trust_header() {
+        let signer = Keypair::generate();
+        let parameters = serde_json::json!({"path": "/etc/hostname"});
+        let parameter_hash = chio_core_types::canonical_json_bytes(&parameters)
+            .map(|canonical| chio_core_types::sha256_hex(&canonical))
+            .test_unwrap();
+        let receipt = ChioReceipt::sign(
+            ChioReceiptBody {
+                id: uuid::Uuid::now_v7().to_string(),
+                timestamp: chrono::Utc::now().timestamp() as u64,
+                capability_id: "cap-advisory".to_string(),
+                tool_server: "fs".to_string(),
+                tool_name: "read".to_string(),
+                action: ToolCallAction {
+                    parameters,
+                    parameter_hash,
+                },
+                decision: None,
+                receipt_kind: ReceiptKind::AdvisoryEvaluation,
+                boundary_class: BoundaryClass::AdvisoryOnly,
+                observation_outcome: Some(ObservationOutcome::Evaluated),
+                tool_origin: ToolOrigin::HostExecutedUnmediated,
+                redaction_mode: RedactionMode::None,
+                actor_chain: Vec::new(),
+                content_hash: chio_core_types::sha256_hex(b"test"),
+                policy_hash: manual_receipt_policy_hash(
+                    "advisory_json_fallback_preserves_trust_header",
+                ),
+                evidence: Vec::new(),
+                metadata: None,
+                trust_level: TrustLevel::Advisory,
+                tenant_id: None,
+                kernel_key: signer.public_key(),
+            },
+            &signer,
+        )
+        .test_unwrap();
+
+        let response = sidecar_advisory_tool_call_evaluate_json_response(receipt);
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get(CHIO_TRUST_LEVEL_HEADER)
+                .and_then(|value| value.to_str().ok()),
+            Some("advisory")
+        );
     }
 
     #[tokio::test]
@@ -2838,6 +2903,13 @@ paths:
             .await
             .test_unwrap();
         assert_eq!(evaluate_response.status(), StatusCode::OK);
+        assert_eq!(
+            evaluate_response
+                .headers()
+                .get(CHIO_TRUST_LEVEL_HEADER)
+                .and_then(|value| value.to_str().ok()),
+            Some("advisory")
+        );
         let receipt: ChioReceipt = serde_json::from_slice(
             &to_bytes(evaluate_response.into_body(), 1024 * 1024)
                 .await
@@ -2896,6 +2968,13 @@ paths:
             .await
             .test_unwrap();
         assert_eq!(evaluate_response.status(), StatusCode::OK);
+        assert_eq!(
+            evaluate_response
+                .headers()
+                .get(CHIO_TRUST_LEVEL_HEADER)
+                .and_then(|value| value.to_str().ok()),
+            Some("advisory")
+        );
         let receipt: ChioReceipt = serde_json::from_slice(
             &to_bytes(evaluate_response.into_body(), 1024 * 1024)
                 .await

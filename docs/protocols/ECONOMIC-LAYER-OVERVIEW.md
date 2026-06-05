@@ -914,15 +914,14 @@ There is no formal analysis of:
 - Flash-settlement attacks (rapidly cycling bonds to game the loss lifecycle)
 - Cross-currency arbitrage in mixed-currency books
 
-### 7.5 Chiodome Fiscal Composition
+### 7.5 Federated Fiscal Composition
 
-The primitives exist for "digital fiscal nation states" -- namespace-scoped fee
-schedules, trust activation, bond requirements, governance charters, penalty
-enforcement, federated reputation sharing. But the composition guide describing
-how an operator would assemble these primitives into a self-governing economic
-zone is missing. This is the bridge between Chio's technical capabilities and
-the chiodome vision of autonomous agent collectives operating as fiscal
-entities.
+The primitives exist for namespace-scoped fee schedules, trust activation,
+bond requirements, governance charters, penalty enforcement, and federated
+reputation sharing. But the composition guide describing how an operator would
+assemble these primitives into a self-governing economic zone is missing. This
+is the bridge between Chio's technical capabilities and autonomous agent
+collectives operating as fiscal entities.
 
 ---
 

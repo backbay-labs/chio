@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import sys
 import time
@@ -44,9 +45,20 @@ for index in range(0, len(argv), 2):
     key = flag[2:].replace("-", "_")
     ARGS[key] = value
 
-for required in ("base_url", "auth_token", "scenarios_dir", "results_output", "artifacts_dir"):
+for required in ("base_url", "scenarios_dir", "results_output", "artifacts_dir"):
     if required not in ARGS:
         raise SystemExit(f"missing required argument --{required.replace('_', '-')}")
+if "auth_token" not in ARGS:
+    auth_from_env = os.environ.get("CHIO_CONFORMANCE_AUTH_TOKEN", "").strip()
+    if not auth_from_env:
+        raise SystemExit(
+            "missing required argument --auth-token (or CHIO_CONFORMANCE_AUTH_TOKEN)"
+        )
+    ARGS["auth_token"] = auth_from_env
+if "admin_token" not in ARGS:
+    admin_from_env = os.environ.get("CHIO_CONFORMANCE_ADMIN_TOKEN", "").strip()
+    if admin_from_env:
+        ARGS["admin_token"] = admin_from_env
 ARGS.setdefault("auth_mode", "static-bearer")
 ARGS.setdefault("auth_scope", "mcp:invoke")
 

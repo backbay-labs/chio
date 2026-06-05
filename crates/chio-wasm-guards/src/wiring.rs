@@ -32,17 +32,7 @@ use crate::manifest;
 use crate::runtime::wasmtime_backend::WasmtimeBackend;
 use crate::runtime::WasmGuard;
 
-/// Load WASM guards from WasmGuardEntry configs with manifest verification.
-///
-/// For each entry:
-/// 1. Loads `guard-manifest.yaml` from the `.wasm` file's parent directory
-/// 2. Validates `abi_version` against `SUPPORTED_ABI_VERSIONS`
-/// 3. Reads the `.wasm` binary and verifies SHA-256 against the manifest
-/// 4. Verifies the manifest-driven signing policy
-/// 5. Creates a `WasmtimeBackend` with the manifest's config
-/// 6. Loads the module into the backend
-/// 7. Creates a `WasmGuard` with the manifest's `wasm_sha256` for receipt
-///    metadata
+/// Load WASM guards from [`WasmGuardEntry`] configs with manifest verification.
 ///
 /// Entries are sorted by priority (lower first) before loading. Non-advisory
 /// guards are loaded before advisory guards at equal priority.
@@ -60,32 +50,21 @@ pub fn load_wasm_guards(
     let mut guards = Vec::with_capacity(sorted.len());
 
     for entry in &sorted {
-        // 1. Load manifest from adjacent directory
         let guard_manifest = manifest::load_manifest(&entry.path)?;
-
-        // 2. Verify ABI version
         manifest::verify_abi_version(&guard_manifest.abi_version)?;
 
-        // 3. Read .wasm binary
         let wasm_bytes = std::fs::read(&entry.path).map_err(|e| WasmGuardError::ModuleLoad {
             path: entry.path.clone(),
             reason: e.to_string(),
         })?;
 
-        // 4. Verify SHA-256 of wasm binary against manifest
         manifest::verify_wasm_hash(&wasm_bytes, &guard_manifest.wasm_sha256)?;
-
-        // 5. Enforce the manifest-driven signing policy
         manifest::verify_guard_signature(&entry.path, &wasm_bytes, &guard_manifest)?;
 
-        // 6. Create backend with manifest config
         let mut backend =
             WasmtimeBackend::with_engine_and_config(engine.clone(), guard_manifest.config.clone());
-
-        // 7. Load module into backend
         backend.load_module(&wasm_bytes, entry.fuel_limit)?;
 
-        // 8. Create WasmGuard with manifest metadata for receipts and spans.
         let guard = WasmGuard::new_with_metadata(
             entry.name.clone(),
             guard_manifest.version.clone(),
@@ -101,12 +80,6 @@ pub fn load_wasm_guards(
 }
 
 /// Build a complete guard pipeline with the correct tier ordering.
-///
-/// Pipeline order:
-/// 1. HushSpec-compiled guards (from `compile_policy`)
-/// 2. WASM guards sorted by priority (non-advisory first)
-///
-/// Returns the composed pipeline as a `Vec<Box<dyn Guard>>`.
 ///
 /// The `hushspec_guards` parameter accepts pre-compiled HushSpec guards
 /// (from `chio_policy::compile_policy().guards`). Pass an empty `Vec` if no
