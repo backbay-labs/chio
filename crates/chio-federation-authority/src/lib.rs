@@ -1311,6 +1311,36 @@ mod tests {
     }
 
     #[test]
+    fn authority_profile_requires_runtime_policy_issuer_roots() {
+        let mut document = profile();
+        document.runtime_policy_issuer_public_keys.clear();
+        let error = document.validate().unwrap_err();
+        assert!(error.to_string().contains("runtime policy issuers"));
+    }
+
+    #[test]
+    fn authority_profile_rejects_duplicate_runtime_policy_issuer_keys() {
+        let mut document = profile();
+        let duplicate = document.runtime_policy_issuer_public_keys[0].clone();
+        document.runtime_policy_issuer_public_keys.push(duplicate);
+        let error = document.validate().unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("duplicate runtime policy issuer public key"));
+    }
+
+    #[test]
+    fn authority_profile_rejects_runtime_policy_issuer_overlapping_authority_keys() {
+        let mut document = profile();
+        document.runtime_policy_issuer_public_keys =
+            vec![document.lease_authorities[0].public_key.clone()];
+        let error = document.validate().unwrap_err();
+        assert!(error.to_string().contains(
+            "runtime policy issuer key must be distinct from lease, governance, and revocation authority keys"
+        ));
+    }
+
+    #[test]
     fn issuer_outputs_verifier_compatible_lease_and_governance_artifacts() {
         let bundle =
             issue_authority_bundle(&profile(), &request(), &signing_keys()).expect("issue bundle");
