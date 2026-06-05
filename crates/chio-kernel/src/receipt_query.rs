@@ -193,7 +193,7 @@ impl ReceiptQuery {
 
 #[cfg(test)]
 mod tests {
-    use super::{ReceiptQuery, ReceiptReadContext};
+    use super::{ReceiptQuery, ReceiptReadBoundary, ReceiptReadContext, ReceiptReadContextSource};
 
     #[test]
     fn tenant_filter_without_read_context_is_not_authority() {
@@ -242,6 +242,47 @@ mod tests {
         assert_eq!(scope.tenant.as_deref(), Some("tenant-a"));
         assert!(!scope.include_null_tenant);
         assert!(scope.is_admin_all);
+    }
+
+    #[test]
+    fn admin_context_rejects_blank_tenant_filter() {
+        let query = ReceiptQuery {
+            tenant_filter: Some("   ".to_string()),
+            read_context: Some(ReceiptReadContext::admin_service()),
+            ..ReceiptQuery::default()
+        };
+
+        let err = query
+            .effective_read_scope()
+            .expect_err("blank tenant filter must fail closed");
+
+        assert_eq!(
+            err,
+            "receipt query tenant filter requires a non-empty tenant"
+        );
+    }
+
+    #[test]
+    fn tenant_scoped_context_rejects_blank_boundary_tenant() {
+        let query = ReceiptQuery {
+            read_context: Some(ReceiptReadContext {
+                boundary: ReceiptReadBoundary::TenantScoped {
+                    tenant: "   ".to_string(),
+                },
+                source: ReceiptReadContextSource::AuthenticatedTenant,
+                include_null_tenant: false,
+            }),
+            ..ReceiptQuery::default()
+        };
+
+        let err = query
+            .effective_read_scope()
+            .expect_err("blank tenant boundary must fail closed");
+
+        assert_eq!(
+            err,
+            "tenant-scoped receipt query requires a non-empty tenant"
+        );
     }
 }
 
