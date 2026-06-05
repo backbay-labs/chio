@@ -61,11 +61,15 @@ reverse proxy. Only some of them perform kernel-mediated HTTP authorization
 (the same evaluation path as mutating upstream requests). The following routes
 must not be used as sole allow/deny gates for tool execution in production:
 
-- **`POST /v1/evaluate`** - tool-call alias for `chio-sdk-python`'s
-  `evaluate_tool_call`. Signs an `AdvisoryEvaluation` receipt after local
-  revocation and parameter-hash checks only. Responses include
-  `chio-trust-level: advisory` and receipt JSON `trust_level: advisory`. This
-  is not kernel-mediated authorization.
+- **`POST /v1/evaluate/advisory`** - tool-call advisory route for SDK
+  helpers. Signs an `AdvisoryEvaluation` receipt after local revocation and
+  parameter-hash checks only. Responses include `chio-trust-level: advisory`,
+  `authorization: false`, `authorizationBasis: "advisory_only"`, and a
+  receipt whose `trust_level` is `advisory`. This is not kernel-mediated
+  authorization.
+- **`POST /v1/evaluate`** - deprecated compatibility alias for
+  `/v1/evaluate/advisory`. It returns the same explicit non-authorization
+  wrapper.
 - **`POST /v1/capabilities/attenuate`** - returns HTTP 501 with
   `chio-route-status: not-implemented` and `chio_route_status: not-implemented`
   in the JSON body. Capability delegation requires the parent subject's

@@ -2,8 +2,9 @@
 
 Each Chio tool server advertises tools via a manifest. This module wraps those
 tools as LangChain ``BaseTool`` instances so they can be used in LangChain
-agents, chains, and pipelines. All tool invocations flow through the Chio
-sidecar kernel for capability validation, guard evaluation, and receipt signing.
+agents, chains, and pipelines. The current sidecar tool-call endpoint is
+advisory only: it signs observation receipts for audit, but it does not
+authorize LangChain to execute a tool effect.
 
 Usage::
 
@@ -33,8 +34,8 @@ from pydantic import BaseModel, Field, create_model
 class ChioTool(BaseTool):
     """A LangChain tool backed by a Chio tool server.
 
-    Invocations are evaluated by the Chio sidecar kernel which validates
-    capabilities, runs guards, and signs receipts.
+    Invocations are evaluated by the Chio sidecar kernel for advisory audit
+    only. Advisory receipts are not execution authorization.
     """
 
     name: str = ""
@@ -56,7 +57,7 @@ class ChioTool(BaseTool):
         default_factory=RedactionPolicy.chio_default, exclude=True
     )
 
-    # Last receipt from a tool invocation (for audit trail access)
+    # Last advisory receipt from a tool invocation (for audit trail access)
     last_receipt: ChioReceipt | None = Field(default=None, exclude=True)
 
     model_config = {"arbitrary_types_allowed": True}
@@ -79,10 +80,10 @@ class ChioTool(BaseTool):
         )
 
     async def _arun(self, **kwargs: Any) -> str:
-        """Invoke the Chio tool through the sidecar kernel.
+        """Run advisory sidecar evaluation for this Chio tool.
 
-        Returns the tool result as a JSON string. The signed receipt is
-        stored in ``self.last_receipt``.
+        Returns a JSON string describing the non-authorizing outcome. The
+        signed advisory receipt is stored in ``self.last_receipt``.
         """
         # Redact body fields (e.g. chio_file_write.content) before they
         # cross into the sidecar so the receipt log never carries the raw
@@ -92,7 +93,7 @@ class ChioTool(BaseTool):
         )
         async with ChioClient(self.sidecar_url) as client:
             try:
-                receipt = await client.evaluate_tool_call(
+                receipt = await client.evaluate_tool_call_advisory(
                     capability_id=self.capability_id,
                     tool_server=self.server_id,
                     tool_name=self.name,
@@ -112,21 +113,24 @@ class ChioTool(BaseTool):
 
         self.last_receipt = receipt
 
-        if not receipt.is_allowed:
-            decision = receipt.decision
+        outcome = getattr(
+            receipt.observation_outcome,
+            "value",
+            receipt.observation_outcome,
+        )
+        if outcome == "dropped":
             return json.dumps({
-                "error": "denied" if receipt.is_denied else "non_authorizing",
-                "guard": decision.guard if decision is not None else None,
-                "reason": decision.reason
-                if decision is not None and decision.reason is not None
-                else "non-authorizing Chio receipt",
+                "error": "denied",
+                "receipt_id": receipt.id,
+                "reason": "Chio advisory evaluation refused the tool call",
             })
 
         return json.dumps({
-            "status": "allowed",
+            "error": "non_authorizing",
             "receipt_id": receipt.id,
             "tool_server": receipt.tool_server,
             "tool_name": receipt.tool_name,
+            "reason": "advisory evaluation is not execution authorization",
         })
 
 
@@ -136,7 +140,7 @@ class ChioToolkit:
     Parameters
     ----------
     capability_id:
-        Chio capability token ID that authorizes tool invocations.
+        Chio capability token ID presented during advisory evaluation.
     sidecar_url:
         Base URL of the Chio sidecar (default ``http://127.0.0.1:9090``).
     """

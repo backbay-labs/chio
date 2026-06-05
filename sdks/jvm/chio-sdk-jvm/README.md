@@ -15,8 +15,9 @@ reference wherever the Chio protocol pins a wire shape.
 Included:
 
 - `ChioClient` - blocking HTTP client against the Chio sidecar
-  (`/v1/evaluate`, `/v1/receipts/verify`, `/v1/health`). Implements
-  `AutoCloseable` for use-resource parity with Python's async client.
+  (`/v1/evaluate/advisory`, `/v1/receipts/verify`, `/chio/health`).
+  Implements `AutoCloseable` for use-resource parity with Python's async
+  client.
 - `CanonicalJson` - Jackson-backed canonicalizer that matches
   `json.dumps(sort_keys=True, separators=(",", ":"), ensure_ascii=True)`
   byte-for-byte.
@@ -52,19 +53,38 @@ dependencies {
 import world.chio.sdk.CallerIdentity
 import world.chio.sdk.ChioClient
 import world.chio.sdk.ChioHttpRequest
+import world.chio.sdk.errors.ChioDeniedError
 
 val client = ChioClient("http://127.0.0.1:9090")
 
-val receipt =
+val advisory =
+    client.evaluateToolCallAdvisory(
+        capabilityId = "cap-fraud",
+        toolServer = "flink://fraud-job",
+        toolName = "events:consume:transactions",
+        parameters = mapOf("body_length" to 42L, "body_hash" to "..."),
+    )
+println("advisory receipt: ${advisory.id}")
+
+try {
     client.evaluateToolCall(
         capabilityId = "cap-fraud",
         toolServer = "flink://fraud-job",
         toolName = "events:consume:transactions",
         parameters = mapOf("body_length" to 42L, "body_hash" to "..."),
     )
-
-check(receipt.isAllowed()) { "denied: ${receipt.decision.reason}" }
+} catch (error: ChioDeniedError) {
+    println("not authorized: ${error.message}")
+}
 ```
+
+`evaluateToolCall` returns only for authoritative mediated tool-call
+authorization receipts. With the current advisory-only sidecar route, it
+fails closed after integrity-checking the advisory receipt. The sidecar
+advisory routes
+`POST /v1/evaluate/advisory` and deprecated `POST /v1/evaluate` return
+`authorization: false`, `authorizationBasis: "advisory_only"`, and an
+advisory receipt.
 
 For HTTP request evaluation (used by `chio-spring-boot`):
 

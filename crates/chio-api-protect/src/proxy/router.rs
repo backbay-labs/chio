@@ -50,15 +50,17 @@ pub(crate) fn build_app(state: Arc<ProxyState>) -> Router {
         // Phase B: verify a `ChioReceipt` signature against the embedded
         // kernel public key.
         .route("/v1/receipts/verify", post(sidecar_verify_receipt_handler))
-        // Phase A: tool-call evaluation alias. The SDK posts a
+        // Phase A: advisory tool-call evaluation. The SDK posts a
         // `{capability_id, tool_server, tool_name, parameters,
-        // parameter_hash}` body and expects a signed `ChioReceipt`.
-        // Today the sidecar issues a best-effort signed receipt: allow
-        // when the capability is not in the local revocation set, deny
-        // otherwise. The kernel-driven evaluation that `/chio/evaluate`
-        // performs for HTTP requests is not yet wired for tool-call
-        // bodies; the receipt's `policy_hash` records this so callers
-        // can audit the limitation.
+        // parameter_hash}` body and receives an explicit advisory wrapper
+        // with `authorization: false`. The kernel-driven evaluation that
+        // `/chio/evaluate` performs for HTTP requests is not wired for
+        // tool-call bodies; callers must not treat this as authorization.
+        .route(
+            "/v1/evaluate/advisory",
+            post(sidecar_evaluate_tool_call_handler),
+        )
+        // Deprecated compatibility alias for the advisory route above.
         .route("/v1/evaluate", post(sidecar_evaluate_tool_call_handler))
         .route("/{*path}", any(proxy_handler))
         .route("/", any(proxy_handler))

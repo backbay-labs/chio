@@ -1002,16 +1002,19 @@ pub(crate) async fn sidecar_verify_receipt_handler(
 // Tool-call evaluation (SDK alias for `evaluate_tool_call`)
 // ---------------------------------------------------------------------------
 //
-// `POST /v1/evaluate` is NOT kernel-mediated authorization. The handler
-// records cap-revocation and parameter-hash alias checks only, signs an
-// `AdvisoryEvaluation` receipt (`TrustLevel::Advisory`), and sets the
-// `chio-trust-level: advisory` response header so v1 authority gates do
-// not mistake the outcome for a mediated allow/deny decision.
+// `POST /v1/evaluate/advisory` is NOT kernel-mediated authorization. The
+// deprecated `/v1/evaluate` alias uses the same handler. It records
+// cap-revocation and parameter-hash alias checks only, signs an
+// `AdvisoryEvaluation` receipt (`TrustLevel::Advisory`), sets the
+// `chio-trust-level: advisory` response header, and returns
+// `authorization: false` so v1 authority gates do not mistake the outcome
+// for a mediated allow/deny decision.
 
-/// `POST /v1/evaluate` body shape posted by `chio-sdk-python`'s
+/// `POST /v1/evaluate/advisory` body shape posted by `chio-sdk-python`'s
 /// `ChioClient.evaluate_tool_call`. Distinct from `/chio/evaluate`'s
 /// `ChioHttpRequest` shape because the SDK does not synthesize an HTTP
-/// substrate request for direct tool calls.
+/// substrate request for direct tool calls. `POST /v1/evaluate` remains a
+/// deprecated compatibility alias for this advisory-only route.
 #[derive(Debug, Deserialize)]
 pub(crate) struct SidecarEvaluateToolCallRequest {
     capability_id: String,

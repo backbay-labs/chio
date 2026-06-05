@@ -5,7 +5,7 @@ This test simulates the full flow:
 2. Request with capability token
 3. Sidecar evaluates and returns signed receipt
 4. Receipt is verifiable
-5. LangChain tool wrapper produces the same result
+5. LangChain tool wrapper records an advisory, non-authorizing result
 
 The sidecar is mocked via respx to avoid requiring a running instance.
 """
@@ -16,7 +16,6 @@ import json
 from unittest.mock import AsyncMock
 
 import httpx
-import pytest
 import respx
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
@@ -28,14 +27,10 @@ from chio_sdk.client import ChioClient, _canonical_json, _sha256_hex
 from chio_sdk.models import (
     EvaluateResponse,
     ChioReceipt,
-    ChioScope,
     Decision,
-    GuardEvidence,
     HttpReceipt,
-    Operation,
     ToolCallAction,
-    ToolGrant,
-    Verdict,
+    VerifyReceiptResponse,
 )
 
 
@@ -50,6 +45,10 @@ def _receipt_dict() -> dict:
         "method": "POST",
         "caller_identity_hash": "abc123",
         "verdict": {"verdict": "allow"},
+        "receipt_kind": "mediated_decision",
+        "boundary_class": "prevent",
+        "tool_origin": "caller_executed",
+        "redaction_mode": "none",
         "evidence": [
             {"guard_name": "CapabilityGuard", "verdict": True},
             {"guard_name": "PathGuard", "verdict": True},
@@ -58,6 +57,7 @@ def _receipt_dict() -> dict:
         "timestamp": 1700000000,
         "content_hash": "e2e-hash",
         "policy_hash": "e2e-policy",
+        "trust_level": "mediated",
         "kernel_key": "kernel-pub-e2e",
         "signature": "ed25519-sig-e2e",
     }
@@ -65,7 +65,7 @@ def _receipt_dict() -> dict:
 
 def _chio_receipt_dict() -> dict:
     return {
-        "id": "chio-receipt-e2e",
+        "id": "1" * 64,
         "timestamp": 1700000000,
         "capability_id": "cap-e2e",
         "tool_server": "ai-server",
@@ -74,15 +74,62 @@ def _chio_receipt_dict() -> dict:
             "parameters": {"prompt": "hello"},
             "parameter_hash": _sha256_hex(_canonical_json({"prompt": "hello"})),
         },
-        "decision": {"verdict": "allow"},
-        "content_hash": "e2e-content",
+        "decision": None,
+        "receipt_kind": "advisory_evaluation",
+        "boundary_class": "advisory_only",
+        "observation_outcome": "evaluated",
+        "tool_origin": "caller_executed",
+        "redaction_mode": "none",
+        "content_hash": "3" * 64,
         "policy_hash": "e2e-policy",
         "evidence": [
             {"guard_name": "CapabilityGuard", "verdict": True},
         ],
-        "kernel_key": "kernel-pub-e2e",
-        "signature": "sig-e2e",
+        "trust_level": "advisory",
+        "kernel_key": "5" * 64,
+        "signature": "6" * 128,
     }
+
+
+def _advisory_wrapper(receipt: dict) -> dict:
+    return {
+        "schema": "chio.sidecar.advisory-evaluation.v1",
+        "authorization": False,
+        "authorizationBasis": "advisory_only",
+        "receipt": receipt,
+    }
+
+
+def _advisory_verify_report() -> dict:
+    return {
+        "signature_valid": True,
+        "signer_trusted": True,
+        "receipt_id_valid": True,
+        "parameter_hash_valid": True,
+        "receipt_kind": "advisory_evaluation",
+        "boundary_class": "advisory_only",
+        "trust_level": "advisory",
+        "result": "allow",
+        "authorized": False,
+        "signer_key_hex": "5" * 64,
+        "ok": False,
+    }
+
+
+def _mediated_verify_response() -> VerifyReceiptResponse:
+    return VerifyReceiptResponse(
+        signature_valid=True,
+        signer_trusted=True,
+        receipt_id_valid=True,
+        parameter_hash_valid=True,
+        receipt_kind="mediated_decision",
+        boundary_class="prevent",
+        trust_level="mediated",
+        result="allow",
+        authorized=True,
+        signer_key_hex="5" * 64,
+        ok=True,
+    )
 
 
 class TestE2EFastAPIWithReceipts:
@@ -101,6 +148,9 @@ class TestE2EFastAPIWithReceipts:
                 receipt=http_receipt,
                 evidence=http_receipt.evidence,
             )
+        )
+        mock_client.verify_http_receipt = AsyncMock(
+            return_value=_mediated_verify_response()
         )
         set_chio_client(mock_client)
 
@@ -139,26 +189,38 @@ class TestE2EFastAPIWithReceipts:
         """Verify denied requests return proper Chio error responses."""
         app = FastAPI()
 
-        denied_receipt = HttpReceipt(
-            id="receipt-denied-e2e",
-            request_id="req-denied",
-            route_pattern="/tools/dangerous",
-            method="POST",
-            caller_identity_hash="xyz",
-            verdict=Verdict.deny("path /etc/shadow is forbidden", "PathGuard", 403),
-            evidence=[
-                GuardEvidence(
-                    guard_name="PathGuard",
-                    verdict=False,
-                    details="path /etc/shadow matches forbidden pattern",
-                ),
-            ],
-            response_status=403,
-            timestamp=1700000000,
-            content_hash="denied-hash",
-            policy_hash="denied-policy",
-            kernel_key="k",
-            signature="s",
+        denied_receipt = HttpReceipt.model_validate(
+            {
+                "id": "receipt-denied-e2e",
+                "request_id": "req-denied",
+                "route_pattern": "/tools/dangerous",
+                "method": "POST",
+                "caller_identity_hash": "xyz",
+                "verdict": {
+                    "verdict": "deny",
+                    "reason": "path /etc/shadow is forbidden",
+                    "guard": "PathGuard",
+                    "status_code": 403,
+                },
+                "receipt_kind": "mediated_decision",
+                "boundary_class": "prevent",
+                "tool_origin": "caller_executed",
+                "redaction_mode": "none",
+                "evidence": [
+                    {
+                        "guard_name": "PathGuard",
+                        "verdict": False,
+                        "details": "path /etc/shadow matches forbidden pattern",
+                    },
+                ],
+                "response_status": 403,
+                "timestamp": 1700000000,
+                "content_hash": "denied-hash",
+                "policy_hash": "denied-policy",
+                "trust_level": "mediated",
+                "kernel_key": "k",
+                "signature": "s",
+            }
         )
 
         mock_client = AsyncMock()
@@ -192,14 +254,20 @@ class TestE2EFastAPIWithReceipts:
 
 
 class TestE2ELangChainTool:
-    """End-to-end: LangChain tool wrapper producing verifiable receipts."""
+    """End-to-end: LangChain wrapper recording advisory receipts."""
 
     @respx.mock
     async def test_langchain_tool_invocation(self) -> None:
-        """Verify a LangChain tool invocation flows through Chio correctly."""
+        """Verify LangChain tool invocation is advisory only."""
 
-        respx.post(f"{BASE}/v1/evaluate").mock(
-            return_value=httpx.Response(200, json=_chio_receipt_dict())
+        respx.post(f"{BASE}/v1/evaluate/advisory").mock(
+            return_value=httpx.Response(
+                200,
+                json=_advisory_wrapper(_chio_receipt_dict()),
+            )
+        )
+        respx.post(f"{BASE}/v1/receipts/verify").mock(
+            return_value=httpx.Response(200, json=_advisory_verify_report())
         )
 
         tool = ChioTool(
@@ -221,14 +289,15 @@ class TestE2ELangChainTool:
         result = await tool._arun(prompt="hello")
         data = json.loads(result)
 
-        assert data["status"] == "allowed"
-        assert data["receipt_id"] == "chio-receipt-e2e"
+        assert data["error"] == "non_authorizing"
+        assert data["receipt_id"] == "1" * 64
         assert data["tool_server"] == "ai-server"
         assert data["tool_name"] == "query"
 
-        # Verify receipt stored
+        # Verify advisory receipt stored for audit.
         assert tool.last_receipt is not None
-        assert tool.last_receipt.is_allowed
+        assert tool.last_receipt.receipt_kind.value == "advisory_evaluation"
+        assert not tool.last_receipt.is_allowed
 
     @respx.mock
     async def test_toolkit_creates_tools_from_manifest(self) -> None:
@@ -271,17 +340,22 @@ class TestReceiptChainVerification:
 
     async def test_receipt_chain(self) -> None:
         r1 = ChioReceipt(
-            id="r-1",
+            id="1" * 64,
             timestamp=1000,
             capability_id="cap-1",
             tool_server="srv",
             tool_name="t1",
-            action=ToolCallAction(parameters={}, parameter_hash="a"),
+            action=ToolCallAction(parameters={}, parameter_hash="2" * 64),
             decision=Decision.allow(),
-            content_hash="initial",
+            receipt_kind="mediated_decision",
+            boundary_class="prevent",
+            tool_origin="caller_executed",
+            redaction_mode="none",
+            content_hash="3" * 64,
             policy_hash="p1",
-            kernel_key="k",
-            signature="s1",
+            trust_level="mediated",
+            kernel_key="5" * 64,
+            signature="6" * 128,
         )
 
         # Chain: r2's content_hash = SHA-256 of canonical JSON of r1
@@ -289,17 +363,22 @@ class TestReceiptChainVerification:
         r1_hash = _sha256_hex(r1_canonical)
 
         r2 = ChioReceipt(
-            id="r-2",
+            id="7" * 64,
             timestamp=2000,
             capability_id="cap-1",
             tool_server="srv",
             tool_name="t2",
-            action=ToolCallAction(parameters={}, parameter_hash="b"),
+            action=ToolCallAction(parameters={}, parameter_hash="8" * 64),
             decision=Decision.allow(),
+            receipt_kind="mediated_decision",
+            boundary_class="prevent",
+            tool_origin="caller_executed",
+            redaction_mode="none",
             content_hash=r1_hash,
             policy_hash="p2",
-            kernel_key="k",
-            signature="s2",
+            trust_level="mediated",
+            kernel_key="9" * 64,
+            signature="a" * 128,
         )
 
         async with ChioClient(BASE) as client:
@@ -307,16 +386,21 @@ class TestReceiptChainVerification:
 
             # Broken chain
             r3 = ChioReceipt(
-                id="r-3",
+                id="b" * 64,
                 timestamp=3000,
                 capability_id="cap-1",
                 tool_server="srv",
                 tool_name="t3",
-                action=ToolCallAction(parameters={}, parameter_hash="c"),
+                action=ToolCallAction(parameters={}, parameter_hash="c" * 64),
                 decision=Decision.allow(),
-                content_hash="wrong-hash",
+                receipt_kind="mediated_decision",
+                boundary_class="prevent",
+                tool_origin="caller_executed",
+                redaction_mode="none",
+                content_hash="d" * 64,
                 policy_hash="p3",
-                kernel_key="k",
-                signature="s3",
+                trust_level="mediated",
+                kernel_key="e" * 64,
+                signature="f" * 128,
             )
             assert await client.verify_receipt_chain([r2, r3]) is False

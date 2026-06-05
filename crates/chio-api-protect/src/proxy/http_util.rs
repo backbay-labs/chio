@@ -2,7 +2,7 @@ use super::*;
 
 /// HTTP response header mirroring the signed receipt's advisory trust level.
 /// Gate clients on this value (or on receipt `trust_level`) before treating
-/// `POST /v1/evaluate` as kernel-mediated authorization.
+/// advisory sidecar evaluation as kernel-mediated authorization.
 pub(crate) const CHIO_TRUST_LEVEL_HEADER: &str = "chio-trust-level";
 
 /// HTTP response header on routes that are documented stubs, not production
@@ -90,8 +90,32 @@ pub(crate) fn internal_json_error_response(error: &str, message: &str) -> Respon
         .into_response()
 }
 
+const SIDECAR_ADVISORY_EVALUATION_SCHEMA: &str = "chio.sidecar.advisory-evaluation.v1";
+const SIDECAR_ADVISORY_AUTHORIZATION_BASIS: &str = "advisory_only";
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SidecarAdvisoryEvaluationResponse {
+    schema: &'static str,
+    authorization: bool,
+    authorization_basis: &'static str,
+    receipt: ChioReceipt,
+}
+
+fn sidecar_advisory_evaluation_response_body(
+    receipt: ChioReceipt,
+) -> SidecarAdvisoryEvaluationResponse {
+    SidecarAdvisoryEvaluationResponse {
+        schema: SIDECAR_ADVISORY_EVALUATION_SCHEMA,
+        authorization: false,
+        authorization_basis: SIDECAR_ADVISORY_AUTHORIZATION_BASIS,
+        receipt,
+    }
+}
+
 pub(crate) fn sidecar_advisory_tool_call_evaluate_response(receipt: ChioReceipt) -> Response {
-    let body = match serde_json::to_vec(&receipt) {
+    let body = sidecar_advisory_evaluation_response_body(receipt);
+    let body_bytes = match serde_json::to_vec(&body) {
         Ok(body) => body,
         Err(error) => {
             warn!("failed to serialize advisory evaluate receipt: {error}");
@@ -106,12 +130,16 @@ pub(crate) fn sidecar_advisory_tool_call_evaluate_response(receipt: ChioReceipt)
         .status(StatusCode::OK)
         .header("content-type", "application/json")
         .header(CHIO_TRUST_LEVEL_HEADER, TrustLevel::Advisory.as_str())
-        .body(Body::from(body))
-        .unwrap_or_else(|_| sidecar_advisory_tool_call_evaluate_json_response(receipt))
+        .body(Body::from(body_bytes))
+        .unwrap_or_else(|_| sidecar_advisory_tool_call_evaluate_json_response(body.receipt))
 }
 
 pub(crate) fn sidecar_advisory_tool_call_evaluate_json_response(receipt: ChioReceipt) -> Response {
-    let mut response = (StatusCode::OK, axum::Json(receipt)).into_response();
+    let mut response = (
+        StatusCode::OK,
+        axum::Json(sidecar_advisory_evaluation_response_body(receipt)),
+    )
+        .into_response();
     response.headers_mut().insert(
         CHIO_TRUST_LEVEL_HEADER,
         axum::http::HeaderValue::from_static("advisory"),

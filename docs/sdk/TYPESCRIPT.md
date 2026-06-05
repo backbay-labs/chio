@@ -43,6 +43,12 @@ All Chio TypeScript SDKs communicate with the Chio Rust kernel through localhost
 - **No native compilation or FFI**: pure TypeScript/JavaScript over HTTP (uses `fetch`)
 - **Fail-closed by default**: when the sidecar is unreachable, requests receive a 502 response. Set `onSidecarError: "allow"` to forward the request without synthesizing a Chio receipt.
 
+Use the terms precisely:
+
+- **Advisory evaluation**: `POST /v1/evaluate/advisory` and deprecated `POST /v1/evaluate` return `authorization: false`, `authorizationBasis: "advisory_only"`, and an advisory receipt. This is observability, not execution approval.
+- **Mediated evaluation**: `POST /chio/evaluate` evaluates an HTTP request through the sidecar and returns an `EvaluateResponse`.
+- **Mediated execution**: a tool call is executed only after a mediated decision receipt authorizes it. SDKs reject advisory receipts for execution authorization.
+
 ---
 
 ## 1. @chio-protocol/node-http
@@ -203,7 +209,7 @@ const client = new ChioSidecarClient({
   timeoutMs: 5000,
 });
 
-// Evaluate an HTTP request
+// Mediated HTTP evaluation
 const result: EvaluateResponse = await client.evaluate(arcHttpRequest);
 
 // Verify a receipt signature
@@ -223,6 +229,11 @@ class SidecarError extends Error {
   readonly statusCode: number | undefined;
 }
 ```
+
+Allow-shaped `EvaluateResponse` values must carry a receipt with
+`receipt_kind: "mediated_decision"`, `boundary_class: "prevent"`, and
+`trust_level: "mediated"`. The client rejects advisory receipts even when the
+top-level verdict says `allow`.
 
 ### Identity Extraction
 

@@ -239,6 +239,12 @@ export class ChioClient {
           "sidecar receipt missing structural v1 authority fields",
         );
       }
+      if (isAdvisoryReceipt(receipt)) {
+        throw new ChioClientError(
+          "chio_invalid_receipt",
+          "sidecar returned an advisory receipt, not execution authorization",
+        );
+      }
       if (isAllowDecision(receipt.decision) && !isAuthoritativeAllowReceipt(receipt)) {
         throw new ChioClientError(
           "chio_invalid_receipt",
@@ -404,6 +410,18 @@ function normalizeReceipt(
     );
   }
   const record = raw as Record<string, unknown>;
+  if (record["schema"] === "chio.sidecar.advisory-evaluation.v1") {
+    if (record["authorization"] !== false || record["authorizationBasis"] !== "advisory_only") {
+      throw new ChioClientError(
+        "chio_invalid_receipt",
+        "sidecar advisory evaluation wrapper is missing explicit non-authorization fields",
+      );
+    }
+    throw new ChioClientError(
+      "chio_invalid_receipt",
+      "sidecar returned an advisory evaluation, not execution authorization",
+    );
+  }
   if (typeof record.id === "string") {
     // Bare receipt: no enveloping EvaluateResponse, so there is no
     // separate top-level verdict to carry through.
@@ -515,6 +533,12 @@ function isAuthoritativeAllowReceipt(receipt: ChioReceipt): boolean {
     && receipt.observation_outcome == null
     && receipt.trust_level === "mediated"
     && receipt.decision?.verdict === "allow";
+}
+
+function isAdvisoryReceipt(receipt: ChioReceipt): boolean {
+  return receipt.receipt_kind === "advisory_evaluation"
+    || receipt.boundary_class === "advisory_only"
+    || receipt.trust_level === "advisory";
 }
 
 function normalizeDecision(raw: unknown): ChioDecision | undefined {

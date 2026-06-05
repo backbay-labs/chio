@@ -109,6 +109,41 @@ def _verify_report(authorized: bool) -> dict:
     }
 
 
+def _advisory_receipt_dict(outcome: str = "evaluated") -> dict:
+    advisory = _make_receipt_dict()
+    advisory["trust_level"] = "advisory"
+    advisory["receipt_kind"] = "advisory_evaluation"
+    advisory["boundary_class"] = "advisory_only"
+    advisory["observation_outcome"] = outcome
+    advisory["decision"] = None
+    return advisory
+
+
+def _advisory_wrapper(receipt: dict) -> dict:
+    return {
+        "schema": "chio.sidecar.advisory-evaluation.v1",
+        "authorization": False,
+        "authorizationBasis": "advisory_only",
+        "receipt": receipt,
+    }
+
+
+def _advisory_verify_report(result: str = "allow") -> dict:
+    return {
+        "signature_valid": True,
+        "signer_trusted": True,
+        "receipt_id_valid": True,
+        "parameter_hash_valid": True,
+        "receipt_kind": "advisory_evaluation",
+        "boundary_class": "advisory_only",
+        "trust_level": "advisory",
+        "result": result,
+        "authorized": False,
+        "signer_key_hex": "5" * 64,
+        "ok": False,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Canonical JSON / SHA-256
 # ---------------------------------------------------------------------------
@@ -296,31 +331,48 @@ class TestReceiptChain:
 
 class TestEvaluateToolCall:
     @respx.mock
-    async def test_evaluate(self) -> None:
-        respx.post(f"{BASE}/v1/evaluate").mock(
-            return_value=httpx.Response(200, json=_make_receipt_dict())
+    async def test_evaluate_tool_call_advisory_returns_observation_receipt(self) -> None:
+        advisory = _advisory_receipt_dict()
+        respx.post(f"{BASE}/v1/evaluate/advisory").mock(
+            return_value=httpx.Response(200, json=_advisory_wrapper(advisory))
         )
         respx.post(f"{BASE}/v1/receipts/verify").mock(
-            return_value=httpx.Response(200, json=_verify_report(True))
+            return_value=httpx.Response(200, json=_advisory_verify_report())
         )
         async with ChioClient(BASE) as client:
-            receipt = await client.evaluate_tool_call(
+            receipt = await client.evaluate_tool_call_advisory(
                 capability_id="cap-1",
                 tool_server="srv",
                 tool_name="read",
                 parameters={"path": "/tmp"},
             )
             assert isinstance(receipt, ChioReceipt)
-            assert receipt.decision is not None
-            assert receipt.decision.root.verdict == "allow"
+            assert receipt.decision is None
+            assert getattr(receipt.receipt_kind, "value", receipt.receipt_kind) == "advisory_evaluation"
+            assert getattr(receipt.boundary_class, "value", receipt.boundary_class) == "advisory_only"
 
     @respx.mock
-    async def test_evaluate_rejects_unverified_receipt(self) -> None:
-        respx.post(f"{BASE}/v1/evaluate").mock(
-            return_value=httpx.Response(200, json=_make_receipt_dict())
+    async def test_evaluate_tool_call_rejects_advisory_non_authorization(self) -> None:
+        advisory = _advisory_receipt_dict()
+        respx.post(f"{BASE}/v1/evaluate/advisory").mock(
+            return_value=httpx.Response(200, json=_advisory_wrapper(advisory))
         )
         respx.post(f"{BASE}/v1/receipts/verify").mock(
-            return_value=httpx.Response(200, json=_verify_report(False))
+            return_value=httpx.Response(200, json=_advisory_verify_report())
+        )
+        async with ChioClient(BASE) as client:
+            with pytest.raises(ChioDeniedError, match="advisory evaluation"):
+                await client.evaluate_tool_call(
+                    capability_id="cap-1",
+                    tool_server="srv",
+                    tool_name="read",
+                    parameters={"path": "/tmp"},
+                )
+
+    @respx.mock
+    async def test_evaluate_rejects_unwrapped_advisory_route_response(self) -> None:
+        respx.post(f"{BASE}/v1/evaluate/advisory").mock(
+            return_value=httpx.Response(200, json=_make_receipt_dict())
         )
         async with ChioClient(BASE) as client:
             with pytest.raises(ChioError) as exc_info:
@@ -333,35 +385,53 @@ class TestEvaluateToolCall:
             assert exc_info.value.code == "INVALID_RECEIPT"
 
     @respx.mock
-    async def test_evaluate_rejects_advisory_receipt_integrity(self) -> None:
-        advisory = _make_receipt_dict()
-        advisory["trust_level"] = "advisory"
-        advisory["receipt_kind"] = "advisory_evaluation"
-        advisory["boundary_class"] = "advisory_only"
-        advisory["decision"] = None
-        respx.post(f"{BASE}/v1/evaluate").mock(
-            return_value=httpx.Response(200, json=advisory)
-        )
-        respx.post(f"{BASE}/v1/receipts/verify").mock(
+    async def test_advisory_helper_rejects_wrapped_mediated_receipt(self) -> None:
+        respx.post(f"{BASE}/v1/evaluate/advisory").mock(
             return_value=httpx.Response(
                 200,
-                json={
-                    "signature_valid": True,
-                    "signer_trusted": True,
-                    "receipt_id_valid": True,
-                    "parameter_hash_valid": True,
-                    "receipt_kind": "advisory_evaluation",
-                    "boundary_class": "advisory_only",
-                    "trust_level": "advisory",
-                    "result": "allow",
-                    "authorized": False,
-                    "signer_key_hex": "5" * 64,
-                    "ok": False,
-                },
+                json=_advisory_wrapper(_make_receipt_dict()),
             )
         )
         async with ChioClient(BASE) as client:
-            with pytest.raises(ChioDeniedError, match="advisory receipt"):
+            with pytest.raises(ChioError) as exc_info:
+                await client.evaluate_tool_call_advisory(
+                    capability_id="cap-1",
+                    tool_server="srv",
+                    tool_name="read",
+                    parameters={"path": "/tmp"},
+                )
+            assert exc_info.value.code == "INVALID_RECEIPT"
+
+    @respx.mock
+    async def test_evaluate_rejects_advisory_receipt_integrity(self) -> None:
+        advisory = _advisory_receipt_dict()
+        respx.post(f"{BASE}/v1/evaluate/advisory").mock(
+            return_value=httpx.Response(200, json=_advisory_wrapper(advisory))
+        )
+        respx.post(f"{BASE}/v1/receipts/verify").mock(
+            return_value=httpx.Response(200, json=_advisory_verify_report() | {"signature_valid": False})
+        )
+        async with ChioClient(BASE) as client:
+            with pytest.raises(ChioError) as exc_info:
+                await client.evaluate_tool_call(
+                    capability_id="cap-1",
+                    tool_server="srv",
+                    tool_name="read",
+                    parameters={"path": "/tmp"},
+                )
+            assert exc_info.value.code == "INVALID_RECEIPT"
+
+    @respx.mock
+    async def test_evaluate_rejects_wrapped_advisory_non_authorization(self) -> None:
+        advisory = _advisory_receipt_dict()
+        respx.post(f"{BASE}/v1/evaluate/advisory").mock(
+            return_value=httpx.Response(200, json=_advisory_wrapper(advisory))
+        )
+        respx.post(f"{BASE}/v1/receipts/verify").mock(
+            return_value=httpx.Response(200, json=_advisory_verify_report())
+        )
+        async with ChioClient(BASE) as client:
+            with pytest.raises(ChioDeniedError, match="advisory evaluation"):
                 await client.evaluate_tool_call(
                     capability_id="cap-1",
                     tool_server="srv",
@@ -371,32 +441,12 @@ class TestEvaluateToolCall:
 
     @respx.mock
     async def test_evaluate_rejects_advisory_dropped(self) -> None:
-        advisory = _make_receipt_dict()
-        advisory["trust_level"] = "advisory"
-        advisory["receipt_kind"] = "advisory_evaluation"
-        advisory["boundary_class"] = "advisory_only"
-        advisory["decision"] = None
-        advisory["observation_outcome"] = "dropped"
-        respx.post(f"{BASE}/v1/evaluate").mock(
-            return_value=httpx.Response(200, json=advisory)
+        advisory = _advisory_receipt_dict("dropped")
+        respx.post(f"{BASE}/v1/evaluate/advisory").mock(
+            return_value=httpx.Response(200, json=_advisory_wrapper(advisory))
         )
         respx.post(f"{BASE}/v1/receipts/verify").mock(
-            return_value=httpx.Response(
-                200,
-                json={
-                    "signature_valid": True,
-                    "signer_trusted": True,
-                    "receipt_id_valid": True,
-                    "parameter_hash_valid": True,
-                    "receipt_kind": "advisory_evaluation",
-                    "boundary_class": "advisory_only",
-                    "trust_level": "advisory",
-                    "result": "deny",
-                    "authorized": False,
-                    "signer_key_hex": "5" * 64,
-                    "ok": False,
-                },
-            )
+            return_value=httpx.Response(200, json=_advisory_verify_report("deny"))
         )
         async with ChioClient(BASE) as client:
             with pytest.raises(ChioDeniedError):
@@ -496,7 +546,7 @@ class TestEvaluateHttpRequest:
 class TestErrorHandling:
     @respx.mock
     async def test_denied_error(self) -> None:
-        respx.post(f"{BASE}/v1/evaluate").mock(
+        respx.post(f"{BASE}/v1/evaluate/advisory").mock(
             return_value=httpx.Response(
                 403,
                 json={

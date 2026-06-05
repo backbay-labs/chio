@@ -9,7 +9,8 @@ You'll end with:
 
 - The same MCP client UX you have today.
 - A policy-enforced sidecar between the client and the tool server.
-- Signed receipts for every allow / deny decision.
+- Signed receipts for every mediated allow or deny decision, plus explicit
+  advisory receipts for routes that only observe.
 - Bundled defaults that immediately deny `.env` writes, `.git/**`
   reads, and destructive shell commands.
 
@@ -116,6 +117,15 @@ If your client sends `_meta.modelMetadata` or `_meta.chioModelMetadata`, Chio
 preserves that data on the request and receipt path, but the incoming
 provenance is treated as `asserted` until a trusted subsystem upgrades it.
 
+### Sidecar evaluation boundary
+
+Do not use `POST /v1/evaluate` as execution authorization. It is a deprecated
+compatibility alias for `POST /v1/evaluate/advisory`; both return
+`authorization: false`, `authorizationBasis: "advisory_only"`, and an
+advisory receipt. Mediated evaluation uses kernel-backed routes such as
+`POST /chio/evaluate`. Mediated execution requires a mediated decision receipt,
+not an advisory evaluation receipt.
+
 ## Step 4: Prove one deny, one allow, and one receipt
 
 Run `chio check` against the same file-backed starter policy to confirm the
@@ -190,8 +200,11 @@ Once the baseline deny list is in place:
 
    See `docs/guards/` for the catalogue.
 
-3. **Verify receipts.** Every allow / deny is a signed artefact. Use
-   `chio receipt` to query them:
+3. **Verify receipts.** Every mediated allow or deny is a signed artefact.
+   Advisory evaluation receipts are also signed, but they are not
+   authorization. A mediated execution gate must require
+   `receipt_kind: mediated_decision`, `boundary_class: prevent`, and
+   `trust_level: mediated`. Use `chio receipt` to query them:
 
    ```bash
    # Tenant-scoped local read (fails closed unless --tenant or --admin-all is set).

@@ -2208,6 +2208,18 @@ paths:
         )
     }
 
+    fn parse_advisory_evaluation_body(bytes: &[u8]) -> (serde_json::Value, ChioReceipt) {
+        let body: serde_json::Value = serde_json::from_slice(bytes).test_unwrap();
+        assert_eq!(
+            body["schema"],
+            serde_json::json!("chio.sidecar.advisory-evaluation.v1")
+        );
+        assert_eq!(body["authorization"], serde_json::json!(false));
+        assert_eq!(body["authorizationBasis"], "advisory_only");
+        let receipt: ChioReceipt = serde_json::from_value(body["receipt"].clone()).test_unwrap();
+        (body, receipt)
+    }
+
     #[tokio::test]
     async fn sidecar_capabilities_alias_accepts_sdk_body_shape() {
         let state = test_state(Vec::new(), "http://127.0.0.1:1".to_string());
@@ -2520,7 +2532,7 @@ paths:
         let receipt_bytes = to_bytes(evaluate_response.into_body(), 1024 * 1024)
             .await
             .test_unwrap();
-        let receipt: ChioReceipt = serde_json::from_slice(&receipt_bytes).test_unwrap();
+        let (_body, receipt) = parse_advisory_evaluation_body(&receipt_bytes);
         assert!(receipt.verify_signature().test_unwrap());
         assert_eq!(receipt.capability_id, token.id);
         // The sidecar alias-only path emits advisory receipts (no decision)
@@ -2561,8 +2573,42 @@ paths:
         assert_eq!(verification.result, "none");
     }
 
-    #[test]
-    fn sidecar_advisory_json_fallback_preserves_trust_header() {
+    #[tokio::test]
+    async fn sidecar_evaluate_advisory_route_wraps_non_authorization_response() {
+        let state = test_state(Vec::new(), "http://127.0.0.1:1".to_string());
+        let evaluate_body = serde_json::json!({
+            "capability_id": "cap-advisory-route",
+            "tool_server": "fs",
+            "tool_name": "read",
+            "parameters": {"path": "/etc/hostname"},
+        });
+
+        let evaluate_response = build_app(Arc::clone(&state))
+            .oneshot(loopback_post("/v1/evaluate/advisory", evaluate_body))
+            .await
+            .test_unwrap();
+
+        assert_eq!(evaluate_response.status(), StatusCode::OK);
+        assert_eq!(
+            evaluate_response
+                .headers()
+                .get(CHIO_TRUST_LEVEL_HEADER)
+                .and_then(|value| value.to_str().ok()),
+            Some("advisory")
+        );
+        let bytes = to_bytes(evaluate_response.into_body(), 1024 * 1024)
+            .await
+            .test_unwrap();
+        let (_body, receipt) = parse_advisory_evaluation_body(&bytes);
+        assert_eq!(receipt.capability_id, "cap-advisory-route");
+        assert_eq!(receipt.receipt_kind, ReceiptKind::AdvisoryEvaluation);
+        assert_eq!(receipt.boundary_class, BoundaryClass::AdvisoryOnly);
+        assert_eq!(receipt.trust_level, TrustLevel::Advisory);
+        assert!(receipt.decision.is_none());
+    }
+
+    #[tokio::test]
+    async fn sidecar_advisory_json_fallback_preserves_trust_header() {
         let signer = Keypair::generate();
         let parameters = serde_json::json!({"path": "/etc/hostname"});
         let parameter_hash = chio_core_types::canonical_json_bytes(&parameters)
@@ -2600,6 +2646,7 @@ paths:
         )
         .test_unwrap();
 
+        let receipt_id = receipt.id.clone();
         let response = sidecar_advisory_tool_call_evaluate_json_response(receipt);
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(
@@ -2609,6 +2656,11 @@ paths:
                 .and_then(|value| value.to_str().ok()),
             Some("advisory")
         );
+        let body = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .test_unwrap();
+        let (_body, wrapped_receipt) = parse_advisory_evaluation_body(&body);
+        assert_eq!(wrapped_receipt.id, receipt_id);
     }
 
     #[tokio::test]
@@ -2830,12 +2882,10 @@ paths:
             .oneshot(loopback_post("/v1/evaluate", evaluate_body))
             .await
             .test_unwrap();
-        let receipt: ChioReceipt = serde_json::from_slice(
-            &to_bytes(evaluate_response.into_body(), 1024 * 1024)
-                .await
-                .test_unwrap(),
-        )
-        .test_unwrap();
+        let receipt_bytes = to_bytes(evaluate_response.into_body(), 1024 * 1024)
+            .await
+            .test_unwrap();
+        let (_body, receipt) = parse_advisory_evaluation_body(&receipt_bytes);
 
         let mut verify_body = serde_json::to_value(&receipt).test_unwrap();
         verify_body
@@ -2910,12 +2960,10 @@ paths:
                 .and_then(|value| value.to_str().ok()),
             Some("advisory")
         );
-        let receipt: ChioReceipt = serde_json::from_slice(
-            &to_bytes(evaluate_response.into_body(), 1024 * 1024)
-                .await
-                .test_unwrap(),
-        )
-        .test_unwrap();
+        let receipt_bytes = to_bytes(evaluate_response.into_body(), 1024 * 1024)
+            .await
+            .test_unwrap();
+        let (_body, receipt) = parse_advisory_evaluation_body(&receipt_bytes);
         // The alias-only path must not emit an authorizing or mediated
         // receipt; revocation is surfaced via the advisory observation
         // outcome and the recorded alias check outcome.
@@ -2975,12 +3023,10 @@ paths:
                 .and_then(|value| value.to_str().ok()),
             Some("advisory")
         );
-        let receipt: ChioReceipt = serde_json::from_slice(
-            &to_bytes(evaluate_response.into_body(), 1024 * 1024)
-                .await
-                .test_unwrap(),
-        )
-        .test_unwrap();
+        let receipt_bytes = to_bytes(evaluate_response.into_body(), 1024 * 1024)
+            .await
+            .test_unwrap();
+        let (_body, receipt) = parse_advisory_evaluation_body(&receipt_bytes);
         // Parameter-hash mismatch is surfaced as an advisory observation
         // outcome of `Dropped` plus an explicit `parameter_hash_mismatch`
         // alias-check outcome in metadata; the signed receipt must not

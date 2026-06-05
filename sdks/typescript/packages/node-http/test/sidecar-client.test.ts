@@ -37,6 +37,18 @@ function authoritativeAllowReceipt(): HttpReceipt {
   };
 }
 
+function advisoryAllowReceipt(): HttpReceipt {
+  return {
+    ...legacyBareReceipt(),
+    receipt_kind: "advisory_evaluation",
+    boundary_class: "advisory_only",
+    observation_outcome: "evaluated",
+    tool_origin: "host_executed_unmediated",
+    redaction_mode: "none",
+    trust_level: "advisory",
+  };
+}
+
 function verifyResponse(authorized: boolean): VerifyReceiptResponse {
   return {
     signature_valid: authorized,
@@ -232,6 +244,25 @@ describe("ChioSidecarClient.evaluate", () => {
     const result: EvaluateResponse = {
       verdict: { verdict: "allow" },
       receipt: legacyBareReceipt(),
+      evidence: [],
+    };
+    const { server, url } = await startEvaluateSidecar(result, true);
+
+    try {
+      const client = new ChioSidecarClient({ sidecarUrl: url });
+      await expectSidecarError(
+        client.evaluate(testRequest()),
+        "chio_invalid_receipt",
+      );
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  it("rejects advisory receipts as execution authorization", async () => {
+    const result: EvaluateResponse = {
+      verdict: { verdict: "allow" },
+      receipt: advisoryAllowReceipt(),
       evidence: [],
     };
     const { server, url } = await startEvaluateSidecar(result, true);
