@@ -61,7 +61,10 @@ fn evaluate(guard: &SqlQueryGuard, tool: &str, args: serde_json::Value) -> Verdi
         session_filesystem_roots: None,
         matched_grant_index: None,
     };
-    guard.evaluate(&ctx).expect("evaluate should not error")
+    guard
+        .evaluate(&ctx)
+        .expect("evaluate should not error")
+        .verdict
 }
 
 fn base_cfg() -> SqlGuardConfig {

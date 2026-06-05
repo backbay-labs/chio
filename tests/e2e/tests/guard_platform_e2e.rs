@@ -243,7 +243,7 @@ fn publish_pull_verify_swap_rollback_and_metrics_gate() {
         let verdict = guard
             .evaluate(&ctx)
             .unwrap_or_else(|err| panic!("canary {index} evaluation failed: {err}"));
-        assert!(matches!(verdict, Verdict::Allow));
+        assert!(matches!(verdict.verdict, Verdict::Allow));
         canary_verdicts.push(format!("{verdict:?}"));
     }
 
@@ -266,7 +266,7 @@ fn publish_pull_verify_swap_rollback_and_metrics_gate() {
     let mut dropped = 0u64;
     for index in 0..100 {
         match guard.evaluate(&ctx) {
-            Ok(Verdict::Allow) => {}
+            Ok(decision) if matches!(decision.verdict, Verdict::Allow) => {}
             Ok(other) => panic!("request {index} produced unexpected verdict {other:?}"),
             Err(_) => dropped += 1,
         }

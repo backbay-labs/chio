@@ -72,7 +72,7 @@ fn eval_with<G: Guard>(
         session_filesystem_roots: None,
         matched_grant_index,
     };
-    guard.evaluate(&ctx).expect("guard evaluate")
+    guard.evaluate(&ctx).expect("guard evaluate").verdict
 }
 
 fn eval_simple<G: Guard>(guard: &G, tool: &str, args: serde_json::Value) -> Verdict {

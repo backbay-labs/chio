@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 
 use glob::Pattern;
 
-use chio_kernel::{GuardContext, KernelError, Verdict};
+use chio_kernel::{GuardContext, GuardDecision, KernelError};
 
 use crate::action::{extract_action_checked, ToolAction};
 
@@ -130,21 +130,21 @@ impl chio_kernel::Guard for EgressAllowlistGuard {
         "egress-allowlist"
     }
 
-    fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
         let action = match extract_action_checked(&ctx.request.tool_name, &ctx.request.arguments) {
             Ok(action) => action,
-            Err(_) => return Ok(Verdict::Deny),
+            Err(_) => return Ok(GuardDecision::deny(Vec::new())),
         };
 
         let host = match &action {
             ToolAction::NetworkEgress(h, _) => h.as_str(),
-            _ => return Ok(Verdict::Allow),
+            _ => return Ok(GuardDecision::allow()),
         };
 
         if self.is_allowed(host) {
-            Ok(Verdict::Allow)
+            Ok(GuardDecision::allow())
         } else {
-            Ok(Verdict::Deny)
+            Ok(GuardDecision::deny(Vec::new()))
         }
     }
 }

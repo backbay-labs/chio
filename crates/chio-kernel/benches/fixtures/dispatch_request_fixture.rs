@@ -8,9 +8,9 @@ use chio_core::crypto::Keypair;
 use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, GuardEvidence, ToolCallAction};
 use chio_core::session::{OperationContext, RequestId, SessionId};
 use chio_kernel::{
-    capability_matches_request, BudgetStore, ChioKernel, Guard, GuardContext, InMemoryBudgetStore,
-    InMemoryRevocationStore, KernelConfig, KernelError, NestedFlowBridge, ReceiptLog,
-    RevocationStore, Session, ToolCallRequest, ToolServerConnection, Verdict,
+    capability_matches_request, BudgetStore, ChioKernel, Guard, GuardContext, GuardDecision,
+    InMemoryBudgetStore, InMemoryRevocationStore, KernelConfig, KernelError, NestedFlowBridge,
+    ReceiptLog, RevocationStore, Session, ToolCallRequest, ToolServerConnection, Verdict,
     DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_MAX_STREAM_DURATION_SECS,
     DEFAULT_MAX_STREAM_TOTAL_BYTES,
 };
@@ -454,7 +454,7 @@ impl Guard for BenchGuard {
         self.name
     }
 
-    fn evaluate(&self, ctx: &GuardContext<'_>) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, ctx: &GuardContext<'_>) -> Result<GuardDecision, KernelError> {
         if ctx
             .request
             .arguments
@@ -462,9 +462,9 @@ impl Guard for BenchGuard {
             .and_then(|value| value.as_str())
             == Some("read")
         {
-            Ok(Verdict::Allow)
+            Ok(GuardDecision::allow())
         } else {
-            Ok(Verdict::Deny)
+            Ok(GuardDecision::deny(Vec::new()))
         }
     }
 }

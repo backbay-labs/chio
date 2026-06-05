@@ -39,7 +39,7 @@ use lru::LruCache;
 use regex::Regex;
 use sha2::{Digest, Sha256};
 
-use chio_kernel::{Guard, GuardContext, KernelError, Verdict};
+use chio_kernel::{Guard, GuardContext, GuardDecision, KernelError, Verdict};
 
 use crate::action::{extract_action_checked, ToolAction};
 use crate::text_utils::{canonicalize, truncate_at_char_boundary};
@@ -246,18 +246,18 @@ impl Guard for PromptInjectionGuard {
         "prompt-injection"
     }
 
-    fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
         let action = match extract_action_checked(&ctx.request.tool_name, &ctx.request.arguments) {
             Ok(action) => action,
-            Err(_) => return Ok(Verdict::Deny),
+            Err(_) => return Ok(GuardDecision::deny(Vec::new())),
         };
         let candidates = extract_texts(&action, &ctx.request.arguments);
         for text in candidates {
             if matches!(self.evaluate_text(&text), Verdict::Deny) {
-                return Ok(Verdict::Deny);
+                return Ok(GuardDecision::deny(Vec::new()));
             }
         }
-        Ok(Verdict::Allow)
+        Ok(GuardDecision::allow())
     }
 }
 

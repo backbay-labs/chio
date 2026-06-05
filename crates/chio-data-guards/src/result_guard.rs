@@ -61,7 +61,7 @@ use chio_core::capability::{ChioScope, Constraint};
 use chio_guards::post_invocation::{
     PostInvocationContext, PostInvocationHook, PostInvocationVerdict,
 };
-use chio_kernel::{GuardContext, KernelError, Verdict};
+use chio_kernel::{GuardContext, GuardDecision, KernelError};
 
 /// Default redaction marker written in place of denied columns.
 pub const DEFAULT_REDACTION_MARKER: &str = "[REDACTED]";
@@ -332,12 +332,12 @@ impl chio_kernel::Guard for QueryResultGuard {
         "query-result"
     }
 
-    fn evaluate(&self, _ctx: &GuardContext) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, _ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
         // Pre-invocation path is a no-op: the guard only operates on
         // responses.  Installing it pre-invocation is supported so
         // kernel integrations don't need to branch on two pipelines, but
         // it never denies.
-        Ok(Verdict::Allow)
+        Ok(GuardDecision::allow())
     }
 }
 

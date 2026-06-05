@@ -93,7 +93,10 @@ fn evaluate_with_matched_grant(
         session_filesystem_roots: None,
         matched_grant_index,
     };
-    guard.evaluate(&ctx).expect("evaluate should not error")
+    guard
+        .evaluate(&ctx)
+        .expect("evaluate should not error")
+        .verdict
 }
 
 fn cfg_docs_only() -> VectorGuardConfig {

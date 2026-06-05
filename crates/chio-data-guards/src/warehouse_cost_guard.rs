@@ -51,7 +51,7 @@ use thiserror::Error;
 use tracing::warn;
 
 use chio_guards::{extract_action_checked, ToolAction};
-use chio_kernel::{GuardContext, KernelError, Verdict};
+use chio_kernel::{GuardContext, GuardDecision, KernelError};
 use chio_metering::CostDimension;
 
 // ---------------------------------------------------------------------------
@@ -344,12 +344,12 @@ impl chio_kernel::Guard for WarehouseCostGuard {
         "warehouse-cost"
     }
 
-    fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
         let tool = &ctx.request.tool_name;
         let args = &ctx.request.arguments;
         let action = match extract_action_checked(tool, args) {
             Ok(action) => action,
-            Err(_) => return Ok(Verdict::Deny),
+            Err(_) => return Ok(GuardDecision::deny(Vec::new())),
         };
 
         let database = match &action {
@@ -361,7 +361,7 @@ impl chio_kernel::Guard for WarehouseCostGuard {
         // `allow_all`; `allow_all` only disables enforcement on the warehouse
         // path.
         if !self.config.looks_like_warehouse(&database, tool) {
-            return Ok(Verdict::Allow);
+            return Ok(GuardDecision::allow());
         }
         let estimate = match self.extract_estimate(args) {
             Ok(e) => e,
@@ -373,7 +373,7 @@ impl chio_kernel::Guard for WarehouseCostGuard {
                     database = %database,
                     "warehouse-cost-guard denied: missing or invalid estimate"
                 );
-                return Ok(Verdict::Deny);
+                return Ok(GuardDecision::deny(Vec::new()));
             }
         };
 
@@ -381,11 +381,11 @@ impl chio_kernel::Guard for WarehouseCostGuard {
             // Dry-run/debug mode still validates the dry-run payload so
             // malformed estimates fail closed, but skips limit checks
             // once parsing succeeds.
-            return Ok(Verdict::Allow);
+            return Ok(GuardDecision::allow());
         }
 
         match self.check(&estimate) {
-            Ok(()) => Ok(Verdict::Allow),
+            Ok(()) => Ok(GuardDecision::allow()),
             Err(reason) => {
                 warn!(
                     target: "chio.data-guards.warehouse",
@@ -394,7 +394,7 @@ impl chio_kernel::Guard for WarehouseCostGuard {
                     database = %database,
                     "warehouse-cost-guard denied"
                 );
-                Ok(Verdict::Deny)
+                Ok(GuardDecision::deny(Vec::new()))
             }
         }
     }

@@ -12,7 +12,9 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Instant;
 
-use chio_kernel::{Guard, GuardContext, KernelError, Verdict};
+#[cfg(test)]
+use chio_kernel::Verdict;
+use chio_kernel::{Guard, GuardContext, GuardDecision, KernelError};
 
 // ---------------------------------------------------------------------------
 // Token bucket (private, same algorithm as velocity.rs)
@@ -126,7 +128,7 @@ impl Guard for AgentVelocityGuard {
         "agent-velocity"
     }
 
-    fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
         let agent_id = ctx.agent_id.clone();
         let cap_id = ctx.request.capability.id.clone();
         let window_secs = self.config.window_secs.max(1);
@@ -143,7 +145,7 @@ impl Guard for AgentVelocityGuard {
                 .entry(agent_id.clone())
                 .or_insert_with(|| TokenBucket::new(capacity, max_per_agent as u64, window_secs));
             if !bucket.try_consume(1) {
-                return Ok(Verdict::Deny);
+                return Ok(GuardDecision::deny(Vec::new()));
             }
         }
 
@@ -160,11 +162,11 @@ impl Guard for AgentVelocityGuard {
                 .entry(session_key)
                 .or_insert_with(|| TokenBucket::new(capacity, max_per_session as u64, window_secs));
             if !bucket.try_consume(1) {
-                return Ok(Verdict::Deny);
+                return Ok(GuardDecision::deny(Vec::new()));
             }
         }
 
-        Ok(Verdict::Allow)
+        Ok(GuardDecision::allow())
     }
 }
 

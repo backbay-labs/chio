@@ -7,7 +7,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use arc_swap::ArcSwap;
-use chio_kernel::{Guard, GuardContext, KernelError, Verdict};
+#[cfg(test)]
+use chio_kernel::Verdict;
+use chio_kernel::{Guard, GuardContext, GuardDecision, KernelError};
 use tracing::{debug, warn};
 
 use crate::abi::{GuardRequest, GuardVerdict, WasmGuardAbi};
@@ -414,7 +416,7 @@ impl Guard for WasmGuard {
         &self.name
     }
 
-    fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
         let request = Self::build_request(ctx);
         if request.action_type.as_deref() == Some("malformed_arguments") {
             warn!(
@@ -423,7 +425,7 @@ impl Guard for WasmGuard {
                 field = %request.extracted_target.as_deref().unwrap_or("unknown"),
                 "WASM guard host action extraction failed, failing closed"
             );
-            return Ok(Verdict::Deny);
+            return Ok(GuardDecision::deny(Vec::new()));
         }
 
         let loaded = self.loaded.load_full();
@@ -461,7 +463,7 @@ impl Guard for WasmGuard {
                     epoch_id = loaded.epoch_id().get(),
                     "WASM guard allowed request"
                 );
-                Ok(Verdict::Allow)
+                Ok(GuardDecision::allow())
             }
             Ok(GuardVerdict::Deny { reason }) => {
                 let reason_str = reason.as_deref().unwrap_or("denied by WASM guard");
@@ -473,7 +475,7 @@ impl Guard for WasmGuard {
                         reason = %reason_str,
                         "WASM advisory guard denied (non-blocking)"
                     );
-                    Ok(Verdict::Allow)
+                    Ok(GuardDecision::allow())
                 } else {
                     warn!(
                         guard = %self.name,
@@ -481,7 +483,7 @@ impl Guard for WasmGuard {
                         reason = %reason_str,
                         "WASM guard denied request"
                     );
-                    Ok(Verdict::Deny)
+                    Ok(GuardDecision::deny(Vec::new()))
                 }
             }
             Err(e) => {
@@ -494,9 +496,9 @@ impl Guard for WasmGuard {
                     "WASM guard error, failing closed"
                 );
                 if self.advisory {
-                    Ok(Verdict::Allow)
+                    Ok(GuardDecision::allow())
                 } else {
-                    Ok(Verdict::Deny)
+                    Ok(GuardDecision::deny(Vec::new()))
                 }
             }
         }
@@ -2799,7 +2801,10 @@ mod tests {
         };
 
         let result = guard.evaluate(&ctx);
-        assert!(matches!(result, Ok(Verdict::Allow)));
+        assert!(matches!(
+            result,
+            Ok(decision) if decision.verdict == Verdict::Allow
+        ));
     }
 
     #[test]
@@ -2824,7 +2829,10 @@ mod tests {
         };
 
         let result = guard.evaluate(&ctx);
-        assert!(matches!(result, Ok(Verdict::Deny)));
+        assert!(matches!(
+            result,
+            Ok(decision) if decision.verdict == Verdict::Deny
+        ));
     }
 
     #[test]
@@ -2851,7 +2859,10 @@ mod tests {
 
         // Advisory guards should allow even when the backend denies
         let result = guard.evaluate(&ctx);
-        assert!(matches!(result, Ok(Verdict::Allow)));
+        assert!(matches!(
+            result,
+            Ok(decision) if decision.verdict == Verdict::Allow
+        ));
     }
 
     #[test]
@@ -2882,7 +2893,10 @@ mod tests {
         };
 
         let result = guard.evaluate(&ctx);
-        assert!(matches!(result, Ok(Verdict::Deny)));
+        assert!(matches!(
+            result,
+            Ok(decision) if decision.verdict == Verdict::Deny
+        ));
     }
 
     #[test]

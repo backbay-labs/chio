@@ -1124,7 +1124,10 @@ fn chio_post_admission_drop_guard_retains_non_monetary_runtime_reservations(
         Some(0),
         None,
         None,
-        Some(metadata),
+        PostAdmissionReceiptContext {
+            extra_metadata: Some(metadata),
+            pre_invocation_guard_evidence: Vec::new(),
+        },
     ));
 
     assert_eq!(admission_calls.load(Ordering::SeqCst), 0);

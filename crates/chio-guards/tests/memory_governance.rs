@@ -69,7 +69,7 @@ fn eval_at<G: Guard>(
         session_filesystem_roots: None,
         matched_grant_index,
     };
-    guard.evaluate(&ctx).expect("guard evaluate")
+    guard.evaluate(&ctx).expect("guard evaluate").verdict
 }
 
 fn scope_with_constraints(constraints: Vec<Constraint>) -> ChioScope {

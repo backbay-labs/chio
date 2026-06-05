@@ -34,7 +34,7 @@ use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
 
-use chio_kernel::{Guard, GuardContext, KernelError, Verdict};
+use chio_kernel::{Guard, GuardContext, GuardDecision, KernelError, Verdict};
 
 use crate::action::{extract_action_checked, ToolAction};
 use crate::external::TokenBucket;
@@ -262,9 +262,9 @@ impl Guard for ComputerUseGuard {
         "computer-use"
     }
 
-    fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
         if !self.enabled {
-            return Ok(Verdict::Allow);
+            return Ok(GuardDecision::allow());
         }
 
         // 1. Direct CUA action-type dispatch (remote.*, input.*).
@@ -272,28 +272,28 @@ impl Guard for ComputerUseGuard {
             Self::extract_cua_action_type(&ctx.request.tool_name, &ctx.request.arguments)
         {
             let in_allowlist = self.allowed_actions.contains(&action_type);
-            return Ok(self.apply_mode(in_allowlist));
+            return Ok(GuardDecision::from_verdict(self.apply_mode(in_allowlist)));
         }
 
         // 2. BrowserAction: navigation domain checks + screenshot rate limit.
         let action = match extract_action_checked(&ctx.request.tool_name, &ctx.request.arguments) {
             Ok(action) => action,
-            Err(_) => return Ok(Verdict::Deny),
+            Err(_) => return Ok(GuardDecision::deny(Vec::new())),
         };
         if let ToolAction::BrowserAction { verb, target } = &action {
             // Screenshot rate-limit.
             if Self::is_screenshot_verb(verb) {
                 if let Some(bucket) = &self.screenshot_bucket {
                     if !bucket.try_acquire() {
-                        return Ok(match self.mode {
+                        return Ok(GuardDecision::from_verdict(match self.mode {
                             EnforcementMode::Observe => Verdict::Allow,
                             EnforcementMode::Guardrail | EnforcementMode::FailClosed => {
                                 Verdict::Deny
                             }
-                        });
+                        }));
                     }
                 }
-                return Ok(Verdict::Allow);
+                return Ok(GuardDecision::allow());
             }
 
             // Navigation domain check.
@@ -302,13 +302,13 @@ impl Guard for ComputerUseGuard {
                 "navigate" | "goto" | "open"
             ) {
                 if let Some(url) = target {
-                    return Ok(self.check_navigation(url));
+                    return Ok(GuardDecision::from_verdict(self.check_navigation(url)));
                 }
             }
         }
 
         // 3. Non-CUA actions pass through.
-        Ok(Verdict::Allow)
+        Ok(GuardDecision::allow())
     }
 }
 

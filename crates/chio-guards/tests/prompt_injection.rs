@@ -60,7 +60,7 @@ fn eval(guard: &PromptInjectionGuard, tool: &str, args: serde_json::Value) -> Ve
         session_filesystem_roots: None,
         matched_grant_index: None,
     };
-    guard.evaluate(&ctx).expect("guard evaluate")
+    guard.evaluate(&ctx).expect("guard evaluate").verdict
 }
 
 #[test]

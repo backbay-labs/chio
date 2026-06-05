@@ -114,7 +114,7 @@ fn evaluate_guard(guard: &WasmGuard, index: usize) -> TestResult<(usize, Verdict
         session_filesystem_roots: None,
         matched_grant_index: None,
     };
-    Ok((index, guard.evaluate(&ctx)?))
+    Ok((index, guard.evaluate(&ctx)?.verdict))
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

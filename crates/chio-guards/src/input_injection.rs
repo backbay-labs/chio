@@ -29,7 +29,7 @@ use std::collections::HashSet;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use chio_kernel::{Guard, GuardContext, KernelError, Verdict};
+use chio_kernel::{Guard, GuardContext, GuardDecision, KernelError, Verdict};
 
 /// Default allowlist of input types.
 pub fn default_allowed_input_types() -> Vec<String> {
@@ -157,29 +157,29 @@ impl Guard for InputInjectionCapabilityGuard {
         "input-injection-capability"
     }
 
-    fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
         if !self.enabled {
-            return Ok(Verdict::Allow);
+            return Ok(GuardDecision::allow());
         }
 
         if !Self::is_injection(&ctx.request.tool_name, &ctx.request.arguments) {
-            return Ok(Verdict::Allow);
+            return Ok(GuardDecision::allow());
         }
 
         // 1. Validate input_type.
         match Self::input_type(&ctx.request.arguments) {
             Some(it) => {
                 if !self.allowed_types.contains(it) {
-                    return Ok(Verdict::Deny);
+                    return Ok(GuardDecision::deny(Vec::new()));
                 }
             }
             None => {
                 // Missing input_type on an injection-flagged call.
-                return Ok(if self.strict {
+                return Ok(GuardDecision::from_verdict(if self.strict {
                     Verdict::Deny
                 } else {
                     Verdict::Allow
-                });
+                }));
             }
         }
 
@@ -187,10 +187,10 @@ impl Guard for InputInjectionCapabilityGuard {
         if self.require_postcondition_probe
             && !Self::has_postcondition_probe(&ctx.request.arguments)
         {
-            return Ok(Verdict::Deny);
+            return Ok(GuardDecision::deny(Vec::new()));
         }
 
-        Ok(Verdict::Allow)
+        Ok(GuardDecision::allow())
     }
 }
 

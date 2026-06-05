@@ -21,6 +21,15 @@ struct PreDispatchCleanupDeny<'a> {
 }
 
 impl ChioKernel {
+    fn with_pre_invocation_guard_evidence<T>(
+        &self,
+        evidence: &[chio_core::receipt::GuardEvidence],
+        build: impl FnOnce() -> Result<T, KernelError>,
+    ) -> Result<T, KernelError> {
+        let _guard_evidence_scope = scope_pre_invocation_guard_evidence(evidence.to_vec());
+        build()
+    }
+
     /// Open a new logical session for an agent and bind any capabilities that
     /// were issued during setup to that session.
     ///
@@ -369,16 +378,15 @@ impl ChioKernel {
             .map(|matching| matching.index)
             .unwrap_or(0);
 
-        // run_guards returns Ok(()) on allow and Err(GuardDenied(...))
-        // on deny. Fail-closed: any guard error reads as a denial so the
-        // caller still sees a per-step reason string.
+        // Fail-closed: any guard error reads as a denial so the caller still
+        // sees a per-step reason string.
         if let Err(error) =
             self.run_guards(&synthesised, &cap.scope, None, Some(matched_grant_index))
         {
             // Attempt to extract the offending guard name from the
             // canonical `guard "<name>" denied the request` format
             // emitted by run_guards.
-            let message = error.to_string();
+            let message = error.error.to_string();
             let guard = extract_guard_name(&message);
             return StepVerdict {
                 step_index: index,
@@ -774,39 +782,49 @@ impl ChioKernel {
                 ),
             );
 
-        if let Err(e) = self.run_guards(
+        let pre_invocation_guard_evidence = match self.run_guards(
             request,
             &cap.scope,
             session_filesystem_roots,
             Some(matched_grant_index),
         ) {
-            let msg = e.to_string();
-            warn!(request_id = %request.request_id, reason = %redacted!(&msg), "guard denied");
-            let reverse = self.reverse_pre_execution_budget_mutation(cap, &budget_mutation)?;
-            if let (Some(charge), Some(reverse)) =
-                (budget_mutation.charge_result(), reverse.as_ref())
-            {
-                return self.build_pre_execution_monetary_deny_response_with_metadata(
-                    request,
-                    &msg,
-                    now,
-                    charge,
-                    reverse.committed_cost_units_after,
-                    cap,
-                    self.merge_budget_receipt_metadata(
+            Ok(evidence) => evidence,
+            Err(e) => {
+                let msg = e.error.to_string();
+                warn!(request_id = %request.request_id, reason = %redacted!(&msg), "guard denied");
+                let reverse = self.reverse_pre_execution_budget_mutation(cap, &budget_mutation)?;
+                if let (Some(charge), Some(reverse)) =
+                    (budget_mutation.charge_result(), reverse.as_ref())
+                {
+                    return self.with_pre_invocation_guard_evidence(&e.evidence, || {
+                        self.build_pre_execution_monetary_deny_response_with_metadata(
+                            request,
+                            &msg,
+                            now,
+                            charge,
+                            reverse.committed_cost_units_after,
+                            cap,
+                            self.merge_budget_receipt_metadata(
+                                extra_metadata.clone(),
+                                self.budget_execution_receipt_metadata(
+                                    charge,
+                                    Some(("reversed", reverse)),
+                                ),
+                            ),
+                        )
+                    });
+                }
+                return self.with_pre_invocation_guard_evidence(&e.evidence, || {
+                    self.build_deny_response_with_metadata(
+                        request,
+                        &msg,
+                        now,
+                        Some(matched_grant_index),
                         extra_metadata.clone(),
-                        self.budget_execution_receipt_metadata(charge, Some(("reversed", reverse))),
-                    ),
-                );
+                    )
+                });
             }
-            return self.build_deny_response_with_metadata(
-                request,
-                &msg,
-                now,
-                Some(matched_grant_index),
-                extra_metadata.clone(),
-            );
-        }
+        };
 
         let runtime_admission =
             self.run_runtime_admission_hook(request, now, now_unix_ms, Some(matched_grant_index));
@@ -821,8 +839,10 @@ impl ChioKernel {
             if let (Some(charge), Some(reverse)) =
                 (budget_mutation.charge_result(), reverse.as_ref())
             {
-                return self
-                    .build_runtime_admission_pre_execution_monetary_deny_response_with_metadata(
+                return self.with_pre_invocation_guard_evidence(
+                    &pre_invocation_guard_evidence,
+                    || {
+                        self.build_runtime_admission_pre_execution_monetary_deny_response_with_metadata(
                         request,
                         &msg,
                         now,
@@ -836,28 +856,34 @@ impl ChioKernel {
                                 Some(("reversed", reverse)),
                             ),
                         ),
-                    );
+                    )
+                    },
+                );
             }
-            return self.build_runtime_admission_deny_response_with_metadata(
-                request,
-                &msg,
-                now,
-                Some(matched_grant_index),
-                extra_metadata,
-            );
+            return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
+                self.build_runtime_admission_deny_response_with_metadata(
+                    request,
+                    &msg,
+                    now,
+                    Some(matched_grant_index),
+                    extra_metadata,
+                )
+            });
         }
 
         if let Err(reason) = self.admit_capability_budget(cap) {
             let msg = format!("sibling-sum budget admission failed: {reason}");
             warn!(request_id = %request.request_id, reason = %redacted!(&msg), "capability rejected");
-            return self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
-                request,
-                reason: &msg,
-                timestamp: now,
-                matched_grant_index,
-                cap,
-                budget_mutation: &budget_mutation,
-                runtime_admission_metadata: extra_metadata,
+            return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
+                self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
+                    request,
+                    reason: &msg,
+                    timestamp: now,
+                    matched_grant_index,
+                    cap,
+                    budget_mutation: &budget_mutation,
+                    runtime_admission_metadata: extra_metadata,
+                })
             });
         }
 
@@ -868,15 +894,20 @@ impl ChioKernel {
             Err(error) => {
                 let msg = format!("payment authorization failed: {error}");
                 warn!(request_id = %request.request_id, reason = %redacted!(&msg), "payment denied");
-                return self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
-                    request,
-                    reason: &msg,
-                    timestamp: now,
-                    matched_grant_index,
-                    cap,
-                    budget_mutation: &budget_mutation,
-                    runtime_admission_metadata: extra_metadata,
-                });
+                return self.with_pre_invocation_guard_evidence(
+                    &pre_invocation_guard_evidence,
+                    || {
+                        self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
+                            request,
+                            reason: &msg,
+                            timestamp: now,
+                            matched_grant_index,
+                            cap,
+                            budget_mutation: &budget_mutation,
+                            runtime_admission_metadata: extra_metadata,
+                        })
+                    },
+                );
             }
         };
 
@@ -889,7 +920,10 @@ impl ChioKernel {
             Some(matched_grant_index),
             budget_mutation.charge_result(),
             payment_authorization.as_ref(),
-            extra_metadata.clone(),
+            PostAdmissionReceiptContext {
+                extra_metadata: extra_metadata.clone(),
+                pre_invocation_guard_evidence: pre_invocation_guard_evidence.clone(),
+            },
         );
         let dispatch_result = self
             .dispatch_tool_call_with_cost(request, has_monetary)
@@ -925,20 +959,26 @@ impl ChioKernel {
                     reason = %redacted!(&reason),
                     "tool call cancelled"
                 );
-                return self.build_cancelled_response_with_metadata(
-                    request,
-                    &reason,
-                    now,
-                    Some(matched_grant_index),
-                    match (budget_mutation.charge_result(), unwind.as_ref()) {
-                        (Some(charge), Some(reverse)) => self.merge_budget_receipt_metadata(
-                            extra_metadata.clone(),
-                            self.budget_execution_receipt_metadata(
-                                charge,
-                                Some(("reversed", reverse)),
-                            ),
-                        ),
-                        _ => extra_metadata.clone(),
+                return self.with_pre_invocation_guard_evidence(
+                    &pre_invocation_guard_evidence,
+                    || {
+                        self.build_cancelled_response_with_metadata(
+                            request,
+                            &reason,
+                            now,
+                            Some(matched_grant_index),
+                            match (budget_mutation.charge_result(), unwind.as_ref()) {
+                                (Some(charge), Some(reverse)) => self
+                                    .merge_budget_receipt_metadata(
+                                        extra_metadata.clone(),
+                                        self.budget_execution_receipt_metadata(
+                                            charge,
+                                            Some(("reversed", reverse)),
+                                        ),
+                                    ),
+                                _ => extra_metadata.clone(),
+                            },
+                        )
                     },
                 );
             }
@@ -954,21 +994,27 @@ impl ChioKernel {
                     reason = %redacted!(&reason),
                     "tool call incomplete"
                 );
-                return self.build_incomplete_response_with_output_and_metadata(
-                    request,
-                    None,
-                    &reason,
-                    now,
-                    Some(matched_grant_index),
-                    match (budget_mutation.charge_result(), unwind.as_ref()) {
-                        (Some(charge), Some(reverse)) => self.merge_budget_receipt_metadata(
-                            extra_metadata.clone(),
-                            self.budget_execution_receipt_metadata(
-                                charge,
-                                Some(("reversed", reverse)),
-                            ),
-                        ),
-                        _ => extra_metadata.clone(),
+                return self.with_pre_invocation_guard_evidence(
+                    &pre_invocation_guard_evidence,
+                    || {
+                        self.build_incomplete_response_with_output_and_metadata(
+                            request,
+                            None,
+                            &reason,
+                            now,
+                            Some(matched_grant_index),
+                            match (budget_mutation.charge_result(), unwind.as_ref()) {
+                                (Some(charge), Some(reverse)) => self
+                                    .merge_budget_receipt_metadata(
+                                        extra_metadata.clone(),
+                                        self.budget_execution_receipt_metadata(
+                                            charge,
+                                            Some(("reversed", reverse)),
+                                        ),
+                                    ),
+                                _ => extra_metadata.clone(),
+                            },
+                        )
                     },
                 );
             }
@@ -984,38 +1030,46 @@ impl ChioKernel {
                 }
                 let msg = e.to_string();
                 warn!(request_id = %request.request_id, reason = %redacted!(&msg), "tool server error");
-                return self.build_deny_response_with_metadata(
-                    request,
-                    &msg,
-                    now,
-                    Some(matched_grant_index),
-                    match (budget_mutation.charge_result(), unwind.as_ref()) {
-                        (Some(charge), Some(reverse)) => self.merge_budget_receipt_metadata(
-                            extra_metadata.clone(),
-                            self.budget_execution_receipt_metadata(
-                                charge,
-                                Some(("reversed", reverse)),
-                            ),
-                        ),
-                        _ => extra_metadata.clone(),
+                return self.with_pre_invocation_guard_evidence(
+                    &pre_invocation_guard_evidence,
+                    || {
+                        self.build_deny_response_with_metadata(
+                            request,
+                            &msg,
+                            now,
+                            Some(matched_grant_index),
+                            match (budget_mutation.charge_result(), unwind.as_ref()) {
+                                (Some(charge), Some(reverse)) => self
+                                    .merge_budget_receipt_metadata(
+                                        extra_metadata.clone(),
+                                        self.budget_execution_receipt_metadata(
+                                            charge,
+                                            Some(("reversed", reverse)),
+                                        ),
+                                    ),
+                                _ => extra_metadata.clone(),
+                            },
+                        )
                     },
                 );
             }
         };
-        self.finalize_budgeted_tool_output_with_cost_and_metadata(
-            request,
-            tool_output,
-            tool_started_at.elapsed(),
-            now,
-            matched_grant_index,
-            FinalizeToolOutputCostContext {
-                charge_result: budget_mutation.into_charge_result(),
-                reported_cost,
-                payment_authorization,
-                cap,
-            },
-            extra_metadata,
-        )
+        self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
+            self.finalize_budgeted_tool_output_with_cost_and_metadata(
+                request,
+                tool_output,
+                tool_started_at.elapsed(),
+                now,
+                matched_grant_index,
+                FinalizeToolOutputCostContext {
+                    charge_result: budget_mutation.into_charge_result(),
+                    reported_cost,
+                    payment_authorization,
+                    cap,
+                },
+                extra_metadata,
+            )
+        })
     }
 
     fn build_pre_dispatch_cleanup_deny_response(
@@ -1328,32 +1382,40 @@ impl ChioKernel {
         let session_roots =
             self.session_enforceable_filesystem_root_paths_owned(&parent_context.session_id)?;
 
-        if let Err(e) = self.run_guards(
+        let pre_invocation_guard_evidence = match self.run_guards(
             request,
             &cap.scope,
             Some(session_roots.as_slice()),
             Some(matched_grant_index),
         ) {
-            let msg = e.to_string();
-            warn!(request_id = %request.request_id, reason = %redacted!(&msg), "guard denied");
-            let reverse = self.reverse_pre_execution_budget_mutation(cap, &budget_mutation)?;
-            if let (Some(charge), Some(reverse)) =
-                (budget_mutation.charge_result(), reverse.as_ref())
-            {
-                return self.build_pre_execution_monetary_deny_response_with_metadata(
-                    request,
-                    &msg,
-                    now,
-                    charge,
-                    reverse.committed_cost_units_after,
-                    cap,
-                    Some(
-                        self.budget_execution_receipt_metadata(charge, Some(("reversed", reverse))),
-                    ),
-                );
+            Ok(evidence) => evidence,
+            Err(e) => {
+                let msg = e.error.to_string();
+                warn!(request_id = %request.request_id, reason = %redacted!(&msg), "guard denied");
+                let reverse = self.reverse_pre_execution_budget_mutation(cap, &budget_mutation)?;
+                if let (Some(charge), Some(reverse)) =
+                    (budget_mutation.charge_result(), reverse.as_ref())
+                {
+                    return self.with_pre_invocation_guard_evidence(&e.evidence, || {
+                        self.build_pre_execution_monetary_deny_response_with_metadata(
+                            request,
+                            &msg,
+                            now,
+                            charge,
+                            reverse.committed_cost_units_after,
+                            cap,
+                            Some(self.budget_execution_receipt_metadata(
+                                charge,
+                                Some(("reversed", reverse)),
+                            )),
+                        )
+                    });
+                }
+                return self.with_pre_invocation_guard_evidence(&e.evidence, || {
+                    self.build_deny_response(request, &msg, now, Some(matched_grant_index))
+                });
             }
-            return self.build_deny_response(request, &msg, now, Some(matched_grant_index));
-        }
+        };
 
         let runtime_admission =
             self.run_runtime_admission_hook(request, now, now_unix_ms, Some(matched_grant_index));
@@ -1367,8 +1429,10 @@ impl ChioKernel {
             if let (Some(charge), Some(reverse)) =
                 (budget_mutation.charge_result(), reverse.as_ref())
             {
-                return self
-                    .build_runtime_admission_pre_execution_monetary_deny_response_with_metadata(
+                return self.with_pre_invocation_guard_evidence(
+                    &pre_invocation_guard_evidence,
+                    || {
+                        self.build_runtime_admission_pre_execution_monetary_deny_response_with_metadata(
                         request,
                         &msg,
                         now,
@@ -1382,28 +1446,34 @@ impl ChioKernel {
                                 Some(("reversed", reverse)),
                             ),
                         ),
-                    );
+                    )
+                    },
+                );
             }
-            return self.build_runtime_admission_deny_response_with_metadata(
-                request,
-                &msg,
-                now,
-                Some(matched_grant_index),
-                runtime_admission.metadata,
-            );
+            return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
+                self.build_runtime_admission_deny_response_with_metadata(
+                    request,
+                    &msg,
+                    now,
+                    Some(matched_grant_index),
+                    runtime_admission.metadata,
+                )
+            });
         }
 
         if let Err(reason) = self.admit_capability_budget(cap) {
             let msg = format!("sibling-sum budget admission failed: {reason}");
             warn!(request_id = %request.request_id, reason = %redacted!(&msg), "capability rejected");
-            return self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
-                request,
-                reason: &msg,
-                timestamp: now,
-                matched_grant_index,
-                cap,
-                budget_mutation: &budget_mutation,
-                runtime_admission_metadata,
+            return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
+                self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
+                    request,
+                    reason: &msg,
+                    timestamp: now,
+                    matched_grant_index,
+                    cap,
+                    budget_mutation: &budget_mutation,
+                    runtime_admission_metadata,
+                })
             });
         }
 
@@ -1414,15 +1484,20 @@ impl ChioKernel {
             Err(error) => {
                 let msg = format!("payment authorization failed: {error}");
                 warn!(request_id = %request.request_id, reason = %redacted!(&msg), "payment denied");
-                return self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
-                    request,
-                    reason: &msg,
-                    timestamp: now,
-                    matched_grant_index,
-                    cap,
-                    budget_mutation: &budget_mutation,
-                    runtime_admission_metadata,
-                });
+                return self.with_pre_invocation_guard_evidence(
+                    &pre_invocation_guard_evidence,
+                    || {
+                        self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
+                            request,
+                            reason: &msg,
+                            timestamp: now,
+                            matched_grant_index,
+                            cap,
+                            budget_mutation: &budget_mutation,
+                            runtime_admission_metadata,
+                        })
+                    },
+                );
             }
         };
 
@@ -1435,7 +1510,10 @@ impl ChioKernel {
             Some(matched_grant_index),
             budget_mutation.charge_result(),
             payment_authorization.as_ref(),
-            runtime_admission_metadata.clone(),
+            PostAdmissionReceiptContext {
+                extra_metadata: runtime_admission_metadata.clone(),
+                pre_invocation_guard_evidence: pre_invocation_guard_evidence.clone(),
+            },
         );
         let tool_output_result = {
             let server = self.tool_servers.get(&request.server_id).ok_or_else(|| {
@@ -1514,20 +1592,26 @@ impl ChioKernel {
                     reason = %redacted!(&reason),
                     "tool call cancelled"
                 );
-                return self.build_cancelled_response_with_metadata(
-                    request,
-                    &reason,
-                    now,
-                    Some(matched_grant_index),
-                    match (budget_mutation.charge_result(), unwind.as_ref()) {
-                        (Some(charge), Some(reverse)) => self.merge_budget_receipt_metadata(
-                            runtime_admission_metadata.clone(),
-                            self.budget_execution_receipt_metadata(
-                                charge,
-                                Some(("reversed", reverse)),
-                            ),
-                        ),
-                        _ => runtime_admission_metadata.clone(),
+                return self.with_pre_invocation_guard_evidence(
+                    &pre_invocation_guard_evidence,
+                    || {
+                        self.build_cancelled_response_with_metadata(
+                            request,
+                            &reason,
+                            now,
+                            Some(matched_grant_index),
+                            match (budget_mutation.charge_result(), unwind.as_ref()) {
+                                (Some(charge), Some(reverse)) => self
+                                    .merge_budget_receipt_metadata(
+                                        runtime_admission_metadata.clone(),
+                                        self.budget_execution_receipt_metadata(
+                                            charge,
+                                            Some(("reversed", reverse)),
+                                        ),
+                                    ),
+                                _ => runtime_admission_metadata.clone(),
+                            },
+                        )
                     },
                 );
             }
@@ -1543,21 +1627,27 @@ impl ChioKernel {
                     reason = %redacted!(&reason),
                     "tool call incomplete"
                 );
-                return self.build_incomplete_response_with_output_and_metadata(
-                    request,
-                    None,
-                    &reason,
-                    now,
-                    Some(matched_grant_index),
-                    match (budget_mutation.charge_result(), unwind.as_ref()) {
-                        (Some(charge), Some(reverse)) => self.merge_budget_receipt_metadata(
-                            runtime_admission_metadata.clone(),
-                            self.budget_execution_receipt_metadata(
-                                charge,
-                                Some(("reversed", reverse)),
-                            ),
-                        ),
-                        _ => runtime_admission_metadata.clone(),
+                return self.with_pre_invocation_guard_evidence(
+                    &pre_invocation_guard_evidence,
+                    || {
+                        self.build_incomplete_response_with_output_and_metadata(
+                            request,
+                            None,
+                            &reason,
+                            now,
+                            Some(matched_grant_index),
+                            match (budget_mutation.charge_result(), unwind.as_ref()) {
+                                (Some(charge), Some(reverse)) => self
+                                    .merge_budget_receipt_metadata(
+                                        runtime_admission_metadata.clone(),
+                                        self.budget_execution_receipt_metadata(
+                                            charge,
+                                            Some(("reversed", reverse)),
+                                        ),
+                                    ),
+                                _ => runtime_admission_metadata.clone(),
+                            },
+                        )
                     },
                 );
             }
@@ -1575,37 +1665,45 @@ impl ChioKernel {
                 }
                 let msg = error.to_string();
                 warn!(request_id = %request.request_id, reason = %redacted!(&msg), "tool server error");
-                return self.build_deny_response_with_metadata(
-                    request,
-                    &msg,
-                    now,
-                    Some(matched_grant_index),
-                    match (budget_mutation.charge_result(), unwind.as_ref()) {
-                        (Some(charge), Some(reverse)) => self.merge_budget_receipt_metadata(
-                            runtime_admission_metadata.clone(),
-                            self.budget_execution_receipt_metadata(
-                                charge,
-                                Some(("reversed", reverse)),
-                            ),
-                        ),
-                        _ => runtime_admission_metadata.clone(),
+                return self.with_pre_invocation_guard_evidence(
+                    &pre_invocation_guard_evidence,
+                    || {
+                        self.build_deny_response_with_metadata(
+                            request,
+                            &msg,
+                            now,
+                            Some(matched_grant_index),
+                            match (budget_mutation.charge_result(), unwind.as_ref()) {
+                                (Some(charge), Some(reverse)) => self
+                                    .merge_budget_receipt_metadata(
+                                        runtime_admission_metadata.clone(),
+                                        self.budget_execution_receipt_metadata(
+                                            charge,
+                                            Some(("reversed", reverse)),
+                                        ),
+                                    ),
+                                _ => runtime_admission_metadata.clone(),
+                            },
+                        )
                     },
                 );
             }
         };
-        self.finalize_budgeted_tool_output_with_cost_and_metadata(
-            request,
-            tool_output,
-            tool_started_at.elapsed(),
-            now,
-            matched_grant_index,
-            FinalizeToolOutputCostContext {
-                charge_result: budget_mutation.into_charge_result(),
-                reported_cost: None,
-                payment_authorization,
-                cap,
-            },
-            runtime_admission_metadata,
-        )
+        self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
+            self.finalize_budgeted_tool_output_with_cost_and_metadata(
+                request,
+                tool_output,
+                tool_started_at.elapsed(),
+                now,
+                matched_grant_index,
+                FinalizeToolOutputCostContext {
+                    charge_result: budget_mutation.into_charge_result(),
+                    reported_cost: None,
+                    payment_authorization,
+                    cap,
+                },
+                runtime_admission_metadata,
+            )
+        })
     }
 }

@@ -13,8 +13,8 @@ use chio_kernel::post_invocation::{
     PostInvocationContext, PostInvocationHook, PostInvocationVerdict,
 };
 use chio_kernel::{
-    ChioKernel, Guard, GuardContext, KernelConfig, KernelError, NestedFlowBridge, ToolCallRequest,
-    ToolServerConnection, Verdict as KernelVerdict, DEFAULT_CHECKPOINT_BATCH_SIZE,
+    ChioKernel, Guard, GuardContext, GuardDecision, KernelConfig, KernelError, NestedFlowBridge,
+    ToolCallRequest, ToolServerConnection, Verdict as KernelVerdict, DEFAULT_CHECKPOINT_BATCH_SIZE,
     DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES,
 };
 use serde::Deserialize;
@@ -797,8 +797,8 @@ impl Guard for MatrixInputGuard {
         "verdict-matrix-input"
     }
 
-    fn evaluate(&self, _ctx: &GuardContext<'_>) -> Result<KernelVerdict, KernelError> {
-        Ok(KernelVerdict::Deny)
+    fn evaluate(&self, _ctx: &GuardContext<'_>) -> Result<GuardDecision, KernelError> {
+        Ok(GuardDecision::deny(Vec::new()))
     }
 }
 
@@ -935,11 +935,7 @@ mod tests {
 
     fn assert_invalid(scenario: VerdictScenario, expected_reason: &str) {
         let Err(error) = scenario.validate() else {
-            assert!(
-                false,
-                "scenario validation accepted an invalid identity field"
-            );
-            return;
+            panic!("scenario validation accepted an invalid identity field");
         };
         assert!(
             error.to_string().contains(expected_reason),

@@ -10,8 +10,8 @@ use chio_cross_protocol::{
     plan_authoritative_route, route_selection_metadata, DiscoveryProtocol, TargetProtocolRegistry,
 };
 use chio_kernel::{
-    ApprovalStore, ChioKernel, Guard, GuardContext, InMemoryApprovalStore, KernelConfig,
-    KernelError, ToolCallRequest, ToolServerConnection, Verdict as KernelVerdict,
+    ApprovalStore, ChioKernel, Guard, GuardContext, GuardDecision, InMemoryApprovalStore,
+    KernelConfig, KernelError, ToolCallRequest, ToolServerConnection, Verdict as KernelVerdict,
     DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_MAX_STREAM_DURATION_SECS,
     DEFAULT_MAX_STREAM_TOTAL_BYTES,
 };
@@ -197,7 +197,7 @@ impl Guard for HttpProjectionGuard {
         "http_projection_policy"
     }
 
-    fn evaluate(&self, ctx: &GuardContext<'_>) -> Result<KernelVerdict, KernelError> {
+    fn evaluate(&self, ctx: &GuardContext<'_>) -> Result<GuardDecision, KernelError> {
         let projected: HttpKernelAuthorizationRequest =
             serde_json::from_value(ctx.request.arguments.clone()).map_err(|error| {
                 KernelError::Internal(format!(
@@ -210,10 +210,10 @@ impl Guard for HttpProjectionGuard {
         }
 
         match projected.policy {
-            HttpAuthorityPolicy::SessionAllow => Ok(KernelVerdict::Allow),
+            HttpAuthorityPolicy::SessionAllow => Ok(GuardDecision::allow()),
             HttpAuthorityPolicy::DenyByDefault => {
                 if projected.capability.id.is_some() {
-                    Ok(KernelVerdict::Allow)
+                    Ok(GuardDecision::allow())
                 } else {
                     Err(KernelError::GuardDenied(
                         "side-effect route requires a capability token".to_string(),

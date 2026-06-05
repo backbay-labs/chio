@@ -19,7 +19,7 @@ use regex::{Regex, RegexBuilder};
 use tracing::warn;
 
 use chio_guards::{extract_action_checked, ToolAction};
-use chio_kernel::{GuardContext, KernelError, Verdict};
+use chio_kernel::{GuardContext, GuardDecision, KernelError};
 
 use crate::config::{SqlGuardConfig, SqlOperation};
 use crate::error::SqlGuardDenyReason;
@@ -301,18 +301,18 @@ impl chio_kernel::Guard for SqlQueryGuard {
         "sql-query"
     }
 
-    fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
         let action = match extract_action_checked(&ctx.request.tool_name, &ctx.request.arguments) {
             Ok(action) => action,
-            Err(_) => return Ok(Verdict::Deny),
+            Err(_) => return Ok(GuardDecision::deny(Vec::new())),
         };
         let (database, query) = match &action {
             ToolAction::DatabaseQuery { database, query } => (database.as_str(), query.as_str()),
-            _ => return Ok(Verdict::Allow),
+            _ => return Ok(GuardDecision::allow()),
         };
 
         match self.analyze(query) {
-            Ok(_) => Ok(Verdict::Allow),
+            Ok(_) => Ok(GuardDecision::allow()),
             Err(reason) => {
                 warn!(
                     target: "chio.data-guards.sql",
@@ -321,7 +321,7 @@ impl chio_kernel::Guard for SqlQueryGuard {
                     reason = %reason,
                     "sql-query-guard denied query"
                 );
-                Ok(Verdict::Deny)
+                Ok(GuardDecision::deny(Vec::new()))
             }
         }
     }
@@ -334,7 +334,7 @@ mod tests {
 
     use chio_core::capability::{CapabilityToken, CapabilityTokenBody, ChioScope};
     use chio_core::crypto::Keypair;
-    use chio_kernel::{Guard, ToolCallRequest};
+    use chio_kernel::{Guard, ToolCallRequest, Verdict};
 
     use crate::config::{SqlDialect, SqlGuardConfig, SqlOperation};
 
@@ -402,7 +402,7 @@ mod tests {
                 matched_grant_index: None,
             })
             .unwrap();
-        assert_eq!(verdict, Verdict::Deny);
+        assert_eq!(verdict.verdict, Verdict::Deny);
     }
 
     #[test]

@@ -149,7 +149,6 @@ fn field<'a>(span: &'a CapturedSpan, name: &str) -> &'a str {
 fn make_test_request() -> ToolCallRequest {
     let issuer = Keypair::generate();
     let subject = Keypair::generate();
-    let signer = Keypair::generate();
     let capability = match CapabilityToken::sign(
         CapabilityTokenBody {
             id: "cap-1".to_string(),
@@ -160,7 +159,7 @@ fn make_test_request() -> ToolCallRequest {
             expires_at: u64::MAX,
             delegation_chain: vec![],
         },
-        &signer,
+        &issuer,
     ) {
         Ok(token) => token,
         Err(err) => panic!("capability signing failed: {err}"),
@@ -219,7 +218,7 @@ fn evaluate_span_records_exact_field_set() {
             Ok(verdict) => verdict,
             Err(err) => panic!("guard evaluation failed: {err}"),
         };
-        assert!(matches!(verdict, Verdict::Allow));
+        assert!(matches!(verdict.verdict, Verdict::Allow));
     });
 
     let spans = captured.snapshot();

@@ -30,7 +30,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use chio_kernel::{Guard, GuardContext, KernelError, Verdict};
+use chio_kernel::{Guard, GuardContext, GuardDecision, KernelError, Verdict};
 
 /// Configuration for [`RemoteDesktopSideChannelGuard`].
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -149,64 +149,75 @@ impl Guard for RemoteDesktopSideChannelGuard {
         "remote-desktop-side-channel"
     }
 
-    fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
         if !self.config.enabled {
-            return Ok(Verdict::Allow);
+            return Ok(GuardDecision::allow());
         }
 
         let channel =
             match Self::channel_action_type(&ctx.request.tool_name, &ctx.request.arguments) {
                 Some(c) => c,
-                None => return Ok(Verdict::Allow),
+                None => return Ok(GuardDecision::allow()),
             };
 
-        match channel.as_str() {
-            "remote.clipboard" => Ok(if self.config.clipboard_enabled {
-                Verdict::Allow
-            } else {
-                Verdict::Deny
-            }),
+        let verdict = match channel.as_str() {
+            "remote.clipboard" => {
+                if self.config.clipboard_enabled {
+                    Verdict::Allow
+                } else {
+                    Verdict::Deny
+                }
+            }
             "remote.file_transfer" => {
                 if !self.config.file_transfer_enabled {
-                    return Ok(Verdict::Deny);
+                    return Ok(GuardDecision::deny(Vec::new()));
                 }
                 if let Some(max) = self.config.max_transfer_size_bytes {
                     match Self::read_transfer_size(&ctx.request.arguments) {
                         Ok(Some(n)) => {
                             if n > max {
-                                return Ok(Verdict::Deny);
+                                return Ok(GuardDecision::deny(Vec::new()));
                             }
                         }
                         // Missing or non-integer transfer_size with a
                         // configured max → fail-closed.
-                        Ok(None) | Err(()) => return Ok(Verdict::Deny),
+                        Ok(None) | Err(()) => return Ok(GuardDecision::deny(Vec::new())),
                     }
                 }
-                Ok(Verdict::Allow)
+                return Ok(GuardDecision::allow());
             }
-            "remote.session_share" => Ok(if self.config.session_share_enabled {
-                Verdict::Allow
-            } else {
-                Verdict::Deny
-            }),
-            "remote.audio" => Ok(if self.config.audio_enabled {
-                Verdict::Allow
-            } else {
-                Verdict::Deny
-            }),
-            "remote.drive_mapping" => Ok(if self.config.drive_mapping_enabled {
-                Verdict::Allow
-            } else {
-                Verdict::Deny
-            }),
-            "remote.printing" => Ok(if self.config.printing_enabled {
-                Verdict::Allow
-            } else {
-                Verdict::Deny
-            }),
+            "remote.session_share" => {
+                if self.config.session_share_enabled {
+                    Verdict::Allow
+                } else {
+                    Verdict::Deny
+                }
+            }
+            "remote.audio" => {
+                if self.config.audio_enabled {
+                    Verdict::Allow
+                } else {
+                    Verdict::Deny
+                }
+            }
+            "remote.drive_mapping" => {
+                if self.config.drive_mapping_enabled {
+                    Verdict::Allow
+                } else {
+                    Verdict::Deny
+                }
+            }
+            "remote.printing" => {
+                if self.config.printing_enabled {
+                    Verdict::Allow
+                } else {
+                    Verdict::Deny
+                }
+            }
             // Unknown `remote.*` channel → fail-closed.
-            _ => Ok(Verdict::Deny),
-        }
+            _ => Verdict::Deny,
+        };
+        Ok(GuardDecision::from_verdict(verdict))
     }
 }
 

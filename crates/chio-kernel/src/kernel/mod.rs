@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use arc_swap::ArcSwap;
 use chio_appraisal::VerifiedRuntimeAttestationRecord;
+use chio_core::receipt::GuardEvidence;
 use chio_log_redact::redacted;
 use dashmap::DashMap;
 
@@ -219,6 +220,11 @@ impl Drop for ScopedKernelReceiptFederationAdmission {
 
 const POST_ADMISSION_DROP_REASON: &str = "tool evaluation future dropped after monetary admission";
 
+struct PostAdmissionReceiptContext {
+    extra_metadata: Option<serde_json::Value>,
+    pre_invocation_guard_evidence: Vec<GuardEvidence>,
+}
+
 struct PostAdmissionDropGuard<'a> {
     kernel: &'a ChioKernel,
     request: &'a ToolCallRequest,
@@ -226,7 +232,7 @@ struct PostAdmissionDropGuard<'a> {
     matched_grant_index: Option<usize>,
     charge_result: Option<&'a BudgetChargeResult>,
     payment_authorization: Option<&'a PaymentAuthorization>,
-    extra_metadata: Option<serde_json::Value>,
+    receipt_context: PostAdmissionReceiptContext,
     armed: bool,
 }
 
@@ -238,7 +244,7 @@ impl<'a> PostAdmissionDropGuard<'a> {
         matched_grant_index: Option<usize>,
         charge_result: Option<&'a BudgetChargeResult>,
         payment_authorization: Option<&'a PaymentAuthorization>,
-        extra_metadata: Option<serde_json::Value>,
+        receipt_context: PostAdmissionReceiptContext,
     ) -> Self {
         Self {
             kernel,
@@ -247,7 +253,7 @@ impl<'a> PostAdmissionDropGuard<'a> {
             matched_grant_index,
             charge_result,
             payment_authorization,
-            extra_metadata,
+            receipt_context,
             armed: true,
         }
     }
@@ -275,21 +281,24 @@ impl Drop for PostAdmissionDropGuard<'_> {
         );
         let extra_metadata = match &unwind {
             Ok(Some(reverse)) => self.kernel.merge_budget_receipt_metadata(
-                self.extra_metadata.clone(),
+                self.receipt_context.extra_metadata.clone(),
                 self.kernel
                     .budget_execution_receipt_metadata(charge, Some(("reversed", reverse))),
             ),
-            Ok(None) => self.extra_metadata.clone(),
+            Ok(None) => self.receipt_context.extra_metadata.clone(),
             Err(error) => {
                 warn!(
                     request_id = %self.request.request_id,
                     reason = %redacted!(error),
                     "failed to unwind dropped post-admission monetary invocation"
                 );
-                self.extra_metadata.clone()
+                self.receipt_context.extra_metadata.clone()
             }
         };
 
+        let _guard_evidence_scope = scope_pre_invocation_guard_evidence(
+            self.receipt_context.pre_invocation_guard_evidence.clone(),
+        );
         if let Err(error) = self.kernel.build_cancelled_response_with_metadata(
             self.request,
             POST_ADMISSION_DROP_REASON,
@@ -970,15 +979,76 @@ impl KernelError {
 ///
 /// A guard is a pluggable policy check, adapted for the Chio tool-call
 /// context. Each guard inspects the request and returns a verdict.
+#[derive(Debug, Clone)]
+pub struct GuardDecision {
+    pub verdict: Verdict,
+    pub evidence: Vec<GuardEvidence>,
+}
+
+impl GuardDecision {
+    #[must_use]
+    pub fn allow() -> Self {
+        Self {
+            verdict: Verdict::Allow,
+            evidence: Vec::new(),
+        }
+    }
+
+    #[must_use]
+    pub fn allow_with_evidence(evidence: Vec<GuardEvidence>) -> Self {
+        Self {
+            verdict: Verdict::Allow,
+            evidence,
+        }
+    }
+
+    #[must_use]
+    pub fn deny(evidence: Vec<GuardEvidence>) -> Self {
+        Self {
+            verdict: Verdict::Deny,
+            evidence,
+        }
+    }
+
+    #[must_use]
+    pub fn pending_approval(evidence: Vec<GuardEvidence>) -> Self {
+        Self {
+            verdict: Verdict::PendingApproval,
+            evidence,
+        }
+    }
+
+    #[must_use]
+    pub fn from_verdict(verdict: Verdict) -> Self {
+        match verdict {
+            Verdict::Allow => Self::allow(),
+            Verdict::Deny => Self::deny(Vec::new()),
+            Verdict::PendingApproval => Self::pending_approval(Vec::new()),
+        }
+    }
+}
+
+impl PartialEq<Verdict> for GuardDecision {
+    fn eq(&self, other: &Verdict) -> bool {
+        self.verdict == *other
+    }
+}
+
+impl PartialEq<GuardDecision> for Verdict {
+    fn eq(&self, other: &GuardDecision) -> bool {
+        *self == other.verdict
+    }
+}
+
 pub trait Guard: Send + Sync {
     /// Human-readable guard name (e.g., "forbidden-path").
     fn name(&self) -> &str;
 
     /// Evaluate the guard against a tool call request.
     ///
-    /// Returns `Ok(Verdict::Allow)` to pass, `Ok(Verdict::Deny)` to block,
-    /// or `Err` on internal failure (which the kernel treats as deny).
-    fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError>;
+    /// Returns an allow or deny decision with optional evidence, or `Err` on
+    /// internal failure (which the kernel treats as deny).
+    fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError>;
 }
 
 /// Context passed to guards during evaluation.

@@ -24,7 +24,9 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use chio_kernel::{Guard, GuardContext, KernelError, Verdict};
+#[cfg(test)]
+use chio_kernel::Verdict;
+use chio_kernel::{Guard, GuardContext, GuardDecision, KernelError};
 
 // ===========================================================================
 // Backwards-compatible simple API.
@@ -259,13 +261,13 @@ impl Guard for ResponseSanitizationGuard {
         "response-sanitization"
     }
 
-    fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
         let args_text = ctx.request.arguments.to_string();
         let findings = self.scan(&args_text);
         if findings.is_empty() {
-            Ok(Verdict::Allow)
+            Ok(GuardDecision::allow())
         } else {
-            Ok(Verdict::Deny)
+            Ok(GuardDecision::deny(Vec::new()))
         }
     }
 }

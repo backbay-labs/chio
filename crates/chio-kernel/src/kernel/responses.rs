@@ -1514,6 +1514,9 @@ impl ChioKernel {
         });
         let metadata = merge_metadata_objects(params.metadata, request_metadata);
 
+        let mut evidence = current_pre_invocation_guard_evidence();
+        evidence.extend(current_post_invocation_guard_evidence());
+
         let body = ChioReceiptBody {
             id: next_receipt_id("rcpt"),
             timestamp: params.timestamp,
@@ -1530,7 +1533,7 @@ impl ChioKernel {
             actor_chain: Vec::new(),
             content_hash: params.content_hash,
             policy_hash: self.config.policy_hash.clone(),
-            evidence: current_post_invocation_guard_evidence(),
+            evidence,
             metadata,
             trust_level: params.trust_level,
             tenant_id,

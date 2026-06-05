@@ -4,7 +4,9 @@
 //! allowlists for file access, file write, and patch operations. When
 //! `patch_allow` is empty, it falls back to `file_write_allow`.
 
-use chio_kernel::{GuardContext, KernelError, Verdict};
+#[cfg(test)]
+use chio_kernel::Verdict;
+use chio_kernel::{GuardContext, GuardDecision, KernelError};
 use glob::Pattern;
 
 use crate::action::{extract_action_checked, ToolAction};
@@ -182,26 +184,26 @@ impl chio_kernel::Guard for PathAllowlistGuard {
         "path-allowlist"
     }
 
-    fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
         if !self.enabled && ctx.session_filesystem_roots.is_none() {
-            return Ok(Verdict::Allow);
+            return Ok(GuardDecision::allow());
         }
         let action = match extract_action_checked(&ctx.request.tool_name, &ctx.request.arguments) {
             Ok(action) => action,
-            Err(_) => return Ok(Verdict::Deny),
+            Err(_) => return Ok(GuardDecision::deny(Vec::new())),
         };
         let Some(path) = action.filesystem_path() else {
-            return Ok(Verdict::Allow);
+            return Ok(GuardDecision::allow());
         };
 
         if let Some(session_roots) = ctx.session_filesystem_roots {
             if !self.matches_session_roots(path, session_roots) {
-                return Ok(Verdict::Deny);
+                return Ok(GuardDecision::deny(Vec::new()));
             }
         }
 
         if !self.enabled {
-            return Ok(Verdict::Allow);
+            return Ok(GuardDecision::allow());
         }
 
         let allowed = match &action {
@@ -214,9 +216,9 @@ impl chio_kernel::Guard for PathAllowlistGuard {
         };
 
         if allowed {
-            Ok(Verdict::Allow)
+            Ok(GuardDecision::allow())
         } else {
-            Ok(Verdict::Deny)
+            Ok(GuardDecision::deny(Vec::new()))
         }
     }
 }

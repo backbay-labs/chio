@@ -12,7 +12,9 @@
 
 use std::net::IpAddr;
 
-use chio_kernel::{Guard, GuardContext, KernelError, Verdict};
+#[cfg(test)]
+use chio_kernel::Verdict;
+use chio_kernel::{Guard, GuardContext, GuardDecision, KernelError};
 
 use crate::action::{extract_action_checked, ToolAction};
 
@@ -97,20 +99,20 @@ impl Guard for InternalNetworkGuard {
         "internal-network"
     }
 
-    fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
         let action = match extract_action_checked(&ctx.request.tool_name, &ctx.request.arguments) {
             Ok(action) => action,
-            Err(_) => return Ok(Verdict::Deny),
+            Err(_) => return Ok(GuardDecision::deny(Vec::new())),
         };
 
         let host = match &action {
             ToolAction::NetworkEgress(h, _) => h.as_str(),
-            _ => return Ok(Verdict::Allow),
+            _ => return Ok(GuardDecision::allow()),
         };
 
         match self.check_host(host) {
-            Some(_reason) => Ok(Verdict::Deny),
-            None => Ok(Verdict::Allow),
+            Some(_reason) => Ok(GuardDecision::deny(Vec::new())),
+            None => Ok(GuardDecision::allow()),
         }
     }
 }

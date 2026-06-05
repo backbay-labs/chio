@@ -25,7 +25,9 @@ use chio_core::credit::{
     CREDIT_BOND_ARTIFACT_SCHEMA, CREDIT_BOND_REPORT_SCHEMA,
 };
 use chio_core::crypto::{Keypair, PublicKey};
-use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction};
+use chio_core::receipt::{
+    ChioReceipt, ChioReceiptBody, Decision, GuardEvidence, ToolCallAction,
+};
 use chio_core::session::{
     CompleteOperation, CompletionArgument, CompletionReference, CreateMessageOperation,
     GetPromptOperation, OperationContext, RequestId, SamplingMessage, SamplingTool,
@@ -2534,8 +2536,8 @@ fn guard_denies_request() {
         fn name(&self) -> &str {
             "deny-all"
         }
-        fn evaluate(&self, _ctx: &GuardContext) -> Result<Verdict, KernelError> {
-            Ok(Verdict::Deny)
+        fn evaluate(&self, _ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
+            Ok(GuardDecision::deny(Vec::new()))
         }
     }
     kernel.add_guard(Box::new(DenyAll));
@@ -2549,6 +2551,141 @@ fn guard_denies_request() {
     assert_eq!(response.verdict, Verdict::Deny);
     let reason = response.reason.as_deref().unwrap_or("");
     assert!(reason.contains("deny-all"), "reason was: {reason}");
+}
+
+#[test]
+fn allowing_guard_evidence_is_signed_into_success_receipt() {
+    let mut kernel = make_kernel(make_config());
+    kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
+
+    struct EvidenceGuard;
+    impl Guard for EvidenceGuard {
+        fn name(&self) -> &str {
+            "evidence-allow"
+        }
+        fn evaluate(&self, _ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
+            Ok(GuardDecision::allow_with_evidence(vec![GuardEvidence {
+                guard_name: "evidence-allow".to_string(),
+                verdict: true,
+                details: Some("pre-invocation guard observed read request".to_string()),
+            }]))
+        }
+    }
+    kernel.add_guard(Box::new(EvidenceGuard));
+
+    let agent_kp = make_keypair();
+    let scope = make_scope(vec![make_grant("srv-a", "read_file")]);
+    let cap = make_capability(&kernel, &agent_kp, scope, 300);
+    let request = make_request("req-evidence", &cap, "read_file", "srv-a");
+
+    let response = kernel.evaluate_tool_call_blocking(&request).unwrap();
+    assert_eq!(
+        response.verdict,
+        Verdict::Allow,
+        "unexpected deny reason: {:?}",
+        response.reason
+    );
+    assert_eq!(response.receipt.evidence.len(), 1);
+    assert_eq!(response.receipt.evidence[0].guard_name, "evidence-allow");
+    assert!(response.receipt.evidence[0].verdict);
+    assert_eq!(
+        response.receipt.evidence[0].details.as_deref(),
+        Some("pre-invocation guard observed read request")
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn async_allowing_guard_evidence_is_signed_into_success_receipt() {
+    struct YieldingServer;
+
+    #[async_trait::async_trait]
+    impl ToolServerConnection for YieldingServer {
+        fn server_id(&self) -> &str {
+            "srv-a"
+        }
+
+        fn tool_names(&self) -> Vec<String> {
+            vec!["read_file".to_string()]
+        }
+
+        async fn invoke(
+            &self,
+            tool_name: &str,
+            arguments: serde_json::Value,
+            _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
+        ) -> Result<serde_json::Value, KernelError> {
+            tokio::task::yield_now().await;
+            Ok(serde_json::json!({
+                "tool": tool_name,
+                "echo": arguments,
+            }))
+        }
+    }
+
+    struct EvidenceGuard;
+    impl Guard for EvidenceGuard {
+        fn name(&self) -> &str {
+            "async-evidence-allow"
+        }
+
+        fn evaluate(&self, _ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
+            Ok(GuardDecision::allow_with_evidence(vec![GuardEvidence {
+                guard_name: "async-evidence-allow".to_string(),
+                verdict: true,
+                details: Some("pre-invocation evidence survived async dispatch".to_string()),
+            }]))
+        }
+    }
+
+    let mut kernel = make_kernel(make_config());
+    kernel.register_tool_server(Box::new(YieldingServer));
+    kernel.add_guard(Box::new(EvidenceGuard));
+
+    let agent_kp = make_keypair();
+    let scope = make_scope(vec![make_grant("srv-a", "read_file")]);
+    let cap = make_capability(&kernel, &agent_kp, scope, 300);
+    let request = make_request("req-async-evidence", &cap, "read_file", "srv-a");
+
+    let response = kernel.evaluate_tool_call(&request).await.unwrap();
+    assert_eq!(response.verdict, Verdict::Allow);
+    assert_eq!(response.receipt.evidence.len(), 1);
+    assert_eq!(
+        response.receipt.evidence[0].guard_name,
+        "async-evidence-allow"
+    );
+}
+
+#[test]
+fn denying_guard_evidence_is_signed_into_deny_receipt() {
+    let mut kernel = make_kernel(make_config());
+    kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["dangerous"])));
+
+    struct EvidenceDenyGuard;
+    impl Guard for EvidenceDenyGuard {
+        fn name(&self) -> &str {
+            "evidence-deny"
+        }
+
+        fn evaluate(&self, _ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
+            Ok(GuardDecision::deny(vec![GuardEvidence {
+                guard_name: "evidence-deny".to_string(),
+                verdict: false,
+                details: Some("pre-invocation guard denied dangerous request".to_string()),
+            }]))
+        }
+    }
+    kernel.add_guard(Box::new(EvidenceDenyGuard));
+
+    let agent_kp = make_keypair();
+    let scope = make_scope(vec![make_grant("srv-a", "dangerous")]);
+    let cap = make_capability(&kernel, &agent_kp, scope, 300);
+    let request = make_request("req-deny-evidence", &cap, "dangerous", "srv-a");
+
+    let response = kernel.evaluate_tool_call_blocking(&request).unwrap();
+    assert_eq!(response.verdict, Verdict::Deny);
+    assert_eq!(response.receipt.evidence.len(), 1);
+    assert_eq!(response.receipt.evidence[0].guard_name, "evidence-deny");
+    assert!(!response.receipt.evidence[0].verdict);
 }
 
 #[test]
@@ -2663,8 +2800,8 @@ fn unlimited_grant_guard_denial_does_not_reverse_budget_store() {
         fn name(&self) -> &str {
             "deny-all"
         }
-        fn evaluate(&self, _ctx: &GuardContext) -> Result<Verdict, KernelError> {
-            Ok(Verdict::Deny)
+        fn evaluate(&self, _ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
+            Ok(GuardDecision::deny(Vec::new()))
         }
     }
     kernel.add_guard(Box::new(DenyAll));
@@ -2696,7 +2833,7 @@ fn guard_error_treated_as_deny() {
         fn name(&self) -> &str {
             "broken"
         }
-        fn evaluate(&self, _ctx: &GuardContext) -> Result<Verdict, KernelError> {
+        fn evaluate(&self, _ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
             Err(KernelError::Internal("guard crashed".to_string()))
         }
     }
@@ -3375,8 +3512,8 @@ fn kernel_guard_registration() {
         fn name(&self) -> &str {
             "test-guard"
         }
-        fn evaluate(&self, _ctx: &GuardContext) -> Result<Verdict, KernelError> {
-            Ok(Verdict::Allow)
+        fn evaluate(&self, _ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
+            Ok(GuardDecision::allow())
         }
     }
 
@@ -6684,13 +6821,13 @@ fn monetary_guard_denial_releases_budget_and_records_attempted_cost() {
             "deny-once"
         }
 
-        fn evaluate(&self, _ctx: &GuardContext) -> Result<Verdict, KernelError> {
+        fn evaluate(&self, _ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
             let mut denied = self.denied.lock().unwrap();
             if !*denied {
                 *denied = true;
-                Ok(Verdict::Deny)
+                Ok(GuardDecision::deny(Vec::new()))
             } else {
-                Ok(Verdict::Allow)
+                Ok(GuardDecision::allow())
             }
         }
     }
@@ -6907,6 +7044,22 @@ async fn dropping_async_evaluate_after_monetary_admission_unwinds_budget_payment
         started: std::sync::Arc::clone(&started),
     }));
 
+    struct AbortEvidenceGuard;
+    impl Guard for AbortEvidenceGuard {
+        fn name(&self) -> &str {
+            "abort-evidence"
+        }
+
+        fn evaluate(&self, _ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
+            Ok(GuardDecision::allow_with_evidence(vec![GuardEvidence {
+                guard_name: "abort-evidence".to_string(),
+                verdict: true,
+                details: Some("pre-invocation evidence recorded before abort".to_string()),
+            }]))
+        }
+    }
+    kernel.add_guard(Box::new(AbortEvidenceGuard));
+
     let agent_kp = Keypair::generate();
     let grant = make_monetary_grant("cost-srv", "compute", 100, 1000, "USD");
     let cap = kernel
@@ -6959,7 +7112,10 @@ async fn dropping_async_evaluate_after_monetary_admission_unwinds_budget_payment
 
     let receipt_log = kernel.receipt_log();
     assert_eq!(receipt_log.len(), 1);
-    assert!(receipt_log.get(0).unwrap().is_cancelled());
+    let receipt = receipt_log.get(0).unwrap();
+    assert!(receipt.is_cancelled());
+    assert_eq!(receipt.evidence.len(), 1);
+    assert_eq!(receipt.evidence[0].guard_name, "abort-evidence");
 }
 
 #[test]
@@ -10642,10 +10798,10 @@ fn matched_grant_index_populated_in_guard_context() {
             "index-capture"
         }
 
-        fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
+        fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
             let mut lock = self.captured.lock().unwrap();
             *lock = ctx.matched_grant_index;
-            Ok(Verdict::Allow)
+            Ok(GuardDecision::allow())
         }
     }
 
@@ -10731,13 +10887,13 @@ fn velocity_guard_denial_produces_signed_deny_receipt_no_panic() {
             "counting-rate-limit"
         }
 
-        fn evaluate(&self, _ctx: &GuardContext) -> Result<Verdict, KernelError> {
+        fn evaluate(&self, _ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
             let mut count = self.count.lock().unwrap();
             *count += 1;
             if *count > self.max {
-                Ok(Verdict::Deny)
+                Ok(GuardDecision::deny(Vec::new()))
             } else {
-                Ok(Verdict::Allow)
+                Ok(GuardDecision::allow())
             }
         }
     }

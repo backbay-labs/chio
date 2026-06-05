@@ -10,7 +10,7 @@
 use std::future::Future;
 use std::thread;
 
-use chio_kernel::{Guard, GuardContext, KernelError, Verdict};
+use chio_kernel::{Guard, GuardContext, GuardDecision, KernelError};
 
 pub mod external;
 
@@ -139,16 +139,17 @@ impl<E: ExternalGuard> Guard for ScopedAsyncGuard<E> {
         self.adapter.name()
     }
 
-    fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
         // By design: a tool-scoped guard returns Allow for traffic outside
         // its scope. The deny-by-default contract is enforced by the
         // composing authority layer, not by this single scoped guard.
         if !self.matches_tool(&ctx.request.tool_name) {
-            return Ok(Verdict::Allow);
+            return Ok(GuardDecision::allow());
         }
 
         let call_ctx = self.call_context(ctx);
         self.block_on(self.adapter.evaluate(&call_ctx))
+            .map(GuardDecision::from_verdict)
     }
 }
 
@@ -195,6 +196,7 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use chio_core_types::{CapabilityToken, CapabilityTokenBody, ChioScope, Keypair};
+    use chio_kernel::Verdict;
     use std::sync::Arc;
 
     struct AllowExternalGuard;

@@ -39,7 +39,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use chio_core::capability::Constraint;
-use chio_kernel::{Guard, GuardContext, KernelError, Verdict};
+use chio_kernel::{Guard, GuardContext, GuardDecision, KernelError};
 
 use crate::action::{extract_action_checked, ToolAction};
 
@@ -210,30 +210,34 @@ impl Guard for MemoryGovernanceGuard {
         "memory-governance"
     }
 
-    fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
         if !self.enabled {
-            return Ok(Verdict::Allow);
+            return Ok(GuardDecision::allow());
         }
 
         let action = match extract_action_checked(&ctx.request.tool_name, &ctx.request.arguments) {
             Ok(action) => action,
-            Err(_) => return Ok(Verdict::Deny),
+            Err(_) => return Ok(GuardDecision::deny(Vec::new())),
         };
 
         match action {
             ToolAction::MemoryWrite { store, .. } => self.evaluate_write(ctx, &store),
             ToolAction::MemoryRead { store, .. } => self.evaluate_read(ctx, &store),
-            _ => Ok(Verdict::Allow),
+            _ => Ok(GuardDecision::allow()),
         }
     }
 }
 
 impl MemoryGovernanceGuard {
-    fn evaluate_write(&self, ctx: &GuardContext, store: &str) -> Result<Verdict, KernelError> {
+    fn evaluate_write(
+        &self,
+        ctx: &GuardContext,
+        store: &str,
+    ) -> Result<GuardDecision, KernelError> {
         // 1. Store allowlist (capability + guard config).
         if let Some(allow) = self.effective_store_allowlist(ctx) {
             if !allow.iter().any(|s| store_matches(s, store)) {
-                return Ok(Verdict::Deny);
+                return Ok(GuardDecision::deny(Vec::new()));
             }
         }
 
@@ -244,10 +248,10 @@ impl MemoryGovernanceGuard {
                 None => {
                     // Missing TTL with a configured ceiling is treated
                     // as a request for indefinite retention and denied.
-                    return Ok(Verdict::Deny);
+                    return Ok(GuardDecision::deny(Vec::new()));
                 }
                 Some(ttl) if ttl > max_ttl => {
-                    return Ok(Verdict::Deny);
+                    return Ok(GuardDecision::deny(Vec::new()));
                 }
                 Some(_) => {}
             }
@@ -257,7 +261,7 @@ impl MemoryGovernanceGuard {
         if let Some(max_bytes) = self.max_content_size_bytes {
             if let Some(size) = extract_content_size_bytes(&ctx.request.arguments) {
                 if size > max_bytes {
-                    return Ok(Verdict::Deny);
+                    return Ok(GuardDecision::deny(Vec::new()));
                 }
             }
         }
@@ -267,7 +271,7 @@ impl MemoryGovernanceGuard {
             if let Some(content) = extract_content_text(&ctx.request.arguments) {
                 for re in &self.deny_patterns {
                     if re.is_match(&content) {
-                        return Ok(Verdict::Deny);
+                        return Ok(GuardDecision::deny(Vec::new()));
                     }
                 }
             }
@@ -279,22 +283,22 @@ impl MemoryGovernanceGuard {
             let key = (ctx.agent_id.to_string(), ctx.request.capability.id.clone());
             let count = self.bump_counter(key)?;
             if count > max_entries {
-                return Ok(Verdict::Deny);
+                return Ok(GuardDecision::deny(Vec::new()));
             }
         }
 
-        Ok(Verdict::Allow)
+        Ok(GuardDecision::allow())
     }
 
-    fn evaluate_read(&self, ctx: &GuardContext, store: &str) -> Result<Verdict, KernelError> {
+    fn evaluate_read(&self, ctx: &GuardContext, store: &str) -> Result<GuardDecision, KernelError> {
         // Reads respect the store allowlist so an agent cannot read from
         // a forbidden store even when the write path is blocked.
         if let Some(allow) = self.effective_store_allowlist(ctx) {
             if !allow.iter().any(|s| store_matches(s, store)) {
-                return Ok(Verdict::Deny);
+                return Ok(GuardDecision::deny(Vec::new()));
             }
         }
-        Ok(Verdict::Allow)
+        Ok(GuardDecision::allow())
     }
 }
 

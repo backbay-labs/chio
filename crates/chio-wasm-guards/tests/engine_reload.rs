@@ -111,7 +111,7 @@ fn evaluate_guard(guard: &WasmGuard) -> TestResult<Verdict> {
         session_filesystem_roots: None,
         matched_grant_index: None,
     };
-    Ok(guard.evaluate(&ctx)?)
+    Ok(guard.evaluate(&ctx)?.verdict)
 }
 
 #[test]

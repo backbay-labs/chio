@@ -6,7 +6,9 @@
 use std::collections::HashSet;
 use std::io;
 
-use chio_kernel::{GuardContext, KernelError, Verdict};
+#[cfg(test)]
+use chio_kernel::Verdict;
+use chio_kernel::{GuardContext, GuardDecision, KernelError};
 
 use crate::action::{extract_action_checked, ToolAction};
 
@@ -151,19 +153,19 @@ impl chio_kernel::Guard for McpToolGuard {
         "mcp-tool"
     }
 
-    fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
         if !self.enabled {
-            return Ok(Verdict::Allow);
+            return Ok(GuardDecision::allow());
         }
 
         let action = match extract_action_checked(&ctx.request.tool_name, &ctx.request.arguments) {
             Ok(action) => action,
-            Err(_) => return Ok(Verdict::Deny),
+            Err(_) => return Ok(GuardDecision::deny(Vec::new())),
         };
 
         let (tool_name, args) = match &action {
             ToolAction::McpTool(name, args) => (name.as_str(), args),
-            _ => return Ok(Verdict::Allow),
+            _ => return Ok(GuardDecision::allow()),
         };
 
         // Check argument size limit.
@@ -171,12 +173,12 @@ impl chio_kernel::Guard for McpToolGuard {
             .map_err(|e| KernelError::GuardDenied(format!("failed to serialize tool args: {e}")))?;
 
         if args_size > self.max_args_size {
-            return Ok(Verdict::Deny);
+            return Ok(GuardDecision::deny(Vec::new()));
         }
 
         match self.is_allowed(tool_name) {
-            ToolDecision::Allow => Ok(Verdict::Allow),
-            ToolDecision::Block => Ok(Verdict::Deny),
+            ToolDecision::Allow => Ok(GuardDecision::allow()),
+            ToolDecision::Block => Ok(GuardDecision::deny(Vec::new())),
         }
     }
 }

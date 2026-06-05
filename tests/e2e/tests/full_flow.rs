@@ -13,8 +13,9 @@ use chio_core::crypto::Keypair;
 use chio_core::receipt::{ChildRequestReceipt, ChioReceipt};
 use chio_guards::{ForbiddenPathGuard, GuardPipeline, ShellCommandGuard};
 use chio_kernel::{
-    CapabilitySnapshot, ChioKernel, Guard, GuardContext, KernelConfig, KernelError, ReceiptStore,
-    ReceiptStoreError, ToolCallOutput, ToolCallRequest, ToolServerConnection, Verdict,
+    CapabilitySnapshot, ChioKernel, Guard, GuardContext, GuardDecision, KernelConfig, KernelError,
+    ReceiptStore, ReceiptStoreError, ToolCallOutput, ToolCallRequest, ToolServerConnection,
+    Verdict,
 };
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -582,7 +583,7 @@ async fn full_flow_guard_error_fails_closed() {
         fn name(&self) -> &str {
             "broken-guard"
         }
-        fn evaluate(&self, _ctx: &GuardContext) -> Result<Verdict, KernelError> {
+        fn evaluate(&self, _ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
             Err(KernelError::Internal("simulated guard failure".to_string()))
         }
     }

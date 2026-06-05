@@ -65,7 +65,10 @@ fn evaluate(guard: &WarehouseCostGuard, tool: &str, args: serde_json::Value) -> 
         session_filesystem_roots: None,
         matched_grant_index: None,
     };
-    guard.evaluate(&ctx).expect("evaluate should not error")
+    guard
+        .evaluate(&ctx)
+        .expect("evaluate should not error")
+        .verdict
 }
 
 fn limits_1gb_5usd() -> WarehouseCostGuardConfig {

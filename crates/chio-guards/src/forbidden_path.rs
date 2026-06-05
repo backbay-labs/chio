@@ -3,7 +3,7 @@
 //! Denies a request when the normalized target path matches a configured
 //! forbidden glob pattern.
 
-use chio_kernel::{GuardContext, KernelError, Verdict};
+use chio_kernel::{GuardContext, GuardDecision, KernelError};
 use glob::Pattern;
 
 use crate::action::{extract_action_checked, ToolAction};
@@ -187,10 +187,10 @@ impl chio_kernel::Guard for ForbiddenPathGuard {
         "forbidden-path"
     }
 
-    fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
         let action = match extract_action_checked(&ctx.request.tool_name, &ctx.request.arguments) {
             Ok(action) => action,
-            Err(_) => return Ok(Verdict::Deny),
+            Err(_) => return Ok(GuardDecision::deny(Vec::new())),
         };
 
         let path = match &action {
@@ -201,13 +201,13 @@ impl chio_kernel::Guard for ForbiddenPathGuard {
         };
 
         let Some(path) = path else {
-            return Ok(Verdict::Allow);
+            return Ok(GuardDecision::allow());
         };
 
         if self.is_forbidden(path) {
-            Ok(Verdict::Deny)
+            Ok(GuardDecision::deny(Vec::new()))
         } else {
-            Ok(Verdict::Allow)
+            Ok(GuardDecision::allow())
         }
     }
 }

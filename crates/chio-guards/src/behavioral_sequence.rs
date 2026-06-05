@@ -14,7 +14,9 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use chio_http_session::SessionJournal;
-use chio_kernel::{Guard, GuardContext, KernelError, Verdict};
+#[cfg(test)]
+use chio_kernel::Verdict;
+use chio_kernel::{Guard, GuardContext, GuardDecision, KernelError};
 
 // ---------------------------------------------------------------------------
 // SequencePolicy
@@ -58,7 +60,7 @@ impl Guard for BehavioralSequenceGuard {
         "behavioral-sequence"
     }
 
-    fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
         let tool_name = &ctx.request.tool_name;
 
         let snapshot = self.journal.snapshot().map_err(|e| {
@@ -72,7 +74,7 @@ impl Guard for BehavioralSequenceGuard {
         if sequence.is_empty() {
             if let Some(ref required_first) = self.policy.required_first_tool {
                 if tool_name != required_first {
-                    return Ok(Verdict::Deny);
+                    return Ok(GuardDecision::deny(Vec::new()));
                 }
             }
         }
@@ -82,7 +84,7 @@ impl Guard for BehavioralSequenceGuard {
             let invoked: HashSet<&str> = sequence.iter().map(|s| s.as_str()).collect();
             for req in required {
                 if !invoked.contains(req.as_str()) {
-                    return Ok(Verdict::Deny);
+                    return Ok(GuardDecision::deny(Vec::new()));
                 }
             }
         }
@@ -91,7 +93,7 @@ impl Guard for BehavioralSequenceGuard {
         if let Some(last_tool) = sequence.last() {
             for (from, to) in &self.policy.forbidden_transitions {
                 if last_tool == from && tool_name == to {
-                    return Ok(Verdict::Deny);
+                    return Ok(GuardDecision::deny(Vec::new()));
                 }
             }
         }
@@ -107,11 +109,11 @@ impl Guard for BehavioralSequenceGuard {
                 }
             }
             if count >= max_consec {
-                return Ok(Verdict::Deny);
+                return Ok(GuardDecision::deny(Vec::new()));
             }
         }
 
-        Ok(Verdict::Allow)
+        Ok(GuardDecision::allow())
     }
 }
 

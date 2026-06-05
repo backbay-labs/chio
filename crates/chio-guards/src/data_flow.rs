@@ -10,7 +10,9 @@
 use std::sync::Arc;
 
 use chio_http_session::SessionJournal;
-use chio_kernel::{Guard, GuardContext, KernelError, Verdict};
+#[cfg(test)]
+use chio_kernel::Verdict;
+use chio_kernel::{Guard, GuardContext, GuardDecision, KernelError};
 
 // ---------------------------------------------------------------------------
 // DataFlowConfig
@@ -52,7 +54,7 @@ impl Guard for DataFlowGuard {
         "data-flow"
     }
 
-    fn evaluate(&self, _ctx: &GuardContext) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, _ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
         let snapshot = self.journal.snapshot().map_err(|e| {
             KernelError::Internal(format!("data-flow guard journal error (fail-closed): {e}"))
         })?;
@@ -61,14 +63,14 @@ impl Guard for DataFlowGuard {
         // Check bytes read limit.
         if let Some(max_read) = self.config.max_bytes_read {
             if flow.total_bytes_read >= max_read {
-                return Ok(Verdict::Deny);
+                return Ok(GuardDecision::deny(Vec::new()));
             }
         }
 
         // Check bytes written limit.
         if let Some(max_written) = self.config.max_bytes_written {
             if flow.total_bytes_written >= max_written {
-                return Ok(Verdict::Deny);
+                return Ok(GuardDecision::deny(Vec::new()));
             }
         }
 
@@ -78,11 +80,11 @@ impl Guard for DataFlowGuard {
                 .total_bytes_read
                 .saturating_add(flow.total_bytes_written);
             if total >= max_total {
-                return Ok(Verdict::Deny);
+                return Ok(GuardDecision::deny(Vec::new()));
             }
         }
 
-        Ok(Verdict::Allow)
+        Ok(GuardDecision::allow())
     }
 }
 

@@ -8,7 +8,9 @@ use std::sync::OnceLock;
 use regex::Regex;
 use thiserror::Error;
 
-use chio_kernel::{GuardContext, KernelError, Verdict};
+#[cfg(test)]
+use chio_kernel::Verdict;
+use chio_kernel::{GuardContext, GuardDecision, KernelError};
 
 use crate::action::{extract_action_checked, ToolAction};
 
@@ -321,32 +323,32 @@ impl chio_kernel::Guard for SecretLeakGuard {
         "secret-leak"
     }
 
-    fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
         if !self.enabled {
-            return Ok(Verdict::Allow);
+            return Ok(GuardDecision::allow());
         }
 
         let action = match extract_action_checked(&ctx.request.tool_name, &ctx.request.arguments) {
             Ok(action) => action,
-            Err(_) => return Ok(Verdict::Deny),
+            Err(_) => return Ok(GuardDecision::deny(Vec::new())),
         };
 
         let (path, content) = match &action {
             ToolAction::FileWrite(p, c) => (p.as_str(), c.as_slice()),
             ToolAction::Patch(p, diff) => (p.as_str(), diff.as_bytes()),
-            _ => return Ok(Verdict::Allow),
+            _ => return Ok(GuardDecision::allow()),
         };
 
         if self.should_skip_path(path) {
-            return Ok(Verdict::Allow);
+            return Ok(GuardDecision::allow());
         }
 
         let matches = self.scan(content);
 
         if matches.is_empty() {
-            Ok(Verdict::Allow)
+            Ok(GuardDecision::allow())
         } else {
-            Ok(Verdict::Deny)
+            Ok(GuardDecision::deny(Vec::new()))
         }
     }
 }

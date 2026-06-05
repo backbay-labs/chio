@@ -40,7 +40,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_core::receipt::ChioReceipt;
 use chio_kernel::operator_report::EmaBaselineState;
-use chio_kernel::{Guard, GuardContext, KernelError, Verdict};
+use chio_kernel::{Guard, GuardContext, GuardDecision, KernelError};
 
 /// Default EMA smoothing factor. Equivalent to a ~10-sample window.
 pub const DEFAULT_EMA_ALPHA: f64 = 0.2;
@@ -352,7 +352,7 @@ impl Guard for BehavioralProfileGuard {
         &self.name
     }
 
-    fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
         let now = (self.now)();
         let window_start = self.current_window_start(now);
         let agent_id = ctx.agent_id.as_str();
@@ -361,7 +361,7 @@ impl Guard for BehavioralProfileGuard {
         // the sync path. Other metrics are available through
         // `observe_sample` so callers can feed the guard out-of-band.
         let _ = self.observe_sample(agent_id, BehavioralMetric::CallRate, sample, window_start)?;
-        Ok(Verdict::Allow)
+        Ok(GuardDecision::allow())
     }
 }
 
