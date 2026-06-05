@@ -14,7 +14,8 @@ use chio_core::capability::{CapabilityToken, ChioScope};
 use chio_core::crypto::{sha256_hex, Keypair, Signature};
 use chio_core::receipt::{
     ChildRequestReceipt, ChioReceipt, Decision, FinancialReceiptMetadata,
-    GovernedTransactionReceiptMetadata, ReceiptAttributionMetadata, SettlementStatus,
+    GovernedTransactionReceiptMetadata, ReceiptAttributionMetadata, ReceiptCryptoFloor,
+    SettlementStatus,
 };
 use chio_core::session::{
     OperationTerminalState, RequestLineageMode, RequestLineageRecord, SessionAnchorReference,

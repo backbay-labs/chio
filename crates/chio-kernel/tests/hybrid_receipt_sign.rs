@@ -13,8 +13,8 @@
 use chio_core::canonical::canonical_json_bytes;
 use chio_core::crypto::{Keypair, PublicKey, SigningAlgorithm};
 use chio_core::receipt::{
-    chio_receipt_id, ChioReceiptBody, ChioReceiptSigningBody, Decision, ToolCallAction, TrustLevel,
-    CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY,
+    chio_receipt_id, ChioReceiptBody, ChioReceiptSigningBody, Decision, ReceiptCryptoFloor,
+    ToolCallAction, TrustLevel, CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY,
 };
 use chio_kernel::{
     kernel_signing_backend, sign_receipt_body_with_backend, KernelCryptoFloor,
@@ -199,6 +199,9 @@ fn classical_receipt_byte_identical_under_allow_classical() {
         "signature must verify against the ChioReceiptSigningBody wrapper bytes"
     );
     assert!(receipt.verify_signature().unwrap());
+    assert!(receipt
+        .verify_signature_with_floor(ReceiptCryptoFloor::AllowClassical)
+        .unwrap());
 }
 
 #[test]
@@ -225,6 +228,13 @@ fn hybrid_receipt_round_trip_signs_and_verifies() {
         .kernel_key
         .verify(&wrapper_bytes, &receipt.signature));
     assert!(receipt.verify_signature().unwrap());
+    assert!(receipt
+        .verify_signature_with_floor(ReceiptCryptoFloor::PqRequired)
+        .unwrap());
+    let err = receipt
+        .verify_signature_with_floor(ReceiptCryptoFloor::AllowClassical)
+        .expect_err("hybrid receipt must reject under allow_classical");
+    assert!(err.to_string().contains("crypto_floor=allow_classical"));
 }
 
 #[test]

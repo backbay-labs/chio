@@ -1870,7 +1870,9 @@ impl ChioKernel {
             {
                 match self.local_receipt_artifact(parent_receipt_id) {
                     Some(parent_receipt) => {
-                        let signature_valid = parent_receipt.verify_signature()?;
+                        let signature_valid = parent_receipt.verify_signature_with_floor(
+                            receipt_crypto_floor(self.capability_crypto_floor),
+                        )?;
                         if !signature_valid {
                             return Err(KernelError::GovernedTransactionDenied(
                                 "governed call_chain parent receipt failed signature verification"

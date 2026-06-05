@@ -72,9 +72,15 @@ pub(crate) fn ensure_chio_receipt_verified_with_context(
     seq: Option<u64>,
 ) -> Result<(), ReceiptStoreError> {
     let context = format_receipt_context(receipt_kind, Some(receipt.id.as_str()), seq);
-    let signature_valid = receipt.verify_signature().map_err(|error| {
-        ReceiptStoreError::Conflict(format!("{context} verification failed: {error}"))
-    })?;
+    // The standalone SQLite verifier has no policy handle. Keep the
+    // compatibility floor explicit: accept legacy classical receipts and
+    // hybrid receipts, while policy-bearing callers enforce their configured
+    // floor before persistence or export.
+    let signature_valid = receipt
+        .verify_signature_with_floor(ReceiptCryptoFloor::AllowHybrid)
+        .map_err(|error| {
+            ReceiptStoreError::Conflict(format!("{context} verification failed: {error}"))
+        })?;
     if !signature_valid {
         return Err(ReceiptStoreError::Conflict(format!(
             "{context} has invalid signature",
@@ -99,9 +105,15 @@ pub(crate) fn ensure_child_receipt_verified_with_context(
     seq: Option<u64>,
 ) -> Result<(), ReceiptStoreError> {
     let context = format_receipt_context(receipt_kind, Some(receipt.id.as_str()), seq);
-    let signature_valid = receipt.verify_signature().map_err(|error| {
-        ReceiptStoreError::Conflict(format!("{context} verification failed: {error}"))
-    })?;
+    // The standalone SQLite verifier has no policy handle. Keep the
+    // compatibility floor explicit: accept legacy classical receipts and
+    // hybrid receipts, while policy-bearing callers enforce their configured
+    // floor before persistence or export.
+    let signature_valid = receipt
+        .verify_signature_with_floor(ReceiptCryptoFloor::AllowHybrid)
+        .map_err(|error| {
+            ReceiptStoreError::Conflict(format!("{context} verification failed: {error}"))
+        })?;
     if !signature_valid {
         return Err(ReceiptStoreError::Conflict(format!(
             "{context} has invalid signature",

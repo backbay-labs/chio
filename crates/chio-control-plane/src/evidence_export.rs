@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
-use chio_core::receipt::{BoundaryClass, ChioReceipt, ReceiptKind};
+use chio_core::receipt::{BoundaryClass, ChioReceipt, ReceiptCryptoFloor, ReceiptKind};
 use chio_core::{canonical_json_bytes, chio_receipt_id, sha256_hex, PublicKey, Signature};
 use chio_kernel::checkpoint::{
     checkpoint_body_sha256, validate_checkpoint_transparency, CheckpointConsistencyProof,
@@ -1019,7 +1019,20 @@ fn verify_tool_receipts(
                 record.seq
             )));
         }
-        if !record.receipt.verify_signature()? {
+        // Evidence package verification has no policy.crypto_floor input.
+        // Keep the compatibility floor explicit here: accept legacy classical
+        // receipts and hybrid receipts, while policy-bearing callers enforce
+        // their configured floor before export.
+        if !record
+            .receipt
+            .verify_signature_with_floor(ReceiptCryptoFloor::AllowHybrid)
+            .map_err(|error| {
+                CliError::attest_error(format!(
+                    "tool receipt signature verification failed: {}: {error}",
+                    record.receipt.id
+                ))
+            })?
+        {
             return Err(CliError::attest_error(format!(
                 "tool receipt signature verification failed: {}",
                 record.receipt.id
@@ -1044,7 +1057,20 @@ fn verify_child_receipts(child_receipts: &[EvidenceChildReceiptRecord]) -> Resul
                 record.seq
             )));
         }
-        if !record.receipt.verify_signature()? {
+        // Evidence package verification has no policy.crypto_floor input.
+        // Keep the compatibility floor explicit here: accept legacy classical
+        // receipts and hybrid receipts, while policy-bearing callers enforce
+        // their configured floor before export.
+        if !record
+            .receipt
+            .verify_signature_with_floor(ReceiptCryptoFloor::AllowHybrid)
+            .map_err(|error| {
+                CliError::attest_error(format!(
+                    "child receipt signature verification failed: {}: {error}",
+                    record.receipt.id
+                ))
+            })?
+        {
             return Err(CliError::attest_error(format!(
                 "child receipt signature verification failed: {}",
                 record.receipt.id
@@ -1258,7 +1284,10 @@ fn evidence_receipt_semantic_summary(
             .map(|id| id == record.receipt.id)
             .unwrap_or(false)
             && record.receipt.is_allowed()
-            && record.receipt.verify_signature().unwrap_or(false)
+            && record
+                .receipt
+                .verify_signature_with_floor(ReceiptCryptoFloor::AllowHybrid)
+                .unwrap_or(false)
             && record.receipt.action.verify_hash().unwrap_or(false)
         {
             summary.authorized += 1;
@@ -2123,7 +2152,13 @@ mod tests {
     use super::*;
 
     use chio_core::crypto::Keypair;
+    #[cfg(feature = "pq")]
+    use chio_core::crypto::{Ed25519Backend, HybridBackend, MlDsa65Backend, SigningBackend};
+    #[cfg(feature = "pq")]
+    use chio_core::receipt::{ChildRequestReceipt, ChildRequestReceiptBody};
     use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction};
+    #[cfg(feature = "pq")]
+    use chio_core::session::{OperationKind, OperationTerminalState, RequestId, SessionId};
     use chio_kernel::{build_checkpoint, build_checkpoint_with_previous};
     use chio_kernel::{
         EvidenceChildReceiptScope, EvidenceExportBundle, EvidenceExportQuery,
@@ -2213,6 +2248,69 @@ mod tests {
         .test_unwrap()
     }
 
+    #[cfg(feature = "pq")]
+    fn hybrid_backend(seed: [u8; 32]) -> HybridBackend {
+        let keypair = Keypair::generate();
+        let pq = MlDsa65Backend::from_seed(&seed);
+        HybridBackend::new(Box::new(Ed25519Backend::new(keypair)), pq).test_unwrap()
+    }
+
+    #[cfg(feature = "pq")]
+    fn sample_hybrid_receipt() -> ChioReceipt {
+        let backend = hybrid_backend([9u8; 32]);
+        ChioReceipt::sign_with_backend(
+            ChioReceiptBody {
+                id: "receipt-export-hybrid-1".to_string(),
+                timestamp: 1_775_137_627,
+                capability_id: "cap-export-hybrid-1".to_string(),
+                tool_server: "export".to_string(),
+                tool_name: "publish".to_string(),
+                action: ToolCallAction::from_parameters(
+                    serde_json::json!({"release":"candidate-hybrid"}),
+                )
+                .test_unwrap(),
+                decision: Some(Decision::Allow),
+                receipt_kind: Default::default(),
+                boundary_class: Default::default(),
+                observation_outcome: None,
+                tool_origin: Default::default(),
+                redaction_mode: Default::default(),
+                actor_chain: Vec::new(),
+                content_hash: "content-export-hybrid-1".to_string(),
+                policy_hash: "policy-export-hybrid-1".to_string(),
+                evidence: Vec::new(),
+                metadata: None,
+                trust_level: chio_core::TrustLevel::default(),
+                tenant_id: None,
+                kernel_key: backend.public_key(),
+            },
+            &backend,
+        )
+        .test_unwrap()
+    }
+
+    #[cfg(feature = "pq")]
+    fn sample_hybrid_child_receipt() -> ChildRequestReceipt {
+        let backend = hybrid_backend([10u8; 32]);
+        ChildRequestReceipt::sign_with_backend(
+            ChildRequestReceiptBody {
+                id: "child-receipt-export-hybrid-1".to_string(),
+                timestamp: 1_775_137_628,
+                session_id: SessionId::new("sess-export-hybrid-1"),
+                parent_request_id: RequestId::new("parent-export-hybrid-1"),
+                request_id: RequestId::new("child-export-hybrid-1"),
+                operation_kind: OperationKind::CreateMessage,
+                terminal_state: OperationTerminalState::Completed,
+                outcome_hash: "outcome-export-hybrid-1".to_string(),
+                policy_hash: "policy-export-hybrid-1".to_string(),
+                metadata: None,
+                kernel_key: backend.public_key(),
+            },
+            &backend,
+        )
+        .test_unwrap()
+    }
+
     fn sample_bundle() -> EvidenceExportBundle {
         let receipt = sample_receipt();
         let canonical = canonical_json_bytes(&receipt).test_unwrap();
@@ -2273,6 +2371,26 @@ mod tests {
             federation_policy: None,
             disclosure_notice,
         }
+    }
+
+    #[cfg(feature = "pq")]
+    #[test]
+    fn evidence_export_verification_accepts_hybrid_receipts_without_policy_floor() {
+        let tool_receipts = vec![EvidenceToolReceiptRecord {
+            seq: 1,
+            receipt: sample_hybrid_receipt(),
+        }];
+        let child_receipts = vec![EvidenceChildReceiptRecord {
+            seq: 2,
+            receipt: sample_hybrid_child_receipt(),
+        }];
+
+        let verified = verify_tool_receipts(&tool_receipts).test_unwrap();
+        verify_child_receipts(&child_receipts).test_unwrap();
+        let semantics = evidence_receipt_semantic_summary(&tool_receipts);
+
+        assert_eq!(verified.len(), 1);
+        assert_eq!(semantics.authorized, 1);
     }
 
     #[test]

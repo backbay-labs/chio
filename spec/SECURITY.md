@@ -454,8 +454,11 @@ protected receipt, capability, or compliance certificate.
 Existing controls:
 
 - capabilities and receipts are already signed artifacts
-- the shipped verifier surfaces preserve explicit algorithm identity for
-  existing classical signing paths
+- capability, receipt, and compliance-certificate verifier surfaces preserve
+  explicit algorithm identity for classical and hybrid signing paths
+- capability verification, compliance-certificate verification, the core
+  receipt verifier API, and governed parent-receipt validation can enforce
+  `allow_classical`, `allow_hybrid`, or `pq_required`
 
 Required mitigations:
 
@@ -469,10 +472,12 @@ Required mitigations:
 
 Residual risk:
 
-- post-quantum protection is planned but not yet implemented in the shipped
-  verifier paths
-- operators must not claim post-quantum downgrade resistance until the hybrid
-  signature surface and cryptographic-floor enforcement are available
+- verifier paths that do not receive a policy `crypto_floor` still use the
+  explicit `allow_hybrid` compatibility floor, which accepts classical and
+  hybrid receipts but does not require post-quantum protection
+- third-party or legacy callers that invoke compatibility helpers such as
+  receipt `verify_signature()` directly are not enforcing a post-quantum floor
+  unless they route through the floor-aware verifier API
 
 ### 2.14 TEE Quote Forgery or Misbinding
 

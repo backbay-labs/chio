@@ -379,14 +379,17 @@ pub(crate) enum LocalReceiptArtifact {
 }
 
 impl LocalReceiptArtifact {
-    fn verify_signature(&self) -> Result<bool, KernelError> {
+    fn verify_signature_with_floor(
+        &self,
+        floor: chio_core::receipt::ReceiptCryptoFloor,
+    ) -> Result<bool, KernelError> {
         match self {
-            Self::Tool(receipt) => receipt.verify_signature().map_err(|error| {
+            Self::Tool(receipt) => receipt.verify_signature_with_floor(floor).map_err(|error| {
                 KernelError::GovernedTransactionDenied(format!(
                     "governed call_chain parent receipt failed signature verification: {error}"
                 ))
             }),
-            Self::Child(receipt) => receipt.verify_signature().map_err(|error| {
+            Self::Child(receipt) => receipt.verify_signature_with_floor(floor).map_err(|error| {
                 KernelError::GovernedTransactionDenied(format!(
                     "governed call_chain parent receipt failed signature verification: {error}"
                 ))
@@ -1322,6 +1325,14 @@ fn capability_crypto_floor(
         }
         KernelCryptoFloor::AllowHybrid => chio_core::capability::CapabilityCryptoFloor::AllowHybrid,
         KernelCryptoFloor::PqRequired => chio_core::capability::CapabilityCryptoFloor::PqRequired,
+    }
+}
+
+fn receipt_crypto_floor(floor: KernelCryptoFloor) -> chio_core::receipt::ReceiptCryptoFloor {
+    match floor {
+        KernelCryptoFloor::AllowClassical => chio_core::receipt::ReceiptCryptoFloor::AllowClassical,
+        KernelCryptoFloor::AllowHybrid => chio_core::receipt::ReceiptCryptoFloor::AllowHybrid,
+        KernelCryptoFloor::PqRequired => chio_core::receipt::ReceiptCryptoFloor::PqRequired,
     }
 }
 

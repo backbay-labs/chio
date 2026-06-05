@@ -10,6 +10,8 @@ use chio_core::capability::{
     MeteredSettlementMode, MonetaryAmount, Operation, ToolGrant,
 };
 use chio_core::crypto::Keypair;
+#[cfg(feature = "pq")]
+use chio_core::crypto::{Ed25519Backend, HybridBackend, MlDsa65Backend, SigningBackend};
 use chio_core::merkle::MerkleTree;
 use chio_core::receipt::{
     ChildRequestReceipt, ChildRequestReceiptBody, ChioReceipt, ChioReceiptBody, Decision,
@@ -102,6 +104,66 @@ fn sample_child_receipt() -> ChildRequestReceipt {
     .test_unwrap()
 }
 
+#[cfg(feature = "pq")]
+fn hybrid_backend(seed: [u8; 32]) -> HybridBackend {
+    let keypair = Keypair::generate();
+    let pq = MlDsa65Backend::from_seed(&seed);
+    HybridBackend::new(Box::new(Ed25519Backend::new(keypair)), pq).test_unwrap()
+}
+
+#[cfg(feature = "pq")]
+fn sample_hybrid_receipt() -> ChioReceipt {
+    let backend = hybrid_backend([7u8; 32]);
+    ChioReceipt::sign_with_backend(
+        ChioReceiptBody {
+            id: "rcpt-test-hybrid-store-001".to_string(),
+            timestamp: 3,
+            capability_id: "cap-hybrid-1".to_string(),
+            tool_server: "shell".to_string(),
+            tool_name: "bash".to_string(),
+            action: valid_tool_action(serde_json::json!({"hybrid": true})),
+            decision: Some(Decision::Allow),
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
+            content_hash: "content-hybrid-1".to_string(),
+            policy_hash: "policy-hybrid-1".to_string(),
+            evidence: Vec::new(),
+            metadata: None,
+            trust_level: chio_core::TrustLevel::default(),
+            tenant_id: None,
+            kernel_key: backend.public_key(),
+        },
+        &backend,
+    )
+    .test_unwrap()
+}
+
+#[cfg(feature = "pq")]
+fn sample_hybrid_child_receipt() -> ChildRequestReceipt {
+    let backend = hybrid_backend([8u8; 32]);
+    ChildRequestReceipt::sign_with_backend(
+        ChildRequestReceiptBody {
+            id: "child-rcpt-test-hybrid-store-001".to_string(),
+            timestamp: 4,
+            session_id: SessionId::new("sess-hybrid-1"),
+            parent_request_id: RequestId::new("parent-hybrid-1"),
+            request_id: RequestId::new("child-hybrid-1"),
+            operation_kind: OperationKind::CreateMessage,
+            terminal_state: OperationTerminalState::Completed,
+            outcome_hash: "outcome-hybrid-1".to_string(),
+            policy_hash: "policy-hybrid-1".to_string(),
+            metadata: None,
+            kernel_key: backend.public_key(),
+        },
+        &backend,
+    )
+    .test_unwrap()
+}
+
 fn request_lineage_json(
     request_id: &str,
     session_anchor_id: &str,
@@ -141,6 +203,27 @@ fn sqlite_receipt_store_persists_across_reopen() {
     let reopened = SqliteReceiptStore::open(&path).test_unwrap();
     assert_eq!(reopened.tool_receipt_count().test_unwrap(), 1);
     assert_eq!(reopened.child_receipt_count().test_unwrap(), 1);
+
+    let _ = fs::remove_file(path);
+}
+
+#[cfg(feature = "pq")]
+#[test]
+fn receipt_verify_accepts_hybrid_receipts_for_persistence() {
+    let path = unique_db_path("chio-receipts-hybrid");
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+
+    let tool_seq = store
+        .append_chio_receipt_returning_seq(&sample_hybrid_receipt())
+        .test_unwrap();
+    let child_seq = store
+        .append_child_receipt_record(&sample_hybrid_child_receipt())
+        .test_unwrap();
+
+    assert_eq!(tool_seq, 1);
+    assert_eq!(child_seq, 2);
+    assert_eq!(store.tool_receipt_count().test_unwrap(), 1);
+    assert_eq!(store.child_receipt_count().test_unwrap(), 1);
 
     let _ = fs::remove_file(path);
 }

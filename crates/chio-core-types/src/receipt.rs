@@ -69,6 +69,170 @@ impl TrustLevel {
     }
 }
 
+/// Minimum cryptographic posture enforced by receipt validators.
+///
+/// Mirrors `CapabilityCryptoFloor` and the wire form of
+/// `chio_policy::CryptoFloor` without coupling portable receipt verification
+/// to kernel or policy crates.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReceiptCryptoFloor {
+    /// Accept classical-only Ed25519/P-256/P-384 envelopes. Default.
+    #[default]
+    AllowClassical,
+    /// Accept either classical-only or hybrid classical-plus-ML-DSA-65
+    /// envelopes.
+    AllowHybrid,
+    /// Reject classical-only envelopes; require hybrid signing on every
+    /// signed receipt.
+    PqRequired,
+}
+
+impl ReceiptCryptoFloor {
+    /// Whether the floor permits hybrid envelopes on the wire.
+    #[must_use]
+    pub fn allows_hybrid(&self) -> bool {
+        matches!(self, Self::AllowHybrid | Self::PqRequired)
+    }
+
+    /// Whether the floor permits classical-only envelopes on the wire.
+    #[must_use]
+    pub fn allows_classical_only(&self) -> bool {
+        matches!(self, Self::AllowClassical | Self::AllowHybrid)
+    }
+
+    /// Stable wire-format identifier for diagnostics.
+    #[must_use]
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::AllowClassical => "allow_classical",
+            Self::AllowHybrid => "allow_hybrid",
+            Self::PqRequired => "pq_required",
+        }
+    }
+}
+
+/// Lowercase wire label for a [`SigningAlgorithm`] used in receipt floor
+/// diagnostics.
+fn receipt_signing_algorithm_label(alg: SigningAlgorithm) -> &'static str {
+    match alg {
+        SigningAlgorithm::Ed25519 => "ed25519",
+        SigningAlgorithm::P256 => "p256",
+        SigningAlgorithm::P384 => "p384",
+        SigningAlgorithm::Hybrid => "hybrid",
+    }
+}
+
+/// Errors raised by [`ChioReceipt::verify_signature_with_floor`].
+#[cfg_attr(feature = "std", derive(thiserror::Error))]
+#[derive(Debug)]
+pub enum ReceiptFloorVerifyError {
+    /// The signature algorithm violates the configured `crypto_floor`.
+    #[cfg_attr(
+        feature = "std",
+        error(
+            "receipt rejected by crypto_floor={}: signature algorithm {} not permitted",
+            floor.as_str(),
+            receipt_signing_algorithm_label(*signature_algorithm)
+        )
+    )]
+    RejectedByCryptoFloor {
+        /// The configured floor that rejected the receipt.
+        floor: ReceiptCryptoFloor,
+        /// The signature algorithm carried by the receipt.
+        signature_algorithm: SigningAlgorithm,
+    },
+
+    /// The optional receipt algorithm envelope field disagrees with the
+    /// algorithm carried by the signature material.
+    #[cfg_attr(
+        feature = "std",
+        error(
+            "receipt algorithm envelope field {} disagrees with signature {}",
+            receipt_signing_algorithm_label(*declared),
+            receipt_signing_algorithm_label(*actual)
+        )
+    )]
+    AlgorithmMismatch {
+        /// The algorithm declared in the envelope field.
+        declared: SigningAlgorithm,
+        /// The algorithm carried by the signature material.
+        actual: SigningAlgorithm,
+    },
+
+    /// Forwarded from the underlying canonical-JSON or signature
+    /// verification path.
+    #[cfg_attr(
+        feature = "std",
+        error("receipt cryptographic verification failed: {0}")
+    )]
+    Crypto(#[cfg_attr(feature = "std", source)] Error),
+}
+
+#[cfg(not(feature = "std"))]
+impl core::fmt::Display for ReceiptFloorVerifyError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::RejectedByCryptoFloor {
+                floor,
+                signature_algorithm,
+            } => write!(
+                f,
+                "receipt rejected by crypto_floor={}: signature algorithm {} not permitted",
+                floor.as_str(),
+                receipt_signing_algorithm_label(*signature_algorithm)
+            ),
+            Self::AlgorithmMismatch { declared, actual } => write!(
+                f,
+                "receipt algorithm envelope field {} disagrees with signature {}",
+                receipt_signing_algorithm_label(*declared),
+                receipt_signing_algorithm_label(*actual)
+            ),
+            Self::Crypto(err) => write!(f, "receipt cryptographic verification failed: {err}"),
+        }
+    }
+}
+
+#[cfg(not(feature = "std"))]
+impl core::error::Error for ReceiptFloorVerifyError {
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        match self {
+            Self::Crypto(err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+fn ensure_receipt_signature_algorithm_allowed(
+    declared_algorithm: Option<SigningAlgorithm>,
+    signature_algorithm: SigningAlgorithm,
+    floor: ReceiptCryptoFloor,
+) -> core::result::Result<(), ReceiptFloorVerifyError> {
+    if let Some(declared) = declared_algorithm {
+        if declared != signature_algorithm {
+            return Err(ReceiptFloorVerifyError::AlgorithmMismatch {
+                declared,
+                actual: signature_algorithm,
+            });
+        }
+    }
+
+    let is_hybrid = matches!(signature_algorithm, SigningAlgorithm::Hybrid);
+    let allowed = if is_hybrid {
+        floor.allows_hybrid()
+    } else {
+        floor.allows_classical_only()
+    };
+    if !allowed {
+        return Err(ReceiptFloorVerifyError::RejectedByCryptoFloor {
+            floor,
+            signature_algorithm,
+        });
+    }
+
+    Ok(())
+}
+
 /// Semantic class of a signed receipt in the current v1 pre-release model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -741,6 +905,42 @@ impl ChioReceipt {
             .verify_canonical(&signing_body, &self.signature)
     }
 
+    /// Verify the receipt signature and enforce the configured crypto floor.
+    ///
+    /// Verification dispatches off `Signature::algorithm()`:
+    ///
+    /// - [`SigningAlgorithm::Hybrid`] receipts are accepted under
+    ///   [`ReceiptCryptoFloor::AllowHybrid`] and
+    ///   [`ReceiptCryptoFloor::PqRequired`] and rejected under
+    ///   [`ReceiptCryptoFloor::AllowClassical`].
+    /// - Classical receipts (Ed25519 / P-256 / P-384) are accepted under
+    ///   [`ReceiptCryptoFloor::AllowClassical`] and
+    ///   [`ReceiptCryptoFloor::AllowHybrid`] and rejected under
+    ///   [`ReceiptCryptoFloor::PqRequired`].
+    ///
+    /// The floor check runs before the cryptographic verification step so
+    /// policy-bearing verifiers can record downgrade attempts distinctly from
+    /// malformed or forged signatures.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ReceiptFloorVerifyError::RejectedByCryptoFloor`] when the
+    /// signature algorithm violates the floor.
+    /// [`ReceiptFloorVerifyError::AlgorithmMismatch`] when the envelope field
+    /// disagrees with the signature material.
+    /// [`ReceiptFloorVerifyError::Crypto`] when canonical re-serialization or
+    /// signature verification returns an error.
+    pub fn verify_signature_with_floor(
+        &self,
+        floor: ReceiptCryptoFloor,
+    ) -> core::result::Result<bool, ReceiptFloorVerifyError> {
+        let signature_algorithm = self.signature.algorithm();
+        ensure_receipt_signature_algorithm_allowed(self.algorithm, signature_algorithm, floor)?;
+
+        self.verify_signature()
+            .map_err(ReceiptFloorVerifyError::Crypto)
+    }
+
     /// Derive v1 receipt semantics for display, SIEM, and bridge gates.
     #[must_use]
     pub fn semantic_fields(&self) -> ReceiptSemanticFields {
@@ -938,6 +1138,18 @@ impl ChildRequestReceipt {
     pub fn verify_signature(&self) -> Result<bool> {
         let body = self.body();
         self.kernel_key.verify_canonical(&body, &self.signature)
+    }
+
+    /// Verify the child-request receipt signature and enforce the configured
+    /// crypto floor.
+    pub fn verify_signature_with_floor(
+        &self,
+        floor: ReceiptCryptoFloor,
+    ) -> core::result::Result<bool, ReceiptFloorVerifyError> {
+        let signature_algorithm = self.signature.algorithm();
+        ensure_receipt_signature_algorithm_allowed(self.algorithm, signature_algorithm, floor)?;
+        self.verify_signature()
+            .map_err(ReceiptFloorVerifyError::Crypto)
     }
 }
 
@@ -1941,6 +2153,69 @@ mod tests {
                 .and_then(serde_json::Value::as_str),
             Some("rcpt-001")
         );
+    }
+
+    #[test]
+    fn receipt_floor_rejects_ed25519_under_pq_required() {
+        let kp = Keypair::generate();
+        let receipt = ChioReceipt::sign(make_receipt_body(&kp), &kp).unwrap();
+
+        let err = receipt
+            .verify_signature_with_floor(ReceiptCryptoFloor::PqRequired)
+            .expect_err("ed25519 receipt must reject under pq_required");
+
+        assert!(err.to_string().contains("crypto_floor=pq_required"));
+        assert!(err.to_string().contains("ed25519"));
+    }
+
+    #[test]
+    fn receipt_floor_accepts_ed25519_under_allow_classical() {
+        let kp = Keypair::generate();
+        let receipt = ChioReceipt::sign(make_receipt_body(&kp), &kp).unwrap();
+
+        assert!(receipt
+            .verify_signature_with_floor(ReceiptCryptoFloor::AllowClassical)
+            .unwrap());
+    }
+
+    #[cfg(feature = "pq")]
+    #[test]
+    fn receipt_floor_accepts_hybrid_under_pq_required() {
+        use crate::crypto::{Ed25519Backend, HybridBackend, MlDsa65Backend, SigningBackend};
+
+        let kp = Keypair::generate();
+        let seed = [7u8; 32];
+        let pq = MlDsa65Backend::from_seed(&seed);
+        let backend = HybridBackend::new(Box::new(Ed25519Backend::new(kp.clone())), pq).unwrap();
+        let mut body = make_receipt_body(&kp);
+        body.kernel_key = backend.public_key();
+        let receipt = ChioReceipt::sign_with_backend(body, &backend).unwrap();
+
+        assert_eq!(receipt.signature.algorithm(), SigningAlgorithm::Hybrid);
+        assert!(receipt
+            .verify_signature_with_floor(ReceiptCryptoFloor::PqRequired)
+            .unwrap());
+    }
+
+    #[cfg(feature = "pq")]
+    #[test]
+    fn receipt_floor_rejects_hybrid_under_allow_classical() {
+        use crate::crypto::{Ed25519Backend, HybridBackend, MlDsa65Backend, SigningBackend};
+
+        let kp = Keypair::generate();
+        let seed = [7u8; 32];
+        let pq = MlDsa65Backend::from_seed(&seed);
+        let backend = HybridBackend::new(Box::new(Ed25519Backend::new(kp.clone())), pq).unwrap();
+        let mut body = make_receipt_body(&kp);
+        body.kernel_key = backend.public_key();
+        let receipt = ChioReceipt::sign_with_backend(body, &backend).unwrap();
+
+        let err = receipt
+            .verify_signature_with_floor(ReceiptCryptoFloor::AllowClassical)
+            .expect_err("hybrid receipt must reject under allow_classical");
+
+        assert!(err.to_string().contains("crypto_floor=allow_classical"));
+        assert!(err.to_string().contains("hybrid"));
     }
 
     #[test]
