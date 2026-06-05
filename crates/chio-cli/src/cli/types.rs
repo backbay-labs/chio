@@ -478,6 +478,11 @@ pub(crate) enum Commands {
         /// `--bundle`.
         #[arg(long, value_name = "URL")]
         issuer_oidc: Option<String>,
+
+        /// Runtime weights binding mode. `required` and `required_with_pin`
+        /// require `--bundle` so card verification cannot be silently skipped.
+        #[arg(long, value_name = "MODE", default_value = "not_required")]
+        weights_binding_mode: String,
     },
 
     /// Start the Chio sidecar with sensible zero-config defaults.

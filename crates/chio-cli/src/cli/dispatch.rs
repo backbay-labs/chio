@@ -106,12 +106,14 @@ pub(crate) fn run() {
             bundle,
             issuer_san_regex,
             issuer_oidc,
+            weights_binding_mode,
         } => commands::bind::cmd_bind(
             &provider,
             &card,
             bundle.as_deref(),
             issuer_san_regex.as_deref(),
             issuer_oidc.as_deref(),
+            &weights_binding_mode,
             json_output,
         ),
         Commands::Start {

@@ -4137,6 +4137,7 @@ dependencies = [
  "chio-core-types",
  "chio-kernel",
  "chio-runtime-core",
+ "chio-weights",
  "serde",
  "serde_json",
 ]
@@ -4151,6 +4152,8 @@ dependencies = [
  "chio-core-types",
  "chio-federation",
  "chio-kernel",
+ "chio-weights",
+ "chrono",
  "rusqlite",
  "serde",
  "serde_json",

@@ -24,11 +24,41 @@
     "checkedProviderCount": { "type": "integer", "minimum": 0 },
     "healthyProviderCount": { "type": "integer", "minimum": 0 },
     "degradedProviderIds": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "providerChecks": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/providerCheck" }
+    },
     "checks": { "type": "array", "items": { "$ref": "#/$defs/check" } }
   },
   "$defs": {
     "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "code": { "type": "string", "pattern": "^[a-z0-9_]+$" },
-    "check": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]+$" }
+    "check": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]+$" },
+    "providerCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["providerId", "bindingId", "accepted", "weightsBindingMode", "checks"],
+      "allOf": [
+        {
+          "if": { "properties": { "accepted": { "const": false } }, "required": ["accepted"] },
+          "then": { "required": ["failureCode"] }
+        },
+        {
+          "if": { "properties": { "accepted": { "const": true } }, "required": ["accepted"] },
+          "then": { "not": { "required": ["failureCode"] } }
+        }
+      ],
+      "properties": {
+        "providerId": { "type": "string", "minLength": 1 },
+        "bindingId": { "type": "string", "minLength": 1 },
+        "accepted": { "type": "boolean" },
+        "failureCode": { "$ref": "#/$defs/code" },
+        "weightsBindingMode": {
+          "enum": ["not_required", "required", "required_with_pin", "unavailable"]
+        },
+        "modelCardId": { "type": "string", "minLength": 1 },
+        "checks": { "type": "array", "items": { "$ref": "#/$defs/check" } }
+      }
+    }
   }
 }

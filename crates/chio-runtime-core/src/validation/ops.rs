@@ -10,8 +10,9 @@ use crate::schema::{
 };
 use crate::types::{
     RuntimeArtifactRetentionPlan, RuntimeArtifactRetentionProfile, RuntimeOpsStatusReport,
-    RuntimeProviderBindingsDocument, RuntimeProviderHealthReport, RuntimeRecoveryDrillReport,
-    RuntimeRunLease, RuntimeSchedulerTickReport, RuntimeSupervisorProfile,
+    RuntimeProviderBinding, RuntimeProviderBindingsDocument, RuntimeProviderHealthReport,
+    RuntimeRecoveryDrillReport, RuntimeRunLease, RuntimeSchedulerTickReport,
+    RuntimeSupervisorProfile, WeightsBindingMode,
 };
 use crate::validation::common::{
     ensure_sha256_hash, validate_acceptance_failure_code, validate_non_empty, validate_state_label,
@@ -205,15 +206,103 @@ pub fn validate_runtime_provider_bindings(
     let mut provider_ids = BTreeSet::new();
     for binding in &document.bindings {
         validate_non_empty(&binding.provider_id, "runtime_provider_empty_id")?;
+        validate_optional_non_empty(
+            binding.binding_id.as_deref(),
+            "runtime_provider_invalid_binding_id",
+        )?;
         validate_non_empty(&binding.local_kernel_id, "runtime_provider_empty_kernel")?;
         validate_non_empty(&binding.server_id, "runtime_provider_empty_server")?;
         validate_non_empty(&binding.tool_name, "runtime_provider_empty_tool")?;
+        validate_provider_model_card_fields(binding)?;
         if !provider_ids.insert(binding.provider_id.as_str()) {
             return Err(ChioRuntimeError::Rejected {
                 code: "runtime_provider_duplicate_id",
                 detail: format!("runtime provider binding repeats {}", binding.provider_id),
             });
         }
+    }
+    Ok(())
+}
+
+fn validate_provider_model_card_fields(
+    binding: &RuntimeProviderBinding,
+) -> Result<(), ChioRuntimeError> {
+    validate_optional_non_empty(
+        binding.model_card_id.as_deref(),
+        "runtime_provider_invalid_model_card_id",
+    )?;
+    validate_optional_lowercase_sha256(
+        binding.model_card_digest.as_deref(),
+        "runtime_provider_invalid_model_card_digest",
+    )?;
+    validate_optional_lowercase_sha256(
+        binding.loaded_weights_hash.as_deref(),
+        "runtime_provider_invalid_loaded_weights_hash",
+    )?;
+    match binding
+        .weights_binding_mode
+        .unwrap_or(WeightsBindingMode::NotRequired)
+    {
+        WeightsBindingMode::NotRequired => Ok(()),
+        WeightsBindingMode::Unavailable => Ok(()),
+        WeightsBindingMode::Required | WeightsBindingMode::RequiredWithPin => {
+            if binding.model_card_id.is_none() || binding.model_card_digest.is_none() {
+                return Err(ChioRuntimeError::Rejected {
+                    code: "runtime_provider_model_card_missing",
+                    detail: format!(
+                        "runtime provider {} requires model-card identity",
+                        binding.provider_id
+                    ),
+                });
+            }
+            if binding.loaded_weights_hash.is_none() {
+                return Err(ChioRuntimeError::Rejected {
+                    code: "runtime_provider_loaded_weights_unavailable",
+                    detail: format!(
+                        "runtime provider {} requires loaded weights evidence",
+                        binding.provider_id
+                    ),
+                });
+            }
+            Ok(())
+        }
+    }
+}
+
+fn validate_optional_non_empty(
+    value: Option<&str>,
+    code: &'static str,
+) -> Result<(), ChioRuntimeError> {
+    if let Some(value) = value {
+        validate_non_empty(value, code)?;
+        if value.trim() != value {
+            return Err(ChioRuntimeError::Rejected {
+                code,
+                detail: "runtime provider field must not contain surrounding whitespace"
+                    .to_string(),
+            });
+        }
+    }
+    Ok(())
+}
+
+fn validate_optional_lowercase_sha256(
+    value: Option<&str>,
+    code: &'static str,
+) -> Result<(), ChioRuntimeError> {
+    if let Some(value) = value {
+        if value.len() == 64
+            && value
+                .as_bytes()
+                .iter()
+                .all(|byte| byte.is_ascii_digit() || matches!(*byte, b'a'..=b'f'))
+        {
+            return Ok(());
+        }
+        return Err(ChioRuntimeError::Rejected {
+            code,
+            detail: format!("runtime provider hash {value} is not lowercase sha256 hex"),
+        });
     }
     Ok(())
 }
@@ -236,6 +325,77 @@ pub fn validate_runtime_provider_health_report(
     )?;
     for provider_id in &report.degraded_provider_ids {
         validate_non_empty(provider_id, "runtime_provider_health_empty_degraded_id")?;
+    }
+    let mut failed_provider_ids = BTreeSet::new();
+    for check in &report.provider_checks {
+        validate_non_empty(
+            &check.provider_id,
+            "runtime_provider_health_empty_degraded_id",
+        )?;
+        validate_non_empty(
+            &check.binding_id,
+            "runtime_provider_health_empty_binding_id",
+        )?;
+        validate_acceptance_failure_code(
+            check.accepted,
+            check.failure_code.as_deref(),
+            "runtime_provider_health_missing_failure_code",
+            "runtime_provider_health_unexpected_failure_code",
+        )?;
+        validate_optional_non_empty(
+            check.model_card_id.as_deref(),
+            "runtime_provider_invalid_model_card_id",
+        )?;
+        for code in &check.checks {
+            validate_state_label(code, "runtime_provider_health_invalid_check")?;
+        }
+        if !check.accepted {
+            failed_provider_ids.insert(check.provider_id.as_str());
+        }
+    }
+    if !report.provider_checks.is_empty() {
+        let expected_checked_provider_count =
+            u64::try_from(report.provider_checks.len()).unwrap_or(u64::MAX);
+        if report.checked_provider_count != expected_checked_provider_count {
+            return Err(ChioRuntimeError::Rejected {
+                code: "runtime_provider_health_check_count_mismatch",
+                detail: format!(
+                    "runtime provider health checked count {} does not match {} provider checks",
+                    report.checked_provider_count, expected_checked_provider_count
+                ),
+            });
+        }
+        let failed_provider_count = u64::try_from(failed_provider_ids.len()).unwrap_or(u64::MAX);
+        let expected_healthy_provider_count =
+            expected_checked_provider_count.saturating_sub(failed_provider_count);
+        if report.healthy_provider_count != expected_healthy_provider_count {
+            return Err(ChioRuntimeError::Rejected {
+                code: "runtime_provider_health_healthy_count_mismatch",
+                detail: format!(
+                    "runtime provider health healthy count {} does not match {} accepted provider checks",
+                    report.healthy_provider_count, expected_healthy_provider_count
+                ),
+            });
+        }
+        let declared_degraded_provider_ids = report
+            .degraded_provider_ids
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        if declared_degraded_provider_ids != failed_provider_ids {
+            return Err(ChioRuntimeError::Rejected {
+                code: "runtime_provider_health_degraded_ids_mismatch",
+                detail: "runtime provider health degraded provider IDs do not match failed provider checks"
+                    .to_string(),
+            });
+        }
+        if report.accepted && !failed_provider_ids.is_empty() {
+            return Err(ChioRuntimeError::Rejected {
+                code: "runtime_provider_health_accepted_with_failed_check",
+                detail: "accepted runtime provider health cannot contain failed provider checks"
+                    .to_string(),
+            });
+        }
     }
     validate_acceptance_failure_code(
         report.accepted,

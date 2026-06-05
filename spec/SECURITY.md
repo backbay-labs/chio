@@ -577,6 +577,10 @@ Existing controls:
 - provider binding is mediated by the kernel before tool execution
 - Chio already has a shared attestation verifier path for signed provenance
   evidence
+- runtime provider bindings persist model-card identity fields and provider
+  health fails closed for required model-card modes when signed-card material,
+  separately supplied runtime-observed loaded-weight evidence, or a matching
+  live card digest is absent
 
 Required mitigations:
 
@@ -590,8 +594,8 @@ Required mitigations:
 Residual risk:
 
 - until providers expose independently recomputable loaded-weight hashes, a
-  malicious provider can lie about the loaded artifact before model-card
-  verification receives trustworthy input
+  malicious provider can lie about the loaded artifact before runtime health
+  receives trustworthy provider-side loaded-weight evidence
 
 ### 2.18 Mobile Attestation Replay
 

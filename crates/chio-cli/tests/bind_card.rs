@@ -53,6 +53,10 @@ fn bind_help_advertises_card_flag() {
         stdout.contains("--bundle"),
         "bind --help must advertise --bundle flag, got: {stdout}"
     );
+    assert!(
+        stdout.contains("--weights-binding-mode"),
+        "bind --help must advertise --weights-binding-mode flag, got: {stdout}"
+    );
 }
 
 #[test]
@@ -201,5 +205,30 @@ fn bind_rejects_bundle_without_issuer_pins() {
     assert!(
         !out.status.success(),
         "bind --bundle without --issuer-san-regex / --issuer-oidc must fail"
+    );
+}
+
+#[test]
+fn bind_rejects_required_mode_without_cosign_bundle() {
+    let card_file = write_card_to_temp();
+    let out = Command::new(BIN)
+        .args([
+            "bind",
+            "demo-provider",
+            "--card",
+            card_file.path().to_str().unwrap(),
+            "--weights-binding-mode",
+            "required",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        !out.status.success(),
+        "bind --weights-binding-mode required must fail without --bundle"
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("--weights-binding-mode required requires --bundle"),
+        "unexpected stderr: {stderr}"
     );
 }

@@ -46,7 +46,10 @@ pub type RuntimeProofRegenerationReport = chio_runtime_core::RuntimeProofRegener
 pub type RuntimeProofSourceRecord = chio_runtime_core::RuntimeProofSourceRecord;
 pub type RuntimeProviderBinding = chio_runtime_core::RuntimeProviderBinding;
 pub type RuntimeProviderBindingsDocument = chio_runtime_core::RuntimeProviderBindingsDocument;
+pub type RuntimeProviderHealthCheck = chio_runtime_core::RuntimeProviderHealthCheck;
 pub type RuntimeProviderHealthReport = chio_runtime_core::RuntimeProviderHealthReport;
+pub type RuntimeProviderLoadedWeightsEvidence =
+    chio_runtime_core::RuntimeProviderLoadedWeightsEvidence;
 pub type RuntimeRecoveryDrillReport = chio_runtime_core::RuntimeRecoveryDrillReport;
 pub type RuntimeRequestBinding = chio_runtime_core::RuntimeRequestBinding;
 pub type RuntimeRunContract = chio_runtime_core::RuntimeRunContract;
@@ -66,6 +69,7 @@ pub type SignedRuntimePheromonePolicy = chio_runtime_core::SignedRuntimePheromon
 pub type SignedRuntimePheromoneQueryReport = chio_runtime_core::SignedRuntimePheromoneQueryReport;
 pub type SignedRuntimeVerifierTrustBundle = chio_runtime_core::SignedRuntimeVerifierTrustBundle;
 pub type TreatyRuntimeArtifactRecord = chio_runtime_core::TreatyRuntimeArtifactRecord;
+pub type WeightsBindingMode = chio_runtime_core::WeightsBindingMode;
 
 pub const CHIO_RUNTIME_ADMISSION_PROFILE_SCHEMA: &str = "chio.runtime.admission-profile.v1";
 pub const CHIO_RUNTIME_ADMISSION_BUNDLE_SCHEMA: &str = "chio.runtime.admission-bundle.v1";
@@ -1482,6 +1486,40 @@ pub fn generate_runtime_provider_health_report(
         bindings,
         now_unix_ms,
     ))
+}
+
+pub fn generate_runtime_provider_health_report_with_model_cards(
+    profile: &RuntimeSupervisorProfile,
+    bindings: &RuntimeProviderBindingsDocument,
+    model_cards_by_id: &std::collections::BTreeMap<String, chio_weights::card::ModelCard>,
+    now_unix_ms: u64,
+) -> Result<RuntimeProviderHealthReport, ChioRuntimeError> {
+    wrap_runtime(
+        chio_runtime_core::generate_runtime_provider_health_report_with_model_cards(
+            profile,
+            bindings,
+            model_cards_by_id,
+            now_unix_ms,
+        ),
+    )
+}
+
+pub fn generate_runtime_provider_health_report_with_model_card_evidence(
+    profile: &RuntimeSupervisorProfile,
+    bindings: &RuntimeProviderBindingsDocument,
+    model_cards_by_id: &std::collections::BTreeMap<String, chio_weights::card::ModelCard>,
+    loaded_weights_evidence: &[RuntimeProviderLoadedWeightsEvidence],
+    now_unix_ms: u64,
+) -> Result<RuntimeProviderHealthReport, ChioRuntimeError> {
+    wrap_runtime(
+        chio_runtime_core::generate_runtime_provider_health_report_with_model_card_evidence(
+            profile,
+            bindings,
+            model_cards_by_id,
+            loaded_weights_evidence,
+            now_unix_ms,
+        ),
+    )
 }
 
 pub fn generate_runtime_artifact_retention_plan(

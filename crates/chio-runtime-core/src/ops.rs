@@ -1,3 +1,8 @@
+use std::collections::BTreeMap;
+
+use chio_weights::card::{ModelCard, StringSet};
+use chio_weights::error::WeightsError;
+
 use crate::validation::{validate_non_empty, validate_state_label};
 use crate::*;
 
@@ -299,29 +304,69 @@ pub fn generate_runtime_provider_health_report(
     bindings: &RuntimeProviderBindingsDocument,
     now_unix_ms: u64,
 ) -> Result<RuntimeProviderHealthReport, ChioRuntimeError> {
+    generate_runtime_provider_health_report_with_model_cards(
+        profile,
+        bindings,
+        &BTreeMap::new(),
+        now_unix_ms,
+    )
+}
+
+pub fn generate_runtime_provider_health_report_with_model_cards(
+    profile: &RuntimeSupervisorProfile,
+    bindings: &RuntimeProviderBindingsDocument,
+    model_cards_by_id: &BTreeMap<String, ModelCard>,
+    now_unix_ms: u64,
+) -> Result<RuntimeProviderHealthReport, ChioRuntimeError> {
+    generate_runtime_provider_health_report_with_model_card_evidence(
+        profile,
+        bindings,
+        model_cards_by_id,
+        &[],
+        now_unix_ms,
+    )
+}
+
+pub fn generate_runtime_provider_health_report_with_model_card_evidence(
+    profile: &RuntimeSupervisorProfile,
+    bindings: &RuntimeProviderBindingsDocument,
+    model_cards_by_id: &BTreeMap<String, ModelCard>,
+    loaded_weights_evidence: &[RuntimeProviderLoadedWeightsEvidence],
+    now_unix_ms: u64,
+) -> Result<RuntimeProviderHealthReport, ChioRuntimeError> {
     validate_runtime_supervisor_profile(profile)?;
     validate_runtime_provider_bindings(bindings)?;
+    let observed_loaded_weights = observed_loaded_weights_by_binding_id(loaded_weights_evidence)?;
     let profile_stale =
         now_unix_ms < profile.issued_at_unix_ms || now_unix_ms >= profile.expires_at_unix_ms;
-    let mut degraded_provider_ids = Vec::new();
-    for binding in &bindings.bindings {
-        if binding.discovery_allowed {
-            degraded_provider_ids.push(binding.provider_id.clone());
-        }
-        if binding.local_kernel_id != profile.local_kernel_id {
-            degraded_provider_ids.push(binding.provider_id.clone());
-        }
-    }
+    let provider_checks = bindings
+        .bindings
+        .iter()
+        .map(|binding| {
+            evaluate_runtime_provider_binding_health(
+                binding,
+                profile,
+                model_cards_by_id,
+                &observed_loaded_weights,
+                now_unix_ms,
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut degraded_provider_ids = provider_checks
+        .iter()
+        .filter(|check| !check.accepted)
+        .map(|check| check.provider_id.clone())
+        .collect::<Vec<_>>();
     degraded_provider_ids.sort();
     degraded_provider_ids.dedup();
     let failure_code = if profile_stale {
         Some("runtime_provider_supervisor_profile_stale".to_string())
-    } else if bindings
-        .bindings
-        .iter()
-        .any(|binding| binding.discovery_allowed)
-    {
-        Some("runtime_provider_discovery_not_allowed".to_string())
+    } else if let Some(check) = provider_checks.iter().find(|check| {
+        check.failure_code.as_deref() == Some("runtime_provider_discovery_not_allowed")
+    }) {
+        check.failure_code.clone()
+    } else if let Some(check) = provider_checks.iter().find(|check| !check.accepted) {
+        check.failure_code.clone()
     } else if !degraded_provider_ids.is_empty() {
         Some("runtime_provider_health_degraded".to_string())
     } else {
@@ -338,10 +383,172 @@ pub fn generate_runtime_provider_health_report(
         checked_provider_count,
         healthy_provider_count: checked_provider_count.saturating_sub(degraded_count),
         degraded_provider_ids,
-        checks: vec!["runtime_ops.provider_bindings_static".to_string()],
+        provider_checks,
+        checks: vec!["runtime_ops.provider_bindings_health".to_string()],
     };
     validate_runtime_provider_health_report(&report)?;
     Ok(report)
+}
+
+fn observed_loaded_weights_by_binding_id(
+    loaded_weights_evidence: &[RuntimeProviderLoadedWeightsEvidence],
+) -> Result<BTreeMap<&str, &str>, ChioRuntimeError> {
+    let mut observed = BTreeMap::new();
+    for evidence in loaded_weights_evidence {
+        validate_non_empty(
+            &evidence.binding_id,
+            "runtime_provider_invalid_loaded_weights_evidence",
+        )?;
+        validate_observed_loaded_weights_hash(evidence.loaded_weights_hash.as_str())?;
+        if observed
+            .insert(
+                evidence.binding_id.as_str(),
+                evidence.loaded_weights_hash.as_str(),
+            )
+            .is_some()
+        {
+            return Err(ChioRuntimeError::Rejected {
+                code: "runtime_provider_duplicate_loaded_weights_evidence",
+                detail: format!(
+                    "runtime provider loaded weights evidence repeats {}",
+                    evidence.binding_id
+                ),
+            });
+        }
+    }
+    Ok(observed)
+}
+
+fn validate_observed_loaded_weights_hash(value: &str) -> Result<(), ChioRuntimeError> {
+    if is_sha256_hex(value)
+        && value
+            .as_bytes()
+            .iter()
+            .all(|byte| !byte.is_ascii_uppercase())
+    {
+        return Ok(());
+    }
+    Err(ChioRuntimeError::Rejected {
+        code: "runtime_provider_invalid_loaded_weights_hash",
+        detail: format!(
+            "runtime provider loaded weights evidence {value} is not lowercase sha256 hex"
+        ),
+    })
+}
+
+fn evaluate_runtime_provider_binding_health(
+    binding: &RuntimeProviderBinding,
+    profile: &RuntimeSupervisorProfile,
+    model_cards_by_id: &BTreeMap<String, ModelCard>,
+    observed_loaded_weights: &BTreeMap<&str, &str>,
+    now_unix_ms: u64,
+) -> Result<RuntimeProviderHealthCheck, ChioRuntimeError> {
+    let mode = binding
+        .weights_binding_mode
+        .unwrap_or(WeightsBindingMode::NotRequired);
+    let binding_id = binding.binding_id.clone().unwrap_or_else(|| {
+        format!(
+            "{}:{}:{}",
+            binding.provider_id, binding.server_id, binding.tool_name
+        )
+    });
+    let failure_code = if binding.discovery_allowed {
+        Some("runtime_provider_discovery_not_allowed")
+    } else if binding.local_kernel_id != profile.local_kernel_id {
+        Some("runtime_provider_health_degraded")
+    } else {
+        runtime_provider_model_card_failure_code(
+            binding,
+            mode,
+            model_cards_by_id,
+            observed_loaded_weights,
+            &binding_id,
+            now_unix_ms,
+        )?
+    };
+    Ok(RuntimeProviderHealthCheck {
+        provider_id: binding.provider_id.clone(),
+        binding_id,
+        accepted: failure_code.is_none(),
+        failure_code: failure_code.map(ToOwned::to_owned),
+        weights_binding_mode: mode,
+        model_card_id: binding.model_card_id.clone(),
+        checks: runtime_provider_health_checks_for(mode),
+    })
+}
+
+fn runtime_provider_model_card_failure_code(
+    binding: &RuntimeProviderBinding,
+    mode: WeightsBindingMode,
+    model_cards_by_id: &BTreeMap<String, ModelCard>,
+    observed_loaded_weights: &BTreeMap<&str, &str>,
+    binding_id: &str,
+    now_unix_ms: u64,
+) -> Result<Option<&'static str>, ChioRuntimeError> {
+    match mode {
+        WeightsBindingMode::NotRequired => Ok(None),
+        WeightsBindingMode::Unavailable => Ok(Some("runtime_provider_loaded_weights_unavailable")),
+        WeightsBindingMode::Required | WeightsBindingMode::RequiredWithPin => {
+            let Some(model_card_id) = binding.model_card_id.as_deref() else {
+                return Ok(Some("runtime_provider_model_card_missing"));
+            };
+            let Some(model_card_digest) = binding.model_card_digest.as_deref() else {
+                return Ok(Some("runtime_provider_model_card_missing"));
+            };
+            let Some(loaded_weights_hash) = binding.loaded_weights_hash.as_deref() else {
+                return Ok(Some("runtime_provider_loaded_weights_unavailable"));
+            };
+            let Some(model_card) = model_cards_by_id.get(model_card_id) else {
+                return Ok(Some("runtime_provider_model_card_missing"));
+            };
+            let card_expires_at_ms = model_card.expires_at.timestamp_millis();
+            if card_expires_at_ms < 0 || now_unix_ms >= card_expires_at_ms as u64 {
+                return Ok(Some("runtime_provider_model_card_stale"));
+            }
+            if canonical_sha256(model_card)? != model_card_digest {
+                return Ok(Some("runtime_provider_model_card_digest_mismatch"));
+            }
+            let Some(observed_loaded_weights_hash) = observed_loaded_weights.get(binding_id) else {
+                return Ok(Some("runtime_provider_loaded_weights_unavailable"));
+            };
+            if *observed_loaded_weights_hash != loaded_weights_hash {
+                return Ok(Some("runtime_provider_loaded_weights_hash_mismatch"));
+            }
+            let requested = StringSet::new([binding.tool_name.as_str()]);
+            match chio_kernel::weights_binding::evaluate_weights_binding_with_loaded_hash(
+                model_card,
+                Ok::<&str, &str>(observed_loaded_weights_hash),
+                &requested,
+                &requested,
+            ) {
+                Ok(()) => Ok(None),
+                Err(error) => Ok(Some(runtime_provider_weights_error_code(&error))),
+            }
+        }
+    }
+}
+
+fn runtime_provider_weights_error_code(error: &WeightsError) -> &'static str {
+    match error {
+        WeightsError::CardMismatch { .. } => "runtime_provider_loaded_weights_hash_mismatch",
+        WeightsError::ScopeNotSubset { .. } => "runtime_provider_model_card_scope_not_allowed",
+        WeightsError::ToolBanned { .. } => "runtime_provider_model_card_tool_banned",
+        WeightsError::Expired { .. } => "runtime_provider_model_card_stale",
+        WeightsError::SchemaRejected(_) => "runtime_provider_loaded_weights_unavailable",
+        _ => "runtime_provider_model_card_missing",
+    }
+}
+
+fn runtime_provider_health_checks_for(mode: WeightsBindingMode) -> Vec<String> {
+    let mut checks = vec![
+        "runtime_provider_kernel".to_string(),
+        "runtime_provider_discovery".to_string(),
+    ];
+    if !matches!(mode, WeightsBindingMode::NotRequired) {
+        checks.push("runtime_provider_model_card".to_string());
+        checks.push("runtime_provider_loaded_weights".to_string());
+    }
+    checks
 }
 
 pub fn generate_runtime_artifact_retention_plan(

@@ -151,8 +151,8 @@ b50d634c6c750192a5ff51ec3134533a6b78710c7670c52de635f9d1ef6e4f4e  spec/schemas/c
 45bf81710c34b431c3bbf4d4bb4fd09ab1cf535b4855f814b760ccd2d3a8bd21  spec/schemas/chio-runtime/v1/proof-parity-report.schema.json
 362946f1fab70da7f0e4b0ca0def52a3c1f4229df00373e641daba4aa891c7a6  spec/schemas/chio-runtime/v1/proof-regeneration-input.schema.json
 d680f0ffc1e43a66fb7ab5c16330ce3c7e0623b9b6874f1c25a5572cd7b20fff  spec/schemas/chio-runtime/v1/proof-regeneration-report.schema.json
-5de4e9fd09f4ddf57fd26d9fc1024957dc805c83b99b7cb24baf24102d91819a  spec/schemas/chio-runtime/v1/provider-bindings.schema.json
-6efe57a2b02363b42cfda81bc6f6dc5e23b3f4a90e223589ad5a1ee707bed908  spec/schemas/chio-runtime/v1/provider-health-report.schema.json
+ebebdc93c157f9bf3ada40e74d2e19dc31ca4274f68026393f0aa55f6895057f  spec/schemas/chio-runtime/v1/provider-bindings.schema.json
+a86da593cf3db75a0ff7267e59fb3ae0ea9670876774dc978be52c273bcc7c6f  spec/schemas/chio-runtime/v1/provider-health-report.schema.json
 de725151ea09f4b7cb90c16a44ddeacc8a18a74c9c03e3e6f7bcd9e53e92016f  spec/schemas/chio-runtime/v1/recovery-drill-report.schema.json
 5a5d98ef17426c0309fa77a1b8c54533c406b2e9be9b58ecd82ea0d249b83d7b  spec/schemas/chio-runtime/v1/run-contract.schema.json
 450165fa67398d11416837e3f4b5c5cd97077ac7ee18890285349b900480758d  spec/schemas/chio-runtime/v1/run-lease.schema.json

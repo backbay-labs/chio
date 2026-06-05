@@ -898,14 +898,45 @@ pub struct RuntimeArtifactRetentionPlan {
     pub checks: Vec<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WeightsBindingMode {
+    NotRequired,
+    Required,
+    RequiredWithPin,
+    Unavailable,
+}
+
+impl WeightsBindingMode {
+    #[must_use]
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::NotRequired => "not_required",
+            Self::Required => "required",
+            Self::RequiredWithPin => "required_with_pin",
+            Self::Unavailable => "unavailable",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RuntimeProviderBinding {
     pub provider_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub binding_id: Option<String>,
     pub local_kernel_id: String,
     pub server_id: String,
     pub tool_name: String,
     pub discovery_allowed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_card_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_card_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub loaded_weights_hash: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub weights_binding_mode: Option<WeightsBindingMode>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -913,6 +944,27 @@ pub struct RuntimeProviderBinding {
 pub struct RuntimeProviderBindingsDocument {
     pub schema: String,
     pub bindings: Vec<RuntimeProviderBinding>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RuntimeProviderLoadedWeightsEvidence {
+    pub binding_id: String,
+    pub loaded_weights_hash: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RuntimeProviderHealthCheck {
+    pub provider_id: String,
+    pub binding_id: String,
+    pub accepted: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure_code: Option<String>,
+    pub weights_binding_mode: WeightsBindingMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_card_id: Option<String>,
+    pub checks: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -927,6 +979,8 @@ pub struct RuntimeProviderHealthReport {
     pub checked_provider_count: u64,
     pub healthy_provider_count: u64,
     pub degraded_provider_ids: Vec<String>,
+    #[serde(default)]
+    pub provider_checks: Vec<RuntimeProviderHealthCheck>,
     pub checks: Vec<String>,
 }
 

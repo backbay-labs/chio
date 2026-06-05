@@ -49,6 +49,8 @@ pub use ops::{
     build_runtime_orchestration_plan, generate_runtime_artifact_retention_plan,
     generate_runtime_evidence_sink_health_report, generate_runtime_proof_drift_report,
     generate_runtime_provider_health_report,
+    generate_runtime_provider_health_report_with_model_card_evidence,
+    generate_runtime_provider_health_report_with_model_cards,
 };
 pub use orchestration::{
     load_runtime_orchestration_evidence, runtime_orchestration_evidence_is_fresh,
@@ -149,13 +151,14 @@ pub use types::{
     RuntimeProofDrift, RuntimeProofDriftReport, RuntimeProofParityMismatch,
     RuntimeProofParityReport, RuntimeProofRegenerationInput, RuntimeProofRegenerationReport,
     RuntimeProofSourceRecord, RuntimeProviderBinding, RuntimeProviderBindingsDocument,
-    RuntimeProviderHealthReport, RuntimeRecoveryDrillReport, RuntimeRequestBinding,
-    RuntimeRunContract, RuntimeRunLease, RuntimeSchedulerTickReport, RuntimeStepEvidence,
-    RuntimeSupervisorProfile, RuntimeTrustFloorEntry, RuntimeTrustFloorState,
-    RuntimeTrustedVerifierKey, RuntimeTrustedVerifierKeysDocument, RuntimeVerifierTrustBundleV4,
-    RuntimeWorkflowRunReport, SignedRuntimeAdmissionReport, SignedRuntimePeerWeights,
-    SignedRuntimePheromonePolicy, SignedRuntimePheromoneQueryReport,
-    SignedRuntimeVerifierTrustBundle, TreatyRuntimeArtifactRecord, TreatyScope,
+    RuntimeProviderHealthCheck, RuntimeProviderHealthReport, RuntimeProviderLoadedWeightsEvidence,
+    RuntimeRecoveryDrillReport, RuntimeRequestBinding, RuntimeRunContract, RuntimeRunLease,
+    RuntimeSchedulerTickReport, RuntimeStepEvidence, RuntimeSupervisorProfile,
+    RuntimeTrustFloorEntry, RuntimeTrustFloorState, RuntimeTrustedVerifierKey,
+    RuntimeTrustedVerifierKeysDocument, RuntimeVerifierTrustBundleV4, RuntimeWorkflowRunReport,
+    SignedRuntimeAdmissionReport, SignedRuntimePeerWeights, SignedRuntimePheromonePolicy,
+    SignedRuntimePheromoneQueryReport, SignedRuntimeVerifierTrustBundle,
+    TreatyRuntimeArtifactRecord, TreatyScope, WeightsBindingMode,
 };
 pub(crate) use validation::{ensure_sha256_hash, is_sha256_hex, rejected};
 pub use validation::{

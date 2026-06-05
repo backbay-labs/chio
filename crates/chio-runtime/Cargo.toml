@@ -15,6 +15,7 @@ name = "chio_runtime"
 chio-runtime-core = { path = "../chio-runtime-core" }
 chio-core-types = { path = "../chio-core-types" }
 chio-kernel = { path = "../chio-kernel" }
+chio-weights = { path = "../chio-weights" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 

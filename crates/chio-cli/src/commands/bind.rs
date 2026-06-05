@@ -11,6 +11,7 @@
 //! ```text
 //! chio bind <provider> --card <path>
 //!     [--bundle <path>] [--issuer-san-regex <regex>] [--issuer-oidc <url>]
+//!     [--weights-binding-mode not_required|required|required_with_pin|unavailable]
 //! ```
 //!
 //! - `--card` (required): path to the canonical-JSON encoded
@@ -22,6 +23,8 @@
 //!   `chio_attest_verify::ExpectedIdentity::certificate_identity_regexp`.
 //! - `--issuer-oidc` (required with `--bundle`): OIDC issuer expected on
 //!   the cosign certificate.
+//! - `--weights-binding-mode` defaults to `not_required`. `required` and
+//!   `required_with_pin` require a cosign bundle and issuer pins.
 //!
 //! # Output
 //!
@@ -42,6 +45,7 @@
 //! issued_at: <RFC 3339 UTC>
 //! expires_at: <RFC 3339 UTC>
 //! cosign: skipped|verified
+//! weights_binding_mode: <mode>
 //! ```
 //!
 //! All failure paths surface a stable `urn:chio:error:weights:*` URN via
@@ -67,8 +71,16 @@ pub(crate) fn cmd_bind(
     bundle_path: Option<&Path>,
     issuer_san_regex: Option<&str>,
     issuer_oidc: Option<&str>,
+    weights_binding_mode: &str,
     json_output: bool,
 ) -> Result<(), CliError> {
+    let weights_binding_mode = parse_weights_binding_mode(weights_binding_mode)?;
+    if matches!(weights_binding_mode, "required" | "required_with_pin") && bundle_path.is_none() {
+        return Err(CliError::cli_other_error(format!(
+            "--weights-binding-mode {weights_binding_mode} requires --bundle"
+        )));
+    }
+
     let card_bytes = std::fs::read(card_path).map_err(|e| {
         CliError::cli_other_error(format!(
             "failed to read model card from {:?}: {e}",
@@ -132,6 +144,7 @@ pub(crate) fn cmd_bind(
             "issued_at": card.issued_at.to_rfc3339(),
             "expires_at": card.expires_at.to_rfc3339(),
             "cosign": cosign_status,
+            "weights_binding_mode": weights_binding_mode,
         });
         let s = serde_json::to_string_pretty(&payload).map_err(CliError::Json)?;
         println!("{s}");
@@ -155,6 +168,19 @@ pub(crate) fn cmd_bind(
     println!("issued_at: {}", card.issued_at.to_rfc3339());
     println!("expires_at: {}", card.expires_at.to_rfc3339());
     println!("cosign: {cosign_status}");
+    println!("weights_binding_mode: {weights_binding_mode}");
 
     Ok(())
+}
+
+fn parse_weights_binding_mode(mode: &str) -> Result<&'static str, CliError> {
+    match mode {
+        "not_required" => Ok("not_required"),
+        "required" => Ok("required"),
+        "required_with_pin" => Ok("required_with_pin"),
+        "unavailable" => Ok("unavailable"),
+        other => Err(CliError::cli_other_error(format!(
+            "unsupported --weights-binding-mode {other:?}"
+        ))),
+    }
 }
