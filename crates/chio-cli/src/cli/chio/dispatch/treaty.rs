@@ -281,6 +281,46 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn treaty_admit_rejects_malformed_evidence_token() -> Result<(), Box<dyn std::error::Error>> {
+        let manifest_a = treaty_manifest("kernel.buyer");
+        let manifest_b = treaty_manifest("kernel.vendor");
+        let scope = treaty_scope(&manifest_a, &manifest_b)?;
+        let intersection = chio_federation::compute_ladder_intersection(
+            &scope,
+            &[manifest_a.clone(), manifest_b.clone()],
+            1_800_000_001_000,
+        )?;
+        let expected_ladder_intersection_sha256 = ladder_intersection_sha256(&intersection)?;
+        let tempdir = tempfile::tempdir()?;
+        let scope_path = tempdir.path().join("treaty-scope.json");
+        let intersection_path = tempdir.path().join("intersection.json");
+        let report_path = tempdir.path().join("admission-report.json");
+        std::fs::write(&scope_path, serde_json::to_string(&scope)?)?;
+        std::fs::write(&intersection_path, serde_json::to_string(&intersection)?)?;
+
+        let result = cmd_chio_federation_treaty_admit(
+            &scope_path,
+            &intersection_path,
+            &expected_ladder_intersection_sha256,
+            "workflow.destructive.vendor_call",
+            &["receipt_lineage_without_equals".to_string()],
+            1_800_000_002_000,
+            &report_path,
+        );
+        let Err(error) = result else {
+            return Err(io::Error::other("malformed evidence must return an error").into());
+        };
+        let error_text = error.to_string();
+        assert!(
+            error_text.contains("evidence_class=artifact_sha256"),
+            "error should describe evidence format: {error_text}"
+        );
+        assert!(!report_path.exists(), "malformed evidence must not write a report");
+
+        Ok(())
+    }
+
     fn treaty_manifest(kernel_id: &str) -> GovernanceLadderManifest {
         GovernanceLadderManifest {
             schema: CHIO_FEDERATION_GOVERNANCE_LADDER_MANIFEST_SCHEMA.to_string(),

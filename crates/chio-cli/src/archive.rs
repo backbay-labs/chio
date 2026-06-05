@@ -611,6 +611,99 @@ mod tests {
         assert_eq!(read[1].path, "nested/two.txt");
     }
 
+    fn append_regular_tar_member<W: Write>(
+        builder: &mut tar::Builder<W>,
+        path: &str,
+        bytes: &[u8],
+    ) {
+        let size = u64::try_from(bytes.len()).unwrap();
+        let mut header = tar::Header::new_ustar();
+        header.set_size(size);
+        header.set_mode(0o600);
+        header.set_cksum();
+        builder
+            .append_data(&mut header, path, std::io::Cursor::new(bytes))
+            .unwrap();
+    }
+
+    #[test]
+    fn safe_archive_helper_rejects_duplicate_member() {
+        let temp = tempfile::tempdir().unwrap();
+        let archive = temp.path().join("duplicate.tar.gz");
+        let file = fs::File::create(&archive).unwrap();
+        let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+        let mut builder = tar::Builder::new(encoder);
+        append_regular_tar_member(&mut builder, "member.txt", b"one");
+        append_regular_tar_member(&mut builder, "member.txt", b"two");
+        let encoder = builder.into_inner().unwrap();
+        encoder.finish().unwrap();
+
+        let err = read_tar_gz_file(&archive, "test archive", TEST_LIMITS).unwrap_err();
+
+        assert!(err.to_string().contains("duplicate member"));
+    }
+
+    #[test]
+    fn safe_archive_helper_rejects_casefold_collision() {
+        let temp = tempfile::tempdir().unwrap();
+        let archive = temp.path().join("casefold.tar.gz");
+        let file = fs::File::create(&archive).unwrap();
+        let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+        let mut builder = tar::Builder::new(encoder);
+        append_regular_tar_member(&mut builder, "File.txt", b"one");
+        append_regular_tar_member(&mut builder, "file.txt", b"two");
+        let encoder = builder.into_inner().unwrap();
+        encoder.finish().unwrap();
+
+        let err = read_tar_gz_file(&archive, "test archive", TEST_LIMITS).unwrap_err();
+
+        assert!(err.to_string().contains("casefold collision"));
+    }
+
+    #[test]
+    fn safe_archive_helper_rejects_decompression_ratio_bomb() {
+        let temp = tempfile::tempdir().unwrap();
+        let archive = temp.path().join("ratio.tar.gz");
+        let payload = vec![0_u8; 16_384];
+        let entries = [SafeArchiveWriteEntry {
+            path: "zeros.bin",
+            bytes: payload.as_slice(),
+        }];
+        let limits = SafeArchiveLimits {
+            max_decompression_ratio: 2,
+            ..TEST_LIMITS
+        };
+        write_tar_gz_file(&archive, "test archive", &entries, limits).unwrap();
+
+        let err = read_tar_gz_file(&archive, "test archive", limits).unwrap_err();
+
+        assert!(err.to_string().contains("decompression ratio"));
+    }
+
+    #[test]
+    fn safe_archive_helper_rejects_symlink_member_on_read() {
+        let temp = tempfile::tempdir().unwrap();
+        let archive = temp.path().join("symlink.tar.gz");
+        let file = fs::File::create(&archive).unwrap();
+        let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+        let mut builder = tar::Builder::new(encoder);
+        let mut header = tar::Header::new_gnu();
+        header.set_entry_type(tar::EntryType::Symlink);
+        header.set_size(0);
+        header.set_mode(0o777);
+        header.set_link_name("../escape").unwrap();
+        header.set_cksum();
+        builder
+            .append_data(&mut header, "member.txt", std::io::empty())
+            .unwrap();
+        let encoder = builder.into_inner().unwrap();
+        encoder.finish().unwrap();
+
+        let err = read_tar_gz_file(&archive, "test archive", TEST_LIMITS).unwrap_err();
+
+        assert!(err.to_string().contains("non-regular"));
+    }
+
     #[test]
     fn safe_archive_helper_counts_directory_members() {
         let temp = tempfile::tempdir().unwrap();
