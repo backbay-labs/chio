@@ -87,19 +87,25 @@ pub struct JournalEntry {
 /// The zero hash used as prev_hash for the first entry.
 const ZERO_HASH: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 
+fn update_len_prefixed(hasher: &mut Sha256, value: &str) {
+    let bytes = value.as_bytes();
+    hasher.update((bytes.len() as u64).to_le_bytes());
+    hasher.update(bytes);
+}
+
 /// Compute the SHA-256 hash of an entry's canonical fields (excluding entry_hash).
 fn compute_entry_hash(entry: &JournalEntry) -> String {
     let mut hasher = Sha256::new();
     hasher.update(entry.sequence.to_le_bytes());
-    hasher.update(entry.prev_hash.as_bytes());
+    update_len_prefixed(&mut hasher, &entry.prev_hash);
     hasher.update(entry.timestamp_secs.to_le_bytes());
-    hasher.update(entry.tool_name.as_bytes());
-    hasher.update(entry.server_id.as_bytes());
-    hasher.update(entry.agent_id.as_bytes());
+    update_len_prefixed(&mut hasher, &entry.tool_name);
+    update_len_prefixed(&mut hasher, &entry.server_id);
+    update_len_prefixed(&mut hasher, &entry.agent_id);
     hasher.update(entry.bytes_read.to_le_bytes());
     hasher.update(entry.bytes_written.to_le_bytes());
     hasher.update(entry.delegation_depth.to_le_bytes());
-    hasher.update(if entry.allowed { &[1u8] } else { &[0u8] });
+    hasher.update([u8::from(entry.allowed)]);
     hex::encode(hasher.finalize())
 }
 
@@ -658,6 +664,30 @@ mod tests {
         // Denied invocations still count toward totals.
         let flow = journal.data_flow().unwrap();
         assert_eq!(flow.total_invocations, 1);
+    }
+
+    #[test]
+    fn entry_hash_separates_adjacent_string_fields() {
+        fn first_hash(tool_name: &str, server_id: &str, agent_id: &str) -> String {
+            compute_entry_hash(&JournalEntry {
+                sequence: 0,
+                prev_hash: ZERO_HASH.to_string(),
+                entry_hash: String::new(),
+                timestamp_secs: 42,
+                tool_name: tool_name.to_string(),
+                server_id: server_id.to_string(),
+                agent_id: agent_id.to_string(),
+                bytes_read: 1,
+                bytes_written: 2,
+                delegation_depth: 3,
+                allowed: true,
+            })
+        }
+
+        let left = first_hash("ab", "c", "d");
+        let right = first_hash("a", "bc", "d");
+
+        assert_ne!(left, right);
     }
 
     #[test]
