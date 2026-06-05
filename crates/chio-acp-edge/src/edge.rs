@@ -186,6 +186,7 @@ impl ChioAcpEdge {
             capability: execution.capability.clone(),
             source_envelope: build_acp_source_envelope(capability_id, arguments)?,
             dpop_proof: execution.dpop_proof.clone(),
+            execution_nonce: execution.execution_nonce.clone(),
             governed_intent: execution.governed_intent.clone(),
             approval_token: execution.approval_token.clone(),
             model_metadata: execution.model_metadata.clone(),

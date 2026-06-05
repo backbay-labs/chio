@@ -90,6 +90,7 @@ fn make_request(request_id: &str, capability: &CapabilityToken) -> ToolCallReque
         agent_id: capability.subject.to_hex(),
         arguments: serde_json::json!({ "payload": "hello" }),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,

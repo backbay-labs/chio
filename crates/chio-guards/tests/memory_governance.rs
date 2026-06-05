@@ -44,6 +44,7 @@ fn make_request_in_scope(
         agent_id: agent_id.clone(),
         arguments: args,
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,

@@ -1421,6 +1421,7 @@ mod tests {
             agent_id: "agent-1".to_string(),
             arguments: serde_json::json!({ "invoice_id": "inv-1" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(GovernedTransactionIntent {
                 id: "intent-1".to_string(),
                 server_id: "srv-pay".to_string(),
@@ -1495,6 +1496,7 @@ mod tests {
             agent_id: "agent-1".to_string(),
             arguments: serde_json::json!({ "invoice_id": "inv-2" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(GovernedTransactionIntent {
                 id: "intent-2".to_string(),
                 server_id: "srv-pay".to_string(),
@@ -1584,6 +1586,7 @@ mod tests {
             agent_id: "agent-1".to_string(),
             arguments: serde_json::json!({ "invoice_id": "inv-verified" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(GovernedTransactionIntent {
                 id: "intent-verified".to_string(),
                 server_id: "srv-pay".to_string(),
@@ -1657,6 +1660,7 @@ mod tests {
             agent_id: "agent-1".to_string(),
             arguments: serde_json::json!({ "invoice_id": "inv-3" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(GovernedTransactionIntent {
                 id: "intent-3".to_string(),
                 server_id: "srv-pay".to_string(),
@@ -1698,6 +1702,7 @@ mod tests {
             agent_id: "agent-1".to_string(),
             arguments: serde_json::json!({ "invoice_id": "inv-4" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(GovernedTransactionIntent {
                 id: "intent-4".to_string(),
                 server_id: "srv-pay".to_string(),
@@ -1759,6 +1764,7 @@ mod tests {
             agent_id: "agent-1".to_string(),
             arguments: serde_json::json!({ "invoice_id": "inv-nitro" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(GovernedTransactionIntent {
                 id: "intent-nitro".to_string(),
                 server_id: "srv-pay".to_string(),
@@ -1821,6 +1827,7 @@ mod tests {
             agent_id: "agent-1".to_string(),
             arguments: serde_json::json!({ "invoice_id": "inv-nitro-mismatch" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(GovernedTransactionIntent {
                 id: "intent-nitro-mismatch".to_string(),
                 server_id: "srv-pay".to_string(),
@@ -1861,6 +1868,7 @@ mod tests {
             agent_id: "agent-1".to_string(),
             arguments: serde_json::json!({ "invoice_id": "inv-economic-1" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(GovernedTransactionIntent {
                 id: "intent-economic-1".to_string(),
                 server_id: "srv-pay".to_string(),
@@ -1960,6 +1968,7 @@ mod tests {
             agent_id: "agent-1".to_string(),
             arguments: serde_json::json!({ "invoice_id": "inv-legacy-financial" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(GovernedTransactionIntent {
                 id: "intent-legacy-financial".to_string(),
                 server_id: "srv-pay".to_string(),

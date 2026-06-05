@@ -446,6 +446,8 @@ pub(crate) async fn revoked_sidecar_evaluate_response(
                 verdict,
                 receipt,
                 evidence: Vec::new(),
+                // Revocation-only HTTP evaluation does not authorize
+                // execution and never mints a dispatch nonce.
                 execution_nonce: None,
             }),
         )

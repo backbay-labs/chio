@@ -985,10 +985,11 @@ fn make_request_with_arguments(
         agent_id: cap.subject.to_hex(),
         arguments,
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
-    federated_origin_kernel_id: None,
+        federated_origin_kernel_id: None,
     }
 }
 
@@ -2894,10 +2895,11 @@ fn untrusted_issuer_denied() {
         agent_id: agent_kp.public_key().to_hex(),
         arguments: serde_json::json!({}),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
-    federated_origin_kernel_id: None,
+        federated_origin_kernel_id: None,
     };
 
     let response = kernel.evaluate_tool_call_blocking(&request).unwrap();
@@ -6724,10 +6726,11 @@ fn monetary_denial_exceeds_per_invocation_cap() {
         agent_id: agent_kp.public_key().to_hex(),
         arguments: serde_json::json!({}),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
-    federated_origin_kernel_id: None,
+        federated_origin_kernel_id: None,
     };
 
     // 5 invocations: 5 * 100 = 500 total -- all should pass.
@@ -6772,10 +6775,11 @@ fn monetary_denial_receipt_contains_financial_metadata() {
         agent_id: agent_kp.public_key().to_hex(),
         arguments: serde_json::json!({}),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
-    federated_origin_kernel_id: None,
+        federated_origin_kernel_id: None,
     };
 
     // First invocation uses up the entire budget (100 of 100).
@@ -6852,10 +6856,11 @@ fn monetary_guard_denial_releases_budget_and_records_attempted_cost() {
         agent_id: agent_kp.public_key().to_hex(),
         arguments: serde_json::json!({}),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
-    federated_origin_kernel_id: None,
+        federated_origin_kernel_id: None,
     };
 
     let denied_response = kernel
@@ -6926,10 +6931,11 @@ fn monetary_payment_authorization_denial_releases_budget_and_skips_tool_invocati
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({}),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -7073,6 +7079,7 @@ async fn dropping_async_evaluate_after_monetary_admission_unwinds_budget_payment
         agent_id: agent_kp.public_key().to_hex(),
         arguments: serde_json::json!({}),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
@@ -7139,10 +7146,11 @@ fn monetary_prepaid_adapter_sets_payment_reference_on_allow_receipt() {
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({}),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -7187,10 +7195,11 @@ fn monetary_allow_receipt_contains_financial_metadata() {
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({}),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -7245,10 +7254,11 @@ fn monetary_allow_records_budget_hold_and_append_only_events() {
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({}),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -7311,10 +7321,11 @@ fn governed_monetary_allow_receipt_contains_approval_metadata() {
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({ "invoice_id": "inv-1001" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(intent.clone()),
             approval_token: Some(approval_token),
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -7385,10 +7396,11 @@ fn governed_monetary_allow_receipt_preserves_metered_billing_quote_context() {
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({ "invoice_id": "inv-1001" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(intent.clone()),
             approval_token: Some(approval_token),
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -7459,10 +7471,11 @@ fn governed_request_rejects_empty_metered_billing_provider() {
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({ "invoice_id": "inv-1001" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: Some(approval_token),
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -7522,10 +7535,11 @@ fn governed_monetary_allow_receipt_preserves_call_chain_context() {
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({ "invoice_id": "inv-1001" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(intent.clone()),
             approval_token: Some(approval_token),
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -7601,10 +7615,11 @@ fn governed_call_chain_receipt_observes_local_parent_receipt_linkage() {
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({ "stage": "child" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: None,
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -7673,6 +7688,7 @@ fn governed_call_chain_receipt_observes_capability_lineage_subjects() {
             agent_id: child_kp.public_key().to_hex(),
             arguments: serde_json::json!({ "stage": "delegated" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(GovernedTransactionIntent {
                 id: "intent-capability-lineage".to_string(),
                 server_id: "srv-echo".to_string(),
@@ -7694,7 +7710,7 @@ fn governed_call_chain_receipt_observes_capability_lineage_subjects() {
             }),
             approval_token: None,
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -7788,6 +7804,7 @@ fn governed_call_chain_receipt_verifies_signed_upstream_delegator_proof() {
             agent_id: child_kp.public_key().to_hex(),
             arguments: serde_json::json!({ "stage": "delegated" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: None,
             model_metadata: None,
@@ -7847,6 +7864,7 @@ fn governed_call_chain_receipt_follows_asserted_observed_verified_execution_orde
             agent_id: asserted_agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({ "stage": "asserted" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(GovernedTransactionIntent {
                 id: "intent-asserted-order".to_string(),
                 server_id: "srv-echo".to_string(),
@@ -7865,7 +7883,7 @@ fn governed_call_chain_receipt_follows_asserted_observed_verified_execution_orde
             }),
             approval_token: None,
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
     let asserted_governed = asserted_response
@@ -7905,6 +7923,7 @@ fn governed_call_chain_receipt_follows_asserted_observed_verified_execution_orde
             agent_id: observed_agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({ "stage": "observed" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(GovernedTransactionIntent {
                 id: "intent-observed-order".to_string(),
                 server_id: "srv-echo".to_string(),
@@ -7926,7 +7945,7 @@ fn governed_call_chain_receipt_follows_asserted_observed_verified_execution_orde
             }),
             approval_token: None,
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
     let observed_governed = observed_response
@@ -8020,10 +8039,11 @@ fn governed_call_chain_receipt_follows_asserted_observed_verified_execution_orde
             agent_id: child_kp.public_key().to_hex(),
             arguments: serde_json::json!({ "stage": "verified" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(verified_intent),
             approval_token: None,
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
     let verified_governed = verified_response
@@ -8125,10 +8145,11 @@ fn governed_request_rejects_upstream_call_chain_proof_subject_mismatch() {
             agent_id: child_kp.public_key().to_hex(),
             arguments: serde_json::json!({ "stage": "delegated" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: None,
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -8191,6 +8212,7 @@ fn governed_request_rejects_call_chain_delegator_subject_that_conflicts_with_cap
             agent_id: child_kp.public_key().to_hex(),
             arguments: serde_json::json!({ "stage": "delegated" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(GovernedTransactionIntent {
                 id: "intent-capability-lineage-deny".to_string(),
                 server_id: "srv-echo".to_string(),
@@ -8212,7 +8234,7 @@ fn governed_request_rejects_call_chain_delegator_subject_that_conflicts_with_cap
             }),
             approval_token: None,
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -8275,6 +8297,7 @@ fn governed_call_chain_receipt_observes_session_parent_request_lineage() {
                 agent_id: agent_kp.public_key().to_hex(),
                 arguments: serde_json::json!({ "stage": "child" }),
                 dpop_proof: None,
+                execution_nonce: None,
                 governed_intent: Some(GovernedTransactionIntent {
                     id: "intent-session-lineage".to_string(),
                     server_id: "srv-echo".to_string(),
@@ -8296,7 +8319,7 @@ fn governed_call_chain_receipt_observes_session_parent_request_lineage() {
                 }),
                 approval_token: None,
                 model_metadata: None,
-            federated_origin_kernel_id: None,
+                federated_origin_kernel_id: None,
             },
             &mut client,
         )
@@ -8431,10 +8454,11 @@ fn cross_kernel_continuation_token_verifies_parent_receipt_hash_and_session_anch
             agent_id: child_kp.public_key().to_hex(),
             arguments: serde_json::json!({ "stage": "child" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: None,
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -8502,10 +8526,11 @@ fn governed_request_rejects_self_referential_call_chain_parent_request() {
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({ "invoice_id": "inv-1001" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: Some(approval_token),
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -8554,10 +8579,11 @@ fn governed_request_rejects_empty_call_chain_chain_id() {
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({ "invoice_id": "inv-1001" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: Some(approval_token),
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -8607,10 +8633,11 @@ fn governed_monetary_denial_without_required_runtime_assurance_releases_budget()
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({ "invoice_id": "inv-1001" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: Some(approval_token),
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -8678,10 +8705,11 @@ fn governed_request_denies_unverified_attestation_when_runtime_assurance_is_requ
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({ "invoice_id": "inv-1001" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: Some(approval_token),
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -8732,10 +8760,11 @@ fn governed_monetary_allow_omits_unverified_runtime_assurance_metadata_when_opti
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({ "invoice_id": "inv-1001" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: Some(approval_token),
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -8813,10 +8842,11 @@ fn governed_request_denies_conflicting_workload_identity_binding() {
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({ "invoice_id": "inv-1002" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: Some(approval_token),
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -8871,10 +8901,11 @@ fn governed_monetary_allow_rebinds_trusted_attestation_to_verified() {
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({ "invoice_id": "inv-1003" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: Some(approval_token),
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -8937,10 +8968,11 @@ fn governed_request_denies_untrusted_attestation_when_trust_policy_is_configured
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({ "invoice_id": "inv-1004" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: Some(approval_token),
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -8995,10 +9027,11 @@ fn governed_monetary_allow_rebinds_google_attestation_to_verified() {
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({ "invoice_id": "inv-1005" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: Some(approval_token),
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -9057,10 +9090,11 @@ fn governed_monetary_allow_rebinds_nitro_attestation_to_verified() {
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({ "invoice_id": "inv-1006" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: Some(approval_token),
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -9132,10 +9166,11 @@ fn governed_request_denies_delegated_autonomy_without_bond_attachment() {
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({ "invoice_id": "inv-bond-1" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: Some(approval_token),
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -9195,10 +9230,11 @@ fn governed_request_denies_autonomous_tier_with_weak_runtime_assurance() {
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({ "invoice_id": "inv-bond-2" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: Some(approval_token),
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -9275,10 +9311,11 @@ fn governed_request_denies_delegated_autonomy_with_expired_bond() {
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({ "invoice_id": "inv-bond-3" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: Some(approval_token),
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -9355,10 +9392,11 @@ fn governed_request_allows_delegated_autonomy_with_active_bond_and_receipt_metad
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({ "invoice_id": "inv-bond-4" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(intent),
             approval_token: Some(approval_token),
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -9388,6 +9426,7 @@ fn sibling_sum_denial_reverses_pre_execution_monetary_charge() {
             agent_id: fixture.child_a_kp.public_key().to_hex(),
             arguments: serde_json::json!({}),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
@@ -9409,6 +9448,7 @@ fn sibling_sum_denial_reverses_pre_execution_monetary_charge() {
             agent_id: fixture.child_b_kp.public_key().to_hex(),
             arguments: serde_json::json!({}),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
@@ -9457,6 +9497,7 @@ fn sibling_sum_denial_reverses_pre_execution_invocation_increment() {
             agent_id: fixture.child_a_kp.public_key().to_hex(),
             arguments: serde_json::json!({}),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
@@ -9478,6 +9519,7 @@ fn sibling_sum_denial_reverses_pre_execution_invocation_increment() {
             agent_id: fixture.child_b_kp.public_key().to_hex(),
             arguments: serde_json::json!({}),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
@@ -9545,6 +9587,7 @@ fn nested_hosted_sibling_sum_denial_reverses_pre_execution_monetary_charge() {
                 agent_id: fixture.child_a_kp.public_key().to_hex(),
                 arguments: serde_json::json!({}),
                 dpop_proof: None,
+                execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
                 model_metadata: None,
@@ -9570,6 +9613,7 @@ fn nested_hosted_sibling_sum_denial_reverses_pre_execution_monetary_charge() {
                 agent_id: fixture.child_b_kp.public_key().to_hex(),
                 arguments: serde_json::json!({}),
                 dpop_proof: None,
+                execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
                 model_metadata: None,
@@ -9621,6 +9665,7 @@ fn payment_authorization_denial_releases_delegated_sibling_budget() {
             agent_id: fixture.child_a_kp.public_key().to_hex(),
             arguments: serde_json::json!({}),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
@@ -9643,6 +9688,7 @@ fn payment_authorization_denial_releases_delegated_sibling_budget() {
             agent_id: fixture.child_b_kp.public_key().to_hex(),
             arguments: serde_json::json!({}),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
@@ -9701,6 +9747,7 @@ fn nested_payment_authorization_denial_releases_delegated_sibling_budget() {
                 agent_id: fixture.child_a_kp.public_key().to_hex(),
                 arguments: serde_json::json!({}),
                 dpop_proof: None,
+                execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
                 model_metadata: None,
@@ -9727,6 +9774,7 @@ fn nested_payment_authorization_denial_releases_delegated_sibling_budget() {
                 agent_id: fixture.child_b_kp.public_key().to_hex(),
                 arguments: serde_json::json!({}),
                 dpop_proof: None,
+                execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
                 model_metadata: None,
@@ -9759,6 +9807,7 @@ fn hosted_named_remote_without_fresh_peer_fails_before_dispatch() {
             agent_id: fixture.child_a_kp.public_key().to_hex(),
             arguments: serde_json::json!({}),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
@@ -9853,10 +9902,11 @@ fn governed_monetary_denial_without_approval_releases_budget_and_records_intent(
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({ "invoice_id": "inv-1001" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(intent.clone()),
             approval_token: None,
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -9940,10 +9990,11 @@ fn governed_monetary_incomplete_receipt_keeps_financial_and_governed_metadata() 
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({ "path": "/tmp/governed.txt" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(intent.clone()),
             approval_token: Some(approval_token),
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -10041,10 +10092,11 @@ fn governed_x402_prepaid_flow_records_governed_authorization_and_receipt_metadat
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({ "sku": "dataset-pro" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(intent.clone()),
             approval_token: Some(approval_token.clone()),
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -10147,10 +10199,11 @@ fn governed_x402_authorization_failure_denies_before_tool_execution() {
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({ "sku": "dataset-pro" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(intent.clone()),
             approval_token: Some(approval_token),
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -10269,10 +10322,11 @@ fn governed_acp_hold_flow_records_commerce_scope_and_payment_metadata() {
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({ "sku": "merchant-result-pro" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(intent.clone()),
             approval_token: Some(approval_token.clone()),
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -10380,10 +10434,11 @@ fn governed_acp_seller_mismatch_denies_before_payment_or_tool_execution() {
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({ "sku": "merchant-result-pro" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(intent.clone()),
             approval_token: Some(approval_token),
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -10449,10 +10504,11 @@ fn monetary_allow_receipt_marks_failed_settlement_when_reported_cost_exceeds_cha
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({}),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -10491,10 +10547,11 @@ fn monetary_server_not_reporting_cost_charges_max_cost_per_invocation() {
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({}),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -10533,10 +10590,11 @@ fn monetary_tool_server_error_releases_precharged_budget() {
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({}),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -10574,10 +10632,11 @@ fn monetary_full_pipeline_three_invocations_third_denied() {
         agent_id: agent_kp.public_key().to_hex(),
         arguments: serde_json::json!({}),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
-    federated_origin_kernel_id: None,
+        federated_origin_kernel_id: None,
     };
 
     let r1 = kernel
@@ -10628,10 +10687,11 @@ fn multi_grant_budget_remaining_uses_matched_grant_total() {
         agent_id: agent_kp.public_key().to_hex(),
         arguments: serde_json::json!({}),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
-    federated_origin_kernel_id: None,
+        federated_origin_kernel_id: None,
     };
 
     let _ = kernel
@@ -10736,10 +10796,11 @@ async fn async_evaluate_tool_call_supports_shared_kernel_concurrency() {
         agent_id: agent_kp.public_key().to_hex(),
         arguments: serde_json::json!({ "request_id": request_id }),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
-    federated_origin_kernel_id: None,
+        federated_origin_kernel_id: None,
     };
 
     let thread_a = {
@@ -10854,10 +10915,11 @@ fn matched_grant_index_populated_in_guard_context() {
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({}),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
     assert_eq!(resp.verdict, Verdict::Allow);
@@ -10922,10 +10984,11 @@ fn velocity_guard_denial_produces_signed_deny_receipt_no_panic() {
         agent_id: agent_kp.public_key().to_hex(),
         arguments: serde_json::json!({}),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
-    federated_origin_kernel_id: None,
+        federated_origin_kernel_id: None,
     };
 
     // First two invocations allowed.
@@ -10980,10 +11043,11 @@ fn checkpoint_triggers_at_100_receipts() {
                 agent_id: agent_kp.public_key().to_hex(),
                 arguments: serde_json::json!({}),
                 dpop_proof: None,
+                execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
                 model_metadata: None,
-            federated_origin_kernel_id: None,
+                federated_origin_kernel_id: None,
             })
             .unwrap();
     }
@@ -11038,6 +11102,7 @@ fn concurrent_receipt_checkpointing_keeps_contiguous_batches() {
                         agent_id,
                         arguments: serde_json::json!({ "i": i }),
                         dpop_proof: None,
+                        execution_nonce: None,
                         governed_intent: None,
                         approval_token: None,
                         model_metadata: None,
@@ -11098,6 +11163,7 @@ fn checkpoint_counters_restore_when_store_is_reattached() {
                 agent_id: agent_id.clone(),
                 arguments: serde_json::json!({ "i": i }),
                 dpop_proof: None,
+                execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
                 model_metadata: None,
@@ -11132,6 +11198,7 @@ fn checkpoint_counters_restore_when_store_is_reattached() {
                 agent_id: agent_id.clone(),
                 arguments: serde_json::json!({ "i": i }),
                 dpop_proof: None,
+                execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
                 model_metadata: None,
@@ -11191,6 +11258,7 @@ fn checkpoint_counters_refresh_across_kernels_sharing_store() {
             agent_id: agent_id.clone(),
             arguments: serde_json::json!({ "i": 1 }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
@@ -11206,6 +11274,7 @@ fn checkpoint_counters_refresh_across_kernels_sharing_store() {
             agent_id,
             arguments: serde_json::json!({ "i": 2 }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
@@ -11282,10 +11351,11 @@ fn inclusion_proof_verifies_against_stored_checkpoint() {
                 agent_id: agent_kp.public_key().to_hex(),
                 arguments: serde_json::json!({}),
                 dpop_proof: None,
+                execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
                 model_metadata: None,
-            federated_origin_kernel_id: None,
+                federated_origin_kernel_id: None,
             })
             .unwrap();
     }
@@ -11383,10 +11453,11 @@ fn cross_currency_reported_cost_attaches_oracle_evidence_and_converted_units() {
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({}),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -11432,10 +11503,11 @@ fn cross_currency_without_oracle_keeps_provisional_charge_and_marks_failed_settl
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({}),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
@@ -11563,10 +11635,11 @@ fn dpop_required_grant_allows_when_valid_proof_provided() {
         agent_id: agent_kp.public_key().to_hex(),
         arguments,
         dpop_proof: Some(proof),
+                execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
-    federated_origin_kernel_id: None,
+        federated_origin_kernel_id: None,
     };
 
     let response = kernel.evaluate_tool_call_blocking(&request).unwrap();
@@ -11593,10 +11666,11 @@ fn dpop_required_grant_denies_when_no_proof_provided() {
         agent_id: agent_kp.public_key().to_hex(),
         arguments: serde_json::json!({"action": "read"}),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
-    federated_origin_kernel_id: None,
+        federated_origin_kernel_id: None,
     };
 
     let response = kernel.evaluate_tool_call_blocking(&request).unwrap();
@@ -11638,10 +11712,11 @@ fn dpop_required_grant_denies_when_proof_has_wrong_tool_name() {
         agent_id: agent_kp.public_key().to_hex(),
         arguments,
         dpop_proof: Some(proof),
+                execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
-    federated_origin_kernel_id: None,
+        federated_origin_kernel_id: None,
     };
 
     let response = kernel.evaluate_tool_call_blocking(&request).unwrap();

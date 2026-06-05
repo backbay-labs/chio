@@ -4058,6 +4058,7 @@ mod tests {
                     "metadata": { "origin": "kernel-test" }
                 }),
                 dpop_proof: None,
+                execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
                 model_metadata: None,
@@ -4125,6 +4126,7 @@ mod tests {
                     "message": "answer the question"
                 }),
                 dpop_proof: None,
+                execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
                 model_metadata: None,
@@ -4191,6 +4193,7 @@ mod tests {
                     "message": "answer the question"
                 }),
                 dpop_proof: None,
+                execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
                 model_metadata: None,
@@ -4266,6 +4269,7 @@ mod tests {
                     "message": "Summarize the current blood pressure guidance"
                 }),
                 dpop_proof: None,
+                execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
                 model_metadata: None,
@@ -4360,6 +4364,7 @@ mod tests {
                     "return_immediately": true
                 }),
                 dpop_proof: None,
+                execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
                 model_metadata: None,
@@ -4389,6 +4394,7 @@ mod tests {
                     }
                 }),
                 dpop_proof: None,
+                execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
                 model_metadata: None,
@@ -4464,6 +4470,7 @@ mod tests {
                     }
                 }),
                 dpop_proof: None,
+                execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
                 model_metadata: None,
@@ -4529,6 +4536,7 @@ mod tests {
                     "stream": true
                 }),
                 dpop_proof: None,
+                execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
                 model_metadata: None,
@@ -4594,6 +4602,7 @@ mod tests {
                     "stream": true
                 }),
                 dpop_proof: None,
+                execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
                 model_metadata: None,
@@ -4662,6 +4671,7 @@ mod tests {
                     "subscribe_task": { "id": "task-1" }
                 }),
                 dpop_proof: None,
+                execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
                 model_metadata: None,
@@ -4733,6 +4743,7 @@ mod tests {
                     "subscribe_task": { "id": "task-1" }
                 }),
                 dpop_proof: None,
+                execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
                 model_metadata: None,
@@ -4798,6 +4809,7 @@ mod tests {
                     "message": "answer the question"
                 }),
                 dpop_proof: None,
+                execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
                 model_metadata: None,
@@ -4862,6 +4874,7 @@ mod tests {
                     "message": "answer the question"
                 }),
                 dpop_proof: None,
+                execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
                 model_metadata: None,

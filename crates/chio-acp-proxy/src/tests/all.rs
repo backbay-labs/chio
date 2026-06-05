@@ -2586,8 +2586,9 @@ mod attestation_and_telemetry_tests {
         ReceiptCheckpointCreateReport, ReceiptStore, ReceiptStoreError,
     };
     use chio_kernel::{
-        ChioKernel, KernelConfig, DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_MAX_STREAM_DURATION_SECS,
-        DEFAULT_MAX_STREAM_TOTAL_BYTES,
+        mint_execution_nonce, ChioKernel, ExecutionNonceConfig, InMemoryExecutionNonceStore,
+        KernelConfig, NonceBinding, DEFAULT_CHECKPOINT_BATCH_SIZE,
+        DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES,
     };
     use serde_json::json;
 
@@ -3163,6 +3164,7 @@ mod attestation_and_telemetry_tests {
                 capability_id: Some(format!("cap:{}", request.session_id)),
                 receipt_id: None,
                 receipt_request_id: None,
+                execution_nonce: None,
                 reason: "dummy allow".to_string(),
             })
         }
@@ -3182,6 +3184,7 @@ mod attestation_and_telemetry_tests {
                     capability_id: Some(capability_id.to_string()),
                     receipt_id: None,
                     receipt_request_id: None,
+                    execution_nonce: None,
                     reason: "recorded allow".to_string(),
                 },
             }
@@ -3200,6 +3203,7 @@ mod attestation_and_telemetry_tests {
                     capability_id: Some(capability_id.to_string()),
                     receipt_id: Some(receipt_id.to_string()),
                     receipt_request_id: Some(receipt_request_id.to_string()),
+                    execution_nonce: None,
                     reason: "recorded signed allow".to_string(),
                 },
             }
@@ -3213,6 +3217,7 @@ mod attestation_and_telemetry_tests {
                     capability_id: Some("cap-denied".to_string()),
                     receipt_id: None,
                     receipt_request_id: None,
+                    execution_nonce: None,
                     reason: reason.to_string(),
                 },
             }
@@ -3355,6 +3360,7 @@ mod attestation_and_telemetry_tests {
                 "sessionId": "session-1",
                 "path": "/workspace/src/lib.rs"
             }),
+            execution_nonce: None,
             token: None,
         };
 
@@ -3406,6 +3412,7 @@ mod attestation_and_telemetry_tests {
                 "toolCallId": "call-kernel-checker",
                 "path": "/workspace/src/lib.rs"
             }),
+            execution_nonce: None,
             token: Some(serde_json::to_string(&valid).expect("token should serialize")),
         };
 
@@ -3508,6 +3515,7 @@ mod attestation_and_telemetry_tests {
                 "command": "cargo",
                 "args": ["test"]
             }),
+            execution_nonce: None,
             token: Some(serde_json::to_string(&token).expect("token should serialize")),
         };
 
@@ -3520,6 +3528,183 @@ mod attestation_and_telemetry_tests {
             "authorized through kernel-backed ACP guard pipeline"
         );
         assert!(verdict.receipt_id.is_some());
+    }
+
+    #[test]
+    fn kernel_capability_checker_requires_and_forwards_execution_nonce_in_strict_mode() {
+        let issuer = Keypair::generate();
+        let subject = Keypair::generate();
+        let now = now_secs();
+        let mut kernel = ChioKernel::new(test_kernel_config(&issuer));
+        let cfg = ExecutionNonceConfig {
+            nonce_ttl_secs: 30,
+            nonce_store_capacity: 1024,
+            require_nonce: true,
+        };
+        kernel.set_execution_nonce_store(
+            cfg.clone(),
+            Box::new(InMemoryExecutionNonceStore::from_config(&cfg)),
+        );
+        let checker = KernelCapabilityChecker::new(kernel, "proxy-server");
+        let token = make_capability_token(
+            &issuer,
+            &subject,
+            "proxy-server",
+            "fs/read_text_file",
+            vec![Constraint::PathPrefix("/workspace".to_string())],
+            now.saturating_sub(30),
+            now + 3600,
+        );
+        let operation_payload = json!({
+            "sessionId": "session-strict",
+            "toolCallId": "call-strict-checker",
+            "path": "/workspace/src/lib.rs"
+        });
+        let arguments = json!({
+            "path": "/workspace/src/lib.rs",
+            "authorization_parameter_hash": "test-authorization-parameter-hash",
+            "operation_payload": operation_payload
+        });
+        let parameter_hash = ToolCallAction::from_parameters(arguments)
+            .expect("ACP checker arguments should hash")
+            .parameter_hash;
+        let nonce = mint_execution_nonce(
+            &issuer,
+            NonceBinding {
+                subject_id: subject.public_key().to_hex(),
+                capability_id: token.id.clone(),
+                tool_server: "proxy-server".to_string(),
+                tool_name: "fs/read_text_file".to_string(),
+                parameter_hash,
+            },
+            &cfg,
+            i64::try_from(now).unwrap_or(i64::MAX),
+        )
+        .expect("execution nonce should mint");
+        let mut request = AcpCapabilityRequest {
+            session_id: "session-strict".to_string(),
+            tool_call_id: Some("call-strict-checker".to_string()),
+            authorization_correlation_id: Some("auth-correlation-strict".to_string()),
+            operation: "fs_read".to_string(),
+            resource: "/workspace/src/lib.rs".to_string(),
+            authorization_parameter_hash: "test-authorization-parameter-hash".to_string(),
+            operation_payload: json!({
+                "sessionId": "session-strict",
+                "toolCallId": "call-strict-checker",
+                "path": "/workspace/src/lib.rs"
+            }),
+            execution_nonce: None,
+            token: Some(serde_json::to_string(&token).expect("token should serialize")),
+        };
+
+        let missing = checker
+            .check_access(&request)
+            .expect("missing nonce check should return a verdict");
+        assert!(!missing.allowed);
+        assert!(missing.reason.contains("execution nonce"));
+
+        request.execution_nonce = Some(nonce);
+        let allowed = checker
+            .check_access(&request)
+            .expect("presented nonce should authorize once");
+        assert!(allowed.allowed, "expected allow, got {:?}", allowed);
+
+        let replay = checker
+            .check_access(&request)
+            .expect("replayed nonce should return a verdict");
+        assert!(!replay.allowed);
+        assert!(replay.reason.contains("execution nonce") || replay.reason.contains("replay"));
+    }
+
+    #[test]
+    fn interceptor_strict_nonce_preflight_returns_nonce_then_forwards_once() {
+        let issuer = Keypair::generate();
+        let subject = Keypair::generate();
+        let now = now_secs();
+        let mut kernel = ChioKernel::new(test_kernel_config(&issuer));
+        let cfg = ExecutionNonceConfig {
+            nonce_ttl_secs: 30,
+            nonce_store_capacity: 1024,
+            require_nonce: true,
+        };
+        kernel.set_execution_nonce_store(
+            cfg.clone(),
+            Box::new(InMemoryExecutionNonceStore::from_config(&cfg)),
+        );
+        let checker = KernelCapabilityChecker::new(kernel, "proxy-server");
+        let token = make_capability_token(
+            &issuer,
+            &subject,
+            "proxy-server",
+            "fs/read_text_file",
+            vec![Constraint::PathPrefix("/workspace".to_string())],
+            now.saturating_sub(30),
+            now + 3600,
+        );
+        let config = AcpProxyConfig::new("echo", "deadbeef")
+            .with_allowed_path_prefix("/workspace")
+            .with_server_id("proxy-server");
+        let interceptor = MessageInterceptor::with_kernel(
+            config,
+            None,
+            Some(Box::new(checker)),
+            AcpAttestationMode::BestEffort,
+        );
+        let mut read = json!({
+            "jsonrpc": "2.0",
+            "id": 917,
+            "method": "fs/read_text_file",
+            "params": {
+                "sessionId": "session-strict-interceptor",
+                "toolCallId": "call-strict-interceptor",
+                "path": "/workspace/src/lib.rs",
+                "capabilityToken": serde_json::to_string(&token)
+                    .expect("token should serialize")
+            }
+        });
+
+        let nonce_value = match interceptor
+            .intercept(Direction::AgentToClient, &read)
+            .expect("strict preflight should return a JSON-RPC block")
+        {
+            InterceptResult::Block(value) => {
+                assert_eq!(value["error"]["code"], ACP_ERROR_ACCESS_DENIED);
+                let message = value["error"]["message"].as_str().unwrap_or_default();
+                assert!(
+                    message.contains("execution nonce"),
+                    "expected execution nonce preflight block, got {value:?}"
+                );
+                value
+                    .pointer("/error/data/chio/executionNonce")
+                    .expect("preflight block should carry execution nonce")
+                    .clone()
+            }
+            other => panic!("expected Block for strict preflight, got {:?}", other),
+        };
+
+        read["params"]["chio"] = json!({ "executionNonce": nonce_value });
+        match interceptor
+            .intercept(Direction::AgentToClient, &read)
+            .expect("presented nonce should forward once")
+        {
+            InterceptResult::Forward(value) => assert_eq!(value, read),
+            other => panic!("expected Forward with presented nonce, got {:?}", other),
+        }
+
+        match interceptor
+            .intercept(Direction::AgentToClient, &read)
+            .expect("replayed nonce should block")
+        {
+            InterceptResult::Block(value) => {
+                assert_eq!(value["error"]["code"], ACP_ERROR_ACCESS_DENIED);
+                assert!(value["error"]["message"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .contains("execution nonce"));
+                assert!(value.pointer("/error/data/chio/executionNonce").is_none());
+            }
+            other => panic!("expected Block for replayed nonce, got {:?}", other),
+        }
     }
 
     #[test]
@@ -3559,6 +3744,7 @@ mod attestation_and_telemetry_tests {
                 "toolCallId": "call-untrusted-checker",
                 "path": "/workspace/src/lib.rs"
             }),
+            execution_nonce: None,
             token: Some(serde_json::to_string(&token).expect("token should serialize")),
         };
         let verdict = untrusted_checker
@@ -3638,8 +3824,7 @@ mod attestation_and_telemetry_tests {
             json!({
                 "sessionId": "session-377",
                 "toolCallId": "tool-377",
-                "path": "/home/user/project/src/lib.rs",
-                "capabilityToken": "signed-capability-json"
+                "path": "/home/user/project/src/lib.rs"
             })
         );
         drop(recorded);
@@ -3728,6 +3913,7 @@ mod attestation_and_telemetry_tests {
                     capability_id: Some(" cap-padded ".to_string()),
                     receipt_id: Some("auth-valid".to_string()),
                     receipt_request_id: Some("req-valid".to_string()),
+                    execution_nonce: None,
                     reason: "malformed capability id".to_string(),
                 },
                 "malformed capability_id",
@@ -3739,6 +3925,7 @@ mod attestation_and_telemetry_tests {
                     capability_id: Some("cap-valid".to_string()),
                     receipt_id: Some("auth\ncontrol".to_string()),
                     receipt_request_id: Some("req-valid".to_string()),
+                    execution_nonce: None,
                     reason: "malformed receipt id".to_string(),
                 },
                 "malformed signed authorization receipt id",
@@ -3750,6 +3937,7 @@ mod attestation_and_telemetry_tests {
                     capability_id: Some("cap-valid".to_string()),
                     receipt_id: Some("auth-valid".to_string()),
                     receipt_request_id: Some(" req-padded ".to_string()),
+                    execution_nonce: None,
                     reason: "malformed receipt request id".to_string(),
                 },
                 "malformed signed authorization request id",
@@ -3813,6 +4001,7 @@ mod attestation_and_telemetry_tests {
                     capability_id: Some("cap-a".to_string()),
                     receipt_id: Some("auth-a".to_string()),
                     receipt_request_id: Some("req-a".to_string()),
+                    execution_nonce: None,
                     reason: "first allow".to_string(),
                 },
                 AcpVerdict {
@@ -3820,6 +4009,7 @@ mod attestation_and_telemetry_tests {
                     capability_id: Some("cap-b".to_string()),
                     receipt_id: Some("auth-b".to_string()),
                     receipt_request_id: Some("req-b".to_string()),
+                    execution_nonce: None,
                     reason: "second allow".to_string(),
                 },
             ],
@@ -3907,6 +4097,7 @@ mod attestation_and_telemetry_tests {
                 capability_id: Some(format!("cap-{index}")),
                 receipt_id: Some(format!("auth-{index}")),
                 receipt_request_id: Some(format!("req-{index}")),
+                execution_nonce: None,
                 reason: format!("allow #{index}"),
             })
             .collect();
@@ -3977,6 +4168,7 @@ mod attestation_and_telemetry_tests {
                     capability_id: Some("cap-live".to_string()),
                     receipt_id: Some("auth-live".to_string()),
                     receipt_request_id: Some("req-live".to_string()),
+                    execution_nonce: None,
                     reason: "live allow".to_string(),
                 },
                 AcpVerdict {
@@ -3984,6 +4176,7 @@ mod attestation_and_telemetry_tests {
                     capability_id: Some("cap-pending".to_string()),
                     receipt_id: Some("auth-pending".to_string()),
                     receipt_request_id: Some("req-pending".to_string()),
+                    execution_nonce: None,
                     reason: "pending allow".to_string(),
                 },
                 AcpVerdict {
@@ -3991,6 +4184,7 @@ mod attestation_and_telemetry_tests {
                     capability_id: Some("cap-blocked".to_string()),
                     receipt_id: Some("auth-blocked".to_string()),
                     receipt_request_id: Some("req-blocked".to_string()),
+                    execution_nonce: None,
                     reason: "checker allowed but built-in guard will block".to_string(),
                 },
             ],
@@ -4598,6 +4792,7 @@ mod attestation_and_telemetry_tests {
                     capability_id: Some(self.capability_id.clone()),
                     receipt_id: Some(self.receipt_id.clone()),
                     receipt_request_id: Some(self.receipt_request_id.clone()),
+                    execution_nonce: None,
                     reason: "bound to expected session/terminal".to_string(),
                 })
             } else {
@@ -4606,6 +4801,7 @@ mod attestation_and_telemetry_tests {
                     capability_id: Some(self.capability_id.clone()),
                     receipt_id: None,
                     receipt_request_id: None,
+                    execution_nonce: None,
                     reason: "authorization receipt parameter hash mismatch".to_string(),
                 })
             }
@@ -4745,8 +4941,7 @@ mod attestation_and_telemetry_tests {
         let expected_hash = lifecycle_param_hash(&json!({
             "sessionId": "session-kill-ok",
             "terminalId": "term-kill",
-            "toolCallId": "tool-kill",
-            "capabilityToken": "signed-capability-json"
+            "toolCallId": "tool-kill"
         }));
         assert_eq!(recorded[0].authorization_parameter_hash, expected_hash);
     }
@@ -4803,8 +4998,7 @@ mod attestation_and_telemetry_tests {
         let approved_params = json!({
             "sessionId": "session-A",
             "terminalId": "term-A",
-            "toolCallId": "tool-A",
-            "capabilityToken": "signed-capability-json"
+            "toolCallId": "tool-A"
         });
         let approved_hash = lifecycle_param_hash(&approved_params);
 
@@ -4834,7 +5028,12 @@ mod attestation_and_telemetry_tests {
             "jsonrpc": "2.0",
             "id": 905,
             "method": "terminal/kill",
-            "params": approved_params,
+            "params": {
+                "sessionId": "session-A",
+                "terminalId": "term-A",
+                "toolCallId": "tool-A",
+                "capabilityToken": "signed-capability-json"
+            },
         });
         match interceptor
             .intercept(Direction::AgentToClient, &approved_kill)

@@ -384,6 +384,7 @@ mod tests {
             agent_id: "agent".to_string(),
             arguments: serde_json::json!({"query": ["SELECT id FROM orders"]}),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,

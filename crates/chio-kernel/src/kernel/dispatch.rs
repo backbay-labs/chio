@@ -443,6 +443,16 @@ impl ChioKernel {
         request: &ToolCallRequest,
         has_monetary_grant: bool,
     ) -> Result<(ToolServerOutput, Option<ToolInvocationCost>), KernelError> {
+        self.require_presented_execution_nonce(request, &request.capability)?;
+        self.dispatch_tool_call_with_cost_after_nonce_check(request, has_monetary_grant)
+            .await
+    }
+
+    pub(crate) async fn dispatch_tool_call_with_cost_after_nonce_check(
+        &self,
+        request: &ToolCallRequest,
+        has_monetary_grant: bool,
+    ) -> Result<(ToolServerOutput, Option<ToolInvocationCost>), KernelError> {
         let server = self.tool_servers.get(&request.server_id).ok_or_else(|| {
             KernelError::ToolNotRegistered(format!(
                 "server \"{}\" / tool \"{}\"",

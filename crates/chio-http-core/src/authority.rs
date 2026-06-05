@@ -590,6 +590,7 @@ impl HttpAuthority {
             arguments: serde_json::to_value(projected)
                 .map_err(|error| HttpAuthorityError::Kernel(error.to_string()))?,
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,

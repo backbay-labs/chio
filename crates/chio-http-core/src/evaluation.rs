@@ -9,9 +9,10 @@ use crate::{GuardEvidence, HttpReceipt, Verdict};
 ///
 /// On an `Allow` verdict from a kernel configured with
 /// `ExecutionNonceConfig`, the response carries a short-lived signed nonce
-/// that the client MUST re-present before executing the tool call. The
-/// field is `None` on `Deny`/`Cancel`/`Incomplete` and on deployments
-/// without a nonce config, preserving wire-level backward compatibility.
+/// that the client MUST re-present as `ToolCallRequest::execution_nonce`
+/// before executing the tool call. The field is `None` on
+/// `Deny`/`Cancel`/`Incomplete`, on deployments without a nonce config,
+/// and on advisory sidecar aliases that do not perform kernel dispatch.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EvaluateResponse {
     pub verdict: Verdict,

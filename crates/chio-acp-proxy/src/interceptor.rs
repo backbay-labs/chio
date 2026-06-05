@@ -297,7 +297,8 @@ impl MessageInterceptor {
                 operation: "fs_read".to_string(),
                 resource: read_params.path.clone(),
                 authorization_parameter_hash,
-                operation_payload: params.clone(),
+                operation_payload: authorization_operation_payload(params),
+                execution_nonce: extract_execution_nonce(params)?,
                 token: extract_capability_token(params),
             },
         ) {
@@ -348,7 +349,8 @@ impl MessageInterceptor {
                 operation: "fs_write".to_string(),
                 resource: write_params.path.clone(),
                 authorization_parameter_hash,
-                operation_payload: params.clone(),
+                operation_payload: authorization_operation_payload(params),
+                execution_nonce: extract_execution_nonce(params)?,
                 token: extract_capability_token(params),
             },
         ) {
@@ -399,7 +401,8 @@ impl MessageInterceptor {
                 operation: "terminal".to_string(),
                 resource: term_params.command.clone(),
                 authorization_parameter_hash,
-                operation_payload: params.clone(),
+                operation_payload: authorization_operation_payload(params),
+                execution_nonce: extract_execution_nonce(params)?,
                 token: extract_capability_token(params),
             },
         ) {
@@ -504,7 +507,8 @@ impl MessageInterceptor {
                 operation,
                 resource: terminal_id.clone(),
                 authorization_parameter_hash,
-                operation_payload: params.clone(),
+                operation_payload: authorization_operation_payload(params),
+                execution_nonce: extract_execution_nonce(params)?,
                 token: extract_capability_token(params),
             },
         ) {
@@ -751,7 +755,19 @@ impl MessageInterceptor {
                 })
             }
             Ok(verdict) => {
-                CapabilityGate::Block(json_rpc_error(id, ACP_ERROR_ACCESS_DENIED, &verdict.reason))
+                let error_data = verdict.execution_nonce.map(|execution_nonce| {
+                    serde_json::json!({
+                        "chio": {
+                            "executionNonce": execution_nonce
+                        }
+                    })
+                });
+                CapabilityGate::Block(json_rpc_error_with_data(
+                    id,
+                    ACP_ERROR_ACCESS_DENIED,
+                    &verdict.reason,
+                    error_data,
+                ))
             }
             Err(err) => CapabilityGate::Block(json_rpc_error(
                 id,
@@ -1041,9 +1057,38 @@ fn acp_receipt_tool_name(entry: &AcpToolCallAuditEntry) -> String {
 }
 
 fn authorization_parameter_hash(params: &Value) -> Result<String, AcpProxyError> {
-    let bytes = chio_core::canonical::canonical_json_bytes(params)
+    let payload = authorization_operation_payload(params);
+    let bytes = chio_core::canonical::canonical_json_bytes(&payload)
         .map_err(|e| AcpProxyError::Protocol(format!("hash ACP authorization params: {e}")))?;
     Ok(chio_core::sha256_hex(&bytes))
+}
+
+fn authorization_operation_payload(params: &Value) -> Value {
+    let mut payload = params.clone();
+    strip_execution_nonce_controls(&mut payload);
+    payload
+}
+
+fn strip_execution_nonce_controls(value: &mut Value) {
+    let Some(object) = value.as_object_mut() else {
+        return;
+    };
+    object.remove("capabilityToken");
+    object.remove("capability_token");
+    object.remove("executionNonce");
+    object.remove("execution_nonce");
+    let remove_chio = if let Some(chio) = object.get_mut("chio").and_then(Value::as_object_mut) {
+        chio.remove("capabilityToken");
+        chio.remove("capability_token");
+        chio.remove("executionNonce");
+        chio.remove("execution_nonce");
+        chio.is_empty()
+    } else {
+        false
+    };
+    if remove_chio {
+        object.remove("chio");
+    }
 }
 
 /// Returns true for ACP capability requests whose source parameters carry a
@@ -1092,6 +1137,22 @@ fn extract_capability_token(params: &Value) -> Option<String> {
                 .get("chio")
                 .and_then(|chio| extract_token_value(chio.get("capability_token")))
         })
+}
+
+fn extract_execution_nonce(
+    params: &Value,
+) -> Result<Option<chio_kernel::SignedExecutionNonce>, AcpProxyError> {
+    let value = params
+        .get("executionNonce")
+        .or_else(|| params.get("execution_nonce"))
+        .or_else(|| params.get("chio").and_then(|chio| chio.get("executionNonce")))
+        .or_else(|| params.get("chio").and_then(|chio| chio.get("execution_nonce")));
+    match value {
+        None | Some(Value::Null) => Ok(None),
+        Some(value) => serde_json::from_value(value.clone())
+            .map(Some)
+            .map_err(|error| AcpProxyError::Protocol(format!("invalid execution nonce: {error}"))),
+    }
 }
 
 fn extract_tool_call_id(params: &Value) -> Option<String> {

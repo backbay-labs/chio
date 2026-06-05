@@ -150,6 +150,8 @@ pub struct AcpKernelExecutionContext {
     pub agent_id: String,
     /// Optional DPoP proof when the matched grant requires sender binding.
     pub dpop_proof: Option<dpop::DpopProof>,
+    /// Optional execution nonce for strict kernel dispatch.
+    pub execution_nonce: Option<SignedExecutionNonce>,
     /// Optional governed transaction intent carried with this invocation.
     pub governed_intent: Option<GovernedTransactionIntent>,
     /// Optional approval token for governed transaction execution.

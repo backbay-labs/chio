@@ -197,6 +197,7 @@ async fn run_verdict_trace(
             agent_id: capability.subject.to_hex(),
             arguments: step.arguments.clone(),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,

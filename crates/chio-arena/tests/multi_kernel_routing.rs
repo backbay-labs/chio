@@ -105,6 +105,7 @@ fn build_request(
         agent_id: capability.subject.to_hex(),
         arguments: json!({ "path": "/tmp/multiplex.txt" }),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,

@@ -467,6 +467,7 @@ pub(crate) fn execute_runtime_loopback_step(
         agent_id: agent_key.public_key().to_hex(),
         arguments,
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: Some(governed_intent),
         approval_token: None,
         model_metadata: None,

@@ -462,6 +462,7 @@ mod tests {
             agent_id: agent_keypair.public_key().to_hex(),
             arguments: serde_json::json!({ "message": "hello" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,

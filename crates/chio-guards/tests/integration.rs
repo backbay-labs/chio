@@ -77,6 +77,7 @@ fn make_request(
         agent_id: agent_kp.public_key().to_hex(),
         arguments: args,
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,

@@ -734,6 +734,7 @@ mod tests {
             agent_id: "agent".to_string(),
             arguments: serde_json::json!({"query": "SELECT 1"}),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
@@ -775,6 +776,7 @@ mod tests {
                 }
             }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,

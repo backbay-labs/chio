@@ -17,6 +17,7 @@ struct PreDispatchCleanupDeny<'a> {
     matched_grant_index: usize,
     cap: &'a CapabilityToken,
     budget_mutation: &'a PreExecutionBudgetMutation,
+    payment_authorization: Option<&'a PaymentAuthorization>,
     runtime_admission_metadata: Option<serde_json::Value>,
 }
 
@@ -349,6 +350,7 @@ impl ChioKernel {
             agent_id: req.agent_id.clone(),
             arguments: step.parameters.clone(),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: step.model_metadata.clone(),
@@ -882,8 +884,22 @@ impl ChioKernel {
                     matched_grant_index,
                     cap,
                     budget_mutation: &budget_mutation,
+                    payment_authorization: None,
                     runtime_admission_metadata: extra_metadata,
                 })
+            });
+        }
+
+        if self.execution_nonce_preflight_required(request) {
+            return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
+                self.build_execution_nonce_preflight_allow_response_after_cleanup(
+                    request,
+                    now,
+                    matched_grant_index,
+                    cap,
+                    &budget_mutation,
+                    extra_metadata,
+                )
             });
         }
 
@@ -904,12 +920,30 @@ impl ChioKernel {
                             matched_grant_index,
                             cap,
                             budget_mutation: &budget_mutation,
+                            payment_authorization: None,
                             runtime_admission_metadata: extra_metadata,
                         })
                     },
                 );
             }
         };
+
+        if let Err(error) = self.require_presented_execution_nonce(request, cap) {
+            let msg = error.to_string();
+            warn!(request_id = %request.request_id, reason = %redacted!(&msg), "execution nonce denied");
+            return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
+                self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
+                    request,
+                    reason: &msg,
+                    timestamp: now,
+                    matched_grant_index,
+                    cap,
+                    budget_mutation: &budget_mutation,
+                    payment_authorization: payment_authorization.as_ref(),
+                    runtime_admission_metadata: extra_metadata,
+                })
+            });
+        }
 
         let tool_started_at = Instant::now();
         let has_monetary = budget_mutation.charge_result().is_some();
@@ -926,7 +960,7 @@ impl ChioKernel {
             },
         );
         let dispatch_result = self
-            .dispatch_tool_call_with_cost(request, has_monetary)
+            .dispatch_tool_call_with_cost_after_nonce_check(request, has_monetary)
             .await;
         post_admission_drop_guard.disarm();
         drop(post_admission_drop_guard);
@@ -1082,8 +1116,17 @@ impl ChioKernel {
             );
         self.release_admitted_capability_budget(denial.cap)
             .map_err(KernelError::DelegationInvalid)?;
-        let reverse =
-            self.reverse_pre_execution_budget_mutation(denial.cap, denial.budget_mutation)?;
+        let reverse = match denial.payment_authorization {
+            Some(payment_authorization) => self.unwind_aborted_monetary_invocation(
+                denial.request,
+                denial.cap,
+                denial.budget_mutation.charge_result(),
+                Some(payment_authorization),
+            )?,
+            None => {
+                self.reverse_pre_execution_budget_mutation(denial.cap, denial.budget_mutation)?
+            }
+        };
 
         if let (Some(charge), Some(reverse)) =
             (denial.budget_mutation.charge_result(), reverse.as_ref())
@@ -1108,6 +1151,47 @@ impl ChioKernel {
             denial.timestamp,
             Some(denial.matched_grant_index),
             runtime_admission_metadata,
+        )
+    }
+
+    fn build_execution_nonce_preflight_allow_response_after_cleanup(
+        &self,
+        request: &ToolCallRequest,
+        timestamp: u64,
+        matched_grant_index: usize,
+        cap: &CapabilityToken,
+        budget_mutation: &PreExecutionBudgetMutation,
+        runtime_admission_metadata: Option<serde_json::Value>,
+    ) -> Result<ToolCallResponse, KernelError> {
+        let runtime_admission_metadata = self
+            .release_runtime_admission_reservations_for_pre_dispatch_denial(
+                runtime_admission_metadata,
+            );
+        self.release_admitted_capability_budget(cap)
+            .map_err(KernelError::DelegationInvalid)?;
+        let reverse = self.reverse_pre_execution_budget_mutation(cap, budget_mutation)?;
+        let budget_metadata = match (budget_mutation.charge_result(), reverse.as_ref()) {
+            (Some(charge), Some(reverse)) => {
+                Some(self.budget_execution_receipt_metadata(charge, Some(("reversed", reverse))))
+            }
+            _ => None,
+        };
+        let preflight_metadata = Some(serde_json::json!({
+            "execution_nonce": {
+                "stage": "preflight",
+                "tool_dispatched": false
+            }
+        }));
+        let metadata = merge_metadata_objects(
+            merge_metadata_objects(runtime_admission_metadata, budget_metadata),
+            preflight_metadata,
+        );
+
+        self.build_execution_nonce_preflight_allow_response_with_metadata(
+            request,
+            timestamp,
+            Some(matched_grant_index),
+            metadata,
         )
     }
 
@@ -1472,8 +1556,22 @@ impl ChioKernel {
                     matched_grant_index,
                     cap,
                     budget_mutation: &budget_mutation,
+                    payment_authorization: None,
                     runtime_admission_metadata,
                 })
+            });
+        }
+
+        if self.execution_nonce_preflight_required(request) {
+            return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
+                self.build_execution_nonce_preflight_allow_response_after_cleanup(
+                    request,
+                    now,
+                    matched_grant_index,
+                    cap,
+                    &budget_mutation,
+                    runtime_admission_metadata,
+                )
             });
         }
 
@@ -1494,12 +1592,30 @@ impl ChioKernel {
                             matched_grant_index,
                             cap,
                             budget_mutation: &budget_mutation,
+                            payment_authorization: None,
                             runtime_admission_metadata,
                         })
                     },
                 );
             }
         };
+
+        if let Err(error) = self.require_presented_execution_nonce(request, cap) {
+            let msg = error.to_string();
+            warn!(request_id = %request.request_id, reason = %redacted!(&msg), "execution nonce denied");
+            return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
+                self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
+                    request,
+                    reason: &msg,
+                    timestamp: now,
+                    matched_grant_index,
+                    cap,
+                    budget_mutation: &budget_mutation,
+                    payment_authorization: payment_authorization.as_ref(),
+                    runtime_admission_metadata,
+                })
+            });
+        }
 
         let tool_started_at = Instant::now();
         let mut child_receipts = Vec::new();

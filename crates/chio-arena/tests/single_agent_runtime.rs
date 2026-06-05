@@ -100,6 +100,7 @@ async fn runs_single_agent_scenario_and_collects_signed_receipt(
         agent_id: capability.subject.to_hex(),
         arguments: json!({ "path": "/tmp/chio-arena.txt" }),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,

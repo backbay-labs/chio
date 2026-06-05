@@ -61,6 +61,7 @@ fn make_request(request_id: &str, tenant_id: &str) -> KernelRequest {
         agent_id: subject_keypair.public_key().to_hex(),
         arguments: serde_json::json!({}),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,

@@ -44,6 +44,7 @@ fn request_for(agent_id: &str, cap_id: &str) -> (ToolCallRequest, ChioScope, Str
         agent_id: agent_id.to_string(),
         arguments: serde_json::json!({}),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,

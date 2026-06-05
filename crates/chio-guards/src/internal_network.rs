@@ -436,6 +436,7 @@ mod tests {
             agent_id: agent.clone(),
             arguments: serde_json::json!({"path": "/etc/passwd"}),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,

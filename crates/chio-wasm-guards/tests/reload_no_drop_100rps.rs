@@ -94,6 +94,7 @@ fn make_context_request(index: usize) -> TestResult<ToolCallRequest> {
         agent_id: "agent-1".to_string(),
         arguments: serde_json::json!({ "index": index }),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,

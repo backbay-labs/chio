@@ -317,6 +317,13 @@ Not every MCP feature lands on day one. Known gaps:
 - **Remote MCP.** This guide covers stdio edges. For remote MCP
   (Streamable HTTP with OAuth2 / OIDC), use `chio mcp serve-http`;
   the `--preset` flag is a stdio-only convenience today.
+- **Execution nonces.** Kernel-dispatched tool calls support strict,
+  single-use `ToolCallRequest::execution_nonce` enforcement when
+  `ExecutionNonceConfig::require_nonce` is enabled. The five-minute
+  stdio wrapper remains a manifest-gated pass-through and does not yet
+  re-present execution nonces to the kernel. For TOCTOU-sensitive
+  deployments, use a kernel-dispatched execution path with strict
+  nonces enabled; the default compatibility path is weaker.
 - **Pre-existing receipts.** Moving to Chio does not retroactively
   attest past tool calls; receipts start at the first call through
   the edge.

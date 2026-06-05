@@ -170,6 +170,7 @@ mod tests {
             agent_id: agent_id.clone(),
             arguments: serde_json::json!({"path": "/app/src/main.rs"}),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,

@@ -52,7 +52,9 @@ use chio_cross_protocol::{
 };
 #[cfg(any(test, feature = "compatibility-surface"))]
 use chio_kernel::ToolServerConnection;
-use chio_kernel::{dpop, ChioKernel, ToolCallOutput, Verdict as KernelVerdict};
+use chio_kernel::{
+    dpop, ChioKernel, SignedExecutionNonce, ToolCallOutput, Verdict as KernelVerdict,
+};
 use chio_manifest::{ToolDefinition, ToolManifest};
 use chio_mcp_edge::McpTargetExecutor;
 use serde::{Deserialize, Serialize};

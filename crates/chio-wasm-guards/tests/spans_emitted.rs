@@ -173,6 +173,7 @@ fn make_test_request() -> ToolCallRequest {
         agent_id: "agent-1".to_string(),
         arguments: serde_json::json!({"key": "value"}),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,

@@ -15,6 +15,11 @@
 //
 // The verdict gate is a trait so the e2e test can inject a pure-Rust gate
 // without spinning up the kernel.
+//
+// Boundary: this stdio wrapper is manifest-gated pass-through. It does not
+// mint or present `ToolCallRequest::execution_nonce`. TOCTOU-sensitive
+// deployments need a kernel-dispatched execution path with strict execution
+// nonces enabled.
 
 use super::*;
 

@@ -177,6 +177,7 @@ fn capability_request() -> (ToolCallRequest, ChioScope, String, String) {
         agent_id: "agent-1".to_string(),
         arguments: serde_json::json!({"path": "/tmp/example"}),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,

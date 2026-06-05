@@ -20,7 +20,8 @@ use chio_cross_protocol::{
 };
 use chio_kernel::{
     ChioKernel, LateSessionEvent, NestedFlowClient, PeerCapabilities, SessionOperationResponse,
-    ToolCallOutput, ToolCallRequest, ToolCallResponse, ToolCallStream, ToolServerEvent, Verdict,
+    SignedExecutionNonce, ToolCallOutput, ToolCallRequest, ToolCallResponse, ToolCallStream,
+    ToolServerEvent, Verdict,
 };
 use chio_manifest::ToolManifest;
 #[cfg(test)]
@@ -104,6 +105,7 @@ pub struct BridgeMcpToolCallRequest {
     pub tool_name: String,
     pub arguments: Value,
     pub agent_id: String,
+    pub execution_nonce: Option<SignedExecutionNonce>,
     pub model_metadata: Option<ModelMetadata>,
     pub route_selection_metadata: Option<Value>,
     pub peer_supports_chio_tool_streaming: bool,
@@ -175,6 +177,7 @@ impl TargetProtocolExecutor for McpTargetExecutor {
                     agent_id: request.execution.agent_id.clone(),
                     arguments: request.execution.arguments.clone(),
                     dpop_proof: request.execution.dpop_proof.clone(),
+                    execution_nonce: request.execution.execution_nonce.clone(),
                     governed_intent: request.execution.governed_intent.clone(),
                     approval_token: request.execution.approval_token.clone(),
                     model_metadata: request.execution.model_metadata.clone(),
@@ -223,6 +226,7 @@ pub async fn execute_bridge_mcp_tool_call_async(
         tool_name,
         arguments,
         agent_id,
+        execution_nonce,
         model_metadata,
         route_selection_metadata,
         peer_supports_chio_tool_streaming,
@@ -235,6 +239,7 @@ pub async fn execute_bridge_mcp_tool_call_async(
         agent_id,
         arguments,
         dpop_proof: None,
+        execution_nonce,
         governed_intent: None,
         approval_token: None,
         model_metadata,
@@ -277,6 +282,7 @@ pub fn execute_bridge_mcp_tool_call(
                 agent_id: request.agent_id.clone(),
                 arguments: request.arguments.clone(),
                 dpop_proof: None,
+                execution_nonce: request.execution_nonce.clone(),
                 governed_intent: None,
                 approval_token: None,
                 model_metadata: request.model_metadata.clone(),

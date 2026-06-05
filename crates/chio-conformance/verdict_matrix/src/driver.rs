@@ -381,6 +381,7 @@ fn evaluate_scenario(scenario: &VerdictScenario) -> Result<VerdictTuple, String>
         agent_id: capability.subject.to_hex(),
         arguments,
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
@@ -556,7 +557,7 @@ fn evaluate_replay_scenario(
             &scenario.script.capability_scopes,
         ),
         ReplayNonceStatus::TraceMissing => {
-            match kernel.require_presented_execution_nonce(request, capability, None) {
+            match kernel.require_presented_execution_nonce(request, capability) {
                 Ok(()) => Err("missing execution nonce was accepted".to_string()),
                 Err(_) => Ok(tuple(
                     Verdict::Error,

@@ -16,7 +16,9 @@ use chio_core::capability::{
 };
 use chio_core::sha256_hex;
 use chio_kernel::dpop;
-use chio_kernel::{ChioKernel, ToolCallRequest, ToolCallResponse, Verdict as KernelVerdict};
+use chio_kernel::{
+    ChioKernel, SignedExecutionNonce, ToolCallRequest, ToolCallResponse, Verdict as KernelVerdict,
+};
 use chio_manifest::{LatencyHint, ToolDefinition};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -581,6 +583,7 @@ pub struct CrossProtocolExecutionRequest {
     pub capability: CapabilityToken,
     pub source_envelope: Value,
     pub dpop_proof: Option<dpop::DpopProof>,
+    pub execution_nonce: Option<SignedExecutionNonce>,
     pub governed_intent: Option<GovernedTransactionIntent>,
     pub approval_token: Option<GovernedApprovalToken>,
     pub model_metadata: Option<ModelMetadata>,
@@ -807,6 +810,7 @@ impl TargetProtocolExecutor for OpenAiTargetExecutor {
                     agent_id: request.execution.agent_id.clone(),
                     arguments: request.execution.arguments.clone(),
                     dpop_proof: request.execution.dpop_proof.clone(),
+                    execution_nonce: request.execution.execution_nonce.clone(),
                     governed_intent: request.execution.governed_intent.clone(),
                     approval_token: request.execution.approval_token.clone(),
                     model_metadata: request.execution.model_metadata.clone(),
@@ -977,6 +981,7 @@ impl<'a> CrossProtocolOrchestrator<'a> {
                         agent_id: request.agent_id.clone(),
                         arguments: request.arguments.clone(),
                         dpop_proof: request.dpop_proof.clone(),
+                        execution_nonce: request.execution_nonce.clone(),
                         governed_intent: request.governed_intent.clone(),
                         approval_token: request.approval_token.clone(),
                         model_metadata: request.model_metadata.clone(),
@@ -1086,6 +1091,7 @@ impl<'a> CrossProtocolOrchestrator<'a> {
                         agent_id: request.agent_id.clone(),
                         arguments: request.arguments.clone(),
                         dpop_proof: request.dpop_proof.clone(),
+                        execution_nonce: request.execution_nonce.clone(),
                         governed_intent: request.governed_intent.clone(),
                         approval_token: request.approval_token.clone(),
                         model_metadata: request.model_metadata.clone(),
@@ -1625,6 +1631,7 @@ mod tests {
                         agent_id: request.execution.agent_id.clone(),
                         arguments: request.execution.arguments.clone(),
                         dpop_proof: request.execution.dpop_proof.clone(),
+                        execution_nonce: request.execution.execution_nonce.clone(),
                         governed_intent: request.execution.governed_intent.clone(),
                         approval_token: request.execution.approval_token.clone(),
                         model_metadata: request.execution.model_metadata.clone(),
@@ -1868,6 +1875,7 @@ mod tests {
                         "metadata": { "chio": { "targetSkillId": "echo" } }
                     }),
                     dpop_proof: None,
+                    execution_nonce: None,
                     governed_intent: None,
                     approval_token: None,
                     model_metadata: None,
@@ -1912,6 +1920,7 @@ mod tests {
                     "metadata": { "chio": { "targetSkillId": "echo" } }
                 }),
                 dpop_proof: None,
+                execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
                 model_metadata: None,
@@ -1971,6 +1980,7 @@ mod tests {
                         }
                     }),
                     dpop_proof: None,
+                    execution_nonce: None,
                     governed_intent: None,
                     approval_token: None,
                     model_metadata: None,
@@ -2019,6 +2029,7 @@ mod tests {
                         }
                     }),
                     dpop_proof: None,
+                    execution_nonce: None,
                     governed_intent: None,
                     approval_token: None,
                     model_metadata: None,
@@ -2055,6 +2066,7 @@ mod tests {
                         "metadata": { "chio": { "targetSkillId": "echo" } }
                     }),
                     dpop_proof: None,
+                    execution_nonce: None,
                     governed_intent: None,
                     approval_token: None,
                     model_metadata: None,
@@ -2126,6 +2138,7 @@ mod tests {
                         "metadata": { "chio": { "targetSkillId": "write" } }
                     }),
                     dpop_proof: None,
+                    execution_nonce: None,
                     governed_intent: None,
                     approval_token: None,
                     model_metadata: None,
@@ -2169,6 +2182,7 @@ mod tests {
                         "metadata": { "chio": { "targetSkillId": "echo" } }
                     }),
                     dpop_proof: None,
+                    execution_nonce: None,
                     governed_intent: None,
                     approval_token: None,
                     model_metadata: None,
@@ -2213,6 +2227,7 @@ mod tests {
                         "metadata": { "chio": { "targetSkillId": "echo" } }
                     }),
                     dpop_proof: None,
+                    execution_nonce: None,
                     governed_intent: None,
                     approval_token: None,
                     model_metadata: None,
@@ -2278,6 +2293,7 @@ mod tests {
                         "metadata": { "chio": { "targetSkillId": "echo" } }
                     }),
                     dpop_proof: None,
+                    execution_nonce: None,
                     governed_intent: None,
                     approval_token: None,
                     model_metadata: Some(ModelMetadata {
@@ -2316,6 +2332,7 @@ mod tests {
                         "metadata": { "chio": { "targetSkillId": "echo" } }
                     }),
                     dpop_proof: None,
+                    execution_nonce: None,
                     governed_intent: None,
                     approval_token: None,
                     model_metadata: None,
@@ -2358,6 +2375,7 @@ mod tests {
                         "metadata": { "chio": { "targetSkillId": "echo" } }
                     }),
                     dpop_proof: None,
+                    execution_nonce: None,
                     governed_intent: None,
                     approval_token: None,
                     model_metadata: None,

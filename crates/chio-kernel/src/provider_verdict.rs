@@ -58,6 +58,7 @@ pub fn build_tool_call_request(
         agent_id,
         arguments,
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,

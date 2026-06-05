@@ -54,6 +54,7 @@ async fn walking_skeleton_loads_runs_and_writes_fixture_shape(
         agent_id: capability.subject.to_hex(),
         arguments: scenario.steps[0].arguments.clone(),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,

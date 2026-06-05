@@ -54,8 +54,8 @@ use chio_cross_protocol::{
 use chio_kernel::ToolServerConnection;
 use chio_kernel::{
     capability_matches_request_with_model_metadata,
-    capability_request_requires_dpop_with_model_metadata, dpop, ChioKernel, ToolCallOutput,
-    Verdict as KernelVerdict,
+    capability_request_requires_dpop_with_model_metadata, dpop, ChioKernel, SignedExecutionNonce,
+    ToolCallOutput, Verdict as KernelVerdict,
 };
 use chio_manifest::{ToolDefinition, ToolManifest};
 use chio_mcp_edge::McpTargetExecutor;

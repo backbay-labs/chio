@@ -1135,7 +1135,8 @@ pub(crate) async fn sidecar_evaluate_tool_call_handler(
             metadata: Some(serde_json::json!({
                 "evaluation_kind": "sidecar_tool_call_alias",
                 "alias_check_outcome": alias_check_outcome,
-                "limitation": "kernel-driven tool-call evaluation is not yet wired through the sidecar; this receipt records cap-revocation and parameter-hash checks only and must not be treated as kernel-mediated authorization",
+                "execution_nonce": "not_minted",
+                "limitation": "kernel-driven tool-call evaluation is not yet wired through the sidecar; this receipt records cap-revocation and parameter-hash checks only, does not mint an execution nonce, and must not be treated as kernel-mediated authorization",
             })),
             trust_level: TrustLevel::Advisory,
             tenant_id: None,

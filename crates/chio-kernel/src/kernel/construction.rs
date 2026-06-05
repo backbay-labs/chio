@@ -967,18 +967,21 @@ impl ChioKernel {
 
     /// Mint a signed execution nonce for an allow verdict.
     ///
-    /// Returns `Ok(None)` when no config is installed (nonces disabled);
+    /// Returns `Ok(None)` when no config is installed (nonces disabled) or
+    /// when this request already presented a nonce for execution. Otherwise
     /// returns `Ok(Some(nonce))` once configured. The nonce binding is
-    /// derived from the capability subject, capability ID, target
-    /// server/tool, and the canonical parameter hash embedded in the
-    /// just-signed allow receipt so the verify-time check is always
-    /// comparing apples to apples.
+    /// derived from the capability subject, capability ID, target server/tool,
+    /// and the canonical parameter hash embedded in the just-signed allow
+    /// receipt so the verify-time check is always comparing apples to apples.
     pub(crate) fn mint_execution_nonce_for_allow(
         &self,
         request: &ToolCallRequest,
         cap: &CapabilityToken,
         receipt: &ChioReceipt,
     ) -> Result<Option<Box<crate::execution_nonce::SignedExecutionNonce>>, KernelError> {
+        if request.execution_nonce.is_some() {
+            return Ok(None);
+        }
         let Some(config) = self.execution_nonce_config.as_ref() else {
             return Ok(None);
         };
@@ -1026,20 +1029,16 @@ impl ChioKernel {
         )
     }
 
-    /// Strict-mode gate. Denies the call fail-closed when the
-    /// kernel is configured to require nonces on every execution-bound
-    /// tool call but the caller did not present one.
+    /// Execution-nonce dispatch gate.
     ///
-    /// `presented` is the nonce the tool server forwarded with the
-    /// execution attempt (for example, lifted from the
-    /// `X-Chio-Execution-Nonce` header). Passing the nonce as a separate
-    /// argument keeps `ToolCallRequest` wire-stable: every other call
-    /// site that builds a request (guards, adapters, tests) continues to
-    /// compile unchanged, and strict mode is gated on the integration
-    /// layer that knows how to shuttle the nonce header.
+    /// Denies fail-closed when strict mode is configured and the request
+    /// lacks a nonce. When strict mode is disabled, a request with no
+    /// nonce remains backward-compatible. Any presented nonce is still
+    /// verified and consumed so opt-in callers cannot bypass binding,
+    /// expiry, signature, or replay checks.
     ///
     /// Returns `Ok(())` when:
-    /// * strict mode is disabled (backward-compat path), OR
+    /// * no nonce is required and none was presented, OR
     /// * a nonce is presented, signed by this kernel, correctly bound,
     ///   non-expired, and has not been consumed.
     ///
@@ -1048,9 +1047,9 @@ impl ChioKernel {
         &self,
         request: &ToolCallRequest,
         cap: &CapabilityToken,
-        presented: Option<&crate::execution_nonce::SignedExecutionNonce>,
     ) -> Result<(), KernelError> {
-        if !self.execution_nonce_required() {
+        let presented = request.execution_nonce.as_ref();
+        if !self.execution_nonce_required() && presented.is_none() {
             return Ok(());
         }
         let presented = presented.ok_or_else(|| {
@@ -1073,6 +1072,18 @@ impl ChioKernel {
         };
         self.verify_presented_execution_nonce(presented, &expected)
             .map_err(|e| KernelError::Internal(format!("{e}")))
+    }
+
+    /// Strict-mode nonce issuance gate.
+    ///
+    /// In strict mode, a request that reaches evaluation without a presented
+    /// nonce is an authorization preflight. It may receive a freshly signed
+    /// nonce, but it must not execute the target tool. Actual execution
+    /// presents that nonce on a later request and consumes it immediately
+    /// before dispatch.
+    #[must_use]
+    pub(crate) fn execution_nonce_preflight_required(&self, request: &ToolCallRequest) -> bool {
+        self.execution_nonce_required() && request.execution_nonce.is_none()
     }
 
     pub fn requires_web3_evidence(&self) -> bool {

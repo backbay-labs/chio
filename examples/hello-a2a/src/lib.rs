@@ -157,6 +157,7 @@ pub fn build_demo_state() -> HelloA2aResult<HelloA2aDemoState> {
         capability,
         agent_id: agent.public_key().to_hex(),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,

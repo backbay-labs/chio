@@ -984,6 +984,7 @@ fn chio_runtime_hook_releases_chio_native_reserved_state_after_kernel_abort(
         agent_id: cap.subject.to_hex(),
         arguments: args,
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: Some(GovernedTransactionIntent {
             id: "intent-live-1".to_string(),
             server_id: "vendor-ledger".to_string(),
@@ -1588,6 +1589,7 @@ fn treaty_runtime_request(
         agent_id: cap.subject.to_hex(),
         arguments: args,
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,

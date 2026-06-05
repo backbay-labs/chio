@@ -21,7 +21,10 @@ use chio_core::receipt::ChioReceipt;
 use chio_cross_protocol::{
     plan_authoritative_route, route_selection_metadata, DiscoveryProtocol, TargetProtocolRegistry,
 };
-use chio_kernel::{dpop, ChioKernel, ToolCallOutput, ToolCallRequest, Verdict as KernelVerdict};
+use chio_kernel::{
+    dpop, ChioKernel, SignedExecutionNonce, ToolCallOutput, ToolCallRequest,
+    Verdict as KernelVerdict,
+};
 use chio_manifest::{ToolDefinition, ToolManifest};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -161,6 +164,8 @@ pub struct OpenAiExecutionContext {
     pub agent_id: String,
     /// Optional DPoP proof bound to this invocation.
     pub dpop_proof: Option<dpop::DpopProof>,
+    /// Optional execution nonce for strict kernel dispatch.
+    pub execution_nonce: Option<SignedExecutionNonce>,
     /// Optional governed transaction intent.
     pub governed_intent: Option<GovernedTransactionIntent>,
     /// Optional governed approval token.
@@ -304,6 +309,7 @@ impl ChioOpenAiAdapter {
             agent_id: execution.agent_id.clone(),
             arguments,
             dpop_proof: execution.dpop_proof.clone(),
+            execution_nonce: execution.execution_nonce.clone(),
             governed_intent: execution.governed_intent.clone(),
             approval_token: execution.approval_token.clone(),
             model_metadata: execution.model_metadata.clone(),
@@ -750,6 +756,7 @@ mod tests {
             capability,
             agent_id: agent_kp.public_key().to_hex(),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
@@ -898,6 +905,7 @@ mod tests {
             capability,
             agent_id: agent_kp.public_key().to_hex(),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: Some(ModelMetadata {
@@ -945,6 +953,7 @@ mod tests {
             capability,
             agent_id: agent_kp.public_key().to_hex(),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(GovernedTransactionIntent {
                 id: "intent-openai-approval-1".to_string(),
                 server_id: "test-srv".to_string(),

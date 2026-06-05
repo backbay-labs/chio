@@ -208,6 +208,7 @@ pub fn bridge_call_value() -> HelloMcpResult<Value> {
             agent_id,
             arguments: json!({"name": "world"}),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,

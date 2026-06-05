@@ -120,6 +120,7 @@ fn make_request(id: &str, cap: &CapabilityToken) -> ToolCallRequest {
         agent_id: cap.subject.to_hex(),
         arguments: serde_json::json!({"path": "/tmp/hello"}),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,

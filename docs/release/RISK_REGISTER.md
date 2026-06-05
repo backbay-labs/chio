@@ -8,7 +8,7 @@ for the full engineering backlog.
 
 | Risk | Severity | Mitigation status | Notes |
 | --- | --- | --- | --- |
-| TOCTOU between guard verdict and tool execution in wrapper integrations | CRITICAL | open | Execution nonce or kernel-dispatched execution |
+| TOCTOU between guard verdict and tool execution in wrapper integrations | CRITICAL | partially mitigated | Kernel dispatch now verifies and consumes `ToolCallRequest::execution_nonce` in strict mode before tool-server invocation. Stdio MCP wrap and advisory `/v1/evaluate` remain weaker until they execute through a nonce-presenting kernel path. |
 | Agent memory stores ungoverned (RAG, scratchpads, conversation history) | HIGH | planned | Memory-write constraints and read receipts |
 | Sidecar bypass: agents can call tools without mediation | HIGH | open | Tool-server auth, network enforcement, honest trust taxonomy |
 | No PyPI/npm packages published; SDKs path-only | CRITICAL | open | CI publishing for Python and TypeScript SDKs |

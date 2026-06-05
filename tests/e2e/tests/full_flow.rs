@@ -204,6 +204,7 @@ fn make_request(
         agent_id: cap.subject.to_hex(),
         arguments: args,
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
@@ -480,6 +481,7 @@ async fn full_flow_revocation_cascade() {
         federated_origin_kernel_id: None,
         arguments: serde_json::json!({"msg": "before revocation"}),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
     };
@@ -505,6 +507,7 @@ async fn full_flow_revocation_cascade() {
         federated_origin_kernel_id: None,
         arguments: serde_json::json!({"msg": "after revocation"}),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
     };
@@ -820,6 +823,7 @@ async fn full_flow_untrusted_issuer() {
         federated_origin_kernel_id: None,
         arguments: serde_json::json!({}),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
     };
