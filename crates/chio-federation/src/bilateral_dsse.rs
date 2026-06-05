@@ -2577,6 +2577,18 @@ mod tests {
         assert!(err.to_string().contains("server_a=allow server_b=deny"));
     }
 
+    #[test]
+    fn validate_policy_evaluation_summary_rejects_unsupported_verdict() {
+        let mut summary = policy_evaluation_summary_with_verdict("allow");
+        summary.server_a_verdict.verdict = "abstain".to_string();
+        summary.server_b_verdict.verdict = "abstain".to_string();
+        summary.joint_disposition = Some("abstain".to_string());
+        let err = validate_policy_evaluation_summary(&summary)
+            .expect_err("admission summaries must reject unknown verdict strings");
+        assert!(matches!(err, BilateralCoSigningError::CanonicalJson(_)));
+        assert!(err.to_string().contains("unsupported verdict"));
+    }
+
     fn resign_payload(
         envelope: &mut DsseEnvelope,
         kp_a: &Keypair,

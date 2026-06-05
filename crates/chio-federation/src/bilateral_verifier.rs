@@ -2137,6 +2137,55 @@ mod tests {
     }
 
     #[test]
+    fn verify_chio_bilateral_invocation_accepts_unanimous_deny_for_audit() {
+        let kp_a = Keypair::generate();
+        let kp_b = Keypair::generate();
+        let receipt = sample_receipt(&kp_b);
+        let now_ms = 1_734_000_000_000;
+
+        let (_slice_envelope, receipt_store, lease_registry, governance_store, oracle, mut peers) =
+            fixture(&kp_a, &kp_b, &receipt, now_ms);
+        let mut envelope = sign_chio_bilateral_dsse_envelope(
+            &receipt,
+            &kp_a,
+            &kp_b,
+            "did:chio:org-a",
+            "did:chio:org-b",
+            "file_read",
+            now_ms,
+            happy_path_extensions(now_ms),
+        )
+        .unwrap();
+        insert_fresh_ladder_peers(&mut peers, &kp_a, &kp_b, now_ms);
+        let (mut statement, _) = envelope.decode_statement().unwrap();
+        let summary = statement
+            .predicate
+            .policy_evaluation_summary
+            .as_mut()
+            .unwrap();
+        summary.server_a_verdict.verdict = "deny".to_string();
+        summary.server_b_verdict.verdict = "deny".to_string();
+        summary.joint_disposition = Some("deny".to_string());
+        let statement_bytes = statement.canonical_bytes().unwrap();
+        resign_envelope(&mut envelope, &kp_a, &kp_b, &statement_bytes);
+
+        let config = config(
+            &peers,
+            &receipt_store,
+            &lease_registry,
+            &governance_store,
+            &oracle,
+            now_ms,
+        );
+        let verified = verify_chio_bilateral_invocation(
+            &envelope,
+            &ChioBilateralVerifierConfig { base: &config },
+        )
+        .unwrap();
+        assert_eq!(verified.joint_verdict, "deny");
+    }
+
+    #[test]
     fn strict_chio_verifier_requires_fresh_ladder_refs() {
         let kp_a = Keypair::generate();
         let kp_b = Keypair::generate();
