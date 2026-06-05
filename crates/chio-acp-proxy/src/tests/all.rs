@@ -5231,6 +5231,73 @@ mod attestation_and_telemetry_tests {
     }
 
     #[test]
+    fn compliance_verification_signer_mismatch_omits_redundant_body_reason() {
+        let receipt_signer = Keypair::generate();
+        let certificate_signer = Keypair::generate();
+        let now = now_secs();
+        let receipts = vec![ComplianceReceiptEntry {
+            receipt: make_receipt_for_session(
+                &receipt_signer,
+                "session-signer-mismatch",
+                "receipt-1",
+                now,
+                "fs/read_text_file",
+                Decision::Allow,
+                vec![GuardEvidence {
+                    guard_name: "fs_guard".to_string(),
+                    verdict: true,
+                    details: Some("read ok".to_string()),
+                }],
+            ),
+            seq: 0,
+        }];
+        let config = ComplianceConfig {
+            budget_limit: 1,
+            required_guards: vec!["fs_guard".to_string()],
+            authorized_scopes: vec!["fs/".to_string()],
+            expected_tenant_id: None,
+            trusted_kernel_keys: std::collections::BTreeSet::from([
+                receipt_signer.public_key().to_hex(),
+                certificate_signer.public_key().to_hex(),
+            ]),
+        };
+
+        let mut cert = generate_compliance_certificate(
+            "session-signer-mismatch",
+            &receipts,
+            &config,
+            &receipt_signer,
+        )
+        .expect("certificate should generate");
+        let body_bytes = chio_core::canonical::canonical_json_bytes(&cert.body)
+            .expect("certificate body should serialize");
+        cert.signer_key = certificate_signer.public_key();
+        cert.signature = certificate_signer.sign(&body_bytes);
+
+        let result = verify_compliance_certificate(
+            &cert,
+            VerificationMode::Lightweight,
+            None,
+            &config,
+        );
+        assert!(!result.passed);
+        assert!(result.certificate_signature_valid);
+        assert!(!result.body_consistent);
+        assert!(
+            result
+                .summary
+                .contains("certificate signer does not match body kernel key"),
+            "summary must name signer mismatch: {}",
+            result.summary
+        );
+        assert!(
+            !result.summary.contains("body consistency check failed"),
+            "signer mismatch alone must not also report generic body failure: {}",
+            result.summary
+        );
+    }
+
+    #[test]
     fn compliance_certificate_serializes_snake_case() {
         let signer = Keypair::generate();
         let now = now_secs();

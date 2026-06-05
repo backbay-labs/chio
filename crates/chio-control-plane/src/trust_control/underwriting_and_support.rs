@@ -2539,4 +2539,87 @@ mod underwriting_and_support_tests {
         .test_unwrap_err();
         assert!(error.contains("compliance report subject mismatch"));
     }
+
+    fn minimal_trust_service_config() -> TrustServiceConfig {
+        TrustServiceConfig {
+            listen: "127.0.0.1:0".parse().test_unwrap(),
+            service_token: "token".to_string(),
+            tenant_read_tokens: BTreeMap::new(),
+            receipt_db_path: None,
+            revocation_db_path: None,
+            authority_seed_path: None,
+            authority_db_path: None,
+            budget_db_path: None,
+            enterprise_providers_file: None,
+            federation_policies_file: None,
+            scim_lifecycle_file: None,
+            verifier_policies_file: None,
+            verifier_challenge_db_path: None,
+            passport_statuses_file: None,
+            passport_issuance_offers_file: None,
+            certification_registry_file: None,
+            certification_discovery_file: None,
+            issuance_policy: None,
+            runtime_assurance_policy: None,
+            advertise_url: None,
+            allow_local_peer_urls: false,
+            certification_public_metadata_ttl_seconds: 900,
+            peer_urls: Vec::new(),
+            cluster_sync_interval: Duration::from_millis(200),
+        }
+    }
+
+    #[test]
+    fn trusted_kernel_keys_none_without_authority_material() {
+        let keys =
+            trusted_kernel_keys_from_service_config(&minimal_trust_service_config()).test_unwrap();
+        assert_eq!(keys, None);
+    }
+
+    #[test]
+    fn trusted_kernel_keys_loads_configured_authority_seed() {
+        let seed_path = unique_temp_path("chio-trusted-kernel-seed", "yaml");
+        let keypair = load_or_create_authority_keypair(&seed_path).test_unwrap();
+        let mut config = minimal_trust_service_config();
+        config.authority_seed_path = Some(seed_path.clone());
+
+        let keys = trusted_kernel_keys_from_service_config(&config).test_unwrap();
+        assert_eq!(
+            keys,
+            Some(vec![keypair.public_key().to_hex()]),
+            "configured authority seed must surface the local kernel key"
+        );
+
+        let _ = fs::remove_file(seed_path);
+    }
+
+    #[test]
+    fn trusted_kernel_keys_propagates_malformed_authority_seed_failure() {
+        let seed_path = unique_temp_path("chio-trusted-kernel-bad-seed", "yaml");
+        fs::write(&seed_path, "not-a-valid-seed").test_unwrap();
+        let mut config = minimal_trust_service_config();
+        config.authority_seed_path = Some(seed_path.clone());
+
+        let error = trusted_kernel_keys_from_service_config(&config).test_unwrap_err();
+        let message = error.to_string();
+        assert!(
+            !message.is_empty(),
+            "malformed authority seed must fail at load time"
+        );
+
+        let _ = fs::remove_file(seed_path);
+    }
+
+    #[test]
+    fn trusted_kernel_keys_rejects_dual_authority_sources() {
+        let mut config = minimal_trust_service_config();
+        config.authority_seed_path = Some(unique_temp_path("chio-trusted-kernel-seed", "yaml"));
+        config.authority_db_path = Some(unique_temp_path("chio-trusted-kernel-db", "sqlite"));
+
+        let error = trusted_kernel_keys_from_service_config(&config).test_unwrap_err();
+        assert!(
+            error.to_string().contains("not both"),
+            "dual authority sources must fail closed"
+        );
+    }
 }

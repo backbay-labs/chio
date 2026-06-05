@@ -1551,7 +1551,7 @@ mod tests {
     }
 
     #[test]
-    fn deny_by_default_reserved_tools_proxy_path_requires_http_authority_grant() {
+    fn deny_by_default_tools_path_without_sidecar_fields_binds_to_path_identity() {
         let query = HashMap::new();
         let (authority, issuer) = authority_with_issuer();
         let capability = signed_capability_token_json_with_scope(
@@ -1574,7 +1574,7 @@ mod tests {
 
         let result = authority
             .evaluate(HttpAuthorityInput {
-                request_id: "req-proxy-reserved-tools-path".to_string(),
+                request_id: "req-tools-path-no-sidecar-fields".to_string(),
                 method: HttpMethod::Post,
                 route_pattern: "/chio/tools/billing/charge".to_string(),
                 path: "/chio/tools/billing/charge",
@@ -1593,18 +1593,15 @@ mod tests {
             })
             .test_unwrap();
 
-        assert!(result.verdict.is_denied());
-        assert!(result.receipt.capability_id.is_none());
-        assert!(result.receipt.evidence[0]
-            .details
-            .as_deref()
-            .is_some_and(|details| {
-                details.contains("capability does not authorize tool authorize_http_request")
-            }));
+        assert!(result.verdict.is_allowed());
+        assert_eq!(
+            result.receipt.capability_id.as_deref(),
+            Some("cap-billing-charge")
+        );
     }
 
     #[test]
-    fn deny_by_default_reserved_tools_arguments_only_requires_http_authority_grant() {
+    fn deny_by_default_tools_path_with_arguments_only_binds_to_path_identity() {
         let query = HashMap::new();
         let (authority, issuer) = authority_with_issuer();
         let capability = signed_capability_token_json_with_scope(
@@ -1627,7 +1624,7 @@ mod tests {
 
         let result = authority
             .evaluate(HttpAuthorityInput {
-                request_id: "req-proxy-reserved-tools-arguments-only".to_string(),
+                request_id: "req-tools-path-arguments-only".to_string(),
                 method: HttpMethod::Post,
                 route_pattern: "/chio/tools/billing/charge".to_string(),
                 path: "/chio/tools/billing/charge",
@@ -1646,14 +1643,11 @@ mod tests {
             })
             .test_unwrap();
 
-        assert!(result.verdict.is_denied());
-        assert!(result.receipt.capability_id.is_none());
-        assert!(result.receipt.evidence[0]
-            .details
-            .as_deref()
-            .is_some_and(|details| {
-                details.contains("capability does not authorize tool authorize_http_request")
-            }));
+        assert!(result.verdict.is_allowed());
+        assert_eq!(
+            result.receipt.capability_id.as_deref(),
+            Some("cap-billing-charge")
+        );
     }
 
     #[test]
