@@ -182,6 +182,7 @@ fn sample_receipt(kp: &Keypair) -> Result<ChioReceipt, Box<dyn std::error::Error
         trust_level: TrustLevel::default(),
         tenant_id: None,
         kernel_key: kp.public_key(),
+        bbs_projection_version: None,
     };
     ChioReceipt::sign(body, kp)
         .map_err(|e| -> Box<dyn std::error::Error> { format!("receipt sign: {e:?}").into() })

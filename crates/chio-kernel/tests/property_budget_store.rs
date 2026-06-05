@@ -242,6 +242,7 @@ fn financial_receipt_carries_hold_lineage_and_guarantee_level() {
             trust_level: chio_core::TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
         },
         &keypair,
     )

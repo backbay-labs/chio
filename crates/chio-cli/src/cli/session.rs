@@ -308,6 +308,7 @@ pub(crate) fn make_error_receipt(
         trust_level: chio_core::TrustLevel::default(),
         tenant_id: None,
         kernel_key: kp.public_key(),
+        bbs_projection_version: None,
     };
 
     chio_core::receipt::ChioReceipt::sign(body, &kp)

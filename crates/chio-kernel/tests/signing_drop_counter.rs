@@ -85,6 +85,7 @@ fn make_body(n: usize, kernel_key: &Keypair) -> Result<ChioReceiptBody, String> 
         trust_level: TrustLevel::default(),
         tenant_id: None,
         kernel_key: kernel_key.public_key(),
+        bbs_projection_version: None,
     };
     body.id =
         chio_receipt_id(&body).map_err(|error| format!("canonical receipt id failed: {error}"))?;

@@ -71,6 +71,7 @@ fn observation(
         trust_level: TrustLevel::default(),
         tenant_id: None,
         kernel_key: kp.public_key(),
+        bbs_projection_version: None,
     };
     let receipt = ChioReceipt::sign(body, kp).expect("sign receipt");
     Observation { request, receipt }

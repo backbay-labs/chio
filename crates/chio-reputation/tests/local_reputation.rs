@@ -95,6 +95,7 @@ fn receipt(
         trust_level: chio_core::TrustLevel::default(),
         tenant_id: None,
         kernel_key: kernel.public_key(),
+        bbs_projection_version: None,
     };
     ChioReceipt::sign(body, kernel)
         .unwrap_or_else(|error| panic!("sign reputation receipt: {error}"))

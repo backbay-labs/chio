@@ -322,6 +322,7 @@ mod tests {
                 trust_level,
                 tenant_id: None,
                 kernel_key: kp.public_key(),
+                bbs_projection_version: None,
             },
             &kp,
         )

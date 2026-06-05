@@ -127,6 +127,7 @@ fn sign_receipt_uses_webcrypto_seed() {
         trust_level: TrustLevel::Mediated,
         tenant_id: None,
         kernel_key: Keypair::generate().public_key(),
+        bbs_projection_version: None,
     };
     let input = serde_json::json!({ "body": body });
 

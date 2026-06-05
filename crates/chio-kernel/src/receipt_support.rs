@@ -467,7 +467,9 @@ pub fn sign_receipt_body_hybrid_canonical(
         metadata: body.metadata,
         trust_level: body.trust_level,
         tenant_id: body.tenant_id,
+        bbs_projection_version: None,
         kernel_key: body.kernel_key,
+        bbs_signature: None,
         algorithm: Some(backend.algorithm()),
         signature,
     };

@@ -62,6 +62,7 @@ fn allow_event(id: &str) -> SiemEvent {
             trust_level: chio_core::TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
         },
         &keypair,
     )

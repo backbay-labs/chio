@@ -161,6 +161,7 @@ fn receipt_projection_couples_decision_to_evidence_body() {
         trust_level: TrustLevel::Mediated,
         tenant_id: None,
         kernel_key: keypair.public_key(),
+        bbs_projection_version: None,
     };
 
     let receipt = ChioReceipt::sign(body, &keypair).test_unwrap();

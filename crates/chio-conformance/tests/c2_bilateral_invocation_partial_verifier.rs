@@ -75,6 +75,7 @@ fn sample_receipt(kp_b: &Keypair) -> ChioReceipt {
         trust_level: TrustLevel::default(),
         tenant_id: None,
         kernel_key: kp_b.public_key(),
+        bbs_projection_version: None,
     };
     ChioReceipt::sign(body, kp_b).unwrap_or_else(|e| panic!("receipt sign: {e:?}"))
 }

@@ -99,6 +99,7 @@ mod tests {
             trust_level: chio_core::TrustLevel::default(),
             tenant_id: None,
             kernel_key: kernel.public_key(),
+            bbs_projection_version: None,
         };
         let receipt = ChioReceipt::sign(body, &kernel)
             .unwrap_or_else(|error| panic!("sign test receipt: {error}"));
@@ -145,6 +146,7 @@ mod tests {
             trust_level: chio_core::TrustLevel::default(),
             tenant_id: None,
             kernel_key: kernel.public_key(),
+            bbs_projection_version: None,
         };
         let receipt = ChioReceipt::sign(body, &kernel)
             .unwrap_or_else(|error| panic!("sign test receipt: {error}"));

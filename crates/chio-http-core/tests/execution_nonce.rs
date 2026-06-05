@@ -184,6 +184,7 @@ fn evaluate_response_serializes_execution_nonce_field() {
         metadata: None,
         trust_level: TrustLevel::default(),
         kernel_key: kp.public_key(),
+        bbs_projection_version: None,
         tenant_id: None,
     };
     let chio_receipt = ChioReceipt::sign(chio_body, &kp).unwrap();

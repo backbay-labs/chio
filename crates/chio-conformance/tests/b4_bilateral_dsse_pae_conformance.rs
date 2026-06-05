@@ -54,6 +54,7 @@ fn sample_receipt(kp_b: &Keypair) -> ChioReceipt {
             trust_level: TrustLevel::default(),
             tenant_id: None,
             kernel_key: kp_b.public_key(),
+            bbs_projection_version: None,
         },
         kp_b,
     )

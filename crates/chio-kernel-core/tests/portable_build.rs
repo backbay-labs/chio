@@ -618,6 +618,7 @@ fn sign_receipt_with_backend() {
         trust_level: TrustLevel::Mediated,
         tenant_id: None,
         kernel_key: keypair.public_key(),
+        bbs_projection_version: None,
     };
 
     let receipt = sign_receipt(body, &backend).unwrap();
@@ -653,6 +654,7 @@ fn sign_receipt_preserves_signed_body_fields() {
         trust_level: TrustLevel::Mediated,
         tenant_id: Some("tenant-a".to_string()),
         kernel_key: keypair.public_key(),
+        bbs_projection_version: None,
     };
 
     let receipt = sign_receipt(body.clone(), &backend).unwrap();
@@ -695,6 +697,7 @@ fn sign_receipt_rejects_kernel_key_mismatch() {
         trust_level: TrustLevel::Mediated,
         tenant_id: None,
         kernel_key: other_keypair.public_key(),
+        bbs_projection_version: None,
     };
 
     let error = sign_receipt(body, &backend).unwrap_err();
@@ -743,6 +746,7 @@ fn sign_receipt_signature_changes_when_economic_authorization_changes() {
         trust_level: TrustLevel::Mediated,
         tenant_id: None,
         kernel_key: keypair.public_key(),
+        bbs_projection_version: None,
     };
 
     let original = sign_receipt(body.clone(), &backend).unwrap();

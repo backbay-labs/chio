@@ -275,6 +275,7 @@ fn body_from_tuple(tuple: &ReceiptTuple, kernel_key: &Keypair) -> ChioReceiptBod
         trust_level: TrustLevel::default(),
         tenant_id: None,
         kernel_key: kernel_key.public_key(),
+        bbs_projection_version: None,
     };
     body.id = chio_receipt_id(&body).expect("canonical receipt id computes");
     body

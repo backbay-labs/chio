@@ -63,6 +63,7 @@ fn signed_receipt(id: &str, capability_id: &str, tenant: Option<&str>) -> ChioRe
             trust_level: TrustLevel::default(),
             tenant_id: tenant.map(str::to_string),
             kernel_key: kp.public_key(),
+            bbs_projection_version: None,
         },
         &kp,
     )

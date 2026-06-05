@@ -3,6 +3,11 @@
 #![forbid(unsafe_code)]
 
 use chio_core_types::canonical::canonical_json_bytes;
+#[cfg(feature = "bbs")]
+use chio_core_types::receipt::{
+    prepare_receipt_body_for_signing, BbsReceiptSignature, ChioReceipt,
+    CHIO_RECEIPT_BBS_SIGNATURE_ALGORITHM, CHIO_RECEIPT_BBS_SIGNATURE_SCHEMA,
+};
 use chio_core_types::receipt::{ChioReceiptBody, TrustLevel};
 use chio_workflow::receipt::{StepRecord, WorkflowReceiptBody};
 use serde::{Deserialize, Serialize};
@@ -158,6 +163,12 @@ pub enum SelectiveDisclosureError {
     SignatureVerificationFailed,
     #[error("BBS proof verification failed")]
     ProofVerificationFailed,
+    #[error("receipt signature verification failed")]
+    ReceiptSignatureInvalid,
+    #[error("receipt does not carry BBS signature material")]
+    ReceiptBbsSignatureMissing,
+    #[error("receipt BBS binding is invalid: {0}")]
+    ReceiptBbsBindingInvalid(String),
     #[error("issuer {0} is not registered")]
     UnknownIssuer(String),
     #[error("issuer public key does not match registry")]
@@ -278,6 +289,13 @@ fn push_message(
 pub fn project_receipt_body(
     body: &ChioReceiptBody,
 ) -> Result<Projection, SelectiveDisclosureError> {
+    if let Some(version) = &body.bbs_projection_version {
+        if version != PROJECTION_VERSION_RECEIPT_V1 {
+            return Err(SelectiveDisclosureError::ProjectionVersionMismatch(
+                version.clone(),
+            ));
+        }
+    }
     let mut messages = Vec::with_capacity(14);
     push_message(
         &mut messages,
@@ -805,6 +823,85 @@ pub fn verify_signed_projection(
         .map_err(|_| SelectiveDisclosureError::SignatureVerificationFailed)
 }
 
+/// Convert a full signed projection into receipt-bound BBS material.
+#[cfg(feature = "bbs")]
+#[must_use]
+pub fn receipt_bbs_signature_from_signed_projection(
+    signed: &SignedProjection,
+) -> BbsReceiptSignature {
+    BbsReceiptSignature {
+        schema: CHIO_RECEIPT_BBS_SIGNATURE_SCHEMA.to_string(),
+        projection_version: signed.projection_version.clone(),
+        algorithm: CHIO_RECEIPT_BBS_SIGNATURE_ALGORITHM.to_string(),
+        ciphersuite: signed.ciphersuite.clone(),
+        issuer_fingerprint: signed.issuer_fingerprint.clone(),
+        issuer_public_key_hex: signed.issuer_public_key_hex.clone(),
+        message_count: signed.message_count,
+        signature_hex: signed.signature_hex.clone(),
+    }
+}
+
+/// Sign a receipt body with Ed25519 and embed BBS material over its final
+/// projected receipt body.
+#[cfg(feature = "bbs")]
+pub fn sign_chio_receipt_with_bbs(
+    mut body: ChioReceiptBody,
+    receipt_keypair: &chio_core_types::crypto::Keypair,
+    bbs_keypair: &BbsKeyPair,
+) -> Result<ChioReceipt, SelectiveDisclosureError> {
+    body.bbs_projection_version = Some(PROJECTION_VERSION_RECEIPT_V1.to_string());
+    let prepared = prepare_receipt_body_for_signing(body)
+        .map_err(|error| SelectiveDisclosureError::CanonicalJson(error.to_string()))?;
+    let projection = project_receipt_body(&prepared)?;
+    let signed = sign_projection(&projection, bbs_keypair)?;
+    let bbs_signature = receipt_bbs_signature_from_signed_projection(&signed);
+    ChioReceipt::sign_prepared_with_bbs(prepared, receipt_keypair, bbs_signature)
+        .map_err(|error| SelectiveDisclosureError::CanonicalJson(error.to_string()))
+}
+
+/// Reconstruct the full signed projection carrier from a receipt-bound BBS
+/// signature.
+#[cfg(feature = "bbs")]
+pub fn receipt_signed_projection(
+    receipt: &ChioReceipt,
+) -> Result<SignedProjection, SelectiveDisclosureError> {
+    let signature_valid = receipt
+        .verify_signature()
+        .map_err(|error| SelectiveDisclosureError::CanonicalJson(error.to_string()))?;
+    if !signature_valid {
+        return Err(SelectiveDisclosureError::ReceiptSignatureInvalid);
+    }
+    let Some(bbs_signature) = receipt.bbs_signature.as_ref() else {
+        return Err(SelectiveDisclosureError::ReceiptBbsSignatureMissing);
+    };
+    let body = receipt.body();
+    let version = body.bbs_projection_version.as_deref().ok_or_else(|| {
+        SelectiveDisclosureError::ReceiptBbsBindingInvalid(
+            "receipt body is missing bbs_projection_version".to_string(),
+        )
+    })?;
+    if version != bbs_signature.projection_version {
+        return Err(SelectiveDisclosureError::ReceiptBbsBindingInvalid(
+            "receipt BBS projection version mismatch".to_string(),
+        ));
+    }
+    ensure_supported_projection_version(version)?;
+    let projection = project_receipt_body(&body)?;
+    if bbs_signature.message_count != projection.messages.len() {
+        return Err(SelectiveDisclosureError::SignedProjectionMismatch);
+    }
+    Ok(SignedProjection {
+        schema: SIGNED_PROJECTION_SCHEMA_V1.to_string(),
+        projection_version: bbs_signature.projection_version.clone(),
+        subject_sha256_hex: projection.subject_sha256_hex,
+        ciphersuite: bbs_signature.ciphersuite.clone(),
+        issuer_fingerprint: bbs_signature.issuer_fingerprint.clone(),
+        issuer_public_key_hex: bbs_signature.issuer_public_key_hex.clone(),
+        message_count: bbs_signature.message_count,
+        signature_hex: bbs_signature.signature_hex.clone(),
+    })
+}
+
 /// Derive a selective disclosure proof from a signed projection.
 #[cfg(feature = "bbs")]
 pub fn derive_selective_disclosure_proof(
@@ -855,6 +952,20 @@ pub fn derive_selective_disclosure_proof(
         proof_nonce_hex: hex::encode(nonce),
         proof_bytes_hex: hex::encode(proof.to_bytes()),
     })
+}
+
+/// Derive a selective disclosure proof from BBS material embedded in a Chio
+/// receipt.
+#[cfg(feature = "bbs")]
+pub fn derive_selective_disclosure_proof_from_receipt(
+    receipt: &ChioReceipt,
+    keypair: &BbsKeyPair,
+    disclosure: &DisclosureSet,
+    nonce: &[u8],
+) -> Result<SelectiveDisclosureProof, SelectiveDisclosureError> {
+    let signed = receipt_signed_projection(receipt)?;
+    let projection = project_receipt_body(&receipt.body())?;
+    derive_selective_disclosure_proof(&signed, &projection, keypair, disclosure, nonce)
 }
 
 /// Verify a selective disclosure proof against the issuer registry.

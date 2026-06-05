@@ -43,6 +43,7 @@ fn deny_receipt() -> ChioReceipt {
         trust_level: TrustLevel::Mediated,
         tenant_id: Some("healthcare-pilot".to_string()),
         kernel_key: keypair.public_key(),
+        bbs_projection_version: None,
     };
     ChioReceipt::sign(body, &keypair).unwrap()
 }

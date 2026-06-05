@@ -720,6 +720,7 @@ fn make_receipt(
             trust_level: chio_core::TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
         },
         &keypair,
     )
@@ -851,6 +852,7 @@ fn make_financial_receipt_signed_by(
             trust_level: chio_core::TrustLevel::default(),
             tenant_id: None,
             kernel_key: signing_key.public_key(),
+            bbs_projection_version: None,
         },
         signing_key,
     )
@@ -933,6 +935,7 @@ fn make_financial_receipt_with_budget_authority(
             trust_level: chio_core::TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
         },
         &keypair,
     )
@@ -1026,6 +1029,7 @@ fn make_financial_receipt_with_settlement_status(
             trust_level: chio_core::TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
         },
         &keypair,
     )
@@ -1113,6 +1117,7 @@ fn make_governed_financial_receipt_signed_by(
             trust_level: chio_core::TrustLevel::default(),
             tenant_id: None,
             kernel_key: signing_key.public_key(),
+            bbs_projection_version: None,
         },
         signing_key,
     )
@@ -1203,6 +1208,7 @@ fn make_governed_receipt(
             trust_level: chio_core::TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
         },
         &keypair,
     )
@@ -1368,6 +1374,7 @@ fn make_governed_authorization_receipt_with_runtime_profile(
             trust_level: chio_core::TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
         },
         &keypair,
     )
@@ -1491,6 +1498,7 @@ fn make_credit_history_receipt(
             trust_level: chio_core::TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
         },
         &keypair,
     )
@@ -1575,6 +1583,7 @@ fn make_governed_authorization_receipt_without_runtime_assurance(
             trust_level: chio_core::TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
         },
         &keypair,
     )
@@ -1665,6 +1674,7 @@ fn make_underwriting_simulation_receipt(
             trust_level: chio_core::TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
         },
         &keypair,
     )
@@ -1750,6 +1760,7 @@ fn make_governed_x402_receipt(
             trust_level: chio_core::TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
         },
         &keypair,
     )
@@ -1839,6 +1850,7 @@ fn make_governed_acp_receipt(
             trust_level: chio_core::TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
         },
         &keypair,
     )
@@ -4727,6 +4739,7 @@ fn test_authorization_context_report_rejects_invalid_chio_oauth_profile_projecti
                 trust_level: chio_core::TrustLevel::default(),
                 tenant_id: None,
                 kernel_key: keypair.public_key(),
+                bbs_projection_version: None,
             },
             &keypair,
         )
@@ -5027,6 +5040,7 @@ fn test_authorization_context_report_rejects_incomplete_runtime_assurance_projec
                 trust_level: chio_core::TrustLevel::default(),
                 tenant_id: None,
                 kernel_key: keypair.public_key(),
+                bbs_projection_version: None,
             },
             &keypair,
         )
@@ -5168,6 +5182,7 @@ fn test_authorization_context_report_rejects_invalid_delegated_call_chain_projec
                 trust_level: chio_core::TrustLevel::default(),
                 tenant_id: None,
                 kernel_key: keypair.public_key(),
+                bbs_projection_version: None,
             },
             &keypair,
         )

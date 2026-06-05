@@ -126,6 +126,7 @@ pub(crate) fn insert_runtime_loopback_treaty_context(
             trust_level: chio_core::receipt::TrustLevel::Mediated,
             tenant_id: None,
             kernel_key: vendor_key.public_key(),
+            bbs_projection_version: None,
         },
         vendor_key,
     )

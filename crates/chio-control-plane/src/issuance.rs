@@ -966,6 +966,7 @@ mod tests {
                 trust_level: chio_core::TrustLevel::default(),
                 tenant_id: None,
                 kernel_key: kernel_kp.public_key(),
+                bbs_projection_version: None,
             },
             kernel_kp,
         )

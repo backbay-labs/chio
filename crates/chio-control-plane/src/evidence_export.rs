@@ -2242,6 +2242,7 @@ mod tests {
                 trust_level: chio_core::TrustLevel::default(),
                 tenant_id: None,
                 kernel_key: keypair.public_key(),
+                bbs_projection_version: None,
             },
             &keypair,
         )
@@ -2283,6 +2284,7 @@ mod tests {
                 trust_level: chio_core::TrustLevel::default(),
                 tenant_id: None,
                 kernel_key: backend.public_key(),
+                bbs_projection_version: None,
             },
             &backend,
         )

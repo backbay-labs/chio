@@ -67,6 +67,7 @@ fn arena_receipt() -> Result<ArenaReceipt, Box<dyn std::error::Error>> {
             trust_level: TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
         },
         &keypair,
     )?;
@@ -171,6 +172,7 @@ fn arena_receipt_allow() -> Result<ArenaReceipt, Box<dyn std::error::Error>> {
             trust_level: TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
         },
         &keypair,
     )?;

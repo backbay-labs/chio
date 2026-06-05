@@ -1375,6 +1375,7 @@ mod tests {
             tenant_id: None,
             // Placeholder; sign_receipt_pure replaces this with the seed's public key.
             kernel_key: Keypair::generate().public_key(),
+            bbs_projection_version: None,
         };
 
         let receipt =
@@ -1409,6 +1410,7 @@ mod tests {
             trust_level: TrustLevel::Mediated,
             tenant_id: None,
             kernel_key: Keypair::generate().public_key(),
+            bbs_projection_version: None,
         };
 
         let err = sign_receipt_pure(SignReceiptRequestJson { body }, &seed)
@@ -1477,6 +1479,7 @@ mod tests {
             trust_level: TrustLevel::Mediated,
             tenant_id: None,
             kernel_key: Keypair::generate().public_key(),
+            bbs_projection_version: None,
         };
         sign_receipt_pure(SignReceiptRequestJson { body }, &seed).unwrap()
     }

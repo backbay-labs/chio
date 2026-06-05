@@ -110,6 +110,7 @@ fn signed_priced_receipt(kp: &Keypair, receipt_id: &str, amount: u64) -> ChioRec
         trust_level: TrustLevel::default(),
         tenant_id: Some("tenant-a".to_string()),
         kernel_key: kp.public_key(),
+        bbs_projection_version: None,
     };
     ChioReceipt::sign(body, kp).unwrap()
 }

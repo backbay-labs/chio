@@ -303,6 +303,7 @@ impl HttpReceipt {
             trust_level: self.trust_level,
             tenant_id: None,
             kernel_key: self.kernel_key.clone(),
+            bbs_projection_version: None,
         }
     }
 

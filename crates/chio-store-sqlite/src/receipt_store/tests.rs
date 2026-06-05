@@ -73,6 +73,7 @@ fn sample_receipt() -> ChioReceipt {
             trust_level: chio_core::TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
         },
         &keypair,
     )
@@ -136,6 +137,7 @@ fn sample_hybrid_receipt() -> ChioReceipt {
             trust_level: chio_core::TrustLevel::default(),
             tenant_id: None,
             kernel_key: backend.public_key(),
+            bbs_projection_version: None,
         },
         &backend,
     )
@@ -484,6 +486,7 @@ fn sample_receipt_with_keypair(id: &str, timestamp: u64, keypair: &Keypair) -> C
             trust_level: chio_core::TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
         },
         keypair,
     )
@@ -518,6 +521,7 @@ fn sample_receipt_with_keypair_and_tenant(
             trust_level: chio_core::TrustLevel::default(),
             tenant_id: Some(tenant_id.to_string()),
             kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
         },
         keypair,
     )
@@ -1272,6 +1276,7 @@ fn append_chio_receipt_rejects_mismatched_parameter_hash() {
             trust_level: chio_core::TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
         },
         &keypair,
     )
@@ -1534,6 +1539,7 @@ fn claim_log_projection_uses_capability_lineage_when_receipt_lacks_attribution()
             trust_level: chio_core::TrustLevel::default(),
             tenant_id: None,
             kernel_key: receipt_kp.public_key(),
+            bbs_projection_version: None,
         },
         &receipt_kp,
     )
@@ -3344,6 +3350,7 @@ fn receipt_analytics_groups_by_agent_tool_and_time() {
                 trust_level: chio_core::TrustLevel::default(),
                 tenant_id: None,
                 kernel_key: keypair.public_key(),
+                bbs_projection_version: None,
             },
             &keypair,
         )
@@ -3541,6 +3548,7 @@ fn cost_attribution_report_aggregates_matching_corpus_and_limits_detail_rows() {
                 trust_level: chio_core::TrustLevel::default(),
                 tenant_id: None,
                 kernel_key: receipt_kp.public_key(),
+                bbs_projection_version: None,
             },
             &receipt_kp,
         )
@@ -3832,6 +3840,7 @@ fn economic_receipt_projection_report_joins_signed_envelope_with_reconciliation_
             trust_level: chio_core::TrustLevel::default(),
             tenant_id: None,
             kernel_key: receipt_kp.public_key(),
+            bbs_projection_version: None,
         },
         &receipt_kp,
     )
@@ -4083,6 +4092,7 @@ fn economic_completion_flow_report_bundles_receipts_underwriting_and_credit_arti
             trust_level: chio_core::TrustLevel::default(),
             tenant_id: None,
             kernel_key: receipt_kp.public_key(),
+            bbs_projection_version: None,
         },
         &receipt_kp,
     )
@@ -4286,6 +4296,7 @@ fn compliance_report_counts_proof_and_lineage_coverage() {
                 trust_level: chio_core::TrustLevel::default(),
                 tenant_id: None,
                 kernel_key: checkpoint_kp.public_key(),
+                bbs_projection_version: None,
             },
             &checkpoint_kp,
         )
@@ -4465,6 +4476,7 @@ fn receipt_store_authorization_context_report_does_not_mark_asserted_call_chain_
             trust_level: chio_core::TrustLevel::default(),
             tenant_id: None,
             kernel_key: receipt_kp.public_key(),
+            bbs_projection_version: None,
         },
         &receipt_kp,
     )
@@ -4564,6 +4576,7 @@ fn receipt_lineage_verification_backfills_from_governed_call_chain_metadata() {
             trust_level: chio_core::TrustLevel::default(),
             tenant_id: None,
             kernel_key: parent_receipt_kp.public_key(),
+            bbs_projection_version: None,
         },
         &parent_receipt_kp,
     )
@@ -4629,6 +4642,7 @@ fn receipt_lineage_verification_backfills_from_governed_call_chain_metadata() {
             trust_level: chio_core::TrustLevel::default(),
             tenant_id: None,
             kernel_key: child_receipt_kp.public_key(),
+            bbs_projection_version: None,
         },
         &child_receipt_kp,
     )
@@ -4839,6 +4853,7 @@ fn receipt_lineage_statement_links_parent_and_child_receipts() {
             trust_level: chio_core::TrustLevel::default(),
             tenant_id: None,
             kernel_key: receipt_kp.public_key(),
+            bbs_projection_version: None,
         },
         &receipt_kp,
     )
@@ -4891,6 +4906,7 @@ fn receipt_lineage_statement_links_parent_and_child_receipts() {
             trust_level: chio_core::TrustLevel::default(),
             tenant_id: None,
             kernel_key: receipt_kp.public_key(),
+            bbs_projection_version: None,
         },
         &receipt_kp,
     )

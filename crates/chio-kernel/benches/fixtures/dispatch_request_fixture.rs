@@ -432,6 +432,7 @@ fn make_receipt_body(keypair: &Keypair, capability: &CapabilityToken) -> ChioRec
         trust_level: chio_core::TrustLevel::default(),
         tenant_id: None,
         kernel_key: keypair.public_key(),
+        bbs_projection_version: None,
     }
 }
 

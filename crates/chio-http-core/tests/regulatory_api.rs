@@ -40,6 +40,7 @@ fn make_receipt(keypair: &Keypair, id: &str, timestamp: u64) -> ChioReceipt {
             metadata: None,
             trust_level: chio_core::TrustLevel::default(),
             kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
             tenant_id: None,
         },
         keypair,

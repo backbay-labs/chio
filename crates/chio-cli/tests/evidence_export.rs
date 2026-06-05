@@ -163,6 +163,7 @@ fn receipt_with_keypair(
             trust_level: chio_core::TrustLevel::default(),
             tenant_id: tenant_id.map(ToOwned::to_owned),
             kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
         },
         keypair,
     )

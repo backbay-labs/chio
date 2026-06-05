@@ -140,6 +140,7 @@ mod tests {
                 trust_level: TrustLevel::Mediated,
                 tenant_id: Some("tenant-a".to_string()),
                 kernel_key: keypair.public_key(),
+                bbs_projection_version: None,
             },
             &keypair,
         )

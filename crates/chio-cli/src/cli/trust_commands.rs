@@ -3797,6 +3797,7 @@ mod receipt_explain_tests {
                 trust_level,
                 tenant_id: None,
                 kernel_key: keypair.public_key(),
+                bbs_projection_version: None,
             },
             &keypair,
         )
@@ -3948,6 +3949,7 @@ mod receipt_operator_tests {
                 trust_level: chio_core::TrustLevel::default(),
                 tenant_id: None,
                 kernel_key: keypair.public_key(),
+                bbs_projection_version: None,
             },
             keypair,
         )

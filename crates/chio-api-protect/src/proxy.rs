@@ -2641,6 +2641,7 @@ paths:
                 trust_level: TrustLevel::Advisory,
                 tenant_id: None,
                 kernel_key: signer.public_key(),
+                bbs_projection_version: None,
             },
             &signer,
         )
@@ -2696,6 +2697,7 @@ paths:
                 trust_level: TrustLevel::Mediated,
                 tenant_id: None,
                 kernel_key: attacker.public_key(),
+                bbs_projection_version: None,
             },
             &attacker,
         )
@@ -2760,6 +2762,7 @@ paths:
                 trust_level: TrustLevel::Mediated,
                 tenant_id: None,
                 kernel_key: attacker.public_key(),
+                bbs_projection_version: None,
             },
             &attacker,
         )
@@ -2819,6 +2822,7 @@ paths:
                 trust_level: TrustLevel::Mediated,
                 tenant_id: None,
                 kernel_key: state.signer_keypair.public_key(),
+                bbs_projection_version: None,
             },
             &state.signer_keypair,
         )

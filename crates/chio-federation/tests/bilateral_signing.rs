@@ -45,6 +45,7 @@ fn sample_receipt(tool_host_kp: &Keypair) -> ChioReceipt {
         trust_level: TrustLevel::default(),
         tenant_id: None,
         kernel_key: tool_host_kp.public_key(),
+        bbs_projection_version: None,
     };
     ChioReceipt::sign(body, tool_host_kp).unwrap()
 }

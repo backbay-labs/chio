@@ -95,6 +95,7 @@ mod retention {
                 trust_level: chio_core::TrustLevel::default(),
                 tenant_id,
                 kernel_key: keypair.public_key(),
+                bbs_projection_version: None,
             },
             keypair,
         )

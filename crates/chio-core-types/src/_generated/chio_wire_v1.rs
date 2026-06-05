@@ -659,6 +659,324 @@ impl<'de> ::serde::Deserialize<'de> for AttenuationWitnessNormalizedParentScope 
             })
     }
 }
+///`BbsReceiptSignature`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "algorithm",
+///    "ciphersuite",
+///    "issuer_fingerprint",
+///    "issuer_public_key_hex",
+///    "message_count",
+///    "projection_version",
+///    "schema",
+///    "signature_hex"
+///  ],
+///  "properties": {
+///    "algorithm": {
+///      "type": "string",
+///      "const": "bbs"
+///    },
+///    "ciphersuite": {
+///      "type": "string",
+///      "const": "BBS_BLS12381G1_XMD:SHA-256_SSWU_RO_"
+///    },
+///    "issuer_fingerprint": {
+///      "type": "string",
+///      "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+///    },
+///    "issuer_public_key_hex": {
+///      "type": "string",
+///      "pattern": "^[0-9a-f]{192}$"
+///    },
+///    "message_count": {
+///      "type": "integer",
+///      "const": 14
+///    },
+///    "projection_version": {
+///      "type": "string",
+///      "const": "chio.bbs-projection.receipt.v1"
+///    },
+///    "schema": {
+///      "const": "chio.receipt.bbs_signature.v1"
+///    },
+///    "signature_hex": {
+///      "type": "string",
+///      "pattern": "^([0-9a-f]{2})+$"
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct BbsReceiptSignature {
+    pub algorithm: ::std::string::String,
+    pub ciphersuite: ::std::string::String,
+    pub issuer_fingerprint: BbsReceiptSignatureIssuerFingerprint,
+    pub issuer_public_key_hex: BbsReceiptSignatureIssuerPublicKeyHex,
+    pub message_count: i64,
+    pub projection_version: ::std::string::String,
+    pub schema: ::serde_json::Value,
+    pub signature_hex: BbsReceiptSignatureSignatureHex,
+}
+impl ::std::convert::From<&BbsReceiptSignature> for BbsReceiptSignature {
+    fn from(value: &BbsReceiptSignature) -> Self {
+        value.clone()
+    }
+}
+///`BbsReceiptSignatureIssuerFingerprint`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct BbsReceiptSignatureIssuerFingerprint(::std::string::String);
+impl ::std::ops::Deref for BbsReceiptSignatureIssuerFingerprint {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<BbsReceiptSignatureIssuerFingerprint>
+for ::std::string::String {
+    fn from(value: BbsReceiptSignatureIssuerFingerprint) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&BbsReceiptSignatureIssuerFingerprint>
+for BbsReceiptSignatureIssuerFingerprint {
+    fn from(value: &BbsReceiptSignatureIssuerFingerprint) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for BbsReceiptSignatureIssuerFingerprint {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[A-Za-z0-9._:-]{1,128}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[A-Za-z0-9._:-]{1,128}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for BbsReceiptSignatureIssuerFingerprint {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for BbsReceiptSignatureIssuerFingerprint {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for BbsReceiptSignatureIssuerFingerprint {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for BbsReceiptSignatureIssuerFingerprint {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`BbsReceiptSignatureIssuerPublicKeyHex`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "pattern": "^[0-9a-f]{192}$"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct BbsReceiptSignatureIssuerPublicKeyHex(::std::string::String);
+impl ::std::ops::Deref for BbsReceiptSignatureIssuerPublicKeyHex {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<BbsReceiptSignatureIssuerPublicKeyHex>
+for ::std::string::String {
+    fn from(value: BbsReceiptSignatureIssuerPublicKeyHex) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&BbsReceiptSignatureIssuerPublicKeyHex>
+for BbsReceiptSignatureIssuerPublicKeyHex {
+    fn from(value: &BbsReceiptSignatureIssuerPublicKeyHex) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for BbsReceiptSignatureIssuerPublicKeyHex {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[0-9a-f]{192}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[0-9a-f]{192}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for BbsReceiptSignatureIssuerPublicKeyHex {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for BbsReceiptSignatureIssuerPublicKeyHex {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for BbsReceiptSignatureIssuerPublicKeyHex {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for BbsReceiptSignatureIssuerPublicKeyHex {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`BbsReceiptSignatureSignatureHex`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "pattern": "^([0-9a-f]{2})+$"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct BbsReceiptSignatureSignatureHex(::std::string::String);
+impl ::std::ops::Deref for BbsReceiptSignatureSignatureHex {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<BbsReceiptSignatureSignatureHex> for ::std::string::String {
+    fn from(value: BbsReceiptSignatureSignatureHex) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&BbsReceiptSignatureSignatureHex>
+for BbsReceiptSignatureSignatureHex {
+    fn from(value: &BbsReceiptSignatureSignatureHex) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for BbsReceiptSignatureSignatureHex {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^([0-9a-f]{2})+$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^([0-9a-f]{2})+$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for BbsReceiptSignatureSignatureHex {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for BbsReceiptSignatureSignatureHex {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for BbsReceiptSignatureSignatureHex {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for BbsReceiptSignatureSignatureHex {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
 ///`Body`
 ///
 /// <details><summary>JSON schema</summary>
@@ -13373,6 +13691,15 @@ impl<'de> ::serde::Deserialize<'de> for ChioKernelMessageToolCallChunkId {
 ///            "p384"
 ///          ]
 ///        },
+///        "bbs_projection_version": {
+///          "description": "Receipt-body BBS projection version bound into the receipt id when bbs_signature is present.",
+///          "type": "string",
+///          "const": "chio.bbs-projection.receipt.v1"
+///        },
+///        "bbs_signature": {
+///          "description": "Optional BBS signature material for selective disclosure. When present, the Ed25519 receipt signature covers this material through ChioReceiptSigningBody.",
+///          "$ref": "#/$defs/bbsReceiptSignature"
+///        },
 ///        "boundary_class": {
 ///          "description": "Signed runtime boundary class. `cannot_see` is planning metadata only and is not valid on signed runtime receipts.",
 ///          "type": "string",
@@ -13449,7 +13776,7 @@ impl<'de> ::serde::Deserialize<'de> for ChioKernelMessageToolCallChunkId {
 ///          ]
 ///        },
 ///        "signature": {
-///          "description": "Hex-encoded signature over canonical JSON of ChioReceiptSigningBody { id, body: ChioReceiptIdInput }. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.",
+///          "description": "Hex-encoded signature over canonical JSON of ChioReceiptSigningBody { id, body: ChioReceiptIdInput, bbs_signature? }. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.",
 ///          "type": "string",
 ///          "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$"
 ///        },
@@ -13492,7 +13819,15 @@ impl<'de> ::serde::Deserialize<'de> for ChioKernelMessageToolCallChunkId {
 ///          ]
 ///        }
 ///      },
-///      "additionalProperties": false
+///      "additionalProperties": false,
+///      "dependentRequired": {
+///        "bbs_projection_version": [
+///          "bbs_signature"
+///        ],
+///        "bbs_signature": [
+///          "bbs_projection_version"
+///        ]
+///      }
 ///    },
 ///    "result": {
 ///      "oneOf": [
@@ -19966,6 +20301,15 @@ impl<'de> ::serde::Deserialize<'de> for ChioReceiptMerkleInclusionProofAuditPath
 ///        "p384"
 ///      ]
 ///    },
+///    "bbs_projection_version": {
+///      "description": "Receipt-body BBS projection version bound into the receipt id when bbs_signature is present.",
+///      "type": "string",
+///      "const": "chio.bbs-projection.receipt.v1"
+///    },
+///    "bbs_signature": {
+///      "description": "Optional BBS signature material for selective disclosure. When present, the Ed25519 receipt signature covers this material through ChioReceiptSigningBody.",
+///      "$ref": "#/$defs/bbsReceiptSignature"
+///    },
 ///    "boundary_class": {
 ///      "description": "Signed runtime boundary class. `cannot_see` is planning metadata only and is not valid on signed runtime receipts.",
 ///      "type": "string",
@@ -20042,7 +20386,7 @@ impl<'de> ::serde::Deserialize<'de> for ChioReceiptMerkleInclusionProofAuditPath
 ///      ]
 ///    },
 ///    "signature": {
-///      "description": "Hex-encoded signature over canonical JSON of ChioReceiptSigningBody { id, body: ChioReceiptIdInput }. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.",
+///      "description": "Hex-encoded signature over canonical JSON of ChioReceiptSigningBody { id, body: ChioReceiptIdInput, bbs_signature? }. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.",
 ///      "type": "string",
 ///      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$"
 ///    },
@@ -20085,7 +20429,15 @@ impl<'de> ::serde::Deserialize<'de> for ChioReceiptMerkleInclusionProofAuditPath
 ///      ]
 ///    }
 ///  },
-///  "additionalProperties": false
+///  "additionalProperties": false,
+///  "dependentRequired": {
+///    "bbs_projection_version": [
+///      "bbs_signature"
+///    ],
+///    "bbs_signature": [
+///      "bbs_projection_version"
+///    ]
+///  }
 ///}
 /// ```
 /// </details>
@@ -20099,6 +20451,12 @@ pub struct ChioReceiptRecord {
     ///Signing algorithm envelope hint. Verification dispatches off the signature hex prefix, not this field.
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub algorithm: ::std::option::Option<ChioReceiptRecordAlgorithm>,
+    ///Receipt-body BBS projection version bound into the receipt id when bbs_signature is present.
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub bbs_projection_version: ::std::option::Option<::std::string::String>,
+    ///Optional BBS signature material for selective disclosure. When present, the Ed25519 receipt signature covers this material through ChioReceiptSigningBody.
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub bbs_signature: ::std::option::Option<BbsReceiptSignature>,
     ///Signed runtime boundary class. `cannot_see` is planning metadata only and is not valid on signed runtime receipts.
     pub boundary_class: ChioReceiptRecordBoundaryClass,
     ///ID of the capability token that was exercised (or presented).
@@ -20126,7 +20484,7 @@ pub struct ChioReceiptRecord {
     pub receipt_kind: ChioReceiptRecordReceiptKind,
     ///Signed redaction mode applied to receipt details.
     pub redaction_mode: ChioReceiptRecordRedactionMode,
-    ///Hex-encoded signature over canonical JSON of ChioReceiptSigningBody { id, body: ChioReceiptIdInput }. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.
+    ///Hex-encoded signature over canonical JSON of ChioReceiptSigningBody { id, body: ChioReceiptIdInput, bbs_signature? }. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.
     pub signature: ChioReceiptRecordSignature,
     ///Tenant identifier for multi-tenant deployments. Absent in single-tenant mode; derived from the authenticated session's enterprise identity context, never from caller-provided request fields.
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
@@ -20994,13 +21352,13 @@ impl ::std::convert::TryFrom<::std::string::String> for ChioReceiptRecordRedacti
         value.parse()
     }
 }
-///Hex-encoded signature over canonical JSON of ChioReceiptSigningBody { id, body: ChioReceiptIdInput }. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.
+///Hex-encoded signature over canonical JSON of ChioReceiptSigningBody { id, body: ChioReceiptIdInput, bbs_signature? }. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
-///  "description": "Hex-encoded signature over canonical JSON of ChioReceiptSigningBody { id, body: ChioReceiptIdInput }. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.",
+///  "description": "Hex-encoded signature over canonical JSON of ChioReceiptSigningBody { id, body: ChioReceiptIdInput, bbs_signature? }. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.",
 ///  "type": "string",
 ///  "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$"
 ///}

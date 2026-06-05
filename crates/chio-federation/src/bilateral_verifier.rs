@@ -1823,6 +1823,7 @@ mod tests {
             trust_level: TrustLevel::default(),
             tenant_id: None,
             kernel_key: kp_b.public_key(),
+            bbs_projection_version: None,
         };
         ChioReceipt::sign(body, kp_b).unwrap()
     }

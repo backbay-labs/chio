@@ -242,6 +242,7 @@ fn strict_dsse_fixture_receipt_with_id(
             trust_level: TrustLevel::default(),
             tenant_id: None,
             kernel_key: signer.public_key(),
+            bbs_projection_version: None,
         },
         signer,
     )

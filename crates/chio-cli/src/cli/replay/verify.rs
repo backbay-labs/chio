@@ -123,6 +123,7 @@ mod replay_verify_tests {
             trust_level: chio_core::receipt::TrustLevel::default(),
             tenant_id: None,
             kernel_key: kp.public_key(),
+            bbs_projection_version: None,
         }
     }
 

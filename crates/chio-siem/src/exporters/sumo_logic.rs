@@ -384,6 +384,7 @@ mod tests {
                 trust_level: chio_core::TrustLevel::Verified,
                 tenant_id: None,
                 kernel_key: keypair.public_key(),
+                bbs_projection_version: None,
             },
             &keypair,
         )

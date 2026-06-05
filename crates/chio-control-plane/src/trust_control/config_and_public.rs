@@ -1740,6 +1740,7 @@ pub(crate) fn build_scim_deprovision_receipt(
             trust_level: chio_core::TrustLevel::Mediated,
             tenant_id: Some(tenant_id),
             kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
         },
         &keypair,
     )?)

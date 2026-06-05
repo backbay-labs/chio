@@ -1385,6 +1385,7 @@ fn treaty_runtime_fixture_with_policy(
             trust_level: TrustLevel::default(),
             tenant_id: None,
             kernel_key: signer_b.public_key(),
+            bbs_projection_version: None,
         },
         &signer_b,
     )?;

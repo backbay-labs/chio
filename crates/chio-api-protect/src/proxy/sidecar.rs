@@ -1144,6 +1144,7 @@ pub(crate) async fn sidecar_evaluate_tool_call_handler(
             trust_level: TrustLevel::Advisory,
             tenant_id: None,
             kernel_key: state.signer_keypair.public_key(),
+            bbs_projection_version: None,
         },
         &state.signer_keypair,
     ) {

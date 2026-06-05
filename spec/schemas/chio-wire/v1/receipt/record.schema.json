@@ -141,10 +141,19 @@
       "minLength": 1,
       "description": "Tenant identifier for multi-tenant deployments. Absent in single-tenant mode; derived from the authenticated session's enterprise identity context, never from caller-provided request fields."
     },
+    "bbs_projection_version": {
+      "type": "string",
+      "const": "chio.bbs-projection.receipt.v1",
+      "description": "Receipt-body BBS projection version bound into the receipt id when bbs_signature is present."
+    },
     "kernel_key": {
       "type": "string",
       "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$",
       "description": "Kernel public key (for verification without out-of-band lookup). Bare 64-char lowercase hex string for Ed25519, `p256:<130-char hex>` for uncompressed SEC1 P-256 (65 bytes; leading byte `0x04`), or `p384:<194-char hex>` for uncompressed SEC1 P-384 (97 bytes; leading byte `0x04`). Anything outside these length classes is rejected at decode time by `PublicKey::from_hex` in `crates/chio-core-types/src/crypto.rs`."
+    },
+    "bbs_signature": {
+      "$ref": "#/$defs/bbsReceiptSignature",
+      "description": "Optional BBS signature material for selective disclosure. When present, the Ed25519 receipt signature covers this material through ChioReceiptSigningBody."
     },
     "algorithm": {
       "type": "string",
@@ -158,8 +167,12 @@
     "signature": {
       "type": "string",
       "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$",
-      "description": "Hex-encoded signature over canonical JSON of ChioReceiptSigningBody { id, body: ChioReceiptIdInput }. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream."
+      "description": "Hex-encoded signature over canonical JSON of ChioReceiptSigningBody { id, body: ChioReceiptIdInput, bbs_signature? }. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream."
     }
+  },
+  "dependentRequired": {
+    "bbs_projection_version": ["bbs_signature"],
+    "bbs_signature": ["bbs_projection_version"]
   },
   "allOf": [
     {
@@ -251,6 +264,53 @@
     }
   ],
   "$defs": {
+    "bbsReceiptSignature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "projection_version",
+        "algorithm",
+        "ciphersuite",
+        "issuer_fingerprint",
+        "issuer_public_key_hex",
+        "message_count",
+        "signature_hex"
+      ],
+      "properties": {
+        "schema": {
+          "const": "chio.receipt.bbs_signature.v1"
+        },
+        "projection_version": {
+          "type": "string",
+          "const": "chio.bbs-projection.receipt.v1"
+        },
+        "algorithm": {
+          "type": "string",
+          "const": "bbs"
+        },
+        "ciphersuite": {
+          "type": "string",
+          "const": "BBS_BLS12381G1_XMD:SHA-256_SSWU_RO_"
+        },
+        "issuer_fingerprint": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+        },
+        "issuer_public_key_hex": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{192}$"
+        },
+        "message_count": {
+          "type": "integer",
+          "const": 14
+        },
+        "signature_hex": {
+          "type": "string",
+          "pattern": "^([0-9a-f]{2})+$"
+        }
+      }
+    },
     "toolCallAction": {
       "type": "object",
       "additionalProperties": false,

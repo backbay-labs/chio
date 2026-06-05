@@ -127,6 +127,7 @@ fn make_receipt_body(keypair: &Keypair) -> ChioReceiptBody {
         trust_level: TrustLevel::Mediated,
         tenant_id: None,
         kernel_key: keypair.public_key(),
+        bbs_projection_version: None,
     }
 }
 

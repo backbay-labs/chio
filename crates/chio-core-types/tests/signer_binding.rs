@@ -54,6 +54,7 @@ fn receipt_body(
         trust_level: TrustLevel::Mediated,
         tenant_id: None,
         kernel_key,
+        bbs_projection_version: None,
     })
 }
 

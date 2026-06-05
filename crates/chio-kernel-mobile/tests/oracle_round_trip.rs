@@ -87,6 +87,7 @@ fn sign_fixture_receipt(fixture: &ReceiptFixture) -> Result<ChioReceipt, Box<dyn
         trust_level: TrustLevel::Mediated,
         tenant_id: Some(fixture.tenant_id.clone()),
         kernel_key: keypair.public_key(),
+        bbs_projection_version: None,
     };
 
     let signed_json = sign_receipt(

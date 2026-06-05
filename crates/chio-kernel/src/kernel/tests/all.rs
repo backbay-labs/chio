@@ -768,6 +768,7 @@ fn make_signed_receipt(kp: &Keypair, id: &str) -> ChioReceipt {
             trust_level: chio_core::receipt::TrustLevel::default(),
             tenant_id: None,
             kernel_key: kp.public_key(),
+            bbs_projection_version: None,
         },
         kp,
     )
@@ -8403,6 +8404,7 @@ fn cross_kernel_continuation_token_verifies_parent_receipt_hash_and_session_anch
             trust_level: chio_core::TrustLevel::default(),
             tenant_id: None,
             kernel_key: parent_kernel.public_key(),
+            bbs_projection_version: None,
         },
         &parent_kernel.config.keypair,
     )

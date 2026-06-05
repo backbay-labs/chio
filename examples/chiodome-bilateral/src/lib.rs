@@ -287,6 +287,7 @@ fn build_refund_receipt(kp_org_b: &Keypair) -> Result<ChioReceipt, Box<dyn StdEr
         trust_level: TrustLevel::default(),
         tenant_id: Some("tenant-org-a".to_string()),
         kernel_key: kp_org_b.public_key(),
+        bbs_projection_version: None,
     };
     ChioReceipt::sign(body, kp_org_b)
         .map_err(|e| -> Box<dyn StdError> { format!("receipt sign: {e}").into() })

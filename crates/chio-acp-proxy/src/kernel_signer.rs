@@ -581,6 +581,7 @@ impl ReceiptSigner for KernelReceiptSigner {
                 .as_ref()
                 .and_then(|context| context.tenant_id.clone()),
             kernel_key: self.keypair.public_key(),
+            bbs_projection_version: None,
         };
 
         let receipt = ChioReceipt::sign(body, &self.keypair)

@@ -107,6 +107,7 @@ fn build_receipt(index: u64, kp: &Keypair) -> (ChioReceipt, String) {
         trust_level: TrustLevel::default(),
         tenant_id: None,
         kernel_key: kp.public_key(),
+        bbs_projection_version: None,
     };
     // Seed the body id, then sign. `ChioReceipt::sign` binds the canonical
     // signing nonce into metadata and recomputes the content-addressed id over

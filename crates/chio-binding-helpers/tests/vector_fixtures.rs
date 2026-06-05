@@ -153,6 +153,7 @@ fn base_receipt_body(
         trust_level: chio_core::TrustLevel::default(),
         tenant_id: None,
         kernel_key: keypair.public_key(),
+        bbs_projection_version: None,
     }
 }
 
@@ -193,6 +194,7 @@ fn observation_receipt_body(
         trust_level,
         tenant_id: None,
         kernel_key: keypair.public_key(),
+        bbs_projection_version: None,
     }
 }
 
@@ -225,7 +227,9 @@ fn forged_semantically_invalid_receipt(
         metadata: body.metadata,
         trust_level: body.trust_level,
         tenant_id: body.tenant_id,
+        bbs_projection_version: None,
         kernel_key: body.kernel_key,
+        bbs_signature: None,
         algorithm: None,
         signature,
     }

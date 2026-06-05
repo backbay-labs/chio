@@ -44,6 +44,7 @@ fn body_with(kp: &Keypair, tenant_id: Option<String>) -> ChioReceiptBody {
         trust_level: TrustLevel::default(),
         tenant_id,
         kernel_key: kp.public_key(),
+        bbs_projection_version: None,
     }
 }
 

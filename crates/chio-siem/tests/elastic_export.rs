@@ -40,6 +40,7 @@ fn sample_receipt(id: &str) -> ChioReceipt {
             trust_level: chio_core::TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
         },
         &keypair,
     )
@@ -88,6 +89,7 @@ fn sample_receipt_with_financial(id: &str) -> ChioReceipt {
             trust_level: chio_core::TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
         },
         &keypair,
     )
@@ -120,6 +122,7 @@ fn trace_allow_receipt(id: &str) -> ChioReceipt {
             trust_level: TrustLevel::Verified,
             tenant_id: None,
             kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
         },
         &keypair,
     )

@@ -921,6 +921,7 @@ mod tests {
             trust_level: TrustLevel::Mediated,
             tenant_id: None,
             kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
         };
         let receipt = ChioReceipt::sign(body, &keypair)
             .map_err(|err| BundleError::Canonicalization(err.to_string()))?;

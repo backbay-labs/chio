@@ -67,6 +67,7 @@ fn sample_body(kernel_key: chio_core::crypto::PublicKey) -> ChioReceiptBody {
         trust_level: Default::default(),
         tenant_id: None,
         kernel_key,
+        bbs_projection_version: None,
     }
 }
 

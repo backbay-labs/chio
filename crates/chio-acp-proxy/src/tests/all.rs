@@ -2724,6 +2724,7 @@ mod attestation_and_telemetry_tests {
                 metadata,
                 trust_level: chio_core::TrustLevel::default(),
                 kernel_key: signer.public_key(),
+                bbs_projection_version: None,
                 tenant_id: None,
             },
             signer,
@@ -2812,6 +2813,7 @@ mod attestation_and_telemetry_tests {
                 })),
                 trust_level,
                 kernel_key: signer.public_key(),
+                bbs_projection_version: None,
                 tenant_id: None,
             },
             signer,
@@ -2858,6 +2860,7 @@ mod attestation_and_telemetry_tests {
                 trust_level: receipt.trust_level,
                 tenant_id: Some(tenant_id.to_string()),
                 kernel_key: signer.public_key(),
+                bbs_projection_version: None,
             };
             receipt = ChioReceipt::sign(body, signer).expect("authorization receipt signs");
         }

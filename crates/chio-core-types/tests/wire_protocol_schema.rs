@@ -9,7 +9,11 @@ use chio_core_types::{
     },
     crypto::Keypair,
     message::{AgentMessage, KernelMessage, ToolCallError, ToolCallResult},
-    receipt::{ChioReceipt, ChioReceiptBody, Decision, GuardEvidence, ToolCallAction},
+    receipt::{
+        BbsReceiptSignature, ChioReceipt, ChioReceiptBody, Decision, GuardEvidence, ToolCallAction,
+        CHIO_RECEIPT_BBS_PROJECTION_VERSION_V1, CHIO_RECEIPT_BBS_SIGNATURE_ALGORITHM,
+        CHIO_RECEIPT_BBS_SIGNATURE_SCHEMA,
+    },
 };
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -164,45 +168,64 @@ fn make_hybrid_token() -> CapabilityToken {
 }
 
 fn make_receipt(kp: &Keypair, decision: Decision) -> ChioReceipt {
-    ChioReceipt::sign(
-        ChioReceiptBody {
-            id: "rcpt-wire-001".to_string(),
-            timestamp: 1_710_000_100,
-            capability_id: "cap-wire-001".to_string(),
-            tool_server: "srv".to_string(),
-            tool_name: "echo".to_string(),
-            action: ToolCallAction::from_parameters(json!({
-                "message": "hello",
-                "dry_run": true
-            }))
-            .expect("action"),
-            receipt_kind: Default::default(),
-            boundary_class: Default::default(),
-            observation_outcome: None,
-            tool_origin: Default::default(),
-            redaction_mode: Default::default(),
-            actor_chain: Vec::new(),
-            decision: Some(decision),
-            content_hash: "4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93"
-                .to_string(),
-            policy_hash: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
-                .to_string(),
-            evidence: vec![GuardEvidence {
-                guard_name: "ShellCommandGuard".to_string(),
-                verdict: true,
-                details: Some("allowed".to_string()),
-            }],
-            metadata: Some(json!({
-                "surface": "wire-schema-test",
-                "version": 1
-            })),
-            trust_level: chio_core_types::receipt::TrustLevel::default(),
-            tenant_id: None,
-            kernel_key: kp.public_key(),
-        },
-        kp,
-    )
-    .expect("receipt signs")
+    ChioReceipt::sign(make_receipt_body(kp, decision), kp).expect("receipt signs")
+}
+
+fn bbs_signature_fixture() -> BbsReceiptSignature {
+    BbsReceiptSignature {
+        schema: CHIO_RECEIPT_BBS_SIGNATURE_SCHEMA.to_string(),
+        projection_version: CHIO_RECEIPT_BBS_PROJECTION_VERSION_V1.to_string(),
+        algorithm: CHIO_RECEIPT_BBS_SIGNATURE_ALGORITHM.to_string(),
+        ciphersuite: "BBS_BLS12381G1_XMD:SHA-256_SSWU_RO_".to_string(),
+        issuer_fingerprint: "issuer:wire-schema:bbs".to_string(),
+        issuer_public_key_hex: "11".repeat(96),
+        message_count: 14,
+        signature_hex: "22".repeat(80),
+    }
+}
+
+fn make_bbs_receipt(kp: &Keypair) -> ChioReceipt {
+    let mut body = make_receipt_body(kp, Decision::Allow);
+    body.bbs_projection_version = Some(CHIO_RECEIPT_BBS_PROJECTION_VERSION_V1.to_string());
+    ChioReceipt::sign_with_bbs(body, kp, bbs_signature_fixture()).expect("BBS receipt signs")
+}
+
+fn make_receipt_body(kp: &Keypair, decision: Decision) -> ChioReceiptBody {
+    ChioReceiptBody {
+        id: "rcpt-wire-001".to_string(),
+        timestamp: 1_710_000_100,
+        capability_id: "cap-wire-001".to_string(),
+        tool_server: "srv".to_string(),
+        tool_name: "echo".to_string(),
+        action: ToolCallAction::from_parameters(json!({
+            "message": "hello",
+            "dry_run": true
+        }))
+        .expect("action"),
+        receipt_kind: Default::default(),
+        boundary_class: Default::default(),
+        observation_outcome: None,
+        tool_origin: Default::default(),
+        redaction_mode: Default::default(),
+        actor_chain: Vec::new(),
+        decision: Some(decision),
+        content_hash: "4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93"
+            .to_string(),
+        policy_hash: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef".to_string(),
+        evidence: vec![GuardEvidence {
+            guard_name: "ShellCommandGuard".to_string(),
+            verdict: true,
+            details: Some("allowed".to_string()),
+        }],
+        metadata: Some(json!({
+            "surface": "wire-schema-test",
+            "version": 1
+        })),
+        trust_level: chio_core_types::receipt::TrustLevel::default(),
+        tenant_id: None,
+        kernel_key: kp.public_key(),
+        bbs_projection_version: None,
+    }
 }
 
 #[test]
@@ -459,6 +482,47 @@ fn wire_protocol_schema_cases_validate_live_serialization() {
     for (schema_path, instance) in cases {
         assert_schema_accepts(schema_path, &instance);
     }
+}
+
+#[test]
+fn receipt_schema_accepts_bound_bbs_signature_and_rejects_malformed_bindings() {
+    let kp = Keypair::from_seed(&[37; 32]);
+    let instance = to_json(&make_bbs_receipt(&kp));
+
+    assert_eq!(
+        instance
+            .get("bbs_projection_version")
+            .and_then(Value::as_str),
+        Some(CHIO_RECEIPT_BBS_PROJECTION_VERSION_V1)
+    );
+    assert_schema_accepts("receipt/record.schema.json", &instance);
+
+    let mut missing_projection = instance.clone();
+    missing_projection
+        .as_object_mut()
+        .expect("receipt object")
+        .remove("bbs_projection_version");
+    assert_schema_rejects("receipt/record.schema.json", &missing_projection);
+
+    let mut missing_signature = instance.clone();
+    missing_signature
+        .as_object_mut()
+        .expect("receipt object")
+        .remove("bbs_signature");
+    assert_schema_rejects("receipt/record.schema.json", &missing_signature);
+
+    let mut odd_length_public_key = instance.clone();
+    odd_length_public_key["bbs_signature"]["issuer_public_key_hex"] = json!("abc");
+    assert_schema_rejects("receipt/record.schema.json", &odd_length_public_key);
+
+    let mut unsupported_ciphersuite = instance.clone();
+    unsupported_ciphersuite["bbs_signature"]["ciphersuite"] =
+        json!("BBS_BLS12381G2_XMD:SHA-256_SSWU_RO_");
+    assert_schema_rejects("receipt/record.schema.json", &unsupported_ciphersuite);
+
+    let mut wrong_message_count = instance;
+    wrong_message_count["bbs_signature"]["message_count"] = json!(13);
+    assert_schema_rejects("receipt/record.schema.json", &wrong_message_count);
 }
 
 #[test]

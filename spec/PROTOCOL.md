@@ -701,17 +701,20 @@ The current pre-release v1 receipt envelope is `ChioReceipt` from
 | `metadata` | Optional structured metadata |
 | `trust_level` | `mediated`, `verified`, or `advisory`, coherent with `receipt_kind` |
 | `tenant_id` | Optional authenticated tenant id |
+| `bbs_projection_version` | Optional BBS projection selector. Present only when `bbs_signature` is present, included in the receipt id, and fixed to `chio.bbs-projection.receipt.v1` for v1 receipt BBS material |
 | `kernel_key` | Verifying public key; bare 64-hex Ed25519, `p256:<130-hex>` SEC1 P-256, or `p384:<194-hex>` SEC1 P-384 |
+| `bbs_signature` | Optional BBS signature material for selective disclosure. When present, it is covered by the authoritative receipt signature |
 | `algorithm` | Optional envelope hint (`ed25519`, `p256`, or `p384`); verification dispatches off the signature prefix, not this field |
-| `signature` | Algorithm-aware hex signature over canonical JSON of `ChioReceiptSigningBody { id, body: ChioReceiptIdInput }`. The schema regex is `^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$`: bare 128-hex for Ed25519, `p256:<DER hex>` for P-256, or `p384:<DER hex>` for P-384 |
+| `signature` | Algorithm-aware hex signature over canonical JSON of `ChioReceiptSigningBody { id, body: ChioReceiptIdInput, bbs_signature? }`. The schema regex is `^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$`: bare 128-hex for Ed25519, `p256:<DER hex>` for P-256, or `p384:<DER hex>` for P-384 |
 
 ### Receipt Identity And DAG
 
 `chio.receipt.v1` is content-addressed. The authoritative receipt identity is
 `id`.
 
-The receipt-id input contains every receipt body field except `id`,
-`algorithm`, and `signature`. The receipt id is:
+The receipt-id input contains every receipt body field except `id`. It includes
+`bbs_projection_version` when present, but excludes `bbs_signature` bytes. The
+receipt id is:
 
 ```text
 id = H(canonical_jcs(ChioReceiptIdInput))
@@ -721,6 +724,13 @@ The signature input is the typed wrapper:
 
 ```text
 ChioReceiptSigningBody { id, body: ChioReceiptIdInput }
+```
+
+When BBS receipt material is present, the signature wrapper also carries
+`bbs_signature`:
+
+```text
+ChioReceiptSigningBody { id, body: ChioReceiptIdInput, bbs_signature }
 ```
 
 Before the id is computed, the producer binds a signing nonce into the

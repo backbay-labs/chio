@@ -5,8 +5,9 @@ use chio_core_types::capability::MonetaryAmount;
 use chio_core_types::crypto::{sha256_hex, Keypair};
 use chio_core_types::receipt::{ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
 use chio_selective_disclosure::{
-    derive_selective_disclosure_proof, generate_bbs_keypair, project_receipt_body,
-    project_step_record, project_workflow_receipt_body, sign_projection,
+    derive_selective_disclosure_proof, derive_selective_disclosure_proof_from_receipt,
+    generate_bbs_keypair, project_receipt_body, project_step_record, project_workflow_receipt_body,
+    receipt_signed_projection, sign_chio_receipt_with_bbs, sign_projection,
     verify_selective_disclosure_proof, verify_signed_projection, DisclosureSet,
     InMemoryIssuerRegistry, SelectiveDisclosureError, PROJECTION_VERSION_RECEIPT_V1,
     PROJECTION_VERSION_STEP_V1, PROJECTION_VERSION_WORKFLOW_V1,
@@ -41,6 +42,7 @@ fn receipt_fixture(kp: &Keypair) -> ChioReceiptBody {
         trust_level: TrustLevel::Mediated,
         tenant_id: Some("buyer-tenant".to_string()),
         kernel_key: kp.public_key(),
+        bbs_projection_version: None,
     }
 }
 
@@ -169,6 +171,39 @@ fn receipt_projection_signs_and_proves_disclosed_fields_with_bbs_selective_discl
     let verified = verify_selective_disclosure_proof(&proof, &registry_for_key(&keypair)).unwrap();
     assert_eq!(verified.subject_sha256_hex, projection.subject_sha256_hex);
     assert_eq!(verified.disclosed.len(), 3);
+}
+
+#[test]
+fn receipt_bound_bbs_signature_drives_selective_disclosure_proofs() {
+    let ed25519 = Keypair::generate();
+    let bbs_keypair = generate_bbs_keypair(b"chio-bbs-signing-key-material-0007", b"chio").unwrap();
+    let receipt =
+        sign_chio_receipt_with_bbs(receipt_fixture(&ed25519), &ed25519, &bbs_keypair).unwrap();
+    assert!(receipt.verify_signature().unwrap());
+    assert_eq!(
+        receipt.body().bbs_projection_version.as_deref(),
+        Some(PROJECTION_VERSION_RECEIPT_V1)
+    );
+    assert!(receipt.bbs_signature.is_some());
+
+    let projection = project_receipt_body(&receipt.body()).expect("receipt projection succeeds");
+    let signed = receipt_signed_projection(&receipt).expect("receipt BBS material is bound");
+    assert_eq!(signed.projection_version, PROJECTION_VERSION_RECEIPT_V1);
+    assert_eq!(signed.subject_sha256_hex, projection.subject_sha256_hex);
+    assert!(
+        verify_signed_projection(&signed, &projection).expect("receipt-bound signature verifies")
+    );
+
+    let proof = derive_selective_disclosure_proof_from_receipt(
+        &receipt,
+        &bbs_keypair,
+        &DisclosureSet(vec![1, 5, 11]),
+        b"auditor-session-nonce",
+    )
+    .expect("receipt-bound proof generation succeeds");
+    let verified = verify_selective_disclosure_proof(&proof, &registry_for_key(&bbs_keypair))
+        .expect("receipt-bound proof verifies");
+    assert_eq!(verified.subject_sha256_hex, projection.subject_sha256_hex);
 }
 
 #[test]

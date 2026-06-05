@@ -246,6 +246,7 @@ impl ReceiptStoreSink {
             trust_level: TrustLevel::Verified,
             tenant_id: self.config.tenant_id.clone(),
             kernel_key: self.config.signing_keypair.public_key(),
+            bbs_projection_version: None,
         };
 
         let receipt = ChioReceipt::sign(body, &self.config.signing_keypair)

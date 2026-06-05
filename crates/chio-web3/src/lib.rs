@@ -1676,6 +1676,7 @@ mod tests {
             trust_level: chio_core_types::receipt::TrustLevel::default(),
             tenant_id: None,
             kernel_key: operator.public_key(),
+            bbs_projection_version: None,
         };
         ChioReceipt::sign(body, &operator).unwrap()
     }

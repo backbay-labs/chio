@@ -225,6 +225,7 @@ mod tests {
             trust_level: TrustLevel::default(),
             tenant_id: None,
             kernel_key: kp.public_key(),
+            bbs_projection_version: None,
         };
         ChioReceipt::sign(body, &kp).expect("test receipt signs")
     }

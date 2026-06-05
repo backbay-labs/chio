@@ -52,6 +52,7 @@ fn fixture_body(kp: &Keypair) -> ChioReceiptBody {
         trust_level: TrustLevel::default(),
         tenant_id: Some("tenant-c5".to_string()),
         kernel_key: kp.public_key(),
+        bbs_projection_version: None,
     }
 }
 

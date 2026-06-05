@@ -55,6 +55,7 @@ fn allow_receipt(id: &str) -> ChioReceipt {
             trust_level: chio_core::TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
         },
         &keypair,
     )
@@ -93,6 +94,7 @@ fn deny_receipt(id: &str, guard: &str) -> ChioReceipt {
             trust_level: chio_core::TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
         },
         &keypair,
     )

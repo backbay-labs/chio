@@ -31,6 +31,56 @@ use crate::signer_binding::{
 
 /// Current signed receipt schema.
 pub const CHIO_RECEIPT_SCHEMA: &str = "chio.receipt.v1";
+/// Versioned schema for BBS material bound to a Chio receipt.
+pub const CHIO_RECEIPT_BBS_SIGNATURE_SCHEMA: &str = "chio.receipt.bbs_signature.v1";
+/// Algorithm label used for receipt-bound BBS material.
+pub const CHIO_RECEIPT_BBS_SIGNATURE_ALGORITHM: &str = "bbs";
+/// Receipt-body BBS projection version accepted by the v1 receipt schema.
+pub const CHIO_RECEIPT_BBS_PROJECTION_VERSION_V1: &str = "chio.bbs-projection.receipt.v1";
+/// BBS ciphersuite accepted by the v1 receipt schema.
+pub const CHIO_RECEIPT_BBS_CIPHERSUITE_V1: &str = "BBS_BLS12381G1_XMD:SHA-256_SSWU_RO_";
+/// Number of receipt-body projection messages covered by v1 BBS material.
+pub const CHIO_RECEIPT_BBS_MESSAGE_COUNT_V1: usize = 14;
+
+fn require_exact(value: &str, expected: &str, field: &str) -> Result<()> {
+    if value != expected {
+        return Err(Error::CanonicalJson(format!(
+            "{field} must equal {expected}"
+        )));
+    }
+    Ok(())
+}
+
+fn require_non_empty(value: &str, field: &str) -> Result<()> {
+    if value.trim().is_empty() {
+        return Err(Error::CanonicalJson(format!("{field} must not be empty")));
+    }
+    Ok(())
+}
+
+fn require_lowercase_hex(value: &str, field: &str) -> Result<()> {
+    if value.is_empty()
+        || !value.len().is_multiple_of(2)
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err(Error::CanonicalJson(format!(
+            "{field} must be non-empty lowercase hex"
+        )));
+    }
+    Ok(())
+}
+
+fn require_lowercase_hex_chars(value: &str, expected_chars: usize, field: &str) -> Result<()> {
+    require_lowercase_hex(value, field)?;
+    if value.len() != expected_chars {
+        return Err(Error::CanonicalJson(format!(
+            "{field} must be exactly {expected_chars} lowercase hex characters"
+        )));
+    }
+    Ok(())
+}
 
 /// Trust level of a receipt's authorization, recording HOW the Kernel
 /// participated in the evaluation. Captured per-receipt so downstream
@@ -503,6 +553,69 @@ impl From<&ModelMetadata> for ModelMetadataReceiptMetadata {
     }
 }
 
+/// BBS signature material bound into a signed Chio receipt.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BbsReceiptSignature {
+    /// Versioned BBS receipt-signature schema.
+    pub schema: String,
+    /// Projection version used to derive the signed BBS message vector.
+    pub projection_version: String,
+    /// BBS algorithm family. v1 uses [`CHIO_RECEIPT_BBS_SIGNATURE_ALGORITHM`].
+    pub algorithm: String,
+    /// Concrete BBS ciphersuite used by the issuer.
+    pub ciphersuite: String,
+    /// Stable issuer fingerprint for BBS public-key lookup.
+    pub issuer_fingerprint: String,
+    /// Hex-encoded BBS public key.
+    pub issuer_public_key_hex: String,
+    /// Number of projected messages covered by the signature.
+    pub message_count: usize,
+    /// Hex-encoded BBS signature bytes.
+    pub signature_hex: String,
+}
+
+impl BbsReceiptSignature {
+    /// Validate shape-level BBS material before binding it into an Ed25519
+    /// receipt signature. Cryptographic BBS verification remains in
+    /// `chio-selective-disclosure`.
+    pub fn validate(&self) -> Result<()> {
+        require_exact(
+            &self.schema,
+            CHIO_RECEIPT_BBS_SIGNATURE_SCHEMA,
+            "bbs_signature.schema",
+        )?;
+        require_exact(
+            &self.algorithm,
+            CHIO_RECEIPT_BBS_SIGNATURE_ALGORITHM,
+            "bbs_signature.algorithm",
+        )?;
+        require_exact(
+            &self.projection_version,
+            CHIO_RECEIPT_BBS_PROJECTION_VERSION_V1,
+            "bbs_signature.projection_version",
+        )?;
+        require_exact(
+            &self.ciphersuite,
+            CHIO_RECEIPT_BBS_CIPHERSUITE_V1,
+            "bbs_signature.ciphersuite",
+        )?;
+        require_non_empty(&self.issuer_fingerprint, "bbs_signature.issuer_fingerprint")?;
+        require_lowercase_hex_chars(
+            &self.issuer_public_key_hex,
+            192,
+            "bbs_signature.issuer_public_key_hex",
+        )?;
+        require_lowercase_hex(&self.signature_hex, "bbs_signature.signature_hex")?;
+        if self.message_count != CHIO_RECEIPT_BBS_MESSAGE_COUNT_V1 {
+            return Err(Error::CanonicalJson(format!(
+                "bbs_signature.message_count must equal {CHIO_RECEIPT_BBS_MESSAGE_COUNT_V1}"
+            )));
+        }
+        Ok(())
+    }
+}
+
 /// A Chio receipt. Signed proof that a tool call was evaluated by the Kernel.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChioReceipt {
@@ -556,8 +669,15 @@ pub struct ChioReceipt {
     /// Serialized only when set.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tenant_id: Option<String>,
+    /// BBS projection version bound into the receipt id when BBS material is
+    /// present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bbs_projection_version: Option<String>,
     /// The Kernel's public key (for verification without out-of-band lookup).
     pub kernel_key: PublicKey,
+    /// Optional BBS material for selective disclosure over this receipt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bbs_signature: Option<BbsReceiptSignature>,
     /// Signing algorithm used for [`ChioReceipt::signature`]. Informational
     /// only: verification dispatches off the self-describing encoding of the
     /// signature itself.
@@ -598,6 +718,8 @@ pub struct ChioReceiptBody {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tenant_id: Option<String>,
     pub kernel_key: PublicKey,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bbs_projection_version: Option<String>,
 }
 
 impl ChioReceiptBody {
@@ -662,6 +784,8 @@ pub struct ChioReceiptIdInput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tenant_id: Option<String>,
     pub kernel_key: PublicKey,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bbs_projection_version: Option<String>,
 }
 
 /// Canonical receipt signing input.
@@ -672,6 +796,8 @@ pub struct ChioReceiptIdInput {
 pub struct ChioReceiptSigningBody {
     pub id: String,
     pub body: ChioReceiptIdInput,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bbs_signature: Option<BbsReceiptSignature>,
 }
 
 pub const CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY: &str = "chio_receipt_signing_nonce";
@@ -733,16 +859,28 @@ impl From<&ChioReceiptBody> for ChioReceiptIdInput {
             trust_level: body.trust_level,
             tenant_id: body.tenant_id.clone(),
             kernel_key: body.kernel_key.clone(),
+            bbs_projection_version: body.bbs_projection_version.clone(),
+        }
+    }
+}
+
+impl ChioReceiptSigningBody {
+    #[must_use]
+    pub fn from_body_and_bbs(
+        body: &ChioReceiptBody,
+        bbs_signature: Option<&BbsReceiptSignature>,
+    ) -> Self {
+        Self {
+            id: body.id.clone(),
+            body: ChioReceiptIdInput::from(body),
+            bbs_signature: bbs_signature.cloned(),
         }
     }
 }
 
 impl From<&ChioReceiptBody> for ChioReceiptSigningBody {
     fn from(body: &ChioReceiptBody) -> Self {
-        Self {
-            id: body.id.clone(),
-            body: ChioReceiptIdInput::from(body),
-        }
+        Self::from_body_and_bbs(body, None)
     }
 }
 
@@ -751,6 +889,39 @@ pub fn chio_receipt_id(body: &ChioReceiptBody) -> Result<String> {
     let input = ChioReceiptIdInput::from(body);
     let canonical = canonical_json_bytes(&input)?;
     Ok(sha256_hex(&canonical))
+}
+
+/// Validate, bind the caller nonce, and compute the authoritative receipt id.
+pub fn prepare_receipt_body_for_signing(mut body: ChioReceiptBody) -> Result<ChioReceiptBody> {
+    body.validate_signable_semantics()?;
+    bind_receipt_signing_nonce(&mut body);
+    body.id = chio_receipt_id(&body)?;
+    Ok(body)
+}
+
+fn validate_bbs_receipt_binding(
+    body: &ChioReceiptBody,
+    bbs_signature: Option<&BbsReceiptSignature>,
+) -> Result<()> {
+    match (&body.bbs_projection_version, bbs_signature) {
+        (None, None) => Ok(()),
+        (Some(_), None) => Err(Error::CanonicalJson(
+            "bbs_projection_version requires bbs_signature".to_string(),
+        )),
+        (None, Some(_)) => Err(Error::CanonicalJson(
+            "bbs_signature requires bbs_projection_version".to_string(),
+        )),
+        (Some(version), Some(signature)) => {
+            signature.validate()?;
+            if version != &signature.projection_version {
+                return Err(Error::CanonicalJson(
+                    "bbs_projection_version must match bbs_signature.projection_version"
+                        .to_string(),
+                ));
+            }
+            Ok(())
+        }
+    }
 }
 
 /// Signed audit record for a nested child request handled under a parent tool call.
@@ -792,16 +963,13 @@ pub struct ChildRequestReceiptBody {
 }
 
 impl ChioReceipt {
-    /// Sign a receipt body with the Kernel's Ed25519 keypair.
-    pub fn sign(body: ChioReceiptBody, keypair: &Keypair) -> Result<Self> {
-        let mut body = body;
-        body.validate_signable_semantics()?;
-        ensure_keypair_matches_embedded_key(&body.kernel_key, keypair, "receipt", "kernel_key")?;
-        bind_receipt_signing_nonce(&mut body);
-        body.id = chio_receipt_id(&body)?;
-        let signing_body = ChioReceiptSigningBody::from(&body);
-        let (signature, _bytes) = keypair.sign_canonical(&signing_body)?;
-        Ok(Self {
+    fn from_signed_body(
+        body: ChioReceiptBody,
+        bbs_signature: Option<BbsReceiptSignature>,
+        algorithm: Option<SigningAlgorithm>,
+        signature: Signature,
+    ) -> Self {
+        Self {
             id: body.id,
             timestamp: body.timestamp,
             capability_id: body.capability_id,
@@ -821,47 +989,86 @@ impl ChioReceipt {
             metadata: body.metadata,
             trust_level: body.trust_level,
             tenant_id: body.tenant_id,
+            bbs_projection_version: body.bbs_projection_version,
             kernel_key: body.kernel_key,
-            algorithm: None,
+            bbs_signature,
+            algorithm,
             signature,
-        })
+        }
+    }
+
+    /// Sign a receipt body with the Kernel's Ed25519 keypair.
+    pub fn sign(body: ChioReceiptBody, keypair: &Keypair) -> Result<Self> {
+        validate_bbs_receipt_binding(&body, None)?;
+        ensure_keypair_matches_embedded_key(&body.kernel_key, keypair, "receipt", "kernel_key")?;
+        let body = prepare_receipt_body_for_signing(body)?;
+        let signing_body = ChioReceiptSigningBody::from(&body);
+        let (signature, _bytes) = keypair.sign_canonical(&signing_body)?;
+        Ok(Self::from_signed_body(body, None, None, signature))
     }
 
     /// Sign a receipt body with an arbitrary [`SigningBackend`].
     ///
     /// The `body.kernel_key` must equal `backend.public_key()`.
     pub fn sign_with_backend(body: ChioReceiptBody, backend: &dyn SigningBackend) -> Result<Self> {
-        let mut body = body;
-        body.validate_signable_semantics()?;
+        validate_bbs_receipt_binding(&body, None)?;
         ensure_backend_matches_embedded_key(&body.kernel_key, backend, "receipt", "kernel_key")?;
-        bind_receipt_signing_nonce(&mut body);
-        body.id = chio_receipt_id(&body)?;
+        let body = prepare_receipt_body_for_signing(body)?;
         let signing_body = ChioReceiptSigningBody::from(&body);
         let (signature, _bytes) = sign_canonical_with_backend(backend, &signing_body)?;
-        Ok(Self {
-            id: body.id,
-            timestamp: body.timestamp,
-            capability_id: body.capability_id,
-            tool_server: body.tool_server,
-            tool_name: body.tool_name,
-            action: body.action,
-            decision: body.decision,
-            receipt_kind: body.receipt_kind,
-            boundary_class: body.boundary_class,
-            observation_outcome: body.observation_outcome,
-            tool_origin: body.tool_origin,
-            redaction_mode: body.redaction_mode,
-            actor_chain: body.actor_chain,
-            content_hash: body.content_hash,
-            policy_hash: body.policy_hash,
-            evidence: body.evidence,
-            metadata: body.metadata,
-            trust_level: body.trust_level,
-            tenant_id: body.tenant_id,
-            kernel_key: body.kernel_key,
-            algorithm: Some(backend.algorithm()),
+        Ok(Self::from_signed_body(
+            body,
+            None,
+            Some(backend.algorithm()),
             signature,
-        })
+        ))
+    }
+
+    /// Sign a receipt body while binding already-produced BBS material into
+    /// the authoritative receipt signature.
+    pub fn sign_with_bbs(
+        body: ChioReceiptBody,
+        keypair: &Keypair,
+        bbs_signature: BbsReceiptSignature,
+    ) -> Result<Self> {
+        validate_bbs_receipt_binding(&body, Some(&bbs_signature))?;
+        ensure_keypair_matches_embedded_key(&body.kernel_key, keypair, "receipt", "kernel_key")?;
+        let body = prepare_receipt_body_for_signing(body)?;
+        let signing_body = ChioReceiptSigningBody::from_body_and_bbs(&body, Some(&bbs_signature));
+        let (signature, _bytes) = keypair.sign_canonical(&signing_body)?;
+        Ok(Self::from_signed_body(
+            body,
+            Some(bbs_signature),
+            None,
+            signature,
+        ))
+    }
+
+    /// Sign a body that has already had its nonce bound and receipt id
+    /// computed. This is for producers that must project the final receipt
+    /// body before producing BBS material.
+    pub fn sign_prepared_with_bbs(
+        body: ChioReceiptBody,
+        keypair: &Keypair,
+        bbs_signature: BbsReceiptSignature,
+    ) -> Result<Self> {
+        body.validate_signable_semantics()?;
+        validate_bbs_receipt_binding(&body, Some(&bbs_signature))?;
+        ensure_keypair_matches_embedded_key(&body.kernel_key, keypair, "receipt", "kernel_key")?;
+        let expected_id = chio_receipt_id(&body)?;
+        if body.id != expected_id {
+            return Err(Error::CanonicalJson(
+                "prepared receipt body id does not match canonical receipt id".to_string(),
+            ));
+        }
+        let signing_body = ChioReceiptSigningBody::from_body_and_bbs(&body, Some(&bbs_signature));
+        let (signature, _bytes) = keypair.sign_canonical(&signing_body)?;
+        Ok(Self::from_signed_body(
+            body,
+            Some(bbs_signature),
+            None,
+            signature,
+        ))
     }
 
     /// Extract the body for re-verification.
@@ -888,6 +1095,7 @@ impl ChioReceipt {
             trust_level: self.trust_level,
             tenant_id: self.tenant_id.clone(),
             kernel_key: self.kernel_key.clone(),
+            bbs_projection_version: self.bbs_projection_version.clone(),
         }
     }
 
@@ -897,10 +1105,14 @@ impl ChioReceipt {
         if body.validate_signable_semantics().is_err() {
             return Ok(false);
         }
+        if validate_bbs_receipt_binding(&body, self.bbs_signature.as_ref()).is_err() {
+            return Ok(false);
+        }
         if chio_receipt_id(&body)? != self.id {
             return Ok(false);
         }
-        let signing_body = ChioReceiptSigningBody::from(&body);
+        let signing_body =
+            ChioReceiptSigningBody::from_body_and_bbs(&body, self.bbs_signature.as_ref());
         self.kernel_key
             .verify_canonical(&signing_body, &self.signature)
     }
@@ -2039,6 +2251,7 @@ mod tests {
             trust_level: TrustLevel::default(),
             tenant_id: None,
             kernel_key: kp.public_key(),
+            bbs_projection_version: None,
         }
     }
 
@@ -2057,6 +2270,19 @@ mod tests {
                 "outcome": "result"
             })),
             kernel_key: kp.public_key(),
+        }
+    }
+
+    fn bbs_signature_fixture() -> BbsReceiptSignature {
+        BbsReceiptSignature {
+            schema: CHIO_RECEIPT_BBS_SIGNATURE_SCHEMA.to_string(),
+            projection_version: CHIO_RECEIPT_BBS_PROJECTION_VERSION_V1.to_string(),
+            algorithm: CHIO_RECEIPT_BBS_SIGNATURE_ALGORITHM.to_string(),
+            ciphersuite: "BBS_BLS12381G1_XMD:SHA-256_SSWU_RO_".to_string(),
+            issuer_fingerprint: "issuer:chio:test-bbs".to_string(),
+            issuer_public_key_hex: "11".repeat(96),
+            message_count: CHIO_RECEIPT_BBS_MESSAGE_COUNT_V1,
+            signature_hex: "22".repeat(80),
         }
     }
 
@@ -2498,6 +2724,79 @@ mod tests {
         assert_eq!(receipt.tool_name, restored.tool_name);
         assert_eq!(receipt.content_hash, restored.content_hash);
         assert!(restored.verify_signature().unwrap());
+    }
+
+    #[test]
+    fn receipt_round_trips_bbs_projection_metadata() {
+        let kp = Keypair::generate();
+        let mut body = make_receipt_body(&kp);
+        body.bbs_projection_version = Some(CHIO_RECEIPT_BBS_PROJECTION_VERSION_V1.to_string());
+        let bbs_signature = bbs_signature_fixture();
+
+        let receipt = ChioReceipt::sign_with_bbs(body, &kp, bbs_signature.clone()).unwrap();
+        assert_eq!(
+            receipt.bbs_projection_version.as_deref(),
+            Some(CHIO_RECEIPT_BBS_PROJECTION_VERSION_V1)
+        );
+        assert_eq!(
+            receipt.body().bbs_projection_version.as_deref(),
+            Some(CHIO_RECEIPT_BBS_PROJECTION_VERSION_V1)
+        );
+        assert_eq!(receipt.bbs_signature.as_ref(), Some(&bbs_signature));
+
+        let json = serde_json::to_string_pretty(&receipt).unwrap();
+        let restored: ChioReceipt = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(
+            restored.bbs_projection_version.as_deref(),
+            Some(CHIO_RECEIPT_BBS_PROJECTION_VERSION_V1)
+        );
+        assert_eq!(
+            restored.body().bbs_projection_version.as_deref(),
+            Some(CHIO_RECEIPT_BBS_PROJECTION_VERSION_V1)
+        );
+        assert_eq!(restored.bbs_signature.as_ref(), Some(&bbs_signature));
+        assert!(restored.verify_signature().unwrap());
+    }
+
+    #[test]
+    fn receipt_rejects_invalid_bbs_projection_bindings() {
+        let kp = Keypair::generate();
+        let mut body = make_receipt_body(&kp);
+        body.bbs_projection_version = Some("chio.bbs-projection.receipt.v999".to_string());
+        let mut bbs_signature = bbs_signature_fixture();
+        bbs_signature.projection_version = "chio.bbs-projection.receipt.v999".to_string();
+        assert!(ChioReceipt::sign_with_bbs(body, &kp, bbs_signature).is_err());
+
+        let mut body = make_receipt_body(&kp);
+        body.bbs_projection_version = Some(CHIO_RECEIPT_BBS_PROJECTION_VERSION_V1.to_string());
+        let bbs_signature = bbs_signature_fixture();
+        let mut receipt = ChioReceipt::sign_with_bbs(body, &kp, bbs_signature).unwrap();
+
+        receipt.bbs_projection_version = None;
+        assert!(!receipt.verify_signature().unwrap());
+
+        receipt.bbs_projection_version = Some("chio.bbs-projection.receipt.v999".to_string());
+        assert!(!receipt.verify_signature().unwrap());
+    }
+
+    #[test]
+    fn receipt_rejects_schema_invalid_bbs_signature_material() {
+        let kp = Keypair::generate();
+        let mut body = make_receipt_body(&kp);
+        body.bbs_projection_version = Some(CHIO_RECEIPT_BBS_PROJECTION_VERSION_V1.to_string());
+
+        let mut wrong_ciphersuite = bbs_signature_fixture();
+        wrong_ciphersuite.ciphersuite = "BBS_BLS12381G2_XMD:SHA-256_SSWU_RO_".to_string();
+        assert!(ChioReceipt::sign_with_bbs(body.clone(), &kp, wrong_ciphersuite).is_err());
+
+        let mut short_public_key = bbs_signature_fixture();
+        short_public_key.issuer_public_key_hex = "11".repeat(95);
+        assert!(ChioReceipt::sign_with_bbs(body.clone(), &kp, short_public_key).is_err());
+
+        let mut wrong_message_count = bbs_signature_fixture();
+        wrong_message_count.message_count = CHIO_RECEIPT_BBS_MESSAGE_COUNT_V1 + 1;
+        assert!(ChioReceipt::sign_with_bbs(body, &kp, wrong_message_count).is_err());
     }
 
     #[test]

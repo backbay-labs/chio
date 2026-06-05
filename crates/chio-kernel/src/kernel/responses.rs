@@ -1593,6 +1593,7 @@ impl ChioKernel {
             trust_level: params.trust_level,
             tenant_id,
             kernel_key: self.config.keypair.public_key(),
+            bbs_projection_version: None,
         };
 
         // Delegate the pure signing step to chio-kernel-core so the portable

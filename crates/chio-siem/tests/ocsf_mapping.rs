@@ -63,6 +63,7 @@ fn receipt_with(
         trust_level,
         tenant_id: None,
         kernel_key: keypair.public_key(),
+        bbs_projection_version: None,
     };
     ChioReceipt::sign(body, &keypair).unwrap()
 }
