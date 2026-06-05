@@ -339,6 +339,17 @@ pub fn build_kernel(loaded_policy: policy::LoadedPolicy, kernel_kp: &Keypair) ->
 
     let mut kernel = ChioKernel::new(config);
 
+    let mut default_guard_profile = chio_guards::default_runtime_guard_profile();
+    if !default_guard_profile.pre_invocation_guards.is_empty() {
+        tracing::info!(
+            guard_count = default_guard_profile.pre_invocation_guards.len(),
+            "registering default runtime guard profile"
+        );
+        for guard in default_guard_profile.pre_invocation_guards {
+            kernel.add_guard(guard);
+        }
+    }
+
     if !guard_pipeline.is_empty() {
         tracing::info!(
             guard_count = guard_pipeline.len(),
@@ -347,12 +358,16 @@ pub fn build_kernel(loaded_policy: policy::LoadedPolicy, kernel_kp: &Keypair) ->
         kernel.add_guard(Box::new(guard_pipeline));
     }
 
-    if !post_invocation_pipeline.is_empty() {
+    default_guard_profile
+        .post_invocation_pipeline
+        .append(post_invocation_pipeline);
+
+    if !default_guard_profile.post_invocation_pipeline.is_empty() {
         tracing::info!(
-            hook_count = post_invocation_pipeline.len(),
+            hook_count = default_guard_profile.post_invocation_pipeline.len(),
             "registering post-invocation pipeline"
         );
-        kernel.set_post_invocation_pipeline(post_invocation_pipeline);
+        kernel.set_post_invocation_pipeline(default_guard_profile.post_invocation_pipeline);
     }
 
     if let Some(attestation_trust_policy) =
@@ -815,6 +830,29 @@ mod tests {
         };
 
         let kernel = build_kernel(loaded_policy, &keypair);
-        assert_eq!(kernel.post_invocation_hook_count(), 1);
+        assert_eq!(kernel.post_invocation_hook_count(), 2);
+    }
+
+    #[test]
+    fn build_kernel_registers_default_guard_profile() {
+        let keypair = Keypair::generate();
+        let loaded_policy = policy::LoadedPolicy {
+            format: policy::PolicyFormat::ChioYaml,
+            identity: policy::PolicyIdentity {
+                source_hash: "source".to_string(),
+                runtime_hash: "runtime".to_string(),
+            },
+            kernel: policy::KernelPolicyConfig::default(),
+            default_capabilities: Vec::new(),
+            guard_pipeline: chio_guards::GuardPipeline::new(),
+            post_invocation_pipeline: PostInvocationPipeline::new(),
+            issuance_policy: None,
+            runtime_assurance_policy: None,
+        };
+
+        let kernel = build_kernel(loaded_policy, &keypair);
+
+        assert!(kernel.guard_count() >= 2);
+        assert!(kernel.post_invocation_hook_count() >= 1);
     }
 }

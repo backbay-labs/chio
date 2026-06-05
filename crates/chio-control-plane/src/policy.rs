@@ -2899,8 +2899,12 @@ guards:
             matched_grant_index: None,
         };
 
-        let result = pipeline.evaluate(&ctx);
-        assert!(result.is_err(), "out-of-root filesystem tool should deny");
+        let result = pipeline.evaluate(&ctx).test_unwrap();
+        assert_eq!(
+            result.verdict,
+            chio_kernel::Verdict::Deny,
+            "out-of-root filesystem tool should deny"
+        );
     }
 
     #[test]

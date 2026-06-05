@@ -137,6 +137,28 @@ pub use external::{
     GuardCallContext, RateLimitedVerdict, RetryConfig, TokenBucket, TtlCache,
 };
 
+/// Default guard material installed by the control-plane runtime profile.
+pub struct RuntimeGuardProfile {
+    pub pre_invocation_guards: Vec<Box<dyn chio_kernel::Guard>>,
+    pub post_invocation_pipeline: PostInvocationPipeline,
+}
+
+/// Build the default Chio runtime guard profile without coupling the kernel to
+/// concrete guard implementations.
+pub fn default_runtime_guard_profile() -> RuntimeGuardProfile {
+    let mut post_invocation_pipeline = PostInvocationPipeline::new();
+    post_invocation_pipeline.add(Box::new(SanitizerHook::new()));
+
+    RuntimeGuardProfile {
+        pre_invocation_guards: vec![
+            Box::new(InternalNetworkGuard::new()),
+            Box::new(AgentVelocityGuard::new(AgentVelocityConfig::default())),
+            Box::new(AdvisoryPipeline::new(PromotionPolicy::new())),
+        ],
+        post_invocation_pipeline,
+    }
+}
+
 // Computer Use Agent (CUA) and SpiderSense re-exports.
 pub use computer_use::{
     default_allowed_action_types as computer_use_default_allowed_action_types, ComputerUseConfig,

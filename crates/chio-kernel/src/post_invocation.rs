@@ -86,6 +86,10 @@ impl PostInvocationPipeline {
         self.hooks.push(hook);
     }
 
+    pub fn append(&mut self, mut other: Self) {
+        self.hooks.append(&mut other.hooks);
+    }
+
     #[must_use]
     pub fn len(&self) -> usize {
         self.hooks.len()
