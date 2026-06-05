@@ -37,6 +37,7 @@ from chio_temporal.interceptor import (
     DENIED_ERROR_TYPE,
     _ChioInboundInterceptor,
     _deny_receipt_from_error,
+    _is_sha256_hex,
 )
 
 INVOKE_OPERATION = getattr(Operation, "INVOKE", Operation.invoke)
@@ -345,6 +346,36 @@ class TestDenyVerdict:
         assert receipt.id == sidecar_receipt_id
         assert receipt.metadata["sidecar_receipt_id"] == sidecar_receipt_id
         assert receipt.is_denied
+
+    def test_deny_receipt_hashes_non_sha256_sidecar_receipt_id(self) -> None:
+        import hashlib
+
+        opaque_receipt_id = "receipt-from-sidecar-not-a-digest"
+        info = _default_info(activity_type="send_email")
+        receipt = _deny_receipt_from_error(
+            info=info,
+            capability_id="cap-1",
+            tool_server="srv",
+            parameters={"payload": "secret"},
+            exc=ChioDeniedError(
+                "denied",
+                guard="ScopeGuard",
+                reason="no write perms",
+                receipt_id=opaque_receipt_id,
+            ),
+        )
+
+        expected_id = hashlib.sha256(opaque_receipt_id.encode("utf-8")).hexdigest()
+        assert receipt.id == expected_id
+        assert receipt.id != opaque_receipt_id
+        assert receipt.metadata["sidecar_receipt_id"] == opaque_receipt_id
+        assert receipt.is_denied
+
+    def test_is_sha256_hex_accepts_lowercase_digest_only(self) -> None:
+        assert _is_sha256_hex("a" * 64)
+        assert not _is_sha256_hex("A" * 64)
+        assert not _is_sha256_hex("not-a-digest")
+        assert not _is_sha256_hex("a" * 63)
 
     async def test_missing_workflow_grant_raises_config_error(self) -> None:
         """Activities with no registered grant must be refused before dispatch.

@@ -25,10 +25,111 @@ pub fn load_from_file(path: &Path) -> Result<ChioConfig, ConfigError> {
 /// Useful for testing and for configs embedded in other formats.
 pub fn load_from_str(yaml: &str) -> Result<ChioConfig, ConfigError> {
     let interpolated = interpolate_for_loader(yaml)?;
+    reject_yaml_tabs(&interpolated)?;
     let config: ChioConfig =
         serde_yml::from_str(&interpolated).map_err(|e| ConfigError::Parse(e.to_string()))?;
     validate(&config)?;
     Ok(config)
+}
+
+fn reject_yaml_tabs(yaml: &str) -> Result<(), ConfigError> {
+    let mut in_single_quote = false;
+    let mut in_double_quote = false;
+    let mut escaped_double_quote = false;
+    let mut block_scalar_parent_indent = None;
+
+    for (line_index, line) in yaml.lines().enumerate() {
+        let line_indent = yaml_leading_spaces(line);
+        if let Some(parent_indent) = block_scalar_parent_indent {
+            if line.trim().is_empty() || line_indent > parent_indent {
+                continue;
+            }
+            block_scalar_parent_indent = None;
+        }
+
+        let mut previous_plain = None;
+        let mut plain_prefix = String::new();
+        let mut block_scalar_candidate = false;
+        let mut chars = line.char_indices().peekable();
+        while let Some((column_index, ch)) = chars.next() {
+            if in_double_quote {
+                if escaped_double_quote {
+                    escaped_double_quote = false;
+                } else if ch == '\\' {
+                    escaped_double_quote = true;
+                } else if ch == '"' {
+                    in_double_quote = false;
+                }
+                continue;
+            }
+
+            if in_single_quote {
+                if ch == '\'' {
+                    if matches!(chars.peek(), Some((_, '\''))) {
+                        let _ = chars.next();
+                    } else {
+                        in_single_quote = false;
+                    }
+                }
+                continue;
+            }
+
+            if ch == '#' && yaml_comment_can_start(previous_plain) {
+                break;
+            }
+            if ch == '"' && yaml_quote_can_start(plain_prefix.trim_end()) {
+                in_double_quote = true;
+                escaped_double_quote = false;
+            } else if ch == '\'' && yaml_quote_can_start(plain_prefix.trim_end()) {
+                in_single_quote = true;
+            } else if ch == '\t' {
+                return Err(ConfigError::Parse(format!(
+                    "tab characters are not accepted in YAML syntax at line {}, column {}; use spaces for indentation and quote literal tabs inside strings",
+                    line_index + 1,
+                    column_index + 1
+                )));
+            } else if (ch == '|' || ch == '>')
+                && yaml_block_indicator_can_start(plain_prefix.trim_end())
+            {
+                block_scalar_candidate = true;
+            } else if block_scalar_candidate
+                && !ch.is_whitespace()
+                && !matches!(ch, '+' | '-' | '0'..='9')
+            {
+                block_scalar_candidate = false;
+            }
+            plain_prefix.push(ch);
+            previous_plain = Some(ch);
+        }
+        if block_scalar_candidate && !in_single_quote && !in_double_quote {
+            block_scalar_parent_indent = Some(line_indent);
+        }
+    }
+    Ok(())
+}
+
+fn yaml_leading_spaces(line: &str) -> usize {
+    line.chars().take_while(|ch| *ch == ' ').count()
+}
+
+fn yaml_quote_can_start(prefix: &str) -> bool {
+    prefix.is_empty()
+        || prefix.ends_with(':')
+        || prefix.ends_with('[')
+        || prefix.ends_with('{')
+        || prefix.ends_with(',')
+        || prefix.ends_with('-')
+}
+
+fn yaml_comment_can_start(previous: Option<char>) -> bool {
+    match previous {
+        None => true,
+        Some(ch) => ch.is_whitespace(),
+    }
+}
+
+fn yaml_block_indicator_can_start(prefix: &str) -> bool {
+    prefix.ends_with(':') || prefix.ends_with('-')
 }
 
 #[cfg(test)]
@@ -345,5 +446,86 @@ adapters:
             matches!(err, ConfigError::Parse(_) | ConfigError::Validation(_)),
             "deeply nested YAML must be rejected without panicking, got: {err}"
         );
+    }
+
+    #[test]
+    fn tab_heavy_plain_scalar_crash_input_is_rejected_before_parse() {
+        let crash = concat!(
+            "~:\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t0*",
+            "\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t00x\"   ",
+            "\t\t\t\t\t\t\t\t\t\t\t\t\t#",
+            "\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t",
+        );
+        let err = load_error(load_from_str(crash));
+        assert!(
+            matches!(err, ConfigError::Parse(_)),
+            "tab-heavy fuzz input must be rejected as a parse error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn tabs_in_quoted_scalars_and_comments_are_allowed() {
+        let yaml = concat!(
+            "# top-level comment with\tliteral tab\n",
+            "kernel:\n",
+            "  signing_key: \"generate\"\n",
+            "\n",
+            "adapters:\n",
+            "  - id: \"petstore\"\n",
+            "    protocol: \"openapi\" # inline comment with\tliteral tab\n",
+            "    upstream: \"http://localhost:8000/path\tsegment\"\n",
+            "    spec: './pet\tstore.yaml'\n",
+        );
+        let config = load_from_str(yaml).unwrap_or_else(|e| panic!("load should work: {e}"));
+        assert_eq!(
+            config.adapters[0].upstream,
+            "http://localhost:8000/path\tsegment"
+        );
+        assert_eq!(
+            config.adapters[0].spec.as_deref(),
+            Some("./pet\tstore.yaml")
+        );
+    }
+
+    #[test]
+    fn tabs_in_block_scalars_are_allowed() {
+        let yaml = concat!(
+            "kernel:\n",
+            "  signing_key: \"generate\"\n",
+            "\n",
+            "adapters:\n",
+            "  - id: \"petstore\"\n",
+            "    protocol: \"openapi\"\n",
+            "    upstream: |\n",
+            "      http://localhost:8000/path\tsegment\n",
+            "    spec: >\n",
+            "      ./pet\tstore.yaml\n",
+        );
+        let config = load_from_str(yaml).unwrap_or_else(|e| panic!("load should work: {e}"));
+        assert!(config.adapters[0].upstream.contains('\t'));
+        assert!(matches!(
+            config.adapters[0].spec.as_deref(),
+            Some(spec) if spec.contains('\t')
+        ));
+    }
+
+    #[test]
+    fn quote_after_plain_scalar_does_not_hide_tab_syntax() {
+        let yaml = concat!(
+            "kernel:\n",
+            "  signing_key: \"generate\"\n",
+            "\n",
+            "adapters:\n",
+            "  - id: \"petstore\"\n",
+            "    protocol: \"openapi\"\n",
+            "    upstream: http://localhost:8000 \"\tsegment\"\n",
+        );
+        let err = load_error(load_from_str(yaml));
+        match err {
+            ConfigError::Parse(message) => {
+                assert!(message.contains("tab characters are not accepted"));
+            }
+            other => panic!("wrong error variant: {other}"),
+        }
     }
 }
