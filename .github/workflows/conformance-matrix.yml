@@ -138,10 +138,29 @@ jobs:
               `page the protocol owner. Check prior alarm issues under`,
               `label \`alarm:conformance-matrix\` to assess paging threshold.`,
             ].join('\n');
-            await github.rest.issues.create({
+            const { data: openIssues } = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              title,
-              body,
-              labels: ['alarm:conformance-matrix', 'ci-failure'],
+              state: 'open',
+              labels: 'alarm:conformance-matrix',
+              per_page: 100,
             });
+            const existing = openIssues.find((issue) =>
+              issue.title.startsWith('conformance-matrix nightly failed')
+            );
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['alarm:conformance-matrix', 'ci-failure'],
+              });
+            }
