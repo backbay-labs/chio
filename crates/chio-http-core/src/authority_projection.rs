@@ -51,31 +51,29 @@ pub(crate) fn capability_binding(
     input: &HttpAuthorityInput<'_>,
     caller_identity_hash: &str,
 ) -> CapabilityBinding {
-    if has_sidecar_tool_identity(input) {
-        match chio_tools_path_identity(input.path) {
-            ChioToolsPathIdentity::Identity {
-                server_id,
-                tool_name,
-            } => {
-                return CapabilityBinding {
-                    requested_tool_server: Some(server_id),
-                    requested_tool_name: Some(tool_name),
-                    requested_arguments: input.requested_arguments.cloned(),
-                    invalid_reason: None,
-                    policy: HttpAuthorityPolicy::DenyByDefault,
-                };
-            }
-            ChioToolsPathIdentity::Malformed => {
-                return CapabilityBinding {
-                    requested_tool_server: None,
-                    requested_tool_name: None,
-                    requested_arguments: input.requested_arguments.cloned(),
-                    invalid_reason: Some(MALFORMED_CHIO_TOOLS_PATH_REASON.to_string()),
-                    policy: HttpAuthorityPolicy::DenyByDefault,
-                };
-            }
-            ChioToolsPathIdentity::NotToolsPath => {}
+    match chio_tools_path_identity(input.path) {
+        ChioToolsPathIdentity::Identity {
+            server_id,
+            tool_name,
+        } => {
+            return CapabilityBinding {
+                requested_tool_server: Some(server_id),
+                requested_tool_name: Some(tool_name),
+                requested_arguments: input.requested_arguments.cloned(),
+                invalid_reason: None,
+                policy: HttpAuthorityPolicy::DenyByDefault,
+            };
         }
+        ChioToolsPathIdentity::Malformed => {
+            return CapabilityBinding {
+                requested_tool_server: None,
+                requested_tool_name: None,
+                requested_arguments: input.requested_arguments.cloned(),
+                invalid_reason: Some(MALFORMED_CHIO_TOOLS_PATH_REASON.to_string()),
+                policy: HttpAuthorityPolicy::DenyByDefault,
+            };
+        }
+        ChioToolsPathIdentity::NotToolsPath => {}
     }
 
     if input.policy != HttpAuthorityPolicy::DenyByDefault {
@@ -93,10 +91,6 @@ fn request_field_capability_binding(input: &HttpAuthorityInput<'_>) -> Capabilit
         invalid_reason: None,
         policy: input.policy,
     }
-}
-
-fn has_sidecar_tool_identity(input: &HttpAuthorityInput<'_>) -> bool {
-    input.requested_tool_server.is_some() && input.requested_tool_name.is_some()
 }
 
 fn http_authority_capability_binding(

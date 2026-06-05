@@ -515,6 +515,30 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_denies_get_reserved_tools_path_without_capability() {
+        let keypair = Keypair::generate();
+        let evaluator = RequestEvaluator::new(vec![], keypair, "test-policy".to_string());
+
+        let result = evaluator
+            .evaluate(
+                HttpMethod::Get,
+                "/chio/tools/billing/read",
+                &HashMap::new(),
+                &HashMap::new(),
+                None,
+                0,
+            )
+            .test_unwrap();
+
+        assert!(result.verdict.is_denied());
+        assert!(result.receipt.capability_id.is_none());
+        assert_eq!(
+            result.receipt.evidence[0].details.as_deref(),
+            Some("side-effect route requires a valid capability token")
+        );
+    }
+
+    #[test]
     fn evaluate_chio_request_allows_reserved_tools_path_context() {
         let keypair = Keypair::generate();
         let evaluator = RequestEvaluator::new(vec![], keypair.clone(), "test-policy".to_string());

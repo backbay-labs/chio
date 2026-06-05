@@ -1740,6 +1740,38 @@ mod tests {
     }
 
     #[test]
+    fn reserved_tools_path_safe_policy_requires_capability_without_sidecar_fields() {
+        let query = HashMap::new();
+        let result = authority()
+            .evaluate(HttpAuthorityInput {
+                request_id: "req-safe-tools-path-no-sidecar-fields".to_string(),
+                method: HttpMethod::Get,
+                route_pattern: "/chio/tools/billing/read".to_string(),
+                path: "/chio/tools/billing/read",
+                query: &query,
+                caller: caller(),
+                body_hash: None,
+                body_length: 0,
+                session_id: None,
+                capability_id_hint: None,
+                presented_capability: None,
+                requested_tool_server: None,
+                requested_tool_name: None,
+                requested_arguments: None,
+                model_metadata: None,
+                policy: HttpAuthorityPolicy::SessionAllow,
+            })
+            .test_unwrap();
+
+        assert!(result.verdict.is_denied());
+        assert!(result.receipt.capability_id.is_none());
+        assert_eq!(
+            result.receipt.evidence[0].details.as_deref(),
+            Some("side-effect route requires a valid capability token")
+        );
+    }
+
+    #[test]
     fn deny_by_default_unmatched_http_path_does_not_trust_synthetic_pattern() {
         let query = HashMap::new();
         let (authority, issuer) = authority_with_issuer();

@@ -1207,6 +1207,29 @@ paths:
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn proxy_handler_denies_get_on_reserved_tools_path_without_capability() {
+        let state = test_state(Vec::new(), "http://127.0.0.1:1".to_string());
+        let request = Request::builder()
+            .method("GET")
+            .uri("/chio/tools/billing/read")
+            .body(Body::empty())
+            .test_unwrap();
+
+        let response = proxy_handler(State(Arc::clone(&state)), request).await;
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+
+        let body = to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .test_unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).test_unwrap();
+        assert_eq!(json["error"], "chio_access_denied");
+
+        let log = state.receipt_log.lock().await;
+        assert_eq!(log.receipts.len(), 1);
+        assert!(log.receipts[0].capability_id.is_none());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn sidecar_evaluate_returns_200_with_deny_verdict() {
         let state = test_state(
             vec![RouteEntry {
