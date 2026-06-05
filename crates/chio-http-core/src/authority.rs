@@ -2062,4 +2062,60 @@ mod tests {
             Some("capability does not authorize tool increment on server math")
         );
     }
+    #[test]
+    fn sign_transport_deny_receipt_signs_final_scope_deny() {
+        let authority = authority();
+        let verdict = Verdict::deny_with_status(
+            "request body exceeds limit",
+            "chio_tower_request_body_size",
+            413,
+        );
+        let receipt = authority
+            .sign_transport_deny_receipt(TransportDenyInput {
+                request_id: "req-transport-deny",
+                route_pattern: "/upload",
+                method: HttpMethod::Post,
+                caller_identity_hash: "caller-hash",
+                content_hash: None,
+                verdict,
+            })
+            .test_unwrap();
+
+        assert!(receipt.verify_signature().test_unwrap());
+        assert!(receipt.is_denied());
+        assert_eq!(receipt.response_status, 413);
+        assert_eq!(receipt.request_id, "req-transport-deny");
+        assert_eq!(receipt.route_pattern, "/upload");
+        assert_eq!(receipt.caller_identity_hash, "caller-hash");
+        assert!(receipt.capability_id.is_none());
+        assert!(receipt.evidence.is_empty());
+        assert_eq!(receipt.content_hash, "");
+        assert_eq!(
+            http_status_scope(receipt.metadata.as_ref()),
+            Some(CHIO_HTTP_STATUS_SCOPE_FINAL)
+        );
+        assert!(
+            metadata_string(receipt.metadata.as_ref(), CHIO_KERNEL_RECEIPT_ID_KEY).is_none(),
+            "transport deny must not claim a kernel receipt id"
+        );
+    }
+
+    #[test]
+    fn sign_transport_deny_receipt_rejects_non_deny_verdict() {
+        let authority = authority();
+        let err = authority
+            .sign_transport_deny_receipt(TransportDenyInput {
+                request_id: "req-transport-allow",
+                route_pattern: "/pets",
+                method: HttpMethod::Get,
+                caller_identity_hash: "caller-hash",
+                content_hash: Some("abc"),
+                verdict: Verdict::Allow,
+            })
+            .test_unwrap_err();
+        assert!(matches!(err, HttpAuthorityError::Kernel(_)));
+        assert!(err
+            .to_string()
+            .contains("sign_transport_deny_receipt requires a Deny verdict"));
+    }
 }

@@ -737,4 +737,19 @@ mod tests {
         // GET requests carry no body hash.
         assert!(request.get("body_hash").is_none());
     }
+
+    #[test]
+    fn encode_path_segment_percent_encodes_slashes_in_tool_names() {
+        let mut scenario = scenario("encoded-tool-path");
+        scenario.script.tool = "terminal/create".to_string();
+        let request = scenario_to_http_request(&scenario);
+        assert_eq!(
+            request.get("path").and_then(Value::as_str),
+            Some("/chio/tools/verdict-matrix/terminal%2Fcreate")
+        );
+        assert_eq!(
+            request.get("tool_name").and_then(Value::as_str),
+            Some("terminal/create")
+        );
+    }
 }
