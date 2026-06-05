@@ -1,56 +1,52 @@
-use super::*;
+use chio_core_types::capability::ChioScope;
 
 pub(crate) fn is_scope_subset(child: &ChioScope, parent: &ChioScope) -> bool {
-    let grants_ok = child.grants.iter().all(|child_grant| {
-        parent
-            .grants
-            .iter()
-            .any(|p| tool_grant_subset(child_grant, p))
-    });
-    let resources_ok = child.resource_grants.iter().all(|child_grant| {
-        parent
-            .resource_grants
-            .iter()
-            .any(|p| resource_grant_subset(child_grant, p))
-    });
-    let prompts_ok = child.prompt_grants.iter().all(|child_grant| {
-        parent
-            .prompt_grants
-            .iter()
-            .any(|p| prompt_grant_subset(child_grant, p))
-    });
-    grants_ok && resources_ok && prompts_ok
+    child.is_subset_of(parent)
 }
 
-pub(crate) fn tool_grant_subset(child: &ToolGrant, parent: &ToolGrant) -> bool {
-    if parent.server_id != "*" && parent.server_id != child.server_id {
-        return false;
-    }
-    if parent.tool_name != "*" && parent.tool_name != child.tool_name {
-        return false;
-    }
-    child
-        .operations
-        .iter()
-        .all(|op| parent.operations.contains(op))
-}
+#[cfg(test)]
+mod tests {
+    use chio_core_types::capability::{ChioScope, Constraint, Operation, ToolGrant};
 
-pub(crate) fn resource_grant_subset(child: &ResourceGrant, parent: &ResourceGrant) -> bool {
-    if parent.uri_pattern != "*" && parent.uri_pattern != child.uri_pattern {
-        return false;
-    }
-    child
-        .operations
-        .iter()
-        .all(|op| parent.operations.contains(op))
-}
+    use super::is_scope_subset;
 
-pub(crate) fn prompt_grant_subset(child: &PromptGrant, parent: &PromptGrant) -> bool {
-    if parent.prompt_name != "*" && parent.prompt_name != child.prompt_name {
-        return false;
+    #[test]
+    fn scope_subset_requires_child_constraints_when_parent_is_restricted() {
+        let parent = ToolGrant {
+            server_id: "files".to_string(),
+            tool_name: "read".to_string(),
+            operations: vec![Operation::Invoke],
+            constraints: vec![Constraint::PathPrefix("/secret".to_string())],
+            max_invocations: None,
+            max_cost_per_invocation: None,
+            max_total_cost: None,
+            dpop_required: None,
+        };
+        let child = ToolGrant {
+            server_id: "files".to_string(),
+            tool_name: "read".to_string(),
+            operations: vec![Operation::Invoke],
+            constraints: Vec::new(),
+            max_invocations: None,
+            max_cost_per_invocation: None,
+            max_total_cost: None,
+            dpop_required: None,
+        };
+
+        let parent_scope = ChioScope {
+            grants: vec![parent],
+            resource_grants: Vec::new(),
+            prompt_grants: Vec::new(),
+        };
+        let child_scope = ChioScope {
+            grants: vec![child],
+            resource_grants: Vec::new(),
+            prompt_grants: Vec::new(),
+        };
+
+        assert!(
+            !is_scope_subset(&child_scope, &parent_scope),
+            "expected scope cannot drop parent constraints"
+        );
     }
-    child
-        .operations
-        .iter()
-        .all(|op| parent.operations.contains(op))
 }
