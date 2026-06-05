@@ -4,8 +4,8 @@
 //! capability under a published listing. The provider resolves the listing
 //! via [`chio_listing::search`], applies the discovered pricing hint, mints
 //! a scoped [`CapabilityToken`], and returns an [`AskResponse`] binding the
-//! ask to a signed quote. [`accept`] records acceptance so settlement can
-//! reference the canonical bid/ask pair.
+//! ask to a signed quote. [`accept`] signs acceptance against a pre-verified
+//! funds reservation so settlement can verify the canonical bid/ask pair.
 //!
 //! Every step is fail-closed:
 //!
@@ -36,6 +36,9 @@ pub const ASK_RESPONSE_SCHEMA: &str = "chio.marketplace.ask-response.v1";
 
 /// Schema for accepted bid records.
 pub const ACCEPTED_BID_SCHEMA: &str = "chio.marketplace.accepted-bid.v1";
+
+/// Schema for signed funds reservation receipts.
+pub const RESERVATION_RECEIPT_SCHEMA: &str = "chio.marketplace.reservation-receipt.v1";
 
 /// Outcome kinds returned when a bid cannot be honored.
 #[derive(Debug, thiserror::Error, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -71,6 +74,8 @@ pub enum BiddingError {
     AuthorityMismatch,
     #[error("capability token offer signature is not verifiable")]
     TokenSignatureInvalid,
+    #[error("funds reservation receipt is invalid for the accepted bid")]
+    ReservationReceiptInvalid,
 }
 
 fn invalid_request(message: impl Into<String>) -> BiddingError {
@@ -184,9 +189,8 @@ pub struct AcceptedBid {
     pub bid_digest: String,
     /// Digest of the signed [`AskResponse`] being accepted.
     pub ask_digest: String,
-    /// The receipt identifier issued by the kernel for the acceptance
-    /// event; this links the marketplace record to the existing
-    /// settlement flow without adding new receipt body fields.
+    /// The receipt identifier issued by the kernel when the agent's funds
+    /// were reserved for this ask.
     pub bid_receipt_id: String,
     pub quoted_price: MonetaryAmount,
     pub accepted_at: u64,
@@ -196,6 +200,88 @@ pub struct AcceptedBid {
 }
 
 pub type SignedAcceptedBid = SignedExportEnvelope<AcceptedBid>;
+
+/// Signed funds reservation receipt material.
+///
+/// The open-market crate deliberately does not depend on a receipt store.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReservationReceipt {
+    pub schema: String,
+    pub receipt_id: String,
+    pub agent_id: String,
+    pub listing_id: String,
+    pub ask_digest: String,
+    pub reserved_amount: MonetaryAmount,
+}
+
+impl ReservationReceipt {
+    fn validate(&self) -> Result<(), BiddingError> {
+        if self.schema != RESERVATION_RECEIPT_SCHEMA {
+            return Err(invalid_request(format!(
+                "unsupported reservation receipt schema: {}",
+                self.schema
+            )));
+        }
+        validate_required_field(&self.receipt_id, "reservation.receipt_id")?;
+        validate_required_field(&self.agent_id, "reservation.agent_id")?;
+        validate_required_field(&self.listing_id, "reservation.listing_id")?;
+        validate_required_field(
+            &self.reserved_amount.currency,
+            "reservation.reserved_amount.currency",
+        )?;
+        if self.reserved_amount.units == 0 {
+            return Err(BiddingError::ReservationReceiptInvalid);
+        }
+        if !is_lowercase_sha256(&self.ask_digest) {
+            return Err(BiddingError::ReservationReceiptInvalid);
+        }
+        Ok(())
+    }
+}
+
+pub type SignedReservationReceipt = SignedExportEnvelope<ReservationReceipt>;
+
+/// Verified funds reservation witness accepted by the market.
+///
+/// Construct this through [`VerifiedReservationReceipt::from_signed`] after
+/// the caller has selected the expected settlement reservation authority.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VerifiedReservationReceipt {
+    receipt_id: String,
+    agent_id: String,
+    listing_id: String,
+    ask_digest: String,
+    reserved_amount: MonetaryAmount,
+}
+
+impl VerifiedReservationReceipt {
+    pub fn from_signed(
+        receipt: &SignedReservationReceipt,
+        expected_reservation_authority: &PublicKey,
+    ) -> Result<Self, BiddingError> {
+        receipt.body.validate()?;
+        if &receipt.signer_key != expected_reservation_authority {
+            return Err(BiddingError::ReservationReceiptInvalid);
+        }
+        match receipt.verify_signature() {
+            Ok(true) => {}
+            _ => return Err(BiddingError::ReservationReceiptInvalid),
+        }
+        Ok(Self {
+            receipt_id: receipt.body.receipt_id.clone(),
+            agent_id: receipt.body.agent_id.clone(),
+            listing_id: receipt.body.listing_id.clone(),
+            ask_digest: receipt.body.ask_digest.clone(),
+            reserved_amount: receipt.body.reserved_amount.clone(),
+        })
+    }
+
+    #[must_use]
+    pub fn receipt_id(&self) -> &str {
+        &self.receipt_id
+    }
+}
 
 /// Parameters the provider supplies when minting a token under a bid.
 #[derive(Clone)]
@@ -348,23 +434,20 @@ pub fn bid(
         .map_err(|error| invalid_request(error.to_string()))
 }
 
-/// Record bid acceptance against an existing settlement receipt identifier.
-/// The `bid_receipt_id` argument is the identifier of the receipt that the
-/// kernel signed when the agent's funds were reserved; this keeps the
-/// marketplace record referenceable without introducing new receipt body
-/// fields.
+/// Record signed bid acceptance against a verified settlement reservation.
 pub fn accept(
     ask: &SignedAskResponse,
-    bid_receipt_id: &str,
+    reservation: &VerifiedReservationReceipt,
+    acceptor_keypair: &Keypair,
     accepted_at: u64,
-) -> Result<AcceptedBid, BiddingError> {
+) -> Result<SignedAcceptedBid, BiddingError> {
     if ask.body.schema != ASK_RESPONSE_SCHEMA {
         return Err(invalid_request(format!(
             "unsupported ask response schema: {}",
             ask.body.schema
         )));
     }
-    validate_required_field(bid_receipt_id, "bid_receipt_id")?;
+    validate_required_field(&reservation.receipt_id, "reservation.receipt_id")?;
     match ask.verify_signature() {
         Ok(true) => {}
         _ => return Err(BiddingError::PricingSignatureInvalid),
@@ -389,19 +472,39 @@ pub fn accept(
     if accepted_at >= ask.body.expires_at {
         return Err(BiddingError::PricingExpired);
     }
-    Ok(AcceptedBid {
+    if acceptor_keypair.public_key() != ask.body.token_offer.subject {
+        return Err(BiddingError::AuthorityMismatch);
+    }
+    let ask_digest = canonical_digest(&ask.body)?;
+    if reservation.agent_id != ask.body.agent_id
+        || reservation.listing_id != ask.body.listing_id
+        || reservation.ask_digest != ask_digest
+        || reservation.reserved_amount.currency != ask.body.quoted_price.currency
+        || reservation.reserved_amount.units < ask.body.quoted_price.units
+    {
+        return Err(BiddingError::ReservationReceiptInvalid);
+    }
+    let accepted = AcceptedBid {
         schema: ACCEPTED_BID_SCHEMA.to_string(),
         listing_id: ask.body.listing_id.clone(),
         agent_id: ask.body.agent_id.clone(),
         bid_digest: ask.body.bid_digest.clone(),
-        ask_digest: canonical_digest(&ask.body)?,
-        bid_receipt_id: bid_receipt_id.to_string(),
+        ask_digest,
+        bid_receipt_id: reservation.receipt_id.clone(),
         quoted_price: ask.body.quoted_price.clone(),
         accepted_at,
         token_id: ask.body.token_offer.id.clone(),
         token_subject: ask.body.token_offer.subject.clone(),
         token_expires_at: ask.body.token_offer.expires_at,
-    })
+    };
+    let signed = SignedAcceptedBid::sign(accepted, acceptor_keypair)
+        .map_err(|error| invalid_request(error.to_string()))?;
+    match signed.verify_signature() {
+        Ok(true) => Ok(signed),
+        _ => Err(invalid_request(
+            "signed accepted bid signature is not verifiable",
+        )),
+    }
 }
 
 fn capability_scope_covers(candidate: &str, advertised: &str) -> bool {
@@ -424,6 +527,14 @@ fn capability_scope_covers(candidate: &str, advertised: &str) -> bool {
 fn canonical_digest<T: serde::Serialize>(value: &T) -> Result<String, BiddingError> {
     let bytes = canonical_json_bytes(value).map_err(|error| invalid_request(error.to_string()))?;
     Ok(sha256_hex(&bytes))
+}
+
+fn is_lowercase_sha256(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .as_bytes()
+            .iter()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
 #[cfg(test)]
@@ -620,6 +731,25 @@ mod tests {
 
     fn resign_bid_request(agent_keypair: &Keypair, request: &BidRequest) -> SignedBidRequest {
         SignedBidRequest::sign(request.clone(), agent_keypair).test_expect("re-sign bid")
+    }
+
+    fn reservation_for(
+        ask: &SignedAskResponse,
+        receipt_id: &str,
+        reservation_keypair: &Keypair,
+    ) -> VerifiedReservationReceipt {
+        let receipt = ReservationReceipt {
+            schema: RESERVATION_RECEIPT_SCHEMA.to_string(),
+            receipt_id: receipt_id.to_string(),
+            agent_id: ask.body.agent_id.clone(),
+            listing_id: ask.body.listing_id.clone(),
+            ask_digest: canonical_digest(&ask.body).test_expect("ask digest"),
+            reserved_amount: ask.body.quoted_price.clone(),
+        };
+        let signed = SignedReservationReceipt::sign(receipt, reservation_keypair)
+            .test_expect("sign reservation");
+        VerifiedReservationReceipt::from_signed(&signed, &reservation_keypair.public_key())
+            .test_expect("verify reservation")
     }
 
     #[test]
@@ -898,13 +1028,18 @@ mod tests {
         )
         .test_expect("bid succeeds");
 
-        let accepted = accept(&ask, "receipt-42", 130).test_expect("accept succeeds");
-        assert_eq!(accepted.listing_id, "listing-1");
-        assert_eq!(accepted.bid_receipt_id, "receipt-42");
-        assert_eq!(accepted.agent_id, "agent-alpha");
-        assert_eq!(accepted.token_id, "token-1");
-        assert!(!accepted.ask_digest.is_empty());
-        assert!(!accepted.bid_digest.is_empty());
+        let reservation = reservation_for(&ask, "receipt-42", &issuer_keypair);
+        let accepted =
+            accept(&ask, &reservation, &agent_keypair, 130).test_expect("accept succeeds");
+        assert_eq!(accepted.body.listing_id, "listing-1");
+        assert_eq!(accepted.body.bid_receipt_id, "receipt-42");
+        assert_eq!(accepted.body.agent_id, "agent-alpha");
+        assert_eq!(accepted.body.token_id, "token-1");
+        assert!(!accepted.body.ask_digest.is_empty());
+        assert!(!accepted.body.bid_digest.is_empty());
+        assert!(accepted
+            .verify_signature()
+            .test_expect("verify accepted bid"));
     }
 
     #[test]
@@ -935,7 +1070,9 @@ mod tests {
         .test_expect("bid succeeds");
         ask.body.agent_id = "agent-evil".to_string();
 
-        let error = accept(&ask, "receipt-42", 130).test_expect_err("tampered ask rejected");
+        let reservation = reservation_for(&ask, "receipt-42", &issuer_keypair);
+        let error = accept(&ask, &reservation, &agent_keypair, 130)
+            .test_expect_err("tampered ask rejected");
         assert_eq!(error, BiddingError::PricingSignatureInvalid);
     }
 
@@ -968,8 +1105,9 @@ mod tests {
         ask.body.token_offer.expires_at = ask.body.expires_at + 1;
         ask = SignedAskResponse::sign(ask.body, &issuer_keypair).test_expect("re-sign ask");
 
-        let error =
-            accept(&ask, "receipt-42", 130).test_expect_err("tampered token offer rejected");
+        let reservation = reservation_for(&ask, "receipt-42", &issuer_keypair);
+        let error = accept(&ask, &reservation, &agent_keypair, 130)
+            .test_expect_err("tampered token offer rejected");
         assert_eq!(error, BiddingError::TokenSignatureInvalid);
     }
 
@@ -1000,7 +1138,9 @@ mod tests {
         )
         .test_expect("bid succeeds");
         // window_seconds = 50; ask expires at 170.
-        let error = accept(&ask, "receipt-42", 200).test_expect_err("expired ask rejected");
+        let reservation = reservation_for(&ask, "receipt-42", &issuer_keypair);
+        let error =
+            accept(&ask, &reservation, &agent_keypair, 200).test_expect_err("expired ask rejected");
         assert_eq!(error, BiddingError::PricingExpired);
     }
 

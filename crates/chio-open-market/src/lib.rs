@@ -19,8 +19,9 @@ pub use chio_listing as listing;
 pub mod bidding;
 pub use bidding::{
     accept, bid, AcceptedBid, AskResponse, BidMintContext, BidRequest, BiddingError,
-    RequestedScope, SignedAcceptedBid, SignedAskResponse, SignedBidRequest, ACCEPTED_BID_SCHEMA,
-    ASK_RESPONSE_SCHEMA, BID_REQUEST_SCHEMA,
+    RequestedScope, ReservationReceipt, SignedAcceptedBid, SignedAskResponse, SignedBidRequest,
+    SignedReservationReceipt, VerifiedReservationReceipt, ACCEPTED_BID_SCHEMA, ASK_RESPONSE_SCHEMA,
+    BID_REQUEST_SCHEMA, RESERVATION_RECEIPT_SCHEMA,
 };
 
 use serde::{Deserialize, Serialize};
