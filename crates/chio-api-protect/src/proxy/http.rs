@@ -34,58 +34,6 @@ pub(crate) fn forwarded_query_string(raw_query: Option<&str>) -> Option<String> 
     (!query.is_empty()).then_some(query)
 }
 
-pub(crate) fn evaluation_error_response(error: &ProtectError) -> Response {
-    match error {
-        ProtectError::PendingApproval {
-            approval_id,
-            kernel_receipt_id,
-        } => {
-            let mut body = serde_json::json!({
-                "error": "chio_approval_required",
-                "message": "request requires human approval before it can proceed",
-                "kernel_receipt_id": kernel_receipt_id,
-            });
-            if let Some(approval_id) = approval_id {
-                body["approval_id"] = serde_json::Value::String(approval_id.clone());
-                body["resume_path"] =
-                    serde_json::Value::String(format!("/approvals/{approval_id}/respond"));
-            }
-            (StatusCode::CONFLICT, axum::Json(body)).into_response()
-        }
-        _ => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            axum::Json(serde_json::json!({
-                "error": "chio_evaluation_failed",
-                "message": error.to_string(),
-            })),
-        )
-            .into_response(),
-    }
-}
-
-pub(crate) fn approval_json<T>(status: StatusCode, response: T) -> Response
-where
-    T: Serialize,
-{
-    (status, Json(response)).into_response()
-}
-
-pub(crate) fn approval_error_response(error: ApprovalHandlerError) -> Response {
-    let status = StatusCode::from_u16(error.status()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-    (status, Json(error.body())).into_response()
-}
-
-pub(crate) fn internal_json_error_response(error: &str, message: &str) -> Response {
-    (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        axum::Json(serde_json::json!({
-            "error": error,
-            "message": message,
-        })),
-    )
-        .into_response()
-}
-
 const SIDECAR_ADVISORY_EVALUATION_SCHEMA: &str = "chio.sidecar.advisory-evaluation.v1";
 const SIDECAR_ADVISORY_AUTHORIZATION_BASIS: &str = "advisory_only";
 
@@ -161,14 +109,6 @@ pub(crate) fn presented_capability_id(raw_capability: Option<&str>) -> Option<St
         .map(|token| token.id)
 }
 
-pub(crate) fn revoked_capability_verdict() -> Verdict {
-    Verdict::deny_with_status(
-        "capability token has been revoked",
-        "CapabilityRevocation",
-        403,
-    )
-}
-
 pub(crate) fn should_forward_request_header(name: &str) -> bool {
     const LOCAL_HEADERS: &[&str] = &[
         "connection",
@@ -187,14 +127,6 @@ pub(crate) fn should_forward_request_header(name: &str) -> bool {
     !LOCAL_HEADERS
         .iter()
         .any(|local| name.eq_ignore_ascii_case(local))
-}
-
-pub(crate) fn verdict_http_status(verdict: &Verdict) -> u16 {
-    match verdict {
-        Verdict::Allow => 200,
-        Verdict::Deny { http_status, .. } => *http_status,
-        Verdict::Cancel { .. } | Verdict::Incomplete { .. } => 500,
-    }
 }
 
 pub(crate) fn extract_transport_capability(

@@ -55,14 +55,6 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         "feature-gated bbs-stub implementation isolated behind cfg(feature = \"bbs-stub\")",
         "Phase 2.2 review",
     ),
-    "crates/chio-api-protect/src/proxy/http_util.rs": allow(
-        "route-status metadata for the failing sidecar attenuation route",
-        "Phase 5.3",
-    ),
-    "crates/chio-api-protect/src/proxy/router.rs": allow(
-        "route registration notes for the failing sidecar attenuation route",
-        "Phase 5.3",
-    ),
     "crates/chio-anchor/src/batch.rs": allow(
         "reviewed test fixture inside cfg(test)",
         "Phase 7 review",
@@ -160,6 +152,10 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         "Phase 3 review",
     ),
     "crates/chio-core-types/src/receipt.rs": allow(
+        "advisory trust level is an intentional receipt enum variant",
+        "Phase 3.2 review",
+    ),
+    "crates/chio-core-types/src/receipt/kinds.rs": allow(
         "advisory trust level is an intentional receipt enum variant",
         "Phase 3.2 review",
     ),
@@ -283,6 +279,10 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         "domain placeholder-resolution API use for guard configuration",
         "Phase 5.1 review",
     ),
+    "crates/chio-wasm-guards/src/runtime/wasmtime_backend.rs": allow(
+        "domain placeholder-resolution API use for guard configuration",
+        "Phase 5.1 review",
+    ),
     "crates/chio-weights/src/lib.rs": allow(
         "negative crate invariant text forbids verifier and trust-boundary stubs",
         "Phase 6.2 review",
@@ -293,12 +293,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
 }
 
-DENYLIST: dict[str, DenylistEntry] = {
-    "crates/chio-api-protect/src/proxy/sidecar.rs": DenylistEntry(
-        reason="capability attenuation route still advertises a 501 not_yet_implemented stub",
-        until="Phase 5.3 resolves or fail-closes the route",
-    )
-}
+DENYLIST: dict[str, DenylistEntry] = {}
 
 
 @dataclass(frozen=True)

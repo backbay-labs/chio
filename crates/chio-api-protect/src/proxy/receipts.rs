@@ -1,15 +1,5 @@
 use super::*;
 
-pub(crate) fn decision_label(decision: &Option<Decision>) -> String {
-    match decision {
-        Some(Decision::Allow) => "allow".to_string(),
-        Some(Decision::Deny { .. }) => "deny".to_string(),
-        Some(Decision::Cancelled { .. }) => "cancelled".to_string(),
-        Some(Decision::Incomplete { .. }) => "incomplete".to_string(),
-        None => "none".to_string(),
-    }
-}
-
 pub(crate) fn manual_receipt_policy_hash(label: &str) -> String {
     chio_core_types::sha256_hex(label.as_bytes())
 }

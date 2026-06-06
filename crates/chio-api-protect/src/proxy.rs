@@ -47,8 +47,16 @@ use crate::spec_discovery::{default_upstream_egress_contract, discover_spec, loa
 
 #[path = "proxy/approval.rs"]
 mod approval;
-#[path = "proxy/http_util.rs"]
-mod http_util;
+#[path = "proxy/attenuation.rs"]
+mod attenuation;
+#[path = "proxy/config.rs"]
+mod config;
+#[path = "proxy/decision.rs"]
+mod decision;
+#[path = "proxy/errors.rs"]
+mod errors;
+#[path = "proxy/http.rs"]
+mod http;
 #[path = "proxy/receipts.rs"]
 mod receipts;
 #[path = "proxy/router.rs"]
@@ -61,14 +69,18 @@ mod sidecar;
 mod state;
 
 pub(crate) use self::approval::*;
-pub(crate) use self::http_util::*;
+pub(crate) use self::attenuation::*;
+pub(crate) use self::decision::*;
+pub(crate) use self::errors::*;
+pub(crate) use self::http::*;
 pub(crate) use self::receipts::*;
 pub(crate) use self::router::*;
 pub(crate) use self::scope_subset::*;
 pub(crate) use self::sidecar::*;
 pub(crate) use self::state::*;
 
-pub use self::state::{ProtectConfig, ProtectProxy};
+pub use self::config::ProtectConfig;
+pub use self::state::ProtectProxy;
 
 #[cfg(test)]
 mod tests {
