@@ -57,7 +57,9 @@ policy, kernel, storage, adapter, or product crates.
   - `receipt::validation`: private shared validators used by receipt modules.
 - `manifest` owns the signed tool-server manifest body.
 - `session` owns authenticated session anchors, request lineage, and
-  normalized session operations.
+  normalized session operations. Session roundtrip, signing, schema, and
+  URI-normalization tests live in `session/tests.rs` so the wire-type module
+  stays focused on production definitions.
 - `_generated/chio_wire_v1.rs` is generated code and must not be edited
   directly.
 
