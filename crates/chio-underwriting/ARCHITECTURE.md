@@ -6,7 +6,12 @@
 
 ## Internal Surfaces
 
-The main crate models underwriting artifacts and evaluator logic. `premium` owns deterministic premium pricing and fail-closed input validation. `marketplace_limits` owns the reputation-tiered credit-limit helper consumed by market and credit surfaces.
+`src/lib.rs` owns evidence, policy-input, taxonomy, and appeal contracts plus
+the intentionally exposed crate API. `decision` owns decision policy, findings,
+decision artifacts, list/simulation reports, and evaluator logic. `premium`
+owns deterministic premium pricing and fail-closed input validation.
+`marketplace_limits` owns the reputation-tiered credit-limit helper consumed by
+market and credit surfaces.
 
 ## Trust Invariants
 
