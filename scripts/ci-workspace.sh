@@ -7,7 +7,7 @@ cd "$(dirname "$0")/.."
 ./scripts/check-workspace-layering.sh
 python3 scripts/check-review-slices.py
 python3 scripts/check-rust-public-surface.py
-./scripts/tests/check-rust-public-surface.test.sh
+bash scripts/tests/check-rust-public-surface.test.sh
 python3 scripts/check-architecture-docs.py
 ./scripts/check-formal-proofs.sh
 ./scripts/check-aeneas-pilot.sh
