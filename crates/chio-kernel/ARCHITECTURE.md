@@ -24,6 +24,10 @@ crates such as `chio-store-sqlite`.
   budget commit metadata. `budget_store/in_memory.rs` owns the in-memory
   backend, hold state, idempotent mutation events, and concrete `BudgetStore`
   implementation.
+- `receipt_support.rs` owns receipt evidence scopes, governed receipt
+  metadata, child receipt helpers, stream receipt content, and receipt
+  attribution helpers. `receipt_support/signing.rs` owns the kernel crypto
+  floor, hybrid receipt signing entrypoints, and signing backend construction.
 
 ## Security And API Constraints
 
