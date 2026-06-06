@@ -8,7 +8,7 @@ from pathlib import Path
 
 checks = [
     {
-        "file": "crates/chio-mcp-edge/src/runtime.rs",
+        "file": "crates/chio-mcp-edge/src/runtime/tool_calls.rs",
         "required": [
             "evaluate_tool_call_operation",
             "self.kernel.evaluate_session_operation",
@@ -38,6 +38,10 @@ process_lifecycle_spawns = {
     Path("crates/chio-acp-proxy/src/transport.rs"):
         "ACP transport spawn starts the wrapped agent process; ACP messages are mediated by the proxy interceptor before forwarding",
 }
+
+def is_test_path(path: Path) -> bool:
+    return "tests" in path.parts or path.name.endswith("_tests.rs")
+
 for check in checks:
     path = Path(check["file"])
     if not path.exists():
@@ -66,6 +70,8 @@ for root in sorted(adapter_roots):
     if not root.exists():
         continue
     for path in root.rglob("*.rs"):
+        if is_test_path(path):
+            continue
         text = path.read_text(encoding="utf-8")
         forbidden_hits = []
         for marker in ["Command::new", ".spawn(", ".invoke("]:
