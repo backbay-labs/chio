@@ -20,7 +20,8 @@
 #![cfg(target_arch = "wasm32")]
 
 use chio_core_types::capability::{
-    CapabilityToken, CapabilityTokenBody, ChioScope, Operation, ToolGrant,
+    scope::{ChioScope, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core_types::crypto::Keypair;
 use chio_core_types::receipt::{ChioReceiptBody, Decision, ToolCallAction, TrustLevel};

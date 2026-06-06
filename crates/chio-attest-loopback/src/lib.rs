@@ -35,7 +35,7 @@ pub use chio_attest_buyer_core::trust_bundle::{
     WORKFLOW_AGGREGATE_PUBLISH_ACTION_CLASS_ID, WORKFLOW_GRANT_ISSUE_ACTION_CLASS_ID,
 };
 use chio_core_types::canonical::{canonical_json_bytes, canonical_json_string};
-use chio_core_types::capability::MonetaryAmount;
+use chio_core_types::capability::scope::MonetaryAmount;
 use chio_core_types::crypto::{sha256_hex, Keypair};
 use chio_core_types::receipt::{
     ActorRef, BoundaryClass, ChioReceipt, ChioReceiptBody, Decision, ReceiptKind, RedactionMode,

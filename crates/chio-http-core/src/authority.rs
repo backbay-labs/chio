@@ -2,7 +2,8 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use chio_core_types::capability::{
-    CapabilityToken, ChioScope, ModelMetadata, Operation, ToolGrant,
+    scope::{ChioScope, ModelMetadata, Operation, ToolGrant},
+    token::CapabilityToken,
 };
 use chio_core_types::crypto::{Keypair, PublicKey};
 use chio_core_types::receipt::GuardEvidence;
@@ -934,8 +935,9 @@ mod tests {
         CHIO_HTTP_STATUS_SCOPE_DECISION, CHIO_HTTP_STATUS_SCOPE_FINAL,
     };
     use chio_core_types::capability::{
-        compute_attenuation_witness, scope_hash, AttenuationProof, CapabilityTokenAttenuationBody,
-        CapabilityTokenBody, ChioScope, Operation, ToolGrant,
+        attenuation::{compute_attenuation_witness, scope_hash, AttenuationProof},
+        scope::{ChioScope, Operation, ToolGrant},
+        token::{CapabilityTokenAttenuationBody, CapabilityTokenBody},
     };
 
     use chio_test_support::prelude::*;

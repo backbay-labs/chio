@@ -40,24 +40,6 @@ mod signer_binding;
 pub use canonical::{
     canonical_json_bytes, canonical_json_string, canonicalize, CanonicalBytes, CanonicalJsonWitness,
 };
-pub use capability::delegate;
-pub use capability::{
-    canonicalize_attestation_verifier, compute_attenuation_witness, scope_hash,
-    validate_attenuation, validate_attenuation_proof, validate_delegation_chain,
-    verify_attenuation_witness, Attenuation, AttenuationProof, AttenuationWitness,
-    AttestationTrustError, AttestationTrustPolicy, AttestationTrustRule, CapabilityNegotiation,
-    CapabilityToken, CapabilityTokenAttenuationBody, CapabilityTokenBody,
-    CapabilityTokenSigningBody, Caveat, CaveatKind, ChioScope, Constraint, ContentReviewTier,
-    DelegationLink, DelegationLinkBody, GovernedApprovalDecision, GovernedApprovalToken,
-    GovernedApprovalTokenBody, GovernedAutonomyContext, GovernedAutonomyTier,
-    GovernedCallChainContext, GovernedCommerceContext, GovernedTransactionIntent,
-    GrantSubsetRelation, MeteredBillingContext, MeteredBillingQuote, MeteredSettlementMode,
-    ModelMetadata, ModelSafetyTier, MonetaryAmount, Operation, PromptGrant,
-    ResolvedRuntimeAssurance, ResourceGrant, RuntimeAssuranceTier, RuntimeAttestationEvidence,
-    ScopeHash, SqlOperationClass, ToolGrant, WorkloadCredentialKind, WorkloadIdentity,
-    WorkloadIdentityError, WorkloadIdentityScheme, CHIO_CAPABILITIES_SCHEMA,
-    CHIO_CAPABILITY_SCHEMA,
-};
 pub use crypto::{
     sha256_hex, Ed25519Backend, Keypair, PublicKey, Signature, SigningAlgorithm, SigningBackend,
 };

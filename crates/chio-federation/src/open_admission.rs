@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use serde::{Deserialize, Serialize};
 
 use crate::artifacts::{FederationArtifactKind, FederationArtifactReference};
-use crate::capability::MonetaryAmount;
+use crate::capability::scope::MonetaryAmount;
 use crate::error::FederationContractError;
 use crate::listing::GenericTrustAdmissionClass;
 use crate::open_market::fee_schedule::OpenMarketBondClass;

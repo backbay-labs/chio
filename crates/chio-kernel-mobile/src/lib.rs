@@ -68,7 +68,8 @@ pub use rng::MobileRng;
 use serde::{Deserialize, Serialize};
 
 use chio_core_types::capability::{
-    CapabilityCryptoFloor, CapabilityNegotiation, CapabilityToken, ScopeHash,
+    attenuation::ScopeHash, crypto_floor::CapabilityCryptoFloor, features::CapabilityNegotiation,
+    token::CapabilityToken,
 };
 use chio_core_types::crypto::{Ed25519Backend, Keypair, PublicKey};
 use chio_core_types::receipt::ChioReceiptBody;

@@ -10,7 +10,10 @@ use std::sync::Arc;
 use chio_arena::{
     load_scenario, shared_kernel_bindings, ArenaRuntime, KernelStepRequest, ScenarioVerdict,
 };
-use chio_core::{ChioScope, Keypair, Operation, ToolGrant};
+use chio_core::{
+    capability::scope::{ChioScope, Operation, ToolGrant},
+    Keypair,
+};
 use chio_kernel::{
     ChioKernel, KernelConfig, KernelError, NestedFlowBridge, ToolCallRequest, ToolServerConnection,
     DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_MAX_STREAM_DURATION_SECS,

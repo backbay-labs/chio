@@ -1,4 +1,4 @@
-use crate::capability::MonetaryAmount;
+use crate::capability::scope::MonetaryAmount;
 use crate::crypto::Keypair;
 use crate::evaluation::{evaluate_open_market_penalty, OpenMarketPenaltyEvaluationRequest};
 use crate::evidence::{OpenMarketEvidenceKind, OpenMarketEvidenceReference, OpenMarketFindingCode};

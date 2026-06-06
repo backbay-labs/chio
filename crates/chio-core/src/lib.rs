@@ -108,16 +108,6 @@ pub use autonomy::{
 pub use canonical::{
     canonical_json_bytes, canonical_json_string, canonicalize, CanonicalBytes, CanonicalJsonWitness,
 };
-pub use capability::{
-    Attenuation, AttestationTrustError, AttestationTrustPolicy, AttestationTrustRule,
-    CapabilityToken, CapabilityTokenBody, ChioScope, Constraint, DelegationLink,
-    DelegationLinkBody, GovernedApprovalDecision, GovernedApprovalToken, GovernedApprovalTokenBody,
-    GovernedCallChainContext, GovernedCommerceContext, GovernedTransactionIntent,
-    MeteredBillingContext, MeteredBillingQuote, MeteredSettlementMode, MonetaryAmount, Operation,
-    PromptGrant, ResolvedRuntimeAssurance, ResourceGrant, RuntimeAssuranceTier,
-    RuntimeAttestationEvidence, ToolGrant, WorkloadCredentialKind, WorkloadIdentity,
-    WorkloadIdentityError, WorkloadIdentityScheme,
-};
 pub use credit::{
     ensure_capital_execution_custodian_authority, ensure_capital_execution_owner_authority,
     validate_capital_execution_envelope, CapitalAllocationDecisionArtifact,
@@ -399,7 +389,6 @@ pub use web3::trust_profile::{
     Web3TrustProfile, CHIO_WEB3_TRUST_PROFILE_SCHEMA,
 };
 
-pub use capability::{validate_attenuation, validate_delegation_chain};
 pub use chio_core_types::{AgentId, CapabilityId, ServerId};
 pub use signed_artifact::{
     built_in_signed_artifact_registry, is_supported_signed_artifact_schema,

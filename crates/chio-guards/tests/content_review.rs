@@ -10,8 +10,9 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use chio_core::capability::{
-    CapabilityToken, CapabilityTokenBody, ChioScope, Constraint, GovernedTransactionIntent,
-    MonetaryAmount, Operation, ToolGrant,
+    governance::GovernedTransactionIntent,
+    scope::{ChioScope, Constraint, MonetaryAmount, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core::crypto::Keypair;
 use chio_guards::{ContentReviewConfig, ContentReviewGuard};

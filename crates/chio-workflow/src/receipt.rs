@@ -4,7 +4,7 @@
 //! entire execution of a skill, including per-step results, timing,
 //! cost attribution, and the overall outcome.
 
-use chio_core::capability::MonetaryAmount;
+use chio_core::capability::scope::MonetaryAmount;
 use chio_core::crypto::{Keypair, PublicKey, Signature};
 use serde::{Deserialize, Serialize};
 

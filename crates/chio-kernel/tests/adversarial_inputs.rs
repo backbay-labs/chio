@@ -3,7 +3,8 @@
 use std::io::Cursor;
 
 use chio_core::capability::{
-    CapabilityToken, CapabilityTokenBody, ChioScope, Operation, ToolGrant,
+    scope::{ChioScope, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core::crypto::Keypair;
 use chio_kernel::transport::{read_frame, ChioTransport, TransportError};

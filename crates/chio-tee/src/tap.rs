@@ -71,7 +71,10 @@ mod tests {
     use std::sync::Mutex;
 
     use chio_core::canonical::canonical_json_string;
-    use chio_core::capability::{CapabilityToken, CapabilityTokenBody, ChioScope};
+    use chio_core::capability::{
+        scope::ChioScope,
+        token::{CapabilityToken, CapabilityTokenBody},
+    };
     use chio_core::crypto::{sha256_hex, Keypair};
     use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
 

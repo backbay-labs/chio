@@ -14,7 +14,7 @@
 
 #![forbid(unsafe_code)]
 
-pub use chio_core_types::capability::MonetaryAmount;
+pub use chio_core_types::capability::scope::MonetaryAmount;
 pub use chio_core_types::{canonical_json_bytes, crypto, receipt};
 
 pub mod discovery;

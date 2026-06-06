@@ -11,7 +11,8 @@ use std::sync::{Mutex, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_core::capability::{
-    CapabilityToken, CapabilityTokenBody, ChioScope, Operation, ToolGrant,
+    scope::{ChioScope, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, GuardEvidence, ToolCallAction};
 use chio_core::session::OperationTerminalState;

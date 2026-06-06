@@ -203,7 +203,7 @@ fn install_priced_guard_run_call_one_iou_one_settlement() {
         receipt.tool_server.clone(),
         receipt.tool_name.clone(),
         receipt.capability_id.clone(),
-        chio_credit::capability::MonetaryAmount {
+        chio_credit::capability::scope::MonetaryAmount {
             currency: envelope.body.currency.clone(),
             units: envelope.body.amount_units,
         },

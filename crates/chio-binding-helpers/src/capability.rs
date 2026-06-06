@@ -1,4 +1,7 @@
-use chio_core::{validate_delegation_chain, CapabilityToken, Error as CoreError};
+use chio_core::{
+    capability::{attenuation::validate_delegation_chain, token::CapabilityToken},
+    Error as CoreError,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::Result;
@@ -64,7 +67,11 @@ pub fn verify_capability_json(
 mod tests {
     use super::{verify_capability, CapabilityTimeStatus};
     use chio_core::{
-        CapabilityToken, CapabilityTokenBody, ChioScope, Constraint, Keypair, Operation, ToolGrant,
+        capability::{
+            scope::{ChioScope, Constraint, Operation, ToolGrant},
+            token::{CapabilityToken, CapabilityTokenBody},
+        },
+        Keypair,
     };
 
     fn sample_scope() -> ChioScope {

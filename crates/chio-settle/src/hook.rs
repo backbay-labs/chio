@@ -20,7 +20,7 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use chio_core::capability::MonetaryAmount;
+use chio_core::capability::scope::MonetaryAmount;
 
 use crate::SettlementError;
 

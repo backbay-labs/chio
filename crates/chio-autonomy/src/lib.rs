@@ -15,7 +15,7 @@ use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
 
-use crate::capability::{MonetaryAmount, RuntimeAssuranceTier};
+use crate::capability::{runtime_attestation::RuntimeAssuranceTier, scope::MonetaryAmount};
 use crate::market::LiabilityCoverageClass;
 use crate::receipt::SignedExportEnvelope;
 use crate::web3::settlement::Web3SettlementLifecycleState;

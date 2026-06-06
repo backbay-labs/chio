@@ -77,7 +77,7 @@ internal milestone `ToolGrant` type. The new fields are tagged with
 **1. Issue a capability token with monetary limits.**
 
 ```rust
-use chio_core::capability::{MonetaryAmount, ToolGrant};
+use chio_core::capability::{scope::{MonetaryAmount, ToolGrant}};
 
 let grant = ToolGrant {
     server_id: "payments-server".to_string(),

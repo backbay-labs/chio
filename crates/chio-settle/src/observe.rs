@@ -92,7 +92,7 @@ pub struct ExecutionProjectionInput<'a> {
     pub execution_receipt_id: String,
     pub settlement_reference: String,
     pub observed_at: Option<u64>,
-    pub observed_amount: chio_core::capability::MonetaryAmount,
+    pub observed_amount: chio_core::capability::scope::MonetaryAmount,
     pub anchor_proof: Option<&'a AnchorInclusionProof>,
     pub oracle_evidence: Option<&'a OracleConversionEvidence>,
     pub failure_reason: Option<String>,
@@ -1086,7 +1086,7 @@ mod tests {
                 execution_receipt_id: "exec-2".to_string(),
                 settlement_reference: "settlement-2".to_string(),
                 observed_at: Some(1_700_001_000),
-                observed_amount: chio_core::capability::MonetaryAmount {
+                observed_amount: chio_core::capability::scope::MonetaryAmount {
                     units: dispatch.settlement_amount.units / 2,
                     currency: dispatch.settlement_amount.currency.clone(),
                 },

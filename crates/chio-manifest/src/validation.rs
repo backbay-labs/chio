@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use chio_core::capability::MonetaryAmount;
+use chio_core::capability::scope::MonetaryAmount;
 
 use crate::{
     ManifestError, PricingModel, RequiredPermissions, ToolDefinition, ToolManifest, ToolPricing,

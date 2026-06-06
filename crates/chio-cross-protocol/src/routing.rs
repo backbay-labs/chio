@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use chio_core::capability::GovernedTransactionIntent;
+use chio_core::capability::governance::GovernedTransactionIntent;
 use chio_core::{canonical_json_bytes, sha256_hex};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};

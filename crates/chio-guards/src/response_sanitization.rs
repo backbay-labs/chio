@@ -1591,11 +1591,11 @@ mod tests {
             ResponseSanitizationGuard::new(SensitivityLevel::High, SanitizationAction::Block);
 
         let kp = chio_core::crypto::Keypair::generate();
-        let scope = chio_core::capability::ChioScope::default();
+        let scope = chio_core::capability::scope::ChioScope::default();
         let agent_id = kp.public_key().to_hex();
         let server_id = "srv".to_string();
 
-        let cap_body = chio_core::capability::CapabilityTokenBody {
+        let cap_body = chio_core::capability::token::CapabilityTokenBody {
             id: "cap-test".to_string(),
             issuer: kp.public_key(),
             subject: kp.public_key(),
@@ -1604,7 +1604,8 @@ mod tests {
             expires_at: u64::MAX,
             delegation_chain: vec![],
         };
-        let cap = chio_core::capability::CapabilityToken::sign(cap_body, &kp).expect("sign cap");
+        let cap =
+            chio_core::capability::token::CapabilityToken::sign(cap_body, &kp).expect("sign cap");
 
         let request = chio_kernel::ToolCallRequest {
             request_id: "req-test".to_string(),
@@ -1639,11 +1640,11 @@ mod tests {
             ResponseSanitizationGuard::new(SensitivityLevel::High, SanitizationAction::Block);
 
         let kp = chio_core::crypto::Keypair::generate();
-        let scope = chio_core::capability::ChioScope::default();
+        let scope = chio_core::capability::scope::ChioScope::default();
         let agent_id = kp.public_key().to_hex();
         let server_id = "srv".to_string();
 
-        let cap_body = chio_core::capability::CapabilityTokenBody {
+        let cap_body = chio_core::capability::token::CapabilityTokenBody {
             id: "cap-test".to_string(),
             issuer: kp.public_key(),
             subject: kp.public_key(),
@@ -1652,7 +1653,8 @@ mod tests {
             expires_at: u64::MAX,
             delegation_chain: vec![],
         };
-        let cap = chio_core::capability::CapabilityToken::sign(cap_body, &kp).expect("sign cap");
+        let cap =
+            chio_core::capability::token::CapabilityToken::sign(cap_body, &kp).expect("sign cap");
 
         let request = chio_kernel::ToolCallRequest {
             request_id: "req-test".to_string(),

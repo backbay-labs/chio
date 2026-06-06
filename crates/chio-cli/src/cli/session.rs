@@ -1,11 +1,11 @@
 use super::*;
 
 pub(crate) fn select_capability_for_request(
-    capabilities: &[chio_core::CapabilityToken],
+    capabilities: &[chio_core::capability::token::CapabilityToken],
     tool: &str,
     server: &str,
     params: &serde_json::Value,
-) -> Option<chio_core::CapabilityToken> {
+) -> Option<chio_core::capability::token::CapabilityToken> {
     capabilities
         .iter()
         .find(|capability| {
@@ -529,7 +529,7 @@ mod tests {
         kernel: &ChioKernel,
         policy: &policy::ChioPolicy,
         agent_kp: &Keypair,
-    ) -> chio_core::CapabilityToken {
+    ) -> chio_core::capability::token::CapabilityToken {
         let default_capabilities = policy::build_default_capabilities(
             &policy.capabilities,
             policy.kernel.max_capability_ttl,
@@ -545,7 +545,7 @@ mod tests {
     fn open_ready_session(
         kernel: &mut ChioKernel,
         agent_id: &str,
-        capabilities: Vec<chio_core::CapabilityToken>,
+        capabilities: Vec<chio_core::capability::token::CapabilityToken>,
     ) -> SessionId {
         let session_id = kernel.open_session(agent_id.to_string(), capabilities).unwrap();
         kernel.activate_session(&session_id).unwrap();

@@ -1038,7 +1038,8 @@ mod tests {
         let store = SqliteReceiptStore::open(&path).unwrap();
 
         use chio_core::capability::{
-            CapabilityToken, CapabilityTokenBody, ChioScope, Operation, ToolGrant,
+            scope::{ChioScope, Operation, ToolGrant},
+            token::{CapabilityToken, CapabilityTokenBody},
         };
         use chio_core::crypto::Keypair;
 
@@ -1142,7 +1143,8 @@ mod tests {
         let store = SqliteReceiptStore::open(&path).unwrap();
 
         use chio_core::capability::{
-            CapabilityToken, CapabilityTokenBody, ChioScope, Operation, ToolGrant,
+            scope::{ChioScope, Operation, ToolGrant},
+            token::{CapabilityToken, CapabilityTokenBody},
         };
         use chio_core::crypto::Keypair;
 
@@ -1275,7 +1277,8 @@ mod tests {
         let store = SqliteReceiptStore::open(&path).unwrap();
 
         use chio_core::capability::{
-            CapabilityToken, CapabilityTokenBody, ChioScope, Operation, ToolGrant,
+            scope::{ChioScope, Operation, ToolGrant},
+            token::{CapabilityToken, CapabilityTokenBody},
         };
         use chio_core::crypto::Keypair;
 
@@ -1363,7 +1366,8 @@ mod tests {
         let store = SqliteReceiptStore::open(&path).unwrap();
 
         use chio_core::capability::{
-            CapabilityToken, CapabilityTokenBody, ChioScope, Operation, ToolGrant,
+            scope::{ChioScope, Operation, ToolGrant},
+            token::{CapabilityToken, CapabilityTokenBody},
         };
         use chio_core::crypto::Keypair;
 

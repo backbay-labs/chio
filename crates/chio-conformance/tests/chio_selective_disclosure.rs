@@ -1,7 +1,7 @@
 #![cfg(feature = "chio-bbs")]
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-use chio_core::capability::MonetaryAmount;
+use chio_core::capability::scope::MonetaryAmount;
 use chio_core::crypto::{sha256_hex, Keypair};
 use chio_selective_disclosure::{
     derive_selective_disclosure_proof, generate_bbs_keypair, project_workflow_receipt_body,

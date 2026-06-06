@@ -4,7 +4,10 @@ use std::sync::{mpsc, Arc};
 use std::time::Duration;
 
 use crate::{AdapterError, McpTransport};
-use chio_core::capability::{CapabilityToken, ModelMetadata, Operation};
+use chio_core::capability::{
+    scope::{ModelMetadata, Operation},
+    token::CapabilityToken,
+};
 use chio_core::receipt::Decision;
 use chio_core::session::{
     CompleteOperation, CompletionArgument, CompletionReference, CreateElicitationOperation,

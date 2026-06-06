@@ -574,7 +574,7 @@ pub fn issue_default_capabilities(
     kernel: &ChioKernel,
     agent_pk: &chio_core::PublicKey,
     default_capabilities: &[policy::DefaultCapability],
-) -> Result<Vec<chio_core::CapabilityToken>, CliError> {
+) -> Result<Vec<chio_core::capability::token::CapabilityToken>, CliError> {
     default_capabilities
         .iter()
         .cloned()

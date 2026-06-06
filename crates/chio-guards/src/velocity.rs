@@ -222,7 +222,8 @@ mod tests {
     use std::time::Duration;
 
     use chio_core::capability::{
-        CapabilityToken, CapabilityTokenBody, ChioScope, MonetaryAmount, Operation, ToolGrant,
+        scope::{ChioScope, MonetaryAmount, Operation, ToolGrant},
+        token::{CapabilityToken, CapabilityTokenBody},
     };
     use chio_core::crypto::Keypair;
 

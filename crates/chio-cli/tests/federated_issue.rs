@@ -10,7 +10,7 @@ use chio_control_plane::scim_lifecycle::{
     build_scim_user_record, derive_enterprise_subject_key, ScimLifecycleRegistry, ScimUserResource,
     CHIO_SCIM_USER_EXTENSION_SCHEMA, SCIM_CORE_USER_SCHEMA,
 };
-use chio_core::capability::{ChioScope, MonetaryAmount, Operation, ToolGrant};
+use chio_core::capability::scope::{ChioScope, MonetaryAmount, Operation, ToolGrant};
 use chio_core::crypto::Keypair;
 use chio_core::receipt::{
     ChioReceipt, ChioReceiptBody, Decision, ReceiptAttributionMetadata, ToolCallAction,

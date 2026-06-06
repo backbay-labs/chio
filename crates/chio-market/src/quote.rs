@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::capability::MonetaryAmount;
+use crate::capability::scope::MonetaryAmount;
 use crate::credit::{
     CreditFacilityDisposition, CreditFacilityLifecycleState, SignedCapitalBookReport,
     SignedCreditFacility, SignedCreditProviderRiskPackage,

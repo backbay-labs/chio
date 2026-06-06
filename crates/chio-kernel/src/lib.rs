@@ -61,9 +61,11 @@ pub(crate) use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 pub(crate) use chio_core::canonical::canonical_json_bytes;
 pub(crate) use chio_core::capability::{
-    AttestationTrustPolicy, CapabilityToken, ChioScope, Constraint, GovernedApprovalDecision,
-    GovernedApprovalToken, GovernedAutonomyTier, Operation, PromptGrant, ResourceGrant,
-    RuntimeAssuranceTier, ToolGrant,
+    governance::{GovernedApprovalDecision, GovernedApprovalToken, GovernedAutonomyTier},
+    runtime_attestation::RuntimeAssuranceTier,
+    scope::{ChioScope, Constraint, Operation, PromptGrant, ResourceGrant, ToolGrant},
+    token::CapabilityToken,
+    trust_policy::AttestationTrustPolicy,
 };
 pub(crate) use chio_core::crypto::{sha256_hex, Keypair};
 pub(crate) use chio_core::receipt::{

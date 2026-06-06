@@ -1,4 +1,4 @@
-use crate::capability::MonetaryAmount;
+use crate::capability::scope::MonetaryAmount;
 
 pub(crate) fn validate_monetary_amount(value: &MonetaryAmount, field: &str) -> Result<(), String> {
     if value.units == 0 {

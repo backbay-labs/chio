@@ -14,8 +14,9 @@
 
 use chio_core_types::canonical_json_bytes;
 use chio_core_types::capability::{
-    CapabilityToken, CapabilityTokenBody, ChioScope, DelegationLink, DelegationLinkBody, Operation,
-    ToolGrant,
+    attenuation::{DelegationLink, DelegationLinkBody},
+    scope::{ChioScope, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core_types::crypto::Keypair;
 use chio_core_types::receipt::{

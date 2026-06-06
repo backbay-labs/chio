@@ -1,5 +1,5 @@
 use chio_core::canonical::CanonicalBytes;
-use chio_core::capability::CapabilityToken;
+use chio_core::capability::token::CapabilityToken;
 use chio_core::credit::CreditBondRow;
 use chio_core::crypto::Keypair;
 use chio_core::receipt::{ChildRequestReceipt, ChioReceipt};

@@ -11,7 +11,8 @@ use chio_core::appraisal::{
     GOOGLE_CONFIDENTIAL_VM_VERIFIER_ADAPTER,
 };
 use chio_core::capability::{
-    RuntimeAssuranceTier, RuntimeAttestationEvidence, WorkloadCredentialKind, WorkloadIdentity,
+    runtime_attestation::{RuntimeAssuranceTier, RuntimeAttestationEvidence},
+    workload_identity::{WorkloadCredentialKind, WorkloadIdentity},
 };
 use chio_core::crypto::PublicKey;
 use chio_core::receipt::SignedExportEnvelope;

@@ -25,10 +25,14 @@ use chio_core::appraisal::{
     GOOGLE_CONFIDENTIAL_VM_ATTESTATION_SCHEMA, RUNTIME_ATTESTATION_APPRAISAL_REPORT_SCHEMA,
 };
 use chio_core::capability::{
-    CapabilityToken, CapabilityTokenBody, ChioScope, GovernedAutonomyTier,
-    GovernedCallChainContext, GovernedCallChainProvenance, MeteredBillingQuote,
-    MeteredSettlementMode, MonetaryAmount, Operation, RuntimeAssuranceTier,
-    RuntimeAttestationEvidence, ToolGrant, WorkloadIdentity,
+    governance::{
+        GovernedAutonomyTier, GovernedCallChainContext, GovernedCallChainProvenance,
+        MeteredBillingQuote, MeteredSettlementMode,
+    },
+    runtime_attestation::{RuntimeAssuranceTier, RuntimeAttestationEvidence},
+    scope::{ChioScope, MonetaryAmount, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenBody},
+    workload_identity::WorkloadIdentity,
 };
 use chio_core::credit::{
     CapitalAllocationDecisionOutcome, CapitalAllocationDecisionReasonCode, CapitalBookSourceKind,

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use chio_core::capability::{ModelMetadata, ModelSafetyTier};
+use chio_core::capability::scope::{ModelMetadata, ModelSafetyTier};
 use dashmap::DashMap;
 use regex::Regex;
 
@@ -462,7 +462,8 @@ fn constraint_matches(
 mod tests {
     use super::*;
     use chio_core::capability::{
-        CapabilityTokenBody, ChioScope, Constraint, ContentReviewTier, Operation, ToolGrant,
+        scope::{ChioScope, Constraint, ContentReviewTier, Operation, ToolGrant},
+        token::CapabilityTokenBody,
     };
     use chio_core::crypto::Keypair;
 

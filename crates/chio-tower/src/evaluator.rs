@@ -271,7 +271,10 @@ pub(crate) fn parse_method(method: &str) -> Result<HttpMethod, ChioTowerError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chio_core_types::capability::{CapabilityToken, CapabilityTokenBody, ChioScope};
+    use chio_core_types::capability::{
+        scope::ChioScope,
+        token::{CapabilityToken, CapabilityTokenBody},
+    };
     use chio_http_core::{
         http_authority_tool_grant, http_status_scope, CHIO_HTTP_STATUS_SCOPE_DECISION,
         CHIO_HTTP_STATUS_SCOPE_FINAL,

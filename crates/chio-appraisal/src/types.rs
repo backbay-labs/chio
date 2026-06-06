@@ -6,8 +6,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::capability::{
-    AttestationTrustError, RuntimeAssuranceTier, RuntimeAttestationEvidence, WorkloadIdentity,
-    WorkloadIdentityError,
+    runtime_attestation::{RuntimeAssuranceTier, RuntimeAttestationEvidence},
+    trust_policy::AttestationTrustError,
+    workload_identity::{WorkloadIdentity, WorkloadIdentityError},
 };
 use crate::receipt::SignedExportEnvelope;
 use chio_core_types::runtime_attestation::AttestationVerifierFamily;

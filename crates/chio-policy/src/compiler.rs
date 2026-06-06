@@ -37,7 +37,7 @@ use crate::models::{
     SecretPatternsRule, ThreatIntelDetection, ToolAccessRule, VelocityRule,
 };
 
-use chio_core::capability::{ChioScope, Constraint, Operation, ToolGrant};
+use chio_core::capability::scope::{ChioScope, Constraint, Operation, ToolGrant};
 use chio_guards::{
     agent_velocity::AgentVelocityConfig,
     computer_use::{ComputerUseConfig, EnforcementMode},
@@ -974,7 +974,7 @@ fn glob_matches(pattern: &str, target: &str) -> Result<bool, CompileError> {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use chio_core::capability::RuntimeAssuranceTier;
+    use chio_core::capability::runtime_attestation::RuntimeAssuranceTier;
     use std::path::PathBuf;
 
     fn sample_threat_intel_pattern_db() -> &'static str {

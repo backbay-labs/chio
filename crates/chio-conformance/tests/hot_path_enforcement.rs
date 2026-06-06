@@ -3,9 +3,15 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use chio_core::capability::{
-    capability_features, compute_attenuation_witness, scope_hash, AttenuationProof,
-    CapabilityCryptoFloor, CapabilityNegotiation, CapabilityToken, CapabilityTokenAttenuationBody,
-    CapabilityTokenBody, ChioScope, DelegationLink, DelegationLinkBody, Operation, ToolGrant,
+    attenuation::{
+        compute_attenuation_witness, scope_hash, AttenuationProof, DelegationLink,
+        DelegationLinkBody,
+    },
+    crypto_floor::CapabilityCryptoFloor,
+    features,
+    features::CapabilityNegotiation,
+    scope::{ChioScope, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenAttenuationBody, CapabilityTokenBody},
 };
 use chio_core::crypto::Keypair;
 use chio_federation::{
@@ -402,13 +408,14 @@ fn delegated_child_without_pre_registered_parent_fails_closed() {
     .expect("child token signs");
 
     let peer = CapabilityNegotiation::t1_default();
-    let trust_resolver = |k: &chio_core::PublicKey| -> Option<chio_core::capability::ScopeHash> {
-        if k == &issuer.public_key() {
-            Some(scope_hash(&parent_scope).unwrap())
-        } else {
-            None
-        }
-    };
+    let trust_resolver =
+        |k: &chio_core::PublicKey| -> Option<chio_core::capability::attenuation::ScopeHash> {
+            if k == &issuer.public_key() {
+                Some(scope_hash(&parent_scope).unwrap())
+            } else {
+                None
+            }
+        };
     let clock = FixedClock::new(150);
 
     // Fresh per-request registry: no register_parent call before verify.
@@ -494,13 +501,14 @@ fn unregistered_parent_rejects_first_sibling_fail_closed() {
     let child_a = mk_child("cap-child-a-siblings", subject_a.public_key(), 6_000);
 
     let peer = CapabilityNegotiation::t1_default();
-    let trust_resolver = |k: &chio_core::PublicKey| -> Option<chio_core::capability::ScopeHash> {
-        if k == &issuer.public_key() {
-            Some(scope_hash(&parent_scope).unwrap())
-        } else {
-            None
-        }
-    };
+    let trust_resolver =
+        |k: &chio_core::PublicKey| -> Option<chio_core::capability::attenuation::ScopeHash> {
+            if k == &issuer.public_key() {
+                Some(scope_hash(&parent_scope).unwrap())
+            } else {
+                None
+            }
+        };
     let clock = FixedClock::new(150);
 
     let mut budgets = InMemoryBudgetRegistry::new();
@@ -558,16 +566,16 @@ fn chain_binding_disabled_rejects_attenuated_token() {
 
     // Peer profile with chain-binding explicitly disabled.
     let mut peer = CapabilityNegotiation::t1_default();
-    peer.features.insert(
-        capability_features::DELEGATION_CHAIN_BINDING.to_string(),
-        false,
-    );
+    peer.features
+        .insert(features::DELEGATION_CHAIN_BINDING.to_string(), false);
 
     // Empty trust resolver: no issuer has a registered authority hash.
     // The verifier should reject because the peer explicitly disabled
     // chain binding for attenuated capabilities.
     let trust_resolver =
-        |_k: &chio_core::PublicKey| -> Option<chio_core::capability::ScopeHash> { None };
+        |_k: &chio_core::PublicKey| -> Option<chio_core::capability::attenuation::ScopeHash> {
+            None
+        };
     let clock = FixedClock::new(150);
     let mut budgets = InMemoryBudgetRegistry::new();
 
@@ -608,10 +616,9 @@ fn hosted_path_rejects_attenuated_when_peer_disables_chain_binding() {
     let origin_kernel_id = "kernel.no-chain-binding";
     let origin_keypair = Keypair::generate();
     let mut capabilities = CapabilityNegotiation::t1_default();
-    capabilities.features.insert(
-        capability_features::DELEGATION_CHAIN_BINDING.to_string(),
-        false,
-    );
+    capabilities
+        .features
+        .insert(features::DELEGATION_CHAIN_BINDING.to_string(), false);
     let mut kernel = make_kernel(issuer.clone())
         .with_capability_trust_roots(vec![(issuer.public_key(), scope_hash(&scope).unwrap())])
         .with_federation_peers(vec![peer(

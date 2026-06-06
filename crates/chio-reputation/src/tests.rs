@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chio_core::Constraint;
+    use chio_core::capability::scope::Constraint;
 
     #[test]
     fn reputation_config_default_is_fail_closed_on_empty_trust_set() {

@@ -7,7 +7,7 @@ use chio_open_market::{
         ACCEPTED_BID_SCHEMA, ASK_RESPONSE_SCHEMA, BID_REQUEST_SCHEMA, RESERVATION_RECEIPT_SCHEMA,
     },
     canonical_json_bytes,
-    capability::MonetaryAmount,
+    capability::scope::MonetaryAmount,
     crypto::{sha256_hex, Keypair},
     listing::{
         GenericListingActorKind, GenericListingArtifact, GenericListingBoundary,

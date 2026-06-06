@@ -40,7 +40,7 @@ use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
 
 use chio_core_types::canonical::canonical_json_bytes;
-use chio_core_types::capability::CapabilityNegotiation;
+use chio_core_types::capability::features::CapabilityNegotiation;
 use chio_core_types::crypto::{Ed25519Backend, Keypair, PublicKey, Signature, SigningBackend};
 use serde::{Deserialize, Serialize};
 

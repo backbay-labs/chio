@@ -4,8 +4,8 @@ use std::{fs, path::PathBuf};
 
 use chio_core_types::{
     capability::{
-        CapabilityToken, CapabilityTokenBody, ChioScope, MonetaryAmount, Operation, PromptGrant,
-        ResourceGrant, ToolGrant,
+        scope::{ChioScope, MonetaryAmount, Operation, PromptGrant, ResourceGrant, ToolGrant},
+        token::{CapabilityToken, CapabilityTokenBody},
     },
     crypto::Keypair,
     message::{AgentMessage, KernelMessage, ToolCallError, ToolCallResult},

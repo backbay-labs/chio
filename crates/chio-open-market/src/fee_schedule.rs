@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::canonical_json_bytes;
-use crate::capability::MonetaryAmount;
+use crate::capability::scope::MonetaryAmount;
 use crate::crypto::sha256_hex;
 use crate::listing::{normalize_namespace, GenericListingActorKind, GenericTrustAdmissionClass};
 use crate::receipt::SignedExportEnvelope;

@@ -14,7 +14,7 @@
 
 #![forbid(unsafe_code)]
 
-use chio_core::capability::MonetaryAmount;
+use chio_core::capability::scope::MonetaryAmount;
 use chio_core::crypto::{Keypair, PublicKey, Signature};
 use serde::{Deserialize, Serialize};
 

@@ -3,7 +3,7 @@
 //! Differential tests: scope subsumption logic.
 //!
 //! Compares the reference specification's `is_subset_of` against both the
-//! production `chio_core::capability::ChioScope::is_subset_of` logic and the
+//! production `chio_core::capability::scope::ChioScope::is_subset_of` logic and the
 //! normalized proof-facing AST in `chio-kernel-core`.
 
 use chio_formal_diff_tests::generators::{
@@ -19,8 +19,8 @@ use chio_formal_diff_tests::spec::{
 };
 
 use chio_core::capability::{
-    Constraint, MonetaryAmount, Operation, PromptGrant, ResourceGrant, RuntimeAssuranceTier,
-    ToolGrant,
+    runtime_attestation::RuntimeAssuranceTier,
+    scope::{Constraint, MonetaryAmount, Operation, PromptGrant, ResourceGrant, ToolGrant},
 };
 use proptest::prelude::*;
 use proptest::test_runner::Config as ProptestConfig;

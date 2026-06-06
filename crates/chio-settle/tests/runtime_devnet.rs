@@ -8,7 +8,7 @@ use chio_anchor::{
     publish_root, EvmAnchorTarget,
 };
 use chio_core::canonical::canonical_json_bytes;
-use chio_core::capability::MonetaryAmount;
+use chio_core::capability::scope::MonetaryAmount;
 use chio_core::credit::{
     CapitalBookQuery, CapitalBookSourceKind, CapitalExecutionAuthorityStep,
     CapitalExecutionInstructionArtifact, CapitalExecutionInstructionSupportBoundary,

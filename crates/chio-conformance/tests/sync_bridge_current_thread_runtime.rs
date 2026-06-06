@@ -17,7 +17,7 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use chio_core::capability::{ChioScope, Operation, ToolGrant};
+use chio_core::capability::scope::{ChioScope, Operation, ToolGrant};
 use chio_core::crypto::Keypair;
 use chio_kernel::runtime::{NestedFlowBridge, ToolCallRequest, ToolServerConnection};
 use chio_kernel::{

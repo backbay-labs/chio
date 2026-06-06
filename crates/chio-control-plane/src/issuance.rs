@@ -4,8 +4,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_appraisal::{verify_runtime_attestation_record, VerifiedRuntimeAttestationRecord};
 use chio_core::capability::{
-    ChioScope, Constraint, Operation, PromptGrant, ResourceGrant, RuntimeAssuranceTier,
-    RuntimeAttestationEvidence, ToolGrant,
+    runtime_attestation::{RuntimeAssuranceTier, RuntimeAttestationEvidence},
+    scope::{ChioScope, Constraint, Operation, PromptGrant, ResourceGrant, ToolGrant},
 };
 use chio_core::crypto::PublicKey;
 use chio_kernel::{BudgetStore, CapabilityAuthority, KernelError, ReceiptReadContext};
@@ -116,7 +116,7 @@ impl CapabilityAuthority for PolicyBackedCapabilityAuthority {
         subject: &PublicKey,
         scope: ChioScope,
         ttl_seconds: u64,
-    ) -> Result<chio_core::capability::CapabilityToken, KernelError> {
+    ) -> Result<chio_core::capability::token::CapabilityToken, KernelError> {
         self.issue_capability_with_attestation(subject, scope, ttl_seconds, None)
     }
 
@@ -126,7 +126,7 @@ impl CapabilityAuthority for PolicyBackedCapabilityAuthority {
         scope: ChioScope,
         ttl_seconds: u64,
         runtime_attestation: Option<RuntimeAttestationEvidence>,
-    ) -> Result<chio_core::capability::CapabilityToken, KernelError> {
+    ) -> Result<chio_core::capability::token::CapabilityToken, KernelError> {
         let mut scope = scope;
         let now = unix_now();
         let verified_runtime_attestation = verify_runtime_attestation_for_issuance(
@@ -703,7 +703,10 @@ mod tests {
     use chio_test_support::prelude::*;
     use std::fs;
 
-    use chio_core::capability::{CapabilityToken, MonetaryAmount, Operation, ToolGrant};
+    use chio_core::capability::{
+        scope::{MonetaryAmount, Operation, ToolGrant},
+        token::CapabilityToken,
+    };
     use chio_core::crypto::Keypair;
     use chio_core::receipt::{
         ChioReceipt, ChioReceiptBody, Decision, ReceiptAttributionMetadata, ToolCallAction,
@@ -830,37 +833,40 @@ mod tests {
 
     fn test_trusted_runtime_assurance_policy() -> RuntimeAssuranceIssuancePolicy {
         let mut policy = test_runtime_assurance_policy();
-        policy.attestation_trust_policy = Some(chio_core::capability::AttestationTrustPolicy {
-            rules: vec![
-                chio_core::capability::AttestationTrustRule {
-                    name: "azure-contoso".to_string(),
-                    schema: "chio.runtime-attestation.azure-maa.jwt.v1".to_string(),
-                    verifier: "https://maa.contoso.test".to_string(),
-                    effective_tier: RuntimeAssuranceTier::Verified,
-                    verifier_family: Some(
-                        chio_core::appraisal::AttestationVerifierFamily::AzureMaa,
-                    ),
-                    max_evidence_age_seconds: Some(120),
-                    allowed_attestation_types: vec!["sgx".to_string()],
-                    required_assertions: std::collections::BTreeMap::new(),
-                },
-                chio_core::capability::AttestationTrustRule {
-                    name: "google-confidential".to_string(),
-                    schema: "chio.runtime-attestation.google-confidential-vm.jwt.v1".to_string(),
-                    verifier: "https://confidentialcomputing.googleapis.com".to_string(),
-                    effective_tier: RuntimeAssuranceTier::Verified,
-                    verifier_family: Some(
-                        chio_core::appraisal::AttestationVerifierFamily::GoogleAttestation,
-                    ),
-                    max_evidence_age_seconds: Some(120),
-                    allowed_attestation_types: vec!["confidential_vm".to_string()],
-                    required_assertions: std::collections::BTreeMap::from([
-                        ("hardwareModel".to_string(), "GCP_AMD_SEV".to_string()),
-                        ("secureBoot".to_string(), "enabled".to_string()),
-                    ]),
-                },
-            ],
-        });
+        policy.attestation_trust_policy = Some(
+            chio_core::capability::trust_policy::AttestationTrustPolicy {
+                rules: vec![
+                    chio_core::capability::trust_policy::AttestationTrustRule {
+                        name: "azure-contoso".to_string(),
+                        schema: "chio.runtime-attestation.azure-maa.jwt.v1".to_string(),
+                        verifier: "https://maa.contoso.test".to_string(),
+                        effective_tier: RuntimeAssuranceTier::Verified,
+                        verifier_family: Some(
+                            chio_core::appraisal::AttestationVerifierFamily::AzureMaa,
+                        ),
+                        max_evidence_age_seconds: Some(120),
+                        allowed_attestation_types: vec!["sgx".to_string()],
+                        required_assertions: std::collections::BTreeMap::new(),
+                    },
+                    chio_core::capability::trust_policy::AttestationTrustRule {
+                        name: "google-confidential".to_string(),
+                        schema: "chio.runtime-attestation.google-confidential-vm.jwt.v1"
+                            .to_string(),
+                        verifier: "https://confidentialcomputing.googleapis.com".to_string(),
+                        effective_tier: RuntimeAssuranceTier::Verified,
+                        verifier_family: Some(
+                            chio_core::appraisal::AttestationVerifierFamily::GoogleAttestation,
+                        ),
+                        max_evidence_age_seconds: Some(120),
+                        allowed_attestation_types: vec!["confidential_vm".to_string()],
+                        required_assertions: std::collections::BTreeMap::from([
+                            ("hardwareModel".to_string(), "GCP_AMD_SEV".to_string()),
+                            ("secureBoot".to_string(), "enabled".to_string()),
+                        ]),
+                    },
+                ],
+            },
+        );
         policy.tiers.push(RuntimeAssuranceTierPolicy {
             name: "verified".to_string(),
             minimum_attestation_tier: RuntimeAssuranceTier::Verified,
@@ -980,7 +986,7 @@ mod tests {
         issued_at: u64,
         max_invocations: Option<u32>,
     ) -> CapabilityToken {
-        let body = chio_core::capability::CapabilityTokenBody {
+        let body = chio_core::capability::token::CapabilityTokenBody {
             id: capability_id.to_string(),
             issuer: issuer_kp.public_key(),
             subject: subject_kp.public_key(),
@@ -1352,9 +1358,10 @@ mod tests {
             expires_at: now + 300,
             evidence_sha256: "attestation-digest".to_string(),
             runtime_identity: Some("spiffe://prod.chio/payments/worker".to_string()),
-            workload_identity: Some(chio_core::capability::WorkloadIdentity {
-                scheme: chio_core::capability::WorkloadIdentityScheme::Spiffe,
-                credential_kind: chio_core::capability::WorkloadCredentialKind::X509Svid,
+            workload_identity: Some(chio_core::capability::workload_identity::WorkloadIdentity {
+                scheme: chio_core::capability::workload_identity::WorkloadIdentityScheme::Spiffe,
+                credential_kind:
+                    chio_core::capability::workload_identity::WorkloadCredentialKind::X509Svid,
                 uri: "spiffe://dev.chio/payments/worker".to_string(),
                 trust_domain: "dev.chio".to_string(),
                 path: "/payments/worker".to_string(),

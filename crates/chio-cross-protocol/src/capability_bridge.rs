@@ -1,4 +1,4 @@
-use chio_core::capability::{CapabilityToken, ChioScope};
+use chio_core::capability::{scope::ChioScope, token::CapabilityToken};
 use chio_core::{canonical_json_bytes, sha256_hex};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

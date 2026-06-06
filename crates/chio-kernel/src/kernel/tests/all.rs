@@ -7,17 +7,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Mutex, MutexGuard};
 use std::thread;
 
-use chio_core::capability::{
-    compute_attenuation_witness, scope_hash, AttenuationProof, CallChainContinuationAudience,
-    CallChainContinuationToken, CallChainContinuationTokenBody, CapabilityToken,
-    CapabilityTokenBody, CapabilityTokenAttenuationBody, ChioScope, Constraint, DelegationLink,
-    DelegationLinkBody, GovernedApprovalDecision, GovernedApprovalToken,
-    GovernedApprovalTokenBody, GovernedAutonomyContext, GovernedAutonomyTier,
-    GovernedCallChainContext, GovernedTransactionIntent, GovernedUpstreamCallChainProof,
-    GovernedUpstreamCallChainProofBody, MonetaryAmount, Operation, PromptGrant, ResourceGrant,
-    ToolGrant, GOVERNED_CALL_CHAIN_CONTINUATION_CONTEXT_KEY,
-    GOVERNED_CALL_CHAIN_UPSTREAM_PROOF_CONTEXT_KEY,
-};
+use chio_core::capability::{attenuation::{AttenuationProof, DelegationLink, DelegationLinkBody, compute_attenuation_witness, scope_hash}, governance::{CallChainContinuationAudience, CallChainContinuationToken, CallChainContinuationTokenBody, GOVERNED_CALL_CHAIN_CONTINUATION_CONTEXT_KEY, GOVERNED_CALL_CHAIN_UPSTREAM_PROOF_CONTEXT_KEY, GovernedApprovalDecision, GovernedApprovalToken, GovernedApprovalTokenBody, GovernedAutonomyContext, GovernedAutonomyTier, GovernedCallChainContext, GovernedTransactionIntent, GovernedUpstreamCallChainProof, GovernedUpstreamCallChainProofBody}, scope::{ChioScope, Constraint, MonetaryAmount, Operation, PromptGrant, ResourceGrant, ToolGrant}, token::{CapabilityToken, CapabilityTokenAttenuationBody, CapabilityTokenBody}};
 use chio_core::credit::{
     CreditBondArtifact, CreditBondDisposition, CreditBondLifecycleState, CreditBondPrerequisites,
     CreditBondReport, CreditBondSupportBoundary, CreditScorecardBand, CreditScorecardConfidence,
@@ -5885,7 +5875,7 @@ fn make_monetary_grant(
     max_total_cost: u64,
     currency: &str,
 ) -> ToolGrant {
-    use chio_core::capability::MonetaryAmount;
+    use chio_core::capability::scope::MonetaryAmount;
     ToolGrant {
         server_id: server.to_string(),
         tool_name: tool.to_string(),
@@ -6272,7 +6262,7 @@ fn make_governed_acp_intent(fixture: GovernedAcpIntentFixture<'_>) -> GovernedTr
             units: fixture.units,
             currency: fixture.currency.to_string(),
         }),
-        commerce: Some(chio_core::capability::GovernedCommerceContext {
+        commerce: Some(chio_core::capability::governance::GovernedCommerceContext {
             seller: fixture.seller.to_string(),
             shared_payment_token_id: fixture.shared_payment_token_id.to_string(),
         }),
@@ -6289,9 +6279,9 @@ fn make_governed_acp_intent(fixture: GovernedAcpIntentFixture<'_>) -> GovernedTr
 
 fn make_runtime_attestation(
     tier: RuntimeAssuranceTier,
-) -> chio_core::capability::RuntimeAttestationEvidence {
+) -> chio_core::capability::runtime_attestation::RuntimeAttestationEvidence {
     let now = current_unix_timestamp();
-    chio_core::capability::RuntimeAttestationEvidence {
+    chio_core::capability::runtime_attestation::RuntimeAttestationEvidence {
         schema: "chio.runtime-attestation.enterprise-verifier.json.v1".to_string(),
         verifier: "https://attest.chio.example".to_string(),
         tier,
@@ -6300,7 +6290,7 @@ fn make_runtime_attestation(
         evidence_sha256: format!("digest-{tier:?}"),
         runtime_identity: Some("spiffe://chio/runtime/test".to_string()),
         workload_identity: Some(
-            chio_core::capability::WorkloadIdentity::parse_spiffe_uri("spiffe://chio/runtime/test")
+            chio_core::capability::workload_identity::WorkloadIdentity::parse_spiffe_uri("spiffe://chio/runtime/test")
                 .expect("parse runtime workload identity"),
         ),
         claims: Some(serde_json::json!({
@@ -6314,9 +6304,9 @@ fn make_runtime_attestation(
     }
 }
 
-fn make_trusted_azure_runtime_attestation() -> chio_core::capability::RuntimeAttestationEvidence {
+fn make_trusted_azure_runtime_attestation() -> chio_core::capability::runtime_attestation::RuntimeAttestationEvidence {
     let now = current_unix_timestamp();
-    chio_core::capability::RuntimeAttestationEvidence {
+    chio_core::capability::runtime_attestation::RuntimeAttestationEvidence {
         schema: "chio.runtime-attestation.azure-maa.jwt.v1".to_string(),
         verifier: "https://maa.contoso.test/".to_string(),
         tier: RuntimeAssuranceTier::Attested,
@@ -6333,9 +6323,9 @@ fn make_trusted_azure_runtime_attestation() -> chio_core::capability::RuntimeAtt
     }
 }
 
-fn make_trusted_google_runtime_attestation() -> chio_core::capability::RuntimeAttestationEvidence {
+fn make_trusted_google_runtime_attestation() -> chio_core::capability::runtime_attestation::RuntimeAttestationEvidence {
     let now = current_unix_timestamp();
-    chio_core::capability::RuntimeAttestationEvidence {
+    chio_core::capability::runtime_attestation::RuntimeAttestationEvidence {
         schema: "chio.runtime-attestation.google-confidential-vm.jwt.v1".to_string(),
         verifier: "https://confidentialcomputing.googleapis.com".to_string(),
         tier: RuntimeAssuranceTier::Attested,
@@ -6356,9 +6346,9 @@ fn make_trusted_google_runtime_attestation() -> chio_core::capability::RuntimeAt
     }
 }
 
-fn make_trusted_nitro_runtime_attestation() -> chio_core::capability::RuntimeAttestationEvidence {
+fn make_trusted_nitro_runtime_attestation() -> chio_core::capability::runtime_attestation::RuntimeAttestationEvidence {
     let now = current_unix_timestamp();
-    chio_core::capability::RuntimeAttestationEvidence {
+    chio_core::capability::runtime_attestation::RuntimeAttestationEvidence {
         schema: "chio.runtime-attestation.aws-nitro-attestation.v1".to_string(),
         verifier: "https://nitro.aws.example/".to_string(),
         tier: RuntimeAssuranceTier::Attested,
@@ -6377,10 +6367,10 @@ fn make_trusted_nitro_runtime_attestation() -> chio_core::capability::RuntimeAtt
     }
 }
 
-fn make_attestation_trust_policy() -> chio_core::capability::AttestationTrustPolicy {
-    chio_core::capability::AttestationTrustPolicy {
+fn make_attestation_trust_policy() -> chio_core::capability::trust_policy::AttestationTrustPolicy {
+    chio_core::capability::trust_policy::AttestationTrustPolicy {
         rules: vec![
-            chio_core::capability::AttestationTrustRule {
+            chio_core::capability::trust_policy::AttestationTrustRule {
                 name: "azure-contoso".to_string(),
                 schema: "chio.runtime-attestation.azure-maa.jwt.v1".to_string(),
                 verifier: "https://maa.contoso.test".to_string(),
@@ -6390,7 +6380,7 @@ fn make_attestation_trust_policy() -> chio_core::capability::AttestationTrustPol
                 allowed_attestation_types: vec!["sgx".to_string()],
                 required_assertions: std::collections::BTreeMap::new(),
             },
-            chio_core::capability::AttestationTrustRule {
+            chio_core::capability::trust_policy::AttestationTrustRule {
                 name: "google-confidential".to_string(),
                 schema: "chio.runtime-attestation.google-confidential-vm.jwt.v1".to_string(),
                 verifier: "https://confidentialcomputing.googleapis.com".to_string(),
@@ -6405,7 +6395,7 @@ fn make_attestation_trust_policy() -> chio_core::capability::AttestationTrustPol
                     ("secureBoot".to_string(), "enabled".to_string()),
                 ]),
             },
-            chio_core::capability::AttestationTrustRule {
+            chio_core::capability::trust_policy::AttestationTrustRule {
                 name: "aws-nitro".to_string(),
                 schema: "chio.runtime-attestation.aws-nitro-attestation.v1".to_string(),
                 verifier: "https://nitro.aws.example".to_string(),
@@ -6422,9 +6412,9 @@ fn make_attestation_trust_policy() -> chio_core::capability::AttestationTrustPol
     }
 }
 
-fn make_attested_attestation_trust_policy() -> chio_core::capability::AttestationTrustPolicy {
-    chio_core::capability::AttestationTrustPolicy {
-        rules: vec![chio_core::capability::AttestationTrustRule {
+fn make_attested_attestation_trust_policy() -> chio_core::capability::trust_policy::AttestationTrustPolicy {
+    chio_core::capability::trust_policy::AttestationTrustPolicy {
+        rules: vec![chio_core::capability::trust_policy::AttestationTrustRule {
             name: "azure-contoso-attested".to_string(),
             schema: "chio.runtime-attestation.azure-maa.jwt.v1".to_string(),
             verifier: "https://maa.contoso.test".to_string(),
@@ -6442,11 +6432,11 @@ fn make_metered_billing_context(
     provider: &str,
     units: u64,
     currency: &str,
-) -> chio_core::capability::MeteredBillingContext {
+) -> chio_core::capability::governance::MeteredBillingContext {
     let now = current_unix_timestamp();
-    chio_core::capability::MeteredBillingContext {
-        settlement_mode: chio_core::capability::MeteredSettlementMode::AllowThenSettle,
-        quote: chio_core::capability::MeteredBillingQuote {
+    chio_core::capability::governance::MeteredBillingContext {
+        settlement_mode: chio_core::capability::governance::MeteredSettlementMode::AllowThenSettle,
+        quote: chio_core::capability::governance::MeteredBillingQuote {
             quote_id: quote_id.to_string(),
             provider: provider.to_string(),
             billing_unit: "1k_tokens".to_string(),
@@ -6530,7 +6520,7 @@ fn make_governed_call_chain_continuation_token(
     let now = current_unix_timestamp();
     CallChainContinuationToken::sign(
         CallChainContinuationTokenBody {
-            schema: chio_core::capability::CHIO_CALL_CHAIN_CONTINUATION_SCHEMA.to_string(),
+            schema: chio_core::capability::governance::CHIO_CALL_CHAIN_CONTINUATION_SCHEMA.to_string(),
             token_id: "continuation-token-1".to_string(),
             signer: fixture.signer.public_key(),
             subject: fixture.subject.clone(),
@@ -7596,7 +7586,7 @@ fn governed_call_chain_receipt_observes_local_parent_receipt_linkage() {
         commerce: None,
         metered_billing: None,
         runtime_attestation: None,
-        call_chain: Some(chio_core::capability::GovernedCallChainContext {
+        call_chain: Some(chio_core::capability::governance::GovernedCallChainContext {
             chain_id: "chain-local-parent-receipt".to_string(),
             parent_request_id: "req-upstream-local".to_string(),
             parent_receipt_id: Some(prior_response.receipt.id.clone()),
@@ -7699,7 +7689,7 @@ fn governed_call_chain_receipt_observes_capability_lineage_subjects() {
                 commerce: None,
                 metered_billing: None,
                 runtime_attestation: None,
-                call_chain: Some(chio_core::capability::GovernedCallChainContext {
+                call_chain: Some(chio_core::capability::governance::GovernedCallChainContext {
                     chain_id: "chain-capability-lineage".to_string(),
                     parent_request_id: "req-upstream-capability".to_string(),
                     parent_receipt_id: None,
@@ -8223,7 +8213,7 @@ fn governed_request_rejects_call_chain_delegator_subject_that_conflicts_with_cap
                 commerce: None,
                 metered_billing: None,
                 runtime_attestation: None,
-                call_chain: Some(chio_core::capability::GovernedCallChainContext {
+                call_chain: Some(chio_core::capability::governance::GovernedCallChainContext {
                     chain_id: "chain-capability-lineage-deny".to_string(),
                     parent_request_id: "req-upstream-capability-deny".to_string(),
                     parent_receipt_id: None,
@@ -8308,7 +8298,7 @@ fn governed_call_chain_receipt_observes_session_parent_request_lineage() {
                     commerce: None,
                     metered_billing: None,
                     runtime_attestation: None,
-                    call_chain: Some(chio_core::capability::GovernedCallChainContext {
+                    call_chain: Some(chio_core::capability::governance::GovernedCallChainContext {
                         chain_id: "chain-session-lineage".to_string(),
                         parent_request_id: parent_context.request_id.to_string(),
                         parent_receipt_id: None,
@@ -8804,7 +8794,7 @@ fn governed_request_denies_conflicting_workload_identity_binding() {
         100,
         "USD",
     );
-    intent.runtime_attestation = Some(chio_core::capability::RuntimeAttestationEvidence {
+    intent.runtime_attestation = Some(chio_core::capability::runtime_attestation::RuntimeAttestationEvidence {
         schema: "chio.runtime-attestation.enterprise-verifier.json.v1".to_string(),
         verifier: "https://attest.chio.example".to_string(),
         tier: RuntimeAssuranceTier::Attested,
@@ -8812,9 +8802,9 @@ fn governed_request_denies_conflicting_workload_identity_binding() {
         expires_at: current_unix_timestamp() + 300,
         evidence_sha256: "digest-invalid-workload".to_string(),
         runtime_identity: Some("spiffe://chio/runtime/test".to_string()),
-        workload_identity: Some(chio_core::capability::WorkloadIdentity {
-            scheme: chio_core::capability::WorkloadIdentityScheme::Spiffe,
-            credential_kind: chio_core::capability::WorkloadCredentialKind::X509Svid,
+        workload_identity: Some(chio_core::capability::workload_identity::WorkloadIdentity {
+            scheme: chio_core::capability::workload_identity::WorkloadIdentityScheme::Spiffe,
+            credential_kind: chio_core::capability::workload_identity::WorkloadCredentialKind::X509Svid,
             uri: "spiffe://other/runtime/test".to_string(),
             trust_domain: "other".to_string(),
             path: "/runtime/test".to_string(),

@@ -5,7 +5,7 @@
 //! skill grant binds the entire sequence under a single authorization with
 //! a shared budget envelope.
 
-use chio_core::capability::MonetaryAmount;
+use chio_core::capability::scope::MonetaryAmount;
 use serde::{Deserialize, Serialize};
 
 /// Schema identifier for skill grants.

@@ -11,7 +11,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use chio_core::capability::{ChioScope, Operation, ToolGrant};
+use chio_core::capability::scope::{ChioScope, Operation, ToolGrant};
 use chio_core::chio_receipt_id;
 use chio_core::receipt::{ChioReceipt, Decision, ReceiptAttributionMetadata};
 use serde::{Deserialize, Serialize};

@@ -4,7 +4,7 @@ use crate::artifacts::{
     FederationArtifactKind, FederationArtifactReference, FederationDelegationControl,
     FederationImportControl, FederationTrustScope,
 };
-use crate::capability::MonetaryAmount;
+use crate::capability::scope::MonetaryAmount;
 use crate::error::FederationContractError;
 use crate::listing::GenericTrustAdmissionClass;
 use crate::open_admission::FederatedStakeRequirement;

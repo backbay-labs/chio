@@ -12,11 +12,11 @@
 //!    namespaces deny when namespace enforcement is configured.
 //! 3. **Operation class.** Upsert, delete, or index-mutation verbs are
 //!    denied when the active grant carries
-//!    [`SqlOperationClass::ReadOnly`](chio_core::capability::SqlOperationClass::ReadOnly).
+//!    [`SqlOperationClass::ReadOnly`](chio_core::capability::scope::SqlOperationClass::ReadOnly).
 //!    The reuse of `SqlOperationClass` is deliberate so a single
 //!    constraint enum covers every database-shaped grant.
 //! 4. **`top_k` ceiling.** A query whose `top_k` exceeds the grant's
-//!    [`Constraint::MaxRowsReturned`](chio_core::capability::Constraint::MaxRowsReturned)
+//!    [`Constraint::MaxRowsReturned`](chio_core::capability::scope::Constraint::MaxRowsReturned)
 //!    is denied.  The guard fails closed when `top_k` is missing from the
 //!    arguments and a ceiling is configured.
 //!
@@ -63,7 +63,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing::warn;
 
-use chio_core::capability::{ChioScope, Constraint, SqlOperationClass, ToolGrant};
+use chio_core::capability::scope::{ChioScope, Constraint, SqlOperationClass, ToolGrant};
 use chio_guards::{extract_action_checked, ToolAction};
 use chio_kernel::{GuardContext, GuardDecision, KernelError};
 use thiserror::Error;
@@ -712,7 +712,10 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chio_core::capability::{CapabilityToken, CapabilityTokenBody, Operation, ToolGrant};
+    use chio_core::capability::{
+        scope::{Operation, ToolGrant},
+        token::{CapabilityToken, CapabilityTokenBody},
+    };
     use chio_core::crypto::Keypair;
     use chio_kernel::{Guard, GuardContext, ToolCallRequest, Verdict};
 

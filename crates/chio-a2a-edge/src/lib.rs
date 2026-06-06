@@ -39,7 +39,9 @@ use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_core::capability::{
-    CapabilityToken, GovernedApprovalToken, GovernedTransactionIntent, ModelMetadata,
+    governance::{GovernedApprovalToken, GovernedTransactionIntent},
+    scope::ModelMetadata,
+    token::CapabilityToken,
 };
 #[cfg(test)]
 use chio_core::session::OperationTerminalState;

@@ -55,7 +55,9 @@ use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
-use chio_core_types::capability::{CapabilityNegotiation, CapabilityToken, ScopeHash};
+use chio_core_types::capability::{
+    attenuation::ScopeHash, features::CapabilityNegotiation, token::CapabilityToken,
+};
 use chio_core_types::crypto::{Ed25519Backend, Keypair, PublicKey, SigningBackend};
 use chio_core_types::receipt::{chio_receipt_id, ChioReceipt, ChioReceiptBody, Decision};
 use chio_kernel_core::{
@@ -276,7 +278,7 @@ pub struct VerifiedCapabilityJson {
     pub id: String,
     pub subject_hex: String,
     pub issuer_hex: String,
-    pub scope: chio_core_types::capability::ChioScope,
+    pub scope: chio_core_types::capability::scope::ChioScope,
     pub issued_at: u64,
     pub expires_at: u64,
     pub evaluated_at: u64,
@@ -440,7 +442,7 @@ pub fn evaluate_pure(
                     guards: &[],
                     session_filesystem_roots: input.session_filesystem_roots.as_deref(),
                 },
-                chio_core_types::capability::CapabilityCryptoFloor::AllowClassical,
+                chio_core_types::capability::crypto_floor::CapabilityCryptoFloor::AllowClassical,
                 &peer_profile,
                 &trust_resolver,
                 &mut budgets,
@@ -455,7 +457,7 @@ pub fn evaluate_pure(
                 guards: &[],
                 session_filesystem_roots: input.session_filesystem_roots.as_deref(),
             },
-            chio_core_types::capability::CapabilityCryptoFloor::AllowClassical,
+            chio_core_types::capability::crypto_floor::CapabilityCryptoFloor::AllowClassical,
             &peer_profile,
             &trust_resolver,
             &mut budgets,
@@ -512,7 +514,8 @@ pub fn verify_capability_pure(
     clock: &dyn chio_kernel_core::Clock,
 ) -> Result<VerifiedCapabilityJson, BindingError> {
     let trusted = decode_trusted_issuers(&input.trusted_issuers_hex)?;
-    let crypto_floor = chio_core_types::capability::CapabilityCryptoFloor::AllowClassical;
+    let crypto_floor =
+        chio_core_types::capability::crypto_floor::CapabilityCryptoFloor::AllowClassical;
     let peer_profile = input
         .peer_capabilities
         .clone()
@@ -992,9 +995,12 @@ pub mod wasm {
 mod tests {
     use super::*;
     use chio_core_types::capability::{
-        compute_attenuation_witness, scope_hash, AttenuationProof, CapabilityToken,
-        CapabilityTokenAttenuationBody, CapabilityTokenBody, ChioScope, DelegationLink,
-        DelegationLinkBody, Operation, ToolGrant,
+        attenuation::{
+            compute_attenuation_witness, scope_hash, AttenuationProof, DelegationLink,
+            DelegationLinkBody,
+        },
+        scope::{ChioScope, Operation, ToolGrant},
+        token::{CapabilityToken, CapabilityTokenAttenuationBody, CapabilityTokenBody},
     };
     use chio_core_types::crypto::Keypair;
     use chio_core_types::receipt::{

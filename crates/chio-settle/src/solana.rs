@@ -1,6 +1,6 @@
 use bs58::decode as bs58_decode;
 use chio_core::canonical::canonical_json_bytes;
-use chio_core::capability::MonetaryAmount;
+use chio_core::capability::scope::MonetaryAmount;
 use chio_core::receipt::ChioReceipt;
 use chio_core::web3::identity::{
     verify_web3_identity_binding, SignedWeb3IdentityBinding, Web3KeyBindingPurpose,

@@ -332,7 +332,10 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
 
-    use chio_core::capability::{CapabilityToken, CapabilityTokenBody, ChioScope};
+    use chio_core::capability::{
+        scope::ChioScope,
+        token::{CapabilityToken, CapabilityTokenBody},
+    };
     use chio_core::crypto::Keypair;
     use chio_kernel::{Guard, ToolCallRequest, Verdict};
 

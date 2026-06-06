@@ -6,8 +6,9 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use chio_core::capability::{
-    CapabilityToken, CapabilityTokenBody, ChioScope, DelegationLink, DelegationLinkBody, Operation,
-    ToolGrant,
+    attenuation::{DelegationLink, DelegationLinkBody},
+    scope::{ChioScope, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core::crypto::Keypair;
 use chio_core::receipt::{ChildRequestReceipt, ChioReceipt};

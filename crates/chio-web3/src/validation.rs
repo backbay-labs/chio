@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::capability::MonetaryAmount;
+use crate::capability::scope::MonetaryAmount;
 use crate::error::Web3ContractError;
 
 pub(crate) fn ensure_non_empty(value: &str, field: &'static str) -> Result<(), Web3ContractError> {

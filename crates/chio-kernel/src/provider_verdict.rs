@@ -12,7 +12,7 @@ use chio_tool_call_fabric::{DenyReason, ProviderId, ReceiptId, ToolInvocation, V
 
 use crate::runtime::{ToolCallRequest, ToolCallResponse, Verdict};
 use crate::{AgentId, ServerId};
-use chio_core::capability::CapabilityToken;
+use chio_core::capability::token::CapabilityToken;
 
 /// Errors surfaced when adapting fabric types into the kernel's MCP path.
 ///

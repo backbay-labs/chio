@@ -4,7 +4,11 @@ use std::collections::BTreeMap;
 use std::sync::Mutex;
 
 use chio_core::capability::{
-    CapabilityCryptoFloor, CapabilityNegotiation, CapabilityToken, Constraint, ScopeHash, ToolGrant,
+    attenuation::ScopeHash,
+    crypto_floor::CapabilityCryptoFloor,
+    features::CapabilityNegotiation,
+    scope::{Constraint, ToolGrant},
+    token::CapabilityToken,
 };
 use chio_core::crypto::{Keypair, PublicKey};
 use chio_kernel_core::scope::{resolve_capability_grants, ScopeMatchError};
@@ -640,7 +644,9 @@ mod tests {
     use super::*;
     use crate::event::{EventType, TargetComponent};
     use chio_core::capability::{
-        CapabilityTokenBody, ChioScope, DelegationLink, DelegationLinkBody, Operation,
+        attenuation::{DelegationLink, DelegationLinkBody},
+        scope::{ChioScope, Operation},
+        token::CapabilityTokenBody,
     };
 
     fn make_event(classification: EventClassification) -> AgUiEvent {
@@ -681,11 +687,11 @@ mod tests {
     fn make_capability() -> CapabilityToken {
         let kp = Keypair::generate();
         CapabilityToken::sign(
-            chio_core::capability::CapabilityTokenBody {
+            chio_core::capability::token::CapabilityTokenBody {
                 id: "cap-test".to_string(),
                 issuer: kp.public_key(),
                 subject: Keypair::generate().public_key(),
-                scope: chio_core::capability::ChioScope::default(),
+                scope: chio_core::capability::scope::ChioScope::default(),
                 issued_at: 0,
                 expires_at: u64::MAX,
                 delegation_chain: vec![],

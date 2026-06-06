@@ -35,7 +35,8 @@
 use alloc::string::{String, ToString};
 
 use chio_core_types::capability::{
-    CapabilityCryptoFloor, CapabilityNegotiation, CapabilityToken, ChioScope,
+    crypto_floor::CapabilityCryptoFloor, features::CapabilityNegotiation, scope::ChioScope,
+    token::CapabilityToken,
 };
 use chio_core_types::crypto::PublicKey;
 
@@ -440,8 +441,9 @@ mod tests {
     use crate::{BudgetRegistry, InMemoryBudgetRegistry, MAX_BUDGET_SHARE_BPS};
     use alloc::vec;
     use chio_core_types::capability::{
-        CapabilityToken, CapabilityTokenBody, ChioScope, DelegationLink, DelegationLinkBody,
-        Operation, ToolGrant,
+        attenuation::{DelegationLink, DelegationLinkBody},
+        scope::{ChioScope, Operation, ToolGrant},
+        token::{CapabilityToken, CapabilityTokenBody},
     };
     use chio_core_types::crypto::Keypair;
 

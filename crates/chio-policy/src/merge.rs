@@ -460,7 +460,7 @@ mod tests {
         PostureTransition, ReputationTier, ReputationTierScope, RuntimeAssuranceExtension,
         RuntimeAssuranceVerifierRule, ToolAccessRule, TransitionTrigger,
     };
-    use chio_core::capability::RuntimeAssuranceTier;
+    use chio_core::capability::runtime_attestation::RuntimeAssuranceTier;
     use std::collections::BTreeMap;
 
     fn sample_posture_state(label: &str) -> PostureState {

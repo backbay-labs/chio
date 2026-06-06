@@ -1,6 +1,6 @@
 use std::sync::Mutex;
 
-use chio_core::capability::{ChioScope, Operation, ToolGrant};
+use chio_core::capability::scope::{ChioScope, Operation, ToolGrant};
 use chio_core::crypto::Keypair;
 use chio_kernel::{ChioKernel, KernelConfig, KernelError, ToolServerConnection};
 use chio_manifest::{ToolDefinition, ToolManifest};

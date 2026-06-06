@@ -199,7 +199,7 @@ impl SqliteReceiptStore {
                             observed_units: observed_units.max(0) as u64,
                             evidence_sha256,
                         },
-                        billed_cost: chio_core::capability::MonetaryAmount {
+                        billed_cost: chio_core::capability::scope::MonetaryAmount {
                             units: billed_cost_units.max(0) as u64,
                             currency: billed_cost_currency,
                         },

@@ -5,7 +5,7 @@ use crate::authority::{
     verify_signed_charter, verify_signed_fee_schedule, verify_signed_listing,
 };
 use crate::canonical_json_bytes;
-use crate::capability::MonetaryAmount;
+use crate::capability::scope::MonetaryAmount;
 use crate::crypto::{sha256_hex, PublicKey};
 use crate::evidence::OpenMarketEvidenceReference;
 use crate::fee_schedule::{OpenMarketBondClass, SignedOpenMarketFeeSchedule};

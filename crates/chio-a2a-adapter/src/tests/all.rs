@@ -9,9 +9,7 @@ mod tests {
     use std::sync::{mpsc, Arc, Mutex};
     use std::thread;
 
-    use chio_core::capability::{
-        CapabilityToken, CapabilityTokenBody, ChioScope, Operation, ToolGrant,
-    };
+    use chio_core::capability::{scope::{ChioScope, Operation, ToolGrant}, token::{CapabilityToken, CapabilityTokenBody}};
     use chio_core::crypto::Keypair;
     use chio_core::receipt::Decision;
     use chio_kernel::{

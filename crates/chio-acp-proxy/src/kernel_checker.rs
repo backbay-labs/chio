@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use chio_core::capability::CapabilityToken;
+use chio_core::capability::token::CapabilityToken;
 use chio_cross_protocol::capability_bridge::{CapabilityBridge, CrossProtocolCapabilityRef};
 use chio_cross_protocol::discovery::DiscoveryProtocol;
 use chio_cross_protocol::error::BridgeError;

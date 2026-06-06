@@ -4213,7 +4213,7 @@ mod cluster_and_reports_tests {
         let issuer = Keypair::generate();
         let subject = Keypair::generate();
         CapabilityToken::sign(
-            chio_core::capability::CapabilityTokenBody {
+            chio_core::capability::token::CapabilityTokenBody {
                 id: id.to_string(),
                 issuer: issuer.public_key(),
                 subject: subject.public_key(),

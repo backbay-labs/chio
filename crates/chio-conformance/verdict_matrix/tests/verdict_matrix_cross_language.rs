@@ -27,7 +27,8 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use chio_core::capability::{
-    CapabilityToken, CapabilityTokenBody, ChioScope, Operation, ToolGrant,
+    scope::{ChioScope, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core::crypto::Keypair;
 use chio_kernel_browser::{evaluate_pure, BrowserClock, EvaluateRequestJson, ToolCallRequestJson};

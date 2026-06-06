@@ -5,7 +5,7 @@ mod tests {
     use std::sync::{Mutex, MutexGuard};
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use chio_core::capability::{CapabilityTokenBody, ChioScope, Operation, ToolGrant};
+    use chio_core::capability::{scope::{ChioScope, Operation, ToolGrant}, token::{CapabilityTokenBody}};
     use chio_core::crypto::Keypair;
     use chio_kernel::{
         ChioKernel, KernelConfig, KernelError, NestedFlowBridge, ToolCallChunk, ToolCallStream,
@@ -376,9 +376,9 @@ mod tests {
         subject: &Keypair,
         server_id: &str,
         tool_name: &str,
-    ) -> chio_core::capability::CapabilityToken {
+    ) -> chio_core::capability::token::CapabilityToken {
         let now = unix_now();
-        chio_core::capability::CapabilityToken::sign(
+        chio_core::capability::token::CapabilityToken::sign(
             CapabilityTokenBody {
                 id: format!("cap-{server_id}-{tool_name}"),
                 issuer: issuer.public_key(),

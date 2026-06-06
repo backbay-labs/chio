@@ -436,8 +436,9 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use chio_core::capability::{
-        CapabilityToken, CapabilityTokenBody, ChioScope, DelegationLink, DelegationLinkBody,
-        Operation, ToolGrant,
+        attenuation::{DelegationLink, DelegationLinkBody},
+        scope::{ChioScope, Operation, ToolGrant},
+        token::{CapabilityToken, CapabilityTokenBody},
     };
     use chio_core::crypto::Keypair;
     use chio_core::receipt::{

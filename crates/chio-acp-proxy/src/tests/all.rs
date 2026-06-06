@@ -2575,9 +2575,7 @@ mod attestation_and_telemetry_tests {
     use std::sync::{Arc, Mutex};
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use chio_core::capability::{
-        CapabilityToken, CapabilityTokenBody, ChioScope, Constraint, Operation, ToolGrant,
-    };
+    use chio_core::capability::{scope::{ChioScope, Constraint, Operation, ToolGrant}, token::{CapabilityToken, CapabilityTokenBody}};
     use chio_core::crypto::Keypair;
     use chio_core::receipt::{
         ChildRequestReceipt, ChioReceipt, ChioReceiptBody, Decision, GuardEvidence, ToolCallAction,

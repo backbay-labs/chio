@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use chio_core_types::capability::ModelMetadata;
+use chio_core_types::capability::scope::ModelMetadata;
 use serde::{Deserialize, Serialize};
 
 use crate::identity::CallerIdentity;

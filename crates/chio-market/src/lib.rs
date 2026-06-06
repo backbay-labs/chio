@@ -30,7 +30,7 @@ pub use insurance_flow::{
 
 use serde::Serialize;
 
-use crate::capability::MonetaryAmount;
+use crate::capability::scope::MonetaryAmount;
 use crate::receipt::SignedExportEnvelope;
 
 pub const LIABILITY_PROVIDER_ARTIFACT_SCHEMA: &str = "chio.market.provider.v1";
@@ -328,7 +328,7 @@ mod tests {
                         disposition: crate::credit::CreditFacilityDisposition::Grant,
                         prerequisites: crate::credit::CreditFacilityPrerequisites {
                             minimum_runtime_assurance_tier:
-                                crate::capability::RuntimeAssuranceTier::Verified,
+                                crate::capability::runtime_attestation::RuntimeAssuranceTier::Verified,
                             runtime_assurance_met: true,
                             certification_required: false,
                             certification_met: true,
@@ -366,7 +366,7 @@ mod tests {
                     runtime_assurance: Some(crate::credit::CreditRuntimeAssuranceState {
                         governed_receipts: 1,
                         runtime_assurance_receipts: 1,
-                        highest_tier: Some(crate::capability::RuntimeAssuranceTier::Verified),
+                        highest_tier: Some(crate::capability::runtime_attestation::RuntimeAssuranceTier::Verified),
                         latest_schema: Some(
                             "chio.runtime-attestation.azure-maa.jwt.v1".to_string(),
                         ),
@@ -508,7 +508,7 @@ mod tests {
                 disposition: crate::credit::CreditFacilityDisposition::Grant,
                 prerequisites: crate::credit::CreditFacilityPrerequisites {
                     minimum_runtime_assurance_tier:
-                        crate::capability::RuntimeAssuranceTier::Verified,
+                        crate::capability::runtime_attestation::RuntimeAssuranceTier::Verified,
                     runtime_assurance_met: true,
                     certification_required: false,
                     certification_met: true,
@@ -577,7 +577,9 @@ mod tests {
             runtime_assurance: Some(crate::underwriting::UnderwritingRuntimeAssuranceEvidence {
                 governed_receipts: 2,
                 runtime_assurance_receipts: 1,
-                highest_tier: Some(crate::capability::RuntimeAssuranceTier::Verified),
+                highest_tier: Some(
+                    crate::capability::runtime_attestation::RuntimeAssuranceTier::Verified,
+                ),
                 latest_schema: Some("chio.runtime-attestation.enterprise.v1".to_string()),
                 latest_verifier_family: Some(
                     crate::appraisal::AttestationVerifierFamily::EnterpriseVerifier,

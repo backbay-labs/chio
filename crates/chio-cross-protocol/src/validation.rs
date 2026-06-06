@@ -1,4 +1,4 @@
-use chio_core::capability::CapabilityToken;
+use chio_core::capability::token::CapabilityToken;
 use serde_json::Value;
 
 use crate::capability_bridge::{parent_capability_hash, CrossProtocolCapabilityRef};

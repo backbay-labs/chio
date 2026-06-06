@@ -461,11 +461,11 @@ mod tests {
         let old_authority = Keypair::generate();
         let subject = Keypair::generate().public_key();
         let stale_capability = CapabilityToken::sign(
-            chio_core::capability::CapabilityTokenBody {
+            chio_core::capability::token::CapabilityTokenBody {
                 id: "cap-stale-issuer".to_string(),
                 issuer: old_authority.public_key(),
                 subject,
-                scope: chio_core::capability::ChioScope::default(),
+                scope: chio_core::capability::scope::ChioScope::default(),
                 issued_at: 1,
                 expires_at: u64::MAX,
                 delegation_chain: vec![],

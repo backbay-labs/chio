@@ -5,7 +5,7 @@
 // `make_keypair`, `make_capability`, `make_scope`, `make_grant`,
 // `EchoServer`, etc.).
 
-use chio_core_types::capability::ModelSafetyTier;
+use chio_core_types::capability::scope::ModelSafetyTier;
 use chio_core_types::{
     PlanEvaluationRequest, PlanVerdict, PlannedToolCall, StepVerdictKind,
 };
@@ -226,9 +226,7 @@ fn plan_evaluation_first_step_denied_does_not_short_circuit() {
 /// step that submitted the wrong model.
 #[test]
 fn plan_evaluation_model_metadata_scoped_per_step() {
-    use chio_core::capability::{
-        ChioScope, Constraint, ModelMetadata, Operation, ToolGrant,
-    };
+    use chio_core::capability::{scope::{ChioScope, Constraint, ModelMetadata, Operation, ToolGrant}};
 
     let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new(
@@ -275,13 +273,13 @@ fn plan_evaluation_model_metadata_scoped_per_step() {
         model_id: "claude-opus-4".to_string(),
         safety_tier: Some(ModelSafetyTier::High),
         provider: Some("anthropic".to_string()),
-        provenance_class: chio_core::capability::ProvenanceEvidenceClass::Asserted,
+        provenance_class: chio_core::capability::governance::ProvenanceEvidenceClass::Asserted,
     };
     let low_tier = ModelMetadata {
         model_id: "small-uncensored".to_string(),
         safety_tier: Some(ModelSafetyTier::Low),
         provider: None,
-        provenance_class: chio_core::capability::ProvenanceEvidenceClass::Asserted,
+        provenance_class: chio_core::capability::governance::ProvenanceEvidenceClass::Asserted,
     };
 
     let steps = vec![

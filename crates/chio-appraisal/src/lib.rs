@@ -46,9 +46,9 @@ pub use types::*;
 mod tests {
     use super::*;
     use crate::capability::{
-        AttestationTrustPolicy, AttestationTrustRule, RuntimeAssuranceTier,
-        RuntimeAttestationEvidence, WorkloadCredentialKind, WorkloadIdentity,
-        WorkloadIdentityScheme,
+        runtime_attestation::{RuntimeAssuranceTier, RuntimeAttestationEvidence},
+        trust_policy::{AttestationTrustPolicy, AttestationTrustRule},
+        workload_identity::{WorkloadCredentialKind, WorkloadIdentity, WorkloadIdentityScheme},
     };
     use crate::receipt::SignedExportEnvelope;
     use crate::validate::{

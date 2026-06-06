@@ -5,9 +5,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_core::canonical::{canonical_json_bytes, CanonicalBytes};
 use chio_core::capability::{
-    CapabilityToken, CapabilityTokenBody, ChioScope, GovernedCallChainContext,
-    GovernedCallChainProvenance, GovernedProvenanceEvidenceClass, MeteredBillingQuote,
-    MeteredSettlementMode, MonetaryAmount, Operation, ToolGrant,
+    governance::{
+        GovernedCallChainContext, GovernedCallChainProvenance, GovernedProvenanceEvidenceClass,
+        MeteredBillingQuote, MeteredSettlementMode,
+    },
+    scope::{ChioScope, MonetaryAmount, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core::crypto::Keypair;
 #[cfg(feature = "pq")]
@@ -5010,7 +5013,7 @@ fn provider_policy_reference(
         currency: currency.to_string(),
         required_evidence: policy.required_evidence.clone(),
         max_coverage_amount: policy.max_coverage_amount.as_ref().map(|amount| {
-            chio_core::capability::MonetaryAmount {
+            chio_core::capability::scope::MonetaryAmount {
                 units: amount.units,
                 currency: currency.to_string(),
             }
@@ -5137,7 +5140,7 @@ fn sample_risk_package(subject_key: &str) -> chio_kernel::SignedCreditProviderRi
                 disposition: chio_kernel::CreditFacilityDisposition::Grant,
                 prerequisites: chio_kernel::CreditFacilityPrerequisites {
                     minimum_runtime_assurance_tier:
-                        chio_core::capability::RuntimeAssuranceTier::Verified,
+                        chio_core::capability::runtime_attestation::RuntimeAssuranceTier::Verified,
                     runtime_assurance_met: true,
                     certification_required: false,
                     certification_met: true,
@@ -5168,7 +5171,9 @@ fn sample_risk_package(subject_key: &str) -> chio_kernel::SignedCreditProviderRi
             runtime_assurance: Some(chio_kernel::CreditRuntimeAssuranceState {
                 governed_receipts: 1,
                 runtime_assurance_receipts: 1,
-                highest_tier: Some(chio_core::capability::RuntimeAssuranceTier::Verified),
+                highest_tier: Some(
+                    chio_core::capability::runtime_attestation::RuntimeAssuranceTier::Verified,
+                ),
                 latest_schema: Some("chio.runtime-attestation.azure-maa.jwt.v1".to_string()),
                 latest_verifier_family: Some(chio_core::AttestationVerifierFamily::AzureMaa),
                 latest_verifier: Some("verifier.chio".to_string()),
@@ -5211,7 +5216,7 @@ fn signed_liability_quote_request(
         quote_request_id: quote_request_id.to_string(),
         issued_at: 1_700_000_100,
         provider_policy: provider_policy_reference(provider, currency),
-        requested_coverage_amount: chio_core::capability::MonetaryAmount {
+        requested_coverage_amount: chio_core::capability::scope::MonetaryAmount {
             units: 10_000,
             currency: currency.to_string(),
         },
@@ -5264,7 +5269,7 @@ fn sample_credit_facility(subject_key: &str) -> chio_kernel::SignedCreditFacilit
             disposition: chio_kernel::CreditFacilityDisposition::Grant,
             prerequisites: chio_kernel::CreditFacilityPrerequisites {
                 minimum_runtime_assurance_tier:
-                    chio_core::capability::RuntimeAssuranceTier::Verified,
+                    chio_core::capability::runtime_attestation::RuntimeAssuranceTier::Verified,
                 runtime_assurance_met: true,
                 certification_required: false,
                 certification_met: true,
@@ -5333,7 +5338,9 @@ fn sample_underwriting_input(subject_key: &str) -> chio_kernel::UnderwritingPoli
         runtime_assurance: Some(chio_kernel::UnderwritingRuntimeAssuranceEvidence {
             governed_receipts: 2,
             runtime_assurance_receipts: 1,
-            highest_tier: Some(chio_core::capability::RuntimeAssuranceTier::Verified),
+            highest_tier: Some(
+                chio_core::capability::runtime_attestation::RuntimeAssuranceTier::Verified,
+            ),
             latest_schema: Some("chio.runtime-attestation.enterprise.v1".to_string()),
             latest_verifier_family: Some(chio_core::AttestationVerifierFamily::EnterpriseVerifier),
             latest_verifier: Some("verifier.chio".to_string()),
@@ -5805,7 +5812,7 @@ fn signed_credit_facility_fixture(
             disposition,
             prerequisites: chio_kernel::CreditFacilityPrerequisites {
                 minimum_runtime_assurance_tier:
-                    chio_core::capability::RuntimeAssuranceTier::Verified,
+                    chio_core::capability::runtime_attestation::RuntimeAssuranceTier::Verified,
                 runtime_assurance_met: disposition != chio_kernel::CreditFacilityDisposition::Deny,
                 certification_required: false,
                 certification_met: true,

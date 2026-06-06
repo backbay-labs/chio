@@ -9,7 +9,7 @@ use chio_core::session::{
     RequestOwnershipSnapshot, ResourceContent, ResourceDefinition, ResourceTemplateDefinition,
     RootDefinition, SessionAnchorReference, SessionAuthContext, SessionId,
 };
-use chio_core::{AgentId, CapabilityToken};
+use chio_core::{capability::token::CapabilityToken, AgentId};
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::{ToolCallResponse, ToolServerEvent};

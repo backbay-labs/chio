@@ -37,7 +37,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::appraisal::AttestationVerifierFamily;
 use crate::canonical::canonical_json_bytes;
-use crate::capability::{MonetaryAmount, RuntimeAssuranceTier};
+use crate::capability::{runtime_attestation::RuntimeAssuranceTier, scope::MonetaryAmount};
 use crate::crypto::sha256_hex;
 use crate::receipt::SignedExportEnvelope;
 

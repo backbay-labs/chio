@@ -12,7 +12,7 @@ use chio_control_plane::federation_policy::{
     FederationAdmissionPolicyRecord, FederationAdmissionRateLimit,
     FEDERATION_ADMISSION_POLICY_RECORD_SCHEMA, FEDERATION_ADMISSION_POLICY_REGISTRY_VERSION,
 };
-use chio_core::capability::{ChioScope, MonetaryAmount, Operation, ToolGrant};
+use chio_core::capability::scope::{ChioScope, MonetaryAmount, Operation, ToolGrant};
 use chio_core::crypto::Keypair;
 use chio_core::federation::{
     artifacts::{FederationArtifactKind, FederationArtifactReference},

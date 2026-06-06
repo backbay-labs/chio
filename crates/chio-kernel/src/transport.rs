@@ -126,7 +126,8 @@ pub fn write_frame<W: Write>(writer: &mut W, data: &[u8]) -> Result<(), Transpor
 mod tests {
     use super::*;
     use chio_core::capability::{
-        CapabilityToken, CapabilityTokenBody, ChioScope, Operation, ToolGrant,
+        scope::{ChioScope, Operation, ToolGrant},
+        token::{CapabilityToken, CapabilityTokenBody},
     };
     use chio_core::crypto::Keypair;
     use chio_core::receipt::{

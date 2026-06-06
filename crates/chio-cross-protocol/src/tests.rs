@@ -13,8 +13,9 @@ use crate::validation::schema_extension;
 use std::collections::BTreeMap;
 
 use chio_core::capability::{
-    CapabilityToken, CapabilityTokenBody, ChioScope, Constraint, GovernedTransactionIntent,
-    ModelMetadata, ModelSafetyTier, Operation, ToolGrant,
+    governance::GovernedTransactionIntent,
+    scope::{ChioScope, Constraint, ModelMetadata, ModelSafetyTier, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core::crypto::Keypair;
 use chio_kernel::{
@@ -777,7 +778,8 @@ fn orchestrator_preserves_model_metadata_for_model_constrained_grant() {
                     model_id: "gpt-5".to_string(),
                     safety_tier: Some(ModelSafetyTier::High),
                     provider: Some("openai".to_string()),
-                    provenance_class: chio_core::capability::ProvenanceEvidenceClass::Asserted,
+                    provenance_class:
+                        chio_core::capability::governance::ProvenanceEvidenceClass::Asserted,
                 }),
             },
         )

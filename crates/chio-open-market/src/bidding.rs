@@ -20,7 +20,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::capability::{
-    CapabilityToken, CapabilityTokenBody, ChioScope, MonetaryAmount, Operation, ToolGrant,
+    scope::{ChioScope, MonetaryAmount, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenBody},
 };
 use crate::crypto::{sha256_hex, Keypair, PublicKey};
 use crate::listing::{

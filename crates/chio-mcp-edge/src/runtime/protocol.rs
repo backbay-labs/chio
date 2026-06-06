@@ -813,7 +813,7 @@ pub(super) fn parse_request_model_metadata(
     })?;
 
     Ok(Some(metadata.with_provenance_class(
-        chio_core::capability::ProvenanceEvidenceClass::Asserted,
+        chio_core::capability::governance::ProvenanceEvidenceClass::Asserted,
     )))
 }
 

@@ -16,7 +16,7 @@
 
 use std::sync::Arc;
 
-use chio_core_types::capability::GovernedApprovalToken;
+use chio_core_types::capability::governance::GovernedApprovalToken;
 use chio_core_types::crypto::PublicKey;
 use chio_kernel::{
     resume_with_decision, ApprovalDecision, ApprovalFilter, ApprovalOutcome, ApprovalRequest,

@@ -9,7 +9,7 @@ use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use chio_core::canonical::canonical_json_bytes;
-use chio_core::capability::CapabilityToken;
+use chio_core::capability::token::CapabilityToken;
 use chio_core::crypto::{sha256_hex, Keypair, PublicKey, Signature as Ed25519Signature};
 use chio_core::session::{
     ChioIdentityAssertion, EnterpriseFederationMethod, EnterpriseIdentityContext,

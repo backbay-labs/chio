@@ -99,7 +99,7 @@ fn build_observation_unchecked(receipt: &ChioReceipt) -> Option<SettlementObserv
     let monetary = financial.get("cost_charged").and_then(|cc| {
         let units = cc.as_u64()?;
         let currency = financial.get("currency")?.as_str()?.to_string();
-        Some(chio_core::capability::MonetaryAmount { currency, units })
+        Some(chio_core::capability::scope::MonetaryAmount { currency, units })
     })?;
 
     if monetary.units == 0 {
@@ -182,7 +182,7 @@ pub fn run_observer(
 mod tests {
     use super::*;
 
-    use chio_core::capability::MonetaryAmount;
+    use chio_core::capability::scope::MonetaryAmount;
     use chio_core::crypto::Keypair;
     use chio_core::receipt::{
         ChioReceiptBody, Decision, GuardEvidence, ToolCallAction, TrustLevel,

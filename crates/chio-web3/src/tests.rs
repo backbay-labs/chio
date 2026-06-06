@@ -6,7 +6,7 @@ use crate::anchors::{
     CHIO_LINK_ORACLE_AUTHORITY, CHIO_ORACLE_CONVERSION_EVIDENCE_SCHEMA,
 };
 use crate::canonical::canonical_json_bytes;
-use crate::capability::MonetaryAmount;
+use crate::capability::scope::MonetaryAmount;
 use crate::chain::{validate_web3_chain_configuration, Web3ChainConfiguration};
 use crate::contracts::{validate_web3_contract_package, Web3ContractPackage};
 use crate::credit::{

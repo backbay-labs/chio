@@ -30,7 +30,9 @@ use chio_core::appraisal::{
     SignedRuntimeAttestationAppraisalResult, RUNTIME_ATTESTATION_APPRAISAL_REPORT_SCHEMA,
 };
 use chio_core::capability::{
-    CapabilityToken, ChioScope, MonetaryAmount, RuntimeAssuranceTier, RuntimeAttestationEvidence,
+    runtime_attestation::{RuntimeAssuranceTier, RuntimeAttestationEvidence},
+    scope::{ChioScope, MonetaryAmount},
+    token::CapabilityToken,
 };
 use chio_core::crypto::{Keypair, PublicKey};
 use chio_core::listing::GenericTrustAdmissionClass;

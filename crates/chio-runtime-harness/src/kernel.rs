@@ -60,13 +60,13 @@ fn runtime_loopback_capability(
     server_id: &str,
     tool_name: &str,
     now_unix_ms: u64,
-) -> Result<chio_core::capability::CapabilityToken, RuntimeLoopbackError> {
+) -> Result<chio_core::capability::token::CapabilityToken, RuntimeLoopbackError> {
     let (issued_at, expires_at) = runtime_loopback_capability_window(now_unix_ms);
-    let scope = chio_core::capability::ChioScope {
-        grants: vec![chio_core::capability::ToolGrant {
+    let scope = chio_core::capability::scope::ChioScope {
+        grants: vec![chio_core::capability::scope::ToolGrant {
             server_id: server_id.to_string(),
             tool_name: tool_name.to_string(),
-            operations: vec![chio_core::capability::Operation::Invoke],
+            operations: vec![chio_core::capability::scope::Operation::Invoke],
             constraints: Vec::new(),
             max_invocations: None,
             max_cost_per_invocation: None,
@@ -75,7 +75,7 @@ fn runtime_loopback_capability(
         }],
         ..Default::default()
     };
-    let body = chio_core::capability::CapabilityTokenBody {
+    let body = chio_core::capability::token::CapabilityTokenBody {
         id: capability_id.to_string(),
         issuer: issuer.public_key(),
         subject: subject.public_key(),
@@ -84,7 +84,7 @@ fn runtime_loopback_capability(
         expires_at,
         delegation_chain: Vec::new(),
     };
-    chio_core::capability::CapabilityToken::sign(body, issuer).map_err(|error| {
+    chio_core::capability::token::CapabilityToken::sign(body, issuer).map_err(|error| {
         RuntimeLoopbackError::message(format!("Chio runtime loopback capability signing: {error}"))
     })
 }
@@ -431,7 +431,7 @@ pub(crate) fn execute_runtime_loopback_step(
                 step_index
             ))
         })?;
-    let governed_intent = chio_core::capability::GovernedTransactionIntent {
+    let governed_intent = chio_core::capability::governance::GovernedTransactionIntent {
         id: format!("intent:chio-runtime-loopback:{}", step_index),
         server_id: step.request.server_id.clone(),
         tool_name: step.request.tool_name.clone(),

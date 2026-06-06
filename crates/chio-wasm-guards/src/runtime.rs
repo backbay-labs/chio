@@ -2656,12 +2656,12 @@ pub mod wasmtime_backend {
             let req = make_guard_request();
             let issuer = chio_core::crypto::Keypair::generate();
             let subject = chio_core::crypto::Keypair::generate();
-            let capability = chio_core::capability::CapabilityToken::sign(
-                chio_core::capability::CapabilityTokenBody {
+            let capability = chio_core::capability::token::CapabilityToken::sign(
+                chio_core::capability::token::CapabilityTokenBody {
                     id: "cap-fuel-test".to_string(),
                     issuer: issuer.public_key(),
                     subject: subject.public_key(),
-                    scope: chio_core::capability::ChioScope::default(),
+                    scope: chio_core::capability::scope::ChioScope::default(),
                     issued_at: 0,
                     expires_at: u64::MAX,
                     delegation_chain: vec![],
@@ -2669,7 +2669,7 @@ pub mod wasmtime_backend {
                 &issuer,
             )
             .unwrap();
-            let scope = chio_core::capability::ChioScope::default();
+            let scope = chio_core::capability::scope::ChioScope::default();
             let tool_request = chio_kernel::ToolCallRequest {
                 request_id: "req-fuel-test".to_string(),
                 capability,
@@ -2744,13 +2744,13 @@ pub mod wasmtime_backend {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chio_core::capability::ChioScope;
+    use chio_core::capability::scope::ChioScope;
     use chio_kernel::{GuardContext, ToolCallRequest};
 
-    fn make_test_capability() -> chio_core::capability::CapabilityToken {
+    fn make_test_capability() -> chio_core::capability::token::CapabilityToken {
         let keypair = chio_core::crypto::Keypair::generate();
-        chio_core::capability::CapabilityToken::sign(
-            chio_core::capability::CapabilityTokenBody {
+        chio_core::capability::token::CapabilityToken::sign(
+            chio_core::capability::token::CapabilityTokenBody {
                 id: "cap-1".to_string(),
                 issuer: keypair.public_key(),
                 subject: keypair.public_key(),

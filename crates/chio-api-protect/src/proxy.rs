@@ -20,9 +20,9 @@ use tokio::sync::Mutex;
 use tracing::{info, warn};
 
 use chio_core_types::capability::{
-    CapabilityToken, CapabilityTokenBody, ChioScope, GovernedApprovalDecision,
-    GovernedApprovalToken, GovernedApprovalTokenBody, Operation, PromptGrant, ResourceGrant,
-    ToolGrant,
+    governance::{GovernedApprovalDecision, GovernedApprovalToken, GovernedApprovalTokenBody},
+    scope::{ChioScope, Operation, PromptGrant, ResourceGrant, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core_types::crypto::{Keypair, PublicKey};
 use chio_core_types::receipt::{
@@ -74,8 +74,9 @@ mod tests {
     use super::*;
     use axum::body::to_bytes;
     use chio_core_types::capability::{
-        CapabilityToken, CapabilityTokenBody, ChioScope, GovernedApprovalDecision,
-        GovernedApprovalToken, GovernedApprovalTokenBody,
+        governance::{GovernedApprovalDecision, GovernedApprovalToken, GovernedApprovalTokenBody},
+        scope::ChioScope,
+        token::{CapabilityToken, CapabilityTokenBody},
     };
     use chio_http_core::{
         http_status_scope, AuthMethod, RespondResponse, CHIO_HTTP_STATUS_SCOPE_DECISION,

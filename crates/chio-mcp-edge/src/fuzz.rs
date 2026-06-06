@@ -27,7 +27,7 @@
 
 use std::sync::OnceLock;
 
-use chio_core::capability::ChioScope;
+use chio_core::capability::scope::ChioScope;
 use chio_core::crypto::Keypair;
 use chio_kernel::{ChioKernel, KernelConfig, DEFAULT_CHECKPOINT_BATCH_SIZE};
 

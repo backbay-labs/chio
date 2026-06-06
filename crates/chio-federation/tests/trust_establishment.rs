@@ -2,7 +2,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use chio_core_types::capability::CapabilityNegotiation;
+use chio_core_types::capability::features::CapabilityNegotiation;
 use chio_core_types::crypto::Keypair;
 use chio_federation::{
     trust_establishment::ConformanceEvidence, trust_establishment::ConformanceTier,

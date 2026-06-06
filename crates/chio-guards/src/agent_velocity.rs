@@ -179,7 +179,10 @@ mod tests {
     use std::thread;
     use std::time::Duration;
 
-    use chio_core::capability::{CapabilityToken, CapabilityTokenBody, ChioScope};
+    use chio_core::capability::{
+        scope::ChioScope,
+        token::{CapabilityToken, CapabilityTokenBody},
+    };
     use chio_core::crypto::Keypair;
 
     use super::*;

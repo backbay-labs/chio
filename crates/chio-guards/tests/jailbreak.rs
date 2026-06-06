@@ -16,7 +16,10 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-use chio_core::capability::{CapabilityToken, CapabilityTokenBody, ChioScope};
+use chio_core::capability::{
+    scope::ChioScope,
+    token::{CapabilityToken, CapabilityTokenBody},
+};
 use chio_core::crypto::Keypair;
 use chio_guards::{JailbreakGuard, JailbreakGuardConfig, LayerWeights};
 use chio_kernel::{Guard, GuardContext, ToolCallRequest, Verdict};

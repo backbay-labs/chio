@@ -9,7 +9,7 @@ use std::thread;
 use alloy_primitives::{keccak256, Address, FixedBytes, B256, U256};
 use alloy_sol_types::{sol, SolCall};
 use chio_core::canonical::canonical_json_bytes;
-use chio_core::capability::MonetaryAmount;
+use chio_core::capability::scope::MonetaryAmount;
 use chio_core::credit::{
     CapitalExecutionInstructionAction, CapitalExecutionRailKind, CreditBondLifecycleState,
     SignedCapitalExecutionInstruction, SignedCreditBond,

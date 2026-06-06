@@ -2,7 +2,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use chio_core_types::capability::{CapabilityToken, CapabilityTokenBody, ChioScope};
+use chio_core_types::capability::{
+    scope::ChioScope,
+    token::{CapabilityToken, CapabilityTokenBody},
+};
 use chio_core_types::crypto::Keypair;
 use chio_kernel::ToolCallRequest;
 use chio_tower::{KernelRequest, KernelServiceError, TenantConcurrencyLimitLayer};

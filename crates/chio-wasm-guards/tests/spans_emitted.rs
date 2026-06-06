@@ -1,7 +1,10 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use chio_core::capability::{CapabilityToken, CapabilityTokenBody, ChioScope};
+use chio_core::capability::{
+    scope::ChioScope,
+    token::{CapabilityToken, CapabilityTokenBody},
+};
 use chio_core::crypto::Keypair;
 use chio_kernel::{Guard, GuardContext, ToolCallRequest, Verdict};
 use chio_wasm_guards::{

@@ -24,8 +24,9 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use chio_core::capability::{
-    AttestationTrustPolicy, AttestationTrustRule, ChioScope, MonetaryAmount, Operation,
-    PromptGrant, ResourceGrant, RuntimeAssuranceTier, ToolGrant,
+    runtime_attestation::RuntimeAssuranceTier,
+    scope::{ChioScope, MonetaryAmount, Operation, PromptGrant, ResourceGrant, ToolGrant},
+    trust_policy::{AttestationTrustPolicy, AttestationTrustRule},
 };
 use chio_guards::{
     ContentReviewConfig, ContentReviewGuard, EgressAllowlistGuard, ForbiddenPathGuard,
@@ -1617,10 +1618,10 @@ fn synthesize_tool_access_scope(
 
 fn compile_wildcard_tool_constraints(
     tool_access: &ToolAccessConfig,
-) -> Vec<chio_core::capability::Constraint> {
+) -> Vec<chio_core::capability::scope::Constraint> {
     let mut constraints = Vec::new();
     if let Some(max_args_size) = tool_access.max_args_size {
-        constraints.push(chio_core::capability::Constraint::MaxArgsSize(
+        constraints.push(chio_core::capability::scope::Constraint::MaxArgsSize(
             max_args_size,
         ));
     }
@@ -1629,8 +1630,9 @@ fn compile_wildcard_tool_constraints(
         .iter()
         .any(|pattern| pattern == "*")
     {
-        constraints
-            .push(chio_core::capability::Constraint::RequireApprovalAbove { threshold_units: 0 });
+        constraints.push(
+            chio_core::capability::scope::Constraint::RequireApprovalAbove { threshold_units: 0 },
+        );
     }
     constraints
 }
@@ -1645,16 +1647,17 @@ const MAX_TOOL_ACCESS_GLOB_OVERLAP_STATES: usize = 16_384;
 fn compile_tool_constraints(
     tool_access: &ToolAccessConfig,
     tool_pattern: &str,
-) -> Result<Vec<chio_core::capability::Constraint>, PolicyError> {
+) -> Result<Vec<chio_core::capability::scope::Constraint>, PolicyError> {
     let mut constraints = Vec::new();
     if let Some(max_args_size) = tool_access.max_args_size {
-        constraints.push(chio_core::capability::Constraint::MaxArgsSize(
+        constraints.push(chio_core::capability::scope::Constraint::MaxArgsSize(
             max_args_size,
         ));
     }
     if confirmation_overlap(tool_pattern, &tool_access.require_confirmation)? {
-        constraints
-            .push(chio_core::capability::Constraint::RequireApprovalAbove { threshold_units: 0 });
+        constraints.push(
+            chio_core::capability::scope::Constraint::RequireApprovalAbove { threshold_units: 0 },
+        );
     }
     Ok(constraints)
 }
@@ -2528,13 +2531,15 @@ guards:
         assert_eq!(
             capabilities[0].scope.grants[0].constraints,
             vec![
-                chio_core::capability::Constraint::MaxArgsSize(2048),
-                chio_core::capability::Constraint::RequireApprovalAbove { threshold_units: 0 },
+                chio_core::capability::scope::Constraint::MaxArgsSize(2048),
+                chio_core::capability::scope::Constraint::RequireApprovalAbove {
+                    threshold_units: 0
+                },
             ]
         );
         assert_eq!(
             capabilities[0].scope.grants[1].constraints,
-            vec![chio_core::capability::Constraint::MaxArgsSize(2048)]
+            vec![chio_core::capability::scope::Constraint::MaxArgsSize(2048)]
         );
     }
 
@@ -2591,8 +2596,10 @@ guards:
         assert_eq!(
             capabilities[0].scope.grants[0].constraints,
             vec![
-                chio_core::capability::Constraint::MaxArgsSize(2048),
-                chio_core::capability::Constraint::RequireApprovalAbove { threshold_units: 0 },
+                chio_core::capability::scope::Constraint::MaxArgsSize(2048),
+                chio_core::capability::scope::Constraint::RequireApprovalAbove {
+                    threshold_units: 0
+                },
             ]
         );
     }
@@ -2672,7 +2679,11 @@ guards:
         assert_eq!(capabilities[0].scope.grants[0].tool_name, "git_*");
         assert_eq!(
             capabilities[0].scope.grants[0].constraints,
-            vec![chio_core::capability::Constraint::RequireApprovalAbove { threshold_units: 0 }]
+            vec![
+                chio_core::capability::scope::Constraint::RequireApprovalAbove {
+                    threshold_units: 0
+                }
+            ]
         );
     }
 
@@ -2866,7 +2877,7 @@ guards:
         let scope = ChioScope::default();
         let agent_id = kp.public_key().to_hex();
         let server_id = "filesystem".to_string();
-        let cap_body = chio_core::capability::CapabilityTokenBody {
+        let cap_body = chio_core::capability::token::CapabilityTokenBody {
             id: "cap-test".to_string(),
             issuer: kp.public_key(),
             subject: kp.public_key(),
@@ -2875,7 +2886,7 @@ guards:
             expires_at: u64::MAX,
             delegation_chain: vec![],
         };
-        let cap = chio_core::capability::CapabilityToken::sign(cap_body, &kp).test_unwrap();
+        let cap = chio_core::capability::token::CapabilityToken::sign(cap_body, &kp).test_unwrap();
         let request = chio_kernel::ToolCallRequest {
             request_id: "req-test".to_string(),
             capability: cap,

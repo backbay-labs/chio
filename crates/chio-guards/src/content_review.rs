@@ -36,7 +36,7 @@ use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use chio_core::capability::Constraint;
+use chio_core::capability::scope::Constraint;
 use chio_kernel::{Guard, GuardContext, GuardDecision, KernelError, Verdict};
 
 use crate::action::{extract_action_checked, ToolAction};

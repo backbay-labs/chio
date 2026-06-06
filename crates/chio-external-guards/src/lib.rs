@@ -195,7 +195,13 @@ fn wildcard_matches(pattern: &str, target: &str) -> bool {
 mod tests {
     use super::*;
     use async_trait::async_trait;
-    use chio_core_types::{CapabilityToken, CapabilityTokenBody, ChioScope, Keypair};
+    use chio_core_types::{
+        capability::{
+            scope::ChioScope,
+            token::{CapabilityToken, CapabilityTokenBody},
+        },
+        Keypair,
+    };
     use chio_kernel::Verdict;
     use std::sync::Arc;
 

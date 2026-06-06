@@ -4,7 +4,7 @@ use crate::anchors::{
     validate_anchor_inclusion_proof, validate_oracle_conversion_evidence, AnchorInclusionProof,
     OracleConversionEvidence,
 };
-use crate::capability::MonetaryAmount;
+use crate::capability::scope::MonetaryAmount;
 use crate::credit::{
     CapitalExecutionInstructionAction, CapitalExecutionRailKind, CapitalExecutionReconciledState,
     CreditBondLifecycleState, SignedCapitalExecutionInstruction, SignedCreditBond,

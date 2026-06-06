@@ -2,7 +2,9 @@ use serde::{Deserialize, Serialize};
 
 use chio_core::appraisal::AttestationVerifierFamily;
 use chio_core::capability::{
-    GovernedCallChainProvenance, MeteredSettlementMode, MonetaryAmount, RuntimeAssuranceTier,
+    governance::{GovernedCallChainProvenance, MeteredSettlementMode},
+    runtime_attestation::RuntimeAssuranceTier,
+    scope::MonetaryAmount,
 };
 use chio_core::receipt::{
     ChioReceipt, Decision, EconomicAuthorizationReceiptMetadata,
@@ -1505,7 +1507,9 @@ pub struct OperatorReport {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use chio_core::capability::{GovernedCallChainContext, GovernedProvenanceEvidenceClass};
+    use chio_core::capability::governance::{
+        GovernedCallChainContext, GovernedProvenanceEvidenceClass,
+    };
     use chio_core::receipt::{
         FinancialBudgetAuthorityReceiptMetadata, FinancialBudgetAuthorizeReceiptMetadata,
         FinancialBudgetHoldAuthorityMetadata, FinancialBudgetTerminalReceiptMetadata,

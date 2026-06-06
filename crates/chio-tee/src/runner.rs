@@ -518,7 +518,10 @@ mod tests {
     use chio_test_support::prelude::*;
 
     use chio_core::canonical::canonical_json_string;
-    use chio_core::capability::{CapabilityToken, CapabilityTokenBody, ChioScope};
+    use chio_core::capability::{
+        scope::ChioScope,
+        token::{CapabilityToken, CapabilityTokenBody},
+    };
     use chio_core::receipt::{ChioReceiptBody, ToolCallAction, TrustLevel};
 
     fn keypair() -> Keypair {

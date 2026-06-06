@@ -2,7 +2,7 @@ use std::error::Error;
 use std::io::{self, BufRead, Write};
 
 use chio_a2a_edge::{A2aEdgeConfig, A2aKernelExecutionContext, ChioA2aEdge};
-use chio_core::capability::{ChioScope, Operation, ToolGrant};
+use chio_core::capability::scope::{ChioScope, Operation, ToolGrant};
 use chio_core::crypto::Keypair;
 use chio_kernel::{
     ChioKernel, KernelConfig, KernelError, NestedFlowBridge, ToolCallChunk, ToolCallStream,

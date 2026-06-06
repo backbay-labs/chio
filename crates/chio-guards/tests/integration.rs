@@ -5,7 +5,7 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-use chio_core::capability::{ChioScope, Operation, ToolGrant};
+use chio_core::capability::scope::{ChioScope, Operation, ToolGrant};
 use chio_core::crypto::Keypair;
 use chio_core::session::{
     OperationContext, RequestId, RootDefinition, SessionOperation, ToolCallOperation,

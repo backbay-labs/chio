@@ -1,7 +1,7 @@
 #![cfg(feature = "bbs")]
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-use chio_core_types::capability::MonetaryAmount;
+use chio_core_types::capability::scope::MonetaryAmount;
 use chio_core_types::crypto::{sha256_hex, Keypair};
 use chio_core_types::receipt::{ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
 use chio_selective_disclosure::{

@@ -1,5 +1,7 @@
 use chio_core::capability::{
-    CapabilityToken, CapabilityTokenBody, ChioScope, RuntimeAttestationEvidence,
+    runtime_attestation::RuntimeAttestationEvidence,
+    scope::ChioScope,
+    token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core::crypto::{Keypair, PublicKey};
 use uuid::Uuid;

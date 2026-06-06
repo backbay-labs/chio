@@ -15,7 +15,10 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-use chio_core_types::capability::{CapabilityToken, ChioScope, Operation, ToolGrant};
+use chio_core_types::capability::{
+    scope::{ChioScope, Operation, ToolGrant},
+    token::CapabilityToken,
+};
 use chio_core_types::crypto::Keypair;
 use chio_core_types::receipt::{
     ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,

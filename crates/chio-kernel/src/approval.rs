@@ -20,8 +20,11 @@ use std::collections::HashMap;
 use std::sync::{Mutex, RwLock};
 
 use chio_core::capability::{
-    Constraint, GovernedApprovalDecision, GovernedApprovalToken, GovernedAutonomyTier,
-    GovernedTransactionIntent, MonetaryAmount,
+    governance::{
+        GovernedApprovalDecision, GovernedApprovalToken, GovernedAutonomyTier,
+        GovernedTransactionIntent,
+    },
+    scope::{Constraint, MonetaryAmount},
 };
 use chio_core::crypto::{sha256_hex, PublicKey};
 use chio_log_redact::redacted;
@@ -1141,7 +1144,7 @@ fn amount_fits(batch: &BatchApproval, amount: Option<&MonetaryAmount>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chio_core::capability::{GovernedApprovalDecision, GovernedApprovalTokenBody};
+    use chio_core::capability::governance::{GovernedApprovalDecision, GovernedApprovalTokenBody};
     use chio_core::crypto::Keypair;
 
     fn make_request(approval_id: &str, parameter_hash: &str) -> ApprovalRequest {

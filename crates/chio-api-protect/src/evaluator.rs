@@ -343,8 +343,9 @@ fn credential_value_is_well_formed(value: &str) -> bool {
 mod tests {
     use super::*;
     use chio_core_types::capability::{
-        CapabilityToken, CapabilityTokenBody, ChioScope, Constraint, ModelMetadata,
-        ModelSafetyTier, Operation, ProvenanceEvidenceClass, ToolGrant,
+        governance::ProvenanceEvidenceClass,
+        scope::{ChioScope, Constraint, ModelMetadata, ModelSafetyTier, Operation, ToolGrant},
+        token::{CapabilityToken, CapabilityTokenBody},
     };
     use chio_http_core::{
         http_status_scope, CHIO_DECISION_RECEIPT_ID_KEY, CHIO_HTTP_STATUS_SCOPE_DECISION,

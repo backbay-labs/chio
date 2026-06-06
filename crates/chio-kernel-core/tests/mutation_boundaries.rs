@@ -1,4 +1,4 @@
-use chio_core_types::capability::{ChioScope, Constraint, Operation, ToolGrant};
+use chio_core_types::capability::scope::{ChioScope, Constraint, Operation, ToolGrant};
 use chio_kernel_core::normalized::{
     NormalizedConstraint, NormalizedMonetaryAmount, NormalizedOperation, NormalizedPromptGrant,
     NormalizedResourceGrant, NormalizedScope, NormalizedToolGrant,

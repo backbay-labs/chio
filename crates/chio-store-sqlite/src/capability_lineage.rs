@@ -1,4 +1,4 @@
-use chio_core::capability::CapabilityToken;
+use chio_core::capability::token::CapabilityToken;
 pub use chio_kernel::capability_lineage::{
     CapabilityLineageError, CapabilitySnapshot, StoredCapabilitySnapshot,
 };
@@ -372,7 +372,8 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use chio_core::capability::{
-        CapabilityToken, CapabilityTokenBody, ChioScope, Operation, ToolGrant,
+        scope::{ChioScope, Operation, ToolGrant},
+        token::{CapabilityToken, CapabilityTokenBody},
     };
     use chio_core::crypto::Keypair;
     use rusqlite::params;

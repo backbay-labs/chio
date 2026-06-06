@@ -6,7 +6,7 @@
 use crate::models::{DetectionLevel, Extensions, HushSpec, Rules, TransitionTrigger};
 use crate::regex_safety::{compile_policy_regex, validate_policy_regex_count};
 use crate::version;
-use chio_core::capability::canonicalize_attestation_verifier;
+use chio_core::capability::trust_policy::canonicalize_attestation_verifier;
 use std::collections::{BTreeSet, HashSet};
 
 const MAX_POLICY_DENYLIST_PATTERNS: usize = 64;

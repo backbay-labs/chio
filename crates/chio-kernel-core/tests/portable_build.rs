@@ -9,9 +9,9 @@
 //! `wasm32-unknown-unknown` unchanged.
 
 use chio_core_types::capability::{
-    compute_attenuation_witness, scope_hash, AttenuationProof, CapabilityToken,
-    CapabilityTokenAttenuationBody, CapabilityTokenBody, ChioScope, Constraint, Operation,
-    ToolGrant,
+    attenuation::{compute_attenuation_witness, scope_hash, AttenuationProof},
+    scope::{ChioScope, Constraint, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenAttenuationBody, CapabilityTokenBody},
 };
 use chio_core_types::crypto::Keypair;
 use chio_core_types::receipt::{ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
@@ -381,7 +381,7 @@ fn evaluate_fails_closed_on_unsupported_constraint() {
         &subject,
         &issuer,
         vec![Constraint::MinimumRuntimeAssurance(
-            chio_core_types::capability::RuntimeAssuranceTier::Attested,
+            chio_core_types::capability::runtime_attestation::RuntimeAssuranceTier::Attested,
         )],
     );
     let request = make_request(&subject);
@@ -426,7 +426,7 @@ fn resolve_matching_grants_fails_closed_when_target_match_has_unsupported_constr
                         tool_name: "echo".to_string(),
                         operations: vec![Operation::Invoke],
                         constraints: vec![Constraint::MinimumRuntimeAssurance(
-                            chio_core_types::capability::RuntimeAssuranceTier::Attested,
+                            chio_core_types::capability::runtime_attestation::RuntimeAssuranceTier::Attested,
                         )],
                         max_invocations: None,
                         max_cost_per_invocation: None,
@@ -490,7 +490,7 @@ fn resolve_matching_grants_ignores_unsupported_constraints_on_unrelated_grants()
                         tool_name: "echo".to_string(),
                         operations: vec![Operation::Invoke],
                         constraints: vec![Constraint::MinimumRuntimeAssurance(
-                            chio_core_types::capability::RuntimeAssuranceTier::Attested,
+                            chio_core_types::capability::runtime_attestation::RuntimeAssuranceTier::Attested,
                         )],
                         max_invocations: None,
                         max_cost_per_invocation: None,

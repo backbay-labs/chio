@@ -26,7 +26,7 @@ pub const MARKETPLACE_BLOCK_KEY: &str = "marketplace";
 
 /// Per-invocation guard price expressed in currency minor units.
 ///
-/// Mirrors `chio_core::capability::MonetaryAmount` shape but lives on
+/// Mirrors `chio_core::capability::scope::MonetaryAmount` shape but lives on
 /// the registry surface so callers that only depend on
 /// `chio-guard-registry` do not pull `chio-core` transitively.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -24,8 +24,11 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 use chio_core_types::capability::{
-    CapabilityCryptoFloor, CapabilityFloorVerifyError, CapabilityNegotiation, CapabilityToken,
-    ChioScope, ScopeHash,
+    attenuation::ScopeHash,
+    crypto_floor::{CapabilityCryptoFloor, CapabilityFloorVerifyError},
+    features::CapabilityNegotiation,
+    scope::ChioScope,
+    token::CapabilityToken,
 };
 use chio_core_types::crypto::PublicKey;
 
@@ -387,7 +390,7 @@ fn verify_chain_binding_with_negotiation(
     if token.requires_chain_binding() {
         let chain_binding_enabled = peer
             .features
-            .get(chio_core_types::capability::capability_features::DELEGATION_CHAIN_BINDING)
+            .get(chio_core_types::capability::features::DELEGATION_CHAIN_BINDING)
             .copied()
             .unwrap_or(true);
         if !chain_binding_enabled {
@@ -405,9 +408,13 @@ mod tests {
     use super::*;
     use crate::InMemoryBudgetRegistry;
     use chio_core_types::capability::{
-        capability_features, compute_attenuation_witness, scope_hash, AttenuationProof,
-        CapabilityTokenAttenuationBody, CapabilityTokenBody, ChioScope, DelegationLink,
-        DelegationLinkBody,
+        attenuation::{
+            compute_attenuation_witness, scope_hash, AttenuationProof, DelegationLink,
+            DelegationLinkBody,
+        },
+        features,
+        scope::ChioScope,
+        token::{CapabilityTokenAttenuationBody, CapabilityTokenBody},
     };
     use chio_core_types::crypto::Keypair;
     use core::cell::Cell;
@@ -549,10 +556,8 @@ mod tests {
             make_attenuated_token("cap-attenuated-disabled-chain-binding", &issuer, &subject);
         let clock = crate::FixedClock::new(150);
         let mut peer = CapabilityNegotiation::t1_default();
-        peer.features.insert(
-            capability_features::DELEGATION_CHAIN_BINDING.to_string(),
-            false,
-        );
+        peer.features
+            .insert(features::DELEGATION_CHAIN_BINDING.to_string(), false);
         let trust_root_hash = scope_hash(&ChioScope::default()).expect("trust root hash");
         let issuer_public = issuer.public_key();
         let resolver_issuer = issuer_public.clone();
@@ -695,10 +700,8 @@ mod tests {
         .expect("sign delegated token");
         let clock = crate::FixedClock::new(150);
         let mut peer = CapabilityNegotiation::t1_default();
-        peer.features.insert(
-            capability_features::DELEGATION_CHAIN_BINDING.to_string(),
-            false,
-        );
+        peer.features
+            .insert(features::DELEGATION_CHAIN_BINDING.to_string(), false);
         let trust_root_hash = scope_hash(&ChioScope::default()).expect("trust root hash");
         let issuer_public = issuer.public_key();
         let resolver_issuer = issuer_public.clone();

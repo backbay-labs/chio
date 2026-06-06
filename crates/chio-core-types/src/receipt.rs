@@ -10,9 +10,13 @@ use alloc::vec::Vec;
 use serde::{Deserialize, Serialize};
 
 use crate::capability::{
-    GovernedAutonomyTier, GovernedCallChainContext, GovernedCallChainProvenance,
-    MeteredBillingQuote, MeteredSettlementMode, ModelMetadata, ModelSafetyTier, MonetaryAmount,
-    ProvenanceEvidenceClass, RuntimeAssuranceTier, WorkloadIdentity,
+    governance::{
+        GovernedAutonomyTier, GovernedCallChainContext, GovernedCallChainProvenance,
+        MeteredBillingQuote, MeteredSettlementMode, ProvenanceEvidenceClass,
+    },
+    runtime_attestation::RuntimeAssuranceTier,
+    scope::{ModelMetadata, ModelSafetyTier, MonetaryAmount},
+    workload_identity::WorkloadIdentity,
 };
 use crate::crypto::{
     canonical_json_bytes, is_default_optional_algorithm, sha256_hex, sign_canonical_with_backend,
@@ -2205,6 +2209,10 @@ pub struct ReceiptAttributionMetadata {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
+    use crate::capability::governance::{
+        GovernedCallChainEvidenceSource, GovernedUpstreamCallChainProof,
+        GovernedUpstreamCallChainProofBody,
+    };
     use crate::crypto::Keypair;
 
     fn make_action() -> ToolCallAction {
@@ -3191,18 +3199,16 @@ mod tests {
                 workload_identity: None,
             }),
             call_chain: Some(
-                GovernedCallChainProvenance::observed(
-                    crate::capability::GovernedCallChainContext {
-                        chain_id: "chain-1".to_string(),
-                        parent_request_id: "req-parent-1".to_string(),
-                        parent_receipt_id: Some("rc-parent-1".to_string()),
-                        origin_subject: "origin-subject".to_string(),
-                        delegator_subject: "delegator-subject".to_string(),
-                    },
-                )
+                GovernedCallChainProvenance::observed(GovernedCallChainContext {
+                    chain_id: "chain-1".to_string(),
+                    parent_request_id: "req-parent-1".to_string(),
+                    parent_receipt_id: Some("rc-parent-1".to_string()),
+                    origin_subject: "origin-subject".to_string(),
+                    delegator_subject: "delegator-subject".to_string(),
+                })
                 .with_upstream_proof(
-                    crate::capability::GovernedUpstreamCallChainProof::sign(
-                        crate::capability::GovernedUpstreamCallChainProofBody {
+                    GovernedUpstreamCallChainProof::sign(
+                        GovernedUpstreamCallChainProofBody {
                             signer: proof_signer.public_key(),
                             subject: proof_subject.public_key(),
                             chain_id: "chain-1".to_string(),
@@ -3218,9 +3224,9 @@ mod tests {
                     .unwrap(),
                 )
                 .with_evidence_sources([
-                    crate::capability::GovernedCallChainEvidenceSource::SessionParentRequestLineage,
-                    crate::capability::GovernedCallChainEvidenceSource::LocalParentReceiptLinkage,
-                    crate::capability::GovernedCallChainEvidenceSource::UpstreamDelegatorProof,
+                    GovernedCallChainEvidenceSource::SessionParentRequestLineage,
+                    GovernedCallChainEvidenceSource::LocalParentReceiptLinkage,
+                    GovernedCallChainEvidenceSource::UpstreamDelegatorProof,
                 ]),
             ),
             autonomy: Some(GovernedAutonomyReceiptMetadata {
@@ -3291,14 +3297,14 @@ mod tests {
 
     #[test]
     fn governed_transaction_receipt_metadata_helpers_split_asserted_and_verified_call_chain() {
-        let asserted_context = crate::capability::GovernedCallChainContext {
+        let asserted_context = GovernedCallChainContext {
             chain_id: "chain-1".to_string(),
             parent_request_id: "req-parent-1".to_string(),
             parent_receipt_id: Some("rc-parent-1".to_string()),
             origin_subject: "origin-asserted".to_string(),
             delegator_subject: "delegator-asserted".to_string(),
         };
-        let verified_context = crate::capability::GovernedCallChainContext {
+        let verified_context = GovernedCallChainContext {
             chain_id: "chain-1".to_string(),
             parent_request_id: "req-parent-1".to_string(),
             parent_receipt_id: Some("rc-parent-1".to_string()),
@@ -3317,7 +3323,7 @@ mod tests {
             approval: None,
             runtime_assurance: None,
             call_chain: Some(
-                crate::capability::GovernedCallChainProvenance::verified(verified_context.clone())
+                GovernedCallChainProvenance::verified(verified_context.clone())
                     .with_asserted_context(asserted_context.clone()),
             ),
             autonomy: None,

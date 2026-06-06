@@ -60,7 +60,9 @@
 // pq_required kernel.
 
 use chio_core::capability::{
-    CapabilityCryptoFloor, CapabilityToken, CapabilityTokenBody, ChioScope,
+    crypto_floor::CapabilityCryptoFloor,
+    scope::ChioScope,
+    token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core::crypto::Keypair;
 use chio_kernel_core::capability_verify::{verify_capability_with_floor, CapabilityError};

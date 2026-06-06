@@ -1,5 +1,7 @@
 use chio_core::capability::{
-    CapabilityToken, GovernedApprovalToken, GovernedTransactionIntent, ModelMetadata,
+    governance::{GovernedApprovalToken, GovernedTransactionIntent},
+    scope::ModelMetadata,
+    token::CapabilityToken,
 };
 use chio_kernel::dpop;
 use chio_kernel::{ChioKernel, SignedExecutionNonce, ToolCallRequest, ToolCallResponse};

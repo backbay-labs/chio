@@ -8,7 +8,7 @@
 use std::fs;
 use std::path::Path;
 
-use chio_core::capability::MonetaryAmount;
+use chio_core::capability::scope::MonetaryAmount;
 use chio_kernel::{ApprovalStoreError, BatchApproval, BatchApprovalStore};
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;

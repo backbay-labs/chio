@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use chio_core::{capability::MonetaryAmount, receipt::SettlementStatus};
+use chio_core::{capability::scope::MonetaryAmount, receipt::SettlementStatus};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 /// Result of a payment authorization or settlement hold.

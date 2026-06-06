@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use chio_core::capability::{ChioScope, MonetaryAmount, Operation, ToolGrant};
+use chio_core::capability::scope::{ChioScope, MonetaryAmount, Operation, ToolGrant};
 use chio_core::crypto::Keypair;
 use chio_core::receipt::{
     ChioReceipt, ChioReceiptBody, Decision, ReceiptAttributionMetadata, ToolCallAction,

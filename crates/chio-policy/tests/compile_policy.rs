@@ -220,7 +220,7 @@ rules:
 
 #[test]
 fn compile_policy_emits_require_approval_above_from_human_in_loop() {
-    use chio_core::capability::Constraint;
+    use chio_core::capability::scope::Constraint;
 
     let yaml = r#"
 hushspec: "0.1.0"

@@ -1,6 +1,6 @@
 use crate::activation::*;
 use crate::artifacts::*;
-use crate::capability::MonetaryAmount;
+use crate::capability::scope::MonetaryAmount;
 use crate::error::*;
 use crate::listing::{
     GenericListingActorKind, GenericListingFreshnessState, GenericListingReplicaFreshness,

@@ -12,7 +12,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use chio_core_types::capability::ProvenanceEvidenceClass;
+use chio_core_types::capability::governance::ProvenanceEvidenceClass;
 use chio_core_types::receipt::ReceiptLineageStatement;
 
 use crate::schema::{EdgeKind, EvidenceClass, LineageEdge, LineageGraph, LineageNode, NodeKind};

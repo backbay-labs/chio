@@ -7,7 +7,10 @@
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use chio_core::capability::{CapabilityToken, CapabilityTokenBody, ChioScope};
+use chio_core::capability::{
+    scope::ChioScope,
+    token::{CapabilityToken, CapabilityTokenBody},
+};
 use chio_core::crypto::{sha256_hex, Keypair};
 use chio_kernel::{
     verify_dpop_proof, DpopConfig, DpopNonceStore, DpopProof, DpopProofBody, DPOP_SCHEMA,
@@ -424,7 +427,7 @@ fn dpop_nonce_replay_after_ttl_accepted() {
 
 #[test]
 fn dpop_required_field_roundtrip() {
-    use chio_core::capability::{Operation, ToolGrant};
+    use chio_core::capability::scope::{Operation, ToolGrant};
 
     // Some(true) must survive a JSON roundtrip and appear in the output.
     let grant_required = ToolGrant {

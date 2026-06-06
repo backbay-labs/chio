@@ -539,14 +539,18 @@ impl ChioKernel {
     #[must_use]
     pub fn with_capability_trust_roots(
         self,
-        roots: Vec<(chio_core::PublicKey, chio_core::capability::ScopeHash)>,
+        roots: Vec<(
+            chio_core::PublicKey,
+            chio_core::capability::attenuation::ScopeHash,
+        )>,
     ) -> Self {
         {
             let _guard = self
                 .capability_trust_roots_write_lock
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
-            let mut next: HashMap<String, chio_core::capability::ScopeHash> = HashMap::new();
+            let mut next: HashMap<String, chio_core::capability::attenuation::ScopeHash> =
+                HashMap::new();
             for (issuer, root) in roots {
                 next.insert(issuer.to_hex(), root);
             }
@@ -561,14 +565,15 @@ impl ChioKernel {
     pub fn set_capability_trust_root(
         &self,
         issuer: chio_core::PublicKey,
-        root: chio_core::capability::ScopeHash,
-    ) -> Option<chio_core::capability::ScopeHash> {
+        root: chio_core::capability::attenuation::ScopeHash,
+    ) -> Option<chio_core::capability::attenuation::ScopeHash> {
         let _guard = self
             .capability_trust_roots_write_lock
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let current = self.capability_trust_roots.load_full();
-        let mut next: HashMap<String, chio_core::capability::ScopeHash> = (*current).clone();
+        let mut next: HashMap<String, chio_core::capability::attenuation::ScopeHash> =
+            (*current).clone();
         let prev = next.insert(issuer.to_hex(), root);
         self.capability_trust_roots.store(Arc::new(next));
         prev
@@ -579,7 +584,7 @@ impl ChioKernel {
     /// `capability_trust_root_resolver_snapshot`.
     pub fn capability_trust_roots_snapshot(
         &self,
-    ) -> HashMap<String, chio_core::capability::ScopeHash> {
+    ) -> HashMap<String, chio_core::capability::attenuation::ScopeHash> {
         (*self.capability_trust_roots.load_full()).clone()
     }
 
@@ -589,11 +594,13 @@ impl ChioKernel {
     /// rotations cannot tear an in-flight verification.
     pub(crate) fn capability_trust_root_resolver_snapshot(
         &self,
-    ) -> impl Fn(&chio_core::PublicKey) -> Option<chio_core::capability::ScopeHash> + Send + Sync + 'static
-    {
-        let snapshot: Arc<HashMap<String, chio_core::capability::ScopeHash>> =
+    ) -> impl Fn(&chio_core::PublicKey) -> Option<chio_core::capability::attenuation::ScopeHash>
+           + Send
+           + Sync
+           + 'static {
+        let snapshot: Arc<HashMap<String, chio_core::capability::attenuation::ScopeHash>> =
             self.capability_trust_roots.load_full();
-        move |issuer: &chio_core::PublicKey| -> Option<chio_core::capability::ScopeHash> {
+        move |issuer: &chio_core::PublicKey| -> Option<chio_core::capability::attenuation::ScopeHash> {
             snapshot.get(&issuer.to_hex()).cloned()
         }
     }
@@ -602,7 +609,7 @@ impl ChioKernel {
         &self,
         remote_kernel_id: Option<&str>,
         now: u64,
-    ) -> Result<chio_core::capability::CapabilityNegotiation, String> {
+    ) -> Result<chio_core::capability::features::CapabilityNegotiation, String> {
         if let Some(remote) = remote_kernel_id {
             if let Some(peer) = self.federation_peer(remote, now) {
                 return Ok(peer.capabilities);
@@ -611,7 +618,7 @@ impl ChioKernel {
                 "no fresh federation peer negotiation profile pinned for remote kernel {remote}"
             ));
         }
-        Ok(chio_core::capability::CapabilityNegotiation::t1_default())
+        Ok(chio_core::capability::features::CapabilityNegotiation::t1_default())
     }
 
     /// Install the bilateral cosigner responsible for

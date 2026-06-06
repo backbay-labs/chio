@@ -360,25 +360,25 @@ impl KernelMediatedMcpTransport {
     fn issue_capability_for_tool(
         &self,
         tool_name: &str,
-    ) -> Result<chio_core::capability::CapabilityToken, chio_mcp_adapter::edge::AdapterError> {
+    ) -> Result<chio_core::capability::token::CapabilityToken, chio_mcp_adapter::edge::AdapterError> {
         if !self.allowed.contains(tool_name) {
             return Err(chio_mcp_adapter::edge::AdapterError::KernelRuntime(format!(
                 "tool '{tool_name}' is not authorized by the strict wrapper capability"
             )));
         }
-        let grant = chio_core::capability::ToolGrant {
+        let grant = chio_core::capability::scope::ToolGrant {
             server_id: self.server_id.clone(),
             tool_name: tool_name.to_string(),
-            operations: vec![chio_core::capability::Operation::Invoke],
+            operations: vec![chio_core::capability::scope::Operation::Invoke],
             constraints: Vec::new(),
             max_invocations: None,
             max_cost_per_invocation: None,
             max_total_cost: None,
             dpop_required: None,
         };
-        let scope = chio_core::capability::ChioScope {
+        let scope = chio_core::capability::scope::ChioScope {
             grants: vec![grant],
-            ..chio_core::capability::ChioScope::default()
+            ..chio_core::capability::scope::ChioScope::default()
         };
         self.kernel
             .issue_capability(&self.agent_public_key, scope, 300)

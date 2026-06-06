@@ -15,7 +15,9 @@
 use std::collections::BTreeMap;
 
 use chio_core::capability::{
-    CapabilityToken, GovernedApprovalToken, GovernedTransactionIntent, ModelMetadata,
+    governance::{GovernedApprovalToken, GovernedTransactionIntent},
+    scope::ModelMetadata,
+    token::CapabilityToken,
 };
 use chio_core::receipt::ChioReceipt;
 use chio_cross_protocol::discovery::{DiscoveryProtocol, TargetProtocolRegistry};
@@ -563,8 +565,8 @@ fn render_response_content(output: &Option<ToolCallOutput>, reason: Option<&str>
 mod tests {
     use super::*;
     use chio_core::capability::{
-        ChioScope, Constraint, GovernedTransactionIntent, ModelSafetyTier, MonetaryAmount,
-        Operation, ToolGrant,
+        governance::GovernedTransactionIntent,
+        scope::{ChioScope, Constraint, ModelSafetyTier, MonetaryAmount, Operation, ToolGrant},
     };
     use chio_core::crypto::Keypair;
     use chio_kernel::{
@@ -911,7 +913,8 @@ mod tests {
                 model_id: "gpt-5".to_string(),
                 safety_tier: Some(ModelSafetyTier::High),
                 provider: Some("openai".to_string()),
-                provenance_class: chio_core::capability::ProvenanceEvidenceClass::Asserted,
+                provenance_class:
+                    chio_core::capability::governance::ProvenanceEvidenceClass::Asserted,
             }),
         };
 

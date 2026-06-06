@@ -470,7 +470,7 @@ impl ChioKernel {
             return Ok(());
         }
 
-        chio_core::capability::validate_delegation_chain(
+        chio_core::capability::attenuation::validate_delegation_chain(
             &cap.delegation_chain,
             Some(self.config.max_delegation_depth),
         )
@@ -1424,7 +1424,7 @@ impl ChioKernel {
 
     fn verify_governed_runtime_attestation(
         &self,
-        attestation: &chio_core::capability::RuntimeAttestationEvidence,
+        attestation: &chio_core::capability::runtime_attestation::RuntimeAttestationEvidence,
         now: u64,
     ) -> Result<VerifiedRuntimeAttestationRecord, KernelError> {
         verify_governed_runtime_attestation_record(
@@ -1566,7 +1566,7 @@ impl ChioKernel {
     }
 
     fn validate_metered_billing_context(
-        intent: &chio_core::capability::GovernedTransactionIntent,
+        intent: &chio_core::capability::governance::GovernedTransactionIntent,
         charge_result: Option<&BudgetChargeResult>,
         now: u64,
     ) -> Result<(), KernelError> {
@@ -1646,7 +1646,7 @@ impl ChioKernel {
         &self,
         request: &ToolCallRequest,
         cap: &CapabilityToken,
-        intent: &chio_core::capability::GovernedTransactionIntent,
+        intent: &chio_core::capability::governance::GovernedTransactionIntent,
         parent_context: Option<&OperationContext>,
         now: u64,
     ) -> Result<Option<ValidatedGovernedCallChainProof>, KernelError> {
@@ -1735,8 +1735,8 @@ impl ChioKernel {
         &self,
         request: &ToolCallRequest,
         cap: &CapabilityToken,
-        intent: &chio_core::capability::GovernedTransactionIntent,
-        call_chain: &chio_core::capability::GovernedCallChainContext,
+        intent: &chio_core::capability::governance::GovernedTransactionIntent,
+        call_chain: &chio_core::capability::governance::GovernedCallChainContext,
         parent_context: Option<&OperationContext>,
         now: u64,
     ) -> Result<Option<ValidatedGovernedCallChainProof>, KernelError> {
@@ -2158,7 +2158,7 @@ impl ChioKernel {
         &self,
         request: &ToolCallRequest,
         cap: &CapabilityToken,
-        intent: &chio_core::capability::GovernedTransactionIntent,
+        intent: &chio_core::capability::governance::GovernedTransactionIntent,
         minimum_autonomy_tier: Option<GovernedAutonomyTier>,
         verified_runtime_attestation: Option<&VerifiedRuntimeAttestationRecord>,
         now: u64,

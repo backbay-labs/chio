@@ -1,8 +1,11 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 use super::*;
 use chio_core::capability::{
-    ChioScope, Constraint, ModelMetadata, ModelSafetyTier, Operation, PromptGrant,
-    ProvenanceEvidenceClass, ResourceGrant, ToolGrant,
+    governance::ProvenanceEvidenceClass,
+    scope::{
+        ChioScope, Constraint, ModelMetadata, ModelSafetyTier, Operation, PromptGrant,
+        ResourceGrant, ToolGrant,
+    },
 };
 use chio_core::crypto::Keypair;
 use chio_core::{

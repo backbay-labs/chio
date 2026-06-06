@@ -24,7 +24,7 @@ use alloc::vec::Vec;
 
 use serde::{Deserialize, Serialize};
 
-use crate::capability::{CapabilityToken, ModelMetadata};
+use crate::capability::{scope::ModelMetadata, token::CapabilityToken};
 use crate::{AgentId, CapabilityId, ServerId};
 
 /// Stable identifier for a planned tool call within a plan.

@@ -1,6 +1,7 @@
 use chio_core_types::capability::{
-    CapabilityToken, CapabilityTokenBody, ChioScope, GovernedTransactionIntent, Operation,
-    ToolGrant,
+    governance::GovernedTransactionIntent,
+    scope::{ChioScope, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core_types::crypto::Keypair;
 use chio_core_types::receipt::{

@@ -10,8 +10,8 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use chio_core::capability::{
-    CapabilityToken, CapabilityTokenBody, ChioScope, Constraint, MonetaryAmount, Operation,
-    ToolGrant,
+    scope::{ChioScope, Constraint, MonetaryAmount, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core::crypto::Keypair;
 use chio_core::receipt::{
@@ -1635,19 +1635,20 @@ extensions:
     );
 
     let subject = Keypair::generate();
-    let runtime_attestation =
-        serde_json::to_value(chio_core::capability::RuntimeAttestationEvidence {
+    let runtime_attestation = serde_json::to_value(
+        chio_core::capability::runtime_attestation::RuntimeAttestationEvidence {
             schema: "chio.runtime-attestation.v1".to_string(),
             verifier: "verifier.chio".to_string(),
-            tier: chio_core::capability::RuntimeAssuranceTier::Attested,
+            tier: chio_core::capability::runtime_attestation::RuntimeAssuranceTier::Attested,
             issued_at: 1,
             expires_at: 4_102_444_800u64,
             evidence_sha256: "attestation-digest".to_string(),
             runtime_identity: Some("spiffe://chio/runtime/test".to_string()),
             workload_identity: None,
             claims: None,
-        })
-        .expect("serialize runtime attestation");
+        },
+    )
+    .expect("serialize runtime attestation");
     let scope = ChioScope {
         grants: vec![ToolGrant {
             server_id: "payments".to_string(),
@@ -1700,7 +1701,7 @@ extensions:
         capability.scope.grants[0]
             .constraints
             .contains(&Constraint::MinimumRuntimeAssurance(
-                chio_core::capability::RuntimeAssuranceTier::Attested
+                chio_core::capability::runtime_attestation::RuntimeAssuranceTier::Attested
             )),
         "issued capability should retain the required runtime assurance tier"
     );

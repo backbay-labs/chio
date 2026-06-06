@@ -62,10 +62,7 @@ use chio_core::appraisal::{
     RuntimeAttestationAppraisalResultExportRequest, RuntimeAttestationImportedAppraisalPolicy,
     SignedRuntimeAttestationAppraisalResult,
 };
-use chio_core::capability::{
-    ChioScope, GovernedAutonomyTier, MonetaryAmount, RuntimeAssuranceTier,
-    RuntimeAttestationEvidence,
-};
+use chio_core::capability::{governance::{GovernedAutonomyTier}, runtime_attestation::{RuntimeAssuranceTier, RuntimeAttestationEvidence}, scope::{ChioScope, MonetaryAmount}};
 use chio_core::crypto::Keypair;
 use chio_core::message::{AgentMessage, KernelMessage, ToolCallError, ToolCallResult};
 use chio_core::session::{

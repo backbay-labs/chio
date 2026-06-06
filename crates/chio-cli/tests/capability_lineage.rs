@@ -11,8 +11,9 @@ use std::process::{Child, Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_core::capability::{
-    ChioScope, Constraint, Operation, RuntimeAssuranceTier, RuntimeAttestationEvidence, ToolGrant,
-    WorkloadCredentialKind, WorkloadIdentity, WorkloadIdentityScheme,
+    runtime_attestation::{RuntimeAssuranceTier, RuntimeAttestationEvidence},
+    scope::{ChioScope, Constraint, Operation, ToolGrant},
+    workload_identity::{WorkloadCredentialKind, WorkloadIdentity, WorkloadIdentityScheme},
 };
 use chio_core::crypto::Keypair;
 use chio_test_support::loopback::{reserve_listen_addr, skip_when_loopback_bind_denied};

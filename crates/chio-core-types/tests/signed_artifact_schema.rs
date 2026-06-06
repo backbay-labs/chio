@@ -1,6 +1,6 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-use chio_core_types::capability::{
+use chio_core_types::capability::governance::{
     CallChainContinuationToken, CallChainContinuationTokenBody, CHIO_CALL_CHAIN_CONTINUATION_SCHEMA,
 };
 use chio_core_types::receipt::{

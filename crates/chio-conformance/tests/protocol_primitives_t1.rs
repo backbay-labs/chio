@@ -1,9 +1,10 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use chio_core::capability::{
-    compute_attenuation_witness, scope_hash, AttenuationProof, CapabilityToken,
-    CapabilityTokenAttenuationBody, CapabilityTokenBody, Caveat, CaveatKind, ChioScope, Operation,
-    ToolGrant,
+    attenuation::{compute_attenuation_witness, scope_hash, AttenuationProof},
+    caveat::{Caveat, CaveatKind},
+    scope::{ChioScope, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenAttenuationBody, CapabilityTokenBody},
 };
 use chio_core::crypto::Keypair;
 

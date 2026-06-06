@@ -351,7 +351,10 @@ mod tests {
     use super::*;
     use crate::evaluator::ChioEvaluator;
     use bytes::Bytes;
-    use chio_core_types::capability::{CapabilityToken, CapabilityTokenBody, ChioScope};
+    use chio_core_types::capability::{
+        scope::ChioScope,
+        token::{CapabilityToken, CapabilityTokenBody},
+    };
     use chio_core_types::crypto::Keypair;
     use chio_http_core::{
         http_authority_tool_grant, http_status_scope, HttpReceipt, CHIO_HTTP_STATUS_SCOPE_FINAL,

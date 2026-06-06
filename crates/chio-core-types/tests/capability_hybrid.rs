@@ -8,8 +8,9 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use chio_core_types::capability::{
-    CapabilityCryptoFloor, CapabilityFloorVerifyError, CapabilityToken, CapabilityTokenBody,
-    ChioScope, Operation, ToolGrant,
+    crypto_floor::{CapabilityCryptoFloor, CapabilityFloorVerifyError},
+    scope::{ChioScope, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core_types::crypto::{
     HybridBackend, Keypair, MlDsa65Backend, SigningAlgorithm, SigningBackend,

@@ -9,7 +9,10 @@
 
 use std::collections::HashMap;
 
-use chio_core::capability::{CapabilityToken, CapabilityTokenBody, ChioScope};
+use chio_core::capability::{
+    scope::ChioScope,
+    token::{CapabilityToken, CapabilityTokenBody},
+};
 use chio_core::crypto::Keypair;
 use chio_data_guards::{SqlDialect, SqlGuardConfig, SqlOperation, SqlQueryGuard};
 use chio_kernel::{Guard, GuardContext, ToolCallRequest, Verdict};

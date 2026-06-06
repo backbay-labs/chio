@@ -4,7 +4,7 @@ mod tests {
     use super::*;
     use std::sync::{Mutex, MutexGuard};
 
-    use chio_core::capability::{CapabilityTokenBody, ChioScope, Operation, ToolGrant};
+    use chio_core::capability::{scope::{ChioScope, Operation, ToolGrant}, token::{CapabilityTokenBody}};
     use chio_core::crypto::Keypair;
     use chio_kernel::{
         dpop, ChioKernel, KernelConfig, KernelError, NestedFlowBridge, DEFAULT_CHECKPOINT_BATCH_SIZE,
@@ -379,7 +379,7 @@ mod tests {
         subject: &Keypair,
         server_id: &str,
         tool_name: &str,
-    ) -> chio_core::capability::CapabilityToken {
+    ) -> chio_core::capability::token::CapabilityToken {
         capability_for_tool_with_dpop_requirement(issuer, subject, server_id, tool_name, None)
     }
 
@@ -389,9 +389,9 @@ mod tests {
         server_id: &str,
         tool_name: &str,
         dpop_required: Option<bool>,
-    ) -> chio_core::capability::CapabilityToken {
+    ) -> chio_core::capability::token::CapabilityToken {
         let now = current_unix_timestamp();
-        chio_core::capability::CapabilityToken::sign(
+        chio_core::capability::token::CapabilityToken::sign(
             CapabilityTokenBody {
                 id: format!("cap-{server_id}-{tool_name}"),
                 issuer: issuer.public_key(),

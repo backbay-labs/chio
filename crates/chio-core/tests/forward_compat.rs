@@ -14,10 +14,14 @@
 use chio_core::crypto::sha256_hex;
 use chio_core::session::{OperationKind, OperationTerminalState, RequestId, SessionId};
 use chio_core::{
-    CapabilityToken, CapabilityTokenBody, ChildRequestReceipt, ChildRequestReceiptBody,
-    ChioReceipt, ChioReceiptBody, ChioScope, Decision, DelegationLink, DelegationLinkBody,
-    GuardEvidence, Keypair, Operation, ToolAnnotations, ToolCallAction, ToolDefinition, ToolGrant,
-    ToolManifest, ToolManifestBody,
+    capability::{
+        attenuation::{DelegationLink, DelegationLinkBody},
+        scope::{ChioScope, Operation, ToolGrant},
+        token::{CapabilityToken, CapabilityTokenBody},
+    },
+    ChildRequestReceipt, ChildRequestReceiptBody, ChioReceipt, ChioReceiptBody, Decision,
+    GuardEvidence, Keypair, ToolAnnotations, ToolCallAction, ToolDefinition, ToolManifest,
+    ToolManifestBody,
 };
 
 // ---------------------------------------------------------------------------

@@ -28,7 +28,10 @@ use chio_arena::{
     DeterministicScheduler, KernelStepRequest, Scenario, ScenarioVerdict, ScheduledStep,
     VirtualClock,
 };
-use chio_core::{ChioScope, Keypair, Operation, ToolGrant};
+use chio_core::{
+    capability::scope::{ChioScope, Operation, ToolGrant},
+    Keypair,
+};
 use chio_kernel::{
     ChioKernel, KernelConfig, KernelError, NestedFlowBridge, ToolCallRequest, ToolServerConnection,
     DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_MAX_STREAM_DURATION_SECS,

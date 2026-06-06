@@ -3,7 +3,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use chio_core::capability::{CapabilityToken, ChioScope, Operation, ToolGrant};
+use chio_core::capability::{
+    scope::{ChioScope, Operation, ToolGrant},
+    token::CapabilityToken,
+};
 use chio_core::crypto::Keypair;
 use chio_core::receipt::GuardEvidence;
 use chio_kernel::execution_nonce::{

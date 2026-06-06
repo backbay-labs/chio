@@ -4,7 +4,7 @@
 //! during the tool invocation: compute time, data volume transferred, and
 //! monetary API cost.
 
-use chio_core::capability::MonetaryAmount;
+use chio_core::capability::scope::MonetaryAmount;
 use serde::{Deserialize, Serialize};
 
 /// Schema identifier for cost metadata embedded in receipts.

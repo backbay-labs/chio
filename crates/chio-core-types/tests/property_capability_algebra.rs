@@ -29,8 +29,10 @@
 #![forbid(clippy::expect_used)]
 
 use chio_core_types::capability::{
-    validate_attenuation, validate_delegation_chain, ChioScope, DelegationLink, DelegationLinkBody,
-    Operation, ToolGrant,
+    attenuation::{
+        validate_attenuation, validate_delegation_chain, DelegationLink, DelegationLinkBody,
+    },
+    scope::{ChioScope, Operation, ToolGrant},
 };
 use chio_core_types::crypto::Keypair;
 use proptest::collection::vec as prop_vec;

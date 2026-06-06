@@ -2,7 +2,7 @@ use std::cell::RefCell;
 
 use super::*;
 use chio_appraisal::{verify_runtime_attestation_record, VerifiedRuntimeAttestationRecord};
-use chio_core::capability::{
+use chio_core::capability::governance::{
     GovernedCallChainContext, GovernedCallChainEvidenceSource, GovernedCallChainProvenance,
     GovernedProvenanceEvidenceClass, GovernedUpstreamCallChainProof,
 };
@@ -736,7 +736,7 @@ fn receipt_provenance_metadata(
 }
 
 pub(super) fn verify_governed_runtime_attestation_record(
-    attestation: &chio_core::capability::RuntimeAttestationEvidence,
+    attestation: &chio_core::capability::runtime_attestation::RuntimeAttestationEvidence,
     attestation_trust_policy: Option<&AttestationTrustPolicy>,
     now: u64,
 ) -> Result<VerifiedRuntimeAttestationRecord, KernelError> {
@@ -771,7 +771,7 @@ fn verified_runtime_assurance_receipt_metadata(
 }
 
 fn governed_runtime_assurance_receipt_metadata(
-    attestation: Option<&chio_core::capability::RuntimeAttestationEvidence>,
+    attestation: Option<&chio_core::capability::runtime_attestation::RuntimeAttestationEvidence>,
     attestation_trust_policy: Option<&AttestationTrustPolicy>,
     now: u64,
 ) -> Option<RuntimeAssuranceReceiptMetadata> {
@@ -790,13 +790,14 @@ fn governed_economic_authorization_metadata(
         return Ok(None);
     };
 
-    let approved_max = intent
-        .max_amount
-        .clone()
-        .unwrap_or(chio_core::capability::MonetaryAmount {
-            units: financial.budget_total,
-            currency: financial.currency.clone(),
-        });
+    let approved_max =
+        intent
+            .max_amount
+            .clone()
+            .unwrap_or(chio_core::capability::scope::MonetaryAmount {
+                units: financial.budget_total,
+                currency: financial.currency.clone(),
+            });
     let hold_amount_units = financial.attempted_cost.or_else(|| {
         financial
             .payment_reference
@@ -854,13 +855,13 @@ fn governed_economic_authorization_metadata(
 
     let economic_mode = if let Some(metered) = metered {
         match metered.settlement_mode {
-            chio_core::capability::MeteredSettlementMode::MustPrepay => {
+            chio_core::capability::governance::MeteredSettlementMode::MustPrepay => {
                 chio_core::receipt::EconomicAuthorizationMode::PrepaidFixed
             }
-            chio_core::capability::MeteredSettlementMode::HoldCapture => {
+            chio_core::capability::governance::MeteredSettlementMode::HoldCapture => {
                 chio_core::receipt::EconomicAuthorizationMode::MeteredHoldCapture
             }
-            chio_core::capability::MeteredSettlementMode::AllowThenSettle => {
+            chio_core::capability::governance::MeteredSettlementMode::AllowThenSettle => {
                 chio_core::receipt::EconomicAuthorizationMode::ExternalDispatch
             }
         }
@@ -918,11 +919,13 @@ fn governed_economic_authorization_metadata(
             },
             amount_bounds: chio_core::receipt::EconomicAmountBoundsReceiptMetadata {
                 approved_max,
-                hold_amount: hold_amount_units.map(|units| chio_core::capability::MonetaryAmount {
-                    units,
-                    currency: financial.currency.clone(),
+                hold_amount: hold_amount_units.map(|units| {
+                    chio_core::capability::scope::MonetaryAmount {
+                        units,
+                        currency: financial.currency.clone(),
+                    }
                 }),
-                settlement_cap: chio_core::capability::MonetaryAmount {
+                settlement_cap: chio_core::capability::scope::MonetaryAmount {
                     units: settlement_cap_units,
                     currency: financial.currency.clone(),
                 },
@@ -1300,10 +1303,14 @@ pub(super) fn truncate_stream_to_byte_limit(
 mod tests {
     use super::*;
     use chio_core::capability::{
-        AttestationTrustPolicy, AttestationTrustRule, CapabilityToken, CapabilityTokenBody,
-        ChioScope, GovernedCallChainContext, GovernedProvenanceEvidenceClass,
-        GovernedTransactionIntent, GovernedUpstreamCallChainProof,
-        GovernedUpstreamCallChainProofBody, RuntimeAssuranceTier, RuntimeAttestationEvidence,
+        governance::{
+            GovernedCallChainContext, GovernedProvenanceEvidenceClass, GovernedTransactionIntent,
+            GovernedUpstreamCallChainProof, GovernedUpstreamCallChainProofBody,
+        },
+        runtime_attestation::{RuntimeAssuranceTier, RuntimeAttestationEvidence},
+        scope::ChioScope,
+        token::{CapabilityToken, CapabilityTokenBody},
+        trust_policy::{AttestationTrustPolicy, AttestationTrustRule},
     };
     use chio_core::crypto::sha256_hex;
 
@@ -1876,22 +1883,23 @@ mod tests {
                 server_id: "srv-pay".to_string(),
                 tool_name: "charge".to_string(),
                 purpose: "pay supplier".to_string(),
-                max_amount: Some(chio_core::capability::MonetaryAmount {
+                max_amount: Some(chio_core::capability::scope::MonetaryAmount {
                     units: 500,
                     currency: "USD".to_string(),
                 }),
-                commerce: Some(chio_core::capability::GovernedCommerceContext {
+                commerce: Some(chio_core::capability::governance::GovernedCommerceContext {
                     seller: "seller-1".to_string(),
                     shared_payment_token_id: "shared-token-1".to_string(),
                 }),
-                metered_billing: Some(chio_core::capability::MeteredBillingContext {
-                    settlement_mode: chio_core::capability::MeteredSettlementMode::HoldCapture,
-                    quote: chio_core::capability::MeteredBillingQuote {
+                metered_billing: Some(chio_core::capability::governance::MeteredBillingContext {
+                    settlement_mode:
+                        chio_core::capability::governance::MeteredSettlementMode::HoldCapture,
+                    quote: chio_core::capability::governance::MeteredBillingQuote {
                         quote_id: "quote-1".to_string(),
                         provider: "meterd".to_string(),
                         billing_unit: "1k_tokens".to_string(),
                         quoted_units: 42,
-                        quoted_cost: chio_core::capability::MonetaryAmount {
+                        quoted_cost: chio_core::capability::scope::MonetaryAmount {
                             units: 230,
                             currency: "USD".to_string(),
                         },

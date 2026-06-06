@@ -5,7 +5,7 @@ use crate::authority::{
     verify_signed_charter, verify_signed_fee_schedule, verify_signed_listing,
     verify_signed_penalty,
 };
-use crate::capability::MonetaryAmount;
+use crate::capability::scope::MonetaryAmount;
 use crate::crypto::PublicKey;
 use crate::evidence::{OpenMarketFinding, OpenMarketFindingCode};
 use crate::fee_schedule::{

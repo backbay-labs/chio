@@ -361,7 +361,7 @@ pub(crate) struct ReceiptContent {
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ValidatedGovernedCallChainProof {
-    upstream_proof: Option<chio_core::capability::GovernedUpstreamCallChainProof>,
+    upstream_proof: Option<chio_core::capability::governance::GovernedUpstreamCallChainProof>,
     continuation_token_id: Option<String>,
     session_anchor_id: Option<String>,
 }
@@ -1318,13 +1318,17 @@ impl ChioKernel {
 
 fn capability_crypto_floor(
     floor: KernelCryptoFloor,
-) -> chio_core::capability::CapabilityCryptoFloor {
+) -> chio_core::capability::crypto_floor::CapabilityCryptoFloor {
     match floor {
         KernelCryptoFloor::AllowClassical => {
-            chio_core::capability::CapabilityCryptoFloor::AllowClassical
+            chio_core::capability::crypto_floor::CapabilityCryptoFloor::AllowClassical
         }
-        KernelCryptoFloor::AllowHybrid => chio_core::capability::CapabilityCryptoFloor::AllowHybrid,
-        KernelCryptoFloor::PqRequired => chio_core::capability::CapabilityCryptoFloor::PqRequired,
+        KernelCryptoFloor::AllowHybrid => {
+            chio_core::capability::crypto_floor::CapabilityCryptoFloor::AllowHybrid
+        }
+        KernelCryptoFloor::PqRequired => {
+            chio_core::capability::crypto_floor::CapabilityCryptoFloor::PqRequired
+        }
     }
 }
 
@@ -1428,7 +1432,7 @@ pub struct ChioKernel {
     /// `ArcSwap` so trust-root rotations can land without holding a
     /// kernel mutex. Hex-keyed because `chio_core::PublicKey` does not
     /// implement `Hash`.
-    capability_trust_roots: ArcSwap<HashMap<String, chio_core::capability::ScopeHash>>,
+    capability_trust_roots: ArcSwap<HashMap<String, chio_core::capability::attenuation::ScopeHash>>,
     /// Serializes read-modify-write updates to `capability_trust_roots`.
     /// Snapshot reads remain lock-free through ArcSwap.
     capability_trust_roots_write_lock: Mutex<()>,
@@ -1772,7 +1776,7 @@ fn validate_delegation_scope_step(
     parent_scope: &ChioScope,
     child_scope: &ChioScope,
     child_expires_at: u64,
-    link: &chio_core::capability::DelegationLink,
+    link: &chio_core::capability::attenuation::DelegationLink,
 ) -> Result<(), KernelError> {
     validate_delegatable_subset(
         parent_capability_id,
@@ -1839,11 +1843,11 @@ fn validate_declared_attenuations(
     child_capability_id: &str,
     child_scope: &ChioScope,
     child_expires_at: u64,
-    link: &chio_core::capability::DelegationLink,
+    link: &chio_core::capability::attenuation::DelegationLink,
 ) -> Result<(), KernelError> {
     for attenuation in &link.attenuations {
         match attenuation {
-            chio_core::capability::Attenuation::RemoveTool {
+            chio_core::capability::attenuation::Attenuation::RemoveTool {
                 server_id,
                 tool_name,
             } => {
@@ -1858,7 +1862,7 @@ fn validate_declared_attenuations(
                     )));
                 }
             }
-            chio_core::capability::Attenuation::RemoveOperation {
+            chio_core::capability::attenuation::Attenuation::RemoveOperation {
                 server_id,
                 tool_name,
                 operation,
@@ -1873,7 +1877,7 @@ fn validate_declared_attenuations(
                     )));
                 }
             }
-            chio_core::capability::Attenuation::AddConstraint {
+            chio_core::capability::attenuation::Attenuation::AddConstraint {
                 server_id,
                 tool_name,
                 constraint,
@@ -1888,7 +1892,7 @@ fn validate_declared_attenuations(
                     )));
                 }
             }
-            chio_core::capability::Attenuation::ReduceBudget {
+            chio_core::capability::attenuation::Attenuation::ReduceBudget {
                 server_id,
                 tool_name,
                 max_invocations,
@@ -1905,7 +1909,7 @@ fn validate_declared_attenuations(
                     )));
                 }
             }
-            chio_core::capability::Attenuation::ShortenExpiry { new_expires_at } => {
+            chio_core::capability::attenuation::Attenuation::ShortenExpiry { new_expires_at } => {
                 if child_expires_at > *new_expires_at {
                     return Err(KernelError::DelegationInvalid(format!(
                         "child capability {} expires after declared shortened expiry {}",
@@ -1913,7 +1917,7 @@ fn validate_declared_attenuations(
                     )));
                 }
             }
-            chio_core::capability::Attenuation::ReduceCostPerInvocation {
+            chio_core::capability::attenuation::Attenuation::ReduceCostPerInvocation {
                 server_id,
                 tool_name,
                 max_cost_per_invocation,
@@ -1931,7 +1935,7 @@ fn validate_declared_attenuations(
                     )));
                 }
             }
-            chio_core::capability::Attenuation::ReduceTotalCost {
+            chio_core::capability::attenuation::Attenuation::ReduceTotalCost {
                 server_id,
                 tool_name,
                 max_total_cost,

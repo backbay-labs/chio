@@ -26,7 +26,7 @@
 
 use std::sync::Arc;
 
-use chio_core_types::CapabilityToken;
+use chio_core_types::capability::token::CapabilityToken;
 use chio_kernel_core::{RevocationSnapshot, RevocationView, RevocationViewSubject};
 
 use crate::kernel::{current_unix_timestamp, KernelError};
@@ -113,7 +113,9 @@ mod tests {
     use super::*;
 
     use chio_core_types::capability::{
-        CapabilityTokenBody, ChioScope, DelegationLink, DelegationLinkBody, Operation, ToolGrant,
+        attenuation::{DelegationLink, DelegationLinkBody},
+        scope::{ChioScope, Operation, ToolGrant},
+        token::CapabilityTokenBody,
     };
     use chio_core_types::crypto::Keypair;
     use chio_kernel_core::{RevocationSnapshot, RevocationViewSubject};

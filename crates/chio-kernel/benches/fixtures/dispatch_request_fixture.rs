@@ -3,7 +3,10 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use chio_core::capability::{CapabilityToken, ChioScope, Operation, ToolGrant};
+use chio_core::capability::{
+    scope::{ChioScope, Operation, ToolGrant},
+    token::CapabilityToken,
+};
 use chio_core::crypto::Keypair;
 use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, GuardEvidence, ToolCallAction};
 use chio_core::session::{OperationContext, RequestId, SessionId};

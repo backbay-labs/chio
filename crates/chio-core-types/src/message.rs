@@ -10,7 +10,7 @@ use alloc::vec::Vec;
 
 use serde::{Deserialize, Serialize};
 
-use crate::capability::CapabilityToken;
+use crate::capability::token::CapabilityToken;
 use crate::receipt::ChioReceipt;
 
 /// Messages sent from the Agent to the Kernel.
@@ -135,7 +135,8 @@ pub enum ToolCallError {
 mod tests {
     use super::*;
     use crate::capability::{
-        CapabilityToken, CapabilityTokenBody, ChioScope, Operation, ToolGrant,
+        scope::{ChioScope, Operation, ToolGrant},
+        token::{CapabilityToken, CapabilityTokenBody},
     };
     use crate::crypto::Keypair;
     use crate::receipt::{

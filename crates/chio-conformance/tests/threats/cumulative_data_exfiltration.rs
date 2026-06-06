@@ -12,7 +12,10 @@
 
 use std::sync::Arc;
 
-use chio_core::capability::{CapabilityToken, CapabilityTokenBody, ChioScope};
+use chio_core::capability::{
+    scope::ChioScope,
+    token::{CapabilityToken, CapabilityTokenBody},
+};
 use chio_core::crypto::Keypair;
 use chio_guards::{DataFlowConfig, DataFlowGuard};
 use chio_http_session::{RecordParams, SessionJournal};

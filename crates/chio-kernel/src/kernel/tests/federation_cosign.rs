@@ -12,7 +12,7 @@
 //     artifact behind,
 //   * missing peer pin fails closed.
 
-use chio_core::capability::CapabilityNegotiation;
+use chio_core::capability::features::CapabilityNegotiation;
 use chio_federation::{
     bilateral::BilateralCoSigningError, bilateral::BilateralCoSigningProtocol, bilateral::CoSigningRequest, bilateral::CoSigningResponse,
     trust_establishment::FederationPeer, bilateral::InProcessCoSigner, trust_establishment::KernelTrustExchange, trust_establishment::PeerHandshakeEnvelope,

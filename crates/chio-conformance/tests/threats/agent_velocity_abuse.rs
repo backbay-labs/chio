@@ -10,7 +10,10 @@
 //! below fails when the production guard stops denying the second
 //! request.
 
-use chio_core::capability::{CapabilityToken, CapabilityTokenBody, ChioScope};
+use chio_core::capability::{
+    scope::ChioScope,
+    token::{CapabilityToken, CapabilityTokenBody},
+};
 use chio_core::crypto::Keypair;
 use chio_guards::{AgentVelocityConfig, AgentVelocityGuard};
 use chio_kernel::{Guard, GuardContext, GuardDecision, ToolCallRequest, Verdict};

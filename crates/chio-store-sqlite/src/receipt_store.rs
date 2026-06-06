@@ -10,7 +10,7 @@ use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_core::canonical::{canonical_json_bytes, CanonicalBytes};
-use chio_core::capability::{CapabilityToken, ChioScope};
+use chio_core::capability::{scope::ChioScope, token::CapabilityToken};
 use chio_core::crypto::{sha256_hex, Keypair, Signature};
 use chio_core::receipt::{
     ChildRequestReceipt, ChioReceipt, Decision, FinancialReceiptMetadata,

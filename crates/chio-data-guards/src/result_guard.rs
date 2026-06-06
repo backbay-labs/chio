@@ -57,7 +57,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing::warn;
 
-use chio_core::capability::{ChioScope, Constraint};
+use chio_core::capability::scope::{ChioScope, Constraint};
 use chio_guards::post_invocation::{
     PostInvocationContext, PostInvocationHook, PostInvocationVerdict,
 };
@@ -562,7 +562,7 @@ fn redact_pii_in_place(value: &mut Value, patterns: &[(String, Regex)], marker: 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chio_core::capability::{Operation, ToolGrant};
+    use chio_core::capability::scope::{Operation, ToolGrant};
 
     fn grant(constraints: Vec<Constraint>) -> ToolGrant {
         ToolGrant {

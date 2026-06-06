@@ -13,7 +13,8 @@ use std::ptr;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_core_types::capability::{
-    CapabilityCryptoFloor, CapabilityNegotiation, CapabilityToken, ScopeHash,
+    attenuation::ScopeHash, crypto_floor::CapabilityCryptoFloor, features::CapabilityNegotiation,
+    token::CapabilityToken,
 };
 use chio_core_types::crypto::{Ed25519Backend, Keypair, PublicKey};
 use chio_core_types::receipt::ChioReceiptBody;
@@ -743,7 +744,9 @@ mod tests {
     use super::*;
     use chio_core_types::canonical_json_bytes;
     use chio_core_types::capability::{
-        CapabilityTokenBody, ChioScope, DelegationLink, DelegationLinkBody, Operation, ToolGrant,
+        attenuation::{DelegationLink, DelegationLinkBody},
+        scope::{ChioScope, Operation, ToolGrant},
+        token::CapabilityTokenBody,
     };
     use chio_kernel_core::passport_verify::{
         PortablePassportBody, PortablePassportEnvelope, PORTABLE_PASSPORT_SCHEMA,

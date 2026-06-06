@@ -368,7 +368,7 @@ pub fn build_layered(
 mod tests {
     use super::*;
 
-    use chio_core_types::capability::{ChioScope, Operation, ToolGrant};
+    use chio_core_types::capability::scope::{ChioScope, Operation, ToolGrant};
     use chio_core_types::crypto::Keypair;
     use chio_kernel::{
         ChioKernel, KernelConfig, KernelError, NestedFlowBridge, ToolCallOutput, ToolCallRequest,

@@ -772,7 +772,7 @@ pub(crate) fn metered_billing_evidence_record_from_columns(
             observed_units: observed_units.max(0) as u64,
             evidence_sha256,
         },
-        billed_cost: chio_core::capability::MonetaryAmount {
+        billed_cost: chio_core::capability::scope::MonetaryAmount {
             units: billed_cost_units.max(0) as u64,
             currency: billed_cost_currency,
         },
@@ -1003,12 +1003,13 @@ pub(crate) fn authorization_transaction_context_from_governed_metadata(
 }
 
 fn delegated_call_chain_is_sender_bound(
-    call_chain: Option<&chio_core::capability::GovernedCallChainProvenance>,
+    call_chain: Option<&chio_core::capability::governance::GovernedCallChainProvenance>,
 ) -> bool {
     let Some(call_chain) = call_chain else {
         return false;
     };
-    if call_chain.evidence_class == chio_core::capability::GovernedProvenanceEvidenceClass::Asserted
+    if call_chain.evidence_class
+        == chio_core::capability::governance::GovernedProvenanceEvidenceClass::Asserted
     {
         return false;
     }
@@ -1016,22 +1017,22 @@ fn delegated_call_chain_is_sender_bound(
     let has_local_lineage_link = call_chain.evidence_sources.iter().any(|source| {
         matches!(
             source,
-            chio_core::capability::GovernedCallChainEvidenceSource::SessionParentRequestLineage
-                | chio_core::capability::GovernedCallChainEvidenceSource::LocalParentReceiptLinkage
-                | chio_core::capability::GovernedCallChainEvidenceSource::UpstreamDelegatorProof
+            chio_core::capability::governance::GovernedCallChainEvidenceSource::SessionParentRequestLineage
+                | chio_core::capability::governance::GovernedCallChainEvidenceSource::LocalParentReceiptLinkage
+                | chio_core::capability::governance::GovernedCallChainEvidenceSource::UpstreamDelegatorProof
         )
     });
     let has_capability_subject_binding = call_chain.evidence_sources.iter().any(|source| {
         matches!(
             source,
-            chio_core::capability::GovernedCallChainEvidenceSource::CapabilityDelegatorSubject
-                | chio_core::capability::GovernedCallChainEvidenceSource::CapabilityOriginSubject
+            chio_core::capability::governance::GovernedCallChainEvidenceSource::CapabilityDelegatorSubject
+                | chio_core::capability::governance::GovernedCallChainEvidenceSource::CapabilityOriginSubject
         )
     });
 
     has_local_lineage_link
         || (call_chain.evidence_class
-            == chio_core::capability::GovernedProvenanceEvidenceClass::Verified
+            == chio_core::capability::governance::GovernedProvenanceEvidenceClass::Verified
             && has_capability_subject_binding)
 }
 

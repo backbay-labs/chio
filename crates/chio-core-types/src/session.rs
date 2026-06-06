@@ -15,12 +15,13 @@ use percent_encoding::percent_decode_str;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use crate::capability::{ModelMetadata, ProvenanceEvidenceClass};
+use crate::capability::token::CapabilityToken;
+use crate::capability::{governance::ProvenanceEvidenceClass, scope::ModelMetadata};
 use crate::crypto::{canonical_json_bytes, sha256_hex, Keypair, PublicKey, Signature};
 use crate::error::Result;
 use crate::schema_binding::ensure_schema_matches;
 use crate::signer_binding::ensure_keypair_matches_embedded_key;
-use crate::{AgentId, CapabilityToken, ServerId};
+use crate::{AgentId, ServerId};
 
 /// Opaque identifier for a logical runtime session.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -1511,7 +1512,10 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::*;
-    use crate::capability::{CapabilityTokenBody, ChioScope, Operation, ToolGrant};
+    use crate::capability::{
+        scope::{ChioScope, Operation, ToolGrant},
+        token::CapabilityTokenBody,
+    };
     use crate::crypto::Keypair;
 
     fn make_token(kp: &Keypair) -> CapabilityToken {
@@ -2160,10 +2164,7 @@ mod tests {
 
         assert!(decoded.is_continued());
         assert!(!decoded.is_root());
-        assert_eq!(
-            decoded.evidence_class,
-            crate::capability::ProvenanceEvidenceClass::Verified
-        );
+        assert_eq!(decoded.evidence_class, ProvenanceEvidenceClass::Verified);
         assert_eq!(
             decoded.parent_request_id,
             Some(RequestId::new("req-parent-1"))

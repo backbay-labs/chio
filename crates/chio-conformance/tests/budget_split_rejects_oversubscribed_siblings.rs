@@ -12,10 +12,11 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use chio_core::capability::CapabilityCryptoFloor;
+use chio_core::capability::crypto_floor::CapabilityCryptoFloor;
 use chio_core::capability::{
-    compute_attenuation_witness, scope_hash, AttenuationProof, CapabilityToken,
-    CapabilityTokenAttenuationBody, CapabilityTokenBody, ChioScope, Operation, ToolGrant,
+    attenuation::{compute_attenuation_witness, scope_hash, AttenuationProof},
+    scope::{ChioScope, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenAttenuationBody, CapabilityTokenBody},
 };
 use chio_core::crypto::Keypair;
 use chio_kernel_core::{
@@ -52,7 +53,7 @@ fn build_child(
     child_scope: &ChioScope,
     child_id: &str,
     share: u16,
-    delegation_chain: Vec<chio_core::capability::DelegationLink>,
+    delegation_chain: Vec<chio_core::capability::attenuation::DelegationLink>,
 ) -> CapabilityToken {
     let witness = compute_attenuation_witness(parent_scope, child_scope).unwrap();
     let proof = AttenuationProof {
@@ -85,7 +86,7 @@ fn build_child(
 
 #[test]
 fn parent_at_5000_bps_cannot_mint_two_children_at_4000_bps_each() {
-    use chio_core::capability::{DelegationLink, DelegationLinkBody};
+    use chio_core::capability::attenuation::{DelegationLink, DelegationLinkBody};
 
     let parent_kp = Keypair::generate();
     let parent_scope = scope_with(vec![grant(vec![

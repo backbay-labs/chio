@@ -6,8 +6,9 @@ use serde_json::Value;
 
 use crate::canonical::canonical_json_bytes;
 use crate::capability::{
-    canonicalize_attestation_verifier, AttestationTrustPolicy, RuntimeAssuranceTier,
-    RuntimeAttestationEvidence, WorkloadIdentity,
+    runtime_attestation::{RuntimeAssuranceTier, RuntimeAttestationEvidence},
+    trust_policy::{canonicalize_attestation_verifier, AttestationTrustPolicy},
+    workload_identity::WorkloadIdentity,
 };
 use crate::crypto::sha256_hex;
 use crate::error::Result as ChioResult;

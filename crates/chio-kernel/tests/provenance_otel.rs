@@ -1,6 +1,9 @@
 use std::error::Error;
 
-use chio_core::capability::{CapabilityToken, ChioScope, Operation, ToolGrant};
+use chio_core::capability::{
+    scope::{ChioScope, Operation, ToolGrant},
+    token::CapabilityToken,
+};
 use chio_core::crypto::Keypair;
 use chio_kernel::{
     ChioKernel, KernelConfig, KernelError, NestedFlowBridge, ToolCallRequest, ToolServerConnection,

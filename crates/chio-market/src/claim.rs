@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
 
-use crate::capability::MonetaryAmount;
+use crate::capability::scope::MonetaryAmount;
 use crate::credit::{SignedCreditBond, SignedCreditLossLifecycle, SignedExposureLedgerReport};
 use crate::receipt::SignedExportEnvelope;
 

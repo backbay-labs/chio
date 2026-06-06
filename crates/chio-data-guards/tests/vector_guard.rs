@@ -11,8 +11,8 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use chio_core::capability::{
-    CapabilityToken, CapabilityTokenBody, ChioScope, Constraint, Operation, SqlOperationClass,
-    ToolGrant,
+    scope::{ChioScope, Constraint, Operation, SqlOperationClass, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core::crypto::Keypair;
 use chio_data_guards::{VectorDbGuard, VectorFieldPaths, VectorGuardConfig};

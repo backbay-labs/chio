@@ -2083,7 +2083,7 @@ fn call_chain_signal_evidence_refs(
 
 fn underwriting_receipt_call_chain(
     receipt: &chio_kernel::BehavioralFeedReceiptRow,
-) -> Option<&chio_core::capability::GovernedCallChainProvenance> {
+) -> Option<&chio_core::capability::governance::GovernedCallChainProvenance> {
     receipt
         .governed
         .as_ref()

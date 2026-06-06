@@ -7,7 +7,9 @@ use std::collections::BTreeMap;
 
 use chio_core::appraisal::AttestationVerifierFamily;
 use chio_core::capability::{
-    MonetaryAmount, RuntimeAssuranceTier, WorkloadCredentialKind, WorkloadIdentityScheme,
+    runtime_attestation::RuntimeAssuranceTier,
+    scope::MonetaryAmount,
+    workload_identity::{WorkloadCredentialKind, WorkloadIdentityScheme},
 };
 use serde::{Deserialize, Serialize};
 

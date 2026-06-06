@@ -10,10 +10,14 @@ use chio_binding_helpers::{
     CapabilityVerification, ManifestVerification, ReceiptVerification,
 };
 use chio_core::{
-    chio_receipt_id, sha256_hex, BoundaryClass, CapabilityToken, CapabilityTokenBody, ChioReceipt,
-    ChioReceiptBody, ChioScope, Constraint, Decision, DelegationLink, DelegationLinkBody,
-    GuardEvidence, Keypair, ObservationOutcome, Operation, ReceiptKind, RedactionMode,
-    ToolCallAction, ToolGrant, ToolOrigin, TrustLevel,
+    capability::{
+        attenuation::{DelegationLink, DelegationLinkBody},
+        scope::{ChioScope, Constraint, Operation, ToolGrant},
+        token::{CapabilityToken, CapabilityTokenBody},
+    },
+    chio_receipt_id, sha256_hex, BoundaryClass, ChioReceipt, ChioReceiptBody, Decision,
+    GuardEvidence, Keypair, ObservationOutcome, ReceiptKind, RedactionMode, ToolCallAction,
+    ToolOrigin, TrustLevel,
 };
 use chio_manifest::{
     sign_manifest, LatencyHint, RequiredPermissions, SignedManifest,

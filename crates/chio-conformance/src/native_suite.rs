@@ -6,9 +6,13 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use chio_core::canonical::canonical_json_bytes;
 use chio_core::capability::{
-    scope_hash, validate_attenuation, validate_delegation_chain, Attenuation, CapabilityToken,
-    CapabilityTokenBody, ChioScope, Constraint, DelegationLink, DelegationLinkBody,
-    GovernedTransactionIntent, Operation, ToolGrant,
+    attenuation::{
+        scope_hash, validate_attenuation, validate_delegation_chain, Attenuation, DelegationLink,
+        DelegationLinkBody,
+    },
+    governance::GovernedTransactionIntent,
+    scope::{ChioScope, Constraint, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core::crypto::Keypair;
 use chio_core::message::{AgentMessage, KernelMessage, ToolCallError, ToolCallResult};

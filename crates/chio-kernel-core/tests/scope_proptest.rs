@@ -1,7 +1,7 @@
 #![forbid(clippy::unwrap_used)]
 #![forbid(clippy::expect_used)]
 
-use chio_core_types::capability::{ChioScope, Constraint, Operation, ToolGrant};
+use chio_core_types::capability::scope::{ChioScope, Constraint, Operation, ToolGrant};
 use chio_kernel_core::scope::resolve_matching_grants;
 use proptest::prelude::*;
 
