@@ -530,4 +530,3 @@ pub(crate) enum PassportIssuanceCommands {
         credential_format: Option<String>,
     },
 }
-

@@ -199,7 +199,7 @@ fn governed_request_rejects_empty_metered_billing_provider() {
         .is_some_and(|reason| reason.contains("metered billing provider must not be empty")));
 
     let usage = kernel
-        
+
         .budget_store
         .get_usage(&cap.id, 0)
         .unwrap()

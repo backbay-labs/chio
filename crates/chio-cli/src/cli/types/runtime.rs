@@ -827,4 +827,3 @@ pub(crate) enum ApiCommands {
         receipt_store: Option<PathBuf>,
     },
 }
-

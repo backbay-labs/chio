@@ -418,4 +418,3 @@ pub(crate) enum CertifyRegistryCommands {
         certification_registry_file: Option<PathBuf>,
     },
 }
-

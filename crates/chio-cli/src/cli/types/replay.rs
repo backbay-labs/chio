@@ -107,4 +107,3 @@ pub struct TrafficArgs {
     #[arg(long, value_name = "ID")]
     pub run_id: Option<String>,
 }
-

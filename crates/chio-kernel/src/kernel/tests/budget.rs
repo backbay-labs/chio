@@ -360,7 +360,7 @@ fn monetary_payment_authorization_denial_releases_budget_and_skips_tool_invocati
     assert_eq!(financial["attempted_cost"].as_u64(), Some(100));
     assert_eq!(financial["budget_remaining"].as_u64(), Some(1000));
     let usage = kernel
-        
+
         .budget_store
         .get_usage(&cap.id, 0)
         .unwrap()
@@ -410,7 +410,7 @@ fn monetary_prepaid_adapter_sets_payment_reference_on_allow_receipt() {
     assert_eq!(financial["cost_charged"].as_u64(), Some(100));
     assert_eq!(financial["budget_remaining"].as_u64(), Some(900));
     let usage = kernel
-        
+
         .budget_store
         .get_usage(&cap.id, 0)
         .unwrap()
@@ -468,7 +468,7 @@ fn monetary_allow_receipt_contains_financial_metadata() {
     assert_eq!(attribution["grant_index"].as_u64(), Some(0));
 
     let usage = kernel
-        
+
         .budget_store
         .get_usage(&cap.id, 0)
         .unwrap()
@@ -512,7 +512,7 @@ fn monetary_allow_records_budget_hold_and_append_only_events() {
     let authorize_event_id = format!("{hold_id}:authorize");
     let reconcile_event_id = format!("{hold_id}:reconcile");
     let events = kernel
-        
+
         .budget_store
         .list_mutation_events(10, Some(&cap.id), Some(0))
         .unwrap();
@@ -1106,7 +1106,7 @@ fn monetary_tool_server_error_releases_precharged_budget() {
 
     assert_eq!(response.verdict, Verdict::Deny);
     let usage = kernel
-        
+
         .budget_store
         .get_usage(&cap.id, 0)
         .unwrap()

@@ -1430,4 +1430,3 @@ pub(crate) enum TrustUnderwritingAppealCommands {
         replacement_decision_id: Option<String>,
     },
 }
-
