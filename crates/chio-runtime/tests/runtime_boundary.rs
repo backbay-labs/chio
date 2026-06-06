@@ -34,7 +34,7 @@ fn runtime_admission_hook_boundary_is_chio_owned() {
     assert!(hook_type.starts_with("chio_runtime::ChioRuntimeAdmissionHook<"));
     assert_eq!(
         std::any::type_name::<InMemoryRuntimeAdmissionStore>(),
-        "chio_runtime::InMemoryRuntimeAdmissionStore"
+        "chio_runtime::stores::InMemoryRuntimeAdmissionStore"
     );
 }
 
@@ -153,6 +153,7 @@ fn runtime_cli_helper_reexports_are_not_historical_error_reexports() {
 #[test]
 fn runtime_admission_store_boundary_is_chio_owned() {
     let lib = include_str!("../src/lib.rs");
+    let stores = include_str!("../src/stores.rs");
     for symbol in [
         "pub use chio_runtime_core::{",
         "T: chio_runtime_core::RuntimeAdmissionStore",
@@ -164,8 +165,12 @@ fn runtime_admission_store_boundary_is_chio_owned() {
         );
     }
 
+    assert!(
+        lib.contains("pub struct ChioRuntimeAdmissionInput"),
+        "chio-runtime facade must expose ChioRuntimeAdmissionInput"
+    );
+
     for symbol in [
-        "pub struct ChioRuntimeAdmissionInput",
         "pub trait ChioRuntimeAdmissionStore",
         "pub trait ChioRuntimeTrustFloorStore",
         "pub struct InMemoryRuntimeAdmissionStore",
@@ -175,7 +180,7 @@ fn runtime_admission_store_boundary_is_chio_owned() {
         "pub struct SqliteRuntimeOrchestrationStore",
     ] {
         assert!(
-            lib.contains(symbol),
+            stores.contains(symbol),
             "chio-runtime facade must expose {symbol}"
         );
     }
