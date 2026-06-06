@@ -17,8 +17,10 @@
 //!   `authorization: false` in the response body. `POST /v1/evaluate` remains
 //!   a deprecated compatibility alias for the same advisory route. Treat both
 //!   routes as observability, not as allow/deny gates.
-//! - **`POST /v1/capabilities/attenuate`** returns HTTP 501 with
-//!   `chio-route-status: not-implemented`. Attenuation is not wired over HTTP.
+//! - **`POST /v1/capabilities/attenuate`** is a fail-closed control boundary.
+//!   It returns HTTP 403 because attenuation requires the parent subject signer.
+//!   Use the kernel delegation primitive or SDK-local signer helpers so that
+//!   private key remains outside the sidecar.
 //!
 //! See [`README.md`](../README.md) for the full list of routes that are
 //! not production authorization paths.

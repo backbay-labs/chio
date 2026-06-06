@@ -5,10 +5,6 @@ use super::*;
 /// advisory sidecar evaluation as kernel-mediated authorization.
 pub(crate) const CHIO_TRUST_LEVEL_HEADER: &str = "chio-trust-level";
 
-/// HTTP response header on routes that are documented stubs, not production
-/// authorization paths (for example `POST /v1/capabilities/attenuate`).
-pub(crate) const CHIO_ROUTE_STATUS_HEADER: &str = "chio-route-status";
-
 pub(crate) fn parse_query_params(raw_query: Option<&str>) -> HashMap<String, String> {
     raw_query
         .map(|query| {
@@ -145,33 +141,6 @@ pub(crate) fn sidecar_advisory_tool_call_evaluate_json_response(receipt: ChioRec
         axum::http::HeaderValue::from_static("advisory"),
     );
     response
-}
-
-pub(crate) fn sidecar_not_implemented_route_response(
-    status: StatusCode,
-    error: &str,
-    message: &str,
-    route_status: &str,
-    extra_fields: serde_json::Value,
-) -> Response {
-    let mut body = serde_json::json!({
-        "error": error,
-        "message": message,
-        "chio_route_status": route_status,
-    });
-    if let Some(extra) = extra_fields.as_object() {
-        for (key, value) in extra {
-            body[key] = value.clone();
-        }
-    }
-
-    let body_text = serde_json::to_string(&body).unwrap_or_default();
-    Response::builder()
-        .status(status)
-        .header("content-type", "application/json")
-        .header(CHIO_ROUTE_STATUS_HEADER, route_status)
-        .body(Body::from(body_text))
-        .unwrap_or_else(|_| (status, axum::Json(body)).into_response())
 }
 
 pub(crate) fn extract_presented_capability_from_maps<'a>(

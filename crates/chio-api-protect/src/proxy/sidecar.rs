@@ -757,7 +757,7 @@ pub(crate) async fn sidecar_validate_capability_handler(
 }
 
 // ---------------------------------------------------------------------------
-// Capability attenuation (501 not_yet_implemented stub)
+// Capability attenuation boundary
 // ---------------------------------------------------------------------------
 
 pub(crate) async fn sidecar_attenuate_capability_handler(
@@ -769,19 +769,16 @@ pub(crate) async fn sidecar_attenuate_capability_handler(
     {
         return response;
     }
-    // Drain the body so the client sees a clean response even on large
-    // payloads; the body itself is not used because attenuation is not
-    // implemented over HTTP yet.
     let _ = axum::body::to_bytes(request.into_body(), 1024 * 1024).await;
-    sidecar_not_implemented_route_response(
-        StatusCode::NOT_IMPLEMENTED,
-        "chio_attenuate_not_implemented",
-        "capability attenuation over HTTP is not yet wired; the kernel's `delegate` primitive requires the parent capability subject's private key, which the sidecar does not hold. Use `chio-sdk-python`'s local attenuation helpers, or call the kernel directly until this route lands.",
-        "not-implemented",
-        serde_json::json!({
-            "rfc": "see crates/chio-core-types/src/capability.rs::delegate (feature `delegation`)",
-        }),
+    (
+        StatusCode::FORBIDDEN,
+        axum::Json(serde_json::json!({
+            "error": "chio_attenuation_requires_subject_signer",
+            "message": "capability attenuation requires the parent subject signer; sidecar control routes must not hold or derive that key",
+            "authorization": false,
+        })),
     )
+        .into_response()
 }
 
 // ---------------------------------------------------------------------------

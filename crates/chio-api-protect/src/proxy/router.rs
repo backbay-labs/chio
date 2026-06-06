@@ -32,12 +32,11 @@ pub(crate) fn build_app(state: Arc<ProxyState>) -> Router {
         // concurrent release.
         .route("/v1/capabilities", post(sidecar_capabilities_alias_handler))
         .route("/v1/capabilities/release", post(sidecar_release_handler))
-        // Phase B: capability validation and attenuation routes the SDK
-        // already calls. Validate verifies the embedded Ed25519 signature
-        // and checks the local revocation set and `expires_at`.
-        // Attenuate is a structured `not_yet_implemented` 501 stub
-        // because the kernel's `delegate` primitive needs the agent's
-        // private key, which the sidecar does not hold.
+        // Phase B: capability validation route the SDK already calls.
+        // Validate verifies the embedded Ed25519 signature and checks the
+        // local revocation set and `expires_at`. Attenuation is a fail-closed
+        // boundary because the sidecar must not hold the parent subject's
+        // private key.
         .route(
             "/v1/capabilities/validate",
             post(sidecar_validate_capability_handler),

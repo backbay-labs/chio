@@ -2461,7 +2461,7 @@ paths:
     }
 
     #[tokio::test]
-    async fn sidecar_attenuate_capability_returns_not_implemented() {
+    async fn sidecar_attenuate_capability_fails_closed_without_subject_signer() {
         let state = test_state(Vec::new(), "http://127.0.0.1:1".to_string());
         let body = serde_json::json!({
             "parent_capability_id": "anything",
@@ -2472,21 +2472,14 @@ paths:
             .oneshot(loopback_post("/v1/capabilities/attenuate", body))
             .await
             .test_unwrap();
-        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
-        assert_eq!(
-            response
-                .headers()
-                .get(CHIO_ROUTE_STATUS_HEADER)
-                .and_then(|value| value.to_str().ok()),
-            Some("not-implemented")
-        );
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
 
         let bytes = to_bytes(response.into_body(), 1024 * 1024)
             .await
             .test_unwrap();
         let json: serde_json::Value = serde_json::from_slice(&bytes).test_unwrap();
-        assert_eq!(json["error"], "chio_attenuate_not_implemented");
-        assert_eq!(json["chio_route_status"], "not-implemented");
+        assert_eq!(json["error"], "chio_attenuation_requires_subject_signer");
+        assert_eq!(json["authorization"], false);
     }
 
     #[tokio::test]
