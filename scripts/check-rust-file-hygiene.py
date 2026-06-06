@@ -59,9 +59,6 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/chio-control-plane/src/trust_control/cluster_and_reports.rs": allow(
         "Phase 4.2", "baseline trust-control cluster/report split target"
     ),
-    "crates/chio-cli/src/cli/types.rs": allow(
-        "Phase 4.3", "baseline CLI schema split target"
-    ),
     "crates/chio-wasm-guards/src/runtime.rs": allow(
         "Phase 5.1", "baseline wasm runtime split target"
     ),

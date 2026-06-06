@@ -50,7 +50,7 @@ packages and 588,730 bytes of metadata.
 | `crates/chio-store-sqlite/src/budget_store/tests.rs` | 1,451 | test | `chio-store-sqlite` | split from `budget_store.rs` in Phase 6.1 |
 | `crates/chio-mcp-edge/src/runtime/runtime_tests.rs` | 4,346 | test | `chio-mcp-edge` | Phase 7 follow-up |
 | `crates/chio-cli/src/cli/trust/receipt.rs` | 1,874 | production | `chio-cli` | split from `trust_commands.rs` in Phase 6.1 |
-| `crates/chio-cli/src/cli/types.rs` | 3,949 | production | `chio-cli` | Phase 4.3 |
+| `crates/chio-cli/src/cli/types/trust.rs` | 1,433 | production | `chio-cli` | split from `types.rs` in Phase 6.1 |
 | `crates/chio-cli/tests/certify.rs` | 3,639 | test | `chio-cli` | Phase 7 follow-up |
 | `crates/chio-control-plane/src/attestation.rs` | 3,586 | production | `chio-control-plane` | Phase 6.1 |
 | `crates/chio-federation/src/bilateral_verifier.rs` | 3,512 | production | `chio-federation` | Phase 6.1 |

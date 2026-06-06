@@ -10,8 +10,13 @@ protocol behavior to the owning library crates.
 
 - `src/main.rs` wires the binary surface and keeps command modules reachable
   through the single `include!` entrypoint used by `src/bin/chio.rs`.
-- `src/cli/types.rs` owns clap-visible command shapes, environment fallbacks,
-  and help text.
+- `src/cli/types.rs` owns the global clap shell, environment fallbacks, and
+  root command wiring. Its child modules keep command schemas by family:
+  `types/runtime.rs` owns MCP, API, guard, attest, arena, lineage,
+  conformance, and settlement command trees; `types/trust.rs` owns
+  trust-control command schemas; `types/receipt.rs` owns receipt, evidence,
+  and certification schemas; `types/passport.rs` owns passport and verifier
+  flow schemas; `types/replay.rs` owns replay traffic arguments.
 - `src/cli/dispatch.rs` and `src/cli/dispatch/*` route parsed commands to
   command implementations without owning protocol semantics.
 - `src/cli/runtime.rs`, `src/cli/session.rs`, `src/cli/mcp.rs`, and
