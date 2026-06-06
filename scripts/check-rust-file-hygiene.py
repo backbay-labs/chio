@@ -74,9 +74,6 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/chio-control-plane/src/trust_control/config_and_public.rs": allow(
         "Phase 6.1", "baseline current production hotspot"
     ),
-    "crates/chio-federation/src/bilateral_dsse.rs": allow(
-        "Phase 6.1", "baseline remaining production hotspot"
-    ),
     "crates/chio-mcp-remote/src/remote_mcp/http_service.rs": allow(
         "Phase 6.1", "baseline remaining production hotspot"
     ),
