@@ -24,6 +24,19 @@ status and issuance to `CapabilityAuthority`; `budget.rs` adapts remote budget
 endpoints to `BudgetStore`; and `errors.rs` contains internal store-error
 conversion helpers.
 
+The trust-control HA and reporting surface is split by responsibility:
+`cluster.rs` owns cluster identity, peer state, membership, consensus,
+replication loops, peer snapshots and deltas, and budget-quorum commit
+metadata; `report_rendering.rs` owns JSON response metadata, snapshot and delta
+view conversion, receipt kind rendering, and leader-forwarding helpers;
+`report_validation.rs` owns URL normalization, cluster peer authentication,
+service and authority auth validation, control read-principal resolution,
+authority status loading, and metered-billing request validation; `reports.rs`
+owns operator, behavioral, economic-completion, runtime-attestation, exposure
+ledger, credit-scorecard, capital-book, and capital-issuance report builders.
+`cluster_and_reports.rs` remains a test-only regression aggregate for behavior
+that crosses those split modules.
+
 ## Pain Points
 
 `TrustServiceConfig` is the root authority boundary for the service, but its

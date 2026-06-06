@@ -2,6 +2,7 @@
 //! the public certification discovery/marketplace network, and the generic
 //! trust-activation, governance, and open-market artifact endpoints.
 
+use super::report_validation::validate_service_auth;
 use super::*;
 
 pub(crate) async fn handle_list_certifications(

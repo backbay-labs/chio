@@ -274,7 +274,10 @@ mod budget_handlers;
 mod capital_and_liability;
 #[path = "trust_control/certification_handlers.rs"]
 mod certification_handlers;
+#[path = "trust_control/cluster.rs"]
+pub mod cluster;
 #[path = "trust_control/cluster_and_reports.rs"]
+#[cfg(test)]
 mod cluster_and_reports;
 #[path = "trust_control/config_and_public.rs"]
 mod config_and_public;
@@ -284,6 +287,12 @@ mod credit_and_loss;
 mod passport_handlers;
 #[path = "trust_control/receipt_handlers.rs"]
 mod receipt_handlers;
+#[path = "trust_control/report_rendering.rs"]
+pub(crate) mod report_rendering;
+#[path = "trust_control/report_validation.rs"]
+pub(crate) mod report_validation;
+#[path = "trust_control/reports.rs"]
+pub mod reports;
 #[path = "trust_control/risk_finance_handlers.rs"]
 mod risk_finance_handlers;
 #[path = "trust_control/service_runtime.rs"]
@@ -304,7 +313,6 @@ pub(crate) use self::authority_handlers::*;
 pub(crate) use self::budget_handlers::*;
 pub use self::capital_and_liability::*;
 pub(crate) use self::certification_handlers::*;
-pub use self::cluster_and_reports::*;
 pub(crate) use self::credit_and_loss::*;
 pub(crate) use self::passport_handlers::*;
 pub(crate) use self::receipt_handlers::*;

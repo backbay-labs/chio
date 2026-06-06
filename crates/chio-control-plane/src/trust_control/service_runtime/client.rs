@@ -1,3 +1,4 @@
+use super::super::report_validation::{cluster_peer_auth_signature, normalize_cluster_url};
 use super::*;
 
 pub fn build_client(

@@ -2,6 +2,10 @@
 //! presentation and wallet exchange, passport status lifecycle, verifier
 //! policies, presentation challenges, and federated issuance.
 
+use super::report_rendering::forward_post_to_leader;
+use super::report_validation::{
+    bearer_token_from_headers, load_capability_authority, validate_service_auth,
+};
 use super::*;
 
 pub(crate) async fn handle_passport_issuer_metadata(

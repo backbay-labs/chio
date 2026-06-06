@@ -1,3 +1,4 @@
+use super::reports::ResolvedBudgetGrant;
 use super::*;
 
 pub(crate) fn latest_credit_facility_snapshot(

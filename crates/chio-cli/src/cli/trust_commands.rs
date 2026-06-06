@@ -2254,7 +2254,7 @@ pub(crate) fn cmd_trust_runtime_attestation_appraisal_export(
             .map(load_policy)
             .transpose()?
             .and_then(|loaded| loaded.runtime_assurance_policy);
-        trust_control::build_signed_runtime_attestation_appraisal_report(
+        trust_control::reports::build_signed_runtime_attestation_appraisal_report(
             authority_seed_path,
             authority_db_path,
             runtime_assurance_policy.as_ref(),
@@ -2328,7 +2328,7 @@ pub(crate) fn cmd_trust_runtime_attestation_appraisal_result_export(
             .map(load_policy)
             .transpose()?
             .and_then(|loaded| loaded.runtime_assurance_policy);
-        trust_control::build_signed_runtime_attestation_appraisal_result(
+        trust_control::reports::build_signed_runtime_attestation_appraisal_result(
             authority_seed_path,
             authority_db_path,
             runtime_assurance_policy.as_ref(),
@@ -2380,7 +2380,7 @@ pub(crate) fn cmd_trust_runtime_attestation_appraisal_import(
         let token = require_control_token(control_token)?;
         trust_control::service_runtime::client::build_client(url, token)?.import_runtime_attestation_appraisal(&request)?
     } else {
-        trust_control::build_runtime_attestation_appraisal_import_report(
+        trust_control::reports::build_runtime_attestation_appraisal_import_report(
             &request,
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

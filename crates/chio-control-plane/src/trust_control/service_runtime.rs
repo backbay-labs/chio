@@ -15,6 +15,13 @@ pub mod remote_stores;
 #[path = "service_runtime/reputation.rs"]
 pub mod reputation;
 
+use super::cluster::{
+    build_cluster_state, handle_internal_authority_snapshot, handle_internal_budgets_delta,
+    handle_internal_child_receipts_delta, handle_internal_cluster_partition,
+    handle_internal_cluster_snapshot, handle_internal_cluster_status,
+    handle_internal_lineage_delta, handle_internal_revocations_delta,
+    handle_internal_tool_receipts_delta, run_cluster_sync_loop,
+};
 use super::*;
 
 pub(crate) async fn serve_async(config: TrustServiceConfig) -> Result<(), CliError> {

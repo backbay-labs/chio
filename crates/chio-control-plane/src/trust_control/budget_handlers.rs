@@ -1,6 +1,16 @@
 //! HTTP handlers for the budget-metering surface: budget listing and the
 //! authorize/release/reconcile exposure-accounting endpoints.
 
+use super::cluster::{
+    budget_authority_guarantee_level, budget_authority_metadata_view,
+    current_budget_event_authority, respond_after_budget_write_quorum_commit,
+    respond_after_leader_visible_write, rollback_budget_authorize_exposure,
+    wait_for_budget_write_quorum_commit,
+};
+use super::report_rendering::{
+    forward_post_to_leader, json_response_with_leader_visibility_and_budget_commit,
+};
+use super::report_validation::{budget_visibility_matches, validate_service_auth};
 use super::*;
 
 pub(crate) async fn handle_list_budgets(

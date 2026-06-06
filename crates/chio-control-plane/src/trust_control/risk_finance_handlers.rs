@@ -2,6 +2,14 @@
 //! capital reports and issuance; the liability insurance market and claims
 //! workflows; underwriting; runtime-attestation appraisal; and reputation.
 
+use super::report_validation::validate_service_auth;
+use super::reports::{
+    build_exposure_ledger_report_with_context, build_runtime_attestation_appraisal_import_report,
+    build_signed_runtime_attestation_appraisal_report,
+    build_signed_runtime_attestation_appraisal_result,
+    issue_signed_capital_allocation_decision_detailed,
+    issue_signed_capital_execution_instruction_detailed,
+};
 use super::*;
 
 pub(crate) async fn handle_exposure_ledger_report(

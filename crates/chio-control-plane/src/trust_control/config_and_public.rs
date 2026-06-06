@@ -1,3 +1,4 @@
+use super::report_validation::authority_status_response;
 use super::*;
 
 #[derive(Debug, Serialize, Deserialize)]

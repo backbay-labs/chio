@@ -2,6 +2,16 @@
 //! and rotation, capability issuance and revocation, SCIM user lifecycle,
 //! enterprise-provider records, and federation admission policies.
 
+use super::cluster::respond_after_leader_visible_write;
+use super::report_rendering::{
+    forward_authority_post_to_leader, forward_post_to_leader, forward_scim_delete_to_leader,
+    forward_scim_post_to_leader,
+};
+use super::report_validation::{
+    enforce_authority_mutation_fence, load_authority_status, load_capability_authority,
+    refresh_authority_mutation_fence, rotate_authority, validate_authority_mutation_auth,
+    validate_service_auth,
+};
 use super::*;
 
 pub(crate) async fn handle_authority_status(

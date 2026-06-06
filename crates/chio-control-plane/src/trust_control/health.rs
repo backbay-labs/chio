@@ -1,3 +1,5 @@
+use super::cluster::{cluster_consensus_view, cluster_self_url};
+use super::report_validation::load_authority_status;
 use super::*;
 
 pub(super) fn install_health_routes(

@@ -1483,7 +1483,7 @@ pub(crate) fn cmd_trust_behavioral_feed_export(
                     .to_string(),
             )
         })?;
-        trust_control::build_signed_behavioral_feed(
+        trust_control::reports::build_signed_behavioral_feed(
             receipt_db_path,
             backend.budget_db_path,
             backend.authority_seed_path,
@@ -1548,7 +1548,7 @@ pub(crate) fn cmd_trust_exposure_ledger_export(
                     .to_string(),
             )
         })?;
-        trust_control::build_signed_exposure_ledger_report(
+        trust_control::reports::build_signed_exposure_ledger_report(
             receipt_db_path,
             backend.authority_seed_path,
             backend.authority_db_path,
@@ -1618,7 +1618,7 @@ pub(crate) fn cmd_trust_credit_scorecard_export(
                     .to_string(),
             )
         })?;
-        trust_control::build_signed_credit_scorecard_report(
+        trust_control::reports::build_signed_credit_scorecard_report(
             receipt_db_path,
             backend.budget_db_path,
             backend.authority_seed_path,
@@ -1691,7 +1691,7 @@ pub(crate) fn cmd_trust_capital_book_export(
                     .to_string(),
             )
         })?;
-        trust_control::build_signed_capital_book_report(
+        trust_control::reports::build_signed_capital_book_report(
             receipt_db_path,
             backend.authority_seed_path,
             backend.authority_db_path,
@@ -1763,7 +1763,7 @@ pub(crate) fn cmd_trust_capital_instruction_issue(
                     .to_string(),
             )
         })?;
-        trust_control::issue_signed_capital_execution_instruction(
+        trust_control::reports::issue_signed_capital_execution_instruction(
             receipt_db_path,
             authority_seed_path,
             authority_db_path,
@@ -1812,7 +1812,7 @@ pub(crate) fn cmd_trust_capital_allocation_issue(
                     .to_string(),
             )
         })?;
-        trust_control::issue_signed_capital_allocation_decision(
+        trust_control::reports::issue_signed_capital_allocation_decision(
             receipt_db_path,
             backend.budget_db_path,
             backend.authority_seed_path,
