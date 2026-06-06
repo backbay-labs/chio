@@ -28,6 +28,10 @@ crates such as `chio-store-sqlite`.
   metadata, child receipt helpers, stream receipt content, and receipt
   attribution helpers. `receipt_support/signing.rs` owns the kernel crypto
   floor, hybrid receipt signing entrypoints, and signing backend construction.
+- `session.rs` owns session lifecycle state, negotiated peer capabilities,
+  in-flight request tracking, subscriptions, terminal request state, session
+  anchors, and session-aware kernel responses. `session/tests.rs` owns the
+  session unit tests.
 
 ## Security And API Constraints
 
