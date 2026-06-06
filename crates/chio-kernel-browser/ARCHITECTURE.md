@@ -16,6 +16,7 @@ without a browser toolchain.
 - This crate owns browser wire envelopes, `BrowserClock`, `WebCryptoRng`, JS
   error shaping, authority-input parsing, receipt seed decoding, and conversion
   between browser JSON values and portable kernel inputs.
+- `src/tests.rs` owns native-only regression coverage for pure helper paths.
 
 ## Trust Invariants
 
