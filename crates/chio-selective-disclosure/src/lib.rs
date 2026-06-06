@@ -2,7 +2,6 @@
 
 #![forbid(unsafe_code)]
 
-use chio_core_types::canonical::canonical_json_bytes;
 #[cfg(feature = "bbs")]
 use chio_core_types::receipt::{
     body::prepare_receipt_body_for_signing, body::ChioReceipt, signing::BbsReceiptSignature,
@@ -11,10 +10,18 @@ use chio_core_types::receipt::{
 use chio_core_types::receipt::{body::ChioReceiptBody, kinds::TrustLevel};
 use chio_workflow::receipt::{StepRecord, WorkflowReceiptBody};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 #[cfg(feature = "bbs")]
 use std::collections::BTreeSet;
 use std::collections::HashMap;
+
+mod encoding;
+
+#[cfg(feature = "bbs")]
+use encoding::decode_message_hex;
+use encoding::{
+    bool_byte, canonical_bytes, decode_hx_field, hash_canonical, opt_string_bytes, push_message,
+    sha256_hex_bytes, subject_sha256_hex, u64_le,
+};
 
 /// Receipt-body projection version used for BBS message vectors.
 pub const PROJECTION_VERSION_RECEIPT_V1: &str = "chio.bbs-projection.receipt.v1";
@@ -34,7 +41,6 @@ pub const BBS_CIPHERSUITE_SHA256: &str = "BBS_BLS12381G1_XMD:SHA-256_SSWU_RO_";
 const MESSAGE_DOMAIN_V1: &[u8] = b"chio.bbs.message.v1";
 #[cfg(feature = "bbs")]
 const HEADER_DOMAIN_V1: &[u8] = b"chio.bbs.header.v1";
-const NONE_SENTINEL: &[u8] = b"\0";
 #[cfg(feature = "bbs")]
 const BBS_SHA256_POINT_BYTES: usize = 48;
 #[cfg(feature = "bbs")]
@@ -179,110 +185,6 @@ pub enum SelectiveDisclosureError {
     Hex(String),
     #[error("cryptographic operation failed: {0}")]
     Crypto(String),
-}
-
-fn sha256_hex_bytes(bytes: &[u8]) -> String {
-    let digest = Sha256::digest(bytes);
-    hex::encode(digest)
-}
-
-fn canonical_bytes<T: Serialize>(value: &T) -> Result<Vec<u8>, SelectiveDisclosureError> {
-    canonical_json_bytes(value).map_err(|e| SelectiveDisclosureError::CanonicalJson(e.to_string()))
-}
-
-fn subject_sha256_hex<T: Serialize>(value: &T) -> Result<String, SelectiveDisclosureError> {
-    Ok(sha256_hex_bytes(&canonical_bytes(value)?))
-}
-
-fn hash_canonical<T: Serialize>(value: &T) -> Result<Vec<u8>, SelectiveDisclosureError> {
-    Ok(Sha256::digest(canonical_bytes(value)?).to_vec())
-}
-
-fn is_lower_sha256_hex(value: &str) -> bool {
-    value.len() == 64
-        && value
-            .as_bytes()
-            .iter()
-            .all(|byte| byte.is_ascii_digit() || matches!(*byte, b'a'..=b'f'))
-}
-
-#[cfg(feature = "bbs")]
-fn is_lower_even_hex(value: &str) -> bool {
-    value.len().is_multiple_of(2)
-        && value
-            .as_bytes()
-            .iter()
-            .all(|byte| byte.is_ascii_digit() || matches!(*byte, b'a'..=b'f'))
-}
-
-fn decode_hx_field(field: &str, raw: &str) -> Result<Vec<u8>, SelectiveDisclosureError> {
-    if raw.is_empty() {
-        return Err(SelectiveDisclosureError::MalformedHexField {
-            field: field.to_string(),
-            reason: "empty string is not a SHA-256 hex digest".to_string(),
-        });
-    }
-    if !is_lower_sha256_hex(raw) {
-        return Err(SelectiveDisclosureError::MalformedHexField {
-            field: field.to_string(),
-            reason: "expected 64 lowercase SHA-256 hex characters".to_string(),
-        });
-    }
-    let bytes = hex::decode(raw).map_err(|e| SelectiveDisclosureError::MalformedHexField {
-        field: field.to_string(),
-        reason: e.to_string(),
-    })?;
-    if bytes.len() != 32 {
-        return Err(SelectiveDisclosureError::MalformedHexField {
-            field: field.to_string(),
-            reason: format!("decoded length {} bytes does not equal 32", bytes.len()),
-        });
-    }
-    Ok(bytes)
-}
-
-#[cfg(feature = "bbs")]
-fn decode_message_hex(field: &str, raw: &str) -> Result<Vec<u8>, SelectiveDisclosureError> {
-    if !is_lower_even_hex(raw) {
-        return Err(SelectiveDisclosureError::MalformedHexField {
-            field: field.to_string(),
-            reason: "expected lowercase even-length hex".to_string(),
-        });
-    }
-    hex::decode(raw).map_err(|e| SelectiveDisclosureError::MalformedHexField {
-        field: field.to_string(),
-        reason: e.to_string(),
-    })
-}
-
-fn opt_string_bytes(value: &Option<String>) -> Vec<u8> {
-    value
-        .as_ref()
-        .map_or_else(|| NONE_SENTINEL.to_vec(), |s| s.as_bytes().to_vec())
-}
-
-fn u64_le(value: u64) -> Vec<u8> {
-    value.to_le_bytes().to_vec()
-}
-
-fn bool_byte(value: bool) -> Vec<u8> {
-    vec![u8::from(value)]
-}
-
-fn push_message(
-    out: &mut Vec<ProjectionMessage>,
-    field: &str,
-    encoding: &str,
-    bytes: Vec<u8>,
-    wholesale_only: bool,
-) {
-    out.push(ProjectionMessage {
-        index: out.len() as u16,
-        field: field.to_string(),
-        encoding: encoding.to_string(),
-        bytes_hex: hex::encode(bytes),
-        wholesale_only,
-    });
 }
 
 /// Project a receipt body using the Chio receipt v1 BBS table.
