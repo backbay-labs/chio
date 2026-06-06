@@ -1,6 +1,14 @@
 #![allow(deprecated)]
 
-include!("tests/all.rs");
+include!("tests/support.rs");
+include!("tests/support_monetary.rs");
+include!("tests/capability_validation.rs");
+include!("tests/guard_pipeline.rs");
+include!("tests/receipts.rs");
+include!("tests/session.rs");
+include!("tests/budget.rs");
+include!("tests/budget_governed_call_chain.rs");
+include!("tests/budget_governed_assurance.rs");
 include!("tests/emergency.rs");
 include!("tests/constraint_variants.rs");
 include!("tests/plan_evaluation.rs");
