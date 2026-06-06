@@ -59,6 +59,13 @@ financial issue payloads, error adapters, and small request query structs. Its
 views, cluster lease RPC payloads, replication delta payloads, and budget
 mutation request/response wire adapters.
 
+`trust_control/config_and_public.rs` owns trust-control service startup, registry
+path resolution, admin registry loading, passport verifier challenge helpers,
+OID4VP metadata and request construction, public issuer/verifier discovery, and
+SCIM lifecycle response helpers. Its `config_and_public/generic_listing.rs`
+child owns public generic registry publisher, namespace, listing projection, and
+report construction helpers.
+
 `trust_control/underwriting_and_support.rs` owns underwriting decision,
 simulation, appeal, exposure-ledger, credit-bond, credit-scorecard, and
 capital-book support builders. Its
