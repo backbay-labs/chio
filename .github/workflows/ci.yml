@@ -93,6 +93,14 @@ jobs:
           RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
         run: cargo fmt --all -- --check
 
+      - name: Rust file hygiene
+        env:
+          CARGO_BUILD_JOBS: "1"
+          RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
+        run: |
+          python3 scripts/check-rust-file-hygiene.py
+          bash scripts/tests/check-rust-file-hygiene.test.sh
+
       - name: Workspace clippy
         env:
           CARGO_BUILD_JOBS: "1"

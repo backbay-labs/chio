@@ -23,6 +23,8 @@ else
   ./scripts/check-proof-report.sh
 fi
 cargo fmt --all -- --check
+python3 scripts/check-rust-file-hygiene.py
+bash scripts/tests/check-rust-file-hygiene.test.sh
 # Keep the CI warning gate focused on repo-shipping targets; test/bench-only
 # lint backlogs are exercised by `cargo test` and can be migrated separately.
 cargo clippy --workspace --lib --bins --examples -- -D warnings
