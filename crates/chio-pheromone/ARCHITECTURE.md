@@ -6,7 +6,7 @@
 
 ## Internal Surfaces
 
-The crate validates static deposit material, passport identity binding, signature provenance, treaty scope, replay windows, scarcity admission, observation-cost Merkle inclusion, verifier-root trust, and concentration decay. It also exposes deterministic hashes for scarcity policy and window identifiers.
+The crate validates static deposit material, passport identity binding, signature provenance, treaty scope, replay windows, scarcity admission, observation-cost Merkle inclusion, verifier-root trust, and concentration decay. `src/lib.rs` owns the schema/model and public helper surface, `src/substrate.rs` owns local receiver storage and scarcity accounting, and `src/validation.rs` owns deposit, scarcity-policy, and observation-cost validation internals. It also exposes deterministic hashes for scarcity policy and window identifiers.
 
 ## Trust Invariants
 
@@ -15,7 +15,3 @@ The security constraint is receiver-owned admission accounting. A deposit must c
 ## Verification Focus
 
 Tests should cover duplicate treaty scopes, replay windows, verifier-root rejection, policy freshness, cost Merkle inclusion, scarcity-bucket accounting, and deterministic concentration decay. Runtime and relay tests should keep signed local substrate admission separate from transport delivery so a forwarded signal cannot bypass receiver-owned scarcity policy.
-
-## Improvement Target
-
-Planned improvement: reject duplicate treaty scope entries on deposits and scarcity policies so a single signed signal cannot double-count the same treaty bucket. The check belongs beside deposit and policy validation because downstream concentration queries should only observe already-canonical bucket membership.
