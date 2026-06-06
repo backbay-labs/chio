@@ -87,13 +87,19 @@ async function startVerifySidecar(
   onVerify: (res: http.ServerResponse) => void,
 ): Promise<{ server: http.Server; url: string }> {
   const server = http.createServer((req, res) => {
-    if (req.method === "POST" && req.url === "/chio/verify") {
-      onVerify(res);
-      return;
-    }
+    void (async () => {
+      if (req.method === "POST" && req.url === "/chio/verify") {
+        await discardRequestBody(req);
+        onVerify(res);
+        return;
+      }
 
-    res.writeHead(404);
-    res.end();
+      res.writeHead(404);
+      res.end();
+    })().catch((error: unknown) => {
+      res.writeHead(500, { "Content-Type": "text/plain" });
+      res.end(error instanceof Error ? error.message : String(error));
+    });
   });
 
   await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -120,27 +126,40 @@ async function closeServer(server: http.Server): Promise<void> {
   });
 }
 
+async function discardRequestBody(req: http.IncomingMessage): Promise<void> {
+  for await (const _chunk of req) {
+    // Drain the body so keep-alive connections can be reused safely.
+  }
+}
+
 async function startEvaluateSidecar(
   result: EvaluateResponse,
   verifyValid: boolean,
   onVerify?: () => void,
 ): Promise<{ server: http.Server; url: string }> {
   const server = http.createServer((req, res) => {
-    if (req.method === "POST" && req.url === "/chio/evaluate") {
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(result));
-      return;
-    }
+    void (async () => {
+      if (req.method === "POST" && req.url === "/chio/evaluate") {
+        await discardRequestBody(req);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(result));
+        return;
+      }
 
-    if (req.method === "POST" && req.url === "/chio/verify") {
-      onVerify?.();
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(verifyResponse(verifyValid)));
-      return;
-    }
+      if (req.method === "POST" && req.url === "/chio/verify") {
+        await discardRequestBody(req);
+        onVerify?.();
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(verifyResponse(verifyValid)));
+        return;
+      }
 
-    res.writeHead(404);
-    res.end();
+      res.writeHead(404);
+      res.end();
+    })().catch((error: unknown) => {
+      res.writeHead(500, { "Content-Type": "text/plain" });
+      res.end(error instanceof Error ? error.message : String(error));
+    });
   });
 
   await new Promise<void>((resolve) => server.listen(0, resolve));

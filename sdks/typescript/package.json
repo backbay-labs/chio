@@ -25,5 +25,9 @@
   ],
   "engines": {
     "node": ">=22"
+  },
+  "scripts": {
+    "build": "node ./scripts/run-publishable-workspaces.mjs build",
+    "test": "node ./scripts/run-publishable-workspaces.mjs test"
   }
 }

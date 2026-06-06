@@ -5,11 +5,20 @@
   "description": "Scaffold a first-run Chio application from one of the published templates (next-ai-sdk-receipts, fastapi-langchain, cloudflare-worker).",
   "license": "Apache-2.0",
   "bin": {
-    "create-chio-app": "./src/index.ts"
+    "create-chio-app": "./dist/index.js"
   },
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
-    "src",
+    "dist",
+    "templates",
     "README.md"
   ],
   "engines": {
@@ -17,11 +26,12 @@
   },
   "scripts": {
     "test": "bun test",
-    "build": "tsc -p tsconfig.json --noEmit",
+    "build": "tsc -p tsconfig.json && node ./scripts/copy-templates.mjs",
     "lint": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
     "@types/bun": "^1.2.0",
+    "@types/node": "^22.0.0",
     "typescript": "~5.7.0"
   },
   "publishConfig": {

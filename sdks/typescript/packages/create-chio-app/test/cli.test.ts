@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   helpText,
+  isDirectNodeRun,
   parseArgs,
   runCli,
   type ScaffoldEnv,
@@ -62,9 +63,28 @@ describe("template registry", () => {
   test("each entry pins a bench runner", () => {
     for (const template of TEMPLATES) {
       expect(template.bench.endsWith(".rs")).toBe(true);
-      expect(template.directory.startsWith("sdks/typescript/templates/"))
-        .toBe(true);
+      expect(template.directory.startsWith("templates/")).toBe(true);
     }
+  });
+});
+
+describe("Node entrypoint detection", () => {
+  test("matches resolved argv entry URL", () => {
+    expect(
+      isDirectNodeRun(
+        new URL("file:///workspace/pkg/dist/index.js").href,
+        "/workspace/pkg/dist/index.js",
+      ),
+    ).toBe(true);
+  });
+
+  test("does not run on library import", () => {
+    expect(
+      isDirectNodeRun(
+        new URL("file:///workspace/pkg/dist/index.js").href,
+        "/workspace/consumer/index.js",
+      ),
+    ).toBe(false);
   });
 });
 

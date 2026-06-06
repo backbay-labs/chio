@@ -352,7 +352,7 @@ PY
         --exclude='*/.artifacts' \
         --exclude='*/.next' \
         --exclude='*.tgz' \
-        -cf - .cargo .tooling Cargo.lock Cargo.toml rust-toolchain.toml bench crates editors examples formal integrations sdks/typescript tests xtask
+        -cf - .cargo .tooling Cargo.lock Cargo.toml rust-toolchain.toml bench crates docs/demo/passkey editors examples formal integrations sdks/typescript tests xtask
     ) | (
       cd "${repo_copy_dir}"
       tar -xf -
@@ -415,12 +415,19 @@ for (const dir of packageDirs) {
   const hasImport =
     rootExport != null &&
     typeof rootExport === "object" &&
-    typeof rootExport.import === "string" &&
-    manifest.name !== "@chio-protocol/workers";
+    typeof rootExport.import === "string";
   const hasRequire =
     rootExport != null &&
     typeof rootExport === "object" &&
     typeof rootExport.require === "string";
+  const binNames = [];
+  if (typeof manifest.bin === "string") {
+    binNames.push(manifest.name);
+  } else if (manifest.bin != null && typeof manifest.bin === "object") {
+    for (const name of Object.keys(manifest.bin)) {
+      binNames.push(name);
+    }
+  }
 
   packages.push({
     dir,
@@ -436,6 +443,7 @@ for (const dir of packageDirs) {
       typeof manifest.scripts.test === "string",
     hasImport,
     hasRequire,
+    binNames: binNames.sort(),
     localDeps: [],
   });
 }
@@ -501,8 +509,9 @@ for (const pkg of ordered) {
       pkg.hasTest ? "1" : "0",
       pkg.hasImport ? "1" : "0",
       pkg.hasRequire ? "1" : "0",
+      pkg.binNames.join(","),
       pkg.localDeps.join(","),
-    ].join("\t") + "\n",
+    ].join("|") + "\n",
   );
 }
 NODE
@@ -537,12 +546,12 @@ NODE
 
     package_index=0
     for package_record in "${package_records[@]}"; do
-      IFS=$'\t' read -r package_dir package_name has_build has_test has_import has_require local_deps <<<"${package_record}"
+      IFS='|' read -r package_dir package_name has_build has_test has_import has_require bin_names local_deps <<<"${package_record}"
       echo "checking TypeScript package ${package_name}"
 
       (
         cd "${package_dir}"
-        if [[ "${has_test}" == "1" && "${package_name}" == "@chio-protocol/sdk" ]]; then
+        if [[ "${has_test}" == "1" ]]; then
           npm test
         fi
         if [[ "${has_build}" == "1" ]]; then
@@ -594,7 +603,7 @@ EOF
       (
         cd "${consumer_dir}"
         npm install --ignore-scripts --no-fund --no-audit "${install_args[@]}"
-        if [[ "${has_import}" == "1" ]]; then
+        if [[ "${has_import}" == "1" && "${package_name}" != "@chio-protocol/workers" ]]; then
           CHIO_PACKAGE_NAME="${package_name}" node --experimental-wasm-modules --input-type=module <<'NODE'
 const packageName = process.env.CHIO_PACKAGE_NAME;
 if (packageName == null || packageName === "") {
@@ -622,6 +631,19 @@ if (exportNames.length === 0 && !("default" in moduleNamespace)) {
 console.log(`CommonJS require smoke verified ${packageName}`);
 NODE
         fi
+        if [[ -n "${bin_names}" ]]; then
+          IFS=',' read -r -a package_bin_names <<<"${bin_names}"
+          for package_bin_name in "${package_bin_names[@]}"; do
+            if [[ -n "${package_bin_name}" ]]; then
+              cli_help_output="$("./node_modules/.bin/${package_bin_name}" --help)"
+              if [[ -z "${cli_help_output}" ]]; then
+                echo "CLI ${package_bin_name} produced empty --help output" >&2
+                exit 1
+              fi
+              echo "CLI smoke verified ${package_bin_name}"
+            fi
+          done
+        fi
         if [[ "${package_name}" == "@chio-protocol/workers" ]]; then
           node --input-type=module <<'NODE'
 import { existsSync } from "node:fs";
@@ -646,6 +668,45 @@ for (const relativePath of expectedFiles) {
 
 console.log("Workers package artifact smoke verified @chio-protocol/workers");
 NODE
+          (
+            cd "${sdk_dir}"
+            CHIO_WORKERS_PACKAGE_JSON="${consumer_dir}/node_modules/@chio-protocol/workers/package.json" node --input-type=module <<'NODE'
+import { Miniflare } from "miniflare";
+import path from "node:path";
+
+const packageJsonPath = process.env.CHIO_WORKERS_PACKAGE_JSON;
+if (packageJsonPath == null || packageJsonPath === "") {
+  throw new Error("CHIO_WORKERS_PACKAGE_JSON is required");
+}
+
+const packageRoot = path.dirname(packageJsonPath);
+process.chdir(packageRoot);
+const mf = new Miniflare({
+  modules: true,
+  scriptPath: "dist/index.js",
+  compatibilityDate: "2026-04-27",
+  modulesRules: [
+    { type: "ESModule", include: ["**/*.js"], fallthrough: true },
+    { type: "CompiledWasm", include: ["**/*.wasm"], fallthrough: true },
+  ],
+});
+try {
+  const res = await mf.dispatchFetch("https://workers.test/__chio_workers_smoke");
+  const body = await res.json();
+  if (
+    !res.ok ||
+    body.package !== "@chio-protocol/workers" ||
+    body.wasmTarget !== "bundler" ||
+    body.verifyReceipt !== true
+  ) {
+    throw new Error(`Miniflare smoke failed: ${JSON.stringify(body)}`);
+  }
+  console.log("Workers Miniflare smoke verified @chio-protocol/workers");
+} finally {
+  await mf.dispose();
+}
+NODE
+          )
         fi
       )
     done
