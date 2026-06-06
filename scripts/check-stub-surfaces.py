@@ -151,10 +151,6 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         "advisory plan edges are intentional v1 metadata",
         "Phase 3 review",
     ),
-    "crates/chio-core-types/src/receipt.rs": allow(
-        "advisory trust level is an intentional receipt enum variant",
-        "Phase 3.2 review",
-    ),
     "crates/chio-core-types/src/receipt/kinds.rs": allow(
         "advisory trust level is an intentional receipt enum variant",
         "Phase 3.2 review",
