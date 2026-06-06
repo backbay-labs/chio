@@ -116,6 +116,8 @@ fn main() {
 #[path = "cli/runtime.rs"]
 mod runtime_cli;
 pub(crate) use runtime_cli::*;
+#[path = "cli/runtime/trust_reports.rs"]
+mod runtime_trust_reports;
 #[path = "cli/trust_commands.rs"]
 mod trust_commands_cli;
 pub(crate) use trust_commands_cli::*;

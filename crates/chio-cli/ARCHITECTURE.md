@@ -21,7 +21,9 @@ protocol behavior to the owning library crates.
   command implementations without owning protocol semantics.
 - `src/cli/runtime.rs`, `src/cli/session.rs`, `src/cli/mcp.rs`, and
   `src/cli/replay.rs` adapt operator input into calls against kernel, control
-  plane, MCP, and replay library APIs.
+  plane, MCP, and replay library APIs. `src/cli/runtime/trust_reports.rs`
+  owns trust evidence, authorization context, behavioral feed, exposure,
+  capital, credit facility, bond, and credit-loss reporting handlers.
 - `src/passport.rs` owns passport generation, creation, verification,
   evaluation, presentation, issuance metadata, and OID4VCI issuance command
   implementations. `src/passport/verifier.rs` owns verifier policy, challenge,

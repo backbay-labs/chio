@@ -4,6 +4,19 @@
 // kernel store paths and control-plane endpoint through every subcommand.
 
 use super::*;
+use crate::runtime_trust_reports::{
+    AgentExposureLedgerQueryArgs, AuthorizationContextListArgs, BehavioralFeedExportArgs,
+    CapitalBookExportArgs, CreditBondIssueArgs, CreditBondListArgs, CreditFacilityIssueArgs,
+    CreditFacilityListArgs, ExposureLedgerQueryArgs, SharedEvidenceListArgs,
+    cmd_trust_authorization_context_list, cmd_trust_authorization_context_metadata,
+    cmd_trust_authorization_context_review_pack, cmd_trust_behavioral_feed_export,
+    cmd_trust_capital_allocation_issue, cmd_trust_capital_book_export,
+    cmd_trust_capital_instruction_issue, cmd_trust_credit_bond_evaluate,
+    cmd_trust_credit_bond_issue, cmd_trust_credit_bond_list, cmd_trust_credit_bond_simulate,
+    cmd_trust_credit_facility_evaluate, cmd_trust_credit_facility_issue,
+    cmd_trust_credit_facility_list, cmd_trust_credit_scorecard_export,
+    cmd_trust_evidence_share_list, cmd_trust_exposure_ledger_export,
+};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn dispatch_trust(
