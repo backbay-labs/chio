@@ -165,6 +165,7 @@ SLICES: tuple[ReviewSlice, ...] = (
             "crates/chio-tee-frame/**",
             "crates/chio-test-support/**",
             "formal/**",
+            "fuzz/**",
             "tests/**",
         ),
     ),
