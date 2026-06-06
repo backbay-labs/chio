@@ -19,6 +19,10 @@ crates such as `chio-store-sqlite`.
   proof checks, autonomy bond checks, and governed call-chain receipt evidence.
 - `kernel/dispatch.rs` owns guard evaluation, runtime admission, and tool
   dispatch.
+- `budget_store.rs` owns the budget trait, request/decision records, and
+  budget commit metadata. `budget_store/in_memory.rs` owns the in-memory
+  backend, hold state, idempotent mutation events, and concrete `BudgetStore`
+  implementation.
 
 ## Security And API Constraints
 
