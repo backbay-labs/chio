@@ -65,7 +65,6 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/chio-mcp-edge/src/runtime.rs": allow(
         "Phase 5.2", "baseline MCP edge runtime split target"
     ),
-    "xtask/src/main.rs": allow("Phase 6.1", "baseline xtask dispatcher split target"),
     "crates/chio-autonomy/src/lib.rs": allow(
         "Phase 6.2", "baseline remaining lib root split target"
     ),
