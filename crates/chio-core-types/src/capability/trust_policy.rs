@@ -1,5 +1,6 @@
 use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
+use alloc::vec::Vec;
 
 use serde::{Deserialize, Serialize};
 use url::Url;
