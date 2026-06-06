@@ -17,6 +17,11 @@ JWKS, COSE, certificate-chain, appraisal, and vendor-claim helpers; and
 `attestation/tests.rs` keeps provider verifier branch coverage out of
 production line-count accounting.
 
+`policy.rs` owns policy YAML loading, HushSpec materialization, guard pipeline
+construction, default capability synthesis, and policy identity hashing.
+`policy/tests.rs` keeps policy parser, guard-construction, capability, and
+HushSpec regression coverage out of production line-count accounting.
+
 `trust_control/service_runtime.rs` is the trust-service boot and route
 registration root. Its child modules own the remote runtime surfaces:
 `client.rs` builds remote clients, normalizes endpoints, signs cluster-peer

@@ -57,7 +57,7 @@ packages and 588,730 bytes of metadata.
 | `crates/chio-core-types/src/receipt.rs` | 3,438 | production | `chio-core-types` | Phase 3.2 |
 | `crates/chio-wasm-guards/src/runtime.rs` | 3,357 | production | `chio-wasm-guards` | Phase 5.1 |
 | `crates/chio-mcp-edge/src/runtime.rs` | 3,310 | production | `chio-mcp-edge` | Phase 5.2 |
-| `crates/chio-control-plane/src/policy.rs` | 3,285 | production | `chio-control-plane` | Phase 6.1 |
+| `crates/chio-control-plane/src/policy.rs` | 1,830 | production | `chio-control-plane` | split inline tests to `policy/tests.rs` in Phase 6.1 |
 | `crates/chio-mercury/tests/cli.rs` | 3,262 | test | `chio-mercury` | Phase 7 follow-up |
 | `crates/chio-cli/tests/trust_cluster.rs` | 3,208 | test | `chio-cli` | Phase 7 follow-up |
 | `crates/chio-attest-buyer-core/src/lib.rs` | 3,200 | production lib root | `chio-attest-buyer-core` | Phase 2.1 |
