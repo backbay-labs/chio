@@ -12,6 +12,7 @@ import sys
 
 PRODUCTION_LIMIT = 2_000
 LIB_ROOT_LIMIT = 1_000
+TEST_LIMIT = 2_000
 SUMMARY_LIMIT = 25
 WIRE_GENERATED_PREFIX = "crates/chio-core-types/src/_generated/"
 GENERATED_HEADER_SOURCE = "crates/chio-spec-codegen/src/lib.rs"
@@ -25,13 +26,90 @@ ERRORS_GENERATED_HEADER_CONST_MARKER = 'const ERROR_CODES_GENERATED_HEADER: &str
 class AllowlistEntry:
     rationale: str
     expires: str
+    max_lines: int | None = None
 
 
-def allow(phase: str, rationale: str) -> AllowlistEntry:
-    return AllowlistEntry(rationale=rationale, expires=phase)
+def allow(phase: str, rationale: str, *, max_lines: int | None = None) -> AllowlistEntry:
+    return AllowlistEntry(rationale=rationale, expires=phase, max_lines=max_lines)
 
 
-ALLOWLIST: dict[str, AllowlistEntry] = {}
+ALLOWLIST: dict[str, AllowlistEntry] = {
+    "crates/chio-cli/tests/mcp_serve_http.rs": allow(
+        "Phase 10 test decomposition",
+        "existing oversized CLI MCP HTTP integration suite; capped to current size until split",
+        max_lines=6_316,
+    ),
+    "crates/chio-cli/tests/passport.rs": allow(
+        "Phase 10 test decomposition",
+        "existing oversized CLI passport integration suite; capped to current size until split",
+        max_lines=5_390,
+    ),
+    "crates/chio-cli/tests/mcp_serve.rs": allow(
+        "Phase 10 test decomposition",
+        "existing oversized CLI MCP serve integration suite; capped to current size until split",
+        max_lines=4_496,
+    ),
+    "crates/chio-mcp-edge/src/runtime/runtime_tests.rs": allow(
+        "Phase 10 test decomposition",
+        "existing oversized MCP edge runtime test suite; capped to current size until split",
+        max_lines=4_349,
+    ),
+    "crates/chio-cli/tests/certify.rs": allow(
+        "Phase 10 test decomposition",
+        "existing oversized CLI certify integration suite; capped to current size until split",
+        max_lines=3_639,
+    ),
+    "crates/chio-mercury/tests/cli.rs": allow(
+        "Phase 10 test decomposition",
+        "existing oversized Mercury CLI integration suite; capped to current size until split",
+        max_lines=3_264,
+    ),
+    "crates/chio-cli/tests/trust_cluster.rs": allow(
+        "Phase 10 test decomposition",
+        "existing oversized CLI trust-cluster integration suite; capped to current size until split",
+        max_lines=3_209,
+    ),
+    "crates/chio-api-protect/src/proxy/tests.rs": allow(
+        "Phase 10 test decomposition",
+        "existing oversized API protect proxy test suite; capped to current size until split",
+        max_lines=2_971,
+    ),
+    "crates/chio-acp-edge/src/tests/all.rs": allow(
+        "Phase 10 test decomposition",
+        "existing oversized ACP edge aggregate test suite; capped to current size until split",
+        max_lines=2_881,
+    ),
+    "crates/chio-a2a-edge/src/tests/all.rs": allow(
+        "Phase 10 test decomposition",
+        "existing oversized A2A edge aggregate test suite; capped to current size until split",
+        max_lines=2_702,
+    ),
+    "crates/chio-cli/tests/federated_issue.rs": allow(
+        "Phase 10 test decomposition",
+        "existing oversized CLI federated issue integration suite; capped to current size until split",
+        max_lines=2_295,
+    ),
+    "crates/chio-credentials/src/tests.rs": allow(
+        "Phase 10 test decomposition",
+        "existing oversized credentials test suite; capped to current size until split",
+        max_lines=2_164,
+    ),
+    "crates/chio-core-types/src/capability/tests.rs": allow(
+        "Phase 10 test decomposition",
+        "existing oversized capability type test suite; capped to current size until split",
+        max_lines=2_141,
+    ),
+    "crates/chio-runtime-core/tests/runtime_buyer_review.rs": allow(
+        "Phase 10 test decomposition",
+        "existing oversized runtime buyer review integration suite; capped to current size until split",
+        max_lines=2_067,
+    ),
+    "crates/chio-mcp-remote/src/remote_mcp/tests.rs": allow(
+        "Phase 10 test decomposition",
+        "existing oversized remote MCP test suite; capped to current size until split",
+        max_lines=2_008,
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -132,6 +210,8 @@ def validate_allowlist(errors: list[str]) -> None:
             errors.append(f"{path}: allowlist entry has an empty rationale")
         if not entry.expires.strip():
             errors.append(f"{path}: allowlist entry has an empty expiry phase")
+        if entry.max_lines is not None and entry.max_lines <= 0:
+            errors.append(f"{path}: allowlist entry has a non-positive max_lines cap")
 
 
 def validate_generated_headers(
@@ -184,12 +264,19 @@ def inspect_file(root: Path, path: str) -> RustFile:
         )
     if category == "production" and is_lib_root(path) and lines > LIB_ROOT_LIMIT:
         violations.append(f"src/lib.rs has {lines} lines, limit is {LIB_ROOT_LIMIT}")
+    if category == "test" and lines > TEST_LIMIT:
+        violations.append(f"test file has {lines} lines, limit is {TEST_LIMIT}")
+    allowlist = ALLOWLIST.get(path)
+    if allowlist and allowlist.max_lines is not None and lines > allowlist.max_lines:
+        violations.append(
+            f"allowlisted file has {lines} lines, cap is {allowlist.max_lines}"
+        )
     return RustFile(
         path=path,
         lines=lines,
         category=category,
         violations=tuple(violations),
-        allowlist=ALLOWLIST.get(path),
+        allowlist=allowlist,
     )
 
 
@@ -244,9 +331,25 @@ def main() -> int:
         if not file.violations:
             continue
         if file.allowlist:
+            uncovered = []
+            if file.category == "test" and file.lines > TEST_LIMIT:
+                if file.allowlist.max_lines is None:
+                    uncovered.append(
+                        "oversized test allowlist entry must set a max_lines cap"
+                    )
+            uncovered.extend(
+                violation
+                for violation in file.violations
+                if violation.startswith("allowlisted file has ")
+            )
+            if uncovered:
+                for violation in uncovered:
+                    failures.append(f"{file.path}: {violation}")
+                continue
             print(
                 f"allowlisted: {file.path}: {file.allowlist.rationale}; "
-                f"expires {file.allowlist.expires}"
+                f"expires {file.allowlist.expires}; "
+                f"max_lines {file.allowlist.max_lines or 'uncapped'}"
             )
             continue
         for violation in file.violations:

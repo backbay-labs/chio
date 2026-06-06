@@ -91,14 +91,34 @@ assert_rc() {
 pass_case="$work/pass"
 init_case "$pass_case"
 write_lines "$pass_case/crates/chio-small/src/main.rs" 25
-write_lines "$pass_case/crates/chio-small/tests/large.rs" 2501
+write_lines "$pass_case/crates/chio-small/tests/large.rs" 1999
 write_generated_wire "$pass_case/crates/chio-core-types/src/_generated/chio_wire_v1.rs" 3001
 write_generated_errors "$pass_case/crates/chio-errors/src/_generated/error_codes.rs" 2501
 track_case "$pass_case"
 assert_rc "$(run_checker "$pass_case" "$work/pass.out" "$work/pass.err")" 0 \
-  "small production plus large test/generated files with canonical header pass"
+  "small production plus bounded test/generated files with canonical header pass"
 grep -F "generated top" "$work/pass.out" >/dev/null
 grep -F "test top" "$work/pass.out" >/dev/null
+
+large_test="$work/large-test"
+init_case "$large_test"
+write_lines "$large_test/crates/chio-small/src/main.rs" 25
+write_lines "$large_test/crates/chio-small/tests/large.rs" 2001
+track_case "$large_test"
+assert_rc "$(run_checker "$large_test" "$work/large-test.out" "$work/large-test.err")" 1 \
+  "oversized unallowlisted test file fails"
+grep -F "crates/chio-small/tests/large.rs: test file has 2001 lines" \
+  "$work/large-test.err" >/dev/null
+
+allowlist_growth="$work/allowlist-growth"
+init_case "$allowlist_growth"
+write_lines "$allowlist_growth/crates/chio-small/src/main.rs" 25
+write_lines "$allowlist_growth/crates/chio-cli/tests/mcp_serve_http.rs" 6317
+track_case "$allowlist_growth"
+assert_rc "$(run_checker "$allowlist_growth" "$work/allowlist-growth.out" "$work/allowlist-growth.err")" 1 \
+  "oversized allowlisted test file cannot grow past cap"
+grep -F "crates/chio-cli/tests/mcp_serve_http.rs: allowlisted file has 6317 lines, cap is 6316" \
+  "$work/allowlist-growth.err" >/dev/null
 
 bad_generated="$work/bad-generated"
 init_case "$bad_generated"
