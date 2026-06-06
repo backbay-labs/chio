@@ -2024,9 +2024,12 @@ mod construction;
 // cores.
 #[path = "evaluation.rs"]
 mod evaluation;
-// Capability, budget, and governed-admission validation.
+// Capability and budget validation.
 #[path = "validation.rs"]
 mod validation;
+// Governed-admission validation and call-chain receipt evidence.
+#[path = "governed_validation.rs"]
+mod governed_validation;
 // Guard evaluation, runtime admission, and tool dispatch.
 #[path = "dispatch.rs"]
 mod dispatch;
