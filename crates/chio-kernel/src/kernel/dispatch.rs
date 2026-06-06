@@ -72,14 +72,14 @@ impl ChioKernel {
                 .iter()
                 .find(|receipt| receipt.id == receipt_id)
                 .cloned()
-                .map(LocalReceiptArtifact::Tool),
+                .map(|receipt| LocalReceiptArtifact::Tool(Box::new(receipt))),
             Err(poisoned) => poisoned
                 .into_inner()
                 .receipts()
                 .iter()
                 .find(|receipt| receipt.id == receipt_id)
                 .cloned()
-                .map(LocalReceiptArtifact::Tool),
+                .map(|receipt| LocalReceiptArtifact::Tool(Box::new(receipt))),
         };
         if tool_match.is_some() {
             return tool_match;
@@ -91,14 +91,14 @@ impl ChioKernel {
                 .iter()
                 .find(|receipt| receipt.id == receipt_id)
                 .cloned()
-                .map(LocalReceiptArtifact::Child),
+                .map(|receipt| LocalReceiptArtifact::Child(Box::new(receipt))),
             Err(poisoned) => poisoned
                 .into_inner()
                 .receipts()
                 .iter()
                 .find(|receipt| receipt.id == receipt_id)
                 .cloned()
-                .map(LocalReceiptArtifact::Child),
+                .map(|receipt| LocalReceiptArtifact::Child(Box::new(receipt))),
         }
     }
 

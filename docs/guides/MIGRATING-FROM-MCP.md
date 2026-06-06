@@ -332,11 +332,14 @@ Not every MCP feature lands on day one. Known gaps:
   the `--preset` flag is a stdio-only convenience today.
 - **Execution nonces.** Kernel-dispatched tool calls support strict,
   single-use `ToolCallRequest::execution_nonce` enforcement when
-  `ExecutionNonceConfig::require_nonce` is enabled. The five-minute
-  stdio wrapper remains a manifest-gated pass-through and does not yet
-  re-present execution nonces to the kernel. For TOCTOU-sensitive
-  deployments, use a kernel-dispatched execution path with strict
-  nonces enabled; the default compatibility path is weaker.
+  `ExecutionNonceConfig::require_nonce` is enabled. `chio mcp wrap
+  --strict-execution-nonce` runs allowed `tools/call` requests through
+  a kernel preflight that mints a signed nonce, then re-presents that
+  nonce on the execution request before the wrapped MCP server is
+  invoked. The default `chio mcp wrap` compatibility path remains a
+  manifest-gated pass-through, and advisory `/v1/evaluate` checks do
+  not execute or consume nonces. For TOCTOU-sensitive deployments, use
+  a mediated execution path with strict nonces enabled.
 - **Pre-existing receipts.** Moving to Chio does not retroactively
   attest past tool calls; receipts start at the first call through
   the edge.

@@ -374,8 +374,8 @@ pub(crate) struct ValidatedGovernedAdmission {
 
 #[derive(Debug, Clone)]
 pub(crate) enum LocalReceiptArtifact {
-    Tool(chio_core::receipt::ChioReceipt),
-    Child(chio_core::receipt::ChildRequestReceipt),
+    Tool(Box<chio_core::receipt::ChioReceipt>),
+    Child(Box<chio_core::receipt::ChildRequestReceipt>),
 }
 
 impl LocalReceiptArtifact {

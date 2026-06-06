@@ -142,3 +142,87 @@ fn e2e_wrap_round_trip_attestation_and_verdict_gate() {
         .expect("denied frame has urn:chio: code");
     assert_eq!(chio_code, "urn:chio:error:capability:scope-exceeded");
 }
+
+#[test]
+fn e2e_wrap_strict_execution_nonce_allows_call_through_kernel_path() {
+    let mut child = Command::new(chio_bin())
+        .args([
+            "mcp",
+            "wrap",
+            "--server-id",
+            "e2e",
+            "--strict-execution-nonce",
+            "--e2e-fixture",
+        ])
+        .arg(fixture_path())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn chio mcp wrap strict");
+
+    {
+        let mut stdin = child.stdin.take().expect("stdin");
+        let frames = [
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 0,
+                "method": "initialize",
+                "params": {}
+            }),
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/list",
+                "params": {}
+            }),
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": { "name": "echo", "arguments": { "text": "hello" } }
+            }),
+        ];
+        for frame in frames {
+            writeln!(stdin, "{frame}").expect("write frame");
+        }
+    }
+
+    let output = child.wait_with_output().expect("wait_with_output");
+    assert!(
+        output.status.success(),
+        "strict wrap loop failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("utf-8");
+    let frames: Vec<serde_json::Value> = stdout
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| serde_json::from_str(line).expect("frame is JSON"))
+        .collect();
+    assert_eq!(
+        frames.len(),
+        3,
+        "expected 3 framed responses, got {frames:?}"
+    );
+
+    let allowed = &frames[2];
+    assert_eq!(allowed.get("id"), Some(&serde_json::json!(2)));
+    assert!(
+        allowed.get("error").is_none(),
+        "strict nonce call must return a successful MCP result: {allowed:?}"
+    );
+    assert_eq!(
+        allowed
+            .pointer("/result/_meta/chio_verified/header")
+            .and_then(serde_json::Value::as_str),
+        Some("Chio-verified")
+    );
+    assert_eq!(
+        allowed
+            .pointer("/result/content/0/text")
+            .and_then(serde_json::Value::as_str),
+        Some("echoed: hello")
+    );
+}

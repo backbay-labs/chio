@@ -13,13 +13,10 @@
 //      denials are surfaced as JSON-RPC errors with a deterministic
 //      `urn:chio:` reason code.
 //
-// The verdict gate is a trait so the e2e test can inject a pure-Rust gate
-// without spinning up the kernel.
-//
-// Boundary: this stdio wrapper is manifest-gated pass-through. It does not
-// mint or present `ToolCallRequest::execution_nonce`. TOCTOU-sensitive
-// deployments need a kernel-dispatched execution path with strict execution
-// nonces enabled.
+// The verdict gate is a trait so the e2e test can inject a pure-Rust gate.
+// By default this stdio wrapper is manifest-gated pass-through. When
+// `--strict-execution-nonce` is enabled, allowed tool calls are executed
+// through a local kernel preflight plus nonce-presenting dispatch path.
 
 use super::*;
 
@@ -118,6 +115,11 @@ pub(crate) struct McpWrapArgs {
     #[arg(long)]
     pub(crate) self_test_attestation: Option<String>,
 
+    /// Execute allowed tool calls through a kernel path that mints and
+    /// presents strict execution nonces before invoking the wrapped server.
+    #[arg(long, default_value_t = false)]
+    pub(crate) strict_execution_nonce: bool,
+
     /// The wrapped MCP server command and its arguments. Required unless
     /// `--tools-fixture` is supplied (the test-only path).
     #[arg(trailing_var_arg = true)]
@@ -132,7 +134,9 @@ pub(crate) fn cmd_mcp_wrap_run(args: &McpWrapArgs) -> Result<(), CliError> {
         Some(path) => load_manifest_allowlist(path)?,
         None => std::collections::BTreeSet::new(),
     };
-    let gate = ManifestVerdictGate { allowed };
+    let gate = ManifestVerdictGate {
+        allowed: allowed.clone(),
+    };
 
     let (program, child_args) = split_wrapped_command(&args.command)?;
     let child_args_refs: Vec<&str> = child_args.iter().map(String::as_str).collect();
@@ -143,15 +147,32 @@ pub(crate) fn cmd_mcp_wrap_run(args: &McpWrapArgs) -> Result<(), CliError> {
             ))
         })?;
 
-    let summary = run_wrap_with_gate(
-        &transport,
-        &gate,
-        std::io::stdin().lock(),
-        std::io::stdout().lock(),
-    )
+    let summary = if args.strict_execution_nonce {
+        let mediated = KernelMediatedMcpTransport::new(
+            &args.server_id,
+            args.display_name.as_deref().unwrap_or(&args.server_id),
+            env!("CARGO_PKG_VERSION"),
+            Box::new(transport),
+            &allowed,
+        )?;
+        run_wrap_with_gate(
+            &mediated,
+            &gate,
+            std::io::stdin().lock(),
+            std::io::stdout().lock(),
+        )
+    } else {
+        let summary = run_wrap_with_gate(
+            &transport,
+            &gate,
+            std::io::stdin().lock(),
+            std::io::stdout().lock(),
+        );
+        let _ = transport.shutdown();
+        summary
+    }
     .map_err(|e| CliError::cli_other_error(format!("chio mcp wrap loop: {e}")))?;
 
-    let _ = transport.shutdown();
     if summary.denied > 0 {
         tracing::warn!(
             target = "chio_cli::mcp::wrap",
@@ -161,6 +182,301 @@ pub(crate) fn cmd_mcp_wrap_run(args: &McpWrapArgs) -> Result<(), CliError> {
         );
     }
     Ok(())
+}
+
+struct KernelMediatedMcpTransport {
+    kernel: chio_kernel::ChioKernel,
+    agent_id: String,
+    agent_public_key: chio_core::PublicKey,
+    allowed: std::collections::BTreeSet<String>,
+    server_id: String,
+    tools: Vec<chio_mcp_adapter::McpToolInfo>,
+    request_counter: std::sync::atomic::AtomicU64,
+}
+
+struct CachedToolListTransport {
+    inner: Box<dyn chio_mcp_adapter::McpTransport>,
+    tools: Vec<chio_mcp_adapter::McpToolInfo>,
+}
+
+impl chio_mcp_adapter::McpTransport for CachedToolListTransport {
+    fn capabilities(&self) -> chio_mcp_adapter::McpServerCapabilities {
+        self.inner.capabilities()
+    }
+
+    fn list_tools(
+        &self,
+    ) -> Result<Vec<chio_mcp_adapter::McpToolInfo>, chio_mcp_adapter::AdapterError> {
+        Ok(self.tools.clone())
+    }
+
+    fn call_tool(
+        &self,
+        tool_name: &str,
+        arguments: serde_json::Value,
+    ) -> Result<chio_mcp_adapter::McpToolResult, chio_mcp_adapter::AdapterError> {
+        self.inner.call_tool(tool_name, arguments)
+    }
+
+    fn call_tool_with_nested_flow(
+        &self,
+        tool_name: &str,
+        arguments: serde_json::Value,
+        nested_flow_bridge: Option<&mut dyn chio_kernel::NestedFlowBridge>,
+    ) -> Result<chio_mcp_adapter::McpToolResult, chio_mcp_adapter::AdapterError> {
+        self.inner
+            .call_tool_with_nested_flow(tool_name, arguments, nested_flow_bridge)
+    }
+
+    fn list_resources(
+        &self,
+    ) -> Result<Vec<chio_core::ResourceDefinition>, chio_mcp_adapter::AdapterError> {
+        self.inner.list_resources()
+    }
+
+    fn list_resource_templates(
+        &self,
+    ) -> Result<Vec<chio_core::ResourceTemplateDefinition>, chio_mcp_adapter::AdapterError> {
+        self.inner.list_resource_templates()
+    }
+
+    fn read_resource(
+        &self,
+        uri: &str,
+    ) -> Result<Option<Vec<chio_core::ResourceContent>>, chio_mcp_adapter::AdapterError> {
+        self.inner.read_resource(uri)
+    }
+
+    fn list_prompts(
+        &self,
+    ) -> Result<Vec<chio_core::PromptDefinition>, chio_mcp_adapter::AdapterError> {
+        self.inner.list_prompts()
+    }
+
+    fn get_prompt(
+        &self,
+        name: &str,
+        arguments: serde_json::Value,
+    ) -> Result<Option<chio_core::PromptResult>, chio_mcp_adapter::AdapterError> {
+        self.inner.get_prompt(name, arguments)
+    }
+
+    fn complete_prompt_argument(
+        &self,
+        name: &str,
+        argument_name: &str,
+        value: &str,
+        context: &serde_json::Value,
+    ) -> Result<Option<chio_core::CompletionResult>, chio_mcp_adapter::AdapterError> {
+        self.inner
+            .complete_prompt_argument(name, argument_name, value, context)
+    }
+
+    fn complete_resource_argument(
+        &self,
+        uri: &str,
+        argument_name: &str,
+        value: &str,
+        context: &serde_json::Value,
+    ) -> Result<Option<chio_core::CompletionResult>, chio_mcp_adapter::AdapterError> {
+        self.inner
+            .complete_resource_argument(uri, argument_name, value, context)
+    }
+
+    fn drain_notifications(&self) -> Vec<serde_json::Value> {
+        self.inner.drain_notifications()
+    }
+}
+
+impl KernelMediatedMcpTransport {
+    fn new(
+        server_id: &str,
+        server_name: &str,
+        server_version: &str,
+        transport: Box<dyn chio_mcp_adapter::McpTransport>,
+        allowed: &std::collections::BTreeSet<String>,
+    ) -> Result<Self, CliError> {
+        let tools = transport
+            .list_tools()
+            .map_err(|e| CliError::cli_other_error(format!("failed to list tools: {e}")))?;
+        let kernel_keypair = chio_core::Keypair::generate();
+        let mut kernel = chio_kernel::ChioKernel::new(chio_kernel::KernelConfig {
+            keypair: kernel_keypair.clone(),
+            ca_public_keys: vec![],
+            max_delegation_depth: 5,
+            policy_hash: "mcp-wrap-strict-execution-nonce".to_string(),
+            allow_sampling: false,
+            allow_sampling_tool_use: false,
+            allow_elicitation: false,
+            max_stream_duration_secs: chio_kernel::DEFAULT_MAX_STREAM_DURATION_SECS,
+            max_stream_total_bytes: chio_kernel::DEFAULT_MAX_STREAM_TOTAL_BYTES,
+            require_web3_evidence: false,
+            allow_ephemeral_receipt_log: true,
+            checkpoint_batch_size: chio_kernel::DEFAULT_CHECKPOINT_BATCH_SIZE,
+            retention_config: None,
+        });
+        let nonce_config = chio_kernel::ExecutionNonceConfig {
+            nonce_ttl_secs: chio_kernel::DEFAULT_EXECUTION_NONCE_TTL_SECS,
+            nonce_store_capacity: chio_kernel::DEFAULT_EXECUTION_NONCE_STORE_CAPACITY,
+            require_nonce: true,
+        };
+        kernel.set_execution_nonce_store(
+            nonce_config.clone(),
+            Box::new(chio_kernel::InMemoryExecutionNonceStore::from_config(
+                &nonce_config,
+            )),
+        );
+
+        let adapter = chio_mcp_adapter::McpAdapter::new(
+            chio_mcp_adapter::McpAdapterConfig {
+                server_id: server_id.to_string(),
+                server_name: server_name.to_string(),
+                server_version: server_version.to_string(),
+                public_key: kernel_keypair.public_key().to_hex(),
+            },
+            Box::new(CachedToolListTransport {
+                inner: transport,
+                tools: tools.clone(),
+            }),
+        );
+        let adapted = chio_mcp_adapter::AdaptedMcpServer::new(adapter).map_err(|e| {
+            CliError::cli_other_error(format!("failed to build strict MCP adapter: {e}"))
+        })?;
+        kernel.register_tool_server(Box::new(adapted));
+
+        let agent_keypair = chio_core::Keypair::generate();
+
+        Ok(Self {
+            kernel,
+            agent_id: agent_keypair.public_key().to_hex(),
+            agent_public_key: agent_keypair.public_key(),
+            allowed: allowed.clone(),
+            server_id: server_id.to_string(),
+            tools,
+            request_counter: std::sync::atomic::AtomicU64::new(0),
+        })
+    }
+
+    fn issue_capability_for_tool(
+        &self,
+        tool_name: &str,
+    ) -> Result<chio_core::capability::CapabilityToken, chio_mcp_adapter::AdapterError> {
+        if !self.allowed.contains(tool_name) {
+            return Err(chio_mcp_adapter::AdapterError::KernelRuntime(format!(
+                "tool '{tool_name}' is not authorized by the strict wrapper capability"
+            )));
+        }
+        let grant = chio_core::capability::ToolGrant {
+            server_id: self.server_id.clone(),
+            tool_name: tool_name.to_string(),
+            operations: vec![chio_core::capability::Operation::Invoke],
+            constraints: Vec::new(),
+            max_invocations: None,
+            max_cost_per_invocation: None,
+            max_total_cost: None,
+            dpop_required: None,
+        };
+        let scope = chio_core::capability::ChioScope {
+            grants: vec![grant],
+            ..chio_core::capability::ChioScope::default()
+        };
+        self.kernel
+            .issue_capability(&self.agent_public_key, scope, 300)
+            .map_err(|e| {
+                chio_mcp_adapter::AdapterError::KernelRuntime(format!(
+                    "failed to issue strict wrapper capability: {e}"
+                ))
+            })
+    }
+
+    fn kernel_runtime_error(message: impl Into<String>) -> chio_mcp_adapter::AdapterError {
+        chio_mcp_adapter::AdapterError::KernelRuntime(message.into())
+    }
+
+    fn denial_error(response: chio_kernel::ToolCallResponse) -> chio_mcp_adapter::AdapterError {
+        let reason = response
+            .reason
+            .unwrap_or_else(|| format!("kernel returned {:?}", response.verdict));
+        Self::kernel_runtime_error(reason)
+    }
+
+    fn output_to_mcp_result(
+        output: chio_kernel::ToolCallOutput,
+    ) -> Result<chio_mcp_adapter::McpToolResult, chio_mcp_adapter::AdapterError> {
+        match output {
+            chio_kernel::ToolCallOutput::Value(value) => {
+                serde_json::from_value(value).map_err(|e| {
+                    Self::kernel_runtime_error(format!(
+                        "kernel output was not an MCP tool result: {e}"
+                    ))
+                })
+            }
+            chio_kernel::ToolCallOutput::Stream(_) => Err(Self::kernel_runtime_error(
+                "strict mcp wrap does not support streaming tool output",
+            )),
+        }
+    }
+}
+
+impl chio_mcp_adapter::McpTransport for KernelMediatedMcpTransport {
+    fn capabilities(&self) -> chio_mcp_adapter::McpServerCapabilities {
+        chio_mcp_adapter::McpServerCapabilities::default()
+    }
+
+    fn list_tools(&self) -> Result<Vec<chio_mcp_adapter::McpToolInfo>, chio_mcp_adapter::AdapterError> {
+        Ok(self.tools.clone())
+    }
+
+    fn call_tool(
+        &self,
+        tool_name: &str,
+        arguments: serde_json::Value,
+    ) -> Result<chio_mcp_adapter::McpToolResult, chio_mcp_adapter::AdapterError> {
+        let capability = self.issue_capability_for_tool(tool_name)?;
+        let sequence = self
+            .request_counter
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let mut request = chio_kernel::ToolCallRequest {
+            request_id: format!("mcp-wrap-strict-{sequence}"),
+            capability,
+            tool_name: tool_name.to_string(),
+            server_id: self.server_id.clone(),
+            agent_id: self.agent_id.clone(),
+            arguments,
+            dpop_proof: None,
+            execution_nonce: None,
+            governed_intent: None,
+            approval_token: None,
+            model_metadata: None,
+            federated_origin_kernel_id: None,
+        };
+
+        let preflight = self
+            .kernel
+            .evaluate_tool_call_blocking(&request)
+            .map_err(|e| Self::kernel_runtime_error(e.to_string()))?;
+        if preflight.verdict != chio_kernel::Verdict::Allow {
+            return Err(Self::denial_error(preflight));
+        }
+        let nonce = preflight.execution_nonce.ok_or_else(|| {
+            Self::kernel_runtime_error(
+                "strict execution nonce preflight did not return an execution nonce",
+            )
+        })?;
+        request.execution_nonce = Some(*nonce);
+
+        let executed = self
+            .kernel
+            .evaluate_tool_call_blocking(&request)
+            .map_err(|e| Self::kernel_runtime_error(e.to_string()))?;
+        if executed.verdict != chio_kernel::Verdict::Allow {
+            return Err(Self::denial_error(executed));
+        }
+        let output = executed.output.ok_or_else(|| {
+            Self::kernel_runtime_error("strict execution returned no tool output")
+        })?;
+        Self::output_to_mcp_result(output)
+    }
 }
 
 /// Split the trailing `command` slice into the program plus its argv.
@@ -257,6 +573,14 @@ where
                                     "id": id,
                                     "result": payload,
                                 })
+                            }
+                            Err(chio_mcp_adapter::AdapterError::KernelRuntime(reason)) => {
+                                json_rpc_error(
+                                    id,
+                                    -32001,
+                                    "urn:chio:error:kernel:mediated-denial",
+                                    &reason,
+                                )
                             }
                             Err(error) => json_rpc_error(
                                 id,
@@ -482,12 +806,28 @@ pub(crate) fn cmd_mcp_wrap_e2e_fixture(
     let transport = FixtureMcpTransport { tools, responses };
     let gate = ManifestVerdictGate { allowed };
 
-    run_wrap_with_gate(
-        &transport,
-        &gate,
-        std::io::stdin().lock(),
-        std::io::stdout().lock(),
-    )
+    if _args.strict_execution_nonce {
+        let mediated = KernelMediatedMcpTransport::new(
+            &_args.server_id,
+            _args.display_name.as_deref().unwrap_or(&_args.server_id),
+            env!("CARGO_PKG_VERSION"),
+            Box::new(transport),
+            &gate.allowed,
+        )?;
+        run_wrap_with_gate(
+            &mediated,
+            &gate,
+            std::io::stdin().lock(),
+            std::io::stdout().lock(),
+        )
+    } else {
+        run_wrap_with_gate(
+            &transport,
+            &gate,
+            std::io::stdin().lock(),
+            std::io::stdout().lock(),
+        )
+    }
     .map_err(|e| CliError::cli_other_error(format!("e2e wrap loop: {e}")))?;
 
     Ok(())
@@ -517,6 +857,26 @@ fn json_rpc_error(
 mod wrap_tests {
     use super::*;
 
+    struct KernelRuntimeErrorTransport;
+
+    impl chio_mcp_adapter::McpTransport for KernelRuntimeErrorTransport {
+        fn list_tools(
+            &self,
+        ) -> Result<Vec<chio_mcp_adapter::McpToolInfo>, chio_mcp_adapter::AdapterError> {
+            Ok(Vec::new())
+        }
+
+        fn call_tool(
+            &self,
+            _tool_name: &str,
+            _arguments: serde_json::Value,
+        ) -> Result<chio_mcp_adapter::McpToolResult, chio_mcp_adapter::AdapterError> {
+            Err(chio_mcp_adapter::AdapterError::KernelRuntime(
+                "kernel denied strict mediated execution".to_string(),
+            ))
+        }
+    }
+
     #[test]
     fn wrap_loop_rejects_oversized_json_rpc_frame() {
         let input = format!("{}\n", "x".repeat(MAX_MCP_WRAP_FRAME_BYTES + 1));
@@ -535,5 +895,43 @@ mod wrap_tests {
         };
 
         assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn wrap_loop_maps_kernel_runtime_errors_to_kernel_denial_code() {
+        let input = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "tools/call",
+            "params": { "name": "echo", "arguments": {} }
+        })
+        .to_string()
+            + "\n";
+        let transport = KernelRuntimeErrorTransport;
+        let mut allowed = std::collections::BTreeSet::new();
+        allowed.insert("echo".to_string());
+        let gate = ManifestVerdictGate { allowed };
+        let mut output = Vec::new();
+
+        let summary = match run_wrap_with_gate(&transport, &gate, input.as_bytes(), &mut output) {
+            Ok(summary) => summary,
+            Err(error) => panic!("wrap loop should map kernel runtime error: {error}"),
+        };
+
+        assert_eq!(summary.allowed, 1);
+        let frame: serde_json::Value = match serde_json::from_slice(&output) {
+            Ok(frame) => frame,
+            Err(error) => panic!("output frame should be JSON: {error}"),
+        };
+        assert_eq!(
+            frame.pointer("/error/data/chio_code"),
+            Some(&serde_json::json!(
+                "urn:chio:error:kernel:mediated-denial"
+            ))
+        );
+        assert_eq!(
+            frame.pointer("/error/message"),
+            Some(&serde_json::json!("kernel denied strict mediated execution"))
+        );
     }
 }
