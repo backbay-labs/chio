@@ -313,6 +313,7 @@ fn build_receipt(scaffold: &ReceiptScaffold, keypair: &Keypair) -> ChioReceipt {
         trust_level: TrustLevel::default(),
         tenant_id: None,
         kernel_key: keypair.public_key(),
+        bbs_projection_version: None,
     };
     ChioReceipt::sign(body, keypair).expect("sign receipt")
 }
