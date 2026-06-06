@@ -63,7 +63,9 @@ packages and 588,730 bytes of metadata.
 | `crates/chio-attest-buyer-core/src/lib.rs` | 3,200 | production lib root | `chio-attest-buyer-core` | Phase 2.1 |
 | `crates/chio-mcp-remote/src/remote_mcp/session_core.rs` | 1,891 | production | `chio-mcp-remote` | split identity, resume, shared-upstream, and form includes in Phase 6.1 |
 | `crates/chio-api-protect/src/proxy/tests.rs` | 2,973 | test | `chio-api-protect` | split from `proxy.rs` in Phase 6.1 |
-| `crates/chio-control-plane/src/evidence_export.rs` | 3,039 | production | `chio-control-plane` | Phase 6.1 |
+| `crates/chio-control-plane/src/evidence_export.rs` | 1,372 | production | `chio-control-plane` | split verification/package loading and inline tests in Phase 6.1 |
+| `crates/chio-control-plane/src/evidence_export/verification.rs` | 800 | production | `chio-control-plane` | split from `evidence_export.rs` in Phase 6.1 |
+| `crates/chio-control-plane/src/evidence_export/tests.rs` | 873 | test | `chio-control-plane` | split from `evidence_export.rs` in Phase 6.1 |
 | `crates/chio-control-plane/src/trust_control/capital_and_liability.rs` | 2,914 | production | `chio-control-plane` | Phase 6.1 |
 | `crates/chio-acp-edge/src/tests/all.rs` | 2,881 | test | `chio-acp-edge` | Phase 7 follow-up |
 | `crates/chio-federation/src/lib.rs` | 2,803 | production lib root | `chio-federation` | Phase 2.2 |

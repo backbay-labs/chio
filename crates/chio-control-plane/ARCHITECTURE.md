@@ -22,6 +22,16 @@ construction, default capability synthesis, and policy identity hashing.
 `policy/tests.rs` keeps policy parser, guard-construction, capability, and
 HushSpec regression coverage out of production line-count accounting.
 
+`evidence_export.rs` owns the CLI and trust-control orchestration surface for
+evidence export, import, verification, signed federation policy creation,
+package rendering, filesystem IO, and query preparation. Its
+`evidence_export/verification.rs` child owns manifest hash verification,
+receipt and checkpoint signature checks, transparency-claim boundary checks,
+federation-policy attachment validation, import-package validation, verified
+package loading, and federated-share import construction.
+`evidence_export/tests.rs` keeps export/import verification and disclosure
+notice coverage out of production line-count accounting.
+
 `trust_control/service_runtime.rs` is the trust-service boot and route
 registration root. Its child modules own the remote runtime surfaces:
 `client.rs` builds remote clients, normalizes endpoints, signs cluster-peer
