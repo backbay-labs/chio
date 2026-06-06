@@ -17,6 +17,14 @@ protocol behavior to the owning library crates.
 - `src/cli/runtime.rs`, `src/cli/session.rs`, `src/cli/mcp.rs`, and
   `src/cli/replay.rs` adapt operator input into calls against kernel, control
   plane, MCP, and replay library APIs.
+- `src/cli/trust_commands.rs` is the trust-command handler API root. Its
+  children split durable command families: `trust/shared.rs` holds backend and
+  JSON/YAML loading helpers, `trust/credit.rs` owns credit/loss command
+  handlers and parsers, `trust/liability.rs` owns liability market and claim
+  handlers, `trust/underwriting.rs` owns underwriting input, decision, and
+  appeal handlers, `trust/runtime_attestation.rs` owns runtime-attestation
+  appraisal commands, and `trust/receipt.rs` owns receipt list, operator,
+  checkpoint, and explain rendering.
 - `src/doctor/*` owns local diagnostics. Probes report actionable operator
   health without mutating state unless `--fix` explicitly requests a safe
   repair.
