@@ -79,17 +79,17 @@ pub trait RuntimeAdmissionHook: Send + Sync {
 #[derive(Debug, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct KernelFederationTreatyDsseMetadata {
-    capability_lease_ref: chio_federation::CapabilityLeaseRef,
-    policy_evaluation_summary: chio_federation::PolicyEvaluationSummary,
+    capability_lease_ref: chio_federation::bilateral_dsse::CapabilityLeaseRef,
+    policy_evaluation_summary: chio_federation::bilateral_dsse::PolicyEvaluationSummary,
     #[serde(default)]
-    governance_receipt_ref: Option<chio_federation::GovernanceReceiptRef>,
+    governance_receipt_ref: Option<chio_federation::bilateral_dsse::GovernanceReceiptRef>,
     #[serde(default)]
     consistency_anchor: Option<String>,
     #[serde(default)]
     consistency_model: Option<String>,
     #[serde(default)]
     cross_org_visibility: Option<String>,
-    treaty_binding_ref: chio_federation::TreatyBindingRef,
+    treaty_binding_ref: chio_federation::bilateral_dsse::TreatyBindingRef,
 }
 
 // ---------------------------------------------------------------------------
@@ -170,7 +170,7 @@ impl Drop for ScopedKernelReceiptTenantId {
 #[derive(Debug, Clone)]
 pub(crate) struct ReceiptFederationAdmission {
     pub remote_kernel_id: Option<String>,
-    pub peer: Option<chio_federation::FederationPeer>,
+    pub peer: Option<chio_federation::trust_establishment::FederationPeer>,
 }
 
 /// Guard returned by [`scope_receipt_federation_admission`]. Restores the
@@ -1423,7 +1423,8 @@ pub struct ChioKernel {
     /// here (fresh), the kernel invokes `federation_cosigner` after
     /// locally signing the receipt to obtain the origin kernel's
     /// co-signature. Absent in non-federated deployments.
-    federation_peers: ArcSwap<HashMap<String, chio_federation::FederationPeer>>,
+    federation_peers:
+        ArcSwap<HashMap<String, chio_federation::trust_establishment::FederationPeer>>,
     /// `ArcSwap` so trust-root rotations can land without holding a
     /// kernel mutex. Hex-keyed because `chio_core::PublicKey` does not
     /// implement `Hash`.
@@ -1434,16 +1435,16 @@ pub struct ChioKernel {
     /// Bilateral co-signer. Separate from the peer set so
     /// runtime can install it independently -- for instance, a deployment
     /// can declare peers while still using a mock cosigner in tests.
-    federation_cosigner: Option<Arc<dyn chio_federation::BilateralCoSigningProtocol>>,
+    federation_cosigner: Option<Arc<dyn chio_federation::bilateral::BilateralCoSigningProtocol>>,
     /// Locally-signed dual receipts, indexed by ChioReceipt.id.
     /// Populated only when the post-sign hook fires successfully. Kept
     /// in-memory; persistent storage plugs in via the federation-state
     /// APIs already in chio-federation.
-    federation_dual_receipts: DashMap<String, chio_federation::DualSignedReceipt>,
+    federation_dual_receipts: DashMap<String, chio_federation::bilateral::DualSignedReceipt>,
     /// DSSE signature-slice envelopes, indexed by ChioReceipt.id.
     /// These are emitted through the federation cosigner protocol rather than
     /// by loading Org A private key material in the tool-host kernel.
-    federation_dsse_envelopes: DashMap<String, chio_federation::DsseEnvelope>,
+    federation_dsse_envelopes: DashMap<String, chio_federation::bilateral_dsse::DsseEnvelope>,
     /// Request-keyed tenant scope for receipts. Async evaluate futures
     /// can resume on a different worker after dispatch, so the scope is
     /// stored in this map rather than a thread-local.

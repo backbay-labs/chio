@@ -123,7 +123,7 @@ pub(super) fn verify_treaty_reference_from_store<S: RuntimeAdmissionStore>(
         .bilateral_dsse
         .as_ref()
         .map(|reference| {
-            load_treaty_artifact::<_, chio_federation::DsseEnvelope>(
+            load_treaty_artifact::<_, chio_federation::bilateral_dsse::DsseEnvelope>(
                 store,
                 "bilateral_dsse_envelope",
                 reference,
@@ -250,7 +250,7 @@ pub(super) fn verify_treaty_reference_from_store<S: RuntimeAdmissionStore>(
 }
 
 fn federation_treaty_dsse_metadata(
-    envelope: &chio_federation::DsseEnvelope,
+    envelope: &chio_federation::bilateral_dsse::DsseEnvelope,
     report: &CrossBoundaryAdmissionReport,
 ) -> Result<serde_json::Value, ChioRuntimeError> {
     let (statement, _) = envelope

@@ -703,16 +703,17 @@ fn anchor_emits_chio_anchor_round_latency_seconds() -> Result<(), Box<dyn Error>
 fn federation_emits_chio_federation_hop_total_and_latency() -> Result<(), Box<dyn Error>> {
     let origin = Keypair::generate();
     let tool_host = Keypair::generate();
-    let cosigner = chio_federation::InProcessCoSigner::new(
+    let cosigner = chio_federation::bilateral::InProcessCoSigner::new(
         "origin-kernel",
         origin.clone(),
         tool_host.public_key(),
     );
     let receipt = sample_receipt(&tool_host)?;
-    let before = chio_federation::federation_hop_total(chio_federation::HOP_RESULT_OK);
-    let before_latency = chio_federation::federation_hop_latency_count();
+    let before =
+        chio_federation::metrics::federation_hop_total(chio_federation::metrics::HOP_RESULT_OK);
+    let before_latency = chio_federation::metrics::federation_hop_latency_count();
 
-    let dual = chio_federation::co_sign_with_origin(
+    let dual = chio_federation::bilateral::co_sign_with_origin(
         "origin-kernel",
         &origin.public_key(),
         "tool-host-kernel",
@@ -722,8 +723,9 @@ fn federation_emits_chio_federation_hop_total_and_latency() -> Result<(), Box<dy
     )?;
 
     dual.verify(&origin.public_key(), &tool_host.public_key())?;
-    let after = chio_federation::federation_hop_total(chio_federation::HOP_RESULT_OK);
-    let after_latency = chio_federation::federation_hop_latency_count();
+    let after =
+        chio_federation::metrics::federation_hop_total(chio_federation::metrics::HOP_RESULT_OK);
+    let after_latency = chio_federation::metrics::federation_hop_latency_count();
     assert!(
         after > before,
         "federation hop counter must advance through co_sign_with_origin"
@@ -732,7 +734,7 @@ fn federation_emits_chio_federation_hop_total_and_latency() -> Result<(), Box<dy
         after_latency > before_latency,
         "federation hop latency must advance through co_sign_with_origin"
     );
-    let body = chio_federation::render_federation_metrics_prometheus();
+    let body = chio_federation::metrics::render_federation_metrics_prometheus();
     assert!(body.contains(CHIO_FEDERATION_HOP_TOTAL));
     assert!(body.contains(CHIO_FEDERATION_HOP_LATENCY_SECONDS));
     assert!(body.contains("result=\"ok\""));

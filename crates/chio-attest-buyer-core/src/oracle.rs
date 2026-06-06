@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use chio_federation::{Keyid, RevocationOracle};
+use chio_federation::{bilateral_dsse::Keyid, bilateral_verifier::RevocationOracle};
 
 #[derive(Debug, Clone)]
 pub(crate) struct OfflineRevocationOracle {

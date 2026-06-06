@@ -2,10 +2,13 @@
 
 use chio_core_types::Keypair;
 use chio_federation::{
-    verify_pheromone_gossip_batch, verify_pheromone_gossip_frame, PheromoneDepositGossip,
-    PheromoneGossipBatchVerificationContext, PheromoneGossipPushQueue, PheromoneTransitChain,
-    PheromoneTransitHop, PheromoneTransitLadderPin, PheromoneTransitPolicy,
-    PHEROMONE_GOSSIP_BATCH_SCHEMA, PHEROMONE_GOSSIP_SCHEMA, PHEROMONE_TRANSIT_POLICY_SCHEMA,
+    pheromone_gossip::verify_pheromone_gossip_batch,
+    pheromone_gossip::verify_pheromone_gossip_frame, pheromone_gossip::PheromoneDepositGossip,
+    pheromone_gossip::PheromoneGossipBatchVerificationContext,
+    pheromone_gossip::PheromoneGossipPushQueue, pheromone_gossip::PheromoneTransitChain,
+    pheromone_gossip::PheromoneTransitHop, pheromone_gossip::PheromoneTransitLadderPin,
+    pheromone_gossip::PheromoneTransitPolicy, pheromone_gossip::PHEROMONE_GOSSIP_BATCH_SCHEMA,
+    pheromone_gossip::PHEROMONE_GOSSIP_SCHEMA, pheromone_gossip::PHEROMONE_TRANSIT_POLICY_SCHEMA,
 };
 use chio_pheromone::{
     agent_passport_jwk_thumbprint, agent_passport_key_hash, sign_deposit, PheromoneDepositBody,
@@ -254,7 +257,7 @@ fn pheromone_batch_verifier_accepts_scoped_direct_batch() {
 
 #[test]
 fn pheromone_batch_verifier_rejects_empty_batch() {
-    let batch = chio_federation::PheromoneGossipBatch {
+    let batch = chio_federation::pheromone_gossip::PheromoneGossipBatch {
         schema: PHEROMONE_GOSSIP_BATCH_SCHEMA.to_string(),
         recipient_kernel_id: "did:chio:buyer-kernel".to_string(),
         treaty_id: "treaty:buyer-llamaworks:support-ops".to_string(),
@@ -287,7 +290,7 @@ fn pheromone_batch_verifier_rejects_wrong_direct_sender() {
         transit_chain: None,
     };
     frame.deposit.body.treaty_scope = vec!["treaty:buyer-llamaworks:support-ops".to_string()];
-    let batch = chio_federation::PheromoneGossipBatch {
+    let batch = chio_federation::pheromone_gossip::PheromoneGossipBatch {
         schema: PHEROMONE_GOSSIP_BATCH_SCHEMA.to_string(),
         recipient_kernel_id: "did:chio:buyer-kernel".to_string(),
         treaty_id: "treaty:buyer-llamaworks:support-ops".to_string(),

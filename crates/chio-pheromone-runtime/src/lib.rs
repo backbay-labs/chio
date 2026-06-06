@@ -17,9 +17,11 @@ use chio_core_types::canonical::canonical_json_bytes;
 use chio_core_types::crypto::sha256_hex;
 use chio_core_types::receipt::SignedExportEnvelope;
 use chio_federation::{
-    verify_pheromone_gossip_batch_envelope, verify_pheromone_gossip_frame_for_batch,
-    PheromoneGossipBatch, PheromoneGossipBatchVerificationContext, PheromoneGossipError,
-    PheromoneTransitPolicy,
+    pheromone_gossip::verify_pheromone_gossip_batch_envelope,
+    pheromone_gossip::verify_pheromone_gossip_frame_for_batch,
+    pheromone_gossip::PheromoneGossipBatch,
+    pheromone_gossip::PheromoneGossipBatchVerificationContext,
+    pheromone_gossip::PheromoneGossipError, pheromone_gossip::PheromoneTransitPolicy,
 };
 use chio_pheromone::{
     agent_passport_key_hash, newcomer_discount_for_deposit, reject_overlapping_scarcity_windows,

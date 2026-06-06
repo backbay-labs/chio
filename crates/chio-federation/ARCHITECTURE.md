@@ -8,6 +8,20 @@
 
 The root module defines the activation, quorum, admission, reputation, and qualification data contracts plus their validators. Specialized modules own bilateral DSSE envelopes, treaty ladder intersections, revocation gossip, pheromone gossip, handshake-based trust establishment, metrics, and the default-off selective-disclosure projection.
 
+## Module Map
+
+- `lib.rs`: crate documentation, dependency aliases, public module declarations, and feature-gated module declarations.
+- `artifacts.rs`: shared artifact references, trust scopes, delegation controls, and import controls.
+- `activation.rs`: trust-activation exchange artifact, signed activation alias, and activation validation.
+- `quorum.rs`: publisher observations, conflict evidence, anti-eclipse policy, quorum report, signed quorum alias, and quorum validation.
+- `open_admission.rs`: federated stake requirements, open-admission policy artifact, signed policy alias, and admission validation.
+- `reputation.rs`: reputation input references, sybil controls, clearing continuity, reputation clearing artifact, signed clearing alias, and clearing validation.
+- `qualification.rs`: federation scenarios, qualification outcomes, qualification cases, matrix artifact, signed matrix alias, and matrix validation.
+- `validation.rs`: shared internal non-empty, uniqueness, digest, money, and cross-contract validation helpers.
+- `error.rs`: public federation contract error type.
+- Existing modules `bilateral.rs`, `bilateral_dsse.rs`, `bilateral_verifier.rs`, `metrics.rs`, `pheromone_gossip.rs`, `revocation_gossip.rs`, `treaty.rs`, `trust_establishment.rs`, and feature-gated `selective_disclosure.rs` remain the owning modules for their specialized surfaces.
+- `tests.rs`: crate-local root-contract behavior tests.
+
 ## Trust Invariants
 
 The security constraint is cross-operator boundary discipline. Federation artifacts must not create ambient runtime admission, stale trust activation, unbounded delegation, eclipse-prone quorum, or noncanonical live-money collateral before downstream kernels consume them.

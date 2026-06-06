@@ -5,7 +5,7 @@ use crate::*;
 use super::treaty_evidence::TreatyEvidenceReview;
 
 pub(super) fn verify_treaty_dsse_evidence(
-    envelope: &chio_federation::DsseEnvelope,
+    envelope: &chio_federation::bilateral_dsse::DsseEnvelope,
     review: &TreatyEvidenceReview<'_>,
     lineage_bundle: Option<&(ReceiptLineageBundle, String)>,
     invocation: Option<&BilateralInvocation>,
@@ -16,7 +16,9 @@ pub(super) fn verify_treaty_dsse_evidence(
             "bilateral DSSE evidence could not be decoded",
         );
     };
-    if statement.predicate_type != chio_federation::PREDICATE_TYPE_CHIO_BILATERAL_INVOCATION {
+    if statement.predicate_type
+        != chio_federation::bilateral_dsse::PREDICATE_TYPE_CHIO_BILATERAL_INVOCATION
+    {
         return rejected(
             "chio_treaty_unverified_required_evidence",
             "bilateral DSSE evidence is not a strict Chio predicate",
@@ -28,12 +30,12 @@ pub(super) fn verify_treaty_dsse_evidence(
             "bilateral DSSE evidence is missing policy evaluation summary",
         );
     };
-    chio_federation::validate_policy_evaluation_summary(policy_summary).map_err(|_| {
-        ChioRuntimeError::Rejected {
+    chio_federation::bilateral_dsse::validate_policy_evaluation_summary(policy_summary).map_err(
+        |_| ChioRuntimeError::Rejected {
             code: "chio_treaty_unverified_required_evidence",
             detail: "bilateral DSSE policy evaluation summary is invalid".to_string(),
-        }
-    })?;
+        },
+    )?;
     if policy_summary.server_a_verdict.verdict != "allow" {
         return rejected(
             "chio_treaty_policy_denied",
@@ -115,7 +117,7 @@ pub(super) fn verify_treaty_dsse_evidence(
             "bilateral DSSE signer public keys are not independent",
         );
     }
-    chio_federation::verify_chio_bilateral_dsse_envelope(
+    chio_federation::bilateral_dsse::verify_chio_bilateral_dsse_envelope(
         envelope,
         signer_a_public_key,
         signer_b_public_key,

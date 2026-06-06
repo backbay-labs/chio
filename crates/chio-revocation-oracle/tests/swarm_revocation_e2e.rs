@@ -29,7 +29,9 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use chio_federation::{RevocationGossipPushQueue, RevocationRootGossip};
+use chio_federation::{
+    revocation_gossip::RevocationGossipPushQueue, revocation_gossip::RevocationRootGossip,
+};
 use chio_kernel_core::{RevocationSnapshot, RevocationView, RevocationViewSubject};
 use chio_revocation_oracle::{
     Ed25519RootSigner, EpochNonce, InMemoryRevocationOracle, RevocationKey, RevocationOracle,

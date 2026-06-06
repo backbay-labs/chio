@@ -18,7 +18,7 @@ fn chio_federation_root_does_not_export_legacy_chio_treaty_schema_constants() {
 }
 
 #[test]
-fn chio_federation_root_exports_chio_named_bilateral_dsse_api() {
+fn chio_federation_root_does_not_export_bilateral_dsse_api() {
     let lib = include_str!("../src/lib.rs");
     let legacy_root_exports = [
         "build_chio_predicate",
@@ -50,12 +50,53 @@ fn chio_federation_root_exports_chio_named_bilateral_dsse_api() {
         "PREDICATE_TYPE_CHIO_BILATERAL_INVOCATION",
     ]
     .into_iter()
-    .filter(|name| !lib.contains(name))
+    .filter(|name| lib.contains(name))
     .collect::<Vec<_>>();
 
     assert!(
         chio_root_exports.is_empty(),
-        "chio-federation root public API must reexport Chio-named bilateral DSSE names: {chio_root_exports:#?}"
+        "chio-federation root public API must not reexport Chio-named bilateral DSSE names: {chio_root_exports:#?}"
+    );
+
+    let bilateral_dsse = include_str!("../src/bilateral_dsse.rs");
+    let bilateral_verifier = include_str!("../src/bilateral_verifier.rs");
+    let missing_module_exports = [
+        (
+            "bilateral_dsse",
+            "build_chio_bilateral_invocation_predicate",
+        ),
+        (
+            "bilateral_dsse",
+            "build_chio_bilateral_invocation_statement",
+        ),
+        ("bilateral_dsse", "sign_chio_bilateral_dsse_envelope"),
+        (
+            "bilateral_dsse",
+            "sign_chio_bilateral_dsse_envelope_with_cosigner",
+        ),
+        ("bilateral_dsse", "verify_chio_bilateral_dsse_envelope"),
+        ("bilateral_dsse", "PREDICATE_TYPE_CHIO_BILATERAL_INVOCATION"),
+        ("bilateral_verifier", "verify_chio_bilateral_invocation"),
+        (
+            "bilateral_verifier",
+            "verify_treaty_bound_chio_bilateral_invocation",
+        ),
+        ("bilateral_verifier", "ChioBilateralVerifierConfig"),
+    ]
+    .into_iter()
+    .filter_map(|(module, name)| {
+        let source = match module {
+            "bilateral_dsse" => bilateral_dsse,
+            "bilateral_verifier" => bilateral_verifier,
+            _ => "",
+        };
+        (!source.contains(name)).then_some((module, name))
+    })
+    .collect::<Vec<_>>();
+
+    assert!(
+        missing_module_exports.is_empty(),
+        "chio-federation bilateral modules must expose Chio-named DSSE API: {missing_module_exports:#?}"
     );
 }
 

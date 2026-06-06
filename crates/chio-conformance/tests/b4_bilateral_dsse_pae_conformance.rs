@@ -14,12 +14,17 @@ use chio_core::crypto::{sha256_hex, Keypair};
 use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
 use chio_federation::demo::DemoAllowAllRevocationOracle;
 use chio_federation::{
-    sign_dsse_envelope, sign_dsse_envelope_with_cosigner, verify_bilateral_cosign_invocation,
-    verify_dsse_envelope, ActionClassKind, BilateralPredicateExtensions, CapabilityLeaseRef,
-    GovernanceReceiptStore, InMemoryGovernanceReceiptStore, InMemoryLeaseRegistry,
-    InMemoryReceiptStore, InProcessCoSigner, PeerPinSet, PinnedEpoch, PinnedPeer,
-    PolicyEvaluationSummary, PolicyVerdict, ReceiptStore, ResolvedLease, RevocationOracle,
-    UnknownActionClassPolicy, VerifierConfig,
+    bilateral::InProcessCoSigner, bilateral_dsse::sign_dsse_envelope,
+    bilateral_dsse::sign_dsse_envelope_with_cosigner, bilateral_dsse::verify_dsse_envelope,
+    bilateral_dsse::BilateralPredicateExtensions, bilateral_dsse::CapabilityLeaseRef,
+    bilateral_dsse::PolicyEvaluationSummary, bilateral_dsse::PolicyVerdict,
+    bilateral_verifier::verify_bilateral_cosign_invocation, bilateral_verifier::ActionClassKind,
+    bilateral_verifier::GovernanceReceiptStore, bilateral_verifier::InMemoryGovernanceReceiptStore,
+    bilateral_verifier::InMemoryLeaseRegistry, bilateral_verifier::InMemoryReceiptStore,
+    bilateral_verifier::PeerPinSet, bilateral_verifier::PinnedEpoch,
+    bilateral_verifier::PinnedPeer, bilateral_verifier::ReceiptStore,
+    bilateral_verifier::ResolvedLease, bilateral_verifier::RevocationOracle,
+    bilateral_verifier::UnknownActionClassPolicy, bilateral_verifier::VerifierConfig,
 };
 
 const ORG_A: &str = "did:chio:org-a";

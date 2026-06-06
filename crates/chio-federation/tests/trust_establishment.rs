@@ -5,9 +5,11 @@
 use chio_core_types::capability::CapabilityNegotiation;
 use chio_core_types::crypto::Keypair;
 use chio_federation::{
-    ConformanceEvidence, ConformanceTier, KernelTrustExchange, KernelTrustExchangeConfig,
-    LadderManifestRef, PeerHandshakeEnvelope, PeerHandshakeError, QuorumPolicy,
-    DEFAULT_HANDSHAKE_MAX_SKEW_SECS,
+    trust_establishment::ConformanceEvidence, trust_establishment::ConformanceTier,
+    trust_establishment::KernelTrustExchange, trust_establishment::KernelTrustExchangeConfig,
+    trust_establishment::LadderManifestRef, trust_establishment::PeerHandshakeEnvelope,
+    trust_establishment::PeerHandshakeError, trust_establishment::QuorumPolicy,
+    trust_establishment::DEFAULT_HANDSHAKE_MAX_SKEW_SECS,
 };
 
 #[test]

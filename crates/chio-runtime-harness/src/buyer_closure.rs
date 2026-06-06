@@ -14,7 +14,7 @@ pub(crate) struct RuntimeLoopbackBuyerClosure {
     pub(crate) lineage_bundle: chio_runtime_core::ReceiptLineageBundle,
     pub(crate) bilateral_invocation: chio_runtime_core::BilateralInvocation,
     pub(crate) bilateral_invocation_binding_sha256: String,
-    pub(crate) bilateral_dsse: chio_federation::DsseEnvelope,
+    pub(crate) bilateral_dsse: chio_federation::bilateral_dsse::DsseEnvelope,
     pub(crate) bilateral_dsse_sha256: String,
 }
 
@@ -233,7 +233,7 @@ pub(crate) fn build_runtime_loopback_buyer_closure(
     let vendor_key = chio_attest_loopback::runtime_vendor_keypair(step_index).map_err(|error| {
         RuntimeLoopbackError::message(format!("Chio runtime buyer closure vendor key: {error}"))
     })?;
-    let bilateral_dsse = chio_federation::sign_chio_bilateral_dsse_envelope(
+    let bilateral_dsse = chio_federation::bilateral_dsse::sign_chio_bilateral_dsse_envelope(
         receipt,
         &buyer_key,
         &vendor_key,
@@ -241,21 +241,21 @@ pub(crate) fn build_runtime_loopback_buyer_closure(
         &treaty_context.continuation.target_kernel_id,
         &step.request.tool_name,
         now_unix_ms,
-        chio_federation::BilateralPredicateExtensions {
-            capability_lease_ref: Some(chio_federation::CapabilityLeaseRef {
+        chio_federation::bilateral_dsse::BilateralPredicateExtensions {
+            capability_lease_ref: Some(chio_federation::bilateral_dsse::CapabilityLeaseRef {
                 lease_id: lease.body.lease_id.clone(),
                 issuer: lease.body.issuer.clone(),
                 expires_at_unix_ms: lease.body.expires_at_unix_ms,
-                scope_digest: Some(chio_federation::HashRecord {
+                scope_digest: Some(chio_federation::bilateral_dsse::HashRecord {
                     alg: "sha256".to_string(),
                     value: lease.body.scope_digest.clone(),
                 }),
             }),
             policy_evaluation_summary: Some(runtime_loopback_policy_summary(step)),
-            governance_receipt_ref: Some(chio_federation::GovernanceReceiptRef {
+            governance_receipt_ref: Some(chio_federation::bilateral_dsse::GovernanceReceiptRef {
                 receipt_id: governance_receipt.body.receipt_id.clone(),
                 kernel_id: governance_receipt.body.authorizing_kernel.clone(),
-                digest: chio_federation::HashRecord {
+                digest: chio_federation::bilateral_dsse::HashRecord {
                     alg: "sha256".to_string(),
                     value: governance_digest,
                 },
@@ -263,7 +263,7 @@ pub(crate) fn build_runtime_loopback_buyer_closure(
             consistency_anchor: workflow_step.consistency_anchor.clone(),
             consistency_model: Some(admission_report.consistency_model.clone()),
             cross_org_visibility: None,
-            treaty_binding_ref: Some(chio_federation::TreatyBindingRef {
+            treaty_binding_ref: Some(chio_federation::bilateral_dsse::TreatyBindingRef {
                 treaty_id: admission_report.treaty_id.clone(),
                 treaty_scope_sha256: treaty_context.treaty_scope_sha256.clone(),
                 ladder_intersection_sha256: treaty_context.ladder_intersection_sha256.clone(),

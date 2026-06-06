@@ -4,8 +4,8 @@
 
 use chio_core_types::crypto::Keypair;
 use chio_federation::{
-    FederationPeer, HandshakeChallenge, KernelTrustExchange, KernelTrustExchangeConfig,
-    PeerHandshakeEnvelope,
+    trust_establishment::FederationPeer, trust_establishment::HandshakeChallenge, trust_establishment::KernelTrustExchange, trust_establishment::KernelTrustExchangeConfig,
+    trust_establishment::PeerHandshakeEnvelope,
 };
 use chio_fuzz::canonical_json::canonical_json_mutate;
 use libfuzzer_sys::{fuzz_mutator, fuzz_target};

@@ -231,10 +231,10 @@ pub(crate) fn insert_runtime_loopback_treaty_context(
         .as_bytes(),
     );
     let governance_receipt_ref = governance_receipt_id.clone().map(|governance_receipt_id| {
-        chio_federation::GovernanceReceiptRef {
+        chio_federation::bilateral_dsse::GovernanceReceiptRef {
             receipt_id: governance_receipt_id,
             kernel_id: source_kernel_id.clone(),
-            digest: chio_federation::HashRecord {
+            digest: chio_federation::bilateral_dsse::HashRecord {
                 alg: "sha256".to_string(),
                 value: chio_core::sha256_hex(
                     format!("runtime-loopback:{step_index}:governance").as_bytes(),
@@ -242,7 +242,7 @@ pub(crate) fn insert_runtime_loopback_treaty_context(
             },
         }
     });
-    let envelope = chio_federation::sign_chio_bilateral_dsse_envelope(
+    let envelope = chio_federation::bilateral_dsse::sign_chio_bilateral_dsse_envelope(
         &proof_receipt,
         &origin_key,
         vendor_key,
@@ -250,12 +250,12 @@ pub(crate) fn insert_runtime_loopback_treaty_context(
         &target_kernel_id,
         &step.request.tool_name,
         issued_at_unix_ms,
-        chio_federation::BilateralPredicateExtensions {
-            capability_lease_ref: Some(chio_federation::CapabilityLeaseRef {
+        chio_federation::bilateral_dsse::BilateralPredicateExtensions {
+            capability_lease_ref: Some(chio_federation::bilateral_dsse::CapabilityLeaseRef {
                 lease_id: lease_id.clone(),
                 issuer: source_kernel_id.clone(),
                 expires_at_unix_ms,
-                scope_digest: Some(chio_federation::HashRecord {
+                scope_digest: Some(chio_federation::bilateral_dsse::HashRecord {
                     alg: "sha256".to_string(),
                     value: chio_core::sha256_hex(
                         format!("runtime-loopback:{step_index}:lease-scope").as_bytes(),
@@ -267,7 +267,7 @@ pub(crate) fn insert_runtime_loopback_treaty_context(
             consistency_anchor: Some(format!("chio:runtime-loopback:{step_index}")),
             consistency_model: Some("totally_ordered".to_string()),
             cross_org_visibility: None,
-            treaty_binding_ref: Some(chio_federation::TreatyBindingRef {
+            treaty_binding_ref: Some(chio_federation::bilateral_dsse::TreatyBindingRef {
                 treaty_id: treaty_scope.treaty_id.clone(),
                 treaty_scope_sha256: treaty_scope_sha256.clone(),
                 ladder_intersection_sha256: ladder_intersection_sha256.clone(),
@@ -585,11 +585,9 @@ mod tests {
                     "runtime loopback treaty context missing bilateral DSSE id".to_string(),
                 )
             })?;
-        let envelope: chio_federation::DsseEnvelope = serde_json::from_value(stored_artifact_json(
-            &store,
-            "bilateral_dsse_envelope",
-            bilateral_dsse_id,
-        )?)
+        let envelope: chio_federation::bilateral_dsse::DsseEnvelope = serde_json::from_value(
+            stored_artifact_json(&store, "bilateral_dsse_envelope", bilateral_dsse_id)?,
+        )
         .map_err(|error| {
             crate::RuntimeLoopbackError::message(format!(
                 "runtime loopback bilateral DSSE parse failed: {error}"
@@ -657,11 +655,9 @@ mod tests {
                     "runtime loopback treaty context missing bilateral DSSE id".to_string(),
                 )
             })?;
-        let envelope: chio_federation::DsseEnvelope = serde_json::from_value(stored_artifact_json(
-            &store,
-            "bilateral_dsse_envelope",
-            bilateral_dsse_id,
-        )?)
+        let envelope: chio_federation::bilateral_dsse::DsseEnvelope = serde_json::from_value(
+            stored_artifact_json(&store, "bilateral_dsse_envelope", bilateral_dsse_id)?,
+        )
         .map_err(|error| {
             crate::RuntimeLoopbackError::message(format!(
                 "runtime loopback bilateral DSSE parse failed: {error}"

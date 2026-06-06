@@ -513,16 +513,19 @@ impl ChioKernel {
         self.memory_provenance.as_ref().map(Arc::clone)
     }
 
-    /// Install a set of [`chio_federation::FederationPeer`]s
+    /// Install a set of [`chio_federation::trust_establishment::FederationPeer`]s
     /// this kernel trusts for bilateral co-signing. Overwrites any
     /// previously declared set. Callers typically obtain these peers
-    /// from [`chio_federation::KernelTrustExchange::accept_envelope`]
+    /// from [`chio_federation::trust_establishment::KernelTrustExchange::accept_envelope`]
     /// after a successful mTLS handshake.
     ///
     /// Builder-style so deployments can chain `.with_federation_peers(...)`
     /// onto `ChioKernel::new(config)`.
     #[must_use]
-    pub fn with_federation_peers(self, peers: Vec<chio_federation::FederationPeer>) -> Self {
+    pub fn with_federation_peers(
+        self,
+        peers: Vec<chio_federation::trust_establishment::FederationPeer>,
+    ) -> Self {
         let mut next = HashMap::new();
         for peer in peers {
             next.insert(peer.kernel_id.clone(), peer);
@@ -614,10 +617,10 @@ impl ChioKernel {
     /// Install the bilateral cosigner responsible for
     /// contacting a peer kernel to obtain a co-signature. Production
     /// deployments plug in an mTLS-backed RPC client; tests can use
-    /// [`chio_federation::InProcessCoSigner`].
+    /// [`chio_federation::bilateral::InProcessCoSigner`].
     pub fn set_federation_cosigner(
         &mut self,
-        cosigner: Arc<dyn chio_federation::BilateralCoSigningProtocol>,
+        cosigner: Arc<dyn chio_federation::bilateral::BilateralCoSigningProtocol>,
     ) {
         self.federation_cosigner = Some(cosigner);
     }
@@ -637,7 +640,7 @@ impl ChioKernel {
         &self,
         remote_kernel_id: &str,
         now: u64,
-    ) -> Option<chio_federation::FederationPeer> {
+    ) -> Option<chio_federation::trust_establishment::FederationPeer> {
         let peers = self.federation_peers.load();
         let peer = peers.get(remote_kernel_id)?.clone();
         if peer.is_fresh(now) {
@@ -648,7 +651,9 @@ impl ChioKernel {
     }
 
     /// Snapshot the currently-pinned federation peer set.
-    pub fn federation_peers_snapshot(&self) -> Vec<chio_federation::FederationPeer> {
+    pub fn federation_peers_snapshot(
+        &self,
+    ) -> Vec<chio_federation::trust_establishment::FederationPeer> {
         self.federation_peers.load().values().cloned().collect()
     }
 
@@ -660,7 +665,7 @@ impl ChioKernel {
     pub fn dual_signed_receipt(
         &self,
         receipt_id: &str,
-    ) -> Option<chio_federation::DualSignedReceipt> {
+    ) -> Option<chio_federation::bilateral::DualSignedReceipt> {
         self.federation_dual_receipts
             .get(receipt_id)
             .map(|entry| entry.value().clone())
@@ -669,7 +674,7 @@ impl ChioKernel {
     pub fn federation_dsse_envelope(
         &self,
         receipt_id: &str,
-    ) -> Option<chio_federation::DsseEnvelope> {
+    ) -> Option<chio_federation::bilateral_dsse::DsseEnvelope> {
         self.federation_dsse_envelopes
             .get(receipt_id)
             .map(|entry| entry.value().clone())
@@ -687,7 +692,8 @@ impl ChioKernel {
     fn treaty_dsse_extensions_from_receipt_metadata(
         &self,
         receipt: &chio_core::receipt::ChioReceipt,
-    ) -> Result<Option<chio_federation::BilateralPredicateExtensions>, KernelError> {
+    ) -> Result<Option<chio_federation::bilateral_dsse::BilateralPredicateExtensions>, KernelError>
+    {
         let Some(metadata) = receipt.metadata.as_ref() else {
             return Ok(None);
         };
@@ -731,15 +737,17 @@ impl ChioKernel {
                 ))
             })?,
         );
-        Ok(Some(chio_federation::BilateralPredicateExtensions {
-            capability_lease_ref: Some(material.capability_lease_ref),
-            policy_evaluation_summary: Some(material.policy_evaluation_summary),
-            governance_receipt_ref: material.governance_receipt_ref,
-            consistency_anchor: material.consistency_anchor,
-            consistency_model: Some(consistency_model),
-            cross_org_visibility: material.cross_org_visibility,
-            treaty_binding_ref: Some(treaty_binding_ref),
-        }))
+        Ok(Some(
+            chio_federation::bilateral_dsse::BilateralPredicateExtensions {
+                capability_lease_ref: Some(material.capability_lease_ref),
+                policy_evaluation_summary: Some(material.policy_evaluation_summary),
+                governance_receipt_ref: material.governance_receipt_ref,
+                consistency_anchor: material.consistency_anchor,
+                consistency_model: Some(consistency_model),
+                cross_org_visibility: material.cross_org_visibility,
+                treaty_binding_ref: Some(treaty_binding_ref),
+            },
+        ))
     }
 
     /// Post-sign hook. Invoked immediately after
@@ -747,7 +755,7 @@ impl ChioKernel {
     /// signature has already landed in the `ChioReceipt`. When
     /// `federated_origin_kernel_id` is set and the admission-time peer
     /// snapshot is available, this dispatches the receipt to the
-    /// cosigner, assembles a [`chio_federation::DualSignedReceipt`],
+    /// cosigner, assembles a [`chio_federation::bilateral::DualSignedReceipt`],
     /// and stashes it for retrieval via [`Self::dual_signed_receipt`].
     ///
     /// Fail-closed: any error from peer resolution or the cosigner is
@@ -761,7 +769,7 @@ impl ChioKernel {
         &self,
         request: &crate::runtime::ToolCallRequest,
         receipt: &chio_core::receipt::ChioReceipt,
-        admitted_peer: Option<&chio_federation::FederationPeer>,
+        admitted_peer: Option<&chio_federation::trust_establishment::FederationPeer>,
     ) -> Result<(), KernelError> {
         let Some(origin_kernel_id) = request.federated_origin_kernel_id.as_ref() else {
             return Ok(());
@@ -809,7 +817,7 @@ impl ChioKernel {
                 ));
             }
         };
-        let dual = chio_federation::co_sign_with_origin(
+        let dual = chio_federation::bilateral::co_sign_with_origin(
             origin_kernel_id,
             &peer.public_key,
             &local_kernel_id,
@@ -819,18 +827,19 @@ impl ChioKernel {
         )
         .map_err(|e| KernelError::Internal(format!("bilateral co-sign failed: {e}")))?;
         let timestamp_unix_ms = current_unix_timestamp().saturating_mul(1000);
-        let dsse_envelope = chio_federation::sign_chio_bilateral_dsse_envelope_with_cosigner(
-            receipt,
-            &peer.public_key,
-            &self.config.keypair,
-            origin_kernel_id,
-            &local_kernel_id,
-            &request.tool_name,
-            timestamp_unix_ms,
-            extensions,
-            cosigner.as_ref(),
-        )
-        .map_err(|e| KernelError::Internal(format!("bilateral DSSE co-sign failed: {e}")))?;
+        let dsse_envelope =
+            chio_federation::bilateral_dsse::sign_chio_bilateral_dsse_envelope_with_cosigner(
+                receipt,
+                &peer.public_key,
+                &self.config.keypair,
+                origin_kernel_id,
+                &local_kernel_id,
+                &request.tool_name,
+                timestamp_unix_ms,
+                extensions,
+                cosigner.as_ref(),
+            )
+            .map_err(|e| KernelError::Internal(format!("bilateral DSSE co-sign failed: {e}")))?;
 
         self.federation_dual_receipts
             .insert(receipt.id.clone(), dual);

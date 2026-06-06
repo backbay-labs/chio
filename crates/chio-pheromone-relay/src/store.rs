@@ -7,7 +7,7 @@ use crate::{
     PHEROMONE_RELAY_METRICS_SNAPSHOT_SCHEMA, PHEROMONE_RELAY_OBSERVABILITY_REPORT_SCHEMA,
     PHEROMONE_RELAY_OPERATOR_REPORT_SCHEMA,
 };
-use chio_federation::PheromoneGossipBatch;
+use chio_federation::pheromone_gossip::PheromoneGossipBatch;
 use chio_pheromone_runtime::PheromoneReceiveReport;
 use rusqlite::params;
 use rusqlite::Connection;

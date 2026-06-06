@@ -4,12 +4,16 @@ use chio_core_types::receipt::{
     ToolCallAction, ToolOrigin, TrustLevel,
 };
 use chio_federation::{
-    execute_local_bilateral_invocation_fixture, ActionClassKind, BilateralCoSigningProtocol,
-    BilateralPredicateExtensions, CapabilityLeaseRef, DemoAllowAllRevocationOracle,
-    InMemoryGovernanceReceiptStore, InMemoryLeaseRegistry, InMemoryReceiptStore, InProcessCoSigner,
-    LocalBilateralInvocationFixtureRequest, PeerPinSet, PinnedEpoch, PinnedPeer,
-    PolicyEvaluationSummary, PolicyVerdict, ResolvedLease, UnknownActionClassPolicy,
-    VerifierConfig,
+    bilateral::execute_local_bilateral_invocation_fixture, bilateral::BilateralCoSigningProtocol,
+    bilateral::InProcessCoSigner, bilateral::LocalBilateralInvocationFixtureRequest,
+    bilateral_dsse::BilateralPredicateExtensions, bilateral_dsse::CapabilityLeaseRef,
+    bilateral_dsse::PolicyEvaluationSummary, bilateral_dsse::PolicyVerdict,
+    bilateral_verifier::ActionClassKind, bilateral_verifier::InMemoryGovernanceReceiptStore,
+    bilateral_verifier::InMemoryLeaseRegistry, bilateral_verifier::InMemoryReceiptStore,
+    bilateral_verifier::PeerPinSet, bilateral_verifier::PinnedEpoch,
+    bilateral_verifier::PinnedPeer, bilateral_verifier::ResolvedLease,
+    bilateral_verifier::UnknownActionClassPolicy, bilateral_verifier::VerifierConfig,
+    demo::DemoAllowAllRevocationOracle,
 };
 use std::collections::BTreeMap;
 
@@ -202,7 +206,7 @@ pub fn display_prefix(value: &str, bytes: usize) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chio_federation::PAYLOAD_TYPE_IN_TOTO;
+    use chio_federation::bilateral_dsse::PAYLOAD_TYPE_IN_TOTO;
 
     #[test]
     fn run_demo_preserves_bilateral_fixture_invariants() {

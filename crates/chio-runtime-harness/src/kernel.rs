@@ -91,16 +91,16 @@ fn runtime_loopback_capability(
 
 pub(crate) fn runtime_loopback_policy_summary(
     step: &RuntimeLoopbackStep,
-) -> chio_federation::PolicyEvaluationSummary {
+) -> chio_federation::bilateral_dsse::PolicyEvaluationSummary {
     let policy_version = "chio-ladder-v1".to_string();
-    chio_federation::PolicyEvaluationSummary {
-        server_a_verdict: chio_federation::PolicyVerdict {
+    chio_federation::bilateral_dsse::PolicyEvaluationSummary {
+        server_a_verdict: chio_federation::bilateral_dsse::PolicyVerdict {
             verdict: "allow".to_string(),
             policy_id: format!("buyer-policy:{}", step.request.tool_name),
             policy_version: policy_version.clone(),
             rationale_code: Some("lease-bound".to_string()),
         },
-        server_b_verdict: chio_federation::PolicyVerdict {
+        server_b_verdict: chio_federation::bilateral_dsse::PolicyVerdict {
             verdict: "allow".to_string(),
             policy_id: format!(
                 "{}-policy:{}",
@@ -355,12 +355,12 @@ pub(crate) fn execute_runtime_loopback_step(
     if let Some(origin_kernel_id) = step.request.origin_kernel_id.as_deref() {
         let origin_key = chio_attest_loopback::runtime_buyer_keypair();
         let now_secs = peer_pin_now_unix_ms / 1000;
-        let trust = chio_federation::KernelTrustExchange::new(
+        let trust = chio_federation::trust_establishment::KernelTrustExchange::new(
             &step.request.host_kernel_id,
             vendor_key.clone(),
         )
         .with_trusted_peer(origin_kernel_id, origin_key.public_key());
-        let envelope = chio_federation::PeerHandshakeEnvelope::sign(
+        let envelope = chio_federation::trust_establishment::PeerHandshakeEnvelope::sign(
             origin_kernel_id,
             &step.request.host_kernel_id,
             &format!("loopback-origin-nonce-{step_index}"),
@@ -381,7 +381,7 @@ pub(crate) fn execute_runtime_loopback_step(
             })?;
         kernel = kernel.with_federation_peers(vec![peer]);
         kernel.set_federation_cosigner(std::sync::Arc::new(
-            chio_federation::InProcessCoSigner::new(
+            chio_federation::bilateral::InProcessCoSigner::new(
                 origin_kernel_id,
                 origin_key,
                 vendor_key.public_key(),

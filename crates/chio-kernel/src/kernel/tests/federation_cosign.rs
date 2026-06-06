@@ -14,8 +14,8 @@
 
 use chio_core::capability::CapabilityNegotiation;
 use chio_federation::{
-    BilateralCoSigningError, BilateralCoSigningProtocol, CoSigningRequest, CoSigningResponse,
-    FederationPeer, InProcessCoSigner, KernelTrustExchange, PeerHandshakeEnvelope,
+    bilateral::BilateralCoSigningError, bilateral::BilateralCoSigningProtocol, bilateral::CoSigningRequest, bilateral::CoSigningResponse,
+    trust_establishment::FederationPeer, bilateral::InProcessCoSigner, trust_establishment::KernelTrustExchange, trust_establishment::PeerHandshakeEnvelope,
 };
 
 struct CountingRejectingCosigner {
@@ -49,20 +49,20 @@ struct TreatyDsseAdmissionHook;
 
 impl TreatyDsseAdmissionHook {
     fn federation_treaty_dsse(request_sha256: &str) -> serde_json::Value {
-        let capability_lease_ref = chio_federation::CapabilityLeaseRef {
+        let capability_lease_ref = chio_federation::bilateral_dsse::CapabilityLeaseRef {
             lease_id: "lease-bilateral".to_string(),
             issuer: "kernel.org-a".to_string(),
             expires_at_unix_ms: 4_102_444_800_000,
             scope_digest: None,
         };
-        let policy_evaluation_summary = chio_federation::PolicyEvaluationSummary {
-            server_a_verdict: chio_federation::PolicyVerdict {
+        let policy_evaluation_summary = chio_federation::bilateral_dsse::PolicyEvaluationSummary {
+            server_a_verdict: chio_federation::bilateral_dsse::PolicyVerdict {
                 verdict: "allow".to_string(),
                 policy_id: "policy-a".to_string(),
                 policy_version: "v1".to_string(),
                 rationale_code: None,
             },
-            server_b_verdict: chio_federation::PolicyVerdict {
+            server_b_verdict: chio_federation::bilateral_dsse::PolicyVerdict {
                 verdict: "allow".to_string(),
                 policy_id: "policy-b".to_string(),
                 policy_version: "v1".to_string(),
@@ -73,7 +73,7 @@ impl TreatyDsseAdmissionHook {
         // `outcome_sha256` and `remote_receipt_sha256` are overwritten by the
         // kernel from the signed receipt; supply syntactically valid 64-hex
         // placeholders. `request_sha256` must match the receipt action hash.
-        let treaty_binding_ref = chio_federation::TreatyBindingRef {
+        let treaty_binding_ref = chio_federation::bilateral_dsse::TreatyBindingRef {
             treaty_id: "treaty-buyer-vendor".to_string(),
             treaty_scope_sha256: "1".repeat(64),
             ladder_intersection_sha256: "2".repeat(64),
@@ -250,7 +250,7 @@ fn federated_request_produces_dual_signed_receipt_verifiable_by_both_orgs() {
     // signature-slice `receipt_canonical_json`), so it must be verified with
     // the strict Chio verifier rather than the signature-slice
     // `verify_dsse_envelope`.
-    let statement = chio_federation::verify_chio_bilateral_dsse_envelope(
+    let statement = chio_federation::bilateral_dsse::verify_chio_bilateral_dsse_envelope(
         &envelope,
         &origin_kp.public_key(),
         &tool_host_public_key,

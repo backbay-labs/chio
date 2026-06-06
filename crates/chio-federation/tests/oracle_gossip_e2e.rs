@@ -19,7 +19,10 @@
 use std::cmp::Ordering;
 use std::time::Instant;
 
-use chio_federation::{RevocationGossipBatch, RevocationGossipPushQueue, RevocationRootGossip};
+use chio_federation::{
+    revocation_gossip::RevocationGossipBatch, revocation_gossip::RevocationGossipPushQueue,
+    revocation_gossip::RevocationRootGossip,
+};
 use chio_kernel_core::{RevocationSnapshot, RevocationView, RevocationViewSubject};
 use chio_revocation_oracle::{
     Ed25519RootSigner, EpochNonce, InMemoryRevocationOracle, RevocationKey, RevocationOracle,

@@ -12,8 +12,9 @@ use chio_core_types::receipt::{
     ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
 };
 use chio_federation::{
-    co_sign_with_origin, BilateralCoSigningError, CoSigningBody, DualSignedReceipt,
-    ExpectedBilateralPeers, InProcessCoSigner, BILATERAL_DUAL_RECEIPT_SCHEMA,
+    bilateral::co_sign_with_origin, bilateral::BilateralCoSigningError, bilateral::CoSigningBody,
+    bilateral::DualSignedReceipt, bilateral::ExpectedBilateralPeers, bilateral::InProcessCoSigner,
+    bilateral::BILATERAL_DUAL_RECEIPT_SCHEMA,
 };
 
 fn sample_action() -> ToolCallAction {

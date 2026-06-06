@@ -33,13 +33,19 @@ use chio_core::crypto::{sha256_hex, Keypair};
 use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
 use chio_federation::demo::DemoAllowAllRevocationOracle;
 use chio_federation::{
-    execute_local_bilateral_invocation_fixture, receipt_subject_name, ActionClassKind,
-    BilateralCoSigningProtocol, BilateralInvocationError, BilateralPredicateExtensions,
-    CapabilityLeaseRef, DenyListRevocationOracle, DsseEnvelope, GovernanceReceiptRef,
-    GovernanceReceiptStore, HashRecord, InMemoryGovernanceReceiptStore, InMemoryLeaseRegistry,
-    InMemoryReceiptStore, InProcessCoSigner, Keyid, LocalBilateralInvocationFixtureRequest,
-    PeerPinSet, PinnedEpoch, PinnedPeer, PolicyEvaluationSummary, PolicyVerdict, ReceiptStore,
-    ResolvedGovernanceReceipt, ResolvedLease, RevocationOracle, VerifierConfig,
+    bilateral::execute_local_bilateral_invocation_fixture, bilateral::BilateralCoSigningProtocol,
+    bilateral::BilateralInvocationError, bilateral::InProcessCoSigner,
+    bilateral::LocalBilateralInvocationFixtureRequest, bilateral_dsse::receipt_subject_name,
+    bilateral_dsse::BilateralPredicateExtensions, bilateral_dsse::CapabilityLeaseRef,
+    bilateral_dsse::DsseEnvelope, bilateral_dsse::GovernanceReceiptRef, bilateral_dsse::HashRecord,
+    bilateral_dsse::Keyid, bilateral_dsse::PolicyEvaluationSummary, bilateral_dsse::PolicyVerdict,
+    bilateral_verifier::ActionClassKind, bilateral_verifier::DenyListRevocationOracle,
+    bilateral_verifier::GovernanceReceiptStore, bilateral_verifier::InMemoryGovernanceReceiptStore,
+    bilateral_verifier::InMemoryLeaseRegistry, bilateral_verifier::InMemoryReceiptStore,
+    bilateral_verifier::PeerPinSet, bilateral_verifier::PinnedEpoch,
+    bilateral_verifier::PinnedPeer, bilateral_verifier::ReceiptStore,
+    bilateral_verifier::ResolvedGovernanceReceipt, bilateral_verifier::ResolvedLease,
+    bilateral_verifier::RevocationOracle, bilateral_verifier::VerifierConfig,
 };
 use sha2::Digest;
 
@@ -174,13 +180,13 @@ fn run_invocation_with(
     setup: &Setup,
     extensions: BilateralPredicateExtensions,
     receipt_store: &dyn ReceiptStore,
-    lease_registry: &dyn chio_federation::CapabilityLeaseRegistry,
+    lease_registry: &dyn chio_federation::bilateral_verifier::CapabilityLeaseRegistry,
     governance_store: &dyn GovernanceReceiptStore,
     revocation_oracle: &dyn RevocationOracle,
     peer_pin_set: &PeerPinSet,
     pinned_now_ms: u64,
     mut action_classes: BTreeMap<String, ActionClassKind>,
-) -> Result<chio_federation::BilateralInvocationOutcome, BilateralInvocationError> {
+) -> Result<chio_federation::bilateral::BilateralInvocationOutcome, BilateralInvocationError> {
     let request = LocalBilateralInvocationFixtureRequest {
         origin_kernel_id: ORG_A,
         origin_keypair: &setup.kp_a,
@@ -213,14 +219,15 @@ fn run_invocation_with(
             epoch_height: 0,
         },
         action_classes,
-        unknown_action_class_policy: chio_federation::UnknownActionClassPolicy::Reject,
+        unknown_action_class_policy:
+            chio_federation::bilateral_verifier::UnknownActionClassPolicy::Reject,
     };
     execute_local_bilateral_invocation_fixture(request, &config)
 }
 
 fn run_default(
     setup: &Setup,
-) -> Result<chio_federation::BilateralInvocationOutcome, BilateralInvocationError> {
+) -> Result<chio_federation::bilateral::BilateralInvocationOutcome, BilateralInvocationError> {
     run_invocation_with(
         setup,
         happy_extensions(),
@@ -360,11 +367,13 @@ fn step_7_raw_receipt_id_subject_name_fails_with_subject_digest_mismatch() {
             epoch_height: 0,
         },
         action_classes,
-        unknown_action_class_policy: chio_federation::UnknownActionClassPolicy::Reject,
+        unknown_action_class_policy:
+            chio_federation::bilateral_verifier::UnknownActionClassPolicy::Reject,
     };
 
-    let err = chio_federation::verify_bilateral_cosign_invocation(&envelope, &config)
-        .expect_err("raw receipt id subject must fail closed");
+    let err =
+        chio_federation::bilateral_verifier::verify_bilateral_cosign_invocation(&envelope, &config)
+            .expect_err("raw receipt id subject must fail closed");
     assert_eq!(err.code(), "subject.digest_mismatch");
 }
 
@@ -402,9 +411,12 @@ fn steps_11_12_flipped_payload_byte_breaks_pae_preimage() {
             m.insert(TOOL.to_string(), ActionClassKind::Routine);
             m
         },
-        unknown_action_class_policy: chio_federation::UnknownActionClassPolicy::Reject,
+        unknown_action_class_policy:
+            chio_federation::bilateral_verifier::UnknownActionClassPolicy::Reject,
     };
-    let err = chio_federation::verify_bilateral_cosign_invocation(&envelope, &config).unwrap_err();
+    let err =
+        chio_federation::bilateral_verifier::verify_bilateral_cosign_invocation(&envelope, &config)
+            .unwrap_err();
     // The first thing a payload-byte flip breaks is base64 decode or
     // statement parse - the spec lumps these under dsse.malformed/
     // statement.malformed depending on where the byte lands. Either is
@@ -477,9 +489,12 @@ fn step_11_flipped_sig_a_byte_yields_signature_server_a_invalid() {
             m.insert(TOOL.to_string(), ActionClassKind::Routine);
             m
         },
-        unknown_action_class_policy: chio_federation::UnknownActionClassPolicy::Reject,
+        unknown_action_class_policy:
+            chio_federation::bilateral_verifier::UnknownActionClassPolicy::Reject,
     };
-    let err = chio_federation::verify_bilateral_cosign_invocation(&envelope, &config).unwrap_err();
+    let err =
+        chio_federation::bilateral_verifier::verify_bilateral_cosign_invocation(&envelope, &config)
+            .unwrap_err();
     assert_eq!(err.code(), "signature.server_a_invalid");
 }
 
@@ -531,9 +546,12 @@ fn step_12_flipped_sig_b_byte_yields_signature_server_b_invalid() {
             m.insert(TOOL.to_string(), ActionClassKind::Routine);
             m
         },
-        unknown_action_class_policy: chio_federation::UnknownActionClassPolicy::Reject,
+        unknown_action_class_policy:
+            chio_federation::bilateral_verifier::UnknownActionClassPolicy::Reject,
     };
-    let err = chio_federation::verify_bilateral_cosign_invocation(&envelope, &config).unwrap_err();
+    let err =
+        chio_federation::bilateral_verifier::verify_bilateral_cosign_invocation(&envelope, &config)
+            .unwrap_err();
     assert_eq!(err.code(), "signature.server_b_invalid");
 }
 
@@ -869,11 +887,13 @@ fn co_sign_n_of_m_is_rejected_until_quorum_verification_exists() {
             epoch_height: 0,
         },
         action_classes,
-        unknown_action_class_policy: chio_federation::UnknownActionClassPolicy::Reject,
+        unknown_action_class_policy:
+            chio_federation::bilateral_verifier::UnknownActionClassPolicy::Reject,
     };
 
-    let err = chio_federation::verify_bilateral_cosign_invocation(&envelope, &config)
-        .expect_err("n_of_m must not be accepted before quorum verification exists");
+    let err =
+        chio_federation::bilateral_verifier::verify_bilateral_cosign_invocation(&envelope, &config)
+            .expect_err("n_of_m must not be accepted before quorum verification exists");
     assert_eq!(err.code(), "predicate.schema_invalid");
 }
 

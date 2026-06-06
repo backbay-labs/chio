@@ -24,7 +24,7 @@ use axum::routing::post;
 use axum::Json;
 use axum::Router;
 use chio_core_types::Keypair;
-use chio_federation::PheromoneGossipBatch;
+use chio_federation::pheromone_gossip::PheromoneGossipBatch;
 use chio_pheromone_runtime::PheromoneReceiveReport;
 use serde::Deserialize;
 use serde::Serialize;
@@ -739,7 +739,7 @@ fn enforce_peer_transit_ladder_pins(
 
 fn relay_ladder_ref_matches(
     accepted: &[RelayLadderRef],
-    hop: &chio_federation::PheromoneTransitHop,
+    hop: &chio_federation::pheromone_gossip::PheromoneTransitHop,
 ) -> bool {
     accepted.iter().any(|reference| {
         reference.ladder_manifest_id == hop.ladder_manifest_id

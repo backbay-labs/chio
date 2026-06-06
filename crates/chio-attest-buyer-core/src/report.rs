@@ -1,9 +1,13 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use chio_federation::{
-    verify_chio_bilateral_invocation, ChioBilateralVerifierConfig, InMemoryGovernanceReceiptStore,
-    InMemoryLeaseRegistry, InMemoryReceiptStore, PeerPinSet, PinnedPeer, ResolvedGovernanceReceipt,
-    ResolvedLease, UnknownActionClassPolicy, VerifierConfig,
+    bilateral_verifier::verify_chio_bilateral_invocation,
+    bilateral_verifier::ChioBilateralVerifierConfig,
+    bilateral_verifier::InMemoryGovernanceReceiptStore, bilateral_verifier::InMemoryLeaseRegistry,
+    bilateral_verifier::InMemoryReceiptStore, bilateral_verifier::PeerPinSet,
+    bilateral_verifier::PinnedPeer, bilateral_verifier::ResolvedGovernanceReceipt,
+    bilateral_verifier::ResolvedLease, bilateral_verifier::UnknownActionClassPolicy,
+    bilateral_verifier::VerifierConfig,
 };
 use chio_governance::authorization::{
     verify_destructive_authorization, verify_step_governance_boundary, SignedGovernanceReceipt,

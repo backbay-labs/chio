@@ -8,7 +8,10 @@ use chio_core::capability::{
     CapabilityTokenBody, ChioScope, DelegationLink, DelegationLinkBody, Operation, ToolGrant,
 };
 use chio_core::crypto::Keypair;
-use chio_federation::{ConformanceTier, FederationPeer, InProcessCoSigner};
+use chio_federation::{
+    bilateral::InProcessCoSigner, trust_establishment::ConformanceTier,
+    trust_establishment::FederationPeer,
+};
 use chio_kernel::runtime::{NestedFlowBridge, ToolCallRequest, ToolServerConnection};
 use chio_kernel::{
     ChioKernel, KernelConfig, KernelError, Verdict as HostedVerdict, DEFAULT_CHECKPOINT_BATCH_SIZE,

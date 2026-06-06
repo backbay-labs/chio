@@ -4,9 +4,11 @@ use chio_core_types::receipt::{
     ToolCallAction, ToolOrigin, TrustLevel,
 };
 use chio_federation::{
-    sign_chio_bilateral_dsse_envelope, BilateralPredicateExtensions, CapabilityLeaseRef,
-    DsseEnvelope, GovernanceReceiptRef, HashRecord, PolicyEvaluationSummary, PolicyVerdict,
-    TreatyBindingRef, PAYLOAD_TYPE_IN_TOTO,
+    bilateral_dsse::sign_chio_bilateral_dsse_envelope,
+    bilateral_dsse::BilateralPredicateExtensions, bilateral_dsse::CapabilityLeaseRef,
+    bilateral_dsse::DsseEnvelope, bilateral_dsse::GovernanceReceiptRef, bilateral_dsse::HashRecord,
+    bilateral_dsse::PolicyEvaluationSummary, bilateral_dsse::PolicyVerdict,
+    bilateral_dsse::TreatyBindingRef, bilateral_dsse::PAYLOAD_TYPE_IN_TOTO,
 };
 use chio_runtime_core::{
     tool_args_sha256, verify_buyer_attestation_packet,
@@ -437,7 +439,7 @@ fn rebind_buyer_review_core(
 }
 
 struct StrictDsseFixture {
-    envelope: chio_federation::DsseEnvelope,
+    envelope: chio_federation::bilateral_dsse::DsseEnvelope,
     local_receipt: ChioReceipt,
     receipt: ChioReceipt,
     signer_a_public_key: chio_core_types::crypto::PublicKey,
@@ -869,22 +871,23 @@ fn buyer_review_sources_with_strict_dsse_and_verifier(
     let bilateral_dsse_sha256 = chio_core_types::crypto::sha256_hex(
         &chio_core_types::crypto::canonical_json_bytes(bilateral_dsse_envelope)?,
     );
-    let review_generated_at_unix_ms =
-        serde_json::from_value::<chio_federation::DsseEnvelope>(bilateral_dsse_envelope.clone())
+    let review_generated_at_unix_ms = serde_json::from_value::<
+        chio_federation::bilateral_dsse::DsseEnvelope,
+    >(bilateral_dsse_envelope.clone())
+    .ok()
+    .and_then(|envelope| {
+        envelope
+            .decode_statement()
             .ok()
-            .and_then(|envelope| {
-                envelope
-                    .decode_statement()
-                    .ok()
-                    .map(|(statement, _)| statement.predicate.timestamp_unix_ms)
-            })
-            .unwrap_or_else(|| {
-                verification_context
-                    .get("issuedAtUnixMs")
-                    .and_then(serde_json::Value::as_u64)
-                    .unwrap_or(1_800_000_000_000)
-                    .saturating_add(10_000)
-            });
+            .map(|(statement, _)| statement.predicate.timestamp_unix_ms)
+    })
+    .unwrap_or_else(|| {
+        verification_context
+            .get("issuedAtUnixMs")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(1_800_000_000_000)
+            .saturating_add(10_000)
+    });
     packet.bilateral_dsse_sha256 = bilateral_dsse_sha256.clone();
     let lease_id = proof_package_lease_id_for_step(proof_package, step_index)
         .or_else(|| first_proof_array_field(proof_package, "capabilityLeases", "leaseId"))

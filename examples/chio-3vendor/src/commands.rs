@@ -15,9 +15,11 @@ use chio_core_types::merkle::MerkleTree;
 use chio_core_types::receipt::SignedExportEnvelope;
 use chio_core_types::{canonical_json_bytes, sha256_hex, Keypair, SigningAlgorithm};
 use chio_federation::{
-    verify_pheromone_gossip_frame, PheromoneDepositGossip, PheromoneGossipBatch,
-    PheromoneTransitChain, PheromoneTransitHop, PheromoneTransitLadderPin, PheromoneTransitPolicy,
-    PHEROMONE_GOSSIP_BATCH_SCHEMA, PHEROMONE_GOSSIP_SCHEMA, PHEROMONE_TRANSIT_POLICY_SCHEMA,
+    pheromone_gossip::verify_pheromone_gossip_frame, pheromone_gossip::PheromoneDepositGossip,
+    pheromone_gossip::PheromoneGossipBatch, pheromone_gossip::PheromoneTransitChain,
+    pheromone_gossip::PheromoneTransitHop, pheromone_gossip::PheromoneTransitLadderPin,
+    pheromone_gossip::PheromoneTransitPolicy, pheromone_gossip::PHEROMONE_GOSSIP_BATCH_SCHEMA,
+    pheromone_gossip::PHEROMONE_GOSSIP_SCHEMA, pheromone_gossip::PHEROMONE_TRANSIT_POLICY_SCHEMA,
 };
 use chio_pheromone::{
     agent_passport_jwk_thumbprint, agent_passport_key_hash, scarcity_policy_sha256,

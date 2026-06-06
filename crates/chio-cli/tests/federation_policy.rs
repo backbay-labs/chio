@@ -15,9 +15,11 @@ use chio_control_plane::federation_policy::{
 use chio_core::capability::{ChioScope, MonetaryAmount, Operation, ToolGrant};
 use chio_core::crypto::Keypair;
 use chio_core::federation::{
-    FederatedOpenAdmissionPolicyArtifact, FederatedStakeRequirement, FederationArtifactKind,
-    FederationArtifactReference, SignedFederatedOpenAdmissionPolicy,
-    CHIO_FEDERATION_OPEN_ADMISSION_POLICY_SCHEMA,
+    artifacts::{FederationArtifactKind, FederationArtifactReference},
+    open_admission::{
+        FederatedOpenAdmissionPolicyArtifact, FederatedStakeRequirement,
+        SignedFederatedOpenAdmissionPolicy, CHIO_FEDERATION_OPEN_ADMISSION_POLICY_SCHEMA,
+    },
 };
 use chio_core::listing::GenericTrustAdmissionClass;
 use chio_core::open_market::fee_schedule::OpenMarketBondClass;

@@ -1,6 +1,6 @@
 use chio_core_types::canonical::{canonical_json_bytes, canonical_json_string};
 use chio_core_types::crypto::{sha256_hex, PublicKey};
-use chio_federation::Keyid;
+use chio_federation::bilateral_dsse::Keyid;
 use chio_governance::authorization::GovernanceReceiptCaseKind;
 use chio_governance::lease::CapabilityLeaseActionClass;
 use serde::Serialize;

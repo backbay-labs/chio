@@ -16,7 +16,7 @@ pub(crate) fn cmd_chio_pheromone_receive(
     report: &Path,
 ) -> Result<(), CliError> {
     let batch_json = read_utf8_json_file(batch, "Chio pheromone gossip batch")?;
-    let batch: chio_federation::PheromoneGossipBatch = serde_json::from_str(&batch_json)
+    let batch: chio_federation::pheromone_gossip::PheromoneGossipBatch = serde_json::from_str(&batch_json)
         .map_err(|error| CliError::cli_other_error(format!("Chio pheromone batch: {error}")))?;
     let policy_json = read_utf8_json_file(transit_policy, "Chio pheromone transit policy")?;
     let now_unix_ms = now_unix_ms.unwrap_or(batch.flushed_at_unix_ms);

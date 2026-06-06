@@ -1,5 +1,5 @@
 use chio_core_types::crypto::PublicKey;
-use chio_federation::LadderManifestRef;
+use chio_federation::trust_establishment::LadderManifestRef;
 use chio_governance::lease::CapabilityLeaseActionClass;
 use serde::{Deserialize, Serialize};
 

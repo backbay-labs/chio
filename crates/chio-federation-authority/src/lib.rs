@@ -25,7 +25,7 @@ use chio_attest_buyer_core::trust_bundle::{
 use chio_core_types::canonical::canonical_json_bytes;
 use chio_core_types::crypto::{sha256_hex, Keypair, PublicKey};
 use chio_core_types::receipt::SignedExportEnvelope;
-use chio_federation::Keyid;
+use chio_federation::bilateral_dsse::Keyid;
 use chio_governance::authorization::{
     GovernanceReceiptArtifact, GovernanceReceiptCaseKind, SignedGovernanceReceipt,
     GOVERNANCE_RECEIPT_SCHEMA_V1,
@@ -1143,7 +1143,7 @@ mod tests {
         WORKFLOW_AGGREGATE_PUBLISH_ACTION_CLASS_ID, WORKFLOW_GRANT_ISSUE_ACTION_CLASS_ID,
     };
     use chio_core_types::crypto::{Keypair, PublicKey};
-    use chio_federation::{Keyid, LadderManifestRef};
+    use chio_federation::{bilateral_dsse::Keyid, trust_establishment::LadderManifestRef};
     use chio_governance::authorization::GovernanceReceiptCaseKind;
     use chio_governance::lease::CapabilityLeaseActionClass;
 

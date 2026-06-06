@@ -42,9 +42,12 @@ use chio_core_types::receipt::{
     ToolCallAction, ToolOrigin, TrustLevel,
 };
 use chio_federation::{
-    sign_chio_bilateral_dsse_envelope, BilateralPredicateExtensions, CapabilityLeaseRef,
-    DsseEnvelope, GovernanceReceiptRef, HashRecord, Keyid, LadderManifestRef,
-    PolicyEvaluationSummary, PolicyVerdict, PREDICATE_TYPE_CHIO_BILATERAL_INVOCATION,
+    bilateral_dsse::sign_chio_bilateral_dsse_envelope,
+    bilateral_dsse::BilateralPredicateExtensions, bilateral_dsse::CapabilityLeaseRef,
+    bilateral_dsse::DsseEnvelope, bilateral_dsse::GovernanceReceiptRef, bilateral_dsse::HashRecord,
+    bilateral_dsse::Keyid, bilateral_dsse::PolicyEvaluationSummary, bilateral_dsse::PolicyVerdict,
+    bilateral_dsse::PREDICATE_TYPE_CHIO_BILATERAL_INVOCATION,
+    trust_establishment::LadderManifestRef,
 };
 pub use chio_federation_authority::{
     assemble_verifier_trust_bundle, authority_profile_json, issuance_request_json,

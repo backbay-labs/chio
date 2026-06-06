@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use chio_core_types::crypto::PublicKey;
-use chio_federation::{ActionClassKind, PinnedEpoch};
+use chio_federation::{bilateral_verifier::ActionClassKind, bilateral_verifier::PinnedEpoch};
 use chio_governance::authorization::GovernanceReceiptCaseKind;
 use chio_governance::lease::CapabilityLeaseActionClass;
 use serde::{Deserialize, Serialize};

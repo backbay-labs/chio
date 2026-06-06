@@ -9,9 +9,11 @@ use chio_core_types::receipt::{
 };
 use chio_core_types::SignedExportEnvelope;
 use chio_federation::{
-    sign_chio_bilateral_dsse_envelope, BilateralPredicateExtensions, CapabilityLeaseRef,
-    DsseEnvelope, GovernanceReceiptRef, HashRecord, PolicyEvaluationSummary, PolicyVerdict,
-    TreatyBindingRef, PAYLOAD_TYPE_IN_TOTO,
+    bilateral_dsse::sign_chio_bilateral_dsse_envelope,
+    bilateral_dsse::BilateralPredicateExtensions, bilateral_dsse::CapabilityLeaseRef,
+    bilateral_dsse::DsseEnvelope, bilateral_dsse::GovernanceReceiptRef, bilateral_dsse::HashRecord,
+    bilateral_dsse::PolicyEvaluationSummary, bilateral_dsse::PolicyVerdict,
+    bilateral_dsse::TreatyBindingRef, bilateral_dsse::PAYLOAD_TYPE_IN_TOTO,
 };
 use chio_kernel::{RuntimeAdmissionContext, RuntimeAdmissionHook, ToolCallRequest};
 use chio_runtime_core::{
@@ -1243,7 +1245,7 @@ struct TreatyRuntimeFixture {
     bilateral_invocation: BilateralInvocation,
     bilateral_invocation_sha256: String,
     bilateral_dsse_id: String,
-    bilateral_dsse: chio_federation::DsseEnvelope,
+    bilateral_dsse: chio_federation::bilateral_dsse::DsseEnvelope,
     bilateral_dsse_sha256: String,
 }
 
