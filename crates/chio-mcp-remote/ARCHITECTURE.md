@@ -3,7 +3,8 @@
 ## Boundaries
 
 - `lib.rs` owns the public crate surface, remote MCP module wiring, and the `serve_http(RemoteServeHttpConfig)` entrypoint.
-- `remote_mcp/http_service.rs` owns Axum routing, HTTP request admission, SSE response shaping, hosted MCP session dispatch, OAuth discovery metadata, and request-time authorization validation.
+- `remote_mcp/http_service.rs` owns Axum routing, HTTP request admission, SSE response shaping, hosted MCP session dispatch, and peer capability parsing.
+- `remote_mcp/http_service_auth.rs` owns HTTP session-id extraction, remote auth-state construction, OAuth discovery metadata, local authorization-server wiring, request-time authorization validation, sender constraints, and DPoP runtime checks.
 - `remote_mcp/oauth.rs` owns local authorization-server flow handling, token exchange, bearer extraction, JWT and introspection authentication, protocol header validation, and HTTP error projection.
 - `remote_mcp/session_core.rs` owns remote session lifecycle state, session workers, capability issuance, and kernel construction.
 - `remote_mcp/session_identity.rs` owns OIDC/JWKS discovery, JWT key resolution, federated principal construction, and enterprise identity context helpers.

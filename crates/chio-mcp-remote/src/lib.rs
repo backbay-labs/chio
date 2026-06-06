@@ -16,5 +16,6 @@ include!("remote_mcp/session_resume.rs");
 include!("remote_mcp/session_shared_upstream.rs");
 include!("remote_mcp/session_forms.rs");
 include!("remote_mcp/http_service.rs");
+include!("remote_mcp/http_service_auth.rs");
 include!("remote_mcp/oauth.rs");
 include!("remote_mcp/tests.rs");
