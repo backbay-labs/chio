@@ -83,9 +83,6 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/chio-kernel/src/receipt_support.rs": allow(
         "Phase 6.1", "baseline remaining production hotspot"
     ),
-    "crates/chio-policy/src/models.rs": allow(
-        "Phase 6.1", "baseline remaining production hotspot"
-    ),
     "crates/chio-core/src/extension.rs": allow(
         "Phase 6.1", "baseline remaining production hotspot"
     ),

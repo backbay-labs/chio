@@ -3,7 +3,8 @@
 ## Boundaries
 
 - `models.rs` owns the HushSpec schema, YAML parser hardening, rule-block
-  inventory, and extension structs.
+  inventory, and extension structs. Parser hardening and schema regression
+  tests live in `models/tests.rs`.
 - `validate.rs` owns schema and semantic validation before policies are
   compiled or evaluated.
 - `merge.rs` and `resolve.rs` own inheritance, deep merge, and filesystem
