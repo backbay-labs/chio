@@ -156,6 +156,6 @@ pub use runtime::wasmtime_backend::{
     KNOWN_HOST_FUNCTIONS,
 };
 #[cfg(not(loom))]
-pub use runtime::{LoadedModule, WasmGuard, WasmGuardRuntime};
+pub use runtime::{backend::WasmGuardRuntime, guard::WasmGuard, module::LoadedModule};
 #[cfg(all(not(loom), feature = "wasmtime-runtime"))]
 pub use wiring::{build_guard_pipeline, load_wasm_guards};

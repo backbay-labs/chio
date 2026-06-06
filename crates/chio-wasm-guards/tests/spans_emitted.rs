@@ -8,10 +8,10 @@ use chio_core::capability::{
 use chio_core::crypto::Keypair;
 use chio_kernel::{Guard, GuardContext, ToolCallRequest, Verdict};
 use chio_wasm_guards::{
-    guard_fetch_blob_span, guard_host_call_span, guard_verify_span, runtime::MockWasmBackend,
-    Engine, WasmGuard, WasmGuardAbi, WasmGuardError, HOST_FETCH_BLOB, SPAN_GUARD_EVALUATE,
-    SPAN_GUARD_FETCH_BLOB, SPAN_GUARD_HOST_CALL, SPAN_GUARD_RELOAD, SPAN_GUARD_VERIFY,
-    VERIFY_MODE_ED25519, VERIFY_RESULT_OK,
+    guard_fetch_blob_span, guard_host_call_span, guard_verify_span,
+    runtime::mock_backend::MockWasmBackend, Engine, WasmGuard, WasmGuardAbi, WasmGuardError,
+    HOST_FETCH_BLOB, SPAN_GUARD_EVALUATE, SPAN_GUARD_FETCH_BLOB, SPAN_GUARD_HOST_CALL,
+    SPAN_GUARD_RELOAD, SPAN_GUARD_VERIFY, VERIFY_MODE_ED25519, VERIFY_RESULT_OK,
 };
 use tracing::field::{Field, Visit};
 use tracing::span::Attributes;

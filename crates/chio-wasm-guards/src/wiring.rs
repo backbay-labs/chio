@@ -29,8 +29,8 @@ use wasmtime::Engine;
 use crate::abi::WasmGuardAbi;
 use crate::error::WasmGuardError;
 use crate::manifest;
+use crate::runtime::guard::WasmGuard;
 use crate::runtime::wasmtime_backend::WasmtimeBackend;
-use crate::runtime::WasmGuard;
 
 /// Load WASM guards from [`WasmGuardEntry`] configs with manifest verification.
 ///

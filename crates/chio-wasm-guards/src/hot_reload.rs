@@ -23,8 +23,9 @@ use crate::incident::{EvalTrace, IncidentWriter, ReloadIncident};
 use crate::observability::{
     guard_reload_span, RELOAD_APPLIED, RELOAD_CANARY_FAILED, RELOAD_ROLLED_BACK,
 };
-use crate::runtime::LoadedModule;
-use crate::{EpochId, WasmGuard, WasmGuardAbi, WasmGuardError};
+use crate::runtime::guard::WasmGuard;
+use crate::runtime::module::LoadedModule;
+use crate::{EpochId, WasmGuardAbi, WasmGuardError};
 use crate::{GuardRequest, GuardVerdict};
 
 /// Required number of frozen fixtures in a canary corpus.
