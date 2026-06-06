@@ -82,6 +82,10 @@ facility, credit bond, credit loss, provider-risk, and credit backtest
 surfaces. Its `capital_and_liability/liability.rs` child owns liability
 provider registry, quote, placement, pricing authority, bound coverage,
 auto-bind, claim, payout, and settlement workflow artifact construction.
+`credit_and_loss.rs` owns provider-risk, scorecard, facility, bond, bonded
+execution simulation, and backtest helpers. Its
+`credit_and_loss/loss_lifecycle.rs` child owns credit loss lifecycle
+accounting, report construction, and signed lifecycle issuance.
 `cluster_and_reports.rs` remains a test-only regression aggregate for behavior
 that crosses those split modules.
 
