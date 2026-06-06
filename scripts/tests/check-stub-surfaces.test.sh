@@ -82,7 +82,7 @@ write_file "$sidecar_deny/crates/chio-api-protect/src/proxy/sidecar.rs" \
 track_case "$sidecar_deny"
 assert_rc "$(run_checker "$sidecar_deny" "$work/sidecar-deny.out" "$work/sidecar-deny.err")" 1 \
   "sidecar attenuation stub remains a hard failure"
-grep -F "blocked production stub surface" "$work/sidecar-deny.err" >/dev/null
-grep -F "Phase 5.3 resolves or fail-closes the route" "$work/sidecar-deny.err" >/dev/null
+grep -F "crates/chio-api-protect/src/proxy/sidecar.rs:1" "$work/sidecar-deny.err" >/dev/null
+grep -F "production stub-surface hit is not allowlisted" "$work/sidecar-deny.err" >/dev/null
 
 echo "check-stub-surfaces.test.sh: all assertions passed"
