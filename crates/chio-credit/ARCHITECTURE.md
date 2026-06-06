@@ -9,7 +9,8 @@ The main internal areas are:
 - `hook.rs`: the finalized-receipt to IOU hook contract and signed IOU envelope wire shape.
 - `local_account.rs`: in-memory IOU minting from signed kernel receipts.
 - `store_binding.rs`: durable IOU persistence trait.
-- `lib.rs`: exposure, scorecard, facility, bond, loss-lifecycle, backtest, and provider-risk report contracts.
+- `lib.rs`: exposure, scorecard, facility, and bond contracts.
+- `risk_reports.rs`: loss-lifecycle, backtest, and provider-risk report contracts.
 - `credit/capital_and_execution.rs`: capital-book, custody-neutral capital instruction, allocation decision, and bonded-execution simulation contracts.
 
 ## Pain Points
