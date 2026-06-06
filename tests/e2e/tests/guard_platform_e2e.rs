@@ -13,7 +13,7 @@ use chio_core::capability::{
 use chio_core::crypto::Keypair;
 use chio_kernel::{Guard, GuardContext, ToolCallRequest, Verdict};
 use chio_wasm_guards::manifest::{verify_wit_world, REQUIRED_WIT_WORLD};
-use chio_wasm_guards::runtime::MockWasmBackend;
+use chio_wasm_guards::runtime::mock_backend::MockWasmBackend;
 use chio_wasm_guards::{
     Engine, EvalTrace, IncidentWriter, WasmGuard, WasmGuardAbi, WasmGuardError, WatchdogConfig,
 };
