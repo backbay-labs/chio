@@ -29,7 +29,7 @@ impl chio_pheromone_relay::RelayBatchReceiver for CliRelayBatchReceiver {
         let mut config = self.receiver_config.clone();
         config.authenticated_sender_kernel_id = authenticated_sender_kernel_id;
         config.validation_context.now_unix_ms = received_at_unix_ms;
-        let store = chio_pheromone_runtime::SqlitePheromoneRuntimeStore::open(&self.store)
+        let store = chio_pheromone_runtime::store::SqlitePheromoneRuntimeStore::open(&self.store)
             .map_err(|error| chio_pheromone_relay::PheromoneRelayError::Json(error.to_string()))?;
         let receiver =
             chio_pheromone_runtime::PheromoneReceiver::new(store, self.resolver.clone(), config);

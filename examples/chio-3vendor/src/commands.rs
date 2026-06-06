@@ -36,12 +36,13 @@ use chio_pheromone::{
     PHEROMONE_OBSERVATION_COST_VERIFIER_ROOT_SCHEMA, PHEROMONE_SCARCITY_POLICY_SCHEMA,
     PHEROMONE_WORKFLOW_CONTEXT_SCHEMA,
 };
+use chio_pheromone_runtime::store::SqlitePheromoneRuntimeStore;
 use chio_pheromone_runtime::{
     runtime_policy_document_sha256, runtime_policy_from_json, ChioWorkflowProofPackage,
     ChioWorkflowVerificationContext, ChioWorkflowVerifierTrustBundle, PeerWeightEntry,
     PeerWeightsDocument, PheromoneAdmissionPolicyDocument, PheromoneReceiver,
-    PheromoneRuntimeStore, SqlitePheromoneRuntimeStore, StaticPeerWeightProvider,
-    VerifiedChioWorkflowResolver, PHEROMONE_PEER_WEIGHTS_SCHEMA,
+    PheromoneRuntimeStore, StaticPeerWeightProvider, VerifiedChioWorkflowResolver,
+    PHEROMONE_PEER_WEIGHTS_SCHEMA,
 };
 
 pub fn run_from_env() -> Result<(), ChioPackageError> {

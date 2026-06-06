@@ -24,12 +24,13 @@ use chio_pheromone::{
     PHEROMONE_OBSERVATION_COST_LEAF_SCHEMA, PHEROMONE_OBSERVATION_COST_STATEMENT_SCHEMA,
     PHEROMONE_OBSERVATION_COST_TELEMETRY_ROOT_SCHEMA, PHEROMONE_SCARCITY_POLICY_SCHEMA,
 };
+use chio_pheromone_runtime::store::SqlitePheromoneRuntimeStore;
 use chio_pheromone_runtime::{
     peer_weights_from_json, runtime_policy_document_sha256, runtime_policy_from_json,
     ChioWorkflowProofPackage, ChioWorkflowVerificationContext, ChioWorkflowVerifierTrustBundle,
     PeerWeightProvider, PheromoneBatchOutcome, PheromoneReceiveReport, PheromoneReceiver,
     PheromoneReceiverConfig, PheromoneRuntimeError, PheromoneRuntimeStore,
-    SqlitePheromoneRuntimeStore, StaticPeerWeightProvider, VerifiedChioWorkflowResolver,
+    StaticPeerWeightProvider, VerifiedChioWorkflowResolver,
 };
 
 fn fixture(path: &str) -> PathBuf {

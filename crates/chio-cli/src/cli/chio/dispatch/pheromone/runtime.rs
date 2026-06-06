@@ -31,7 +31,7 @@ pub(crate) fn cmd_chio_pheromone_receive(
             CliError::cli_other_error(format!("Chio pheromone runtime policy: {error}"))
         })?;
     let resolver = load_chio_verified_workflow_resolver(proof_package, trust_bundle, context)?;
-    let store = chio_pheromone_runtime::SqlitePheromoneRuntimeStore::open(store)
+    let store = chio_pheromone_runtime::store::SqlitePheromoneRuntimeStore::open(store)
         .map_err(|error| CliError::cli_other_error(format!("Chio pheromone store: {error}")))?;
     let receiver = chio_pheromone_runtime::PheromoneReceiver::new(store, resolver, receiver_config);
     let receive_report = receiver
@@ -66,7 +66,7 @@ pub(crate) fn cmd_chio_pheromone_query(
     now_unix_ms: Option<u64>,
     report: &Path,
 ) -> Result<(), CliError> {
-    let store = chio_pheromone_runtime::SqlitePheromoneRuntimeStore::open(store)
+    let store = chio_pheromone_runtime::store::SqlitePheromoneRuntimeStore::open(store)
         .map_err(|error| CliError::cli_other_error(format!("Chio pheromone store: {error}")))?;
     let weights_json = read_utf8_json_file(peer_weights, "Chio pheromone peer weights")?;
     let weights = chio_pheromone_runtime::peer_weights_from_json(&weights_json)
