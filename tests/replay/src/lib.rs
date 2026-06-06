@@ -20,6 +20,7 @@ pub mod byte_compare;
 pub mod cross_version;
 pub mod driver;
 pub mod fs_iter;
+pub mod gate;
 pub mod golden_format;
 pub mod golden_reader;
 pub mod golden_writer;

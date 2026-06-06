@@ -45,6 +45,70 @@ OPTIONS:
   -V, --version            Print version.
 ```
 
+## Standalone replay-gate binary
+
+The `tests/replay` crate also ships a narrower binary:
+
+```text
+chio-replay-gate <LOG_OR_FIXTURE> [--json] [--expect-root <HEX>] [--bless]
+```
+
+This binary is the CI and developer gate for the checked-in
+`tests/replay` corpus. It is intentionally not a full replacement for
+the production `chio replay` command above. Its validation mode accepts a
+goldens root such as `tests/replay/goldens` or a single golden scenario
+directory, regenerates candidate bytes from the paired fixture manifests
+under `tests/replay/fixtures`, and compares `receipts.ndjson`,
+`checkpoint.json`, and `root.hex` as raw bytes.
+
+Supported options:
+
+```text
+      --json              Emit chio.replay.report/v1 JSON.
+      --expect-root <HEX> Assert the scenario root for a single
+                          scenario, or the deterministic aggregate
+                          root for a multi-fixture run.
+      --bless             Regenerate goldens through the CHIO_BLESS gate.
+  -h, --help              Print help.
+  -V, --version           Print version.
+```
+
+`--bless` accepts a fixture manifest, a fixture directory, or no
+positional path. With no path it blesses the full `tests/replay/fixtures`
+tree, matching `scripts/bless-replay-goldens.sh`. The binary first
+discovers manifests, validates manifest identity, checks that golden
+output paths remain under `tests/replay/goldens`, and prepares the
+candidate `GoldenSet`s in memory. It then evaluates the existing
+`CHIO_BLESS` gate, appends the audit line to
+`tests/replay/.bless-audit.log`, and writes goldens through the replay
+crate's `GoldenSet` writer. If `CHIO_BLESS=1`, `BLESS_REASON`, the
+branch, TTY, CI, dirty-tree, or audit-log checks fail, the command exits
+non-zero before touching goldens.
+
+For a clean full-corpus run:
+
+```bash
+cargo run -p chio-replay-gate -- tests/replay/goldens --json
+```
+
+the standalone gate emits:
+
+```json
+{
+  "schema": "chio.replay.report/v1",
+  "accepted": true,
+  "checkedFixtures": 50,
+  "computedRoot": "<lowercase hex>",
+  "expectedRoot": null,
+  "divergences": []
+}
+```
+
+For a single scenario directory, `computedRoot` is that scenario's
+`root.hex`. For a multi-fixture run, `computedRoot` is a deterministic
+aggregate over each checked fixture label and root in replay-gate
+enumeration order.
+
 The `<LOG>` positional accepts two shapes:
 
 - A directory of signed receipts laid out under
