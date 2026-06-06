@@ -118,7 +118,7 @@ pub(crate) fn dispatch_passport(
                     policy,
                     expires_at,
                     verifier_policies_file,
-                } => passport::cmd_passport_policy_create(passport::PassportPolicyCreateArgs {
+                } => passport::verifier::cmd_passport_policy_create(passport::PassportPolicyCreateArgs {
                     output: &output,
                     policy_id: &policy_id,
                     verifier: &verifier,
@@ -131,11 +131,11 @@ pub(crate) fn dispatch_passport(
                     control_token: control_token.as_deref(),
                 }),
                 PassportPolicyCommands::Verify { input, at } => {
-                    passport::cmd_passport_policy_verify(&input, at, json_output)
+                    passport::verifier::cmd_passport_policy_verify(&input, at, json_output)
                 }
                 PassportPolicyCommands::List {
                     verifier_policies_file,
-                } => passport::cmd_passport_policy_list(
+                } => passport::verifier::cmd_passport_policy_list(
                     json_output,
                     verifier_policies_file.as_deref(),
                     control_url.as_deref(),
@@ -144,7 +144,7 @@ pub(crate) fn dispatch_passport(
                 PassportPolicyCommands::Get {
                     policy_id,
                     verifier_policies_file,
-                } => passport::cmd_passport_policy_get(
+                } => passport::verifier::cmd_passport_policy_get(
                     &policy_id,
                     json_output,
                     verifier_policies_file.as_deref(),
@@ -154,7 +154,7 @@ pub(crate) fn dispatch_passport(
                 PassportPolicyCommands::Upsert {
                     input,
                     verifier_policies_file,
-                } => passport::cmd_passport_policy_upsert(
+                } => passport::verifier::cmd_passport_policy_upsert(
                     &input,
                     json_output,
                     verifier_policies_file.as_deref(),
@@ -164,7 +164,7 @@ pub(crate) fn dispatch_passport(
                 PassportPolicyCommands::Delete {
                     policy_id,
                     verifier_policies_file,
-                } => passport::cmd_passport_policy_delete(
+                } => passport::verifier::cmd_passport_policy_delete(
                     &policy_id,
                     json_output,
                     verifier_policies_file.as_deref(),
@@ -184,7 +184,7 @@ pub(crate) fn dispatch_passport(
                     verifier_policies_file,
                     verifier_challenge_db,
                 } => {
-                    passport::cmd_passport_challenge_create(passport::PassportChallengeCreateArgs {
+                    passport::verifier::cmd_passport_challenge_create(passport::PassportChallengeCreateArgs {
                         output: &output,
                         verifier: &verifier,
                         ttl_secs,
@@ -206,7 +206,7 @@ pub(crate) fn dispatch_passport(
                     holder_seed_file,
                     output,
                     at,
-                } => passport::cmd_passport_challenge_respond(
+                } => passport::verifier::cmd_passport_challenge_respond(
                     &input,
                     challenge.as_deref(),
                     challenge_url.as_deref(),
@@ -216,7 +216,7 @@ pub(crate) fn dispatch_passport(
                     json_output,
                 ),
                 PassportChallengeCommands::Submit { input, submit_url } => {
-                    passport::cmd_passport_challenge_submit(&input, &submit_url, json_output)
+                    passport::verifier::cmd_passport_challenge_submit(&input, &submit_url, json_output)
                 }
                 PassportChallengeCommands::Verify {
                     input,
@@ -225,7 +225,7 @@ pub(crate) fn dispatch_passport(
                     verifier_challenge_db,
                     passport_statuses_file,
                     at,
-                } => passport::cmd_passport_challenge_verify(
+                } => passport::verifier::cmd_passport_challenge_verify(
                     &input,
                     challenge.as_deref(),
                     verifier_policies_file.as_deref(),
@@ -243,7 +243,7 @@ pub(crate) fn dispatch_passport(
                     passport_statuses_file,
                     resolve_urls,
                     cache_ttl_secs,
-                } => passport::cmd_passport_status_publish(
+                } => passport::verifier::cmd_passport_status_publish(
                     &input,
                     passport_statuses_file.as_deref(),
                     &resolve_urls,
@@ -254,7 +254,7 @@ pub(crate) fn dispatch_passport(
                 ),
                 PassportStatusCommands::List {
                     passport_statuses_file,
-                } => passport::cmd_passport_status_list(
+                } => passport::verifier::cmd_passport_status_list(
                     passport_statuses_file.as_deref(),
                     json_output,
                     control_url.as_deref(),
@@ -263,7 +263,7 @@ pub(crate) fn dispatch_passport(
                 PassportStatusCommands::Get {
                     passport_id,
                     passport_statuses_file,
-                } => passport::cmd_passport_status_get(
+                } => passport::verifier::cmd_passport_status_get(
                     &passport_id,
                     passport_statuses_file.as_deref(),
                     json_output,
@@ -273,7 +273,7 @@ pub(crate) fn dispatch_passport(
                 PassportStatusCommands::Resolve {
                     passport_id,
                     passport_statuses_file,
-                } => passport::cmd_passport_status_resolve(
+                } => passport::verifier::cmd_passport_status_resolve(
                     &passport_id,
                     passport_statuses_file.as_deref(),
                     json_output,
@@ -285,7 +285,7 @@ pub(crate) fn dispatch_passport(
                     passport_statuses_file,
                     reason,
                     revoked_at,
-                } => passport::cmd_passport_status_revoke(
+                } => passport::verifier::cmd_passport_status_revoke(
                     &passport_id,
                     passport_statuses_file.as_deref(),
                     reason.as_deref(),
@@ -378,7 +378,7 @@ pub(crate) fn dispatch_passport(
                     identity_provider,
                     identity_session_hint,
                     identity_ttl_secs,
-                } => passport::cmd_passport_oid4vp_request_create(
+                } => passport::verifier::cmd_passport_oid4vp_request_create(
                     passport::PassportOid4vpRequestCreateArgs {
                         output: output.as_deref(),
                         disclosure_claims: &disclosure_claims,
@@ -404,7 +404,7 @@ pub(crate) fn dispatch_passport(
                     submit,
                     submit_url,
                     at,
-                } => passport::cmd_passport_oid4vp_respond(passport::PassportOid4vpRespondArgs {
+                } => passport::verifier::cmd_passport_oid4vp_respond(passport::PassportOid4vpRespondArgs {
                     input: &input,
                     request_url: request_url.as_deref(),
                     same_device_url: same_device_url.as_deref(),
@@ -417,10 +417,10 @@ pub(crate) fn dispatch_passport(
                     json_output,
                 }),
                 PassportOid4vpCommands::Submit { input, submit_url } => {
-                    passport::cmd_passport_oid4vp_submit(&input, &submit_url, json_output)
+                    passport::verifier::cmd_passport_oid4vp_submit(&input, &submit_url, json_output)
                 }
                 PassportOid4vpCommands::Metadata { verifier_url } => {
-                    passport::cmd_passport_oid4vp_metadata(&verifier_url, json_output)
+                    passport::verifier::cmd_passport_oid4vp_metadata(&verifier_url, json_output)
                 }
             },
     }

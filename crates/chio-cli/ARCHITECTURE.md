@@ -22,6 +22,10 @@ protocol behavior to the owning library crates.
 - `src/cli/runtime.rs`, `src/cli/session.rs`, `src/cli/mcp.rs`, and
   `src/cli/replay.rs` adapt operator input into calls against kernel, control
   plane, MCP, and replay library APIs.
+- `src/passport.rs` owns passport generation, creation, verification,
+  evaluation, presentation, issuance metadata, and OID4VCI issuance command
+  implementations. `src/passport/verifier.rs` owns verifier policy, challenge,
+  OID4VP, and passport lifecycle status command implementations.
 - `src/cli/trust_commands.rs` is the trust-command handler API root. Its
   children split durable command families: `trust/shared.rs` holds backend and
   JSON/YAML loading helpers, `trust/credit.rs` owns credit/loss command
