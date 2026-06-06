@@ -59,7 +59,12 @@ fn chio_federation_root_does_not_export_bilateral_dsse_api() {
     );
 
     let bilateral_dsse = include_str!("../src/bilateral_dsse.rs");
-    let bilateral_verifier = include_str!("../src/bilateral_verifier.rs");
+    let bilateral_verifier = concat!(
+        include_str!("../src/bilateral_verifier.rs"),
+        include_str!("../src/bilateral_verifier/config.rs"),
+        include_str!("../src/bilateral_verifier/cosign.rs"),
+        include_str!("../src/bilateral_verifier/treaty.rs"),
+    );
     let missing_module_exports = [
         (
             "bilateral_dsse",
@@ -103,7 +108,12 @@ fn chio_federation_root_does_not_export_bilateral_dsse_api() {
 #[test]
 fn chio_federation_bilateral_modules_do_not_expose_public_chio_aliases() {
     let bilateral_dsse = include_str!("../src/bilateral_dsse.rs");
-    let bilateral_verifier = include_str!("../src/bilateral_verifier.rs");
+    let bilateral_verifier = concat!(
+        include_str!("../src/bilateral_verifier.rs"),
+        include_str!("../src/bilateral_verifier/config.rs"),
+        include_str!("../src/bilateral_verifier/cosign.rs"),
+        include_str!("../src/bilateral_verifier/treaty.rs"),
+    );
 
     let legacy_dsse_exports = [
         "pub const PREDICATE_TYPE_CHIO_BILATERAL:",

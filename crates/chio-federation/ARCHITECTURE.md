@@ -19,7 +19,15 @@ The root module defines the activation, quorum, admission, reputation, and quali
 - `qualification.rs`: federation scenarios, qualification outcomes, qualification cases, matrix artifact, signed matrix alias, and matrix validation.
 - `validation.rs`: shared internal non-empty, uniqueness, digest, money, and cross-contract validation helpers.
 - `error.rs`: public federation contract error type.
-- Existing modules `bilateral.rs`, `bilateral_dsse.rs`, `bilateral_verifier.rs`, `metrics.rs`, `pheromone_gossip.rs`, `revocation_gossip.rs`, `treaty.rs`, `trust_establishment.rs`, and feature-gated `selective_disclosure.rs` remain the owning modules for their specialized surfaces.
+- Existing modules `bilateral.rs`, `bilateral_dsse.rs`, `metrics.rs`, `pheromone_gossip.rs`, `revocation_gossip.rs`, `treaty.rs`, `trust_establishment.rs`, and feature-gated `selective_disclosure.rs` remain the owning modules for their specialized surfaces.
+- `bilateral_verifier.rs`: public API root for partial local verifier and strict treaty-bound review exports.
+- `bilateral_verifier/error.rs`: verifier error codes and bilateral DSSE error mapping.
+- `bilateral_verifier/state.rs`: pinned peers, receipt stores, revocation oracle, lease registry, and governance receipt store.
+- `bilateral_verifier/config.rs`: verifier configuration, action-class policy, and successful verifier output types.
+- `bilateral_verifier/treaty.rs`: strict treaty-bound Chio bilateral DSSE review and treaty-reference reconciliation.
+- `bilateral_verifier/cosign.rs`: strict Chio and signature-slice bilateral invocation verification flow.
+- `bilateral_verifier/support.rs`: private canonical JSON, digest, hash-record, and verdict validation helpers.
+- `bilateral_verifier/tests.rs`: verifier unit tests moved from the inline module.
 - `tests.rs`: crate-local root-contract behavior tests.
 
 ## Trust Invariants

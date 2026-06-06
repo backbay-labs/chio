@@ -53,7 +53,7 @@ packages and 588,730 bytes of metadata.
 | `crates/chio-cli/src/cli/types/trust.rs` | 1,433 | production | `chio-cli` | split from `types.rs` in Phase 6.1 |
 | `crates/chio-cli/tests/certify.rs` | 3,639 | test | `chio-cli` | Phase 7 follow-up |
 | `crates/chio-control-plane/src/attestation/verification.rs` | 1,221 | production | `chio-control-plane` | split from `attestation.rs` in Phase 6.1 |
-| `crates/chio-federation/src/bilateral_verifier.rs` | 3,512 | production | `chio-federation` | Phase 6.1 |
+| `crates/chio-federation/src/bilateral_verifier/cosign.rs` | 837 | production | `chio-federation` | split from `bilateral_verifier.rs` in Phase 6.1 |
 | `crates/chio-core-types/src/receipt.rs` | 3,438 | production | `chio-core-types` | Phase 3.2 |
 | `crates/chio-wasm-guards/src/runtime.rs` | 3,357 | production | `chio-wasm-guards` | Phase 5.1 |
 | `crates/chio-mcp-edge/src/runtime.rs` | 3,310 | production | `chio-mcp-edge` | Phase 5.2 |
