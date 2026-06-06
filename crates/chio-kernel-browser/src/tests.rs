@@ -1,8 +1,10 @@
 use super::*;
+use alloc::collections::BTreeMap;
+use alloc::string::{String, ToString};
 use chio_core_types::capability::{
     attenuation::{
         compute_attenuation_witness, scope_hash, AttenuationProof, DelegationLink,
-        DelegationLinkBody,
+        DelegationLinkBody, ScopeHash,
     },
     scope::{ChioScope, Operation, ToolGrant},
     token::{CapabilityToken, CapabilityTokenAttenuationBody, CapabilityTokenBody},
