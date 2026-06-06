@@ -23,6 +23,13 @@ pub const GENERATED_HEADER: &str = "\
 // Source: test/schema.json
 ";
 EOF
+  cat > "$root/crates/chio-spec-codegen/src/errors_pass.rs" <<'EOF'
+const ERROR_CODES_GENERATED_HEADER: &str = "\
+// DO NOT EDIT - regenerate via 'cargo run -p chio-spec-codegen -- --errors-only'.
+//
+// Source: spec/errors/registry.yaml
+";
+EOF
 }
 
 write_generated_wire() {
@@ -36,6 +43,20 @@ write_generated_wire() {
 
 EOF
     awk -v count="$count" 'BEGIN { for (i = 1; i <= count; i++) print "pub fn marker_" i "() {}" }'
+  } > "$path"
+}
+
+write_generated_errors() {
+  local path="$1" count="$2"
+  mkdir -p "$(dirname "$path")"
+  {
+    cat <<'EOF'
+// DO NOT EDIT - regenerate via 'cargo run -p chio-spec-codegen -- --errors-only'.
+//
+// Source: spec/errors/registry.yaml
+
+EOF
+    awk -v count="$count" 'BEGIN { for (i = 1; i <= count; i++) print "pub const ERROR_" i ": &str = \"E\";" }'
   } > "$path"
 }
 
@@ -72,6 +93,7 @@ init_case "$pass_case"
 write_lines "$pass_case/crates/chio-small/src/main.rs" 25
 write_lines "$pass_case/crates/chio-small/tests/large.rs" 2501
 write_generated_wire "$pass_case/crates/chio-core-types/src/_generated/chio_wire_v1.rs" 3001
+write_generated_errors "$pass_case/crates/chio-errors/src/_generated/error_codes.rs" 2501
 track_case "$pass_case"
 assert_rc "$(run_checker "$pass_case" "$work/pass.out" "$work/pass.err")" 0 \
   "small production plus large test/generated files with canonical header pass"
@@ -85,8 +107,18 @@ write_lines "$bad_generated/crates/chio-core-types/src/_generated/chio_wire_v1.r
 track_case "$bad_generated"
 assert_rc "$(run_checker "$bad_generated" "$work/bad-generated.out" "$work/bad-generated.err")" 1 \
   "generated wire file without canonical header fails"
-grep -F "crates/chio-core-types/src/_generated/chio_wire_v1.rs: generated wire file does not begin with chio_spec_codegen::GENERATED_HEADER" \
+grep -F "crates/chio-core-types/src/_generated/chio_wire_v1.rs: generated Rust file does not begin with chio_spec_codegen::GENERATED_HEADER" \
   "$work/bad-generated.err" >/dev/null
+
+bad_error_generated="$work/bad-error-generated"
+init_case "$bad_error_generated"
+write_lines "$bad_error_generated/crates/chio-small/src/main.rs" 25
+write_lines "$bad_error_generated/crates/chio-errors/src/_generated/error_codes.rs" 2501
+track_case "$bad_error_generated"
+assert_rc "$(run_checker "$bad_error_generated" "$work/bad-error-generated.out" "$work/bad-error-generated.err")" 1 \
+  "generated error-code file without canonical header fails"
+grep -F "crates/chio-errors/src/_generated/error_codes.rs: generated Rust file does not begin with chio_spec_codegen::errors_pass::ERROR_CODES_GENERATED_HEADER" \
+  "$work/bad-error-generated.err" >/dev/null
 
 large_production="$work/large-production"
 init_case "$large_production"

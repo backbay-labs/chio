@@ -75,6 +75,29 @@ assert_rc "$(run_checker "$federation_allow" "$work/federation-allow.out" "$work
   "bbs-stub allowlisted feature surface passes"
 grep -F "allowlisted until Phase 2.2 review" "$work/federation-allow.out" >/dev/null
 
+federation_unrelated="$work/federation-unrelated"
+init_case "$federation_unrelated"
+write_file "$federation_unrelated/crates/chio-federation/src/selective_disclosure.rs" \
+  "#[cfg(feature = \"bbs-stub\")]" \
+  "pub fn project() { /* bbs-stub placeholder projection */ }" \
+  "pub fn unrelated() { /* TODO: unrelated production work */ }"
+track_case "$federation_unrelated"
+assert_rc "$(run_checker "$federation_unrelated" "$work/federation-unrelated.out" "$work/federation-unrelated.err")" 1 \
+  "allowlisted federation file rejects unrelated production TODO"
+grep -F "does not match reviewed allowlist patterns" \
+  "$work/federation-unrelated.err" >/dev/null
+
+guard_unrelated="$work/guard-unrelated"
+init_case "$guard_unrelated"
+write_file "$guard_unrelated/crates/chio-cli/src/guard.rs" \
+  "// Replace this stub with real policy logic before shipping." \
+  "pub fn unrelated() { /* TODO: unrelated production work */ }"
+track_case "$guard_unrelated"
+assert_rc "$(run_checker "$guard_unrelated" "$work/guard-unrelated.out" "$work/guard-unrelated.err")" 1 \
+  "allowlisted guard file rejects unrelated production TODO"
+grep -F "does not match reviewed allowlist patterns" \
+  "$work/guard-unrelated.err" >/dev/null
+
 sidecar_deny="$work/sidecar-deny"
 init_case "$sidecar_deny"
 write_file "$sidecar_deny/crates/chio-api-protect/src/proxy/sidecar.rs" \

@@ -16,6 +16,9 @@ SUMMARY_LIMIT = 25
 WIRE_GENERATED_PREFIX = "crates/chio-core-types/src/_generated/"
 GENERATED_HEADER_SOURCE = "crates/chio-spec-codegen/src/lib.rs"
 GENERATED_HEADER_CONST_MARKER = 'pub const GENERATED_HEADER: &str = "\\\n'
+ERRORS_GENERATED_PREFIX = "crates/chio-errors/src/_generated/"
+ERRORS_GENERATED_HEADER_SOURCE = "crates/chio-spec-codegen/src/errors_pass.rs"
+ERRORS_GENERATED_HEADER_CONST_MARKER = 'const ERROR_CODES_GENERATED_HEADER: &str = "\\\n'
 
 
 @dataclass(frozen=True)
@@ -40,6 +43,30 @@ class RustFile:
     allowlist: AllowlistEntry | None
 
 
+@dataclass(frozen=True)
+class GeneratedHeaderSpec:
+    prefix: str
+    source: str
+    const_marker: str
+    label: str
+
+
+GENERATED_HEADER_SPECS = (
+    GeneratedHeaderSpec(
+        prefix=WIRE_GENERATED_PREFIX,
+        source=GENERATED_HEADER_SOURCE,
+        const_marker=GENERATED_HEADER_CONST_MARKER,
+        label="chio_spec_codegen::GENERATED_HEADER",
+    ),
+    GeneratedHeaderSpec(
+        prefix=ERRORS_GENERATED_PREFIX,
+        source=ERRORS_GENERATED_HEADER_SOURCE,
+        const_marker=ERRORS_GENERATED_HEADER_CONST_MARKER,
+        label="chio_spec_codegen::errors_pass::ERROR_CODES_GENERATED_HEADER",
+    ),
+)
+
+
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
@@ -60,15 +87,15 @@ def line_count(path: Path) -> int:
     return data.count(b"\n")
 
 
-def load_generated_header(root: Path) -> str | None:
-    source = root / GENERATED_HEADER_SOURCE
+def load_generated_header(root: Path, spec: GeneratedHeaderSpec) -> str | None:
+    source = root / spec.source
     if not source.exists():
         return None
     text = source.read_text()
-    start = text.find(GENERATED_HEADER_CONST_MARKER)
+    start = text.find(spec.const_marker)
     if start == -1:
         return None
-    start += len(GENERATED_HEADER_CONST_MARKER)
+    start += len(spec.const_marker)
     end = text.find('";', start)
     if end == -1:
         return None
@@ -107,34 +134,43 @@ def validate_allowlist(errors: list[str]) -> None:
             errors.append(f"{path}: allowlist entry has an empty expiry phase")
 
 
-def requires_wire_generated_header(path: str) -> bool:
-    return path.startswith(WIRE_GENERATED_PREFIX) and path.endswith(".rs")
-
-
 def validate_generated_headers(
     root: Path,
     paths: list[str],
     failures: list[str],
 ) -> None:
-    generated_paths = [path for path in paths if requires_wire_generated_header(path)]
+    generated_paths = [path for path in paths if classify(path) == "generated"]
     if not generated_paths:
         return
-    header = load_generated_header(root)
-    if header is None:
-        failures.append(
-            f"{GENERATED_HEADER_SOURCE}: could not read chio_spec_codegen::GENERATED_HEADER"
-        )
-        return
-    for path in generated_paths:
-        try:
-            body = (root / path).read_text()
-        except OSError as err:
-            failures.append(f"{path}: could not read generated Rust file: {err}")
+    covered_paths: set[str] = set()
+    for spec in GENERATED_HEADER_SPECS:
+        spec_paths = [
+            path
+            for path in generated_paths
+            if path.startswith(spec.prefix) and path.endswith(".rs")
+        ]
+        if not spec_paths:
             continue
-        if not body.startswith(header):
+        header = load_generated_header(root, spec)
+        if header is None:
+            failures.append(f"{spec.source}: could not read {spec.label}")
+            continue
+        for path in spec_paths:
+            covered_paths.add(path)
+            try:
+                body = (root / path).read_text()
+            except OSError as err:
+                failures.append(f"{path}: could not read generated Rust file: {err}")
+                continue
+            if not body.startswith(header):
+                failures.append(
+                    f"{path}: generated Rust file does not begin with {spec.label}"
+                )
+
+    for path in generated_paths:
+        if path not in covered_paths:
             failures.append(
-                f"{path}: generated wire file does not begin with "
-                "chio_spec_codegen::GENERATED_HEADER"
+                f"{path}: generated Rust path is not covered by a known generator header check"
             )
 
 

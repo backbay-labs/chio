@@ -55,10 +55,6 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         "feature-gated bbs-stub implementation isolated behind cfg(feature = \"bbs-stub\")",
         "Phase 2.2 review",
     ),
-    "crates/chio-anchor/src/batch.rs": allow(
-        "reviewed test fixture inside cfg(test)",
-        "Phase 7 review",
-    ),
     "crates/chio-anchor/src/witness.rs": allow(
         "reviewed test fixture helper",
         "Phase 7 review",
@@ -70,10 +66,6 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/chio-arena/src/promote.rs": allow(
         "reviewed test seam for injecting CHIO_BLESS environment access",
         "Phase 7 review",
-    ),
-    "crates/chio-attest-verify/src/lib.rs": allow(
-        "negative crate invariant text forbids todo and unimplemented macros",
-        "Phase 6.1 review",
     ),
     "crates/chio-cli/dashboard/src/components/BudgetSparkline.tsx": allow(
         "UI empty-state placeholder, not an implementation stub",
@@ -147,37 +139,17 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         "reviewed fail-closed comments around non-Ed25519 byte conversions",
         "Phase 3 review",
     ),
-    "crates/chio-core-types/src/plan.rs": allow(
-        "advisory plan edges are intentional v1 metadata",
-        "Phase 3 review",
-    ),
     "crates/chio-core-types/src/receipt/kinds.rs": allow(
         "advisory trust level is an intentional receipt enum variant",
         "Phase 3.2 review",
-    ),
-    "crates/chio-custody-hw/src/capability.rs": allow(
-        "reviewed pre-signing constructor and cfg(test) fixture language",
-        "Phase 6.1 review",
-    ),
-    "crates/chio-custody-hw/src/issuer.rs": allow(
-        "reviewed pre-signing constructor call that is signed before emission",
-        "Phase 6.1 review",
     ),
     "crates/chio-custody-hw/src/lib.rs": allow(
         "negative crate-level invariant forbids trust-boundary stubs",
         "Phase 6.1 review",
     ),
-    "crates/chio-custody-hw/src/mint.rs": allow(
-        "reviewed pre-signing constructor call that is signed before emission",
-        "Phase 6.1 review",
-    ),
     "crates/chio-custody-hw/src/verifier.rs": allow(
         "reviewed cfg(test) WebAuthn assertion fixture",
         "Phase 7 review",
-    ),
-    "crates/chio-data-guards/redactors/default/src/lib.rs": allow(
-        "phone-number pattern documentation, not a stub marker",
-        "Phase 6.1 review",
     ),
     "crates/chio-envoy-ext-authz/proto/envoy/config/core/v3/base.proto": allow(
         "protocol fixture text for opaque Envoy fields",
@@ -197,10 +169,6 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/chio-kernel-browser/src/clock.rs": allow(
         "cfg(not wasm32) host-target test stub returns fail-closed time",
-        "Phase 6.2 review",
-    ),
-    "crates/chio-kernel-browser/src/lib.rs": allow(
-        "test signing placeholder is replaced before pure receipt signing returns",
         "Phase 6.2 review",
     ),
     "crates/chio-kernel-browser/src/rng.rs": allow(
@@ -267,10 +235,6 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         "domain placeholder-resolution API for guard configuration",
         "Phase 5.1 review",
     ),
-    "crates/chio-wasm-guards/src/runtime.rs": allow(
-        "domain placeholder-resolution API use for guard configuration",
-        "Phase 5.1 review",
-    ),
     "crates/chio-wasm-guards/src/runtime/wasmtime_backend.rs": allow(
         "domain placeholder-resolution API use for guard configuration",
         "Phase 5.1 review",
@@ -282,6 +246,222 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/chio-weights/src/lineage.rs": allow(
         "PQ-hybrid signing-state placeholder mirrors explicit unsigned lineage state",
         "Phase 6.2 review",
+    ),
+}
+
+ALLOWLIST_MATCHES: dict[str, tuple[str, ...]] = {
+    "crates/chio-acp-edge/src/bridge.rs": (
+        r"permission preview is advisory only; enforcement happens at invoke time",
+    ),
+    "crates/chio-acp-proxy/src/kernel_signer.rs": (
+        r"placeholder for debug logging",
+        r"into the placeholder anyway",
+    ),
+    "crates/chio-anchor/src/witness.rs": (
+        r"rekor:placeholder",
+    ),
+    "crates/chio-anchor/src/witness/rekor.rs": (
+        r"rekor:placeholder",
+    ),
+    "crates/chio-arena/src/promote.rs": (
+        r"CHIO_BLESS gate\. Tests inject a stub",
+    ),
+    "crates/chio-cli/dashboard/src/components/BudgetSparkline.tsx": (
+        r"No cost data.*placeholder",
+        r"sparkline-placeholder",
+    ),
+    "crates/chio-cli/dashboard/src/components/FilterSidebar.tsx": (
+        r'placeholder="(hex key|server name|tool name)\.\.\."',
+    ),
+    "crates/chio-cli/dashboard/src/components/ReceiptTable.tsx": (
+        r"sparkline-placeholder",
+    ),
+    "crates/chio-cli/dashboard/src/index.css": (
+        r"Budget sparkline placeholder",
+        r"sparkline-placeholder",
+    ),
+    "crates/chio-cli/src/cli/mcp/manifest.rs": (
+        r"TODO: review the inferred scopes below before promoting",
+        r"TODO: review and promote",
+    ),
+    "crates/chio-cli/src/cli/replay/execute.rs": (
+        r"stub tool server",
+        r"stub frame id",
+        r"replay stub",
+        r"REPLAY_STUB_SERVER_ID",
+        r"chio-replay-stub",
+    ),
+    "crates/chio-cli/src/cli/replay/validate.rs": (
+        r"Unsigned placeholder matching the schema regex",
+        r"unsigned placeholder tenant_sig",
+    ),
+    "crates/chio-cli/src/cli/runtime.rs": (
+        r"Stub OpenAPI spec used by `chio start`",
+    ),
+    "crates/chio-cli/src/cli/session.rs": (
+        r'"stub": true',
+    ),
+    "crates/chio-cli/src/doctor/cosign.rs": (
+        r'"stub": true',
+        r'\\"stub\\": true',
+    ),
+    "crates/chio-cli/src/guard.rs": (
+        r"Replace this stub with real policy logic before shipping",
+        r'wasm_sha256: "TODO: run `chio guard build`',
+        r'manifest\.contains\("wasm_sha256: \\"TODO:',
+    ),
+    "crates/chio-cli/templates/init/README.md.tmpl": (
+        r"hello_server\.rs.*tool server stub",
+    ),
+    "crates/chio-config/src/interpolation.rs": (
+        r"Leave a placeholder so the rest of parsing can proceed",
+    ),
+    "crates/chio-conformance/Cargo.toml": (
+        r"SHA-256-commitment stub",
+        r"bbs-stub",
+    ),
+    "crates/chio-conformance/peers.lock.toml": (
+        r"published = false.*placeholder",
+        r"placeholder sha256",
+    ),
+    "crates/chio-conformance/src/peers.rs": (
+        r"placeholder entries.*published = false",
+        r"Placeholder entries",
+        r"placeholder sha256 pins",
+        r"placeholder pins; flip published=true",
+    ),
+    "crates/chio-conformance/verdict_matrix/drivers/lambda/src/lib.rs": (
+        r"not a placeholder",
+    ),
+    "crates/chio-core-types/src/crypto.rs": (
+        r"32-byte placeholder",
+        r"all-zero placeholder",
+    ),
+    "crates/chio-core-types/src/receipt/kinds.rs": (
+        r"advisory only",
+    ),
+    "crates/chio-custody-hw/src/lib.rs": (
+        r"trust-boundary stubs",
+    ),
+    "crates/chio-custody-hw/src/verifier.rs": (
+        r"signature are placeholders",
+    ),
+    "crates/chio-envoy-ext-authz/proto/envoy/config/core/v3/base.proto": (
+        r"opaque placeholders",
+    ),
+    "crates/chio-envoy-ext-authz/src/service.rs": (
+        r"tests can stub this trait",
+    ),
+    "crates/chio-federation/Cargo.toml": (
+        r"bbs-stub",
+        r"SHA-256-commitment stub",
+    ),
+    "crates/chio-federation/src/lib.rs": (
+        r"bbs-stub",
+        r"honestly-named",
+    ),
+    "crates/chio-federation/src/selective_disclosure.rs": (
+        r"Stub status \(HONEST\)",
+        r"bbs-stub",
+        r"proof_bytes.*placeholder",
+        r"AUDIT_VIEW_SCHEMA_STUB",
+        r"\.stub",
+        r"stub-proof",
+    ),
+    "crates/chio-guard-registry/src/pull.rs": (
+        r"placeholder JSON",
+    ),
+    "crates/chio-http-core/src/routes.rs": (
+        r"`\{id\}` placeholder",
+    ),
+    "crates/chio-kernel-browser/src/clock.rs": (
+        r"stub so `cargo test -p chio-kernel-browser`",
+        r"stub intentionally returns `0`",
+    ),
+    "crates/chio-kernel-browser/src/rng.rs": (
+        r"Host-target stub",
+        r"Native stub that always fails",
+    ),
+    "crates/chio-lineage/src/anchor.rs": (
+        r"stub for a real PQ signature",
+    ),
+    "crates/chio-log-redact/src/engine.rs": (
+        r"fail-closed placeholder",
+    ),
+    "crates/chio-metering/src/export.rs": (
+        r"Falls back to a placeholder",
+    ),
+    "crates/chio-pheromone-relay/src/metrics.rs": (
+        r"placeholders = statuses",
+        r"IN \(\{placeholders\}\)",
+    ),
+    "crates/chio-policy/src/detection.rs": (
+        r'"stub"',
+        r"detector_name, \"stub\"",
+    ),
+    "crates/chio-provider-conformance/src/replay.rs": (
+        r"Stub that explains which feature is needed for Bedrock replay",
+        r"Stub that explains which feature is needed for Anthropic replay",
+        r"Stub that explains which feature is needed for OpenAI replay",
+    ),
+    "crates/chio-revocation-oracle/src/signer.rs": (
+        r"digest-stub-sha256",
+    ),
+    "crates/chio-spec-codegen/src/main.rs": (
+        r"chio-spec-codegen --threat-model <input\.json> --out <stubs-dir>",
+        r"stub Rust test",
+        r"threat-stub",
+        r"--out <stubs-dir>",
+        r"<stubs-dir>",
+    ),
+    "crates/chio-spec-codegen/src/threat_coverage_doc.rs": (
+        r"threats stub directory",
+        r"Test stub",
+        r"not yet emitted",
+    ),
+    "crates/chio-spec-codegen/src/threat_model.rs": (
+        r"threat-stub",
+        r"stub source",
+        r"Stub test",
+        r"stub fails closed",
+        r"per-threat stub",
+        r"codegen stubs",
+        r"Generate one stub",
+        r"top-level Rust into the stub",
+        r"stub must still parse",
+        r"sanitised stub must parse",
+        r"let stub",
+        r"contains_live_unimplemented_marker",
+    ),
+    "crates/chio-store-sqlite/src/receipt_store/evidence_retention.rs": (
+        r"bind placeholders",
+    ),
+    "crates/chio-tee/src/tap.rs": (
+        r"Stub `TrafficTap` implementation",
+    ),
+    "crates/chio-wasm-guards/src/fuzz.rs": (
+        r"chio_alloc` stub",
+    ),
+    "crates/chio-wasm-guards/src/lib.rs": (
+        r"placeholders",
+    ),
+    "crates/chio-wasm-guards/src/placeholders.rs": (
+        r"[Pp]laceholder",
+        r"placeholders",
+        r"\$\{VAR",
+    ),
+    "crates/chio-wasm-guards/src/runtime/wasmtime_backend.rs": (
+        r"[Pp]laceholder",
+        r"placeholders",
+        r"PlaceholderEnv",
+        r"PlaceholderError",
+        r"resolve_placeholders",
+    ),
+    "crates/chio-weights/src/lib.rs": (
+        r"trust-boundary stubs",
+    ),
+    "crates/chio-weights/src/lineage.rs": (
+        r"signing state placeholder",
     ),
 }
 
@@ -383,11 +563,32 @@ def validate_lists(errors: list[str]) -> None:
             errors.append(f"{path}: allowlist entry has an empty reason")
         if not entry.expires.strip():
             errors.append(f"{path}: allowlist entry has an empty expiry")
+        patterns = ALLOWLIST_MATCHES.get(path)
+        if not patterns:
+            errors.append(f"{path}: allowlist entry has no reviewed match patterns")
+            continue
+        for pattern in patterns:
+            if not pattern.strip():
+                errors.append(f"{path}: allowlist entry has an empty match pattern")
+                continue
+            try:
+                re.compile(pattern)
+            except re.error as err:
+                errors.append(f"{path}: invalid allowlist pattern {pattern!r}: {err}")
+    for path in sorted(set(ALLOWLIST_MATCHES) - set(ALLOWLIST)):
+        errors.append(f"{path}: allowlist match patterns exist without allowlist entry")
     for path, entry in sorted(DENYLIST.items()):
         if not entry.reason.strip():
             errors.append(f"{path}: denylist entry has an empty reason")
         if not entry.until.strip():
             errors.append(f"{path}: denylist entry has an empty until field")
+
+
+def matches_allowlist(hit: Hit) -> bool:
+    if hit.allowlist is None:
+        return False
+    patterns = ALLOWLIST_MATCHES.get(hit.path, ())
+    return any(re.search(pattern, hit.text) for pattern in patterns)
 
 
 def print_summary(hits: list[Hit]) -> None:
@@ -407,7 +608,7 @@ def print_summary(hits: list[Hit]) -> None:
         marker = ""
         if hit.denylist:
             marker = f" denylisted until {hit.denylist.until}"
-        elif hit.allowlist:
+        elif matches_allowlist(hit):
             marker = f" allowlisted until {hit.allowlist.expires}"
         print(f"{hit.path}:{hit.line}:{marker} {hit.text}")
     if len(production_hits) > 120:
@@ -448,7 +649,13 @@ def main() -> int:
                 f"{hit.denylist.reason}; blocked until {hit.denylist.until}"
             )
             continue
+        if matches_allowlist(hit):
+            continue
         if hit.allowlist:
+            failures.append(
+                f"{hit.path}:{hit.line}: production stub-surface hit does not "
+                f"match reviewed allowlist patterns: {hit.text}"
+            )
             continue
         failures.append(
             f"{hit.path}:{hit.line}: production stub-surface hit is not allowlisted: "
