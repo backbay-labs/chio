@@ -11,7 +11,7 @@ use chio_core::{PromptMessage, ResourceContent};
 use chio_kernel::{
     KernelError, PromptProvider, ResourceProvider, ToolServerConnection, ToolServerEvent,
 };
-use chio_mcp_adapter::{
+use chio_mcp_adapter::native::{
     NativeChioService, NativeChioServiceBuilder, NativePrompt, NativeResource, NativeTool,
 };
 

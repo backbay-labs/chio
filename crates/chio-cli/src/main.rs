@@ -77,7 +77,9 @@ use chio_kernel::{
     ChioKernel, RevocationStore, SessionOperationResponse, ToolCallOutput,
     ToolCallRequest as KernelToolCallRequest, ToolCallStream,
 };
-use chio_mcp_adapter::{AdaptedMcpServer, ChioMcpEdge, McpAdapterConfig, McpEdgeConfig};
+use chio_mcp_adapter::adapter::McpAdapterConfig;
+use chio_mcp_adapter::edge::{ChioMcpEdge, McpEdgeConfig};
+use chio_mcp_adapter::server::AdaptedMcpServer;
 
 use crate::policy::load_policy;
 

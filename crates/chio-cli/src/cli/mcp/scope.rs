@@ -56,7 +56,7 @@ pub(crate) struct InferredCapability {
 
 /// Infer the capability scope for a single MCP tool entry. Pure function;
 /// safe to call from tests without spinning up a transport.
-pub(crate) fn infer_scope_for_tool(info: &chio_mcp_adapter::McpToolInfo) -> InferredCapability {
+pub(crate) fn infer_scope_for_tool(info: &chio_mcp_adapter::edge::McpToolInfo) -> InferredCapability {
     let scope = classify_tool(info);
     InferredCapability {
         tool: info.name.clone(),
@@ -68,13 +68,13 @@ pub(crate) fn infer_scope_for_tool(info: &chio_mcp_adapter::McpToolInfo) -> Infe
 }
 
 /// Run the per-tool inference across the full `tools/list` payload.
-pub(crate) fn infer_scopes(tools: &[chio_mcp_adapter::McpToolInfo]) -> Vec<InferredCapability> {
+pub(crate) fn infer_scopes(tools: &[chio_mcp_adapter::edge::McpToolInfo]) -> Vec<InferredCapability> {
     let mut out: Vec<InferredCapability> = tools.iter().map(infer_scope_for_tool).collect();
     out.sort_by(|a, b| a.tool.cmp(&b.tool));
     out
 }
 
-fn classify_tool(info: &chio_mcp_adapter::McpToolInfo) -> InferredScope {
+fn classify_tool(info: &chio_mcp_adapter::edge::McpToolInfo) -> InferredScope {
     if let Some(annotations) = info.annotations.as_ref() {
         if annotations
             .get("destructiveHint")

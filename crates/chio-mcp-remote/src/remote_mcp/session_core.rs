@@ -31,10 +31,10 @@ use chio_kernel::{
     CHIO_OAUTH_AUTHORIZATION_PROFILE_SCHEMA, CHIO_OAUTH_AUTHORIZATION_TOOL_DETAIL_TYPE,
     CHIO_OAUTH_SENDER_BINDING_CAPABILITY_SUBJECT, CHIO_OAUTH_SENDER_PROOF_CHIO_DPOP,
 };
-use chio_mcp_adapter::{
-    AdaptedMcpServer, AdapterError, ChioMcpEdge, McpAdapter, McpAdapterConfig, McpEdgeConfig,
-    McpTransport, SerializedMcpTransport, StdioMcpTransport,
-};
+use chio_mcp_adapter::adapter::{McpAdapter, McpAdapterConfig, SerializedMcpTransport};
+use chio_mcp_adapter::edge::{AdapterError, ChioMcpEdge, McpEdgeConfig, McpTransport};
+use chio_mcp_adapter::server::AdaptedMcpServer;
+use chio_mcp_adapter::transport::StdioMcpTransport;
 use async_stream::stream;
 use axum::extract::{Form, Path as AxumPath, Query, Request, State};
 use axum::http::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, ORIGIN, WWW_AUTHENTICATE};
@@ -1948,7 +1948,7 @@ impl SharedUpstreamOwner {
 }
 
 impl McpTransport for SharedUpstreamNotificationTap {
-    fn list_tools(&self) -> Result<Vec<chio_mcp_adapter::McpToolInfo>, AdapterError> {
+    fn list_tools(&self) -> Result<Vec<chio_mcp_adapter::edge::McpToolInfo>, AdapterError> {
         Err(AdapterError::ConnectionFailed(
             "shared upstream notification tap does not support direct tool calls".to_string(),
         ))
@@ -1958,7 +1958,7 @@ impl McpTransport for SharedUpstreamNotificationTap {
         &self,
         _tool_name: &str,
         _arguments: Value,
-    ) -> Result<chio_mcp_adapter::McpToolResult, AdapterError> {
+    ) -> Result<chio_mcp_adapter::edge::McpToolResult, AdapterError> {
         Err(AdapterError::ConnectionFailed(
             "shared upstream notification tap does not support direct tool calls".to_string(),
         ))

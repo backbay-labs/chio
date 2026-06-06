@@ -46,7 +46,7 @@ pub enum CliError {
     Policy(#[from] policy::PolicyError),
 
     #[error("adapter error: {0}")]
-    Adapter(#[from] chio_mcp_adapter::AdapterError),
+    Adapter(#[from] chio_mcp_adapter::edge::AdapterError),
 
     #[error("kernel error: {0}")]
     Kernel(#[from] chio_kernel::KernelError),

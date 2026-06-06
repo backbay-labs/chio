@@ -140,7 +140,7 @@ pub(crate) fn cmd_mcp_wrap_run(args: &McpWrapArgs) -> Result<(), CliError> {
 
     let (program, child_args) = split_wrapped_command(&args.command)?;
     let child_args_refs: Vec<&str> = child_args.iter().map(String::as_str).collect();
-    let transport = chio_mcp_adapter::StdioMcpTransport::spawn(&program, &child_args_refs)
+    let transport = chio_mcp_adapter::transport::StdioMcpTransport::spawn(&program, &child_args_refs)
         .map_err(|e| {
             CliError::cli_other_error(format!(
                 "failed to spawn wrapped MCP server '{program}': {e}"
@@ -190,23 +190,23 @@ struct KernelMediatedMcpTransport {
     agent_public_key: chio_core::PublicKey,
     allowed: std::collections::BTreeSet<String>,
     server_id: String,
-    tools: Vec<chio_mcp_adapter::McpToolInfo>,
+    tools: Vec<chio_mcp_adapter::edge::McpToolInfo>,
     request_counter: std::sync::atomic::AtomicU64,
 }
 
 struct CachedToolListTransport {
-    inner: Box<dyn chio_mcp_adapter::McpTransport>,
-    tools: Vec<chio_mcp_adapter::McpToolInfo>,
+    inner: Box<dyn chio_mcp_adapter::edge::McpTransport>,
+    tools: Vec<chio_mcp_adapter::edge::McpToolInfo>,
 }
 
-impl chio_mcp_adapter::McpTransport for CachedToolListTransport {
-    fn capabilities(&self) -> chio_mcp_adapter::McpServerCapabilities {
+impl chio_mcp_adapter::edge::McpTransport for CachedToolListTransport {
+    fn capabilities(&self) -> chio_mcp_adapter::edge::McpServerCapabilities {
         self.inner.capabilities()
     }
 
     fn list_tools(
         &self,
-    ) -> Result<Vec<chio_mcp_adapter::McpToolInfo>, chio_mcp_adapter::AdapterError> {
+    ) -> Result<Vec<chio_mcp_adapter::edge::McpToolInfo>, chio_mcp_adapter::edge::AdapterError> {
         Ok(self.tools.clone())
     }
 
@@ -214,7 +214,7 @@ impl chio_mcp_adapter::McpTransport for CachedToolListTransport {
         &self,
         tool_name: &str,
         arguments: serde_json::Value,
-    ) -> Result<chio_mcp_adapter::McpToolResult, chio_mcp_adapter::AdapterError> {
+    ) -> Result<chio_mcp_adapter::edge::McpToolResult, chio_mcp_adapter::edge::AdapterError> {
         self.inner.call_tool(tool_name, arguments)
     }
 
@@ -223,33 +223,33 @@ impl chio_mcp_adapter::McpTransport for CachedToolListTransport {
         tool_name: &str,
         arguments: serde_json::Value,
         nested_flow_bridge: Option<&mut dyn chio_kernel::NestedFlowBridge>,
-    ) -> Result<chio_mcp_adapter::McpToolResult, chio_mcp_adapter::AdapterError> {
+    ) -> Result<chio_mcp_adapter::edge::McpToolResult, chio_mcp_adapter::edge::AdapterError> {
         self.inner
             .call_tool_with_nested_flow(tool_name, arguments, nested_flow_bridge)
     }
 
     fn list_resources(
         &self,
-    ) -> Result<Vec<chio_core::ResourceDefinition>, chio_mcp_adapter::AdapterError> {
+    ) -> Result<Vec<chio_core::ResourceDefinition>, chio_mcp_adapter::edge::AdapterError> {
         self.inner.list_resources()
     }
 
     fn list_resource_templates(
         &self,
-    ) -> Result<Vec<chio_core::ResourceTemplateDefinition>, chio_mcp_adapter::AdapterError> {
+    ) -> Result<Vec<chio_core::ResourceTemplateDefinition>, chio_mcp_adapter::edge::AdapterError> {
         self.inner.list_resource_templates()
     }
 
     fn read_resource(
         &self,
         uri: &str,
-    ) -> Result<Option<Vec<chio_core::ResourceContent>>, chio_mcp_adapter::AdapterError> {
+    ) -> Result<Option<Vec<chio_core::ResourceContent>>, chio_mcp_adapter::edge::AdapterError> {
         self.inner.read_resource(uri)
     }
 
     fn list_prompts(
         &self,
-    ) -> Result<Vec<chio_core::PromptDefinition>, chio_mcp_adapter::AdapterError> {
+    ) -> Result<Vec<chio_core::PromptDefinition>, chio_mcp_adapter::edge::AdapterError> {
         self.inner.list_prompts()
     }
 
@@ -257,7 +257,7 @@ impl chio_mcp_adapter::McpTransport for CachedToolListTransport {
         &self,
         name: &str,
         arguments: serde_json::Value,
-    ) -> Result<Option<chio_core::PromptResult>, chio_mcp_adapter::AdapterError> {
+    ) -> Result<Option<chio_core::PromptResult>, chio_mcp_adapter::edge::AdapterError> {
         self.inner.get_prompt(name, arguments)
     }
 
@@ -267,7 +267,7 @@ impl chio_mcp_adapter::McpTransport for CachedToolListTransport {
         argument_name: &str,
         value: &str,
         context: &serde_json::Value,
-    ) -> Result<Option<chio_core::CompletionResult>, chio_mcp_adapter::AdapterError> {
+    ) -> Result<Option<chio_core::CompletionResult>, chio_mcp_adapter::edge::AdapterError> {
         self.inner
             .complete_prompt_argument(name, argument_name, value, context)
     }
@@ -278,7 +278,7 @@ impl chio_mcp_adapter::McpTransport for CachedToolListTransport {
         argument_name: &str,
         value: &str,
         context: &serde_json::Value,
-    ) -> Result<Option<chio_core::CompletionResult>, chio_mcp_adapter::AdapterError> {
+    ) -> Result<Option<chio_core::CompletionResult>, chio_mcp_adapter::edge::AdapterError> {
         self.inner
             .complete_resource_argument(uri, argument_name, value, context)
     }
@@ -293,7 +293,7 @@ impl KernelMediatedMcpTransport {
         server_id: &str,
         server_name: &str,
         server_version: &str,
-        transport: Box<dyn chio_mcp_adapter::McpTransport>,
+        transport: Box<dyn chio_mcp_adapter::edge::McpTransport>,
         allowed: &std::collections::BTreeSet<String>,
     ) -> Result<Self, CliError> {
         let tools = transport
@@ -327,8 +327,8 @@ impl KernelMediatedMcpTransport {
             )),
         );
 
-        let adapter = chio_mcp_adapter::McpAdapter::new(
-            chio_mcp_adapter::McpAdapterConfig {
+        let adapter = chio_mcp_adapter::adapter::McpAdapter::new(
+            chio_mcp_adapter::adapter::McpAdapterConfig {
                 server_id: server_id.to_string(),
                 server_name: server_name.to_string(),
                 server_version: server_version.to_string(),
@@ -339,7 +339,7 @@ impl KernelMediatedMcpTransport {
                 tools: tools.clone(),
             }),
         );
-        let adapted = chio_mcp_adapter::AdaptedMcpServer::new(adapter).map_err(|e| {
+        let adapted = chio_mcp_adapter::server::AdaptedMcpServer::new(adapter).map_err(|e| {
             CliError::cli_other_error(format!("failed to build strict MCP adapter: {e}"))
         })?;
         kernel.register_tool_server(Box::new(adapted));
@@ -360,9 +360,9 @@ impl KernelMediatedMcpTransport {
     fn issue_capability_for_tool(
         &self,
         tool_name: &str,
-    ) -> Result<chio_core::capability::CapabilityToken, chio_mcp_adapter::AdapterError> {
+    ) -> Result<chio_core::capability::CapabilityToken, chio_mcp_adapter::edge::AdapterError> {
         if !self.allowed.contains(tool_name) {
-            return Err(chio_mcp_adapter::AdapterError::KernelRuntime(format!(
+            return Err(chio_mcp_adapter::edge::AdapterError::KernelRuntime(format!(
                 "tool '{tool_name}' is not authorized by the strict wrapper capability"
             )));
         }
@@ -383,17 +383,17 @@ impl KernelMediatedMcpTransport {
         self.kernel
             .issue_capability(&self.agent_public_key, scope, 300)
             .map_err(|e| {
-                chio_mcp_adapter::AdapterError::KernelRuntime(format!(
+                chio_mcp_adapter::edge::AdapterError::KernelRuntime(format!(
                     "failed to issue strict wrapper capability: {e}"
                 ))
             })
     }
 
-    fn kernel_runtime_error(message: impl Into<String>) -> chio_mcp_adapter::AdapterError {
-        chio_mcp_adapter::AdapterError::KernelRuntime(message.into())
+    fn kernel_runtime_error(message: impl Into<String>) -> chio_mcp_adapter::edge::AdapterError {
+        chio_mcp_adapter::edge::AdapterError::KernelRuntime(message.into())
     }
 
-    fn denial_error(response: chio_kernel::ToolCallResponse) -> chio_mcp_adapter::AdapterError {
+    fn denial_error(response: chio_kernel::ToolCallResponse) -> chio_mcp_adapter::edge::AdapterError {
         let reason = response
             .reason
             .unwrap_or_else(|| format!("kernel returned {:?}", response.verdict));
@@ -402,7 +402,7 @@ impl KernelMediatedMcpTransport {
 
     fn output_to_mcp_result(
         output: chio_kernel::ToolCallOutput,
-    ) -> Result<chio_mcp_adapter::McpToolResult, chio_mcp_adapter::AdapterError> {
+    ) -> Result<chio_mcp_adapter::edge::McpToolResult, chio_mcp_adapter::edge::AdapterError> {
         match output {
             chio_kernel::ToolCallOutput::Value(value) => {
                 serde_json::from_value(value).map_err(|e| {
@@ -418,12 +418,12 @@ impl KernelMediatedMcpTransport {
     }
 }
 
-impl chio_mcp_adapter::McpTransport for KernelMediatedMcpTransport {
-    fn capabilities(&self) -> chio_mcp_adapter::McpServerCapabilities {
-        chio_mcp_adapter::McpServerCapabilities::default()
+impl chio_mcp_adapter::edge::McpTransport for KernelMediatedMcpTransport {
+    fn capabilities(&self) -> chio_mcp_adapter::edge::McpServerCapabilities {
+        chio_mcp_adapter::edge::McpServerCapabilities::default()
     }
 
-    fn list_tools(&self) -> Result<Vec<chio_mcp_adapter::McpToolInfo>, chio_mcp_adapter::AdapterError> {
+    fn list_tools(&self) -> Result<Vec<chio_mcp_adapter::edge::McpToolInfo>, chio_mcp_adapter::edge::AdapterError> {
         Ok(self.tools.clone())
     }
 
@@ -431,7 +431,7 @@ impl chio_mcp_adapter::McpTransport for KernelMediatedMcpTransport {
         &self,
         tool_name: &str,
         arguments: serde_json::Value,
-    ) -> Result<chio_mcp_adapter::McpToolResult, chio_mcp_adapter::AdapterError> {
+    ) -> Result<chio_mcp_adapter::edge::McpToolResult, chio_mcp_adapter::edge::AdapterError> {
         let capability = self.issue_capability_for_tool(tool_name)?;
         let sequence = self
             .request_counter
@@ -509,7 +509,7 @@ pub(crate) struct WrapLoopSummary {
 /// the wrapped server and write the upstream response back. The loop
 /// stops at EOF on `reader`.
 pub(crate) fn run_wrap_with_gate<R, W, G>(
-    transport: &dyn chio_mcp_adapter::McpTransport,
+    transport: &dyn chio_mcp_adapter::edge::McpTransport,
     gate: &G,
     reader: R,
     mut writer: W,
@@ -574,7 +574,7 @@ where
                                     "result": payload,
                                 })
                             }
-                            Err(chio_mcp_adapter::AdapterError::KernelRuntime(reason)) => {
+                            Err(chio_mcp_adapter::edge::AdapterError::KernelRuntime(reason)) => {
                                 json_rpc_error(
                                     id,
                                     -32001,
@@ -735,12 +735,12 @@ fn read_bounded_line<R: std::io::BufRead>(
 /// to exercise the full stdio orchestration loop without spawning a real MCP
 /// child.
 pub(crate) struct FixtureMcpTransport {
-    tools: Vec<chio_mcp_adapter::McpToolInfo>,
-    responses: std::collections::BTreeMap<String, chio_mcp_adapter::McpToolResult>,
+    tools: Vec<chio_mcp_adapter::edge::McpToolInfo>,
+    responses: std::collections::BTreeMap<String, chio_mcp_adapter::edge::McpToolResult>,
 }
 
-impl chio_mcp_adapter::McpTransport for FixtureMcpTransport {
-    fn list_tools(&self) -> Result<Vec<chio_mcp_adapter::McpToolInfo>, chio_mcp_adapter::AdapterError> {
+impl chio_mcp_adapter::edge::McpTransport for FixtureMcpTransport {
+    fn list_tools(&self) -> Result<Vec<chio_mcp_adapter::edge::McpToolInfo>, chio_mcp_adapter::edge::AdapterError> {
         Ok(self.tools.clone())
     }
 
@@ -748,11 +748,11 @@ impl chio_mcp_adapter::McpTransport for FixtureMcpTransport {
         &self,
         tool_name: &str,
         _arguments: serde_json::Value,
-    ) -> Result<chio_mcp_adapter::McpToolResult, chio_mcp_adapter::AdapterError> {
+    ) -> Result<chio_mcp_adapter::edge::McpToolResult, chio_mcp_adapter::edge::AdapterError> {
         self.responses
             .get(tool_name)
             .cloned()
-            .ok_or_else(|| chio_mcp_adapter::AdapterError::ToolNotFound(tool_name.to_string()))
+            .ok_or_else(|| chio_mcp_adapter::edge::AdapterError::ToolNotFound(tool_name.to_string()))
     }
 }
 
@@ -777,16 +777,16 @@ pub(crate) fn cmd_mcp_wrap_e2e_fixture(
         CliError::cli_other_error(format!("failed to parse e2e fixture {path:?}: {e}"))
     })?;
 
-    let tools: Vec<chio_mcp_adapter::McpToolInfo> = serde_json::from_value(
+    let tools: Vec<chio_mcp_adapter::edge::McpToolInfo> = serde_json::from_value(
         value.get("tools").cloned().unwrap_or(serde_json::json!([])),
     )
     .map_err(|e| CliError::cli_other_error(format!("failed to decode tools: {e}")))?;
 
-    let mut responses: std::collections::BTreeMap<String, chio_mcp_adapter::McpToolResult> =
+    let mut responses: std::collections::BTreeMap<String, chio_mcp_adapter::edge::McpToolResult> =
         std::collections::BTreeMap::new();
     if let Some(map) = value.get("responses").and_then(serde_json::Value::as_object) {
         for (key, val) in map.iter() {
-            let result: chio_mcp_adapter::McpToolResult = serde_json::from_value(val.clone())
+            let result: chio_mcp_adapter::edge::McpToolResult = serde_json::from_value(val.clone())
                 .map_err(|e| {
                     CliError::cli_other_error(format!("failed to decode response for {key}: {e}"))
                 })?;
@@ -859,10 +859,10 @@ mod wrap_tests {
 
     struct KernelRuntimeErrorTransport;
 
-    impl chio_mcp_adapter::McpTransport for KernelRuntimeErrorTransport {
+    impl chio_mcp_adapter::edge::McpTransport for KernelRuntimeErrorTransport {
         fn list_tools(
             &self,
-        ) -> Result<Vec<chio_mcp_adapter::McpToolInfo>, chio_mcp_adapter::AdapterError> {
+        ) -> Result<Vec<chio_mcp_adapter::edge::McpToolInfo>, chio_mcp_adapter::edge::AdapterError> {
             Ok(Vec::new())
         }
 
@@ -870,8 +870,8 @@ mod wrap_tests {
             &self,
             _tool_name: &str,
             _arguments: serde_json::Value,
-        ) -> Result<chio_mcp_adapter::McpToolResult, chio_mcp_adapter::AdapterError> {
-            Err(chio_mcp_adapter::AdapterError::KernelRuntime(
+        ) -> Result<chio_mcp_adapter::edge::McpToolResult, chio_mcp_adapter::edge::AdapterError> {
+            Err(chio_mcp_adapter::edge::AdapterError::KernelRuntime(
                 "kernel denied strict mediated execution".to_string(),
             ))
         }

@@ -4,9 +4,10 @@ use chio_core::capability::{ChioScope, Operation, ToolGrant};
 use chio_core::crypto::Keypair;
 use chio_kernel::{ChioKernel, KernelConfig, KernelError, ToolServerConnection};
 use chio_manifest::{ToolDefinition, ToolManifest};
-use chio_mcp_adapter::{
-    AdapterError, ChioMcpEdge, McpAdapter, McpAdapterConfig, McpEdgeConfig, McpServerCapabilities,
-    McpToolInfo, McpToolResult, McpTransport,
+use chio_mcp_adapter::adapter::{McpAdapter, McpAdapterConfig};
+use chio_mcp_adapter::edge::{
+    AdapterError, ChioMcpEdge, McpEdgeConfig, McpServerCapabilities, McpToolInfo, McpToolResult,
+    McpTransport,
 };
 use serde_json::{json, Value};
 

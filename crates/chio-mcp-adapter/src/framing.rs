@@ -3,7 +3,7 @@ use std::io::BufRead;
 use serde_json::Value;
 use tracing::debug;
 
-use crate::AdapterError;
+use crate::edge::AdapterError;
 
 pub(crate) const MAX_STDIO_MCP_FRAME_BYTES: usize = 1024 * 1024;
 

@@ -100,7 +100,7 @@ pub(crate) fn cmd_mcp_print_scopes(args: &McpWrapArgs) -> Result<(), CliError> {
         let (program, child_args) = split_wrapped_command(&args.command)?;
         let child_args_refs: Vec<&str> = child_args.iter().map(String::as_str).collect();
         let transport =
-            chio_mcp_adapter::StdioMcpTransport::spawn(&program, &child_args_refs).map_err(
+            chio_mcp_adapter::transport::StdioMcpTransport::spawn(&program, &child_args_refs).map_err(
                 |e| {
                     CliError::cli_other_error(format!(
                         "failed to spawn wrapped MCP server '{program}': {e}"

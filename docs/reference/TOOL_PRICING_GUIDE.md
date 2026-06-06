@@ -43,7 +43,7 @@ Supported pricing models:
 The maintained native example in [`examples/hello-tool`](../../examples/hello-tool) now publishes pricing directly from `NativeTool`:
 
 ```rust
-use chio_mcp_adapter::NativeTool;
+use chio_mcp_adapter::native::NativeTool;
 
 let greet_tool = NativeTool::new(
     "greet",
