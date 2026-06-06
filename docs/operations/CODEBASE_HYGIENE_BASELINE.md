@@ -78,7 +78,8 @@ packages and 588,730 bytes of metadata.
 | `crates/chio-control-plane/src/trust_control/underwriting_and_support/policy_support.rs` | 1,006 | production | `chio-control-plane` | split from `underwriting_and_support.rs` in Phase 6.1 |
 | `crates/chio-federation/src/bilateral_dsse.rs` | 1,713 | production | `chio-federation` | split inline DSSE tests in Phase 6.1 |
 | `crates/chio-federation/src/bilateral_dsse/tests.rs` | 898 | test | `chio-federation` | split from `bilateral_dsse.rs` in Phase 6.1 |
-| `crates/chio-control-plane/src/certify.rs` | 2,572 | production | `chio-control-plane` | Phase 6.1 |
+| `crates/chio-control-plane/src/certify.rs` | 1,979 | production | `chio-control-plane` | split cross-operator certification network surface in Phase 6.1 |
+| `crates/chio-control-plane/src/certify/network.rs` | 601 | production | `chio-control-plane` | split from `certify.rs` in Phase 6.1 |
 | `crates/chio-cli/src/passport.rs` | 2,468 | production | `chio-cli` | Phase 6.1 |
 | `crates/chio-mcp-remote/src/remote_mcp/http_service.rs` | 2,456 | production | `chio-mcp-remote` | Phase 6.1 |
 | `crates/chio-kernel/src/kernel/validation.rs` | 2,423 | production | `chio-kernel` | Phase 6.1 |

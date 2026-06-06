@@ -32,6 +32,13 @@ package loading, and federated-share import construction.
 `evidence_export/tests.rs` keeps export/import verification and disclosure
 notice coverage out of production line-count accounting.
 
+`certify.rs` owns local certification artifact construction, registry state,
+local registry commands, public metadata/search/transparency data contracts,
+consumption request types, dispute handling, and entry rendering. Its
+`certify/network.rs` child owns cross-operator discovery, marketplace search,
+transparency, consumption, publish fan-out, and the corresponding network CLI
+commands.
+
 `trust_control/service_runtime.rs` is the trust-service boot and route
 registration root. Its child modules own the remote runtime surfaces:
 `client.rs` builds remote clients, normalizes endpoints, signs cluster-peer

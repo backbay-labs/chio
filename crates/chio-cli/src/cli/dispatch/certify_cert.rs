@@ -46,7 +46,7 @@ pub(crate) fn dispatch_certify(
                     input,
                     certification_discovery_file,
                     operator_ids,
-                } => certify::cmd_certify_registry_publish_network(
+                } => certify::network::cmd_certify_registry_publish_network(
                     &input,
                     certification_discovery_file.as_deref(),
                     &operator_ids,
@@ -85,7 +85,7 @@ pub(crate) fn dispatch_certify(
                 CertifyRegistryCommands::Discover {
                     tool_server_id,
                     certification_discovery_file,
-                } => certify::cmd_certify_registry_discover(
+                } => certify::network::cmd_certify_registry_discover(
                     &tool_server_id,
                     certification_discovery_file.as_deref(),
                     json_output,

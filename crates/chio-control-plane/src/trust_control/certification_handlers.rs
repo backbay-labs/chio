@@ -282,7 +282,7 @@ pub(crate) async fn handle_publish_certification_network(
         Ok(values) => values,
         Err(error) => return plain_http_error(StatusCode::CONFLICT, &error.to_string()),
     };
-    match crate::certify::publish_certification_across_network(
+    match crate::certify::network::publish_certification_across_network(
         &network,
         &request.artifact,
         &request.operator_ids,
@@ -305,7 +305,7 @@ pub(crate) async fn handle_discover_certification(
         Err(error) => return plain_http_error(StatusCode::CONFLICT, &error.to_string()),
     };
     let response =
-        crate::certify::discover_certifications_across_network(&network, &tool_server_id);
+        crate::certify::network::discover_certifications_across_network(&network, &tool_server_id);
     Json(response).into_response()
 }
 
@@ -321,10 +321,8 @@ pub(crate) async fn handle_search_certification_marketplace(
         Ok(values) => values,
         Err(error) => return plain_http_error(StatusCode::CONFLICT, &error.to_string()),
     };
-    Json(crate::certify::search_public_certifications_across_network(
-        &network, &query,
-    ))
-    .into_response()
+    Json(crate::certify::network::search_public_certifications_across_network(&network, &query))
+        .into_response()
 }
 
 pub(crate) async fn handle_transparency_certification_marketplace(
@@ -339,8 +337,12 @@ pub(crate) async fn handle_transparency_certification_marketplace(
         Ok(values) => values,
         Err(error) => return plain_http_error(StatusCode::CONFLICT, &error.to_string()),
     };
-    Json(crate::certify::transparency_public_certifications_across_network(&network, &query))
-        .into_response()
+    Json(
+        crate::certify::network::transparency_public_certifications_across_network(
+            &network, &query,
+        ),
+    )
+    .into_response()
 }
 
 pub(crate) async fn handle_consume_certification_marketplace(
@@ -355,10 +357,8 @@ pub(crate) async fn handle_consume_certification_marketplace(
         Ok(values) => values,
         Err(error) => return plain_http_error(StatusCode::CONFLICT, &error.to_string()),
     };
-    Json(crate::certify::consume_public_certification_across_network(
-        &network, &request,
-    ))
-    .into_response()
+    Json(crate::certify::network::consume_public_certification_across_network(&network, &request))
+        .into_response()
 }
 
 pub(crate) async fn handle_revoke_certification(
