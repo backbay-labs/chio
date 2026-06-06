@@ -46,12 +46,18 @@ revocation stores), and `chio-egress-contract` (outbound HTTP safety).
 crates/chio-mcp-remote/
   Cargo.toml
   src/
-    lib.rs              re-exports; includes session_core, http_service, oauth, tests
+    lib.rs              re-exports; includes remote MCP runtime files
     remote_mcp/
       admin.rs          admin REST routes (health, authority, rotate)
       http_service.rs   Axum service entry, rate limiter, SSE delivery
       oauth.rs          OAuth token endpoint, DPoP proof validation, JWT verify
       session_core.rs   session lifecycle, kernel dispatch, receipt signing
+      session_identity.rs
+                        OIDC/JWKS discovery and federated identity helpers
+      session_resume.rs resumable-session fingerprint and integrity helpers
+      session_shared_upstream.rs
+                        shared hosted upstream notification ownership
+      session_forms.rs  admin query structs and OAuth request forms
       tests.rs          integration tests
 ```
 

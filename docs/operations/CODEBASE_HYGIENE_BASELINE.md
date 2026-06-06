@@ -61,7 +61,7 @@ packages and 588,730 bytes of metadata.
 | `crates/chio-mercury/tests/cli.rs` | 3,262 | test | `chio-mercury` | Phase 7 follow-up |
 | `crates/chio-cli/tests/trust_cluster.rs` | 3,208 | test | `chio-cli` | Phase 7 follow-up |
 | `crates/chio-attest-buyer-core/src/lib.rs` | 3,200 | production lib root | `chio-attest-buyer-core` | Phase 2.1 |
-| `crates/chio-mcp-remote/src/remote_mcp/session_core.rs` | 3,194 | production | `chio-mcp-remote` | Phase 6.1 |
+| `crates/chio-mcp-remote/src/remote_mcp/session_core.rs` | 1,891 | production | `chio-mcp-remote` | split identity, resume, shared-upstream, and form includes in Phase 6.1 |
 | `crates/chio-api-protect/src/proxy/tests.rs` | 2,973 | test | `chio-api-protect` | split from `proxy.rs` in Phase 6.1 |
 | `crates/chio-control-plane/src/evidence_export.rs` | 3,039 | production | `chio-control-plane` | Phase 6.1 |
 | `crates/chio-control-plane/src/trust_control/capital_and_liability.rs` | 2,914 | production | `chio-control-plane` | Phase 6.1 |
