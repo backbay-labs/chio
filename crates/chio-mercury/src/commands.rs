@@ -102,6 +102,7 @@ mod program_family_lane;
 mod renewal_qualification_lane;
 mod second_account_expansion_lane;
 mod second_portfolio_program_lane;
+mod selective_account_activation_support;
 mod third_program_lane;
 
 use portfolio_program_lane::export_portfolio_program;
@@ -126,6 +127,16 @@ pub use second_account_expansion_lane::{
 use second_portfolio_program_lane::export_second_portfolio_program;
 pub use second_portfolio_program_lane::{
     cmd_mercury_second_portfolio_program_export, cmd_mercury_second_portfolio_program_validate,
+};
+use selective_account_activation_support::{
+    build_selective_account_activation_profile, selective_account_activation_doc_refs,
+    MercurySelectiveAccountActivationApprovalRefresh,
+    MercurySelectiveAccountActivationClaimContainmentRules,
+    MercurySelectiveAccountActivationCustomerHandoffBrief,
+    MercurySelectiveAccountActivationDecisionRecord,
+    MercurySelectiveAccountActivationExportSummary, MercurySelectiveAccountActivationManifest,
+    MercurySelectiveAccountActivationScopeFreeze,
+    MercurySelectiveAccountActivationValidationReport,
 };
 use third_program_lane::export_third_program;
 pub use third_program_lane::{
