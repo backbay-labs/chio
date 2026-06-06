@@ -74,7 +74,8 @@ packages and 588,730 bytes of metadata.
 | `crates/chio-control-plane/src/trust_control/service_types.rs` | 1,819 | production | `chio-control-plane` | split cluster and budget wire types in Phase 6.1 |
 | `crates/chio-control-plane/src/trust_control/service_types/cluster_budget.rs` | 876 | production | `chio-control-plane` | split from `service_types.rs` in Phase 6.1 |
 | `crates/chio-cross-protocol/src/lib.rs` | 2,651 | production lib root | `chio-cross-protocol` | Phase 2.3 |
-| `crates/chio-control-plane/src/trust_control/underwriting_and_support.rs` | 2,625 | production | `chio-control-plane` | Phase 6.1 |
+| `crates/chio-control-plane/src/trust_control/underwriting_and_support.rs` | 1,626 | production | `chio-control-plane` | split policy input and runtime support in Phase 6.1 |
+| `crates/chio-control-plane/src/trust_control/underwriting_and_support/policy_support.rs` | 1,006 | production | `chio-control-plane` | split from `underwriting_and_support.rs` in Phase 6.1 |
 | `crates/chio-federation/src/bilateral_dsse.rs` | 2,610 | production | `chio-federation` | Phase 6.1 |
 | `crates/chio-control-plane/src/certify.rs` | 2,572 | production | `chio-control-plane` | Phase 6.1 |
 | `crates/chio-cli/src/passport.rs` | 2,468 | production | `chio-cli` | Phase 6.1 |

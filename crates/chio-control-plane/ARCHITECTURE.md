@@ -52,6 +52,14 @@ financial issue payloads, error adapters, and small request query structs. Its
 views, cluster lease RPC payloads, replication delta payloads, and budget
 mutation request/response wire adapters.
 
+`trust_control/underwriting_and_support.rs` owns underwriting decision,
+simulation, appeal, exposure-ledger, credit-bond, credit-scorecard, and
+capital-book support builders. Its
+`underwriting_and_support/policy_support.rs` child owns policy-input
+construction, underwriting compliance evidence, risk signal derivation,
+behavioral-feed signing key loading, budget utilization reporting, trust HTTP
+error mapping, and trust-control store opening helpers.
+
 The trust-control HA and reporting surface is split by responsibility:
 `cluster.rs` owns cluster identity, peer state, membership, consensus,
 replication loops, peer snapshots and deltas, and budget-quorum commit
