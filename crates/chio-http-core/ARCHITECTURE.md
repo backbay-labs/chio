@@ -27,9 +27,10 @@ for stable wire shapes, so public API compatibility matters.
 
 ## Pain Points
 
-- `authority.rs` still owns kernel invocation, receipt signing, capability
-  validation, and authority tests, while the reserved path binding and kernel
-  projection payload now live in `authority_projection`.
+- `authority.rs` still owns kernel invocation, receipt signing, and capability
+  validation, while authority regression tests live in `authority/tests.rs` and
+  the reserved path binding plus kernel projection payload live in
+  `authority_projection`.
 - The reserved `/chio/tools/{server}/{tool}` path is security-sensitive because
   path-derived identity must override spoofable request fields and must fail
   closed on malformed path identity.
