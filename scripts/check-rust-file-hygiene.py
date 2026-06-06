@@ -80,9 +80,6 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/chio-credit/src/lib.rs": allow(
         "Phase 6.2", "baseline remaining lib root split target"
     ),
-    "crates/chio-market/src/lib.rs": allow(
-        "Phase 6.2", "baseline remaining lib root split target"
-    ),
 }
 
 
