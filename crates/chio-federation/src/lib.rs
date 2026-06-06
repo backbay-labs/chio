@@ -123,7 +123,7 @@ use crate::listing::{
     GenericListingActorKind, GenericListingFreshnessState, GenericListingReplicaFreshness,
     GenericRegistryPublisher, GenericRegistryPublisherRole, GenericTrustAdmissionClass,
 };
-use crate::open_market::OpenMarketBondClass;
+use crate::open_market::fee_schedule::OpenMarketBondClass;
 use crate::receipt::SignedExportEnvelope;
 
 pub const CHIO_FEDERATION_ACTIVATION_EXCHANGE_SCHEMA: &str =

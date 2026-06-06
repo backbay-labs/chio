@@ -1,7 +1,12 @@
 //! Integration coverage for the capability marketplace bid/ask protocol.
 
 use chio_open_market::{
-    accept, bid, canonical_json_bytes,
+    bidding::{
+        accept, bid, BidMintContext, BidRequest, BiddingError, RequestedScope, ReservationReceipt,
+        SignedAskResponse, SignedBidRequest, SignedReservationReceipt, VerifiedReservationReceipt,
+        ACCEPTED_BID_SCHEMA, ASK_RESPONSE_SCHEMA, BID_REQUEST_SCHEMA, RESERVATION_RECEIPT_SCHEMA,
+    },
+    canonical_json_bytes,
     capability::MonetaryAmount,
     crypto::{sha256_hex, Keypair},
     listing::{
@@ -12,9 +17,6 @@ use chio_open_market::{
         ListingPricingHint, ListingSla, SignedGenericListing, SignedListingPricingHint,
         GENERIC_LISTING_ARTIFACT_SCHEMA, LISTING_PRICING_HINT_SCHEMA,
     },
-    BidMintContext, BidRequest, BiddingError, RequestedScope, ReservationReceipt,
-    SignedAskResponse, SignedBidRequest, SignedReservationReceipt, VerifiedReservationReceipt,
-    ACCEPTED_BID_SCHEMA, ASK_RESPONSE_SCHEMA, BID_REQUEST_SCHEMA, RESERVATION_RECEIPT_SCHEMA,
 };
 
 use chio_test_support::prelude::*;

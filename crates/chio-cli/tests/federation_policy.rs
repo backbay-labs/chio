@@ -20,7 +20,7 @@ use chio_core::federation::{
     CHIO_FEDERATION_OPEN_ADMISSION_POLICY_SCHEMA,
 };
 use chio_core::listing::GenericTrustAdmissionClass;
-use chio_core::open_market::OpenMarketBondClass;
+use chio_core::open_market::fee_schedule::OpenMarketBondClass;
 use chio_core::receipt::{
     ChioReceipt, ChioReceiptBody, Decision, ReceiptAttributionMetadata, ToolCallAction,
 };
