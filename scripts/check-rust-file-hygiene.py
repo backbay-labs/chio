@@ -68,9 +68,6 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/chio-federation-authority/src/lib.rs": allow(
         "Phase 6.2", "baseline remaining lib root split target"
     ),
-    "crates/chio-listing/src/lib.rs": allow(
-        "Phase 6.2", "baseline remaining lib root split target"
-    ),
     "crates/chio-pheromone-runtime/src/lib.rs": allow(
         "Phase 6.2", "baseline remaining lib root split target"
     ),
