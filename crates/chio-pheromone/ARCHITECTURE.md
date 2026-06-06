@@ -15,3 +15,5 @@ The security constraint is receiver-owned admission accounting. A deposit must c
 ## Verification Focus
 
 Tests should cover duplicate treaty scopes, replay windows, verifier-root rejection, policy freshness, cost Merkle inclusion, scarcity-bucket accounting, and deterministic concentration decay. Runtime and relay tests should keep signed local substrate admission separate from transport delivery so a forwarded signal cannot bypass receiver-owned scarcity policy.
+
+Primary verification command: `cargo test -p chio-pheromone`.

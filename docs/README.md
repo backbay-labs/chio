@@ -11,6 +11,35 @@ everything in this tree is supporting material organized by audience.
 - [Vision](start-here/VISION.md) - what Chio is for and why
 - [Historical v2 Migration Draft](start-here/MIGRATION_GUIDE_V2.md) - archived internal draft notes, not current protocol guidance
 
+## Large document status
+
+Tracked Markdown documents over 1,000 lines are classified here so readers can
+separate live contracts from reference material, research notes, and historical
+roadmaps. No file was moved to `docs/archive/` in this pass; roadmap documents
+with active inbound links remain in place and are labelled historical instead.
+
+| Document | Category | Currentness |
+| --- | --- | --- |
+| [Final Architecture](architecture/CHIO_FINAL_ARCHITECTURE.md) | Live contract | Current architecture target; verify line-number evidence before using it as implementation state. |
+| [Roadmap](operations/ROADMAP.md) | Roadmap | Historical execution roadmap; not current protocol posture. |
+| [Execution Plan](operations/EXECUTION_PLAN.md) | Roadmap | Historical sequencing note; superseded by current v1 release and protocol docs. |
+| [Future Moats and Research](protocols/FUTURE-MOATS-AND-RESEARCH.md) | Research | Exploratory strategy material. |
+| [Anchor Research](research/CHIO_ANCHOR_RESEARCH.md) | Research | Research packet, not normative implementation guidance. |
+| [Human in the Loop Protocol](protocols/HUMAN-IN-THE-LOOP-PROTOCOL.md) | Reference | Protocol design reference. |
+| [Flink JVM Implementation Plan](research/flink-jvm/04-implementation-plan.md) | Research | Integration research plan. |
+| [Data Layer Integration](protocols/DATA-LAYER-INTEGRATION.md) | Reference | Protocol integration reference. |
+| [Agent Economy](reference/AGENT_ECONOMY.md) | Reference | Economics reference surface. |
+| [Code Execution Guards](guards/13-CODE-EXECUTION-GUARDS.md) | Reference | Guard-family reference. |
+| [Structural Security Fixes](protocols/STRUCTURAL-SECURITY-FIXES.md) | Reference | Security design reference. |
+| [Agent Framework Integration](protocols/AGENT-FRAMEWORK-INTEGRATION.md) | Reference | Ecosystem integration reference. |
+| [Settle Research](research/CHIO_SETTLE_RESEARCH.md) | Research | Research packet, not normative implementation guidance. |
+| [Agent Reputation](reference/AGENT_REPUTATION.md) | Reference | Reputation reference surface. |
+| [DX and Adoption Roadmap](protocols/DX-AND-ADOPTION-ROADMAP.md) | Roadmap | Historical adoption roadmap. |
+| [Web3 Contract Architecture](research/CHIO_WEB3_CONTRACT_ARCHITECTURE.md) | Research | Web3 architecture research packet. |
+| [SaaS Communication Integration](protocols/SAAS-COMMUNICATION-INTEGRATION.md) | Reference | Protocol integration reference. |
+| [Settle Protocol Decisions](research/CHIO_SETTLE_PROTOCOL_DECISIONS.md) | Research | Decision research packet. |
+| [Envoy Ext Authz Integration](protocols/ENVOY-EXT-AUTHZ-INTEGRATION.md) | Reference | Protocol integration reference. |
+
 ## Install and distribution
 
 - [Install guide](install/README.md) - how to obtain and run Chio

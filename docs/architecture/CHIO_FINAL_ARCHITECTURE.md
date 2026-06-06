@@ -3,6 +3,13 @@
 Status: architecture target, not an implementation patch
 Date: 2026-05-18
 
+> **Large-doc status**
+> - Category: live architecture contract.
+> - Owner: Chio architecture and runtime maintainers.
+> - Currentness: current for the v1 Chio architecture target; line-number
+>   evidence is illustrative and must be rechecked against the live tree.
+> - Last verification command: `python3 scripts/check-architecture-docs.py docs/architecture/CHIO_FINAL_ARCHITECTURE.md`.
+
 This document defines the final Chio architecture after the retired naming
 experiment is removed from active code, schemas, fixtures, workflows, and
 operator documentation.

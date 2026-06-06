@@ -1,5 +1,12 @@
 # Chio Execution Plan
 
+> **Large-doc status**
+> - Category: historical roadmap.
+> - Owner: Chio documentation and release maintainers.
+> - Currentness: retained as execution history; current implementation posture
+>   is represented by v1 protocol, release, and qualification docs.
+> - Last verification command: `rg -n "CHIO_FINAL_ARCHITECTURE|EXECUTION_PLAN|ROADMAP" docs spec README.md`.
+
 ## Purpose
 
 This document turns [ROADMAP_V1.md](../archive/ROADMAP_V1.md) into an execution plan.
