@@ -10,6 +10,9 @@ policy engine.
 - `src/lib.rs` owns all exported C symbols, pointer and UTF-8 validation, JSON
   request parsing, kernel-core calls, Rust-owned response buffers, and FFI error
   mapping.
+- `src/tests.rs` owns Rust-side regression tests for pointer handling,
+  capability evaluation, contextual verification, budget seeding, and passport
+  verification.
 - `include/chio/chio_kernel_ffi.h` is the checked-in C header generated from
   this crate's public exports and `cbindgen.toml`.
 - `sdks/cpp/chio-cpp-kernel` owns the C++ wrapper and request-builder surface.

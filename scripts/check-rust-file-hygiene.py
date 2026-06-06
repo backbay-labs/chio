@@ -107,9 +107,6 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/chio-openapi-mcp-bridge/src/lib.rs": allow(
         "Phase 6.2", "baseline remaining lib root split target"
     ),
-    "crates/chio-cpp-kernel-ffi/src/lib.rs": allow(
-        "Phase 6.2", "baseline remaining lib root split target"
-    ),
 }
 
 
