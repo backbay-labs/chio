@@ -424,7 +424,7 @@ pub(crate) async fn handle_evaluate_federation_policy(
         Err(response) => return response,
     }
     let now = unix_timestamp_now();
-    match evaluate_federation_policy_request(&state, &request, now) {
+    match service_runtime::issuance::evaluate_federation_policy_request(&state, &request, now) {
         Ok(response) => Json(response).into_response(),
         Err(error) if error.to_string().contains("was not found") => {
             plain_http_error(StatusCode::NOT_FOUND, &error.to_string())

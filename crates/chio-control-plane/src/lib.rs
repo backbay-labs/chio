@@ -397,7 +397,11 @@ pub fn configure_receipt_store(
         }
         (None, Some(url)) => {
             let token = require_control_token(control_token)?;
-            kernel.set_receipt_store(trust_control::build_remote_receipt_store(url, token)?)?;
+            kernel.set_receipt_store(
+                trust_control::service_runtime::remote_stores::build_remote_receipt_store(
+                    url, token,
+                )?,
+            )?;
         }
         (None, None) => {}
     }
@@ -425,7 +429,11 @@ pub fn configure_revocation_store(
         }
         (None, Some(url)) => {
             let token = require_control_token(control_token)?;
-            kernel.set_revocation_store(trust_control::build_remote_revocation_store(url, token)?);
+            kernel.set_revocation_store(
+                trust_control::service_runtime::remote_stores::build_remote_revocation_store(
+                    url, token,
+                )?,
+            );
         }
         (None, None) => {}
     }
@@ -456,9 +464,11 @@ pub fn configure_capability_authority(
             ));
         }
         let token = require_control_token(control_token)?;
-        kernel.set_capability_authority(trust_control::build_remote_capability_authority(
-            url, token,
-        )?);
+        kernel.set_capability_authority(
+            trust_control::service_runtime::remote_authority::build_remote_capability_authority(
+                url, token,
+            )?,
+        );
         return Ok(());
     }
 
@@ -524,7 +534,9 @@ pub fn configure_budget_store(
         }
         (None, Some(url)) => {
             let token = require_control_token(control_token)?;
-            kernel.set_budget_store(trust_control::build_remote_budget_store(url, token)?);
+            kernel.set_budget_store(
+                trust_control::service_runtime::budget::build_remote_budget_store(url, token)?,
+            );
         }
         (None, None) => {}
     }

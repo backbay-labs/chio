@@ -287,18 +287,16 @@ mod receipt_handlers;
 #[path = "trust_control/risk_finance_handlers.rs"]
 mod risk_finance_handlers;
 #[path = "trust_control/service_runtime.rs"]
-mod service_runtime;
+pub mod service_runtime;
 #[path = "trust_control/service_types.rs"]
 mod service_types;
 #[path = "trust_control/underwriting_and_support.rs"]
 mod underwriting_and_support;
 
-// Re-export each submodule's surface so cross-file references and the
-// `trust_control::X` symbols consumed by chio-control-plane and chio-cli
-// resolve exactly as they did under the prior flat `include!` scope. The
-// submodules carry no colliding item names, so the globs are unambiguous.
+// Re-export stable high-level trust-control types and configuration helpers.
+// Runtime client and remote adapter entrypoints live under named
+// `service_runtime` child modules.
 pub use self::config_and_public::*;
-pub use self::service_runtime::*;
 pub use self::service_types::*;
 // The domain handler modules and credit_and_loss expose only crate-internal
 // (`pub(crate)`) items, so they are re-exported with crate visibility.

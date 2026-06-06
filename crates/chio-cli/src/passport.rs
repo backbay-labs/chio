@@ -451,7 +451,7 @@ fn resolve_passport_lifecycle(
     required: bool,
 ) -> Result<Option<PassportLifecycleResolution>, CliError> {
     if let Some(url) = control_url {
-        let client = crate::trust_control::build_public_client(url)?;
+        let client = crate::trust_control::service_runtime::client::build_public_client(url)?;
         let passport_id = passport_artifact_id(passport).map_err(|error| {
             CliError::policy_error(format!("failed to derive passport artifact id: {error}"))
         })?;
@@ -1078,7 +1078,7 @@ pub(crate) fn cmd_passport_issuance_metadata(
     _control_token: Option<&str>,
 ) -> Result<(), CliError> {
     let metadata = if let Some(url) = control_url {
-        crate::trust_control::build_public_client(url)?
+        crate::trust_control::service_runtime::client::build_public_client(url)?
             .passport_issuer_metadata()?
     } else {
         local_passport_issuer_metadata(
@@ -1124,7 +1124,7 @@ pub(crate) fn cmd_passport_issuance_offer_create(
     let passport: AgentPassport = serde_json::from_slice(&fs::read(input)?)?;
     let record = if let Some(url) = control_url {
         let token = crate::require_control_token(control_token)?;
-        crate::trust_control::build_client(url, token)?.create_passport_issuance_offer(
+        crate::trust_control::service_runtime::client::build_client(url, token)?.create_passport_issuance_offer(
             &crate::trust_control::CreatePassportIssuanceOfferRequest {
                 passport,
                 ttl_seconds: ttl_secs,
@@ -1192,7 +1192,7 @@ pub(crate) fn cmd_passport_issuance_token_redeem(
         pre_authorized_code: offer.pre_authorized_code()?.to_string(),
     };
     let token = if let Some(url) = control_url {
-        crate::trust_control::build_public_client(url)?
+        crate::trust_control::service_runtime::client::build_public_client(url)?
             .redeem_passport_issuance_token(&request)?
     } else {
         let metadata = default_oid4vci_passport_issuer_metadata_with_status_distribution(
@@ -1240,7 +1240,7 @@ pub(crate) fn cmd_passport_issuance_credential_redeem(
     let offer = load_oid4vci_offer(offer_path)?;
     let token = load_oid4vci_token(token_path)?;
     let metadata = if let Some(url) = control_url {
-        crate::trust_control::build_public_client(url)?
+        crate::trust_control::service_runtime::client::build_public_client(url)?
             .passport_issuer_metadata()?
     } else {
         local_passport_issuer_metadata(&offer.credential_issuer, signing_seed_file, None, None)?
@@ -1268,7 +1268,7 @@ pub(crate) fn cmd_passport_issuance_credential_redeem(
             .unwrap_or_default(),
     };
     let response = if let Some(url) = control_url {
-        crate::trust_control::build_public_client(url)?
+        crate::trust_control::service_runtime::client::build_public_client(url)?
             .redeem_passport_issuance_credential(&token.access_token, &request)?
     } else {
         let path = require_passport_issuance_registry_path(passport_issuance_offers_file)?;
@@ -1341,7 +1341,7 @@ pub(crate) fn cmd_passport_policy_create(
 
     let registration = if let Some(url) = control_url {
         let token = crate::require_control_token(control_token)?;
-        crate::trust_control::build_client(url, token)?
+        crate::trust_control::service_runtime::client::build_client(url, token)?
             .upsert_verifier_policy(policy_id, &document)?;
         Some(url.to_string())
     } else if let Some(path) = verifier_policies_file {
@@ -1408,7 +1408,7 @@ pub(crate) fn cmd_passport_policy_list(
 ) -> Result<(), CliError> {
     let response = if let Some(url) = control_url {
         let token = crate::require_control_token(control_token)?;
-        crate::trust_control::build_client(url, token)?.list_verifier_policies()?
+        crate::trust_control::service_runtime::client::build_client(url, token)?.list_verifier_policies()?
     } else {
         let path = require_verifier_policy_registry_path(verifier_policies_file)?;
         let registry = load_verifier_policy_registry_for_admin(path)?;
@@ -1443,7 +1443,7 @@ pub(crate) fn cmd_passport_policy_get(
 ) -> Result<(), CliError> {
     let document = if let Some(url) = control_url {
         let token = crate::require_control_token(control_token)?;
-        crate::trust_control::build_client(url, token)?.get_verifier_policy(policy_id)?
+        crate::trust_control::service_runtime::client::build_client(url, token)?.get_verifier_policy(policy_id)?
     } else {
         let path = require_verifier_policy_registry_path(verifier_policies_file)?;
         let registry = load_verifier_policy_registry_for_admin(path)?;
@@ -1479,7 +1479,7 @@ pub(crate) fn cmd_passport_policy_upsert(
         .map_err(|error| CliError::policy_error(error.to_string()))?;
     let saved = if let Some(url) = control_url {
         let token = crate::require_control_token(control_token)?;
-        crate::trust_control::build_client(url, token)?
+        crate::trust_control::service_runtime::client::build_client(url, token)?
             .upsert_verifier_policy(&document.body.policy_id, &document)?
     } else {
         let path = require_verifier_policy_registry_path(verifier_policies_file)?;
@@ -1510,7 +1510,7 @@ pub(crate) fn cmd_passport_policy_delete(
     let (deleted, configured) = if let Some(url) = control_url {
         let token = crate::require_control_token(control_token)?;
         let response =
-            crate::trust_control::build_client(url, token)?.delete_verifier_policy(policy_id)?;
+            crate::trust_control::service_runtime::client::build_client(url, token)?.delete_verifier_policy(policy_id)?;
         (response.deleted, true)
     } else {
         let path = require_verifier_policy_registry_path(verifier_policies_file)?;
@@ -1562,7 +1562,7 @@ pub(crate) fn cmd_passport_challenge_create(
     }
     let challenge_response = if let Some(url) = control_url {
         let token = crate::require_control_token(control_token)?;
-        crate::trust_control::build_client(url, token)?.create_passport_challenge(
+        crate::trust_control::service_runtime::client::build_client(url, token)?.create_passport_challenge(
             &CreatePassportChallengeRequest {
                 verifier: verifier.to_string(),
                 ttl_seconds: ttl_secs,
@@ -1770,7 +1770,7 @@ pub(crate) fn cmd_passport_challenge_verify(
     let now = at.unwrap_or_else(unix_now);
     let verification = if let Some(url) = control_url {
         let token = crate::require_control_token(control_token)?;
-        crate::trust_control::build_client(url, token)?.verify_passport_challenge(
+        crate::trust_control::service_runtime::client::build_client(url, token)?.verify_passport_challenge(
             &VerifyPassportChallengeRequest {
                 presentation: response,
                 expected_challenge,
@@ -1900,7 +1900,7 @@ pub(crate) fn cmd_passport_oid4vp_request_create(
         )
     })?;
     let token = crate::require_control_token(control_token)?;
-    let response = crate::trust_control::build_client(url, token)?.create_oid4vp_request(
+    let response = crate::trust_control::service_runtime::client::build_client(url, token)?.create_oid4vp_request(
         &CreateOid4vpRequest {
             disclosure_claims: disclosure_claims.to_vec(),
             issuer_allowlist: issuer_allowlist.to_vec(),
@@ -2146,7 +2146,7 @@ pub(crate) fn cmd_passport_status_publish(
     let distribution = passport_status_distribution(resolve_urls, cache_ttl_secs);
     let record = if let Some(url) = control_url {
         let token = crate::require_control_token(control_token)?;
-        crate::trust_control::build_client(url, token)?.publish_passport_status(
+        crate::trust_control::service_runtime::client::build_client(url, token)?.publish_passport_status(
             &PublishPassportStatusRequest {
                 passport,
                 distribution,
@@ -2191,7 +2191,7 @@ pub(crate) fn cmd_passport_status_list(
 ) -> Result<(), CliError> {
     let response = if let Some(url) = control_url {
         let token = crate::require_control_token(control_token)?;
-        crate::trust_control::build_client(url, token)?.list_passport_statuses()?
+        crate::trust_control::service_runtime::client::build_client(url, token)?.list_passport_statuses()?
     } else {
         let path = require_passport_status_registry_path(passport_statuses_file)?;
         let registry = load_passport_status_registry_for_admin(path)?;
@@ -2228,7 +2228,7 @@ pub(crate) fn cmd_passport_status_get(
 ) -> Result<(), CliError> {
     let record = if let Some(url) = control_url {
         let token = crate::require_control_token(control_token)?;
-        crate::trust_control::build_client(url, token)?.get_passport_status(passport_id)?
+        crate::trust_control::service_runtime::client::build_client(url, token)?.get_passport_status(passport_id)?
     } else {
         let path = require_passport_status_registry_path(passport_statuses_file)?;
         let registry = load_passport_status_registry_for_admin(path)?;
@@ -2270,10 +2270,10 @@ pub(crate) fn cmd_passport_status_resolve(
 ) -> Result<(), CliError> {
     let resolution = if let Some(url) = control_url {
         if control_token.is_some() {
-            crate::trust_control::build_client(url, control_token.unwrap_or_default())?
+            crate::trust_control::service_runtime::client::build_client(url, control_token.unwrap_or_default())?
                 .resolve_passport_status(passport_id)?
         } else {
-            crate::trust_control::build_public_client(url)?
+            crate::trust_control::service_runtime::client::build_public_client(url)?
                 .public_resolve_passport_status(passport_id)?
         }
     } else {
@@ -2322,7 +2322,7 @@ pub(crate) fn cmd_passport_status_revoke(
 ) -> Result<(), CliError> {
     let record = if let Some(url) = control_url {
         let token = crate::require_control_token(control_token)?;
-        crate::trust_control::build_client(url, token)?.revoke_passport_status(
+        crate::trust_control::service_runtime::client::build_client(url, token)?.revoke_passport_status(
             passport_id,
             &PassportStatusRevocationRequest {
                 reason: reason.map(str::to_string),

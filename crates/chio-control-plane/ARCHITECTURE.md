@@ -11,6 +11,19 @@ health projection, and cluster/report logic. Federation, SCIM lifecycle,
 passport verifier, enterprise-provider, attestation, issuance, evidence export,
 reputation, and certification support remain separate crate-local modules.
 
+`trust_control/service_runtime.rs` is the trust-service boot and route
+registration root. Its child modules own the remote runtime surfaces:
+`client.rs` builds remote clients, normalizes endpoints, signs cluster-peer
+requests, performs failover, and owns encoded path helpers; `public_registry.rs`
+performs unauthenticated public certification and generic registry lookups;
+`issuance.rs` signs and evaluates generic trust, governance, open-market, and
+federation policy requests; `reputation.rs` signs and evaluates portable
+reputation artifacts; `remote_stores.rs` adapts remote receipt and revocation
+endpoints to kernel store traits; `remote_authority.rs` adapts remote authority
+status and issuance to `CapabilityAuthority`; `budget.rs` adapts remote budget
+endpoints to `BudgetStore`; and `errors.rs` contains internal store-error
+conversion helpers.
+
 ## Pain Points
 
 `TrustServiceConfig` is the root authority boundary for the service, but its

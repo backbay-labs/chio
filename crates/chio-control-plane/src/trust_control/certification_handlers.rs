@@ -157,7 +157,8 @@ pub(crate) async fn handle_issue_generic_trust_activation(
     if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
         return response;
     }
-    match issue_signed_generic_trust_activation(&state.config, &request) {
+    match service_runtime::issuance::issue_signed_generic_trust_activation(&state.config, &request)
+    {
         Ok(artifact) => Json(artifact).into_response(),
         Err(error) => plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     }
@@ -171,7 +172,10 @@ pub(crate) async fn handle_evaluate_generic_trust_activation(
     if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
         return response;
     }
-    match evaluate_generic_trust_activation_request(&state.config, &request) {
+    match service_runtime::issuance::evaluate_generic_trust_activation_request(
+        &state.config,
+        &request,
+    ) {
         Ok(report) => Json(report).into_response(),
         Err(error) => plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     }
@@ -185,7 +189,10 @@ pub(crate) async fn handle_issue_generic_governance_charter(
     if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
         return response;
     }
-    match issue_signed_generic_governance_charter(&state.config, &request) {
+    match service_runtime::issuance::issue_signed_generic_governance_charter(
+        &state.config,
+        &request,
+    ) {
         Ok(artifact) => Json(artifact).into_response(),
         Err(error) => plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     }
@@ -199,7 +206,7 @@ pub(crate) async fn handle_issue_generic_governance_case(
     if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
         return response;
     }
-    match issue_signed_generic_governance_case(&state.config, &request) {
+    match service_runtime::issuance::issue_signed_generic_governance_case(&state.config, &request) {
         Ok(artifact) => Json(artifact).into_response(),
         Err(error) => plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     }
@@ -213,7 +220,7 @@ pub(crate) async fn handle_evaluate_generic_governance_case(
     if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
         return response;
     }
-    match evaluate_generic_governance_case_request(&request) {
+    match service_runtime::issuance::evaluate_generic_governance_case_request(&request) {
         Ok(report) => Json(report).into_response(),
         Err(error) => plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     }
@@ -227,7 +234,8 @@ pub(crate) async fn handle_issue_open_market_fee_schedule(
     if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
         return response;
     }
-    match issue_signed_open_market_fee_schedule(&state.config, &request) {
+    match service_runtime::issuance::issue_signed_open_market_fee_schedule(&state.config, &request)
+    {
         Ok(artifact) => Json(artifact).into_response(),
         Err(error) => plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     }
@@ -241,7 +249,7 @@ pub(crate) async fn handle_issue_open_market_penalty(
     if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
         return response;
     }
-    match issue_signed_open_market_penalty(&state.config, &request) {
+    match service_runtime::issuance::issue_signed_open_market_penalty(&state.config, &request) {
         Ok(artifact) => Json(artifact).into_response(),
         Err(error) => plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     }
@@ -255,7 +263,7 @@ pub(crate) async fn handle_evaluate_open_market_penalty(
     if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
         return response;
     }
-    match evaluate_open_market_penalty_request(&state.config, &request) {
+    match service_runtime::issuance::evaluate_open_market_penalty_request(&state.config, &request) {
         Ok(report) => Json(report).into_response(),
         Err(error) => plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     }

@@ -24,7 +24,7 @@ pub fn serve(config: TrustServiceConfig) -> Result<(), CliError> {
         .map_err(|error| {
             CliError::cli_other_error(format!("failed to start async runtime: {error}"))
         })?;
-    runtime.block_on(async move { serve_async(config).await })
+    runtime.block_on(async move { service_runtime::serve_async(config).await })
 }
 
 pub(crate) fn load_enterprise_provider_registry(
@@ -956,7 +956,7 @@ fn oid4vp_wallet_exchange_url(
     })?;
     Ok(format!(
         "{advertise_url}{}",
-        path_with_encoded_param(
+        service_runtime::client::path_with_encoded_param(
             PUBLIC_PASSPORT_WALLET_EXCHANGE_PATH,
             "request_id",
             request_id
@@ -977,7 +977,11 @@ pub(crate) fn oid4vp_cross_device_url(
     })?;
     Ok(format!(
         "{advertise_url}{}?request_uri={}",
-        path_with_encoded_param(PUBLIC_PASSPORT_OID4VP_LAUNCH_PATH, "request_id", request_id),
+        service_runtime::client::path_with_encoded_param(
+            PUBLIC_PASSPORT_OID4VP_LAUNCH_PATH,
+            "request_id",
+            request_id
+        ),
         utf8_percent_encode(request_uri, NON_ALPHANUMERIC)
     ))
 }
@@ -1280,7 +1284,7 @@ pub(crate) fn build_oid4vp_request_for_service(
     let response_uri = format!("{advertise_url}{PUBLIC_PASSPORT_OID4VP_DIRECT_POST_PATH}");
     let request_uri = format!(
         "{advertise_url}{}",
-        path_with_encoded_param(
+        service_runtime::client::path_with_encoded_param(
             PUBLIC_PASSPORT_OID4VP_REQUEST_PATH,
             "request_id",
             &request_id
@@ -1574,7 +1578,7 @@ pub(crate) fn scim_error_response(status: StatusCode, detail: &str) -> Response 
 }
 
 pub(crate) fn scim_user_location(user_id: &str) -> String {
-    path_with_encoded_param(SCIM_USER_PATH, "user_id", user_id)
+    service_runtime::client::path_with_encoded_param(SCIM_USER_PATH, "user_id", user_id)
 }
 
 pub(crate) fn validated_scim_provider_for_request(

@@ -1639,7 +1639,7 @@ pub fn discover_certifications_across_network(
     let mut not_found_count = 0;
 
     for operator in network.validated_operators() {
-        match crate::trust_control::resolve_public_certification_metadata(&operator.registry_url) {
+        match crate::trust_control::service_runtime::public_registry::resolve_public_certification_metadata(&operator.registry_url) {
             Ok(metadata) => match validate_public_certification_metadata(
                 &metadata,
                 Some(&operator.registry_url),
@@ -1647,7 +1647,7 @@ pub fn discover_certifications_across_network(
             ) {
                 Ok(()) => {
                     reachable_count += 1;
-                    match crate::trust_control::resolve_public_certification(
+                    match crate::trust_control::service_runtime::public_registry::resolve_public_certification(
                         &operator.registry_url,
                         tool_server_id,
                     ) {
@@ -1775,13 +1775,13 @@ pub fn search_public_certifications_across_network(
     };
     let peer_count = operators.len();
     for operator in operators {
-        match crate::trust_control::resolve_public_certification_metadata(&operator.registry_url) {
+        match crate::trust_control::service_runtime::public_registry::resolve_public_certification_metadata(&operator.registry_url) {
             Ok(metadata) => match validate_public_certification_metadata(
                 &metadata,
                 Some(&operator.registry_url),
                 unix_now(),
             ) {
-                Ok(()) => match crate::trust_control::search_public_certifications(
+                Ok(()) => match crate::trust_control::service_runtime::public_registry::search_public_certifications(
                     &operator.registry_url,
                     &query.filters,
                 ) {
@@ -1862,13 +1862,13 @@ pub fn transparency_public_certifications_across_network(
     };
     let peer_count = operators.len();
     for operator in operators {
-        match crate::trust_control::resolve_public_certification_metadata(&operator.registry_url) {
+        match crate::trust_control::service_runtime::public_registry::resolve_public_certification_metadata(&operator.registry_url) {
             Ok(metadata) => match validate_public_certification_metadata(
                 &metadata,
                 Some(&operator.registry_url),
                 unix_now(),
             ) {
-                Ok(()) => match crate::trust_control::resolve_public_certification_transparency(
+                Ok(()) => match crate::trust_control::service_runtime::public_registry::resolve_public_certification_transparency(
                     &operator.registry_url,
                     &query.filters,
                 ) {
@@ -1959,7 +1959,7 @@ pub fn consume_public_certification_across_network(
             reasons: Vec::new(),
             resolution: None,
         };
-        match crate::trust_control::resolve_public_certification_metadata(&operator.registry_url) {
+        match crate::trust_control::service_runtime::public_registry::resolve_public_certification_metadata(&operator.registry_url) {
             Ok(metadata) => match validate_public_certification_metadata(
                 &metadata,
                 Some(&operator.registry_url),
@@ -1967,7 +1967,7 @@ pub fn consume_public_certification_across_network(
             ) {
                 Ok(()) => {
                     decision.metadata_valid = true;
-                    match crate::trust_control::resolve_public_certification(
+                    match crate::trust_control::service_runtime::public_registry::resolve_public_certification(
                         &operator.registry_url,
                         &request.tool_server_id,
                     ) {
@@ -2107,8 +2107,11 @@ pub fn publish_certification_across_network(
             continue;
         };
 
-        match crate::trust_control::build_client(&operator.registry_url, token)
-            .and_then(|client| client.publish_certification(artifact))
+        match crate::trust_control::service_runtime::client::build_client(
+            &operator.registry_url,
+            token,
+        )
+        .and_then(|client| client.publish_certification(artifact))
         {
             Ok(entry) => {
                 success_count += 1;
@@ -2138,7 +2141,8 @@ pub fn cmd_certify_registry_discover(
 ) -> Result<(), CliError> {
     let response = if let Some(url) = control_url {
         let token = crate::require_control_token(control_token)?;
-        crate::trust_control::build_client(url, token)?.discover_certification(tool_server_id)?
+        crate::trust_control::service_runtime::client::build_client(url, token)?
+            .discover_certification(tool_server_id)?
     } else {
         let path = require_certification_discovery_path(discovery_path)?;
         let network = CertificationDiscoveryNetwork::load(path)?;
@@ -2186,12 +2190,11 @@ pub fn cmd_certify_registry_publish_network(
     let artifact = load_signed_certification_check(input)?;
     let response = if let Some(url) = control_url {
         let token = crate::require_control_token(control_token)?;
-        crate::trust_control::build_client(url, token)?.publish_certification_network(
-            &CertificationNetworkPublishRequest {
+        crate::trust_control::service_runtime::client::build_client(url, token)?
+            .publish_certification_network(&CertificationNetworkPublishRequest {
                 artifact,
                 operator_ids: operator_ids.to_vec(),
-            },
-        )?
+            })?
     } else {
         let path = require_certification_discovery_path(discovery_path)?;
         let network = CertificationDiscoveryNetwork::load(path)?;
@@ -2272,7 +2275,8 @@ pub fn cmd_certify_registry_search(
     };
     let response = if let Some(url) = control_url {
         let token = crate::require_control_token(control_token)?;
-        crate::trust_control::build_client(url, token)?.search_certification_marketplace(&query)?
+        crate::trust_control::service_runtime::client::build_client(url, token)?
+            .search_certification_marketplace(&query)?
     } else {
         let path = require_certification_discovery_path(discovery_path)?;
         let network = CertificationDiscoveryNetwork::load(path)?;
@@ -2319,7 +2323,7 @@ pub fn cmd_certify_registry_transparency(
     };
     let response = if let Some(url) = control_url {
         let token = crate::require_control_token(control_token)?;
-        crate::trust_control::build_client(url, token)?
+        crate::trust_control::service_runtime::client::build_client(url, token)?
             .certification_marketplace_transparency(&query)?
     } else {
         let path = require_certification_discovery_path(discovery_path)?;
@@ -2363,7 +2367,7 @@ pub fn cmd_certify_registry_consume(
     };
     let response = if let Some(url) = control_url {
         let token = crate::require_control_token(control_token)?;
-        crate::trust_control::build_client(url, token)?
+        crate::trust_control::service_runtime::client::build_client(url, token)?
             .consume_certification_marketplace(&request)?
     } else {
         let path = require_certification_discovery_path(discovery_path)?;
@@ -2404,7 +2408,7 @@ pub fn cmd_certify_registry_dispute(
     };
     let entry = if let Some(url) = control_url {
         let token = crate::require_control_token(control_token)?;
-        crate::trust_control::build_client(url, token)?
+        crate::trust_control::service_runtime::client::build_client(url, token)?
             .dispute_certification(artifact_id, &request)?
     } else {
         let path = certification_registry_file.ok_or_else(|| {

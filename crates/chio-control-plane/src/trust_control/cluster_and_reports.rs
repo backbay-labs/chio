@@ -462,7 +462,11 @@ fn sync_peer(state: &TrustServiceState, peer_url: &str) -> Result<(), CliError> 
     let Some(self_url) = cluster_self_url(state) else {
         return Ok(());
     };
-    let client = build_cluster_peer_client(peer_url, &state.config.service_token, &self_url)?;
+    let client = service_runtime::client::build_cluster_peer_client(
+        peer_url,
+        &state.config.service_token,
+        &self_url,
+    )?;
     if let Err(error) = client.cluster_status() {
         update_peer_failure(state, peer_url, error.to_string());
         return Err(error);
@@ -2297,9 +2301,11 @@ pub(crate) async fn forward_post_to_leader<B: Serialize>(
     }
 
     for _ in 0..2 {
-        let client = build_client(&leader_url, &state.config.service_token).map_err(|error| {
-            plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
-        })?;
+        let client =
+            service_runtime::client::build_client(&leader_url, &state.config.service_token)
+                .map_err(|error| {
+                    plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
+                })?;
         match post_json_to_control_service(&client, path, body) {
             Ok(response) => return Ok(Some(response)),
             Err(error) => {
@@ -2392,10 +2398,12 @@ pub(crate) async fn forward_authority_post_to_leader<B: Serialize>(
     }
 
     for _ in 0..2 {
-        let client = build_cluster_peer_client(&leader_url, &state.config.service_token, &self_url)
-            .map_err(|error| {
-                plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
-            })?;
+        let client = service_runtime::client::build_cluster_peer_client(
+            &leader_url,
+            &state.config.service_token,
+            &self_url,
+        )
+        .map_err(|error| plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string()))?;
         if let Ok(status) = client.cluster_status() {
             update_peer_reachable(state, &leader_url);
             if status.has_quorum && status.leader_url.as_deref() == Some(leader_url.as_str()) {
@@ -2486,9 +2494,11 @@ pub(crate) async fn forward_scim_post_to_leader<B: Serialize>(
     }
 
     for _ in 0..2 {
-        let client = build_client(&leader_url, &state.config.service_token).map_err(|error| {
-            scim_error_response(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
-        })?;
+        let client =
+            service_runtime::client::build_client(&leader_url, &state.config.service_token)
+                .map_err(|error| {
+                    scim_error_response(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
+                })?;
         match client.post_json::<_, Value>(path, body) {
             Ok(value) => return Ok(Some(scim_json_response(StatusCode::CREATED, &value))),
             Err(error) => {
@@ -2555,9 +2565,11 @@ pub(crate) async fn forward_scim_delete_to_leader(
     }
 
     for _ in 0..2 {
-        let client = build_client(&leader_url, &state.config.service_token).map_err(|error| {
-            scim_error_response(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
-        })?;
+        let client =
+            service_runtime::client::build_client(&leader_url, &state.config.service_token)
+                .map_err(|error| {
+                    scim_error_response(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
+                })?;
         match client.delete_json::<Value>(path) {
             Ok(value) => return Ok(Some(scim_json_response(StatusCode::OK, &value))),
             Err(error) => {
