@@ -68,9 +68,6 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/chio-control-plane/src/certify.rs": allow(
         "Phase 6.1", "baseline remaining production hotspot"
     ),
-    "crates/chio-control-plane/src/trust_control/capital_and_liability.rs": allow(
-        "Phase 6.1", "baseline current production hotspot"
-    ),
     "crates/chio-control-plane/src/trust_control/service_types.rs": allow(
         "Phase 6.1", "baseline current production hotspot"
     ),

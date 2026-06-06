@@ -55,6 +55,11 @@ service and authority auth validation, control read-principal resolution,
 authority status loading, and metered-billing request validation; `reports.rs`
 owns operator, behavioral, economic-completion, runtime-attestation, exposure
 ledger, credit-scorecard, capital-book, and capital-issuance report builders.
+`capital_and_liability.rs` owns capital book, capital execution, credit
+facility, credit bond, credit loss, provider-risk, and credit backtest
+surfaces. Its `capital_and_liability/liability.rs` child owns liability
+provider registry, quote, placement, pricing authority, bound coverage,
+auto-bind, claim, payout, and settlement workflow artifact construction.
 `cluster_and_reports.rs` remains a test-only regression aggregate for behavior
 that crosses those split modules.
 
