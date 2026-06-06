@@ -71,7 +71,8 @@ packages and 588,730 bytes of metadata.
 | `crates/chio-acp-edge/src/tests/all.rs` | 2,881 | test | `chio-acp-edge` | Phase 7 follow-up |
 | `crates/chio-federation/src/lib.rs` | 2,803 | production lib root | `chio-federation` | Phase 2.2 |
 | `crates/chio-a2a-edge/src/tests/all.rs` | 2,702 | test | `chio-a2a-edge` | Phase 7 follow-up |
-| `crates/chio-control-plane/src/trust_control/service_types.rs` | 2,690 | production | `chio-control-plane` | Phase 6.1 |
+| `crates/chio-control-plane/src/trust_control/service_types.rs` | 1,819 | production | `chio-control-plane` | split cluster and budget wire types in Phase 6.1 |
+| `crates/chio-control-plane/src/trust_control/service_types/cluster_budget.rs` | 876 | production | `chio-control-plane` | split from `service_types.rs` in Phase 6.1 |
 | `crates/chio-cross-protocol/src/lib.rs` | 2,651 | production lib root | `chio-cross-protocol` | Phase 2.3 |
 | `crates/chio-control-plane/src/trust_control/underwriting_and_support.rs` | 2,625 | production | `chio-control-plane` | Phase 6.1 |
 | `crates/chio-federation/src/bilateral_dsse.rs` | 2,610 | production | `chio-federation` | Phase 6.1 |

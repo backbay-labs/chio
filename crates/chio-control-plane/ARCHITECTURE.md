@@ -45,6 +45,13 @@ status and issuance to `CapabilityAuthority`; `budget.rs` adapts remote budget
 endpoints to `BudgetStore`; and `errors.rs` contains internal store-error
 conversion helpers.
 
+`trust_control/service_types.rs` owns trust-control route constants, service
+configuration, client/state structs, federation/passport/receipt HTTP payloads,
+financial issue payloads, error adapters, and small request query structs. Its
+`service_types/cluster_budget.rs` child owns cluster status and snapshot wire
+views, cluster lease RPC payloads, replication delta payloads, and budget
+mutation request/response wire adapters.
+
 The trust-control HA and reporting surface is split by responsibility:
 `cluster.rs` owns cluster identity, peer state, membership, consensus,
 replication loops, peer snapshots and deltas, and budget-quorum commit
