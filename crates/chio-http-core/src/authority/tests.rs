@@ -103,6 +103,20 @@ fn authority_with_trusted_issuer(trusted_issuer: PublicKey) -> HttpAuthority {
     )
 }
 
+fn authority_with_strict_execution_nonce() -> HttpAuthority {
+    let mut authority = authority();
+    let cfg = chio_kernel::ExecutionNonceConfig {
+        nonce_ttl_secs: 30,
+        nonce_store_capacity: 1024,
+        require_nonce: true,
+    };
+    let store = Box::new(chio_kernel::InMemoryExecutionNonceStore::from_config(&cfg));
+    Arc::get_mut(&mut authority.kernel)
+        .test_unwrap()
+        .set_execution_nonce_store(cfg, store);
+    authority
+}
+
 #[test]
 fn safe_policy_allows_without_capability() {
     let query = HashMap::new();
@@ -141,6 +155,39 @@ fn safe_policy_allows_without_capability() {
             .and_then(Value::as_str),
         Some("native")
     );
+}
+
+#[test]
+fn strict_execution_nonce_preflight_does_not_authorize_http_side_effect() {
+    let query = HashMap::new();
+    let error = authority_with_strict_execution_nonce()
+        .evaluate(HttpAuthorityInput {
+            request_id: "req-strict-nonce-http-authority".to_string(),
+            method: HttpMethod::Post,
+            route_pattern: "/pets".to_string(),
+            path: "/pets",
+            query: &query,
+            caller: caller(),
+            body_hash: Some("abc".to_string()),
+            body_length: 3,
+            session_id: None,
+            capability_id_hint: None,
+            presented_capability: None,
+            requested_tool_server: None,
+            requested_tool_name: None,
+            requested_arguments: None,
+            model_metadata: None,
+            policy: HttpAuthorityPolicy::SessionAllow,
+        })
+        .test_unwrap_err();
+
+    match error {
+        HttpAuthorityError::Kernel(reason) => assert!(
+            reason.contains("execution nonce preflight"),
+            "expected strict nonce preflight denial, got: {reason}"
+        ),
+        other => panic!("expected kernel error, got {other:?}"),
+    }
 }
 
 #[test]

@@ -422,6 +422,11 @@ impl HttpAuthority {
                 });
             }
         }
+        if is_execution_nonce_preflight(&kernel_response) {
+            return Err(HttpAuthorityError::Kernel(
+                "kernel returned an execution nonce preflight; HTTP authority cannot authorize upstream side effects without a presented execution nonce".to_string(),
+            ));
+        }
 
         let evidence = projected_evidence(binding.policy, &presented_capability);
 
@@ -752,6 +757,12 @@ fn projected_verdict(
             ),
         },
     }
+}
+
+fn is_execution_nonce_preflight(response: &chio_kernel::ToolCallResponse) -> bool {
+    response.verdict == KernelVerdict::Allow
+        && response.execution_nonce.is_some()
+        && response.output.is_none()
 }
 
 fn projected_evidence(
