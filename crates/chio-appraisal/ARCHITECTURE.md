@@ -12,6 +12,7 @@
 - `descriptor` signs and verifies descriptor, reference-value, and trust-bundle export envelopes.
 - `validate` enforces descriptor, reference-value, and trust-bundle structural invariants before signed artifacts are trusted.
 - `marketplace_pricing` computes deterministic per-invocation prices from a manifest base price plus tenant reputation tier.
+- `tests` contains root module unit coverage for appraisal derivation, signed descriptor artifacts, trust bundles, and import-policy edge cases.
 
 ## Pain Points
 
