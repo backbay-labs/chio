@@ -31,6 +31,13 @@ packages and 588,730 bytes of metadata.
 | Large docs and structured data | Large tracked Markdown, JSON, TOML, YAML, and workflow files include `spec/PROTOCOL.md` at 3,073 lines, `docs/operations/ROADMAP.md` at 1,608 lines, and `docs/architecture/CHIO_FINAL_ARCHITECTURE.md` at 1,235 lines. | Phase 8 classifies large docs into live, reference, research, roadmap, and archive buckets. |
 | Local untracked clutter | `.codex/` contains PR patches, logs, review JSON, and cleanup metadata. `docs/superpowers/` contains local plan files. | Preserve as unrelated local state unless a later task explicitly owns a file. |
 
+## Phase 6.3 Rust Hygiene Allowlist
+
+After the Phase 1 through Phase 6 production splits, `scripts/check-rust-file-hygiene.py`
+has no active Rust file hygiene allowlist entries. Generated Rust remains
+classified separately by path, and no generated or generated-adjacent allowlist
+entry is currently required.
+
 ## Hotspot Table
 
 | File | Lines | Category | Owner crate or area | Planned phase |

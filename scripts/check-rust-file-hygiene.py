@@ -25,47 +25,7 @@ def allow(phase: str, rationale: str) -> AllowlistEntry:
     return AllowlistEntry(rationale=rationale, expires=phase)
 
 
-ALLOWLIST: dict[str, AllowlistEntry] = {
-    "crates/chio-governance/src/lib.rs": allow(
-        "Phase 1.1", "baseline lib root split target"
-    ),
-    "crates/chio-open-market/src/lib.rs": allow(
-        "Phase 1.2", "baseline lib root split target"
-    ),
-    "crates/chio-web3/src/lib.rs": allow(
-        "Phase 1.3", "baseline lib root split target"
-    ),
-    "crates/chio-attest-buyer-core/src/lib.rs": allow(
-        "Phase 2.1", "baseline lib root split target"
-    ),
-    "crates/chio-federation/src/lib.rs": allow(
-        "Phase 2.2", "baseline lib root split target"
-    ),
-    "crates/chio-cross-protocol/src/lib.rs": allow(
-        "Phase 2.3", "baseline lib root split target"
-    ),
-    "crates/chio-mcp-adapter/src/lib.rs": allow(
-        "Phase 2.4", "baseline lib root split target"
-    ),
-    "crates/chio-core-types/src/capability.rs": allow(
-        "Phase 3.1", "baseline core protocol split target"
-    ),
-    "crates/chio-core-types/src/receipt.rs": allow(
-        "Phase 3.2", "baseline core protocol split target"
-    ),
-    "crates/chio-control-plane/src/trust_control/service_runtime.rs": allow(
-        "Phase 4.1", "baseline trust-control runtime split target"
-    ),
-    "crates/chio-control-plane/src/trust_control/cluster_and_reports.rs": allow(
-        "Phase 4.2", "baseline trust-control cluster/report split target"
-    ),
-    "crates/chio-wasm-guards/src/runtime.rs": allow(
-        "Phase 5.1", "baseline wasm runtime split target"
-    ),
-    "crates/chio-mcp-edge/src/runtime.rs": allow(
-        "Phase 5.2", "baseline MCP edge runtime split target"
-    ),
-}
+ALLOWLIST: dict[str, AllowlistEntry] = {}
 
 
 @dataclass(frozen=True)

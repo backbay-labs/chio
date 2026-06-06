@@ -69,15 +69,14 @@ assert_rc "$(run_checker "$large_lib" "$work/large-lib.out" "$work/large-lib.err
 grep -F "crates/chio-small/src/lib.rs: src/lib.rs has 1001 lines" \
   "$work/large-lib.err" >/dev/null
 
-allowlisted_lib="$work/allowlisted-lib"
-init_case "$allowlisted_lib"
-write_lines "$allowlisted_lib/crates/chio-governance/src/lib.rs" 2101
-track_case "$allowlisted_lib"
-assert_rc "$(run_checker "$allowlisted_lib" "$work/allowlisted-lib.out" "$work/allowlisted-lib.err")" 0 \
-  "baseline allowlisted lib root passes"
-grep -F "allowlisted: crates/chio-governance/src/lib.rs" \
-  "$work/allowlisted-lib.out" >/dev/null
-grep -F "expires Phase 1.1" "$work/allowlisted-lib.out" >/dev/null
+expired_allowlist="$work/expired-allowlist"
+init_case "$expired_allowlist"
+write_lines "$expired_allowlist/crates/chio-governance/src/lib.rs" 2101
+track_case "$expired_allowlist"
+assert_rc "$(run_checker "$expired_allowlist" "$work/expired-allowlist.out" "$work/expired-allowlist.err")" 1 \
+  "expired baseline allowlist entry fails"
+grep -F "crates/chio-governance/src/lib.rs: production file has 2101 lines" \
+  "$work/expired-allowlist.err" >/dev/null
 
 large_example="$work/large-example"
 init_case "$large_example"
