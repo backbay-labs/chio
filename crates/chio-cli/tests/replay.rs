@@ -27,7 +27,10 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
+use chio_core::receipt::{
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    kinds::TrustLevel,
+};
 use chio_core::Keypair;
 use serde_json::{json, Value};
 

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::error::GovernanceAuthorizationError;
-use crate::receipt::SignedExportEnvelope;
+use crate::receipt::lineage::SignedExportEnvelope;
 use crate::validation::{validate_non_empty, validate_sha256_hex};
 
 pub const CAPABILITY_LEASE_SCHEMA_V1: &str = "chio.capability-lease.v1";

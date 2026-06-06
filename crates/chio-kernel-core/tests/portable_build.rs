@@ -14,7 +14,9 @@ use chio_core_types::capability::{
     token::{CapabilityToken, CapabilityTokenAttenuationBody, CapabilityTokenBody},
 };
 use chio_core_types::crypto::Keypair;
-use chio_core_types::receipt::{ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
+use chio_core_types::receipt::{
+    body::ChioReceiptBody, decision::Decision, decision::ToolCallAction, kinds::TrustLevel,
+};
 use chio_kernel_core::{
     evaluate, sign_receipt, verify_capability, CapabilityError, EvaluateInput, FixedClock, Guard,
     GuardContext, KernelCoreError, PortableToolCallRequest, Verdict,

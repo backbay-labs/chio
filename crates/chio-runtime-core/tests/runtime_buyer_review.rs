@@ -1,7 +1,8 @@
 use chio_core_types::crypto::Keypair;
 use chio_core_types::receipt::{
-    ActorRef, BoundaryClass, ChioReceipt, ChioReceiptBody, Decision, ReceiptKind, RedactionMode,
-    ToolCallAction, ToolOrigin, TrustLevel,
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    kinds::BoundaryClass, kinds::ReceiptKind, kinds::RedactionMode, kinds::ToolOrigin,
+    kinds::TrustLevel, metadata::ActorRef,
 };
 use chio_federation::{
     bilateral_dsse::sign_chio_bilateral_dsse_envelope,

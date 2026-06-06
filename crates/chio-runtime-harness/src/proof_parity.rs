@@ -334,7 +334,7 @@ fn tool_receipt_semantics(
             action_parameter_hash: receipt.action.parameter_hash.clone(),
             decision_allowed: matches!(
                 &receipt.decision,
-                Some(chio_core::receipt::Decision::Allow)
+                Some(chio_core::receipt::decision::Decision::Allow)
             ),
         })
         .collect()

@@ -11,7 +11,9 @@ use chio_core::capability::{
     token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core::crypto::Keypair;
-use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction};
+use chio_core::receipt::{
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+};
 use chio_credentials::{
     build_agent_passport, issue_reputation_credential, respond_to_oid4vp_request,
     respond_to_passport_presentation_challenge, verify_signed_oid4vp_request_object,
@@ -440,7 +442,7 @@ fn receipt_with_keypair(
             policy_hash: "policy-passport".to_string(),
             evidence: Vec::new(),
             metadata: None,
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
             bbs_projection_version: None,

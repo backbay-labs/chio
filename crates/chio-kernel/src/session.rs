@@ -13,7 +13,7 @@ use chio_core::{capability::token::CapabilityToken, AgentId};
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::{ToolCallResponse, ToolServerEvent};
-use chio_core::receipt::ChioReceipt;
+use chio_core::receipt::body::ChioReceipt;
 
 fn read_lock<T>(lock: &RwLock<T>) -> RwLockReadGuard<'_, T> {
     match lock.read() {

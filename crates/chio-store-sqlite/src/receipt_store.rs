@@ -13,9 +13,10 @@ use chio_core::canonical::{canonical_json_bytes, CanonicalBytes};
 use chio_core::capability::{scope::ChioScope, token::CapabilityToken};
 use chio_core::crypto::{sha256_hex, Keypair, Signature};
 use chio_core::receipt::{
-    ChildRequestReceipt, ChioReceipt, Decision, FinancialReceiptMetadata,
-    GovernedTransactionReceiptMetadata, ReceiptAttributionMetadata, ReceiptCryptoFloor,
-    SettlementStatus,
+    body::ChioReceipt, crypto_floor::ReceiptCryptoFloor, decision::Decision,
+    economics::FinancialReceiptMetadata, economics::SettlementStatus,
+    governance::GovernedTransactionReceiptMetadata, lineage::ChildRequestReceipt,
+    metadata::ReceiptAttributionMetadata,
 };
 use chio_core::session::{
     OperationTerminalState, RequestLineageMode, RequestLineageRecord, SessionAnchorReference,
@@ -1125,14 +1126,16 @@ mod receipt_commit_actor_tests {
     fn actor_test_receipt() -> Result<ChioReceipt, ReceiptStoreError> {
         let keypair = chio_core::crypto::Keypair::generate();
         ChioReceipt::sign(
-            chio_core::receipt::ChioReceiptBody {
+            chio_core::receipt::body::ChioReceiptBody {
                 id: "rcpt-actor-test".to_string(),
                 timestamp: 1,
                 capability_id: "cap-actor".to_string(),
                 tool_server: "shell".to_string(),
                 tool_name: "bash".to_string(),
-                action: chio_core::receipt::ToolCallAction::from_parameters(serde_json::json!({}))
-                    .map_err(|error| ReceiptStoreError::Canonical(error.to_string()))?,
+                action: chio_core::receipt::decision::ToolCallAction::from_parameters(
+                    serde_json::json!({}),
+                )
+                .map_err(|error| ReceiptStoreError::Canonical(error.to_string()))?,
                 decision: Some(Decision::Allow),
                 receipt_kind: Default::default(),
                 boundary_class: Default::default(),
@@ -1144,7 +1147,7 @@ mod receipt_commit_actor_tests {
                 policy_hash: "policy".to_string(),
                 evidence: Vec::new(),
                 metadata: None,
-                trust_level: chio_core::TrustLevel::default(),
+                trust_level: chio_core::receipt::kinds::TrustLevel::default(),
                 tenant_id: None,
                 kernel_key: keypair.public_key(),
                 bbs_projection_version: None,

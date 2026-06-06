@@ -709,7 +709,8 @@ mod tests {
     };
     use chio_core::crypto::Keypair;
     use chio_core::receipt::{
-        ChioReceipt, ChioReceiptBody, Decision, ReceiptAttributionMetadata, ToolCallAction,
+        body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+        metadata::ReceiptAttributionMetadata,
     };
     use chio_kernel::ReceiptStore;
     use chio_store_sqlite::SqliteReceiptStore;
@@ -969,7 +970,7 @@ mod tests {
                         grant_index: Some(0),
                     }
                 })),
-                trust_level: chio_core::TrustLevel::default(),
+                trust_level: chio_core::receipt::kinds::TrustLevel::default(),
                 tenant_id: None,
                 kernel_key: kernel_kp.public_key(),
                 bbs_projection_version: None,

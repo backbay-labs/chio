@@ -7,7 +7,7 @@
 use std::sync::Mutex;
 
 use chio_core::crypto::Keypair;
-use chio_core::receipt::{ChioReceiptBody, Decision, ToolCallAction};
+use chio_core::receipt::{body::ChioReceiptBody, decision::Decision, decision::ToolCallAction};
 use chio_kernel::receipt_store::{AuthorizationReceiptConsumption, ReceiptStore};
 
 /// Health snapshot for the kernel signer's checkpoint subsystem.
@@ -487,13 +487,13 @@ impl ReceiptSigner for KernelReceiptSigner {
         let (decision, trust_level, semantics) = match enforcement_mode {
             AcpEnforcementMode::AuditOnly => (
                 None,
-                chio_core::TrustLevel::Verified,
-                chio_core::ReceiptSemanticFields::trace_detect_only(),
+                chio_core::receipt::kinds::TrustLevel::Verified,
+                chio_core::receipt::metadata::ReceiptSemanticFields::trace_detect_only(),
             ),
             AcpEnforcementMode::CryptographicallyEnforced => (
                 Some(Decision::Allow),
-                chio_core::TrustLevel::Mediated,
-                chio_core::ReceiptSemanticFields::mediated_prevent(),
+                chio_core::receipt::kinds::TrustLevel::Mediated,
+                chio_core::receipt::metadata::ReceiptSemanticFields::mediated_prevent(),
             ),
         };
         let mut action_parameters = serde_json::json!({

@@ -5,10 +5,10 @@
 use chio_core_types::canonical::canonical_json_bytes;
 #[cfg(feature = "bbs")]
 use chio_core_types::receipt::{
-    prepare_receipt_body_for_signing, BbsReceiptSignature, ChioReceipt,
-    CHIO_RECEIPT_BBS_SIGNATURE_ALGORITHM, CHIO_RECEIPT_BBS_SIGNATURE_SCHEMA,
+    body::prepare_receipt_body_for_signing, body::ChioReceipt, signing::BbsReceiptSignature,
+    signing::CHIO_RECEIPT_BBS_SIGNATURE_ALGORITHM, signing::CHIO_RECEIPT_BBS_SIGNATURE_SCHEMA,
 };
-use chio_core_types::receipt::{ChioReceiptBody, TrustLevel};
+use chio_core_types::receipt::{body::ChioReceiptBody, kinds::TrustLevel};
 use chio_workflow::receipt::{StepRecord, WorkflowReceiptBody};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};

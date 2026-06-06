@@ -26,8 +26,8 @@ use std::sync::{Arc, Mutex};
 use chio_core::canonical::canonical_json_bytes;
 use chio_core::crypto::Keypair;
 use chio_core::receipt::{
-    chio_receipt_id, ChioReceipt, ChioReceiptBody, Decision, GuardEvidence, ToolCallAction,
-    TrustLevel,
+    body::chio_receipt_id, body::ChioReceipt, body::ChioReceiptBody, decision::Decision,
+    decision::ToolCallAction, kinds::TrustLevel, metadata::GuardEvidence,
 };
 use chio_kernel::settlement_observer::{
     self, SettlementObserverStatus, SETTLEMENT_OBSERVER_STATUS_SCHEMA,

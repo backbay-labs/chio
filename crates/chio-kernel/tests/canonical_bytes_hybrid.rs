@@ -34,8 +34,8 @@ use chio_core::crypto::{
     SigningAlgorithm, SigningBackend,
 };
 use chio_core::receipt::{
-    bind_receipt_signing_nonce, chio_receipt_id, ChioReceiptBody, ChioReceiptSigningBody, Decision,
-    ToolCallAction, TrustLevel,
+    body::chio_receipt_id, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    kinds::TrustLevel, signing::bind_receipt_signing_nonce, signing::ChioReceiptSigningBody,
 };
 use chio_kernel::{
     sign_receipt_body_hybrid_canonical, sign_receipt_body_with_backend, SignedHybridReceipt,
@@ -249,7 +249,8 @@ fn shared_bytes_round_trip_through_serde_after_signing() {
     // The signed receipt itself round-trips through serde without
     // drift.
     let receipt_json = serde_json::to_vec(&signed.receipt).unwrap();
-    let restored: chio_core::receipt::ChioReceipt = serde_json::from_slice(&receipt_json).unwrap();
+    let restored: chio_core::receipt::body::ChioReceipt =
+        serde_json::from_slice(&receipt_json).unwrap();
     assert!(restored.verify_signature().unwrap());
 }
 

@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use chio_core_types::{PublicKey, SignedExportEnvelope};
+use chio_core_types::{receipt::lineage::SignedExportEnvelope, PublicKey};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

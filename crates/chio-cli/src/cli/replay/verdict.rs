@@ -47,14 +47,14 @@ pub struct VerdictOutcome {
 /// Stable string label for a [`Decision`].
 ///
 /// Matches the `#[serde(tag = "verdict", rename_all = "snake_case")]`
-/// representation on `chio_core::receipt::Decision` so the labels the
+/// representation on `chio_core::receipt::decision::Decision` so the labels the
 /// comparator exposes are byte-identical to the receipt wire format.
-fn decision_label(decision: Option<&chio_core::receipt::Decision>) -> &'static str {
+fn decision_label(decision: Option<&chio_core::receipt::decision::Decision>) -> &'static str {
     match decision {
-        Some(chio_core::receipt::Decision::Allow) => "allow",
-        Some(chio_core::receipt::Decision::Deny { .. }) => "deny",
-        Some(chio_core::receipt::Decision::Cancelled { .. }) => "cancelled",
-        Some(chio_core::receipt::Decision::Incomplete { .. }) => "incomplete",
+        Some(chio_core::receipt::decision::Decision::Allow) => "allow",
+        Some(chio_core::receipt::decision::Decision::Deny { .. }) => "deny",
+        Some(chio_core::receipt::decision::Decision::Cancelled { .. }) => "cancelled",
+        Some(chio_core::receipt::decision::Decision::Incomplete { .. }) => "incomplete",
         None => "none",
     }
 }
@@ -99,7 +99,7 @@ const REPLAY_FIXTURE_DRIFT_GUARD_SENTINEL: &str = "drift-marker";
 ///
 /// See [`REPLAY_FIXTURE_DRIFT_GUARD_SENTINEL`] for the synthetic-drift hook.
 pub fn rederive_verdict(
-    receipt: &chio_core::receipt::ChioReceipt,
+    receipt: &chio_core::receipt::body::ChioReceipt,
 ) -> Result<VerdictOutcome, VerdictError> {
     if receipt.id.is_empty() {
         return Err(VerdictError::MissingDecision {
@@ -107,7 +107,7 @@ pub fn rederive_verdict(
         });
     }
     let stored = decision_label(receipt.decision.as_ref());
-    if let Some(chio_core::receipt::Decision::Deny { guard, .. }) = &receipt.decision {
+    if let Some(chio_core::receipt::decision::Decision::Deny { guard, .. }) = &receipt.decision {
         if guard == REPLAY_FIXTURE_DRIFT_GUARD_SENTINEL {
             return compare_verdicts(&receipt.id, stored, "allow");
         }
@@ -122,7 +122,7 @@ pub fn rederive_verdict(
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod replay_verdict_tests {
     use super::*;
-    use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction};
+    use chio_core::receipt::{body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction};
     use chio_core::Keypair;
     use serde_json::json;
 
@@ -145,7 +145,7 @@ mod replay_verdict_tests {
             policy_hash: "0".repeat(64),
             evidence: Vec::new(),
             metadata: None,
-            trust_level: chio_core::receipt::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: kp.public_key(),
             bbs_projection_version: None,

@@ -3,8 +3,9 @@
 
 use chio_core::crypto::Keypair;
 use chio_core::receipt::{
-    ChioReceipt, ChioReceiptBody, Decision, FinancialReceiptMetadata, ReceiptSemanticFields,
-    SettlementStatus, ToolCallAction, TrustLevel,
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    economics::FinancialReceiptMetadata, economics::SettlementStatus, kinds::TrustLevel,
+    metadata::ReceiptSemanticFields,
 };
 use chio_siem::event::SiemEvent;
 use chio_siem::exporter::ExportError;
@@ -27,17 +28,17 @@ fn sample_receipt(id: &str) -> ChioReceipt {
             action: ToolCallAction::from_parameters(serde_json::json!({"cmd": "ls"}))
                 .expect("action parameters serialize"),
             decision: Some(Decision::Allow),
-            receipt_kind: chio_core::ReceiptKind::MediatedDecision,
-            boundary_class: chio_core::BoundaryClass::Prevent,
+            receipt_kind: chio_core::receipt::kinds::ReceiptKind::MediatedDecision,
+            boundary_class: chio_core::receipt::kinds::BoundaryClass::Prevent,
             observation_outcome: None,
-            tool_origin: chio_core::ToolOrigin::CallerExecuted,
-            redaction_mode: chio_core::RedactionMode::None,
+            tool_origin: chio_core::receipt::kinds::ToolOrigin::CallerExecuted,
+            redaction_mode: chio_core::receipt::kinds::RedactionMode::None,
             actor_chain: Vec::new(),
             content_hash: "content-hash-test".to_string(),
             policy_hash: "policy-hash-test".to_string(),
             evidence: Vec::new(),
             metadata: None,
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
             bbs_projection_version: None,
@@ -76,17 +77,17 @@ fn sample_receipt_with_financial(id: &str) -> ChioReceipt {
             action: ToolCallAction::from_parameters(serde_json::json!({"script": "main.py"}))
                 .expect("action parameters serialize"),
             decision: Some(Decision::Allow),
-            receipt_kind: chio_core::ReceiptKind::MediatedDecision,
-            boundary_class: chio_core::BoundaryClass::Prevent,
+            receipt_kind: chio_core::receipt::kinds::ReceiptKind::MediatedDecision,
+            boundary_class: chio_core::receipt::kinds::BoundaryClass::Prevent,
             observation_outcome: None,
-            tool_origin: chio_core::ToolOrigin::CallerExecuted,
-            redaction_mode: chio_core::RedactionMode::None,
+            tool_origin: chio_core::receipt::kinds::ToolOrigin::CallerExecuted,
+            redaction_mode: chio_core::receipt::kinds::RedactionMode::None,
             actor_chain: Vec::new(),
             content_hash: "content-hash-financial".to_string(),
             policy_hash: "policy-hash-financial".to_string(),
             evidence: Vec::new(),
             metadata: Some(metadata),
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
             bbs_projection_version: None,

@@ -1,4 +1,4 @@
-use chio_core::receipt::SignedExportEnvelope;
+use chio_core::receipt::lineage::SignedExportEnvelope;
 
 fn validate_non_empty(value: &str, field: &str) -> Result<(), String> {
     if value.trim().is_empty() {

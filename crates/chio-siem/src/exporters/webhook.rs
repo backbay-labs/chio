@@ -24,7 +24,7 @@ use crate::event::SiemEvent;
 use crate::exporter::{ExportError, ExportFuture, Exporter};
 use crate::exporters::require_https_endpoint;
 use crate::redaction::redact_for_operator_log;
-use chio_core::receipt::Decision;
+use chio_core::receipt::decision::Decision;
 use chio_egress_contract::{client_builder_with_contract, send_with_contract, HttpEgressContract};
 
 /// Authentication mode for the webhook exporter.

@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use arc_swap::ArcSwap;
 use chio_appraisal::VerifiedRuntimeAttestationRecord;
-use chio_core::receipt::GuardEvidence;
+use chio_core::receipt::metadata::GuardEvidence;
 use chio_log_redact::redacted;
 use dashmap::DashMap;
 
@@ -374,14 +374,14 @@ pub(crate) struct ValidatedGovernedAdmission {
 
 #[derive(Debug, Clone)]
 pub(crate) enum LocalReceiptArtifact {
-    Tool(Box<chio_core::receipt::ChioReceipt>),
-    Child(Box<chio_core::receipt::ChildRequestReceipt>),
+    Tool(Box<chio_core::receipt::body::ChioReceipt>),
+    Child(Box<chio_core::receipt::lineage::ChildRequestReceipt>),
 }
 
 impl LocalReceiptArtifact {
     fn verify_signature_with_floor(
         &self,
-        floor: chio_core::receipt::ReceiptCryptoFloor,
+        floor: chio_core::receipt::crypto_floor::ReceiptCryptoFloor,
     ) -> Result<bool, KernelError> {
         match self {
             Self::Tool(receipt) => receipt.verify_signature_with_floor(floor).map_err(|error| {
@@ -1332,11 +1332,19 @@ fn capability_crypto_floor(
     }
 }
 
-fn receipt_crypto_floor(floor: KernelCryptoFloor) -> chio_core::receipt::ReceiptCryptoFloor {
+fn receipt_crypto_floor(
+    floor: KernelCryptoFloor,
+) -> chio_core::receipt::crypto_floor::ReceiptCryptoFloor {
     match floor {
-        KernelCryptoFloor::AllowClassical => chio_core::receipt::ReceiptCryptoFloor::AllowClassical,
-        KernelCryptoFloor::AllowHybrid => chio_core::receipt::ReceiptCryptoFloor::AllowHybrid,
-        KernelCryptoFloor::PqRequired => chio_core::receipt::ReceiptCryptoFloor::PqRequired,
+        KernelCryptoFloor::AllowClassical => {
+            chio_core::receipt::crypto_floor::ReceiptCryptoFloor::AllowClassical
+        }
+        KernelCryptoFloor::AllowHybrid => {
+            chio_core::receipt::crypto_floor::ReceiptCryptoFloor::AllowHybrid
+        }
+        KernelCryptoFloor::PqRequired => {
+            chio_core::receipt::crypto_floor::ReceiptCryptoFloor::PqRequired
+        }
     }
 }
 
@@ -1978,7 +1986,7 @@ pub(crate) struct ReceiptParams<'a> {
     /// Strength of kernel mediation for this evaluation. Defaults to
     /// `Mediated` (the safest baseline) when integration adapters do not
     /// override it.
-    trust_level: chio_core::TrustLevel,
+    trust_level: chio_core::receipt::kinds::TrustLevel,
     /// Multi-tenant receipt isolation: explicit tenant tag for
     /// this receipt. `None` in virtually every call site -- the evaluate
     /// path plumbs the resolved tenant through

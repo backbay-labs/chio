@@ -50,7 +50,7 @@ mod tests {
         trust_policy::{AttestationTrustPolicy, AttestationTrustRule},
         workload_identity::{WorkloadCredentialKind, WorkloadIdentity, WorkloadIdentityScheme},
     };
-    use crate::receipt::SignedExportEnvelope;
+    use crate::receipt::lineage::SignedExportEnvelope;
     use crate::validate::{
         validate_runtime_attestation_reference_value_set,
         validate_runtime_attestation_trust_bundle,

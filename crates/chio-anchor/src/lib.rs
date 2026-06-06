@@ -187,7 +187,7 @@ pub fn receipt_inclusion_from_kernel(proof: &ReceiptInclusionProof) -> Web3Recei
 }
 
 pub fn build_anchor_inclusion_proof(
-    receipt: chio_core::receipt::ChioReceipt,
+    receipt: chio_core::receipt::body::ChioReceipt,
     inclusion: &ReceiptInclusionProof,
     checkpoint: &KernelCheckpoint,
     chain_anchor: Option<Web3ChainAnchorRecord>,
@@ -310,9 +310,9 @@ mod tests {
     use base64::Engine;
     use chio_core::crypto::Keypair;
     use chio_core::receipt::{
-        CheckpointPublicationIdentity, CheckpointPublicationIdentityKind,
-        CheckpointPublicationTrustAnchorBinding, CheckpointTrustAnchorIdentity,
-        CheckpointTrustAnchorIdentityKind,
+        checkpoint::CheckpointPublicationIdentity, checkpoint::CheckpointPublicationIdentityKind,
+        checkpoint::CheckpointPublicationTrustAnchorBinding,
+        checkpoint::CheckpointTrustAnchorIdentity, checkpoint::CheckpointTrustAnchorIdentityKind,
     };
     use chio_core::web3::anchors::AnchorInclusionProof;
     use chio_kernel::checkpoint::{

@@ -17,16 +17,21 @@ use chio_core::crypto::Keypair;
 use chio_core::crypto::{Ed25519Backend, HybridBackend, MlDsa65Backend, SigningBackend};
 use chio_core::merkle::MerkleTree;
 use chio_core::receipt::{
-    ChildRequestReceipt, ChildRequestReceiptBody, ChioReceipt, ChioReceiptBody, Decision,
-    EconomicAmountBoundsReceiptMetadata, EconomicAuthorizationMode,
-    EconomicAuthorizationReceiptMetadata, EconomicAuthorizationReceiptMetadataVersion,
-    EconomicBudgetReceiptMetadata, EconomicMerchantReceiptMetadata,
-    EconomicMeteringReceiptMetadata, EconomicPayeeReceiptMetadata, EconomicPayerReceiptMetadata,
-    EconomicPricingBasisReceiptMetadata, EconomicRailReceiptMetadata,
-    EconomicSettlementReceiptMetadata, FinancialReceiptMetadata, GovernedApprovalReceiptMetadata,
-    GovernedTransactionReceiptMetadata, MeteredBillingReceiptMetadata, ReceiptAttributionMetadata,
-    ReceiptLineageEndpoints, ReceiptLineageRelationKind, ReceiptLineageStatement,
-    ReceiptLineageStatementBody, SettlementStatus, SignedExportEnvelope, ToolCallAction,
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    economics::EconomicAmountBoundsReceiptMetadata, economics::EconomicAuthorizationMode,
+    economics::EconomicAuthorizationReceiptMetadata,
+    economics::EconomicAuthorizationReceiptMetadataVersion,
+    economics::EconomicBudgetReceiptMetadata, economics::EconomicMerchantReceiptMetadata,
+    economics::EconomicMeteringReceiptMetadata, economics::EconomicPayeeReceiptMetadata,
+    economics::EconomicPayerReceiptMetadata, economics::EconomicPricingBasisReceiptMetadata,
+    economics::EconomicRailReceiptMetadata, economics::EconomicSettlementReceiptMetadata,
+    economics::FinancialReceiptMetadata, economics::SettlementStatus,
+    governance::GovernedApprovalReceiptMetadata, governance::GovernedTransactionReceiptMetadata,
+    governance::MeteredBillingReceiptMetadata, lineage::ChildRequestReceipt,
+    lineage::ChildRequestReceiptBody, lineage::ReceiptLineageEndpoints,
+    lineage::ReceiptLineageRelationKind, lineage::ReceiptLineageStatement,
+    lineage::ReceiptLineageStatementBody, lineage::SignedExportEnvelope,
+    metadata::ReceiptAttributionMetadata,
 };
 use chio_core::session::{
     OperationKind, OperationTerminalState, RequestId, RequestLineageMode, RequestLineageRecord,
@@ -73,7 +78,7 @@ fn sample_receipt() -> ChioReceipt {
             policy_hash: "policy-1".to_string(),
             evidence: Vec::new(),
             metadata: None,
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
             bbs_projection_version: None,
@@ -137,7 +142,7 @@ fn sample_hybrid_receipt() -> ChioReceipt {
             policy_hash: "policy-hybrid-1".to_string(),
             evidence: Vec::new(),
             metadata: None,
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: backend.public_key(),
             bbs_projection_version: None,
@@ -486,7 +491,7 @@ fn sample_receipt_with_keypair(id: &str, timestamp: u64, keypair: &Keypair) -> C
             policy_hash: "policy-1".to_string(),
             evidence: Vec::new(),
             metadata: None,
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
             bbs_projection_version: None,
@@ -521,7 +526,7 @@ fn sample_receipt_with_keypair_and_tenant(
             policy_hash: "policy-1".to_string(),
             evidence: Vec::new(),
             metadata: None,
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: Some(tenant_id.to_string()),
             kernel_key: keypair.public_key(),
             bbs_projection_version: None,
@@ -873,7 +878,7 @@ fn load_checkpoint_publication_trust_anchor_binding_rows(
     store: &SqliteReceiptStore,
 ) -> Vec<(
     u64,
-    chio_core::receipt::CheckpointPublicationTrustAnchorBinding,
+    chio_core::receipt::checkpoint::CheckpointPublicationTrustAnchorBinding,
 )> {
     let connection = store.connection().test_unwrap();
     let mut statement = connection
@@ -894,9 +899,9 @@ fn load_checkpoint_publication_trust_anchor_binding_rows(
         let (checkpoint_seq, binding_json) = row.test_unwrap();
         (
             checkpoint_seq as u64,
-            serde_json::from_str::<chio_core::receipt::CheckpointPublicationTrustAnchorBinding>(
-                &binding_json,
-            )
+            serde_json::from_str::<
+                chio_core::receipt::checkpoint::CheckpointPublicationTrustAnchorBinding,
+            >(&binding_json)
             .test_unwrap(),
         )
     })
@@ -1276,7 +1281,7 @@ fn append_chio_receipt_rejects_mismatched_parameter_hash() {
             policy_hash: "policy-1".to_string(),
             evidence: Vec::new(),
             metadata: None,
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
             bbs_projection_version: None,
@@ -1539,7 +1544,7 @@ fn claim_log_projection_uses_capability_lineage_when_receipt_lacks_attribution()
                     attempted_cost: None,
                 }
             })),
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: receipt_kp.public_key(),
             bbs_projection_version: None,
@@ -3232,13 +3237,13 @@ fn record_checkpoint_publication_trust_anchor_binding_is_idempotent_and_visible_
     store.store_checkpoint(&second).test_unwrap();
 
     let second_publication = build_checkpoint_publication(&second).test_unwrap();
-    let binding = chio_core::receipt::CheckpointPublicationTrustAnchorBinding {
-        publication_identity: chio_core::receipt::CheckpointPublicationIdentity::new(
-            chio_core::receipt::CheckpointPublicationIdentityKind::LocalLog,
+    let binding = chio_core::receipt::checkpoint::CheckpointPublicationTrustAnchorBinding {
+        publication_identity: chio_core::receipt::checkpoint::CheckpointPublicationIdentity::new(
+            chio_core::receipt::checkpoint::CheckpointPublicationIdentityKind::LocalLog,
             second_publication.log_id.clone(),
         ),
-        trust_anchor_identity: chio_core::receipt::CheckpointTrustAnchorIdentity::new(
-            chio_core::receipt::CheckpointTrustAnchorIdentityKind::TransparencyRoot,
+        trust_anchor_identity: chio_core::receipt::checkpoint::CheckpointTrustAnchorIdentity::new(
+            chio_core::receipt::checkpoint::CheckpointTrustAnchorIdentityKind::TransparencyRoot,
             "root-set-1",
         ),
         trust_anchor_ref: "anchor-root-1".to_string(),
@@ -3350,7 +3355,7 @@ fn receipt_analytics_groups_by_agent_tool_and_time() {
                 policy_hash: "policy-analytics".to_string(),
                 evidence: Vec::new(),
                 metadata: Some(metadata),
-                trust_level: chio_core::TrustLevel::default(),
+                trust_level: chio_core::receipt::kinds::TrustLevel::default(),
                 tenant_id: None,
                 kernel_key: keypair.public_key(),
                 bbs_projection_version: None,
@@ -3548,7 +3553,7 @@ fn cost_attribution_report_aggregates_matching_corpus_and_limits_detail_rows() {
                 policy_hash: "policy-cost".to_string(),
                 evidence: Vec::new(),
                 metadata: Some(metadata),
-                trust_level: chio_core::TrustLevel::default(),
+                trust_level: chio_core::receipt::kinds::TrustLevel::default(),
                 tenant_id: None,
                 kernel_key: receipt_kp.public_key(),
                 bbs_projection_version: None,
@@ -3840,7 +3845,7 @@ fn economic_receipt_projection_report_joins_signed_envelope_with_reconciliation_
                     }),
                 }
             })),
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: receipt_kp.public_key(),
             bbs_projection_version: None,
@@ -3861,12 +3866,13 @@ fn economic_receipt_projection_report_joins_signed_envelope_with_reconciliation_
         .upsert_metered_billing_reconciliation(
             &receipt_id,
             &MeteredBillingEvidenceRecord {
-                usage_evidence: chio_core::receipt::MeteredUsageEvidenceReceiptMetadata {
-                    evidence_kind: "provider-export".to_string(),
-                    evidence_id: "usage-economic-1".to_string(),
-                    observed_units: 120,
-                    evidence_sha256: Some("usage-sha-economic-1".to_string()),
-                },
+                usage_evidence:
+                    chio_core::receipt::governance::MeteredUsageEvidenceReceiptMetadata {
+                        evidence_kind: "provider-export".to_string(),
+                        evidence_id: "usage-economic-1".to_string(),
+                        observed_units: 120,
+                        evidence_sha256: Some("usage-sha-economic-1".to_string()),
+                    },
                 billed_cost: MonetaryAmount {
                     units: 450,
                     currency: "USD".to_string(),
@@ -4092,7 +4098,7 @@ fn economic_completion_flow_report_bundles_receipts_underwriting_and_credit_arti
                     }),
                 }
             })),
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: receipt_kp.public_key(),
             bbs_projection_version: None,
@@ -4113,12 +4119,13 @@ fn economic_completion_flow_report_bundles_receipts_underwriting_and_credit_arti
         .upsert_metered_billing_reconciliation(
             &receipt_id,
             &MeteredBillingEvidenceRecord {
-                usage_evidence: chio_core::receipt::MeteredUsageEvidenceReceiptMetadata {
-                    evidence_kind: "provider-export".to_string(),
-                    evidence_id: "usage-flow-1".to_string(),
-                    observed_units: 120,
-                    evidence_sha256: Some("usage-sha-flow-1".to_string()),
-                },
+                usage_evidence:
+                    chio_core::receipt::governance::MeteredUsageEvidenceReceiptMetadata {
+                        evidence_kind: "provider-export".to_string(),
+                        evidence_id: "usage-flow-1".to_string(),
+                        observed_units: 120,
+                        evidence_sha256: Some("usage-sha-flow-1".to_string()),
+                    },
                 billed_cost: MonetaryAmount {
                     units: 450,
                     currency: "USD".to_string(),
@@ -4296,7 +4303,7 @@ fn compliance_report_counts_proof_and_lineage_coverage() {
                 policy_hash: "policy-compliance".to_string(),
                 evidence: Vec::new(),
                 metadata: Some(metadata),
-                trust_level: chio_core::TrustLevel::default(),
+                trust_level: chio_core::receipt::kinds::TrustLevel::default(),
                 tenant_id: None,
                 kernel_key: checkpoint_kp.public_key(),
                 bbs_projection_version: None,
@@ -4476,7 +4483,7 @@ fn receipt_store_authorization_context_report_does_not_mark_asserted_call_chain_
                     economic_authorization: None,
                 }
             })),
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: receipt_kp.public_key(),
             bbs_projection_version: None,
@@ -4576,7 +4583,7 @@ fn receipt_lineage_verification_backfills_from_governed_call_chain_metadata() {
             policy_hash: "policy-lineage".to_string(),
             evidence: Vec::new(),
             metadata: None,
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: parent_receipt_kp.public_key(),
             bbs_projection_version: None,
@@ -4642,7 +4649,7 @@ fn receipt_lineage_verification_backfills_from_governed_call_chain_metadata() {
                     economic_authorization: None,
                 }
             })),
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: child_receipt_kp.public_key(),
             bbs_projection_version: None,
@@ -4853,7 +4860,7 @@ fn receipt_lineage_statement_links_parent_and_child_receipts() {
             policy_hash: "policy-lineage-parent".to_string(),
             evidence: Vec::new(),
             metadata: None,
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: receipt_kp.public_key(),
             bbs_projection_version: None,
@@ -4906,7 +4913,7 @@ fn receipt_lineage_statement_links_parent_and_child_receipts() {
                     economic_authorization: None,
                 }
             })),
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: receipt_kp.public_key(),
             bbs_projection_version: None,

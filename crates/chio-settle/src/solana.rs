@@ -1,7 +1,7 @@
 use bs58::decode as bs58_decode;
 use chio_core::canonical::canonical_json_bytes;
 use chio_core::capability::scope::MonetaryAmount;
-use chio_core::receipt::ChioReceipt;
+use chio_core::receipt::body::ChioReceipt;
 use chio_core::web3::identity::{
     verify_web3_identity_binding, SignedWeb3IdentityBinding, Web3KeyBindingPurpose,
 };
@@ -247,7 +247,9 @@ pub fn compare_commitments(
 mod tests {
     use super::*;
     use chio_core::crypto::Keypair;
-    use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction};
+    use chio_core::receipt::{
+        body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    };
     use chio_core::web3::identity::{SignedWeb3IdentityBinding, Web3IdentityBindingCertificate};
     use serde_json::json;
 
@@ -277,7 +279,7 @@ mod tests {
                 policy_hash: "policy".to_string(),
                 evidence: Vec::new(),
                 metadata: None,
-                trust_level: chio_core::TrustLevel::default(),
+                trust_level: chio_core::receipt::kinds::TrustLevel::default(),
                 tenant_id: None,
                 kernel_key: keypair.public_key(),
                 bbs_projection_version: None,

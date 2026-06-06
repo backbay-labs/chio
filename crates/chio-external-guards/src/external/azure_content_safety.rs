@@ -17,7 +17,7 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
-use chio_core_types::GuardEvidence;
+use chio_core_types::receipt::metadata::GuardEvidence;
 use chio_kernel::Verdict;
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use reqwest::Client;

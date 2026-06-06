@@ -9,7 +9,9 @@ use chio_core_types::capability::{
     token::CapabilityToken,
 };
 use chio_core_types::crypto::{PublicKey, Signature, SigningAlgorithm, SigningBackend};
-use chio_core_types::receipt::{ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
+use chio_core_types::receipt::{
+    body::ChioReceiptBody, decision::Decision, decision::ToolCallAction, kinds::TrustLevel,
+};
 use serde_json::Value;
 
 use crate::capability_verify::CapabilityError;

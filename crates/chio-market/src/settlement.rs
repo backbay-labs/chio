@@ -9,7 +9,7 @@ use crate::credit::{
     CapitalExecutionRole, CapitalExecutionWindow, SignedCapitalBookReport,
     SignedCapitalExecutionInstruction,
 };
-use crate::receipt::SignedExportEnvelope;
+use crate::receipt::lineage::SignedExportEnvelope;
 
 use crate::{
     bounded_market_query_limit, liability_claim_adjudication_payable_amount,

@@ -31,7 +31,7 @@ pub use insurance_flow::{
 use serde::Serialize;
 
 use crate::capability::scope::MonetaryAmount;
-use crate::receipt::SignedExportEnvelope;
+use crate::receipt::lineage::SignedExportEnvelope;
 
 pub const LIABILITY_PROVIDER_ARTIFACT_SCHEMA: &str = "chio.market.provider.v1";
 pub const LIABILITY_PROVIDER_LIST_REPORT_SCHEMA: &str = "chio.market.provider-list.v1";

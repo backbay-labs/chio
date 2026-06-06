@@ -249,10 +249,10 @@ pub fn receipt_to_span_with_authority(
     // see verdict="allow" for an Allow decision so downstream consumers can
     // filter consistently on the verdict field.
     let verdict = match &receipt.decision {
-        Some(chio_core::receipt::Decision::Allow) => "allow",
-        Some(chio_core::receipt::Decision::Deny { .. }) => "deny",
-        Some(chio_core::receipt::Decision::Cancelled { .. }) => "cancelled",
-        Some(chio_core::receipt::Decision::Incomplete { .. }) => "incomplete",
+        Some(chio_core::receipt::decision::Decision::Allow) => "allow",
+        Some(chio_core::receipt::decision::Decision::Deny { .. }) => "deny",
+        Some(chio_core::receipt::decision::Decision::Cancelled { .. }) => "cancelled",
+        Some(chio_core::receipt::decision::Decision::Incomplete { .. }) => "incomplete",
         _ => semantics.receipt_kind.as_str(),
     };
 
@@ -318,7 +318,7 @@ pub fn receipt_to_span_with_authority(
     ];
 
     // Add deny reason if applicable.
-    if let Some(chio_core::receipt::Decision::Deny { reason, guard }) = &receipt.decision {
+    if let Some(chio_core::receipt::decision::Decision::Deny { reason, guard }) = &receipt.decision {
         attributes.push(SpanAttribute {
             key: "chio.deny_reason".to_string(),
             value: reason.clone(),

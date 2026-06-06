@@ -35,7 +35,8 @@ use chio_core_types::crypto::{
     Ed25519Backend, HybridBackend, Keypair, MlDsa65Backend, SigningAlgorithm, SigningBackend,
 };
 use chio_core_types::receipt::{
-    ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    kinds::TrustLevel,
 };
 
 const FIXTURE_PATH: &str = "tests/fixtures/v318/receipt_bundle.json";

@@ -6,7 +6,7 @@ use crate::listing::{
     normalize_namespace, GenericListingActorKind, GenericRegistryPublisher, SignedGenericListing,
     SignedGenericTrustActivation,
 };
-use crate::receipt::SignedExportEnvelope;
+use crate::receipt::lineage::SignedExportEnvelope;
 use crate::validation::{is_sha256_hex, validate_non_empty};
 
 pub const GENERIC_GOVERNANCE_CHARTER_ARTIFACT_SCHEMA: &str = "chio.registry.governance-charter.v1";

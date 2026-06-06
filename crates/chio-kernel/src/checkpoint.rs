@@ -15,7 +15,8 @@ use chio_core::hashing::sha256_hex;
 use chio_core::hashing::Hash;
 use chio_core::merkle::{MerkleProof, MerkleTree};
 use chio_core::receipt::{
-    CheckpointPublicationIdentityKind, CheckpointPublicationTrustAnchorBinding,
+    checkpoint::CheckpointPublicationIdentityKind,
+    checkpoint::CheckpointPublicationTrustAnchorBinding,
 };
 use serde::{Deserialize, Serialize};
 
@@ -1093,12 +1094,12 @@ mod tests {
         let publication = build_trust_anchored_checkpoint_publication(
             &checkpoint,
             CheckpointPublicationTrustAnchorBinding {
-                publication_identity: chio_core::receipt::CheckpointPublicationIdentity::new(
-                    chio_core::receipt::CheckpointPublicationIdentityKind::TransparencyService,
+                publication_identity: chio_core::receipt::checkpoint::CheckpointPublicationIdentity::new(
+                    chio_core::receipt::checkpoint::CheckpointPublicationIdentityKind::TransparencyService,
                     "transparency.example/checkpoints/1",
                 ),
-                trust_anchor_identity: chio_core::receipt::CheckpointTrustAnchorIdentity::new(
-                    chio_core::receipt::CheckpointTrustAnchorIdentityKind::Did,
+                trust_anchor_identity: chio_core::receipt::checkpoint::CheckpointTrustAnchorIdentity::new(
+                    chio_core::receipt::checkpoint::CheckpointTrustAnchorIdentityKind::Did,
                     "did:chio:operator-root",
                 ),
                 trust_anchor_ref: "chio_checkpoint_witness_chain".to_string(),
@@ -1166,12 +1167,12 @@ mod tests {
         let error = build_trust_anchored_checkpoint_publication(
             &checkpoint,
             CheckpointPublicationTrustAnchorBinding {
-                publication_identity: chio_core::receipt::CheckpointPublicationIdentity::new(
-                    chio_core::receipt::CheckpointPublicationIdentityKind::TransparencyService,
+                publication_identity: chio_core::receipt::checkpoint::CheckpointPublicationIdentity::new(
+                    chio_core::receipt::checkpoint::CheckpointPublicationIdentityKind::TransparencyService,
                     "",
                 ),
-                trust_anchor_identity: chio_core::receipt::CheckpointTrustAnchorIdentity::new(
-                    chio_core::receipt::CheckpointTrustAnchorIdentityKind::Did,
+                trust_anchor_identity: chio_core::receipt::checkpoint::CheckpointTrustAnchorIdentity::new(
+                    chio_core::receipt::checkpoint::CheckpointTrustAnchorIdentityKind::Did,
                     "did:chio:operator-root",
                 ),
                 trust_anchor_ref: "chio_checkpoint_witness_chain".to_string(),
@@ -1191,12 +1192,12 @@ mod tests {
         let error = build_trust_anchored_checkpoint_publication(
             &checkpoint,
             CheckpointPublicationTrustAnchorBinding {
-                publication_identity: chio_core::receipt::CheckpointPublicationIdentity::new(
-                    chio_core::receipt::CheckpointPublicationIdentityKind::LocalLog,
+                publication_identity: chio_core::receipt::checkpoint::CheckpointPublicationIdentity::new(
+                    chio_core::receipt::checkpoint::CheckpointPublicationIdentityKind::LocalLog,
                     "local-log-not-the-real-one",
                 ),
-                trust_anchor_identity: chio_core::receipt::CheckpointTrustAnchorIdentity::new(
-                    chio_core::receipt::CheckpointTrustAnchorIdentityKind::OperatorRoot,
+                trust_anchor_identity: chio_core::receipt::checkpoint::CheckpointTrustAnchorIdentity::new(
+                    chio_core::receipt::checkpoint::CheckpointTrustAnchorIdentityKind::OperatorRoot,
                     "chio-operator-root",
                 ),
                 trust_anchor_ref: "chio_checkpoint_witness_chain".to_string(),

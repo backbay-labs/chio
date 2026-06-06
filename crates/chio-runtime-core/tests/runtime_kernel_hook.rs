@@ -4,7 +4,7 @@ use chio_core_types::capability::{
     token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core_types::crypto::Keypair;
-use chio_core_types::SignedExportEnvelope;
+use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_kernel::{RuntimeAdmissionContext, RuntimeAdmissionHook, ToolCallRequest};
 use chio_runtime_core::{
     runtime_admission_bundle_sha256, runtime_peer_weights_sha256, tool_args_sha256,

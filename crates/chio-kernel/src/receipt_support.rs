@@ -6,7 +6,7 @@ use chio_core::capability::governance::{
     GovernedCallChainContext, GovernedCallChainEvidenceSource, GovernedCallChainProvenance,
     GovernedProvenanceEvidenceClass, GovernedUpstreamCallChainProof,
 };
-use chio_core::receipt::GuardEvidence;
+use chio_core::receipt::metadata::GuardEvidence;
 use uuid::Uuid;
 
 use crate::evidence_export::EvidenceLineageReferences;
@@ -338,13 +338,13 @@ pub struct SignedHybridReceipt {
 /// # Authoritative signing input
 ///
 /// The bytes signed are the canonical JSON encoding of the
-/// [`chio_core::receipt::ChioReceiptSigningBody`] wrapper, which binds
+/// [`chio_core::receipt::signing::ChioReceiptSigningBody`] wrapper, which binds
 /// the content-addressed receipt id to the
-/// [`chio_core::receipt::ChioReceiptIdInput`] that derived it. This is
+/// [`chio_core::receipt::body::ChioReceiptIdInput`] that derived it. This is
 /// the same byte sequence the classical sibling
 /// [`sign_receipt_body_with_backend`] signs (it delegates to
 /// [`chio_kernel_core::sign_receipt`] and then
-/// [`chio_core::receipt::ChioReceipt::sign_with_backend`]). The two
+/// [`chio_core::receipt::body::ChioReceipt::sign_with_backend`]). The two
 /// paths produce byte-identical signed bytes for the same body and
 /// backend.
 ///
@@ -369,7 +369,7 @@ pub struct SignedHybridReceipt {
 /// Returns [`KernelError::ReceiptSigningFailed`] when:
 /// - `body.kernel_key` does not match the backend's public key, OR
 /// - `body` fails semantic validation (see
-///   [`chio_core::receipt::ChioReceiptBody::validate_signable_semantics`]),
+///   [`chio_core::receipt::body::ChioReceiptBody::validate_signable_semantics`]),
 ///   OR
 /// - canonical JSON encoding of the receipt id input or signing wrapper
 ///   fails, OR
@@ -382,7 +382,9 @@ pub fn sign_receipt_body_hybrid_canonical(
     use chio_core::crypto::{
         canonical_json_shared_bytes, sign_shared_canonical_with_backend, PublicKey,
     };
-    use chio_core::receipt::{bind_receipt_signing_nonce, chio_receipt_id, ChioReceiptSigningBody};
+    use chio_core::receipt::{
+        body::chio_receipt_id, signing::bind_receipt_signing_nonce, signing::ChioReceiptSigningBody,
+    };
 
     // Fail-closed kernel-key match BEFORE any cryptographic work. Mirrors
     // `chio_kernel_core::sign_receipt` so the byte-identity contract holds
@@ -785,7 +787,8 @@ fn governed_runtime_assurance_receipt_metadata(
 fn governed_economic_authorization_metadata(
     request: &ToolCallRequest,
     financial: &FinancialReceiptMetadata,
-) -> Result<Option<chio_core::receipt::EconomicAuthorizationReceiptMetadata>, KernelError> {
+) -> Result<Option<chio_core::receipt::economics::EconomicAuthorizationReceiptMetadata>, KernelError>
+{
     let Some(intent) = request.governed_intent.as_ref() else {
         return Ok(None);
     };
@@ -812,13 +815,13 @@ fn governed_economic_authorization_metadata(
         .map(|metered| {
             canonical_json_bytes(&metered.quote)
                 .map(|quote_bytes| chio_core::sha256_hex(&quote_bytes))
-                .map(
-                    |quote_hash| chio_core::receipt::EconomicPricingBasisReceiptMetadata {
+                .map(|quote_hash| {
+                    chio_core::receipt::economics::EconomicPricingBasisReceiptMetadata {
                         quote_hash: Some(quote_hash),
                         tariff_hash: None,
                         quote_expiry: metered.quote.expires_at,
-                    },
-                )
+                    }
+                })
                 .map_err(|error| {
                     KernelError::ReceiptSigningFailed(format!(
                         "failed to canonicalize metered billing quote for receipt metadata: {error}"
@@ -837,14 +840,14 @@ fn governed_economic_authorization_metadata(
                 "max_billed_units": metered.max_billed_units,
             }))
             .map(|profile_bytes| chio_core::sha256_hex(&profile_bytes))
-            .map(
-                |meter_profile_hash| chio_core::receipt::EconomicMeteringReceiptMetadata {
+            .map(|meter_profile_hash| {
+                chio_core::receipt::economics::EconomicMeteringReceiptMetadata {
                     provider: metered.quote.provider.clone(),
                     meter_profile_hash,
                     max_billable_units: metered.max_billed_units,
                     billing_unit: Some(metered.quote.billing_unit.clone()),
-                },
-            )
+                }
+            })
             .map_err(|error| {
                 KernelError::ReceiptSigningFailed(format!(
                     "failed to canonicalize metering profile for receipt metadata: {error}"
@@ -856,26 +859,26 @@ fn governed_economic_authorization_metadata(
     let economic_mode = if let Some(metered) = metered {
         match metered.settlement_mode {
             chio_core::capability::governance::MeteredSettlementMode::MustPrepay => {
-                chio_core::receipt::EconomicAuthorizationMode::PrepaidFixed
+                chio_core::receipt::economics::EconomicAuthorizationMode::PrepaidFixed
             }
             chio_core::capability::governance::MeteredSettlementMode::HoldCapture => {
-                chio_core::receipt::EconomicAuthorizationMode::MeteredHoldCapture
+                chio_core::receipt::economics::EconomicAuthorizationMode::MeteredHoldCapture
             }
             chio_core::capability::governance::MeteredSettlementMode::AllowThenSettle => {
-                chio_core::receipt::EconomicAuthorizationMode::ExternalDispatch
+                chio_core::receipt::economics::EconomicAuthorizationMode::ExternalDispatch
             }
         }
     } else if financial.payment_reference.is_some() {
-        chio_core::receipt::EconomicAuthorizationMode::HoldCapture
+        chio_core::receipt::economics::EconomicAuthorizationMode::HoldCapture
     } else {
-        chio_core::receipt::EconomicAuthorizationMode::BudgetOnly
+        chio_core::receipt::economics::EconomicAuthorizationMode::BudgetOnly
     };
 
     Ok(Some(
-        chio_core::receipt::EconomicAuthorizationReceiptMetadata {
-            version: chio_core::receipt::EconomicAuthorizationReceiptMetadataVersion::V1,
+        chio_core::receipt::economics::EconomicAuthorizationReceiptMetadata {
+            version: chio_core::receipt::economics::EconomicAuthorizationReceiptMetadataVersion::V1,
             economic_mode,
-            payer: chio_core::receipt::EconomicPayerReceiptMetadata {
+            payer: chio_core::receipt::economics::EconomicPayerReceiptMetadata {
                 party_id: request.agent_id.clone(),
                 funding_source_ref: commerce
                     .map(|commerce| commerce.shared_payment_token_id.clone())
@@ -884,14 +887,14 @@ fn governed_economic_authorization_metadata(
                 custody_provider: None,
                 obligor_ref: None,
             },
-            merchant: chio_core::receipt::EconomicMerchantReceiptMetadata {
+            merchant: chio_core::receipt::economics::EconomicMerchantReceiptMetadata {
                 merchant_id: commerce
                     .map(|commerce| commerce.seller.clone())
                     .unwrap_or_else(|| request.server_id.clone()),
                 merchant_of_record: None,
                 order_ref: Some(request.request_id.clone()),
             },
-            payee: chio_core::receipt::EconomicPayeeReceiptMetadata {
+            payee: chio_core::receipt::economics::EconomicPayeeReceiptMetadata {
                 beneficiary_id: request.server_id.clone(),
                 settlement_destination_ref: financial
                     .payment_reference
@@ -899,7 +902,7 @@ fn governed_economic_authorization_metadata(
                     .or_else(|| commerce.map(|commerce| commerce.shared_payment_token_id.clone()))
                     .unwrap_or_else(|| request.server_id.clone()),
             },
-            rail: chio_core::receipt::EconomicRailReceiptMetadata {
+            rail: chio_core::receipt::economics::EconomicRailReceiptMetadata {
                 kind: if commerce.is_some() {
                     "shared_payment_token".to_string()
                 } else if metered.is_some() {
@@ -917,7 +920,7 @@ fn governed_economic_authorization_metadata(
                     .clone()
                     .or_else(|| commerce.map(|commerce| commerce.shared_payment_token_id.clone())),
             },
-            amount_bounds: chio_core::receipt::EconomicAmountBoundsReceiptMetadata {
+            amount_bounds: chio_core::receipt::economics::EconomicAmountBoundsReceiptMetadata {
                 approved_max,
                 hold_amount: hold_amount_units.map(|units| {
                     chio_core::capability::scope::MonetaryAmount {
@@ -933,7 +936,7 @@ fn governed_economic_authorization_metadata(
             pricing_basis,
             metering,
             liability_refs: None,
-            budget: chio_core::receipt::EconomicBudgetReceiptMetadata {
+            budget: chio_core::receipt::economics::EconomicBudgetReceiptMetadata {
                 grant_index: financial.grant_index,
                 cost_charged: financial.cost_charged,
                 currency: financial.currency.clone(),
@@ -943,7 +946,7 @@ fn governed_economic_authorization_metadata(
                 root_budget_holder: financial.root_budget_holder.clone(),
                 attempted_cost: financial.attempted_cost,
             },
-            settlement: chio_core::receipt::EconomicSettlementReceiptMetadata {
+            settlement: chio_core::receipt::economics::EconomicSettlementReceiptMetadata {
                 settlement_status: financial.settlement_status.clone(),
             },
         },
@@ -952,7 +955,9 @@ fn governed_economic_authorization_metadata(
 
 fn inject_governed_economic_authorization_metadata(
     metadata: Option<serde_json::Value>,
-    economic_authorization: Option<chio_core::receipt::EconomicAuthorizationReceiptMetadata>,
+    economic_authorization: Option<
+        chio_core::receipt::economics::EconomicAuthorizationReceiptMetadata,
+    >,
 ) -> Result<Option<serde_json::Value>, KernelError> {
     let Some(economic_authorization) = economic_authorization else {
         return Ok(metadata);
@@ -1144,7 +1149,7 @@ pub(super) fn request_model_metadata_receipt_metadata(
 ) -> Option<serde_json::Value> {
     request.model_metadata.as_ref().map(|model_metadata| {
         serde_json::json!({
-            "model_metadata": chio_core::receipt::ModelMetadataReceiptMetadata::from(model_metadata)
+            "model_metadata": chio_core::receipt::metadata::ModelMetadataReceiptMetadata::from(model_metadata)
         })
     })
 }
@@ -1946,7 +1951,7 @@ mod tests {
 
         assert_eq!(
             economic.economic_mode,
-            chio_core::receipt::EconomicAuthorizationMode::MeteredHoldCapture
+            chio_core::receipt::economics::EconomicAuthorizationMode::MeteredHoldCapture
         );
         assert_eq!(economic.budget.currency, "USD");
         assert_eq!(economic.budget.cost_charged, 230);

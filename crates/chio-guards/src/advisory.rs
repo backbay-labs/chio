@@ -14,7 +14,7 @@
 
 use std::sync::Arc;
 
-use chio_core::receipt::GuardEvidence;
+use chio_core::receipt::metadata::GuardEvidence;
 #[cfg(test)]
 use chio_kernel::Verdict;
 use chio_kernel::{Guard, GuardContext, GuardDecision, KernelError};

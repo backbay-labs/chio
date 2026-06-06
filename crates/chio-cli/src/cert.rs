@@ -243,7 +243,7 @@ fn load_session_receipts(
     for row in rows {
         let (seq, json_data) =
             row.map_err(|e| CliError::cli_other_error(format!("row read failed: {e}")))?;
-        let receipt: chio_core::receipt::ChioReceipt = serde_json::from_str(&json_data)
+        let receipt: chio_core::receipt::body::ChioReceipt = serde_json::from_str(&json_data)
             .map_err(|e| CliError::cli_other_error(format!("receipt parse failed: {e}")))?;
         entries.push(ComplianceReceiptEntry { receipt, seq });
     }

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::artifacts::FederationArtifactReference;
 use crate::error::FederationContractError;
 use crate::listing::GenericTrustAdmissionClass;
-use crate::receipt::SignedExportEnvelope;
+use crate::receipt::lineage::SignedExportEnvelope;
 use crate::validation::{
     ensure_non_empty, ensure_unique_strings, validate_reputation_clearing_continuity,
     validate_reputation_input_reference, validate_sybil_control,

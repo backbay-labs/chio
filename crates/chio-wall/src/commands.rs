@@ -9,7 +9,9 @@ use chio_core::capability::{
     token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core::crypto::Keypair;
-use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction};
+use chio_core::receipt::{
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+};
 use chio_core::{canonical_json_bytes, sha256_hex};
 use chio_guards::mcp_tool::{McpDefaultAction, McpToolConfig};
 use chio_guards::McpToolGuard;
@@ -430,7 +432,7 @@ fn chio_wall_receipt(
             policy_hash,
             evidence: Vec::new(),
             metadata: Some(metadata),
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: kernel_keypair.public_key(),
             bbs_projection_version: None,
@@ -1057,7 +1059,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use chio_core::receipt::Decision;
+    use chio_core::receipt::decision::Decision;
     use chio_siem::event::SiemEvent;
     use chio_siem::exporter::ExportFuture;
     use chio_siem::{Exporter, ExporterManager, SiemConfig};

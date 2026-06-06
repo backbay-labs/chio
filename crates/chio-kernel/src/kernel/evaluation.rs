@@ -24,7 +24,7 @@ struct PreDispatchCleanupDeny<'a> {
 impl ChioKernel {
     fn with_pre_invocation_guard_evidence<T>(
         &self,
-        evidence: &[chio_core::receipt::GuardEvidence],
+        evidence: &[chio_core::receipt::metadata::GuardEvidence],
         build: impl FnOnce() -> Result<T, KernelError>,
     ) -> Result<T, KernelError> {
         let _guard_evidence_scope = scope_pre_invocation_guard_evidence(evidence.to_vec());

@@ -24,7 +24,7 @@ use chio_attest_buyer_core::trust_bundle::{
 };
 use chio_core_types::canonical::canonical_json_bytes;
 use chio_core_types::crypto::{sha256_hex, Keypair, PublicKey};
-use chio_core_types::receipt::SignedExportEnvelope;
+use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_federation::bilateral_dsse::Keyid;
 use chio_governance::authorization::{
     GovernanceReceiptArtifact, GovernanceReceiptCaseKind, SignedGovernanceReceipt,

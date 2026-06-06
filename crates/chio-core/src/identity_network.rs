@@ -10,7 +10,7 @@ use std::collections::HashSet;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use crate::receipt::SignedExportEnvelope;
+use crate::receipt::lineage::SignedExportEnvelope;
 
 pub const CHIO_PUBLIC_IDENTITY_PROFILE_SCHEMA: &str = "chio.public-identity-profile.v1";
 pub const CHIO_PUBLIC_WALLET_DIRECTORY_ENTRY_SCHEMA: &str = "chio.public-wallet-directory-entry.v1";

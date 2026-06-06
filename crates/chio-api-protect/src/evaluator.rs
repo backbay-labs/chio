@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use chio_core_types::crypto::{Keypair, PublicKey};
-use chio_core_types::receipt::GuardEvidence;
+use chio_core_types::receipt::metadata::GuardEvidence;
 use chio_http_core::{
     AuthMethod, CallerIdentity, ChioHttpRequest, HttpAuthority, HttpAuthorityError,
     HttpAuthorityEvaluation, HttpAuthorityInput, HttpAuthorityPolicy, HttpMethod, HttpReceipt,

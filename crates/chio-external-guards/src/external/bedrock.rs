@@ -35,7 +35,7 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
-use chio_core_types::GuardEvidence;
+use chio_core_types::receipt::metadata::GuardEvidence;
 use chio_kernel::Verdict;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use reqwest::{Client, StatusCode};
@@ -216,7 +216,7 @@ impl BedrockGuardrailGuard {
     /// Build a [`GuardEvidence`] record for the verdict that
     /// [`ExternalGuard::eval`] most recently returned for `ctx`. The
     /// returned structure is suitable for attaching to receipts as part
-    /// of [`chio_core_types::ChioReceiptBody::evidence`].
+    /// of [`chio_core_types::receipt::body::ChioReceiptBody::evidence`].
     pub fn evidence_from_decision(
         &self,
         verdict: Verdict,

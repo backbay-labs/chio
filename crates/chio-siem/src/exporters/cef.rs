@@ -6,7 +6,7 @@
 
 use crate::event::SiemEvent;
 use crate::exporter::{ExportError, ExportFuture, Exporter};
-use chio_core::receipt::Decision;
+use chio_core::receipt::decision::Decision;
 
 #[derive(Debug, Clone)]
 pub struct CefExporterConfig {
@@ -233,7 +233,8 @@ mod tests {
     use super::*;
     use chio_core::crypto::Keypair;
     use chio_core::receipt::{
-        ChioReceipt, ChioReceiptBody, Decision, ReceiptSemanticFields, ToolCallAction, TrustLevel,
+        body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+        kinds::TrustLevel, metadata::ReceiptSemanticFields,
     };
     use chio_test_support::prelude::*;
 
@@ -295,11 +296,12 @@ mod tests {
             "path": "/etc/passwd"
         }))
         .test_expect("hash test receipt parameters");
-        let decision = if semantics.receipt_kind == chio_core::ReceiptKind::MediatedDecision {
-            Some(decision)
-        } else {
-            None
-        };
+        let decision =
+            if semantics.receipt_kind == chio_core::receipt::kinds::ReceiptKind::MediatedDecision {
+                Some(decision)
+            } else {
+                None
+            };
         ChioReceipt::sign(
             ChioReceiptBody {
                 id: "trace-cef-1".to_string(),

@@ -40,7 +40,7 @@ pub struct ArenaReceipt {
     pub request_id: String,
     pub verdict: ScenarioVerdict,
     pub reason: Option<String>,
-    pub receipt: chio_core::receipt::ChioReceipt,
+    pub receipt: chio_core::receipt::body::ChioReceipt,
 }
 
 #[derive(Clone)]
@@ -292,7 +292,10 @@ fn response_was_rewritten(response: &ToolCallResponse) -> bool {
 #[cfg(test)]
 mod tests {
     use chio_core::crypto::{sha256_hex, Keypair};
-    use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
+    use chio_core::receipt::{
+        body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+        kinds::TrustLevel,
+    };
     use chio_core::session::OperationTerminalState;
     use serde_json::json;
 

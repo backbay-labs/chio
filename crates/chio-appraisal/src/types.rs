@@ -10,7 +10,7 @@ use crate::capability::{
     trust_policy::AttestationTrustError,
     workload_identity::{WorkloadIdentity, WorkloadIdentityError},
 };
-use crate::receipt::SignedExportEnvelope;
+use crate::receipt::lineage::SignedExportEnvelope;
 use chio_core_types::runtime_attestation::AttestationVerifierFamily;
 
 pub const AZURE_MAA_ATTESTATION_SCHEMA: &str = "chio.runtime-attestation.azure-maa.jwt.v1";

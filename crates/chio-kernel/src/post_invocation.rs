@@ -1,6 +1,6 @@
 //! Post-invocation hook pipeline executed after a tool returns output.
 
-use chio_core::receipt::GuardEvidence;
+use chio_core::receipt::metadata::GuardEvidence;
 use chio_core::{capability::scope::ChioScope, AgentId, ServerId};
 use serde_json::Value;
 

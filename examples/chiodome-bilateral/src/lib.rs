@@ -23,8 +23,8 @@ use chio_core::crypto::Keypair;
 use chio_core::hashing::Hash;
 use chio_core::merkle::{leaf_hash, MerkleTree};
 use chio_core::receipt::{
-    ActorRef, BoundaryClass, ChioReceipt, ChioReceiptBody, Decision, FinancialReceiptMetadata,
-    ReceiptKind, RedactionMode, SettlementStatus, ToolCallAction, ToolOrigin, TrustLevel,
+    metadata::ActorRef, kinds::BoundaryClass, body::ChioReceipt, body::ChioReceiptBody, decision::Decision, economics::FinancialReceiptMetadata,
+    kinds::ReceiptKind, kinds::RedactionMode, economics::SettlementStatus, decision::ToolCallAction, kinds::ToolOrigin, kinds::TrustLevel,
 };
 use chio_federation::bilateral_dsse::{sign_dsse_envelope, verify_dsse_envelope, DsseEnvelope};
 use chio_web3::anchors::{Web3CheckpointStatement, CHIO_CHECKPOINT_STATEMENT_SCHEMA};

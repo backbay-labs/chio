@@ -8,7 +8,8 @@
 
 use chio_core::crypto::Keypair;
 use chio_core::receipt::{
-    ChioReceipt, ChioReceiptBody, Decision, GuardEvidence, ToolCallAction, TrustLevel,
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    kinds::TrustLevel, metadata::GuardEvidence,
 };
 use chio_siem::event::SiemEvent;
 use chio_siem::exporter::ExportError;
@@ -32,15 +33,22 @@ fn receipt_with(
 ) -> ChioReceipt {
     let keypair = Keypair::generate();
     let semantics = match trust_level {
-        TrustLevel::Advisory => chio_core::ReceiptSemanticFields::advisory_only(),
-        TrustLevel::Verified => chio_core::ReceiptSemanticFields::trace_detect_only(),
-        TrustLevel::Mediated => chio_core::ReceiptSemanticFields::mediated_prevent(),
+        TrustLevel::Advisory => {
+            chio_core::receipt::metadata::ReceiptSemanticFields::advisory_only()
+        }
+        TrustLevel::Verified => {
+            chio_core::receipt::metadata::ReceiptSemanticFields::trace_detect_only()
+        }
+        TrustLevel::Mediated => {
+            chio_core::receipt::metadata::ReceiptSemanticFields::mediated_prevent()
+        }
     };
-    let decision = if semantics.receipt_kind == chio_core::ReceiptKind::MediatedDecision {
-        Some(decision)
-    } else {
-        None
-    };
+    let decision =
+        if semantics.receipt_kind == chio_core::receipt::kinds::ReceiptKind::MediatedDecision {
+            Some(decision)
+        } else {
+            None
+        };
     let body = ChioReceiptBody {
         id: id.to_string(),
         timestamp: 1_712_345_678,

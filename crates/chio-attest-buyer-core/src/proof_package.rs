@@ -1,6 +1,6 @@
 use chio_core_types::canonical::canonical_json_bytes;
 use chio_core_types::crypto::sha256_hex;
-use chio_core_types::receipt::ChioReceipt;
+use chio_core_types::receipt::body::ChioReceipt;
 use chio_federation::bilateral_dsse::DsseEnvelope;
 use chio_governance::authorization::SignedGovernanceReceipt;
 use chio_governance::lease::SignedCapabilityLease;

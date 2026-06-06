@@ -13,8 +13,9 @@
 use chio_core::canonical::canonical_json_bytes;
 use chio_core::crypto::{Keypair, PublicKey, SigningAlgorithm};
 use chio_core::receipt::{
-    chio_receipt_id, ChioReceiptBody, ChioReceiptSigningBody, Decision, ReceiptCryptoFloor,
-    ToolCallAction, TrustLevel, CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY,
+    body::chio_receipt_id, body::ChioReceiptBody, crypto_floor::ReceiptCryptoFloor,
+    decision::Decision, decision::ToolCallAction, kinds::TrustLevel,
+    signing::ChioReceiptSigningBody, signing::CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY,
 };
 use chio_kernel::{
     kernel_signing_backend, sign_receipt_body_with_backend, KernelCryptoFloor,
@@ -22,7 +23,7 @@ use chio_kernel::{
 };
 
 /// Bind the `chio_receipt_signing_nonce` metadata key to the pre-nonce
-/// receipt id, mirroring `chio_core_types::receipt::bind_receipt_signing_nonce`
+/// receipt id, mirroring `chio_core_types::receipt::signing::bind_receipt_signing_nonce`
 /// (the private step `ChioReceipt::sign_with_backend` runs before computing
 /// the content-addressed id). The nonce is the trimmed pre-nonce `body.id`;
 /// an existing non-object metadata value is preserved under

@@ -185,8 +185,9 @@ mod tests {
     use super::*;
     use chio_core::crypto::{sha256_hex, Ed25519Backend, Keypair};
     use chio_core::receipt::{
-        ChioReceipt, ChioReceiptBody, Decision, FinancialReceiptMetadata, GuardEvidence,
-        SettlementStatus, ToolCallAction, TrustLevel,
+        body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+        economics::FinancialReceiptMetadata, economics::SettlementStatus, kinds::TrustLevel,
+        metadata::GuardEvidence,
     };
     use chio_credit::{CreditEvaluatorHook, LocalCreditAccount};
     use tempfile::tempdir;

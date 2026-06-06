@@ -19,7 +19,9 @@ use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_core::crypto::Keypair;
-use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction};
+use chio_core::receipt::{
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+};
 use chio_kernel::receipt_query::ReceiptQuery;
 use chio_store_sqlite::SqliteReceiptStore;
 
@@ -51,17 +53,17 @@ fn signed_receipt(id: &str, capability_id: &str, tenant: Option<&str>) -> ChioRe
             action: ToolCallAction::from_parameters(serde_json::json!({}))
                 .test_expect("tool action hash"),
             decision: Some(Decision::Allow),
-            receipt_kind: chio_core::ReceiptKind::MediatedDecision,
-            boundary_class: chio_core::BoundaryClass::Prevent,
+            receipt_kind: chio_core::receipt::kinds::ReceiptKind::MediatedDecision,
+            boundary_class: chio_core::receipt::kinds::BoundaryClass::Prevent,
             observation_outcome: None,
-            tool_origin: chio_core::ToolOrigin::CallerExecuted,
-            redaction_mode: chio_core::RedactionMode::None,
+            tool_origin: chio_core::receipt::kinds::ToolOrigin::CallerExecuted,
+            redaction_mode: chio_core::receipt::kinds::RedactionMode::None,
             actor_chain: Vec::new(),
             content_hash: "c".to_string(),
             policy_hash: "p".to_string(),
             evidence: Vec::new(),
             metadata: None,
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: tenant.map(str::to_string),
             kernel_key: kp.public_key(),
             bbs_projection_version: None,

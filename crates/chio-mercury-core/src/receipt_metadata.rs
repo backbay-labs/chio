@@ -1,4 +1,4 @@
-use chio_core::receipt::ChioReceipt;
+use chio_core::receipt::body::ChioReceipt;
 use serde::{Deserialize, Serialize};
 
 use crate::validation::{ensure_non_empty, ensure_optional_non_empty};

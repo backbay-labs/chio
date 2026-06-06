@@ -3,10 +3,13 @@
 use chio_core::{
     crypto::Keypair,
     receipt::{
-        ChioReceipt, ChioReceiptBody, FinancialBudgetAuthorityReceiptMetadata,
-        FinancialBudgetAuthorizeReceiptMetadata, FinancialBudgetHoldAuthorityMetadata,
-        FinancialBudgetTerminalReceiptMetadata, FinancialReceiptMetadata, SettlementStatus,
-        ToolCallAction,
+        body::{ChioReceipt, ChioReceiptBody},
+        decision::ToolCallAction,
+        economics::{
+            FinancialBudgetAuthorityReceiptMetadata, FinancialBudgetAuthorizeReceiptMetadata,
+            FinancialBudgetHoldAuthorityMetadata, FinancialBudgetTerminalReceiptMetadata,
+            FinancialReceiptMetadata, SettlementStatus,
+        },
     },
 };
 use chio_kernel::{BudgetStore, BudgetStoreError, InMemoryBudgetStore};
@@ -225,7 +228,7 @@ fn financial_receipt_carries_hold_lineage_and_guarantee_level() {
             tool_name: "bash".to_string(),
             action: ToolCallAction::from_parameters(serde_json::json!({"command": "true"}))
                 .expect("build action"),
-            decision: Some(chio_core::receipt::Decision::Allow),
+            decision: Some(chio_core::receipt::decision::Decision::Allow),
             receipt_kind: Default::default(),
             boundary_class: Default::default(),
             observation_outcome: None,
@@ -239,7 +242,7 @@ fn financial_receipt_carries_hold_lineage_and_guarantee_level() {
                 "financial": financial.clone(),
                 "budget_authority": budget_authority.clone(),
             })),
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
             bbs_projection_version: None,

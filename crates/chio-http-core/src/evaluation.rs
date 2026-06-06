@@ -48,10 +48,11 @@ impl VerifyReceiptResponse {
         let signature_valid = receipt.verify_signature().unwrap_or(false);
         let receipt_id_valid = receipt.receipt_id_valid().unwrap_or(false);
         let parameter_hash_valid = is_lower_hex_64(&receipt.content_hash);
-        let semantic_valid = receipt.receipt_kind == chio_core_types::ReceiptKind::MediatedDecision
-            && receipt.boundary_class == chio_core_types::BoundaryClass::Prevent
+        let semantic_valid = receipt.receipt_kind
+            == chio_core_types::receipt::kinds::ReceiptKind::MediatedDecision
+            && receipt.boundary_class == chio_core_types::receipt::kinds::BoundaryClass::Prevent
             && receipt.observation_outcome.is_none()
-            && receipt.trust_level == chio_core_types::TrustLevel::Mediated;
+            && receipt.trust_level == chio_core_types::receipt::kinds::TrustLevel::Mediated;
         let ok = signature_valid
             && signer_trusted
             && receipt_id_valid

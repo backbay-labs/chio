@@ -1,6 +1,9 @@
 use std::sync::atomic::Ordering;
 
-use chio_core::{BoundaryClass, ReceiptKind, RedactionMode, ToolOrigin};
+use chio_core::{
+    receipt::kinds::BoundaryClass, receipt::kinds::ReceiptKind, receipt::kinds::RedactionMode,
+    receipt::kinds::ToolOrigin,
+};
 use chio_log_redact::redacted;
 
 use super::*;
@@ -16,7 +19,7 @@ struct PostInvocationHandling {
     output: ToolServerOutput,
     extra_metadata: Option<serde_json::Value>,
     blocked_reason: Option<String>,
-    evidence: Vec<chio_core::receipt::GuardEvidence>,
+    evidence: Vec<chio_core::receipt::metadata::GuardEvidence>,
 }
 
 #[derive(Clone, Copy)]
@@ -133,7 +136,7 @@ impl ChioKernel {
                 content_hash: receipt_content.content_hash,
                 metadata,
                 timestamp,
-                trust_level: chio_core::TrustLevel::default(),
+                trust_level: chio_core::receipt::kinds::TrustLevel::default(),
                 tenant_id: None,
             })?;
 
@@ -288,7 +291,7 @@ impl ChioKernel {
                 request_metadata,
             ),
             timestamp,
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
         })?;
 
@@ -897,7 +900,7 @@ impl ChioKernel {
                 receipt_attribution_metadata(cap, matched_grant_index),
             ),
             timestamp,
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
         })?;
 
@@ -1061,7 +1064,7 @@ impl ChioKernel {
                 receipt_attribution_metadata(cap, matched_grant_index),
             ),
             timestamp,
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
         })?;
 
@@ -1134,7 +1137,7 @@ impl ChioKernel {
                 receipt_attribution_metadata(cap, matched_grant_index),
             ),
             timestamp,
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
         })?;
 
@@ -1229,7 +1232,7 @@ impl ChioKernel {
                 receipt_attribution_metadata(cap, matched_grant_index),
             ),
             timestamp,
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
         })?;
 
@@ -1327,7 +1330,7 @@ impl ChioKernel {
             content_hash: receipt_content.content_hash,
             metadata,
             timestamp,
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
         })?;
 
@@ -1409,7 +1412,7 @@ impl ChioKernel {
             content_hash: receipt_content.content_hash,
             metadata,
             timestamp,
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
         })?;
 

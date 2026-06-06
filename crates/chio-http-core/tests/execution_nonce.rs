@@ -21,7 +21,8 @@ use chio_core_types::capability::{
 };
 use chio_core_types::crypto::Keypair;
 use chio_core_types::receipt::{
-    ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    kinds::TrustLevel,
 };
 // `ChioReceipt` is kept because one test still asserts against
 // `response.receipt.action.parameter_hash` on the kernel path below.
@@ -144,18 +145,18 @@ fn http_receipt(signer: &Keypair, id: &str) -> HttpReceipt {
         caller_identity_hash: "0".repeat(64),
         session_id: None,
         verdict: Verdict::Allow,
-        receipt_kind: chio_core_types::ReceiptKind::MediatedDecision,
-        boundary_class: chio_core_types::BoundaryClass::Prevent,
+        receipt_kind: chio_core_types::receipt::kinds::ReceiptKind::MediatedDecision,
+        boundary_class: chio_core_types::receipt::kinds::BoundaryClass::Prevent,
         observation_outcome: None,
-        tool_origin: chio_core_types::ToolOrigin::CallerExecuted,
-        redaction_mode: chio_core_types::RedactionMode::None,
+        tool_origin: chio_core_types::receipt::kinds::ToolOrigin::CallerExecuted,
+        redaction_mode: chio_core_types::receipt::kinds::RedactionMode::None,
         actor_chain: Vec::new(),
         evidence: vec![],
         response_status: 200,
         timestamp: 1_000_000,
         content_hash: "0".repeat(64),
         policy_hash: "test-policy".to_string(),
-        trust_level: chio_core_types::TrustLevel::Mediated,
+        trust_level: chio_core_types::receipt::kinds::TrustLevel::Mediated,
         capability_id: None,
         metadata: None,
         kernel_key: signer.public_key(),

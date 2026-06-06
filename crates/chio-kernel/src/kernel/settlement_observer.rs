@@ -14,7 +14,7 @@
 use std::sync::Arc;
 
 use chio_core::crypto::PublicKey;
-use chio_core::receipt::ChioReceipt;
+use chio_core::receipt::body::ChioReceipt;
 use chio_settle::{SettlementHook, SettlementHookError, SettlementObservation, SettlementOutcome};
 
 /// Schema string emitted on the wire for settlement-observer status frames.
@@ -185,7 +185,8 @@ mod tests {
     use chio_core::capability::scope::MonetaryAmount;
     use chio_core::crypto::Keypair;
     use chio_core::receipt::{
-        ChioReceiptBody, Decision, GuardEvidence, ToolCallAction, TrustLevel,
+        body::ChioReceiptBody, decision::Decision, decision::ToolCallAction, kinds::TrustLevel,
+        metadata::GuardEvidence,
     };
 
     fn sign_with(body_metadata: serde_json::Value, decision: Decision) -> ChioReceipt {
@@ -208,11 +209,11 @@ mod tests {
             tool_name: "tool-1".to_string(),
             action,
             decision: Some(decision),
-            receipt_kind: chio_core::ReceiptKind::MediatedDecision,
-            boundary_class: chio_core::BoundaryClass::Prevent,
+            receipt_kind: chio_core::receipt::kinds::ReceiptKind::MediatedDecision,
+            boundary_class: chio_core::receipt::kinds::BoundaryClass::Prevent,
             observation_outcome: None,
-            tool_origin: chio_core::ToolOrigin::CallerExecuted,
-            redaction_mode: chio_core::RedactionMode::None,
+            tool_origin: chio_core::receipt::kinds::ToolOrigin::CallerExecuted,
+            redaction_mode: chio_core::receipt::kinds::RedactionMode::None,
             actor_chain: Vec::new(),
             content_hash: "ch-1".to_string(),
             policy_hash: "ph-1".to_string(),

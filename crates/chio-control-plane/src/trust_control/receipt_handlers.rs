@@ -681,7 +681,7 @@ pub(crate) async fn handle_record_metered_billing_reconciliation(
         Err(response) => return response,
     };
     let evidence = MeteredBillingEvidenceRecord {
-        usage_evidence: chio_core::receipt::MeteredUsageEvidenceReceiptMetadata {
+        usage_evidence: chio_core::receipt::governance::MeteredUsageEvidenceReceiptMetadata {
             evidence_kind: request.adapter_kind.clone(),
             evidence_id: request.evidence_id.clone(),
             observed_units: request.observed_units,

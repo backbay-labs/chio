@@ -14,7 +14,10 @@ use chio_core::capability::{
     scope::{ChioScope, Operation, ToolGrant},
     token::{CapabilityToken, CapabilityTokenBody},
 };
-use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, GuardEvidence, ToolCallAction};
+use chio_core::receipt::{
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    metadata::GuardEvidence,
+};
 use chio_core::session::OperationTerminalState;
 use chio_core::{sha256_hex, Hash, Keypair};
 use chio_manifest::{ToolDefinition, ToolManifest};

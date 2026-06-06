@@ -109,7 +109,7 @@ fn request_keyed_tenant_scope_survives_missing_thread_local_scope() {
             content_hash: "0".repeat(64),
             metadata: None,
             timestamp: 1_700_000_100,
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
         })
         .unwrap();

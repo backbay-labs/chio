@@ -25,7 +25,9 @@ use crate::identity::{
 };
 use crate::merkle::MerkleTree;
 use crate::qualification::{validate_web3_qualification_matrix, Web3QualificationMatrix};
-use crate::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction};
+use crate::receipt::{
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+};
 use crate::settlement::{
     validate_web3_settlement_dispatch, validate_web3_settlement_execution_receipt,
     Web3SettlementDispatchArtifact, Web3SettlementExecutionReceiptArtifact,
@@ -191,7 +193,7 @@ fn sample_receipt() -> ChioReceipt {
                 "oracle_evidence": sample_oracle_evidence()
             }
         })),
-        trust_level: chio_core_types::receipt::TrustLevel::default(),
+        trust_level: chio_core_types::receipt::kinds::TrustLevel::default(),
         tenant_id: None,
         kernel_key: operator.public_key(),
         bbs_projection_version: None,

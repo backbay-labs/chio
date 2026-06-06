@@ -300,15 +300,6 @@ pub use open_market::penalty::{
     OpenMarketPenaltyEffectiveState, OpenMarketPenaltyIssueRequest, OpenMarketPenaltyState,
     SignedOpenMarketPenalty, OPEN_MARKET_PENALTY_ARTIFACT_SCHEMA,
 };
-pub use receipt::{
-    chio_receipt_id, ActorRef, BoundaryClass, ChildRequestReceipt, ChildRequestReceiptBody,
-    ChioReceipt, ChioReceiptBody, ChioReceiptIdInput, Decision, FinancialReceiptMetadata,
-    GovernedApprovalReceiptMetadata, GovernedCommerceReceiptMetadata,
-    GovernedTransactionReceiptMetadata, GuardEvidence, MeteredBillingReceiptMetadata,
-    MeteredUsageEvidenceReceiptMetadata, ObservationOutcome, ReceiptDagParent,
-    ReceiptHybridLogicalClock, ReceiptKind, ReceiptSemanticFields, RedactionMode, ToolCallAction,
-    ToolOrigin, TrustLevel, CHIO_RECEIPT_SCHEMA,
-};
 pub use session::{
     ChioIdentityAssertion, CompleteOperation, CompletionArgument, CompletionReference,
     CompletionResult, CreateElicitationOperation, CreateElicitationResult, CreateMessageOperation,

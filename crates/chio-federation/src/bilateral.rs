@@ -33,7 +33,7 @@
 
 use chio_core_types::canonical::canonical_json_bytes;
 use chio_core_types::crypto::{Ed25519Backend, Keypair, PublicKey, Signature, SigningBackend};
-use chio_core_types::receipt::ChioReceipt;
+use chio_core_types::receipt::body::ChioReceipt;
 use serde::{Deserialize, Serialize};
 
 pub const BILATERAL_COSIGNING_SCHEMA: &str = "chio.federation-bilateral-cosigning.v1";

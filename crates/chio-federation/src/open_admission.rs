@@ -7,7 +7,7 @@ use crate::capability::scope::MonetaryAmount;
 use crate::error::FederationContractError;
 use crate::listing::GenericTrustAdmissionClass;
 use crate::open_market::fee_schedule::OpenMarketBondClass;
-use crate::receipt::SignedExportEnvelope;
+use crate::receipt::lineage::SignedExportEnvelope;
 use crate::validation::{
     ensure_non_empty, ensure_unique_copy_values, validate_federation_artifact_reference,
     validate_stake_requirement,

@@ -412,18 +412,18 @@ pub(crate) async fn sidecar_submit_receipt_handler(
             caller_identity_hash,
             session_id: None,
             verdict: Verdict::Allow,
-            receipt_kind: chio_core_types::ReceiptKind::MediatedDecision,
-            boundary_class: chio_core_types::BoundaryClass::Prevent,
+            receipt_kind: chio_core_types::receipt::kinds::ReceiptKind::MediatedDecision,
+            boundary_class: chio_core_types::receipt::kinds::BoundaryClass::Prevent,
             observation_outcome: None,
-            tool_origin: chio_core_types::ToolOrigin::CallerExecuted,
-            redaction_mode: chio_core_types::RedactionMode::None,
+            tool_origin: chio_core_types::receipt::kinds::ToolOrigin::CallerExecuted,
+            redaction_mode: chio_core_types::receipt::kinds::RedactionMode::None,
             actor_chain: Vec::new(),
             evidence: Vec::new(),
             response_status: StatusCode::OK.as_u16(),
             timestamp: chrono::Utc::now().timestamp() as u64,
             content_hash: chio_core_types::sha256_hex(&body_bytes),
             policy_hash: manual_receipt_policy_hash("chio_api_protect_sidecar_receipt_submission"),
-            trust_level: chio_core_types::TrustLevel::Mediated,
+            trust_level: chio_core_types::receipt::kinds::TrustLevel::Mediated,
             capability_id,
             metadata: Some(sidecar_submit_receipt_metadata(&receipt_request)),
             kernel_key: state.signer_keypair.public_key(),
@@ -815,7 +815,7 @@ fn sidecar_chio_receipt_report(
     signer_trusted: bool,
 ) -> VerifyReceiptResponse {
     let signature_valid = receipt.verify_signature().unwrap_or(false);
-    let receipt_id_valid = chio_core_types::chio_receipt_id(&receipt.body())
+    let receipt_id_valid = chio_core_types::receipt::body::chio_receipt_id(&receipt.body())
         .map(|expected_id| expected_id == receipt.id)
         .unwrap_or(false);
     let parameter_hash_valid = receipt.action.verify_hash().unwrap_or(false);

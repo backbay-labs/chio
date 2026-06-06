@@ -11,8 +11,8 @@ use chio_core::capability::{
 };
 use chio_core::crypto::Keypair;
 use chio_core::receipt::{
-    ChildRequestReceipt, ChildRequestReceiptBody, ChioReceipt, ChioReceiptBody, Decision,
-    ToolCallAction,
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    lineage::ChildRequestReceipt, lineage::ChildRequestReceiptBody,
 };
 use chio_core::session::{OperationKind, OperationTerminalState, RequestId, SessionId};
 use chio_core::sha256_hex;
@@ -161,7 +161,7 @@ fn receipt_with_keypair(
             policy_hash: "policy-1".to_string(),
             evidence: Vec::new(),
             metadata: None,
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: tenant_id.map(ToOwned::to_owned),
             kernel_key: keypair.public_key(),
             bbs_projection_version: None,

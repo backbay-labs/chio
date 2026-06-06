@@ -19,7 +19,8 @@ use chio_core::crypto::Keypair;
 use chio_core::hashing::sha256_hex;
 use chio_core::merkle::MerkleTree;
 use chio_core::receipt::{
-    ChioReceipt, ChioReceiptBody, Decision, SignedExportEnvelope, ToolCallAction,
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    lineage::SignedExportEnvelope,
 };
 use chio_core::web3::identity::{
     SignedWeb3IdentityBinding, Web3IdentityBindingCertificate, Web3KeyBindingPurpose,
@@ -336,7 +337,7 @@ fn sample_receipt(
             policy_hash: sha256_hex(b"policy:web3"),
             evidence: Vec::new(),
             metadata: None,
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
             bbs_projection_version: None,

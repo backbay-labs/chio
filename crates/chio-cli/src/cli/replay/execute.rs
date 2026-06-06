@@ -374,17 +374,17 @@ fn recompute_decision(
 }
 
 fn replay_guard_reason(
-    decision: Option<&chio_core::receipt::Decision>,
+    decision: Option<&chio_core::receipt::decision::Decision>,
 ) -> (Option<String>, Option<String>) {
     match decision {
-        Some(chio_core::receipt::Decision::Deny { reason, guard }) => {
+        Some(chio_core::receipt::decision::Decision::Deny { reason, guard }) => {
             (Some(guard.clone()), Some(reason.clone()))
         }
-        Some(chio_core::receipt::Decision::Cancelled { reason })
-        | Some(chio_core::receipt::Decision::Incomplete { reason }) => {
+        Some(chio_core::receipt::decision::Decision::Cancelled { reason })
+        | Some(chio_core::receipt::decision::Decision::Incomplete { reason }) => {
             (None, Some(reason.clone()))
         }
-        Some(chio_core::receipt::Decision::Allow) | None => (None, None),
+        Some(chio_core::receipt::decision::Decision::Allow) | None => (None, None),
     }
 }
 

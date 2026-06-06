@@ -15,7 +15,7 @@ use chio_attest_buyer_core::report::verify_package;
 use chio_attest_buyer_core::trust_bundle::verifier_trust_bundle_from_json;
 use chio_core_types::canonical::canonical_json_bytes;
 use chio_core_types::crypto::sha256_hex;
-use chio_core_types::receipt::SignedExportEnvelope;
+use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_federation::{
     pheromone_gossip::verify_pheromone_gossip_batch_envelope,
     pheromone_gossip::verify_pheromone_gossip_frame_for_batch,

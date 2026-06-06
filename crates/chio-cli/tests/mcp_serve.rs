@@ -9,7 +9,7 @@ use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use chio_core::receipt::{ChioReceipt, Decision};
+use chio_core::receipt::{body::ChioReceipt, decision::Decision};
 use serde_json::{json, Value};
 
 struct TestDir {

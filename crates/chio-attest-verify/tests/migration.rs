@@ -35,8 +35,8 @@ use chio_core_types::crypto::{
     SigningBackend,
 };
 use chio_core_types::receipt::{
-    chio_receipt_id, ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
-    CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY,
+    body::chio_receipt_id, body::ChioReceipt, body::ChioReceiptBody, decision::Decision,
+    decision::ToolCallAction, kinds::TrustLevel, signing::CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY,
 };
 use serde_json::Value;
 

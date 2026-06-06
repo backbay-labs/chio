@@ -10,9 +10,14 @@ use chio_core_types::{
     crypto::Keypair,
     message::{AgentMessage, KernelMessage, ToolCallError, ToolCallResult},
     receipt::{
-        BbsReceiptSignature, ChioReceipt, ChioReceiptBody, Decision, GuardEvidence, ToolCallAction,
-        CHIO_RECEIPT_BBS_PROJECTION_VERSION_V1, CHIO_RECEIPT_BBS_SIGNATURE_ALGORITHM,
-        CHIO_RECEIPT_BBS_SIGNATURE_SCHEMA,
+        body::{ChioReceipt, ChioReceiptBody},
+        decision::{Decision, ToolCallAction},
+        kinds::TrustLevel,
+        metadata::GuardEvidence,
+        signing::{
+            BbsReceiptSignature, CHIO_RECEIPT_BBS_PROJECTION_VERSION_V1,
+            CHIO_RECEIPT_BBS_SIGNATURE_ALGORITHM, CHIO_RECEIPT_BBS_SIGNATURE_SCHEMA,
+        },
     },
 };
 use serde::Serialize;
@@ -221,7 +226,7 @@ fn make_receipt_body(kp: &Keypair, decision: Decision) -> ChioReceiptBody {
             "surface": "wire-schema-test",
             "version": 1
         })),
-        trust_level: chio_core_types::receipt::TrustLevel::default(),
+        trust_level: TrustLevel::default(),
         tenant_id: None,
         kernel_key: kp.public_key(),
         bbs_projection_version: None,

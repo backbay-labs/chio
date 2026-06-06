@@ -5,7 +5,7 @@
 //! `Verdict::Deny`.  Only if all guards return `Verdict::Allow` does the
 //! pipeline allow the request.
 
-use chio_core::receipt::GuardEvidence;
+use chio_core::receipt::metadata::GuardEvidence;
 use chio_kernel::{Guard, GuardContext, GuardDecision, KernelError, Verdict};
 
 /// A pipeline of guards evaluated in registration order.

@@ -12,8 +12,8 @@ use std::time::Duration;
 
 use chio_core::crypto::{sha256_hex, Keypair};
 use chio_core::receipt::{
-    chio_receipt_id, ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
-    CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY,
+    body::chio_receipt_id, body::ChioReceipt, body::ChioReceiptBody, decision::Decision,
+    decision::ToolCallAction, kinds::TrustLevel, signing::CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY,
 };
 use chio_kernel::KernelError;
 use serde_json::json;
@@ -93,7 +93,7 @@ fn make_body(n: usize, kernel_key: &Keypair) -> Result<ChioReceiptBody, String> 
 }
 
 /// Bind the `chio_receipt_signing_nonce` metadata key to the pre-binding
-/// receipt id, mirroring `chio_core_types::receipt::bind_receipt_signing_nonce`
+/// receipt id, mirroring `chio_core_types::receipt::signing::bind_receipt_signing_nonce`
 /// (the private step `chio_kernel_core::sign_receipt` runs before computing the
 /// content-addressed id). The nonce is the trimmed pre-binding `body.id`; an
 /// existing non-object metadata value is preserved under `original_metadata`.

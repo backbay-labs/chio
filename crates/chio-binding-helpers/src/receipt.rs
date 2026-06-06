@@ -1,4 +1,7 @@
-use chio_core::{chio_receipt_id, ChioReceipt, Decision, PublicKey};
+use chio_core::{
+    receipt::body::chio_receipt_id, receipt::body::ChioReceipt, receipt::decision::Decision,
+    PublicKey,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::Result;
@@ -149,7 +152,8 @@ mod tests {
         verify_receipt_with_trusted_signer_hex, ReceiptDecisionKind,
     };
     use chio_core::{
-        sha256_hex, ChioReceipt, ChioReceiptBody, Decision, GuardEvidence, Keypair, ToolCallAction,
+        receipt::body::ChioReceipt, receipt::body::ChioReceiptBody, receipt::decision::Decision,
+        receipt::decision::ToolCallAction, receipt::metadata::GuardEvidence, sha256_hex, Keypair,
     };
 
     fn sample_receipt() -> crate::Result<ChioReceipt> {
@@ -167,11 +171,11 @@ mod tests {
             tool_name: "file_read".to_string(),
             action,
             decision: Some(Decision::Allow),
-            receipt_kind: chio_core::ReceiptKind::MediatedDecision,
-            boundary_class: chio_core::BoundaryClass::Prevent,
+            receipt_kind: chio_core::receipt::kinds::ReceiptKind::MediatedDecision,
+            boundary_class: chio_core::receipt::kinds::BoundaryClass::Prevent,
             observation_outcome: None,
-            tool_origin: chio_core::ToolOrigin::CallerExecuted,
-            redaction_mode: chio_core::RedactionMode::None,
+            tool_origin: chio_core::receipt::kinds::ToolOrigin::CallerExecuted,
+            redaction_mode: chio_core::receipt::kinds::RedactionMode::None,
             actor_chain: Vec::new(),
             content_hash: sha256_hex(br#"{"ok":true}"#),
             policy_hash: "policy-bindings-v1".to_string(),
@@ -183,7 +187,7 @@ mod tests {
             metadata: Some(serde_json::json!({
                 "surface": "bindings-test"
             })),
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
             bbs_projection_version: None,

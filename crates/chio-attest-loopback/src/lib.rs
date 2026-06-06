@@ -38,8 +38,9 @@ use chio_core_types::canonical::{canonical_json_bytes, canonical_json_string};
 use chio_core_types::capability::scope::MonetaryAmount;
 use chio_core_types::crypto::{sha256_hex, Keypair};
 use chio_core_types::receipt::{
-    ActorRef, BoundaryClass, ChioReceipt, ChioReceiptBody, Decision, ReceiptKind, RedactionMode,
-    ToolCallAction, ToolOrigin, TrustLevel,
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    kinds::BoundaryClass, kinds::ReceiptKind, kinds::RedactionMode, kinds::ToolOrigin,
+    kinds::TrustLevel, metadata::ActorRef,
 };
 use chio_federation::{
     bilateral_dsse::sign_chio_bilateral_dsse_envelope,
@@ -1430,7 +1431,7 @@ mod tests {
     #![allow(clippy::expect_used, clippy::unwrap_used)]
 
     use super::*;
-    use chio_core_types::receipt::SignedExportEnvelope;
+    use chio_core_types::receipt::lineage::SignedExportEnvelope;
     use chio_selective_disclosure::{
         derive_selective_disclosure_proof_from_receipt, sign_chio_receipt_with_bbs,
         BBS_CIPHERSUITE_SHA256, PROJECTION_VERSION_RECEIPT_V1,

@@ -15,7 +15,7 @@ use chio_core::capability::{
     workload_identity::{WorkloadCredentialKind, WorkloadIdentity},
 };
 use chio_core::crypto::PublicKey;
-use chio_core::receipt::SignedExportEnvelope;
+use chio_core::receipt::lineage::SignedExportEnvelope;
 use ciborium::de::from_reader as cbor_from_reader;
 use ciborium::ser::into_writer as cbor_into_writer;
 use ciborium::value::{Integer as CborInteger, Value as CborValue};

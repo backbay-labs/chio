@@ -5,7 +5,7 @@ use crate::artifacts::{
     FederationImportControl, FederationTrustScope,
 };
 use crate::error::FederationContractError;
-use crate::receipt::SignedExportEnvelope;
+use crate::receipt::lineage::SignedExportEnvelope;
 use crate::validation::{
     ensure_non_empty, validate_delegation_control, validate_federation_artifact_reference,
     validate_federation_scope, validate_import_control,

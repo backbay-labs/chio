@@ -26,7 +26,9 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use chio_core::crypto::Keypair;
-    use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction};
+    use chio_core::receipt::{
+        body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    };
     use chio_kernel::{ReceiptStore, MAX_QUERY_LIMIT};
 
     use super::*;
@@ -63,17 +65,17 @@ mod tests {
                 tool_name: tool_name.to_string(),
                 action: valid_tool_action(serde_json::json!({})),
                 decision: Some(decision),
-                receipt_kind: chio_core::ReceiptKind::MediatedDecision,
-                boundary_class: chio_core::BoundaryClass::Prevent,
+                receipt_kind: chio_core::receipt::kinds::ReceiptKind::MediatedDecision,
+                boundary_class: chio_core::receipt::kinds::BoundaryClass::Prevent,
                 observation_outcome: None,
-                tool_origin: chio_core::ToolOrigin::CallerExecuted,
-                redaction_mode: chio_core::RedactionMode::None,
+                tool_origin: chio_core::receipt::kinds::ToolOrigin::CallerExecuted,
+                redaction_mode: chio_core::receipt::kinds::RedactionMode::None,
                 actor_chain: Vec::new(),
                 content_hash: "content-hash".to_string(),
                 policy_hash: "policy-hash".to_string(),
                 evidence: Vec::new(),
                 metadata,
-                trust_level: chio_core::TrustLevel::default(),
+                trust_level: chio_core::receipt::kinds::TrustLevel::default(),
                 tenant_id: None,
                 kernel_key: keypair.public_key(),
                 bbs_projection_version: None,

@@ -8,7 +8,7 @@ use chio_core::capability::{
     token::CapabilityToken,
 };
 use chio_core::crypto::Keypair;
-use chio_core::receipt::GuardEvidence;
+use chio_core::receipt::metadata::GuardEvidence;
 use chio_kernel::execution_nonce::{
     ExecutionNonceConfig, ExecutionNonceError, InMemoryExecutionNonceStore, NonceBinding,
 };

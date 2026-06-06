@@ -11,7 +11,7 @@ use crate::credit::{
     CAPITAL_EXECUTION_INSTRUCTION_ARTIFACT_SCHEMA,
 };
 use crate::error::Web3ContractError;
-use crate::receipt::SignedExportEnvelope;
+use crate::receipt::lineage::SignedExportEnvelope;
 use crate::trust_profile::Web3SettlementPath;
 use crate::validation::{ensure_money, ensure_non_empty};
 

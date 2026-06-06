@@ -23,7 +23,9 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use chio_core::crypto::{sha256_hex, Keypair};
-use chio_core::receipt::{ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
+use chio_core::receipt::{
+    body::ChioReceiptBody, decision::Decision, decision::ToolCallAction, kinds::TrustLevel,
+};
 use chio_federation::selective_disclosure::{
     project_audit_view, verify_audit_view, BbsAuditView, DisclosureSet, SelectiveDisclosureError,
     AUDIT_VIEW_SCHEMA_STUB, PROJECTION_VERSION_RECEIPT_V1,

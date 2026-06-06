@@ -6,7 +6,10 @@ use chio_arena::{
     parse_scenario_str, promote_to_adversarial_suite, ArenaReceipt, ArenaRun, ScenarioVerdict,
 };
 use chio_core::crypto::{sha256_hex, Keypair};
-use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
+use chio_core::receipt::{
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    kinds::TrustLevel,
+};
 use serde_json::{json, Value};
 
 fn scenario_toml() -> &'static str {

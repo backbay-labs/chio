@@ -35,7 +35,7 @@
 //!   per §5.6 and arrives with the predicate-language pass).
 
 use chio_core_types::canonical::canonical_json_bytes;
-use chio_core_types::receipt::ChioReceiptBody;
+use chio_core_types::receipt::body::ChioReceiptBody;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -556,7 +556,9 @@ pub fn verify_audit_view(
 mod tests {
     use super::*;
     use chio_core_types::crypto::{sha256_hex, Keypair};
-    use chio_core_types::receipt::{ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
+    use chio_core_types::receipt::{
+        body::ChioReceiptBody, decision::Decision, decision::ToolCallAction, kinds::TrustLevel,
+    };
 
     fn sample_body(kp: &Keypair) -> ChioReceiptBody {
         ChioReceiptBody {

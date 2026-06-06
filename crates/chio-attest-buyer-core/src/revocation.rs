@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use chio_core_types::receipt::SignedExportEnvelope;
+use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use serde::{Deserialize, Serialize};
 
 use crate::error::ChioPackageError;

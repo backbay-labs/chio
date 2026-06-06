@@ -255,7 +255,7 @@ fn pilot_receipt(
             policy_hash: "policy-mercury-pilot-v1".to_string(),
             evidence: Vec::new(),
             metadata: Some(metadata),
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: kernel_keypair.public_key(),
             bbs_projection_version: None,

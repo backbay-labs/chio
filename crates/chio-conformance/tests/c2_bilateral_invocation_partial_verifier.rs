@@ -30,7 +30,10 @@ use std::path::Path;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
 use chio_core::crypto::{sha256_hex, Keypair};
-use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
+use chio_core::receipt::{
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    kinds::TrustLevel,
+};
 use chio_federation::demo::DemoAllowAllRevocationOracle;
 use chio_federation::{
     bilateral::execute_local_bilateral_invocation_fixture, bilateral::BilateralCoSigningProtocol,

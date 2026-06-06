@@ -44,7 +44,7 @@ pub const SETTLEMENT_OUTCOME_SCHEMA: &str = "chio.settle.outcome.v1";
 pub struct SettlementObservation {
     /// Schema tag (`chio.settle.observation.v1`).
     pub schema: String,
-    /// `id` of the finalized [`chio_core::receipt::ChioReceipt`].
+    /// `id` of the finalized [`chio_core::receipt::body::ChioReceipt`].
     pub receipt_id: String,
     /// `timestamp` carried over from the receipt (deterministic sort key).
     pub finalized_at: u64,

@@ -3,7 +3,7 @@ use chio_core::capability::{
     scope::ModelMetadata,
     token::CapabilityToken,
 };
-use chio_core::receipt::ChioReceipt;
+use chio_core::receipt::body::ChioReceipt;
 use chio_core::session::{
     CreateElicitationOperation, CreateElicitationResult, CreateMessageOperation,
     CreateMessageResult, OperationContext, OperationTerminalState, RequestId, RootDefinition,
@@ -15,8 +15,8 @@ use crate::{AgentId, KernelError, ServerId};
 
 /// Verdict of a guard or capability evaluation.
 ///
-/// This is the kernel's own verdict type, distinct from `chio_core::Decision`.
-/// The kernel uses this internally; it maps to `chio_core::Decision` when
+/// This is the kernel's own verdict type, distinct from `chio_core::receipt::decision::Decision`.
+/// The kernel uses this internally; it maps to `chio_core::receipt::decision::Decision` when
 /// building receipts.
 ///
 /// The `PendingApproval` variant is a marker: the payload (`ApprovalRequest`)

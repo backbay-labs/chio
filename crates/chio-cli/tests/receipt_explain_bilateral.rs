@@ -4,7 +4,8 @@ use std::process::Command;
 
 use chio_core_types::crypto::Keypair;
 use chio_core_types::receipt::{
-    ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    kinds::TrustLevel,
 };
 use chio_federation::bilateral::{co_sign_with_origin_full, InProcessCoSigner};
 

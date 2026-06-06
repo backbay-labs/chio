@@ -27,7 +27,7 @@ use crate::crypto::{sha256_hex, Keypair, PublicKey};
 use crate::listing::{
     canonical_json_bytes, normalize_namespace, provider_signing_key, GenericListingStatus, Listing,
 };
-use crate::receipt::SignedExportEnvelope;
+use crate::receipt::lineage::SignedExportEnvelope;
 
 /// Schema for bid requests that the marketplace signs canonically.
 pub const BID_REQUEST_SCHEMA: &str = "chio.marketplace.bid-request.v1";

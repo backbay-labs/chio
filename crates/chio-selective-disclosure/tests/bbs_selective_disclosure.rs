@@ -3,7 +3,9 @@
 
 use chio_core_types::capability::scope::MonetaryAmount;
 use chio_core_types::crypto::{sha256_hex, Keypair};
-use chio_core_types::receipt::{ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
+use chio_core_types::receipt::{
+    body::ChioReceiptBody, decision::Decision, decision::ToolCallAction, kinds::TrustLevel,
+};
 use chio_selective_disclosure::{
     derive_selective_disclosure_proof, derive_selective_disclosure_proof_from_receipt,
     generate_bbs_keypair, project_receipt_body, project_step_record, project_workflow_receipt_body,

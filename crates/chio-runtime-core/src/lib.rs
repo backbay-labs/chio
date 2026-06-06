@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use chio_core_types::crypto::{canonical_json_bytes, sha256_hex, Keypair};
-use chio_core_types::{PublicKey, SignedExportEnvelope};
+use chio_core_types::{receipt::lineage::SignedExportEnvelope, PublicKey};
 use chio_kernel::{
     KernelError, RuntimeAdmissionContext as KernelRuntimeAdmissionContext,
     RuntimeAdmissionDecision as KernelRuntimeAdmissionDecision, RuntimeAdmissionHook,

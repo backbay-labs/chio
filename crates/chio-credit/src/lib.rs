@@ -36,7 +36,9 @@ use crate::capability::{
     governance::GovernedAutonomyTier, runtime_attestation::RuntimeAssuranceTier,
     scope::MonetaryAmount,
 };
-use crate::receipt::{Decision, SettlementStatus, SignedExportEnvelope};
+use crate::receipt::{
+    decision::Decision, economics::SettlementStatus, lineage::SignedExportEnvelope,
+};
 use crate::underwriting::{
     UnderwritingCertificationState, UnderwritingComplianceEvidence,
     UnderwritingDecisionLifecycleState, UnderwritingDecisionOutcome, UnderwritingReviewState,

@@ -34,7 +34,7 @@ fn kernel_with_nonce() -> (ChioKernel, Keypair, ChioScope, ExecutionNonceConfig)
 }
 
 fn binding_for_request(cap: &CapabilityToken, request: &ToolCallRequest) -> NonceBinding {
-    let parameter_hash = chio_core::receipt::ToolCallAction::from_parameters(
+    let parameter_hash = chio_core::receipt::decision::ToolCallAction::from_parameters(
         request.arguments.clone(),
     )
     .unwrap()

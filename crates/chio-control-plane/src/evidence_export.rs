@@ -6,8 +6,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
-use chio_core::receipt::{BoundaryClass, ChioReceipt, ReceiptCryptoFloor, ReceiptKind};
-use chio_core::{canonical_json_bytes, chio_receipt_id, sha256_hex, PublicKey, Signature};
+use chio_core::receipt::{
+    body::ChioReceipt, crypto_floor::ReceiptCryptoFloor, kinds::BoundaryClass, kinds::ReceiptKind,
+};
+use chio_core::{
+    canonical_json_bytes, receipt::body::chio_receipt_id, sha256_hex, PublicKey, Signature,
+};
 use chio_kernel::checkpoint::{
     checkpoint_body_sha256, validate_checkpoint_transparency, CheckpointConsistencyProof,
     CheckpointEquivocation, CheckpointPublication, CheckpointTransparencySummary,
@@ -2154,9 +2158,11 @@ mod tests {
     use chio_core::crypto::Keypair;
     #[cfg(feature = "pq")]
     use chio_core::crypto::{Ed25519Backend, HybridBackend, MlDsa65Backend, SigningBackend};
+    use chio_core::receipt::{
+        body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    };
     #[cfg(feature = "pq")]
-    use chio_core::receipt::{ChildRequestReceipt, ChildRequestReceiptBody};
-    use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction};
+    use chio_core::receipt::{lineage::ChildRequestReceipt, lineage::ChildRequestReceiptBody};
     #[cfg(feature = "pq")]
     use chio_core::session::{OperationKind, OperationTerminalState, RequestId, SessionId};
     use chio_kernel::{build_checkpoint, build_checkpoint_with_previous};
@@ -2239,7 +2245,7 @@ mod tests {
                 policy_hash: "policy-export-1".to_string(),
                 evidence: Vec::new(),
                 metadata: None,
-                trust_level: chio_core::TrustLevel::default(),
+                trust_level: chio_core::receipt::kinds::TrustLevel::default(),
                 tenant_id: None,
                 kernel_key: keypair.public_key(),
                 bbs_projection_version: None,
@@ -2281,7 +2287,7 @@ mod tests {
                 policy_hash: "policy-export-hybrid-1".to_string(),
                 evidence: Vec::new(),
                 metadata: None,
-                trust_level: chio_core::TrustLevel::default(),
+                trust_level: chio_core::receipt::kinds::TrustLevel::default(),
                 tenant_id: None,
                 kernel_key: backend.public_key(),
                 bbs_projection_version: None,
@@ -2817,13 +2823,13 @@ mod tests {
         let checkpoint = bundle.checkpoints.first().cloned().test_unwrap();
         let mut transparency =
             validate_checkpoint_transparency_summary(&bundle.checkpoints).test_unwrap();
-        let binding = chio_core::receipt::CheckpointPublicationTrustAnchorBinding {
-            publication_identity: chio_core::receipt::CheckpointPublicationIdentity::new(
-                chio_core::receipt::CheckpointPublicationIdentityKind::LocalLog,
+        let binding = chio_core::receipt::checkpoint::CheckpointPublicationTrustAnchorBinding {
+            publication_identity: chio_core::receipt::checkpoint::CheckpointPublicationIdentity::new(
+                chio_core::receipt::checkpoint::CheckpointPublicationIdentityKind::LocalLog,
                 transparency.publications[0].log_id.clone(),
             ),
-            trust_anchor_identity: chio_core::receipt::CheckpointTrustAnchorIdentity::new(
-                chio_core::receipt::CheckpointTrustAnchorIdentityKind::TransparencyRoot,
+            trust_anchor_identity: chio_core::receipt::checkpoint::CheckpointTrustAnchorIdentity::new(
+                chio_core::receipt::checkpoint::CheckpointTrustAnchorIdentityKind::TransparencyRoot,
                 "root-set-1",
             ),
             trust_anchor_ref: "anchor-root-1".to_string(),
@@ -2858,13 +2864,13 @@ mod tests {
         let checkpoint = bundle.checkpoints.first().cloned().test_unwrap();
         let mut transparency =
             validate_checkpoint_transparency_summary(&bundle.checkpoints).test_unwrap();
-        let binding = chio_core::receipt::CheckpointPublicationTrustAnchorBinding {
-            publication_identity: chio_core::receipt::CheckpointPublicationIdentity::new(
-                chio_core::receipt::CheckpointPublicationIdentityKind::LocalLog,
+        let binding = chio_core::receipt::checkpoint::CheckpointPublicationTrustAnchorBinding {
+            publication_identity: chio_core::receipt::checkpoint::CheckpointPublicationIdentity::new(
+                chio_core::receipt::checkpoint::CheckpointPublicationIdentityKind::LocalLog,
                 transparency.publications[0].log_id.clone(),
             ),
-            trust_anchor_identity: chio_core::receipt::CheckpointTrustAnchorIdentity::new(
-                chio_core::receipt::CheckpointTrustAnchorIdentityKind::TransparencyRoot,
+            trust_anchor_identity: chio_core::receipt::checkpoint::CheckpointTrustAnchorIdentity::new(
+                chio_core::receipt::checkpoint::CheckpointTrustAnchorIdentityKind::TransparencyRoot,
                 "root-set-1",
             ),
             trust_anchor_ref: "anchor-root-1".to_string(),

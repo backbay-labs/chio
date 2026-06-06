@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::crypto::PublicKey;
-use crate::receipt::SignedExportEnvelope;
+use crate::receipt::lineage::SignedExportEnvelope;
 use crate::search::GenericListingFreshnessWindow;
 use crate::util::{
     bounded_listing_limit, validate_http_url, validate_non_empty, validate_optional_http_url,

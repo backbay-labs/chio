@@ -69,11 +69,13 @@ pub(crate) use chio_core::capability::{
 };
 pub(crate) use chio_core::crypto::{sha256_hex, Keypair};
 pub(crate) use chio_core::receipt::{
-    ChildRequestReceipt, ChildRequestReceiptBody, ChioReceipt, ChioReceiptBody, Decision,
-    FinancialReceiptMetadata, GovernedApprovalReceiptMetadata, GovernedAutonomyReceiptMetadata,
-    GovernedCommerceReceiptMetadata, GovernedTransactionReceiptMetadata,
-    MeteredBillingReceiptMetadata, ReceiptAttributionMetadata, RuntimeAssuranceReceiptMetadata,
-    SettlementStatus, ToolCallAction,
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    economics::FinancialReceiptMetadata, economics::SettlementStatus,
+    governance::GovernedApprovalReceiptMetadata, governance::GovernedAutonomyReceiptMetadata,
+    governance::GovernedCommerceReceiptMetadata, governance::GovernedTransactionReceiptMetadata,
+    governance::MeteredBillingReceiptMetadata, governance::RuntimeAssuranceReceiptMetadata,
+    lineage::ChildRequestReceipt, lineage::ChildRequestReceiptBody,
+    metadata::ReceiptAttributionMetadata,
 };
 pub(crate) use chio_core::session::{
     CompleteOperation, CompletionReference, CompletionResult, CreateElicitationOperation,

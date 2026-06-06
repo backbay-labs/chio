@@ -39,7 +39,7 @@ use crate::appraisal::AttestationVerifierFamily;
 use crate::canonical::canonical_json_bytes;
 use crate::capability::{runtime_attestation::RuntimeAssuranceTier, scope::MonetaryAmount};
 use crate::crypto::sha256_hex;
-use crate::receipt::SignedExportEnvelope;
+use crate::receipt::lineage::SignedExportEnvelope;
 
 pub const UNDERWRITING_POLICY_INPUT_SCHEMA: &str = "chio.underwriting.policy-input.v1";
 pub const UNDERWRITING_COMPLIANCE_EVIDENCE_SCHEMA: &str =

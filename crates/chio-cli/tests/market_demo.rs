@@ -26,8 +26,9 @@ use std::sync::Arc;
 
 use chio_credit::crypto::{sha256_hex, Ed25519Backend, Keypair};
 use chio_credit::receipt::{
-    ChioReceipt, ChioReceiptBody, Decision, FinancialReceiptMetadata, GuardEvidence,
-    SettlementStatus, ToolCallAction, TrustLevel,
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    economics::FinancialReceiptMetadata, economics::SettlementStatus, kinds::TrustLevel,
+    metadata::GuardEvidence,
 };
 use chio_credit::{CreditEvaluatorHook, LocalCreditAccount};
 use chio_guard_registry::GuardPrice;

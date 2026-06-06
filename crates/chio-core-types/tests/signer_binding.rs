@@ -8,16 +8,20 @@ use chio_core_types::capability::{
     scope::ChioScope,
     token::{CapabilityToken, CapabilityTokenBody},
 };
-use chio_core_types::receipt::{
+use chio_core_types::receipt::lineage::{
     ReceiptLineageEndpoints, ReceiptLineageRelationKind, ReceiptLineageStatement,
     ReceiptLineageStatementBody,
 };
+use chio_core_types::receipt::{
+    body::{ChioReceipt, ChioReceiptBody},
+    decision::{Decision, ToolCallAction},
+    kinds::{BoundaryClass, ReceiptKind, RedactionMode, ToolOrigin, TrustLevel},
+    lineage::{ChildRequestReceipt, ChildRequestReceiptBody},
+};
 use chio_core_types::session::{SessionAnchor, SessionAnchorBody, SessionAnchorContext};
 use chio_core_types::{
-    sha256_hex, BoundaryClass, ChildRequestReceipt, ChildRequestReceiptBody, ChioReceipt,
-    ChioReceiptBody, Decision, Ed25519Backend, Keypair, OperationKind, OperationTerminalState,
-    ReceiptKind, RedactionMode, RequestId, SessionAuthContext, SessionId, SigningBackend,
-    ToolCallAction, ToolManifest, ToolManifestBody, ToolOrigin, TrustLevel,
+    sha256_hex, Ed25519Backend, Keypair, OperationKind, OperationTerminalState, RequestId,
+    SessionAuthContext, SessionId, SigningBackend, ToolManifest, ToolManifestBody,
 };
 
 fn capability_body(issuer: &Keypair, subject: &Keypair) -> CapabilityTokenBody {

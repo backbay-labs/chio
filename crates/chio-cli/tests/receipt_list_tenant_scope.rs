@@ -13,7 +13,10 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_core::crypto::Keypair;
-use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
+use chio_core::receipt::{
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    kinds::TrustLevel,
+};
 use chio_store_sqlite::SqliteReceiptStore;
 
 fn workspace_root() -> PathBuf {

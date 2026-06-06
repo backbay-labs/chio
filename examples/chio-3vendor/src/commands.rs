@@ -12,7 +12,7 @@ use chio_attest_loopback::{
     ChioVerifierTrustBundleDocument, VerifierReport,
 };
 use chio_core_types::merkle::MerkleTree;
-use chio_core_types::receipt::SignedExportEnvelope;
+use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_core_types::{canonical_json_bytes, sha256_hex, Keypair, SigningAlgorithm};
 use chio_federation::{
     pheromone_gossip::verify_pheromone_gossip_frame, pheromone_gossip::PheromoneDepositGossip,

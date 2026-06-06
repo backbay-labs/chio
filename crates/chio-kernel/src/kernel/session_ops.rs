@@ -265,7 +265,7 @@ impl ChioKernel {
                 receipt_attribution_metadata(&operation.capability, None),
             ),
             timestamp: current_unix_timestamp(),
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
         })?;
 

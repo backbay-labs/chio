@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::crypto::{PublicKey, Signature, SigningAlgorithm};
-use crate::receipt::ChioReceipt;
+use crate::receipt::body::ChioReceipt;
 
 /// Schema string emitted on the wire for IOU envelope bodies.
 pub const IOU_ENVELOPE_SCHEMA: &str = "chio.credit.iou-envelope.v1";

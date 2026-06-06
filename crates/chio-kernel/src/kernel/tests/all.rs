@@ -16,7 +16,7 @@ use chio_core::credit::{
 };
 use chio_core::crypto::{Keypair, PublicKey};
 use chio_core::receipt::{
-    ChioReceipt, ChioReceiptBody, Decision, GuardEvidence, ToolCallAction,
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, metadata::GuardEvidence, decision::ToolCallAction,
 };
 use chio_core::session::{
     CompleteOperation, CompletionArgument, CompletionReference, CreateMessageOperation,
@@ -745,17 +745,17 @@ fn make_signed_receipt(kp: &Keypair, id: &str) -> ChioReceipt {
             action: ToolCallAction::from_parameters(serde_json::json!({"message": "hello"}))
                 .expect("tool action"),
             decision: Some(Decision::Allow),
-            receipt_kind: chio_core::ReceiptKind::MediatedDecision,
-            boundary_class: chio_core::BoundaryClass::Prevent,
+            receipt_kind: chio_core::receipt::kinds::ReceiptKind::MediatedDecision,
+            boundary_class: chio_core::receipt::kinds::BoundaryClass::Prevent,
             observation_outcome: None,
-            tool_origin: chio_core::ToolOrigin::CallerExecuted,
-            redaction_mode: chio_core::RedactionMode::None,
+            tool_origin: chio_core::receipt::kinds::ToolOrigin::CallerExecuted,
+            redaction_mode: chio_core::receipt::kinds::RedactionMode::None,
             actor_chain: Vec::new(),
             content_hash: "0".repeat(64),
             policy_hash: "1".repeat(64),
             evidence: Vec::new(),
             metadata: None,
-            trust_level: chio_core::receipt::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: kp.public_key(),
             bbs_projection_version: None,
@@ -8376,11 +8376,11 @@ fn cross_kernel_continuation_token_verifies_parent_receipt_hash_and_session_anch
             action: ToolCallAction::from_parameters(serde_json::json!({ "stage": "parent" }))
                 .unwrap(),
             decision: Some(Decision::Allow),
-            receipt_kind: chio_core::ReceiptKind::MediatedDecision,
-            boundary_class: chio_core::BoundaryClass::Prevent,
+            receipt_kind: chio_core::receipt::kinds::ReceiptKind::MediatedDecision,
+            boundary_class: chio_core::receipt::kinds::BoundaryClass::Prevent,
             observation_outcome: None,
-            tool_origin: chio_core::ToolOrigin::CallerExecuted,
-            redaction_mode: chio_core::RedactionMode::None,
+            tool_origin: chio_core::receipt::kinds::ToolOrigin::CallerExecuted,
+            redaction_mode: chio_core::receipt::kinds::RedactionMode::None,
             actor_chain: Vec::new(),
             content_hash: chio_core::crypto::sha256_hex(br#"{"ok":true}"#),
             policy_hash: "policy-parent-continuation".to_string(),
@@ -8391,7 +8391,7 @@ fn cross_kernel_continuation_token_verifies_parent_receipt_hash_and_session_anch
                     "sessionAnchorHash": parent_anchor.session_anchor_hash.clone(),
                 }
             })),
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: parent_kernel.public_key(),
             bbs_projection_version: None,

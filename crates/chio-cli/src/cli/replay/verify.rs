@@ -35,7 +35,7 @@ pub fn verify_receipt(
     value: &serde_json::Value,
     trusted_kernel_key: Option<&chio_core::PublicKey>,
 ) -> VerifyOutcome {
-    let receipt: chio_core::receipt::ChioReceipt = match serde_json::from_value(value.clone()) {
+    let receipt: chio_core::receipt::body::ChioReceipt = match serde_json::from_value(value.clone()) {
         Ok(r) => r,
         Err(error) => {
             return VerifyOutcome {
@@ -97,7 +97,7 @@ pub fn verify_receipt(
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod replay_verify_tests {
     use super::*;
-    use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction};
+    use chio_core::receipt::{body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction};
     use chio_core::Keypair;
     use serde_json::json;
 
@@ -120,7 +120,7 @@ mod replay_verify_tests {
             policy_hash: "0".repeat(64),
             evidence: Vec::new(),
             metadata: None,
-            trust_level: chio_core::receipt::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: kp.public_key(),
             bbs_projection_version: None,

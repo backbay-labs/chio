@@ -32,8 +32,11 @@
 //! that still carries `class_uid = 3002` so downstream consumers can reason
 //! about the failure. Mapping never panics.
 
-use chio_core::chio_receipt_id;
-use chio_core::receipt::{ChioReceipt, Decision, GuardEvidence, ReceiptSemanticFields, TrustLevel};
+use chio_core::receipt::body::chio_receipt_id;
+use chio_core::receipt::{
+    body::ChioReceipt, decision::Decision, kinds::TrustLevel, metadata::GuardEvidence,
+    metadata::ReceiptSemanticFields,
+};
 use serde_json::{json, Map, Value};
 
 use crate::event::SiemEvent;
@@ -533,7 +536,8 @@ mod tests {
     use super::*;
     use chio_core::crypto::Keypair;
     use chio_core::receipt::{
-        ChioReceipt, ChioReceiptBody, Decision, ReceiptSemanticFields, ToolCallAction, TrustLevel,
+        body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+        kinds::TrustLevel, metadata::ReceiptSemanticFields,
     };
     use chio_test_support::prelude::*;
 
@@ -555,11 +559,12 @@ mod tests {
             Err(error) => panic!("hash receipt parameters: {error}"),
         };
         let semantics = semantics.unwrap_or_else(ReceiptSemanticFields::mediated_prevent);
-        let decision = if semantics.receipt_kind == chio_core::ReceiptKind::MediatedDecision {
-            Some(decision)
-        } else {
-            None
-        };
+        let decision =
+            if semantics.receipt_kind == chio_core::receipt::kinds::ReceiptKind::MediatedDecision {
+                Some(decision)
+            } else {
+                None
+            };
         let body = ChioReceiptBody {
             id: id.to_string(),
             timestamp: 1_712_345_678,

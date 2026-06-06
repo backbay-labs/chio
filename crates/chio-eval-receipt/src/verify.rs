@@ -5,7 +5,7 @@
 //! and PGP verification stay fail-closed until the release lane supplies
 //! external verifier tooling.
 
-use chio_core_types::receipt::ChioReceipt;
+use chio_core_types::receipt::body::ChioReceipt;
 use serde_json::{Map, Value};
 
 use crate::export::{sha256_hex, VERDICT_MATRIX_CORPUS_SHA256, VERDICT_MATRIX_SCENARIO_COUNT};
@@ -664,7 +664,8 @@ mod tests {
     };
     use chio_core_types::crypto::Keypair;
     use chio_core_types::receipt::{
-        ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
+        body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+        kinds::TrustLevel,
     };
     use serde_json::{json, Value};
 

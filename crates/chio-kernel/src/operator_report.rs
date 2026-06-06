@@ -7,9 +7,10 @@ use chio_core::capability::{
     scope::MonetaryAmount,
 };
 use chio_core::receipt::{
-    ChioReceipt, Decision, EconomicAuthorizationReceiptMetadata,
-    FinancialBudgetAuthorityReceiptMetadata, GovernedTransactionReceiptMetadata,
-    MeteredUsageEvidenceReceiptMetadata, SettlementStatus, SignedExportEnvelope,
+    body::ChioReceipt, decision::Decision, economics::EconomicAuthorizationReceiptMetadata,
+    economics::FinancialBudgetAuthorityReceiptMetadata, economics::SettlementStatus,
+    governance::GovernedTransactionReceiptMetadata,
+    governance::MeteredUsageEvidenceReceiptMetadata, lineage::SignedExportEnvelope,
 };
 use chio_core::session::ChioIdentityAssertion;
 use chio_core::{
@@ -1511,8 +1512,10 @@ mod tests {
         GovernedCallChainContext, GovernedProvenanceEvidenceClass,
     };
     use chio_core::receipt::{
-        FinancialBudgetAuthorityReceiptMetadata, FinancialBudgetAuthorizeReceiptMetadata,
-        FinancialBudgetHoldAuthorityMetadata, FinancialBudgetTerminalReceiptMetadata,
+        economics::FinancialBudgetAuthorityReceiptMetadata,
+        economics::FinancialBudgetAuthorizeReceiptMetadata,
+        economics::FinancialBudgetHoldAuthorityMetadata,
+        economics::FinancialBudgetTerminalReceiptMetadata,
     };
 
     #[test]

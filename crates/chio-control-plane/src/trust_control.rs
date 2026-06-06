@@ -37,8 +37,9 @@ use chio_core::capability::{
 use chio_core::crypto::{Keypair, PublicKey};
 use chio_core::listing::GenericTrustAdmissionClass;
 use chio_core::receipt::{
-    ChildRequestReceipt, ChioReceipt, ChioReceiptBody, Decision, ReceiptAttributionMetadata,
-    SettlementStatus, ToolCallAction,
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    economics::SettlementStatus, lineage::ChildRequestReceipt,
+    metadata::ReceiptAttributionMetadata,
 };
 use chio_core::session::{
     ChioIdentityAssertion, EnterpriseIdentityContext, OperationTerminalState,

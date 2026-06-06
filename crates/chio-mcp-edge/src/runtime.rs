@@ -8,7 +8,7 @@ use chio_core::capability::{
     scope::{ModelMetadata, Operation},
     token::CapabilityToken,
 };
-use chio_core::receipt::Decision;
+use chio_core::receipt::decision::Decision;
 use chio_core::session::{
     CompleteOperation, CompletionArgument, CompletionReference, CreateElicitationOperation,
     CreateElicitationResult, CreateMessageOperation, CreateMessageResult, ElicitationAction,

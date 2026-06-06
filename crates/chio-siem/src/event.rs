@@ -2,8 +2,8 @@
 
 use std::collections::BTreeSet;
 
-use chio_core::chio_receipt_id;
-use chio_core::receipt::{ChioReceipt, FinancialReceiptMetadata};
+use chio_core::receipt::body::chio_receipt_id;
+use chio_core::receipt::{body::ChioReceipt, economics::FinancialReceiptMetadata};
 use serde::{Deserialize, Serialize};
 
 /// A SIEM event wrapping a ChioReceipt with optionally extracted financial metadata.
@@ -70,8 +70,10 @@ impl SiemEvent {
             authoritative && signer_trusted && semantics.is_authorized(receipt.decision.as_ref());
         let result = if authorized {
             "Authorized"
-        } else if matches!(&receipt.decision, Some(chio_core::receipt::Decision::Allow))
-            && semantics.is_authorized(receipt.decision.as_ref())
+        } else if matches!(
+            &receipt.decision,
+            Some(chio_core::receipt::decision::Decision::Allow)
+        ) && semantics.is_authorized(receipt.decision.as_ref())
         {
             "Unverified"
         } else {
@@ -110,7 +112,9 @@ impl SiemEvent {
 mod tests {
     use super::*;
     use chio_core::crypto::Keypair;
-    use chio_core::receipt::{ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
+    use chio_core::receipt::{
+        body::ChioReceiptBody, decision::Decision, decision::ToolCallAction, kinds::TrustLevel,
+    };
     use chio_test_support::prelude::*;
 
     fn signed_allow_receipt() -> ChioReceipt {
@@ -127,11 +131,11 @@ mod tests {
                 }))
                 .test_expect("action parameters serialize"),
                 decision: Some(Decision::Allow),
-                receipt_kind: chio_core::ReceiptKind::MediatedDecision,
-                boundary_class: chio_core::BoundaryClass::Prevent,
+                receipt_kind: chio_core::receipt::kinds::ReceiptKind::MediatedDecision,
+                boundary_class: chio_core::receipt::kinds::BoundaryClass::Prevent,
                 observation_outcome: None,
-                tool_origin: chio_core::ToolOrigin::CallerExecuted,
-                redaction_mode: chio_core::RedactionMode::None,
+                tool_origin: chio_core::receipt::kinds::ToolOrigin::CallerExecuted,
+                redaction_mode: chio_core::receipt::kinds::RedactionMode::None,
                 actor_chain: Vec::new(),
                 content_hash: "content-hash".to_string(),
                 policy_hash: "policy-hash".to_string(),

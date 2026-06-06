@@ -4,7 +4,7 @@ use crate::canonical_json_bytes;
 use crate::capability::scope::MonetaryAmount;
 use crate::crypto::sha256_hex;
 use crate::listing::{normalize_namespace, GenericListingActorKind, GenericTrustAdmissionClass};
-use crate::receipt::SignedExportEnvelope;
+use crate::receipt::lineage::SignedExportEnvelope;
 use crate::validation::{validate_monetary_amount, validate_non_empty};
 
 pub const OPEN_MARKET_FEE_SCHEDULE_ARTIFACT_SCHEMA: &str = "chio.registry.market-fee-schedule.v1";

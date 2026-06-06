@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use chio_core_types::crypto::sha256_hex;
 use chio_core_types::merkle::MerkleTree;
-use chio_core_types::receipt::SignedExportEnvelope;
+use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_core_types::Keypair;
 use chio_federation::{
     pheromone_gossip::PheromoneDepositGossip, pheromone_gossip::PheromoneGossipBatch,

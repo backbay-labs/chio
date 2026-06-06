@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use chio_core_types::receipt::ChioReceipt;
+use chio_core_types::receipt::body::ChioReceipt;
 use chio_selective_disclosure::{
     project_receipt_body, project_workflow_receipt_body, receipt_signed_projection,
     verify_signed_projection, Projection, SelectiveDisclosureProof, BBS_CIPHERSUITE_SHA256,

@@ -19,9 +19,14 @@ use chio_core::{
         scope::{ChioScope, Operation, ToolGrant},
         token::{CapabilityToken, CapabilityTokenBody},
     },
-    ChildRequestReceipt, ChildRequestReceiptBody, ChioReceipt, ChioReceiptBody, Decision,
-    GuardEvidence, Keypair, ToolAnnotations, ToolCallAction, ToolDefinition, ToolManifest,
-    ToolManifestBody,
+    receipt::body::ChioReceipt,
+    receipt::body::ChioReceiptBody,
+    receipt::decision::Decision,
+    receipt::decision::ToolCallAction,
+    receipt::lineage::ChildRequestReceipt,
+    receipt::lineage::ChildRequestReceiptBody,
+    receipt::metadata::GuardEvidence,
+    Keypair, ToolAnnotations, ToolDefinition, ToolManifest, ToolManifestBody,
 };
 
 // ---------------------------------------------------------------------------
@@ -81,7 +86,7 @@ fn make_receipt_body(kp: &Keypair) -> ChioReceiptBody {
             details: None,
         }],
         metadata: None,
-        trust_level: chio_core::TrustLevel::default(),
+        trust_level: chio_core::receipt::kinds::TrustLevel::default(),
         tenant_id: None,
         kernel_key: kp.public_key(),
         bbs_projection_version: None,

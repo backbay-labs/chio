@@ -35,7 +35,7 @@ use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
 use chio_core_types::canonical::canonical_json_bytes;
 use chio_core_types::crypto::{Ed25519Backend, Keypair, PublicKey, Signature, SigningBackend};
-use chio_core_types::receipt::ChioReceipt;
+use chio_core_types::receipt::body::ChioReceipt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
@@ -1713,7 +1713,8 @@ mod tests {
     use super::*;
     use chio_core_types::crypto::sha256_hex;
     use chio_core_types::receipt::{
-        ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
+        body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+        kinds::TrustLevel,
     };
 
     fn sample_receipt(kp: &Keypair) -> ChioReceipt {

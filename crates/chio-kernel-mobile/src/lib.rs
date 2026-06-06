@@ -72,7 +72,7 @@ use chio_core_types::capability::{
     token::CapabilityToken,
 };
 use chio_core_types::crypto::{Ed25519Backend, Keypair, PublicKey};
-use chio_core_types::receipt::ChioReceiptBody;
+use chio_core_types::receipt::body::ChioReceiptBody;
 use chio_custody_hw::{
     verify_app_attest, verify_mobile_receipt_chain, verify_play_integrity,
     AppAttestVerificationInput, AttestationError, PlayIntegrityVerificationInput,

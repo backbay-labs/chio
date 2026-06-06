@@ -58,7 +58,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use chio_core_types::canonical::canonical_json_bytes;
 use chio_core_types::crypto::PublicKey;
-use chio_core_types::receipt::ChioReceipt;
+use chio_core_types::receipt::body::ChioReceipt;
 use sha2::{Digest, Sha256};
 
 use crate::bilateral::BilateralCoSigningError;
@@ -1798,7 +1798,8 @@ mod tests {
     use base64::Engine as _;
     use chio_core_types::crypto::{sha256_hex, Ed25519Backend, Keypair, SigningBackend};
     use chio_core_types::receipt::{
-        ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
+        body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+        kinds::TrustLevel,
     };
 
     fn sample_receipt(kp_b: &Keypair) -> ChioReceipt {

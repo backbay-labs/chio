@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::capability::scope::MonetaryAmount;
-use crate::receipt::SignedExportEnvelope;
+use crate::receipt::lineage::SignedExportEnvelope;
 
 use crate::{
     validate_positive_money, LiabilityQuoteDisposition, SignedLiabilityPricingAuthority,

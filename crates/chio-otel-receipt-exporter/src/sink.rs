@@ -2,8 +2,9 @@ use std::sync::Arc;
 
 use chio_core::canonical::CanonicalBytes;
 use chio_core::receipt::{
-    BoundaryClass, ChioReceipt, ChioReceiptBody, ObservationOutcome, ReceiptKind, RedactionMode,
-    ToolCallAction, ToolOrigin, TrustLevel,
+    body::ChioReceipt, body::ChioReceiptBody, decision::ToolCallAction, kinds::BoundaryClass,
+    kinds::ObservationOutcome, kinds::ReceiptKind, kinds::RedactionMode, kinds::ToolOrigin,
+    kinds::TrustLevel,
 };
 use chio_core::{sha256_hex, Keypair};
 use chio_kernel::otel::{

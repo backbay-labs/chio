@@ -2,7 +2,8 @@ use std::time::Duration;
 
 use chio_core::crypto::{sha256_hex, Keypair};
 use chio_core::receipt::{
-    ChioReceipt, ChioReceiptBody, Decision, GuardEvidence, ToolCallAction, TrustLevel,
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    kinds::TrustLevel, metadata::GuardEvidence,
 };
 use chio_kernel::dpop::DpopNonceStore;
 use chio_kernel::{BudgetStore, InMemoryBudgetStore, InMemoryRevocationStore, RevocationStore};

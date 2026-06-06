@@ -1,7 +1,7 @@
 use chio_core::canonical::canonical_json_bytes;
 use chio_core::hashing::{sha256, Hash};
 use chio_core::merkle::MerkleTree;
-use chio_core::receipt::ChioReceipt;
+use chio_core::receipt::body::ChioReceipt;
 use serde::{Deserialize, Serialize};
 
 use crate::AnchorError;
@@ -317,7 +317,8 @@ mod tests {
     use chio_core::crypto::Keypair;
     use chio_core::hashing::Hash;
     use chio_core::receipt::{
-        ChioReceipt, ChioReceiptBody, Decision, GuardEvidence, ToolCallAction,
+        body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+        metadata::GuardEvidence,
     };
 
     use super::{
@@ -358,7 +359,7 @@ mod tests {
             metadata: Some(serde_json::json!({
                 "financial": { "units": 42, "currency": "USD" }
             })),
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
             bbs_projection_version: None,

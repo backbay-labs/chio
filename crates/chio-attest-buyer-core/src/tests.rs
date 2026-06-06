@@ -10,7 +10,7 @@ use crate::revocation::*;
 use crate::trust_bundle::*;
 use crate::validation::*;
 use chio_core_types::crypto::Keypair;
-use chio_core_types::receipt::SignedExportEnvelope;
+use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_governance::authorization::SignedGovernanceReceipt;
 use chio_governance::lease::SignedCapabilityLease;
 use chio_selective_disclosure::{

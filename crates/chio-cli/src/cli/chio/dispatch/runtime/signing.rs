@@ -22,7 +22,7 @@ pub(crate) fn cmd_chio_runtime_sign_trust_input(
         CliError::cli_other_error(format!("Chio runtime trust signing seed: {error}"))
     })?;
     let signed =
-        chio_core::receipt::SignedExportEnvelope::sign(body, &keypair).map_err(|error| {
+        chio_core::receipt::lineage::SignedExportEnvelope::sign(body, &keypair).map_err(|error| {
             CliError::cli_other_error(format!("Chio runtime trust input signing: {error}"))
         })?;
     write_pretty_json(out, &signed, "Chio runtime trust input")
@@ -44,7 +44,7 @@ pub(crate) fn cmd_chio_runtime_sign_policy(
         CliError::cli_other_error(format!("Chio runtime policy signing seed: {error}"))
     })?;
     let signed =
-        chio_core::receipt::SignedExportEnvelope::sign(body, &keypair).map_err(|error| {
+        chio_core::receipt::lineage::SignedExportEnvelope::sign(body, &keypair).map_err(|error| {
             CliError::cli_other_error(format!("Chio runtime pheromone policy signing: {error}"))
         })?;
     write_pretty_json(out, &signed, "Chio runtime pheromone policy")
@@ -67,7 +67,7 @@ pub(crate) fn cmd_chio_runtime_sign_peer_weights(
         CliError::cli_other_error(format!("Chio runtime peer weights signing seed: {error}"))
     })?;
     let signed =
-        chio_core::receipt::SignedExportEnvelope::sign(body, &keypair).map_err(|error| {
+        chio_core::receipt::lineage::SignedExportEnvelope::sign(body, &keypair).map_err(|error| {
             CliError::cli_other_error(format!("Chio runtime peer weights signing: {error}"))
         })?;
     write_pretty_json(out, &signed, "Chio runtime peer weights")
@@ -103,7 +103,7 @@ pub(crate) fn cmd_chio_runtime_sign_pheromone_query_report(
         CliError::cli_other_error(format!("Chio pheromone query report signing seed: {error}"))
     })?;
     let signed =
-        chio_core::receipt::SignedExportEnvelope::sign(body, &keypair).map_err(|error| {
+        chio_core::receipt::lineage::SignedExportEnvelope::sign(body, &keypair).map_err(|error| {
             CliError::cli_other_error(format!("Chio pheromone query report signing: {error}"))
         })?;
     write_pretty_json(out, &signed, "Chio pheromone query report")

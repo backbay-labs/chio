@@ -11,7 +11,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chio_core::crypto::{sha256_hex, Keypair};
-use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
+use chio_core::receipt::{
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    kinds::TrustLevel,
+};
 use chio_kernel::KernelError;
 use serde_json::json;
 

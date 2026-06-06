@@ -1,5 +1,5 @@
 use chio_core_types::crypto::Keypair;
-use chio_core_types::SignedExportEnvelope;
+use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_runtime_core::*;
 
 fn profile() -> RuntimeAdmissionProfile {

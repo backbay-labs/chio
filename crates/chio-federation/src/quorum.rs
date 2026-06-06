@@ -8,7 +8,7 @@ use crate::listing::{
     GenericListingFreshnessState, GenericListingReplicaFreshness, GenericRegistryPublisher,
     GenericRegistryPublisherRole,
 };
-use crate::receipt::SignedExportEnvelope;
+use crate::receipt::lineage::SignedExportEnvelope;
 use crate::validation::{
     ensure_non_empty, ensure_unique_strings, validate_anti_eclipse_policy,
     validate_federation_artifact_reference, validate_hex_digest,

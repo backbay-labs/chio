@@ -179,7 +179,7 @@ impl crate::ChioKernel {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use chio_core::receipt::{ChioReceipt, Decision, ToolCallAction};
+    use chio_core::receipt::{body::ChioReceipt, decision::Decision, decision::ToolCallAction};
     use chio_core::session::OperationTerminalState;
     use chio_tool_call_fabric::{Principal, ProvenanceStamp};
     use std::time::{Duration, SystemTime};
@@ -207,7 +207,7 @@ mod tests {
         // to fabric verdict; signature verification is covered by the
         // kernel's own receipt tests.
         let kp = chio_core::crypto::Keypair::generate();
-        let body = chio_core::receipt::ChioReceiptBody {
+        let body = chio_core::receipt::body::ChioReceiptBody {
             id: id.to_string(),
             timestamp: 1_700_000_000,
             capability_id: "cap-test".to_string(),
@@ -218,11 +218,11 @@ mod tests {
                 parameter_hash: "0".repeat(64),
             },
             decision: Some(decision),
-            receipt_kind: chio_core::ReceiptKind::MediatedDecision,
-            boundary_class: chio_core::BoundaryClass::Prevent,
+            receipt_kind: chio_core::receipt::kinds::ReceiptKind::MediatedDecision,
+            boundary_class: chio_core::receipt::kinds::BoundaryClass::Prevent,
             observation_outcome: None,
-            tool_origin: chio_core::ToolOrigin::CallerExecuted,
-            redaction_mode: chio_core::RedactionMode::None,
+            tool_origin: chio_core::receipt::kinds::ToolOrigin::CallerExecuted,
+            redaction_mode: chio_core::receipt::kinds::RedactionMode::None,
             actor_chain: Vec::new(),
             content_hash: "0".repeat(64),
             policy_hash: "0".repeat(64),

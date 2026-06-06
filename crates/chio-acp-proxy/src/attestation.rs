@@ -5,7 +5,7 @@
 // present, the proxy produces signed Chio receipts and validates
 // capability tokens for file and terminal operations.
 
-use chio_core::receipt::ChioReceipt;
+use chio_core::receipt::body::ChioReceipt;
 
 /// Request payload passed to a receipt signer.
 #[derive(Debug, Clone, Serialize, Deserialize)]

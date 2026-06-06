@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use serde::{Deserialize, Serialize};
 
 use crate::error::FederationContractError;
-use crate::receipt::SignedExportEnvelope;
+use crate::receipt::lineage::SignedExportEnvelope;
 use crate::validation::{ensure_non_empty, ensure_unique_strings};
 
 pub const CHIO_FEDERATION_QUALIFICATION_MATRIX_SCHEMA: &str =

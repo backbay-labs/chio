@@ -9,7 +9,8 @@
 
 use chio_core_types::crypto::{sha256_hex, Ed25519Backend, Keypair, Signature, SigningBackend};
 use chio_core_types::receipt::{
-    ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    kinds::TrustLevel,
 };
 use chio_federation::{
     bilateral::co_sign_with_origin, bilateral::BilateralCoSigningError, bilateral::CoSigningBody,

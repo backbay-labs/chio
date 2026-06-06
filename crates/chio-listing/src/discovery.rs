@@ -20,7 +20,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::crypto::PublicKey;
-use crate::receipt::SignedExportEnvelope;
+use crate::receipt::lineage::SignedExportEnvelope;
 use crate::util::bounded_listing_limit;
 use crate::{
     aggregate_generic_listing_reports, normalize_namespace, GenericListingActorKind,

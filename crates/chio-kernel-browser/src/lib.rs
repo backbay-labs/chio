@@ -59,7 +59,9 @@ use chio_core_types::capability::{
     attenuation::ScopeHash, features::CapabilityNegotiation, token::CapabilityToken,
 };
 use chio_core_types::crypto::{Ed25519Backend, Keypair, PublicKey, SigningBackend};
-use chio_core_types::receipt::{chio_receipt_id, ChioReceipt, ChioReceiptBody, Decision};
+use chio_core_types::receipt::{
+    body::chio_receipt_id, body::ChioReceipt, body::ChioReceiptBody, decision::Decision,
+};
 use chio_kernel_core::{
     evaluate_with_full_floor as core_evaluate_with_full_floor, sign_receipt as core_sign_receipt,
     verify_capability_full, BudgetRegistry, BudgetSplitError, EvaluateInput,
@@ -473,7 +475,7 @@ pub fn evaluate_pure(
 pub fn sign_receipt_pure(
     input: SignReceiptRequestJson,
     signing_seed: &[u8; 32],
-) -> Result<chio_core_types::receipt::ChioReceipt, BindingError> {
+) -> Result<chio_core_types::receipt::body::ChioReceipt, BindingError> {
     // Refuse to sign with a zero seed. This guards against the
     // fail-closed fallback in `WebCryptoRng::fill_bytes` -- the adapter
     // fills the destination with zeros when `getRandomValues` threw.
@@ -1004,8 +1006,8 @@ mod tests {
     };
     use chio_core_types::crypto::Keypair;
     use chio_core_types::receipt::{
-        BoundaryClass, ChioReceiptBody, Decision, ReceiptKind, RedactionMode, ToolCallAction,
-        ToolOrigin, TrustLevel,
+        body::ChioReceiptBody, decision::Decision, decision::ToolCallAction, kinds::BoundaryClass,
+        kinds::ReceiptKind, kinds::RedactionMode, kinds::ToolOrigin, kinds::TrustLevel,
     };
     use chio_kernel_core::FixedClock;
 
@@ -1463,7 +1465,7 @@ mod tests {
         ));
     }
 
-    fn make_signed_receipt(seed: [u8; 32]) -> chio_core_types::receipt::ChioReceipt {
+    fn make_signed_receipt(seed: [u8; 32]) -> chio_core_types::receipt::body::ChioReceipt {
         let body = ChioReceiptBody {
             id: "rcpt-verify-pure".to_string(),
             timestamp: ISSUED_AT,

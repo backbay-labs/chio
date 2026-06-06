@@ -2578,7 +2578,7 @@ mod attestation_and_telemetry_tests {
     use chio_core::capability::{scope::{ChioScope, Constraint, Operation, ToolGrant}, token::{CapabilityToken, CapabilityTokenBody}};
     use chio_core::crypto::Keypair;
     use chio_core::receipt::{
-        ChildRequestReceipt, ChioReceipt, ChioReceiptBody, Decision, GuardEvidence, ToolCallAction,
+        lineage::ChildRequestReceipt, body::ChioReceipt, body::ChioReceiptBody, decision::Decision, metadata::GuardEvidence, decision::ToolCallAction,
     };
     use chio_kernel::receipt_store::{
         ReceiptCheckpointCreateReport, ReceiptStore, ReceiptStoreError,
@@ -2710,17 +2710,17 @@ mod attestation_and_telemetry_tests {
                 tool_name: tool_name.to_string(),
                 action,
                 decision: Some(decision),
-                receipt_kind: chio_core::ReceiptKind::MediatedDecision,
-                boundary_class: chio_core::BoundaryClass::Prevent,
+                receipt_kind: chio_core::receipt::kinds::ReceiptKind::MediatedDecision,
+                boundary_class: chio_core::receipt::kinds::BoundaryClass::Prevent,
                 observation_outcome: None,
-                tool_origin: chio_core::ToolOrigin::CallerExecuted,
-                redaction_mode: chio_core::RedactionMode::None,
+                tool_origin: chio_core::receipt::kinds::ToolOrigin::CallerExecuted,
+                redaction_mode: chio_core::receipt::kinds::RedactionMode::None,
                 actor_chain: Vec::new(),
                 content_hash: format!("content-hash-{id}"),
                 policy_hash: "policy-hash".to_string(),
                 evidence,
                 metadata,
-                trust_level: chio_core::TrustLevel::default(),
+                trust_level: chio_core::receipt::kinds::TrustLevel::default(),
                 kernel_key: signer.public_key(),
                 bbs_projection_version: None,
                 tenant_id: None,
@@ -2746,8 +2746,8 @@ mod attestation_and_telemetry_tests {
             tool_call_id,
             tool_name,
             Decision::Allow,
-            chio_core::TrustLevel::Mediated,
-            chio_core::ReceiptSemanticFields::mediated_prevent(),
+            chio_core::receipt::kinds::TrustLevel::Mediated,
+            chio_core::receipt::metadata::ReceiptSemanticFields::mediated_prevent(),
         )
     }
 
@@ -2760,8 +2760,8 @@ mod attestation_and_telemetry_tests {
         tool_call_id: &str,
         tool_name: &str,
         decision: Decision,
-        trust_level: chio_core::TrustLevel,
-        semantics: chio_core::ReceiptSemanticFields,
+        trust_level: chio_core::receipt::kinds::TrustLevel,
+        semantics: chio_core::receipt::metadata::ReceiptSemanticFields,
     ) -> ChioReceipt {
         let operation_payload = test_authorization_operation_payload();
         let authorization_parameter_hash = test_authorization_parameter_hash();
@@ -2771,7 +2771,7 @@ mod attestation_and_telemetry_tests {
             "operation_payload": operation_payload,
         }))
             .expect("hash receipt parameters");
-        let decision = if semantics.receipt_kind == chio_core::ReceiptKind::MediatedDecision {
+        let decision = if semantics.receipt_kind == chio_core::receipt::kinds::ReceiptKind::MediatedDecision {
             Some(decision)
         } else {
             None
@@ -5680,11 +5680,11 @@ mod attestation_and_telemetry_tests {
         let audit_semantics = audit_only.semantic_fields();
         assert_eq!(
             audit_semantics.receipt_kind,
-            chio_core::receipt::ReceiptKind::TraceObservation
+            chio_core::receipt::kinds::ReceiptKind::TraceObservation
         );
         assert_eq!(
             audit_semantics.boundary_class,
-            chio_core::receipt::BoundaryClass::DetectOnly
+            chio_core::receipt::kinds::BoundaryClass::DetectOnly
         );
         assert!(!audit_semantics.is_authorized(audit_only.decision.as_ref()));
         assert!(!audit_only.is_allowed());
@@ -6036,8 +6036,8 @@ mod attestation_and_telemetry_tests {
             Decision::Incomplete {
                 reason: "trace-only observation".to_string(),
             },
-            chio_core::TrustLevel::Verified,
-            chio_core::ReceiptSemanticFields::trace_detect_only(),
+            chio_core::receipt::kinds::TrustLevel::Verified,
+            chio_core::receipt::metadata::ReceiptSemanticFields::trace_detect_only(),
         );
         shared
             .lock()

@@ -17,7 +17,7 @@ use chio_core_types::capability::{
     token::CapabilityToken,
 };
 use chio_core_types::crypto::{Ed25519Backend, Keypair, PublicKey};
-use chio_core_types::receipt::ChioReceiptBody;
+use chio_core_types::receipt::body::ChioReceiptBody;
 use chio_kernel_core::passport_verify::{verify_passport as core_verify_passport, VerifyError};
 use chio_kernel_core::{
     evaluate_with_full_floor, sign_receipt as core_sign_receipt, verify_capability_full,

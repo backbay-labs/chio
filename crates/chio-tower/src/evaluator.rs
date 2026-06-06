@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 
 use chio_core_types::crypto::Keypair;
-use chio_core_types::receipt::GuardEvidence;
+use chio_core_types::receipt::metadata::GuardEvidence;
 use chio_http_core::{
     CallerIdentity, HttpAuthority, HttpAuthorityError, HttpAuthorityInput, HttpAuthorityPolicy,
     HttpMethod, HttpReceipt, PreparedHttpEvaluation, TransportDenyInput, Verdict,

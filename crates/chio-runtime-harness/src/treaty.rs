@@ -92,28 +92,27 @@ pub(crate) fn insert_runtime_loopback_treaty_context(
     let outcome_sha256 = chio_core::sha256_hex(
         format!("runtime-loopback:{step_index}:pre-dispatch-outcome").as_bytes(),
     );
-    let action = chio_core::receipt::ToolCallAction::from_parameters(arguments.clone()).map_err(
-        |error| {
-            RuntimeLoopbackError::message(format!(
-                "Chio runtime loopback receipt action hash: {error}"
-            ))
-        },
-    )?;
-    let proof_receipt = chio_core::receipt::ChioReceipt::sign(
-        chio_core::receipt::ChioReceiptBody {
+    let action = chio_core::receipt::decision::ToolCallAction::from_parameters(arguments.clone())
+        .map_err(|error| {
+        RuntimeLoopbackError::message(format!(
+            "Chio runtime loopback receipt action hash: {error}"
+        ))
+    })?;
+    let proof_receipt = chio_core::receipt::body::ChioReceipt::sign(
+        chio_core::receipt::body::ChioReceiptBody {
             id: format!("runtime-loopback-receipt:{step_index}"),
             timestamp: issued_at_unix_ms / 1000,
             capability_id: step.request.capability_id.clone(),
             tool_server: step.request.server_id.clone(),
             tool_name: step.request.tool_name.clone(),
             action,
-            decision: Some(chio_core::receipt::Decision::Allow),
-            receipt_kind: chio_core::receipt::ReceiptKind::MediatedDecision,
-            boundary_class: chio_core::receipt::BoundaryClass::Prevent,
+            decision: Some(chio_core::receipt::decision::Decision::Allow),
+            receipt_kind: chio_core::receipt::kinds::ReceiptKind::MediatedDecision,
+            boundary_class: chio_core::receipt::kinds::BoundaryClass::Prevent,
             observation_outcome: None,
-            tool_origin: chio_core::receipt::ToolOrigin::CallerExecuted,
-            redaction_mode: chio_core::receipt::RedactionMode::None,
-            actor_chain: vec![chio_core::receipt::ActorRef {
+            tool_origin: chio_core::receipt::kinds::ToolOrigin::CallerExecuted,
+            redaction_mode: chio_core::receipt::kinds::RedactionMode::None,
+            actor_chain: vec![chio_core::receipt::metadata::ActorRef {
                 actor_id: "agent:chio-loopback".to_string(),
                 actor_kind: Some("agent".to_string()),
             }],
@@ -123,7 +122,7 @@ pub(crate) fn insert_runtime_loopback_treaty_context(
             ),
             evidence: Vec::new(),
             metadata: None,
-            trust_level: chio_core::receipt::TrustLevel::Mediated,
+            trust_level: chio_core::receipt::kinds::TrustLevel::Mediated,
             tenant_id: None,
             kernel_key: vendor_key.public_key(),
             bbs_projection_version: None,

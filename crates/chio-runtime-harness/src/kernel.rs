@@ -9,7 +9,7 @@ use crate::treaty::{insert_runtime_loopback_treaty_context, RuntimeLoopbackTreat
 use crate::RuntimeLoopbackError;
 
 pub(crate) struct RuntimeLoopbackExecution {
-    pub(crate) receipt: chio_core::receipt::ChioReceipt,
+    pub(crate) receipt: chio_core::receipt::body::ChioReceipt,
     pub(crate) treaty: Option<RuntimeLoopbackTreatyContext>,
 }
 
@@ -175,10 +175,13 @@ pub(crate) fn runtime_loopback_policy_inputs(
         issued_at_unix_ms,
         expires_at_unix_ms,
     };
-    let signed_trust = chio_core::receipt::SignedExportEnvelope::sign(trust_body, &verifier_key)
-        .map_err(|error| {
-            RuntimeLoopbackError::message(format!("Chio runtime loopback trust signing: {error}"))
-        })?;
+    let signed_trust =
+        chio_core::receipt::lineage::SignedExportEnvelope::sign(trust_body, &verifier_key)
+            .map_err(|error| {
+                RuntimeLoopbackError::message(format!(
+                    "Chio runtime loopback trust signing: {error}"
+                ))
+            })?;
     let weights_body = chio_runtime_core::RuntimePeerWeights {
         schema: chio_runtime_core::CHIO_RUNTIME_PEER_WEIGHTS_SCHEMA.to_string(),
         verifier_id: verifier_id.clone(),
@@ -221,18 +224,20 @@ pub(crate) fn runtime_loopback_policy_inputs(
             effect: "require_review".to_string(),
         }],
     };
-    let signed_policy = chio_core::receipt::SignedExportEnvelope::sign(policy_body, &verifier_key)
-        .map_err(|error| {
-            RuntimeLoopbackError::message(format!("Chio runtime loopback policy signing: {error}"))
-        })?;
+    let signed_policy =
+        chio_core::receipt::lineage::SignedExportEnvelope::sign(policy_body, &verifier_key)
+            .map_err(|error| {
+                RuntimeLoopbackError::message(format!(
+                    "Chio runtime loopback policy signing: {error}"
+                ))
+            })?;
     let signed_weights =
-        chio_core::receipt::SignedExportEnvelope::sign(weights_body, &verifier_key).map_err(
-            |error| {
+        chio_core::receipt::lineage::SignedExportEnvelope::sign(weights_body, &verifier_key)
+            .map_err(|error| {
                 RuntimeLoopbackError::message(format!(
                     "Chio runtime loopback peer weights signing: {error}"
                 ))
-            },
-        )?;
+            })?;
     let query_report_body = serde_json::json!({
         "schema": "chio.pheromone.query-report.v1",
         "accepted": true,
@@ -246,13 +251,12 @@ pub(crate) fn runtime_loopback_policy_inputs(
         }
     });
     let signed_query_report =
-        chio_core::receipt::SignedExportEnvelope::sign(query_report_body, &verifier_key).map_err(
-            |error| {
-                RuntimeLoopbackError::message(format!(
-                    "Chio runtime loopback pheromone query report signing: {error}"
-                ))
-            },
-        )?;
+        chio_core::receipt::lineage::SignedExportEnvelope::sign(query_report_body, &verifier_key)
+            .map_err(|error| {
+            RuntimeLoopbackError::message(format!(
+                "Chio runtime loopback pheromone query report signing: {error}"
+            ))
+        })?;
     Ok((
         signed_trust,
         trusted_keys,

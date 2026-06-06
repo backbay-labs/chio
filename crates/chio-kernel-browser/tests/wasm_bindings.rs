@@ -24,7 +24,9 @@ use chio_core_types::capability::{
     token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core_types::crypto::Keypair;
-use chio_core_types::receipt::{ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
+use chio_core_types::receipt::{
+    body::ChioReceiptBody, decision::Decision, decision::ToolCallAction, kinds::TrustLevel,
+};
 use chio_kernel_browser::wasm::{evaluate, mint_signing_seed_hex, sign_receipt, verify_capability};
 use serde_wasm_bindgen::from_value;
 use wasm_bindgen_test::console_log;
@@ -133,7 +135,7 @@ fn sign_receipt_uses_webcrypto_seed() {
     let input = serde_json::json!({ "body": body });
 
     let receipt_js = sign_receipt(&input.to_string(), &seed_hex).expect("sign_receipt");
-    let receipt: chio_core_types::receipt::ChioReceipt = from_value(receipt_js).unwrap();
+    let receipt: chio_core_types::receipt::body::ChioReceipt = from_value(receipt_js).unwrap();
     assert!(receipt.verify_signature().unwrap());
 }
 

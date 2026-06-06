@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use chio_core_types::receipt::ChioReceipt;
+use chio_core_types::receipt::body::ChioReceipt;
 
 use crate::hash::canonical_sha256;
 use crate::treaty::{validate_receipt_lineage_bundle, validate_receipt_lineage_statement};

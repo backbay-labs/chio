@@ -9,7 +9,9 @@ use chio_core::capability::{
     token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core::crypto::Keypair;
-use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction};
+use chio_core::receipt::{
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+};
 use chio_core::{canonical_json_bytes, sha256_hex};
 use chio_kernel::build_checkpoint;
 use chio_mercury_core::proof_package::MercuryInquiryPackageArgs;

@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::error::Result as ChioResult;
-use crate::receipt::SignedExportEnvelope;
+use crate::receipt::lineage::SignedExportEnvelope;
 use chio_core_types::runtime_attestation::AttestationVerifierFamily;
 
 use crate::types::*;

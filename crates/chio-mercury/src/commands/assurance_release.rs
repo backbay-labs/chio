@@ -431,13 +431,13 @@ fn export_trust_network(output: &Path) -> Result<MercuryTrustNetworkExportSummar
         .checkpoints
         .iter()
         .map(|checkpoint| {
-            let binding = chio_core::receipt::CheckpointPublicationTrustAnchorBinding {
-                publication_identity: chio_core::receipt::CheckpointPublicationIdentity::new(
-                    chio_core::receipt::CheckpointPublicationIdentityKind::LocalLog,
+            let binding = chio_core::receipt::checkpoint::CheckpointPublicationTrustAnchorBinding {
+                publication_identity: chio_core::receipt::checkpoint::CheckpointPublicationIdentity::new(
+                    chio_core::receipt::checkpoint::CheckpointPublicationIdentityKind::LocalLog,
                     chio_kernel::checkpoint::checkpoint_log_id(checkpoint),
                 ),
-                trust_anchor_identity: chio_core::receipt::CheckpointTrustAnchorIdentity::new(
-                    chio_core::receipt::CheckpointTrustAnchorIdentityKind::ChainRoot,
+                trust_anchor_identity: chio_core::receipt::checkpoint::CheckpointTrustAnchorIdentity::new(
+                    chio_core::receipt::checkpoint::CheckpointTrustAnchorIdentityKind::ChainRoot,
                     "chio-checkpoint-witness-chain",
                 ),
                 trust_anchor_ref: trust_anchor_ref.clone(),

@@ -7,7 +7,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_control_plane::evidence_export;
 use chio_core::crypto::Keypair;
-use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction};
+use chio_core::receipt::{
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+};
 use chio_kernel::build_checkpoint;
 use chio_mercury_core::{
     sample_mercury_bundle_manifest, sample_mercury_receipt_metadata, MercurySupervisedLiveCapture,
@@ -62,7 +64,7 @@ fn mercury_receipt_with_ts(
             policy_hash: "policy-1".to_string(),
             evidence: Vec::new(),
             metadata: Some(metadata),
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
             bbs_projection_version: None,

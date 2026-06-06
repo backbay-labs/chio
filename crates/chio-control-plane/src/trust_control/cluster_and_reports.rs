@@ -4178,7 +4178,7 @@ mod cluster_and_reports_tests {
                 policy_hash: "policy-hash".to_string(),
                 evidence: Vec::new(),
                 metadata: None,
-                trust_level: chio_core::TrustLevel::default(),
+                trust_level: chio_core::receipt::kinds::TrustLevel::default(),
                 tenant_id: None,
                 kernel_key: keypair.public_key(),
                 bbs_projection_version: None,
@@ -4191,7 +4191,7 @@ mod cluster_and_reports_tests {
     fn sample_child_receipt(id: &str, suffix: &str) -> ChildRequestReceipt {
         let keypair = Keypair::generate();
         ChildRequestReceipt::sign(
-            chio_core::receipt::ChildRequestReceiptBody {
+            chio_core::receipt::lineage::ChildRequestReceiptBody {
                 id: id.to_string(),
                 timestamp: 13,
                 session_id: chio_core::session::SessionId::new(format!("sess-{suffix}")),

@@ -11,7 +11,7 @@ use chio_core::capability::{
     token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core::crypto::Keypair;
-use chio_core::receipt::{ChildRequestReceipt, ChioReceipt};
+use chio_core::receipt::{body::ChioReceipt, lineage::ChildRequestReceipt};
 use chio_guards::{ForbiddenPathGuard, GuardPipeline, ShellCommandGuard};
 use chio_kernel::{
     CapabilitySnapshot, ChioKernel, Guard, GuardContext, GuardDecision, KernelConfig, KernelError,

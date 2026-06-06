@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::capability::{runtime_attestation::RuntimeAssuranceTier, scope::MonetaryAmount};
 use crate::market::LiabilityCoverageClass;
-use crate::receipt::SignedExportEnvelope;
+use crate::receipt::lineage::SignedExportEnvelope;
 use crate::web3::settlement::Web3SettlementLifecycleState;
 
 pub const CHIO_AUTONOMOUS_PRICING_INPUT_SCHEMA: &str = "chio.autonomous-pricing-input.v1";

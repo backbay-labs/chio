@@ -1,7 +1,8 @@
 use chio_core_types::crypto::{sha256_hex, Keypair};
 use chio_core_types::receipt::{
-    ActorRef, BoundaryClass, ChioReceipt, ChioReceiptBody, Decision, ReceiptKind, RedactionMode,
-    ToolCallAction, ToolOrigin, TrustLevel,
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    kinds::BoundaryClass, kinds::ReceiptKind, kinds::RedactionMode, kinds::ToolOrigin,
+    kinds::TrustLevel, metadata::ActorRef,
 };
 use chio_federation::{
     bilateral::execute_local_bilateral_invocation_fixture, bilateral::BilateralCoSigningProtocol,

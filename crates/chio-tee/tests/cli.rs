@@ -10,7 +10,10 @@ use chio_core::capability::{
 };
 use chio_core::crypto::{sha256_hex, Keypair};
 use chio_core::message::AgentMessage;
-use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
+use chio_core::receipt::{
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    kinds::TrustLevel,
+};
 use chio_tee::{validate_signed, Frame, Observation, Verdict};
 
 /// Deterministic tenant seed so the test can re-derive the public key and

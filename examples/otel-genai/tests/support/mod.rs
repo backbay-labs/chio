@@ -3,7 +3,7 @@ use std::error::Error;
 use std::sync::{Arc, Mutex};
 
 use chio_core::crypto::Keypair;
-use chio_core::receipt::{ChildRequestReceipt, ChioReceipt};
+use chio_core::receipt::{body::ChioReceipt, lineage::ChildRequestReceipt};
 use chio_kernel::otel::{
     ATTR_CHIO_AGENT_ID, ATTR_CHIO_RECEIPT_ID, ATTR_CHIO_SERVER_ID, ATTR_GEN_AI_OPERATION_NAME,
     ATTR_GEN_AI_REQUEST_MODEL, ATTR_GEN_AI_SYSTEM, ATTR_GEN_AI_TOOL_CALL_ID, ATTR_GEN_AI_TOOL_NAME,

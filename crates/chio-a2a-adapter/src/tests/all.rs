@@ -11,7 +11,7 @@ mod tests {
 
     use chio_core::capability::{scope::{ChioScope, Operation, ToolGrant}, token::{CapabilityToken, CapabilityTokenBody}};
     use chio_core::crypto::Keypair;
-    use chio_core::receipt::Decision;
+    use chio_core::receipt::decision::Decision;
     use chio_kernel::{
         ChioKernel, KernelConfig, ToolCallRequest, Verdict, DEFAULT_CHECKPOINT_BATCH_SIZE,
         DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES,

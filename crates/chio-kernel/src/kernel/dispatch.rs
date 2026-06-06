@@ -12,11 +12,11 @@ use super::*;
 
 pub(crate) struct GuardRunError {
     pub(crate) error: KernelError,
-    pub(crate) evidence: Vec<chio_core::receipt::GuardEvidence>,
+    pub(crate) evidence: Vec<chio_core::receipt::metadata::GuardEvidence>,
 }
 
 impl GuardRunError {
-    fn new(error: KernelError, evidence: Vec<chio_core::receipt::GuardEvidence>) -> Self {
+    fn new(error: KernelError, evidence: Vec<chio_core::receipt::metadata::GuardEvidence>) -> Self {
         Self { error, evidence }
     }
 }
@@ -266,7 +266,7 @@ impl ChioKernel {
         scope: &ChioScope,
         session_filesystem_roots: Option<&[String]>,
         matched_grant_index: Option<usize>,
-    ) -> Result<Vec<chio_core::receipt::GuardEvidence>, GuardRunError> {
+    ) -> Result<Vec<chio_core::receipt::metadata::GuardEvidence>, GuardRunError> {
         let ctx = GuardContext {
             request,
             scope,

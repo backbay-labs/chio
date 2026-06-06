@@ -3639,9 +3639,9 @@ pub(crate) fn explain_receipt_value(
     depth: usize,
     fanout_limit: usize,
 ) -> Result<serde_json::Value, CliError> {
-    let receipt: chio_core::receipt::ChioReceipt = serde_json::from_value(value)?;
+    let receipt: chio_core::receipt::body::ChioReceipt = serde_json::from_value(value)?;
     let signature_ok = receipt.verify_signature()?;
-    let receipt_id_ok = chio_core::receipt::chio_receipt_id(&receipt.body())? == receipt.id;
+    let receipt_id_ok = chio_core::receipt::body::chio_receipt_id(&receipt.body())? == receipt.id;
     let parameter_hash_ok = receipt.action.verify_hash()?;
     let decision = explain_decision_label(receipt.decision.as_ref());
     let semantics = receipt.semantic_fields();
@@ -3709,43 +3709,43 @@ pub(crate) fn explain_receipt_value(
     }))
 }
 
-pub(crate) fn explain_decision_label(decision: Option<&chio_core::receipt::Decision>) -> &'static str {
+pub(crate) fn explain_decision_label(decision: Option<&chio_core::receipt::decision::Decision>) -> &'static str {
     match decision {
-        Some(chio_core::receipt::Decision::Allow) => "allow",
-        Some(chio_core::receipt::Decision::Deny { .. }) => "deny",
-        Some(chio_core::receipt::Decision::Cancelled { .. }) => "cancelled",
-        Some(chio_core::receipt::Decision::Incomplete { .. }) => "incomplete",
+        Some(chio_core::receipt::decision::Decision::Allow) => "allow",
+        Some(chio_core::receipt::decision::Decision::Deny { .. }) => "deny",
+        Some(chio_core::receipt::decision::Decision::Cancelled { .. }) => "cancelled",
+        Some(chio_core::receipt::decision::Decision::Incomplete { .. }) => "incomplete",
         None => "none",
     }
 }
 
 pub(crate) fn decision_details(
-    decision: Option<&chio_core::receipt::Decision>,
+    decision: Option<&chio_core::receipt::decision::Decision>,
 ) -> (Option<&str>, Option<&str>) {
     match decision {
-        Some(chio_core::receipt::Decision::Deny { reason, guard }) => {
+        Some(chio_core::receipt::decision::Decision::Deny { reason, guard }) => {
             (Some(reason.as_str()), Some(guard.as_str()))
         }
-        Some(chio_core::receipt::Decision::Cancelled { reason })
-        | Some(chio_core::receipt::Decision::Incomplete { reason }) => {
+        Some(chio_core::receipt::decision::Decision::Cancelled { reason })
+        | Some(chio_core::receipt::decision::Decision::Incomplete { reason }) => {
             (Some(reason.as_str()), None)
         }
-        Some(chio_core::receipt::Decision::Allow) | None => (None, None),
+        Some(chio_core::receipt::decision::Decision::Allow) | None => (None, None),
     }
 }
 
-pub(crate) fn repair_hint(decision: Option<&chio_core::receipt::Decision>) -> Option<&'static str> {
+pub(crate) fn repair_hint(decision: Option<&chio_core::receipt::decision::Decision>) -> Option<&'static str> {
     match decision {
-        Some(chio_core::receipt::Decision::Deny { .. }) => {
+        Some(chio_core::receipt::decision::Decision::Deny { .. }) => {
             Some("inspect the guard and policy_hash, then mint or narrow a matching capability")
         }
-        Some(chio_core::receipt::Decision::Incomplete { .. }) => {
+        Some(chio_core::receipt::decision::Decision::Incomplete { .. }) => {
             Some("retry after checking the parent receipt and terminal operation state")
         }
-        Some(chio_core::receipt::Decision::Cancelled { .. }) => {
+        Some(chio_core::receipt::decision::Decision::Cancelled { .. }) => {
             Some("resume only if the caller still owns the request and session")
         }
-        Some(chio_core::receipt::Decision::Allow) | None => None,
+        Some(chio_core::receipt::decision::Decision::Allow) | None => None,
     }
 }
 
@@ -3754,32 +3754,32 @@ mod receipt_explain_tests {
     use super::*;
 
     fn signed_explain_receipt(
-        decision: chio_core::receipt::Decision,
-        semantics: Option<chio_core::receipt::ReceiptSemanticFields>,
-    ) -> chio_core::receipt::ChioReceipt {
+        decision: chio_core::receipt::decision::Decision,
+        semantics: Option<chio_core::receipt::metadata::ReceiptSemanticFields>,
+    ) -> chio_core::receipt::body::ChioReceipt {
         let keypair = Keypair::generate();
         let semantics = semantics
-            .unwrap_or_else(chio_core::receipt::ReceiptSemanticFields::mediated_prevent);
+            .unwrap_or_else(chio_core::receipt::metadata::ReceiptSemanticFields::mediated_prevent);
         let decision =
-            if semantics.receipt_kind == chio_core::receipt::ReceiptKind::MediatedDecision {
+            if semantics.receipt_kind == chio_core::receipt::kinds::ReceiptKind::MediatedDecision {
                 Some(decision)
             } else {
                 None
             };
         let trust_level =
-            if semantics.receipt_kind == chio_core::receipt::ReceiptKind::MediatedDecision {
-                chio_core::TrustLevel::Mediated
+            if semantics.receipt_kind == chio_core::receipt::kinds::ReceiptKind::MediatedDecision {
+                chio_core::receipt::kinds::TrustLevel::Mediated
             } else {
-                chio_core::TrustLevel::Verified
+                chio_core::receipt::kinds::TrustLevel::Verified
             };
-        chio_core::receipt::ChioReceipt::sign(
-            chio_core::receipt::ChioReceiptBody {
+        chio_core::receipt::body::ChioReceipt::sign(
+            chio_core::receipt::body::ChioReceiptBody {
                 id: "ignored-before-content-id".to_string(),
                 timestamp: 1,
                 capability_id: "cap-explain".to_string(),
                 tool_server: "shell".to_string(),
                 tool_name: "bash".to_string(),
-                action: chio_core::receipt::ToolCallAction::from_parameters(
+                action: chio_core::receipt::decision::ToolCallAction::from_parameters(
                     serde_json::json!({}),
                 )
                 .unwrap_or_else(|error| panic!("valid tool action: {error}")),
@@ -3871,7 +3871,7 @@ mod receipt_explain_tests {
     #[test]
     fn receipt_explain_reports_semantic_authorization_fields() -> Result<(), CliError> {
         let mediated =
-            signed_explain_receipt(chio_core::receipt::Decision::Allow, None);
+            signed_explain_receipt(chio_core::receipt::decision::Decision::Allow, None);
         let mediated_explain = explain_receipt_value(
             &mediated.id,
             serde_json::to_value(&mediated)?,
@@ -3884,10 +3884,10 @@ mod receipt_explain_tests {
         assert_eq!(mediated_explain["authorized"].as_bool(), Some(true));
 
         let trace = signed_explain_receipt(
-            chio_core::receipt::Decision::Incomplete {
+            chio_core::receipt::decision::Decision::Incomplete {
                 reason: "trace only".to_string(),
             },
-            Some(chio_core::receipt::ReceiptSemanticFields::trace_detect_only()),
+            Some(chio_core::receipt::metadata::ReceiptSemanticFields::trace_detect_only()),
         );
         let trace_explain = explain_receipt_value(
             &trace.id,
@@ -3917,25 +3917,25 @@ mod receipt_operator_tests {
         std::env::temp_dir().join(format!("chio-{name}-{}-{stamp}.{suffix}", std::process::id()))
     }
 
-    fn operator_sample_receipt() -> Result<chio_core::receipt::ChioReceipt, chio_core::Error> {
+    fn operator_sample_receipt() -> Result<chio_core::receipt::body::ChioReceipt, chio_core::Error> {
         let keypair = chio_core::crypto::Keypair::generate();
         operator_sample_receipt_with_keypair(&keypair)
     }
 
     fn operator_sample_receipt_with_keypair(
         keypair: &chio_core::crypto::Keypair,
-    ) -> Result<chio_core::receipt::ChioReceipt, chio_core::Error> {
-        chio_core::receipt::ChioReceipt::sign(
-            chio_core::receipt::ChioReceiptBody {
+    ) -> Result<chio_core::receipt::body::ChioReceipt, chio_core::Error> {
+        chio_core::receipt::body::ChioReceipt::sign(
+            chio_core::receipt::body::ChioReceiptBody {
                 id: "receipt-operator-1".to_string(),
                 timestamp: 1_775_137_626,
                 capability_id: "cap-operator-1".to_string(),
                 tool_server: "operator".to_string(),
                 tool_name: "flush".to_string(),
-                action: chio_core::receipt::ToolCallAction::from_parameters(
+                action: chio_core::receipt::decision::ToolCallAction::from_parameters(
                     serde_json::json!({"operation":"flush"}),
                 )?,
-                decision: Some(chio_core::receipt::Decision::Allow),
+                decision: Some(chio_core::receipt::decision::Decision::Allow),
                 receipt_kind: Default::default(),
                 boundary_class: Default::default(),
                 observation_outcome: None,
@@ -3946,7 +3946,7 @@ mod receipt_operator_tests {
                 policy_hash: "policy-operator-1".to_string(),
                 evidence: Vec::new(),
                 metadata: None,
-                trust_level: chio_core::TrustLevel::default(),
+                trust_level: chio_core::receipt::kinds::TrustLevel::default(),
                 tenant_id: None,
                 kernel_key: keypair.public_key(),
                 bbs_projection_version: None,

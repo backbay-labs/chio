@@ -38,7 +38,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use chio_core::receipt::ChioReceipt;
+use chio_core::receipt::body::ChioReceipt;
 use chio_kernel::operator_report::EmaBaselineState;
 use chio_kernel::{Guard, GuardContext, GuardDecision, KernelError};
 

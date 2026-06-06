@@ -5,7 +5,7 @@
 //
 // Coverage strategy: import the production
 // `chio_kernel_core::sign_receipt` function and the
-// `chio_core::receipt::ChioReceipt::verify_signature` verifier
+// `chio_core::receipt::body::ChioReceipt::verify_signature` verifier
 // directly. Two attacker models are exercised:
 //
 //   1. Mint-side impersonation. Build a `ChioReceiptBody` whose
@@ -38,7 +38,7 @@
 // key.
 
 use chio_core::crypto::{Ed25519Backend, Keypair};
-use chio_core::receipt::{ChioReceiptBody, Decision, ToolCallAction};
+use chio_core::receipt::{body::ChioReceiptBody, decision::Decision, decision::ToolCallAction};
 use chio_kernel_core::receipts::{sign_receipt, ReceiptSigningError};
 
 fn sample_body(kernel_key: chio_core::crypto::PublicKey) -> ChioReceiptBody {

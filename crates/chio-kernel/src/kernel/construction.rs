@@ -470,7 +470,7 @@ impl ChioKernel {
     #[must_use]
     pub fn run_settlement_observer(
         &self,
-        receipt: &chio_core::receipt::ChioReceipt,
+        receipt: &chio_core::receipt::body::ChioReceipt,
     ) -> settlement_observer::SettlementObserverStatus {
         settlement_observer::run_observer(
             self.settlement_observer.as_ref(),
@@ -665,7 +665,7 @@ impl ChioKernel {
     }
 
     /// Look up a dual-signed receipt by the underlying
-    /// [`chio_core::receipt::ChioReceipt`] id. Returns `None` when the
+    /// [`chio_core::receipt::body::ChioReceipt`] id. Returns `None` when the
     /// receipt did not cross a federation boundary or when the
     /// co-signing hook has not yet produced a dual-signed artifact
     /// for it.
@@ -698,7 +698,7 @@ impl ChioKernel {
 
     fn treaty_dsse_extensions_from_receipt_metadata(
         &self,
-        receipt: &chio_core::receipt::ChioReceipt,
+        receipt: &chio_core::receipt::body::ChioReceipt,
     ) -> Result<Option<chio_federation::bilateral_dsse::BilateralPredicateExtensions>, KernelError>
     {
         let Some(metadata) = receipt.metadata.as_ref() else {
@@ -775,7 +775,7 @@ impl ChioKernel {
     pub(crate) fn apply_federation_cosign(
         &self,
         request: &crate::runtime::ToolCallRequest,
-        receipt: &chio_core::receipt::ChioReceipt,
+        receipt: &chio_core::receipt::body::ChioReceipt,
         admitted_peer: Option<&chio_federation::trust_establishment::FederationPeer>,
     ) -> Result<(), KernelError> {
         let Some(origin_kernel_id) = request.federated_origin_kernel_id.as_ref() else {
@@ -814,7 +814,7 @@ impl ChioKernel {
                 // any non-deny receipt still fails closed here.
                 if matches!(
                     receipt.decision,
-                    Some(chio_core::receipt::Decision::Deny { .. })
+                    Some(chio_core::receipt::decision::Decision::Deny { .. })
                 ) {
                     return Ok(());
                 }
@@ -1073,12 +1073,11 @@ impl ChioKernel {
                 "execution nonce required but not presented on tool call".to_string(),
             )
         })?;
-        let parameter_hash =
-            chio_core::receipt::ToolCallAction::from_parameters(request.arguments.clone())
-                .map_err(|e| {
-                    KernelError::ReceiptSigningFailed(format!("failed to hash parameters: {e}"))
-                })?
-                .parameter_hash;
+        let parameter_hash = chio_core::receipt::decision::ToolCallAction::from_parameters(
+            request.arguments.clone(),
+        )
+        .map_err(|e| KernelError::ReceiptSigningFailed(format!("failed to hash parameters: {e}")))?
+        .parameter_hash;
         let expected = crate::execution_nonce::NonceBinding {
             subject_id: cap.subject.to_hex(),
             capability_id: cap.id.clone(),

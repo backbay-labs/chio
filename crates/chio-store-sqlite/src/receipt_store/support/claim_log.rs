@@ -766,7 +766,7 @@ pub(crate) fn metered_billing_evidence_record_from_columns(
     };
 
     Some(MeteredBillingEvidenceRecord {
-        usage_evidence: chio_core::receipt::MeteredUsageEvidenceReceiptMetadata {
+        usage_evidence: chio_core::receipt::governance::MeteredUsageEvidenceReceiptMetadata {
             evidence_kind: adapter_kind,
             evidence_id,
             observed_units: observed_units.max(0) as u64,
@@ -790,7 +790,7 @@ pub(crate) struct MeteredBillingReconciliationAnalysis {
 }
 
 pub(crate) fn analyze_metered_billing_reconciliation(
-    metered: &chio_core::receipt::MeteredBillingReceiptMetadata,
+    metered: &chio_core::receipt::governance::MeteredBillingReceiptMetadata,
     financial: Option<&FinancialReceiptMetadata>,
     evidence: Option<&MeteredBillingEvidenceRecord>,
     reconciliation_state: MeteredBillingReconciliationState,
@@ -909,7 +909,7 @@ pub(crate) fn extract_governed_transaction_metadata(
 
 pub(crate) fn extract_economic_authorization_metadata(
     receipt: &ChioReceipt,
-) -> Option<chio_core::receipt::EconomicAuthorizationReceiptMetadata> {
+) -> Option<chio_core::receipt::economics::EconomicAuthorizationReceiptMetadata> {
     extract_governed_transaction_metadata(receipt)
         .and_then(|governed| governed.economic_authorization)
 }
@@ -1713,7 +1713,7 @@ pub(crate) fn ensure_receipt_lineage_statement_columns(
         WHERE statement_id IS NULL
           AND json_extract(raw_json, '$.schema') = ?1
         "#,
-        params![chio_core::receipt::CHIO_RECEIPT_LINEAGE_STATEMENT_SCHEMA],
+        params![chio_core::receipt::lineage::CHIO_RECEIPT_LINEAGE_STATEMENT_SCHEMA],
     )?;
     Ok(())
 }

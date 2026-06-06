@@ -8,7 +8,10 @@ use chio_core::capability::{
     token::CapabilityToken,
 };
 use chio_core::crypto::Keypair;
-use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, GuardEvidence, ToolCallAction};
+use chio_core::receipt::{
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    metadata::GuardEvidence,
+};
 use chio_core::session::{OperationContext, RequestId, SessionId};
 use chio_kernel::{
     capability_matches_request, BudgetStore, ChioKernel, Guard, GuardContext, GuardDecision,
@@ -432,7 +435,7 @@ fn make_receipt_body(keypair: &Keypair, capability: &CapabilityToken) -> ChioRec
             details: None,
         }],
         metadata: None,
-        trust_level: chio_core::TrustLevel::default(),
+        trust_level: chio_core::receipt::kinds::TrustLevel::default(),
         tenant_id: None,
         kernel_key: keypair.public_key(),
         bbs_projection_version: None,

@@ -11,7 +11,7 @@ use crate::evidence::OpenMarketEvidenceReference;
 use crate::fee_schedule::{OpenMarketBondClass, SignedOpenMarketFeeSchedule};
 use crate::governance::generic::{SignedGenericGovernanceCase, SignedGenericGovernanceCharter};
 use crate::listing::{SignedGenericListing, SignedGenericTrustActivation};
-use crate::receipt::SignedExportEnvelope;
+use crate::receipt::lineage::SignedExportEnvelope;
 use crate::validation::{validate_monetary_amount, validate_non_empty};
 
 pub const OPEN_MARKET_PENALTY_ARTIFACT_SCHEMA: &str = "chio.registry.market-penalty.v1";

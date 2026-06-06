@@ -11,7 +11,7 @@ use crate::identity::{
     Web3KeyBindingPurpose,
 };
 use crate::merkle::{leaf_hash, MerkleProof};
-use crate::receipt::ChioReceipt;
+use crate::receipt::body::ChioReceipt;
 use crate::validation::ensure_non_empty;
 
 pub const CHIO_CHECKPOINT_STATEMENT_SCHEMA: &str = "chio.checkpoint_statement.v1";

@@ -16,7 +16,7 @@ use chio_core::credit::{
 };
 use chio_core::hashing::Hash;
 use chio_core::merkle::leaf_hash;
-use chio_core::receipt::ChioReceipt;
+use chio_core::receipt::body::ChioReceipt;
 use chio_core::web3::anchors::{verify_anchor_inclusion_proof, AnchorInclusionProof};
 use chio_core::web3::identity::{
     verify_web3_identity_binding, SignedWeb3IdentityBinding, Web3KeyBindingPurpose,
@@ -74,7 +74,10 @@ mod tests {
     };
     use chio_core::crypto::Keypair;
     use chio_core::hashing::sha256_hex;
-    use chio_core::receipt::{ChioReceiptBody, Decision, SignedExportEnvelope, ToolCallAction};
+    use chio_core::receipt::{
+        body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+        lineage::SignedExportEnvelope,
+    };
     use chio_core::web3::identity::{
         Web3IdentityBindingCertificate, CHIO_KEY_BINDING_CERTIFICATE_SCHEMA,
     };
@@ -375,7 +378,7 @@ mod tests {
                 policy_hash: sha256_hex(b"policy:web3"),
                 evidence: Vec::new(),
                 metadata: None,
-                trust_level: chio_core::TrustLevel::default(),
+                trust_level: chio_core::receipt::kinds::TrustLevel::default(),
                 tenant_id: None,
                 kernel_key: keypair.public_key(),
                 bbs_projection_version: None,
