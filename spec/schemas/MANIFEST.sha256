@@ -6,7 +6,7 @@ e0b16d7b325b39453865ddbbfaa9c8e9201b8b8eaac10fb23cf61d08a7c85499  spec/schemas/c
 758d782b2de5dd128c49f243b0bbd303ab90559c495339d5fcc540b4b18a6c4d  spec/schemas/chio-attest/v1/buyer-attestation-verification-report.schema.json
 fddf38436c3fcc9a4eebeffa3b81a7d23fe635ef9ea34187c877f9ef1044cda3  spec/schemas/chio-attest/v1/buyer-proof-negative-fixture-corpus.schema.json
 9cd16e96c7f36e438b4af26a5a80cbb30f8691ae47136fdc5ed7888ca2915949  spec/schemas/chio-attest/v1/proof-package.schema.json
-96fd339009188b8e42fe3cd109d4df6e2bbe9e9de0b2a7691ec1806a0e96f7ad  spec/schemas/chio-attest/v1/selective-disclosure-proof.schema.json
+a9eb84a496200ce2d944abc028b6c9b92f191419ab5c24524b111d502c079c18  spec/schemas/chio-attest/v1/selective-disclosure-proof.schema.json
 2867950d044d84e00e9c67d87f8df474e47f7cfff898d388bf9a491ffd7a7cda  spec/schemas/chio-attest/v1/verifier-report.schema.json
 442f459da45454693e2a83a57a22a2d4c6b528d9f72ad1b1e4edff71b6d6a876  spec/schemas/chio-attest/v1/workflow-intersection.schema.json
 187e0d1da854f627e45e8b99e34fd0935eae1401444ab6fc71d294cd3db5cbbc  spec/schemas/chio-federation/v1/authority-profile.schema.json
@@ -30,7 +30,7 @@ ab4b1991f907ff0963fdf5617a27c497ac1455512ee563c3ede96535b0fe66c6  spec/schemas/c
 b5e81fcc7a15fa00bb608aa2cb39ab10b897dbaf8a648f4082ad9560bb3187b8  spec/schemas/chio-federation/v1/treaty-runtime-negative-fixture-corpus.schema.json
 a090c94daf60128bfbb637c141d4c6eb97f6d7dabca256ed2fcaeeea1a5ad0b1  spec/schemas/chio-federation/v1/treaty-scope.schema.json
 d3cd392ecaca10668edd360b7ce1e5479f2bfab784f63499879914dd876524e8  spec/schemas/chio-federation/v1/verification-context.schema.json
-033bb2a312da2e4e67dd7bdbc643e253e084c547ac7e5fda1844362a798871b2  spec/schemas/chio-federation/v1/verifier-trust-bundle.schema.json
+fb33f0a18894dc039ea4a2d71c01469e9ef5a691f850235f32797cdfc99cfb9e  spec/schemas/chio-federation/v1/verifier-trust-bundle.schema.json
 8485e3d08cdfce8736e8f898fff5a212b1432ba0224a43cdf8df996c96721809  spec/schemas/chio-http/v1/caller-identity.schema.json
 57a3244c167440f71409d97ffc7c9c3e3142a28f512535e7a0d277bb7ebc8b19  spec/schemas/chio-http/v1/chio-http-request.schema.json
 b37251380c87eb2f34aea4561da300c9d4ea70d9a79643e609b58091fa12aa77  spec/schemas/chio-http/v1/error-envelope.schema.json

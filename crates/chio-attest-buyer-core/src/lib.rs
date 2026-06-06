@@ -19,8 +19,10 @@ use chio_governance::{
     SignedGovernanceReceipt,
 };
 use chio_selective_disclosure::{
-    project_workflow_receipt_body, verify_selective_disclosure_proof, InMemoryIssuerRegistry,
-    Projection, SelectiveDisclosureProof, BBS_CIPHERSUITE_SHA256, PROJECTION_VERSION_WORKFLOW_V1,
+    project_receipt_body, project_workflow_receipt_body, receipt_signed_projection,
+    verify_selective_disclosure_proof, verify_signed_projection, InMemoryIssuerRegistry,
+    Projection, SelectiveDisclosureProof, BBS_CIPHERSUITE_SHA256, PROJECTION_VERSION_RECEIPT_V1,
+    PROJECTION_VERSION_WORKFLOW_V1,
 };
 use chio_workflow::receipt::{VendorSignatureRequirement, WorkflowReceipt};
 use serde::{Deserialize, Serialize};
@@ -953,11 +955,14 @@ fn lowercase_hex(bytes: &[u8]) -> String {
 }
 
 fn validate_disclosure_policy(policy: &ChioDisclosurePolicy) -> Result<(), ChioPackageError> {
-    if policy.projection_version != PROJECTION_VERSION_WORKFLOW_V1 {
-        return Err(ChioPackageError::TrustBundle(format!(
-            "disclosure policy projection version {} is unsupported",
-            policy.projection_version
-        )));
+    match policy.projection_version.as_str() {
+        PROJECTION_VERSION_WORKFLOW_V1 | PROJECTION_VERSION_RECEIPT_V1 => {}
+        _ => {
+            return Err(ChioPackageError::TrustBundle(format!(
+                "disclosure policy projection version {} is unsupported",
+                policy.projection_version
+            )));
+        }
     }
     if policy.ciphersuite != BBS_CIPHERSUITE_SHA256 {
         return Err(ChioPackageError::TrustBundle(
@@ -1441,15 +1446,8 @@ fn verify_package_inner(
         "strict-bilateral-invocations",
     );
 
-    let workflow_projection = project_workflow_receipt_body(&package.workflow_receipt.body())
-        .map_err(|error| ChioPackageError::SelectiveDisclosure(error.to_string()))?;
-    if package.selective_disclosure_proof.subject_sha256_hex
-        != workflow_projection.subject_sha256_hex
-    {
-        return Err(ChioPackageError::SelectiveDisclosure(
-            "BBS proof subject does not match workflow receipt body".to_string(),
-        ));
-    }
+    let disclosure_projection =
+        disclosure_projection_for_proof(package, &package.selective_disclosure_proof)?;
     let trusted_issuer_key = trust_bundle
         .issuer_public_key_hex(&package.selective_disclosure_proof.issuer_fingerprint)
         .ok_or_else(|| {
@@ -1472,7 +1470,7 @@ fn verify_package_inner(
 
     verify_disclosure_contract(
         &package.selective_disclosure_proof,
-        &workflow_projection,
+        &disclosure_projection,
         trust_bundle,
         context,
     )?;
@@ -1494,6 +1492,106 @@ fn verify_package_inner(
     );
 
     Ok(())
+}
+
+fn disclosure_projection_for_proof(
+    package: &ChioProofPackage,
+    proof: &SelectiveDisclosureProof,
+) -> Result<Projection, ChioPackageError> {
+    match proof.projection_version.as_str() {
+        PROJECTION_VERSION_WORKFLOW_V1 => workflow_projection_for_proof(package, proof),
+        PROJECTION_VERSION_RECEIPT_V1 => receipt_projection_for_proof(package, proof),
+        _ => Err(ChioPackageError::SelectiveDisclosure(format!(
+            "projection version {} is unsupported",
+            proof.projection_version
+        ))),
+    }
+}
+
+fn workflow_projection_for_proof(
+    package: &ChioProofPackage,
+    proof: &SelectiveDisclosureProof,
+) -> Result<Projection, ChioPackageError> {
+    let projection = project_workflow_receipt_body(&package.workflow_receipt.body())
+        .map_err(|error| ChioPackageError::SelectiveDisclosure(error.to_string()))?;
+    if proof.subject_sha256_hex != projection.subject_sha256_hex {
+        return Err(ChioPackageError::SelectiveDisclosure(
+            "BBS proof subject does not match workflow receipt body".to_string(),
+        ));
+    }
+    Ok(projection)
+}
+
+fn receipt_projection_for_proof(
+    package: &ChioProofPackage,
+    proof: &SelectiveDisclosureProof,
+) -> Result<Projection, ChioPackageError> {
+    let mut matched: Option<(&ChioReceipt, Projection)> = None;
+    for receipt in &package.tool_receipts {
+        let projection = project_receipt_body(&receipt.body())
+            .map_err(|error| ChioPackageError::SelectiveDisclosure(error.to_string()))?;
+        if projection.subject_sha256_hex != proof.subject_sha256_hex {
+            continue;
+        }
+        if matched.is_some() {
+            return Err(ChioPackageError::SelectiveDisclosure(format!(
+                "BBS proof subject {} matches multiple tool receipts",
+                proof.subject_sha256_hex
+            )));
+        }
+        matched = Some((receipt, projection));
+    }
+
+    let Some((receipt, projection)) = matched else {
+        return Err(ChioPackageError::SelectiveDisclosure(
+            "BBS proof subject does not match any tool receipt body".to_string(),
+        ));
+    };
+
+    let signed = receipt_signed_projection(receipt).map_err(|error| {
+        ChioPackageError::SelectiveDisclosure(format!("receipt BBS binding failed: {error}"))
+    })?;
+    if signed.projection_version != proof.projection_version {
+        return Err(ChioPackageError::SelectiveDisclosure(
+            "receipt BBS projection version does not match proof".to_string(),
+        ));
+    }
+    if signed.subject_sha256_hex != proof.subject_sha256_hex {
+        return Err(ChioPackageError::SelectiveDisclosure(
+            "receipt BBS subject does not match proof".to_string(),
+        ));
+    }
+    if signed.ciphersuite != proof.ciphersuite {
+        return Err(ChioPackageError::SelectiveDisclosure(
+            "receipt BBS ciphersuite does not match proof".to_string(),
+        ));
+    }
+    if signed.issuer_fingerprint != proof.issuer_fingerprint
+        || signed.issuer_public_key_hex != proof.issuer_public_key_hex
+    {
+        return Err(ChioPackageError::SelectiveDisclosure(
+            "receipt BBS issuer does not match proof".to_string(),
+        ));
+    }
+    if signed.message_count != proof.message_count
+        || projection.messages.len() != proof.message_count
+    {
+        return Err(ChioPackageError::SelectiveDisclosure(
+            "receipt BBS message count does not match proof".to_string(),
+        ));
+    }
+    let bbs_signature_valid = verify_signed_projection(&signed, &projection).map_err(|error| {
+        ChioPackageError::SelectiveDisclosure(format!(
+            "receipt BBS signature verification failed: {error}"
+        ))
+    })?;
+    if !bbs_signature_valid {
+        return Err(ChioPackageError::SelectiveDisclosure(
+            "receipt BBS signature is invalid".to_string(),
+        ));
+    }
+
+    Ok(projection)
 }
 
 fn accepted_report(
@@ -2460,6 +2558,9 @@ mod tests {
     use super::*;
     use chio_core_types::crypto::Keypair;
     use chio_core_types::receipt::SignedExportEnvelope;
+    use chio_selective_disclosure::{
+        derive_selective_disclosure_proof, generate_bbs_keypair, sign_projection, DisclosureSet,
+    };
 
     #[test]
     fn lower_sha256_hex_helper_accepts_exact_lowercase_digest_only() {
@@ -2485,6 +2586,20 @@ mod tests {
             "../../../examples/chio-3vendor/fixtures/verification-context.json"
         ))
         .expect("verification context fixture parses")
+    }
+
+    fn receipt_v1_disclosure_policy(message_count: usize) -> ChioDisclosurePolicy {
+        ChioDisclosurePolicy {
+            projection_version: PROJECTION_VERSION_RECEIPT_V1.to_string(),
+            ciphersuite: BBS_CIPHERSUITE_SHA256.to_string(),
+            message_count,
+            required_disclosed_indices: vec![1, 5, 11],
+            required_disclosed_fields: vec![
+                "capability_id".to_string(),
+                "id".to_string(),
+                "tool_name".to_string(),
+            ],
+        }
     }
 
     fn trust_bundle_with_revocations(
@@ -2535,6 +2650,66 @@ mod tests {
             report.context_sha256.as_deref(),
             Some(context_sha256.as_str())
         );
+    }
+
+    #[test]
+    fn receipt_v1_disclosure_requires_receipt_embedded_bbs() {
+        let mut package = proof_package_from_json(include_str!(
+            "../../../examples/chio-3vendor/fixtures/buyer-auditor-proof-package.json"
+        ))
+        .expect("package fixture parses");
+        let context = verification_context_from_fixture();
+        let bbs_keypair =
+            generate_bbs_keypair(b"chio-bbs-receipt-v1-negative-test-key-material", b"chio")
+                .expect("BBS keypair derives");
+        let projection = project_receipt_body(&package.tool_receipts[0].body())
+            .expect("receipt projection derives");
+        let signed = sign_projection(&projection, &bbs_keypair).expect("sidecar projection signs");
+        package.selective_disclosure_proof = derive_selective_disclosure_proof(
+            &signed,
+            &projection,
+            &bbs_keypair,
+            &DisclosureSet(vec![1, 5, 11]),
+            &context
+                .expected_bbs_proof_nonce()
+                .expect("context nonce derives"),
+        )
+        .expect("receipt sidecar proof derives");
+
+        let mut document = trust_bundle_document_from_fixture();
+        document.trusted_bbs_issuers = vec![TrustedBbsIssuer {
+            issuer_fingerprint: bbs_keypair.issuer_fingerprint.clone(),
+            public_key_hex: bbs_keypair.public_key_hex.clone(),
+        }];
+        document.disclosure_policy = Some(receipt_v1_disclosure_policy(projection.messages.len()));
+        let trust_bundle =
+            ChioVerifierTrustBundle::from_document(document).expect("receipt v1 policy parses");
+
+        let error = verify_package(&package, &trust_bundle, &context)
+            .expect_err("receipt v1 sidecar proof must not verify without receipt BBS");
+        assert!(error.to_string().contains("receipt BBS binding failed"));
+        assert!(error.to_string().contains("BBS signature material"));
+    }
+
+    #[test]
+    fn verifier_trust_bundle_rejects_unsupported_receipt_projection_policy() {
+        let mut document = trust_bundle_document_from_fixture();
+        document.disclosure_policy = Some(ChioDisclosurePolicy {
+            projection_version: "chio.bbs-projection.receipt.v0".to_string(),
+            ciphersuite: BBS_CIPHERSUITE_SHA256.to_string(),
+            message_count: 14,
+            required_disclosed_indices: vec![1, 5, 11],
+            required_disclosed_fields: vec![
+                "capability_id".to_string(),
+                "id".to_string(),
+                "tool_name".to_string(),
+            ],
+        });
+
+        let error = ChioVerifierTrustBundle::from_document(document)
+            .expect_err("unsupported receipt projection policy must fail closed");
+        assert!(error.to_string().contains("projection version"));
+        assert!(error.to_string().contains("unsupported"));
     }
 
     #[test]

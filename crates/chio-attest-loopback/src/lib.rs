@@ -1417,6 +1417,10 @@ mod tests {
 
     use super::*;
     use chio_core_types::receipt::SignedExportEnvelope;
+    use chio_selective_disclosure::{
+        derive_selective_disclosure_proof_from_receipt, sign_chio_receipt_with_bbs,
+        BBS_CIPHERSUITE_SHA256, PROJECTION_VERSION_RECEIPT_V1,
+    };
 
     fn rebuild_verifier_material(
         package: &mut ChioProofPackage,
@@ -1477,6 +1481,92 @@ mod tests {
         assert_eq!(
             package.selective_disclosure_proof.subject_sha256_hex,
             projection.subject_sha256_hex
+        );
+    }
+
+    fn receipt_v1_runtime_package() -> (
+        ChioProofPackage,
+        ChioVerifierTrustBundle,
+        ChioVerificationContext,
+    ) {
+        let context = verification_context();
+        let bbs_keypair = generate_bbs_keypair(BBS_KEY_MATERIAL, BBS_KEY_INFO)
+            .expect("fixture BBS keypair derives");
+        let mut receipts = Vec::new();
+        for (index, vendor) in VENDORS.iter().enumerate() {
+            let vendor_key = Keypair::from_seed(&vendor.seed);
+            let body = receipt_body(vendor, &vendor_key).expect("receipt body builds");
+            let receipt = if index == 0 {
+                sign_chio_receipt_with_bbs(body, &vendor_key, &bbs_keypair)
+                    .expect("receipt signs with BBS")
+            } else {
+                ChioReceipt::sign(body, &vendor_key).expect("receipt signs")
+            };
+            receipts.push(receipt);
+        }
+        let mut package =
+            proof_package_from_runtime_receipts(receipts).expect("runtime package builds");
+        package.selective_disclosure_proof = derive_selective_disclosure_proof_from_receipt(
+            &package.tool_receipts[0],
+            &bbs_keypair,
+            &DisclosureSet(vec![1, 5, 11]),
+            &context
+                .expected_bbs_proof_nonce()
+                .expect("context nonce derives"),
+        )
+        .expect("receipt-bound proof derives");
+
+        let mut trust_bundle_document =
+            verifier_trust_bundle_document_for_package(&package).expect("trust bundle builds");
+        trust_bundle_document.disclosure_policy = Some(ChioDisclosurePolicy {
+            projection_version: PROJECTION_VERSION_RECEIPT_V1.to_string(),
+            ciphersuite: BBS_CIPHERSUITE_SHA256.to_string(),
+            message_count: 14,
+            required_disclosed_indices: vec![1, 5, 11],
+            required_disclosed_fields: vec![
+                "capability_id".to_string(),
+                "id".to_string(),
+                "tool_name".to_string(),
+            ],
+        });
+        let trust_bundle = ChioVerifierTrustBundle::from_document(trust_bundle_document)
+            .expect("receipt v1 trust bundle parses");
+
+        (package, trust_bundle, context)
+    }
+
+    #[test]
+    fn receipt_v1_disclosure_verifies_when_runtime_receipt_carries_embedded_bbs() {
+        let (package, trust_bundle, context) = receipt_v1_runtime_package();
+
+        let report =
+            verify_package(&package, &trust_bundle, &context).expect("receipt v1 package verifies");
+        assert!(report.accepted);
+        assert!(report
+            .checks
+            .iter()
+            .any(|check| check.code == "bbs.selective_disclosure"));
+    }
+
+    #[test]
+    fn receipt_v1_disclosure_rejects_tampered_embedded_bbs_material() {
+        let (mut package, trust_bundle, context) = receipt_v1_runtime_package();
+        package.tool_receipts[0]
+            .bbs_signature
+            .as_mut()
+            .expect("receipt carries BBS material")
+            .signature_hex = "00".repeat(112);
+
+        let error = verify_package(&package, &trust_bundle, &context)
+            .expect_err("tampered receipt-bound BBS material must fail closed");
+        let message = error.to_string();
+        assert!(
+            message.contains("federation verification failed"),
+            "{message}"
+        );
+        assert!(
+            message.contains("resolved receipt signature is invalid"),
+            "{message}"
         );
     }
 
