@@ -14,6 +14,7 @@ crates such as `chio-store-sqlite`.
 - `kernel/validation.rs` owns capability issuance and revocation, tool-server
   event drains, portable verdict evaluation, and budget charge/reconcile
   helpers.
+- `kernel/error.rs` owns `KernelError` and structured operator error reports.
 - `kernel/governed_validation.rs` owns governed transaction admission:
   approval token trust checks, runtime assurance, metered billing, call-chain
   proof checks, autonomy bond checks, and governed call-chain receipt evidence.
