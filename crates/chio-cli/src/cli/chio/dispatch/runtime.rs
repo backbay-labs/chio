@@ -189,7 +189,7 @@ mod chio_orchestration_cli_tests {
         let (proof_package_file_sha256, proof_package_canonical_sha256, proof_package_byte_count) =
             write_json_with_hashes(&dir.join("proof-package.json"), &proof_package)?;
         let verifier_report = serde_json::json!({
-            "schema": chio_attest_buyer_core::VERIFIER_REPORT_SCHEMA,
+            "schema": chio_attest_buyer_core::report::VERIFIER_REPORT_SCHEMA,
             "packageSha256": proof_package_canonical_sha256.clone(),
             "trustBundleSha256": fixed_hash('8'),
             "contextSha256": fixed_hash('9'),

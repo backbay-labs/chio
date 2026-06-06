@@ -4,14 +4,22 @@
 
 use std::collections::BTreeSet;
 
-use chio_attest_buyer_core::{
-    ChioAuthorityStatus, ChioDisclosurePolicy, ChioPackageError, ChioRevocationCheckpoint,
-    ChioRevocationMaterial, ChioTrustedActionClass, ChioTrustedGovernanceAuthority,
-    ChioTrustedLeaseAuthority, ChioTrustedWorkflowIntersection, ChioVerificationContext,
-    ChioVerifierTrustBundle, ChioVerifierTrustBundleDocument, LeaseScopeBindingArtifact,
-    PeerLadderBinding, SignedChioRevocationCheckpoint, TrustedBbsIssuer, VendorKeyBinding,
-    WorkflowIntersectionArtifact, CHIO_FEDERATION_REVOCATION_CHECKPOINT_SCHEMA_V1,
-    CHIO_FEDERATION_VERIFIER_TRUST_BUNDLE_SCHEMA, LEASE_SCOPE_BINDING_SCHEMA,
+use chio_attest_buyer_core::claims::{
+    LeaseScopeBindingArtifact, PeerLadderBinding, VendorKeyBinding, WorkflowIntersectionArtifact,
+    LEASE_SCOPE_BINDING_SCHEMA,
+};
+use chio_attest_buyer_core::context::ChioVerificationContext;
+use chio_attest_buyer_core::disclosure::ChioDisclosurePolicy;
+use chio_attest_buyer_core::error::ChioPackageError;
+use chio_attest_buyer_core::issuer::TrustedBbsIssuer;
+use chio_attest_buyer_core::revocation::{
+    ChioRevocationCheckpoint, ChioRevocationMaterial, SignedChioRevocationCheckpoint,
+    CHIO_FEDERATION_REVOCATION_CHECKPOINT_SCHEMA_V1,
+};
+use chio_attest_buyer_core::trust_bundle::{
+    ChioAuthorityStatus, ChioTrustedActionClass, ChioTrustedGovernanceAuthority,
+    ChioTrustedLeaseAuthority, ChioTrustedWorkflowIntersection, ChioVerifierTrustBundle,
+    ChioVerifierTrustBundleDocument, CHIO_FEDERATION_VERIFIER_TRUST_BUNDLE_SCHEMA,
     WORKFLOW_AGGREGATE_PUBLISH_ACTION_CLASS_ID, WORKFLOW_GRANT_ISSUE_ACTION_CLASS_ID,
 };
 use chio_core_types::canonical::canonical_json_bytes;
@@ -1126,10 +1134,12 @@ impl From<ChioAuthorityError> for ChioPackageError {
 mod tests {
     #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-    use chio_attest_buyer_core::{
-        ChioAuthorityStatus, ChioDisclosurePolicy, ChioTrustedActionClass,
-        ChioTrustedGovernanceAuthority, ChioTrustedLeaseAuthority, ChioVerifierTrustBundle,
-        ChioVerifierTrustBundleDocument, TrustedBbsIssuer, VendorKeyBinding,
+    use chio_attest_buyer_core::claims::VendorKeyBinding;
+    use chio_attest_buyer_core::disclosure::ChioDisclosurePolicy;
+    use chio_attest_buyer_core::issuer::TrustedBbsIssuer;
+    use chio_attest_buyer_core::trust_bundle::{
+        ChioAuthorityStatus, ChioTrustedActionClass, ChioTrustedGovernanceAuthority,
+        ChioTrustedLeaseAuthority, ChioVerifierTrustBundle, ChioVerifierTrustBundleDocument,
         WORKFLOW_AGGREGATE_PUBLISH_ACTION_CLASS_ID, WORKFLOW_GRANT_ISSUE_ACTION_CLASS_ID,
     };
     use chio_core_types::crypto::{Keypair, PublicKey};
@@ -1235,8 +1245,8 @@ mod tests {
             workflow_grant_id: "cap-workflow".to_string(),
             lease_authority_issuer: "did:chio:buyer-kernel".to_string(),
             governance_authority_kernel: "did:chio:buyer-governance".to_string(),
-            verification_context: chio_attest_buyer_core::ChioVerificationContext {
-                schema: chio_attest_buyer_core::VERIFICATION_CONTEXT_SCHEMA.to_string(),
+            verification_context: chio_attest_buyer_core::context::ChioVerificationContext {
+                schema: chio_attest_buyer_core::context::VERIFICATION_CONTEXT_SCHEMA.to_string(),
                 audience: "buyer-auditor".to_string(),
                 challenge: "challenge-001".to_string(),
                 proof_purpose: "workflow-disclosure".to_string(),
@@ -1285,7 +1295,7 @@ mod tests {
     fn peer_pins() -> PeerPinsDocument {
         PeerPinsDocument {
             schema: PEER_PINS_SCHEMA.to_string(),
-            peers: vec![chio_attest_buyer_core::PeerLadderBinding {
+            peers: vec![chio_attest_buyer_core::claims::PeerLadderBinding {
                 kernel_id: "did:chio:vendor-a".to_string(),
                 public_key: key(21).public_key(),
                 ladder_manifest_ref: LadderManifestRef {
@@ -1303,12 +1313,12 @@ mod tests {
                 ChioTrustedActionClass {
                     action_class_id: WORKFLOW_GRANT_ISSUE_ACTION_CLASS_ID.to_string(),
                     tool_name: WORKFLOW_GRANT_ISSUE_ACTION_CLASS_ID.to_string(),
-                    kind: chio_attest_buyer_core::ChioActionClassKind::Routine,
+                    kind: chio_attest_buyer_core::trust_bundle::ChioActionClassKind::Routine,
                 },
                 ChioTrustedActionClass {
                     action_class_id: WORKFLOW_AGGREGATE_PUBLISH_ACTION_CLASS_ID.to_string(),
                     tool_name: WORKFLOW_AGGREGATE_PUBLISH_ACTION_CLASS_ID.to_string(),
-                    kind: chio_attest_buyer_core::ChioActionClassKind::Routine,
+                    kind: chio_attest_buyer_core::trust_bundle::ChioActionClassKind::Routine,
                 },
             ],
         }
@@ -1415,7 +1425,7 @@ mod tests {
 
         let peer_pins = PeerPinsDocument {
             schema: "chio.federation.peer-pins.v1".to_string(),
-            peers: vec![chio_attest_buyer_core::PeerLadderBinding {
+            peers: vec![chio_attest_buyer_core::claims::PeerLadderBinding {
                 kernel_id: "did:chio:vendor-a".to_string(),
                 public_key: key(21).public_key(),
                 ladder_manifest_ref: LadderManifestRef {
@@ -1433,17 +1443,17 @@ mod tests {
                 ChioTrustedActionClass {
                     action_class_id: WORKFLOW_GRANT_ISSUE_ACTION_CLASS_ID.to_string(),
                     tool_name: WORKFLOW_GRANT_ISSUE_ACTION_CLASS_ID.to_string(),
-                    kind: chio_attest_buyer_core::ChioActionClassKind::Routine,
+                    kind: chio_attest_buyer_core::trust_bundle::ChioActionClassKind::Routine,
                 },
                 ChioTrustedActionClass {
                     action_class_id: WORKFLOW_AGGREGATE_PUBLISH_ACTION_CLASS_ID.to_string(),
                     tool_name: WORKFLOW_AGGREGATE_PUBLISH_ACTION_CLASS_ID.to_string(),
-                    kind: chio_attest_buyer_core::ChioActionClassKind::Routine,
+                    kind: chio_attest_buyer_core::trust_bundle::ChioActionClassKind::Routine,
                 },
             ],
         };
-        let workflow_intersection = chio_attest_buyer_core::WorkflowIntersectionArtifact {
-            schema: chio_attest_buyer_core::WORKFLOW_INTERSECTION_SCHEMA.to_string(),
+        let workflow_intersection = chio_attest_buyer_core::claims::WorkflowIntersectionArtifact {
+            schema: chio_attest_buyer_core::claims::WORKFLOW_INTERSECTION_SCHEMA.to_string(),
             intersection_id: "workflow-intersection:001".to_string(),
             workflow_id: "wf-001".to_string(),
             workflow_grant_id: "cap-workflow".to_string(),
@@ -1575,7 +1585,7 @@ mod tests {
                 .expect("checkpoint");
         let peer_pins = PeerPinsDocument {
             schema: PEER_PINS_SCHEMA.to_string(),
-            peers: vec![chio_attest_buyer_core::PeerLadderBinding {
+            peers: vec![chio_attest_buyer_core::claims::PeerLadderBinding {
                 kernel_id: "did:chio:vendor-a".to_string(),
                 public_key: key(21).public_key(),
                 ladder_manifest_ref: LadderManifestRef {
@@ -1593,17 +1603,17 @@ mod tests {
                 ChioTrustedActionClass {
                     action_class_id: WORKFLOW_GRANT_ISSUE_ACTION_CLASS_ID.to_string(),
                     tool_name: WORKFLOW_GRANT_ISSUE_ACTION_CLASS_ID.to_string(),
-                    kind: chio_attest_buyer_core::ChioActionClassKind::Routine,
+                    kind: chio_attest_buyer_core::trust_bundle::ChioActionClassKind::Routine,
                 },
                 ChioTrustedActionClass {
                     action_class_id: WORKFLOW_AGGREGATE_PUBLISH_ACTION_CLASS_ID.to_string(),
                     tool_name: WORKFLOW_AGGREGATE_PUBLISH_ACTION_CLASS_ID.to_string(),
-                    kind: chio_attest_buyer_core::ChioActionClassKind::Routine,
+                    kind: chio_attest_buyer_core::trust_bundle::ChioActionClassKind::Routine,
                 },
             ],
         };
-        let workflow_intersection = chio_attest_buyer_core::WorkflowIntersectionArtifact {
-            schema: chio_attest_buyer_core::WORKFLOW_INTERSECTION_SCHEMA.to_string(),
+        let workflow_intersection = chio_attest_buyer_core::claims::WorkflowIntersectionArtifact {
+            schema: chio_attest_buyer_core::claims::WORKFLOW_INTERSECTION_SCHEMA.to_string(),
             intersection_id: "workflow-intersection:001".to_string(),
             workflow_id: "wf-001".to_string(),
             workflow_grant_id: "cap-workflow".to_string(),

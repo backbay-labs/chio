@@ -12,6 +12,22 @@ The trust bundle is verifier policy input, not advisory metadata. Its parser mus
 
 The verifier treats issuer registries, lease authorities, governance authorities, revocation checkpoints, and workflow intersections as separate policy surfaces. A package is accepted only when each referenced artifact is schema-valid, canonical-hash-bound, and authorized by the trust bundle section that owns it.
 
+## Module Map
+
+- `lib.rs`: crate documentation, dependency aliases, and public module declarations.
+- `issuer.rs`: trusted BBS issuer documents and issuer registry lookup.
+- `revocation.rs`: revocation checkpoint documents, pinned epoch material, checkpoint signature validation, and revoked-key set construction.
+- `oracle.rs`: offline revocation oracle adapter used by federation verification.
+- `disclosure.rs`: verifier disclosure policy validation, projection selection, and BBS proof contract checks.
+- `context.rs`: verifier context document, nonce preimage, JSON parsing, rendering, and context hash helpers.
+- `trust_bundle.rs`: verifier trust bundle document, authority roots, workflow trust roots, trust-bundle parsing, rendering, and trust-bundle hash helpers.
+- `claims.rs`: proof claim flags, peer and vendor bindings, workflow intersection structs, and lease scope bindings.
+- `proof_package.rs`: proof package document, JSON parsing, rendering, package hash, and package-claim validation.
+- `report.rs`: verifier report types, package verification orchestration, phase/failure mapping, workflow checks, lease checks, governance checks, and report JSON helpers.
+- `validation.rs`: shared internal field, hash, lifecycle, canonical JSON, and fingerprint helpers.
+- `error.rs`: public package verification error type.
+- `tests.rs`: crate-local offline verifier behavior tests.
+
 ## Invariants
 
 - Verification is offline and deterministic.

@@ -12,6 +12,10 @@
 
 use std::{collections::BTreeSet, fmt};
 
+use chio_attest_buyer_core::context::verification_context_from_json;
+use chio_attest_buyer_core::proof_package::proof_package_from_json;
+use chio_attest_buyer_core::report::{report_json, verify_package_report};
+use chio_attest_buyer_core::trust_bundle::verifier_trust_bundle_from_json;
 use serde::{Deserialize, Serialize};
 
 pub const CHIO_ATTEST_BUYER_ATTESTATION_PACKET_SCHEMA: &str =
@@ -708,17 +712,15 @@ pub fn verify_proof_package_json(
     verifier_trust_bundle_json: &str,
     verification_context_json: &str,
 ) -> Result<ChioProofVerificationReport, BuyerAttestationError> {
-    let proof_package = chio_attest_buyer_core::proof_package_from_json(proof_package_json)
+    let proof_package = proof_package_from_json(proof_package_json)
         .map_err(|error| json_error("Chio attest proof package", error))?;
-    let trust_bundle =
-        chio_attest_buyer_core::verifier_trust_bundle_from_json(verifier_trust_bundle_json)
-            .map_err(|error| json_error("Chio verifier trust bundle", error))?;
-    let context = chio_attest_buyer_core::verification_context_from_json(verification_context_json)
+    let trust_bundle = verifier_trust_bundle_from_json(verifier_trust_bundle_json)
+        .map_err(|error| json_error("Chio verifier trust bundle", error))?;
+    let context = verification_context_from_json(verification_context_json)
         .map_err(|error| json_error("Chio verification context", error))?;
-    let report =
-        chio_attest_buyer_core::verify_package_report(&proof_package, &trust_bundle, &context);
-    let json = chio_attest_buyer_core::report_json(&report)
-        .map_err(|error| json_error("Chio attest proof report", error))?;
+    let report = verify_package_report(&proof_package, &trust_bundle, &context);
+    let json =
+        report_json(&report).map_err(|error| json_error("Chio attest proof report", error))?;
     Ok(ChioProofVerificationReport {
         accepted: report.accepted,
         failure_code: report.failure.as_ref().map(|failure| failure.code.clone()),
@@ -904,15 +906,13 @@ fn replay_historical_verifier(
     })?;
     let proof_package_json = std::str::from_utf8(proof_package_bytes)
         .map_err(|error| json_error("Chio buyer proof package artifact", error))?;
-    let proof_package = chio_attest_buyer_core::proof_package_from_json(proof_package_json)
+    let proof_package = proof_package_from_json(proof_package_json)
         .map_err(|error| json_error("Chio buyer proof package", error))?;
-    let trust_bundle =
-        chio_attest_buyer_core::verifier_trust_bundle_from_json(verifier_trust_bundle_json)
-            .map_err(|error| json_error("Chio buyer verifier trust bundle", error))?;
-    let context = chio_attest_buyer_core::verification_context_from_json(verification_context_json)
+    let trust_bundle = verifier_trust_bundle_from_json(verifier_trust_bundle_json)
+        .map_err(|error| json_error("Chio buyer verifier trust bundle", error))?;
+    let context = verification_context_from_json(verification_context_json)
         .map_err(|error| json_error("Chio buyer verification context", error))?;
-    let verifier_report =
-        chio_attest_buyer_core::verify_package_report(&proof_package, &trust_bundle, &context);
+    let verifier_report = verify_package_report(&proof_package, &trust_bundle, &context);
     if verifier_report.accepted {
         report.checks.push(BuyerAttestationReviewCheck {
             code: "chio_attest_buyer.review.existing_verifier_replayed".to_string(),

@@ -150,15 +150,17 @@ pub(super) fn verify_buyer_review_existing_verifier(
         .map_err(|_| "chio_buyer_review_verifier_report_rejected")?;
     let verification_context_json = serde_json::to_string(context.verification_context)
         .map_err(|_| "chio_buyer_review_verifier_report_rejected")?;
-    let typed_package = chio_attest_buyer_core::proof_package_from_json(&proof_package_json)
-        .map_err(|_| "chio_buyer_review_verifier_report_rejected")?;
-    let typed_trust_bundle =
-        chio_attest_buyer_core::verifier_trust_bundle_from_json(&verifier_trust_bundle_json)
+    let typed_package =
+        chio_attest_buyer_core::proof_package::proof_package_from_json(&proof_package_json)
             .map_err(|_| "chio_buyer_review_verifier_report_rejected")?;
+    let typed_trust_bundle = chio_attest_buyer_core::trust_bundle::verifier_trust_bundle_from_json(
+        &verifier_trust_bundle_json,
+    )
+    .map_err(|_| "chio_buyer_review_verifier_report_rejected")?;
     let typed_context =
-        chio_attest_buyer_core::verification_context_from_json(&verification_context_json)
+        chio_attest_buyer_core::context::verification_context_from_json(&verification_context_json)
             .map_err(|_| "chio_buyer_review_verifier_report_rejected")?;
-    let expected_report = chio_attest_buyer_core::verify_package_report(
+    let expected_report = chio_attest_buyer_core::report::verify_package_report(
         &typed_package,
         &typed_trust_bundle,
         &typed_context,

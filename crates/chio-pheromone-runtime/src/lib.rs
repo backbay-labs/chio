@@ -7,10 +7,12 @@ use std::fs;
 use std::path::Path;
 use std::sync::{Mutex, PoisonError};
 
-use chio_attest_buyer_core::{
-    package_sha256, proof_package_from_json, verification_context_from_json,
-    verification_context_sha256, verifier_trust_bundle_from_json, verify_package,
+use chio_attest_buyer_core::context::{
+    verification_context_from_json, verification_context_sha256,
 };
+use chio_attest_buyer_core::proof_package::{package_sha256, proof_package_from_json};
+use chio_attest_buyer_core::report::verify_package;
+use chio_attest_buyer_core::trust_bundle::verifier_trust_bundle_from_json;
 use chio_core_types::canonical::canonical_json_bytes;
 use chio_core_types::crypto::sha256_hex;
 use chio_core_types::receipt::SignedExportEnvelope;
@@ -111,7 +113,7 @@ fn chio_workflow_verification_error(error: impl std::fmt::Display) -> PheromoneR
 
 #[derive(Debug, Clone)]
 pub struct ChioWorkflowProofPackage {
-    inner: chio_attest_buyer_core::ChioProofPackage,
+    inner: chio_attest_buyer_core::proof_package::ChioProofPackage,
 }
 
 impl ChioWorkflowProofPackage {
@@ -121,14 +123,14 @@ impl ChioWorkflowProofPackage {
             .map_err(chio_workflow_verification_error)
     }
 
-    fn as_attest_core(&self) -> &chio_attest_buyer_core::ChioProofPackage {
+    fn as_attest_core(&self) -> &chio_attest_buyer_core::proof_package::ChioProofPackage {
         &self.inner
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct ChioWorkflowVerifierTrustBundle {
-    inner: chio_attest_buyer_core::ChioVerifierTrustBundle,
+    inner: chio_attest_buyer_core::trust_bundle::ChioVerifierTrustBundle,
 }
 
 impl ChioWorkflowVerifierTrustBundle {
@@ -143,14 +145,14 @@ impl ChioWorkflowVerifierTrustBundle {
         self.inner.runtime_policy_issuer_public_keys()
     }
 
-    fn as_attest_core(&self) -> &chio_attest_buyer_core::ChioVerifierTrustBundle {
+    fn as_attest_core(&self) -> &chio_attest_buyer_core::trust_bundle::ChioVerifierTrustBundle {
         &self.inner
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChioWorkflowVerificationContext {
-    inner: chio_attest_buyer_core::ChioVerificationContext,
+    inner: chio_attest_buyer_core::context::ChioVerificationContext,
 }
 
 impl ChioWorkflowVerificationContext {
@@ -160,7 +162,7 @@ impl ChioWorkflowVerificationContext {
             .map_err(chio_workflow_verification_error)
     }
 
-    fn as_attest_core(&self) -> &chio_attest_buyer_core::ChioVerificationContext {
+    fn as_attest_core(&self) -> &chio_attest_buyer_core::context::ChioVerificationContext {
         &self.inner
     }
 }

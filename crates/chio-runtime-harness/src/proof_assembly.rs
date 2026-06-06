@@ -194,27 +194,32 @@ pub(crate) fn assemble_runtime_loopback_outputs(
                     ))
                 },
             )?;
-        let trust_bundle = chio_attest_buyer_core::ChioVerifierTrustBundle::from_document(
-            trust_bundle_document.clone(),
-        )
-        .map_err(|error| {
-            RuntimeLoopbackError::message(format!(
-                "Chio runtime verifier trust bundle parse: {error}"
-            ))
-        })?;
-        let verifier_report =
-            chio_attest_buyer_core::verify_package_report(&package, &trust_bundle, &context);
+        let trust_bundle =
+            chio_attest_buyer_core::trust_bundle::ChioVerifierTrustBundle::from_document(
+                trust_bundle_document.clone(),
+            )
+            .map_err(|error| {
+                RuntimeLoopbackError::message(format!(
+                    "Chio runtime verifier trust bundle parse: {error}"
+                ))
+            })?;
+        let verifier_report = chio_attest_buyer_core::report::verify_package_report(
+            &package,
+            &trust_bundle,
+            &context,
+        );
 
-        let package_json = chio_attest_buyer_core::package_json(&package).map_err(|error| {
-            RuntimeLoopbackError::message(format!("Chio runtime proof package JSON: {error}"))
-        })?;
+        let package_json =
+            chio_attest_buyer_core::proof_package::package_json(&package).map_err(|error| {
+                RuntimeLoopbackError::message(format!("Chio runtime proof package JSON: {error}"))
+            })?;
         let package_json_value: serde_json::Value =
             serde_json::from_str(&package_json).map_err(|error| {
                 RuntimeLoopbackError::message(format!(
                     "Chio runtime proof package JSON value: {error}"
                 ))
             })?;
-        let trust_bundle_json = chio_attest_buyer_core::verifier_trust_bundle_json(
+        let trust_bundle_json = chio_attest_buyer_core::trust_bundle::verifier_trust_bundle_json(
             &trust_bundle_document,
         )
         .map_err(|error| {
@@ -230,8 +235,8 @@ pub(crate) fn assemble_runtime_loopback_outputs(
             &mut evidence_manifest_entries,
             &mut evidence_paths,
         )?;
-        let context_json =
-            chio_attest_buyer_core::verification_context_json(&context).map_err(|error| {
+        let context_json = chio_attest_buyer_core::context::verification_context_json(&context)
+            .map_err(|error| {
                 RuntimeLoopbackError::message(format!(
                     "Chio runtime verification context JSON: {error}"
                 ))
@@ -244,8 +249,8 @@ pub(crate) fn assemble_runtime_loopback_outputs(
             &mut evidence_manifest_entries,
             &mut evidence_paths,
         )?;
-        let verifier_report_json =
-            chio_attest_buyer_core::report_json(&verifier_report).map_err(|error| {
+        let verifier_report_json = chio_attest_buyer_core::report::report_json(&verifier_report)
+            .map_err(|error| {
                 RuntimeLoopbackError::message(format!("Chio runtime verifier report JSON: {error}"))
             })?;
         let verifier_report_artifact_sha256 = write_runtime_json_artifact_string(
@@ -287,11 +292,13 @@ pub(crate) fn assemble_runtime_loopback_outputs(
         )?);
         trust_bundle_sha256 = Some(trust_bundle.document_sha256().to_string());
         verification_context_sha256 = Some(
-            chio_attest_buyer_core::verification_context_sha256(&context).map_err(|error| {
-                RuntimeLoopbackError::message(format!(
-                    "Chio runtime verification context hash: {error}"
-                ))
-            })?,
+            chio_attest_buyer_core::context::verification_context_sha256(&context).map_err(
+                |error| {
+                    RuntimeLoopbackError::message(format!(
+                        "Chio runtime verification context hash: {error}"
+                    ))
+                },
+            )?,
         );
         proof_checks.push("runtime_verifier_report.canonical_hash_recorded".to_string());
 

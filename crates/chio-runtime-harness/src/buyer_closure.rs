@@ -22,11 +22,11 @@ pub(crate) fn build_runtime_loopback_buyer_closure(
     step_index: usize,
     step: &RuntimeLoopbackStep,
     treaty_context: &RuntimeLoopbackTreatyContext,
-    baseline_package: &chio_attest_buyer_core::ChioProofPackage,
+    baseline_package: &chio_attest_buyer_core::proof_package::ChioProofPackage,
     now_unix_ms: u64,
 ) -> Result<
     (
-        chio_attest_buyer_core::ChioProofPackage,
+        chio_attest_buyer_core::proof_package::ChioProofPackage,
         RuntimeLoopbackBuyerClosure,
     ),
     RuntimeLoopbackError,

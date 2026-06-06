@@ -5,21 +5,34 @@
 use std::fs;
 use std::path::Path;
 
-pub use chio_attest_buyer_core::{
-    package_json, proof_package_from_json, report_json, verification_context_from_json,
-    verification_context_json, verifier_report_from_json, verifier_trust_bundle_from_json,
-    verifier_trust_bundle_json, verify_package, ChioActionClassKind, ChioAuthorityStatus,
-    ChioDisclosurePolicy, ChioPackageError, ChioProofClaims, ChioProofPackage,
-    ChioRevocationCheckpoint, ChioRevocationMaterial, ChioTrustedActionClass,
-    ChioTrustedGovernanceAuthority, ChioTrustedLeaseAuthority, ChioTrustedWorkflowIntersection,
-    ChioVerificationContext, ChioVerifierTrustBundle, ChioVerifierTrustBundleDocument,
-    LeaseScopeBindingArtifact, PeerLadderBinding, SignedChioRevocationCheckpoint, TrustedBbsIssuer,
-    VendorKeyBinding, VerifierReport, WorkflowIntersectionArtifact,
-    WorkflowPairwiseIntersectionRef, WorkflowRequiredVendorSigner, WorkflowStepClassBinding,
-    LEASE_SCOPE_BINDING_SCHEMA, PROOF_PACKAGE_SCHEMA, REVOCATION_CHECKPOINT_SCHEMA,
-    VERIFICATION_CONTEXT_SCHEMA, VERIFIER_REPORT_SCHEMA, VERIFIER_TRUST_BUNDLE_SCHEMA,
+pub use chio_attest_buyer_core::claims::{
+    ChioProofClaims, LeaseScopeBindingArtifact, PeerLadderBinding, VendorKeyBinding,
+    WorkflowIntersectionArtifact, WorkflowPairwiseIntersectionRef, WorkflowRequiredVendorSigner,
+    WorkflowStepClassBinding, LEASE_SCOPE_BINDING_SCHEMA, WORKFLOW_INTERSECTION_SCHEMA,
+};
+pub use chio_attest_buyer_core::context::{
+    verification_context_from_json, verification_context_json, ChioVerificationContext,
+    VERIFICATION_CONTEXT_SCHEMA,
+};
+pub use chio_attest_buyer_core::disclosure::ChioDisclosurePolicy;
+pub use chio_attest_buyer_core::error::ChioPackageError;
+pub use chio_attest_buyer_core::issuer::TrustedBbsIssuer;
+pub use chio_attest_buyer_core::proof_package::{
+    package_json, proof_package_from_json, ChioProofPackage, PROOF_PACKAGE_SCHEMA,
+};
+pub use chio_attest_buyer_core::report::{
+    report_json, verifier_report_from_json, verify_package, VerifierReport, VERIFIER_REPORT_SCHEMA,
+};
+pub use chio_attest_buyer_core::revocation::{
+    ChioRevocationCheckpoint, ChioRevocationMaterial, SignedChioRevocationCheckpoint,
+    REVOCATION_CHECKPOINT_SCHEMA,
+};
+pub use chio_attest_buyer_core::trust_bundle::{
+    verifier_trust_bundle_from_json, verifier_trust_bundle_json, ChioActionClassKind,
+    ChioAuthorityStatus, ChioTrustedActionClass, ChioTrustedGovernanceAuthority,
+    ChioTrustedLeaseAuthority, ChioTrustedWorkflowIntersection, ChioVerifierTrustBundle,
+    ChioVerifierTrustBundleDocument, VERIFIER_TRUST_BUNDLE_SCHEMA,
     WORKFLOW_AGGREGATE_PUBLISH_ACTION_CLASS_ID, WORKFLOW_GRANT_ISSUE_ACTION_CLASS_ID,
-    WORKFLOW_INTERSECTION_SCHEMA,
 };
 use chio_core_types::canonical::{canonical_json_bytes, canonical_json_string};
 use chio_core_types::capability::MonetaryAmount;

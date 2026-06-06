@@ -1348,14 +1348,15 @@ fn buyer_review_package_hydrates_required_artifacts_by_role(
     let verifier_trust_bundle: serde_json::Value = serde_json::from_str(
         &chio_attest_loopback::verifier_trust_bundle_json(&verifier_trust_bundle_document)?,
     )?;
-    let typed_trust_bundle = chio_attest_buyer_core::verifier_trust_bundle_from_json(
+    let typed_trust_bundle = chio_attest_buyer_core::trust_bundle::verifier_trust_bundle_from_json(
         &serde_json::to_string(&verifier_trust_bundle)?,
     )?;
-    let verifier_report = serde_json::to_value(chio_attest_buyer_core::verify_package_report(
-        &typed_package,
-        &typed_trust_bundle,
-        &verification_context_typed,
-    ))?;
+    let verifier_report =
+        serde_json::to_value(chio_attest_buyer_core::report::verify_package_report(
+            &typed_package,
+            &typed_trust_bundle,
+            &verification_context_typed,
+        ))?;
     let (package, sources, verifier_trust_bundle) =
         buyer_review_sources_with_strict_dsse_and_verifier(
             BuyerReviewStrictDsseSources {

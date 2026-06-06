@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-use chio_attest_buyer_core::VerifierReport;
+use chio_attest_buyer_core::report::VerifierReport;
 use chio_core_types::crypto::{canonical_json_bytes, sha256_hex};
 use serde::Serialize;
 
