@@ -3,6 +3,7 @@
 ## Boundaries
 
 - `lib.rs` owns the public adapter handle, configuration, provider identity, lift/lower entrypoints, and the `Provider` implementation.
+- `tests.rs` owns adapter-level unit tests for API pinning, lifting, lowering, transport calls, and stream gating.
 - `transport.rs` owns the shared HTTP transport wiring for Mistral's OpenAI-compatible `chat/completions` endpoint, including Bearer auth, endpoint constants, and the `2025-04` API-version header.
 - `native.rs` owns the adapter's normalized Mistral content shapes: decoded function calls and gated function responses.
 - `streaming.rs` owns buffered SSE mediation for OpenAI-compatible `chat.completion.chunk` frames and gates streamed `tool_calls` before release.
