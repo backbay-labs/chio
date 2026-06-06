@@ -24,6 +24,6 @@
     "packages/create-chio-app"
   ],
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22"
   }
 }

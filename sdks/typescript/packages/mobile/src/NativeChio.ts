@@ -1,5 +1,3 @@
-import { requireNativeModule } from 'expo-modules-core';
-
 export type ChioNativeModule = {
   evaluate(requestJson: string): Promise<string>;
   signReceipt(bodyJson: string, signingSeedHex: string): Promise<string>;
@@ -16,8 +14,9 @@ export type ChioNativeModule = {
 
 let nativeModule: ChioNativeModule | undefined;
 
-export function nativeChio(): ChioNativeModule {
+export async function nativeChio(): Promise<ChioNativeModule> {
   if (!nativeModule) {
+    const { requireNativeModule } = await import('expo-modules-core');
     nativeModule = requireNativeModule<ChioNativeModule>('Chio');
   }
   return nativeModule;

@@ -12,14 +12,15 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./bundler/*": "./dist/bundler/*"
+    "./bundler/*": "./dist/bundler/*",
+    "./package.json": "./package.json"
   },
   "files": [
     "dist/",
     "README.md"
   ],
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22"
   },
   "scripts": {
     "build": "bun run build:wasm && tsc -p tsconfig.json",

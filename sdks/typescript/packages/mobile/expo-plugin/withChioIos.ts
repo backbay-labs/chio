@@ -10,6 +10,12 @@ import type { ChioPluginProps } from './props.js';
 // validates receipts locally and does not call out to a remote service.
 const DEFAULT_RECEIPT_ORACLE = 'local';
 
+type ChioIosDangerousModResults = {
+  chio?: {
+    xcframework: string;
+  };
+};
+
 export const withChioIos: ConfigPlugin<ChioPluginProps | undefined> = (
   config,
   props,
@@ -26,7 +32,8 @@ export const withChioIos: ConfigPlugin<ChioPluginProps | undefined> = (
   return withDangerousMod(withInfo, [
     'ios',
     async (mod) => {
-      mod.modResults.chio = {
+      const modResults = mod.modResults as ChioIosDangerousModResults;
+      modResults.chio = {
         xcframework: 'sdks/swift/Frameworks/ChioKernel.xcframework',
       };
       return mod;

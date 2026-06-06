@@ -250,6 +250,10 @@ build_target() {
       --release \
       --no-opt
   )
+  # wasm-pack emits a .gitignore that excludes generated bindings. npm uses
+  # nested .gitignore files when no .npmignore exists, so add an empty
+  # .npmignore to keep the generated wasm package files publishable.
+  : > "${out_dir}/.npmignore"
 }
 
 package_dir_for() {

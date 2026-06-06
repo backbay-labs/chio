@@ -18,16 +18,17 @@
     "dist"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && npm run build:cjs",
+    "build:cjs": "esbuild src/index.ts --bundle --platform=node --format=cjs --packages=external --outfile=dist/index.cjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@chio-protocol/node-http": "file:../node-http",
+    "@chio-protocol/node-http": "0.1.0",
     "fastify-plugin": "^5.0.0"
   },
   "peerDependencies": {
@@ -35,6 +36,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "esbuild": "^0.27.7",
     "fastify": "^5.3.3",
     "typescript": "~5.7.0",
     "vitest": "^3.0.0"

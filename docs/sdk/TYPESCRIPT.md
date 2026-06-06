@@ -1,6 +1,6 @@
 # Chio TypeScript SDK Reference
 
-This document covers all five Chio TypeScript packages. Each package communicates with the Chio Rust kernel via a localhost HTTP sidecar. All packages are ESM-first and work with Node.js 18+ and Bun.
+This document covers the core Chio TypeScript HTTP packages. Each package communicates with the Chio Rust kernel via a localhost HTTP sidecar. Published npm packages are release-tested on Node.js 22+ and Bun. Packages are ESM-first; `@chio-protocol/node-http`, `@chio-protocol/express`, `@chio-protocol/fastify`, and `@chio-protocol/elysia` also publish CommonJS `require` entrypoints.
 
 ## Quick Start
 
@@ -16,6 +16,12 @@ npm install @chio-protocol/elysia     # Elysia (Bun)
 # Testing and conformance utilities
 npm install @chio-protocol/conformance --save-dev
 ```
+
+## Runtime and Module Format
+
+- Node.js 22+ is the supported npm runtime floor.
+- Use ESM `import` for all TypeScript SDK packages.
+- `require(...)` is supported for `@chio-protocol/node-http`, `@chio-protocol/express`, `@chio-protocol/fastify`, and `@chio-protocol/elysia`.
 
 Minimal Express example:
 

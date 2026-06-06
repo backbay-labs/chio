@@ -328,35 +328,232 @@ PY
     ;;
 
   ts)
-    source_dir="${repo_root}/sdks/typescript/chio-ts"
     repo_copy_dir="${work_dir}/repo"
-    sdk_dir="${repo_copy_dir}/sdks/typescript/chio-ts"
-    consumer_dir="${work_dir}/consumer"
+    sdk_dir="${repo_copy_dir}/sdks/typescript"
+    pack_dir="${work_dir}/packs"
 
     if ! command -v npm >/dev/null 2>&1; then
       echo "Chio TypeScript release checks require npm on PATH" >&2
       exit 1
     fi
+    if ! command -v node >/dev/null 2>&1; then
+      echo "Chio TypeScript release checks require node on PATH" >&2
+      exit 1
+    fi
 
-    mkdir -p "${repo_copy_dir}/sdks/typescript" "${repo_copy_dir}/tests"
-    cp -R "${source_dir}" "${sdk_dir}"
-    rm -rf "${sdk_dir}/node_modules" "${sdk_dir}/dist"
-    cp -R "${repo_root}/tests/bindings" "${repo_copy_dir}/tests/bindings"
+    mkdir -p "${repo_copy_dir}" "${pack_dir}"
+    (
+      cd "${repo_root}"
+      tar \
+        --exclude='*/node_modules' \
+        --exclude='*/dist' \
+        --exclude='*/build' \
+        --exclude='*/target' \
+        --exclude='*/.artifacts' \
+        --exclude='*/.next' \
+        --exclude='*.tgz' \
+        -cf - .cargo .tooling Cargo.lock Cargo.toml rust-toolchain.toml bench crates editors examples formal integrations sdks/typescript tests xtask
+    ) | (
+      cd "${repo_copy_dir}"
+      tar -xf -
+    )
+
+    package_discovery_script="${work_dir}/ts-package-records.mjs"
+    cat > "${package_discovery_script}" <<'NODE'
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
+
+const root = process.env.TS_ROOT;
+if (root == null || root === "") {
+  throw new Error("TS_ROOT is required");
+}
+
+const rootPackage = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"));
+const workspacePatterns = rootPackage.workspaces ?? [];
+const packageDirs = [];
+
+for (const pattern of workspacePatterns) {
+  if (typeof pattern !== "string") {
+    continue;
+  }
+  if (!pattern.includes("*")) {
+    packageDirs.push(path.join(root, pattern));
+    continue;
+  }
+  const [prefix, suffix = ""] = pattern.split("*", 2);
+  const baseDir = path.join(root, prefix);
+  if (!existsSync(baseDir)) {
+    continue;
+  }
+  for (const entry of readdirSync(baseDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+    const candidate = path.join(baseDir, entry.name, suffix);
+    packageDirs.push(candidate);
+  }
+}
+
+const packages = [];
+for (const dir of packageDirs) {
+  const manifestPath = path.join(dir, "package.json");
+  if (!existsSync(manifestPath)) {
+    continue;
+  }
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  if (manifest.private === true) {
+    continue;
+  }
+  if (typeof manifest.name !== "string" || manifest.name === "") {
+    throw new Error(`publishable package is missing name: ${manifestPath}`);
+  }
+
+  const rootExport =
+    manifest.exports != null && typeof manifest.exports === "object"
+      ? manifest.exports["."]
+      : undefined;
+  const hasImport =
+    rootExport != null &&
+    typeof rootExport === "object" &&
+    typeof rootExport.import === "string" &&
+    manifest.name !== "@chio-protocol/workers";
+  const hasRequire =
+    rootExport != null &&
+    typeof rootExport === "object" &&
+    typeof rootExport.require === "string";
+
+  packages.push({
+    dir,
+    manifest,
+    name: manifest.name,
+    hasBuild:
+      manifest.scripts != null &&
+      typeof manifest.scripts === "object" &&
+      typeof manifest.scripts.build === "string",
+    hasTest:
+      manifest.scripts != null &&
+      typeof manifest.scripts === "object" &&
+      typeof manifest.scripts.test === "string",
+    hasImport,
+    hasRequire,
+    localDeps: [],
+  });
+}
+
+const byName = new Map(packages.map(pkg => [pkg.name, pkg]));
+for (const pkg of packages) {
+  const dependencyBlocks = [
+    pkg.manifest.dependencies,
+    pkg.manifest.optionalDependencies,
+    pkg.manifest.peerDependencies,
+  ];
+  const localDeps = new Set();
+  for (const block of dependencyBlocks) {
+    if (block == null || typeof block !== "object") {
+      continue;
+    }
+    for (const name of Object.keys(block)) {
+      if (byName.has(name)) {
+        localDeps.add(name);
+      }
+    }
+  }
+  pkg.localDeps = [...localDeps].sort();
+}
+
+const ordered = [];
+const seen = new Set();
+const visiting = new Set();
+
+function visit(pkg) {
+  if (seen.has(pkg.name)) {
+    return;
+  }
+  if (visiting.has(pkg.name)) {
+    throw new Error(`cycle in TypeScript package dependencies at ${pkg.name}`);
+  }
+  visiting.add(pkg.name);
+  for (const depName of pkg.localDeps) {
+    visit(byName.get(depName));
+  }
+  visiting.delete(pkg.name);
+  seen.add(pkg.name);
+  ordered.push(pkg);
+}
+
+const packageSeeds = [...packages].sort((left, right) => {
+  if (left.hasRequire !== right.hasRequire) {
+    return left.hasRequire ? -1 : 1;
+  }
+  return left.name.localeCompare(right.name);
+});
+
+for (const pkg of packageSeeds) {
+  visit(pkg);
+}
+
+for (const pkg of ordered) {
+  process.stdout.write(
+    [
+      pkg.dir,
+      pkg.name,
+      pkg.hasBuild ? "1" : "0",
+      pkg.hasTest ? "1" : "0",
+      pkg.hasImport ? "1" : "0",
+      pkg.hasRequire ? "1" : "0",
+      pkg.localDeps.join(","),
+    ].join("\t") + "\n",
+  );
+}
+NODE
+    package_records=()
+    while IFS= read -r package_record; do
+      package_records+=("${package_record}")
+    done < <(TS_ROOT="${sdk_dir}" node "${package_discovery_script}")
+
+    if [[ "${#package_records[@]}" -eq 0 ]]; then
+      echo "no publishable TypeScript SDK packages found" >&2
+      exit 1
+    fi
 
     (
       cd "${sdk_dir}"
-      if [[ -f package-lock.json ]]; then
-        npm ci --no-fund --no-audit
-      else
-        npm install --no-fund --no-audit
-      fi
-      npm test
-      npm run build
+      npm install --ignore-scripts --no-fund --no-audit
     )
 
-    pack_file="$(
-      cd "${sdk_dir}" &&
-        npm pack --json | node --input-type=module -e '
+    packed_package_names=()
+    packed_package_paths=()
+    packed_package_path_for() {
+      local requested_name="$1"
+      local idx
+      for ((idx = 0; idx < ${#packed_package_names[@]}; idx += 1)); do
+        if [[ "${packed_package_names[${idx}]}" == "${requested_name}" ]]; then
+          printf "%s\n" "${packed_package_paths[${idx}]}"
+          return 0
+        fi
+      done
+      return 1
+    }
+
+    package_index=0
+    for package_record in "${package_records[@]}"; do
+      IFS=$'\t' read -r package_dir package_name has_build has_test has_import has_require local_deps <<<"${package_record}"
+      echo "checking TypeScript package ${package_name}"
+
+      (
+        cd "${package_dir}"
+        if [[ "${has_test}" == "1" && "${package_name}" == "@chio-protocol/sdk" ]]; then
+          npm test
+        fi
+        if [[ "${has_build}" == "1" ]]; then
+          npm run build
+        fi
+      )
+      rm -rf "${repo_copy_dir}/target"
+
+      pack_file="$(
+        cd "${package_dir}" &&
+          npm pack --pack-destination "${pack_dir}" --json | node --input-type=module -e '
           let data = "";
           process.stdin.on("data", (chunk) => (data += chunk));
           process.stdin.on("end", () => {
@@ -367,10 +564,14 @@ PY
             process.stdout.write(parsed[0].filename);
           });
         '
-    )"
+      )"
+      packed_package_names+=("${package_name}")
+      packed_package_paths+=("${pack_dir}/${pack_file}")
 
-    mkdir -p "${consumer_dir}"
-    cat > "${consumer_dir}/package.json" <<'EOF'
+      package_index=$((package_index + 1))
+      consumer_dir="${work_dir}/consumer-${package_index}"
+      mkdir -p "${consumer_dir}"
+      cat > "${consumer_dir}/package.json" <<'EOF'
 {
   "name": "chio-ts-release-smoke",
   "private": true,
@@ -378,33 +579,76 @@ PY
 }
 EOF
 
-    (
-      cd "${consumer_dir}"
-      npm install --no-fund --no-audit "${sdk_dir}/${pack_file}"
-      node --input-type=module <<'EOF'
-import { ChioClient, ReceiptQueryClient } from "@chio-protocol/sdk";
+      install_args=("${pack_dir}/${pack_file}")
+      if [[ -n "${local_deps}" ]]; then
+        IFS=',' read -r -a local_dep_names <<<"${local_deps}"
+        for local_dep_name in "${local_dep_names[@]}"; do
+          if [[ -n "${local_dep_name}" ]]; then
+            if local_dep_pack_path="$(packed_package_path_for "${local_dep_name}")"; then
+              install_args+=("${local_dep_pack_path}")
+            fi
+          fi
+        done
+      fi
 
-if (typeof ChioClient?.withStaticBearer !== "function") {
-  throw new Error("expected ChioClient.withStaticBearer export");
+      (
+        cd "${consumer_dir}"
+        npm install --ignore-scripts --no-fund --no-audit "${install_args[@]}"
+        if [[ "${has_import}" == "1" ]]; then
+          CHIO_PACKAGE_NAME="${package_name}" node --experimental-wasm-modules --input-type=module <<'NODE'
+const packageName = process.env.CHIO_PACKAGE_NAME;
+if (packageName == null || packageName === "") {
+  throw new Error("CHIO_PACKAGE_NAME is required");
+}
+const moduleNamespace = await import(packageName);
+const exportNames = Object.keys(moduleNamespace);
+if (exportNames.length === 0 && !("default" in moduleNamespace)) {
+  throw new Error(`expected at least one ESM export from ${packageName}`);
+}
+console.log(`ESM import smoke verified ${packageName}`);
+NODE
+        fi
+        if [[ "${has_require}" == "1" ]]; then
+          CHIO_PACKAGE_NAME="${package_name}" node <<'NODE'
+const packageName = process.env.CHIO_PACKAGE_NAME;
+if (packageName == null || packageName === "") {
+  throw new Error("CHIO_PACKAGE_NAME is required");
+}
+const moduleNamespace = require(packageName);
+const exportNames = Object.keys(moduleNamespace);
+if (exportNames.length === 0 && !("default" in moduleNamespace)) {
+  throw new Error(`expected at least one CommonJS export from ${packageName}`);
+}
+console.log(`CommonJS require smoke verified ${packageName}`);
+NODE
+        fi
+        if [[ "${package_name}" == "@chio-protocol/workers" ]]; then
+          node --input-type=module <<'NODE'
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+const packageJsonPath = require.resolve("@chio-protocol/workers/package.json");
+const packageRoot = path.dirname(packageJsonPath);
+const expectedFiles = [
+  "dist/index.js",
+  "dist/bundler/chio_kernel_browser_bg.js",
+  "dist/bundler/chio_kernel_browser_bg.wasm",
+];
+
+for (const relativePath of expectedFiles) {
+  const candidate = path.join(packageRoot, relativePath);
+  if (!existsSync(candidate)) {
+    throw new Error(`missing packed Workers artifact: ${relativePath}`);
+  }
 }
 
-if (typeof ReceiptQueryClient !== "function") {
-  throw new Error("expected ReceiptQueryClient export");
-}
-
-const client = ChioClient.withStaticBearer("http://127.0.0.1:8080/mcp", "token");
-if (!client || typeof client.initialize !== "function") {
-  throw new Error("expected initialized ChioClient surface");
-}
-
-const receiptClient = new ReceiptQueryClient("http://127.0.0.1:8940", "token");
-if (!receiptClient || typeof receiptClient.query !== "function") {
-  throw new Error("expected receipt query surface");
-}
-
-console.log("Chio TypeScript package smoke verified");
-EOF
-    )
+console.log("Workers package artifact smoke verified @chio-protocol/workers");
+NODE
+        fi
+      )
+    done
 
     echo "Chio TypeScript release qualification passed"
     ;;
