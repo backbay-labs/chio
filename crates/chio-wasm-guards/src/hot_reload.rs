@@ -7,7 +7,10 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
-use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{
+    event::{AccessKind, AccessMode},
+    Config as NotifyConfig, EventKind, PollWatcher, RecursiveMode, Watcher,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::runtime::Handle;
@@ -961,12 +964,12 @@ where
         guard_id: impl Into<String>,
         path: impl AsRef<Path>,
         trigger_tx: mpsc::Sender<ReloadTrigger>,
-    ) -> Result<RecommendedWatcher, HotReloadError> {
+    ) -> Result<PollWatcher, HotReloadError> {
         let guard_id = guard_id.into();
         let watched_path = path.as_ref().to_path_buf();
         let fallback_path = watched_path.clone();
-        let mut watcher =
-            notify::recommended_watcher(move |result: notify::Result<notify::Event>| {
+        let mut watcher = PollWatcher::new(
+            move |result: notify::Result<notify::Event>| {
                 let event = match result {
                     Ok(event) => event,
                     Err(error) => {
@@ -991,7 +994,11 @@ where
                     guard_id: guard_id.clone(),
                     source: ReloadTriggerSource::FileChanged { path },
                 });
-            })?;
+            },
+            NotifyConfig::default()
+                .with_poll_interval(Duration::from_millis(100))
+                .with_compare_contents(true),
+        )?;
         watcher.watch(&watched_path, RecursiveMode::NonRecursive)?;
         Ok(watcher)
     }
@@ -1040,10 +1047,54 @@ where
 }
 
 fn is_reload_file_event(kind: &EventKind) -> bool {
-    matches!(
-        kind,
-        EventKind::Any | EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
-    )
+    match kind {
+        EventKind::Any | EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_) => true,
+        EventKind::Access(AccessKind::Any) => true,
+        EventKind::Access(AccessKind::Close(
+            AccessMode::Any | AccessMode::Write | AccessMode::Other,
+        )) => true,
+        EventKind::Access(_) | EventKind::Other => false,
+    }
+}
+
+#[cfg(test)]
+mod file_event_tests {
+    use notify::{
+        event::{AccessKind, AccessMode, ModifyKind},
+        EventKind,
+    };
+
+    use super::is_reload_file_event;
+
+    #[test]
+    fn reload_file_events_include_write_close_notifications() {
+        assert!(is_reload_file_event(&EventKind::Access(AccessKind::Close(
+            AccessMode::Write
+        ))));
+        assert!(is_reload_file_event(&EventKind::Access(AccessKind::Close(
+            AccessMode::Any
+        ))));
+        assert!(is_reload_file_event(&EventKind::Access(AccessKind::Close(
+            AccessMode::Other
+        ))));
+    }
+
+    #[test]
+    fn reload_file_events_reject_non_mutating_access_notifications() {
+        assert!(!is_reload_file_event(&EventKind::Access(
+            AccessKind::Close(AccessMode::Read)
+        )));
+        assert!(!is_reload_file_event(&EventKind::Access(AccessKind::Open(
+            AccessMode::Write
+        ))));
+        assert!(!is_reload_file_event(&EventKind::Access(AccessKind::Read)));
+    }
+
+    #[test]
+    fn reload_file_events_accept_mutation_notifications() {
+        assert!(is_reload_file_event(&EventKind::Any));
+        assert!(is_reload_file_event(&EventKind::Modify(ModifyKind::Any)));
+    }
 }
 
 fn default_blocklist() -> GuardDigestBlocklist {
