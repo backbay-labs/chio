@@ -14,6 +14,13 @@ usable without `reqwest` or `tokio`.
 
 ## Module Boundaries
 
+- `src/lib.rs` owns the core contract types, raw-policy validation, URL
+  enforcement, DNS/address-class checks, and the test-only permissive contract
+  constructor.
+- `src/reqwest_helper.rs` owns the optional `reqwest-egress` dispatch wrapper,
+  resolver, redirect handling, and capped response collection.
+- `src/tests.rs` owns root-level contract and reqwest helper regression
+  coverage.
 - `HttpEgressContract` is the raw configured policy shape.
 - `ValidatedHttpEgressTarget` is the URL authority result after enforcement.
 - `HttpEgressError` is the fail-closed reason surface for config, URL, DNS,
