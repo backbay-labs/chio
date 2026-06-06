@@ -1,4 +1,4 @@
-use chio_core::web3::AnchorInclusionProof;
+use chio_core::web3::anchors::AnchorInclusionProof;
 use chio_kernel::checkpoint::KernelCheckpoint;
 use serde::{Deserialize, Serialize};
 

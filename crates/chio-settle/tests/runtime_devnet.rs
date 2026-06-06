@@ -21,10 +21,11 @@ use chio_core::merkle::MerkleTree;
 use chio_core::receipt::{
     ChioReceipt, ChioReceiptBody, Decision, SignedExportEnvelope, ToolCallAction,
 };
-use chio_core::web3::{
+use chio_core::web3::identity::{
     SignedWeb3IdentityBinding, Web3IdentityBindingCertificate, Web3KeyBindingPurpose,
-    Web3SettlementLifecycleState, Web3SettlementPath,
 };
+use chio_core::web3::settlement::Web3SettlementLifecycleState;
+use chio_core::web3::trust_profile::Web3SettlementPath;
 use chio_kernel::checkpoint::{build_checkpoint, build_inclusion_proof};
 use chio_kernel::evidence_export::{
     EvidenceChildReceiptScope, EvidenceExportBundle, EvidenceExportQuery,
@@ -209,7 +210,7 @@ fn operator_binding(
     settlement_address: &str,
 ) -> SignedWeb3IdentityBinding {
     let certificate = Web3IdentityBindingCertificate {
-        schema: chio_core::web3::CHIO_KEY_BINDING_CERTIFICATE_SCHEMA.to_string(),
+        schema: chio_core::web3::identity::CHIO_KEY_BINDING_CERTIFICATE_SCHEMA.to_string(),
         chio_identity: format!("did:chio:{}", keypair.public_key().to_hex()),
         chio_public_key: keypair.public_key(),
         chain_scope: vec![chain_id.to_string()],

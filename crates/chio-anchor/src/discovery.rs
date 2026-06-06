@@ -1,4 +1,4 @@
-use chio_core::web3::{
+use chio_core::web3::identity::{
     verify_web3_identity_binding, SignedWeb3IdentityBinding, Web3KeyBindingPurpose,
 };
 use serde::{Deserialize, Serialize};
@@ -580,7 +580,7 @@ fn freshness_status_label(status: AnchorDiscoveryFreshnessStatus) -> &'static st
 #[cfg(test)]
 mod tests {
     use chio_core::crypto::Keypair;
-    use chio_core::web3::{
+    use chio_core::web3::identity::{
         verify_web3_identity_binding, SignedWeb3IdentityBinding, Web3IdentityBindingCertificate,
         Web3KeyBindingPurpose, CHIO_KEY_BINDING_CERTIFICATE_SCHEMA,
     };

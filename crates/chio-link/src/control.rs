@@ -1,4 +1,4 @@
-use chio_core::web3::{CHIO_LINK_CONTROL_STATE_SCHEMA, CHIO_LINK_CONTROL_TRACE_SCHEMA};
+use chio_core::web3::settlement::{CHIO_LINK_CONTROL_STATE_SCHEMA, CHIO_LINK_CONTROL_TRACE_SCHEMA};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 

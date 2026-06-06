@@ -8,6 +8,20 @@
 
 The crate is data-contract heavy. Public structs describe signed key bindings, contract packages, anchor inclusion proofs, settlement dispatches, execution receipts, qualification matrices, and control-state traces. Validator functions enforce schema ids, references, custody boundaries, chain coverage, proof consistency, and terminal settlement state.
 
+## Module Map
+
+- `lib.rs`: crate documentation, shared dependency aliases, and module declarations.
+- `identity.rs`: key-binding certificate schema, key-binding purpose, signed identity binding, and identity signature validation.
+- `trust_profile.rs`: settlement paths, dispute policy, finality rules, regulated roles, trust profiles, and trust-profile validation.
+- `contracts.rs`: contract kinds, binding targets, contract interfaces, contract packages, and package validation.
+- `chain.rs`: chain roles, deployments, gas profiles, chain configurations, and chain-configuration validation.
+- `anchors.rs`: checkpoint statements, anchor records, inclusion proofs, oracle evidence validation, anchor control constants, and proof verification.
+- `settlement.rs`: settlement lifecycle state, support boundaries, dispatch artifacts, execution receipts, settlement control constants, and settlement validation.
+- `qualification.rs`: qualification outcomes, cases, matrices, and matrix validation.
+- `error.rs`: public web3 contract error type.
+- `validation.rs`: shared internal non-empty, uniqueness, and money validators.
+- `tests.rs`: crate-local web3 contract behavior tests.
+
 ## Trust Invariants
 
 The security constraint is live-money exactness. Amounts, currencies, rails, anchor proofs, and oracle evidence must be validated before later crates attempt execution or reconciliation.

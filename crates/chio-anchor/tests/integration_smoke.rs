@@ -11,7 +11,7 @@ use chio_anchor::{
 };
 use chio_core::crypto::Keypair;
 use chio_core::hashing::{sha256, Hash};
-use chio_core::web3::{
+use chio_core::web3::identity::{
     SignedWeb3IdentityBinding, Web3IdentityBindingCertificate, Web3KeyBindingPurpose,
     CHIO_KEY_BINDING_CERTIFICATE_SCHEMA,
 };

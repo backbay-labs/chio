@@ -290,9 +290,9 @@ reusable by third parties.
 - [`crates/chio-kernel/src/operator_report.rs`](../../crates/chio-kernel/src/operator_report.rs),
   [`crates/chio-anchor/src/bundle.rs`](../../crates/chio-anchor/src/bundle.rs),
   [`crates/chio-anchor/src/ops.rs`](../../crates/chio-anchor/src/ops.rs), and
-  [`crates/chio-web3/src/lib.rs`](../../crates/chio-web3/src/lib.rs) already give
-  Chio exportable operator, checkpoint, and proof artifacts. Program B turns
-  those internal artifacts into evidence of outside dependence.
+  [`crates/chio-web3/src/anchors.rs`](../../crates/chio-web3/src/anchors.rs)
+  already give Chio exportable operator, checkpoint, and proof artifacts.
+  Program B turns those internal artifacts into evidence of outside dependence.
 
 ### Evidence Categories
 
@@ -361,8 +361,8 @@ truth for consequential workflows.
 [`crates/chio-kernel/src/operator_report.rs`](../../crates/chio-kernel/src/operator_report.rs),
 [`crates/chio-anchor/src/bundle.rs`](../../crates/chio-anchor/src/bundle.rs),
 [`crates/chio-anchor/src/ops.rs`](../../crates/chio-anchor/src/ops.rs), and
-[`crates/chio-web3/src/lib.rs`](../../crates/chio-web3/src/lib.rs) already produce
-machine-verifiable operator and checkpoint artifacts. What is missing is
+[`crates/chio-web3/src/anchors.rs`](../../crates/chio-web3/src/anchors.rs) already
+produce machine-verifiable operator and checkpoint artifacts. What is missing is
 outside operator dependence on those artifacts.
 
 **External evidence work**:

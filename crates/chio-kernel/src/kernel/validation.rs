@@ -1204,7 +1204,7 @@ impl ChioKernel {
         reported_cost: &ToolInvocationCost,
         grant_currency: &str,
         timestamp: u64,
-    ) -> Result<(u64, chio_core::web3::OracleConversionEvidence), KernelError> {
+    ) -> Result<(u64, chio_core::web3::anchors::OracleConversionEvidence), KernelError> {
         let oracle =
             self.price_oracle
                 .as_ref()

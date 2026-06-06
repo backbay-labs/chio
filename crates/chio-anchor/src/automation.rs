@@ -177,7 +177,7 @@ pub fn assess_anchor_automation_execution(
 #[cfg(test)]
 mod tests {
     use chio_core::crypto::Keypair;
-    use chio_core::web3::{
+    use chio_core::web3::identity::{
         SignedWeb3IdentityBinding, Web3IdentityBindingCertificate, Web3KeyBindingPurpose,
         CHIO_KEY_BINDING_CERTIFICATE_SCHEMA,
     };
@@ -212,9 +212,9 @@ mod tests {
     }
 
     fn sample_checkpoint() -> KernelCheckpoint {
-        let proof: chio_core::web3::AnchorInclusionProof = serde_json::from_str(include_str!(
-            "../../../docs/standards/CHIO_ANCHOR_INCLUSION_PROOF_EXAMPLE.json"
-        ))
+        let proof: chio_core::web3::anchors::AnchorInclusionProof = serde_json::from_str(
+            include_str!("../../../docs/standards/CHIO_ANCHOR_INCLUSION_PROOF_EXAMPLE.json"),
+        )
         .test_unwrap();
         kernel_checkpoint_from_statement(&checkpoint_statement_from_kernel(
             &kernel_checkpoint_from_statement(&proof.checkpoint_statement),

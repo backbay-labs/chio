@@ -17,14 +17,17 @@ use chio_core::credit::{
 use chio_core::hashing::Hash;
 use chio_core::merkle::leaf_hash;
 use chio_core::receipt::ChioReceipt;
-use chio_core::web3::{
-    validate_web3_settlement_dispatch, validate_web3_settlement_execution_receipt,
-    verify_anchor_inclusion_proof, verify_web3_identity_binding, AnchorInclusionProof,
-    SignedWeb3IdentityBinding, Web3KeyBindingPurpose, Web3SettlementDispatchArtifact,
-    Web3SettlementExecutionReceiptArtifact, Web3SettlementLifecycleState, Web3SettlementPath,
-    Web3SettlementSupportBoundary, CHIO_WEB3_SETTLEMENT_DISPATCH_SCHEMA,
-    CHIO_WEB3_SETTLEMENT_RECEIPT_SCHEMA,
+use chio_core::web3::anchors::{verify_anchor_inclusion_proof, AnchorInclusionProof};
+use chio_core::web3::identity::{
+    verify_web3_identity_binding, SignedWeb3IdentityBinding, Web3KeyBindingPurpose,
 };
+use chio_core::web3::settlement::{
+    validate_web3_settlement_dispatch, validate_web3_settlement_execution_receipt,
+    Web3SettlementDispatchArtifact, Web3SettlementExecutionReceiptArtifact,
+    Web3SettlementLifecycleState, Web3SettlementSupportBoundary,
+    CHIO_WEB3_SETTLEMENT_DISPATCH_SCHEMA, CHIO_WEB3_SETTLEMENT_RECEIPT_SCHEMA,
+};
+use chio_core::web3::trust_profile::Web3SettlementPath;
 use chio_egress_contract::{client_builder_with_contract, send_with_contract};
 use chio_web3_bindings::{ChioMerkleProof, IChioBondVault, IChioEscrow};
 use secp256k1::ecdsa::RecoverableSignature;
@@ -72,8 +75,12 @@ mod tests {
     use chio_core::crypto::Keypair;
     use chio_core::hashing::sha256_hex;
     use chio_core::receipt::{ChioReceiptBody, Decision, SignedExportEnvelope, ToolCallAction};
-    use chio_core::web3::{Web3IdentityBindingCertificate, CHIO_KEY_BINDING_CERTIFICATE_SCHEMA};
-    use chio_core::web3::{Web3SettlementDispatchArtifact, Web3SettlementLifecycleState};
+    use chio_core::web3::identity::{
+        Web3IdentityBindingCertificate, CHIO_KEY_BINDING_CERTIFICATE_SCHEMA,
+    };
+    use chio_core::web3::settlement::{
+        Web3SettlementDispatchArtifact, Web3SettlementLifecycleState,
+    };
     use secp256k1::ecdsa::RecoveryId;
     use secp256k1::PublicKey as SecpPublicKey;
     use serde_json::{json, Value};

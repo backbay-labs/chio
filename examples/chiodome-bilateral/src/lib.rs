@@ -27,7 +27,7 @@ use chio_core::receipt::{
     ReceiptKind, RedactionMode, SettlementStatus, ToolCallAction, ToolOrigin, TrustLevel,
 };
 use chio_federation::bilateral_dsse::{sign_dsse_envelope, verify_dsse_envelope, DsseEnvelope};
-use chio_web3::{Web3CheckpointStatement, CHIO_CHECKPOINT_STATEMENT_SCHEMA};
+use chio_web3::anchors::{Web3CheckpointStatement, CHIO_CHECKPOINT_STATEMENT_SCHEMA};
 use sha2::{Digest, Sha256};
 
 const DEFAULT_OUTPUT_DIR: &str = "examples/chiodome-bilateral/fixtures";

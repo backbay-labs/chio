@@ -375,28 +375,45 @@ pub use underwriting::{
     UNDERWRITING_POLICY_INPUT_SCHEMA, UNDERWRITING_RISK_TAXONOMY_VERSION,
     UNDERWRITING_SIMULATION_REPORT_SCHEMA,
 };
-pub use web3::{
+pub use web3::anchors::{
     validate_anchor_inclusion_proof, validate_oracle_conversion_evidence,
-    validate_web3_chain_configuration, validate_web3_contract_package,
-    validate_web3_identity_binding, validate_web3_qualification_matrix,
+    verify_anchor_inclusion_proof, verify_checkpoint_statement, AnchorInclusionProof,
+    OracleConversionEvidence, Web3BitcoinAnchor, Web3ChainAnchorRecord, Web3CheckpointStatement,
+    Web3ReceiptInclusion, Web3SuperRootInclusion, CHIO_ANCHOR_CONTROL_STATE_SCHEMA,
+    CHIO_ANCHOR_CONTROL_TRACE_SCHEMA, CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA,
+    CHIO_CHECKPOINT_STATEMENT_SCHEMA, CHIO_LINK_ORACLE_AUTHORITY,
+    CHIO_ORACLE_CONVERSION_EVIDENCE_SCHEMA,
+};
+pub use web3::chain::{
+    validate_web3_chain_configuration, Web3ChainConfiguration, Web3ChainDeployment,
+    Web3ChainGasProfile, Web3ChainRole, CHIO_WEB3_CHAIN_CONFIGURATION_SCHEMA,
+};
+pub use web3::contracts::{
+    validate_web3_contract_package, Web3BindingLanguage, Web3BindingTarget, Web3ContractInterface,
+    Web3ContractKind, Web3ContractPackage, CHIO_WEB3_CONTRACT_PACKAGE_SCHEMA,
+};
+pub use web3::error::Web3ContractError;
+pub use web3::identity::{
+    validate_web3_identity_binding, verify_web3_identity_binding, SignedWeb3IdentityBinding,
+    Web3IdentityBindingCertificate, Web3KeyBindingPurpose, CHIO_KEY_BINDING_CERTIFICATE_SCHEMA,
+};
+pub use web3::qualification::{
+    validate_web3_qualification_matrix, Web3QualificationCase, Web3QualificationMatrix,
+    Web3QualificationOutcome, CHIO_WEB3_QUALIFICATION_MATRIX_SCHEMA,
+};
+pub use web3::settlement::{
     validate_web3_settlement_dispatch, validate_web3_settlement_execution_receipt,
-    validate_web3_trust_profile, verify_anchor_inclusion_proof, verify_checkpoint_statement,
-    verify_web3_identity_binding, AnchorInclusionProof, OracleConversionEvidence,
-    SignedWeb3IdentityBinding, SignedWeb3SettlementDispatch, SignedWeb3SettlementExecutionReceipt,
-    Web3BindingLanguage, Web3BindingTarget, Web3BitcoinAnchor, Web3ChainAnchorRecord,
-    Web3ChainConfiguration, Web3ChainDeployment, Web3ChainFinalityRule, Web3ChainGasProfile,
-    Web3ChainRole, Web3CheckpointStatement, Web3ContractError, Web3ContractInterface,
-    Web3ContractKind, Web3ContractPackage, Web3DisputePolicy, Web3DisputeWindow, Web3FinalityMode,
-    Web3IdentityBindingCertificate, Web3KeyBindingPurpose, Web3QualificationCase,
-    Web3QualificationMatrix, Web3QualificationOutcome, Web3ReceiptInclusion, Web3RegulatedRole,
-    Web3RegulatedRoleAssumption, Web3SettlementDispatchArtifact,
-    Web3SettlementExecutionReceiptArtifact, Web3SettlementLifecycleState, Web3SettlementPath,
-    Web3SettlementSupportBoundary, Web3SuperRootInclusion, Web3TrustProfile,
-    CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA, CHIO_CHECKPOINT_STATEMENT_SCHEMA,
-    CHIO_KEY_BINDING_CERTIFICATE_SCHEMA, CHIO_ORACLE_CONVERSION_EVIDENCE_SCHEMA,
-    CHIO_WEB3_CHAIN_CONFIGURATION_SCHEMA, CHIO_WEB3_CONTRACT_PACKAGE_SCHEMA,
-    CHIO_WEB3_QUALIFICATION_MATRIX_SCHEMA, CHIO_WEB3_SETTLEMENT_DISPATCH_SCHEMA,
-    CHIO_WEB3_SETTLEMENT_RECEIPT_SCHEMA, CHIO_WEB3_TRUST_PROFILE_SCHEMA,
+    SignedWeb3SettlementDispatch, SignedWeb3SettlementExecutionReceipt,
+    Web3SettlementDispatchArtifact, Web3SettlementExecutionReceiptArtifact,
+    Web3SettlementLifecycleState, Web3SettlementSupportBoundary, CHIO_LINK_CONTROL_STATE_SCHEMA,
+    CHIO_LINK_CONTROL_TRACE_SCHEMA, CHIO_SETTLE_CONTROL_STATE_SCHEMA,
+    CHIO_SETTLE_CONTROL_TRACE_SCHEMA, CHIO_WEB3_SETTLEMENT_DISPATCH_SCHEMA,
+    CHIO_WEB3_SETTLEMENT_RECEIPT_SCHEMA,
+};
+pub use web3::trust_profile::{
+    validate_web3_trust_profile, Web3ChainFinalityRule, Web3DisputePolicy, Web3DisputeWindow,
+    Web3FinalityMode, Web3RegulatedRole, Web3RegulatedRoleAssumption, Web3SettlementPath,
+    Web3TrustProfile, CHIO_WEB3_TRUST_PROFILE_SCHEMA,
 };
 
 pub use capability::{validate_attenuation, validate_delegation_chain};

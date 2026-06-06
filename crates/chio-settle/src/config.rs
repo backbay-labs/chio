@@ -3,7 +3,7 @@ use std::fs;
 use std::net::{IpAddr, Ipv6Addr};
 use std::path::Path;
 
-use chio_core::web3::Web3FinalityMode;
+use chio_core::web3::trust_profile::Web3FinalityMode;
 use chio_egress_contract::HttpEgressContract;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};

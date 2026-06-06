@@ -11,7 +11,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use chio_core::web3::{
+use chio_core::web3::anchors::{
     OracleConversionEvidence, CHIO_LINK_ORACLE_AUTHORITY, CHIO_ORACLE_CONVERSION_EVIDENCE_SCHEMA,
 };
 use tokio::sync::RwLock;

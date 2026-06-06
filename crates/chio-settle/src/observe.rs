@@ -1,7 +1,8 @@
-use chio_core::web3::{
-    validate_web3_settlement_execution_receipt, AnchorInclusionProof, OracleConversionEvidence,
-    Web3SettlementDispatchArtifact, Web3SettlementExecutionReceiptArtifact,
-    Web3SettlementLifecycleState, CHIO_WEB3_SETTLEMENT_RECEIPT_SCHEMA,
+use chio_core::web3::anchors::{AnchorInclusionProof, OracleConversionEvidence};
+use chio_core::web3::settlement::{
+    validate_web3_settlement_execution_receipt, Web3SettlementDispatchArtifact,
+    Web3SettlementExecutionReceiptArtifact, Web3SettlementLifecycleState,
+    CHIO_WEB3_SETTLEMENT_RECEIPT_SCHEMA,
 };
 use chio_egress_contract::{client_builder_with_contract, send_with_contract};
 use serde::{Deserialize, Serialize};
@@ -393,10 +394,10 @@ mod tests {
 
     use alloy_primitives::{Address, B256, U256};
     use alloy_sol_types::SolCall;
-    use chio_core::web3::{
-        Web3FinalityMode, Web3SettlementDispatchArtifact, Web3SettlementLifecycleState,
-        Web3SettlementPath,
+    use chio_core::web3::settlement::{
+        Web3SettlementDispatchArtifact, Web3SettlementLifecycleState,
     };
+    use chio_core::web3::trust_profile::{Web3FinalityMode, Web3SettlementPath};
     use chio_web3_bindings::{IChioBondVault, IChioEscrow};
     use serde_json::{json, Value};
 

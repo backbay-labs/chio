@@ -6,10 +6,10 @@ use alloy_primitives::{keccak256, Address, FixedBytes, B256, U256};
 use alloy_sol_types::SolCall;
 use chio_core::canonical::canonical_json_bytes;
 use chio_core::merkle::leaf_hash;
-use chio_core::web3::{
-    verify_anchor_inclusion_proof, AnchorInclusionProof, SignedWeb3IdentityBinding,
-    Web3ChainAnchorRecord, Web3KeyBindingPurpose,
+use chio_core::web3::anchors::{
+    verify_anchor_inclusion_proof, AnchorInclusionProof, Web3ChainAnchorRecord,
 };
+use chio_core::web3::identity::{SignedWeb3IdentityBinding, Web3KeyBindingPurpose};
 use chio_egress_contract::{client_builder_with_contract, send_with_contract, HttpEgressContract};
 use chio_kernel::checkpoint::KernelCheckpoint;
 use chio_web3_bindings::{ChioMerkleProof, IChioRootRegistry};
@@ -731,7 +731,8 @@ mod tests {
     use std::time::Duration;
 
     use alloy_sol_types::SolCall;
-    use chio_core::web3::{AnchorInclusionProof, SignedWeb3IdentityBinding, Web3KeyBindingPurpose};
+    use chio_core::web3::anchors::AnchorInclusionProof;
+    use chio_core::web3::identity::{SignedWeb3IdentityBinding, Web3KeyBindingPurpose};
     use chio_kernel::checkpoint::KernelCheckpoint;
     use chio_web3_bindings::IChioRootRegistry;
     use serde_json::{json, Value};
