@@ -13,10 +13,37 @@ write_lines() {
   awk -v count="$count" 'BEGIN { for (i = 1; i <= count; i++) print "pub fn marker_" i "() {}" }' > "$path"
 }
 
+write_codegen_header_source() {
+  local root="$1"
+  mkdir -p "$root/crates/chio-spec-codegen/src"
+  cat > "$root/crates/chio-spec-codegen/src/lib.rs" <<'EOF'
+pub const GENERATED_HEADER: &str = "\
+// DO NOT EDIT - test generated header.
+//
+// Source: test/schema.json
+";
+EOF
+}
+
+write_generated_wire() {
+  local path="$1" count="$2"
+  mkdir -p "$(dirname "$path")"
+  {
+    cat <<'EOF'
+// DO NOT EDIT - test generated header.
+//
+// Source: test/schema.json
+
+EOF
+    awk -v count="$count" 'BEGIN { for (i = 1; i <= count; i++) print "pub fn marker_" i "() {}" }'
+  } > "$path"
+}
+
 init_case() {
   local root="$1"
   mkdir -p "$root"
   git -C "$root" init -q
+  write_codegen_header_source "$root"
 }
 
 track_case() {
@@ -44,12 +71,22 @@ pass_case="$work/pass"
 init_case "$pass_case"
 write_lines "$pass_case/crates/chio-small/src/main.rs" 25
 write_lines "$pass_case/crates/chio-small/tests/large.rs" 2501
-write_lines "$pass_case/crates/chio-small/src/_generated/wire.rs" 3001
+write_generated_wire "$pass_case/crates/chio-core-types/src/_generated/chio_wire_v1.rs" 3001
 track_case "$pass_case"
 assert_rc "$(run_checker "$pass_case" "$work/pass.out" "$work/pass.err")" 0 \
-  "small production plus large test/generated files pass"
+  "small production plus large test/generated files with canonical header pass"
 grep -F "generated top" "$work/pass.out" >/dev/null
 grep -F "test top" "$work/pass.out" >/dev/null
+
+bad_generated="$work/bad-generated"
+init_case "$bad_generated"
+write_lines "$bad_generated/crates/chio-small/src/main.rs" 25
+write_lines "$bad_generated/crates/chio-core-types/src/_generated/chio_wire_v1.rs" 25
+track_case "$bad_generated"
+assert_rc "$(run_checker "$bad_generated" "$work/bad-generated.out" "$work/bad-generated.err")" 1 \
+  "generated wire file without canonical header fails"
+grep -F "crates/chio-core-types/src/_generated/chio_wire_v1.rs: generated wire file does not begin with chio_spec_codegen::GENERATED_HEADER" \
+  "$work/bad-generated.err" >/dev/null
 
 large_production="$work/large-production"
 init_case "$large_production"

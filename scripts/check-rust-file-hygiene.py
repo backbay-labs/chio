@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail on oversized hand-maintained Rust files."""
+"""Fail on oversized hand-maintained Rust files and malformed generated Rust."""
 
 from __future__ import annotations
 
@@ -13,6 +13,9 @@ import sys
 PRODUCTION_LIMIT = 2_000
 LIB_ROOT_LIMIT = 1_000
 SUMMARY_LIMIT = 25
+WIRE_GENERATED_PREFIX = "crates/chio-core-types/src/_generated/"
+GENERATED_HEADER_SOURCE = "crates/chio-spec-codegen/src/lib.rs"
+GENERATED_HEADER_CONST_MARKER = 'pub const GENERATED_HEADER: &str = "\\\n'
 
 
 @dataclass(frozen=True)
@@ -57,6 +60,21 @@ def line_count(path: Path) -> int:
     return data.count(b"\n")
 
 
+def load_generated_header(root: Path) -> str | None:
+    source = root / GENERATED_HEADER_SOURCE
+    if not source.exists():
+        return None
+    text = source.read_text()
+    start = text.find(GENERATED_HEADER_CONST_MARKER)
+    if start == -1:
+        return None
+    start += len(GENERATED_HEADER_CONST_MARKER)
+    end = text.find('";', start)
+    if end == -1:
+        return None
+    return text[start:end]
+
+
 def classify(path: str) -> str:
     parts = path.split("/")
     name = parts[-1]
@@ -87,6 +105,37 @@ def validate_allowlist(errors: list[str]) -> None:
             errors.append(f"{path}: allowlist entry has an empty rationale")
         if not entry.expires.strip():
             errors.append(f"{path}: allowlist entry has an empty expiry phase")
+
+
+def requires_wire_generated_header(path: str) -> bool:
+    return path.startswith(WIRE_GENERATED_PREFIX) and path.endswith(".rs")
+
+
+def validate_generated_headers(
+    root: Path,
+    paths: list[str],
+    failures: list[str],
+) -> None:
+    generated_paths = [path for path in paths if requires_wire_generated_header(path)]
+    if not generated_paths:
+        return
+    header = load_generated_header(root)
+    if header is None:
+        failures.append(
+            f"{GENERATED_HEADER_SOURCE}: could not read chio_spec_codegen::GENERATED_HEADER"
+        )
+        return
+    for path in generated_paths:
+        try:
+            body = (root / path).read_text()
+        except OSError as err:
+            failures.append(f"{path}: could not read generated Rust file: {err}")
+            continue
+        if not body.startswith(header):
+            failures.append(
+                f"{path}: generated wire file does not begin with "
+                "chio_spec_codegen::GENERATED_HEADER"
+            )
 
 
 def inspect_file(root: Path, path: str) -> RustFile:
@@ -166,6 +215,8 @@ def main() -> int:
             continue
         for violation in file.violations:
             failures.append(f"{file.path}: {violation}")
+
+    validate_generated_headers(root, paths, failures)
 
     if errors:
         failures.extend(errors)

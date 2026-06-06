@@ -61,7 +61,9 @@ policy, kernel, storage, adapter, or product crates.
   URI-normalization tests live in `session/tests.rs` so the wire-type module
   stays focused on production definitions.
 - `_generated/chio_wire_v1.rs` is generated code and must not be edited
-  directly.
+  directly. It remains a quarantined regeneration artifact, not a public module
+  exported from `src/lib.rs`, until generated wire bindings get a deliberate
+  no_std-compatible API decision.
 
 ## Pain Points
 

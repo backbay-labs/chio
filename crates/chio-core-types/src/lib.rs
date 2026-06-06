@@ -11,6 +11,13 @@
 //! `wasm32-unknown-unknown` and other embedded targets. The default `std`
 //! feature re-enables `std`-backed error impls via `thiserror`, along with
 //! the `std` feature on every transitive dependency.
+//!
+//! # Generated wire bindings
+//!
+//! Schema-derived Rust bindings live under `src/_generated/` as regenerate-only
+//! artifacts. They are deliberately not included in this crate root yet: the
+//! stable public API remains the hand-maintained no_std-compatible protocol
+//! modules below until generated wire bindings get an explicit API decision.
 
 #![cfg_attr(all(not(feature = "std"), not(test)), no_std)]
 

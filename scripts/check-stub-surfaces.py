@@ -239,21 +239,17 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         "reviewed digest-only test signature marker",
         "Phase 7 review",
     ),
-    "crates/chio-spec-codegen/src/lib.rs": allow(
-        "generator writes placeholder generated mod.rs with canonical header",
-        "Phase 8.1",
-    ),
     "crates/chio-spec-codegen/src/main.rs": allow(
-        "threat-model test-stub generator command surface",
-        "Phase 8.1",
+        "reviewed threat-model test-stub generator command surface",
+        "Phase 8.1 review",
     ),
     "crates/chio-spec-codegen/src/threat_coverage_doc.rs": allow(
-        "threat-model test-stub documentation generator",
-        "Phase 8.1",
+        "reviewed threat-model test-stub documentation generator",
+        "Phase 8.1 review",
     ),
     "crates/chio-spec-codegen/src/threat_model.rs": allow(
-        "threat-model test-stub generator, expected to fail closed until populated",
-        "Phase 8.1",
+        "reviewed threat-model test-stub generator, expected to fail closed until populated",
+        "Phase 8.1 review",
     ),
     "crates/chio-store-sqlite/src/receipt_store/evidence_retention.rs": allow(
         "SQL bind placeholder terminology, not an unfinished stub surface",

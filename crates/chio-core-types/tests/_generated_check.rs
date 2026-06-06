@@ -16,10 +16,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Full canonical header that must begin every regenerated Rust file under
-/// `_generated/`. This is the byte-for-byte source of truth: any change to
-/// the header in `chio_spec_codegen::GENERATED_HEADER` must be mirrored here
-/// (and vice versa). Asserting the full string rather than a single-line
-/// prefix prevents stale tool-pin/source metadata from slipping through CI.
+/// `_generated/`. This aliases the generator's exported constant directly so
+/// the generator remains the single byte-for-byte source of truth. Asserting
+/// the full string rather than a single-line prefix prevents stale tool-pin or
+/// source metadata from slipping through CI.
 const CANONICAL_HEADER: &str = chio_spec_codegen::GENERATED_HEADER;
 
 /// Marker that some past contributor might use to opt out of the
@@ -67,11 +67,11 @@ fn every_generated_file_has_canonical_header() {
 }
 
 #[test]
-fn placeholder_mod_rs_exists() {
+fn generated_mod_rs_exists() {
     let mod_rs = generated_dir().join("mod.rs");
     assert!(
         mod_rs.exists(),
-        "placeholder {} is missing; rerun `cargo xtask codegen rust`",
+        "generated module marker {} is missing; rerun `cargo xtask codegen rust`",
         mod_rs.display()
     );
 }
