@@ -7,10 +7,11 @@
 use std::sync::Arc;
 
 use chio_core::capability::CapabilityToken;
-use chio_cross_protocol::{
-    BridgeError, CapabilityBridge, CrossProtocolCapabilityRef, CrossProtocolExecutionRequest,
-    CrossProtocolOrchestrator, DiscoveryProtocol,
-};
+use chio_cross_protocol::capability_bridge::{CapabilityBridge, CrossProtocolCapabilityRef};
+use chio_cross_protocol::discovery::DiscoveryProtocol;
+use chio_cross_protocol::error::BridgeError;
+use chio_cross_protocol::execution::CrossProtocolExecutionRequest;
+use chio_cross_protocol::orchestrator::CrossProtocolOrchestrator;
 use chio_kernel::{
     ChioKernel, KernelError, NestedFlowBridge, ToolServerConnection, Verdict as KernelVerdict,
 };

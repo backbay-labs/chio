@@ -6,9 +6,8 @@ use chio_core_types::capability::{
 };
 use chio_core_types::crypto::{Keypair, PublicKey};
 use chio_core_types::receipt::GuardEvidence;
-use chio_cross_protocol::{
-    plan_authoritative_route, route_selection_metadata, DiscoveryProtocol, TargetProtocolRegistry,
-};
+use chio_cross_protocol::discovery::{DiscoveryProtocol, TargetProtocolRegistry};
+use chio_cross_protocol::routing::{plan_authoritative_route, route_selection_metadata};
 use chio_kernel::{
     ApprovalStore, ChioKernel, Guard, GuardContext, GuardDecision, InMemoryApprovalStore,
     KernelConfig, KernelError, ToolCallRequest, ToolServerConnection, Verdict as KernelVerdict,

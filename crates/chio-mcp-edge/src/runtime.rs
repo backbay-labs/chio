@@ -14,10 +14,13 @@ use chio_core::session::{
     ResourceTemplateDefinition, RootDefinition, SessionAuthContext, SessionId, SessionOperation,
     SessionTransport, TaskOwnershipSnapshot, ToolCallOperation,
 };
-use chio_cross_protocol::{
-    route_selection_metadata, BridgeError, CrossProtocolTargetExecution,
-    CrossProtocolTargetRequest, DiscoveryProtocol, TargetExecutionHop, TargetProtocolExecutor,
+use chio_cross_protocol::discovery::DiscoveryProtocol;
+use chio_cross_protocol::error::BridgeError;
+use chio_cross_protocol::execution::{
+    CrossProtocolTargetExecution, CrossProtocolTargetRequest, TargetExecutionHop,
+    TargetProtocolExecutor,
 };
+use chio_cross_protocol::routing::route_selection_metadata;
 use chio_kernel::{
     ChioKernel, LateSessionEvent, NestedFlowClient, PeerCapabilities, SessionOperationResponse,
     SignedExecutionNonce, ToolCallOutput, ToolCallRequest, ToolCallResponse, ToolCallStream,

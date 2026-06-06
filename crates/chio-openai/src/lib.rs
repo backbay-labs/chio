@@ -18,9 +18,8 @@ use chio_core::capability::{
     CapabilityToken, GovernedApprovalToken, GovernedTransactionIntent, ModelMetadata,
 };
 use chio_core::receipt::ChioReceipt;
-use chio_cross_protocol::{
-    plan_authoritative_route, route_selection_metadata, DiscoveryProtocol, TargetProtocolRegistry,
-};
+use chio_cross_protocol::discovery::{DiscoveryProtocol, TargetProtocolRegistry};
+use chio_cross_protocol::routing::{plan_authoritative_route, route_selection_metadata};
 use chio_kernel::{
     dpop, ChioKernel, SignedExecutionNonce, ToolCallOutput, ToolCallRequest,
     Verdict as KernelVerdict,

@@ -43,13 +43,17 @@ use chio_core::capability::{
 };
 #[cfg(test)]
 use chio_core::session::OperationTerminalState;
-use chio_cross_protocol::{
-    runtime_lifecycle_contract, runtime_lifecycle_metadata, semantic_hints_for_tool,
-    target_protocol_for_tool_with_registry, BridgeError, BridgeFidelity, CapabilityBridge,
-    CrossProtocolCapabilityRef, CrossProtocolExecutionRequest, CrossProtocolOrchestrator,
-    DiscoveryProtocol, OpenAiTargetExecutor, OrchestratedToolCall, RuntimeLifecycleSurface,
-    TargetProtocolRegistry,
+use chio_cross_protocol::capability_bridge::{CapabilityBridge, CrossProtocolCapabilityRef};
+use chio_cross_protocol::discovery::{
+    target_protocol_for_tool_with_registry, DiscoveryProtocol, TargetProtocolRegistry,
 };
+use chio_cross_protocol::error::BridgeError;
+use chio_cross_protocol::execution::{CrossProtocolExecutionRequest, OpenAiTargetExecutor};
+use chio_cross_protocol::lifecycle::{
+    runtime_lifecycle_contract, runtime_lifecycle_metadata, RuntimeLifecycleSurface,
+};
+use chio_cross_protocol::orchestrator::{CrossProtocolOrchestrator, OrchestratedToolCall};
+use chio_cross_protocol::semantic_hints::{semantic_hints_for_tool, BridgeFidelity};
 #[cfg(any(test, feature = "compatibility-surface"))]
 use chio_kernel::ToolServerConnection;
 use chio_kernel::{

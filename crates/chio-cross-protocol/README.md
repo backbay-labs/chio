@@ -11,22 +11,27 @@ provenance, attenuation, and receipt-lineage behavior.
 
 The crate provides:
 
-- `DiscoveryProtocol` -- enum of the protocol families Chio can bridge across
-  (Native, Http, Mcp, A2a, Acp, OpenAi). Used in `x-chio-target-protocol`
-  schema extensions.
-- `TargetProtocolRegistry` -- binds `TargetProtocolExecutor` impls to protocol
-  families at runtime and resolves which executor handles a given tool
-  definition.
-- `RuntimeLifecycleSurface` / `RuntimeLifecycleContract` -- canonical lifecycle
-  contract for claim-eligible bridge surfaces (entrypoints, stream delivery,
-  partial output, cancellation).
-- `BridgeFidelity` -- typed publication-gate contract: `Lossless`, `Adapted`
-  (with caveats), or `Unsupported`.
-- `BridgeSemanticHints` -- semantic flags derived from `x-chio-*` tool schema
-  extensions (publish, approval-required, streaming, cancellation,
-  partial-output).
-- Cross-protocol capability envelope constants (`CROSS_PROTOCOL_AUTHORITY_PATH`,
-  `CROSS_PROTOCOL_CAPABILITY_ENVELOPE_SCHEMA`).
+- `discovery::DiscoveryProtocol` -- enum of the protocol families Chio can
+  bridge across (Native, Http, Mcp, A2a, Acp, OpenAi). Used in
+  `x-chio-target-protocol` schema extensions.
+- `discovery::TargetProtocolRegistry` -- binds
+  `execution::TargetProtocolExecutor` impls to protocol families at runtime and
+  resolves which executor handles a given tool definition.
+- `lifecycle::RuntimeLifecycleSurface` and
+  `lifecycle::RuntimeLifecycleContract` -- canonical lifecycle contract for
+  claim-eligible bridge surfaces (entrypoints, stream delivery, partial output,
+  cancellation).
+- `semantic_hints::BridgeFidelity` -- typed publication-gate contract:
+  `Lossless`, `Adapted` (with caveats), or `Unsupported`.
+- `semantic_hints::BridgeSemanticHints` -- semantic flags derived from
+  `x-chio-*` tool schema extensions (publish, approval-required, streaming,
+  cancellation, partial-output).
+- `capability_bridge::CROSS_PROTOCOL_AUTHORITY_PATH` and
+  `capability_bridge::CROSS_PROTOCOL_CAPABILITY_ENVELOPE_SCHEMA` -- constants
+  signed into cross-protocol capability envelopes.
+- `orchestrator::CrossProtocolOrchestrator` -- shared runtime that validates
+  request lineage, plans routes, projects capability references, and hands
+  execution to the selected target protocol.
 
 ## Position in the system
 

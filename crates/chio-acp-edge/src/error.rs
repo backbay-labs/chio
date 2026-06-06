@@ -25,7 +25,7 @@ pub enum AcpEdgeError {
 
     /// Cross-protocol orchestration failed.
     #[error("bridge error: {0}")]
-    Bridge(#[from] chio_cross_protocol::BridgeError),
+    Bridge(#[from] BridgeError),
 }
 
 fn record_receipt_write_error() {
