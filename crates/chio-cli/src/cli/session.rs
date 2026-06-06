@@ -579,7 +579,7 @@ capabilities:
         let policy = policy::parse_policy(yaml).unwrap();
         let kp = Keypair::generate();
         let kernel = build_kernel(load_test_policy_runtime(&policy), &kp);
-        assert_eq!(kernel.guard_count(), 1); // pipeline counts as 1
+        assert_eq!(kernel.guard_count(), 4); // default profile + configured pipeline
     }
 
     #[tokio::test]

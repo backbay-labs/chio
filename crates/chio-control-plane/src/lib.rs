@@ -339,7 +339,7 @@ pub fn build_kernel(loaded_policy: policy::LoadedPolicy, kernel_kp: &Keypair) ->
 
     let mut kernel = ChioKernel::new(config);
 
-    let mut default_guard_profile = chio_guards::default_runtime_guard_profile();
+    let default_guard_profile = chio_guards::default_runtime_guard_profile();
     if !default_guard_profile.pre_invocation_guards.is_empty() {
         tracing::info!(
             guard_count = default_guard_profile.pre_invocation_guards.len(),
@@ -358,16 +358,15 @@ pub fn build_kernel(loaded_policy: policy::LoadedPolicy, kernel_kp: &Keypair) ->
         kernel.add_guard(Box::new(guard_pipeline));
     }
 
-    default_guard_profile
-        .post_invocation_pipeline
-        .append(post_invocation_pipeline);
+    let mut post_invocation_pipeline = post_invocation_pipeline;
+    post_invocation_pipeline.append(default_guard_profile.post_invocation_pipeline);
 
-    if !default_guard_profile.post_invocation_pipeline.is_empty() {
+    if !post_invocation_pipeline.is_empty() {
         tracing::info!(
-            hook_count = default_guard_profile.post_invocation_pipeline.len(),
+            hook_count = post_invocation_pipeline.len(),
             "registering post-invocation pipeline"
         );
-        kernel.set_post_invocation_pipeline(default_guard_profile.post_invocation_pipeline);
+        kernel.set_post_invocation_pipeline(post_invocation_pipeline);
     }
 
     if let Some(attestation_trust_policy) =
