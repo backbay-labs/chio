@@ -1424,7 +1424,9 @@ impl ChioKernel {
             verdict: Verdict::Allow,
             output: None,
             reason: None,
-            terminal_state: OperationTerminalState::Completed,
+            terminal_state: OperationTerminalState::Incomplete {
+                reason: "execution nonce preflight requires retry with presented nonce".to_string(),
+            },
             receipt,
             execution_nonce,
         })

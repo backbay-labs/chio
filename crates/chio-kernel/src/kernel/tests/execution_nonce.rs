@@ -335,6 +335,10 @@ fn strict_nonce_mode_preflights_nonce_then_executes_once() {
         preflight.output.is_none(),
         "strict preflight must not invoke the tool server"
     );
+    assert!(matches!(
+        &preflight.terminal_state,
+        OperationTerminalState::Incomplete { .. }
+    ));
     assert_eq!(invocations.load(Ordering::SeqCst), 0);
     let nonce = *preflight
         .execution_nonce

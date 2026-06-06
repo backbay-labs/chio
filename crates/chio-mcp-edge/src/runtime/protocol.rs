@@ -1255,12 +1255,14 @@ mod tests {
 
     #[test]
     fn parse_jsonrpc_envelope_preserves_id_method_and_default_params() {
-        let envelope = parse_jsonrpc_envelope(&json!({
+        let envelope = match parse_jsonrpc_envelope(&json!({
             "jsonrpc": "2.0",
             "id": "req-1",
             "method": "tools/list",
-        }))
-        .expect("valid envelope");
+        })) {
+            Ok(envelope) => envelope,
+            Err(error) => panic!("valid envelope should parse, got: {error:?}"),
+        };
 
         assert_eq!(envelope.id, Some(json!("req-1")));
         assert_eq!(envelope.method, "tools/list");
