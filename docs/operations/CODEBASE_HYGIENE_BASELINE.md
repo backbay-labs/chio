@@ -217,3 +217,30 @@ untracked `docs/superpowers/` tree contains local plan files, including the
 codebase hygiene modularization plan that drives this cleanup. These files are
 not part of Task 0.1 and should remain unstaged unless a later task explicitly
 owns them.
+
+## Completion Refresh
+
+Completion evidence is recorded in
+`docs/operations/CODEBASE_HYGIENE_COMPLETION.md`.
+
+Final refresh date: 2026-06-06
+
+Branch and head before the evidence-only documentation commit:
+`codex/chio-next-10-remediation` at `b7c4509cc`.
+
+The Phase 9.2 refresh re-ran the baseline line-count commands and the metadata
+scan. `cargo metadata --no-deps --format-version 1` completed with 128 packages
+and wrote `/tmp/chio-metadata-final.json` at 592,096 bytes.
+
+Final Rust hygiene state:
+
+| Category | Final evidence |
+| --- | --- |
+| Generated Rust | 4 tracked generated Rust files. Largest is `crates/chio-core-types/src/_generated/chio_wire_v1.rs` at 30,223 lines. |
+| Production Rust | 1,198 tracked production Rust files. No hand-maintained production Rust file exceeds 2,000 lines. |
+| Production lib roots | No production `src/lib.rs` exceeds 1,000 lines. |
+| Test Rust | 715 tracked test Rust files. 15 test files remain at or above 2,000 lines and are classified as test-only by the hygiene gate. |
+| Example Rust | 24 tracked example Rust files. Largest is `examples/chio-3vendor/src/commands.rs` at 938 lines. |
+| Rust hygiene allowlist | Empty. `scripts/check-rust-file-hygiene.py` has no active allowlist entries. |
+| Stub-surface allowlist | Explicit path-level allowlist remains in `scripts/check-stub-surfaces.py`; stale entries were removed and all allowlist paths exist. |
+| Final full CI | `bash scripts/ci-workspace.sh > target/ci-workspace-phase9-final-current-head.log 2>&1; rc=$?; tail -n 220 target/ci-workspace-phase9-final-current-head.log; exit $rc` passed with exit code 0. |
