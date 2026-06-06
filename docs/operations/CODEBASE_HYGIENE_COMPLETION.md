@@ -1,17 +1,19 @@
-# Codebase Hygiene Completion Evidence
+# Codebase Hygiene Review-Repair Evidence
 
 Generated: 2026-06-06
 
-Branch and head before the evidence-only documentation commit:
-`codex/chio-next-10-remediation` at `b7c4509cc`.
+Branch and code head before this review-repair evidence refresh:
+`codex/chio-next-10-remediation` at `36d62f10b`.
 
-This document closes the codebase hygiene modularization plan. It records the
-final line-count evidence, remaining allowlisted stub surfaces, crates touched,
-verification commands, and final worktree status snapshot.
+This document records the current codebase hygiene state after review repair.
+It does not claim the test-suite decomposition is complete. The remaining
+oversized test suites are now explicit, capped hygiene debt rather than hidden
+by the test-file classification.
 
-The evidence commit that adds this file is documentation-only. The final full
-workspace CI evidence below was collected at `b7c4509cc` after all code and gate
-fixes, including removal of a stale stub-surface allowlist entry.
+The earlier full workspace CI evidence was collected before the review-repair
+commits that tightened stub allowlists, generated-file validation, whitespace
+cleanliness, crate-root modularity, and oversized-test debt caps. Current
+targeted verification commands are listed below.
 
 ## Baseline Commands Re-run
 
@@ -25,18 +27,18 @@ cargo metadata --no-deps --format-version 1 > /tmp/chio-metadata-final.json
 `cargo metadata` completed with 128 packages and wrote
 `/tmp/chio-metadata-final.json` at 592,096 bytes.
 
-## Final Summary
+## Current Summary
 
 | Check | Result |
 | --- | --- |
 | Generated Rust files | 4 tracked files. Largest remains `crates/chio-core-types/src/_generated/chio_wire_v1.rs` at 30,223 lines and is generated/quarantined. |
 | Production Rust files | 1,198 tracked production files. No hand-maintained production Rust file exceeds 2,000 lines. |
-| Production `src/lib.rs` roots | No production lib root exceeds 1,000 lines. |
-| Rust hygiene allowlist | Empty in `scripts/check-rust-file-hygiene.py`. |
-| Test Rust files | 715 tracked test files. 15 test files remain at or above 2,000 lines and are classified outside the production threshold. |
+| Production `src/lib.rs` roots | No production lib root exceeds 1,000 lines. Review-repair split `crates/chio-attest-buyer/src/lib.rs` from 999 to 50 lines and `crates/chio-kernel-browser/src/lib.rs` from 997 to 69 lines. |
+| Rust hygiene allowlist | 15 capped test-only entries in `scripts/check-rust-file-hygiene.py`; production allowlist remains empty. |
+| Test Rust files | 715 tracked test files. 15 test files remain at or above 2,000 lines. They now fail the hygiene gate if they grow past their recorded cap, and any new oversized test file fails. |
 | Example Rust files | 24 tracked example files. Largest is `examples/chio-3vendor/src/commands.rs` at 938 lines. |
-| Stub-surface gate | `python3 scripts/check-stub-surfaces.py` passed. Production hits are restricted to explicit allowlist entries with reasons and expiry phases. |
-| Final full CI | Passed with exit code 0. |
+| Stub-surface gate | `python3 scripts/check-stub-surfaces.py` passed. Production hits are restricted to explicit allowlist entries plus per-hit reviewed match patterns; path-only amnesty now fails. |
+| Current targeted verification | Passed. Full workspace CI was not rerun after the review-repair commits. |
 
 ## Original Hotspots
 
@@ -120,88 +122,60 @@ final line count for every original hotspot entry.
 
 ## Remaining Rust File Allowlist
 
-None. `scripts/check-rust-file-hygiene.py` has an empty `ALLOWLIST`, and
-`python3 scripts/check-rust-file-hygiene.py` passes.
+`scripts/check-rust-file-hygiene.py` now has 15 test-only allowlist entries.
+Each entry has a `max_lines` cap set to the current file size. The gate fails
+if any of these suites grows, and it fails any new unallowlisted test file over
+2,000 lines.
 
-Remaining generated Rust is classified separately:
+This is not completion of test-suite decomposition. It is a stop-loss gate that
+makes the residual debt explicit until the suites are split.
+
+| File | Cap | Expires |
+| --- | ---: | --- |
+| `crates/chio-cli/tests/mcp_serve_http.rs` | 6,316 | Phase 10 test decomposition |
+| `crates/chio-cli/tests/passport.rs` | 5,390 | Phase 10 test decomposition |
+| `crates/chio-cli/tests/mcp_serve.rs` | 4,496 | Phase 10 test decomposition |
+| `crates/chio-mcp-edge/src/runtime/runtime_tests.rs` | 4,349 | Phase 10 test decomposition |
+| `crates/chio-cli/tests/certify.rs` | 3,639 | Phase 10 test decomposition |
+| `crates/chio-mercury/tests/cli.rs` | 3,264 | Phase 10 test decomposition |
+| `crates/chio-cli/tests/trust_cluster.rs` | 3,209 | Phase 10 test decomposition |
+| `crates/chio-api-protect/src/proxy/tests.rs` | 2,971 | Phase 10 test decomposition |
+| `crates/chio-acp-edge/src/tests/all.rs` | 2,881 | Phase 10 test decomposition |
+| `crates/chio-a2a-edge/src/tests/all.rs` | 2,702 | Phase 10 test decomposition |
+| `crates/chio-cli/tests/federated_issue.rs` | 2,295 | Phase 10 test decomposition |
+| `crates/chio-credentials/src/tests.rs` | 2,164 | Phase 10 test decomposition |
+| `crates/chio-core-types/src/capability/tests.rs` | 2,141 | Phase 10 test decomposition |
+| `crates/chio-runtime-core/tests/runtime_buyer_review.rs` | 2,067 | Phase 10 test decomposition |
+| `crates/chio-mcp-remote/src/remote_mcp/tests.rs` | 2,008 | Phase 10 test decomposition |
+
+Remaining generated Rust is classified separately and now validated against a
+known generator header for every generated prefix:
 
 | File | Lines | Reason |
 | --- | ---: | --- |
-| `crates/chio-core-types/src/_generated/chio_wire_v1.rs` | 30,223 | generated from the schema/codegen boundary and verified by generated checks |
-| `crates/chio-errors/src/_generated/error_codes.rs` | 1,312 | generated error-code projection |
-| `crates/chio-core-types/src/_generated/mod.rs` | 16 | generated module boundary |
-| `crates/chio-errors/src/_generated/mod.rs` | 9 | generated module boundary |
+| `crates/chio-core-types/src/_generated/chio_wire_v1.rs` | 30,223 | generated from the schema/codegen boundary and verified by `chio_spec_codegen::GENERATED_HEADER` |
+| `crates/chio-errors/src/_generated/error_codes.rs` | 1,312 | generated error-code projection verified by `chio_spec_codegen::errors_pass::ERROR_CODES_GENERATED_HEADER` |
+| `crates/chio-core-types/src/_generated/mod.rs` | 16 | generated module boundary verified by the wire generated header |
+| `crates/chio-errors/src/_generated/mod.rs` | 9 | generated module boundary verified by the error-code generated header |
 
 ## Remaining Stub-Surface Allowlist
 
-The stub-surface gate intentionally keeps explicit production allowlist entries
-with reason strings and expiry phases. The final scan passed with these
-allowlisted path-level entries:
+The stub-surface gate is no longer path-level. Each production allowlist entry
+must have:
 
-| File | Reason | Expires |
-| --- | --- | --- |
-| `crates/chio-acp-edge/src/bridge.rs` | intentional advisory permission preview text, enforcement happens at invoke time | Phase 6.1 review |
-| `crates/chio-acp-proxy/src/kernel_signer.rs` | debug-only placeholder string is not used for signature verification | Phase 6.1 review |
-| `crates/chio-anchor/src/batch.rs` | reviewed test fixture inside cfg(test) | Phase 7 review |
-| `crates/chio-anchor/src/witness.rs` | reviewed test fixture helper | Phase 7 review |
-| `crates/chio-anchor/src/witness/rekor.rs` | reviewed test fixture helper | Phase 7 review |
-| `crates/chio-arena/src/promote.rs` | reviewed test seam for injecting CHIO_BLESS environment access | Phase 7 review |
-| `crates/chio-attest-verify/src/lib.rs` | negative crate invariant text forbids todo and unimplemented macros | Phase 6.1 review |
-| `crates/chio-cli/dashboard/src/components/BudgetSparkline.tsx` | UI empty-state placeholder, not an implementation stub | Phase 8.2 review |
-| `crates/chio-cli/dashboard/src/components/FilterSidebar.tsx` | HTML input placeholder attributes, not implementation stubs | Phase 8.2 review |
-| `crates/chio-cli/dashboard/src/components/ReceiptTable.tsx` | UI Suspense loading placeholder, not an implementation stub | Phase 8.2 review |
-| `crates/chio-cli/dashboard/src/index.css` | CSS class for UI empty-state placeholder | Phase 8.2 review |
-| `crates/chio-cli/src/cli/mcp/manifest.rs` | generated guard-manifest scaffold intentionally carries review TODO text | Phase 6.1 review |
-| `crates/chio-cli/src/cli/replay/execute.rs` | reviewed replay fixture server used for offline evaluation | Phase 7 review |
-| `crates/chio-cli/src/cli/replay/validate.rs` | reviewed replay validation fixture placeholder overwritten by signature tests | Phase 7 review |
-| `crates/chio-cli/src/cli/runtime.rs` | reviewed local start scaffold OpenAPI document, not a security boundary | Phase 6.1 review |
-| `crates/chio-cli/src/cli/session.rs` | reviewed CLI session fixture payload | Phase 7 review |
-| `crates/chio-cli/src/doctor/cosign.rs` | reviewed doctor test fixture writes stub JSON under cfg(test) | Phase 7 review |
-| `crates/chio-cli/src/guard.rs` | deny-by-default guard scaffold template, not a shipped allow path | Phase 6.1 review |
-| `crates/chio-cli/templates/init/README.md.tmpl` | template README for generated example tool server | Phase 8.2 review |
-| `crates/chio-config/src/interpolation.rs` | domain placeholder resolution term, not an unfinished implementation | Phase 6.1 review |
-| `crates/chio-conformance/Cargo.toml` | conformance feature forwards the explicit bbs-stub feature gate | Phase 8.1 review |
-| `crates/chio-conformance/peers.lock.toml` | pre-publication peer lock placeholders are guarded by published=false | Phase 8.2 review |
-| `crates/chio-conformance/src/peers.rs` | peer-lock placeholder pins fail closed unless published=false | Phase 8.2 review |
-| `crates/chio-conformance/verdict_matrix/drivers/lambda/src/lib.rs` | negative documentation says Lambda availability gate is not a placeholder | Phase 8.2 review |
-| `crates/chio-core-types/src/crypto.rs` | reviewed fail-closed comments around non-Ed25519 byte conversions | Phase 3 review |
-| `crates/chio-core-types/src/plan.rs` | advisory plan edges are intentional v1 metadata | Phase 3 review |
-| `crates/chio-core-types/src/receipt/kinds.rs` | advisory trust level is an intentional receipt enum variant | Phase 3.2 review |
-| `crates/chio-custody-hw/src/capability.rs` | reviewed pre-signing constructor and cfg(test) fixture language | Phase 6.1 review |
-| `crates/chio-custody-hw/src/issuer.rs` | reviewed pre-signing constructor call that is signed before emission | Phase 6.1 review |
-| `crates/chio-custody-hw/src/lib.rs` | negative crate-level invariant forbids trust-boundary stubs | Phase 6.1 review |
-| `crates/chio-custody-hw/src/mint.rs` | reviewed pre-signing constructor call that is signed before emission | Phase 6.1 review |
-| `crates/chio-custody-hw/src/verifier.rs` | reviewed cfg(test) WebAuthn assertion fixture | Phase 7 review |
-| `crates/chio-data-guards/redactors/default/src/lib.rs` | phone-number pattern documentation, not a stub marker | Phase 6.1 review |
-| `crates/chio-envoy-ext-authz/proto/envoy/config/core/v3/base.proto` | protocol fixture text for opaque Envoy fields | Phase 7 review |
-| `crates/chio-envoy-ext-authz/src/service.rs` | reviewed adapter test seam documented in trait comment | Phase 7 review |
-| `crates/chio-federation/Cargo.toml` | feature-gated selective-disclosure surface named bbs-stub | Phase 2.2 review |
-| `crates/chio-federation/src/lib.rs` | feature-gated selective-disclosure surface named bbs-stub | Phase 2.2 review |
-| `crates/chio-federation/src/selective_disclosure.rs` | feature-gated bbs-stub implementation isolated behind cfg(feature = "bbs-stub") | Phase 2.2 review |
-| `crates/chio-guard-registry/src/pull.rs` | reserved Sigstore cache slot fails closed with empty bytes | Phase 6.1 review |
-| `crates/chio-http-core/src/routes.rs` | route-template placeholder terminology | Phase 6.1 review |
-| `crates/chio-kernel-browser/src/clock.rs` | cfg(not wasm32) host-target test stub returns fail-closed time | Phase 6.2 review |
-| `crates/chio-kernel-browser/src/lib.rs` | test signing placeholder is replaced before pure receipt signing returns | Phase 6.2 review |
-| `crates/chio-kernel-browser/src/rng.rs` | cfg(not wasm32) host-target stub always fails outside browser wasm | Phase 6.2 review |
-| `crates/chio-lineage/src/anchor.rs` | signing state explicitly distinguishes unsigned signer hint from real signature | Phase 6.1 review |
-| `crates/chio-log-redact/src/engine.rs` | fail-closed redaction placeholder prevents original secret exposure | Phase 6.1 review |
-| `crates/chio-metering/src/export.rs` | timestamp fallback text is reviewed and deterministic | Phase 6.1 review |
-| `crates/chio-pheromone-relay/src/metrics.rs` | SQL bind placeholder terminology, not an unfinished stub surface | Phase 6.1 review |
-| `crates/chio-policy/src/detection.rs` | policy detector name used as domain data and covered by tests | Phase 6.1 review |
-| `crates/chio-provider-conformance/src/replay.rs` | feature-gated replay stubs fail with guidance when provider features are absent | Phase 6.1 review |
-| `crates/chio-revocation-oracle/src/signer.rs` | reviewed digest-only test signature marker | Phase 7 review |
-| `crates/chio-spec-codegen/src/main.rs` | reviewed threat-model test-stub generator command surface | Phase 8.1 review |
-| `crates/chio-spec-codegen/src/threat_coverage_doc.rs` | reviewed threat-model test-stub documentation generator | Phase 8.1 review |
-| `crates/chio-spec-codegen/src/threat_model.rs` | reviewed threat-model test-stub generator, expected to fail closed until populated | Phase 8.1 review |
-| `crates/chio-store-sqlite/src/receipt_store/evidence_retention.rs` | SQL bind placeholder terminology, not an unfinished stub surface | Phase 6.1 review |
-| `crates/chio-tee/src/tap.rs` | reviewed TrafficTap test-double implementations | Phase 7 review |
-| `crates/chio-wasm-guards/src/fuzz.rs` | fuzz fixture text describing an allocator stub | Phase 7 review |
-| `crates/chio-wasm-guards/src/lib.rs` | exports the placeholder-resolution API module | Phase 5.1 review |
-| `crates/chio-wasm-guards/src/placeholders.rs` | domain placeholder-resolution API for guard configuration | Phase 5.1 review |
-| `crates/chio-wasm-guards/src/runtime.rs` | domain placeholder-resolution API use for guard configuration | Phase 5.1 review |
-| `crates/chio-wasm-guards/src/runtime/wasmtime_backend.rs` | domain placeholder-resolution API use for guard configuration | Phase 5.1 review |
-| `crates/chio-weights/src/lib.rs` | negative crate invariant text forbids verifier and trust-boundary stubs | Phase 6.2 review |
-| `crates/chio-weights/src/lineage.rs` | PQ-hybrid signing-state placeholder mirrors explicit unsigned lineage state | Phase 6.2 review |
+- a non-empty reason,
+- a non-empty expiry phase,
+- at least one reviewed regex in `ALLOWLIST_MATCHES`,
+- an actual hit whose text matches one of those reviewed regexes.
+
+An unrelated `TODO`, `stub`, or `placeholder` in an otherwise allowlisted file
+now fails with `production stub-surface hit does not match reviewed allowlist
+patterns`. Regression tests cover both previously demonstrated bypasses:
+`crates/chio-federation/src/selective_disclosure.rs` and
+`crates/chio-cli/src/guard.rs`.
+
+Current scan evidence: `python3 scripts/check-stub-surfaces.py` passed with
+133 production hits, all matched to reviewed allowlist patterns.
 
 ## Touched Crates
 
@@ -289,47 +263,31 @@ The branch diff touches 79 crates:
 
 ## Verification Commands
 
-Final and targeted verification commands run during the closeout:
+Review-repair verification through code head `36d62f10b`:
 
 ```bash
-cargo test -p chio-e2e --test guard_platform_e2e
-python3 -m py_compile scripts/check-review-slices.py
-python3 scripts/check-review-slices.py
-bash scripts/tests/check-rust-public-surface.test.sh
-bash scripts/check-adapter-no-bypass.sh
-python3 -m py_compile scripts/check-stub-surfaces.py
+python3 -m py_compile scripts/check-stub-surfaces.py scripts/check-rust-file-hygiene.py
 python3 scripts/check-stub-surfaces.py
-bash scripts/tests/check-stub-surfaces.test.sh
 python3 scripts/check-rust-file-hygiene.py
+bash scripts/tests/check-stub-surfaces.test.sh
 bash scripts/tests/check-rust-file-hygiene.test.sh
-python3 - <<'PY'
-import runpy
-from pathlib import Path
-ns = runpy.run_path('scripts/check-stub-surfaces.py')
-root = Path('.')
-missing = [path for path in sorted(ns['ALLOWLIST']) if not (root / path).exists()]
-if missing:
-    print('\n'.join(missing))
-    raise SystemExit(1)
-print('stub-surface allowlist paths exist')
-PY
 cargo fmt --all -- --check
-cargo clippy --workspace --lib --bins --examples -- -D warnings
-cargo build --workspace
-cargo test --workspace
-cargo test --workspace --exclude chio-wasm-guards
-cargo test -p chio-wasm-guards --lib
+cargo test -p chio-attest-buyer
+cargo test -p chio-kernel-browser
+cargo clippy -p chio-attest-buyer -p chio-kernel-browser --all-targets -- -D warnings
+git diff --check origin/codex/chio-next-10-remediation..HEAD
 git diff --check
-bash scripts/ci-workspace.sh > target/ci-workspace-phase9-final-current-head.log 2>&1; rc=$?; tail -n 220 target/ci-workspace-phase9-final-current-head.log; exit $rc
 ```
 
-The final full CI command passed with exit code 0. Its tail ended with
-`cargo test -p chio-wasm-guards --lib` reporting 133 passed, 0 failed.
+All commands above passed during review repair. Full workspace CI was not rerun
+after the review-repair commits. The earlier full workspace CI evidence in this
+branch predates these review-repair commits and should not be treated as current
+full-CI proof.
 
 ## Final Status Snapshot
 
-The final code/gate state before Phase 9.2 evidence files were edited had only
-the unrelated dirty state that existed at baseline:
+The review-repair code/gate state before this evidence refresh had only the
+unrelated dirty state that existed at baseline:
 
 ```text
  M docs/README.md
