@@ -47,7 +47,7 @@ packages and 588,730 bytes of metadata.
 | `crates/chio-cli/tests/passport.rs` | 5,387 | test | `chio-cli` | Phase 7 follow-up |
 | `crates/chio-control-plane/src/trust_control/service_runtime.rs` | 5,310 | production | `chio-control-plane` | Phase 4.1 |
 | `crates/chio-cli/tests/mcp_serve.rs` | 4,496 | test | `chio-cli` | Phase 7 follow-up |
-| `crates/chio-store-sqlite/src/budget_store.rs` | 4,390 | production | `chio-store-sqlite` | Phase 6.1 |
+| `crates/chio-store-sqlite/src/budget_store/tests.rs` | 1,451 | test | `chio-store-sqlite` | split from `budget_store.rs` in Phase 6.1 |
 | `crates/chio-mcp-edge/src/runtime/runtime_tests.rs` | 4,346 | test | `chio-mcp-edge` | Phase 7 follow-up |
 | `crates/chio-cli/src/cli/trust_commands.rs` | 4,232 | production | `chio-cli` | Phase 4.3 |
 | `crates/chio-cli/src/cli/types.rs` | 3,949 | production | `chio-cli` | Phase 4.3 |

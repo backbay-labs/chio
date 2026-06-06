@@ -71,9 +71,6 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/chio-mcp-edge/src/runtime.rs": allow(
         "Phase 5.2", "baseline MCP edge runtime split target"
     ),
-    "crates/chio-store-sqlite/src/budget_store.rs": allow(
-        "Phase 6.1", "baseline remaining production hotspot"
-    ),
     "crates/chio-control-plane/src/attestation.rs": allow(
         "Phase 6.1", "baseline remaining production hotspot"
     ),
