@@ -28,7 +28,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::capability::MonetaryAmount;
 use crate::crypto::{sha256_hex, PublicKey};
-use crate::governance::{
+use crate::governance::generic::{
     GenericGovernanceCaseKind, GenericGovernanceCaseState, SignedGenericGovernanceCase,
     SignedGenericGovernanceCharter,
 };
@@ -1204,7 +1204,7 @@ fn is_sha256_hex(value: &str) -> bool {
 mod tests {
     use super::*;
     use crate::crypto::Keypair;
-    use crate::governance::{
+    use crate::governance::generic::{
         build_generic_governance_case_artifact, build_generic_governance_charter_artifact,
         GenericGovernanceAuthorityScope, GenericGovernanceCaseIssueRequest,
         GenericGovernanceCharterIssueRequest, GenericGovernanceEvidenceKind,

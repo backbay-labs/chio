@@ -18,10 +18,13 @@ use chio_core_types::canonical::canonical_json_bytes;
 use chio_core_types::crypto::{sha256_hex, Keypair, PublicKey};
 use chio_core_types::receipt::SignedExportEnvelope;
 use chio_federation::Keyid;
-use chio_governance::{
-    CapabilityLeaseActionClass, CapabilityLeaseArtifact, GovernanceReceiptArtifact,
-    GovernanceReceiptCaseKind, SignedCapabilityLease, SignedGovernanceReceipt,
-    CAPABILITY_LEASE_SCHEMA_V1, GOVERNANCE_RECEIPT_SCHEMA_V1,
+use chio_governance::authorization::{
+    GovernanceReceiptArtifact, GovernanceReceiptCaseKind, SignedGovernanceReceipt,
+    GOVERNANCE_RECEIPT_SCHEMA_V1,
+};
+use chio_governance::lease::{
+    CapabilityLeaseActionClass, CapabilityLeaseArtifact, SignedCapabilityLease,
+    CAPABILITY_LEASE_SCHEMA_V1,
 };
 use serde::{Deserialize, Serialize};
 
@@ -1131,7 +1134,8 @@ mod tests {
     };
     use chio_core_types::crypto::{Keypair, PublicKey};
     use chio_federation::{Keyid, LadderManifestRef};
-    use chio_governance::{CapabilityLeaseActionClass, GovernanceReceiptCaseKind};
+    use chio_governance::authorization::GovernanceReceiptCaseKind;
+    use chio_governance::lease::CapabilityLeaseActionClass;
 
     use crate::{
         assemble_verifier_trust_bundle, issue_authority_bundle, publish_revocation_checkpoint,

@@ -187,15 +187,16 @@ pub use chio_core::credit::{
     MAX_CREDIT_LOSS_LIFECYCLE_LIST_LIMIT, MAX_CREDIT_PROVIDER_LOSS_LIMIT,
     MAX_EXPOSURE_LEDGER_DECISION_LIMIT, MAX_EXPOSURE_LEDGER_RECEIPT_LIMIT,
 };
-pub use chio_core::governance::{
+pub use chio_core::governance::evaluation::evaluate_generic_governance_case;
+pub use chio_core::governance::generic::{
     build_generic_governance_case_artifact, build_generic_governance_charter_artifact,
-    evaluate_generic_governance_case, GenericGovernanceAuthorityScope,
-    GenericGovernanceCaseArtifact, GenericGovernanceCaseEvaluation,
-    GenericGovernanceCaseEvaluationRequest, GenericGovernanceCaseIssueRequest,
-    GenericGovernanceCaseKind, GenericGovernanceCaseState, GenericGovernanceCharterArtifact,
-    GenericGovernanceCharterIssueRequest, GenericGovernanceEffectiveState,
-    GenericGovernanceEvidenceKind, GenericGovernanceEvidenceReference, GenericGovernanceFinding,
-    GenericGovernanceFindingCode, SignedGenericGovernanceCase, SignedGenericGovernanceCharter,
+    GenericGovernanceAuthorityScope, GenericGovernanceCaseArtifact,
+    GenericGovernanceCaseEvaluation, GenericGovernanceCaseEvaluationRequest,
+    GenericGovernanceCaseIssueRequest, GenericGovernanceCaseKind, GenericGovernanceCaseState,
+    GenericGovernanceCharterArtifact, GenericGovernanceCharterIssueRequest,
+    GenericGovernanceEffectiveState, GenericGovernanceEvidenceKind,
+    GenericGovernanceEvidenceReference, GenericGovernanceFinding, GenericGovernanceFindingCode,
+    SignedGenericGovernanceCase, SignedGenericGovernanceCharter,
     GENERIC_GOVERNANCE_CASE_ARTIFACT_SCHEMA, GENERIC_GOVERNANCE_CHARTER_ARTIFACT_SCHEMA,
 };
 pub use chio_core::listing::{

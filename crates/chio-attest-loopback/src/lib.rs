@@ -42,10 +42,8 @@ pub use chio_federation_authority::{
     RevocationPublicationRequest, AUTHORITY_PROFILE_SCHEMA, ISSUANCE_REQUEST_SCHEMA,
     LOCAL_SIGNING_KEYS_SCHEMA, PEER_PINS_SCHEMA, REVOCATION_PUBLICATION_REQUEST_SCHEMA,
 };
-use chio_governance::{
-    CapabilityLeaseActionClass, GovernanceReceiptCaseKind, SignedCapabilityLease,
-    SignedGovernanceReceipt,
-};
+use chio_governance::authorization::{GovernanceReceiptCaseKind, SignedGovernanceReceipt};
+use chio_governance::lease::{CapabilityLeaseActionClass, SignedCapabilityLease};
 use chio_selective_disclosure::{
     derive_selective_disclosure_proof, generate_bbs_keypair, project_workflow_receipt_body,
     sign_projection, DisclosureSet, SelectiveDisclosureProof,

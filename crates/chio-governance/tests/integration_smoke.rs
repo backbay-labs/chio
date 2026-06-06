@@ -1,4 +1,4 @@
-use chio_governance::GenericGovernanceAuthorityScope;
+use chio_governance::generic::GenericGovernanceAuthorityScope;
 
 #[test]
 fn governance_authority_scope_validates_non_empty_namespace() {

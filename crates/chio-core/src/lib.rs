@@ -214,15 +214,16 @@ pub use federation::{
     CHIO_FEDERATION_OPEN_ADMISSION_POLICY_SCHEMA, CHIO_FEDERATION_QUALIFICATION_MATRIX_SCHEMA,
     CHIO_FEDERATION_QUORUM_REPORT_SCHEMA, CHIO_FEDERATION_REPUTATION_CLEARING_SCHEMA,
 };
-pub use governance::{
+pub use governance::evaluation::evaluate_generic_governance_case;
+pub use governance::generic::{
     build_generic_governance_case_artifact, build_generic_governance_charter_artifact,
-    evaluate_generic_governance_case, GenericGovernanceAuthorityScope,
-    GenericGovernanceCaseArtifact, GenericGovernanceCaseEvaluation,
-    GenericGovernanceCaseEvaluationRequest, GenericGovernanceCaseIssueRequest,
-    GenericGovernanceCaseKind, GenericGovernanceCaseState, GenericGovernanceCharterArtifact,
-    GenericGovernanceCharterIssueRequest, GenericGovernanceEffectiveState,
-    GenericGovernanceEvidenceKind, GenericGovernanceEvidenceReference, GenericGovernanceFinding,
-    GenericGovernanceFindingCode, SignedGenericGovernanceCase, SignedGenericGovernanceCharter,
+    GenericGovernanceAuthorityScope, GenericGovernanceCaseArtifact,
+    GenericGovernanceCaseEvaluation, GenericGovernanceCaseEvaluationRequest,
+    GenericGovernanceCaseIssueRequest, GenericGovernanceCaseKind, GenericGovernanceCaseState,
+    GenericGovernanceCharterArtifact, GenericGovernanceCharterIssueRequest,
+    GenericGovernanceEffectiveState, GenericGovernanceEvidenceKind,
+    GenericGovernanceEvidenceReference, GenericGovernanceFinding, GenericGovernanceFindingCode,
+    SignedGenericGovernanceCase, SignedGenericGovernanceCharter,
     GENERIC_GOVERNANCE_CASE_ARTIFACT_SCHEMA, GENERIC_GOVERNANCE_CHARTER_ARTIFACT_SCHEMA,
 };
 pub use hashing::{sha256, Hash};

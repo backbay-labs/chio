@@ -13,10 +13,12 @@ use chio_federation::{
     LadderManifestRef, PeerPinSet, PinnedEpoch, PinnedPeer, ResolvedGovernanceReceipt,
     ResolvedLease, RevocationOracle, UnknownActionClassPolicy, VerifierConfig,
 };
-use chio_governance::{
-    verify_capability_lease, verify_destructive_authorization, verify_step_governance_boundary,
-    CapabilityLeaseActionClass, GovernanceReceiptCaseKind, SignedCapabilityLease,
+use chio_governance::authorization::{
+    verify_destructive_authorization, verify_step_governance_boundary, GovernanceReceiptCaseKind,
     SignedGovernanceReceipt,
+};
+use chio_governance::lease::{
+    verify_capability_lease, CapabilityLeaseActionClass, SignedCapabilityLease,
 };
 use chio_selective_disclosure::{
     project_receipt_body, project_workflow_receipt_body, receipt_signed_projection,
