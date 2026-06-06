@@ -10,6 +10,12 @@ service runtime, configuration/public registry helpers, domain handlers,
 health projection, and cluster/report logic. Federation, SCIM lifecycle,
 passport verifier, enterprise-provider, attestation, issuance, evidence export,
 reputation, and certification support remain separate crate-local modules.
+`attestation.rs` is the runtime-attestation API root. Its child modules keep
+provider verification concerns focused: `attestation/model.rs` owns verifier
+policies, adapters, and error types; `attestation/verification.rs` owns JWT,
+JWKS, COSE, certificate-chain, appraisal, and vendor-claim helpers; and
+`attestation/tests.rs` keeps provider verifier branch coverage out of
+production line-count accounting.
 
 `trust_control/service_runtime.rs` is the trust-service boot and route
 registration root. Its child modules own the remote runtime surfaces:
