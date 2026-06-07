@@ -5,10 +5,11 @@ use chio_core::capability::{
 };
 use chio_core::crypto::Keypair;
 use chio_kernel::{
-    ChioKernel, KernelConfig, KernelError, NestedFlowBridge, ToolServerConnection,
-    DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_MAX_STREAM_DURATION_SECS,
-    DEFAULT_MAX_STREAM_TOTAL_BYTES,
+    ChioKernel, ExecutionNonceConfig, InMemoryExecutionNonceStore, KernelConfig, KernelError,
+    NestedFlowBridge, ToolCallRequest, ToolServerConnection, DEFAULT_CHECKPOINT_BATCH_SIZE,
+    DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES,
 };
+use std::collections::BTreeMap;
 
 struct MockToolServer {
     response: Value,
@@ -192,7 +193,7 @@ fn test_execution_context(
         capability,
         agent_id: agent_kp.public_key().to_hex(),
         dpop_proof: None,
-        execution_nonce: None,
+        execution_nonces: BTreeMap::new(),
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
@@ -341,7 +342,7 @@ fn execute_tool_call_preserves_model_metadata_for_model_constrained_grant() {
         capability,
         agent_id: agent_kp.public_key().to_hex(),
         dpop_proof: None,
-        execution_nonce: None,
+        execution_nonces: BTreeMap::new(),
         governed_intent: None,
         approval_token: None,
         model_metadata: Some(ModelMetadata {
@@ -389,7 +390,7 @@ fn execute_tool_call_treats_pending_approval_as_denied() {
         capability,
         agent_id: agent_kp.public_key().to_hex(),
         dpop_proof: None,
-        execution_nonce: None,
+        execution_nonces: BTreeMap::new(),
         governed_intent: Some(GovernedTransactionIntent {
             id: "intent-openai-approval-1".to_string(),
             server_id: "test-srv".to_string(),
@@ -415,6 +416,34 @@ fn execute_tool_call_treats_pending_approval_as_denied() {
     assert!(result.content.contains("approval"));
     assert!(result.receipt.is_some());
     assert!(result.receipt_ref.is_some());
+}
+
+#[test]
+fn execute_tool_call_fails_closed_on_nonce_preflight() {
+    let adapter = ChioOpenAiAdapter::new(test_config(), vec![test_manifest()]).unwrap();
+    let mut kernel = ChioKernel::new(test_kernel_config());
+    kernel.register_tool_server(Box::new(test_server()));
+    let cfg = ExecutionNonceConfig {
+        nonce_ttl_secs: 30,
+        nonce_store_capacity: 1024,
+        require_nonce: true,
+    };
+    kernel.set_execution_nonce_store(
+        cfg.clone(),
+        Box::new(InMemoryExecutionNonceStore::from_config(&cfg)),
+    );
+    let agent_kp = Keypair::generate();
+    let execution = test_execution_context(&kernel, &agent_kp, "test-srv", "get_weather");
+
+    let result = adapter.execute_tool_call(&weather_tool_call(), &kernel, &execution);
+
+    assert!(result.denied);
+    assert!(result.preflight);
+    assert!(result.content.contains("execution nonce preflight"));
+    assert!(result.content.contains("did not execute the tool"));
+    assert!(result.execution_nonce.is_some());
+    assert!(result.receipt_ref.is_some());
+    assert!(result.receipt.is_some());
 }
 
 #[test]
@@ -535,6 +564,71 @@ fn execute_tool_calls_batch() {
     assert_eq!(results.len(), 2);
     assert!(!results[0].denied);
     assert!(!results[1].denied);
+    assert!(!results[0].preflight);
+    assert!(!results[1].preflight);
+}
+
+#[test]
+fn execute_tool_calls_uses_per_call_execution_nonces() {
+    let adapter = ChioOpenAiAdapter::new(test_config(), vec![test_manifest()]).unwrap();
+    let mut kernel = ChioKernel::new(test_kernel_config());
+    kernel.register_tool_server(Box::new(test_server()));
+    let cfg = ExecutionNonceConfig {
+        nonce_ttl_secs: 30,
+        nonce_store_capacity: 1024,
+        require_nonce: true,
+    };
+    kernel.set_execution_nonce_store(
+        cfg.clone(),
+        Box::new(InMemoryExecutionNonceStore::from_config(&cfg)),
+    );
+    let agent_kp = Keypair::generate();
+    let mut execution = test_execution_context(&kernel, &agent_kp, "test-srv", "*");
+    let calls = vec![
+        weather_tool_call(),
+        OpenAiToolCall {
+            id: "call_search".to_string(),
+            call_type: "function".to_string(),
+            function: OpenAiFunctionCall {
+                name: "search".to_string(),
+                arguments: r#"{"query": "test"}"#.to_string(),
+            },
+        },
+    ];
+
+    for call in &calls {
+        let (server_id, tool_name) = adapter
+            .function_bindings
+            .get(&call.function.name)
+            .expect("fixture function is bound");
+        let request = ToolCallRequest {
+            request_id: format!("openai-{}", call.id),
+            capability: execution.capability.clone(),
+            tool_name: tool_name.clone(),
+            server_id: server_id.clone(),
+            agent_id: execution.agent_id.clone(),
+            arguments: serde_json::from_str(&call.function.arguments).unwrap(),
+            dpop_proof: None,
+            execution_nonce: None,
+            governed_intent: None,
+            approval_token: None,
+            model_metadata: None,
+            federated_origin_kernel_id: None,
+        };
+        let preflight = kernel.evaluate_tool_call_blocking(&request).unwrap();
+        execution.execution_nonces.insert(
+            call.id.clone(),
+            *preflight
+                .execution_nonce
+                .expect("strict preflight returns a nonce"),
+        );
+    }
+
+    let results = adapter.execute_tool_calls(&calls, &kernel, &execution);
+
+    assert_eq!(results.len(), 2);
+    assert!(!results[0].denied);
+    assert!(!results[1].denied);
 }
 
 // ---- Message conversion tests ----
@@ -546,6 +640,8 @@ fn results_to_messages_format() {
         name: "get_weather".to_string(),
         content: "sunny".to_string(),
         denied: false,
+        preflight: false,
+        execution_nonce: None,
         receipt_ref: Some("receipt-1".to_string()),
         receipt: None,
     }];
@@ -564,6 +660,8 @@ fn results_to_messages_multiple() {
             name: "a".to_string(),
             content: "r1".to_string(),
             denied: false,
+            preflight: false,
+            execution_nonce: None,
             receipt_ref: None,
             receipt: None,
         },
@@ -572,6 +670,8 @@ fn results_to_messages_multiple() {
             name: "b".to_string(),
             content: "r2".to_string(),
             denied: false,
+            preflight: false,
+            execution_nonce: None,
             receipt_ref: None,
             receipt: None,
         },
@@ -589,6 +689,8 @@ fn results_to_responses_api_format() {
         name: "get_weather".to_string(),
         content: "sunny".to_string(),
         denied: false,
+        preflight: false,
+        execution_nonce: None,
         receipt_ref: Some("receipt-1".to_string()),
         receipt: None,
     }];
@@ -784,6 +886,8 @@ fn tool_call_result_serializes() {
         name: "test".to_string(),
         content: "ok".to_string(),
         denied: false,
+        preflight: false,
+        execution_nonce: None,
         receipt_ref: Some("receipt-1".to_string()),
         receipt: None,
     };
@@ -799,6 +903,8 @@ fn tool_call_result_omits_receipt_ref_when_none() {
         name: "test".to_string(),
         content: "ok".to_string(),
         denied: false,
+        preflight: false,
+        execution_nonce: None,
         receipt_ref: None,
         receipt: None,
     };

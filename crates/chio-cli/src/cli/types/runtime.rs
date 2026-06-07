@@ -489,6 +489,12 @@ pub(crate) enum GuardCommands {
         /// Optional Sigstore bundle JSON to cache alongside the pulled artifact.
         #[arg(long = "sigstore-bundle", value_name = "PATH")]
         sigstore_bundle: Option<PathBuf>,
+        /// Fulcio certificate identity SAN regex required for Sigstore cache admission.
+        #[arg(long = "sigstore-identity-regex", value_name = "REGEX")]
+        sigstore_identity_regex: Option<String>,
+        /// OIDC issuer expected on the Sigstore certificate.
+        #[arg(long = "sigstore-oidc-issuer", value_name = "URL")]
+        sigstore_oidc_issuer: Option<String>,
     },
 
     /// Manage the local guard digest blocklist.

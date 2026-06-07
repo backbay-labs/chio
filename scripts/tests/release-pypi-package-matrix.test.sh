@@ -50,4 +50,15 @@ if pyproject["project"]["name"] != "chio-sdk":
     raise SystemExit("sdks/python/chio-py must publish the chio-sdk distribution")
 PY
 
+grep -F 'echo "slug=$(basename "$PACKAGE_DIR")" >> "$GITHUB_OUTPUT"' "$WORKFLOW" >/dev/null
+grep -F 'SLUG: ${{ steps.meta.outputs.slug }}' "$WORKFLOW" >/dev/null
+grep -F 'uv build --wheel --out-dir "$wheelhouse" "${GITHUB_WORKSPACE}/${dep_dir}"' "$WORKFLOW" >/dev/null
+grep -F 'smoke_install_args+=(--find-links "$wheelhouse")' "$WORKFLOW" >/dev/null
+grep -F 'pip install --quiet "${smoke_install_args[@]}" "$wheel"' "$WORKFLOW" >/dev/null
+
+if grep -F 'pip install --quiet "${GITHUB_WORKSPACE}/sdks/python/' "$WORKFLOW" >/dev/null; then
+  echo "release-pypi.yml smoke must not install sibling source directories" >&2
+  exit 1
+fi
+
 echo "release-pypi-package-matrix.test.sh: PyPI matrix covers release-qualified Python packages"

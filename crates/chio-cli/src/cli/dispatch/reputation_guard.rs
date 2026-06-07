@@ -105,12 +105,16 @@ pub(crate) fn dispatch_guard(
                 password,
                 allow_http_registry,
                 sigstore_bundle,
+                sigstore_identity_regex,
+                sigstore_oidc_issuer,
             } => guard::cmd_guard_pull(guard::GuardPullCommand {
                 reference: &reference,
                 username: username.as_deref(),
                 password: password.as_deref(),
                 allow_http_registry: allow_http_registry.clone(),
                 sigstore_bundle: sigstore_bundle.as_deref(),
+                sigstore_identity_regex: sigstore_identity_regex.as_deref(),
+                sigstore_oidc_issuer: sigstore_oidc_issuer.as_deref(),
             }),
             GuardCommands::Blocklist { command } => match command {
                 GuardBlocklistCommands::Remove { digest } => {

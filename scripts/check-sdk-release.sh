@@ -582,6 +582,7 @@ for (const pkg of packages) {
         .filter(value => typeof value === "string")
         .join("\n");
       pkg.requiresBun = /\bbun\b/.test(packageScriptText);
+      pkg.requiresWasmToolchain = /\b(build:wasm|build-wasm\.sh|wasm-pack)\b/.test(packageScriptText);
       pkg.localDeps = [...localDeps].sort();
 }
 
@@ -624,6 +625,7 @@ for (const pkg of ordered) {
       pkg.hasBuild ? "1" : "0",
       pkg.hasTest ? "1" : "0",
       pkg.requiresBun ? "1" : "0",
+      pkg.requiresWasmToolchain ? "1" : "0",
       pkg.hasImport ? "1" : "0",
       pkg.hasRequire ? "1" : "0",
       pkg.binNames.join(","),
@@ -643,16 +645,45 @@ NODE
     fi
 
     ts_requires_bun=0
+    ts_requires_wasm_toolchain=0
     for package_record in "${package_records[@]}"; do
-      IFS='|' read -r _package_dir package_name _has_build _has_test requires_bun _has_import _has_require _bin_names _local_deps <<<"${package_record}"
+      IFS='|' read -r _package_dir package_name _has_build _has_test requires_bun requires_wasm_toolchain _has_import _has_require _bin_names _local_deps <<<"${package_record}"
       if [[ "${requires_bun}" == "1" ]]; then
         ts_requires_bun=1
-        break
+      fi
+      if [[ "${requires_wasm_toolchain}" == "1" ]]; then
+        ts_requires_wasm_toolchain=1
       fi
     done
     if [[ "${ts_requires_bun}" == "1" ]] && ! command -v bun >/dev/null 2>&1; then
       echo "Chio TypeScript release checks require bun on PATH because ${package_name} declares a Bun-backed build or test script" >&2
       exit 1
+    fi
+    if [[ "${ts_requires_wasm_toolchain}" == "1" ]]; then
+      if ! command -v cargo >/dev/null 2>&1; then
+        echo "Chio TypeScript release checks require cargo on PATH because a package declares a wasm build script" >&2
+        exit 1
+      fi
+      required_wasm_pack_version="$(cat "${repo_copy_dir}/.tooling/wasm-pack.version")"
+      if ! command -v wasm-pack >/dev/null 2>&1; then
+        echo "Chio TypeScript release checks require wasm-pack ${required_wasm_pack_version} on PATH because a package declares a wasm build script" >&2
+        exit 1
+      fi
+      actual_wasm_pack_version="$(wasm-pack --version 2>/dev/null | awk '{print $2}')"
+      if [[ "${actual_wasm_pack_version}" != "${required_wasm_pack_version}" ]]; then
+        echo "Chio TypeScript release checks require wasm-pack ${required_wasm_pack_version}; got ${actual_wasm_pack_version}" >&2
+        exit 1
+      fi
+      required_wasm_bindgen_version="$(cat "${repo_copy_dir}/.tooling/wasm-bindgen.version")"
+      if ! command -v wasm-bindgen >/dev/null 2>&1; then
+        echo "Chio TypeScript release checks require wasm-bindgen-cli ${required_wasm_bindgen_version} on PATH because a package declares a wasm build script" >&2
+        exit 1
+      fi
+      actual_wasm_bindgen_version="$(wasm-bindgen --version 2>/dev/null | awk '{print $2}')"
+      if [[ "${actual_wasm_bindgen_version}" != "${required_wasm_bindgen_version}" ]]; then
+        echo "Chio TypeScript release checks require wasm-bindgen-cli ${required_wasm_bindgen_version}; got ${actual_wasm_bindgen_version}" >&2
+        exit 1
+      fi
     fi
 
     (
@@ -676,7 +707,7 @@ NODE
 
     package_index=0
     for package_record in "${package_records[@]}"; do
-      IFS='|' read -r package_dir package_name has_build has_test requires_bun has_import has_require bin_names local_deps <<<"${package_record}"
+      IFS='|' read -r package_dir package_name has_build has_test requires_bun requires_wasm_toolchain has_import has_require bin_names local_deps <<<"${package_record}"
       echo "checking TypeScript package ${package_name}"
 
       (
@@ -685,7 +716,7 @@ NODE
           npm test
         fi
         if [[ "${has_build}" == "1" ]]; then
-          npm run build
+          CHIO_REQUIRE_WASM_TOOLCHAIN="${requires_wasm_toolchain}" npm run build
         fi
       )
       rm -rf "${repo_copy_dir}/target"

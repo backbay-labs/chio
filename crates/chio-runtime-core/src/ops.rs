@@ -514,7 +514,8 @@ fn runtime_provider_model_card_failure_code(
             if *observed_loaded_weights_hash != loaded_weights_hash {
                 return Ok(Some("runtime_provider_loaded_weights_hash_mismatch"));
             }
-            let requested = StringSet::new([binding.tool_name.as_str()]);
+            let requested_tool = model_card_tool_identifier(&binding.tool_name);
+            let requested = StringSet::new([requested_tool.as_str()]);
             match chio_kernel::weights_binding::evaluate_weights_binding_with_loaded_hash(
                 model_card,
                 Ok::<&str, &str>(observed_loaded_weights_hash),
@@ -525,6 +526,14 @@ fn runtime_provider_model_card_failure_code(
                 Err(error) => Ok(Some(runtime_provider_weights_error_code(&error))),
             }
         }
+    }
+}
+
+fn model_card_tool_identifier(tool_name: &str) -> String {
+    if tool_name.starts_with("tool:") {
+        tool_name.to_string()
+    } else {
+        format!("tool:{tool_name}")
     }
 }
 

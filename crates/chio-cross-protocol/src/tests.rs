@@ -771,6 +771,63 @@ fn orchestrator_dispatches_to_registered_target_executor() {
 }
 
 #[test]
+fn orchestrator_capability_envelope_uses_selected_native_fallback_target() {
+    let (issuer, kernel) = test_kernel();
+    let subject = Keypair::generate();
+    let executor = MockMcpExecutor;
+    let orchestrator = CrossProtocolOrchestrator::new(&kernel)
+        .with_executor(&executor)
+        .with_protocol_availability(
+            DiscoveryProtocol::Mcp,
+            RouteAvailabilityStatus::unavailable("mcp route unavailable"),
+        );
+
+    let result = orchestrator
+        .execute(
+            &MockBridge,
+            CrossProtocolExecutionRequest {
+                origin_request_id: "a2a-task-mcp-fallback".to_string(),
+                kernel_request_id: "a2a-mcp-fallback-1".to_string(),
+                target_protocol: DiscoveryProtocol::Mcp,
+                target_server_id: "test-srv".to_string(),
+                target_tool_name: "echo".to_string(),
+                agent_id: subject.public_key().to_hex(),
+                arguments: json!({"message":"hello"}),
+                capability: capability_for_tool(&issuer, &subject, "test-srv", "echo"),
+                source_envelope: json!({
+                    "message": {"role":"user"},
+                    "metadata": { "chio": { "targetSkillId": "echo" } }
+                }),
+                dpop_proof: None,
+                execution_nonce: None,
+                governed_intent: Some(governed_intent_with_control_plane(json!({
+                    "allowNativeFallback": true
+                }))),
+                approval_token: None,
+                model_metadata: None,
+            },
+        )
+        .unwrap();
+
+    assert_eq!(result.target_protocol, DiscoveryProtocol::Native);
+    assert_eq!(result.terminal_protocol, DiscoveryProtocol::Native);
+    assert_eq!(
+        result.capability_envelope.target_protocol,
+        DiscoveryProtocol::Native
+    );
+    assert_eq!(
+        result.metadata()["chio"]["bridge"]["capabilityEnvelope"]["targetProtocol"].as_str(),
+        Some("native")
+    );
+    assert_eq!(
+        result.metadata()["chio"]["routeSelection"]["selectedTargetProtocol"].as_str(),
+        Some("native")
+    );
+    assert_eq!(result.trace.hops.len(), 2);
+    assert_eq!(result.trace.hops[1].protocol, DiscoveryProtocol::Native);
+}
+
+#[test]
 fn orchestrator_preserves_model_metadata_for_model_constrained_grant() {
     let (issuer, kernel) = test_kernel();
     let subject = Keypair::generate();

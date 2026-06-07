@@ -35,7 +35,7 @@ pub use oci::{
     PulledGuardArtifact, RegistryCredentials, Sha256Digest, GUARD_ARTIFACT_MEDIA_TYPE,
     GUARD_CONFIG_MEDIA_TYPE, GUARD_MANIFEST_LAYER_MEDIA_TYPE, GUARD_MANIFEST_LAYER_ROLE,
     GUARD_MODULE_LAYER_MEDIA_TYPE, GUARD_MODULE_LAYER_ROLE, GUARD_WIT_LAYER_MEDIA_TYPE,
-    GUARD_WIT_LAYER_ROLE,
+    GUARD_WIT_LAYER_ROLE, SIGSTORE_BUNDLE_MEDIA_TYPE,
 };
 pub use offline::{
     load_guard_with_policy, GuardNetworkState, GuardOfflineLoad, GuardOfflineLoadError,
@@ -46,7 +46,7 @@ pub use publish::{
     GuardPublishResponse, GUARD_LAYER_ROLE_ANNOTATION, GUARD_OCI_MANIFEST_MEDIA_TYPE,
     GUARD_SIGNER_SUBJECT_ANNOTATION, GUARD_WIT_WORLD, GUARD_WIT_WORLD_ANNOTATION,
 };
-pub use pull::{GuardPullRequest, GuardPullResponse};
+pub use pull::{GuardPullRequest, GuardPullResponse, GuardPullSigstoreBundleSource};
 pub use verify::{
     verify_dual_mode, GuardLoadEvent, GuardLoadEventResult, GuardLoadSource, GuardSigstoreVerifier,
     GuardVerificationKind, GuardVerificationReport, GuardVerifiedSignature,

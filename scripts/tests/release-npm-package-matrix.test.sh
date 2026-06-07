@@ -59,6 +59,12 @@ grep -F 'SAME_RELEASE_MARKER' "$WORKFLOW" >/dev/null
 grep -F 'npm install -g npm@^11.5.1' "$WORKFLOW" >/dev/null
 grep -F 'node trusted publishing runtime must be >= 22.14.0' "$WORKFLOW" >/dev/null
 grep -F 'npm trusted publishing CLI must be >= 11.5.1' "$WORKFLOW" >/dev/null
+grep -F 'Smoke install packed tarball' "$WORKFLOW" >/dev/null
+grep -F 'npm install --ignore-scripts --no-fund --no-audit "${install_args[@]}"' "$WORKFLOW" >/dev/null
+grep -F 'ESM import smoke verified ${packageName}' "$WORKFLOW" >/dev/null
+grep -F 'CommonJS require smoke verified ${packageName}' "$WORKFLOW" >/dev/null
+grep -F 'CLI smoke verified ${binName}' "$WORKFLOW" >/dev/null
+grep -F 'npm pack --pack-destination "$local_dep_pack_dir" --silent' "$WORKFLOW" >/dev/null
 grep -F 'ERROR: wasm-pack ${WASM_PACK_VERSION} is required for CI and release wasm builds.' "$REPO_ROOT/sdks/typescript/scripts/build-wasm.sh" >/dev/null
 
 node - "$REPO_ROOT" <<'NODE'

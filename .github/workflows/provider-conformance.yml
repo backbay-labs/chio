@@ -108,7 +108,7 @@ jobs:
             --test replay_cohere
 
   ollama-localhost-replay:
-    name: Ollama localhost integration replay (optional on PR, required on nightly)
+    name: Ollama localhost integration replay
     runs-on: ubuntu-latest
     services:
       ollama:

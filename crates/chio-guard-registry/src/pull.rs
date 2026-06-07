@@ -5,9 +5,18 @@ use crate::oci::{
     GuardOciRef, GuardRegistryClient, GuardRegistryError, RegistryCredentials, Result,
 };
 use crate::publish::GUARD_OCI_MANIFEST_MEDIA_TYPE;
+use crate::{AttestVerifier, ExpectedIdentity, GuardSigstoreVerifier};
+
+/// Source of Sigstore bundle bytes cached during guard pull.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GuardPullSigstoreBundleSource {
+    /// Bundle was supplied directly by the caller.
+    CallerProvided,
+    /// Bundle was discovered and pulled from OCI referrers.
+    OciReferrer,
+}
 
 /// Inputs for pulling a digest-pinned guard artifact into the local cache.
-#[derive(Debug, Clone, Copy)]
 pub struct GuardPullRequest<'a> {
     /// Digest-pinned OCI source reference.
     pub reference: &'a GuardOciRef,
@@ -15,9 +24,14 @@ pub struct GuardPullRequest<'a> {
     pub credentials: &'a RegistryCredentials,
     /// Target content-addressed cache.
     pub cache: &'a GuardCache,
-    /// Optional caller-supplied Sigstore bundle bytes to cache alongside the
-    /// pulled artifact. The pull path does not discover OCI referrers.
+    /// Optional caller-supplied Sigstore bundle bytes. When absent, pull
+    /// attempts OCI referrer discovery for a Sigstore bundle attachment.
     pub sigstore_bundle_json: Option<&'a [u8]>,
+    /// Optional Sigstore verifier used to verify bundle/artifact binding
+    /// before cache admission.
+    pub sigstore_verifier: Option<&'a dyn AttestVerifier>,
+    /// Expected identity policy paired with `sigstore_verifier`.
+    pub sigstore_expected_identity: Option<&'a ExpectedIdentity>,
 }
 
 /// Result of pulling a guard artifact into the local cache.
@@ -27,6 +41,10 @@ pub struct GuardPullResponse {
     pub cached: CachedGuardArtifact,
     /// Registry-reported manifest digest.
     pub registry_manifest_digest: String,
+    /// Source of cached Sigstore bundle bytes, if present.
+    pub sigstore_bundle_source: Option<GuardPullSigstoreBundleSource>,
+    /// Whether Sigstore bundle bytes were verified before cache admission.
+    pub sigstore_verified: bool,
 }
 
 impl GuardRegistryClient {
@@ -51,6 +69,16 @@ impl GuardRegistryClient {
         if let Some(registry_manifest_digest) = artifact.registry_manifest_digest.as_deref() {
             ensure_manifest_digest_matches(request.reference, registry_manifest_digest)?;
         }
+        let (sigstore_bundle_owned, sigstore_bundle_source) =
+            self.sigstore_bundle_for_pull(&request).await?;
+        let sigstore_bundle_json = request
+            .sigstore_bundle_json
+            .or(sigstore_bundle_owned.as_deref());
+        let sigstore_verified = verify_sigstore_bundle_before_cache(
+            &request,
+            &artifact.module.data,
+            sigstore_bundle_json,
+        )?;
 
         let cached = request.cache.write_artifact(
             request.reference.digest(),
@@ -60,14 +88,60 @@ impl GuardRegistryClient {
                 wit: &artifact.wit.data,
                 module: &artifact.module.data,
                 guard_manifest_json: &artifact.manifest.data,
-                sigstore_bundle_json: request.sigstore_bundle_json,
+                sigstore_bundle_json,
             },
         )?;
 
         Ok(GuardPullResponse {
             cached,
             registry_manifest_digest: manifest_digest,
+            sigstore_bundle_source,
+            sigstore_verified,
         })
+    }
+
+    async fn sigstore_bundle_for_pull<'a>(
+        &self,
+        request: &GuardPullRequest<'a>,
+    ) -> Result<(Option<Vec<u8>>, Option<GuardPullSigstoreBundleSource>)> {
+        if request.sigstore_bundle_json.is_some() {
+            return Ok((None, Some(GuardPullSigstoreBundleSource::CallerProvided)));
+        }
+        let Some(bundle) = self
+            .pull_sigstore_bundle_referrer(request.reference, request.credentials)
+            .await?
+        else {
+            return Ok((None, None));
+        };
+        Ok((
+            Some(bundle),
+            Some(GuardPullSigstoreBundleSource::OciReferrer),
+        ))
+    }
+}
+
+fn verify_sigstore_bundle_before_cache(
+    request: &GuardPullRequest<'_>,
+    module: &[u8],
+    sigstore_bundle_json: Option<&[u8]>,
+) -> Result<bool> {
+    match (
+        request.sigstore_verifier,
+        request.sigstore_expected_identity,
+    ) {
+        (None, None) => return Ok(false),
+        (Some(_), None) | (None, Some(_)) => {
+            return Err(GuardRegistryError::InvalidClientConfig(
+                "Sigstore cache-admission verification requires both verifier and expected identity",
+            ));
+        }
+        (Some(verifier), Some(expected)) => {
+            let Some(bundle) = sigstore_bundle_json else {
+                return Err(GuardRegistryError::SigstoreBundleNotFound);
+            };
+            GuardSigstoreVerifier::new(verifier, expected).verify_bundle(module, bundle)?;
+            Ok(true)
+        }
     }
 }
 

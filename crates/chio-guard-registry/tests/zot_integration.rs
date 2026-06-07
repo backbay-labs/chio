@@ -67,6 +67,8 @@ async fn zot_publish_pull_verify_and_offline_paths() -> TestResult<()> {
             credentials: &credentials,
             cache: &cache,
             sigstore_bundle_json: None,
+            sigstore_verifier: None,
+            sigstore_expected_identity: None,
         })
         .await?;
 

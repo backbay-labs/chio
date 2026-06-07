@@ -20,10 +20,11 @@ use chio_core::capability::{
     token::CapabilityToken,
 };
 use chio_core::receipt::body::ChioReceipt;
+use chio_core::session::OperationTerminalState;
 use chio_cross_protocol::discovery::{DiscoveryProtocol, TargetProtocolRegistry};
 use chio_cross_protocol::routing::{plan_authoritative_route, route_selection_metadata};
 use chio_kernel::{
-    dpop, ChioKernel, SignedExecutionNonce, ToolCallOutput, ToolCallRequest,
+    dpop, ChioKernel, SignedExecutionNonce, ToolCallOutput, ToolCallRequest, ToolCallResponse,
     Verdict as KernelVerdict,
 };
 use chio_manifest::{ToolDefinition, ToolManifest};
@@ -123,6 +124,12 @@ pub struct ToolCallResult {
     pub content: String,
     /// Whether the call was denied by the kernel.
     pub denied: bool,
+    /// Whether this result is a nonce preflight instead of executed tool output.
+    #[serde(default)]
+    pub preflight: bool,
+    /// Signed nonce to present on the retry path when `preflight` is true.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_nonce: Option<SignedExecutionNonce>,
     /// Receipt reference (if generated).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub receipt_ref: Option<String>,
@@ -165,8 +172,10 @@ pub struct OpenAiExecutionContext {
     pub agent_id: String,
     /// Optional DPoP proof bound to this invocation.
     pub dpop_proof: Option<dpop::DpopProof>,
-    /// Optional execution nonce for strict kernel dispatch.
-    pub execution_nonce: Option<SignedExecutionNonce>,
+    /// Optional execution nonces for strict kernel dispatch, keyed by OpenAI
+    /// tool-call ID. Execution nonces are single-use and bound to one retry,
+    /// so batch execution must not reuse one nonce across all tool calls.
+    pub execution_nonces: BTreeMap<String, SignedExecutionNonce>,
     /// Optional governed transaction intent.
     pub governed_intent: Option<GovernedTransactionIntent>,
     /// Optional governed approval token.
@@ -310,7 +319,7 @@ impl ChioOpenAiAdapter {
             agent_id: execution.agent_id.clone(),
             arguments,
             dpop_proof: execution.dpop_proof.clone(),
-            execution_nonce: execution.execution_nonce.clone(),
+            execution_nonce: execution.execution_nonces.get(&tool_call.id).cloned(),
             governed_intent: execution.governed_intent.clone(),
             approval_token: execution.approval_token.clone(),
             model_metadata: execution.model_metadata.clone(),
@@ -345,14 +354,21 @@ impl ChioOpenAiAdapter {
 
         match kernel.evaluate_tool_call_blocking_with_metadata(&request, Some(route_metadata)) {
             Ok(response) => {
-                let denied = !matches!(response.verdict, KernelVerdict::Allow);
-                let content = render_response_content(&response.output, response.reason.as_deref());
+                let preflight_reason = execution_nonce_preflight_reason(&response);
+                let preflight = preflight_reason.is_some();
+                let execution_nonce = response.execution_nonce.as_deref().cloned();
+                let denied = !matches!(response.verdict, KernelVerdict::Allow) || preflight;
+                let content = preflight_reason.unwrap_or_else(|| {
+                    render_response_content(&response.output, response.reason.as_deref())
+                });
                 let receipt_ref = Some(response.receipt.id.clone());
                 ToolCallResult {
                     tool_call_id: tool_call.id.clone(),
                     name: tool_call.function.name.clone(),
                     content,
                     denied,
+                    preflight,
+                    execution_nonce,
                     receipt_ref,
                     receipt: Some(response.receipt),
                 }
@@ -380,6 +396,7 @@ impl ChioOpenAiAdapter {
     pub fn results_to_messages(results: &[ToolCallResult]) -> Vec<Value> {
         results
             .iter()
+            .filter(|result| !result.preflight)
             .map(|r| {
                 json!({
                     "role": "tool",
@@ -394,6 +411,7 @@ impl ChioOpenAiAdapter {
     pub fn results_to_responses_api(results: &[ToolCallResult]) -> Vec<ResponsesApiOutput> {
         results
             .iter()
+            .filter(|result| !result.preflight)
             .map(|r| ResponsesApiOutput {
                 output_type: "function_call_output".to_string(),
                 call_id: r.tool_call_id.clone(),
@@ -532,6 +550,8 @@ fn denied_tool_call_result(
         name: tool_call.function.name.clone(),
         content: content.into(),
         denied: true,
+        preflight: false,
+        execution_nonce: None,
         receipt_ref: None,
         receipt: None,
     }
@@ -558,6 +578,18 @@ fn render_response_content(output: &Option<ToolCallOutput>, reason: Option<&str>
             .map(|message| format!("Error: {message}"))
             .unwrap_or_else(|| "{}".to_string()),
     }
+}
+
+fn execution_nonce_preflight_reason(response: &ToolCallResponse) -> Option<String> {
+    if !matches!(response.verdict, KernelVerdict::Allow) {
+        return None;
+    }
+    let OperationTerminalState::Incomplete { reason } = &response.terminal_state else {
+        return None;
+    };
+    Some(format!(
+        "Error: execution nonce preflight did not execute the tool; retry through a nonce-aware path ({reason})"
+    ))
 }
 
 #[cfg(test)]

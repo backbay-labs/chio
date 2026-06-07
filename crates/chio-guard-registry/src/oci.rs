@@ -1,5 +1,6 @@
 //! OCI distribution primitives for Chio guard artifacts.
 
+use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::fmt;
 use std::path::PathBuf;
@@ -7,8 +8,12 @@ use std::str::FromStr;
 
 use oci_distribution::client::{ClientConfig, ClientProtocol, Config, ImageData, ImageLayer};
 use oci_distribution::errors::OciDistributionError;
+use oci_distribution::manifest::OCI_IMAGE_INDEX_MEDIA_TYPE;
 use oci_distribution::secrets::RegistryAuth;
 use oci_distribution::{Client, ParseError, Reference};
+use reqwest::header::{ACCEPT, WWW_AUTHENTICATE};
+use serde::Deserialize;
+use sha2::{Digest, Sha256};
 
 /// OCI artifact media type for a Chio guard bundle.
 pub const GUARD_ARTIFACT_MEDIA_TYPE: &str = "application/vnd.chio.guard.v1+wasm";
@@ -20,6 +25,10 @@ pub const GUARD_WIT_LAYER_MEDIA_TYPE: &str = "application/vnd.chio.guard.wit.v1"
 pub const GUARD_MODULE_LAYER_MEDIA_TYPE: &str = "application/vnd.chio.guard.module.v1+wasm";
 /// Chio guard manifest layer media type.
 pub const GUARD_MANIFEST_LAYER_MEDIA_TYPE: &str = "application/vnd.chio.guard.manifest.v1+json";
+/// Sigstore bundle media type used by OCI 1.1 referrer attachments.
+pub const SIGSTORE_BUNDLE_MEDIA_TYPE: &str = "application/vnd.dev.sigstore.bundle.v0.3+json";
+/// OCI artifact manifest media type.
+pub const OCI_ARTIFACT_MANIFEST_MEDIA_TYPE: &str = "application/vnd.oci.artifact.manifest.v1+json";
 /// Annotation role for the WIT layer.
 pub const GUARD_WIT_LAYER_ROLE: &str = "wit";
 /// Annotation role for the wasm layer.
@@ -215,6 +224,38 @@ pub enum GuardRegistryError {
         /// Verifier-provided failure context.
         message: String,
     },
+
+    /// The registry referrers API request failed.
+    #[error("guard OCI referrers request failed for {url}: {source}")]
+    ReferrersRequest {
+        /// Referrers or blob URL.
+        url: String,
+        /// Underlying HTTP error.
+        #[source]
+        source: reqwest::Error,
+    },
+
+    /// The registry referrers API returned an error status.
+    #[error("guard OCI referrers request failed for {url}: HTTP {status}: {body}")]
+    ReferrersStatus {
+        /// Referrers or blob URL.
+        url: String,
+        /// HTTP status code.
+        status: reqwest::StatusCode,
+        /// Response body, truncated by the caller.
+        body: String,
+    },
+
+    /// The registry returned malformed referrers or bundle manifest JSON.
+    #[error("guard OCI referrers response was malformed: {message}")]
+    ReferrersMalformed {
+        /// Parse or shape failure context.
+        message: String,
+    },
+
+    /// A Sigstore verification policy was requested but no bundle was found.
+    #[error("guard Sigstore verification requested but no Sigstore bundle was found in OCI referrers or local input")]
+    SigstoreBundleNotFound,
 }
 
 /// A validated `sha256:<hex>` digest.
@@ -418,13 +459,27 @@ impl GuardRegistryConfig {
 #[derive(Clone)]
 pub struct GuardRegistryClient {
     pub(crate) client: Client,
+    http_client: reqwest::Client,
+    allow_http_registries: Vec<String>,
 }
 
 impl GuardRegistryClient {
     /// Build a registry client with fail-closed defaults.
     pub fn try_new(config: GuardRegistryConfig) -> Result<Self> {
+        let allow_http_registries = config.allow_http_registries.clone();
         let client = Client::try_from(config.into_oci_config()?)?;
-        Ok(Self { client })
+        let http_client = reqwest::Client::builder()
+            .user_agent("chio-guard-registry")
+            .build()
+            .map_err(|source| GuardRegistryError::ReferrersRequest {
+                url: "registry-client-init".to_string(),
+                source,
+            })?;
+        Ok(Self {
+            client,
+            http_client,
+            allow_http_registries,
+        })
     }
 
     /// Pull a digest-pinned guard artifact and validate its Chio layer shape.
@@ -448,6 +503,363 @@ impl GuardRegistryClient {
 
         PulledGuardArtifact::from_image_data(reference.clone(), image)
     }
+
+    /// Discover and pull a Sigstore bundle attached with OCI 1.1 referrers.
+    pub async fn pull_sigstore_bundle_referrer(
+        &self,
+        reference: &GuardOciRef,
+        credentials: &RegistryCredentials,
+    ) -> Result<Option<Vec<u8>>> {
+        let Some(referrer) = self
+            .sigstore_referrer_descriptor(reference, credentials)
+            .await?
+        else {
+            return Ok(None);
+        };
+
+        let manifest_reference = Reference::with_digest(
+            reference.registry().to_string(),
+            reference.repository().to_string(),
+            referrer.digest.clone(),
+        );
+        let (manifest_json, manifest_digest) = self
+            .client
+            .pull_manifest_raw(
+                &manifest_reference,
+                &credentials.to_registry_auth(),
+                &[
+                    OCI_ARTIFACT_MANIFEST_MEDIA_TYPE,
+                    oci_distribution::manifest::OCI_IMAGE_MEDIA_TYPE,
+                ],
+            )
+            .await?;
+        if manifest_digest != referrer.digest {
+            return Err(GuardRegistryError::ManifestDigestMismatch {
+                expected: referrer.digest,
+                actual: manifest_digest,
+            });
+        }
+        let bundle_descriptor = sigstore_bundle_descriptor_from_manifest(&manifest_json)?;
+        self.pull_registry_blob(reference, credentials, &bundle_descriptor)
+            .await
+            .map(Some)
+    }
+
+    async fn sigstore_referrer_descriptor(
+        &self,
+        reference: &GuardOciRef,
+        credentials: &RegistryCredentials,
+    ) -> Result<Option<ReferrerDescriptor>> {
+        let url = format!(
+            "{}://{}/v2/{}/referrers/{}",
+            self.scheme_for(reference.registry()),
+            reference.registry(),
+            reference.repository(),
+            reference.digest()
+        );
+        let Some(body) = self
+            .registry_get(
+                reference,
+                credentials,
+                &url,
+                &[("artifactType", SIGSTORE_BUNDLE_MEDIA_TYPE)],
+                OCI_IMAGE_INDEX_MEDIA_TYPE,
+            )
+            .await?
+        else {
+            return Ok(None);
+        };
+        let index: ReferrersIndex = serde_json::from_slice(&body).map_err(|source| {
+            GuardRegistryError::ReferrersMalformed {
+                message: format!("parse referrers index: {source}"),
+            }
+        })?;
+        let mut candidates = index
+            .manifests
+            .into_iter()
+            .filter(|descriptor| {
+                descriptor
+                    .artifact_type
+                    .as_deref()
+                    .is_some_and(|artifact_type| artifact_type == SIGSTORE_BUNDLE_MEDIA_TYPE)
+            })
+            .collect::<Vec<_>>();
+        candidates.sort_by(|left, right| left.digest.cmp(&right.digest));
+        Ok(candidates.into_iter().next())
+    }
+
+    async fn pull_registry_blob(
+        &self,
+        reference: &GuardOciRef,
+        credentials: &RegistryCredentials,
+        descriptor: &ReferrerBlobDescriptor,
+    ) -> Result<Vec<u8>> {
+        if descriptor.media_type != SIGSTORE_BUNDLE_MEDIA_TYPE {
+            return Err(GuardRegistryError::DescriptorMediaTypeMismatch {
+                artifact: "sigstore_bundle",
+                expected: SIGSTORE_BUNDLE_MEDIA_TYPE,
+                actual: descriptor.media_type.clone(),
+            });
+        }
+        let url = format!(
+            "{}://{}/v2/{}/blobs/{}",
+            self.scheme_for(reference.registry()),
+            reference.registry(),
+            reference.repository(),
+            descriptor.digest
+        );
+        let Some(body) = self
+            .registry_get(
+                reference,
+                credentials,
+                &url,
+                &[],
+                SIGSTORE_BUNDLE_MEDIA_TYPE,
+            )
+            .await?
+        else {
+            return Err(GuardRegistryError::ReferrersStatus {
+                url,
+                status: reqwest::StatusCode::NOT_FOUND,
+                body: "Sigstore bundle blob was not found".to_string(),
+            });
+        };
+        let actual_size = i64::try_from(body.len()).unwrap_or(i64::MAX);
+        if actual_size != descriptor.size {
+            return Err(GuardRegistryError::DescriptorSizeMismatch {
+                artifact: "sigstore_bundle",
+                expected: descriptor.size,
+                actual: actual_size,
+            });
+        }
+        let actual_digest = format!("sha256:{:x}", Sha256::digest(&body));
+        if actual_digest != descriptor.digest {
+            return Err(GuardRegistryError::DescriptorDigestMismatch {
+                artifact: "sigstore_bundle",
+                expected: descriptor.digest.clone(),
+                actual: actual_digest,
+            });
+        }
+        Ok(body)
+    }
+
+    async fn registry_get(
+        &self,
+        reference: &GuardOciRef,
+        credentials: &RegistryCredentials,
+        url: &str,
+        query: &[(&str, &str)],
+        accept: &str,
+    ) -> Result<Option<Vec<u8>>> {
+        let mut request = self
+            .http_client
+            .get(url)
+            .header(ACCEPT, accept)
+            .query(query);
+        if let RegistryCredentials::Basic { username, password } = credentials {
+            request = request.basic_auth(username, Some(password));
+        }
+        let response =
+            request
+                .send()
+                .await
+                .map_err(|source| GuardRegistryError::ReferrersRequest {
+                    url: url.to_string(),
+                    source,
+                })?;
+
+        if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+            let challenge = response
+                .headers()
+                .get(WWW_AUTHENTICATE)
+                .and_then(|value| value.to_str().ok())
+                .and_then(parse_bearer_challenge);
+            if let Some(challenge) = challenge {
+                let token = self
+                    .registry_bearer_token(reference, credentials, &challenge, url)
+                    .await?;
+                let response = self
+                    .http_client
+                    .get(url)
+                    .header(ACCEPT, accept)
+                    .bearer_auth(token)
+                    .query(query)
+                    .send()
+                    .await
+                    .map_err(|source| GuardRegistryError::ReferrersRequest {
+                        url: url.to_string(),
+                        source,
+                    })?;
+                return registry_response_body(url, response).await;
+            }
+        }
+
+        registry_response_body(url, response).await
+    }
+
+    async fn registry_bearer_token(
+        &self,
+        reference: &GuardOciRef,
+        credentials: &RegistryCredentials,
+        challenge: &BearerChallenge,
+        url: &str,
+    ) -> Result<String> {
+        let scope = format!("repository:{}:pull", reference.repository());
+        let mut request = self
+            .http_client
+            .get(&challenge.realm)
+            .query(&[("scope", scope.as_str())]);
+        if let Some(service) = challenge.service.as_deref() {
+            request = request.query(&[("service", service)]);
+        }
+        if let RegistryCredentials::Basic { username, password } = credentials {
+            request = request.basic_auth(username, Some(password));
+        }
+        let response =
+            request
+                .send()
+                .await
+                .map_err(|source| GuardRegistryError::ReferrersRequest {
+                    url: url.to_string(),
+                    source,
+                })?;
+        let body = registry_response_body(url, response)
+            .await?
+            .ok_or_else(|| GuardRegistryError::ReferrersMalformed {
+                message: "token response unexpectedly returned 404".to_string(),
+            })?;
+        let token: RegistryTokenResponse = serde_json::from_slice(&body).map_err(|source| {
+            GuardRegistryError::ReferrersMalformed {
+                message: format!("parse registry token response: {source}"),
+            }
+        })?;
+        token
+            .token
+            .or(token.access_token)
+            .ok_or_else(|| GuardRegistryError::ReferrersMalformed {
+                message: "registry token response omitted token".to_string(),
+            })
+    }
+
+    fn scheme_for(&self, registry: &str) -> &'static str {
+        if self
+            .allow_http_registries
+            .iter()
+            .any(|allowed| allowed == registry)
+        {
+            "http"
+        } else {
+            "https"
+        }
+    }
+}
+
+async fn registry_response_body(url: &str, response: reqwest::Response) -> Result<Option<Vec<u8>>> {
+    let status = response.status();
+    let body = response
+        .bytes()
+        .await
+        .map_err(|source| GuardRegistryError::ReferrersRequest {
+            url: url.to_string(),
+            source,
+        })?;
+    if status == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    if !status.is_success() {
+        return Err(GuardRegistryError::ReferrersStatus {
+            url: url.to_string(),
+            status,
+            body: String::from_utf8_lossy(&body).chars().take(512).collect(),
+        });
+    }
+    Ok(Some(body.to_vec()))
+}
+
+fn parse_bearer_challenge(input: &str) -> Option<BearerChallenge> {
+    let fields = input.strip_prefix("Bearer ")?;
+    let mut values = BTreeMap::new();
+    for field in fields.split(',') {
+        let (key, value) = field.trim().split_once('=')?;
+        values.insert(
+            key.trim().to_string(),
+            value.trim().trim_matches('"').to_string(),
+        );
+    }
+    let realm = values.remove("realm")?;
+    Some(BearerChallenge {
+        realm,
+        service: values.remove("service"),
+    })
+}
+
+fn sigstore_bundle_descriptor_from_manifest(
+    manifest_json: &[u8],
+) -> Result<ReferrerBlobDescriptor> {
+    let manifest: SigstoreArtifactManifest =
+        serde_json::from_slice(manifest_json).map_err(|source| {
+            GuardRegistryError::ReferrersMalformed {
+                message: format!("parse Sigstore artifact manifest: {source}"),
+            }
+        })?;
+    if manifest.artifact_type.as_deref() != Some(SIGSTORE_BUNDLE_MEDIA_TYPE) {
+        return Err(GuardRegistryError::ReferrersMalformed {
+            message: "Sigstore artifact manifest did not carry the Sigstore bundle artifactType"
+                .to_string(),
+        });
+    }
+    let blobs = manifest.blobs.or(manifest.layers).unwrap_or_default();
+    blobs
+        .into_iter()
+        .find(|descriptor| descriptor.media_type == SIGSTORE_BUNDLE_MEDIA_TYPE)
+        .ok_or_else(|| GuardRegistryError::ReferrersMalformed {
+            message: "Sigstore artifact manifest did not contain a Sigstore bundle blob"
+                .to_string(),
+        })
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReferrersIndex {
+    manifests: Vec<ReferrerDescriptor>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReferrerDescriptor {
+    digest: String,
+    #[serde(default)]
+    artifact_type: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SigstoreArtifactManifest {
+    #[serde(default)]
+    artifact_type: Option<String>,
+    #[serde(default)]
+    blobs: Option<Vec<ReferrerBlobDescriptor>>,
+    #[serde(default)]
+    layers: Option<Vec<ReferrerBlobDescriptor>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReferrerBlobDescriptor {
+    media_type: String,
+    digest: String,
+    size: i64,
+}
+
+struct BearerChallenge {
+    realm: String,
+    service: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct RegistryTokenResponse {
+    token: Option<String>,
+    access_token: Option<String>,
 }
 
 /// A validated pulled guard artifact.
@@ -635,6 +1047,40 @@ mod tests {
             zero_concurrency.into_oci_config(),
             Err(GuardRegistryError::InvalidClientConfig(_))
         ));
+    }
+
+    #[test]
+    fn parses_registry_bearer_challenge() {
+        let challenge =
+            parse_bearer_challenge(r#"Bearer realm="https://ghcr.io/token",service="ghcr.io""#)
+                .unwrap_or_else(|| panic!("bearer challenge should parse"));
+
+        assert_eq!(challenge.realm, "https://ghcr.io/token");
+        assert_eq!(challenge.service.as_deref(), Some("ghcr.io"));
+    }
+
+    #[test]
+    fn extracts_sigstore_bundle_descriptor_from_artifact_manifest() {
+        let manifest = serde_json::json!({
+            "schemaVersion": 2,
+            "mediaType": OCI_ARTIFACT_MANIFEST_MEDIA_TYPE,
+            "artifactType": SIGSTORE_BUNDLE_MEDIA_TYPE,
+            "blobs": [{
+                "mediaType": SIGSTORE_BUNDLE_MEDIA_TYPE,
+                "digest": DIGEST,
+                "size": 17
+            }]
+        });
+        let descriptor = sigstore_bundle_descriptor_from_manifest(
+            serde_json::to_vec(&manifest)
+                .unwrap_or_else(|error| panic!("manifest should serialize: {error}"))
+                .as_slice(),
+        )
+        .unwrap_or_else(|error| panic!("descriptor should parse: {error}"));
+
+        assert_eq!(descriptor.media_type, SIGSTORE_BUNDLE_MEDIA_TYPE);
+        assert_eq!(descriptor.digest, DIGEST);
+        assert_eq!(descriptor.size, 17);
     }
 
     #[test]

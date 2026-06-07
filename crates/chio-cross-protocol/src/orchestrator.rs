@@ -173,15 +173,6 @@ impl<'a> CrossProtocolOrchestrator<'a> {
             ));
         }
 
-        let capability_envelope = CrossProtocolCapabilityEnvelope {
-            schema: CROSS_PROTOCOL_CAPABILITY_ENVELOPE_SCHEMA.to_string(),
-            capability: request.capability.clone(),
-            target_protocol: request.target_protocol,
-            attenuated_scope,
-            bridged_at,
-            bridge_id: bridge_id.clone(),
-        };
-
         let planning = plan_authoritative_route(
             &request.origin_request_id,
             source_protocol,
@@ -231,6 +222,14 @@ impl<'a> CrossProtocolOrchestrator<'a> {
                 &deny_route_hops,
                 bridged_at,
             )?;
+            let capability_envelope = CrossProtocolCapabilityEnvelope {
+                schema: CROSS_PROTOCOL_CAPABILITY_ENVELOPE_SCHEMA.to_string(),
+                capability: request.capability.clone(),
+                target_protocol: request.target_protocol,
+                attenuated_scope: attenuated_scope.clone(),
+                bridged_at,
+                bridge_id: bridge_id.clone(),
+            };
 
             return Ok(OrchestratedToolCall {
                 response,
@@ -255,6 +254,14 @@ impl<'a> CrossProtocolOrchestrator<'a> {
         })?;
         let mut selected_request = request.clone();
         selected_request.target_protocol = selected_target_protocol;
+        let capability_envelope = CrossProtocolCapabilityEnvelope {
+            schema: CROSS_PROTOCOL_CAPABILITY_ENVELOPE_SCHEMA.to_string(),
+            capability: selected_request.capability.clone(),
+            target_protocol: selected_request.target_protocol,
+            attenuated_scope,
+            bridged_at,
+            bridge_id: bridge_id.clone(),
+        };
 
         let target_execution = self.execute_target(
             &selected_request,
@@ -268,7 +275,7 @@ impl<'a> CrossProtocolOrchestrator<'a> {
         let route = build_route_evidence(source_protocol, &target_execution.route_hops)?;
 
         let trace = build_trace_context(
-            &request,
+            &selected_request,
             source_protocol,
             &bridge_id,
             &target_execution.route_hops,

@@ -16,6 +16,8 @@ fixture_roots = [
     root / "crates/chio-provider-conformance/fixtures/gemini",
     root / "crates/chio-provider-conformance/fixtures/mistral",
     root / "crates/chio-provider-conformance/fixtures/groq",
+    root / "crates/chio-provider-conformance/fixtures/ollama",
+    root / "crates/chio-provider-conformance/fixtures/cohere",
 ]
 
 
@@ -27,6 +29,9 @@ def response_tool_call_count(payload: dict[str, Any]) -> int:
             if isinstance(message, dict) and isinstance(message.get("tool_calls"), list):
                 count += len(message["tool_calls"])
         return count
+    message = payload.get("message")
+    if isinstance(message, dict) and isinstance(message.get("tool_calls"), list):
+        return len(message["tool_calls"])
     if isinstance(payload.get("candidates"), list):
         count = 0
         for candidate in payload["candidates"]:

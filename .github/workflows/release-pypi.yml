@@ -195,6 +195,7 @@ jobs:
           print(f"version={project.get(\"version\", \"\")}")
           '
           python3 -c "$py_script" "$PACKAGE_DIR/pyproject.toml" | tee -a "$GITHUB_OUTPUT"
+          echo "slug=$(basename "$PACKAGE_DIR")" >> "$GITHUB_OUTPUT"
 
       - name: Validate tag version matches pyproject
         if: github.event_name == 'push'
@@ -202,7 +203,8 @@ jobs:
         env:
           REF_NAME: ${{ github.ref_name }}
           EXPECTED: ${{ steps.meta.outputs.version }}
-          SLUG: ${{ steps.meta.outputs.name }}
+          DIST_NAME: ${{ steps.meta.outputs.name }}
+          SLUG: ${{ steps.meta.outputs.slug }}
         run: |
           set -euo pipefail
           semver_re='(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?(\+([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?'
@@ -229,11 +231,11 @@ jobs:
             # or if it is the meta tag py/v<ver>. For the meta tag we require
             # all matrix packages to be on the same version.
             if [[ "$REF_NAME" == py/v* ]]; then
-              echo "Meta tag $REF_NAME pins version $tag_version but package $SLUG is at $EXPECTED" >&2
+              echo "Meta tag $REF_NAME pins version $tag_version but package $DIST_NAME ($SLUG) is at $EXPECTED" >&2
               exit 1
             fi
             if [[ "$REF_NAME" == py/$SLUG-v* ]]; then
-              echo "Slug tag $REF_NAME pins version $tag_version but package $SLUG is at $EXPECTED" >&2
+              echo "Slug tag $REF_NAME pins version $tag_version but package $DIST_NAME ($SLUG) is at $EXPECTED" >&2
               exit 1
             fi
           fi
@@ -256,7 +258,10 @@ jobs:
       - name: Smoke import wheel
         shell: bash
         env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
           PKG_NAME: ${{ steps.meta.outputs.name }}
+          PACKAGE_DIR: ${{ matrix.package }}
         run: |
           set -euo pipefail
           wheel=$(find "${GITHUB_WORKSPACE}/dist-out" -maxdepth 1 -name '*.whl' -print -quit)
@@ -270,22 +275,77 @@ jobs:
           # third-party deps at load time, so `--no-deps` produced a
           # false ModuleNotFoundError even when the wheel itself was
           # perfectly valid and would install correctly in production.
-          # Dependency resolution correctness is already covered by the
-          # per-package test suite; this smoke test only needs to prove
-          # the wheel imports cleanly in a fresh venv.
-          if [[ "$PKG_NAME" != "chio-sdk-python" ]]; then
-            pip install --quiet "${GITHUB_WORKSPACE}/sdks/python/chio-sdk-python"
+          # Slug-specific releases must resolve dependencies the way users
+          # do: from PyPI. Meta tags and manual dry-runs are co-publish
+          # shapes, so local sibling dependencies are built into wheels
+          # and offered via --find-links. This keeps the smoke on packaged
+          # artifacts without falling back to source-tree installs.
+          smoke_install_args=()
+          if [[ "$EVENT_NAME" != "push" || "$REF_NAME" == py/v* ]]; then
+            wheelhouse="/tmp/chio-smoke-wheelhouse"
+            mkdir -p "$wheelhouse"
+            python3 - "$GITHUB_WORKSPACE" "$PACKAGE_DIR" > /tmp/chio-smoke-dep-dirs <<'PY'
+          from __future__ import annotations
+
+          import re
+          import sys
+          import tomllib
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          package_dir = root / sys.argv[2]
+          package_roots = [root / "sdks/python", root / "sdks/lambda"]
+          packages: dict[str, Path] = {}
+          dependencies: dict[str, list[str]] = {}
+
+          def dep_name(spec: str) -> str | None:
+              match = re.match(r"\s*([A-Za-z0-9_.-]+)", spec)
+              return match.group(1).replace("_", "-").lower() if match else None
+
+          for package_root in package_roots:
+              if not package_root.exists():
+                  continue
+              for pyproject_path in package_root.glob("*/pyproject.toml"):
+                  data = tomllib.loads(pyproject_path.read_text())
+                  project = data.get("project", {})
+                  name = str(project.get("name", "")).replace("_", "-").lower()
+                  if not name:
+                      continue
+                  packages[name] = pyproject_path.parent
+                  dependencies[name] = [
+                      dep
+                      for spec in project.get("dependencies", [])
+                      if isinstance(spec, str)
+                      for dep in [dep_name(spec)]
+                      if dep in packages or dep is not None
+                  ]
+
+          current_data = tomllib.loads((package_dir / "pyproject.toml").read_text())
+          current_name = str(current_data["project"]["name"]).replace("_", "-").lower()
+          seen: set[str] = set()
+          ordered: list[str] = []
+
+          def visit(name: str) -> None:
+              for dep in dependencies.get(name, []):
+                  if dep == current_name or dep not in packages or dep in seen:
+                      continue
+                  seen.add(dep)
+                  visit(dep)
+                  ordered.append(dep)
+
+          visit(current_name)
+          for name in ordered:
+              print(packages[name].relative_to(root))
+          PY
+            while IFS= read -r dep_dir; do
+              [[ -n "$dep_dir" ]] || continue
+              uv build --wheel --out-dir "$wheelhouse" "${GITHUB_WORKSPACE}/${dep_dir}"
+            done < /tmp/chio-smoke-dep-dirs
+            if compgen -G "$wheelhouse/*.whl" >/dev/null; then
+              smoke_install_args+=(--find-links "$wheelhouse")
+            fi
           fi
-          # chio-adapter-base is a runtime dep of every adapter migrated
-          # to the shared primitives package. Try PyPI first so a slug-only
-          # release surfaces a real "missing on the index" failure for end
-          # users; fall back to the workspace path only when PyPI does not
-          # yet have it (the very first co-publish).
-          if [[ "$PKG_NAME" != "chio-sdk-python" && "$PKG_NAME" != "chio-adapter-base" ]]; then
-            pip install --quiet chio-adapter-base 2>/dev/null \
-              || pip install --quiet "${GITHUB_WORKSPACE}/sdks/python/chio-adapter-base"
-          fi
-          pip install --quiet "$wheel"
+          pip install --quiet "${smoke_install_args[@]}" "$wheel"
           # Derive import name: hyphens -> underscores, "chio-sdk-python" ->
           # "chio_sdk", "chio-lambda-python" -> "chio_lambda".
           import_name=$(echo "$PKG_NAME" | tr '-' '_')

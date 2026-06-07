@@ -8,6 +8,7 @@
 //! into the kernel's internals.
 
 use chio_core::canonical::canonical_json_bytes;
+use chio_core::session::OperationTerminalState;
 use chio_tool_call_fabric::{DenyReason, ProviderId, ReceiptId, ToolInvocation, VerdictResult};
 
 use crate::runtime::{ToolCallRequest, ToolCallResponse, Verdict};
@@ -87,8 +88,16 @@ pub fn verdict_result_from_response(
 ) -> VerdictResult {
     let receipt_id = ReceiptId(response.receipt.id.clone());
     match response.verdict {
-        Verdict::Allow => VerdictResult::Allow {
-            redactions: Vec::new(),
+        Verdict::Allow if matches!(response.terminal_state, OperationTerminalState::Completed) => {
+            VerdictResult::Allow {
+                redactions: Vec::new(),
+                receipt_id,
+            }
+        }
+        Verdict::Allow => VerdictResult::Deny {
+            reason: DenyReason::PolicyDeny {
+                rule_id: "kernel.execution_nonce_preflight".to_string(),
+            },
             receipt_id,
         },
         Verdict::Deny => VerdictResult::Deny {
@@ -278,6 +287,20 @@ mod tests {
         }
     }
 
+    fn nonce_preflight_response() -> ToolCallResponse {
+        ToolCallResponse {
+            request_id: "call_abc123".to_string(),
+            verdict: Verdict::Allow,
+            output: None,
+            reason: None,
+            terminal_state: OperationTerminalState::Incomplete {
+                reason: "execution nonce preflight requires retry with presented nonce".to_string(),
+            },
+            receipt: synthetic_receipt("rcpt_preflight", Decision::Allow),
+            execution_nonce: None,
+        }
+    }
+
     #[test]
     fn provider_verdict_allow_maps_to_fabric_allow() {
         let inv = sample_invocation();
@@ -342,6 +365,25 @@ mod tests {
                 other => panic!("expected policy_deny for pending, got {other:?}"),
             },
             other => panic!("expected deny for pending approval, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn provider_verdict_nonce_preflight_fails_closed() {
+        let inv = sample_invocation();
+        let resp = nonce_preflight_response();
+        let v = verdict_result_from_response(&inv, &resp);
+        match v {
+            VerdictResult::Deny { reason, receipt_id } => {
+                assert_eq!(receipt_id, ReceiptId(resp.receipt.id.clone()));
+                match reason {
+                    DenyReason::PolicyDeny { rule_id } => {
+                        assert_eq!(rule_id, "kernel.execution_nonce_preflight");
+                    }
+                    other => panic!("expected policy_deny for nonce preflight, got {other:?}"),
+                }
+            }
+            other => panic!("expected deny for nonce preflight, got {other:?}"),
         }
     }
 

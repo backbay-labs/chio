@@ -39,8 +39,8 @@ fn model_card(weights_hash: &str, expires_at_unix_ms: i64) -> ModelCard {
     let expires = Utc.timestamp_millis_opt(expires_at_unix_ms).unwrap();
     ModelCard::new(
         weights_hash,
-        StringSet::new(["close_account"]),
-        StringSet::new(["delete_account"]),
+        StringSet::new(["tool:close_account", "tool:delete_account"]),
+        StringSet::new(["tool:delete_account"]),
         "public-internet",
         "https://example.com/issuer",
         issued,
@@ -1558,6 +1558,72 @@ fn runtime_ops_provider_health_accepts_required_model_card_with_loaded_hash(
     assert_eq!(report.failure_code, None);
     assert_eq!(report.provider_checks[0].failure_code, None);
     assert_eq!(report.healthy_provider_count, 1);
+    Ok(())
+}
+
+#[test]
+fn runtime_ops_provider_health_accepts_prefixed_model_card_tool_binding(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let card = model_card(
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        1_800_003_600_000,
+    );
+    let mut binding = provider_binding(Some(WeightsBindingMode::Required));
+    binding.tool_name = "tool:close_account".to_string();
+    binding.model_card_digest = Some(model_card_digest(&card)?);
+    let bindings = provider_bindings_document(binding);
+    let cards = [("model-card-vendor-b".to_string(), card)]
+        .into_iter()
+        .collect();
+
+    let report =
+        chio_runtime_core::generate_runtime_provider_health_report_with_model_card_evidence(
+            &supervisor_profile(),
+            &bindings,
+            &cards,
+            &[loaded_weights_evidence(
+                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            )],
+            1_800_000_000_000,
+        )?;
+
+    assert!(report.accepted);
+    assert_eq!(report.failure_code, None);
+    assert_eq!(report.provider_checks[0].failure_code, None);
+    Ok(())
+}
+
+#[test]
+fn runtime_ops_provider_health_rejects_banned_model_card_tool_binding(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let card = model_card(
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        1_800_003_600_000,
+    );
+    let mut binding = provider_binding(Some(WeightsBindingMode::Required));
+    binding.tool_name = "delete_account".to_string();
+    binding.model_card_digest = Some(model_card_digest(&card)?);
+    let bindings = provider_bindings_document(binding);
+    let cards = [("model-card-vendor-b".to_string(), card)]
+        .into_iter()
+        .collect();
+
+    let report =
+        chio_runtime_core::generate_runtime_provider_health_report_with_model_card_evidence(
+            &supervisor_profile(),
+            &bindings,
+            &cards,
+            &[loaded_weights_evidence(
+                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            )],
+            1_800_000_000_000,
+        )?;
+
+    assert!(!report.accepted);
+    assert_eq!(
+        report.failure_code.as_deref(),
+        Some("runtime_provider_model_card_tool_banned")
+    );
     Ok(())
 }
 

@@ -34,6 +34,7 @@ required-features = ["pq"]
 chio-attest-verify = { path = "../chio-attest-verify" }
 chio-reputation = { path = "../chio-reputation", optional = true }
 oci-distribution = { version = "0.11", default-features = false, features = ["rustls-tls"] }
+reqwest = { workspace = true, features = ["json", "query", "rustls"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha2 = { workspace = true }

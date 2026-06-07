@@ -6,9 +6,10 @@ use crate::CliError;
 
 use base64::Engine;
 use chio_guard_registry::{
-    GUARD_ARTIFACT_MEDIA_TYPE, GUARD_CONFIG_MEDIA_TYPE, GUARD_WIT_WORLD, GuardArtifactConfig,
-    GuardCache, GuardOciRef, GuardPublishArtifact, GuardPublishArtifactInput, GuardPublishRef,
-    GuardPullRequest, GuardRegistryClient, GuardRegistryConfig, RegistryCredentials,
+    ExpectedIdentity, GUARD_ARTIFACT_MEDIA_TYPE, GUARD_CONFIG_MEDIA_TYPE, GUARD_WIT_WORLD,
+    GuardArtifactConfig, GuardCache, GuardOciRef, GuardPublishArtifact, GuardPublishArtifactInput,
+    GuardPublishRef, GuardPullRequest, GuardPullSigstoreBundleSource, GuardRegistryClient,
+    GuardRegistryConfig, RegistryCredentials, SigstoreVerifier,
 };
 use chio_wasm_guards::abi::{GuardRequest, GuardVerdict, WasmGuardAbi};
 use chio_wasm_guards::blocklist::{E_GUARD_DIGEST_BLOCKLISTED, GuardDigestBlocklist};
@@ -710,6 +711,8 @@ pub(crate) struct GuardPullCommand<'a> {
     pub password: Option<&'a str>,
     pub allow_http_registry: Vec<String>,
     pub sigstore_bundle: Option<&'a Path>,
+    pub sigstore_identity_regex: Option<&'a str>,
+    pub sigstore_oidc_issuer: Option<&'a str>,
 }
 
 pub(crate) fn cmd_guard_pull(command: GuardPullCommand<'_>) -> Result<(), CliError> {
@@ -739,6 +742,29 @@ pub(crate) fn cmd_guard_pull(command: GuardPullCommand<'_>) -> Result<(), CliErr
         })?),
         None => None,
     };
+    let sigstore_policy = match (
+        command.sigstore_identity_regex,
+        command.sigstore_oidc_issuer,
+    ) {
+        (None, None) => None,
+        (Some(identity), Some(issuer)) => Some(ExpectedIdentity {
+            certificate_identity_regexp: identity.to_string(),
+            certificate_oidc_issuer: issuer.to_string(),
+        }),
+        _ => {
+            return Err(CliError::guard_error(
+                "--sigstore-identity-regex and --sigstore-oidc-issuer must be supplied together"
+                    .to_string(),
+            ));
+        }
+    };
+    let sigstore_verifier = if sigstore_policy.is_some() {
+        Some(SigstoreVerifier::with_embedded_root().map_err(|e| {
+            CliError::guard_error(format!("failed to load Sigstore trust root: {e}"))
+        })?)
+    } else {
+        None
+    };
     let client = GuardRegistryClient::try_new(GuardRegistryConfig {
         allow_http_registries: command.allow_http_registry,
         ..GuardRegistryConfig::default()
@@ -755,6 +781,10 @@ pub(crate) fn cmd_guard_pull(command: GuardPullCommand<'_>) -> Result<(), CliErr
             credentials: &credentials,
             cache: &cache,
             sigstore_bundle_json: sigstore_bundle.as_deref(),
+            sigstore_verifier: sigstore_verifier
+                .as_ref()
+                .map(|verifier| verifier as &dyn chio_guard_registry::AttestVerifier),
+            sigstore_expected_identity: sigstore_policy.as_ref(),
         }))
         .map_err(|e| CliError::guard_error(e.to_string()))?;
 
@@ -789,10 +819,28 @@ pub(crate) fn cmd_guard_pull(command: GuardPullCommand<'_>) -> Result<(), CliErr
     let sigstore_bundle_path = response.cached.layout.sigstore_bundle_json_path();
     if sigstore_bundle_path.exists() {
         println!("sigstore_bundle:  {}", sigstore_bundle_path.display());
-        println!("sigstore_status:  cached local bundle bytes; guard pull does not verify Sigstore");
+        match response.sigstore_bundle_source {
+            Some(GuardPullSigstoreBundleSource::CallerProvided) => {
+                if response.sigstore_verified {
+                    println!("sigstore_status:  verified caller-provided bundle before cache admission");
+                } else {
+                    println!("sigstore_status:  cached caller-provided bundle bytes without verification policy");
+                }
+            }
+            Some(GuardPullSigstoreBundleSource::OciReferrer) => {
+                if response.sigstore_verified {
+                    println!("sigstore_status:  verified OCI referrer bundle before cache admission");
+                } else {
+                    println!("sigstore_status:  cached OCI referrer bundle bytes without verification policy");
+                }
+            }
+            None => {
+                println!("sigstore_status:  cached bundle bytes without source metadata");
+            }
+        }
     } else {
         println!(
-            "sigstore_bundle:  not cached (provide --sigstore-bundle to cache local bundle bytes)"
+            "sigstore_bundle:  not cached (no local bundle supplied and no OCI Sigstore referrer found)"
         );
     }
 
