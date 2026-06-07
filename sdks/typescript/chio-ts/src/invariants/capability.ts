@@ -33,7 +33,7 @@ export interface CapabilityToken {
 
 export interface CapabilityVerification {
   signature_valid: boolean;
-  delegation_chain_valid: boolean;
+  delegation_chain_shape_valid: boolean;
   time_valid: boolean;
   time_status: CapabilityTimeStatus;
 }
@@ -144,7 +144,7 @@ export function verifyCapability(
       capability.issuer,
       capability.signature,
     ),
-    delegation_chain_valid: verifyDelegationChain(capability.delegation_chain ?? [], maxDelegationDepth),
+    delegation_chain_shape_valid: verifyDelegationChain(capability.delegation_chain ?? [], maxDelegationDepth),
     time_valid: time_status === "valid",
     time_status,
   };

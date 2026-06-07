@@ -1,13 +1,13 @@
 //! WASM guard runtime and kernel integration.
 //!
 //! This module exposes focused runtime children for loaded module state,
-//! guard evaluation, backend collection, mock testing, and the Wasmtime
-//! backend.
+//! guard evaluation, backend collection, and the Wasmtime backend.
 
 pub mod backend;
 pub(crate) mod evidence;
 pub mod guard;
-pub mod mock_backend;
+#[cfg(test)]
+mod mock_backend;
 pub mod module;
 #[cfg(feature = "wasmtime-runtime")]
 pub mod wasmtime_backend;

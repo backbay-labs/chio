@@ -1059,6 +1059,7 @@ fn is_reload_file_event(kind: &EventKind) -> bool {
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]
 mod file_event_tests {
     use notify::{
         event::{AccessKind, AccessMode, ModifyKind},

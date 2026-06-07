@@ -236,15 +236,15 @@ pub fn validate_delegation_chain(chain: &[DelegationLink], max_depth: Option<u32
 ///
 /// 1. Every link in the chain populates `scope_hash` (chains lacking
 ///    chain-binding are rejected fail-closed).
-/// 2. The first hop's `scope_hash` equals `trust_root_scope_hash` OR is a
-///    valid attenuation of it (witnessed by the link or, for the chain
-///    head, by the verifier's static knowledge of the issuer's authority).
-/// 3. Each subsequent hop's `scope_hash` is a valid attenuation of the
-///    previous hop's `scope_hash`. The two scopes are not exchanged on
-///    the wire by this lemma; the relation is established when the
-///    capability token's own `attenuation_proof` is checked against
-///    `chain.last().scope_hash` in
+/// 2. The first hop's `scope_hash` equals `trust_root_scope_hash`.
+/// 3. The leaf capability token's `attenuation_proof.parent_scope_hash`
+///    is checked against `chain.last().scope_hash` by
 ///    [`CapabilityToken::validate_chain_binding`].
+///
+/// Scope hashes alone cannot prove per-hop subset relations because the
+/// full parent and child scopes are not carried on every delegation link.
+/// Callers that need per-hop semantic attenuation must carry explicit
+/// witnesses for each hop.
 ///
 /// The signature, connectivity, and timestamp checks from the v1 entry
 /// point are also enforced.

@@ -24,7 +24,9 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 use chio_core_types::capability::{
-    attenuation::{validate_delegation_chain, ScopeHash},
+    attenuation::{
+        validate_delegation_chain, validate_delegation_chain_with_trust_root, ScopeHash,
+    },
     crypto_floor::{CapabilityCryptoFloor, CapabilityFloorVerifyError},
     features::CapabilityNegotiation,
     scope::ChioScope,
@@ -394,6 +396,8 @@ fn verify_chain_binding_with_resolver(
                     "chain-binding: no trust-root scope hash registered for issuer".to_string(),
                 )
             })?;
+        validate_delegation_chain_with_trust_root(&token.delegation_chain, None, &issuer_root)
+            .map_err(|err| CapabilityError::AttenuationViolation(err.to_string()))?;
         token
             .validate_chain_binding(&issuer_root)
             .map_err(|err| CapabilityError::AttenuationViolation(err.to_string()))?;
@@ -426,6 +430,7 @@ fn verify_chain_binding_with_negotiation(
 mod tests {
     use super::*;
     use crate::InMemoryBudgetRegistry;
+    use alloc::vec;
     use chio_core_types::capability::{
         attenuation::{
             compute_attenuation_witness, scope_hash, AttenuationProof, DelegationLink,
@@ -880,6 +885,101 @@ mod tests {
         match err {
             CapabilityError::AttenuationViolation(message) => {
                 assert!(message.contains("signature invalid"));
+            }
+            other => panic!("expected attenuation violation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn full_verifier_rejects_delegated_attenuation_unbound_from_trust_root() {
+        let issuer = Keypair::generate();
+        let subject = Keypair::generate();
+        let authorized_scope = ChioScope::default();
+        let inflated_scope = ChioScope {
+            grants: vec![chio_core_types::capability::scope::ToolGrant {
+                server_id: "*".to_string(),
+                tool_name: "*".to_string(),
+                operations: vec![chio_core_types::capability::scope::Operation::Invoke],
+                constraints: Vec::new(),
+                max_invocations: None,
+                max_cost_per_invocation: None,
+                max_total_cost: None,
+                dpop_required: None,
+            }],
+            resource_grants: Vec::new(),
+            prompt_grants: Vec::new(),
+        };
+        let inflated_hash = scope_hash(&inflated_scope).expect("inflated scope hash");
+        let trust_root_hash = scope_hash(&authorized_scope).expect("trust root hash");
+        assert_ne!(inflated_hash, trust_root_hash);
+
+        let parent_link = DelegationLink::sign(
+            DelegationLinkBody {
+                capability_id: "parent-capability".to_string(),
+                delegator: issuer.public_key(),
+                delegatee: subject.public_key(),
+                attenuations: Vec::new(),
+                timestamp: 100,
+                scope_hash: Some(inflated_hash.clone()),
+            },
+            &issuer,
+        )
+        .expect("sign delegation link");
+        let proof = AttenuationProof {
+            parent_scope_hash: inflated_hash,
+            child_scope_hash: scope_hash(&authorized_scope).expect("child scope hash"),
+            normalized_subset_proof: compute_attenuation_witness(
+                &inflated_scope,
+                &authorized_scope,
+            )
+            .expect("attenuation witness"),
+        };
+        let token = CapabilityToken::sign_attenuated(
+            CapabilityTokenAttenuationBody {
+                body: CapabilityTokenBody {
+                    id: "delegated-unbound-root".to_string(),
+                    issuer: issuer.public_key(),
+                    subject: subject.public_key(),
+                    scope: authorized_scope,
+                    issued_at: 100,
+                    expires_at: 200,
+                    delegation_chain: vec![parent_link],
+                },
+                caveats: Vec::new(),
+                scope_attenuations: Vec::new(),
+                attenuation_proof: proof,
+                budget_share_bps: None,
+            },
+            &issuer,
+        )
+        .expect("sign attenuated token");
+        let clock = crate::FixedClock::new(150);
+        let peer = CapabilityNegotiation::t1_default();
+        let issuer_public = issuer.public_key();
+        let resolver_issuer = issuer_public.clone();
+        let trust_roots = move |candidate: &PublicKey| {
+            if candidate == &resolver_issuer {
+                Some(trust_root_hash.clone())
+            } else {
+                None
+            }
+        };
+        let mut budgets = NoopBudgetRegistry;
+
+        let err = verify_capability_full(
+            &token,
+            &[issuer_public],
+            &clock,
+            CapabilityCryptoFloor::AllowClassical,
+            &peer,
+            &trust_roots,
+            &mut budgets,
+        )
+        .expect_err("first delegation link must bind to issuer trust root");
+
+        match err {
+            CapabilityError::AttenuationViolation(message) => {
+                assert!(message.contains("scope_hash does not match trust root"));
             }
             other => panic!("expected attenuation violation, got {other:?}"),
         }

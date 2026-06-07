@@ -27,6 +27,10 @@ python3 scripts/check-rust-file-hygiene.py
 bash scripts/tests/check-rust-file-hygiene.test.sh
 python3 scripts/check-stub-surfaces.py
 bash scripts/tests/check-stub-surfaces.test.sh
+bash scripts/tests/check-sdk-release-python-generated.test.sh
+bash scripts/tests/check-sdk-release-ts-bun.test.sh
+bash scripts/tests/qualify-release-provider-replay.test.sh
+bash scripts/tests/release-npm-package-matrix.test.sh
 # Keep the CI warning gate focused on repo-shipping targets; test/bench-only
 # lint backlogs are exercised by `cargo test` and can be migrated separately.
 cargo clippy --workspace --lib --bins --examples -- -D warnings

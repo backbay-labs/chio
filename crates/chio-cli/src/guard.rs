@@ -796,6 +796,7 @@ pub(crate) fn cmd_guard_pull(command: GuardPullCommand<'_>) -> Result<(), CliErr
     let sigstore_bundle_path = response.cached.layout.sigstore_bundle_json_path();
     if sigstore_bundle_path.exists() {
         println!("sigstore_bundle:  {}", sigstore_bundle_path.display());
+        println!("sigstore_status:  cached local bundle bytes; verification runs at guard load admission");
     } else {
         println!(
             "sigstore_bundle:  not cached (provide --sigstore-bundle to cache local bundle bytes)"

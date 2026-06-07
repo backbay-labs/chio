@@ -7,7 +7,7 @@ use crate::error::{Error, Result};
 
 use super::body::{ChioReceiptBody, ChioReceiptIdInput};
 use super::validation::{
-    require_exact, require_lowercase_hex, require_lowercase_hex_chars, require_non_empty,
+    require_exact, require_lowercase_hex, require_lowercase_hex_chars, require_wire_identifier,
 };
 
 /// Versioned schema for BBS material bound to a Chio receipt.
@@ -68,7 +68,11 @@ impl BbsReceiptSignature {
             CHIO_RECEIPT_BBS_CIPHERSUITE_V1,
             "bbs_signature.ciphersuite",
         )?;
-        require_non_empty(&self.issuer_fingerprint, "bbs_signature.issuer_fingerprint")?;
+        require_wire_identifier(
+            &self.issuer_fingerprint,
+            128,
+            "bbs_signature.issuer_fingerprint",
+        )?;
         require_lowercase_hex_chars(
             &self.issuer_public_key_hex,
             192,

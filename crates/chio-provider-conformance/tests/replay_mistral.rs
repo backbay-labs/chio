@@ -34,12 +34,13 @@ fn replays_all_mistral_fixtures_with_canonical_byte_assertions() {
     let paths = fixture_paths();
     assert_eq!(
         paths.len(),
-        12,
-        "Mistral corpus must contain exactly 12 NDJSON fixtures"
+        13,
+        "Mistral corpus must contain exactly 13 NDJSON fixtures"
     );
 
     let mut total_invocations = 0;
     let mut kernel_denials = 0;
+    let mut no_tool_fixtures = 0;
 
     for path in &paths {
         let body = match fs::read_to_string(path) {
@@ -81,9 +82,15 @@ fn replays_all_mistral_fixtures_with_canonical_byte_assertions() {
         ));
         assert_eq!(outcome.invocations, outcome.verdicts);
         assert_eq!(outcome.lowered_responses, outcome.verdicts);
+        if matches!(outcome.mode, ReplayMode::NoToolCall) {
+            no_tool_fixtures += 1;
+            assert_eq!(outcome.invocations, 0);
+            assert_eq!(outcome.verdicts, 0);
+        }
     }
 
     assert_eq!(total_invocations, 12);
+    assert_eq!(no_tool_fixtures, 1);
     assert_eq!(
         kernel_denials, 1,
         "Mistral corpus must include exactly one kernel denial fixture"

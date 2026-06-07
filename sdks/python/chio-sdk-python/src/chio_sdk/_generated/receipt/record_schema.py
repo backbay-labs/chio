@@ -14,7 +14,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel, conint, constr
+from pydantic import BaseModel, ConfigDict, Field, RootModel, conint, constr, model_validator
 
 
 class ReceiptKind(Enum):
@@ -274,8 +274,8 @@ class ChioReceiptRecord(BaseModel):
         None,
         description="Tenant identifier for multi-tenant deployments. Absent in single-tenant mode; derived from the authenticated session's enterprise identity context, never from caller-provided request fields.",
     )
-    bbs_projection_version: Literal["chio.bbs-projection.receipt.v1"] = Field(
-        "chio.bbs-projection.receipt.v1",
+    bbs_projection_version: Literal["chio.bbs-projection.receipt.v1"] | None = Field(
+        None,
         description="Receipt-body BBS projection version bound into the receipt id when bbs_signature is present.",
     )
     kernel_key: constr(
@@ -288,6 +288,17 @@ class ChioReceiptRecord(BaseModel):
         None,
         description="Optional BBS signature material for selective disclosure. When present, the Ed25519 receipt signature covers this material through ChioReceiptSigningBody.",
     )
+
+    @model_validator(mode="after")
+    def _validate_bbs_pairing(self) -> "ChioReceiptRecord":
+        has_projection = self.bbs_projection_version is not None
+        has_signature = self.bbs_signature is not None
+        if has_projection != has_signature:
+            raise ValueError(
+                "bbs_projection_version and bbs_signature must be present together"
+            )
+        return self
+
     algorithm: Algorithm | None = Field(
         None,
         description="Signing algorithm envelope hint. Verification dispatches off the signature hex prefix, not this field.",

@@ -370,12 +370,12 @@ always wrong if the in-repo runner is happy and the fresh install is not.
 
 ## Continuous-integration story
 
-For the Chio project itself, the `external-consumer-smoke` job in
-`.github/workflows/conformance-matrix.yml` runs nightly on a fresh
-GitHub-hosted runner against a path-installed crate. That catches drift between
-the source tree and the installable package shape within 24 hours. A separate
-registry smoke should replace it only after `chio-conformance` has a
-registry-public dependency closure.
+For the Chio project itself, `.github/workflows/conformance-matrix.yml` keeps
+the peer lockfile shape fail-closed before release. The external-consumer smoke
+is release-blocking only after at least one peer entry is published; until then,
+the job denies the scenario run rather than pretending a fresh external
+consumer executed it. A registry smoke should replace the path-installed crate
+smoke only after `chio-conformance` has a registry-public dependency closure.
 
 External consumers can copy the same pattern into their own CI:
 

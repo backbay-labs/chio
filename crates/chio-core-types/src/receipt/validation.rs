@@ -11,13 +11,6 @@ pub(crate) fn require_exact(value: &str, expected: &str, field: &str) -> Result<
     Ok(())
 }
 
-pub(crate) fn require_non_empty(value: &str, field: &str) -> Result<()> {
-    if value.trim().is_empty() {
-        return Err(Error::CanonicalJson(format!("{field} must not be empty")));
-    }
-    Ok(())
-}
-
 pub(crate) fn require_lowercase_hex(value: &str, field: &str) -> Result<()> {
     if value.is_empty()
         || !value.len().is_multiple_of(2)
@@ -41,6 +34,20 @@ pub(crate) fn require_lowercase_hex_chars(
     if value.len() != expected_chars {
         return Err(Error::CanonicalJson(format!(
             "{field} must be exactly {expected_chars} lowercase hex characters"
+        )));
+    }
+    Ok(())
+}
+
+pub(crate) fn require_wire_identifier(value: &str, max_chars: usize, field: &str) -> Result<()> {
+    if value.is_empty()
+        || value.len() > max_chars
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b':' | b'-'))
+    {
+        return Err(Error::CanonicalJson(format!(
+            "{field} must match ^[A-Za-z0-9._:-]{{1,{max_chars}}}$"
         )));
     }
     Ok(())

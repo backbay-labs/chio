@@ -98,7 +98,7 @@ def verify_capability(
             capability["issuer"],
             capability["signature"],
         ),
-        "delegation_chain_valid": _verify_delegation_chain(
+        "delegation_chain_shape_valid": _verify_delegation_chain(
             capability.get("delegation_chain", []),
             max_delegation_depth,
         ),

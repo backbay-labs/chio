@@ -646,7 +646,23 @@ fn receipt_rejects_schema_invalid_bbs_signature_material() {
 
     let mut wrong_message_count = bbs_signature_fixture();
     wrong_message_count.message_count = CHIO_RECEIPT_BBS_MESSAGE_COUNT_V1 + 1;
-    assert!(ChioReceipt::sign_with_bbs(body, &kp, wrong_message_count).is_err());
+    assert!(ChioReceipt::sign_with_bbs(body.clone(), &kp, wrong_message_count).is_err());
+
+    let mut whitespace_fingerprint = bbs_signature_fixture();
+    whitespace_fingerprint.issuer_fingerprint = "issuer chio test-bbs".to_string();
+    assert!(ChioReceipt::sign_with_bbs(body.clone(), &kp, whitespace_fingerprint).is_err());
+
+    let mut empty_after_trim_fingerprint = bbs_signature_fixture();
+    empty_after_trim_fingerprint.issuer_fingerprint = "   ".to_string();
+    assert!(ChioReceipt::sign_with_bbs(body.clone(), &kp, empty_after_trim_fingerprint).is_err());
+
+    let mut control_fingerprint = bbs_signature_fixture();
+    control_fingerprint.issuer_fingerprint = "issuer:chio:\nkey".to_string();
+    assert!(ChioReceipt::sign_with_bbs(body.clone(), &kp, control_fingerprint).is_err());
+
+    let mut overlong_fingerprint = bbs_signature_fixture();
+    overlong_fingerprint.issuer_fingerprint = "a".repeat(129);
+    assert!(ChioReceipt::sign_with_bbs(body, &kp, overlong_fingerprint).is_err());
 }
 
 #[test]

@@ -823,7 +823,7 @@ fn capability_case_value(
         "capability_body_canonical_json": capability_body_canonical_json(capability).test_unwrap("canonical capability body"),
         "expected": {
             "signature_valid": verification.signature_valid,
-            "delegation_chain_valid": verification.delegation_chain_valid,
+            "delegation_chain_shape_valid": verification.delegation_chain_shape_valid,
             "time_valid": verification.time_valid,
             "time_status": verification.time_status,
         }

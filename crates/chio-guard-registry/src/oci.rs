@@ -133,6 +133,43 @@ pub enum GuardRegistryError {
         actual: String,
     },
 
+    /// Pulled blob bytes did not match their pinned OCI manifest descriptor.
+    #[error(
+        "guard OCI descriptor digest mismatch for {artifact}: expected {expected}, got {actual}"
+    )]
+    DescriptorDigestMismatch {
+        /// Artifact component being checked.
+        artifact: &'static str,
+        /// Digest recorded in the OCI manifest descriptor.
+        expected: String,
+        /// Digest computed from the pulled blob bytes.
+        actual: String,
+    },
+
+    /// A pinned OCI manifest descriptor used the wrong media type.
+    #[error("guard OCI descriptor media type mismatch for {artifact}: expected {expected}, got {actual}")]
+    DescriptorMediaTypeMismatch {
+        /// Artifact component being checked.
+        artifact: &'static str,
+        /// Expected media type.
+        expected: &'static str,
+        /// Actual media type.
+        actual: String,
+    },
+
+    /// Pulled blob bytes had a different size from their OCI descriptor.
+    #[error(
+        "guard OCI descriptor size mismatch for {artifact}: expected {expected}, got {actual}"
+    )]
+    DescriptorSizeMismatch {
+        /// Artifact component being checked.
+        artifact: &'static str,
+        /// Size recorded in the OCI manifest descriptor.
+        expected: i64,
+        /// Size computed from the pulled blob bytes.
+        actual: i64,
+    },
+
     /// Sigstore verification failed because the artifact signature did not match.
     #[error("guard Sigstore verification failed: artifact signature mismatch")]
     VerifySignatureMismatch,

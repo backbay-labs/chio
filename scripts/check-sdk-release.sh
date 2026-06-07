@@ -230,6 +230,10 @@ EOF
     wheel_venv="${work_dir}/wheel-smoke"
     sdist_venv="${work_dir}/sdist-smoke"
     dist_dir="${work_dir}/dist"
+    generated_builder_venv="${work_dir}/generated-builder"
+    generated_wheel_venv="${work_dir}/generated-wheel-smoke"
+    generated_sdist_venv="${work_dir}/generated-sdist-smoke"
+    generated_dist_dir="${work_dir}/generated-dist"
 
     cd "${repo_root}"
 
@@ -325,6 +329,113 @@ assert chio.ChioSession is not None
 assert chio.ReceiptQueryClient is not None
 print(f"sdist smoke verified chio-sdk {chio.__version__}")
 PY
+    deactivate
+
+    rm -rf sdks/python/chio-sdk-python/build sdks/python/chio-sdk-python/dist
+    find sdks/python/chio-sdk-python/src -type d -name '__pycache__' -prune -exec rm -rf {} +
+
+    python3 - <<'PY'
+from pathlib import Path
+import tomllib
+
+pyproject = tomllib.loads(Path("sdks/python/chio-sdk-python/pyproject.toml").read_text())
+declared_name = pyproject["project"]["name"]
+declared_version = pyproject["project"]["version"]
+
+if declared_name != "chio-sdk-python":
+    raise SystemExit(f"expected distribution name chio-sdk-python, found {declared_name}")
+if not declared_version:
+    raise SystemExit("chio-sdk-python version must not be empty")
+print(f"chio-sdk-python metadata version {declared_version} verified")
+PY
+
+    python3 -m venv "${generated_builder_venv}"
+    . "${generated_builder_venv}/bin/activate"
+    python -m pip install --quiet --upgrade pip build twine
+    python -m build sdks/python/chio-sdk-python --sdist --wheel --outdir "${generated_dist_dir}"
+    python -m twine check "${generated_dist_dir}"/*
+    python - "${generated_dist_dir}" <<'PY'
+from pathlib import Path
+import sys
+import tarfile
+import zipfile
+
+dist_dir = Path(sys.argv[1])
+wheel = next(dist_dir.glob("chio_sdk_python-*.whl"))
+sdist = next(dist_dir.glob("chio_sdk_python-*.tar.gz"))
+
+with zipfile.ZipFile(wheel) as archive:
+    names = archive.namelist()
+    if not any(name.endswith("chio_sdk/py.typed") for name in names):
+        raise SystemExit("wheel is missing chio_sdk/py.typed")
+    if not any(name.endswith("chio_sdk/_generated/receipt/record_schema.py") for name in names):
+        raise SystemExit("wheel is missing generated receipt schema")
+    if any("__pycache__/" in name or name.endswith((".pyc", ".pyo")) for name in names):
+        raise SystemExit("wheel contains forbidden Python cache artifacts")
+
+with tarfile.open(sdist, "r:gz") as archive:
+    names = archive.getnames()
+    if not any(name.endswith("src/chio_sdk/py.typed") for name in names):
+        raise SystemExit("sdist is missing src/chio_sdk/py.typed")
+    if not any(name.endswith("src/chio_sdk/_generated/receipt/record_schema.py") for name in names):
+        raise SystemExit("sdist is missing generated receipt schema")
+    if any("__pycache__/" in name or name.endswith((".pyc", ".pyo")) for name in names):
+        raise SystemExit("sdist contains forbidden Python cache artifacts")
+
+print(f"validated generated SDK wheel {wheel.name} and sdist {sdist.name}")
+PY
+    deactivate
+
+    python3 -m venv "${generated_wheel_venv}"
+    . "${generated_wheel_venv}/bin/activate"
+    python -m pip install --quiet --upgrade pip
+    python -m pip install --quiet "${generated_dist_dir}"/chio_sdk_python-*.whl
+    python - <<'PY'
+import importlib.metadata
+import chio_sdk
+from chio_sdk import ChioReceipt, Decision, ToolCallAction
+
+assert importlib.metadata.version("chio-sdk-python")
+assert chio_sdk.ChioClient is not None
+receipt = ChioReceipt(
+    id="5" * 64,
+    timestamp=1700000000,
+    capability_id="cap-1",
+    tool_server="srv",
+    tool_name="read_file",
+    action=ToolCallAction(parameters={}, parameter_hash="a" * 64),
+    decision=Decision.allow(),
+    receipt_kind="mediated_decision",
+    boundary_class="prevent",
+    tool_origin="caller_executed",
+    redaction_mode="none",
+    trust_level="mediated",
+    content_hash="d" * 64,
+    policy_hash="cafebabe",
+    kernel_key="b" * 64,
+    signature="c" * 128,
+)
+dumped = receipt.model_dump(by_alias=True, exclude_none=True)
+assert "bbs_projection_version" not in dumped
+print("wheel smoke verified chio-sdk-python")
+PY
+    deactivate
+
+    python3 -m venv "${generated_sdist_venv}"
+    . "${generated_sdist_venv}/bin/activate"
+    python -m pip install --quiet --upgrade pip
+    python -m pip install --quiet "${generated_dist_dir}"/chio_sdk_python-*.tar.gz
+    python - <<'PY'
+import importlib.metadata
+import chio_sdk
+from chio_sdk import ChioReceipt
+
+assert importlib.metadata.version("chio-sdk-python")
+assert chio_sdk.ChioClient is not None
+assert ChioReceipt is not None
+print("sdist smoke verified chio-sdk-python")
+PY
+    deactivate
     ;;
 
   ts)

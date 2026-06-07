@@ -116,7 +116,9 @@ impl PeersLock {
     /// - every `url` MUST be https,
     /// - every `sha256` MUST be 64 chars of lowercase hex,
     /// - every `language` MUST appear in `SUPPORTED_LANGUAGES`,
-    /// - `target` and `binary` MUST be non-empty.
+    /// - `target` MUST be non-empty,
+    /// - `binary` MUST be a non-empty relative path made only of normal
+    ///   path components.
     pub fn validate(&self) -> Result<(), PeersLockError> {
         if self.schema != PEERS_LOCK_SCHEMA {
             return Err(PeersLockError::Validation(format!(
@@ -195,8 +197,22 @@ impl PeerEntry {
         if self.binary.trim().is_empty() {
             return Err("binary must be non-empty".to_string());
         }
+        if !is_safe_relative_binary_path(&self.binary) {
+            return Err(format!(
+                "binary `{}` must be a relative path inside the archive",
+                self.binary
+            ));
+        }
         Ok(())
     }
+}
+
+fn is_safe_relative_binary_path(value: &str) -> bool {
+    let path = Path::new(value);
+    !path.is_absolute()
+        && path
+            .components()
+            .all(|component| matches!(component, std::path::Component::Normal(_)))
 }
 
 fn is_lowercase_hex_64(value: &str) -> bool {
@@ -355,6 +371,19 @@ binary = "chio-js-peer"
         let lock = PeersLock::parse_str(&bad).expect("still parses");
         let err = lock.validate().expect_err("ruby rejected");
         assert!(format!("{err}").contains("unsupported language"));
+    }
+
+    #[test]
+    fn rejects_unsafe_binary_paths() {
+        for binary in ["../chio-py-peer", "/tmp/chio-py-peer"] {
+            let bad = VALID.replace(
+                r#"binary = "chio-py-peer""#,
+                &format!(r#"binary = "{binary}""#),
+            );
+            let lock = PeersLock::parse_str(&bad).expect("still parses");
+            let err = lock.validate().expect_err("unsafe binary path rejected");
+            assert!(format!("{err}").contains("relative path inside the archive"));
+        }
     }
 
     #[test]

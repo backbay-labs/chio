@@ -1295,6 +1295,7 @@ fn build_python_file_header(schema_digest: &str) -> String {
 
 fn harden_python_generated_models(root_dir: &Path) -> Result<(), XtaskError> {
     harden_python_jsonrpc_response(&root_dir.join("jsonrpc").join("response_schema.py"))?;
+    harden_python_receipt_record(&root_dir.join("receipt").join("record_schema.py"))?;
     harden_python_provenance_verdict_link(
         &root_dir.join("provenance").join("verdict_link_schema.py"),
     )?;
@@ -1302,6 +1303,32 @@ fn harden_python_generated_models(root_dir: &Path) -> Result<(), XtaskError> {
         &root_dir.join("capability").join("capabilities_schema.py"),
     )?;
     Ok(())
+}
+
+/// Enforce receipt schema constraints that datamodel-code-generator does not
+/// currently express for dependent BBS fields.
+fn harden_python_receipt_record(path: &Path) -> Result<(), XtaskError> {
+    let mut body =
+        fs::read_to_string(path).map_err(|err| XtaskError::Io(display_path(path), err))?;
+    replace_python_codegen_snippet(
+        path,
+        &mut body,
+        "from pydantic import BaseModel, ConfigDict, Field, RootModel, conint, constr",
+        "from pydantic import BaseModel, ConfigDict, Field, RootModel, conint, constr, model_validator",
+    )?;
+    replace_python_codegen_snippet(
+        path,
+        &mut body,
+        "    bbs_projection_version: Literal[\"chio.bbs-projection.receipt.v1\"] = Field(\n        \"chio.bbs-projection.receipt.v1\",\n        description=\"Receipt-body BBS projection version bound into the receipt id when bbs_signature is present.\",\n    )\n",
+        "    bbs_projection_version: Literal[\"chio.bbs-projection.receipt.v1\"] | None = Field(\n        None,\n        description=\"Receipt-body BBS projection version bound into the receipt id when bbs_signature is present.\",\n    )\n",
+    )?;
+    replace_python_codegen_snippet(
+        path,
+        &mut body,
+        "    bbs_signature: BbsReceiptSignature | None = Field(\n        None,\n        description=\"Optional BBS signature material for selective disclosure. When present, the Ed25519 receipt signature covers this material through ChioReceiptSigningBody.\",\n    )\n    algorithm: Algorithm | None = Field(\n",
+        "    bbs_signature: BbsReceiptSignature | None = Field(\n        None,\n        description=\"Optional BBS signature material for selective disclosure. When present, the Ed25519 receipt signature covers this material through ChioReceiptSigningBody.\",\n    )\n\n    @model_validator(mode=\"after\")\n    def _validate_bbs_pairing(self) -> \"ChioReceiptRecord\":\n        has_projection = self.bbs_projection_version is not None\n        has_signature = self.bbs_signature is not None\n        if has_projection != has_signature:\n            raise ValueError(\n                \"bbs_projection_version and bbs_signature must be present together\"\n            )\n        return self\n\n    algorithm: Algorithm | None = Field(\n",
+    )?;
+    fs::write(path, body).map_err(|err| XtaskError::Io(display_path(path), err))
 }
 
 /// Inject a `model_validator` on `ChioCapabilityNegotiationV1` that

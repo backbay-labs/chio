@@ -247,7 +247,11 @@ pub(crate) fn parse_underwriting_decision_outcome(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(
+    clippy::expect_used,
+    clippy::items_after_test_module,
+    clippy::unwrap_used
+)]
 mod trust_command_error_classification_tests {
     use super::*;
 

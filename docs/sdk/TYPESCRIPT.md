@@ -13,8 +13,8 @@ npm install @chio-protocol/express    # Express.js
 npm install @chio-protocol/fastify    # Fastify
 npm install @chio-protocol/elysia     # Elysia (Bun)
 
-# Testing and conformance utilities
-npm install @chio-protocol/conformance --save-dev
+# Test utilities ship with each public package. The internal
+# @chio-protocol/conformance workspace is not published to npm.
 ```
 
 ## Runtime and Module Format

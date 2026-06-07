@@ -9,10 +9,10 @@ const (
 )
 
 type CapabilityVerification struct {
-	DelegationChainValid bool                 `json:"delegation_chain_valid"`
-	SignatureValid       bool                 `json:"signature_valid"`
-	TimeStatus           CapabilityTimeStatus `json:"time_status"`
-	TimeValid            bool                 `json:"time_valid"`
+	DelegationChainShapeValid bool                 `json:"delegation_chain_shape_valid"`
+	SignatureValid            bool                 `json:"signature_valid"`
+	TimeStatus                CapabilityTimeStatus `json:"time_status"`
+	TimeValid                 bool                 `json:"time_valid"`
 }
 
 func ParseCapabilityJSON(input string) (map[string]any, error) {
@@ -127,10 +127,10 @@ func VerifyCapability(capability map[string]any, now int64) (CapabilityVerificat
 	}
 
 	return CapabilityVerification{
-		DelegationChainValid: delegationChainValid,
-		SignatureValid:       signatureValid,
-		TimeStatus:           timeStatus,
-		TimeValid:            timeStatus == CapabilityTimeStatusValid,
+		DelegationChainShapeValid: delegationChainValid,
+		SignatureValid:            signatureValid,
+		TimeStatus:                timeStatus,
+		TimeValid:                 timeStatus == CapabilityTimeStatusValid,
 	}, nil
 }
 

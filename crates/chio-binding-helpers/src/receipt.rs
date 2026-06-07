@@ -255,8 +255,10 @@ mod tests {
     #[test]
     fn invalid_trusted_signer_hex_fails_closed() -> crate::Result<()> {
         let receipt = sample_receipt()?;
-        let error =
-            verify_receipt_with_trusted_signer_hex(&receipt, &["not-a-public-key"]).unwrap_err();
+        let error = match verify_receipt_with_trusted_signer_hex(&receipt, &["not-a-public-key"]) {
+            Ok(_) => panic!("invalid trusted signer hex must fail closed"),
+            Err(error) => error,
+        };
 
         assert_eq!(error.code(), crate::ErrorCode::InvalidHex);
         Ok(())
