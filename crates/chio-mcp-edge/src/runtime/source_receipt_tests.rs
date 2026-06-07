@@ -95,7 +95,7 @@ fn mcp_target_executor_carries_source_receipt_context_into_kernel_receipt_metada
     };
     let capability_envelope = CrossProtocolCapabilityEnvelope {
         schema: "test.capability-envelope".to_string(),
-        capability,
+        capability_ref: capability_ref.clone(),
         target_protocol: DiscoveryProtocol::Mcp,
         attenuated_scope: execution.capability.scope.clone(),
         bridged_at: 1,

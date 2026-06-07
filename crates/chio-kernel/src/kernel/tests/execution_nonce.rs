@@ -339,6 +339,14 @@ fn strict_nonce_mode_preflights_nonce_then_executes_once() {
         &preflight.terminal_state,
         OperationTerminalState::Incomplete { .. }
     ));
+    assert!(
+        matches!(
+            preflight.receipt.decision.as_ref(),
+            Some(Decision::Incomplete { reason })
+                if reason.contains("execution nonce preflight")
+        ),
+        "nonce preflight receipt must not claim executed Allow"
+    );
     assert_eq!(invocations.load(Ordering::SeqCst), 0);
     let nonce = *preflight
         .execution_nonce

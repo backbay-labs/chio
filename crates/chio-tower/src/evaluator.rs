@@ -154,6 +154,7 @@ impl ChioEvaluator {
                 requested_tool_server: None,
                 requested_tool_name: None,
                 requested_arguments: None,
+                execution_nonce: None,
                 model_metadata: None,
                 policy: policy_mode(http_method),
             })

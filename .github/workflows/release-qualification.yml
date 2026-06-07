@@ -148,6 +148,7 @@ jobs:
       - name: Install portable qualification dependencies
         run: |
           cargo install wasm-pack --version "$(cat .tooling/wasm-pack.version)" --locked
+          cargo install wasm-bindgen-cli --version "$(cat .tooling/wasm-bindgen.version)" --locked
           cargo install cargo-ndk --version "$(cat .tooling/cargo-ndk.version)" --locked
           rustup target add aarch64-linux-android
           sudo apt-get update

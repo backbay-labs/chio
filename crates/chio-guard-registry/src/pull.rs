@@ -156,3 +156,111 @@ fn ensure_manifest_digest_matches(reference: &GuardOciRef, actual: &str) -> Resu
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use super::*;
+    use crate::{AttestError, GuardCache, VerifiedAttestation};
+
+    #[test]
+    fn sigstore_policy_denies_when_no_bundle_was_found() {
+        let reference = reference();
+        let cache = GuardCache::new("unused-cache-root");
+        let credentials = RegistryCredentials::Anonymous;
+        let verifier = CountingVerifier {
+            bundle_calls: AtomicUsize::new(0),
+        };
+        let expected = ExpectedIdentity::doc_hidden_inline(
+            "https://github\\.com/backbay-labs/chio/\\.github/workflows/release-binaries\\.yml@refs/tags/v.*",
+            "https://token.actions.githubusercontent.com",
+        );
+        let request = GuardPullRequest {
+            reference: &reference,
+            credentials: &credentials,
+            cache: &cache,
+            sigstore_bundle_json: None,
+            sigstore_verifier: Some(&verifier),
+            sigstore_expected_identity: Some(&expected),
+        };
+
+        let err = match verify_sigstore_bundle_before_cache(&request, b"module", None) {
+            Ok(_) => panic!("Sigstore policy without any bundle source must deny"),
+            Err(error) => error,
+        };
+
+        assert!(matches!(err, GuardRegistryError::SigstoreBundleNotFound));
+        assert_eq!(verifier.bundle_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn pull_without_sigstore_policy_does_not_claim_verification() {
+        let reference = reference();
+        let cache = GuardCache::new("unused-cache-root");
+        let credentials = RegistryCredentials::Anonymous;
+        let request = GuardPullRequest {
+            reference: &reference,
+            credentials: &credentials,
+            cache: &cache,
+            sigstore_bundle_json: None,
+            sigstore_verifier: None,
+            sigstore_expected_identity: None,
+        };
+
+        let verified = match verify_sigstore_bundle_before_cache(&request, b"module", None) {
+            Ok(verified) => verified,
+            Err(error) => panic!("policy-free pull should not require Sigstore bundle: {error}"),
+        };
+
+        assert!(!verified);
+    }
+
+    struct CountingVerifier {
+        bundle_calls: AtomicUsize,
+    }
+
+    impl AttestVerifier for CountingVerifier {
+        fn verify_blob(
+            &self,
+            _artifact: &Path,
+            _signature: &Path,
+            _certificate: &Path,
+            _expected: &ExpectedIdentity,
+        ) -> std::result::Result<VerifiedAttestation, AttestError> {
+            Err(AttestError::Malformed("verify_blob unused".to_owned()))
+        }
+
+        fn verify_bytes(
+            &self,
+            _artifact: &[u8],
+            _signature: &[u8],
+            _certificate_pem: &[u8],
+            _expected: &ExpectedIdentity,
+        ) -> std::result::Result<VerifiedAttestation, AttestError> {
+            Err(AttestError::Malformed("verify_bytes unused".to_owned()))
+        }
+
+        fn verify_bundle(
+            &self,
+            _artifact: &[u8],
+            _bundle_json: &[u8],
+            _expected: &ExpectedIdentity,
+        ) -> std::result::Result<VerifiedAttestation, AttestError> {
+            self.bundle_calls.fetch_add(1, Ordering::SeqCst);
+            Err(AttestError::Malformed(
+                "verify_bundle should not run".to_owned(),
+            ))
+        }
+    }
+
+    fn reference() -> GuardOciRef {
+        match "oci://ghcr.io/chio/guard@sha256:1111111111111111111111111111111111111111111111111111111111111111"
+            .parse()
+        {
+            Ok(reference) => reference,
+            Err(error) => panic!("fixture reference should parse: {error}"),
+        }
+    }
+}

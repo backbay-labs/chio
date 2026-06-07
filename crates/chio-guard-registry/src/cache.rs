@@ -105,6 +105,30 @@ impl GuardCache {
     }
 }
 
+/// Re-read a cache entry and validate that every cached artifact file still
+/// matches the pinned OCI manifest digest and descriptor metadata.
+pub fn validate_cached_artifact_layout(
+    digest: &Sha256Digest,
+    layout: &GuardCacheLayout,
+) -> Result<()> {
+    let manifest_json = read_cache_file(&layout.manifest_json_path())?;
+    let config_json = read_cache_file(&layout.config_json_path())?;
+    let wit = read_cache_file(&layout.wit_bin_path())?;
+    let module = read_cache_file(&layout.module_wasm_path())?;
+    let guard_manifest_json = read_cache_file(&layout.guard_manifest_json_path())?;
+    validate_cache_admission(
+        digest,
+        &GuardCacheArtifact {
+            manifest_json: &manifest_json,
+            config_json: &config_json,
+            wit: &wit,
+            module: &module,
+            guard_manifest_json: &guard_manifest_json,
+            sigstore_bundle_json: None,
+        },
+    )
+}
+
 /// File layout for one content-addressed guard artifact.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GuardCacheLayout {
@@ -321,6 +345,14 @@ fn validate_descriptor(
 fn write_cache_file(path: &Path, bytes: &[u8]) -> Result<()> {
     fs::write(path, bytes).map_err(|source| GuardRegistryError::CacheIo {
         operation: "write",
+        path: path.to_path_buf(),
+        source,
+    })
+}
+
+fn read_cache_file(path: &Path) -> Result<Vec<u8>> {
+    fs::read(path).map_err(|source| GuardRegistryError::CacheIo {
+        operation: "read",
         path: path.to_path_buf(),
         source,
     })

@@ -1206,6 +1206,8 @@ pub struct ToolCallOperation {
     pub tool_name: String,
     pub arguments: serde_json::Value,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_nonce: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model_metadata: Option<ModelMetadata>,
 }
 

@@ -140,6 +140,7 @@ fn kernel_persists_child_receipts_to_sqlite_store() {
         server_id: "nested".to_string(),
         tool_name: "sample_via_client".to_string(),
         arguments: serde_json::json!({}),
+        execution_nonce: None,
         model_metadata: None,
     };
 
@@ -199,6 +200,7 @@ fn session_tool_call_records_incomplete_terminal_state() {
         server_id: "broken".to_string(),
         tool_name: "drop_stream".to_string(),
         arguments: serde_json::json!({}),
+        execution_nonce: None,
         model_metadata: None,
     });
 

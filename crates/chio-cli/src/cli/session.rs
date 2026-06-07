@@ -236,6 +236,7 @@ pub(crate) fn normalize_agent_message(
                 server_id: server_id.clone(),
                 tool_name: tool.clone(),
                 arguments: params.clone(),
+                execution_nonce: None,
                 model_metadata: None,
             }),
         ),

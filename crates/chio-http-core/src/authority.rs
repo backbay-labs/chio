@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use chio_core_types::capability::{
     scope::{ChioScope, ModelMetadata, Operation, ToolGrant},
-    token::CapabilityToken,
+    token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core_types::crypto::{Keypair, PublicKey};
 use chio_core_types::receipt::metadata::GuardEvidence;
@@ -11,8 +11,8 @@ use chio_cross_protocol::discovery::{DiscoveryProtocol, TargetProtocolRegistry};
 use chio_cross_protocol::routing::{plan_authoritative_route, route_selection_metadata};
 use chio_kernel::{
     ApprovalStore, ChioKernel, Guard, GuardContext, GuardDecision, InMemoryApprovalStore,
-    KernelConfig, KernelError, ToolCallRequest, ToolServerConnection, Verdict as KernelVerdict,
-    DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_MAX_STREAM_DURATION_SECS,
+    KernelConfig, KernelError, SignedExecutionNonce, ToolCallRequest, ToolServerConnection,
+    Verdict as KernelVerdict, DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_MAX_STREAM_DURATION_SECS,
     DEFAULT_MAX_STREAM_TOTAL_BYTES,
 };
 use serde::{Deserialize, Serialize};
@@ -90,6 +90,7 @@ pub struct HttpAuthorityInput<'a> {
     pub requested_tool_name: Option<&'a str>,
     pub requested_arguments: Option<&'a Value>,
     pub model_metadata: Option<&'a ModelMetadata>,
+    pub execution_nonce: Option<&'a SignedExecutionNonce>,
     pub policy: HttpAuthorityPolicy,
 }
 
@@ -118,6 +119,7 @@ pub struct PreparedHttpEvaluation {
     pub capability_id: Option<String>,
     pub kernel_receipt_id: String,
     pub route_selection_metadata: Option<Value>,
+    pub execution_nonce: Option<SignedExecutionNonce>,
 }
 
 #[derive(Debug, Clone)]
@@ -125,6 +127,7 @@ pub struct HttpAuthorityEvaluation {
     pub verdict: Verdict,
     pub receipt: HttpReceipt,
     pub evidence: Vec<GuardEvidence>,
+    pub execution_nonce: Option<SignedExecutionNonce>,
 }
 
 #[derive(Debug, Error)]
@@ -323,6 +326,7 @@ impl HttpAuthority {
                     verdict: prepared.verdict.clone(),
                     receipt,
                     evidence: prepared.evidence.clone(),
+                    execution_nonce: prepared.execution_nonce.clone(),
                 })
             }
             Err(error) => {
@@ -395,6 +399,7 @@ impl HttpAuthority {
             input.session_id.as_deref(),
             binding.policy,
             &presented_capability,
+            input.execution_nonce,
         )?;
 
         let verdict = projected_verdict(binding.policy, &presented_capability);
@@ -423,9 +428,28 @@ impl HttpAuthority {
             }
         }
         if is_execution_nonce_preflight(&kernel_response) {
-            return Err(HttpAuthorityError::Kernel(
-                "kernel returned an execution nonce preflight; HTTP authority cannot authorize upstream side effects without a presented execution nonce".to_string(),
-            ));
+            let evidence = projected_evidence(binding.policy, &presented_capability);
+            return Ok(PreparedHttpEvaluation {
+                verdict: Verdict::Incomplete {
+                    reason: "execution nonce preflight requires retry with presented nonce"
+                        .to_string(),
+                },
+                evidence,
+                request_id: input.request_id,
+                route_pattern: input.route_pattern,
+                http_method: input.method,
+                caller_identity_hash,
+                content_hash,
+                session_id: input.session_id,
+                capability_id: presented_capability.capability_id,
+                kernel_receipt_id: kernel_response.receipt.id,
+                route_selection_metadata: metadata_value(
+                    kernel_response.receipt.metadata.as_ref(),
+                    "route_selection",
+                )
+                .cloned(),
+                execution_nonce: kernel_response.execution_nonce.as_deref().cloned(),
+            });
         }
 
         let evidence = projected_evidence(binding.policy, &presented_capability);
@@ -446,6 +470,7 @@ impl HttpAuthority {
                 "route_selection",
             )
             .cloned(),
+            execution_nonce: kernel_response.execution_nonce.as_deref().cloned(),
         })
     }
 
@@ -559,18 +584,21 @@ impl HttpAuthority {
         session_id: Option<&str>,
         policy: HttpAuthorityPolicy,
         presented_capability: &PresentedCapabilityState,
+        execution_nonce: Option<&SignedExecutionNonce>,
     ) -> Result<chio_kernel::ToolCallResponse, HttpAuthorityError> {
-        let capability = self
-            .kernel
-            .issue_capability(
-                &self.kernel_subject,
-                kernel_scope(),
-                HTTP_AUTHORITY_TTL_SECS,
-            )
-            .map_err(|error| HttpAuthorityError::Kernel(error.to_string()))?;
+        let capability = match execution_nonce {
+            Some(nonce) => self.kernel_capability_for_nonce_retry(nonce)?,
+            None => self
+                .kernel
+                .issue_capability(
+                    &self.kernel_subject,
+                    kernel_scope(),
+                    HTTP_AUTHORITY_TTL_SECS,
+                )
+                .map_err(|error| HttpAuthorityError::Kernel(error.to_string()))?,
+        };
 
         let projected = HttpKernelAuthorizationRequest {
-            request_id: request_id.to_string(),
             method,
             route_pattern: route_pattern.to_string(),
             path: path.to_string(),
@@ -593,7 +621,7 @@ impl HttpAuthority {
             arguments: serde_json::to_value(projected)
                 .map_err(|error| HttpAuthorityError::Kernel(error.to_string()))?,
             dpop_proof: None,
-            execution_nonce: None,
+            execution_nonce: execution_nonce.cloned(),
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
@@ -613,6 +641,26 @@ impl HttpAuthority {
 
         self.kernel
             .evaluate_tool_call_blocking_with_metadata(&request, Some(route_metadata))
+            .map_err(|error| HttpAuthorityError::Kernel(error.to_string()))
+    }
+
+    fn kernel_capability_for_nonce_retry(
+        &self,
+        nonce: &SignedExecutionNonce,
+    ) -> Result<CapabilityToken, HttpAuthorityError> {
+        let now = chrono::Utc::now().timestamp();
+        let issued_at = u64::try_from(now.max(0))
+            .map_err(|error| HttpAuthorityError::Kernel(error.to_string()))?;
+        let body = CapabilityTokenBody {
+            id: nonce.nonce.bound_to.capability_id.clone(),
+            issuer: self.keypair.public_key(),
+            subject: self.kernel_subject.clone(),
+            scope: kernel_scope(),
+            issued_at,
+            expires_at: issued_at.saturating_add(HTTP_AUTHORITY_TTL_SECS),
+            delegation_chain: vec![],
+        };
+        CapabilityToken::sign(body, self.keypair.as_ref())
             .map_err(|error| HttpAuthorityError::Kernel(error.to_string()))
     }
 
@@ -659,7 +707,7 @@ fn kernel_scope() -> ChioScope {
             tool_name: HTTP_AUTHORITY_TOOL_NAME.to_string(),
             operations: vec![Operation::Invoke],
             constraints: Vec::new(),
-            max_invocations: Some(1),
+            max_invocations: None,
             max_cost_per_invocation: None,
             max_total_cost: None,
             dpop_required: None,

@@ -8,6 +8,7 @@ pub(super) struct KernelResponseToToolResultArgs<'a> {
     pub reason: Option<String>,
     pub verdict: Verdict,
     pub terminal_state: &'a OperationTerminalState,
+    pub execution_nonce: Option<&'a SignedExecutionNonce>,
     pub peer_supports_chio_tool_streaming: bool,
     pub related_task_id: Option<&'a str>,
 }
@@ -119,6 +120,7 @@ pub(super) fn kernel_response_to_tool_result(args: KernelResponseToToolResultArg
         reason,
         verdict,
         terminal_state,
+        execution_nonce,
         peer_supports_chio_tool_streaming,
         related_task_id,
     } = args;
@@ -127,7 +129,7 @@ pub(super) fn kernel_response_to_tool_result(args: KernelResponseToToolResultArg
         .as_deref()
         .or_else(|| terminal_state_reason(terminal_state));
 
-    match output {
+    let result = match output {
         Some(ToolCallOutput::Value(value)) if !is_error => value_to_tool_result(value),
         Some(ToolCallOutput::Stream(stream)) => {
             if peer_supports_chio_tool_streaming {
@@ -153,7 +155,8 @@ pub(super) fn kernel_response_to_tool_result(args: KernelResponseToToolResultArg
         ),
         Some(ToolCallOutput::Value(value)) => value_to_tool_result(value),
         None => value_to_tool_result(Value::Null),
-    }
+    };
+    attach_execution_nonce_meta_to_result(result, execution_nonce)
 }
 
 pub(super) fn queue_tool_stream_chunk_notifications(
@@ -432,6 +435,28 @@ pub(super) fn attach_related_task_meta_to_result(
             .or_insert_with(|| json!({}));
         if let Some(meta) = meta.as_object_mut() {
             meta.insert(RELATED_TASK_META_KEY.to_string(), related_task_meta);
+        }
+    }
+    result
+}
+
+pub(super) fn attach_execution_nonce_meta_to_result(
+    mut result: Value,
+    execution_nonce: Option<&SignedExecutionNonce>,
+) -> Value {
+    let Some(execution_nonce) = execution_nonce else {
+        return result;
+    };
+    let Ok(nonce_value) = serde_json::to_value(execution_nonce) else {
+        return result;
+    };
+
+    if let Some(object) = result.as_object_mut() {
+        let meta = object
+            .entry("_meta".to_string())
+            .or_insert_with(|| Value::Object(serde_json::Map::new()));
+        if let Some(meta) = meta.as_object_mut() {
+            meta.insert("chioExecutionNonce".to_string(), nonce_value);
         }
     }
     result
@@ -815,6 +840,37 @@ pub(super) fn parse_request_model_metadata(
     Ok(Some(metadata.with_provenance_class(
         chio_core::capability::governance::ProvenanceEvidenceClass::Asserted,
     )))
+}
+
+pub(super) fn parse_request_execution_nonce(
+    id: &Value,
+    params: &Value,
+) -> Result<Option<Value>, Value> {
+    let Some(meta) = params.get("_meta") else {
+        return Ok(None);
+    };
+    let Some(meta) = meta.as_object() else {
+        return Err(jsonrpc_error(
+            id.clone(),
+            JSONRPC_INVALID_PARAMS,
+            "_meta must be an object",
+        ));
+    };
+    let Some(execution_nonce) = meta
+        .get("executionNonce")
+        .or_else(|| meta.get("chioExecutionNonce"))
+    else {
+        return Ok(None);
+    };
+
+    serde_json::from_value::<SignedExecutionNonce>(execution_nonce.clone()).map_err(|_| {
+        jsonrpc_error(
+            id.clone(),
+            JSONRPC_INVALID_PARAMS,
+            "executionNonce must be a signed Chio execution nonce object",
+        )
+    })?;
+    Ok(Some(execution_nonce.clone()))
 }
 
 pub(super) fn parse_progress_token(

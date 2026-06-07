@@ -269,6 +269,49 @@ fn attenuate_scope_for_tool_narrows_wildcard_parent_grants() {
     assert_eq!(child.grants[0].dpop_required, Some(true));
 }
 
+#[test]
+fn parent_capability_hash_commits_to_signed_token_not_id_only() {
+    let issuer = Keypair::generate();
+    let subject = Keypair::generate();
+    let first = capability_for_tool(&issuer, &subject, "test-srv", "echo");
+    let mut second = capability_for_tool(&issuer, &subject, "test-srv", "echo");
+    second.expires_at = second.expires_at.saturating_add(1);
+
+    assert_eq!(first.id, second.id);
+    assert_ne!(
+        parent_capability_hash(&first).unwrap(),
+        parent_capability_hash(&second).unwrap()
+    );
+}
+
+#[test]
+fn capability_envelope_serializes_without_parent_capability_token() {
+    let issuer = Keypair::generate();
+    let subject = Keypair::generate();
+    let capability = capability_for_tool(&issuer, &subject, "test-srv", "echo");
+    let capability_ref =
+        CrossProtocolCapabilityRef::from_capability(&capability, DiscoveryProtocol::A2a, None)
+            .unwrap();
+    let envelope = CrossProtocolCapabilityEnvelope {
+        schema: CROSS_PROTOCOL_CAPABILITY_ENVELOPE_SCHEMA.to_string(),
+        capability_ref,
+        target_protocol: DiscoveryProtocol::Native,
+        attenuated_scope: capability.scope.clone(),
+        bridged_at: 1,
+        bridge_id: "bridge-no-token".to_string(),
+    };
+
+    let serialized = serde_json::to_value(envelope).unwrap();
+    assert!(serialized.get("capability").is_none());
+    assert_eq!(
+        serialized["capabilityRef"]["chioCapabilityId"].as_str(),
+        Some("cap-test-srv-echo")
+    );
+    assert!(serialized["capabilityRef"]["parentCapabilityHash"]
+        .as_str()
+        .is_some_and(|value| !value.is_empty()));
+}
+
 fn semantic_tool(
     name: &str,
     latency_hint: Option<LatencyHint>,
@@ -621,6 +664,14 @@ fn orchestrator_executes_and_preserves_bridge_lineage() {
     assert_eq!(
         metadata["chio"]["routeSelection"]["selectedTargetProtocol"].as_str(),
         Some("native")
+    );
+    assert!(metadata["chio"]["bridge"]["capabilityEnvelope"]
+        .get("capability")
+        .is_none());
+    assert_eq!(
+        metadata["chio"]["bridge"]["capabilityEnvelope"]["capabilityRef"]["chioCapabilityId"]
+            .as_str(),
+        Some("cap-test-srv-echo")
     );
 }
 

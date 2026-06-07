@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 import subprocess
 import sys
@@ -29,83 +30,83 @@ class AllowlistEntry:
     max_lines: int | None = None
 
 
-def allow(phase: str, rationale: str, *, max_lines: int | None = None) -> AllowlistEntry:
-    return AllowlistEntry(rationale=rationale, expires=phase, max_lines=max_lines)
+def allow(expires: str, rationale: str, *, max_lines: int | None = None) -> AllowlistEntry:
+    return AllowlistEntry(rationale=rationale, expires=expires, max_lines=max_lines)
 
 
 ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/chio-cli/tests/mcp_serve_http.rs": allow(
-        "Phase 10 test decomposition",
+        "2026-07-31",
         "existing oversized CLI MCP HTTP integration suite; capped to current size until split",
         max_lines=6_316,
     ),
     "crates/chio-cli/tests/passport.rs": allow(
-        "Phase 10 test decomposition",
+        "2026-07-31",
         "existing oversized CLI passport integration suite; capped to current size until split",
         max_lines=5_390,
     ),
     "crates/chio-cli/tests/mcp_serve.rs": allow(
-        "Phase 10 test decomposition",
+        "2026-07-31",
         "existing oversized CLI MCP serve integration suite; capped to current size until split",
         max_lines=4_496,
     ),
     "crates/chio-mcp-edge/src/runtime/runtime_tests.rs": allow(
-        "Phase 10 test decomposition",
+        "2026-07-31",
         "existing oversized MCP edge runtime test suite; capped to current size until split",
         max_lines=4_349,
     ),
     "crates/chio-cli/tests/certify.rs": allow(
-        "Phase 10 test decomposition",
+        "2026-07-31",
         "existing oversized CLI certify integration suite; capped to current size until split",
         max_lines=3_639,
     ),
     "crates/chio-mercury/tests/cli.rs": allow(
-        "Phase 10 test decomposition",
+        "2026-07-31",
         "existing oversized Mercury CLI integration suite; capped to current size until split",
         max_lines=3_264,
     ),
     "crates/chio-cli/tests/trust_cluster.rs": allow(
-        "Phase 10 test decomposition",
+        "2026-07-31",
         "existing oversized CLI trust-cluster integration suite; capped to current size until split",
         max_lines=3_209,
     ),
     "crates/chio-api-protect/src/proxy/tests.rs": allow(
-        "Phase 10 test decomposition",
+        "2026-07-31",
         "existing oversized API protect proxy test suite; capped to current size until split",
         max_lines=2_971,
     ),
     "crates/chio-acp-edge/src/tests/all.rs": allow(
-        "Phase 10 test decomposition",
+        "2026-07-31",
         "existing oversized ACP edge aggregate test suite; capped to current size until split",
         max_lines=2_881,
     ),
     "crates/chio-a2a-edge/src/tests/all.rs": allow(
-        "Phase 10 test decomposition",
+        "2026-07-31",
         "existing oversized A2A edge aggregate test suite; capped to current size until split",
         max_lines=2_702,
     ),
     "crates/chio-cli/tests/federated_issue.rs": allow(
-        "Phase 10 test decomposition",
+        "2026-07-31",
         "existing oversized CLI federated issue integration suite; capped to current size until split",
         max_lines=2_295,
     ),
     "crates/chio-credentials/src/tests.rs": allow(
-        "Phase 10 test decomposition",
+        "2026-07-31",
         "existing oversized credentials test suite; capped to current size until split",
         max_lines=2_164,
     ),
     "crates/chio-core-types/src/capability/tests.rs": allow(
-        "Phase 10 test decomposition",
+        "2026-07-31",
         "existing oversized capability type test suite; capped to current size until split",
         max_lines=2_141,
     ),
     "crates/chio-runtime-core/tests/runtime_buyer_review.rs": allow(
-        "Phase 10 test decomposition",
+        "2026-07-31",
         "existing oversized runtime buyer review integration suite; capped to current size until split",
         max_lines=2_067,
     ),
     "crates/chio-mcp-remote/src/remote_mcp/tests.rs": allow(
-        "Phase 10 test decomposition",
+        "2026-07-31",
         "existing oversized remote MCP test suite; capped to current size until split",
         max_lines=2_008,
     ),
@@ -222,7 +223,17 @@ def validate_allowlist(errors: list[str]) -> None:
         if not entry.rationale.strip():
             errors.append(f"{path}: allowlist entry has an empty rationale")
         if not entry.expires.strip():
-            errors.append(f"{path}: allowlist entry has an empty expiry phase")
+            errors.append(f"{path}: allowlist entry has an empty expiry date")
+            continue
+        try:
+            expires_on = date.fromisoformat(entry.expires)
+        except ValueError:
+            errors.append(
+                f"{path}: allowlist entry expiry {entry.expires!r} is not an ISO date"
+            )
+            continue
+        if expires_on < date.today():
+            errors.append(f"{path}: allowlist entry expired on {entry.expires}")
         if entry.max_lines is not None and entry.max_lines <= 0:
             errors.append(f"{path}: allowlist entry has a non-positive max_lines cap")
 

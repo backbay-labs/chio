@@ -141,7 +141,6 @@ The primary live release documents. Auditors and operators start here.
 ## Operations and planning
 
 - [Roadmap](operations/ROADMAP.md) - historical execution roadmap, not the current v1 protocol posture
-- [Next 10 Remediation Implementation Plan](superpowers/plans/2026-06-05-chio-next-10-execution-plan.md) - master execution plan for the June 5, 2026 security, runtime, SDK, and release-gate remediation set
 - [Strategic Roadmap](operations/STRATEGIC_ROADMAP.md) - historical strategic narrative
 - [Execution Plan](operations/EXECUTION_PLAN.md) - historical execution sequencing notes
 - [Changelog](operations/CHANGELOG.md) - internal pre-release notes, not public protocol version history

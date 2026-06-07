@@ -239,6 +239,8 @@ fn sample_capital_instruction(
     not_after: u64,
     amount_units: u64,
 ) -> chio_core::credit::SignedCapitalExecutionInstruction {
+    let custodian = Keypair::from_seed(&[13u8; 32]);
+    let custodian_id = custodian.public_key().to_hex();
     SignedExportEnvelope::sign(
         CapitalExecutionInstructionArtifact {
             schema: chio_core::credit::CAPITAL_EXECUTION_INSTRUCTION_ARTIFACT_SCHEMA.to_string(),
@@ -261,20 +263,22 @@ fn sample_capital_instruction(
                 currency: "USD".to_string(),
             }),
             authority_chain: vec![
-                CapitalExecutionAuthorityStep {
-                    role: CapitalExecutionRole::OperatorTreasury,
-                    principal_id: "treasury-1".to_string(),
-                    approved_at: issued_at.saturating_sub(10),
-                    expires_at: not_after,
-                    note: Some("governed release".to_string()),
-                },
-                CapitalExecutionAuthorityStep {
-                    role: CapitalExecutionRole::Custodian,
-                    principal_id: "custodian-devnet".to_string(),
-                    approved_at: issued_at.saturating_sub(5),
-                    expires_at: not_after,
-                    note: Some("official web3 stack".to_string()),
-                },
+                CapitalExecutionAuthorityStep::signed(
+                    CapitalExecutionRole::OperatorTreasury,
+                    keypair,
+                    issued_at.saturating_sub(10),
+                    not_after,
+                    Some("governed release".to_string()),
+                )
+                .test_expect("treasury authority proof"),
+                CapitalExecutionAuthorityStep::signed(
+                    CapitalExecutionRole::Custodian,
+                    &custodian,
+                    issued_at.saturating_sub(5),
+                    not_after,
+                    Some("official web3 stack".to_string()),
+                )
+                .test_expect("custodian authority proof"),
             ],
             execution_window: CapitalExecutionWindow {
                 not_before: issued_at,
@@ -283,7 +287,7 @@ fn sample_capital_instruction(
             rail: CapitalExecutionRail {
                 kind: CapitalExecutionRailKind::Web3,
                 rail_id: "ganache-devnet-usdc".to_string(),
-                custody_provider_id: "custodian-devnet".to_string(),
+                custody_provider_id: custodian_id,
                 source_account_ref: Some("vault:facility-main".to_string()),
                 destination_account_ref: Some(beneficiary_address.to_string()),
                 jurisdiction: Some(chain_id.to_string()),

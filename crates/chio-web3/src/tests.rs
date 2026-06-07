@@ -49,6 +49,10 @@ fn treasury_keypair() -> Keypair {
     Keypair::from_seed(&[9u8; 32])
 }
 
+fn custodian_keypair() -> Keypair {
+    Keypair::from_seed(&[11u8; 32])
+}
+
 fn sample_binding() -> SignedWeb3IdentityBinding {
     let operator = operator_keypair();
     let certificate = Web3IdentityBindingCertificate {
@@ -257,6 +261,8 @@ fn sample_anchor_inclusion_proof() -> AnchorInclusionProof {
 
 fn sample_capital_instruction() -> SignedCapitalExecutionInstruction {
     let signer = treasury_keypair();
+    let custodian = custodian_keypair();
+    let custodian_id = custodian.public_key().to_hex();
     SignedCapitalExecutionInstruction::sign(
         crate::credit::CapitalExecutionInstructionArtifact {
             schema: CAPITAL_EXECUTION_INSTRUCTION_ARTIFACT_SCHEMA.to_string(),
@@ -280,20 +286,22 @@ fn sample_capital_instruction() -> SignedCapitalExecutionInstruction {
                 currency: "USD".to_string(),
             }),
             authority_chain: vec![
-                CapitalExecutionAuthorityStep {
-                    role: CapitalExecutionRole::OperatorTreasury,
-                    principal_id: "treasury-1".to_string(),
-                    approved_at: 1_743_292_790,
-                    expires_at: 1_743_293_800,
-                    note: Some("governed release".to_string()),
-                },
-                CapitalExecutionAuthorityStep {
-                    role: CapitalExecutionRole::Custodian,
-                    principal_id: "custodian-base-main".to_string(),
-                    approved_at: 1_743_292_795,
-                    expires_at: 1_743_293_800,
-                    note: Some("official web3 stack".to_string()),
-                },
+                CapitalExecutionAuthorityStep::signed(
+                    CapitalExecutionRole::OperatorTreasury,
+                    &signer,
+                    1_743_292_790,
+                    1_743_293_800,
+                    Some("governed release".to_string()),
+                )
+                .unwrap(),
+                CapitalExecutionAuthorityStep::signed(
+                    CapitalExecutionRole::Custodian,
+                    &custodian,
+                    1_743_292_795,
+                    1_743_293_800,
+                    Some("official web3 stack".to_string()),
+                )
+                .unwrap(),
             ],
             execution_window: CapitalExecutionWindow {
                 not_before: 1_743_292_800,
@@ -302,7 +310,7 @@ fn sample_capital_instruction() -> SignedCapitalExecutionInstruction {
             rail: CapitalExecutionRail {
                 kind: CapitalExecutionRailKind::Web3,
                 rail_id: "base-mainnet-usdc".to_string(),
-                custody_provider_id: "custodian-base-main".to_string(),
+                custody_provider_id: custodian_id,
                 source_account_ref: Some("vault:facility-main".to_string()),
                 destination_account_ref: Some(
                     "0x2222222222222222222222222222222222222222".to_string(),

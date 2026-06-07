@@ -40,7 +40,7 @@ impl CrossProtocolCapabilityRef {
 #[serde(rename_all = "camelCase")]
 pub struct CrossProtocolCapabilityEnvelope {
     pub schema: String,
-    pub capability: CapabilityToken,
+    pub capability_ref: CrossProtocolCapabilityRef,
     pub target_protocol: DiscoveryProtocol,
     pub attenuated_scope: ChioScope,
     pub bridged_at: u64,
@@ -89,12 +89,7 @@ pub trait CapabilityBridge: Send + Sync {
 }
 
 pub(crate) fn parent_capability_hash(capability: &CapabilityToken) -> Result<String, BridgeError> {
-    let lineage_anchor = capability
-        .delegation_chain
-        .last()
-        .map(|link| link.capability_id.as_bytes().to_vec())
-        .unwrap_or_else(|| capability.id.as_bytes().to_vec());
-    Ok(sha256_hex(&canonical_json_bytes(&lineage_anchor).map_err(
+    Ok(sha256_hex(&canonical_json_bytes(capability).map_err(
         |error| BridgeError::Canonical(error.to_string()),
     )?))
 }

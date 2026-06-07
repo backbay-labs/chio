@@ -224,7 +224,7 @@ impl<'a> CrossProtocolOrchestrator<'a> {
             )?;
             let capability_envelope = CrossProtocolCapabilityEnvelope {
                 schema: CROSS_PROTOCOL_CAPABILITY_ENVELOPE_SCHEMA.to_string(),
-                capability: request.capability.clone(),
+                capability_ref: capability_ref.clone(),
                 target_protocol: request.target_protocol,
                 attenuated_scope: attenuated_scope.clone(),
                 bridged_at,
@@ -256,7 +256,7 @@ impl<'a> CrossProtocolOrchestrator<'a> {
         selected_request.target_protocol = selected_target_protocol;
         let capability_envelope = CrossProtocolCapabilityEnvelope {
             schema: CROSS_PROTOCOL_CAPABILITY_ENVELOPE_SCHEMA.to_string(),
-            capability: selected_request.capability.clone(),
+            capability_ref: capability_ref.clone(),
             target_protocol: selected_request.target_protocol,
             attenuated_scope,
             bridged_at,

@@ -14,9 +14,8 @@ use chio_core::{
     SamplingToolChoice,
 };
 use chio_kernel::{
-    ExecutionNonceConfig, InMemoryExecutionNonceStore, KernelConfig, KernelError, PromptProvider,
-    ResourceProvider, ToolCallChunk, ToolCallStream, ToolServerConnection, ToolServerEvent,
-    ToolServerStreamResult,
+    KernelConfig, KernelError, PromptProvider, ResourceProvider, ToolCallChunk, ToolCallStream,
+    ToolServerConnection, ToolServerEvent, ToolServerStreamResult,
 };
 use std::io::Cursor;
 use std::sync::{Arc, Mutex};
@@ -521,54 +520,6 @@ fn make_kernel_error_bridge_fixture(
         peer_supports_chio_tool_streaming: false,
     };
     (kernel, request)
-}
-
-#[test]
-fn execute_bridge_mcp_tool_call_presents_execution_nonce_in_strict_mode() {
-    let (mut kernel, mut request) = make_kernel_error_bridge_fixture(
-        Box::new(EchoServer),
-        "srv",
-        "read_file",
-        "req-mcp-strict-nonce",
-    );
-    let cfg = ExecutionNonceConfig {
-        nonce_ttl_secs: 30,
-        nonce_store_capacity: 1024,
-        require_nonce: true,
-    };
-    kernel.set_execution_nonce_store(
-        cfg.clone(),
-        Box::new(InMemoryExecutionNonceStore::from_config(&cfg)),
-    );
-
-    let preflight = execute_bridge_mcp_tool_call(&kernel, request.clone()).unwrap();
-    assert_eq!(preflight.response.verdict, Verdict::Allow);
-    assert!(
-        preflight.response.output.is_none(),
-        "strict MCP preflight must not execute the target tool"
-    );
-    let nonce = *preflight
-        .response
-        .execution_nonce
-        .expect("strict MCP preflight must return an execution nonce");
-
-    request.execution_nonce = Some(nonce);
-    let allowed = execute_bridge_mcp_tool_call(&kernel, request.clone()).unwrap();
-    assert_eq!(allowed.response.verdict, Verdict::Allow);
-    assert!(allowed.response.output.is_some());
-    assert!(allowed.response.execution_nonce.is_none());
-
-    let replay = execute_bridge_mcp_tool_call(&kernel, request).unwrap();
-    assert_eq!(replay.response.verdict, Verdict::Deny);
-    assert!(
-        replay
-            .response
-            .reason
-            .as_deref()
-            .is_some_and(|reason| reason.contains("execution nonce")),
-        "expected replay denial, got {:?}",
-        replay.response.reason
-    );
 }
 
 fn make_streaming_kernel() -> (ChioKernel, Keypair) {

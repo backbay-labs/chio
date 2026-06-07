@@ -738,6 +738,16 @@ impl ChioKernel {
 
         let evaluation = match operation {
             SessionOperation::ToolCall(tool_call) => {
+                let execution_nonce = match tool_call.execution_nonce.as_ref() {
+                    Some(value) => {
+                        Some(serde_json::from_value(value.clone()).map_err(|error| {
+                            KernelError::InvalidConstraint(format!(
+                                "session tool call execution_nonce is malformed: {error}"
+                            ))
+                        })?)
+                    }
+                    None => None,
+                };
                 let request = ToolCallRequest {
                     request_id: context.request_id.to_string(),
                     capability: tool_call.capability.clone(),
@@ -746,7 +756,7 @@ impl ChioKernel {
                     agent_id: context.agent_id.clone(),
                     arguments: tool_call.arguments.clone(),
                     dpop_proof: None,
-                    execution_nonce: None,
+                    execution_nonce,
                     governed_intent: None,
                     approval_token: None,
                     model_metadata: tool_call.model_metadata.clone(),

@@ -865,6 +865,10 @@ fn sample_market_fixtures() -> MarketFixtures {
         },
         note: None,
     });
+    let facility_provider = crate::crypto::Keypair::generate();
+    let facility_provider_id = facility_provider.public_key().to_hex();
+    let custodian = crate::crypto::Keypair::generate();
+    let custodian_id = custodian.public_key().to_hex();
     let settlement_instruction = sign_export(LiabilityClaimSettlementInstructionArtifact {
         schema: LIABILITY_CLAIM_SETTLEMENT_INSTRUCTION_ARTIFACT_SCHEMA.to_string(),
         settlement_instruction_id: "csi-1".to_string(),
@@ -876,7 +880,7 @@ fn sample_market_fixtures() -> MarketFixtures {
         topology: LiabilityClaimSettlementRoleTopology {
             payer: LiabilityClaimSettlementRoleBinding {
                 role: crate::credit::CapitalExecutionRole::FacilityProvider,
-                party_id: "facility-provider-1".to_string(),
+                party_id: facility_provider_id.clone(),
                 jurisdiction: Some("us-ny".to_string()),
                 note: None,
             },
@@ -889,20 +893,26 @@ fn sample_market_fixtures() -> MarketFixtures {
             beneficiary: None,
         },
         authority_chain: vec![
-            crate::credit::CapitalExecutionAuthorityStep {
-                role: crate::credit::CapitalExecutionRole::FacilityProvider,
-                principal_id: "facility-provider-1".to_string(),
-                approved_at: 1_700_011_050,
-                expires_at: 1_700_011_600,
-                note: None,
-            },
-            crate::credit::CapitalExecutionAuthorityStep {
-                role: crate::credit::CapitalExecutionRole::Custodian,
-                principal_id: "custody-1".to_string(),
-                approved_at: 1_700_011_050,
-                expires_at: 1_700_011_600,
-                note: None,
-            },
+            require_ok(
+                crate::credit::CapitalExecutionAuthorityStep::signed(
+                    crate::credit::CapitalExecutionRole::FacilityProvider,
+                    &facility_provider,
+                    1_700_011_050,
+                    1_700_011_600,
+                    None,
+                ),
+                "facility-provider authority proof",
+            ),
+            require_ok(
+                crate::credit::CapitalExecutionAuthorityStep::signed(
+                    crate::credit::CapitalExecutionRole::Custodian,
+                    &custodian,
+                    1_700_011_050,
+                    1_700_011_600,
+                    None,
+                ),
+                "custodian authority proof",
+            ),
         ],
         execution_window: crate::credit::CapitalExecutionWindow {
             not_before: 1_700_011_100,
@@ -911,7 +921,7 @@ fn sample_market_fixtures() -> MarketFixtures {
         rail: crate::credit::CapitalExecutionRail {
             kind: crate::credit::CapitalExecutionRailKind::Ach,
             rail_id: "ach-1".to_string(),
-            custody_provider_id: "custody-1".to_string(),
+            custody_provider_id: custodian_id,
             source_account_ref: None,
             destination_account_ref: None,
             jurisdiction: Some("us-ny".to_string()),
@@ -1397,6 +1407,16 @@ fn liability_claim_settlement_instruction_rejects_missing_custodian_approval() {
 
     let error = require_err(instruction.validate(), "custodian approval required");
     assert!(error.contains("missing the custody-provider execution step"));
+}
+
+#[test]
+fn liability_claim_settlement_instruction_rejects_self_asserted_authority_role() {
+    let fixtures = sample_market_fixtures();
+    let mut instruction = fixtures.settlement_instruction.body.clone();
+    instruction.authority_chain[0].principal_id = "facility-provider-self-asserted".to_string();
+
+    let error = require_err(instruction.validate(), "self-asserted settlement authority");
+    assert!(error.contains("authority proof signer must match principalId"));
 }
 
 #[test]

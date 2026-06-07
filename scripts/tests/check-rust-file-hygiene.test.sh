@@ -79,6 +79,13 @@ run_checker() {
   echo "$rc"
 }
 
+run_checker_script() {
+  local checker="$1" root="$2" stdout="$3" stderr="$4"
+  local rc=0
+  python3 "$checker" --root "$root" >"$stdout" 2>"$stderr" || rc=$?
+  echo "$rc"
+}
+
 assert_rc() {
   local got="$1" want="$2" label="$3"
   if [[ "$got" != "$want" ]]; then
@@ -168,13 +175,24 @@ assert_rc "$(run_checker "$large_lib" "$work/large-lib.out" "$work/large-lib.err
 grep -F "crates/chio-small/src/lib.rs: src/lib.rs has 1001 lines" \
   "$work/large-lib.err" >/dev/null
 
+unallowlisted_production="$work/unallowlisted-production"
+init_case "$unallowlisted_production"
+write_lines "$unallowlisted_production/crates/chio-governance/src/lib.rs" 2101
+track_case "$unallowlisted_production"
+assert_rc "$(run_checker "$unallowlisted_production" "$work/unallowlisted-production.out" "$work/unallowlisted-production.err")" 1 \
+  "unallowlisted oversized production file fails"
+grep -F "crates/chio-governance/src/lib.rs: production file has 2101 lines" \
+  "$work/unallowlisted-production.err" >/dev/null
+
 expired_allowlist="$work/expired-allowlist"
 init_case "$expired_allowlist"
-write_lines "$expired_allowlist/crates/chio-governance/src/lib.rs" 2101
+write_lines "$expired_allowlist/crates/chio-small/src/main.rs" 25
 track_case "$expired_allowlist"
-assert_rc "$(run_checker "$expired_allowlist" "$work/expired-allowlist.out" "$work/expired-allowlist.err")" 1 \
-  "expired baseline allowlist entry fails"
-grep -F "crates/chio-governance/src/lib.rs: production file has 2101 lines" \
+expired_checker="$work/expired-check-rust-file-hygiene.py"
+sed 's/"2026-07-31"/"2000-01-01"/g' "$CHECKER" > "$expired_checker"
+assert_rc "$(run_checker_script "$expired_checker" "$expired_allowlist" "$work/expired-allowlist.out" "$work/expired-allowlist.err")" 1 \
+  "expired allowlist date fails"
+grep -F "allowlist entry expired on 2000-01-01" \
   "$work/expired-allowlist.err" >/dev/null
 
 large_example="$work/large-example"

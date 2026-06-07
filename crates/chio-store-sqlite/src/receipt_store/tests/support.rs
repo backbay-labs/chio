@@ -1738,6 +1738,9 @@ pub(super) fn signed_capital_execution_instruction_fixture(
     subject_key: &str,
     amount: MonetaryAmount,
 ) -> chio_kernel::SignedCapitalExecutionInstruction {
+    let treasury = Keypair::generate();
+    let custodian = Keypair::generate();
+    let custodian_id = custodian.public_key().to_hex();
     sign_export(chio_kernel::CapitalExecutionInstructionArtifact {
         schema: chio_kernel::CAPITAL_EXECUTION_INSTRUCTION_ARTIFACT_SCHEMA.to_string(),
         instruction_id: instruction_id.to_string(),
@@ -1756,13 +1759,24 @@ pub(super) fn signed_capital_execution_instruction_fixture(
         counterparty_role: chio_kernel::CapitalExecutionRole::AgentCounterparty,
         counterparty_id: subject_key.to_string(),
         amount: Some(amount),
-        authority_chain: vec![chio_kernel::CapitalExecutionAuthorityStep {
-            role: chio_kernel::CapitalExecutionRole::OperatorTreasury,
-            principal_id: "treasury-1".to_string(),
-            approved_at: 1_700_000_900,
-            expires_at: 1_700_020_500,
-            note: Some("fixture authority".to_string()),
-        }],
+        authority_chain: vec![
+            chio_kernel::CapitalExecutionAuthorityStep::signed(
+                chio_kernel::CapitalExecutionRole::OperatorTreasury,
+                &treasury,
+                1_700_000_900,
+                1_700_020_500,
+                Some("fixture authority".to_string()),
+            )
+            .test_unwrap(),
+            chio_kernel::CapitalExecutionAuthorityStep::signed(
+                chio_kernel::CapitalExecutionRole::Custodian,
+                &custodian,
+                1_700_000_900,
+                1_700_020_500,
+                Some("fixture custody authority".to_string()),
+            )
+            .test_unwrap(),
+        ],
         execution_window: chio_kernel::CapitalExecutionWindow {
             not_before: 1_700_010_000,
             not_after: 1_700_020_500,
@@ -1770,7 +1784,7 @@ pub(super) fn signed_capital_execution_instruction_fixture(
         rail: chio_kernel::CapitalExecutionRail {
             kind: chio_kernel::CapitalExecutionRailKind::Sandbox,
             rail_id: "rail-claim".to_string(),
-            custody_provider_id: "custody-claim".to_string(),
+            custody_provider_id: custodian_id,
             source_account_ref: Some("acct-src".to_string()),
             destination_account_ref: Some("acct-dst".to_string()),
             jurisdiction: Some("us-ny".to_string()),

@@ -18,7 +18,6 @@ pub(crate) struct CapabilityBinding {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct HttpKernelAuthorizationRequest {
-    pub(crate) request_id: String,
     pub(crate) method: HttpMethod,
     pub(crate) route_pattern: String,
     pub(crate) path: String,
@@ -98,7 +97,6 @@ fn http_authority_capability_binding(
     caller_identity_hash: &str,
 ) -> CapabilityBinding {
     let arguments = serde_json::to_value(HttpKernelAuthorizationRequest {
-        request_id: input.request_id.clone(),
         method: input.method,
         route_pattern: input.route_pattern.clone(),
         path: input.path.to_string(),

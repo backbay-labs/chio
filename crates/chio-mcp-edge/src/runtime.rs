@@ -1775,6 +1775,10 @@ impl ChioMcpEdge {
 }
 
 #[cfg(test)]
+#[path = "runtime/execution_nonce_tests.rs"]
+mod execution_nonce_tests;
+
+#[cfg(test)]
 #[path = "runtime/runtime_tests.rs"]
 mod runtime_tests;
 

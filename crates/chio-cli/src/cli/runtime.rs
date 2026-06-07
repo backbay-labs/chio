@@ -378,6 +378,7 @@ pub(crate) fn cmd_check(
         server_id: server.to_string(),
         tool_name: tool.to_string(),
         arguments: params.clone(),
+        execution_nonce: None,
         model_metadata: None,
     });
 

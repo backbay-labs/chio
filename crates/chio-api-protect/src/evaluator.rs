@@ -125,6 +125,7 @@ impl RequestEvaluator {
             requested_tool_server: None,
             requested_tool_name: None,
             requested_arguments: None,
+            execution_nonce: None,
             model_metadata: None,
             policy: policy_mode(matched_policy),
         })?;
@@ -174,6 +175,7 @@ impl RequestEvaluator {
             requested_tool_server: tool_server.as_deref(),
             requested_tool_name: tool_name.as_deref(),
             requested_arguments: Some(&arguments),
+            execution_nonce: None,
             model_metadata: model_metadata.as_ref(),
             policy: policy_mode(matched_policy),
         })?;

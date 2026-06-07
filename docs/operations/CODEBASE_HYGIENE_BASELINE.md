@@ -34,7 +34,8 @@ packages and 588,730 bytes of metadata.
 ## Phase 6.3 Rust Hygiene Allowlist
 
 After the Phase 1 through Phase 6 production splits, `scripts/check-rust-file-hygiene.py`
-has no active Rust file hygiene allowlist entries. Generated Rust remains
+has no production Rust allowlist entries. The remaining active entries are
+test-only capped baselines with ISO-date expiry. Generated Rust remains
 classified separately by path, and no generated or generated-adjacent allowlist
 entry is currently required.
 
@@ -239,6 +240,6 @@ Final Rust hygiene state:
 | Production lib roots | No production `src/lib.rs` exceeds 1,000 lines. |
 | Test Rust | 715 tracked test Rust files. 15 test files remain at or above 2,000 lines and are classified as test-only by the hygiene gate. |
 | Example Rust | 24 tracked example Rust files. Largest is `examples/chio-3vendor/src/commands.rs` at 938 lines. |
-| Rust hygiene allowlist | Empty. `scripts/check-rust-file-hygiene.py` has no active allowlist entries. |
+| Rust hygiene allowlist | Test-only capped baseline entries remain and expire on 2026-07-31. No production Rust file is allowlisted. |
 | Stub-surface allowlist | Explicit path-level allowlist remains in `scripts/check-stub-surfaces.py`; stale entries were removed and all allowlist paths exist. |
 | Final full CI | `bash scripts/ci-workspace.sh > target/ci-workspace-phase9-final-current-head.log 2>&1; rc=$?; tail -n 220 target/ci-workspace-phase9-final-current-head.log; exit $rc` passed with exit code 0. |

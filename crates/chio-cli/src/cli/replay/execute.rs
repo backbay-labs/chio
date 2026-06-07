@@ -407,6 +407,7 @@ fn recompute_decision(
         server_id: REPLAY_PRE_OUTPUT_SERVER_ID.to_string(),
         tool_name: invocation.tool_name.clone(),
         arguments,
+        execution_nonce: None,
         model_metadata: None,
     });
 

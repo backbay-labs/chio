@@ -224,6 +224,7 @@ fn bridge_mcp_tool_call_from_response(
         reason: response.reason.clone(),
         verdict: response.verdict,
         terminal_state: &response.terminal_state,
+        execution_nonce: response.execution_nonce.as_deref(),
         peer_supports_chio_tool_streaming,
         related_task_id: None,
     });
@@ -257,6 +258,7 @@ pub(super) struct KernelToolResultArgs<'a> {
     pub(super) reason: Option<String>,
     pub(super) verdict: Verdict,
     pub(super) terminal_state: &'a OperationTerminalState,
+    pub(super) execution_nonce: Option<Box<SignedExecutionNonce>>,
     pub(super) related_task_id: Option<&'a str>,
 }
 
@@ -292,6 +294,7 @@ impl ChioMcpEdge {
             .cloned()
             .unwrap_or_else(|| json!({}));
         let model_metadata = parse_request_model_metadata(id, params)?;
+        let execution_nonce = parse_request_execution_nonce(id, params)?;
 
         let Some(&tool_index) = self.tool_index.get(tool_name) else {
             return Err(jsonrpc_error(
@@ -339,6 +342,7 @@ impl ChioMcpEdge {
                 server_id: binding.server_id,
                 tool_name: binding.tool_name,
                 arguments,
+                execution_nonce,
                 model_metadata,
             },
         ))
@@ -362,6 +366,7 @@ impl ChioMcpEdge {
                     reason: response.reason,
                     verdict: response.verdict,
                     terminal_state: &response.terminal_state,
+                    execution_nonce: response.execution_nonce,
                     related_task_id,
                 }),
             Ok(
@@ -442,6 +447,7 @@ impl ChioMcpEdge {
                 reason: response.reason,
                 verdict: response.verdict,
                 terminal_state: &response.terminal_state,
+                execution_nonce: response.execution_nonce,
                 related_task_id,
             }),
             Err(error) => {
@@ -507,6 +513,7 @@ impl ChioMcpEdge {
                 reason: response.reason,
                 verdict: response.verdict,
                 terminal_state: &response.terminal_state,
+                execution_nonce: response.execution_nonce,
                 related_task_id,
             }),
             Err(error) => {
@@ -648,6 +655,7 @@ impl ChioMcpEdge {
             reason,
             verdict,
             terminal_state,
+            execution_nonce,
             related_task_id,
         } = args;
         let peer_supports_chio_tool_streaming = self.peer_supports_chio_tool_streaming(session_id);
@@ -659,6 +667,7 @@ impl ChioMcpEdge {
             reason,
             verdict,
             terminal_state,
+            execution_nonce: execution_nonce.as_deref(),
             peer_supports_chio_tool_streaming,
             related_task_id,
         });

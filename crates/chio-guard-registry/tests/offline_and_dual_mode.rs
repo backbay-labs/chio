@@ -1,14 +1,16 @@
-use std::path::Path;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::SystemTime;
 
 use chio_guard_registry::{
     load_guard_with_policy, verify_dual_mode, AttestError, AttestVerifier, ExpectedIdentity,
-    GuardCache, GuardCacheArtifact, GuardLoadEvent, GuardLoadEventResult, GuardLoadSource,
-    GuardNetworkState, GuardOfflineLoadError, GuardOfflineLoadRequest, GuardRegistryError,
-    GuardSigstoreVerifier, GuardVerificationKind, GuardVerificationReport, GuardVerifiedSignature,
-    Sha256Digest, VerifiedAttestation, CHIO_GUARD_VERIFY_EVENT, GUARD_CONFIG_MEDIA_TYPE,
-    GUARD_MANIFEST_LAYER_MEDIA_TYPE, GUARD_MODULE_LAYER_MEDIA_TYPE, GUARD_WIT_LAYER_MEDIA_TYPE,
+    GuardCache, GuardCacheArtifact, GuardCacheLayout, GuardLoadEvent, GuardLoadEventResult,
+    GuardLoadSource, GuardNetworkState, GuardOfflineLoadError, GuardOfflineLoadRequest,
+    GuardRegistryError, GuardSigstoreVerifier, GuardVerificationKind, GuardVerificationReport,
+    GuardVerifiedSignature, Sha256Digest, VerifiedAttestation, CHIO_GUARD_VERIFY_EVENT,
+    GUARD_CONFIG_MEDIA_TYPE, GUARD_MANIFEST_LAYER_MEDIA_TYPE, GUARD_MODULE_LAYER_MEDIA_TYPE,
+    GUARD_WIT_LAYER_MEDIA_TYPE,
 };
 use oci_distribution::client::{Config, ImageLayer};
 use oci_distribution::manifest::OciImageManifest;
@@ -150,6 +152,60 @@ fn offline_cached_and_verified_allows_load() {
     assert_eq!(load.verification.rekor_inclusion_verified, Some(true));
     assert_eq!(load.event.reason, None);
     assert_eq!(verifier.bundle_call_count(), 1);
+}
+
+#[test]
+fn offline_load_denies_tampered_cache_files_before_verifier() {
+    for case in [
+        TamperCase::Manifest,
+        TamperCase::Config,
+        TamperCase::Wit,
+        TamperCase::Module,
+        TamperCase::GuardManifest,
+    ] {
+        let temp = tempdir();
+        let digest = digest();
+        let cache = GuardCache::from_cache_home(temp.path());
+        write_cache(&cache, &digest);
+        let layout = cache.layout(&digest);
+        write_tampered_file(&tamper_path(&layout, case));
+
+        let calls = AtomicUsize::new(0);
+        let request = GuardOfflineLoadRequest {
+            cache: &cache,
+            digest: &digest,
+            network: GuardNetworkState::Offline,
+            verification: GuardVerificationKind::SigstoreOnly,
+        };
+        let result = load_guard_with_policy(request, |_layout| {
+            calls.fetch_add(1, Ordering::SeqCst);
+            Ok(sigstore_report(digest_bytes(1), "unused"))
+        });
+
+        match result {
+            Err(GuardOfflineLoadError::CacheIntegrityDenied {
+                digest: denied_digest,
+                source,
+                event,
+            }) => {
+                assert_eq!(denied_digest, digest.as_str());
+                assert_cache_integrity_error(&source, case);
+                assert_deny_event(
+                    &event,
+                    &digest,
+                    GuardVerificationKind::SigstoreOnly,
+                    GuardLoadSource::OfflineCache,
+                    "cache-integrity-failed",
+                );
+            }
+            other => panic!("expected cache integrity denial for {case:?}, got {other:?}"),
+        }
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            0,
+            "tampered {case:?} must be denied before signature verification"
+        );
+    }
 }
 
 #[test]
@@ -493,6 +549,66 @@ fn write_cache(cache: &GuardCache, digest: &Sha256Digest) {
     let result = cache.write_artifact(digest, fixture.artifact(Some(BUNDLE_BYTES)));
     if let Err(error) = result {
         panic!("cache write should succeed: {error}");
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum TamperCase {
+    Manifest,
+    Config,
+    Wit,
+    Module,
+    GuardManifest,
+}
+
+fn tamper_path(layout: &GuardCacheLayout, case: TamperCase) -> PathBuf {
+    match case {
+        TamperCase::Manifest => layout.manifest_json_path(),
+        TamperCase::Config => layout.config_json_path(),
+        TamperCase::Wit => layout.wit_bin_path(),
+        TamperCase::Module => layout.module_wasm_path(),
+        TamperCase::GuardManifest => layout.guard_manifest_json_path(),
+    }
+}
+
+fn write_tampered_file(path: &Path) {
+    if let Err(error) = fs::write(path, b"tampered-cache-bytes") {
+        panic!("tamper {} should write: {error}", path.display());
+    }
+}
+
+fn assert_cache_integrity_error(error: &GuardRegistryError, case: TamperCase) {
+    match (case, error) {
+        (TamperCase::Manifest, GuardRegistryError::ManifestDigestMismatch { .. }) => {}
+        (
+            TamperCase::Config,
+            GuardRegistryError::DescriptorDigestMismatch {
+                artifact: "config.json",
+                ..
+            },
+        ) => {}
+        (
+            TamperCase::Wit,
+            GuardRegistryError::DescriptorDigestMismatch {
+                artifact: "wit.bin",
+                ..
+            },
+        ) => {}
+        (
+            TamperCase::Module,
+            GuardRegistryError::DescriptorDigestMismatch {
+                artifact: "module.wasm",
+                ..
+            },
+        ) => {}
+        (
+            TamperCase::GuardManifest,
+            GuardRegistryError::DescriptorDigestMismatch {
+                artifact: "guard-manifest.json",
+                ..
+            },
+        ) => {}
+        other => panic!("unexpected cache integrity error: {other:?}"),
     }
 }
 

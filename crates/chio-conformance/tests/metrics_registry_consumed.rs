@@ -606,6 +606,7 @@ fn http_core_emits_kernel_decision_latency_and_guard_evaluations() -> Result<(),
         requested_tool_server: None,
         requested_tool_name: None,
         requested_arguments: None,
+        execution_nonce: None,
         model_metadata: None,
         policy: chio_http_core::HttpAuthorityPolicy::SessionAllow,
     })?;

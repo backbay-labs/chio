@@ -97,6 +97,7 @@ fn session_operation_roundtrip_preserves_tool_call_payload() {
         server_id: "srv-a".to_string(),
         tool_name: "read_file".to_string(),
         arguments: serde_json::json!({"path": "/app/src/lib.rs"}),
+        execution_nonce: None,
         model_metadata: Some(ModelMetadata {
             model_id: "gpt-5".to_string(),
             safety_tier: None,

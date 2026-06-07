@@ -137,6 +137,7 @@ fn safe_policy_allows_without_capability() {
             requested_tool_name: None,
             requested_arguments: None,
             model_metadata: None,
+            execution_nonce: None,
             policy: HttpAuthorityPolicy::SessionAllow,
         })
         .test_unwrap();
@@ -158,9 +159,10 @@ fn safe_policy_allows_without_capability() {
 }
 
 #[test]
-fn strict_execution_nonce_preflight_does_not_authorize_http_side_effect() {
+fn strict_execution_nonce_preflight_round_trips_before_authorizing_http() {
     let query = HashMap::new();
-    let error = authority_with_strict_execution_nonce()
+    let authority = authority_with_strict_execution_nonce();
+    let preflight = authority
         .evaluate(HttpAuthorityInput {
             request_id: "req-strict-nonce-http-authority".to_string(),
             method: HttpMethod::Post,
@@ -177,17 +179,70 @@ fn strict_execution_nonce_preflight_does_not_authorize_http_side_effect() {
             requested_tool_name: None,
             requested_arguments: None,
             model_metadata: None,
+            execution_nonce: None,
+            policy: HttpAuthorityPolicy::SessionAllow,
+        })
+        .test_unwrap();
+
+    assert!(matches!(preflight.verdict, Verdict::Incomplete { .. }));
+    assert!(
+        !preflight.receipt.is_allowed(),
+        "nonce preflight must not authorize the HTTP side effect"
+    );
+    let nonce = preflight
+        .execution_nonce
+        .clone()
+        .test_expect("strict HTTP preflight must return an execution nonce");
+
+    let allowed = authority
+        .evaluate(HttpAuthorityInput {
+            request_id: "req-strict-nonce-http-authority-retry".to_string(),
+            method: HttpMethod::Post,
+            route_pattern: "/pets".to_string(),
+            path: "/pets",
+            query: &query,
+            caller: caller(),
+            body_hash: Some("abc".to_string()),
+            body_length: 3,
+            session_id: None,
+            capability_id_hint: None,
+            presented_capability: None,
+            requested_tool_server: None,
+            requested_tool_name: None,
+            requested_arguments: None,
+            model_metadata: None,
+            execution_nonce: Some(&nonce),
+            policy: HttpAuthorityPolicy::SessionAllow,
+        })
+        .test_unwrap();
+    assert!(allowed.verdict.is_allowed());
+    assert!(allowed.execution_nonce.is_none());
+
+    let replay = authority
+        .evaluate(HttpAuthorityInput {
+            request_id: "req-strict-nonce-http-authority-replay".to_string(),
+            method: HttpMethod::Post,
+            route_pattern: "/pets".to_string(),
+            path: "/pets",
+            query: &query,
+            caller: caller(),
+            body_hash: Some("abc".to_string()),
+            body_length: 3,
+            session_id: None,
+            capability_id_hint: None,
+            presented_capability: None,
+            requested_tool_server: None,
+            requested_tool_name: None,
+            requested_arguments: None,
+            model_metadata: None,
+            execution_nonce: Some(&nonce),
             policy: HttpAuthorityPolicy::SessionAllow,
         })
         .test_unwrap_err();
-
-    match error {
-        HttpAuthorityError::Kernel(reason) => assert!(
-            reason.contains("execution nonce preflight"),
-            "expected strict nonce preflight denial, got: {reason}"
-        ),
-        other => panic!("expected kernel error, got {other:?}"),
-    }
+    assert!(
+        replay.to_string().contains("execution nonce"),
+        "expected replayed nonce denial, got {replay}"
+    );
 }
 
 #[test]
@@ -210,6 +265,7 @@ fn deny_by_default_requires_capability() {
             requested_tool_name: None,
             requested_arguments: None,
             model_metadata: None,
+            execution_nonce: None,
             policy: HttpAuthorityPolicy::DenyByDefault,
         })
         .test_unwrap();
@@ -238,6 +294,7 @@ fn invalid_presented_capability_denies_even_safe_route() {
             requested_tool_name: None,
             requested_arguments: None,
             model_metadata: None,
+            execution_nonce: None,
             policy: HttpAuthorityPolicy::SessionAllow,
         })
         .test_unwrap();
@@ -269,6 +326,7 @@ fn valid_capability_allows_deny_by_default() {
             requested_tool_name: None,
             requested_arguments: None,
             model_metadata: None,
+            execution_nonce: None,
             policy: HttpAuthorityPolicy::DenyByDefault,
         })
         .test_unwrap();
@@ -303,6 +361,7 @@ fn direct_v2_capability_denies_without_http_trust_root_resolver() {
             requested_tool_name: None,
             requested_arguments: None,
             model_metadata: None,
+            execution_nonce: None,
             policy: HttpAuthorityPolicy::DenyByDefault,
         })
         .test_unwrap();
@@ -337,6 +396,7 @@ fn capability_hint_mismatch_becomes_denial() {
             requested_tool_name: None,
             requested_arguments: None,
             model_metadata: None,
+            execution_nonce: None,
             policy: HttpAuthorityPolicy::DenyByDefault,
         })
         .test_unwrap();
@@ -367,6 +427,7 @@ fn untrusted_capability_denies_deny_by_default() {
             requested_tool_name: None,
             requested_arguments: None,
             model_metadata: None,
+            execution_nonce: None,
             policy: HttpAuthorityPolicy::DenyByDefault,
         })
         .test_unwrap();
@@ -402,6 +463,7 @@ fn configured_external_issuer_allows_deny_by_default() {
             requested_tool_name: None,
             requested_arguments: None,
             model_metadata: None,
+            execution_nonce: None,
             policy: HttpAuthorityPolicy::DenyByDefault,
         })
         .test_unwrap();
@@ -434,6 +496,7 @@ fn finalized_receipt_links_decision_receipt_and_kernel_receipt() {
             requested_tool_name: None,
             requested_arguments: None,
             model_metadata: None,
+            execution_nonce: None,
             policy: HttpAuthorityPolicy::SessionAllow,
         })
         .test_unwrap()
@@ -544,6 +607,7 @@ fn deny_by_default_proxy_path_requires_http_authority_grant() {
             requested_tool_name: None,
             requested_arguments: None,
             model_metadata: None,
+            execution_nonce: None,
             policy: HttpAuthorityPolicy::DenyByDefault,
         })
         .test_unwrap();
@@ -597,6 +661,7 @@ fn deny_by_default_proxy_path_ignores_spoofed_tool_identity() {
             requested_tool_name: Some("double"),
             requested_arguments: Some(&serde_json::json!({ "value": 1 })),
             model_metadata: None,
+            execution_nonce: None,
             policy: HttpAuthorityPolicy::DenyByDefault,
         })
         .test_unwrap();
@@ -650,6 +715,7 @@ fn deny_by_default_tools_path_honors_path_identity() {
             requested_tool_name: Some("files.read"),
             requested_arguments: Some(&serde_json::json!({ "path": "/tmp/a" })),
             model_metadata: None,
+            execution_nonce: None,
             policy: HttpAuthorityPolicy::DenyByDefault,
         })
         .test_unwrap();
@@ -700,6 +766,7 @@ fn deny_by_default_tools_path_without_sidecar_fields_binds_to_path_identity() {
             requested_tool_name: None,
             requested_arguments: None,
             model_metadata: None,
+            execution_nonce: None,
             policy: HttpAuthorityPolicy::DenyByDefault,
         })
         .test_unwrap();
@@ -750,6 +817,7 @@ fn deny_by_default_tools_path_with_arguments_only_binds_to_path_identity() {
             requested_tool_name: None,
             requested_arguments: Some(&serde_json::json!({ "amount": 100 })),
             model_metadata: None,
+            execution_nonce: None,
             policy: HttpAuthorityPolicy::DenyByDefault,
         })
         .test_unwrap();
@@ -800,6 +868,7 @@ fn reserved_tools_path_safe_policy_binds_to_path_identity() {
             requested_tool_name: Some("double"),
             requested_arguments: Some(&serde_json::json!({ "amount": 100 })),
             model_metadata: None,
+            execution_nonce: None,
             policy: HttpAuthorityPolicy::SessionAllow,
         })
         .test_unwrap();
@@ -832,6 +901,7 @@ fn reserved_tools_path_safe_policy_requires_capability() {
             requested_tool_name: Some("read"),
             requested_arguments: Some(&Value::Null),
             model_metadata: None,
+            execution_nonce: None,
             policy: HttpAuthorityPolicy::SessionAllow,
         })
         .test_unwrap();
@@ -864,6 +934,7 @@ fn reserved_tools_path_safe_policy_requires_capability_without_sidecar_fields() 
             requested_tool_name: None,
             requested_arguments: None,
             model_metadata: None,
+            execution_nonce: None,
             policy: HttpAuthorityPolicy::SessionAllow,
         })
         .test_unwrap();
@@ -915,6 +986,7 @@ fn deny_by_default_unmatched_http_path_does_not_trust_synthetic_pattern() {
             requested_tool_name: Some("admin.delete"),
             requested_arguments: Some(&serde_json::json!({ "path": "/tmp/a" })),
             model_metadata: None,
+            execution_nonce: None,
             policy: HttpAuthorityPolicy::DenyByDefault,
         })
         .test_unwrap();
@@ -968,6 +1040,7 @@ fn deny_by_default_tools_path_binds_to_path_identity() {
             requested_tool_name: Some("double"),
             requested_arguments: Some(&serde_json::json!({ "amount": 100 })),
             model_metadata: None,
+            execution_nonce: None,
             policy: HttpAuthorityPolicy::DenyByDefault,
         })
         .test_unwrap();
@@ -1019,6 +1092,7 @@ fn deny_by_default_tools_path_decodes_percent_encoded_identity() {
             requested_tool_name: Some("terminal/create"),
             requested_arguments: Some(&serde_json::json!({ "command": "ls" })),
             model_metadata: None,
+            execution_nonce: None,
             policy: HttpAuthorityPolicy::DenyByDefault,
         })
         .test_unwrap();
@@ -1060,6 +1134,7 @@ fn deny_by_default_tools_path_rejects_malformed_percent_encoding() {
             requested_tool_name: Some("terminal/create"),
             requested_arguments: Some(&serde_json::json!({ "command": "ls" })),
             model_metadata: None,
+            execution_nonce: None,
             policy: HttpAuthorityPolicy::DenyByDefault,
         })
         .test_unwrap();
@@ -1111,6 +1186,7 @@ fn deny_by_default_tools_path_rejects_malformed_percent_encoding_before_wildcard
             requested_tool_name: Some("terminal/create"),
             requested_arguments: Some(&serde_json::json!({ "command": "ls" })),
             model_metadata: None,
+            execution_nonce: None,
             policy: HttpAuthorityPolicy::DenyByDefault,
         })
         .test_unwrap();
@@ -1162,6 +1238,7 @@ fn deny_by_default_requires_matching_tool_grant() {
             requested_tool_name: Some("increment"),
             requested_arguments: Some(&Value::Null),
             model_metadata: None,
+            execution_nonce: None,
             policy: HttpAuthorityPolicy::DenyByDefault,
         })
         .test_unwrap();

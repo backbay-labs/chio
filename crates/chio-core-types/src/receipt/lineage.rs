@@ -402,7 +402,7 @@ impl ReceiptLineageStatement {
 }
 
 /// Signed envelope for stable export/report artifacts.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SignedExportEnvelope<T> {
     /// Unsigned export payload.

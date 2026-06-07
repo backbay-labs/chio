@@ -357,6 +357,7 @@ fn session_operation_tool_call_tracks_and_clears_inflight() {
         server_id: "srv-a".to_string(),
         tool_name: "read_file".to_string(),
         arguments: serde_json::json!({"path": "/app/src/main.rs"}),
+        execution_nonce: None,
         model_metadata: None,
     });
 
@@ -927,6 +928,7 @@ fn tool_call_nested_flow_bridge_roundtrips_sampling() {
         server_id: "nested".to_string(),
         tool_name: "sample_via_client".to_string(),
         arguments: serde_json::json!({}),
+        execution_nonce: None,
         model_metadata: None,
     };
 
@@ -1020,6 +1022,7 @@ fn tool_call_nested_flow_bridge_roundtrips_elicitation() {
         server_id: "nested".to_string(),
         tool_name: "elicit_via_client".to_string(),
         arguments: serde_json::json!({}),
+        execution_nonce: None,
         model_metadata: None,
     };
 
@@ -1102,6 +1105,7 @@ fn tool_call_nested_flow_bridge_updates_session_roots() {
         server_id: "nested".to_string(),
         tool_name: "roots_via_client".to_string(),
         arguments: serde_json::json!({}),
+        execution_nonce: None,
         model_metadata: None,
     };
 
@@ -1178,6 +1182,7 @@ fn tool_call_nested_flow_bridge_propagates_parent_cancellation() {
         server_id: "nested".to_string(),
         tool_name: "sample_via_client".to_string(),
         arguments: serde_json::json!({}),
+        execution_nonce: None,
         model_metadata: None,
     };
 
@@ -1273,6 +1278,7 @@ fn tool_call_nested_flow_bridge_propagates_child_cancellation() {
         server_id: "nested".to_string(),
         tool_name: "sample_via_client".to_string(),
         arguments: serde_json::json!({}),
+        execution_nonce: None,
         model_metadata: None,
     };
 
@@ -1394,6 +1400,7 @@ fn tool_call_nested_flow_bridge_filters_resource_notifications_to_session_subscr
         server_id: "nested".to_string(),
         tool_name: "notify_resources_via_client".to_string(),
         arguments: serde_json::json!({}),
+        execution_nonce: None,
         model_metadata: None,
     };
 

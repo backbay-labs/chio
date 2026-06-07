@@ -250,6 +250,10 @@ mod tests {
         Keypair::from_seed(&[11u8; 32])
     }
 
+    fn custodian_keypair() -> Keypair {
+        Keypair::from_seed(&[13u8; 32])
+    }
+
     fn sample_binding_for_config(config: &SettlementChainConfig) -> SignedWeb3IdentityBinding {
         let operator = operator_keypair();
         let certificate = Web3IdentityBindingCertificate {
@@ -279,6 +283,8 @@ mod tests {
         amount_units: u64,
     ) -> SignedCapitalExecutionInstruction {
         let keypair = instruction_keypair();
+        let custodian = custodian_keypair();
+        let custodian_id = custodian.public_key().to_hex();
         SignedExportEnvelope::sign(
             CapitalExecutionInstructionArtifact {
                 schema: chio_core::credit::CAPITAL_EXECUTION_INSTRUCTION_ARTIFACT_SCHEMA
@@ -302,20 +308,22 @@ mod tests {
                     currency: "USD".to_string(),
                 }),
                 authority_chain: vec![
-                    CapitalExecutionAuthorityStep {
-                        role: CapitalExecutionRole::OperatorTreasury,
-                        principal_id: "treasury-1".to_string(),
-                        approved_at: 1_743_292_700,
-                        expires_at: 1_743_300_000,
-                        note: Some("governed release".to_string()),
-                    },
-                    CapitalExecutionAuthorityStep {
-                        role: CapitalExecutionRole::Custodian,
-                        principal_id: "custodian-devnet".to_string(),
-                        approved_at: 1_743_292_750,
-                        expires_at: 1_743_300_000,
-                        note: Some("official web3 stack".to_string()),
-                    },
+                    CapitalExecutionAuthorityStep::signed(
+                        CapitalExecutionRole::OperatorTreasury,
+                        &keypair,
+                        1_743_292_700,
+                        1_743_300_000,
+                        Some("governed release".to_string()),
+                    )
+                    .test_expect("treasury authority proof"),
+                    CapitalExecutionAuthorityStep::signed(
+                        CapitalExecutionRole::Custodian,
+                        &custodian,
+                        1_743_292_750,
+                        1_743_300_000,
+                        Some("official web3 stack".to_string()),
+                    )
+                    .test_expect("custodian authority proof"),
                 ],
                 execution_window: CapitalExecutionWindow {
                     not_before: 1_743_292_800,
@@ -324,7 +332,7 @@ mod tests {
                 rail: CapitalExecutionRail {
                     kind: CapitalExecutionRailKind::Web3,
                     rail_id: "ganache-devnet-usdc".to_string(),
-                    custody_provider_id: "custodian-devnet".to_string(),
+                    custody_provider_id: custodian_id,
                     source_account_ref: Some("vault:facility-main".to_string()),
                     destination_account_ref: Some(beneficiary_address.to_string()),
                     jurisdiction: Some(config.chain_id.clone()),

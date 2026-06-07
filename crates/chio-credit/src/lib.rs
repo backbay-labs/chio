@@ -75,6 +75,8 @@ pub const CREDIT_PROVIDER_RISK_PACKAGE_SCHEMA: &str = "chio.credit.provider-risk
 pub const CAPITAL_BOOK_REPORT_SCHEMA: &str = "chio.credit.capital-book.v1";
 pub const CAPITAL_EXECUTION_INSTRUCTION_ARTIFACT_SCHEMA: &str =
     "chio.credit.capital-instruction.v1";
+pub const CAPITAL_EXECUTION_AUTHORITY_STEP_PROOF_SCHEMA: &str =
+    "chio.credit.capital-authority-step-proof.v1";
 pub const CAPITAL_ALLOCATION_DECISION_ARTIFACT_SCHEMA: &str = "chio.credit.capital-allocation.v1";
 pub const CREDIT_BONDED_EXECUTION_SIMULATION_REPORT_SCHEMA: &str =
     "chio.credit.bonded-execution-simulation-report.v1";
