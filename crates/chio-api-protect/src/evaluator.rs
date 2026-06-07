@@ -121,6 +121,28 @@ impl RequestEvaluator {
         body_hash: Option<String>,
         body_length: u64,
     ) -> Result<EvaluationResult, crate::error::ProtectError> {
+        self.evaluate_with_execution_nonce(
+            method,
+            path,
+            query,
+            headers,
+            body_hash,
+            body_length,
+            None,
+        )
+    }
+
+    /// Evaluate an incoming HTTP request with an optional direct-proxy nonce.
+    pub fn evaluate_with_execution_nonce(
+        &self,
+        method: HttpMethod,
+        path: &str,
+        query: &HashMap<String, String>,
+        headers: &HashMap<String, String>,
+        body_hash: Option<String>,
+        body_length: u64,
+        execution_nonce: Option<&SignedExecutionNonce>,
+    ) -> Result<EvaluationResult, crate::error::ProtectError> {
         let request_id = uuid::Uuid::now_v7().to_string();
         let caller = caller_identity_from_headers(headers);
         let (route_pattern, matched_policy) = self.match_route(method, path);
@@ -139,7 +161,7 @@ impl RequestEvaluator {
             requested_tool_server: None,
             requested_tool_name: None,
             requested_arguments: None,
-            execution_nonce: None,
+            execution_nonce,
             model_metadata: None,
             policy: policy_mode(matched_policy),
         })?;

@@ -4,6 +4,7 @@ use super::*;
 /// Gate clients on this value (or on receipt `trust_level`) before treating
 /// advisory sidecar evaluation as kernel-mediated authorization.
 pub(crate) const CHIO_TRUST_LEVEL_HEADER: &str = "chio-trust-level";
+pub(crate) const CHIO_EXECUTION_NONCE_HEADER: &str = "x-chio-execution-nonce";
 
 pub(crate) fn parse_query_params(raw_query: Option<&str>) -> HashMap<String, String> {
     raw_query
@@ -123,10 +124,26 @@ pub(crate) fn should_forward_request_header(name: &str) -> bool {
         "host",
         "content-length",
         "x-chio-capability",
+        CHIO_EXECUTION_NONCE_HEADER,
     ];
     !LOCAL_HEADERS
         .iter()
         .any(|local| name.eq_ignore_ascii_case(local))
+}
+
+pub(crate) fn extract_execution_nonce_from_maps(
+    headers: &HashMap<String, String>,
+) -> Result<Option<chio_kernel::SignedExecutionNonce>, String> {
+    let Some(raw_nonce) = crate::evaluator::header_value(headers, CHIO_EXECUTION_NONCE_HEADER)
+    else {
+        return Ok(None);
+    };
+    if raw_nonce.trim().is_empty() {
+        return Err("blank execution nonce header".to_string());
+    }
+    serde_json::from_str(raw_nonce)
+        .map(Some)
+        .map_err(|error| format!("invalid execution nonce header: {error}"))
 }
 
 pub(crate) fn extract_transport_capability(

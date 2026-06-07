@@ -314,6 +314,7 @@ pub fn verify_capability_with_floor_and_trust_root(
     trust_root_scope_hash: &ScopeHash,
 ) -> Result<VerifiedCapability, CapabilityError> {
     let verified = verify_capability_base(token, trusted_issuers, clock, crypto_floor)?;
+    verify_delegation_chain_shape(token)?;
     verify_chain_binding_with_trust_root(token, trust_root_scope_hash)?;
 
     Ok(verified)
@@ -332,6 +333,7 @@ pub fn verify_capability_with_floor_and_resolver(
     trust_root: &dyn TrustRootResolver,
 ) -> Result<VerifiedCapability, CapabilityError> {
     let verified = verify_capability_base(token, trusted_issuers, clock, crypto_floor)?;
+    verify_delegation_chain_shape(token)?;
     verify_chain_binding_with_resolver(token, trust_root)?;
 
     Ok(verified)
@@ -887,6 +889,67 @@ mod tests {
                 assert!(message.contains("signature invalid"));
             }
             other => panic!("expected attenuation violation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn resolver_entrypoints_reject_tampered_plain_delegation_link() {
+        let issuer = Keypair::generate();
+        let subject = Keypair::generate();
+        let mut parent_link = DelegationLink::sign(
+            DelegationLinkBody {
+                capability_id: "parent-capability".to_string(),
+                delegator: issuer.public_key(),
+                delegatee: subject.public_key(),
+                attenuations: Vec::new(),
+                timestamp: 100,
+                scope_hash: None,
+            },
+            &issuer,
+        )
+        .expect("sign delegation link");
+        parent_link.capability_id = "tampered-parent-capability".to_string();
+        let token = CapabilityToken::sign(
+            CapabilityTokenBody {
+                id: "plain-delegated-token-with-tampered-link".to_string(),
+                issuer: issuer.public_key(),
+                subject: subject.public_key(),
+                scope: ChioScope::default(),
+                issued_at: 100,
+                expires_at: 200,
+                delegation_chain: Vec::from([parent_link]),
+            },
+            &issuer,
+        )
+        .expect("sign outer token");
+        let clock = crate::FixedClock::new(150);
+        let trust_root_hash = scope_hash(&ChioScope::default()).expect("trust root hash");
+        let resolver = counting_resolver_for(&issuer);
+
+        let resolver_err = verify_capability_with_floor_and_resolver(
+            &token,
+            &[issuer.public_key()],
+            &clock,
+            CapabilityCryptoFloor::AllowClassical,
+            &resolver,
+        )
+        .expect_err("resolver verifier must validate plain delegation-chain links");
+        let trust_root_err = verify_capability_with_floor_and_trust_root(
+            &token,
+            &[issuer.public_key()],
+            &clock,
+            CapabilityCryptoFloor::AllowClassical,
+            &trust_root_hash,
+        )
+        .expect_err("trust-root verifier must validate plain delegation-chain links");
+
+        for err in [resolver_err, trust_root_err] {
+            match err {
+                CapabilityError::AttenuationViolation(message) => {
+                    assert!(message.contains("signature invalid"));
+                }
+                other => panic!("expected attenuation violation, got {other:?}"),
+            }
         }
     }
 

@@ -125,6 +125,19 @@ pub(crate) async fn proxy_handler(
     } else {
         Some(chio_core_types::sha256_hex(&body_bytes))
     };
+    let execution_nonce = match extract_execution_nonce_from_maps(&headers) {
+        Ok(nonce) => nonce,
+        Err(message) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                axum::Json(serde_json::json!({
+                    "error": "chio_bad_request",
+                    "message": message,
+                })),
+            )
+                .into_response();
+        }
+    };
 
     if let Some(response) =
         revoked_proxy_response(&state, method, &path, &query, &headers, body_hash.clone()).await
@@ -132,17 +145,21 @@ pub(crate) async fn proxy_handler(
         return response;
     }
 
-    let result =
-        match state
-            .evaluator
-            .evaluate(method, &path, &query, &headers, body_hash, body_length)
-        {
-            Ok(r) => r,
-            Err(e) => {
-                warn!("evaluation error: {e}");
-                return evaluation_error_response(&e);
-            }
-        };
+    let result = match state.evaluator.evaluate_with_execution_nonce(
+        method,
+        &path,
+        &query,
+        &headers,
+        body_hash,
+        body_length,
+        execution_nonce.as_ref(),
+    ) {
+        Ok(r) => r,
+        Err(e) => {
+            warn!("evaluation error: {e}");
+            return evaluation_error_response(&e);
+        }
+    };
 
     // If denied, return structured 403.
     if result.verdict.is_denied() {
@@ -175,6 +192,30 @@ pub(crate) async fn proxy_handler(
                 serde_json::to_string(&error_body).unwrap_or_default(),
             ))
             .unwrap_or_else(|_| denied_status.into_response());
+    }
+
+    if !result.verdict.is_allowed() {
+        let status = match &result.verdict {
+            Verdict::Incomplete { .. } => StatusCode::PRECONDITION_REQUIRED,
+            _ => StatusCode::from_u16(verdict_http_status(&result.verdict))
+                .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+        };
+        let final_receipt =
+            match finalize_and_record_receipt(&state, &result.receipt, status.as_u16()).await {
+                Ok(receipt) => receipt,
+                Err(response) => return response,
+            };
+        return (
+            status,
+            [("X-Chio-Receipt-Id", final_receipt.id.clone())],
+            axum::Json(EvaluateResponse {
+                verdict: result.verdict,
+                receipt: final_receipt,
+                evidence: result.evidence,
+                execution_nonce: result.execution_nonce,
+            }),
+        )
+            .into_response();
     }
 
     // Proxy to upstream.

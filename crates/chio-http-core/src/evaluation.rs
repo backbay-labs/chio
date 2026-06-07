@@ -10,9 +10,11 @@ use crate::{GuardEvidence, HttpReceipt, Verdict};
 /// On an `Allow` verdict from a kernel configured with
 /// `ExecutionNonceConfig`, the response carries a short-lived signed nonce
 /// that the client MUST re-present as `ToolCallRequest::execution_nonce`
-/// before executing the tool call. The field is `None` on
-/// `Deny`/`Cancel`/`Incomplete`, on deployments without a nonce config,
-/// and on advisory sidecar aliases that do not perform kernel dispatch.
+/// before executing the tool call. In strict mode, nonce preflight responses
+/// carry `Verdict::Incomplete` plus this field; callers must retry with the
+/// nonce before any side effect is authorized. The field is `None` on
+/// `Deny`/`Cancel`, on deployments without a nonce config, and on advisory
+/// sidecar aliases that do not perform kernel dispatch.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EvaluateResponse {
     pub verdict: Verdict,
