@@ -6,7 +6,14 @@ Replay and re-record provider-native Chio conformance fixtures.
 
 The crate stores canonical NDJSON captures under `fixtures/<provider>/`.
 Each line uses `chio-provider-conformance.capture.v1` and is consumed by the
-replay tests for OpenAI, Anthropic, and Bedrock.
+replay tests for OpenAI, Anthropic, Bedrock, Gemini, Mistral, Groq, Ollama, and
+Cohere.
+
+OpenAI, Anthropic, and Bedrock fixtures are live-capture replay corpora for the
+recorder-supported providers below. Gemini, Mistral, Groq, Ollama, and Cohere
+fixtures are deterministic adapter replay corpora: they exercise checked-in
+provider request/response/verdict/lowering shapes, but they are not currently
+re-recordable by the `record` CLI.
 
 ## Re-record fixtures
 
@@ -18,9 +25,10 @@ cargo run -p chio-provider-conformance --bin record -- \
   --scenario openai_basic_single_tool_call
 ```
 
-Supported providers are `openai`, `anthropic`, and `bedrock`. The `--scenario`
-value is the fixture id without `.ndjson`; the CLI rejects path-like values and
-only writes inside `crates/chio-provider-conformance/fixtures/<provider>/`.
+Record-supported providers are `openai`, `anthropic`, and `bedrock`. The
+`--scenario` value is the fixture id without `.ndjson`; the CLI rejects
+path-like values and only writes inside
+`crates/chio-provider-conformance/fixtures/<provider>/`.
 
 Required environment:
 

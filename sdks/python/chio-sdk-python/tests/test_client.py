@@ -217,7 +217,7 @@ class TestValidateCapability:
 
 class TestAttenuateCapability:
     @respx.mock
-    async def test_attenuate(self) -> None:
+    async def test_attenuate_fails_closed_without_subject_signer(self) -> None:
         new_scope = ChioScope(
             grants=[
                 ToolGrant(
@@ -227,15 +227,42 @@ class TestAttenuateCapability:
                 )
             ]
         )
-        child_dict = _make_token_dict()
-        child_dict["id"] = "tok-child"
-        respx.post(f"{BASE}/v1/capabilities/attenuate").mock(
-            return_value=httpx.Response(200, json=child_dict)
+        route = respx.post(f"{BASE}/v1/capabilities/attenuate").mock(
+            return_value=httpx.Response(
+                403,
+                json={
+                    "error": "chio_attenuation_requires_subject_signer",
+                    "message": "capability attenuation requires the parent subject signer; sidecar control routes must not hold or derive that key",
+                    "authorization": False,
+                },
+            )
         )
         async with ChioClient(BASE) as client:
             parent = CapabilityToken.model_validate(_make_token_dict())
-            child = await client.attenuate_capability(parent, new_scope=new_scope)
-            assert child.id == "tok-child"
+            with pytest.raises(ChioDeniedError) as exc:
+                await client.attenuate_capability(parent, new_scope=new_scope)
+            assert exc.value.reason_code == "chio_attenuation_requires_subject_signer"
+        assert route.called
+
+    @respx.mock
+    async def test_attenuate_rejects_unexpected_success(self) -> None:
+        new_scope = ChioScope(
+            grants=[
+                ToolGrant(
+                    server_id="s",
+                    tool_name="t",
+                    operations=[Operation.invoke],
+                )
+            ]
+        )
+        respx.post(f"{BASE}/v1/capabilities/attenuate").mock(
+            return_value=httpx.Response(200, json=_make_token_dict())
+        )
+        async with ChioClient(BASE) as client:
+            parent = CapabilityToken.model_validate(_make_token_dict())
+            with pytest.raises(ChioDeniedError) as exc:
+                await client.attenuate_capability(parent, new_scope=new_scope)
+            assert exc.value.reason_code == "chio_attenuation_requires_subject_signer"
 
 
 # ---------------------------------------------------------------------------

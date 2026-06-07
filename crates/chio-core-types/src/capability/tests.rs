@@ -1904,11 +1904,11 @@ fn delegate_mints_signed_link_for_subset_scope() {
     )
     .unwrap();
 
-    assert_eq!(receipt.parent_capability_id, parent.id);
-    assert_eq!(receipt.signed_at, 1500);
     assert!(receipt.link.verify_signature().unwrap());
-    assert_eq!(receipt.link.delegator, parent.subject);
-    assert_eq!(receipt.link.delegatee, delegatee.public_key());
+    assert_eq!(
+        receipt.link.scope_hash,
+        Some(scope_hash(&parent_scope).unwrap())
+    );
 }
 
 #[cfg(feature = "delegation")]

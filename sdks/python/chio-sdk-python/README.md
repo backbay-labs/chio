@@ -63,7 +63,8 @@ Point the client at a non-default sidecar with `ChioClient(base_url=...)`.
 ## What is in the box
 
 - `ChioClient` -- async client for sidecar health, capability minting and
-  validation, attenuation, receipt verification, and tool-call evaluation.
+  validation, fail-closed attenuation, receipt verification, and tool-call
+  evaluation.
 - Typed models -- `CapabilityToken`, `ChioScope`, `ToolGrant`,
   `ResourceGrant`, `PromptGrant`, `Operation`, `Constraint`, `Decision`,
   `Verdict`, `ChioReceipt`, `HttpReceipt`, `CallerIdentity`, and the

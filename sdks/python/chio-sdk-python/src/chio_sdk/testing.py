@@ -316,26 +316,24 @@ class MockChioClient:
         *,
         new_scope: ChioScope,
     ) -> CapabilityToken:
-        """Return a new token with the attenuated scope."""
+        """Fail closed like the real sidecar attenuation route."""
         if not new_scope.is_subset_of(token.scope):
             raise ChioValidationError(
                 "new_scope must be a subset of the parent token scope"
             )
-        child = token.model_copy(
-            update={
-                "id": f"mock-tok-{uuid.uuid4().hex[:8]}",
-                "scope": new_scope,
-            }
-        )
         self.calls.append(
             RecordedCall(
                 method="attenuate_capability",
-                capability_id=child.id,
+                capability_id=token.id,
                 scope=new_scope.model_dump(exclude_none=True),
                 context={"parent_id": token.id},
             )
         )
-        return child
+        raise ChioDeniedError(
+            "capability attenuation requires the parent subject signer",
+            reason="mock sidecar does not hold or derive subject signing keys",
+            reason_code="chio_attenuation_requires_subject_signer",
+        )
 
     # ------------------------------------------------------------------
     # Receipt verification

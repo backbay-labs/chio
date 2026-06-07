@@ -685,12 +685,6 @@ fn guard_publish_preflight(project_dir: &Path) -> Result<GuardPublishPreflight, 
 }
 
 fn validate_publish_wasm_sha256(value: &str) -> Result<(), CliError> {
-    if contains_scaffold_digest_marker(value) {
-        return Err(CliError::guard_error(
-            "guard publish preflight rejected guard-manifest.yaml: wasm_sha256 still contains the scaffold digest marker"
-                .to_string(),
-        ));
-    }
     if value.len() != 64 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return Err(CliError::guard_error(
             "guard publish preflight rejected guard-manifest.yaml: wasm_sha256 must be lowercase hex SHA-256 digest (64 characters)"
@@ -704,11 +698,6 @@ fn validate_publish_wasm_sha256(value: &str) -> Result<(), CliError> {
         ));
     }
     Ok(())
-}
-
-fn contains_scaffold_digest_marker(value: &str) -> bool {
-    let marker = ['t', 'o', 'd', 'o'].iter().collect::<String>();
-    value.to_ascii_lowercase().contains(&marker)
 }
 
 fn wasm_sha256_hex(wasm_bytes: &[u8]) -> String {
@@ -1197,7 +1186,11 @@ mod tests {
     #[test]
     fn guard_publish_preflight_rejects_scaffold_sha_before_missing_wasm() {
         let project_dir = tempfile::tempdir().unwrap();
-        let scaffold_sha = concat!("TO", "DO: run `chio guard build` and update this hash");
+        let scaffold_sha = MANIFEST_YAML_TEMPLATE
+            .lines()
+            .find_map(|line| line.strip_prefix("wasm_sha256: \""))
+            .and_then(|value| value.strip_suffix('"'))
+            .unwrap();
         write_publish_manifest(project_dir.path(), "missing.wasm", scaffold_sha);
 
         let err = must_cli_err(
@@ -1206,7 +1199,7 @@ mod tests {
         );
         assert_registry_error(&err, "urn:chio:error:guard:denied", "guard");
         let msg = err.to_string();
-        assert!(msg.contains("scaffold digest marker"), "{msg}");
+        assert!(msg.contains("wasm_sha256 must be lowercase hex"), "{msg}");
         assert!(
             !msg.contains("failed to read"),
             "scaffold hash must fail before missing-WASM IO: {msg}"

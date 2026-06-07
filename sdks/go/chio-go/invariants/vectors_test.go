@@ -58,11 +58,13 @@ type receiptVectors struct {
 
 type capabilityVectors struct {
 	Cases []struct {
-		Capability                  map[string]any                    `json:"capability"`
-		CapabilityBodyCanonicalJSON string                            `json:"capability_body_canonical_json"`
-		Expected                    invariants.CapabilityVerification `json:"expected"`
-		ID                          string                            `json:"id"`
-		VerifyAt                    int64                             `json:"verify_at"`
+		Capability                     map[string]any                     `json:"capability"`
+		CapabilityBodyCanonicalJSON    string                             `json:"capability_body_canonical_json"`
+		Expected                       invariants.CapabilityVerification  `json:"expected"`
+		ExpectedWithMaxDelegationDepth *invariants.CapabilityVerification `json:"expected_with_max_delegation_depth"`
+		ID                             string                             `json:"id"`
+		MaxDelegationDepth             *int                               `json:"max_delegation_depth"`
+		VerifyAt                       int64                              `json:"verify_at"`
 	} `json:"cases"`
 }
 
@@ -298,6 +300,22 @@ func TestCapabilityVectors(t *testing.T) {
 			}
 			if verification != testCase.Expected {
 				t.Fatalf("unexpected capability verification: %#v", verification)
+			}
+			if testCase.ExpectedWithMaxDelegationDepth != nil {
+				if testCase.MaxDelegationDepth == nil {
+					t.Fatalf("expected_with_max_delegation_depth requires max_delegation_depth")
+				}
+				withDepth, err := invariants.VerifyCapabilityWithMaxDelegationDepth(
+					testCase.Capability,
+					testCase.VerifyAt,
+					*testCase.MaxDelegationDepth,
+				)
+				if err != nil {
+					t.Fatalf("VerifyCapabilityWithMaxDelegationDepth returned error: %v", err)
+				}
+				if withDepth != *testCase.ExpectedWithMaxDelegationDepth {
+					t.Fatalf("unexpected max-depth capability verification: %#v", withDepth)
+				}
 			}
 		})
 	}

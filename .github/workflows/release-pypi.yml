@@ -62,6 +62,7 @@ jobs:
           # Canonical list of publishable Python packages. Order matters
           # only for human readability.
           all_packages=(
+            "sdks/python/chio-py"
             "sdks/python/chio-sdk-python"
             "sdks/python/chio-adapter-base"
             "sdks/python/chio-asgi"

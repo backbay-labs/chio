@@ -89,6 +89,14 @@ func CapabilitySigningBodyCanonicalJSON(capability map[string]any) (string, erro
 }
 
 func VerifyCapability(capability map[string]any, now int64) (CapabilityVerification, error) {
+	return verifyCapability(capability, now, nil)
+}
+
+func VerifyCapabilityWithMaxDelegationDepth(capability map[string]any, now int64, maxDelegationDepth int) (CapabilityVerification, error) {
+	return verifyCapability(capability, now, &maxDelegationDepth)
+}
+
+func verifyCapability(capability map[string]any, now int64, maxDelegationDepth *int) (CapabilityVerification, error) {
 	issuedAt, err := int64Field(capability, "issued_at")
 	if err != nil {
 		return CapabilityVerification{}, err
@@ -121,7 +129,7 @@ func VerifyCapability(capability map[string]any, now int64) (CapabilityVerificat
 	if err != nil {
 		return CapabilityVerification{}, err
 	}
-	delegationChainValid, err := verifyDelegationChain(capability["delegation_chain"])
+	delegationChainValid, err := verifyDelegationChain(capability["delegation_chain"], maxDelegationDepth)
 	if err != nil {
 		return CapabilityVerification{}, err
 	}
@@ -142,13 +150,24 @@ func VerifyCapabilityJSON(input string, now int64) (CapabilityVerification, erro
 	return VerifyCapability(capability, now)
 }
 
-func verifyDelegationChain(raw any) (bool, error) {
+func VerifyCapabilityJSONWithMaxDelegationDepth(input string, now int64, maxDelegationDepth int) (CapabilityVerification, error) {
+	capability, err := ParseCapabilityJSON(input)
+	if err != nil {
+		return CapabilityVerification{}, err
+	}
+	return VerifyCapabilityWithMaxDelegationDepth(capability, now, maxDelegationDepth)
+}
+
+func verifyDelegationChain(raw any, maxDelegationDepth *int) (bool, error) {
 	if raw == nil {
 		return true, nil
 	}
 	entries, ok := raw.([]any)
 	if !ok {
 		return false, newInvariantError("json", "delegation_chain must be an array")
+	}
+	if maxDelegationDepth != nil && len(entries) > *maxDelegationDepth {
+		return false, nil
 	}
 	var previous map[string]any
 	for _, entry := range entries {

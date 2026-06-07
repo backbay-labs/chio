@@ -93,18 +93,8 @@ async with ChioClient() as client:
     # Validate a token
     is_valid = await client.validate_capability(token)
 
-    # Attenuate (narrow) a token
-    narrower_scope = ChioScope(grants=[
-        ToolGrant(
-            server_id="deploy-server",
-            tool_name="deploy",
-            operations=[Operation.INVOKE],
-            max_invocations=5,
-        ),
-    ])
-    child_token = await client.attenuate_capability(
-        token, new_scope=narrower_scope
-    )
+    # Sidecar attenuation fails closed because it requires the parent
+    # subject signer. Mint delegated child tokens in a subject-signer flow.
 ```
 
 ### Tool-Call Advisory Evaluation

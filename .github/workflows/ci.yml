@@ -113,6 +113,8 @@ jobs:
           bash scripts/tests/conformance-matrix-peer-target.test.sh
           bash scripts/tests/qualify-release-provider-replay.test.sh
           bash scripts/tests/release-npm-package-matrix.test.sh
+          bash scripts/tests/release-pypi-package-matrix.test.sh
+          bash scripts/tests/provider-fixture-claims.test.sh
 
       - name: Workspace clippy
         env:

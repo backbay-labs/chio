@@ -538,17 +538,17 @@ pub fn delegate(
         });
     }
 
-    // Delegation chain-binding: emit the child's authorized scope_hash on the
-    // delegation link so downstream verifiers can bind subsequent hops'
-    // attenuation_proof.parent_scope_hash to this hop's authorized scope.
-    let child_scope_hash = scope_hash(child_scope)?;
+    // Delegation chain-binding: emit the parent authorized scope_hash on the
+    // delegation link. A child token proving parent -> child attenuation binds
+    // attenuation_proof.parent_scope_hash to this predecessor link.
+    let parent_scope_hash = scope_hash(&parent.scope)?;
     let body = DelegationLinkBody {
         capability_id: parent.id.clone(),
         delegator: parent.subject.clone(),
         delegatee: delegatee.clone(),
         attenuations: attenuation.steps.clone(),
         timestamp: signed_at,
-        scope_hash: Some(child_scope_hash),
+        scope_hash: Some(parent_scope_hash),
     };
     let link = DelegationLink::sign(body, delegator_keypair)?;
 

@@ -151,6 +151,16 @@ class VectorTests(unittest.TestCase):
                 case["expected"],
                 case["id"],
             )
+            if "expected_with_max_delegation_depth" in case:
+                self.assertEqual(
+                    verify_capability(
+                        capability,
+                        case["verify_at"],
+                        case["max_delegation_depth"],
+                    ),
+                    case["expected_with_max_delegation_depth"],
+                    case["id"],
+                )
 
     def test_manifest_vectors(self) -> None:
         fixture = load_vector("manifest")

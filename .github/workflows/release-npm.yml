@@ -180,6 +180,43 @@ jobs:
         with:
           bun-version: "1.3.3"
 
+      - name: Detect wasm-backed package
+        id: wasm
+        shell: bash
+        env:
+          PACKAGE_DIR: ${{ matrix.package }}
+        run: |
+          set -euo pipefail
+          case "$PACKAGE_DIR" in
+            sdks/typescript/packages/browser|sdks/typescript/packages/workers|sdks/typescript/packages/edge|sdks/typescript/packages/deno)
+              echo "required=true" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "required=false" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
+        if: steps.wasm.outputs.required == 'true'
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Ensure wasm32 target on pinned toolchain
+        if: steps.wasm.outputs.required == 'true'
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Install wasm-pack (pinned)
+        if: steps.wasm.outputs.required == 'true'
+        run: cargo install wasm-pack --version "$(cat .tooling/wasm-pack.version)" --locked
+
+      - name: Install wasm-bindgen-cli (pinned)
+        if: steps.wasm.outputs.required == 'true'
+        run: cargo install wasm-bindgen-cli --version "$(cat .tooling/wasm-bindgen.version)" --locked
+
+      - name: Cargo wasm32 build
+        if: steps.wasm.outputs.required == 'true'
+        run: cargo build -p chio-kernel-browser --target wasm32-unknown-unknown --release
+
       - name: Read package metadata
         id: meta
         shell: bash
@@ -237,6 +274,52 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          same_release_marker="$(mktemp)"
+          trap 'rm -f "$same_release_marker"' EXIT
+          SAME_RELEASE_MARKER="$same_release_marker" node <<'NODE'
+            const fs = require("fs");
+            const path = require("path");
+
+            const repoRoot = process.env.GITHUB_WORKSPACE ?? path.resolve("../../..");
+            const workspaceRoot = path.join(repoRoot, "sdks/typescript");
+            const packageDir = process.cwd();
+            const pkgPath = path.join(packageDir, "package.json");
+            const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+            const localByName = new Map();
+
+            for (const dir of [path.join(workspaceRoot, "chio-ts")]) {
+              const manifestPath = path.join(dir, "package.json");
+              const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+              localByName.set(manifest.name, dir);
+            }
+            for (const entry of fs.readdirSync(path.join(workspaceRoot, "packages"))) {
+              const dir = path.join(workspaceRoot, "packages", entry);
+              const manifestPath = path.join(dir, "package.json");
+              if (!fs.existsSync(manifestPath)) continue;
+              const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+              localByName.set(manifest.name, dir);
+            }
+
+            let mutated = false;
+            for (const block of ["dependencies", "devDependencies", "optionalDependencies"]) {
+              const deps = pkg[block] ?? {};
+              for (const [name, spec] of Object.entries(deps)) {
+                if (typeof spec !== "string" || spec.startsWith("file:")) continue;
+                if (!name.startsWith("@chio-protocol/")) continue;
+                const localDir = localByName.get(name);
+                if (!localDir || path.resolve(localDir) === path.resolve(packageDir)) continue;
+                const rel = path.relative(packageDir, localDir).replaceAll(path.sep, "/");
+                deps[name] = `file:${rel}`;
+                mutated = true;
+                console.log(`using local same-release ${block}.${name}: ${spec} -> file:${rel}`);
+              }
+            }
+
+            if (mutated) {
+              fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+              fs.writeFileSync(process.env.SAME_RELEASE_MARKER, "1");
+            }
+          NODE
           mapfile -t local_file_deps < <(
             node -e '
               const fs = require("fs");
@@ -269,7 +352,7 @@ jobs:
             fi
             popd >/dev/null
           done
-          if [[ -f package-lock.json ]]; then
+          if [[ -f package-lock.json && ! -s "$same_release_marker" ]]; then
             npm ci --workspaces=false
           else
             npm install --workspaces=false
@@ -277,6 +360,8 @@ jobs:
 
       - name: Build
         working-directory: ${{ matrix.package }}
+        env:
+          CHIO_REQUIRE_WASM_TOOLCHAIN: "1"
         run: npm run build
 
       - name: Lint

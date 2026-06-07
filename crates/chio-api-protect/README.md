@@ -69,10 +69,10 @@ must not be used as sole allow/deny gates for tool execution in production:
   authorization.
 - **`POST /v1/evaluate`** - reserved legacy path. It returns HTTP 410 and
   does not sign a receipt.
-- **`POST /v1/capabilities/attenuate`** - returns HTTP 501 with
-  `chio-route-status: not-implemented` and `chio_route_status: not-implemented`
-  in the JSON body. Capability delegation requires the parent subject's
-  private key, which the sidecar does not hold.
+- **`POST /v1/capabilities/attenuate`** - returns HTTP 403 with
+  `error: "chio_attenuation_requires_subject_signer"` and
+  `authorization: false` in the JSON body. Capability delegation requires the
+  parent subject's private key, which the sidecar does not hold.
 - **`POST /v1/capabilities/validate`** - verifies the capability token
   signature, expiry, and local revocation set only; it does not evaluate policy
   or scope against a concrete tool call.

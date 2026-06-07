@@ -359,9 +359,11 @@ class ChioClient:
         *,
         new_scope: ChioScope,
     ) -> CapabilityToken:
-        """Ask the sidecar to produce an attenuated child token.
+        """Request capability attenuation from the sidecar fail-closed.
 
-        The new scope must be a subset of the original.
+        The sidecar route is a control boundary, not a signer. It rejects
+        attenuation because minting a child token requires the parent subject
+        signer, which the sidecar must not hold.
         """
         if not _scope_subset(new_scope, token.scope):
             raise ChioValidationError(
@@ -371,8 +373,12 @@ class ChioClient:
             "parent_token": token,
             "new_scope": new_scope,
         }
-        data = await self._post("/v1/capabilities/attenuate", body)
-        return CapabilityToken.model_validate(data)
+        await self._post("/v1/capabilities/attenuate", body)
+        raise ChioDeniedError(
+            "capability attenuation requires the parent subject signer; sidecar returned unsupported success",
+            reason="sidecar attenuation must fail closed until subject-signer delegation is implemented",
+            reason_code="chio_attenuation_requires_subject_signer",
+        )
 
     # ------------------------------------------------------------------
     # Receipt verification
@@ -772,7 +778,8 @@ class ChioClient:
             raise ChioDeniedError(
                 data.get("message", "denied"),
                 guard=data.get("guard"),
-                reason=data.get("reason"),
+                reason=data.get("reason") or data.get("error"),
+                reason_code=data.get("reason_code") or data.get("error"),
             )
         if resp.status_code >= 400:
             try:

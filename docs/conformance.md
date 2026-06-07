@@ -32,8 +32,8 @@ You will need:
   - A Go 1.22+ toolchain or a C++23 compiler for the in-repo Go and C++
     peers (these are not bundled in the source-installed crate; see "Peer
     coverage" below).
-  - Or, no peer toolchain at all if you fetch the pre-built peer
-    binaries via `chio conformance fetch-peers`.
+  - Or, no peer toolchain at all after release-published peer artifacts exist
+    for your language and target in `peers.lock.toml`.
 
 ## Quickstart
 
@@ -46,6 +46,7 @@ cargo install --git https://github.com/backbay-labs/chio chio-cli
 cargo install --git https://github.com/backbay-labs/chio chio-conformance
 
 # 2. Fetch sha256-pinned peer binaries for the languages you care about.
+#    This works only after matching lockfile rows are release-published.
 chio conformance fetch-peers --language python
 
 # 3. Run the harness against the chosen peer and emit a JSON report.
@@ -53,6 +54,13 @@ chio conformance run --peer python --report json --output /tmp/report.json
 ```
 
 Each step is described in detail below.
+
+Pre-release source checkouts currently keep peer rows in `peers.lock.toml`
+with `published = false`. In that state, use source/toolchain execution for
+external peers, or run the lockfile shape check explicitly with
+`chio conformance fetch-peers --check --allow-unpublished-only`. The
+unpublished-only check is not an external consumer smoke test and must not be
+treated as evidence that a pre-built peer binary ran.
 
 ## 1. Install the conformance crate and the `chio` binary
 

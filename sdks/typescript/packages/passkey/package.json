@@ -35,6 +35,9 @@
     "size-budget": "bash ../../scripts/size-budget.sh passkey",
     "prepublishOnly": "npm run build"
   },
+  "devDependencies": {
+    "typescript": "~5.7.0"
+  },
   "publishConfig": {
     "access": "public"
   }

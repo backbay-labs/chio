@@ -34,6 +34,9 @@
     "test": "bun test",
     "lint": "tsc -p tsconfig.json --noEmit"
   },
+  "devDependencies": {
+    "typescript": "~5.7.0"
+  },
   "peerDependencies": {
     "ai": ">=4.0 <6",
     "@chio-protocol/edge": ">=0.1.0 <1"

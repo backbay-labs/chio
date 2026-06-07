@@ -32,6 +32,8 @@ bash scripts/tests/check-sdk-release-ts-bun.test.sh
 bash scripts/tests/conformance-matrix-peer-target.test.sh
 bash scripts/tests/qualify-release-provider-replay.test.sh
 bash scripts/tests/release-npm-package-matrix.test.sh
+bash scripts/tests/release-pypi-package-matrix.test.sh
+bash scripts/tests/provider-fixture-claims.test.sh
 # Keep the CI warning gate focused on repo-shipping targets; test/bench-only
 # lint backlogs are exercised by `cargo test` and can be migrated separately.
 cargo clippy --workspace --lib --bins --examples -- -D warnings

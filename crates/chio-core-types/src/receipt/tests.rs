@@ -662,7 +662,11 @@ fn receipt_rejects_schema_invalid_bbs_signature_material() {
 
     let mut overlong_fingerprint = bbs_signature_fixture();
     overlong_fingerprint.issuer_fingerprint = "a".repeat(129);
-    assert!(ChioReceipt::sign_with_bbs(body, &kp, overlong_fingerprint).is_err());
+    assert!(ChioReceipt::sign_with_bbs(body.clone(), &kp, overlong_fingerprint).is_err());
+
+    let mut odd_length_signature = bbs_signature_fixture();
+    odd_length_signature.signature_hex = "abc".to_string();
+    assert!(ChioReceipt::sign_with_bbs(body, &kp, odd_length_signature).is_err());
 }
 
 #[test]
