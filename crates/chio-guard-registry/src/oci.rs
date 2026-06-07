@@ -539,7 +539,8 @@ impl GuardRegistryClient {
                 actual: manifest_digest,
             });
         }
-        let bundle_descriptor = sigstore_bundle_descriptor_from_manifest(&manifest_json)?;
+        let bundle_descriptor =
+            sigstore_bundle_descriptor_from_manifest(&manifest_json, reference.digest().as_str())?;
         self.pull_registry_blob(reference, credentials, &bundle_descriptor)
             .await
             .map(Some)
@@ -564,6 +565,7 @@ impl GuardRegistryClient {
                 &url,
                 &[("artifactType", SIGSTORE_BUNDLE_MEDIA_TYPE)],
                 OCI_IMAGE_INDEX_MEDIA_TYPE,
+                RegistryNotFoundBehavior::Error,
             )
             .await?
         else {
@@ -615,6 +617,7 @@ impl GuardRegistryClient {
                 &url,
                 &[],
                 SIGSTORE_BUNDLE_MEDIA_TYPE,
+                RegistryNotFoundBehavior::ReturnNone,
             )
             .await?
         else {
@@ -650,6 +653,7 @@ impl GuardRegistryClient {
         url: &str,
         query: &[(&str, &str)],
         accept: &str,
+        not_found_behavior: RegistryNotFoundBehavior,
     ) -> Result<Option<Vec<u8>>> {
         let mut request = self
             .http_client
@@ -690,11 +694,11 @@ impl GuardRegistryClient {
                         url: url.to_string(),
                         source,
                     })?;
-                return registry_response_body(url, response).await;
+                return registry_response_body(url, response, not_found_behavior).await;
             }
         }
 
-        registry_response_body(url, response).await
+        registry_response_body(url, response, not_found_behavior).await
     }
 
     async fn registry_bearer_token(
@@ -723,7 +727,7 @@ impl GuardRegistryClient {
                     url: url.to_string(),
                     source,
                 })?;
-        let body = registry_response_body(url, response)
+        let body = registry_response_body(url, response, RegistryNotFoundBehavior::ReturnNone)
             .await?
             .ok_or_else(|| GuardRegistryError::ReferrersMalformed {
                 message: "token response unexpectedly returned 404".to_string(),
@@ -754,7 +758,17 @@ impl GuardRegistryClient {
     }
 }
 
-async fn registry_response_body(url: &str, response: reqwest::Response) -> Result<Option<Vec<u8>>> {
+#[derive(Clone, Copy)]
+enum RegistryNotFoundBehavior {
+    ReturnNone,
+    Error,
+}
+
+async fn registry_response_body(
+    url: &str,
+    response: reqwest::Response,
+    not_found_behavior: RegistryNotFoundBehavior,
+) -> Result<Option<Vec<u8>>> {
     let status = response.status();
     let body = response
         .bytes()
@@ -764,7 +778,14 @@ async fn registry_response_body(url: &str, response: reqwest::Response) -> Resul
             source,
         })?;
     if status == reqwest::StatusCode::NOT_FOUND {
-        return Ok(None);
+        return match not_found_behavior {
+            RegistryNotFoundBehavior::ReturnNone => Ok(None),
+            RegistryNotFoundBehavior::Error => Err(GuardRegistryError::ReferrersStatus {
+                url: url.to_string(),
+                status,
+                body: String::from_utf8_lossy(&body).chars().take(512).collect(),
+            }),
+        };
     }
     if !status.is_success() {
         return Err(GuardRegistryError::ReferrersStatus {
@@ -795,6 +816,7 @@ fn parse_bearer_challenge(input: &str) -> Option<BearerChallenge> {
 
 fn sigstore_bundle_descriptor_from_manifest(
     manifest_json: &[u8],
+    expected_subject_digest: &str,
 ) -> Result<ReferrerBlobDescriptor> {
     let manifest: SigstoreArtifactManifest =
         serde_json::from_slice(manifest_json).map_err(|source| {
@@ -806,6 +828,17 @@ fn sigstore_bundle_descriptor_from_manifest(
         return Err(GuardRegistryError::ReferrersMalformed {
             message: "Sigstore artifact manifest did not carry the Sigstore bundle artifactType"
                 .to_string(),
+        });
+    }
+    let subject = manifest
+        .subject
+        .ok_or_else(|| GuardRegistryError::ReferrersMalformed {
+            message: "Sigstore artifact manifest did not declare a subject".to_string(),
+        })?;
+    if subject.digest != expected_subject_digest {
+        return Err(GuardRegistryError::ManifestDigestMismatch {
+            expected: expected_subject_digest.to_owned(),
+            actual: subject.digest,
         });
     }
     let blobs = manifest.blobs.or(manifest.layers).unwrap_or_default();
@@ -837,6 +870,8 @@ struct ReferrerDescriptor {
 struct SigstoreArtifactManifest {
     #[serde(default)]
     artifact_type: Option<String>,
+    #[serde(default)]
+    subject: Option<ReferrerBlobDescriptor>,
     #[serde(default)]
     blobs: Option<Vec<ReferrerBlobDescriptor>>,
     #[serde(default)]

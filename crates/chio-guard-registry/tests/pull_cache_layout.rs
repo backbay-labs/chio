@@ -5,8 +5,9 @@ use chio_guard_registry::{
     GuardCache, GuardCacheArtifact, GuardOciRef, GuardRegistryError, Sha256Digest,
     CACHE_CONFIG_JSON_FILE, CACHE_FILE_NAMES, CACHE_GUARD_MANIFEST_JSON_FILE,
     CACHE_MANIFEST_JSON_FILE, CACHE_MODULE_WASM_FILE, CACHE_SIGSTORE_BUNDLE_JSON_FILE,
-    CACHE_WIT_BIN_FILE, GUARD_CONFIG_MEDIA_TYPE, GUARD_MANIFEST_LAYER_MEDIA_TYPE,
-    GUARD_MODULE_LAYER_MEDIA_TYPE, GUARD_WIT_LAYER_MEDIA_TYPE,
+    CACHE_WIT_BIN_FILE, GUARD_ARTIFACT_MEDIA_TYPE, GUARD_CONFIG_MEDIA_TYPE,
+    GUARD_MANIFEST_LAYER_MEDIA_TYPE, GUARD_MODULE_LAYER_MEDIA_TYPE, GUARD_OCI_MANIFEST_MEDIA_TYPE,
+    GUARD_WIT_LAYER_MEDIA_TYPE,
 };
 use oci_distribution::client::{Config, ImageLayer};
 use oci_distribution::manifest::OciImageManifest;
@@ -192,6 +193,92 @@ fn rejects_descriptor_mismatch_before_cache_write() {
 }
 
 #[test]
+fn cache_admission_matches_layers_by_media_type_not_position() {
+    let temp = tempdir();
+    let cache = GuardCache::from_cache_home(temp.path());
+    let mut fixture = CacheFixture::new();
+    fixture.reorder_manifest_layers([1, 2, 0]);
+
+    let cached = match cache.write_artifact(&fixture.digest, fixture.artifact(None)) {
+        Ok(cached) => cached,
+        Err(error) => panic!("reordered manifest layers should admit by media type: {error}"),
+    };
+
+    assert_eq!(read(&cached.layout.wit_bin_path()), fixture.wit);
+    assert_eq!(read(&cached.layout.module_wasm_path()), fixture.module);
+    assert_eq!(
+        read(&cached.layout.guard_manifest_json_path()),
+        fixture.guard_manifest_json
+    );
+}
+
+#[test]
+fn rejects_manifest_with_wrong_top_level_artifact_type() {
+    let temp = tempdir();
+    let cache = GuardCache::from_cache_home(temp.path());
+    let mut fixture = CacheFixture::new();
+    fixture.set_manifest_artifact_type(Some("application/example.invalid".to_owned()));
+
+    let err = match cache.write_artifact(&fixture.digest, fixture.artifact(None)) {
+        Ok(_) => panic!("expected wrong top-level artifact type to fail"),
+        Err(error) => error,
+    };
+
+    assert!(matches!(
+        err,
+        GuardRegistryError::DescriptorMediaTypeMismatch {
+            artifact: "manifest.json",
+            expected: GUARD_ARTIFACT_MEDIA_TYPE,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn rejects_manifest_with_missing_top_level_artifact_type() {
+    let temp = tempdir();
+    let cache = GuardCache::from_cache_home(temp.path());
+    let mut fixture = CacheFixture::new();
+    fixture.set_manifest_artifact_type(None);
+
+    let err = match cache.write_artifact(&fixture.digest, fixture.artifact(None)) {
+        Ok(_) => panic!("expected missing top-level artifact type to fail"),
+        Err(error) => error,
+    };
+
+    assert!(matches!(
+        err,
+        GuardRegistryError::DescriptorMediaTypeMismatch {
+            artifact: "manifest.json",
+            expected: GUARD_ARTIFACT_MEDIA_TYPE,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn rejects_manifest_with_wrong_top_level_manifest_media_type() {
+    let temp = tempdir();
+    let cache = GuardCache::from_cache_home(temp.path());
+    let mut fixture = CacheFixture::new();
+    fixture.set_manifest_media_type(Some("application/example.invalid".to_owned()));
+
+    let err = match cache.write_artifact(&fixture.digest, fixture.artifact(None)) {
+        Ok(_) => panic!("expected wrong top-level media type to fail"),
+        Err(error) => error,
+    };
+
+    assert!(matches!(
+        err,
+        GuardRegistryError::DescriptorMediaTypeMismatch {
+            artifact: "manifest.json",
+            expected: GUARD_OCI_MANIFEST_MEDIA_TYPE,
+            ..
+        }
+    ));
+}
+
+#[test]
 fn omits_sigstore_bundle_file_when_not_supplied() {
     let temp = tempdir();
     let fixture = CacheFixture::new();
@@ -287,7 +374,9 @@ impl CacheFixture {
                 None,
             ),
         ];
-        let manifest = OciImageManifest::build(&layers, &config, None);
+        let mut manifest = OciImageManifest::build(&layers, &config, None);
+        manifest.media_type = Some(GUARD_OCI_MANIFEST_MEDIA_TYPE.to_owned());
+        manifest.artifact_type = Some(GUARD_ARTIFACT_MEDIA_TYPE.to_owned());
         let manifest_json = match serde_json::to_vec(&manifest) {
             Ok(bytes) => bytes,
             Err(error) => panic!("fixture OCI manifest should serialize: {error}"),
@@ -316,5 +405,56 @@ impl CacheFixture {
             guard_manifest_json: &self.guard_manifest_json,
             sigstore_bundle_json,
         }
+    }
+
+    fn reorder_manifest_layers(&mut self, order: [usize; 3]) {
+        let mut manifest = match serde_json::from_slice::<OciImageManifest>(&self.manifest_json) {
+            Ok(manifest) => manifest,
+            Err(error) => panic!("fixture OCI manifest should parse: {error}"),
+        };
+        manifest.layers = order
+            .into_iter()
+            .map(|index| manifest.layers[index].clone())
+            .collect();
+        self.manifest_json = match serde_json::to_vec(&manifest) {
+            Ok(bytes) => bytes,
+            Err(error) => panic!("reordered fixture OCI manifest should serialize: {error}"),
+        };
+        let digest_text = format!("sha256:{:x}", Sha256::digest(&self.manifest_json));
+        self.digest = match digest_text.parse::<Sha256Digest>() {
+            Ok(digest) => digest,
+            Err(error) => panic!("reordered fixture digest should parse: {error}"),
+        };
+    }
+
+    fn set_manifest_artifact_type(&mut self, artifact_type: Option<String>) {
+        let mut manifest = self.parse_manifest();
+        manifest.artifact_type = artifact_type;
+        self.replace_manifest(manifest);
+    }
+
+    fn set_manifest_media_type(&mut self, media_type: Option<String>) {
+        let mut manifest = self.parse_manifest();
+        manifest.media_type = media_type;
+        self.replace_manifest(manifest);
+    }
+
+    fn parse_manifest(&self) -> OciImageManifest {
+        match serde_json::from_slice::<OciImageManifest>(&self.manifest_json) {
+            Ok(manifest) => manifest,
+            Err(error) => panic!("fixture OCI manifest should parse: {error}"),
+        }
+    }
+
+    fn replace_manifest(&mut self, manifest: OciImageManifest) {
+        self.manifest_json = match serde_json::to_vec(&manifest) {
+            Ok(bytes) => bytes,
+            Err(error) => panic!("fixture OCI manifest should serialize: {error}"),
+        };
+        let digest_text = format!("sha256:{:x}", Sha256::digest(&self.manifest_json));
+        self.digest = match digest_text.parse::<Sha256Digest>() {
+            Ok(digest) => digest,
+            Err(error) => panic!("fixture digest should parse: {error}"),
+        };
     }
 }

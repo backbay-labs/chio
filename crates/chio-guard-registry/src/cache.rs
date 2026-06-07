@@ -5,9 +5,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::oci::{
-    GuardRegistryError, Result, Sha256Digest, GUARD_CONFIG_MEDIA_TYPE,
+    GuardRegistryError, Result, Sha256Digest, GUARD_ARTIFACT_MEDIA_TYPE, GUARD_CONFIG_MEDIA_TYPE,
     GUARD_MANIFEST_LAYER_MEDIA_TYPE, GUARD_MODULE_LAYER_MEDIA_TYPE, GUARD_WIT_LAYER_MEDIA_TYPE,
 };
+use crate::publish::GUARD_OCI_MANIFEST_MEDIA_TYPE;
 use oci_distribution::manifest::{OciDescriptor, OciImageManifest};
 use sha2::{Digest, Sha256};
 
@@ -278,6 +279,7 @@ fn validate_cache_admission(
                 message: format!("failed to parse pulled OCI manifest JSON: {err}"),
             }
         })?;
+    validate_top_level_manifest_shape(&manifest)?;
     validate_descriptor(
         "config.json",
         &manifest.config,
@@ -291,23 +293,90 @@ fn validate_cache_admission(
     }
     validate_descriptor(
         "wit.bin",
-        &manifest.layers[0],
+        descriptor_for_layer(&manifest.layers, "wit.bin", GUARD_WIT_LAYER_MEDIA_TYPE)?,
         GUARD_WIT_LAYER_MEDIA_TYPE,
         artifact.wit,
     )?;
     validate_descriptor(
         "module.wasm",
-        &manifest.layers[1],
+        descriptor_for_layer(
+            &manifest.layers,
+            "module.wasm",
+            GUARD_MODULE_LAYER_MEDIA_TYPE,
+        )?,
         GUARD_MODULE_LAYER_MEDIA_TYPE,
         artifact.module,
     )?;
     validate_descriptor(
         "guard-manifest.json",
-        &manifest.layers[2],
+        descriptor_for_layer(
+            &manifest.layers,
+            "guard-manifest.json",
+            GUARD_MANIFEST_LAYER_MEDIA_TYPE,
+        )?,
         GUARD_MANIFEST_LAYER_MEDIA_TYPE,
         artifact.guard_manifest_json,
     )?;
     Ok(())
+}
+
+fn validate_top_level_manifest_shape(manifest: &OciImageManifest) -> Result<()> {
+    if manifest.media_type.as_deref() != Some(GUARD_OCI_MANIFEST_MEDIA_TYPE) {
+        return Err(GuardRegistryError::DescriptorMediaTypeMismatch {
+            artifact: "manifest.json",
+            expected: GUARD_OCI_MANIFEST_MEDIA_TYPE,
+            actual: manifest
+                .media_type
+                .clone()
+                .unwrap_or_else(|| "<missing>".to_owned()),
+        });
+    }
+    if manifest.artifact_type.as_deref() != Some(GUARD_ARTIFACT_MEDIA_TYPE) {
+        return Err(GuardRegistryError::DescriptorMediaTypeMismatch {
+            artifact: "manifest.json",
+            expected: GUARD_ARTIFACT_MEDIA_TYPE,
+            actual: manifest
+                .artifact_type
+                .clone()
+                .unwrap_or_else(|| "<missing>".to_owned()),
+        });
+    }
+    Ok(())
+}
+
+fn descriptor_for_layer<'a>(
+    layers: &'a [OciDescriptor],
+    artifact_name: &'static str,
+    expected_media_type: &'static str,
+) -> Result<&'a OciDescriptor> {
+    let mut matches = layers
+        .iter()
+        .filter(|layer| layer.media_type == expected_media_type);
+    let Some(descriptor) = matches.next() else {
+        let actual = layers
+            .iter()
+            .map(|layer| layer.media_type.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(GuardRegistryError::DescriptorMediaTypeMismatch {
+            artifact: artifact_name,
+            expected: expected_media_type,
+            actual: if actual.is_empty() {
+                "<missing>".to_owned()
+            } else {
+                actual
+            },
+        });
+    };
+    if matches.next().is_some() {
+        return Err(GuardRegistryError::DescriptorMediaTypeMismatch {
+            artifact: artifact_name,
+            expected: expected_media_type,
+            actual: format!("{expected_media_type} appears multiple times"),
+        });
+    }
+
+    Ok(descriptor)
 }
 
 fn validate_descriptor(

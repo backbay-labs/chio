@@ -64,6 +64,12 @@ grep -F 'npm install --ignore-scripts --no-fund --no-audit "${install_args[@]}"'
 grep -F 'ESM import smoke verified ${packageName}' "$WORKFLOW" >/dev/null
 grep -F 'CommonJS require smoke verified ${packageName}' "$WORKFLOW" >/dev/null
 grep -F 'CLI smoke verified ${binName}' "$WORKFLOW" >/dev/null
+grep -F '@chio-protocol/workers' "$WORKFLOW" >/dev/null
+grep -F 'dist/bundler/chio_kernel_browser_bg.wasm' "$WORKFLOW" >/dev/null
+grep -F 'CHIO_WORKERS_PACKAGE_JSON="${consumer_dir}/node_modules/@chio-protocol/workers/package.json"' "$WORKFLOW" >/dev/null
+grep -F 'import { Miniflare } from "miniflare";' "$WORKFLOW" >/dev/null
+grep -F '/__chio_workers_smoke' "$WORKFLOW" >/dev/null
+grep -F 'Workers Miniflare smoke verified @chio-protocol/workers' "$WORKFLOW" >/dev/null
 grep -F 'npm pack --pack-destination "$local_dep_pack_dir" --silent' "$WORKFLOW" >/dev/null
 grep -F 'ERROR: wasm-pack ${WASM_PACK_VERSION} is required for CI and release wasm builds.' "$REPO_ROOT/sdks/typescript/scripts/build-wasm.sh" >/dev/null
 

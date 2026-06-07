@@ -986,6 +986,113 @@ mod tests {
     }
 
     #[test]
+    fn full_verifier_rejects_multi_hop_attenuation_without_child_scope_witnesses() {
+        let issuer = Keypair::generate();
+        let intermediate = Keypair::generate();
+        let subject = Keypair::generate();
+        let authorized_scope = ChioScope::default();
+        let trust_root_hash = scope_hash(&authorized_scope).expect("trust root hash");
+        let intermediate_scope = ChioScope {
+            grants: vec![chio_core_types::capability::scope::ToolGrant {
+                server_id: "srv-a".to_string(),
+                tool_name: "tool-a".to_string(),
+                operations: vec![chio_core_types::capability::scope::Operation::Invoke],
+                constraints: Vec::new(),
+                max_invocations: None,
+                max_cost_per_invocation: None,
+                max_total_cost: None,
+                dpop_required: None,
+            }],
+            resource_grants: Vec::new(),
+            prompt_grants: Vec::new(),
+        };
+        let intermediate_hash = scope_hash(&intermediate_scope).expect("intermediate scope hash");
+
+        let first_link = DelegationLink::sign(
+            DelegationLinkBody {
+                capability_id: "root-parent".to_string(),
+                delegator: issuer.public_key(),
+                delegatee: intermediate.public_key(),
+                attenuations: Vec::new(),
+                timestamp: 100,
+                scope_hash: Some(trust_root_hash.clone()),
+            },
+            &issuer,
+        )
+        .expect("sign first delegation link");
+        let second_link = DelegationLink::sign(
+            DelegationLinkBody {
+                capability_id: "intermediate-parent".to_string(),
+                delegator: intermediate.public_key(),
+                delegatee: subject.public_key(),
+                attenuations: Vec::new(),
+                timestamp: 101,
+                scope_hash: Some(intermediate_hash.clone()),
+            },
+            &intermediate,
+        )
+        .expect("sign second delegation link");
+        let proof = AttenuationProof {
+            parent_scope_hash: intermediate_hash,
+            child_scope_hash: scope_hash(&authorized_scope).expect("child scope hash"),
+            normalized_subset_proof: compute_attenuation_witness(
+                &intermediate_scope,
+                &authorized_scope,
+            )
+            .expect("attenuation witness"),
+        };
+        let token = CapabilityToken::sign_attenuated(
+            CapabilityTokenAttenuationBody {
+                body: CapabilityTokenBody {
+                    id: "delegated-multi-hop-without-witnesses".to_string(),
+                    issuer: issuer.public_key(),
+                    subject: subject.public_key(),
+                    scope: authorized_scope,
+                    issued_at: 100,
+                    expires_at: 200,
+                    delegation_chain: vec![first_link, second_link],
+                },
+                caveats: Vec::new(),
+                scope_attenuations: Vec::new(),
+                attenuation_proof: proof,
+                budget_share_bps: None,
+            },
+            &issuer,
+        )
+        .expect("sign attenuated token");
+        let clock = crate::FixedClock::new(150);
+        let peer = CapabilityNegotiation::t1_default();
+        let issuer_public = issuer.public_key();
+        let resolver_issuer = issuer_public.clone();
+        let trust_roots = move |candidate: &PublicKey| {
+            if candidate == &resolver_issuer {
+                Some(trust_root_hash.clone())
+            } else {
+                None
+            }
+        };
+        let mut budgets = NoopBudgetRegistry;
+
+        let err = verify_capability_full(
+            &token,
+            &[issuer_public],
+            &clock,
+            CapabilityCryptoFloor::AllowClassical,
+            &peer,
+            &trust_roots,
+            &mut budgets,
+        )
+        .expect_err("multi-hop attenuated chains need per-hop child-scope witnesses");
+
+        match err {
+            CapabilityError::AttenuationViolation(message) => {
+                assert!(message.contains("multi-hop attenuated delegation chains"));
+            }
+            other => panic!("expected attenuation violation, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn delegated_budget_unknown_parent_fails_closed() {
         let issuer = Keypair::generate();
         let subject = Keypair::generate();

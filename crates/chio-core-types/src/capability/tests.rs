@@ -6,7 +6,7 @@ use crate::runtime_attestation::AttestationVerifierFamily;
 use crate::session::SessionAnchorReference;
 
 use super::attenuation::*;
-use super::caveat::*;
+use super::caveat::GrantSubsetRelation;
 use super::crypto_floor::*;
 use super::features;
 use super::features::*;
@@ -380,11 +380,7 @@ fn attenuated_capability_schema_and_budget_fail_closed() {
     let token = CapabilityToken::sign_attenuated(
         CapabilityTokenAttenuationBody {
             body: body.clone(),
-            caveats: vec![Caveat {
-                kind: CaveatKind::RestrictTool,
-                predicate: "srv/tool".to_string(),
-                sig: None,
-            }],
+            caveats: vec![],
             scope_attenuations: vec![Attenuation::RemoveOperation {
                 server_id: "srv".to_string(),
                 tool_name: "tool".to_string(),

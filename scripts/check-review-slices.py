@@ -208,6 +208,7 @@ SLICES: tuple[ReviewSlice, ...] = (
         "CI workflows, scripts, workspace metadata, xtask and scanner config",
         (
             ".github/**",
+            ".tooling/**",
             "scripts/**",
             "xtask/**",
             "Cargo.toml",

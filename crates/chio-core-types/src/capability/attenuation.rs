@@ -237,7 +237,11 @@ pub fn validate_delegation_chain(chain: &[DelegationLink], max_depth: Option<u32
 /// 1. Every link in the chain populates `scope_hash` (chains lacking
 ///    chain-binding are rejected fail-closed).
 /// 2. The first hop's `scope_hash` equals `trust_root_scope_hash`.
-/// 3. The leaf capability token's `attenuation_proof.parent_scope_hash`
+/// 3. Multi-hop attenuated chains are rejected until delegation links carry
+///    per-hop child-scope witnesses. With only one `scope_hash` per link, a
+///    verifier cannot prove that link N's advertised parent scope was actually
+///    received from link N-1.
+/// 4. The leaf capability token's `attenuation_proof.parent_scope_hash`
 ///    is checked against `chain.last().scope_hash` by
 ///    [`CapabilityToken::validate_chain_binding`].
 ///
@@ -257,6 +261,13 @@ pub fn validate_delegation_chain_with_trust_root(
 
     if chain.is_empty() {
         return Ok(());
+    }
+
+    if chain.len() > 1 {
+        return Err(Error::DelegationChainBroken {
+            reason: "multi-hop attenuated delegation chains require per-hop child-scope witnesses"
+                .to_string(),
+        });
     }
 
     for (i, link) in chain.iter().enumerate() {
@@ -446,19 +457,68 @@ pub fn validate_attenuation_proof(
     Ok(())
 }
 
-fn scope_allows_delegation(scope: &ChioScope) -> bool {
-    scope
+fn validate_delegable_child_scope(parent: &ChioScope, child: &ChioScope) -> Result<()> {
+    let has_delegable_parent_grant = parent
         .grants
         .iter()
         .any(|grant| grant.operations.contains(&Operation::Delegate))
-        || scope
+        || parent
             .resource_grants
             .iter()
             .any(|grant| grant.operations.contains(&Operation::Delegate))
-        || scope
+        || parent
             .prompt_grants
             .iter()
-            .any(|grant| grant.operations.contains(&Operation::Delegate))
+            .any(|grant| grant.operations.contains(&Operation::Delegate));
+    if !has_delegable_parent_grant {
+        return Err(Error::AttenuationViolation {
+            reason: "parent capability scope does not authorize delegation".to_string(),
+        });
+    }
+
+    for (index, child_grant) in child.grants.iter().enumerate() {
+        let covered_by_delegable_parent = parent.grants.iter().any(|parent_grant| {
+            parent_grant.operations.contains(&Operation::Delegate)
+                && child_grant.is_subset_of(parent_grant)
+        });
+        if !covered_by_delegable_parent {
+            return Err(Error::AttenuationViolation {
+                reason: format!(
+                    "tool grant {index} is not covered by a parent grant that authorizes delegation"
+                ),
+            });
+        }
+    }
+
+    for (index, child_grant) in child.resource_grants.iter().enumerate() {
+        let covered_by_delegable_parent = parent.resource_grants.iter().any(|parent_grant| {
+            parent_grant.operations.contains(&Operation::Delegate)
+                && child_grant.is_subset_of(parent_grant)
+        });
+        if !covered_by_delegable_parent {
+            return Err(Error::AttenuationViolation {
+                reason: format!(
+                    "resource grant {index} is not covered by a parent grant that authorizes delegation"
+                ),
+            });
+        }
+    }
+
+    for (index, child_grant) in child.prompt_grants.iter().enumerate() {
+        let covered_by_delegable_parent = parent.prompt_grants.iter().any(|parent_grant| {
+            parent_grant.operations.contains(&Operation::Delegate)
+                && child_grant.is_subset_of(parent_grant)
+        });
+        if !covered_by_delegable_parent {
+            return Err(Error::AttenuationViolation {
+                reason: format!(
+                    "prompt grant {index} is not covered by a parent grant that authorizes delegation"
+                ),
+            });
+        }
+    }
+
+    Ok(())
 }
 
 /// Recursive-delegation mint helper.
@@ -510,13 +570,8 @@ pub fn delegate(
         });
     }
 
-    if !scope_allows_delegation(&parent.scope) {
-        return Err(Error::AttenuationViolation {
-            reason: "parent capability scope does not authorize delegation".to_string(),
-        });
-    }
-
     validate_attenuation(&parent.scope, child_scope)?;
+    validate_delegable_child_scope(&parent.scope, child_scope)?;
 
     let child_expires_at = attenuation.child_expires_at.unwrap_or(parent.expires_at);
     if child_expires_at > parent.expires_at {

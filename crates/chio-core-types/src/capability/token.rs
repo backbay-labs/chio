@@ -178,6 +178,13 @@ impl CapabilityToken {
     /// Reject unknown schema IDs and budget amplification.
     pub fn validate_schema(&self) -> Result<()> {
         ensure_schema_matches(&self.schema, CHIO_CAPABILITY_SCHEMA, "capability token")?;
+        if !self.caveats.is_empty() {
+            return Err(Error::AttenuationViolation {
+                reason:
+                    "capability caveats are not enforced by admission and are rejected fail-closed"
+                        .to_string(),
+            });
+        }
         let needs_attenuation_proof = self.requires_chain_binding();
         if needs_attenuation_proof && self.attenuation_proof.is_none() {
             return Err(Error::AttenuationViolation {
@@ -368,6 +375,13 @@ impl CapabilityToken {
             "capability token",
             "issuer",
         )?;
+        if !body.caveats.is_empty() {
+            return Err(Error::AttenuationViolation {
+                reason:
+                    "capability caveats are not enforced by admission and are rejected fail-closed"
+                        .to_string(),
+            });
+        }
         let child_hash = scope_hash(&body.body.scope)?;
         if body.attenuation_proof.child_scope_hash != child_hash {
             return Err(Error::AttenuationViolation {

@@ -567,6 +567,72 @@ jobs:
               console.log(`CLI smoke verified ${binName}`);
             }
           NODE
+            if [[ "$PACKAGE_NAME" == "@chio-protocol/workers" ]]; then
+              node --input-type=module <<'NODE'
+              import { existsSync } from "node:fs";
+              import path from "node:path";
+
+              const packageRoot = path.join(
+                process.cwd(),
+                "node_modules",
+                "@chio-protocol",
+                "workers",
+              );
+              const expectedFiles = [
+                "dist/index.js",
+                "dist/bundler/chio_kernel_browser_bg.js",
+                "dist/bundler/chio_kernel_browser_bg.wasm",
+              ];
+
+              for (const relativePath of expectedFiles) {
+                const candidate = path.join(packageRoot, relativePath);
+                if (!existsSync(candidate)) {
+                  throw new Error(`missing packed Workers artifact: ${relativePath}`);
+                }
+              }
+
+              console.log("Workers package artifact smoke verified @chio-protocol/workers");
+          NODE
+              (
+                cd "${GITHUB_WORKSPACE}/${PACKAGE_DIR}"
+                CHIO_WORKERS_PACKAGE_JSON="${consumer_dir}/node_modules/@chio-protocol/workers/package.json" node --input-type=module <<'NODE'
+                import { Miniflare } from "miniflare";
+                import path from "node:path";
+
+                const packageJsonPath = process.env.CHIO_WORKERS_PACKAGE_JSON;
+                if (packageJsonPath == null || packageJsonPath === "") {
+                  throw new Error("CHIO_WORKERS_PACKAGE_JSON is required");
+                }
+
+                const packageRoot = path.dirname(packageJsonPath);
+                process.chdir(packageRoot);
+                const mf = new Miniflare({
+                  modules: true,
+                  scriptPath: "dist/index.js",
+                  compatibilityDate: "2026-04-27",
+                  modulesRules: [
+                    { type: "ESModule", include: ["**/*.js"], fallthrough: true },
+                    { type: "CompiledWasm", include: ["**/*.wasm"], fallthrough: true },
+                  ],
+                });
+                try {
+                  const res = await mf.dispatchFetch("https://workers.test/__chio_workers_smoke");
+                  const body = await res.json();
+                  if (
+                    !res.ok ||
+                    body.package !== "@chio-protocol/workers" ||
+                    body.wasmTarget !== "bundler" ||
+                    body.verifyReceipt !== true
+                  ) {
+                    throw new Error(`Miniflare smoke failed: ${JSON.stringify(body)}`);
+                  }
+                  console.log("Workers Miniflare smoke verified @chio-protocol/workers");
+                } finally {
+                  await mf.dispose();
+                }
+          NODE
+              )
+            fi
           )
 
       - name: Install cosign
