@@ -22,6 +22,7 @@
     "projection_version": {
       "enum": [
         "chio.bbs-projection.workflow.v1",
+        "chio.bbs-projection.step.v1",
         "chio.bbs-projection.receipt.v1"
       ]
     },

@@ -4,7 +4,11 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::oci::{GuardRegistryError, Result, Sha256Digest};
+use crate::oci::{
+    GuardRegistryError, Result, Sha256Digest, GUARD_CONFIG_MEDIA_TYPE,
+    GUARD_MANIFEST_LAYER_MEDIA_TYPE, GUARD_MODULE_LAYER_MEDIA_TYPE, GUARD_WIT_LAYER_MEDIA_TYPE,
+};
+use oci_distribution::manifest::{OciDescriptor, OciImageManifest};
 use sha2::{Digest, Sha256};
 
 /// OCI image manifest cache file name.
@@ -15,24 +19,28 @@ pub const CACHE_CONFIG_JSON_FILE: &str = "config.json";
 pub const CACHE_WIT_BIN_FILE: &str = "wit.bin";
 /// Wasm component cache file name.
 pub const CACHE_MODULE_WASM_FILE: &str = "module.wasm";
+/// Guard manifest layer cache file name.
+pub const CACHE_GUARD_MANIFEST_JSON_FILE: &str = "guard-manifest.json";
 /// Sigstore bundle cache file name.
 pub const CACHE_SIGSTORE_BUNDLE_JSON_FILE: &str = "sigstore-bundle.json";
 
 /// Ordered cache file names required for every cached guard artifact.
-pub const CACHE_FILE_NAMES: [&str; 5] = [
+pub const CACHE_FILE_NAMES: [&str; 6] = [
     CACHE_MANIFEST_JSON_FILE,
     CACHE_CONFIG_JSON_FILE,
     CACHE_WIT_BIN_FILE,
     CACHE_MODULE_WASM_FILE,
+    CACHE_GUARD_MANIFEST_JSON_FILE,
     CACHE_SIGSTORE_BUNDLE_JSON_FILE,
 ];
 
 /// Ordered cache file names required before any guard artifact can be loaded.
-pub const CACHE_ARTIFACT_FILE_NAMES: [&str; 4] = [
+pub const CACHE_ARTIFACT_FILE_NAMES: [&str; 5] = [
     CACHE_MANIFEST_JSON_FILE,
     CACHE_CONFIG_JSON_FILE,
     CACHE_WIT_BIN_FILE,
     CACHE_MODULE_WASM_FILE,
+    CACHE_GUARD_MANIFEST_JSON_FILE,
 ];
 
 /// Root directory for the Chio guard artifact cache.
@@ -73,15 +81,21 @@ impl GuardCache {
         digest: &Sha256Digest,
         artifact: GuardCacheArtifact<'_>,
     ) -> Result<CachedGuardArtifact> {
-        ensure_manifest_digest_matches(digest, artifact.manifest_json)?;
+        validate_cache_admission(digest, &artifact)?;
         let layout = self.layout(digest);
         create_dir_all(layout.directory())?;
         write_cache_file(&layout.manifest_json_path(), artifact.manifest_json)?;
         write_cache_file(&layout.config_json_path(), artifact.config_json)?;
         write_cache_file(&layout.wit_bin_path(), artifact.wit)?;
         write_cache_file(&layout.module_wasm_path(), artifact.module)?;
+        write_cache_file(
+            &layout.guard_manifest_json_path(),
+            artifact.guard_manifest_json,
+        )?;
         if let Some(sigstore_bundle_json) = artifact.sigstore_bundle_json {
             write_cache_file(&layout.sigstore_bundle_json_path(), sigstore_bundle_json)?;
+        } else {
+            remove_cache_file_if_exists(&layout.sigstore_bundle_json_path())?;
         }
 
         Ok(CachedGuardArtifact {
@@ -130,30 +144,37 @@ impl GuardCacheLayout {
         self.directory.join(CACHE_MODULE_WASM_FILE)
     }
 
+    /// Guard manifest layer path.
+    pub fn guard_manifest_json_path(&self) -> PathBuf {
+        self.directory.join(CACHE_GUARD_MANIFEST_JSON_FILE)
+    }
+
     /// Sigstore bundle path.
     pub fn sigstore_bundle_json_path(&self) -> PathBuf {
         self.directory.join(CACHE_SIGSTORE_BUNDLE_JSON_FILE)
     }
 
     /// Return the complete ordered file path list for the layout.
-    pub fn file_paths(&self) -> [PathBuf; 5] {
+    pub fn file_paths(&self) -> [PathBuf; 6] {
         [
             self.manifest_json_path(),
             self.config_json_path(),
             self.wit_bin_path(),
             self.module_wasm_path(),
+            self.guard_manifest_json_path(),
             self.sigstore_bundle_json_path(),
         ]
     }
 
     /// Return files required for the pulled artifact independent of
     /// verification material.
-    pub fn artifact_file_paths(&self) -> [PathBuf; 4] {
+    pub fn artifact_file_paths(&self) -> [PathBuf; 5] {
         [
             self.manifest_json_path(),
             self.config_json_path(),
             self.wit_bin_path(),
             self.module_wasm_path(),
+            self.guard_manifest_json_path(),
         ]
     }
 }
@@ -169,6 +190,8 @@ pub struct GuardCacheArtifact<'a> {
     pub wit: &'a [u8],
     /// Wasm component bytes.
     pub module: &'a [u8],
+    /// Guard manifest layer bytes.
+    pub guard_manifest_json: &'a [u8],
     /// Optional Sigstore bundle bytes. `None` means the artifact was cached
     /// without Sigstore verification material; Sigstore load modes will deny
     /// until the bundle file is supplied.
@@ -220,10 +243,97 @@ fn ensure_manifest_digest_matches(digest: &Sha256Digest, manifest_json: &[u8]) -
     Ok(())
 }
 
+fn validate_cache_admission(
+    digest: &Sha256Digest,
+    artifact: &GuardCacheArtifact<'_>,
+) -> Result<()> {
+    ensure_manifest_digest_matches(digest, artifact.manifest_json)?;
+    let manifest =
+        serde_json::from_slice::<OciImageManifest>(artifact.manifest_json).map_err(|err| {
+            GuardRegistryError::VerifyFailedClosed {
+                message: format!("failed to parse pulled OCI manifest JSON: {err}"),
+            }
+        })?;
+    validate_descriptor(
+        "config.json",
+        &manifest.config,
+        GUARD_CONFIG_MEDIA_TYPE,
+        artifact.config_json,
+    )?;
+    if manifest.layers.len() != 3 {
+        return Err(GuardRegistryError::LayerCount {
+            actual: manifest.layers.len(),
+        });
+    }
+    validate_descriptor(
+        "wit.bin",
+        &manifest.layers[0],
+        GUARD_WIT_LAYER_MEDIA_TYPE,
+        artifact.wit,
+    )?;
+    validate_descriptor(
+        "module.wasm",
+        &manifest.layers[1],
+        GUARD_MODULE_LAYER_MEDIA_TYPE,
+        artifact.module,
+    )?;
+    validate_descriptor(
+        "guard-manifest.json",
+        &manifest.layers[2],
+        GUARD_MANIFEST_LAYER_MEDIA_TYPE,
+        artifact.guard_manifest_json,
+    )?;
+    Ok(())
+}
+
+fn validate_descriptor(
+    artifact_name: &'static str,
+    descriptor: &OciDescriptor,
+    expected_media_type: &'static str,
+    bytes: &[u8],
+) -> Result<()> {
+    if descriptor.media_type != expected_media_type {
+        return Err(GuardRegistryError::DescriptorMediaTypeMismatch {
+            artifact: artifact_name,
+            expected: expected_media_type,
+            actual: descriptor.media_type.clone(),
+        });
+    }
+    let actual_digest = format!("sha256:{:x}", Sha256::digest(bytes));
+    if descriptor.digest != actual_digest {
+        return Err(GuardRegistryError::DescriptorDigestMismatch {
+            artifact: artifact_name,
+            expected: descriptor.digest.clone(),
+            actual: actual_digest,
+        });
+    }
+    let actual_size = i64::try_from(bytes.len()).unwrap_or(i64::MAX);
+    if descriptor.size != actual_size {
+        return Err(GuardRegistryError::DescriptorSizeMismatch {
+            artifact: artifact_name,
+            expected: descriptor.size,
+            actual: actual_size,
+        });
+    }
+    Ok(())
+}
+
 fn write_cache_file(path: &Path, bytes: &[u8]) -> Result<()> {
     fs::write(path, bytes).map_err(|source| GuardRegistryError::CacheIo {
         operation: "write",
         path: path.to_path_buf(),
         source,
     })
+}
+
+fn remove_cache_file_if_exists(path: &Path) -> Result<()> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(source) if source.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(source) => Err(GuardRegistryError::CacheIo {
+            operation: "remove",
+            path: path.to_path_buf(),
+            source,
+        }),
+    }
 }

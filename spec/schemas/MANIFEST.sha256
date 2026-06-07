@@ -6,7 +6,7 @@ e0b16d7b325b39453865ddbbfaa9c8e9201b8b8eaac10fb23cf61d08a7c85499  spec/schemas/c
 758d782b2de5dd128c49f243b0bbd303ab90559c495339d5fcc540b4b18a6c4d  spec/schemas/chio-attest/v1/buyer-attestation-verification-report.schema.json
 fddf38436c3fcc9a4eebeffa3b81a7d23fe635ef9ea34187c877f9ef1044cda3  spec/schemas/chio-attest/v1/buyer-proof-negative-fixture-corpus.schema.json
 9cd16e96c7f36e438b4af26a5a80cbb30f8691ae47136fdc5ed7888ca2915949  spec/schemas/chio-attest/v1/proof-package.schema.json
-a9eb84a496200ce2d944abc028b6c9b92f191419ab5c24524b111d502c079c18  spec/schemas/chio-attest/v1/selective-disclosure-proof.schema.json
+021e7ef1256c1dc0e6ec89395668caa8b806446251c88d943d388c08d77c3535  spec/schemas/chio-attest/v1/selective-disclosure-proof.schema.json
 2867950d044d84e00e9c67d87f8df474e47f7cfff898d388bf9a491ffd7a7cda  spec/schemas/chio-attest/v1/verifier-report.schema.json
 442f459da45454693e2a83a57a22a2d4c6b528d9f72ad1b1e4edff71b6d6a876  spec/schemas/chio-attest/v1/workflow-intersection.schema.json
 187e0d1da854f627e45e8b99e34fd0935eae1401444ab6fc71d294cd3db5cbbc  spec/schemas/chio-federation/v1/authority-profile.schema.json

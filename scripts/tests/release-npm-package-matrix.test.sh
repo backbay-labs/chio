@@ -56,6 +56,9 @@ grep -F 'cargo install wasm-pack --version "$(cat .tooling/wasm-pack.version)" -
 grep -F 'CHIO_REQUIRE_WASM_TOOLCHAIN: "1"' "$WORKFLOW" >/dev/null
 grep -F 'using local same-release ${block}.${name}' "$WORKFLOW" >/dev/null
 grep -F 'SAME_RELEASE_MARKER' "$WORKFLOW" >/dev/null
+grep -F 'npm install -g npm@^11.5.1' "$WORKFLOW" >/dev/null
+grep -F 'node trusted publishing runtime must be >= 22.14.0' "$WORKFLOW" >/dev/null
+grep -F 'npm trusted publishing CLI must be >= 11.5.1' "$WORKFLOW" >/dev/null
 grep -F 'ERROR: wasm-pack ${WASM_PACK_VERSION} is required for CI and release wasm builds.' "$REPO_ROOT/sdks/typescript/scripts/build-wasm.sh" >/dev/null
 
 node - "$REPO_ROOT" <<'NODE'

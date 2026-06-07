@@ -5,6 +5,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  ChioInvariantError,
   canonicalizeJsonString,
   capabilityBodyCanonicalJson,
   parseCapabilityJson,
@@ -255,6 +256,19 @@ test("capability vectors match the TS capability helpers", async () => {
         `${vectorCase.id} (max_delegation_depth=${vectorCase.max_delegation_depth})`,
       );
     }
+  }
+});
+
+test("capability parser rejects non-object JSON", () => {
+  for (const payload of ["null", "[]", "\"capability\"", "42"]) {
+    assert.throws(
+      () => parseCapabilityJson(payload),
+      (error: unknown) =>
+        error instanceof ChioInvariantError &&
+        error.code === "json" &&
+        error.message === "capability must be a JSON object",
+      payload,
+    );
   }
 });
 

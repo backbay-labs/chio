@@ -23,6 +23,7 @@ from chio.invariants import (
     verify_signed_manifest,
     verify_utf8_message_ed25519,
 )
+from chio.errors import ChioInvariantError
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 VECTORS_ROOT = REPO_ROOT / "tests" / "bindings" / "vectors"
@@ -161,6 +162,14 @@ class VectorTests(unittest.TestCase):
                     case["expected_with_max_delegation_depth"],
                     case["id"],
                 )
+
+    def test_capability_parser_rejects_non_object_json(self) -> None:
+        for payload in ("null", "[]", '"capability"', "42"):
+            with self.subTest(payload=payload):
+                with self.assertRaises(ChioInvariantError) as raised:
+                    parse_capability_json(payload)
+                self.assertEqual(raised.exception.code, "json")
+                self.assertEqual(str(raised.exception), "capability must be a JSON object")
 
     def test_manifest_vectors(self) -> None:
         fixture = load_vector("manifest")

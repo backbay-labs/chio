@@ -7,10 +7,13 @@ use chio_guard_registry::{
     GuardCache, GuardCacheArtifact, GuardLoadEvent, GuardLoadEventResult, GuardLoadSource,
     GuardNetworkState, GuardOfflineLoadError, GuardOfflineLoadRequest, GuardRegistryError,
     GuardSigstoreVerifier, GuardVerificationKind, GuardVerificationReport, GuardVerifiedSignature,
-    Sha256Digest, VerifiedAttestation, CHIO_GUARD_VERIFY_EVENT,
+    Sha256Digest, VerifiedAttestation, CHIO_GUARD_VERIFY_EVENT, GUARD_CONFIG_MEDIA_TYPE,
+    GUARD_MANIFEST_LAYER_MEDIA_TYPE, GUARD_MODULE_LAYER_MEDIA_TYPE, GUARD_WIT_LAYER_MEDIA_TYPE,
 };
+use oci_distribution::client::{Config, ImageLayer};
+use oci_distribution::manifest::OciImageManifest;
+use sha2::{Digest, Sha256};
 
-const DIGEST: &str = "sha256:bafebd36189ad3688b7b3915ea55d461e0bfcfbdde11e54b0a123999fb6be50f";
 const MODULE_BYTES: &[u8] = b"\0asm\x01\0\0\0";
 const BUNDLE_BYTES: &[u8] = br#"{"bundle":"fixture"}"#;
 
@@ -154,16 +157,8 @@ fn offline_ed25519_load_does_not_require_sigstore_bundle_file() {
     let temp = tempdir();
     let digest = digest();
     let cache = GuardCache::from_cache_home(temp.path());
-    let result = cache.write_artifact(
-        &digest,
-        GuardCacheArtifact {
-            manifest_json: br#"{"schemaVersion":2}"#,
-            config_json: br#"{"wit_world":"chio:guard/guard@0.2.0"}"#,
-            wit: b"package chio:guard@0.2.0;",
-            module: MODULE_BYTES,
-            sigstore_bundle_json: None,
-        },
-    );
+    let fixture = CacheFixture::new();
+    let result = cache.write_artifact(&digest, fixture.artifact(None));
     if let Err(error) = result {
         panic!("cache write should succeed: {error}");
     }
@@ -221,6 +216,7 @@ fn offline_sigstore_load_denies_unverified_rekor_inclusion() {
             ));
             assert_deny_event(
                 &event,
+                &digest,
                 GuardVerificationKind::SigstoreOnly,
                 GuardLoadSource::OfflineCache,
                 "signature-verification-failed",
@@ -286,6 +282,7 @@ fn offline_policy_denies_report_only_sigstore_without_rekor_inclusion() {
             ));
             assert_deny_event(
                 &event,
+                &digest,
                 GuardVerificationKind::SigstoreOnly,
                 GuardLoadSource::OfflineCache,
                 "rekor-inclusion-unverified",
@@ -326,10 +323,11 @@ fn offline_uncached_denies_without_verifier_call() {
             missing,
             event,
         }) => {
-            assert_eq!(denied_digest, DIGEST);
-            assert_eq!(missing.len(), 5);
+            assert_eq!(denied_digest, digest.as_str());
+            assert_eq!(missing.len(), 6);
             assert_deny_event(
                 &event,
+                &digest,
                 GuardVerificationKind::SigstoreOnly,
                 GuardLoadSource::OfflineCache,
                 "offline-cache-miss",
@@ -369,6 +367,7 @@ fn network_signature_failure_denies_load() {
             ));
             assert_deny_event(
                 &event,
+                &digest,
                 GuardVerificationKind::SigstoreOnly,
                 GuardLoadSource::Network,
                 "signature-verification-failed",
@@ -420,6 +419,7 @@ fn dual_mode_digest_mismatch_denies_load_after_both_verifiers_run() {
             }
             assert_deny_event(
                 &event,
+                &digest,
                 GuardVerificationKind::DualVerified,
                 GuardLoadSource::OfflineCache,
                 "signature-verification-failed",
@@ -446,7 +446,7 @@ fn structured_event_labels_distinguish_all_verification_modes() {
     let event = GuardLoadEvent::allow(
         GuardVerificationKind::Ed25519Only,
         GuardLoadSource::OfflineCache,
-        DIGEST,
+        digest().as_str(),
         &GuardVerifiedSignature {
             digest_sha256: digest_bytes(9),
             identity: "ed25519-key".to_owned(),
@@ -471,6 +471,7 @@ fn sigstore_report(digest: [u8; 32], identity: &'static str) -> GuardVerificatio
 
 fn assert_deny_event(
     event: &GuardLoadEvent,
+    digest: &Sha256Digest,
     verification: GuardVerificationKind,
     source: GuardLoadSource,
     reason: &str,
@@ -479,31 +480,24 @@ fn assert_deny_event(
     assert_eq!(event.result, GuardLoadEventResult::Deny);
     assert_eq!(event.verification, verification);
     assert_eq!(event.source, source);
-    assert_eq!(event.digest, DIGEST);
+    assert_eq!(event.digest, digest.as_str());
     assert_eq!(event.reason.as_deref(), Some(reason));
 }
 
 fn write_cache(cache: &GuardCache, digest: &Sha256Digest) {
-    let result = cache.write_artifact(
-        digest,
-        GuardCacheArtifact {
-            manifest_json: br#"{"schemaVersion":2}"#,
-            config_json: br#"{"wit_world":"chio:guard/guard@0.2.0"}"#,
-            wit: b"package chio:guard@0.2.0;",
-            module: MODULE_BYTES,
-            sigstore_bundle_json: Some(BUNDLE_BYTES),
-        },
+    let fixture = CacheFixture::new();
+    assert_eq!(
+        fixture.digest, *digest,
+        "offline test fixture digest must match caller digest"
     );
+    let result = cache.write_artifact(digest, fixture.artifact(Some(BUNDLE_BYTES)));
     if let Err(error) = result {
         panic!("cache write should succeed: {error}");
     }
 }
 
 fn digest() -> Sha256Digest {
-    match DIGEST.parse::<Sha256Digest>() {
-        Ok(digest) => digest,
-        Err(error) => panic!("fixture digest should parse: {error}"),
-    }
+    CacheFixture::new().digest
 }
 
 fn digest_bytes(value: u8) -> [u8; 32] {
@@ -524,5 +518,70 @@ fn tempdir() -> tempfile::TempDir {
     match tempfile::tempdir() {
         Ok(temp) => temp,
         Err(error) => panic!("tempdir should be created: {error}"),
+    }
+}
+
+struct CacheFixture {
+    manifest_json: Vec<u8>,
+    config_json: Vec<u8>,
+    wit: Vec<u8>,
+    module: Vec<u8>,
+    guard_manifest_json: Vec<u8>,
+    digest: Sha256Digest,
+}
+
+impl CacheFixture {
+    fn new() -> Self {
+        let config_json = br#"{"wit_world":"chio:guard/guard@0.2.0"}"#.to_vec();
+        let wit = b"package chio:guard@0.2.0;".to_vec();
+        let module = MODULE_BYTES.to_vec();
+        let guard_manifest_json = br#"{"name":"fixture"}"#.to_vec();
+        let config = Config::new(
+            config_json.clone(),
+            GUARD_CONFIG_MEDIA_TYPE.to_owned(),
+            None,
+        );
+        let layers = vec![
+            ImageLayer::new(wit.clone(), GUARD_WIT_LAYER_MEDIA_TYPE.to_owned(), None),
+            ImageLayer::new(
+                module.clone(),
+                GUARD_MODULE_LAYER_MEDIA_TYPE.to_owned(),
+                None,
+            ),
+            ImageLayer::new(
+                guard_manifest_json.clone(),
+                GUARD_MANIFEST_LAYER_MEDIA_TYPE.to_owned(),
+                None,
+            ),
+        ];
+        let manifest = OciImageManifest::build(&layers, &config, None);
+        let manifest_json = match serde_json::to_vec(&manifest) {
+            Ok(bytes) => bytes,
+            Err(error) => panic!("fixture OCI manifest should serialize: {error}"),
+        };
+        let digest_text = format!("sha256:{:x}", Sha256::digest(&manifest_json));
+        let digest = match digest_text.parse::<Sha256Digest>() {
+            Ok(digest) => digest,
+            Err(error) => panic!("fixture digest should parse: {error}"),
+        };
+        Self {
+            manifest_json,
+            config_json,
+            wit,
+            module,
+            guard_manifest_json,
+            digest,
+        }
+    }
+
+    fn artifact<'a>(&'a self, sigstore_bundle_json: Option<&'a [u8]>) -> GuardCacheArtifact<'a> {
+        GuardCacheArtifact {
+            manifest_json: &self.manifest_json,
+            config_json: &self.config_json,
+            wit: &self.wit,
+            module: &self.module,
+            guard_manifest_json: &self.guard_manifest_json,
+            sigstore_bundle_json,
+        }
     }
 }

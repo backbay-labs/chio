@@ -45,13 +45,15 @@ def response_choice_count(payload: dict[str, Any], key: str) -> int:
 
 def has_stream_arg_fragments(records: list[dict[str, Any]]) -> bool:
     for record in records:
+        if record.get("direction") != "upstream_event":
+            continue
         payload = record.get("payload")
         if not isinstance(payload, dict):
             continue
         stage = str(payload.get("stage", ""))
         capture_mode = str(payload.get("capture_mode", ""))
-        direction = str(record.get("direction", ""))
-        if "stream" in direction or "stream" in stage or "stream" in capture_mode:
+        event = str(payload.get("event", ""))
+        if "stream" in stage or "stream" in capture_mode or "delta" in event:
             return True
     return False
 
@@ -80,6 +82,8 @@ for fixture_root in fixture_roots:
             max_candidates = max((response_choice_count(payload, "candidates") for payload in response_payloads), default=0)
             if max_candidates < 2:
                 failures.append(f"{path.relative_to(root)} claims multi_candidate but has {max_candidates} candidates")
+        if "stream" in fixture_id and not any(record.get("direction") == "upstream_event" for record in records):
+            failures.append(f"{path.relative_to(root)} claims stream but has no upstream_event records")
         if "split_args" in fixture_id and not has_stream_arg_fragments(records):
             failures.append(f"{path.relative_to(root)} claims split_args but has no stream argument fragments")
 

@@ -18,6 +18,8 @@ use chio_selective_disclosure::{
 use chio_workflow::receipt::{
     StepOutcome, StepRecord, WorkflowOutcome, WorkflowReceiptBody, WORKFLOW_RECEIPT_SCHEMA,
 };
+use serde_json::Value;
+use std::{fs, path::PathBuf};
 
 fn receipt_fixture(kp: &Keypair) -> ChioReceiptBody {
     ChioReceiptBody {
@@ -137,6 +139,55 @@ fn registry_for_key(keypair: &chio_selective_disclosure::BbsKeyPair) -> InMemory
     registry
 }
 
+fn repo_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("repo root")
+}
+
+fn attest_schema_path(relative_path: &str) -> PathBuf {
+    repo_root()
+        .join("spec/schemas/chio-attest/v1")
+        .join(relative_path)
+}
+
+fn assert_attest_schema_accepts(relative_path: &str, instance: &Value) {
+    let schema_path = attest_schema_path(relative_path);
+    let contents = fs::read_to_string(&schema_path).expect("schema file exists");
+    let schema: Value = serde_json::from_str(&contents).expect("schema parses as json");
+    let base_uri = schema_path
+        .parent()
+        .expect("schema parent exists")
+        .canonicalize()
+        .expect("schema parent canonicalizes")
+        .to_string_lossy()
+        .replace('\\', "/");
+    let base_uri = if base_uri.ends_with('/') {
+        format!("file://{base_uri}")
+    } else {
+        format!("file://{base_uri}/")
+    };
+    let validator = jsonschema::options()
+        .with_base_uri(base_uri)
+        .build(&schema)
+        .expect("schema compiles");
+    if let Err(error) = validator.validate(instance) {
+        let mut details = vec![error.to_string()];
+        details.extend(
+            validator
+                .iter_errors(instance)
+                .skip(1)
+                .map(|entry| entry.to_string()),
+        );
+        panic!(
+            "schema `{relative_path}` rejected instance:\ninstance={}\nerrors={}",
+            serde_json::to_string_pretty(instance).expect("instance pretty prints"),
+            details.join(" | ")
+        );
+    }
+}
+
 #[test]
 fn receipt_projection_signs_and_proves_disclosed_fields_with_bbs_selective_disclosure() {
     let ed25519 = Keypair::generate();
@@ -239,6 +290,36 @@ fn workflow_and_step_projections_have_stable_versions() {
         .messages
         .iter()
         .any(|message| message.field == "tool_name" && !message.wholesale_only));
+}
+
+#[test]
+fn step_record_proof_validates_against_attest_schema() {
+    let ed25519 = Keypair::generate();
+    let workflow = workflow_fixture(&ed25519);
+    let projection =
+        project_step_record("wf-chio-refund-001", &workflow.steps[2]).expect("step projection");
+    assert_eq!(projection.version, PROJECTION_VERSION_STEP_V1);
+
+    let keypair = generate_bbs_keypair(b"chio-bbs-signing-key-material-step", b"chio").unwrap();
+    let signed = sign_projection(&projection, &keypair).expect("step signing succeeds");
+    assert!(verify_signed_projection(&signed, &projection).expect("step signature verifies"));
+
+    let proof = derive_selective_disclosure_proof(
+        &signed,
+        &projection,
+        &keypair,
+        &DisclosureSet(vec![0, 2, 4, 7]),
+        b"step-record-proof-schema-nonce",
+    )
+    .expect("step proof generation succeeds");
+    assert_eq!(proof.schema, SELECTIVE_DISCLOSURE_PROOF_SCHEMA_V1);
+    assert_eq!(proof.projection_version, PROJECTION_VERSION_STEP_V1);
+    verify_selective_disclosure_proof(&proof, &registry_for_key(&keypair))
+        .expect("step proof verifies");
+    assert_attest_schema_accepts(
+        "selective-disclosure-proof.schema.json",
+        &serde_json::to_value(&proof).expect("proof serializes"),
+    );
 }
 
 #[test]

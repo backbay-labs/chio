@@ -525,6 +525,31 @@ jobs:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
 
+      - name: Pin trusted publishing toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install -g npm@^11.5.1
+          node - <<'NODE'
+          const [major, minor] = process.versions.node.split(".").map(Number);
+          if (major < 22 || (major === 22 && minor < 14)) {
+            throw new Error(
+              `node trusted publishing runtime must be >= 22.14.0; got ${process.versions.node}`,
+            );
+          }
+          NODE
+          npm_version="$(npm --version)"
+          node - "$npm_version" <<'NODE'
+          const version = process.argv[2];
+          const [major, minor, patch] = version.split(".").map(Number);
+          if (
+            major < 11 ||
+            (major === 11 && (minor < 5 || (minor === 5 && patch < 1)))
+          ) {
+            throw new Error(`npm trusted publishing CLI must be >= 11.5.1; got ${version}`);
+          }
+          NODE
+
       - name: Read package metadata
         id: meta
         shell: bash

@@ -1,6 +1,6 @@
 # conformance-matrix.yml - Nightly conformance and vector-freshness gates.
 #
-# Three nightly jobs:
+# Nightly/manual jobs:
 #   - vectors-byte-stable: re-runs `cargo xtask freeze-vectors --check`
 #     to catch vector drift introduced outside a PR.
 #   - peer-lock-shape-check: validates the pre-release peer lockfile shape even
@@ -8,6 +8,9 @@
 #   - external-consumer-smoke: release-blocking source-install consumer flow on
 #     a fresh runner. It fails until at least one Python peer is published, then
 #     fetches that peer and runs JSON-report scenarios against it.
+# Pull requests run the vector and peer-lock shape gates only. They do not run
+# external-consumer-smoke while the repo is pre-release and peer artifacts are
+# intentionally unpublished.
 #
 # Alarm policy: 1 failed nightly opens an issue tagged `alarm:conformance-matrix`;
 # 3 consecutive failures page the protocol owner.
@@ -96,6 +99,7 @@ jobs:
   external-consumer-smoke:
     name: external-consumer-smoke (release-blocking python peer run)
     # owner: Chio maintainers
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

@@ -782,10 +782,14 @@ pub(crate) fn cmd_guard_pull(command: GuardPullCommand<'_>) -> Result<(), CliErr
         "module_wasm:      {}",
         response.cached.layout.module_wasm_path().display()
     );
+    println!(
+        "guard_manifest:   {}",
+        response.cached.layout.guard_manifest_json_path().display()
+    );
     let sigstore_bundle_path = response.cached.layout.sigstore_bundle_json_path();
     if sigstore_bundle_path.exists() {
         println!("sigstore_bundle:  {}", sigstore_bundle_path.display());
-        println!("sigstore_status:  cached local bundle bytes; verification runs at guard load admission");
+        println!("sigstore_status:  cached local bundle bytes; guard pull does not verify Sigstore");
     } else {
         println!(
             "sigstore_bundle:  not cached (provide --sigstore-bundle to cache local bundle bytes)"

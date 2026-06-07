@@ -61,6 +61,9 @@ external peers, or run the lockfile shape check explicitly with
 `chio conformance fetch-peers --check --allow-unpublished-only`. The
 unpublished-only check is not an external consumer smoke test and must not be
 treated as evidence that a pre-built peer binary ran.
+Project PRs run only that shape check while the repo is pre-release; scheduled
+and manual conformance-matrix runs keep the real external-consumer smoke
+release-blocking once peer artifacts are published.
 
 ## 1. Install the conformance crate and the `chio` binary
 
@@ -379,9 +382,11 @@ always wrong if the in-repo runner is happy and the fresh install is not.
 ## Continuous-integration story
 
 For the Chio project itself, `.github/workflows/conformance-matrix.yml` keeps
-the peer lockfile shape fail-closed before release. The external-consumer smoke
-is release-blocking only after at least one peer entry is published; until then,
-the job denies the scenario run rather than pretending a fresh external
+the peer lockfile shape fail-closed before release. Pull requests run the
+shape check but skip `external-consumer-smoke` while every peer row is
+`published = false`. Scheduled and manual runs keep that smoke release-blocking:
+after at least one peer entry is published, the job fetches and runs the peer;
+until then, it denies the scenario run rather than pretending a fresh external
 consumer executed it. A registry smoke should replace the path-installed crate
 smoke only after `chio-conformance` has a registry-public dependency closure.
 

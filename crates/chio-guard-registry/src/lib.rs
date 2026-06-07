@@ -26,8 +26,9 @@ pub use chio_attest_verify::{
 
 pub use cache::{
     CachedGuardArtifact, GuardCache, GuardCacheArtifact, GuardCacheLayout,
-    CACHE_ARTIFACT_FILE_NAMES, CACHE_CONFIG_JSON_FILE, CACHE_FILE_NAMES, CACHE_MANIFEST_JSON_FILE,
-    CACHE_MODULE_WASM_FILE, CACHE_SIGSTORE_BUNDLE_JSON_FILE, CACHE_WIT_BIN_FILE,
+    CACHE_ARTIFACT_FILE_NAMES, CACHE_CONFIG_JSON_FILE, CACHE_FILE_NAMES,
+    CACHE_GUARD_MANIFEST_JSON_FILE, CACHE_MANIFEST_JSON_FILE, CACHE_MODULE_WASM_FILE,
+    CACHE_SIGSTORE_BUNDLE_JSON_FILE, CACHE_WIT_BIN_FILE,
 };
 pub use oci::{
     GuardArtifactLayer, GuardOciRef, GuardRegistryClient, GuardRegistryConfig, GuardRegistryError,

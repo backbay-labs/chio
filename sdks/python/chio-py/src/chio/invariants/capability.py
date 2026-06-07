@@ -2,13 +2,16 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..errors import parse_json_text
+from ..errors import ChioInvariantError, parse_json_text
 from .json import canonicalize_json
 from .signing import verify_utf8_message_ed25519
 
 
 def parse_capability_json(input_text: str) -> dict[str, Any]:
-    return parse_json_text(input_text)
+    parsed = parse_json_text(input_text)
+    if not isinstance(parsed, dict):
+        raise ChioInvariantError("json", "capability must be a JSON object")
+    return parsed
 
 
 def _capability_body(capability: dict[str, Any]) -> dict[str, Any]:
