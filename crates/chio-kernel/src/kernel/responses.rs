@@ -1325,9 +1325,7 @@ impl ChioKernel {
             capability_id: &cap.id,
             tool_name: &request.tool_name,
             server_id: &request.server_id,
-            decision: Decision::Incomplete {
-                reason: "execution nonce preflight requires retry with presented nonce".to_string(),
-            },
+            decision: Decision::Allow,
             action,
             content_hash: receipt_content.content_hash,
             metadata,
@@ -1409,7 +1407,9 @@ impl ChioKernel {
             capability_id: &cap.id,
             tool_name: &request.tool_name,
             server_id: &request.server_id,
-            decision: Decision::Allow,
+            decision: Decision::Incomplete {
+                reason: "execution nonce preflight requires retry with presented nonce".to_string(),
+            },
             action,
             content_hash: receipt_content.content_hash,
             metadata,

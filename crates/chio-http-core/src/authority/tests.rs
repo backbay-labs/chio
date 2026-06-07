@@ -1255,7 +1255,7 @@ fn sign_transport_deny_receipt_signs_final_scope_deny() {
     let authority = authority();
     let verdict = Verdict::deny_with_status(
         "request body exceeds limit",
-        "chio_tower_request_body_size",
+        "chio_tower_request_body_limit_guard",
         413,
     );
     let receipt = authority

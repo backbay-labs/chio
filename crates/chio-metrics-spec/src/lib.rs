@@ -692,7 +692,7 @@ mod tests {
     #[test]
     fn descriptor_validation_rejects_malformed_histogram_buckets() {
         let unordered = MetricDescriptor {
-            name: "chio_bad_latency_seconds",
+            name: "bad_latency_seconds",
             help: "Bad latency buckets.",
             kind: MetricKind::Histogram,
             labels: &[],
@@ -701,14 +701,14 @@ mod tests {
         assert_eq!(
             validate_metric_descriptor(&unordered),
             Err(MetricValidationError::NonIncreasingHistogramBucket {
-                metric: "chio_bad_latency_seconds",
+                metric: "bad_latency_seconds",
                 previous: "0.1",
                 bucket: "0.05",
             })
         );
 
         let invalid = MetricDescriptor {
-            name: "chio_bad_latency_seconds",
+            name: "bad_latency_seconds",
             help: "Bad latency buckets.",
             kind: MetricKind::Histogram,
             labels: &[],
@@ -717,7 +717,7 @@ mod tests {
         assert_eq!(
             validate_metric_descriptor(&invalid),
             Err(MetricValidationError::InvalidHistogramBucket {
-                metric: "chio_bad_latency_seconds",
+                metric: "bad_latency_seconds",
                 bucket: "NaN",
             })
         );
@@ -726,7 +726,7 @@ mod tests {
     #[test]
     fn descriptor_validation_rejects_bucket_kind_mismatches() {
         let counter = MetricDescriptor {
-            name: "chio_bad_total",
+            name: "bad_total",
             help: "Bad counter buckets.",
             kind: MetricKind::Counter,
             labels: &[],
@@ -735,13 +735,13 @@ mod tests {
         assert_eq!(
             validate_metric_descriptor(&counter),
             Err(MetricValidationError::UnexpectedBuckets {
-                metric: "chio_bad_total",
+                metric: "bad_total",
                 kind: MetricKind::Counter,
             })
         );
 
         let histogram = MetricDescriptor {
-            name: "chio_bad_latency_seconds",
+            name: "bad_latency_seconds",
             help: "Missing latency buckets.",
             kind: MetricKind::Histogram,
             labels: &[],
@@ -750,7 +750,7 @@ mod tests {
         assert_eq!(
             validate_metric_descriptor(&histogram),
             Err(MetricValidationError::MissingHistogramBuckets {
-                metric: "chio_bad_latency_seconds",
+                metric: "bad_latency_seconds",
             })
         );
     }

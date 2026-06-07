@@ -3437,6 +3437,7 @@ name = "chio-guard-registry"
 version = "0.1.0"
 dependencies = [
  "chio-attest-verify",
+ "chio-egress-contract",
  "chio-reputation",
  "oci-distribution",
  "reqwest 0.13.2",

@@ -1,17 +1,20 @@
 //! OCI distribution primitives for Chio guard artifacts.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::convert::TryFrom;
 use std::fmt;
 use std::path::PathBuf;
 use std::str::FromStr;
 
+use chio_egress_contract::{
+    client_builder_with_contract, send_with_contract, ContractResponse, HttpEgressContract,
+};
 use oci_distribution::client::{ClientConfig, ClientProtocol, Config, ImageData, ImageLayer};
 use oci_distribution::errors::OciDistributionError;
 use oci_distribution::manifest::OCI_IMAGE_INDEX_MEDIA_TYPE;
 use oci_distribution::secrets::RegistryAuth;
 use oci_distribution::{Client, ParseError, Reference};
-use reqwest::header::{ACCEPT, WWW_AUTHENTICATE};
+use reqwest::header::{ACCEPT, USER_AGENT, WWW_AUTHENTICATE};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
@@ -39,6 +42,8 @@ pub const GUARD_MANIFEST_LAYER_ROLE: &str = "manifest";
 pub(crate) const OCI_SCHEME: &str = "oci://";
 const SHA256_PREFIX: &str = "sha256:";
 const SHA256_HEX_LEN: usize = 64;
+const REGISTRY_HTTP_MAX_RESPONSE_BYTES: u64 = 16 * 1024 * 1024;
+const REGISTRY_HTTP_MAX_REDIRECT_CHAIN: u8 = 3;
 
 /// Result type for guard registry operations.
 pub type Result<T> = std::result::Result<T, GuardRegistryError>;
@@ -233,6 +238,16 @@ pub enum GuardRegistryError {
         /// Underlying HTTP error.
         #[source]
         source: reqwest::Error,
+    },
+
+    /// The registry referrers API request was denied by the typed egress contract.
+    #[error("guard OCI referrers request denied by HttpEgressContract for {url}: {source}")]
+    ReferrersEgress {
+        /// Referrers, blob, or token URL.
+        url: String,
+        /// Typed egress contract denial.
+        #[source]
+        source: chio_egress_contract::HttpEgressError,
     },
 
     /// The registry referrers API returned an error status.
@@ -459,7 +474,6 @@ impl GuardRegistryConfig {
 #[derive(Clone)]
 pub struct GuardRegistryClient {
     pub(crate) client: Client,
-    http_client: reqwest::Client,
     allow_http_registries: Vec<String>,
 }
 
@@ -468,16 +482,8 @@ impl GuardRegistryClient {
     pub fn try_new(config: GuardRegistryConfig) -> Result<Self> {
         let allow_http_registries = config.allow_http_registries.clone();
         let client = Client::try_from(config.into_oci_config()?)?;
-        let http_client = reqwest::Client::builder()
-            .user_agent("chio-guard-registry")
-            .build()
-            .map_err(|source| GuardRegistryError::ReferrersRequest {
-                url: "registry-client-init".to_string(),
-                source,
-            })?;
         Ok(Self {
             client,
-            http_client,
             allow_http_registries,
         })
     }
@@ -655,22 +661,19 @@ impl GuardRegistryClient {
         accept: &str,
         not_found_behavior: RegistryNotFoundBehavior,
     ) -> Result<Option<Vec<u8>>> {
-        let mut request = self
-            .http_client
+        let contract = self.registry_egress_contract_for_url(url)?;
+        let client = self.registry_http_client(url, &contract)?;
+        let mut request = client
             .get(url)
+            .header(USER_AGENT, "chio-guard-registry")
             .header(ACCEPT, accept)
             .query(query);
         if let RegistryCredentials::Basic { username, password } = credentials {
             request = request.basic_auth(username, Some(password));
         }
-        let response =
-            request
-                .send()
-                .await
-                .map_err(|source| GuardRegistryError::ReferrersRequest {
-                    url: url.to_string(),
-                    source,
-                })?;
+        let response = self
+            .send_registry_request(url, &contract, &client, request)
+            .await?;
 
         if response.status() == reqwest::StatusCode::UNAUTHORIZED {
             let challenge = response
@@ -680,25 +683,22 @@ impl GuardRegistryClient {
                 .and_then(parse_bearer_challenge);
             if let Some(challenge) = challenge {
                 let token = self
-                    .registry_bearer_token(reference, credentials, &challenge, url)
+                    .registry_bearer_token(reference, credentials, &challenge)
                     .await?;
-                let response = self
-                    .http_client
+                let response = client
                     .get(url)
+                    .header(USER_AGENT, "chio-guard-registry")
                     .header(ACCEPT, accept)
                     .bearer_auth(token)
-                    .query(query)
-                    .send()
-                    .await
-                    .map_err(|source| GuardRegistryError::ReferrersRequest {
-                        url: url.to_string(),
-                        source,
-                    })?;
-                return registry_response_body(url, response, not_found_behavior).await;
+                    .query(query);
+                let response = self
+                    .send_registry_request(url, &contract, &client, response)
+                    .await?;
+                return registry_response_body(url, response, not_found_behavior);
             }
         }
 
-        registry_response_body(url, response, not_found_behavior).await
+        registry_response_body(url, response, not_found_behavior)
     }
 
     async fn registry_bearer_token(
@@ -706,12 +706,13 @@ impl GuardRegistryClient {
         reference: &GuardOciRef,
         credentials: &RegistryCredentials,
         challenge: &BearerChallenge,
-        url: &str,
     ) -> Result<String> {
         let scope = format!("repository:{}:pull", reference.repository());
-        let mut request = self
-            .http_client
+        let contract = self.registry_egress_contract_for_url(&challenge.realm)?;
+        let client = self.registry_http_client(&challenge.realm, &contract)?;
+        let mut request = client
             .get(&challenge.realm)
+            .header(USER_AGENT, "chio-guard-registry")
             .query(&[("scope", scope.as_str())]);
         if let Some(service) = challenge.service.as_deref() {
             request = request.query(&[("service", service)]);
@@ -719,19 +720,17 @@ impl GuardRegistryClient {
         if let RegistryCredentials::Basic { username, password } = credentials {
             request = request.basic_auth(username, Some(password));
         }
-        let response =
-            request
-                .send()
-                .await
-                .map_err(|source| GuardRegistryError::ReferrersRequest {
-                    url: url.to_string(),
-                    source,
-                })?;
-        let body = registry_response_body(url, response, RegistryNotFoundBehavior::ReturnNone)
-            .await?
-            .ok_or_else(|| GuardRegistryError::ReferrersMalformed {
-                message: "token response unexpectedly returned 404".to_string(),
-            })?;
+        let response = self
+            .send_registry_request(&challenge.realm, &contract, &client, request)
+            .await?;
+        let body = registry_response_body(
+            &challenge.realm,
+            response,
+            RegistryNotFoundBehavior::ReturnNone,
+        )?
+        .ok_or_else(|| GuardRegistryError::ReferrersMalformed {
+            message: "token response unexpectedly returned 404".to_string(),
+        })?;
         let token: RegistryTokenResponse = serde_json::from_slice(&body).map_err(|source| {
             GuardRegistryError::ReferrersMalformed {
                 message: format!("parse registry token response: {source}"),
@@ -756,6 +755,82 @@ impl GuardRegistryClient {
             "https"
         }
     }
+
+    fn registry_egress_contract_for_url(&self, url: &str) -> Result<HttpEgressContract> {
+        let parsed =
+            reqwest::Url::parse(url).map_err(|source| GuardRegistryError::ReferrersMalformed {
+                message: format!("invalid registry URL `{url}`: {source}"),
+            })?;
+        let scheme = parsed.scheme().to_ascii_lowercase();
+        if !matches!(scheme.as_str(), "http" | "https") {
+            return Err(GuardRegistryError::ReferrersMalformed {
+                message: format!("registry URL `{url}` used unsupported scheme `{scheme}`"),
+            });
+        }
+        let host = parsed
+            .host_str()
+            .ok_or_else(|| GuardRegistryError::ReferrersMalformed {
+                message: format!("registry URL `{url}` omitted a host"),
+            })?;
+        let authority = normalized_reqwest_url_authority(&parsed)?;
+        let http_allowlisted = self
+            .allow_http_registries
+            .iter()
+            .any(|allowed| allowed == host || allowed == &authority);
+        if scheme == "http" && !http_allowlisted {
+            return Err(GuardRegistryError::InvalidClientConfig(
+                "HTTP guard registry referrer requests require allow_http_registries",
+            ));
+        }
+        let mut allowed_schemes = BTreeSet::new();
+        allowed_schemes.insert(scheme);
+        let mut allowed_authority_set = BTreeSet::new();
+        allowed_authority_set.insert(authority);
+        Ok(HttpEgressContract {
+            tenant_egress_namespace: "chio-guard-registry".to_string(),
+            allowed_schemes,
+            allowed_authority_set,
+            deny_loopback: !http_allowlisted,
+            deny_link_local: true,
+            deny_ipv6_ula: true,
+            max_redirect_chain: REGISTRY_HTTP_MAX_REDIRECT_CHAIN,
+            max_response_bytes: REGISTRY_HTTP_MAX_RESPONSE_BYTES,
+        })
+    }
+
+    fn registry_http_client(
+        &self,
+        url: &str,
+        contract: &HttpEgressContract,
+    ) -> Result<reqwest::Client> {
+        client_builder_with_contract(contract)
+            .build()
+            .map_err(|source| GuardRegistryError::ReferrersRequest {
+                url: url.to_string(),
+                source,
+            })
+    }
+
+    async fn send_registry_request(
+        &self,
+        url: &str,
+        contract: &HttpEgressContract,
+        client: &reqwest::Client,
+        request: reqwest::RequestBuilder,
+    ) -> Result<ContractResponse> {
+        let request = request
+            .build()
+            .map_err(|source| GuardRegistryError::ReferrersRequest {
+                url: url.to_string(),
+                source,
+            })?;
+        send_with_contract(contract, client, request)
+            .await
+            .map_err(|source| GuardRegistryError::ReferrersEgress {
+                url: url.to_string(),
+                source,
+            })
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -764,26 +839,20 @@ enum RegistryNotFoundBehavior {
     Error,
 }
 
-async fn registry_response_body(
+fn registry_response_body(
     url: &str,
-    response: reqwest::Response,
+    response: ContractResponse,
     not_found_behavior: RegistryNotFoundBehavior,
 ) -> Result<Option<Vec<u8>>> {
     let status = response.status();
-    let body = response
-        .bytes()
-        .await
-        .map_err(|source| GuardRegistryError::ReferrersRequest {
-            url: url.to_string(),
-            source,
-        })?;
+    let body = response.body();
     if status == reqwest::StatusCode::NOT_FOUND {
         return match not_found_behavior {
             RegistryNotFoundBehavior::ReturnNone => Ok(None),
             RegistryNotFoundBehavior::Error => Err(GuardRegistryError::ReferrersStatus {
                 url: url.to_string(),
                 status,
-                body: String::from_utf8_lossy(&body).chars().take(512).collect(),
+                body: String::from_utf8_lossy(body).chars().take(512).collect(),
             }),
         };
     }
@@ -791,10 +860,28 @@ async fn registry_response_body(
         return Err(GuardRegistryError::ReferrersStatus {
             url: url.to_string(),
             status,
-            body: String::from_utf8_lossy(&body).chars().take(512).collect(),
+            body: String::from_utf8_lossy(body).chars().take(512).collect(),
         });
     }
     Ok(Some(body.to_vec()))
+}
+
+fn normalized_reqwest_url_authority(url: &reqwest::Url) -> Result<String> {
+    let host = url
+        .host_str()
+        .ok_or_else(|| GuardRegistryError::ReferrersMalformed {
+            message: format!("registry URL `{url}` omitted a host"),
+        })?;
+    let host = host.to_ascii_lowercase();
+    let host_authority = if host.contains(':') && !host.starts_with('[') {
+        format!("[{host}]")
+    } else {
+        host
+    };
+    Ok(match url.port() {
+        Some(port) => format!("{host_authority}:{port}"),
+        None => host_authority,
+    })
 }
 
 fn parse_bearer_challenge(input: &str) -> Option<BearerChallenge> {

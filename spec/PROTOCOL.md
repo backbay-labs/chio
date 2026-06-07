@@ -1979,9 +1979,9 @@ present. Runtime proof regeneration now also emits a runtime evidence manifest,
 a proof-regeneration input artifact, package-valid signed `ChioReceipt`
 artifacts, strict Chio DSSE envelopes, a signed `WorkflowReceipt v2`,
 `chio.attest.proof-package.v1`, verifier trust and context inputs, and the
-verifier report produced by the existing Chio verifier. A regeneration
-report may set `accepted=true` only when that verifier accepts the regenerated
-package and the report binds proof package, verifier report, and workflow
+verification report produced by the existing verification implementation. A
+regeneration report may set `accepted=true` only when verification accepts the
+regenerated package and the report binds proof package, verification report, and workflow
 receipt hashes. `runtime_proof_semantic_regeneration_pending` is a rejected
 gate state, not a successful runtime proof claim.
 
@@ -2044,7 +2044,7 @@ local artifacts from fixture-shaped evidence to bounded runtime evidence. The
 closure requires verifier-owned treaty runtime state, pre-dispatch denial in
 the kernel, strict Chio DSSE with treaty binding references over real
 request, outcome, and receipt hashes, bounded lineage graph closure, and proof
-regeneration accepted by the existing Chio proof verifier. Hash-only
+regeneration accepted by the existing proof verification implementation. Hash-only
 self-attestation, copied static proof packages, compatibility-only bilateral
 predicates, and package-carried trust roots do not satisfy closure. The
 boundary remains local evidence only and does not add dynamic trust, settlement
@@ -2690,7 +2690,7 @@ The profile is intentionally narrow:
 - Chio currently supports exactly one requested credential with format
   `application/dc+sd-jwt` and type
   `https://chio.world/credentials/types/chio-passport-sd-jwt-vc/v1`
-- verifier trust bootstrap is one Chio verifier metadata document plus one
+- verifier trust bootstrap is one Chio verification metadata document plus one
   verifier `JWKS`
 - verifier or issuer key rotation may preserve active request and credential
   validation only when the rotated trusted keyset is still published through
