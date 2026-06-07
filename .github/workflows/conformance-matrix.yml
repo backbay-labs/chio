@@ -90,11 +90,8 @@ jobs:
       - name: Install protobuf compiler
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
-      - name: Install chio CLI (provides `chio conformance` subcommands)
-        run: cargo install --path crates/chio-cli --locked
-
       - name: Verify peers.lock.toml shape (pre-release)
-        run: chio conformance fetch-peers --check --allow-unpublished-only
+        run: cargo run -p chio-cli --bin chio -- conformance fetch-peers --check --allow-unpublished-only
 
   external-consumer-smoke:
     name: external-consumer-smoke (release-blocking python peer run)
