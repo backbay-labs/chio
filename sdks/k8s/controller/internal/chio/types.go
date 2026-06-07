@@ -226,7 +226,7 @@ type StepReceipt struct {
 	Phase string `json:"phase"`
 	// AdvisoryPodAnnotation carries any payload the workload wrote to its
 	// own `chio.world/receipt` annotation. The contents are
-	// user-controlled and MUST be treated as advisory only; see the
+	// user-controlled and MUST be treated as untrusted audit data; see the
 	// AdvisoryPodAnnotation doc-comment. Nil when the pod did not set a
 	// receipt annotation.
 	AdvisoryPodAnnotation *AdvisoryPodAnnotation `json:"advisory_pod_annotation,omitempty"`

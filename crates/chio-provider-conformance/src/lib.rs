@@ -23,7 +23,11 @@ pub use loaded_weights::{
 };
 pub use replay::{
     anthropic_fixture_dir, anthropic_fixture_paths, bedrock_fixture_dir, bedrock_fixture_paths,
-    load_fixture, openai_fixture_dir, openai_fixture_paths, replay_anthropic_fixture,
-    replay_bedrock_fixture, replay_openai_fixture, CapturedVerdict, ComparableInvocation,
-    ProviderCaptureFixture, ReplayError, ReplayMode, ReplayOutcome,
+    cohere_fixture_dir, cohere_fixture_paths, gemini_fixture_dir, gemini_fixture_paths,
+    groq_fixture_dir, groq_fixture_paths, load_fixture, mistral_fixture_dir, mistral_fixture_paths,
+    ollama_fixture_dir, ollama_fixture_paths, openai_fixture_dir, openai_fixture_paths,
+    replay_anthropic_fixture, replay_bedrock_fixture, replay_cohere_fixture, replay_gemini_fixture,
+    replay_groq_fixture, replay_mistral_fixture, replay_ollama_fixture, replay_openai_fixture,
+    CapturedVerdict, ComparableInvocation, ProviderCaptureFixture, ReplayError, ReplayMode,
+    ReplayOutcome,
 };

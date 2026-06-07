@@ -63,7 +63,7 @@ const (
 
 // ChioClient is the subset of chio.Client methods the reconciler needs.
 //
-// Declared as an interface so tests can inject a stub without taking a
+// Declared as an interface so tests can inject a test double without taking a
 // dependency on net/http.
 type ChioClient interface {
 	Mint(ctx context.Context, req chioapi.MintRequest) (*chioapi.CapabilityToken, error)

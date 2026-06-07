@@ -104,11 +104,13 @@ pub(crate) fn dispatch_guard(
                 username,
                 password,
                 allow_http_registry,
+                sigstore_bundle,
             } => guard::cmd_guard_pull(guard::GuardPullCommand {
                 reference: &reference,
                 username: username.as_deref(),
                 password: password.as_deref(),
                 allow_http_registry: allow_http_registry.clone(),
+                sigstore_bundle: sigstore_bundle.as_deref(),
             }),
             GuardCommands::Blocklist { command } => match command {
                 GuardBlocklistCommands::Remove { digest } => {
@@ -193,7 +195,14 @@ pub(crate) fn dispatch_conformance(
                 check,
                 out,
                 language,
+                allow_unpublished_only,
                 lockfile,
-            } => cmd_conformance_fetch_peers(check, &out, language.as_deref(), lockfile.as_deref()),
+            } => cmd_conformance_fetch_peers(
+                check,
+                &out,
+                language.as_deref(),
+                allow_unpublished_only,
+                lockfile.as_deref(),
+            ),
     }
 }

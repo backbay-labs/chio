@@ -1199,7 +1199,7 @@ manifests.
 
 The repository ships these primary runtime entrypoints:
 
-- `chio check`
+- `chio check` -- single-call policy evaluation in preflight mode, or full mode with an explicit output fixture for post-output guards
 - `chio run`
 - `chio mcp serve`
 - `chio mcp serve-http`

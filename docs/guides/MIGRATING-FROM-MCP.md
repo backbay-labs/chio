@@ -129,7 +129,10 @@ not an advisory evaluation receipt.
 ## Step 4: Prove one deny, one allow, and one receipt
 
 Run `chio check` against the same file-backed starter policy to confirm the
-kernel path is live:
+kernel path is live. The default mode is preflight: it evaluates policies that
+do not require tool output. If the policy contains output-sensitive guards, use
+`--mode full --output-fixture <json-file>` so the post-output guard pipeline is
+evaluated against explicit fixture output.
 
 ```bash
 chio check --policy ./policy.yaml \
@@ -156,6 +159,16 @@ chio check --policy ./policy.yaml \
   --server shell --tool run_command \
   --params '{"command":"pwd"}'
 # verdict: ALLOW, exit 0
+```
+
+For a policy that scans tool output, provide the tool response fixture:
+
+```bash
+printf '%s\n' '{"stdout":"/workspace/project"}' > /tmp/chio-check-output.json
+chio check --policy ./policy.yaml \
+  --mode full --output-fixture /tmp/chio-check-output.json \
+  --server shell --tool run_command \
+  --params '{"command":"pwd"}'
 ```
 
 End-to-end through your MCP client:

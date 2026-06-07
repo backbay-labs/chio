@@ -1,11 +1,13 @@
 # conformance-matrix.yml - Nightly conformance and vector-freshness gates.
 #
-# Two nightly jobs:
+# Three nightly jobs:
 #   - vectors-byte-stable: re-runs `cargo xtask freeze-vectors --check`
 #     to catch vector drift introduced outside a PR.
-#   - external-consumer-smoke: simulates the source-install consumer flow
-#     on a fresh runner (`cargo install --path crates/chio-conformance`,
-#     fetch-peers --check, JSON-report scenario run against the python peer).
+#   - peer-lock-shape-check: validates the pre-release peer lockfile shape even
+#     while all peer rows are `published = false`.
+#   - external-consumer-smoke: release-blocking source-install consumer flow on
+#     a fresh runner. It fails until at least one Python peer is published, then
+#     fetches that peer and runs JSON-report scenarios against it.
 #
 # Alarm policy: 1 failed nightly opens an issue tagged `alarm:conformance-matrix`;
 # 3 consecutive failures page the protocol owner.
@@ -69,8 +71,30 @@ jobs:
             tests/bindings/vectors/MANIFEST.sha256 \
             tests/bindings/vectors
 
+  peer-lock-shape-check:
+    name: peer-lock-shape-check (pre-release fetch-peers --check)
+    # owner: Chio maintainers
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+
+      - name: Install protobuf compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Install chio CLI (provides `chio conformance` subcommands)
+        run: cargo install --path crates/chio-cli --locked
+
+      - name: Verify peers.lock.toml shape (pre-release)
+        run: chio conformance fetch-peers --check --allow-unpublished-only
+
   external-consumer-smoke:
-    name: external-consumer-smoke (source-install flow on fresh runner)
+    name: external-consumer-smoke (release-blocking python peer run)
     # owner: Chio maintainers
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -97,8 +121,26 @@ jobs:
         # "Standalone consumer" section).
         run: cargo install --path crates/chio-cli --locked
 
-      - name: Verify peers.lock.toml shape (fetch-peers --check)
-        run: chio conformance fetch-peers --check
+      - name: Detect published python peer
+        id: python-peer
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import tomllib
+          with open("crates/chio-conformance/peers.lock.toml", "rb") as fh:
+              lock = tomllib.load(fh)
+          published = any(
+              peer.get("language") == "python" and peer.get("published", True)
+              for peer in lock.get("peer", [])
+          )
+          print(f"published={'true' if published else 'false'}")
+          PY
+
+      - name: Require published python peer
+        if: steps.python-peer.outputs.published != 'true'
+        run: |
+          echo "external-consumer-smoke requires at least one python peer with published = true in crates/chio-conformance/peers.lock.toml" >&2
+          echo "The pre-release shape check is separate; this release-blocking smoke must not pass without fetching and running a real peer." >&2
+          exit 1
 
       - name: Fetch python peer adapter binary
         run: chio conformance fetch-peers --language python --out ./.chio-peers
@@ -117,7 +159,7 @@ jobs:
   notify-on-failure:
     name: notify-on-failure (alarm-policy issue opener)
     # owner: Chio maintainers
-    needs: [vectors-byte-stable, external-consumer-smoke]
+    needs: [vectors-byte-stable, peer-lock-shape-check, external-consumer-smoke]
     if: failure() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 5

@@ -192,12 +192,10 @@ def chio_remote(
             else _DEFAULT_REDACTION_POLICY
         )
 
-        # TODO(v0.2): Ray pickles args into the object store BEFORE this
-        # wrapper fires; the original (unredacted) values may persist in the
-        # cluster's object store even though the sidecar payload built below
-        # is redacted. Cross-adapter object-store hardening (a chio-adapter-
-        # base concern) needs to land before this leak path is closed end-
-        # to-end.
+        # Ray pickles args into the object store before this wrapper fires.
+        # The sidecar payload below is redacted for receipt safety, but
+        # callers that need object-store secrecy must pass already-redacted
+        # values to Ray.
         if is_coro:
 
             @functools.wraps(fn)

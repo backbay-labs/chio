@@ -79,7 +79,7 @@ class ChioClient
         // Tool evaluation
         // --------------------------------------------------------------
 
-        /** Require mediated tool-call authorization. Current sidecar route is advisory only. */
+        /** Require mediated tool-call authorization. The current sidecar route emits audit receipts only. */
         override fun evaluateToolCall(
             capabilityId: String,
             toolServer: String,

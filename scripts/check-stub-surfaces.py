@@ -1,21 +1,23 @@
 #!/usr/bin/env python3
-"""Detect unresolved stub and placeholder surfaces in tracked text files."""
+"""Detect unresolved stub and placeholder surfaces in tracked and untracked text files."""
 
 from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 import re
 import subprocess
 import sys
 
 
-SEARCH_PREFIXES = ("crates/", "tests/", "examples/", "scripts/", "docs/")
 MATCH_RE = re.compile(
-    r"bbs-stub|not_yet_implemented|advisory only|\bTODO\b|\bFIXME\b|\bHACK\b|"
-    r"\bXXX\b|\b[Ss]tubs?\b|\b[Pp]laceholders?\b"
+    r"(?i:bbs-stub|not_yet_implemented|advisory only|\btodo!\s*\(|"
+    r"\bunimplemented!\s*\(|\bnot implemented\b|\btodo\b|\bfixme\b|\bhack\b|"
+    r"\bstubs?\b|\bplaceholders?\b)|\bXXX\b"
 )
+DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 @dataclass(frozen=True)
@@ -37,225 +39,201 @@ def allow(reason: str, expires: str) -> AllowlistEntry:
 ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/chio-acp-edge/src/bridge.rs": allow(
         "intentional advisory permission preview text, enforcement happens at invoke time",
-        "Phase 6.1 review",
-    ),
-    "crates/chio-acp-proxy/src/kernel_signer.rs": allow(
-        "debug-only placeholder string is not used for signature verification",
-        "Phase 6.1 review",
-    ),
-    "crates/chio-federation/Cargo.toml": allow(
-        "feature-gated selective-disclosure surface named bbs-stub",
-        "Phase 2.2 review",
-    ),
-    "crates/chio-federation/src/lib.rs": allow(
-        "feature-gated selective-disclosure surface named bbs-stub",
-        "Phase 2.2 review",
-    ),
-    "crates/chio-federation/src/selective_disclosure.rs": allow(
-        "feature-gated bbs-stub implementation isolated behind cfg(feature = \"bbs-stub\")",
-        "Phase 2.2 review",
+        "2026-12-31",
     ),
     "crates/chio-anchor/src/witness.rs": allow(
         "reviewed test fixture helper",
-        "Phase 7 review",
+        "2026-12-31",
     ),
     "crates/chio-anchor/src/witness/rekor.rs": allow(
         "reviewed test fixture helper",
-        "Phase 7 review",
+        "2026-12-31",
     ),
     "crates/chio-arena/src/promote.rs": allow(
         "reviewed test seam for injecting CHIO_BLESS environment access",
-        "Phase 7 review",
+        "2026-12-31",
+    ),
+    "crates/chio-attest-verify/src/lib.rs": allow(
+        "negative crate invariant text forbids live todo and unimplemented constructs",
+        "2026-12-31",
     ),
     "crates/chio-cli/dashboard/src/components/BudgetSparkline.tsx": allow(
         "UI empty-state placeholder, not an implementation stub",
-        "Phase 8.2 review",
+        "2026-12-31",
     ),
     "crates/chio-cli/dashboard/src/components/FilterSidebar.tsx": allow(
         "HTML input placeholder attributes, not implementation stubs",
-        "Phase 8.2 review",
+        "2026-12-31",
     ),
     "crates/chio-cli/dashboard/src/components/ReceiptTable.tsx": allow(
         "UI Suspense loading placeholder, not an implementation stub",
-        "Phase 8.2 review",
+        "2026-12-31",
     ),
     "crates/chio-cli/dashboard/src/index.css": allow(
         "CSS class for UI empty-state placeholder",
-        "Phase 8.2 review",
+        "2026-12-31",
     ),
     "crates/chio-cli/src/cli/mcp/manifest.rs": allow(
         "generated guard-manifest scaffold intentionally carries review TODO text",
-        "Phase 6.1 review",
-    ),
-    "crates/chio-cli/src/cli/replay/execute.rs": allow(
-        "reviewed replay fixture server used for offline evaluation",
-        "Phase 7 review",
+        "2026-12-31",
     ),
     "crates/chio-cli/src/cli/replay/validate.rs": allow(
         "reviewed replay validation fixture placeholder overwritten by signature tests",
-        "Phase 7 review",
-    ),
-    "crates/chio-cli/src/cli/runtime.rs": allow(
-        "reviewed local start scaffold OpenAPI document, not a security boundary",
-        "Phase 6.1 review",
+        "2026-12-31",
     ),
     "crates/chio-cli/src/cli/session.rs": allow(
         "reviewed CLI session fixture payload",
-        "Phase 7 review",
+        "2026-12-31",
     ),
     "crates/chio-cli/src/doctor/cosign.rs": allow(
         "reviewed doctor test fixture writes stub JSON under cfg(test)",
-        "Phase 7 review",
+        "2026-12-31",
     ),
     "crates/chio-cli/src/guard.rs": allow(
         "deny-by-default guard scaffold template, not a shipped allow path",
-        "Phase 6.1 review",
+        "2026-12-31",
     ),
     "crates/chio-cli/templates/init/README.md.tmpl": allow(
         "template README for generated example tool server",
-        "Phase 8.2 review",
+        "2026-12-31",
     ),
     "crates/chio-config/src/interpolation.rs": allow(
         "domain placeholder resolution term, not an unfinished implementation",
-        "Phase 6.1 review",
-    ),
-    "crates/chio-conformance/Cargo.toml": allow(
-        "conformance feature forwards the explicit bbs-stub feature gate",
-        "Phase 8.1 review",
+        "2026-12-31",
     ),
     "crates/chio-conformance/peers.lock.toml": allow(
         "pre-publication peer lock placeholders are guarded by published=false",
-        "Phase 8.2 review",
+        "2026-12-31",
     ),
     "crates/chio-conformance/src/peers.rs": allow(
         "peer-lock placeholder pins fail closed unless published=false",
-        "Phase 8.2 review",
+        "2026-12-31",
     ),
     "crates/chio-conformance/verdict_matrix/drivers/lambda/src/lib.rs": allow(
         "negative documentation says Lambda availability gate is not a placeholder",
-        "Phase 8.2 review",
+        "2026-12-31",
     ),
     "crates/chio-core-types/src/crypto.rs": allow(
         "reviewed fail-closed comments around non-Ed25519 byte conversions",
-        "Phase 3 review",
+        "2026-12-31",
+    ),
+    "crates/chio-core-types/src/plan.rs": allow(
+        "planned dependency edges are recorded as audit metadata in v1",
+        "2026-12-31",
     ),
     "crates/chio-core-types/src/receipt/kinds.rs": allow(
         "advisory trust level is an intentional receipt enum variant",
-        "Phase 3.2 review",
+        "2026-12-31",
     ),
     "crates/chio-custody-hw/src/lib.rs": allow(
         "negative crate-level invariant forbids trust-boundary stubs",
-        "Phase 6.1 review",
+        "2026-12-31",
     ),
     "crates/chio-custody-hw/src/verifier.rs": allow(
         "reviewed cfg(test) WebAuthn assertion fixture",
-        "Phase 7 review",
+        "2026-12-31",
     ),
     "crates/chio-envoy-ext-authz/proto/envoy/config/core/v3/base.proto": allow(
         "protocol fixture text for opaque Envoy fields",
-        "Phase 7 review",
+        "2026-12-31",
     ),
     "crates/chio-envoy-ext-authz/src/service.rs": allow(
         "reviewed adapter test seam documented in trait comment",
-        "Phase 7 review",
-    ),
-    "crates/chio-guard-registry/src/pull.rs": allow(
-        "reserved Sigstore cache slot fails closed with empty bytes",
-        "Phase 6.1 review",
+        "2026-12-31",
     ),
     "crates/chio-http-core/src/routes.rs": allow(
         "route-template placeholder terminology",
-        "Phase 6.1 review",
+        "2026-12-31",
     ),
     "crates/chio-kernel-browser/src/clock.rs": allow(
         "cfg(not wasm32) host-target test stub returns fail-closed time",
-        "Phase 6.2 review",
+        "2026-12-31",
     ),
     "crates/chio-kernel-browser/src/rng.rs": allow(
         "cfg(not wasm32) host-target stub always fails outside browser wasm",
-        "Phase 6.2 review",
+        "2026-12-31",
     ),
     "crates/chio-lineage/src/anchor.rs": allow(
         "signing state explicitly distinguishes unsigned signer hint from real signature",
-        "Phase 6.1 review",
+        "2026-12-31",
     ),
     "crates/chio-log-redact/src/engine.rs": allow(
         "fail-closed redaction placeholder prevents original secret exposure",
-        "Phase 6.1 review",
+        "2026-12-31",
     ),
     "crates/chio-metering/src/export.rs": allow(
         "timestamp fallback text is reviewed and deterministic",
-        "Phase 6.1 review",
+        "2026-12-31",
     ),
     "crates/chio-pheromone-relay/src/metrics.rs": allow(
         "SQL bind placeholder terminology, not an unfinished stub surface",
-        "Phase 6.1 review",
+        "2026-12-31",
     ),
     "crates/chio-policy/src/detection.rs": allow(
         "policy detector name used as domain data and covered by tests",
-        "Phase 6.1 review",
-    ),
-    "crates/chio-provider-conformance/src/replay.rs": allow(
-        "feature-gated replay stubs fail with guidance when provider features are absent",
-        "Phase 6.1 review",
+        "2026-12-31",
     ),
     "crates/chio-revocation-oracle/src/signer.rs": allow(
         "reviewed digest-only test signature marker",
-        "Phase 7 review",
+        "2026-12-31",
     ),
     "crates/chio-spec-codegen/src/main.rs": allow(
         "reviewed threat-model test-stub generator command surface",
-        "Phase 8.1 review",
+        "2026-12-31",
     ),
     "crates/chio-spec-codegen/src/threat_coverage_doc.rs": allow(
         "reviewed threat-model test-stub documentation generator",
-        "Phase 8.1 review",
+        "2026-12-31",
     ),
     "crates/chio-spec-codegen/src/threat_model.rs": allow(
         "reviewed threat-model test-stub generator, expected to fail closed until populated",
-        "Phase 8.1 review",
+        "2026-12-31",
     ),
     "crates/chio-store-sqlite/src/receipt_store/evidence_retention.rs": allow(
         "SQL bind placeholder terminology, not an unfinished stub surface",
-        "Phase 6.1 review",
+        "2026-12-31",
     ),
     "crates/chio-tee/src/tap.rs": allow(
         "reviewed TrafficTap test-double implementations",
-        "Phase 7 review",
+        "2026-12-31",
     ),
     "crates/chio-wasm-guards/src/fuzz.rs": allow(
         "fuzz fixture text describing an allocator stub",
-        "Phase 7 review",
+        "2026-12-31",
     ),
     "crates/chio-wasm-guards/src/lib.rs": allow(
         "exports the placeholder-resolution API module",
-        "Phase 5.1 review",
+        "2026-12-31",
     ),
     "crates/chio-wasm-guards/src/placeholders.rs": allow(
         "domain placeholder-resolution API for guard configuration",
-        "Phase 5.1 review",
+        "2026-12-31",
     ),
     "crates/chio-wasm-guards/src/runtime/wasmtime_backend.rs": allow(
         "domain placeholder-resolution API use for guard configuration",
-        "Phase 5.1 review",
+        "2026-12-31",
     ),
     "crates/chio-weights/src/lib.rs": allow(
         "negative crate invariant text forbids verifier and trust-boundary stubs",
-        "Phase 6.2 review",
+        "2026-12-31",
     ),
     "crates/chio-weights/src/lineage.rs": allow(
         "PQ-hybrid signing-state placeholder mirrors explicit unsigned lineage state",
-        "Phase 6.2 review",
+        "2026-12-31",
+    ),
+    "spec/schemas/chio-attest/v1/selective-disclosure-proof.schema.json": allow(
+        "schema explicitly rejects proof schema identifiers ending in .stub",
+        "2026-12-31",
+    ),
+    "supply-chain/config.toml": allow(
+        "cargo-vet exemption names the upstream bollard-stubs crate",
+        "2026-12-31",
     ),
 }
 
 ALLOWLIST_MATCHES: dict[str, tuple[str, ...]] = {
     "crates/chio-acp-edge/src/bridge.rs": (
         r"permission preview is advisory only; enforcement happens at invoke time",
-    ),
-    "crates/chio-acp-proxy/src/kernel_signer.rs": (
-        r"placeholder for debug logging",
-        r"into the placeholder anyway",
     ),
     "crates/chio-anchor/src/witness.rs": (
         r"rekor:placeholder",
@@ -265,6 +243,9 @@ ALLOWLIST_MATCHES: dict[str, tuple[str, ...]] = {
     ),
     "crates/chio-arena/src/promote.rs": (
         r"CHIO_BLESS gate\. Tests inject a stub",
+    ),
+    "crates/chio-attest-verify/src/lib.rs": (
+        r"contains no `todo!`,",
     ),
     "crates/chio-cli/dashboard/src/components/BudgetSparkline.tsx": (
         r"No cost data.*placeholder",
@@ -284,25 +265,14 @@ ALLOWLIST_MATCHES: dict[str, tuple[str, ...]] = {
         r"TODO: review the inferred scopes below before promoting",
         r"TODO: review and promote",
     ),
-    "crates/chio-cli/src/cli/replay/execute.rs": (
-        r"stub tool server",
-        r"stub frame id",
-        r"replay stub",
-        r"REPLAY_STUB_SERVER_ID",
-        r"chio-replay-stub",
-    ),
     "crates/chio-cli/src/cli/replay/validate.rs": (
         r"Unsigned placeholder matching the schema regex",
         r"unsigned placeholder tenant_sig",
-    ),
-    "crates/chio-cli/src/cli/runtime.rs": (
-        r"Stub OpenAPI spec used by `chio start`",
     ),
     "crates/chio-cli/src/cli/session.rs": (
         r'"stub": true',
     ),
     "crates/chio-cli/src/doctor/cosign.rs": (
-        r'"stub": true',
         r'\\"stub\\": true',
     ),
     "crates/chio-cli/src/guard.rs": (
@@ -316,17 +286,12 @@ ALLOWLIST_MATCHES: dict[str, tuple[str, ...]] = {
     "crates/chio-config/src/interpolation.rs": (
         r"Leave a placeholder so the rest of parsing can proceed",
     ),
-    "crates/chio-conformance/Cargo.toml": (
-        r"SHA-256-commitment stub",
-        r"bbs-stub",
-    ),
     "crates/chio-conformance/peers.lock.toml": (
         r"published = false.*placeholder",
         r"placeholder sha256",
     ),
     "crates/chio-conformance/src/peers.rs": (
         r"placeholder entries.*published = false",
-        r"Placeholder entries",
         r"placeholder sha256 pins",
         r"placeholder pins; flip published=true",
     ),
@@ -337,11 +302,15 @@ ALLOWLIST_MATCHES: dict[str, tuple[str, ...]] = {
         r"32-byte placeholder",
         r"all-zero placeholder",
     ),
+    "crates/chio-core-types/src/plan.rs": (
+        r"Advisory only in v1",
+    ),
     "crates/chio-core-types/src/receipt/kinds.rs": (
         r"advisory only",
     ),
     "crates/chio-custody-hw/src/lib.rs": (
         r"trust-boundary stubs",
+        r"todo!.+unimplemented!.+panic!",
     ),
     "crates/chio-custody-hw/src/verifier.rs": (
         r"signature are placeholders",
@@ -351,25 +320,6 @@ ALLOWLIST_MATCHES: dict[str, tuple[str, ...]] = {
     ),
     "crates/chio-envoy-ext-authz/src/service.rs": (
         r"tests can stub this trait",
-    ),
-    "crates/chio-federation/Cargo.toml": (
-        r"bbs-stub",
-        r"SHA-256-commitment stub",
-    ),
-    "crates/chio-federation/src/lib.rs": (
-        r"bbs-stub",
-        r"honestly-named",
-    ),
-    "crates/chio-federation/src/selective_disclosure.rs": (
-        r"Stub status \(HONEST\)",
-        r"bbs-stub",
-        r"proof_bytes.*placeholder",
-        r"AUDIT_VIEW_SCHEMA_STUB",
-        r"\.stub",
-        r"stub-proof",
-    ),
-    "crates/chio-guard-registry/src/pull.rs": (
-        r"placeholder JSON",
     ),
     "crates/chio-http-core/src/routes.rs": (
         r"`\{id\}` placeholder",
@@ -399,11 +349,6 @@ ALLOWLIST_MATCHES: dict[str, tuple[str, ...]] = {
         r'"stub"',
         r"detector_name, \"stub\"",
     ),
-    "crates/chio-provider-conformance/src/replay.rs": (
-        r"Stub that explains which feature is needed for Bedrock replay",
-        r"Stub that explains which feature is needed for Anthropic replay",
-        r"Stub that explains which feature is needed for OpenAI replay",
-    ),
     "crates/chio-revocation-oracle/src/signer.rs": (
         r"digest-stub-sha256",
     ),
@@ -424,6 +369,13 @@ ALLOWLIST_MATCHES: dict[str, tuple[str, ...]] = {
         r"stub source",
         r"Stub test",
         r"stub fails closed",
+        r"`unimplemented!\(\)` so the threat-model-coverage CI gate",
+        r"replace the `unimplemented!\(\)` call",
+        r'unimplemented!\(\\"populate the test body',
+        r"presence of `unimplemented!\(\)`",
+        r'line\.contains\("unimplemented!\("\)',
+        r"Replace the `unimplemented!\(\)` call when editing",
+        r'unimplemented!\("fill me"\)',
         r"per-threat stub",
         r"codegen stubs",
         r"Generate one stub",
@@ -459,9 +411,16 @@ ALLOWLIST_MATCHES: dict[str, tuple[str, ...]] = {
     ),
     "crates/chio-weights/src/lib.rs": (
         r"trust-boundary stubs",
+        r"todo!.+unimplemented!.+panic!",
     ),
     "crates/chio-weights/src/lineage.rs": (
         r"signing state placeholder",
+    ),
+    "spec/schemas/chio-attest/v1/selective-disclosure-proof.schema.json": (
+        r'"schema": \{ "pattern": "\\\\.stub\$" \}',
+    ),
+    "supply-chain/config.toml": (
+        r"\[\[exemptions\.bollard-stubs\]\]",
     ),
 }
 
@@ -482,9 +441,17 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
-def tracked_files(root: Path) -> list[str]:
+def scan_files(root: Path) -> list[str]:
     result = subprocess.run(
-        ["git", "-C", str(root), "ls-files"],
+        [
+            "git",
+            "-C",
+            str(root),
+            "ls-files",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+        ],
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -493,7 +460,16 @@ def tracked_files(root: Path) -> list[str]:
     return [
         line
         for line in result.stdout.splitlines()
-        if line.startswith(SEARCH_PREFIXES)
+        if line
+        and not line.startswith(
+            (
+                ".git/",
+                ".codex/",
+                ".agents/",
+                ".chio-peers/",
+                "target/",
+            )
+        )
     ]
 
 
@@ -505,14 +481,23 @@ def classify(path: str) -> str:
         "Cargo.lock",
     }:
         return "generated"
+    if path.startswith(".github/ISSUE_TEMPLATE/") or path.startswith(
+        ("audits/", "editors/", "formal/", "papers/")
+    ):
+        return "docs"
+    if path.startswith("deploy/"):
+        return "deployment-templates"
+    if path.startswith(".github/workflows/"):
+        return "scripts"
     if path.startswith("docs/") or suffix in {".md", ".adoc"}:
         return "docs"
-    if path.startswith("scripts/"):
+    if path.startswith("scripts/") or "/scripts/" in f"/{path}/":
         return "scripts"
     if path.startswith("examples/") or "/examples/" in f"/{path}/":
         return "examples"
     if (
         path.startswith("tests/")
+        or "/src/test/" in f"/{path}/"
         or "/tests/" in f"/{path}/"
         or name == "tests.rs"
         or ".test." in name
@@ -557,12 +542,27 @@ def collect_hits(root: Path, paths: list[str]) -> list[Hit]:
     return hits
 
 
+def validate_review_date(path: str, field: str, value: str) -> str | None:
+    if not value.strip():
+        return f"{path}: {field} is empty"
+    if not DATE_RE.fullmatch(value):
+        return f"{path}: {field} must be an ISO date (YYYY-MM-DD), got {value!r}"
+    try:
+        parsed = date.fromisoformat(value)
+    except ValueError:
+        return f"{path}: {field} is not a valid calendar date: {value!r}"
+    if parsed < date.today():
+        return f"{path}: {field} date has expired: {value}"
+    return None
+
+
 def validate_lists(errors: list[str]) -> None:
     for path, entry in sorted(ALLOWLIST.items()):
         if not entry.reason.strip():
             errors.append(f"{path}: allowlist entry has an empty reason")
-        if not entry.expires.strip():
-            errors.append(f"{path}: allowlist entry has an empty expiry")
+        date_error = validate_review_date(path, "allowlist expiry", entry.expires)
+        if date_error:
+            errors.append(date_error)
         patterns = ALLOWLIST_MATCHES.get(path)
         if not patterns:
             errors.append(f"{path}: allowlist entry has no reviewed match patterns")
@@ -580,8 +580,37 @@ def validate_lists(errors: list[str]) -> None:
     for path, entry in sorted(DENYLIST.items()):
         if not entry.reason.strip():
             errors.append(f"{path}: denylist entry has an empty reason")
-        if not entry.until.strip():
-            errors.append(f"{path}: denylist entry has an empty until field")
+        date_error = validate_review_date(path, "denylist until", entry.until)
+        if date_error:
+            errors.append(date_error)
+
+
+def validate_allowlist_coverage(root: Path, paths: list[str], hits: list[Hit], errors: list[str]) -> None:
+    if root != repo_root().resolve():
+        return
+
+    scanned = set(paths)
+    hits_by_path: dict[str, list[str]] = {}
+    for hit in hits:
+        hits_by_path.setdefault(hit.path, []).append(hit.text)
+
+    for path, patterns in sorted(ALLOWLIST_MATCHES.items()):
+        if path not in scanned:
+            errors.append(f"{path}: allowlist entry points at a file outside the scanner set")
+            continue
+        texts = hits_by_path.get(path, [])
+        if not texts:
+            errors.append(f"{path}: allowlist entry is stale; no current scanner hits")
+            continue
+        for pattern in patterns:
+            try:
+                compiled_pattern = re.compile(pattern)
+            except re.error:
+                continue
+            if not any(compiled_pattern.search(text) for text in texts):
+                errors.append(
+                    f"{path}: allowlist pattern is stale; no current hit matches {pattern!r}"
+                )
 
 
 def matches_allowlist(hit: Hit) -> bool:
@@ -616,7 +645,7 @@ def print_summary(hits: list[Hit]) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Check tracked stub surfaces.")
+    parser = argparse.ArgumentParser(description="Check tracked and untracked stub surfaces.")
     parser.add_argument(
         "--root",
         type=Path,
@@ -630,13 +659,14 @@ def main() -> int:
     validate_lists(errors)
 
     try:
-        paths = tracked_files(root)
+        paths = scan_files(root)
     except subprocess.CalledProcessError as exc:
         stderr = exc.stderr.strip()
-        print(f"failed to list tracked files under {root}: {stderr}", file=sys.stderr)
+        print(f"failed to list git files under {root}: {stderr}", file=sys.stderr)
         return 1
 
     hits = collect_hits(root, paths)
+    validate_allowlist_coverage(root, paths, hits, errors)
     print_summary(hits)
 
     failures: list[str] = []

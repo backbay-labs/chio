@@ -20,7 +20,7 @@ targeted verification commands are listed below.
 ```bash
 git ls-files '*.rs' | while read f; do lines=$(wc -l < "$f"); printf "%5d %s\n" "$lines" "$f"; done | sort -nr | sed -n '1,100p'
 find crates -path '*/src/lib.rs' -print | while read f; do lines=$(wc -l < "$f"); printf "%5d %s\n" "$lines" "$f"; done | sort -nr | sed -n '1,80p'
-rg -n "bbs-stub|not_yet_implemented|stub|placeholder|advisory only|TODO|FIXME|HACK|XXX" crates tests examples scripts docs | sed -n '1,240p'
+rg -n "not_yet_implemented|stub|placeholder|advisory only|TODO|FIXME|HACK|XXX" crates tests examples scripts docs | sed -n '1,240p'
 cargo metadata --no-deps --format-version 1 > /tmp/chio-metadata-final.json
 ```
 
@@ -170,9 +170,8 @@ must have:
 
 An unrelated `TODO`, `stub`, or `placeholder` in an otherwise allowlisted file
 now fails with `production stub-surface hit does not match reviewed allowlist
-patterns`. Regression tests cover both previously demonstrated bypasses:
-`crates/chio-federation/src/selective_disclosure.rs` and
-`crates/chio-cli/src/guard.rs`.
+patterns`. Regression tests cover both the removed federation
+selective-disclosure placeholder surface and `crates/chio-cli/src/guard.rs`.
 
 Current scan evidence: `python3 scripts/check-stub-surfaces.py` passed with
 133 production hits, all matched to reviewed allowlist patterns.

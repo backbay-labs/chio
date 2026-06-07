@@ -9,9 +9,10 @@ contract for **selective-disclosure proofs over chio receipts and
 workflow receipts**. The repository now includes
 `chio-selective-disclosure` with an opt-in `bbs` feature that signs
 receipt, workflow, and step projections and verifies reveal-set BBS
-proof packages. The `chio-federation` `bbs-stub` projection is a SHA-256 commitment placeholder; it cannot satisfy Chio conformance and is not compatible with BBS+ reveal proofs. Hidden
-range predicates, VC Data Integrity interop, and zkVM proofs are still
-deferred.
+proof packages. Legacy federation placeholder proof packages are not a
+conformance surface and any schema ending in `.stub` is rejected by the
+v1 proof schema and verifier. Hidden range predicates, VC Data
+Integrity interop, and zkVM proofs are still deferred.
 
 The v1 contract closes Hard Problem #4 from
 [CHIO_CONCEPT.md](../docs/research/CHIO_CONCEPT.md) v1.1 section 7
@@ -534,7 +535,9 @@ v1 does not specify a proof-carrying-receipt mode.
 The implemented slice lives in
 [`chio-selective-disclosure`](../crates/chio-selective-disclosure/src/lib.rs).
 It is outside the default build and enabled with the crate's `bbs`
-feature. The `chio-federation` `bbs-stub` feature is a SHA-256 commitment placeholder; it is not compatible with v1 BBS+ proofs.
+feature. Federation no longer ships a parallel selective-disclosure
+proof path; BBS projection, signing, proof derivation, and verification
+are owned by `chio-selective-disclosure`.
 
 The implementation uses `affinidi-bbs = 0.1.0`, pinned because
 `affinidi-bbs = 0.1.1` requires Rust 1.94 while this workspace is pinned

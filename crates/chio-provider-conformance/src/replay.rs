@@ -4,27 +4,67 @@
     not(any(
         feature = "fixtures-openai",
         feature = "fixtures-anthropic",
-        feature = "fixtures-bedrock"
+        feature = "fixtures-bedrock",
+        feature = "fixtures-gemini",
+        feature = "fixtures-mistral",
+        feature = "fixtures-groq",
+        feature = "fixtures-ollama",
+        feature = "fixtures-cohere"
     )),
     allow(dead_code, unused_imports)
 )]
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+#[cfg(any(
+    feature = "fixtures-openai",
+    feature = "fixtures-anthropic",
+    feature = "fixtures-bedrock"
+))]
+use std::collections::BTreeSet;
+
+#[cfg(any(
+    feature = "fixtures-openai",
+    feature = "fixtures-anthropic",
+    feature = "fixtures-bedrock",
+    feature = "fixtures-gemini",
+    feature = "fixtures-mistral",
+    feature = "fixtures-groq",
+    feature = "fixtures-ollama",
+    feature = "fixtures-cohere"
+))]
+use chio_tool_call_fabric::ToolResult;
 use chio_tool_call_fabric::{
     DenyReason, Principal, ProviderError, ProviderId, ProviderRequest, ReceiptId, Redaction,
-    ToolInvocation, ToolResult, VerdictResult,
+    ToolInvocation, VerdictResult,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 
-use crate::assertions::{
-    assert_canonical_json_eq, assert_verdict_eq, canonical_json_bytes_for, AssertionError,
-};
+#[cfg(any(
+    feature = "fixtures-openai",
+    feature = "fixtures-anthropic",
+    feature = "fixtures-bedrock",
+    feature = "fixtures-gemini",
+    feature = "fixtures-mistral",
+    feature = "fixtures-groq",
+    feature = "fixtures-ollama",
+    feature = "fixtures-cohere"
+))]
+use crate::assertions::canonical_json_bytes_for;
+use crate::assertions::{assert_canonical_json_eq, assert_verdict_eq, AssertionError};
 use crate::capture::{CaptureDirection, CaptureRecord, CapturedVerdictKind, CAPTURE_SCHEMA};
+
+#[path = "replay/additional_providers.rs"]
+mod additional_providers;
+
+pub use additional_providers::{
+    replay_cohere_fixture, replay_gemini_fixture, replay_groq_fixture, replay_mistral_fixture,
+    replay_ollama_fixture,
+};
 
 /// Replay error with fixture path context.
 #[derive(Debug, Error)]
@@ -163,6 +203,56 @@ pub fn bedrock_fixture_dir() -> PathBuf {
 /// Return all Bedrock NDJSON fixture paths in deterministic order.
 pub fn bedrock_fixture_paths() -> Result<Vec<PathBuf>, ReplayError> {
     fixture_paths_for_dir(bedrock_fixture_dir())
+}
+
+/// Return the Gemini fixture corpus path.
+pub fn gemini_fixture_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/gemini")
+}
+
+/// Return all Gemini NDJSON fixture paths in deterministic order.
+pub fn gemini_fixture_paths() -> Result<Vec<PathBuf>, ReplayError> {
+    fixture_paths_for_dir(gemini_fixture_dir())
+}
+
+/// Return the Mistral fixture corpus path.
+pub fn mistral_fixture_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/mistral")
+}
+
+/// Return all Mistral NDJSON fixture paths in deterministic order.
+pub fn mistral_fixture_paths() -> Result<Vec<PathBuf>, ReplayError> {
+    fixture_paths_for_dir(mistral_fixture_dir())
+}
+
+/// Return the Groq fixture corpus path.
+pub fn groq_fixture_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/groq")
+}
+
+/// Return all Groq NDJSON fixture paths in deterministic order.
+pub fn groq_fixture_paths() -> Result<Vec<PathBuf>, ReplayError> {
+    fixture_paths_for_dir(groq_fixture_dir())
+}
+
+/// Return the Ollama fixture corpus path.
+pub fn ollama_fixture_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/ollama")
+}
+
+/// Return all Ollama NDJSON fixture paths in deterministic order.
+pub fn ollama_fixture_paths() -> Result<Vec<PathBuf>, ReplayError> {
+    fixture_paths_for_dir(ollama_fixture_dir())
+}
+
+/// Return the Cohere fixture corpus path.
+pub fn cohere_fixture_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/cohere")
+}
+
+/// Return all Cohere NDJSON fixture paths in deterministic order.
+pub fn cohere_fixture_paths() -> Result<Vec<PathBuf>, ReplayError> {
+    fixture_paths_for_dir(cohere_fixture_dir())
 }
 
 fn fixture_paths_for_dir(root: PathBuf) -> Result<Vec<PathBuf>, ReplayError> {
@@ -359,7 +449,7 @@ pub fn replay_anthropic_fixture(path: impl AsRef<Path>) -> Result<ReplayOutcome,
     })
 }
 
-/// Stub that explains which feature is needed for Bedrock replay.
+/// Feature-disabled entrypoint that explains which feature is needed for Bedrock replay.
 #[cfg(not(feature = "fixtures-bedrock"))]
 pub fn replay_bedrock_fixture(path: impl AsRef<Path>) -> Result<ReplayOutcome, ReplayError> {
     let path = path.as_ref();
@@ -369,7 +459,7 @@ pub fn replay_bedrock_fixture(path: impl AsRef<Path>) -> Result<ReplayOutcome, R
     ))
 }
 
-/// Stub that explains which feature is needed for Anthropic replay.
+/// Feature-disabled entrypoint that explains which feature is needed for Anthropic replay.
 #[cfg(not(feature = "fixtures-anthropic"))]
 pub fn replay_anthropic_fixture(path: impl AsRef<Path>) -> Result<ReplayOutcome, ReplayError> {
     let path = path.as_ref();
@@ -379,7 +469,7 @@ pub fn replay_anthropic_fixture(path: impl AsRef<Path>) -> Result<ReplayOutcome,
     ))
 }
 
-/// Stub that explains which feature is needed for OpenAI replay.
+/// Feature-disabled entrypoint that explains which feature is needed for OpenAI replay.
 #[cfg(not(feature = "fixtures-openai"))]
 pub fn replay_openai_fixture(path: impl AsRef<Path>) -> Result<ReplayOutcome, ReplayError> {
     let path = path.as_ref();
@@ -435,6 +525,82 @@ impl ProviderCaptureFixture {
         Err(invalid_fixture(
             &self.path,
             "Bedrock replay received a non-bedrock provider record",
+        ))
+    }
+
+    #[cfg(feature = "fixtures-gemini")]
+    fn ensure_gemini(&self) -> Result<(), ReplayError> {
+        if self
+            .records
+            .iter()
+            .all(|record| record.provider == "gemini")
+        {
+            return Ok(());
+        }
+
+        Err(invalid_fixture(
+            &self.path,
+            "Gemini replay received a non-gemini provider record",
+        ))
+    }
+
+    #[cfg(feature = "fixtures-mistral")]
+    fn ensure_mistral(&self) -> Result<(), ReplayError> {
+        if self
+            .records
+            .iter()
+            .all(|record| record.provider == "mistral")
+        {
+            return Ok(());
+        }
+
+        Err(invalid_fixture(
+            &self.path,
+            "Mistral replay received a non-mistral provider record",
+        ))
+    }
+
+    #[cfg(feature = "fixtures-groq")]
+    fn ensure_groq(&self) -> Result<(), ReplayError> {
+        if self.records.iter().all(|record| record.provider == "groq") {
+            return Ok(());
+        }
+
+        Err(invalid_fixture(
+            &self.path,
+            "Groq replay received a non-groq provider record",
+        ))
+    }
+
+    #[cfg(feature = "fixtures-ollama")]
+    fn ensure_ollama(&self) -> Result<(), ReplayError> {
+        if self
+            .records
+            .iter()
+            .all(|record| record.provider == "ollama")
+        {
+            return Ok(());
+        }
+
+        Err(invalid_fixture(
+            &self.path,
+            "Ollama replay received a non-ollama provider record",
+        ))
+    }
+
+    #[cfg(feature = "fixtures-cohere")]
+    fn ensure_cohere(&self) -> Result<(), ReplayError> {
+        if self
+            .records
+            .iter()
+            .all(|record| record.provider == "cohere")
+        {
+            return Ok(());
+        }
+
+        Err(invalid_fixture(
+            &self.path,
+            "Cohere replay received a non-cohere provider record",
         ))
     }
 
@@ -523,6 +689,75 @@ impl ProviderCaptureFixture {
                     "Bedrock fixture did not include deterministic IAM principal headers",
                 )
             })
+    }
+
+    #[cfg(feature = "fixtures-gemini")]
+    fn gemini_project_id(&self) -> Result<String, ReplayError> {
+        self.header_from_upstream_request("x-chio-gemini-project-id")
+            .ok_or_else(|| {
+                invalid_fixture(
+                    &self.path,
+                    "Gemini fixture did not include a deterministic project header",
+                )
+            })
+    }
+
+    #[cfg(feature = "fixtures-mistral")]
+    fn mistral_project_id(&self) -> Result<String, ReplayError> {
+        self.header_from_upstream_request("x-chio-mistral-org-id")
+            .ok_or_else(|| {
+                invalid_fixture(
+                    &self.path,
+                    "Mistral fixture did not include a deterministic project header",
+                )
+            })
+    }
+
+    #[cfg(feature = "fixtures-groq")]
+    fn groq_project_id(&self) -> Result<String, ReplayError> {
+        self.header_from_upstream_request("x-chio-groq-org-id")
+            .ok_or_else(|| {
+                invalid_fixture(
+                    &self.path,
+                    "Groq fixture did not include a deterministic project header",
+                )
+            })
+    }
+
+    #[cfg(feature = "fixtures-ollama")]
+    fn ollama_host(&self) -> Result<String, ReplayError> {
+        self.header_from_upstream_request("x-chio-ollama-org-id")
+            .ok_or_else(|| {
+                invalid_fixture(
+                    &self.path,
+                    "Ollama fixture did not include a deterministic host header",
+                )
+            })
+    }
+
+    #[cfg(feature = "fixtures-cohere")]
+    fn cohere_org_id(&self) -> Result<String, ReplayError> {
+        self.header_from_upstream_request("x-chio-cohere-org-id")
+            .ok_or_else(|| {
+                invalid_fixture(
+                    &self.path,
+                    "Cohere fixture did not include a deterministic organization header",
+                )
+            })
+    }
+
+    #[cfg(any(
+        feature = "fixtures-gemini",
+        feature = "fixtures-mistral",
+        feature = "fixtures-groq",
+        feature = "fixtures-ollama",
+        feature = "fixtures-cohere"
+    ))]
+    fn header_from_upstream_request(&self, header_name: &str) -> Option<String> {
+        self.records
+            .iter()
+            .filter(|record| record.direction == CaptureDirection::UpstreamRequest)
+            .find_map(|record| header_from_payload(&record.payload, header_name))
     }
 
     #[cfg(feature = "fixtures-openai")]
@@ -743,6 +978,34 @@ impl ProviderCaptureFixture {
         }
 
         Ok(())
+    }
+
+    #[cfg(feature = "fixtures-ollama")]
+    fn has_ollama_stream_tool_events(&self) -> bool {
+        self.records.iter().any(|record| {
+            if record.direction != CaptureDirection::UpstreamEvent {
+                return false;
+            }
+
+            record
+                .payload
+                .get("data")
+                .and_then(|data| data.get("message"))
+                .and_then(|message| message.get("tool_calls"))
+                .and_then(Value::as_array)
+                .is_some_and(|calls| !calls.is_empty())
+        })
+    }
+
+    #[cfg(feature = "fixtures-cohere")]
+    fn has_cohere_stream_tool_events(&self) -> bool {
+        self.records.iter().any(|record| {
+            if record.direction != CaptureDirection::UpstreamEvent {
+                return false;
+            }
+
+            event_name(&record.payload) == Some("tool-call-end")
+        })
     }
 
     fn upstream_responses(&self) -> impl Iterator<Item = &CaptureRecord> {
@@ -1009,6 +1272,11 @@ fn assert_replayed_verdicts(
     Ok(())
 }
 
+#[cfg(any(
+    feature = "fixtures-openai",
+    feature = "fixtures-anthropic",
+    feature = "fixtures-bedrock"
+))]
 fn captured_verdict_by_invocation_id(
     path: &Path,
     captured: &[CapturedVerdict],
@@ -1473,7 +1741,11 @@ fn anthropic_message_body(payload: &Value) -> &Value {
         .unwrap_or(payload)
 }
 
-#[cfg(any(feature = "fixtures-openai", feature = "fixtures-anthropic"))]
+#[cfg(any(
+    feature = "fixtures-openai",
+    feature = "fixtures-anthropic",
+    feature = "fixtures-cohere"
+))]
 fn fixture_sse_bytes(fixture: &ProviderCaptureFixture) -> Result<Vec<u8>, ReplayError> {
     let mut bytes = Vec::new();
 
@@ -1499,7 +1771,11 @@ fn fixture_sse_bytes(fixture: &ProviderCaptureFixture) -> Result<Vec<u8>, Replay
     Ok(bytes)
 }
 
-#[cfg(any(feature = "fixtures-openai", feature = "fixtures-anthropic"))]
+#[cfg(any(
+    feature = "fixtures-openai",
+    feature = "fixtures-anthropic",
+    feature = "fixtures-cohere"
+))]
 fn event_name(payload: &Value) -> Option<&str> {
     payload.get("event").and_then(Value::as_str)
 }
@@ -1517,6 +1793,24 @@ fn org_id_from_payload(payload: &Value) -> Option<String> {
     let headers = payload.get("headers")?.as_object()?;
     headers.iter().find_map(|(key, value)| {
         if is_openai_org_header(key) {
+            header_value(value)
+        } else {
+            None
+        }
+    })
+}
+
+#[cfg(any(
+    feature = "fixtures-gemini",
+    feature = "fixtures-mistral",
+    feature = "fixtures-groq",
+    feature = "fixtures-ollama",
+    feature = "fixtures-cohere"
+))]
+fn header_from_payload(payload: &Value, expected_header: &str) -> Option<String> {
+    let headers = payload.get("headers")?.as_object()?;
+    headers.iter().find_map(|(key, value)| {
+        if key.eq_ignore_ascii_case(expected_header) {
             header_value(value)
         } else {
             None
@@ -1584,7 +1878,12 @@ fn is_openai_org_header(key: &str) -> bool {
 #[cfg(any(
     feature = "fixtures-openai",
     feature = "fixtures-anthropic",
-    feature = "fixtures-bedrock"
+    feature = "fixtures-bedrock",
+    feature = "fixtures-gemini",
+    feature = "fixtures-mistral",
+    feature = "fixtures-groq",
+    feature = "fixtures-ollama",
+    feature = "fixtures-cohere"
 ))]
 fn header_value(value: &Value) -> Option<String> {
     match value {
@@ -1597,7 +1896,12 @@ fn header_value(value: &Value) -> Option<String> {
 #[cfg(any(
     feature = "fixtures-openai",
     feature = "fixtures-anthropic",
-    feature = "fixtures-bedrock"
+    feature = "fixtures-bedrock",
+    feature = "fixtures-gemini",
+    feature = "fixtures-mistral",
+    feature = "fixtures-groq",
+    feature = "fixtures-ollama",
+    feature = "fixtures-cohere"
 ))]
 fn non_empty(value: &str) -> Option<String> {
     let value = value.trim();
@@ -1618,6 +1922,25 @@ fn fixture_bedrock_stream_bytes(fixture: &ProviderCaptureFixture) -> Result<Vec<
         .collect::<Vec<_>>();
 
     serde_json::to_vec(&events).map_err(ReplayError::from)
+}
+
+#[cfg(feature = "fixtures-ollama")]
+fn fixture_ollama_ndjson_bytes(fixture: &ProviderCaptureFixture) -> Result<Vec<u8>, ReplayError> {
+    let mut bytes = Vec::new();
+
+    for record in &fixture.records {
+        if record.direction != CaptureDirection::UpstreamEvent {
+            continue;
+        }
+
+        let data = record.payload.get("data").ok_or_else(|| {
+            invalid_fixture(&fixture.path, "upstream_event payload was missing data")
+        })?;
+        bytes.extend_from_slice(serde_json::to_string(data)?.as_bytes());
+        bytes.push(b'\n');
+    }
+
+    Ok(bytes)
 }
 
 fn required_field<'a>(
@@ -1646,6 +1969,11 @@ fn invalid_fixture(path: impl AsRef<Path>, message: impl Into<String>) -> Replay
     }
 }
 
+#[cfg(any(
+    feature = "fixtures-openai",
+    feature = "fixtures-anthropic",
+    feature = "fixtures-bedrock"
+))]
 fn futures_lite_block_on<F>(future: F) -> F::Output
 where
     F: std::future::Future,
@@ -1672,169 +2000,5 @@ where
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn fixture_paths_for_dir_filters_ndjson_and_sorts() -> Result<(), Box<dyn std::error::Error>> {
-        let root = std::env::temp_dir().join(format!(
-            "chio-provider-conformance-paths-{}",
-            std::process::id()
-        ));
-        let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(&root)?;
-        fs::write(root.join("b.ndjson"), "{}\n")?;
-        fs::write(root.join("a.ndjson"), "{}\n")?;
-        fs::write(root.join("notes.txt"), "ignored\n")?;
-
-        let paths = fixture_paths_for_dir(root.clone())?;
-
-        assert_eq!(paths, vec![root.join("a.ndjson"), root.join("b.ndjson")]);
-        fs::remove_dir_all(&root)?;
-        Ok(())
-    }
-
-    #[test]
-    fn load_fixture_rejects_empty_fixture_id() -> Result<(), Box<dyn std::error::Error>> {
-        let path = std::env::temp_dir().join(format!(
-            "chio-provider-conformance-empty-id-{}.ndjson",
-            std::process::id()
-        ));
-        fs::write(
-            &path,
-            format!(
-                r#"{{"schema":"{CAPTURE_SCHEMA}","fixture_id":"","direction":"upstream_request","provider":"openai","payload":{{}}}}"#
-            ),
-        )?;
-
-        let error = match load_fixture(&path) {
-            Ok(_) => {
-                let _ = fs::remove_file(&path);
-                panic!("empty fixture_id must fail closed");
-            }
-            Err(error) => error,
-        };
-
-        fs::remove_file(&path)?;
-        assert!(error.to_string().contains("fixture_id was empty"));
-        Ok(())
-    }
-
-    #[test]
-    fn load_fixture_rejects_spaced_fixture_id() -> Result<(), Box<dyn std::error::Error>> {
-        let path = std::env::temp_dir().join(format!(
-            "chio-provider-conformance-spaced-id-{}.ndjson",
-            std::process::id()
-        ));
-        fs::write(
-            &path,
-            format!(
-                r#"{{"schema":"{CAPTURE_SCHEMA}","fixture_id":" spaced ","direction":"upstream_request","provider":"openai","payload":{{}}}}"#
-            ),
-        )?;
-
-        let error = match load_fixture(&path) {
-            Ok(_) => {
-                let _ = fs::remove_file(&path);
-                panic!("spaced fixture_id must fail closed");
-            }
-            Err(error) => error,
-        };
-
-        fs::remove_file(&path)?;
-        assert!(
-            error
-                .to_string()
-                .contains("fixture_id had surrounding whitespace"),
-            "unexpected error: {error}"
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn load_fixture_rejects_fixture_id_that_does_not_match_filename(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let path = std::env::temp_dir().join(format!(
-            "chio-provider-conformance-id-drift-{}.ndjson",
-            std::process::id()
-        ));
-        fs::write(
-            &path,
-            format!(
-                r#"{{"schema":"{CAPTURE_SCHEMA}","fixture_id":"different_fixture","direction":"upstream_request","provider":"openai","payload":{{}}}}"#
-            ),
-        )?;
-
-        let error = match load_fixture(&path) {
-            Ok(_) => {
-                let _ = fs::remove_file(&path);
-                panic!("fixture_id must be bound to the filename stem");
-            }
-            Err(error) => error,
-        };
-
-        fs::remove_file(&path)?;
-        assert!(
-            error
-                .to_string()
-                .contains("fixture_id did not match filename"),
-            "unexpected error: {error}"
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn load_fixture_rejects_provider_drift_within_file() -> Result<(), Box<dyn std::error::Error>> {
-        let root = std::env::temp_dir().join(format!(
-            "chio-provider-conformance-provider-drift-{}",
-            std::process::id()
-        ));
-        let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(&root)?;
-        let path = root.join("provider_drift.ndjson");
-        fs::write(
-            &path,
-            format!(
-                r#"{{"schema":"{CAPTURE_SCHEMA}","fixture_id":"provider_drift","direction":"upstream_request","provider":"openai","payload":{{}}}}
-{{"schema":"{CAPTURE_SCHEMA}","fixture_id":"provider_drift","direction":"upstream_response","provider":"anthropic","payload":{{}}}}
-"#
-            ),
-        )?;
-
-        let error = match load_fixture(&path) {
-            Ok(_) => {
-                let _ = fs::remove_dir_all(&root);
-                panic!("provider drift must fail closed");
-            }
-            Err(error) => error,
-        };
-
-        fs::remove_dir_all(&root)?;
-        assert!(
-            error
-                .to_string()
-                .contains("provider changed within one NDJSON file"),
-            "unexpected error: {error}"
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn required_field_rejects_surrounding_whitespace() {
-        let error = match required_field(
-            Path::new("fixture.ndjson"),
-            Some(" call_1 "),
-            "invocation_id",
-        ) {
-            Ok(_) => panic!("spaced invocation_id must fail closed"),
-            Err(error) => error,
-        };
-
-        assert!(
-            error
-                .to_string()
-                .contains("invocation_id had surrounding whitespace"),
-            "unexpected error: {error}"
-        );
-    }
-}
+#[path = "replay/tests.rs"]
+mod tests;

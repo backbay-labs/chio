@@ -204,10 +204,15 @@ The interplay with the tee-replay subsystem:
   the goldens directory layout (`receipts.ndjson`, `checkpoint.json`,
   `root.hex`), and the result is a fixture indistinguishable from one
   produced by the goldens driver.
-- The sibling tee subcommand `chio replay <capture.ndjson> --against
-  <policy-ref>` re-executes captures against a named policy version
-  rather than the current build. It is documented separately in the tee-replay subsystem's
-  milestone doc; the surface and exit codes match this page.
+- The sibling tee subcommand `chio replay traffic --from <capture.ndjson>
+  --against <policy-path>` runs pre-output replay against a
+  workspace-local policy file rather than the current build. Registry-backed
+  manifest hashes and package coordinates are not accepted until a real
+  resolver can materialize a verified policy. Because
+  `chio-tee-frame.v1` carries only request / response SHA-256 hashes,
+  not the original Chio tool-server id or redacted response bytes, this
+  mode rejects policies with concrete-server grants or post-output
+  guards instead of reporting false drift.
 
 When `--from-tee` is omitted, the reader auto-detects: a directory path
 becomes the goldens reader, a regular file becomes the NDJSON reader.
@@ -340,7 +345,7 @@ chio replay ./fixtures/run-42/ --json | jq -r '.first_divergence.kind'
   exit codes, JSON schema; this page is the user-facing rendering of
   that section).
 - `spec/PROTOCOL.md` tee replay harness contract (sibling
-  `chio replay --against <policy-ref>` traffic mode, which reuses this
+  `chio replay traffic --against <policy-path>` mode, which reuses this
   page's exit codes verbatim).
 - `crates/chio-cli/src/cli/replay/report.rs` (in-tree report builder
   and the `SCHEMA_ID` constant).

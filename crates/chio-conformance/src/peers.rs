@@ -51,9 +51,8 @@ pub struct PeerEntry {
     /// Whether this entry has been published with a real sha256 pin and a
     /// reachable url. Defaults to `true` so historical entries do not need
     /// to be edited; placeholder entries MUST set `published = false`.
-    /// `chio conformance fetch-peers` SKIPS entries with
-    /// `published = false` rather than failing them with a sha256
-    /// mismatch.
+    /// `chio conformance fetch-peers` skips unpublished entries only when at
+    /// least one selected entry is published.
     #[serde(default = "default_published")]
     pub published: bool,
 }
@@ -154,9 +153,8 @@ impl PeersLock {
     }
 
     /// Partition entries into `(published, skipped)` based on the
-    /// `published` flag. Placeholder entries with
-    /// all-zeros / all-ones sha256 pins must SKIP rather than fail
-    /// `fetch-peers`; the partition lets the caller print a friendly
+    /// `published` flag. The CLI fails a selected set with zero published
+    /// entries; this partition lets mixed selections still print a friendly
     /// "skipping unpublished entry" line per skipped row.
     pub fn partition_by_published<'a>(
         entries: &[&'a PeerEntry],

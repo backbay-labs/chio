@@ -117,9 +117,22 @@ chio conformance fetch-peers --check
 ```
 
 This parses and validates the lockfile shape, prints the resolved path,
-and lists each entry without making any network calls. Use it in CI
-preflight checks where the actual fetch belongs to a later step, or to
-debug a corrupted lockfile.
+and lists each entry without making any network calls. It fails if the
+selected set contains zero published entries, so CI cannot pass a release
+gate by selecting rows that would all be skipped. Use it in CI preflight
+checks where the actual fetch belongs to a later step, or to debug a
+corrupted lockfile.
+
+Pre-release CI jobs that only validate the lockfile before any peer
+artifact has been uploaded must opt in explicitly:
+
+```bash
+chio conformance fetch-peers --check --allow-unpublished-only
+```
+
+The flag is rejected for real downloads; `fetch-peers` still requires at
+least one selected `published = true` entry before it creates or fetches
+peer binaries.
 
 ### Download binaries for a single language
 
@@ -300,15 +313,14 @@ crate that is no longer on disk.
 
 ## Unpublished peer entries
 
-The lockfile carries `published = false` entries for peers whose
-release artifacts have not been cut yet (cleanup C5 issue D). The
-`fetch-peers` subcommand SKIPS those entries with a clear message
-rather than failing the run with a sha256 mismatch:
+The lockfile may carry `published = false` entries for peers whose release
+artifacts have not been cut yet (cleanup C5 issue D). Mixed selections skip
+those entries with a clear message rather than failing with a sha256
+mismatch, but a selection with zero published rows fails:
 
 ```
 $ chio conformance fetch-peers --language python
-skipping unpublished peer `python / x86_64-unknown-linux-gnu`: lockfile entry has `published = false` (no real binary uploaded yet)
-skipping unpublished peer `python / aarch64-apple-darwin`: lockfile entry has `published = false` (no real binary uploaded yet)
+error: peers lockfile has no published entries for language filter `python`; every selected peer would be skipped
 ```
 
 Once the release pipeline cuts a real artifact, the lockfile

@@ -525,16 +525,16 @@ def _prefect_envelope(
                     ):
                         overflow_value = redacted_arg_list[overflow_idx]
                         # Skip if ``bind_and_redact`` already turned this
-                        # overflow positional into a redaction stub (e.g.
+                        # overflow positional into a redaction marker (e.g.
                         # the kwonly-protected path covers
                         # ``def write(path, *, content)`` overflows by
                         # redacting under the kwonly canonical). Re-running
-                        # ``redact_args`` on the stub dict would treat its
+                        # ``redact_args`` on the marker dict would treat its
                         # ``repr()`` as the new "value" and overwrite
-                        # ``byte_count`` with the length of the stub repr,
+                        # ``byte_count`` with the length of the marker repr,
                         # corrupting the audit trail.
                         #
-                        # Match the exact stub fingerprint
+                        # Match the exact redaction-marker fingerprint
                         # ``{"omitted": True, "byte_count": int}`` (no
                         # other keys) rather than just ``omitted is True``
                         # so a user dict that happens to carry an
@@ -607,10 +607,10 @@ def _prefect_envelope(
     new_kwargs: dict[str, Any] = {}
     for k, v in redacted_kwargs.items():
         if k in spillover_keys:
-            # TODO(chio-prefect 0.4): remove the synthetic-key
-            # re-emission per the deprecation window documented in the
-            # CHANGELOG. Callers will read the redacted spillover from
-            # ``kwargs[<original_name>]`` directly.
+            # Compatibility note: remove the synthetic-key re-emission
+            # with the v0.4 wire-shape change documented in the CHANGELOG.
+            # Callers will read the redacted spillover from
+            # ``kwargs[<original_name>]`` directly after that change.
             new_kwargs[f"{k}__var_kw_spillover__"] = v
         else:
             new_kwargs[k] = v

@@ -86,7 +86,7 @@ def assert_redacts_secrets(
     secret_value: str = "AKIA-EXAMPLE-SECRET-DO-NOT-LEAK",
     sibling: Mapping[str, str] | None = None,
 ) -> None:
-    """Assert that ``redact`` replaces ``secret_field`` with the omission stub.
+    """Assert that ``redact`` replaces ``secret_field`` with the omission marker.
 
     - ``redact(tool_name, args)`` must return a dict.
     - The ``secret_field`` entry must be replaced with
@@ -100,9 +100,9 @@ def assert_redacts_secrets(
     assert isinstance(redacted, dict), "redact must return a dict"
 
     expected_bytes = len(secret_value.encode("utf-8"))
-    expected_stub = {"omitted": True, "byte_count": expected_bytes}
-    assert redacted.get(secret_field) == expected_stub, (
-        f"expected {secret_field} to be {expected_stub!r}, "
+    expected_marker = {"omitted": True, "byte_count": expected_bytes}
+    assert redacted.get(secret_field) == expected_marker, (
+        f"expected {secret_field} to be {expected_marker!r}, "
         f"got {redacted.get(secret_field)!r}"
     )
 

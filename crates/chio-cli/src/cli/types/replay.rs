@@ -49,8 +49,8 @@ pub struct ReplayArgs {
 #[derive(clap::Subcommand)]
 pub enum ReplaySubcommand {
     /// Validate or re-execute an NDJSON `chio-tee-frame.v1` capture.
-    /// Supply `--against <policy-ref>` to re-execute against a policy with
-    /// namespaced replay receipts (`replay:<run_id>:<frame_id>`).
+    /// Supply `--against <policy-path>` to run pre-output replay against a
+    /// policy with namespaced replay receipts (`replay:<run_id>:<frame_id>`).
     Traffic(TrafficArgs),
 }
 
@@ -82,21 +82,18 @@ pub struct TrafficArgs {
     #[arg(long)]
     pub json: bool,
 
-    /// Re-execute every frame against this policy reference.
+    /// Re-execute every frame against this policy reference in pre-output mode.
     ///
-    /// Three accepted shapes:
-    ///
-    /// 1. `<64-lower-hex>` or `sha256:<64-lower-hex>` -- manifest hash.
-    ///    Requires manifest registry (not yet wired); surfaces
-    ///    `NotResolvable` until then.
-    /// 2. `<name>@<semver>` or `version:<name>@<semver>` -- package
-    ///    coordinate. Same: `NotResolvable` until package registry lands.
-    /// 3. Any other shape (or `path:<file>`) -- workspace-local YAML
-    ///    policy file. Fully resolvable now.
+    /// Accepted shape: `path:<file>` or a workspace-local YAML policy path.
+    /// Registry-backed manifest hashes and package coordinates are rejected
+    /// until a real resolver can materialize a verified policy.
+    /// Policies with concrete-server grants or post-output guards are rejected
+    /// because `chio-tee-frame.v1` carries neither the original Chio
+    /// tool-server id nor redacted response bytes.
     ///
     /// Replay receipts are namespaced `replay:<run_id>:<frame_id>` to
     /// prevent collisions with production receipts.
-    #[arg(long, value_name = "POLICY-REF")]
+    #[arg(long, value_name = "POLICY-PATH")]
     pub against: Option<String>,
 
     /// Optional caller-supplied replay run-id. When omitted a fresh

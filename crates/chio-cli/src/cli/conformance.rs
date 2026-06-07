@@ -22,10 +22,8 @@ pub(crate) fn cmd_conformance_run(
 
     let scenarios = chio_conformance::load_scenarios_from_dir(&options.scenarios_dir)
         .map_err(|error| CliError::cli_io_error(format!("failed to load scenarios: {error}")))?;
-    let mut results =
-        chio_conformance::load_results_from_dir(&summary.results_dir).map_err(|error| {
-            CliError::cli_io_error(format!("failed to load peer results: {error}"))
-        })?;
+    let mut results = chio_conformance::load_results_from_dir(&summary.results_dir)
+        .map_err(|error| CliError::cli_io_error(format!("failed to load peer results: {error}")))?;
     if let Some(filter) = scenario {
         results.retain(|result| result.scenario_id == filter);
     }
@@ -57,7 +55,9 @@ pub(crate) fn parse_report_format(report: Option<&str>) -> Result<bool, CliError
     }
 }
 
-pub(crate) fn parse_peer_selection(peer: &str) -> Result<Vec<chio_conformance::PeerTarget>, CliError> {
+pub(crate) fn parse_peer_selection(
+    peer: &str,
+) -> Result<Vec<chio_conformance::PeerTarget>, CliError> {
     match peer {
         "all" => Ok(vec![
             chio_conformance::PeerTarget::Js,
@@ -200,13 +200,21 @@ pub(crate) fn resolve_peers_lock_path(explicit: Option<&Path>) -> PathBuf {
 /// `--check`, each published entry is downloaded, sha256-verified, and
 /// extracted under `out/`. The `language` filter restricts the loop to
 /// entries matching that adapter. Entries flagged `published = false` are
-/// skipped with a clear message.
+/// skipped in mixed selections; selecting only unpublished entries fails
+/// unless `allow_unpublished_only` is set for an explicit pre-release gate.
 pub(crate) fn cmd_conformance_fetch_peers(
     check: bool,
     out: &Path,
     language: Option<&str>,
+    allow_unpublished_only: bool,
     lockfile: Option<&Path>,
 ) -> Result<(), CliError> {
+    if allow_unpublished_only && !check {
+        return Err(CliError::cli_other_error(
+            "--allow-unpublished-only is only valid with --check; downloads still require at least one published peer".to_string(),
+        ));
+    }
+
     let lock_path = resolve_peers_lock_path(lockfile);
     let lock = chio_conformance::PeersLock::load(&lock_path).map_err(|error| {
         CliError::cli_other_error(format!(
@@ -233,6 +241,12 @@ pub(crate) fn cmd_conformance_fetch_peers(
     };
     let (published_entries, skipped_entries) =
         chio_conformance::PeersLock::partition_by_published(&entries);
+    ensure_fetch_peer_selection_has_published(
+        &entries,
+        &published_entries,
+        language,
+        allow_unpublished_only,
+    )?;
 
     if check {
         let mut stdout = std::io::stdout().lock();
@@ -315,6 +329,29 @@ pub(crate) fn cmd_conformance_fetch_peers(
     Ok(())
 }
 
+fn ensure_fetch_peer_selection_has_published(
+    entries: &[&chio_conformance::PeerEntry],
+    published_entries: &[&chio_conformance::PeerEntry],
+    language: Option<&str>,
+    allow_unpublished_only: bool,
+) -> Result<(), CliError> {
+    let filter = language.unwrap_or("<none>");
+    if entries.is_empty() {
+        return Err(CliError::cli_other_error(format!(
+            "peers lockfile has no entries matching language filter `{filter}`",
+        )));
+    }
+    if published_entries.is_empty() {
+        if allow_unpublished_only {
+            return Ok(());
+        }
+        return Err(CliError::cli_other_error(format!(
+            "peers lockfile has no published entries for language filter `{filter}`; every selected peer would be skipped (use --allow-unpublished-only only for pre-release lockfile checks)",
+        )));
+    }
+    Ok(())
+}
+
 pub(crate) fn download_and_verify(
     client: &reqwest::blocking::Client,
     entry: &chio_conformance::PeerEntry,
@@ -370,9 +407,13 @@ pub(crate) fn download_and_verify(
 }
 
 /// Extract `.tar.gz` (or `.tgz`) bundles into the per-target directory.
-/// `.zip` is recognised by extension but not yet implemented; unknown archive
-/// formats are preserved on disk with a warning rather than failing fatally.
-pub(crate) fn extract_archive(archive: &Path, dest: &Path, source_url: &str) -> Result<(), CliError> {
+/// `.zip` is explicitly unsupported; unknown archive formats are preserved on
+/// disk with a warning rather than failing fatally.
+pub(crate) fn extract_archive(
+    archive: &Path,
+    dest: &Path,
+    source_url: &str,
+) -> Result<(), CliError> {
     let lower = archive
         .file_name()
         .and_then(|name| name.to_str())
@@ -399,7 +440,7 @@ pub(crate) fn extract_archive(archive: &Path, dest: &Path, source_url: &str) -> 
         Ok(())
     } else if lower.ends_with(".zip") {
         Err(CliError::cli_other_error(format!(
-            "zip archives are not yet supported (got `{}` from `{source_url}`)",
+            "zip archives are unsupported for conformance peer bundles (got `{}` from `{source_url}`)",
             archive.display(),
         )))
     } else {
@@ -457,11 +498,7 @@ mod conformance_error_tests {
         write_test_tar_gz_with_modes(path, &[], entries);
     }
 
-    fn write_test_tar_gz_with_modes(
-        path: &Path,
-        directories: &[&str],
-        entries: &[(&str, &[u8])],
-    ) {
+    fn write_test_tar_gz_with_modes(path: &Path, directories: &[&str], entries: &[(&str, &[u8])]) {
         let file = fs::File::create(path).unwrap();
         let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
         let mut builder = tar::Builder::new(encoder);
@@ -567,6 +604,21 @@ mod conformance_error_tests {
         };
         assert!(err.to_string().contains("not portable"), "{err}");
         assert!(!temp.path().join("escape").exists());
+    }
+
+    #[test]
+    fn conformance_archive_hardening_rejects_zip_bundle() {
+        let temp = tempfile::tempdir().unwrap();
+        let archive = temp.path().join("peer.zip");
+        let dest = temp.path().join("extract");
+        fs::create_dir_all(&dest).unwrap();
+        fs::write(&archive, b"not-a-real-zip").unwrap();
+
+        let err = match extract_archive(&archive, &dest, "https://example.invalid/peer.zip") {
+            Ok(()) => panic!("expected zip archive to fail"),
+            Err(err) => err,
+        };
+        assert!(err.to_string().contains("zip archives are unsupported"));
     }
 
     #[test]

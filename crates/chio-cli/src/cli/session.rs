@@ -314,10 +314,12 @@ pub(crate) fn make_error_receipt(
     chio_core::receipt::body::ChioReceipt::sign(body, &kp)
 }
 
+#[cfg(test)]
 pub(crate) struct StubToolServer {
     pub(crate) id: String,
 }
 
+#[cfg(test)]
 #[async_trait::async_trait]
 impl chio_kernel::ToolServerConnection for StubToolServer {
     fn server_id(&self) -> &str {

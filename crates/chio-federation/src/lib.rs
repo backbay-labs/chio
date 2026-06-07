@@ -27,13 +27,6 @@ pub mod quorum;
 pub mod reputation;
 pub mod revocation_gossip;
 pub mod treaty;
-// Chio selective-disclosure section 6 BBS+ projection. Default-off
-// behind the honestly-named `bbs-stub` feature: the implementation is a
-// STUB BBS+ that captures the deterministic projection and
-// disclose/withhold semantics but offers no privacy-preserving cryptographic property.
-// Real BLS12-381 BBS+ signing is deferred.
-#[cfg(feature = "bbs-stub")]
-pub mod selective_disclosure;
 pub mod trust_establishment;
 pub(crate) mod validation;
 

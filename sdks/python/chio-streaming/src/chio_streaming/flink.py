@@ -27,7 +27,7 @@ Three operators are exported:
   sidecar deployments.
 
 Importing this module does not require PyFlink to be installed; the
-subclasses of PyFlink types degrade to stubs that raise
+subclasses of PyFlink types degrade to fallback bases that raise
 :class:`ChioStreamingConfigError` at construction. Install
 ``chio-streaming[flink]`` to use the real operators.
 """
@@ -80,7 +80,7 @@ DLQ_TAG_NAME = "chio-dlq"
 
 # PyFlink is an optional dependency. Import the symbols we subclass or
 # construct at module import time when available; otherwise define
-# placeholders so the module still imports. The real operators guard
+# fallback bases so the module still imports. The real operators guard
 # __init__ with a friendly error instructing users to install the
 # [flink] extra.
 try:
@@ -96,13 +96,13 @@ except ImportError:  # pragma: no cover - environment-dependent
     _HAVE_PYFLINK = False
 
     class _AsyncFunctionBase:  # type: ignore[no-redef]
-        """Placeholder used when PyFlink is not installed."""
+        """Fallback base used when PyFlink is not installed."""
 
         def __init_subclass__(cls, **kwargs: Any) -> None:
             super().__init_subclass__(**kwargs)
 
     class _ProcessFunctionBase:  # type: ignore[no-redef]
-        """Placeholder used when PyFlink is not installed."""
+        """Fallback base used when PyFlink is not installed."""
 
         def __init_subclass__(cls, **kwargs: Any) -> None:
             super().__init_subclass__(**kwargs)

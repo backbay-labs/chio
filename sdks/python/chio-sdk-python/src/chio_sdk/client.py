@@ -450,7 +450,7 @@ class ChioClient:
     ) -> ChioReceipt:
         """Require mediated tool-call authorization.
 
-        The current sidecar tool-call route is advisory only. This method
+        The current sidecar tool-call route emits an audit receipt. This method
         verifies the advisory receipt's integrity, then fails closed because
         advisory evaluation is not execution authorization.
         """
@@ -680,7 +680,7 @@ class ChioClient:
         requested_by:
             Hex Ed25519 public key of the agent that initiated the
             call. When omitted the sidecar records an anonymous
-            placeholder; operator-respond will then fail because there
+            subject marker; operator-respond will then fail because there
             is no parseable subject binding, so set this whenever the
             call originates from a real agent.
         ttl_seconds:

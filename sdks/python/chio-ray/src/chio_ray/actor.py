@@ -241,11 +241,9 @@ async def _enforce_actor_method(
     redaction_policy: RedactionPolicy = getattr(
         actor, "_chio_redaction_policy", _DEFAULT_REDACTION_POLICY
     )
-    # TODO(v0.2): Ray pickles args into the object store BEFORE this hook
-    # fires; the original (unredacted) values may persist in the cluster's
-    # object store even though the sidecar payload below is redacted. Cross-
-    # adapter object-store hardening (a chio-adapter-base concern) needs to
-    # land before this leak path is closed end-to-end.
+    # Ray pickles args into the object store before this hook fires. The
+    # sidecar payload below is redacted for receipt safety, but callers that
+    # need object-store secrecy must pass already-redacted values to Ray.
     bound_args, bound_kwargs = _redact_method_call(
         method=method,
         args=args,

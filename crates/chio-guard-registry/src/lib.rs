@@ -25,9 +25,9 @@ pub use chio_attest_verify::{
 };
 
 pub use cache::{
-    CachedGuardArtifact, GuardCache, GuardCacheArtifact, GuardCacheLayout, CACHE_CONFIG_JSON_FILE,
-    CACHE_FILE_NAMES, CACHE_MANIFEST_JSON_FILE, CACHE_MODULE_WASM_FILE,
-    CACHE_SIGSTORE_BUNDLE_JSON_FILE, CACHE_WIT_BIN_FILE,
+    CachedGuardArtifact, GuardCache, GuardCacheArtifact, GuardCacheLayout,
+    CACHE_ARTIFACT_FILE_NAMES, CACHE_CONFIG_JSON_FILE, CACHE_FILE_NAMES, CACHE_MANIFEST_JSON_FILE,
+    CACHE_MODULE_WASM_FILE, CACHE_SIGSTORE_BUNDLE_JSON_FILE, CACHE_WIT_BIN_FILE,
 };
 pub use oci::{
     GuardArtifactLayer, GuardOciRef, GuardRegistryClient, GuardRegistryConfig, GuardRegistryError,
@@ -45,7 +45,7 @@ pub use publish::{
     GuardPublishResponse, GUARD_LAYER_ROLE_ANNOTATION, GUARD_OCI_MANIFEST_MEDIA_TYPE,
     GUARD_SIGNER_SUBJECT_ANNOTATION, GUARD_WIT_WORLD, GUARD_WIT_WORLD_ANNOTATION,
 };
-pub use pull::{GuardPullRequest, GuardPullResponse, RESERVED_SIGSTORE_BUNDLE_JSON};
+pub use pull::{GuardPullRequest, GuardPullResponse};
 pub use verify::{
     verify_dual_mode, GuardLoadEvent, GuardLoadEventResult, GuardLoadSource, GuardSigstoreVerifier,
     GuardVerificationKind, GuardVerificationReport, GuardVerifiedSignature,

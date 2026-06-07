@@ -27,6 +27,22 @@ pub(crate) enum OutputFormat {
     Json,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum)]
+pub(crate) enum CheckMode {
+    #[default]
+    Preflight,
+    Full,
+}
+
+impl CheckMode {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Preflight => "preflight",
+            Self::Full => "full",
+        }
+    }
+}
+
 #[derive(Parser)]
 #[command(version, about)]
 pub(crate) struct Cli {
@@ -267,6 +283,10 @@ pub(crate) enum Commands {
         #[arg(long)]
         policy: PathBuf,
 
+        /// Evaluation mode. Preflight checks only policies that do not need tool output.
+        #[arg(long, value_enum, default_value_t = CheckMode::Preflight)]
+        mode: CheckMode,
+
         /// Tool name to evaluate.
         #[arg(long)]
         tool: String,
@@ -278,6 +298,10 @@ pub(crate) enum Commands {
         /// Server ID to use for the evaluation.
         #[arg(long, default_value = "*")]
         server: String,
+
+        /// JSON value returned by the fixture-backed tool server in full mode.
+        #[arg(long = "output-fixture", value_name = "JSON")]
+        output_fixture: Option<PathBuf>,
     },
 
     /// Scaffold a runnable Chio example project with a governed demo flow.

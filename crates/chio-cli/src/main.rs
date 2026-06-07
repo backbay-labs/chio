@@ -7,7 +7,8 @@
 //   stdin/stdout pipes, and run the kernel message loop.
 //
 // - `chio check --policy <path> --tool <name> --params <json>`
-//   Load a policy, create a kernel, and evaluate a single tool call.
+//   Load a policy, create a kernel, and evaluate one tool call in preflight
+//   mode, or in full mode with an explicit output fixture.
 //
 // - `chio mcp serve --policy <path> --server-id <id> -- <command> [args...]`
 //   Wrap an MCP server subprocess with the Chio kernel and expose an

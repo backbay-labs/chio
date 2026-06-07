@@ -106,6 +106,15 @@ pub(crate) fn openai_tool_call_to_function_call(
     if kind != "function" {
         return Ok(None);
     }
+    let id = entry
+        .get("id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            ProviderError::Malformed(format!(
+                "{provider_label} tool_calls[].id was missing or non-string"
+            ))
+        })?
+        .to_string();
     let function = match entry.get("function") {
         Some(function) => function,
         None => {
@@ -135,6 +144,7 @@ pub(crate) fn openai_tool_call_to_function_call(
         None => Value::Object(serde_json::Map::new()),
     };
     Ok(Some(FunctionCallPart {
+        id,
         name,
         args: args_value,
     }))

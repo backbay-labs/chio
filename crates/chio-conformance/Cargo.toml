@@ -54,10 +54,6 @@ path = "src/bin/chio_native_conformance_fixture.rs"
 # directories through `ConformanceRunOptions`.
 default = ["in-repo-fixtures"]
 in-repo-fixtures = []
-# Opt-in selective-disclosure conformance tests. Enables the SHA-256-commitment stub
-# in chio-federation (not a ZK/BBS implementation; no privacy-preserving property).
-# Compiled as a separate CI matrix entry; not included in the default build.
-bbs-stub = ["chio-federation/bbs-stub"]
 chio-bbs = [
     "dep:chio-selective-disclosure",
     "dep:chio-workflow",
@@ -122,10 +118,9 @@ base64ct = { workspace = true, features = ["alloc"] }
 # chio-federation's DSSE envelope wire format is RFC 4648 standard
 # base64 (workspace-pinned `base64` crate).
 base64 = { workspace = true }
-# c5_selective_disclosure_stub.rs hex-decodes disclosed message bytes;
 # c2_bilateral_invocation_partial_verifier.rs hex-encodes canonical-JSON
-# SHA-256 governance receipt digests. Keep the workspace-pinned crate so
-# test and producer encodings match.
+# SHA-256 governance receipt digests. Keep the workspace-pinned crate so test
+# and producer encodings match.
 hex = { workspace = true }
 coset = { workspace = true }
 jsonwebtoken = { workspace = true }

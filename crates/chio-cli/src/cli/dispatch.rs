@@ -60,14 +60,18 @@ pub(crate) fn run() {
         ),
         Commands::Check {
             policy,
+            mode,
             tool,
             params,
             server,
+            output_fixture,
         } => cmd_check(
             &policy,
+            mode,
             &tool,
             &params,
             &server,
+            output_fixture.as_deref(),
             json_output,
             receipt_db.as_deref(),
             revocation_db.as_deref(),

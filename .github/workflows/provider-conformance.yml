@@ -90,6 +90,23 @@ jobs:
             --features fixtures-cohere \
             --test cross_provider_equality
 
+  new-provider-corpora:
+    name: Gemini/Mistral/Groq/Ollama/Cohere full replay corpora
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+      - name: Replay full new-provider fixture corpora
+        run: |
+          cargo test -p chio-provider-conformance \
+            --features fixtures-gemini,fixtures-mistral,fixtures-groq,fixtures-ollama,fixtures-cohere \
+            --test replay_gemini \
+            --test replay_mistral \
+            --test replay_groq \
+            --test replay_ollama \
+            --test replay_cohere
+
   ollama-localhost-replay:
     name: Ollama localhost integration replay (optional on PR, required on nightly)
     runs-on: ubuntu-latest

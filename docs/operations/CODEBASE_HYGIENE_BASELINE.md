@@ -13,7 +13,7 @@ worktree as authoritative, not the older line counts embedded in the plan.
 ```bash
 git ls-files '*.rs' | while read f; do lines=$(wc -l < "$f"); printf "%5d %s\n" "$lines" "$f"; done | sort -nr | sed -n '1,100p'
 find crates -path '*/src/lib.rs' -print | while read f; do lines=$(wc -l < "$f"); printf "%5d %s\n" "$lines" "$f"; done | sort -nr
-rg -n "bbs-stub|not_yet_implemented|stub|placeholder|advisory only|TODO|FIXME|HACK|XXX" crates tests examples scripts docs | sed -n '1,240p'
+rg -n "not_yet_implemented|stub|placeholder|advisory only|TODO|FIXME|HACK|XXX" crates tests examples scripts docs | sed -n '1,240p'
 cargo metadata --no-deps --format-version 1 > /tmp/chio-metadata.json
 ```
 
@@ -156,8 +156,6 @@ and production markers. The production hits that need explicit policy are:
 
 | File | Current hit | Planned handling |
 | --- | --- | --- |
-| `crates/chio-federation/src/selective_disclosure.rs` | Documents and exports the `bbs-stub` feature surface, including the `.stub` schema suffix. | Task 0.3 allowlists only because it is honestly feature-gated. Phase 2.2 keeps it isolated. |
-| `crates/chio-federation/src/lib.rs` | Root docs and exports for `#[cfg(feature = "bbs-stub")]`. | Task 0.3 allowlists only because it names the explicit feature gate. |
 | `crates/chio-api-protect/src/proxy/sidecar.rs` | `Capability attenuation (501 not_yet_implemented stub)` marker. | Task 0.3 must initially fail or flag this unless Task 5.3 replaces it with real attenuation or fail-closed unsupported behavior. |
 | `crates/chio-custody-hw/src/capability.rs`, `issuer.rs`, and `mint.rs` | `new_stub_unsigned` helpers are used around unsigned passkey capability construction. | Task 0.3 must either prove these are test or explicit bootstrap surfaces, or require a production cleanup before final close. |
 | `crates/chio-config/src/interpolation.rs` | Parser leaves a placeholder to allow later resolution. | Task 0.3 must classify whether this is a legitimate domain term or an actionable placeholder surface. |

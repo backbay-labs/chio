@@ -268,7 +268,7 @@ impl MistralAdapter {
             arguments,
             provenance: ProvenanceStamp {
                 provider: ProviderId::Mistral,
-                request_id: format!("mistral_{}_call", call.name),
+                request_id: call.id.clone(),
                 api_version: self.config.api_version.clone(),
                 principal: Principal::MistralProject {
                     project_id: self.config.project_id.clone(),
@@ -282,35 +282,35 @@ impl MistralAdapter {
     /// [`FunctionResponsePart`].
     pub fn lower_function_response(
         &self,
-        function_name: &str,
+        tool_call_id: &str,
         verdict: VerdictResult,
         result: ToolResult,
     ) -> Result<FunctionResponsePart, ProviderError> {
         self.ensure_supported_api_version()?;
-        let function_name = non_empty_str(function_name, "functionResponse.name")?;
+        let tool_call_id = non_empty_str(tool_call_id, "tool_call_id")?;
         match verdict {
             VerdictResult::Allow { redactions, .. } => {
-                lower_allow_function_response(function_name, result, &redactions)
+                lower_allow_function_response(tool_call_id, result, &redactions)
             }
             VerdictResult::Deny { reason, .. } => {
-                Ok(lower_deny_function_response(function_name, &reason))
+                Ok(lower_deny_function_response(tool_call_id, &reason))
             }
         }
     }
 }
 
 fn lower_allow_function_response(
-    function_name: &str,
+    tool_call_id: &str,
     result: ToolResult,
     redactions: &[Redaction],
 ) -> Result<FunctionResponsePart, ProviderError> {
     let value = parse_value(&result.0)?;
     let value = apply_redactions(value, redactions, "Mistral functionResponse")?;
-    Ok(FunctionResponsePart::new(function_name, value))
+    Ok(FunctionResponsePart::new(tool_call_id, value))
 }
 
-fn lower_deny_function_response(function_name: &str, reason: &DenyReason) -> FunctionResponsePart {
-    FunctionResponsePart::new(function_name, deny_payload(reason))
+fn lower_deny_function_response(tool_call_id: &str, reason: &DenyReason) -> FunctionResponsePart {
+    FunctionResponsePart::new(tool_call_id, deny_payload(reason))
 }
 
 impl chio_provider_adapter_core::Provider for MistralAdapter {
@@ -346,6 +346,7 @@ fn map_mistral_transport_error(error: transport::TransportError) -> ProviderErro
 }
 
 fn validate_function_call(call: &FunctionCallPart) -> Result<(), ProviderError> {
+    non_empty_str(&call.id, "tool_calls[].id")?;
     non_empty_str(&call.name, "functionCall name")?;
     if !call.args.is_object() {
         return Err(ProviderError::BadToolArgs(format!(

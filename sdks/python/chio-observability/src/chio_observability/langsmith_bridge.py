@@ -35,7 +35,7 @@ else:
 class _SupportsLangSmithCreateRun(Protocol):
     """Minimal duck-typed interface used by the bridge.
 
-    Tests substitute a stub implementing this protocol; the real
+    Tests substitute a test double implementing this protocol; the real
     :class:`langsmith.Client` satisfies it.
     """
 
@@ -59,7 +59,7 @@ class LangSmithBridge:
         Optional pre-built LangSmith client (or any object satisfying
         :class:`_SupportsLangSmithCreateRun`). When supplied the
         ``api_key`` / ``api_url`` arguments are ignored. Tests use this
-        to inject a stub.
+        to inject a test double.
     enricher:
         Optional :class:`ReceiptEnricher` override. Defaults to a
         fresh enricher with no default tags.

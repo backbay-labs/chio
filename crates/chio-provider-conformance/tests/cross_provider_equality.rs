@@ -14,8 +14,9 @@ use std::path::Path;
 
 use chio_provider_conformance::{
     assertions::assert_canonical_bytes_eq, canonical_json_bytes_for, provider_fixture_path,
-    replay_anthropic_fixture, replay_bedrock_fixture, replay_openai_fixture, CaptureDirection,
-    CaptureRecord, CapturedVerdictKind, ComparableInvocation,
+    replay_anthropic_fixture, replay_bedrock_fixture, replay_cohere_fixture, replay_gemini_fixture,
+    replay_groq_fixture, replay_mistral_fixture, replay_ollama_fixture, replay_openai_fixture,
+    CaptureDirection, CaptureRecord, CapturedVerdictKind, ComparableInvocation,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -103,21 +104,15 @@ fn weather_tool_policy_verdicts_match_across_all_providers() {
 }
 
 fn replay_fixture(provider: &str, path: &Path) {
-    // The later-added providers (Gemini, Mistral, Groq, Ollama, Cohere)
-    // ride the cross-provider matrix through the load_single_verdict
-    // NDJSON capture path: the byte-equality oracle operates on the
-    // kernel_verdict records the harness recorded, not on a deep adapter
-    // round-trip. The original oracle surface
-    // (assert_byte_equal_normalized_receipts) is reused without
-    // modification; only the matrix cardinality changes from 3 to 8.
     match provider {
         "openai" => assert_replay(provider, path, replay_openai_fixture(path)),
         "anthropic" => assert_replay(provider, path, replay_anthropic_fixture(path)),
         "bedrock" => assert_replay(provider, path, replay_bedrock_fixture(path)),
-        "gemini" | "mistral" | "groq" | "ollama" | "cohere" => {
-            // NDJSON capture path; load_single_verdict downstream performs
-            // the byte-equality assertion the matrix demands.
-        }
+        "gemini" => assert_replay(provider, path, replay_gemini_fixture(path)),
+        "mistral" => assert_replay(provider, path, replay_mistral_fixture(path)),
+        "groq" => assert_replay(provider, path, replay_groq_fixture(path)),
+        "ollama" => assert_replay(provider, path, replay_ollama_fixture(path)),
+        "cohere" => assert_replay(provider, path, replay_cohere_fixture(path)),
         other => panic!("unsupported provider {other}"),
     }
 }

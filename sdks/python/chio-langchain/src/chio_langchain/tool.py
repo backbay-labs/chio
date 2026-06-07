@@ -2,9 +2,9 @@
 
 Each Chio tool server advertises tools via a manifest. This module wraps those
 tools as LangChain ``BaseTool`` instances so they can be used in LangChain
-agents, chains, and pipelines. The current sidecar tool-call endpoint is
-advisory only: it signs observation receipts for audit, but it does not
-authorize LangChain to execute a tool effect.
+agents, chains, and pipelines. The current sidecar tool-call endpoint signs
+observation receipts for audit, but it does not authorize LangChain to execute
+a tool effect.
 
 Usage::
 

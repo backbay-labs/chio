@@ -1,6 +1,6 @@
-// TEMPLATE STUB: replace this module before production use.
+// TEMPLATE FALLBACK: replace this module before production use.
 // Wire a real Chio sidecar or policy evaluator here; do not ship the default.
-// The scaffold denies by default (fail-closed) and only records a local stub receipt.
+// The scaffold denies by default (fail-closed) and records a local deny receipt.
 
 import type { ChioRouteEvaluation } from "@chio-protocol/next";
 import { getLocalReceiptSink } from "./local-sink.js";

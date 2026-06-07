@@ -150,6 +150,48 @@ fn offline_cached_and_verified_allows_load() {
 }
 
 #[test]
+fn offline_ed25519_load_does_not_require_sigstore_bundle_file() {
+    let temp = tempdir();
+    let digest = digest();
+    let cache = GuardCache::from_cache_home(temp.path());
+    let result = cache.write_artifact(
+        &digest,
+        GuardCacheArtifact {
+            manifest_json: br#"{"schemaVersion":2}"#,
+            config_json: br#"{"wit_world":"chio:guard/guard@0.2.0"}"#,
+            wit: b"package chio:guard@0.2.0;",
+            module: MODULE_BYTES,
+            sigstore_bundle_json: None,
+        },
+    );
+    if let Err(error) = result {
+        panic!("cache write should succeed: {error}");
+    }
+
+    let request = GuardOfflineLoadRequest {
+        cache: &cache,
+        digest: &digest,
+        network: GuardNetworkState::Offline,
+        verification: GuardVerificationKind::Ed25519Only,
+    };
+    let load = match load_guard_with_policy(request, |_layout| {
+        Ok(GuardVerificationReport::ed25519_only(
+            GuardVerifiedSignature {
+                digest_sha256: digest_bytes(7),
+                identity: "ed25519-key".to_owned(),
+            },
+        ))
+    }) {
+        Ok(load) => load,
+        Err(error) => panic!("offline Ed25519-only load should allow: {error}"),
+    };
+
+    assert_eq!(load.event.verification, GuardVerificationKind::Ed25519Only);
+    assert_eq!(load.event.source, GuardLoadSource::OfflineCache);
+    assert_eq!(load.event.result, GuardLoadEventResult::Allow);
+}
+
+#[test]
 fn offline_sigstore_load_denies_unverified_rekor_inclusion() {
     let temp = tempdir();
     let digest = digest();
@@ -449,7 +491,7 @@ fn write_cache(cache: &GuardCache, digest: &Sha256Digest) {
             config_json: br#"{"wit_world":"chio:guard/guard@0.2.0"}"#,
             wit: b"package chio:guard@0.2.0;",
             module: MODULE_BYTES,
-            sigstore_bundle_json: BUNDLE_BYTES,
+            sigstore_bundle_json: Some(BUNDLE_BYTES),
         },
     );
     if let Err(error) = result {

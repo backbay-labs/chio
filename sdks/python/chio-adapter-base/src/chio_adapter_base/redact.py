@@ -4,7 +4,7 @@ This module hosts:
 
 - :func:`redact_args`: replace tool-arg fields that carry raw bodies (the
   ``content`` of ``chio_file_write``, the ``patch`` of ``chio_file_edit``)
-  with a byte-count stub so embedded secrets do not land in the receipt
+  with a byte-count omission marker so embedded secrets do not land in the receipt
   log. Path / message fields are preserved.
 - :class:`RedactionPolicy`: frozen mapping from tool-name to the tuple of
   arg-fields to redact.
@@ -75,7 +75,7 @@ class RedactionPolicy:
 
 
 def _byte_count(value: Any) -> int:
-    """Return the utf-8 byte count of ``value`` for the omission stub.
+    """Return the utf-8 byte count of ``value`` for the omission marker.
 
     ``str`` -> utf-8 encoded length.
     ``bytes`` / ``bytearray`` -> ``len`` directly.
@@ -97,7 +97,7 @@ def redact_args(
     *,
     policy: RedactionPolicy | None = None,
 ) -> dict[str, Any]:
-    """Return a copy of ``args`` with body fields replaced by a stub.
+    """Return a copy of ``args`` with body fields replaced by an omission marker.
 
     For each field listed by ``policy.body_fields[tool_name]``, the
     field is replaced with::
@@ -110,7 +110,7 @@ def redact_args(
       :meth:`RedactionPolicy.chio_default`.
     - When ``tool_name`` is ``None`` or unknown, return a shallow copy
       of ``args`` unchanged.
-    - When the field is absent from ``args``, it stays absent (no stub
+    - When the field is absent from ``args``, it stays absent (no marker
       is inserted).
     - The returned dict is always a fresh ``dict``; callers can mutate
       it freely.
@@ -999,7 +999,7 @@ def bind_and_redact(
             # of them could carry the secret. Fail-closed by routing
             # each to a protected canonical (cycling so every kwonly
             # gets redacted). Independent merge-conflict redaction
-            # downstream keeps the wire shape so callers see one stub
+            # downstream keeps the wire shape so callers see one marker
             # per kwarg.
             #
             # Gated to chio-default tools only: for custom-policy tools
@@ -1023,7 +1023,7 @@ def bind_and_redact(
     # and ``body`` to ``content``). When this happens, ``fixed_named``
     # collapses both values to one slot and the redacted byte_count is
     # whichever wrote last. The rebuild below redacts each colliding
-    # positional INDEPENDENTLY so each stub reflects its own value's
+    # positional INDEPENDENTLY so each marker reflects its own value's
     # byte_count (mirrors the kwarg-collision logic further down).
     canonical_arg_counts: dict[str, int] = {}
     for name in bound.arguments:
@@ -1170,7 +1170,7 @@ def bind_and_redact(
                 and canonical_arg_counts.get(canonical_name, 0) > 1
             ):
                 # Multiple fixed positionals share this canonical:
-                # redact each value independently so each stub
+                # redact each value independently so each marker
                 # reflects its own byte_count.
                 single_redacted = _redact_named(
                     {canonical_name: value},
@@ -1206,11 +1206,11 @@ def bind_and_redact(
     # Detect kwargs that share a canonical alias (the fail-closed
     # ambiguous-kwonly case). When two or more kwargs route to the same
     # canonical, the single ``fixed_named[canonical]`` slot holds only
-    # the last-written value, so the shared canonical's stub would
+    # the last-written value, so the shared canonical's marker would
     # report the wrong byte_count for every other aliased kwarg. Mirror
     # the merge-conflict semantics from ``_table_fallback_redact``:
     # redact each colliding kwarg's value INDEPENDENTLY under the
-    # canonical so each kwarg's stub reflects its own byte_count.
+    # canonical so each kwarg's marker reflects its own byte_count.
     # Example: ``def fn(path, *, label, body)`` with both kwargs passed.
     canonical_kw_counts: dict[str, int] = {}
     for kwarg_name in kwargs:
@@ -1242,7 +1242,7 @@ def bind_and_redact(
             and canonical_kw_counts.get(canonical_kw, 0) > 1
         ):
             # Multiple kwargs share this canonical: redact each value
-            # independently so each kwarg's stub reflects its own
+            # independently so each kwarg's marker reflects its own
             # byte_count (fail-closed merge-conflict semantics).
             single_redacted = _redact_named(
                 {canonical_kw: value},

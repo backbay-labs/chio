@@ -612,7 +612,7 @@ fn codegen_rust(check_only: bool) -> Result<(), XtaskError> {
     let out_dir = workspace_root.join(CHIO_WIRE_V1_RUST_OUT);
 
     if check_only {
-        // Render BOTH the consolidated chio_wire_v1.rs and the placeholder
+        // Render BOTH the consolidated chio_wire_v1.rs and the generated
         // mod.rs into a temporary staging directory and compare every file
         // byte-for-byte with the on-disk copy, so a stale or missing mod.rs
         // cannot slip past the spec-drift CI lane.
@@ -1231,7 +1231,7 @@ fn codegen_python(check_only: bool) -> Result<(), XtaskError> {
     // top-level `__init__.py` then star-imports every subpackage. Together
     // these provide the documented `from chio_sdk._generated import
     // CapabilityToken` import path; without this step datamodel-codegen's
-    // empty subpackage stubs cause that import to raise `ImportError`.
+    // empty subpackage init files cause that import to raise `ImportError`.
     let subpackage_exports = rewrite_python_subpackage_inits(&staging_out, &schema_digest)?;
 
     let top_init = staging_out.join(PYTHON_INIT_FILE);

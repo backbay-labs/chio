@@ -512,12 +512,12 @@ impl ReceiptSigner for KernelReceiptSigner {
         let body = ChioReceiptBody {
             // `ChioReceipt::sign` replaces this with the canonical
             // content-addressed receipt id (`chio_receipt_id`), so the literal
-            // value here is only a placeholder for debug logging. The actual
+            // value here is only a pre-signing id for debug logging. The actual
             // per-event uniqueness flows through `action.parameters` (status,
             // title, kind, content_hash) and through `content_hash`, both of
             // which the canonical id input pulls in. Encode the discriminator
-            // into the placeholder anyway so tracing logs and any code path
-            // that inspects the pre-signing body can tell `running` and
+            // into the pre-signing id so tracing logs and any code path that
+            // inspects the pre-signing body can tell `running` and
             // terminal `tool_call_update` events apart, and so a future change
             // that bypasses content-addressing does not silently collide on
             // `acp-{tool_call_id}`.

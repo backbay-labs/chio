@@ -66,13 +66,14 @@ async fn zot_publish_pull_verify_and_offline_paths() -> TestResult<()> {
             reference: &pull_ref,
             credentials: &credentials,
             cache: &cache,
+            sigstore_bundle_json: None,
         })
         .await?;
 
     assert_eq!(pull.registry_manifest_digest, digest);
     assert_eq!(read(&pull.cached.layout.wit_bin_path())?, WIT_BYTES);
     assert_eq!(read(&pull.cached.layout.module_wasm_path())?, MODULE_BYTES);
-    assert_eq!(read(&pull.cached.layout.sigstore_bundle_json_path())?, b"");
+    assert!(!pull.cached.layout.sigstore_bundle_json_path().exists());
     fs::write(pull.cached.layout.sigstore_bundle_json_path(), BUNDLE_BYTES)?;
 
     let expected = expected_identity();

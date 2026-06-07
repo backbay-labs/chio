@@ -6,11 +6,6 @@ use crate::oci::{
 };
 use crate::publish::GUARD_OCI_MANIFEST_MEDIA_TYPE;
 
-/// Reserved cache slot for Sigstore bundle verification. Not yet wired:
-/// bundle verification fails closed (empty slice) rather than passing
-/// with placeholder JSON.
-pub const RESERVED_SIGSTORE_BUNDLE_JSON: &[u8] = b"";
-
 /// Inputs for pulling a digest-pinned guard artifact into the local cache.
 #[derive(Debug, Clone, Copy)]
 pub struct GuardPullRequest<'a> {
@@ -20,6 +15,8 @@ pub struct GuardPullRequest<'a> {
     pub credentials: &'a RegistryCredentials,
     /// Target content-addressed cache.
     pub cache: &'a GuardCache,
+    /// Optional Sigstore bundle bytes to cache alongside the pulled artifact.
+    pub sigstore_bundle_json: Option<&'a [u8]>,
 }
 
 /// Result of pulling a guard artifact into the local cache.
@@ -61,7 +58,7 @@ impl GuardRegistryClient {
                 config_json: &artifact.config,
                 wit: &artifact.wit.data,
                 module: &artifact.module.data,
-                sigstore_bundle_json: RESERVED_SIGSTORE_BUNDLE_JSON,
+                sigstore_bundle_json: request.sigstore_bundle_json,
             },
         )?;
 

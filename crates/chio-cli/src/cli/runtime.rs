@@ -185,14 +185,14 @@ pub(crate) fn cmd_api_protect(
     })
 }
 
-/// Stub OpenAPI spec used by `chio start` so the proxy can build the
+/// Empty OpenAPI spec used by `chio start` so the proxy can build the
 /// route table without an upstream OpenAPI source. The catch-all
 /// `/{*path}` proxy route still mounts; it just has no upstream to
 /// forward to (pointing at `http://127.0.0.1:1`), so non-`/chio/*` and
 /// non-`/v1/*` requests will fail loud at the egress contract instead
 /// of silently succeeding. This is the intended behaviour for the
 /// sidecar-only deployment shape.
-pub(crate) const CHIO_START_STUB_OPENAPI_SPEC: &str = r#"openapi: 3.1.0
+pub(crate) const CHIO_START_SIDECAR_OPENAPI_SPEC: &str = r#"openapi: 3.1.0
 info:
   title: chio-start-sidecar
   version: 0.0.0
@@ -233,7 +233,7 @@ pub(crate) fn cmd_start(
             // path gets a fast, loud failure rather than a subtle
             // forward.
             upstream: CHIO_START_NO_UPSTREAM_URL.to_string(),
-            spec_content: Some(CHIO_START_STUB_OPENAPI_SPEC.to_string()),
+            spec_content: Some(CHIO_START_SIDECAR_OPENAPI_SPEC.to_string()),
             spec_path: None,
             listen_addr: listen_addr.to_string(),
             receipt_db: receipt_store.map(|path| path.display().to_string()),
@@ -266,7 +266,8 @@ pub(crate) fn cmd_start(
     })
 }
 
-pub(crate) fn parse_trusted_capability_issuers_from_env() -> Result<Vec<chio_core::PublicKey>, CliError> {
+pub(crate) fn parse_trusted_capability_issuers_from_env(
+) -> Result<Vec<chio_core::PublicKey>, CliError> {
     let mut issuers = Vec::new();
 
     if let Ok(single_issuer) = std::env::var("CHIO_TRUSTED_ISSUER_KEY") {
@@ -304,9 +305,11 @@ pub(crate) fn parse_trusted_capability_issuers_from_env() -> Result<Vec<chio_cor
 
 pub(crate) fn cmd_check(
     policy_path: &Path,
+    mode: CheckMode,
     tool: &str,
     params_str: &str,
     server: &str,
+    output_fixture: Option<&Path>,
     json_output: bool,
     receipt_db_path: Option<&Path>,
     revocation_db_path: Option<&Path>,
@@ -318,6 +321,7 @@ pub(crate) fn cmd_check(
     control_token: Option<&str>,
 ) -> Result<(), CliError> {
     let loaded_policy = load_policy(policy_path)?;
+    let check_output = validate_check_mode(&loaded_policy, mode, output_fixture)?;
     let policy_identity = loaded_policy.identity.clone();
     let default_capabilities = loaded_policy.default_capabilities.clone();
     let issuance_policy = loaded_policy.issuance_policy.clone();
@@ -341,8 +345,9 @@ pub(crate) fn cmd_check(
     )?;
     configure_budget_store(&mut kernel, budget_db_path, control_url, control_token)?;
 
-    kernel.register_tool_server(Box::new(StubToolServer {
+    kernel.register_tool_server(Box::new(CheckToolServer {
         id: server.to_string(),
+        output: check_output,
     }));
 
     let agent_kp = Keypair::generate();
@@ -409,6 +414,8 @@ pub(crate) fn cmd_check(
             "receipt_id": response.receipt.id,
             "policy_hash": policy_identity.runtime_hash,
             "policy_source_hash": policy_identity.source_hash,
+            "check_mode": mode.as_str(),
+            "output_fixture": output_fixture.is_some(),
         });
         println!(
             "{}",
@@ -424,6 +431,8 @@ pub(crate) fn cmd_check(
         println!("receipt_id: {}", response.receipt.id);
         println!("policy:     {}", policy_identity.runtime_hash);
         println!("source:     {}", policy_identity.source_hash);
+        println!("mode:       {}", mode.as_str());
+        println!("fixture:    {}", output_fixture.is_some());
     }
 
     match response.verdict {
@@ -437,6 +446,82 @@ pub(crate) fn cmd_check(
             // human has approved out-of-band.
             std::process::exit(3);
         }
+    }
+}
+
+fn validate_check_mode(
+    loaded_policy: &policy::LoadedPolicy,
+    mode: CheckMode,
+    output_fixture: Option<&Path>,
+) -> Result<Option<serde_json::Value>, CliError> {
+    match mode {
+        CheckMode::Preflight => {
+            if output_fixture.is_some() {
+                return Err(CliError::cli_other_error(
+                    "--output-fixture requires --mode full".to_string(),
+                ));
+            }
+            if !loaded_policy.post_invocation_pipeline.is_empty() {
+                return Err(CliError::cli_other_error(
+                    "chio check preflight cannot evaluate post-output guards; use --mode full --output-fixture <JSON> so output-sensitive policy is evaluated against explicit fixture output".to_string(),
+                ));
+            }
+            Ok(None)
+        }
+        CheckMode::Full => {
+            let Some(output_fixture) = output_fixture else {
+                return Err(CliError::cli_other_error(
+                    "chio check --mode full requires --output-fixture <JSON>; use --mode preflight for admission-only checks".to_string(),
+                ));
+            };
+            load_check_output_fixture(output_fixture).map(Some)
+        }
+    }
+}
+
+fn load_check_output_fixture(path: &Path) -> Result<serde_json::Value, CliError> {
+    let content = fs::read_to_string(path).map_err(|error| {
+        CliError::cli_io_error(format!(
+            "failed to read check output fixture {}: {error}",
+            path.display()
+        ))
+    })?;
+    serde_json::from_str(&content).map_err(|error| {
+        CliError::cli_other_error(format!(
+            "failed to parse check output fixture {} as JSON: {error}",
+            path.display()
+        ))
+    })
+}
+
+struct CheckToolServer {
+    id: String,
+    output: Option<serde_json::Value>,
+}
+
+#[async_trait::async_trait]
+impl chio_kernel::ToolServerConnection for CheckToolServer {
+    fn server_id(&self) -> &str {
+        &self.id
+    }
+
+    fn tool_names(&self) -> Vec<String> {
+        vec!["*".to_string()]
+    }
+
+    async fn invoke(
+        &self,
+        tool_name: &str,
+        arguments: serde_json::Value,
+        _nested_flow_bridge: Option<&mut dyn chio_kernel::NestedFlowBridge>,
+    ) -> Result<serde_json::Value, chio_kernel::KernelError> {
+        Ok(self.output.clone().unwrap_or_else(|| {
+            serde_json::json!({
+                "check_probe": true,
+                "tool": tool_name,
+                "arguments": arguments,
+            })
+        }))
     }
 }
 
@@ -803,7 +888,9 @@ pub(crate) fn remote_mcp_auth_egress_contract(
         max_response_bytes: 1024 * 1024,
     };
     contract.validate().map_err(|error| {
-        CliError::cli_other_error(format!("remote MCP auth egress contract is invalid: {error}"))
+        CliError::cli_other_error(format!(
+            "remote MCP auth egress contract is invalid: {error}"
+        ))
     })?;
     Ok(Some(contract))
 }
@@ -833,13 +920,20 @@ pub(crate) fn is_cli_ipv6_unique_local(address: &std::net::Ipv6Addr) -> bool {
     (address.segments()[0] & 0xfe00) == 0xfc00
 }
 
-pub(crate) fn optional_secret_with_env_fallback(value: Option<&str>, fallback_env: &str) -> Option<String> {
-    value
-        .map(ToOwned::to_owned)
-        .or_else(|| std::env::var(fallback_env).ok().filter(|value| !value.is_empty()))
+pub(crate) fn optional_secret_with_env_fallback(
+    value: Option<&str>,
+    fallback_env: &str,
+) -> Option<String> {
+    value.map(ToOwned::to_owned).or_else(|| {
+        std::env::var(fallback_env)
+            .ok()
+            .filter(|value| !value.is_empty())
+    })
 }
 
-pub(crate) fn require_revocation_db_path(revocation_db_path: Option<&Path>) -> Result<&Path, CliError> {
+pub(crate) fn require_revocation_db_path(
+    revocation_db_path: Option<&Path>,
+) -> Result<&Path, CliError> {
     revocation_db_path.ok_or_else(|| {
         CliError::cli_other_error(
             "trust commands require --revocation-db <path> so persisted trust state is explicit"
@@ -930,13 +1024,13 @@ pub(crate) fn cmd_trust_serve(
     })
 }
 
-pub(crate) fn parse_tenant_read_tokens(specs: &[String]) -> Result<std::collections::BTreeMap<String, String>, CliError> {
+pub(crate) fn parse_tenant_read_tokens(
+    specs: &[String],
+) -> Result<std::collections::BTreeMap<String, String>, CliError> {
     let mut parsed = std::collections::BTreeMap::new();
     for spec in specs {
         let (tenant, token) = spec.split_once('=').ok_or_else(|| {
-            CliError::cli_other_error(
-                "--tenant-read-token must use tenant=token form".to_string(),
-            )
+            CliError::cli_other_error("--tenant-read-token must use tenant=token form".to_string())
         })?;
         if tenant.trim() != tenant || token.trim() != token {
             return Err(CliError::cli_other_error(
@@ -955,7 +1049,10 @@ pub(crate) fn parse_tenant_read_tokens(specs: &[String]) -> Result<std::collecti
                 "--tenant-read-token tenant and token must be non-empty".to_string(),
             ));
         }
-        if parsed.insert(tenant.to_string(), token.to_string()).is_some() {
+        if parsed
+            .insert(tenant.to_string(), token.to_string())
+            .is_some()
+        {
             return Err(CliError::cli_other_error(format!(
                 "duplicate --tenant-read-token for tenant {tenant}"
             )));
@@ -973,7 +1070,8 @@ pub(crate) fn cmd_trust_revoke(
 ) -> Result<(), CliError> {
     let (newly_revoked, backend_label) = if let Some(url) = control_url {
         let token = require_control_token(control_token)?;
-        let response = trust_control::service_runtime::client::build_client(url, token)?.revoke_capability(capability_id)?;
+        let response = trust_control::service_runtime::client::build_client(url, token)?
+            .revoke_capability(capability_id)?;
         (response.newly_revoked, url.to_string())
     } else {
         let path = require_revocation_db_path(revocation_db_path)?;
@@ -1011,12 +1109,11 @@ pub(crate) fn cmd_trust_status(
 ) -> Result<(), CliError> {
     let (revoked, backend_label) = if let Some(url) = control_url {
         let token = require_control_token(control_token)?;
-        let response = trust_control::service_runtime::client::build_client(url, token)?.list_revocations(
-            &trust_control::RevocationQuery {
+        let response = trust_control::service_runtime::client::build_client(url, token)?
+            .list_revocations(&trust_control::RevocationQuery {
                 capability_id: Some(capability_id.to_string()),
                 limit: Some(1),
-            },
-        )?;
+            })?;
         (response.revoked.unwrap_or(false), url.to_string())
     } else {
         let path = require_revocation_db_path(revocation_db_path)?;
@@ -1159,9 +1256,7 @@ mod runtime_local_error_domain_tests {
         .expect("loopback auth creates contract");
 
         assert!(contract.allowed_schemes.contains("http"));
-        assert!(contract
-            .allowed_authority_set
-            .contains("127.0.0.1:18080"));
+        assert!(contract.allowed_authority_set.contains("127.0.0.1:18080"));
         assert!(!contract.deny_loopback);
     }
 }

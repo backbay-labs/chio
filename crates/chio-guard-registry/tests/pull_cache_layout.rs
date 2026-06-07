@@ -112,7 +112,7 @@ fn writes_fixture_bytes_to_cache_files() {
             config_json: br#"{"wit_world":"chio:guard/guard@0.2.0"}"#,
             wit: b"package chio:guard@0.2.0;",
             module: b"\0asm\x01\0\0\0",
-            sigstore_bundle_json: br#"{"bundle":"fixture"}"#,
+            sigstore_bundle_json: Some(br#"{"bundle":"fixture"}"#),
         },
     ) {
         Ok(cached) => cached,
@@ -137,6 +137,32 @@ fn writes_fixture_bytes_to_cache_files() {
         read(&cached.layout.sigstore_bundle_json_path()),
         br#"{"bundle":"fixture"}"#
     );
+}
+
+#[test]
+fn omits_sigstore_bundle_file_when_not_supplied() {
+    let temp = tempdir();
+    let digest = digest();
+    let cache = GuardCache::from_cache_home(temp.path());
+    let cached = match cache.write_artifact(
+        &digest,
+        GuardCacheArtifact {
+            manifest_json: br#"{"schemaVersion":2}"#,
+            config_json: br#"{"wit_world":"chio:guard/guard@0.2.0"}"#,
+            wit: b"package chio:guard@0.2.0;",
+            module: b"\0asm\x01\0\0\0",
+            sigstore_bundle_json: None,
+        },
+    ) {
+        Ok(cached) => cached,
+        Err(error) => panic!("cache write should succeed: {error}"),
+    };
+
+    assert!(cached.layout.manifest_json_path().is_file());
+    assert!(cached.layout.config_json_path().is_file());
+    assert!(cached.layout.wit_bin_path().is_file());
+    assert!(cached.layout.module_wasm_path().is_file());
+    assert!(!cached.layout.sigstore_bundle_json_path().exists());
 }
 
 fn digest() -> Sha256Digest {

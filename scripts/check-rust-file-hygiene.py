@@ -157,7 +157,11 @@ def tracked_rust_files(root: Path) -> list[str]:
         stderr=subprocess.PIPE,
         text=True,
     )
-    return [line for line in result.stdout.splitlines() if line]
+    return [
+        line
+        for line in result.stdout.splitlines()
+        if line and (root / line).is_file()
+    ]
 
 
 def line_count(path: Path) -> int:

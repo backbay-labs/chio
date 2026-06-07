@@ -170,6 +170,12 @@ fn cmd_replay_traffic_with_against(args: &TrafficArgs, against_str: &str) -> Res
                 "chio replay traffic --against: partition error: {error}"
             )));
         }
+        Err(ExecuteError::UnsupportedPreOutputPolicy(error)) => {
+            return finish_replay_failure(
+                EXIT_PARSE_ERROR,
+                format!("chio replay traffic --against: {error}"),
+            );
+        }
         Err(ExecuteError::Other(error)) => {
             return Err(CliError::cli_other_error(format!(
                 "chio replay traffic --against: execute error: {error}"

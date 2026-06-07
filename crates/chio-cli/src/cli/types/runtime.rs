@@ -34,7 +34,6 @@ pub(crate) enum ChioAttestCommands {
         #[command(subcommand)]
         command: ChioRuntimeQuoteCommands,
     },
-
 }
 
 #[derive(Subcommand)]
@@ -358,6 +357,12 @@ pub(crate) enum ConformanceCommands {
         #[arg(long)]
         language: Option<String>,
 
+        /// Allow a selection whose matching peers are all `published = false`.
+        /// This is only for pre-release workflows that validate lockfile shape
+        /// before release assets exist; normal fetches fail closed.
+        #[arg(long)]
+        allow_unpublished_only: bool,
+
         /// Optional explicit path to `peers.lock.toml`. When omitted the
         /// CLI consults `$CHIO_PEERS_LOCK`, the XDG config dir, the
         /// in-repo path, and the cwd in that order.
@@ -475,6 +480,9 @@ pub(crate) enum GuardCommands {
         /// Registry host allowed to use HTTP instead of HTTPS.
         #[arg(long = "allow-http-registry")]
         allow_http_registry: Vec<String>,
+        /// Optional Sigstore bundle JSON to cache alongside the pulled artifact.
+        #[arg(long = "sigstore-bundle", value_name = "PATH")]
+        sigstore_bundle: Option<PathBuf>,
     },
 
     /// Manage the local guard digest blocklist.

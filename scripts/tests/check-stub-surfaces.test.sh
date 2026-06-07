@@ -65,15 +65,54 @@ assert_rc "$(run_checker "$production_fail" "$work/production-fail.out" "$work/p
 grep -F "production stub-surface hit is not allowlisted" \
   "$work/production-fail.err" >/dev/null
 
-federation_allow="$work/federation-allow"
-init_case "$federation_allow"
-write_file "$federation_allow/crates/chio-federation/src/selective_disclosure.rs" \
+lowercase_fail="$work/lowercase-fail"
+init_case "$lowercase_fail"
+write_file "$lowercase_fail/crates/chio-demo/src/lib.rs" \
+  "pub fn evaluate() {" \
+  "    todo!(\"wire production evaluator\");" \
+  "}" \
+  "pub fn parse() {" \
+  "    unimplemented!(\"parse policy input\");" \
+  "}"
+track_case "$lowercase_fail"
+assert_rc "$(run_checker "$lowercase_fail" "$work/lowercase-fail.out" "$work/lowercase-fail.err")" 1 \
+  "lowercase Rust todo and unimplemented macros fail"
+grep -F "production stub-surface hit is not allowlisted" \
+  "$work/lowercase-fail.err" >/dev/null
+
+tracked_non_prefix_fail="$work/tracked-non-prefix-fail"
+init_case "$tracked_non_prefix_fail"
+write_file "$tracked_non_prefix_fail/sdks/rust/chio-demo/src/lib.rs" \
+  "pub fn adapter() {" \
+  "    // TODO: replace placeholder SDK adapter" \
+  "}"
+track_case "$tracked_non_prefix_fail"
+assert_rc "$(run_checker "$tracked_non_prefix_fail" "$work/tracked-non-prefix-fail.out" "$work/tracked-non-prefix-fail.err")" 1 \
+  "tracked production files outside old prefixes fail"
+grep -F "sdks/rust/chio-demo/src/lib.rs:2" \
+  "$work/tracked-non-prefix-fail.err" >/dev/null
+
+untracked_production_fail="$work/untracked-production-fail"
+init_case "$untracked_production_fail"
+write_file "$untracked_production_fail/crates/chio-demo/src/lib.rs" \
+  "pub fn evaluate() {" \
+  "    // TODO: untracked production placeholder" \
+  "}"
+assert_rc "$(run_checker "$untracked_production_fail" "$work/untracked-production-fail.out" "$work/untracked-production-fail.err")" 1 \
+  "untracked production stub hit fails"
+grep -F "crates/chio-demo/src/lib.rs:2" \
+  "$work/untracked-production-fail.err" >/dev/null
+
+federation_bbs_stub="$work/federation-bbs-stub"
+init_case "$federation_bbs_stub"
+write_file "$federation_bbs_stub/crates/chio-federation/src/selective_disclosure.rs" \
   "#[cfg(feature = \"bbs-stub\")]" \
   "pub fn project() { /* bbs-stub placeholder projection */ }"
-track_case "$federation_allow"
-assert_rc "$(run_checker "$federation_allow" "$work/federation-allow.out" "$work/federation-allow.err")" 0 \
-  "bbs-stub allowlisted feature surface passes"
-grep -F "allowlisted until Phase 2.2 review" "$work/federation-allow.out" >/dev/null
+track_case "$federation_bbs_stub"
+assert_rc "$(run_checker "$federation_bbs_stub" "$work/federation-bbs-stub.out" "$work/federation-bbs-stub.err")" 1 \
+  "bbs-stub production feature surface fails"
+grep -F "production stub-surface hit is not allowlisted" \
+  "$work/federation-bbs-stub.err" >/dev/null
 
 federation_unrelated="$work/federation-unrelated"
 init_case "$federation_unrelated"
@@ -83,8 +122,8 @@ write_file "$federation_unrelated/crates/chio-federation/src/selective_disclosur
   "pub fn unrelated() { /* TODO: unrelated production work */ }"
 track_case "$federation_unrelated"
 assert_rc "$(run_checker "$federation_unrelated" "$work/federation-unrelated.out" "$work/federation-unrelated.err")" 1 \
-  "allowlisted federation file rejects unrelated production TODO"
-grep -F "does not match reviewed allowlist patterns" \
+  "bbs-stub federation file rejects unrelated production TODO"
+grep -F "production stub-surface hit is not allowlisted" \
   "$work/federation-unrelated.err" >/dev/null
 
 guard_unrelated="$work/guard-unrelated"

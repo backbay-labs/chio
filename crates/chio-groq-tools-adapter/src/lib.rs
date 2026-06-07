@@ -225,7 +225,7 @@ impl GroqAdapter {
             arguments,
             provenance: ProvenanceStamp {
                 provider: ProviderId::Groq,
-                request_id: format!("groq_{}_call", call.name),
+                request_id: call.id.clone(),
                 api_version: self.config.api_version.clone(),
                 principal: Principal::GroqProject {
                     project_id: self.config.project_id.clone(),
@@ -239,18 +239,18 @@ impl GroqAdapter {
     /// [`FunctionResponsePart`].
     pub fn lower_function_response(
         &self,
-        function_name: &str,
+        tool_call_id: &str,
         verdict: VerdictResult,
         result: ToolResult,
     ) -> Result<FunctionResponsePart, ProviderError> {
         self.ensure_supported_api_version()?;
-        let function_name = non_empty_str(function_name, "functionResponse.name")?;
+        let tool_call_id = non_empty_str(tool_call_id, "tool_call_id")?;
         match verdict {
             VerdictResult::Allow { redactions, .. } => {
-                lower_allow_function_response(function_name, result, &redactions)
+                lower_allow_function_response(tool_call_id, result, &redactions)
             }
             VerdictResult::Deny { reason, .. } => {
-                lower_deny_function_response(function_name, &reason)
+                lower_deny_function_response(tool_call_id, &reason)
             }
         }
     }
@@ -279,6 +279,7 @@ pub enum GroqAdapterError {
 }
 
 fn validate_function_call(call: &FunctionCallPart) -> Result<(), ProviderError> {
+    non_empty_str(&call.id, "tool_calls[].id")?;
     non_empty_str(&call.name, "functionCall name")?;
     if !call.args.is_object() {
         return Err(ProviderError::BadToolArgs(format!(
@@ -359,21 +360,21 @@ fn apply_redactions(
 }
 
 fn lower_allow_function_response(
-    function_name: &str,
+    tool_call_id: &str,
     result: ToolResult,
     redactions: &[Redaction],
 ) -> Result<FunctionResponsePart, ProviderError> {
     let value = parse_value(&result.0)?;
     let value = apply_redactions(value, redactions, "Groq functionResponse")?;
-    Ok(FunctionResponsePart::new(function_name, value))
+    Ok(FunctionResponsePart::new(tool_call_id, value))
 }
 
 fn lower_deny_function_response(
-    function_name: &str,
+    tool_call_id: &str,
     reason: &DenyReason,
 ) -> Result<FunctionResponsePart, ProviderError> {
     Ok(FunctionResponsePart::new(
-        function_name,
+        tool_call_id,
         deny_payload(reason),
     ))
 }

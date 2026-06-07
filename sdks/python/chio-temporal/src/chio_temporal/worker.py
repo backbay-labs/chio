@@ -136,7 +136,7 @@ async def build_chio_worker(
         # that id so the grant envelope serialises without guessing at
         # the token body. The interceptor only uses token.id at
         # evaluate time, so this is safe.
-        token = _placeholder_token(capability_id)
+        token = _standin_token(capability_id)
 
     grant_metadata: dict[str, Any] = {"supplied_capability_id": capability_id}
     grant = WorkflowGrant(
@@ -170,23 +170,23 @@ async def build_chio_worker(
     return worker, interceptor, grant
 
 
-def _placeholder_token(capability_id: str) -> CapabilityToken:
+def _standin_token(capability_id: str) -> CapabilityToken:
     """Build a stand-in :class:`CapabilityToken` for a supplied id.
 
     The kernel already issued (and is persisting) the real token; we
     only need its id to address the sidecar on evaluate. The other
-    fields are filled with non-sensitive placeholders and the
+    fields are filled with non-sensitive stand-in values and the
     ``scope`` is empty, so any attenuation attempt locally will
     correctly refuse to broaden scope.
     """
     return CapabilityToken(
         id=capability_id,
-        issuer="chio-temporal-placeholder",
-        subject="chio-temporal-placeholder",
+        issuer="chio-temporal-standin",
+        subject="chio-temporal-standin",
         scope=ChioScope(),
         issued_at=0,
         expires_at=0,
-        signature="chio-temporal-placeholder",
+        signature="chio-temporal-standin",
     )
 
 

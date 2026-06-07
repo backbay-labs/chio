@@ -249,7 +249,7 @@ fn lower_function_response_rejects_api_version_drift() {
     let result = ToolResult(b"{\"temp\":18}".to_vec());
 
     let err = adapter
-        .lower_function_response("get_weather", verdict, result)
+        .lower_function_response("call_weather_1", verdict, result)
         .expect_err("drifted Mistral API version must fail before lowering");
 
     assert_api_version_drift(err);
@@ -286,6 +286,7 @@ fn lift_batch_extracts_openai_tool_calls() {
     let invocations = adapter.lift_batch(raw).unwrap();
     assert_eq!(invocations.len(), 1);
     assert_eq!(invocations[0].tool_name, "get_weather");
+    assert_eq!(invocations[0].provenance.request_id, "call_weather_1");
 }
 
 #[test]
@@ -326,7 +327,9 @@ fn lift_batch_extracts_parallel_tool_calls() {
     let invocations = adapter.lift_batch(raw).unwrap();
     assert_eq!(invocations.len(), 2);
     assert_eq!(invocations[0].tool_name, "get_weather");
+    assert_eq!(invocations[0].provenance.request_id, "call_weather_1");
     assert_eq!(invocations[1].tool_name, "get_time");
+    assert_eq!(invocations[1].provenance.request_id, "call_time_1");
     assert!(matches!(
         invocations[0].provenance.principal,
         Principal::MistralProject { .. }
@@ -459,15 +462,15 @@ fn lower_function_response_allow() {
     };
     let result = ToolResult(b"{\"temp\":18}".to_vec());
     let part = adapter
-        .lower_function_response("get_weather", verdict, result)
+        .lower_function_response("call_weather_1", verdict, result)
         .unwrap();
-    assert_eq!(part.name, "get_weather");
+    assert_eq!(part.tool_call_id, "call_weather_1");
 }
 
 #[test]
 fn lower_allow_function_response_helper_applies_redactions() {
     let part = lower_allow_function_response(
-        "get_weather",
+        "call_weather_1",
         ToolResult(br#"{"token":"secret","ok":true}"#.to_vec()),
         &[Redaction {
             path: "/token".to_string(),
@@ -476,7 +479,7 @@ fn lower_allow_function_response_helper_applies_redactions() {
     )
     .unwrap();
 
-    assert_eq!(part.name, "get_weather");
+    assert_eq!(part.tool_call_id, "call_weather_1");
     assert_eq!(part.response, json!({"token": "[redacted]", "ok": true}));
 }
 
@@ -563,6 +566,7 @@ async fn send_chat_completion_posts_and_lifts_tool_calls() {
     let invocations = adapter.send_chat_completion(&chat_request()).await.unwrap();
     assert_eq!(invocations.len(), 1);
     assert_eq!(invocations[0].tool_name, "get_weather");
+    assert_eq!(invocations[0].provenance.request_id, "call_weather_1");
     assert_eq!(invocations[0].provider, ProviderId::Mistral);
 
     // The adapter posted the encoded request body to the chat endpoint.
@@ -619,4 +623,5 @@ async fn send_chat_completion_stream_gates_tool_calls() {
         .unwrap();
     assert_eq!(gated.invocations.len(), 1);
     assert_eq!(gated.invocations[0].tool_name, "get_weather");
+    assert_eq!(gated.invocations[0].provenance.request_id, "call_stream_1");
 }

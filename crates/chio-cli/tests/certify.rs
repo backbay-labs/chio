@@ -1,5 +1,6 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
@@ -9,8 +10,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::{SystemTime, UNIX_EPOCH};
-
-use std::collections::BTreeMap;
 
 use chio_core::{
     aggregate_generic_listing_reports, canonical_json_bytes, GenericListingActorKind,
@@ -1537,6 +1536,7 @@ fn certify_registry_discover_fails_closed_on_stale_and_mismatched_public_metadat
     );
     let client = Client::builder().build().expect("build reqwest client");
     wait_for_trust_service(&client, &base_url_good);
+    wait_for_trust_service(&client, &base_url_stale);
     wait_for_trust_service(&client, &base_url_mismatch);
 
     let publish_good = publish_remote_certification(&base_url_good, token_good, &output_path);

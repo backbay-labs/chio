@@ -224,8 +224,16 @@ fn missing_cache_files(
     request: GuardOfflineLoadRequest<'_>,
     source: GuardLoadSource,
 ) -> GuardOfflineLoadResult<Vec<PathBuf>> {
+    let mut paths = layout.artifact_file_paths().to_vec();
+    if matches!(
+        request.verification,
+        GuardVerificationKind::SigstoreOnly | GuardVerificationKind::DualVerified
+    ) {
+        paths.push(layout.sigstore_bundle_json_path());
+    }
+
     let mut missing = Vec::new();
-    for path in layout.file_paths() {
+    for path in paths {
         match path.try_exists() {
             Ok(true) => {}
             Ok(false) => missing.push(path),

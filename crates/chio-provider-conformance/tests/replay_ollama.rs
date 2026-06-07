@@ -3,6 +3,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use chio_provider_conformance::{replay_ollama_fixture, ReplayMode};
+
 fn fixture_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/ollama")
 }
@@ -69,9 +71,19 @@ fn replays_all_ollama_fixtures_with_canonical_byte_assertions() {
                 }
             }
         }
+        let outcome = match replay_ollama_fixture(path) {
+            Ok(outcome) => outcome,
+            Err(error) => panic!("Ollama replay failed for {}: {error}", path.display()),
+        };
+        assert!(matches!(
+            outcome.mode,
+            ReplayMode::Batch | ReplayMode::Stream | ReplayMode::NoToolCall
+        ));
+        assert_eq!(outcome.invocations, outcome.verdicts);
+        assert_eq!(outcome.lowered_responses, outcome.verdicts);
     }
 
-    assert_eq!(total_invocations, 12);
+    assert_eq!(total_invocations, 13);
     assert_eq!(
         kernel_denials, 1,
         "Ollama corpus must include exactly one kernel denial fixture"

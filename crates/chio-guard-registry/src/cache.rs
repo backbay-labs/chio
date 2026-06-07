@@ -26,6 +26,14 @@ pub const CACHE_FILE_NAMES: [&str; 5] = [
     CACHE_SIGSTORE_BUNDLE_JSON_FILE,
 ];
 
+/// Ordered cache file names required before any guard artifact can be loaded.
+pub const CACHE_ARTIFACT_FILE_NAMES: [&str; 4] = [
+    CACHE_MANIFEST_JSON_FILE,
+    CACHE_CONFIG_JSON_FILE,
+    CACHE_WIT_BIN_FILE,
+    CACHE_MODULE_WASM_FILE,
+];
+
 /// Root directory for the Chio guard artifact cache.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GuardCache {
@@ -70,10 +78,9 @@ impl GuardCache {
         write_cache_file(&layout.config_json_path(), artifact.config_json)?;
         write_cache_file(&layout.wit_bin_path(), artifact.wit)?;
         write_cache_file(&layout.module_wasm_path(), artifact.module)?;
-        write_cache_file(
-            &layout.sigstore_bundle_json_path(),
-            artifact.sigstore_bundle_json,
-        )?;
+        if let Some(sigstore_bundle_json) = artifact.sigstore_bundle_json {
+            write_cache_file(&layout.sigstore_bundle_json_path(), sigstore_bundle_json)?;
+        }
 
         Ok(CachedGuardArtifact {
             digest: digest.clone(),
@@ -136,6 +143,17 @@ impl GuardCacheLayout {
             self.sigstore_bundle_json_path(),
         ]
     }
+
+    /// Return files required for the pulled artifact independent of
+    /// verification material.
+    pub fn artifact_file_paths(&self) -> [PathBuf; 4] {
+        [
+            self.manifest_json_path(),
+            self.config_json_path(),
+            self.wit_bin_path(),
+            self.module_wasm_path(),
+        ]
+    }
 }
 
 /// Bytes to write into one cache entry.
@@ -149,8 +167,10 @@ pub struct GuardCacheArtifact<'a> {
     pub wit: &'a [u8],
     /// Wasm component bytes.
     pub module: &'a [u8],
-    /// Sigstore bundle bytes.
-    pub sigstore_bundle_json: &'a [u8],
+    /// Optional Sigstore bundle bytes. `None` means the artifact was cached
+    /// without Sigstore verification material; Sigstore load modes will deny
+    /// until the bundle file is supplied.
+    pub sigstore_bundle_json: Option<&'a [u8]>,
 }
 
 /// Cache write result for a pulled guard artifact.

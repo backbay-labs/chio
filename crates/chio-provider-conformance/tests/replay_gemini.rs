@@ -3,6 +3,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use chio_provider_conformance::{replay_gemini_fixture, ReplayMode};
+
 fn fixture_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/gemini")
 }
@@ -69,6 +71,16 @@ fn replays_all_gemini_fixtures_with_canonical_byte_assertions() {
                 }
             }
         }
+        let outcome = match replay_gemini_fixture(path) {
+            Ok(outcome) => outcome,
+            Err(error) => panic!("Gemini replay failed for {}: {error}", path.display()),
+        };
+        assert!(matches!(
+            outcome.mode,
+            ReplayMode::Batch | ReplayMode::NoToolCall
+        ));
+        assert_eq!(outcome.invocations, outcome.verdicts);
+        assert_eq!(outcome.lowered_responses, outcome.verdicts);
     }
 
     assert_eq!(total_invocations, 12);
