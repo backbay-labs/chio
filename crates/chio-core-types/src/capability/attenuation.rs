@@ -268,14 +268,11 @@ pub fn validate_delegation_chain_with_trust_root(
             });
         };
 
-        if i == 0 {
-            if link_hash != trust_root_scope_hash {
-                return Err(Error::DelegationChainBroken {
-                    reason:
-                        "delegation chain link 0 scope_hash does not match trust root scope hash"
-                            .to_string(),
-                });
-            }
+        if i == 0 && link_hash != trust_root_scope_hash {
+            return Err(Error::DelegationChainBroken {
+                reason: "delegation chain link 0 scope_hash does not match trust root scope hash"
+                    .to_string(),
+            });
         }
     }
 
