@@ -129,12 +129,10 @@ fn verify_sigstore_bundle_before_cache(
         request.sigstore_verifier,
         request.sigstore_expected_identity,
     ) {
-        (None, None) => return Ok(false),
-        (Some(_), None) | (None, Some(_)) => {
-            return Err(GuardRegistryError::InvalidClientConfig(
-                "Sigstore cache-admission verification requires both verifier and expected identity",
-            ));
-        }
+        (None, None) => Ok(false),
+        (Some(_), None) | (None, Some(_)) => Err(GuardRegistryError::InvalidClientConfig(
+            "Sigstore cache-admission verification requires both verifier and expected identity",
+        )),
         (Some(verifier), Some(expected)) => {
             let Some(bundle) = sigstore_bundle_json else {
                 return Err(GuardRegistryError::SigstoreBundleNotFound);

@@ -133,6 +133,7 @@ impl RequestEvaluator {
     }
 
     /// Evaluate an incoming HTTP request with an optional direct-proxy nonce.
+    #[allow(clippy::too_many_arguments)]
     pub fn evaluate_with_execution_nonce(
         &self,
         method: HttpMethod,
