@@ -58,7 +58,10 @@ impl TargetProtocolExecutor for McpTargetExecutor {
         &self,
         request: CrossProtocolTargetRequest<'_>,
     ) -> Result<CrossProtocolTargetExecution, BridgeError> {
-        let route_metadata = route_selection_metadata(request.route_selection)?;
+        let route_metadata = metadata_with_source_receipt_context(
+            route_selection_metadata(request.route_selection)?,
+            &request.execution.source_envelope,
+        )?;
         let response = request
             .kernel
             .evaluate_tool_call_blocking_with_metadata(

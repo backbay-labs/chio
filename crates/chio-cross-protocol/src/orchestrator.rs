@@ -65,6 +65,8 @@ impl OrchestratedToolCall {
                 "authorityPath": CROSS_PROTOCOL_AUTHORITY_PATH,
                 "authoritative": true,
                 "reason": self.response.reason,
+                "terminalState": self.response.terminal_state,
+                "executionNonce": self.response.execution_nonce,
                 "routeSelection": self
                     .response
                     .receipt

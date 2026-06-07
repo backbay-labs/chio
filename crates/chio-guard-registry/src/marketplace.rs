@@ -5,7 +5,7 @@
 //! are additive: a manifest layer without a `marketplace` block parses
 //! cleanly with `price = GuardPrice::zero("USD")` and
 //! `reputation_floor = ReputationTier::Tier0`, preserving the
-//! cosign-gated publish and pull semantics verbatim.
+//! local Sigstore-bundle verification and pull semantics verbatim.
 //!
 //! This module is gated behind the `marketplace` cargo feature so the
 //! default `chio-guard-registry` build, including the `--no-default-features`

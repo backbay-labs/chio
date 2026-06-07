@@ -2412,8 +2412,6 @@ async fn sidecar_attenuate_capability_fails_closed_without_subject_signer() {
 async fn sidecar_verify_receipt_round_trips_a_signed_chio_receipt() {
     let state = test_state(Vec::new(), "http://127.0.0.1:1".to_string());
 
-    // First, mint a tool-call receipt via the evaluate alias so
-    // we get a sidecar-signed `ChioReceipt` to round-trip.
     let mint_body = serde_json::json!({
         "subject": Keypair::generate().public_key().to_hex(),
         "scope": { "grants": [], "resource_grants": [], "prompt_grants": [] },
@@ -2437,7 +2435,7 @@ async fn sidecar_verify_receipt_round_trips_a_signed_chio_receipt() {
         "parameters": {"path": "/etc/hostname"},
     });
     let evaluate_response = build_app(Arc::clone(&state))
-        .oneshot(loopback_post("/v1/evaluate", evaluate_body))
+        .oneshot(loopback_post("/v1/evaluate/advisory", evaluate_body))
         .await
         .test_unwrap();
     assert_eq!(evaluate_response.status(), StatusCode::OK);
@@ -2454,7 +2452,7 @@ async fn sidecar_verify_receipt_round_trips_a_signed_chio_receipt() {
     let (_body, receipt) = parse_advisory_evaluation_body(&receipt_bytes);
     assert!(receipt.verify_signature().test_unwrap());
     assert_eq!(receipt.capability_id, token.id);
-    // The sidecar alias-only path emits advisory receipts (no decision)
+    // The sidecar advisory path emits advisory receipts (no decision)
     // so v1 authority gates cannot mistake the result for a kernel-
     // mediated authorization.
     assert!(receipt.decision.is_none());
@@ -2501,6 +2499,11 @@ async fn sidecar_evaluate_advisory_route_wraps_non_authorization_response() {
         "tool_name": "read",
         "parameters": {"path": "/etc/hostname"},
     });
+    let removed_response = build_app(Arc::clone(&state))
+        .oneshot(loopback_post("/v1/evaluate", evaluate_body.clone()))
+        .await
+        .test_unwrap();
+    assert_eq!(removed_response.status(), StatusCode::GONE);
 
     let evaluate_response = build_app(Arc::clone(&state))
         .oneshot(loopback_post("/v1/evaluate/advisory", evaluate_body))
@@ -2802,7 +2805,7 @@ async fn sidecar_verify_receipt_rejects_expected_decision_mismatch() {
         "parameters": {"path": "/etc/hostname"},
     });
     let evaluate_response = build_app(Arc::clone(&state))
-        .oneshot(loopback_post("/v1/evaluate", evaluate_body))
+        .oneshot(loopback_post("/v1/evaluate/advisory", evaluate_body))
         .await
         .test_unwrap();
     let receipt_bytes = to_bytes(evaluate_response.into_body(), 1024 * 1024)
@@ -2872,7 +2875,7 @@ async fn sidecar_evaluate_tool_call_denies_revoked_capability() {
         "parameters": {},
     });
     let evaluate_response = build_app(Arc::clone(&state))
-        .oneshot(loopback_post("/v1/evaluate", evaluate_body))
+        .oneshot(loopback_post("/v1/evaluate/advisory", evaluate_body))
         .await
         .test_unwrap();
     assert_eq!(evaluate_response.status(), StatusCode::OK);
@@ -2887,9 +2890,6 @@ async fn sidecar_evaluate_tool_call_denies_revoked_capability() {
         .await
         .test_unwrap();
     let (_body, receipt) = parse_advisory_evaluation_body(&receipt_bytes);
-    // The alias-only path must not emit an authorizing or mediated
-    // receipt; revocation is surfaced via the advisory observation
-    // outcome and the recorded alias check outcome.
     assert!(receipt.decision.is_none());
     assert!(!receipt.is_allowed());
     assert_eq!(receipt.receipt_kind, ReceiptKind::AdvisoryEvaluation);
@@ -2901,7 +2901,7 @@ async fn sidecar_evaluate_tool_call_denies_revoked_capability() {
     let alias_outcome = receipt
         .metadata
         .as_ref()
-        .and_then(|m| m.get("alias_check_outcome"))
+        .and_then(|m| m.get("advisory_check_outcome"))
         .and_then(|v| v.as_str());
     assert_eq!(alias_outcome, Some("capability_revoked"));
     assert!(receipt.verify_signature().test_unwrap());
@@ -2935,7 +2935,7 @@ async fn sidecar_evaluate_tool_call_denies_parameter_hash_mismatch() {
         "parameter_hash": "deadbeef".to_string(),
     });
     let evaluate_response = build_app(Arc::clone(&state))
-        .oneshot(loopback_post("/v1/evaluate", evaluate_body))
+        .oneshot(loopback_post("/v1/evaluate/advisory", evaluate_body))
         .await
         .test_unwrap();
     assert_eq!(evaluate_response.status(), StatusCode::OK);
@@ -2950,10 +2950,6 @@ async fn sidecar_evaluate_tool_call_denies_parameter_hash_mismatch() {
         .await
         .test_unwrap();
     let (_body, receipt) = parse_advisory_evaluation_body(&receipt_bytes);
-    // Parameter-hash mismatch is surfaced as an advisory observation
-    // outcome of `Dropped` plus an explicit `parameter_hash_mismatch`
-    // alias-check outcome in metadata; the signed receipt must not
-    // carry an authorization decision.
     assert!(receipt.decision.is_none());
     assert!(!receipt.is_allowed());
     assert_eq!(receipt.receipt_kind, ReceiptKind::AdvisoryEvaluation);
@@ -2965,7 +2961,7 @@ async fn sidecar_evaluate_tool_call_denies_parameter_hash_mismatch() {
     let alias_outcome = receipt
         .metadata
         .as_ref()
-        .and_then(|m| m.get("alias_check_outcome"))
+        .and_then(|m| m.get("advisory_check_outcome"))
         .and_then(|v| v.as_str());
     assert_eq!(alias_outcome, Some("parameter_hash_mismatch"));
 }

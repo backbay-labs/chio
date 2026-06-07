@@ -238,6 +238,37 @@ fn capability_for_tool_with_constraints(
     .unwrap()
 }
 
+#[test]
+fn attenuate_scope_for_tool_narrows_wildcard_parent_grants() {
+    let parent = ChioScope {
+        grants: vec![ToolGrant {
+            server_id: "*".to_string(),
+            tool_name: "*".to_string(),
+            operations: vec![Operation::Invoke],
+            constraints: vec![Constraint::MaxLength(1024)],
+            max_invocations: Some(3),
+            max_cost_per_invocation: None,
+            max_total_cost: None,
+            dpop_required: Some(true),
+        }],
+        resource_grants: vec![],
+        prompt_grants: vec![],
+    };
+
+    let child = attenuate_scope_for_tool(&parent, "test-srv", "echo");
+
+    assert_eq!(child.grants.len(), 1);
+    assert_eq!(child.grants[0].server_id, "test-srv");
+    assert_eq!(child.grants[0].tool_name, "echo");
+    assert_eq!(child.grants[0].operations, vec![Operation::Invoke]);
+    assert_eq!(
+        child.grants[0].constraints,
+        vec![Constraint::MaxLength(1024)]
+    );
+    assert_eq!(child.grants[0].max_invocations, Some(3));
+    assert_eq!(child.grants[0].dpop_required, Some(true));
+}
+
 fn semantic_tool(
     name: &str,
     latency_hint: Option<LatencyHint>,

@@ -681,6 +681,79 @@ class TestChioReceipt:
         assert not receipt.is_allowed
         assert not receipt.is_denied
 
+    def test_bbs_receipt_fields_validate(self) -> None:
+        receipt = ChioReceipt(
+            id="3" * 64,
+            timestamp=1700000000,
+            capability_id="cap-1",
+            tool_server="srv",
+            tool_name="read_file",
+            action=ToolCallAction(
+                parameters={"path": "/tmp/f"},
+                parameter_hash="a" * 64,
+            ),
+            decision=Decision.allow(),
+            receipt_kind="mediated_decision",
+            boundary_class="prevent",
+            tool_origin="caller_executed",
+            redaction_mode="none",
+            trust_level="mediated",
+            content_hash="d" * 64,
+            policy_hash="cafebabe",
+            bbs_projection_version="chio.bbs-projection.receipt.v1",
+            bbs_signature={
+                "schema": "chio.receipt.bbs_signature.v1",
+                "projection_version": "chio.bbs-projection.receipt.v1",
+                "algorithm": "bbs",
+                "ciphersuite": "BBS_BLS12381G1_XMD:SHA-256_SSWU_RO_",
+                "issuer_fingerprint": "issuer:chio:test-bbs",
+                "issuer_public_key_hex": "11" * 96,
+                "message_count": 14,
+                "signature_hex": "22" * 80,
+            },
+            kernel_key="b" * 64,
+            signature="c" * 128,
+        )
+
+        dumped = receipt.model_dump(by_alias=True)
+        assert dumped["bbs_projection_version"] == "chio.bbs-projection.receipt.v1"
+        assert dumped["bbs_signature"]["issuer_fingerprint"] == "issuer:chio:test-bbs"
+
+    def test_bbs_receipt_rejects_wire_invalid_fingerprint(self) -> None:
+        with pytest.raises(ValidationError):
+            ChioReceipt(
+                id="4" * 64,
+                timestamp=1700000000,
+                capability_id="cap-1",
+                tool_server="srv",
+                tool_name="read_file",
+                action=ToolCallAction(
+                    parameters={"path": "/tmp/f"},
+                    parameter_hash="a" * 64,
+                ),
+                decision=Decision.allow(),
+                receipt_kind="mediated_decision",
+                boundary_class="prevent",
+                tool_origin="caller_executed",
+                redaction_mode="none",
+                trust_level="mediated",
+                content_hash="d" * 64,
+                policy_hash="cafebabe",
+                bbs_projection_version="chio.bbs-projection.receipt.v1",
+                bbs_signature={
+                    "schema": "chio.receipt.bbs_signature.v1",
+                    "projection_version": "chio.bbs-projection.receipt.v1",
+                    "algorithm": "bbs",
+                    "ciphersuite": "BBS_BLS12381G1_XMD:SHA-256_SSWU_RO_",
+                    "issuer_fingerprint": "issuer chio test-bbs",
+                    "issuer_public_key_hex": "11" * 96,
+                    "message_count": 14,
+                    "signature_hex": "22" * 80,
+                },
+                kernel_key="b" * 64,
+                signature="c" * 128,
+            )
+
 
 # ---------------------------------------------------------------------------
 # HttpReceipt

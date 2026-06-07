@@ -207,7 +207,7 @@ fn assert_mistral_lowered_responses(
             entry.verdict.clone(),
             replay_tool_result(fixture, entry, record)?,
         )?;
-        let actual = serde_json::to_value(part)?;
+        let actual = openai_compatible_tool_message(&part.tool_call_id, &part.response)?;
         assert_captured_lowered_response(fixture, entry, record, "Mistral", &actual)?;
         lowered += 1;
     }
@@ -230,7 +230,7 @@ fn assert_groq_lowered_responses(
             entry.verdict.clone(),
             replay_tool_result(fixture, entry, record)?,
         )?;
-        let actual = serde_json::to_value(part)?;
+        let actual = openai_compatible_tool_message(&part.tool_call_id, &part.response)?;
         assert_captured_lowered_response(fixture, entry, record, "Groq", &actual)?;
         lowered += 1;
     }
@@ -312,6 +312,18 @@ fn replay_tool_result(
         ),
         tool_result,
     )?))
+}
+
+#[cfg(any(feature = "fixtures-mistral", feature = "fixtures-groq"))]
+fn openai_compatible_tool_message(
+    tool_call_id: &str,
+    response: &Value,
+) -> Result<Value, ReplayError> {
+    Ok(serde_json::json!({
+        "role": "tool",
+        "tool_call_id": tool_call_id,
+        "content": serde_json::to_string(response)?,
+    }))
 }
 
 #[cfg(any(

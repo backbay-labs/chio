@@ -10,7 +10,7 @@ use chio_guard_registry::{
     Sha256Digest, VerifiedAttestation, CHIO_GUARD_VERIFY_EVENT,
 };
 
-const DIGEST: &str = "sha256:3333333333333333333333333333333333333333333333333333333333333333";
+const DIGEST: &str = "sha256:bafebd36189ad3688b7b3915ea55d461e0bfcfbdde11e54b0a123999fb6be50f";
 const MODULE_BYTES: &[u8] = b"\0asm\x01\0\0\0";
 const BUNDLE_BYTES: &[u8] = br#"{"bundle":"fixture"}"#;
 

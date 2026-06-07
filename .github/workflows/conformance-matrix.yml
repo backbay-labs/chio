@@ -128,11 +128,18 @@ jobs:
           import tomllib
           with open("crates/chio-conformance/peers.lock.toml", "rb") as fh:
               lock = tomllib.load(fh)
-          published = any(
-              peer.get("language") == "python" and peer.get("published", True)
-              for peer in lock.get("peer", [])
+          selected = next(
+              (
+                  peer
+                  for peer in lock.get("peer", [])
+                  if peer.get("language") == "python" and peer.get("published", True)
+              ),
+              None,
           )
-          print(f"published={'true' if published else 'false'}")
+          print(f"published={'true' if selected else 'false'}")
+          if selected:
+              print(f"target={selected['target']}")
+              print(f"binary={selected['binary']}")
           PY
 
       - name: Require published python peer
@@ -146,7 +153,12 @@ jobs:
         run: chio conformance fetch-peers --language python --out ./.chio-peers
 
       - name: Run conformance scenarios against python peer (json report)
-        run: chio conformance run --peer python --report json --output /tmp/report.json
+        run: >
+          chio conformance run
+          --peer python
+          --peer-binary "./.chio-peers/python-${{ steps.python-peer.outputs.target }}/${{ steps.python-peer.outputs.binary }}"
+          --report json
+          --output /tmp/report.json
 
       - name: Upload conformance report on failure
         if: failure()

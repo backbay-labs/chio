@@ -136,7 +136,7 @@ impl TargetProtocolExecutor for OpenAiTargetExecutor {
     }
 }
 
-pub(crate) fn metadata_with_source_receipt_context(
+pub fn metadata_with_source_receipt_context(
     mut metadata: Value,
     source_envelope: &Value,
 ) -> Result<Value, BridgeError> {

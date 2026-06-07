@@ -20,8 +20,8 @@ use chio_core::session::{
 use chio_cross_protocol::discovery::DiscoveryProtocol;
 use chio_cross_protocol::error::BridgeError;
 use chio_cross_protocol::execution::{
-    CrossProtocolTargetExecution, CrossProtocolTargetRequest, TargetExecutionHop,
-    TargetProtocolExecutor,
+    metadata_with_source_receipt_context, CrossProtocolTargetExecution, CrossProtocolTargetRequest,
+    TargetExecutionHop, TargetProtocolExecutor,
 };
 use chio_cross_protocol::routing::route_selection_metadata;
 use chio_kernel::{
@@ -1777,3 +1777,7 @@ impl ChioMcpEdge {
 #[cfg(test)]
 #[path = "runtime/runtime_tests.rs"]
 mod runtime_tests;
+
+#[cfg(test)]
+#[path = "runtime/source_receipt_tests.rs"]
+mod source_receipt_tests;

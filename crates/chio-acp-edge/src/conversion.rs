@@ -129,15 +129,31 @@ fn acp_invocation_result_from_orchestrated(
         .unwrap_or_else(|| kernel_output_to_value(orchestrated.response.output.as_ref()));
     let metadata = Some(orchestrated.metadata());
     let response = orchestrated.response;
-    let success = matches!(response.verdict, KernelVerdict::Allow);
+    let success =
+        matches!(response.verdict, KernelVerdict::Allow) && response.terminal_state.is_completed();
+    let error = if success {
+        None
+    } else {
+        response
+            .reason
+            .or_else(|| terminal_state_reason(&response.terminal_state))
+    };
 
     crate::metrics::record_receipt_write_verdict(response.verdict);
 
     AcpInvocationResult {
         success,
         data,
-        error: if success { None } else { response.reason },
+        error,
         metadata,
+    }
+}
+
+fn terminal_state_reason(terminal_state: &OperationTerminalState) -> Option<String> {
+    match terminal_state {
+        OperationTerminalState::Completed => None,
+        OperationTerminalState::Cancelled { reason }
+        | OperationTerminalState::Incomplete { reason } => Some(reason.clone()),
     }
 }
 

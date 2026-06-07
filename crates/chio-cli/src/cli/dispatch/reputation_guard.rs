@@ -185,11 +185,13 @@ pub(crate) fn dispatch_conformance(
                 report,
                 scenario,
                 output,
+                peer_binary,
             } => cmd_conformance_run(
                 &peer,
                 report.as_deref(),
                 scenario.as_deref(),
                 output.as_deref(),
+                peer_binary.as_deref(),
             ),
             ConformanceCommands::FetchPeers {
                 check,

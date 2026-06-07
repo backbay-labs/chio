@@ -1,5 +1,6 @@
 ---
 source: crates/chio-cli/tests/conformance_cli.rs
+assertion_line: 64
 expression: help_text
 ---
 Execute conformance scenarios against a peer language adapter
@@ -15,6 +16,8 @@ Options:
           Optional scenario id filter. When set, only scenarios with this id are surfaced in the printed/written report; the underlying harness still executes the full corpus
       --output <OUTPUT>
           Optional output file. When provided, the report is written to this path; otherwise the report is printed to stdout
+      --peer-binary <PATH>
+          Explicit peer executable to run. Valid only with a single `--peer` language, and used by release smoke tests after `fetch-peers` downloads a pinned artifact
       --json
           Short alias for `--format json`
       --receipt-db <RECEIPT_DB>

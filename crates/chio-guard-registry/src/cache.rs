@@ -5,6 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::oci::{GuardRegistryError, Result, Sha256Digest};
+use sha2::{Digest, Sha256};
 
 /// OCI image manifest cache file name.
 pub const CACHE_MANIFEST_JSON_FILE: &str = "manifest.json";
@@ -72,6 +73,7 @@ impl GuardCache {
         digest: &Sha256Digest,
         artifact: GuardCacheArtifact<'_>,
     ) -> Result<CachedGuardArtifact> {
+        ensure_manifest_digest_matches(digest, artifact.manifest_json)?;
         let layout = self.layout(digest);
         create_dir_all(layout.directory())?;
         write_cache_file(&layout.manifest_json_path(), artifact.manifest_json)?;
@@ -205,6 +207,17 @@ fn create_dir_all(path: &Path) -> Result<()> {
         path: path.to_path_buf(),
         source,
     })
+}
+
+fn ensure_manifest_digest_matches(digest: &Sha256Digest, manifest_json: &[u8]) -> Result<()> {
+    let actual = format!("sha256:{:x}", Sha256::digest(manifest_json));
+    if actual != digest.as_str() {
+        return Err(GuardRegistryError::ManifestDigestMismatch {
+            expected: digest.as_str().to_owned(),
+            actual,
+        });
+    }
+    Ok(())
 }
 
 fn write_cache_file(path: &Path, bytes: &[u8]) -> Result<()> {

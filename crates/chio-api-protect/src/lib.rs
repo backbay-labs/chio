@@ -14,9 +14,8 @@
 //!   It checks local revocation and parameter-hash consistency; it does not
 //!   validate capability scope or run the kernel guard pipeline. Successful
 //!   responses set the `chio-trust-level: advisory` header and include
-//!   `authorization: false` in the response body. `POST /v1/evaluate` remains
-//!   a deprecated compatibility alias for the same advisory route. Treat both
-//!   routes as observability, not as allow/deny gates.
+//!   `authorization: false` in the response body. Treat this route as
+//!   observability, not as an allow/deny gate.
 //! - **`POST /v1/capabilities/attenuate`** is a fail-closed control boundary.
 //!   It returns HTTP 403 because attenuation requires the parent subject signer.
 //!   Use the kernel delegation primitive or SDK-local signer helpers so that

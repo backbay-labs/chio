@@ -54,6 +54,7 @@ pub struct ConformanceRunOptions {
     pub python_binary: OsString,
     pub go_binary: OsString,
     pub cargo_binary: OsString,
+    pub peer_binaries: Vec<(PeerTarget, PathBuf)>,
 }
 
 #[derive(Debug, Clone)]
@@ -178,6 +179,7 @@ pub fn default_run_options() -> ConformanceRunOptions {
         python_binary: OsString::from("python3"),
         go_binary: OsString::from("go"),
         cargo_binary: OsString::from("cargo"),
+        peer_binaries: Vec::new(),
         repo_root,
     }
 }
@@ -419,51 +421,58 @@ fn run_peer(
     let log_clone = log.try_clone()?;
     let base_url = format!("http://{listen}");
     let command_description;
-    let mut command = match peer {
-        PeerTarget::Js => {
-            let script = options
-                .repo_root
-                .join("tests/conformance/peers/js/client.mjs");
-            command_description = format!(
-                "{} {}",
-                PathBuf::from(&options.node_binary).display(),
-                script.display()
-            );
-            let mut command = Command::new(&options.node_binary);
-            command.current_dir(&options.repo_root).arg(script);
-            command
-        }
-        PeerTarget::Python => {
-            let script = options
-                .repo_root
-                .join("tests/conformance/peers/python/client.py");
-            command_description = format!(
-                "{} {}",
-                PathBuf::from(&options.python_binary).display(),
-                script.display()
-            );
-            let mut command = Command::new(&options.python_binary);
-            command.current_dir(&options.repo_root).arg(script);
-            command
-        }
-        PeerTarget::Go => {
-            command_description = format!(
-                "{} run ./cmd/conformance-peer",
-                PathBuf::from(&options.go_binary).display()
-            );
-            let mut command = Command::new(&options.go_binary);
-            command
-                .current_dir(options.repo_root.join("sdks/go/chio-go"))
-                .arg("run")
-                .arg("./cmd/conformance-peer");
-            command
-        }
-        PeerTarget::Cpp => {
-            let executable = ensure_cpp_peer_executable(&options.repo_root)?;
-            command_description = executable.display().to_string();
-            let mut command = Command::new(executable);
-            command.current_dir(&options.repo_root);
-            command
+    let mut command = if let Some(binary) = peer_binary_override(peer, options) {
+        command_description = binary.display().to_string();
+        let mut command = Command::new(binary);
+        command.current_dir(&options.repo_root);
+        command
+    } else {
+        match peer {
+            PeerTarget::Js => {
+                let script = options
+                    .repo_root
+                    .join("tests/conformance/peers/js/client.mjs");
+                command_description = format!(
+                    "{} {}",
+                    PathBuf::from(&options.node_binary).display(),
+                    script.display()
+                );
+                let mut command = Command::new(&options.node_binary);
+                command.current_dir(&options.repo_root).arg(script);
+                command
+            }
+            PeerTarget::Python => {
+                let script = options
+                    .repo_root
+                    .join("tests/conformance/peers/python/client.py");
+                command_description = format!(
+                    "{} {}",
+                    PathBuf::from(&options.python_binary).display(),
+                    script.display()
+                );
+                let mut command = Command::new(&options.python_binary);
+                command.current_dir(&options.repo_root).arg(script);
+                command
+            }
+            PeerTarget::Go => {
+                command_description = format!(
+                    "{} run ./cmd/conformance-peer",
+                    PathBuf::from(&options.go_binary).display()
+                );
+                let mut command = Command::new(&options.go_binary);
+                command
+                    .current_dir(options.repo_root.join("sdks/go/chio-go"))
+                    .arg("run")
+                    .arg("./cmd/conformance-peer");
+                command
+            }
+            PeerTarget::Cpp => {
+                let executable = ensure_cpp_peer_executable(&options.repo_root)?;
+                command_description = executable.display().to_string();
+                let mut command = Command::new(executable);
+                command.current_dir(&options.repo_root);
+                command
+            }
         }
     };
 
@@ -507,6 +516,13 @@ fn run_peer(
         });
     }
     Ok(())
+}
+
+fn peer_binary_override(peer: PeerTarget, options: &ConformanceRunOptions) -> Option<&Path> {
+    options
+        .peer_binaries
+        .iter()
+        .find_map(|(target, path)| (*target == peer).then_some(path.as_path()))
 }
 
 fn ensure_cpp_peer_executable(repo_root: &Path) -> Result<PathBuf, RunnerError> {

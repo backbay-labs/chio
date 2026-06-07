@@ -24,7 +24,7 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 use chio_core_types::capability::{
-    attenuation::ScopeHash,
+    attenuation::{validate_delegation_chain, ScopeHash},
     crypto_floor::{CapabilityCryptoFloor, CapabilityFloorVerifyError},
     features::CapabilityNegotiation,
     scope::ChioScope,
@@ -346,9 +346,28 @@ pub fn verify_capability_full(
     budgets: &mut dyn BudgetRegistry,
 ) -> Result<VerifiedCapability, CapabilityError> {
     let verified = verify_capability_base(token, trusted_issuers, clock, crypto_floor)?;
+    verify_delegation_chain_shape(token)?;
     verify_chain_binding_with_negotiation(token, peer, trust_root)?;
     admit_delegated_budget(token, budgets)?;
     Ok(verified)
+}
+
+fn verify_delegation_chain_shape(token: &CapabilityToken) -> Result<(), CapabilityError> {
+    if token.delegation_chain.is_empty() {
+        return Ok(());
+    }
+    validate_delegation_chain(&token.delegation_chain, None)
+        .map_err(|err| CapabilityError::AttenuationViolation(err.to_string()))?;
+    let Some(final_link) = token.delegation_chain.last() else {
+        return Ok(());
+    };
+    let final_delegatee = &final_link.delegatee;
+    if final_delegatee != &token.subject {
+        return Err(CapabilityError::AttenuationViolation(
+            "delegation chain final delegatee does not match capability subject".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn verify_chain_binding_with_trust_root(
@@ -677,7 +696,7 @@ mod tests {
             DelegationLinkBody {
                 capability_id: "parent-capability".to_string(),
                 delegator: issuer.public_key(),
-                delegatee: issuer.public_key(),
+                delegatee: subject.public_key(),
                 attenuations: Vec::new(),
                 timestamp: 100,
                 scope_hash: None,
@@ -735,6 +754,135 @@ mod tests {
         .expect("pass-through delegation must verify when no new attenuation is introduced");
 
         assert_eq!(verified.id, "delegated-current-v1-token");
+    }
+
+    #[test]
+    fn full_verifier_rejects_delegation_chain_with_wrong_final_delegatee() {
+        let issuer = Keypair::generate();
+        let subject = Keypair::generate();
+        let parent_link = DelegationLink::sign(
+            DelegationLinkBody {
+                capability_id: "parent-capability".to_string(),
+                delegator: issuer.public_key(),
+                delegatee: issuer.public_key(),
+                attenuations: Vec::new(),
+                timestamp: 100,
+                scope_hash: None,
+            },
+            &issuer,
+        )
+        .expect("sign delegation link");
+        let token = CapabilityToken::sign(
+            CapabilityTokenBody {
+                id: "delegated-wrong-final-delegatee".to_string(),
+                issuer: issuer.public_key(),
+                subject: subject.public_key(),
+                scope: ChioScope::default(),
+                issued_at: 100,
+                expires_at: 200,
+                delegation_chain: Vec::from([parent_link]),
+            },
+            &issuer,
+        )
+        .expect("sign delegated token");
+        let clock = crate::FixedClock::new(150);
+        let mut peer = CapabilityNegotiation::t1_default();
+        peer.features
+            .insert(features::DELEGATION_CHAIN_BINDING.to_string(), false);
+        let trust_root_hash = scope_hash(&ChioScope::default()).expect("trust root hash");
+        let issuer_public = issuer.public_key();
+        let resolver_issuer = issuer_public.clone();
+        let trust_roots = move |candidate: &PublicKey| {
+            if candidate == &resolver_issuer {
+                Some(trust_root_hash.clone())
+            } else {
+                None
+            }
+        };
+        let mut budgets = InMemoryBudgetRegistry::new();
+
+        let err = verify_capability_full(
+            &token,
+            &[issuer_public],
+            &clock,
+            CapabilityCryptoFloor::AllowClassical,
+            &peer,
+            &trust_roots,
+            &mut budgets,
+        )
+        .expect_err("mismatched final delegatee must fail");
+
+        match err {
+            CapabilityError::AttenuationViolation(message) => {
+                assert!(message.contains("final delegatee does not match capability subject"));
+            }
+            other => panic!("expected attenuation violation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn full_verifier_rejects_tampered_delegation_link_payload() {
+        let issuer = Keypair::generate();
+        let subject = Keypair::generate();
+        let mut parent_link = DelegationLink::sign(
+            DelegationLinkBody {
+                capability_id: "parent-capability".to_string(),
+                delegator: issuer.public_key(),
+                delegatee: subject.public_key(),
+                attenuations: Vec::new(),
+                timestamp: 100,
+                scope_hash: None,
+            },
+            &issuer,
+        )
+        .expect("sign delegation link");
+        parent_link.capability_id = "tampered-parent".to_string();
+        let token = CapabilityToken::sign(
+            CapabilityTokenBody {
+                id: "delegated-tampered-link".to_string(),
+                issuer: issuer.public_key(),
+                subject: subject.public_key(),
+                scope: ChioScope::default(),
+                issued_at: 100,
+                expires_at: 200,
+                delegation_chain: Vec::from([parent_link]),
+            },
+            &issuer,
+        )
+        .expect("sign delegated token");
+        let clock = crate::FixedClock::new(150);
+        let mut peer = CapabilityNegotiation::t1_default();
+        peer.features
+            .insert(features::DELEGATION_CHAIN_BINDING.to_string(), false);
+        let trust_root_hash = scope_hash(&ChioScope::default()).expect("trust root hash");
+        let issuer_public = issuer.public_key();
+        let resolver_issuer = issuer_public.clone();
+        let trust_roots = move |candidate: &PublicKey| {
+            if candidate == &resolver_issuer {
+                Some(trust_root_hash.clone())
+            } else {
+                None
+            }
+        };
+        let mut budgets = InMemoryBudgetRegistry::new();
+
+        let err = verify_capability_full(
+            &token,
+            &[issuer_public],
+            &clock,
+            CapabilityCryptoFloor::AllowClassical,
+            &peer,
+            &trust_roots,
+            &mut budgets,
+        )
+        .expect_err("tampered delegation link must fail");
+
+        match err {
+            CapabilityError::AttenuationViolation(message) => {
+                assert!(message.contains("signature invalid"));
+            }
+            other => panic!("expected attenuation violation, got {other:?}"),
+        }
     }
 
     #[test]

@@ -43,7 +43,6 @@ use chio_core::capability::{
     scope::ModelMetadata,
     token::CapabilityToken,
 };
-#[cfg(test)]
 use chio_core::session::OperationTerminalState;
 use chio_cross_protocol::capability_bridge::{CapabilityBridge, CrossProtocolCapabilityRef};
 use chio_cross_protocol::discovery::{
@@ -92,3 +91,7 @@ include!("conversion.rs");
 include!("edge.rs");
 include!("jsonrpc.rs");
 include!("tests/all.rs");
+
+#[cfg(test)]
+#[path = "tests/nonce_preflight.rs"]
+mod nonce_preflight_tests;

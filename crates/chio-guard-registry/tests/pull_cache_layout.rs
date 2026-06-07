@@ -7,7 +7,9 @@ use chio_guard_registry::{
     CACHE_SIGSTORE_BUNDLE_JSON_FILE, CACHE_WIT_BIN_FILE,
 };
 
-const DIGEST: &str = "sha256:2222222222222222222222222222222222222222222222222222222222222222";
+const DIGEST: &str = "sha256:bafebd36189ad3688b7b3915ea55d461e0bfcfbdde11e54b0a123999fb6be50f";
+const WRONG_DIGEST: &str =
+    "sha256:2222222222222222222222222222222222222222222222222222222222222222";
 
 #[test]
 fn derives_content_addressed_cache_paths() {
@@ -137,6 +139,34 @@ fn writes_fixture_bytes_to_cache_files() {
         read(&cached.layout.sigstore_bundle_json_path()),
         br#"{"bundle":"fixture"}"#
     );
+}
+
+#[test]
+fn rejects_manifest_json_that_does_not_match_pinned_digest() {
+    let temp = tempdir();
+    let cache = GuardCache::from_cache_home(temp.path());
+    let digest = match WRONG_DIGEST.parse::<Sha256Digest>() {
+        Ok(digest) => digest,
+        Err(error) => panic!("fixture digest should parse: {error}"),
+    };
+
+    let err = match cache.write_artifact(
+        &digest,
+        GuardCacheArtifact {
+            manifest_json: br#"{"schemaVersion":2}"#,
+            config_json: br#"{"wit_world":"chio:guard/guard@0.2.0"}"#,
+            wit: b"package chio:guard@0.2.0;",
+            module: b"\0asm\x01\0\0\0",
+            sigstore_bundle_json: None,
+        },
+    ) {
+        Ok(_) => panic!("expected digest mismatch"),
+        Err(error) => error,
+    };
+    assert!(matches!(
+        err,
+        GuardRegistryError::ManifestDigestMismatch { .. }
+    ));
 }
 
 #[test]

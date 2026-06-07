@@ -14,9 +14,11 @@
     allow(dead_code, unused_imports)
 )]
 
-use std::collections::BTreeMap;
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::{Path, PathBuf},
+};
 
 #[cfg(any(
     feature = "fixtures-openai",
@@ -66,24 +68,20 @@ pub use additional_providers::{
     replay_ollama_fixture,
 };
 
-/// Replay error with fixture path context.
 #[derive(Debug, Error)]
 pub enum ReplayError {
-    /// A fixture file could not be read.
     #[error("read fixture {path:?}: {source}")]
     ReadFixture {
         path: PathBuf,
         #[source]
         source: std::io::Error,
     },
-    /// A fixture directory could not be read.
     #[error("read fixture directory {path:?}: {source}")]
     ReadFixtureDir {
         path: PathBuf,
         #[source]
         source: std::io::Error,
     },
-    /// A fixture line was not valid JSON.
     #[error("parse fixture {path:?} line {line}: {source}")]
     ParseLine {
         path: PathBuf,
@@ -91,16 +89,12 @@ pub enum ReplayError {
         #[source]
         source: serde_json::Error,
     },
-    /// A capture field had an unsupported value.
     #[error("invalid fixture {path:?}: {message}")]
     InvalidFixture { path: PathBuf, message: String },
-    /// Canonical JSON or equality assertion failed.
     #[error(transparent)]
     Assertion(#[from] AssertionError),
-    /// Provider adapter replay failed.
     #[error(transparent)]
     Provider(#[from] ProviderError),
-    /// JSON encoding or decoding failed while reconstructing replay inputs.
     #[error("JSON error during replay: {0}")]
     Json(#[from] serde_json::Error),
 }

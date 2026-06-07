@@ -124,7 +124,7 @@ pub enum GuardRegistryError {
         source: std::io::Error,
     },
 
-    /// The registry returned a manifest digest that did not match the pinned digest.
+    /// The OCI image manifest digest did not match the pinned digest.
     #[error("guard OCI manifest digest mismatch: expected {expected}, got {actual}")]
     ManifestDigestMismatch {
         /// Digest pinned in the pull reference.

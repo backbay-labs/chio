@@ -15,6 +15,13 @@ fi
 
 # ci-workspace remains the fast regression gate.
 ./scripts/ci-workspace.sh
+cargo test -p chio-provider-conformance \
+  --features fixtures-gemini,fixtures-mistral,fixtures-groq,fixtures-ollama,fixtures-cohere \
+  --test replay_gemini \
+  --test replay_mistral \
+  --test replay_groq \
+  --test replay_ollama \
+  --test replay_cohere
 ./scripts/qualify-trust-control.sh
 ./scripts/qualify-portable-browser.sh
 ./scripts/qualify-mobile-kernel.sh

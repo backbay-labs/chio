@@ -269,25 +269,13 @@ pub fn validate_delegation_chain_with_trust_root(
         };
 
         if i == 0 {
-            // The first hop must descend from the trust root. We do not
-            // require equality (the first delegation typically attenuates
-            // the issuer's full authority), but we do require that the
-            // first link's scope_hash itself is well-formed and equal to
-            // either the trust root or to a hop already chained off
-            // it. The capability token's own attenuation_proof closes the
-            // residual subset check against `chain.last().scope_hash`.
-            if link_hash.is_empty() {
+            if link_hash != trust_root_scope_hash {
                 return Err(Error::DelegationChainBroken {
-                    reason: "delegation chain link 0 has empty scope_hash".to_string(),
+                    reason:
+                        "delegation chain link 0 scope_hash does not match trust root scope hash"
+                            .to_string(),
                 });
             }
-            // Cheap fast-path: when the link explicitly equals the trust
-            // root the chain is unambiguous (no attenuation step).
-            // Otherwise the residual subset check is deferred to the
-            // capability's `attenuation_proof` (the wire witness) so we
-            // do not re-derive the parent scope on the verifier without
-            // the canonical scope payload.
-            let _ = trust_root_scope_hash;
         }
     }
 

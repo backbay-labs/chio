@@ -149,6 +149,16 @@ assert_rc "$(run_checker "$large_production" "$work/large-production.out" "$work
 grep -F "crates/chio-small/src/main.rs: production file has 2001 lines" \
   "$work/large-production.err" >/dev/null
 
+large_untracked_production="$work/large-untracked-production"
+init_case "$large_untracked_production"
+write_lines "$large_untracked_production/crates/chio-small/src/main.rs" 25
+track_case "$large_untracked_production"
+write_lines "$large_untracked_production/crates/chio-small/src/untracked.rs" 2001
+assert_rc "$(run_checker "$large_untracked_production" "$work/large-untracked-production.out" "$work/large-untracked-production.err")" 1 \
+  "oversized untracked production file fails"
+grep -F "crates/chio-small/src/untracked.rs: production file has 2001 lines" \
+  "$work/large-untracked-production.err" >/dev/null
+
 large_lib="$work/large-lib"
 init_case "$large_lib"
 write_lines "$large_lib/crates/chio-small/src/lib.rs" 1001

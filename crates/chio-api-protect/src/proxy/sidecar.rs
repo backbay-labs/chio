@@ -971,22 +971,19 @@ pub(crate) async fn sidecar_verify_receipt_handler(
 }
 
 // ---------------------------------------------------------------------------
-// Tool-call evaluation (SDK alias for `evaluate_tool_call`)
+// Tool-call advisory evaluation
 // ---------------------------------------------------------------------------
 //
-// `POST /v1/evaluate/advisory` is NOT kernel-mediated authorization. The
-// deprecated `/v1/evaluate` alias uses the same handler. It records
-// cap-revocation and parameter-hash alias checks only, signs an
+// `POST /v1/evaluate/advisory` is NOT kernel-mediated authorization. It
+// records cap-revocation and parameter-hash checks only, signs an
 // `AdvisoryEvaluation` receipt (`TrustLevel::Advisory`), sets the
 // `chio-trust-level: advisory` response header, and returns
-// `authorization: false` so v1 authority gates do not mistake the outcome
-// for a mediated allow/deny decision.
+// `authorization: false`.
 
 /// `POST /v1/evaluate/advisory` body shape posted by `chio-sdk-python`'s
 /// `ChioClient.evaluate_tool_call`. Distinct from `/chio/evaluate`'s
 /// `ChioHttpRequest` shape because the SDK does not synthesize an HTTP
-/// substrate request for direct tool calls. `POST /v1/evaluate` remains a
-/// deprecated compatibility alias for this advisory-only route.
+/// substrate request for direct tool calls.
 #[derive(Debug, Deserialize)]
 pub(crate) struct SidecarEvaluateToolCallRequest {
     capability_id: String,
@@ -996,6 +993,19 @@ pub(crate) struct SidecarEvaluateToolCallRequest {
     parameters: serde_json::Value,
     #[serde(default)]
     parameter_hash: Option<String>,
+}
+
+pub(crate) async fn sidecar_removed_evaluate_handler() -> Response {
+    (
+        StatusCode::GONE,
+        axum::Json(serde_json::json!({
+            "error": "chio_route_removed",
+            "message": "use POST /v1/evaluate/advisory for advisory tool-call evaluation",
+            "replacement": "/v1/evaluate/advisory",
+            "authorization": false,
+        })),
+    )
+        .into_response()
 }
 
 pub(crate) async fn sidecar_evaluate_tool_call_handler(
@@ -1058,22 +1068,16 @@ pub(crate) async fn sidecar_evaluate_tool_call_handler(
         None => false,
     };
 
-    // The sidecar `/v1/evaluate` alias only checks revocation state and the
-    // canonical parameter hash; it does not present a capability token,
-    // validate its scope, or run the kernel's authorization pipeline. Emit
-    // an `AdvisoryEvaluation` receipt (no signed `Decision`, advisory trust
-    // level) so downstream v1 authority gates do not mistake this alias
-    // outcome for a kernel-mediated authorization.
-    let alias_check_outcome = if revoked {
+    let advisory_check_outcome = if revoked {
         "capability_revoked"
     } else if hash_mismatch {
         "parameter_hash_mismatch"
     } else {
-        "alias_checks_passed"
+        "advisory_checks_passed"
     };
 
-    // `Dropped` signals "the alias-side checks would refuse to proceed";
-    // `Evaluated` signals "the alias evaluated the call but did not
+    // `Dropped` signals "the advisory-side checks would refuse to proceed";
+    // `Evaluated` signals "the advisory route evaluated the call but did not
     // synchronously authorize anything". Neither implies the kernel mediated
     // the tool call.
     let observation_outcome = if revoked || hash_mismatch {
@@ -1108,8 +1112,8 @@ pub(crate) async fn sidecar_evaluate_tool_call_handler(
             ),
             evidence: Vec::new(),
             metadata: Some(serde_json::json!({
-                "evaluation_kind": "sidecar_tool_call_alias",
-                "alias_check_outcome": alias_check_outcome,
+                "evaluation_kind": "sidecar_tool_call_advisory",
+                "advisory_check_outcome": advisory_check_outcome,
                 "execution_nonce": "not_minted",
                 "limitation": "kernel-driven tool-call evaluation is not yet wired through the sidecar; this receipt records cap-revocation and parameter-hash checks only, does not mint an execution nonce, and must not be treated as kernel-mediated authorization",
             })),

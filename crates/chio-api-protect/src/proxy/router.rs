@@ -59,8 +59,7 @@ pub(crate) fn build_app(state: Arc<ProxyState>) -> Router {
             "/v1/evaluate/advisory",
             post(sidecar_evaluate_tool_call_handler),
         )
-        // Deprecated compatibility alias for the advisory route above.
-        .route("/v1/evaluate", post(sidecar_evaluate_tool_call_handler))
+        .route("/v1/evaluate", post(sidecar_removed_evaluate_handler))
         .route("/{*path}", any(proxy_handler))
         .route("/", any(proxy_handler))
         .with_state(state)

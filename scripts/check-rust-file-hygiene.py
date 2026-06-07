@@ -149,9 +149,18 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
-def tracked_rust_files(root: Path) -> list[str]:
+def discover_rust_files(root: Path) -> list[str]:
     result = subprocess.run(
-        ["git", "-C", str(root), "ls-files", "*.rs"],
+        [
+            "git",
+            "-C",
+            str(root),
+            "ls-files",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            "*.rs",
+        ],
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -321,10 +330,10 @@ def main() -> int:
     validate_allowlist(errors)
 
     try:
-        paths = tracked_rust_files(root)
+        paths = discover_rust_files(root)
     except subprocess.CalledProcessError as exc:
         stderr = exc.stderr.strip()
-        print(f"failed to list tracked Rust files under {root}: {stderr}", file=sys.stderr)
+        print(f"failed to list Rust files under {root}: {stderr}", file=sys.stderr)
         return 1
 
     files = [inspect_file(root, path) for path in paths]

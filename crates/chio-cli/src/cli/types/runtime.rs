@@ -340,6 +340,12 @@ pub(crate) enum ConformanceCommands {
         /// path; otherwise the report is printed to stdout.
         #[arg(long)]
         output: Option<PathBuf>,
+
+        /// Explicit peer executable to run. Valid only with a single
+        /// `--peer` language, and used by release smoke tests after
+        /// `fetch-peers` downloads a pinned artifact.
+        #[arg(long, value_name = "PATH")]
+        peer_binary: Option<PathBuf>,
     },
 
     /// Download pre-built peer-language adapter binaries pinned in

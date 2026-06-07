@@ -15,7 +15,8 @@ pub struct GuardPullRequest<'a> {
     pub credentials: &'a RegistryCredentials,
     /// Target content-addressed cache.
     pub cache: &'a GuardCache,
-    /// Optional Sigstore bundle bytes to cache alongside the pulled artifact.
+    /// Optional caller-supplied Sigstore bundle bytes to cache alongside the
+    /// pulled artifact. The pull path does not discover OCI referrers.
     pub sigstore_bundle_json: Option<&'a [u8]>,
 }
 

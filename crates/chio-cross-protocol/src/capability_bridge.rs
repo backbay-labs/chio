@@ -107,8 +107,17 @@ pub(crate) fn attenuate_scope_for_tool(
     let grants = parent
         .grants
         .iter()
-        .filter(|grant| grant.server_id == server_id && grant.tool_name == tool_name)
-        .cloned()
+        .filter_map(|grant| {
+            let server_matches = grant.server_id == server_id || grant.server_id == "*";
+            let tool_matches = grant.tool_name == tool_name || grant.tool_name == "*";
+            if !server_matches || !tool_matches {
+                return None;
+            }
+            let mut narrowed = grant.clone();
+            narrowed.server_id = server_id.to_string();
+            narrowed.tool_name = tool_name.to_string();
+            Some(narrowed)
+        })
         .collect();
 
     ChioScope {

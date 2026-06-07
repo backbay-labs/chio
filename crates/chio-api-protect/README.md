@@ -67,9 +67,8 @@ must not be used as sole allow/deny gates for tool execution in production:
   `authorization: false`, `authorizationBasis: "advisory_only"`, and a
   receipt whose `trust_level` is `advisory`. This is not kernel-mediated
   authorization.
-- **`POST /v1/evaluate`** - deprecated compatibility alias for
-  `/v1/evaluate/advisory`. It returns the same explicit non-authorization
-  wrapper.
+- **`POST /v1/evaluate`** - reserved legacy path. It returns HTTP 410 and
+  does not sign a receipt.
 - **`POST /v1/capabilities/attenuate`** - returns HTTP 501 with
   `chio-route-status: not-implemented` and `chio_route_status: not-implemented`
   in the JSON body. Capability delegation requires the parent subject's
