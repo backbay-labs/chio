@@ -2,7 +2,7 @@
 // or 'cargo xtask codegen --lang go'.
 //
 // Source: spec/schemas/chio-wire/v1/**/*.schema.json
-// Schema content SHA-256: aea93e09d1c0ec0ce0ce4e2c181fc351e83b33eab34a3a86fb8c5ec0fcedfa2a
+// Schema content SHA-256: d9336b1c9657caddce67fb53215a376fcf1c199f6eea77808fea7bef2b9a15ac
 // Tool:   oapi-codegen v2.4.1 (see xtask/codegen-tools.lock.toml)
 //
 // The Schema content SHA-256 is computed from the lex-sorted schema bytes
@@ -485,6 +485,11 @@ const (
 	ReceiptRecordAlgorithmP384    ReceiptRecordAlgorithm = "p384"
 )
 
+// Defines values for ReceiptRecordBbsProjectionVersion.
+const (
+	ReceiptRecordBbsProjectionVersionChioBbsProjectionReceiptV1 ReceiptRecordBbsProjectionVersion = "chio.bbs-projection.receipt.v1"
+)
+
 // Defines values for ReceiptRecordBoundaryClass.
 const (
 	ReceiptRecordBoundaryClassAdvisoryOnly ReceiptRecordBoundaryClass = "advisory_only"
@@ -525,6 +530,31 @@ const (
 	ReceiptRecordTrustLevelAdvisory ReceiptRecordTrustLevel = "advisory"
 	ReceiptRecordTrustLevelMediated ReceiptRecordTrustLevel = "mediated"
 	ReceiptRecordTrustLevelVerified ReceiptRecordTrustLevel = "verified"
+)
+
+// Defines values for ReceiptRecordBbsReceiptSignatureAlgorithm.
+const (
+	ReceiptRecordBbsReceiptSignatureAlgorithmBbs ReceiptRecordBbsReceiptSignatureAlgorithm = "bbs"
+)
+
+// Defines values for ReceiptRecordBbsReceiptSignatureCiphersuite.
+const (
+	ReceiptRecordBbsReceiptSignatureCiphersuiteBBSBLS12381G1XMDSHA256SSWURO ReceiptRecordBbsReceiptSignatureCiphersuite = "BBS_BLS12381G1_XMD:SHA-256_SSWU_RO_"
+)
+
+// Defines values for ReceiptRecordBbsReceiptSignatureMessageCount.
+const (
+	ReceiptRecordBbsReceiptSignatureMessageCountN14 ReceiptRecordBbsReceiptSignatureMessageCount = 14
+)
+
+// Defines values for ReceiptRecordBbsReceiptSignatureProjectionVersion.
+const (
+	ReceiptRecordBbsReceiptSignatureProjectionVersionChioBbsProjectionReceiptV1 ReceiptRecordBbsReceiptSignatureProjectionVersion = "chio.bbs-projection.receipt.v1"
+)
+
+// Defines values for ReceiptRecordBbsReceiptSignatureSchema.
+const (
+	ReceiptRecordBbsReceiptSignatureSchemaChioReceiptBbsSignatureV1 ReceiptRecordBbsReceiptSignatureSchema = "chio.receipt.bbs_signature.v1"
 )
 
 // Defines values for ReceiptRecordDecision0Verdict.
@@ -1819,6 +1849,10 @@ type ReceiptRecord struct {
 	// Algorithm Signing algorithm envelope hint. Verification dispatches off the signature hex prefix, not this field.
 	Algorithm *ReceiptRecordAlgorithm `json:"algorithm,omitempty"`
 
+	// BbsProjectionVersion Receipt-body BBS projection version bound into the receipt id when bbs_signature is present.
+	BbsProjectionVersion *ReceiptRecordBbsProjectionVersion `json:"bbs_projection_version,omitempty"`
+	BbsSignature         *ReceiptRecordBbsReceiptSignature  `json:"bbs_signature,omitempty"`
+
 	// BoundaryClass Signed runtime boundary class. `cannot_see` is planning metadata only and is not valid on signed runtime receipts.
 	BoundaryClass ReceiptRecordBoundaryClass `json:"boundary_class"`
 
@@ -1855,7 +1889,7 @@ type ReceiptRecord struct {
 	// RedactionMode Signed redaction mode applied to receipt details.
 	RedactionMode ReceiptRecordRedactionMode `json:"redaction_mode"`
 
-	// Signature Hex-encoded signature over canonical JSON of ChioReceiptSigningBody { id, body: ChioReceiptIdInput }. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.
+	// Signature Hex-encoded signature over canonical JSON of ChioReceiptSigningBody { id, body: ChioReceiptIdInput, bbs_signature? }. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.
 	Signature string `json:"signature"`
 
 	// TenantId Tenant identifier for multi-tenant deployments. Absent in single-tenant mode; derived from the authenticated session's enterprise identity context, never from caller-provided request fields.
@@ -1880,6 +1914,9 @@ type ReceiptRecord struct {
 // ReceiptRecordAlgorithm Signing algorithm envelope hint. Verification dispatches off the signature hex prefix, not this field.
 type ReceiptRecordAlgorithm string
 
+// ReceiptRecordBbsProjectionVersion Receipt-body BBS projection version bound into the receipt id when bbs_signature is present.
+type ReceiptRecordBbsProjectionVersion string
+
 // ReceiptRecordBoundaryClass Signed runtime boundary class. `cannot_see` is planning metadata only and is not valid on signed runtime receipts.
 type ReceiptRecordBoundaryClass string
 
@@ -1903,6 +1940,33 @@ type ReceiptRecordActorRef struct {
 	ActorId   string  `json:"actor_id"`
 	ActorKind *string `json:"actor_kind,omitempty"`
 }
+
+// ReceiptRecordBbsReceiptSignature defines model for ReceiptRecordBbsReceiptSignature.
+type ReceiptRecordBbsReceiptSignature struct {
+	Algorithm          ReceiptRecordBbsReceiptSignatureAlgorithm         `json:"algorithm"`
+	Ciphersuite        ReceiptRecordBbsReceiptSignatureCiphersuite       `json:"ciphersuite"`
+	IssuerFingerprint  string                                            `json:"issuer_fingerprint"`
+	IssuerPublicKeyHex string                                            `json:"issuer_public_key_hex"`
+	MessageCount       ReceiptRecordBbsReceiptSignatureMessageCount      `json:"message_count"`
+	ProjectionVersion  ReceiptRecordBbsReceiptSignatureProjectionVersion `json:"projection_version"`
+	Schema             ReceiptRecordBbsReceiptSignatureSchema            `json:"schema"`
+	SignatureHex       string                                            `json:"signature_hex"`
+}
+
+// ReceiptRecordBbsReceiptSignatureAlgorithm defines model for ReceiptRecordBbsReceiptSignature.Algorithm.
+type ReceiptRecordBbsReceiptSignatureAlgorithm string
+
+// ReceiptRecordBbsReceiptSignatureCiphersuite defines model for ReceiptRecordBbsReceiptSignature.Ciphersuite.
+type ReceiptRecordBbsReceiptSignatureCiphersuite string
+
+// ReceiptRecordBbsReceiptSignatureMessageCount defines model for ReceiptRecordBbsReceiptSignature.MessageCount.
+type ReceiptRecordBbsReceiptSignatureMessageCount int64
+
+// ReceiptRecordBbsReceiptSignatureProjectionVersion defines model for ReceiptRecordBbsReceiptSignature.ProjectionVersion.
+type ReceiptRecordBbsReceiptSignatureProjectionVersion string
+
+// ReceiptRecordBbsReceiptSignatureSchema defines model for ReceiptRecordBbsReceiptSignature.Schema.
+type ReceiptRecordBbsReceiptSignatureSchema string
 
 // ReceiptRecordDecision The Kernel's verdict on the tool call. Internally tagged enum mirroring `Decision` in `chio-core-types` (`#[serde(tag = "verdict", rename_all = "snake_case")]`).
 type ReceiptRecordDecision struct {
