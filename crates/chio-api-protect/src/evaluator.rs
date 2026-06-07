@@ -10,7 +10,7 @@ use chio_http_core::{
     HttpAuthorityEvaluation, HttpAuthorityInput, HttpAuthorityPolicy, HttpMethod, HttpReceipt,
     Verdict,
 };
-use chio_kernel::ApprovalStore;
+use chio_kernel::{ApprovalStore, SignedExecutionNonce};
 use chio_openapi::PolicyDecision;
 use serde_json::Value;
 
@@ -19,6 +19,7 @@ pub struct EvaluationResult {
     pub verdict: Verdict,
     pub receipt: HttpReceipt,
     pub evidence: Vec<GuardEvidence>,
+    pub execution_nonce: Option<SignedExecutionNonce>,
 }
 
 /// Route information extracted from the OpenAPI spec.
@@ -97,6 +98,19 @@ impl RequestEvaluator {
         self.authority.approval_store()
     }
 
+    #[cfg(test)]
+    pub fn enable_strict_execution_nonce_for_tests(&mut self) {
+        let cfg = chio_kernel::ExecutionNonceConfig {
+            nonce_ttl_secs: 30,
+            nonce_store_capacity: 1024,
+            require_nonce: true,
+        };
+        let store = Box::new(chio_kernel::InMemoryExecutionNonceStore::from_config(&cfg));
+        if let Err(error) = self.authority.set_execution_nonce_store(cfg, store) {
+            panic!("strict execution nonce test setup failed: {error}");
+        }
+    }
+
     /// Evaluate an incoming HTTP request against the route table.
     pub fn evaluate(
         &self,
@@ -154,6 +168,7 @@ impl RequestEvaluator {
             tool_name,
             arguments,
             model_metadata,
+            execution_nonce,
             ..
         } = request;
         let (route_pattern, matched_policy, _) = self.match_route_with_status(method, &path);
@@ -175,7 +190,7 @@ impl RequestEvaluator {
             requested_tool_server: tool_server.as_deref(),
             requested_tool_name: tool_name.as_deref(),
             requested_arguments: Some(&arguments),
-            execution_nonce: None,
+            execution_nonce: execution_nonce.as_ref(),
             model_metadata: model_metadata.as_ref(),
             policy: policy_mode(matched_policy),
         })?;
@@ -245,6 +260,7 @@ impl From<HttpAuthorityEvaluation> for EvaluationResult {
             verdict: value.verdict,
             receipt: value.receipt,
             evidence: value.evidence,
+            execution_nonce: value.execution_nonce,
         }
     }
 }

@@ -10,10 +10,10 @@ use chio_core_types::receipt::metadata::GuardEvidence;
 use chio_cross_protocol::discovery::{DiscoveryProtocol, TargetProtocolRegistry};
 use chio_cross_protocol::routing::{plan_authoritative_route, route_selection_metadata};
 use chio_kernel::{
-    ApprovalStore, ChioKernel, Guard, GuardContext, GuardDecision, InMemoryApprovalStore,
-    KernelConfig, KernelError, SignedExecutionNonce, ToolCallRequest, ToolServerConnection,
-    Verdict as KernelVerdict, DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_MAX_STREAM_DURATION_SECS,
-    DEFAULT_MAX_STREAM_TOTAL_BYTES,
+    ApprovalStore, ChioKernel, ExecutionNonceConfig, ExecutionNonceStore, Guard, GuardContext,
+    GuardDecision, InMemoryApprovalStore, KernelConfig, KernelError, SignedExecutionNonce,
+    ToolCallRequest, ToolServerConnection, Verdict as KernelVerdict, DEFAULT_CHECKPOINT_BATCH_SIZE,
+    DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -299,6 +299,21 @@ impl HttpAuthority {
         Arc::clone(&self.approval_store)
     }
 
+    pub fn set_execution_nonce_store(
+        &mut self,
+        config: ExecutionNonceConfig,
+        store: Box<dyn ExecutionNonceStore>,
+    ) -> Result<(), HttpAuthorityError> {
+        let Some(kernel) = Arc::get_mut(&mut self.kernel) else {
+            return Err(HttpAuthorityError::Kernel(
+                "execution nonce store cannot be configured after HTTP authority is cloned"
+                    .to_string(),
+            ));
+        };
+        kernel.set_execution_nonce_store(config, store);
+        Ok(())
+    }
+
     fn trusted_capability_issuers(&self) -> &[PublicKey] {
         &self.trusted_capability_issuers
     }
@@ -382,6 +397,7 @@ impl HttpAuthority {
             tool_name: binding.requested_tool_name.clone(),
             arguments: binding.requested_arguments.clone(),
             model_metadata: input.model_metadata.cloned(),
+            execution_nonce: input.execution_nonce.cloned(),
             timestamp: chrono::Utc::now().timestamp() as u64,
         };
 

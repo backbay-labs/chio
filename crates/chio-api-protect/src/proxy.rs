@@ -83,5 +83,9 @@ pub use self::config::ProtectConfig;
 pub use self::state::ProtectProxy;
 
 #[cfg(test)]
+#[path = "proxy/nonce_tests.rs"]
+mod nonce_tests;
+
+#[cfg(test)]
 #[path = "proxy/tests.rs"]
 mod tests;

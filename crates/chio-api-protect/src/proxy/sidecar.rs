@@ -73,10 +73,7 @@ pub(crate) async fn sidecar_evaluate_handler(
             verdict: result.verdict,
             receipt: result.receipt,
             evidence: result.evidence,
-            // This sidecar evaluation endpoint preserves the existing
-            // evaluate-only contract. Execution endpoints attach nonces
-            // when they invoke the kernel tool-call path.
-            execution_nonce: None,
+            execution_nonce: result.execution_nonce,
         }),
     )
         .into_response()
