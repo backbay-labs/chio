@@ -52,6 +52,8 @@ PY
 
 grep -F 'echo "slug=$(basename "$PACKAGE_DIR")" >> "$GITHUB_OUTPUT"' "$WORKFLOW" >/dev/null
 grep -F 'SLUG: ${{ steps.meta.outputs.slug }}' "$WORKFLOW" >/dev/null
+grep -F 'sdks/python/chio-py) import_name="chio" ;;' "$WORKFLOW" >/dev/null
+grep -F 'sdks/python/chio-sdk-python) import_name="chio_sdk" ;;' "$WORKFLOW" >/dev/null
 grep -F 'uv build --wheel --out-dir "$wheelhouse" "${GITHUB_WORKSPACE}/${dep_dir}"' "$WORKFLOW" >/dev/null
 grep -F 'smoke_install_args+=(--find-links "$wheelhouse")' "$WORKFLOW" >/dev/null
 grep -F 'pip install --quiet "${smoke_install_args[@]}" "$wheel"' "$WORKFLOW" >/dev/null

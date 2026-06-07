@@ -200,7 +200,25 @@ fn reservation_receipt(ask: &SignedAskResponse) -> ReservationReceipt {
         ask_digest: sha256_hex(
             &canonical_json_bytes(&ask.body).test_expect("canonical ask response bytes"),
         ),
-        reserved_amount: ask.body.quoted_price.clone(),
+        reserved_amount: total_token_liability(ask),
+    }
+}
+
+fn total_token_liability(ask: &SignedAskResponse) -> MonetaryAmount {
+    let mut units = 0_u64;
+    for grant in &ask.body.token_offer.scope.grants {
+        let max_total_cost = grant
+            .max_total_cost
+            .as_ref()
+            .test_expect("token grant has max total cost");
+        assert_eq!(max_total_cost.currency, ask.body.quoted_price.currency);
+        units = units
+            .checked_add(max_total_cost.units)
+            .test_expect("token liability does not overflow");
+    }
+    MonetaryAmount {
+        units,
+        currency: ask.body.quoted_price.currency.clone(),
     }
 }
 
@@ -402,11 +420,50 @@ fn accept_rejects_underfunded_reservation_receipt() {
     .test_expect("bid succeeds");
 
     let mut receipt = reservation_receipt(&ask);
-    receipt.reserved_amount.units = ask.body.quoted_price.units - 1;
+    receipt.reserved_amount.units -= 1;
     let reservation_receipt = verified_reservation_from_body(receipt, &issuer_keypair);
 
     let error = accept(&ask, &reservation_receipt, &agent_keypair, 130)
         .test_expect_err("underfunded reservation rejected");
+    assert!(matches!(error, BiddingError::ReservationReceiptInvalid));
+}
+
+#[test]
+fn accept_rejects_single_call_reservation_for_multi_invocation_token() {
+    let registry_keypair = Keypair::generate();
+    let operator_keypair = Keypair::generate();
+    let issuer_keypair = operator_keypair.clone();
+    let agent_keypair = Keypair::generate();
+    let listing = listing_entry(
+        &registry_keypair,
+        &operator_keypair,
+        GenericListingStatus::Active,
+        100,
+        600,
+    );
+    let request = signed_bid_request(&agent_keypair, "agent-alpha", 200, 300, 120);
+    let ask = bid(
+        &request,
+        BidMintContext {
+            listing: &listing,
+            issuer_keypair: &issuer_keypair,
+            agent_subject: agent_keypair.public_key(),
+            token_id: "token-abc".to_string(),
+            now: 120,
+        },
+    )
+    .test_expect("bid succeeds");
+    assert_eq!(
+        total_token_liability(&ask).units,
+        ask.body.quoted_price.units * 10
+    );
+
+    let mut receipt = reservation_receipt(&ask);
+    receipt.reserved_amount = ask.body.quoted_price.clone();
+    let reservation_receipt = verified_reservation_from_body(receipt, &issuer_keypair);
+
+    let error = accept(&ask, &reservation_receipt, &agent_keypair, 130)
+        .test_expect_err("single-call reservation rejected for multi-call token");
     assert!(matches!(error, BiddingError::ReservationReceiptInvalid));
 }
 

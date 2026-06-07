@@ -477,11 +477,12 @@ pub fn accept(
         return Err(BiddingError::AuthorityMismatch);
     }
     let ask_digest = canonical_digest(&ask.body)?;
+    let required_reservation_amount = token_offer_total_liability(&ask.body)?;
     if reservation.agent_id != ask.body.agent_id
         || reservation.listing_id != ask.body.listing_id
         || reservation.ask_digest != ask_digest
-        || reservation.reserved_amount.currency != ask.body.quoted_price.currency
-        || reservation.reserved_amount.units < ask.body.quoted_price.units
+        || reservation.reserved_amount.currency != required_reservation_amount.currency
+        || reservation.reserved_amount.units < required_reservation_amount.units
     {
         return Err(BiddingError::ReservationReceiptInvalid);
     }
@@ -506,6 +507,28 @@ pub fn accept(
             "signed accepted bid signature is not verifiable",
         )),
     }
+}
+
+fn token_offer_total_liability(ask: &AskResponse) -> Result<MonetaryAmount, BiddingError> {
+    let mut total_units = 0_u64;
+    for grant in &ask.token_offer.scope.grants {
+        let Some(max_total_cost) = grant.max_total_cost.as_ref() else {
+            return Err(BiddingError::ReservationReceiptInvalid);
+        };
+        if max_total_cost.currency != ask.quoted_price.currency {
+            return Err(BiddingError::ReservationReceiptInvalid);
+        }
+        total_units = total_units
+            .checked_add(max_total_cost.units)
+            .ok_or(BiddingError::TotalCostOverflow)?;
+    }
+    if total_units == 0 {
+        return Err(BiddingError::ReservationReceiptInvalid);
+    }
+    Ok(MonetaryAmount {
+        units: total_units,
+        currency: ask.quoted_price.currency.clone(),
+    })
 }
 
 fn capability_scope_covers(candidate: &str, advertised: &str) -> bool {
@@ -745,7 +768,7 @@ mod tests {
             agent_id: ask.body.agent_id.clone(),
             listing_id: ask.body.listing_id.clone(),
             ask_digest: canonical_digest(&ask.body).test_expect("ask digest"),
-            reserved_amount: ask.body.quoted_price.clone(),
+            reserved_amount: token_offer_total_liability(&ask.body).test_expect("total liability"),
         };
         let signed = SignedReservationReceipt::sign(receipt, reservation_keypair)
             .test_expect("sign reservation");

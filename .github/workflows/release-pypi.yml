@@ -346,12 +346,14 @@ jobs:
             fi
           fi
           pip install --quiet "${smoke_install_args[@]}" "$wheel"
-          # Derive import name: hyphens -> underscores, "chio-sdk-python" ->
-          # "chio_sdk", "chio-lambda-python" -> "chio_lambda".
+          # Derive import name. Most packages import as the normalized
+          # distribution name, but chio-py intentionally publishes the
+          # chio-sdk distribution while exposing the chio module.
           import_name=$(echo "$PKG_NAME" | tr '-' '_')
-          case "$PKG_NAME" in
-            chio-sdk-python) import_name="chio_sdk" ;;
-            chio-lambda-python) import_name="chio_lambda" ;;
+          case "$PACKAGE_DIR" in
+            sdks/python/chio-py) import_name="chio" ;;
+            sdks/python/chio-sdk-python) import_name="chio_sdk" ;;
+            sdks/lambda/chio-lambda-python) import_name="chio_lambda" ;;
           esac
           python3 -c "import importlib, sys; m = importlib.import_module('$import_name'); print('imported', m.__name__, 'from', getattr(m, '__file__', '?'))"
           deactivate
