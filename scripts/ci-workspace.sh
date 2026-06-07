@@ -29,6 +29,7 @@ python3 scripts/check-stub-surfaces.py
 bash scripts/tests/check-stub-surfaces.test.sh
 bash scripts/tests/check-sdk-release-python-generated.test.sh
 bash scripts/tests/check-sdk-release-ts-bun.test.sh
+bash scripts/tests/conformance-matrix-peer-target.test.sh
 bash scripts/tests/qualify-release-provider-replay.test.sh
 bash scripts/tests/release-npm-package-matrix.test.sh
 # Keep the CI warning gate focused on repo-shipping targets; test/bench-only

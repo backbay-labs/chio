@@ -47,4 +47,9 @@ if ! diff -u "$expected" "$actual"; then
   exit 1
 fi
 
+grep -F 'pkg.scripts?.lint ? 0 : 1' "$WORKFLOW" >/dev/null
+grep -F 'package has no lint script; skipping' "$WORKFLOW" >/dev/null
+grep -F 'pkg.scripts?.test ? 0 : 1' "$WORKFLOW" >/dev/null
+grep -F 'package has no test script; skipping' "$WORKFLOW" >/dev/null
+
 echo "release-npm-package-matrix.test.sh: npm package matrix covers publishable TS workspaces"

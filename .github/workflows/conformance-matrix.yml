@@ -126,16 +126,22 @@ jobs:
         run: |
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import tomllib
+          expected_target = "x86_64-unknown-linux-gnu"
           with open("crates/chio-conformance/peers.lock.toml", "rb") as fh:
               lock = tomllib.load(fh)
           selected = next(
               (
                   peer
                   for peer in lock.get("peer", [])
-                  if peer.get("language") == "python" and peer.get("published", True)
+                  if (
+                      peer.get("language") == "python"
+                      and peer.get("target") == expected_target
+                      and peer.get("published", True)
+                  )
               ),
               None,
           )
+          print(f"expected_target={expected_target}")
           print(f"published={'true' if selected else 'false'}")
           if selected:
               print(f"target={selected['target']}")
@@ -145,7 +151,7 @@ jobs:
       - name: Require published python peer
         if: steps.python-peer.outputs.published != 'true'
         run: |
-          echo "external-consumer-smoke requires at least one python peer with published = true in crates/chio-conformance/peers.lock.toml" >&2
+          echo "external-consumer-smoke requires a python peer for ${{ steps.python-peer.outputs.expected_target }} with published = true in crates/chio-conformance/peers.lock.toml" >&2
           echo "The pre-release shape check is separate; this release-blocking smoke must not pass without fetching and running a real peer." >&2
           exit 1
 

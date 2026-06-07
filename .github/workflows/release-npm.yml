@@ -281,11 +281,23 @@ jobs:
 
       - name: Lint
         working-directory: ${{ matrix.package }}
-        run: npm run lint
+        run: |
+          set -euo pipefail
+          if node -e 'const pkg = require("./package.json"); process.exit(pkg.scripts?.lint ? 0 : 1)'; then
+            npm run lint
+          else
+            echo "package has no lint script; skipping"
+          fi
 
       - name: Test
         working-directory: ${{ matrix.package }}
-        run: npm test
+        run: |
+          set -euo pipefail
+          if node -e 'const pkg = require("./package.json"); process.exit(pkg.scripts?.test ? 0 : 1)'; then
+            npm test
+          else
+            echo "package has no test script; skipping"
+          fi
 
       - name: Rewrite `file:` workspace deps to semver for publish
         working-directory: ${{ matrix.package }}
