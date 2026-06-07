@@ -213,6 +213,7 @@ SLICES: tuple[ReviewSlice, ...] = (
             "xtask/**",
             "Cargo.toml",
             "Cargo.lock",
+            "deny.toml",
             "osv-scanner.toml",
         ),
     ),
