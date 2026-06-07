@@ -283,7 +283,9 @@ jobs:
           smoke_install_args=()
           if [[ "$EVENT_NAME" != "push" || "$REF_NAME" == py/v* ]]; then
             wheelhouse="/tmp/chio-smoke-wheelhouse"
+            sibling_constraints="/tmp/chio-smoke-sibling-constraints.txt"
             mkdir -p "$wheelhouse"
+            : > "$sibling_constraints"
             python3 - "$GITHUB_WORKSPACE" "$PACKAGE_DIR" > /tmp/chio-smoke-dep-dirs <<'PY'
           from __future__ import annotations
 
@@ -342,7 +344,29 @@ jobs:
               uv build --wheel --out-dir "$wheelhouse" "${GITHUB_WORKSPACE}/${dep_dir}"
             done < /tmp/chio-smoke-dep-dirs
             if compgen -G "$wheelhouse/*.whl" >/dev/null; then
-              smoke_install_args+=(--find-links "$wheelhouse")
+              python3 - "$wheelhouse" > "$sibling_constraints" <<'PY'
+          from __future__ import annotations
+
+          import sys
+          import zipfile
+          from email.parser import Parser
+          from pathlib import Path
+
+          wheelhouse = Path(sys.argv[1])
+          for wheel in sorted(wheelhouse.glob("*.whl")):
+              with zipfile.ZipFile(wheel) as archive:
+                  metadata_name = next(
+                      name
+                      for name in archive.namelist()
+                      if name.endswith(".dist-info/METADATA")
+                  )
+                  metadata = Parser().parsestr(
+                      archive.read(metadata_name).decode("utf-8")
+                  )
+              print(f"{metadata['Name']}=={metadata['Version']}")
+          PY
+              pip install --quiet "$wheelhouse"/*.whl
+              smoke_install_args+=(--find-links "$wheelhouse" --constraint "$sibling_constraints")
             fi
           fi
           pip install --quiet "${smoke_install_args[@]}" "$wheel"

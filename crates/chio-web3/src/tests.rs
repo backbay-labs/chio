@@ -406,6 +406,13 @@ fn sample_execution_receipt() -> Web3SettlementExecutionReceiptArtifact {
     }
 }
 
+fn sample_chain_configuration() -> Web3ChainConfiguration {
+    serde_json::from_str(include_str!(
+        "../../../docs/standards/CHIO_WEB3_CHAIN_CONFIGURATION.json"
+    ))
+    .unwrap()
+}
+
 #[test]
 fn trust_profile_requires_local_policy_activation() {
     let mut profile = sample_trust_profile();
@@ -455,6 +462,26 @@ fn oracle_evidence_rejects_unknown_authority() {
         validate_oracle_conversion_evidence(&evidence),
         Err(Web3ContractError::InvalidProof(_))
     ));
+}
+
+#[test]
+fn web3_chain_configuration_rejects_placeholder_addresses() {
+    for address in [
+        "0x0000000000000000000000000000000000000000",
+        "0x1111111111111111111111111111111111111111",
+        "0x1000000000000000000000000000000000000001",
+        "0x2000000000000000000000000000000000000005",
+        "0xnot-a-valid-address",
+        "0x1234",
+    ] {
+        let mut configuration = sample_chain_configuration();
+        configuration.deployments[0].root_registry_address = address.to_string();
+        assert!(matches!(
+            validate_web3_chain_configuration(&configuration),
+            Err(Web3ContractError::InvalidBinding(message))
+                if message.contains("web3_chain_configuration.deployments.root_registry_address")
+        ));
+    }
 }
 
 #[test]

@@ -93,17 +93,34 @@ pub fn validate_web3_chain_configuration(
             &deployment.settlement_token_symbol,
             "web3_chain_configuration.deployments.settlement_token_symbol",
         )?;
-        for field in [
+        ensure_evm_address(
             &deployment.settlement_token_address,
+            "web3_chain_configuration.deployments.settlement_token_address",
+        )?;
+        ensure_evm_address(
             &deployment.root_registry_address,
+            "web3_chain_configuration.deployments.root_registry_address",
+        )?;
+        ensure_evm_address(
             &deployment.escrow_address,
+            "web3_chain_configuration.deployments.escrow_address",
+        )?;
+        ensure_evm_address(
             &deployment.bond_vault_address,
+            "web3_chain_configuration.deployments.bond_vault_address",
+        )?;
+        ensure_evm_address(
             &deployment.identity_registry_address,
+            "web3_chain_configuration.deployments.identity_registry_address",
+        )?;
+        ensure_evm_address(
             &deployment.price_resolver_address,
+            "web3_chain_configuration.deployments.price_resolver_address",
+        )?;
+        ensure_evm_address(
             &deployment.operator_address,
-        ] {
-            ensure_non_empty(field, "web3_chain_configuration.deployments.addresses")?;
-        }
+            "web3_chain_configuration.deployments.operator_address",
+        )?;
         if !deployment_ids.insert(deployment.chain_id.as_str()) {
             return Err(Web3ContractError::DuplicateValue(
                 deployment.chain_id.clone(),
@@ -153,5 +170,41 @@ pub fn validate_web3_chain_configuration(
         }
     }
 
+    Ok(())
+}
+
+fn ensure_evm_address(address: &str, field: &'static str) -> Result<(), Web3ContractError> {
+    ensure_non_empty(address, field)?;
+    let Some(hex) = address.strip_prefix("0x") else {
+        return Err(Web3ContractError::InvalidBinding(format!(
+            "{field} must be a 0x-prefixed EVM address"
+        )));
+    };
+    if hex.len() != 40 || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(Web3ContractError::InvalidBinding(format!(
+            "{field} must be exactly 20 bytes of hex"
+        )));
+    }
+    let normalized = hex.to_ascii_lowercase();
+    if normalized.bytes().all(|byte| byte == b'0') {
+        return Err(Web3ContractError::InvalidBinding(format!(
+            "{field} must not be the zero address"
+        )));
+    }
+    if normalized
+        .as_bytes()
+        .windows(2)
+        .all(|window| window[0] == window[1])
+    {
+        return Err(Web3ContractError::InvalidBinding(format!(
+            "{field} must not use a repeated-byte sentinel address"
+        )));
+    }
+    let bytes = normalized.as_bytes();
+    if bytes[1..39].iter().all(|byte| *byte == b'0') {
+        return Err(Web3ContractError::InvalidBinding(format!(
+            "{field} must not use a low-numbered sentinel address"
+        )));
+    }
     Ok(())
 }

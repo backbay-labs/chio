@@ -55,8 +55,15 @@ grep -F 'SLUG: ${{ steps.meta.outputs.slug }}' "$WORKFLOW" >/dev/null
 grep -F 'sdks/python/chio-py) import_name="chio" ;;' "$WORKFLOW" >/dev/null
 grep -F 'sdks/python/chio-sdk-python) import_name="chio_sdk" ;;' "$WORKFLOW" >/dev/null
 grep -F 'uv build --wheel --out-dir "$wheelhouse" "${GITHUB_WORKSPACE}/${dep_dir}"' "$WORKFLOW" >/dev/null
-grep -F 'smoke_install_args+=(--find-links "$wheelhouse")' "$WORKFLOW" >/dev/null
+grep -F 'sibling_constraints="/tmp/chio-smoke-sibling-constraints.txt"' "$WORKFLOW" >/dev/null
+grep -F 'pip install --quiet "$wheelhouse"/*.whl' "$WORKFLOW" >/dev/null
+grep -F 'smoke_install_args+=(--find-links "$wheelhouse" --constraint "$sibling_constraints")' "$WORKFLOW" >/dev/null
 grep -F 'pip install --quiet "${smoke_install_args[@]}" "$wheel"' "$WORKFLOW" >/dev/null
+
+if grep -F 'smoke_install_args+=(--find-links "$wheelhouse")' "$WORKFLOW" >/dev/null; then
+  echo "release-pypi.yml smoke must constrain local Chio sibling wheels, not only add --find-links" >&2
+  exit 1
+fi
 
 if grep -F 'pip install --quiet "${GITHUB_WORKSPACE}/sdks/python/' "$WORKFLOW" >/dev/null; then
   echo "release-pypi.yml smoke must not install sibling source directories" >&2

@@ -33,16 +33,38 @@
       "authorityChain": [
         {
           "role": "operator_treasury",
-          "principalId": "treasury-1",
+          "principalId": "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618",
           "approvedAt": 1743292790,
           "expiresAt": 1743293800,
+          "authorityProof": {
+            "body": {
+              "schema": "chio.credit.capital-authority-step-proof.v1",
+              "role": "operator_treasury",
+              "principalId": "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618",
+              "approvedAt": 1743292790,
+              "expiresAt": 1743293800
+            },
+            "signerKey": "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618",
+            "signature": "0f7cd244afd2f95c383ab5b0f89978b3517a050cdea1c65f00e7b0ca190c1a39344502be465c33363e3983fd3d2914b964285aa6b1e2a894624b1cf14e5bb406"
+          },
           "note": "governed release"
         },
         {
           "role": "custodian",
-          "principalId": "custodian-base-main",
+          "principalId": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
           "approvedAt": 1743292795,
           "expiresAt": 1743293800,
+          "authorityProof": {
+            "body": {
+              "schema": "chio.credit.capital-authority-step-proof.v1",
+              "role": "custodian",
+              "principalId": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
+              "approvedAt": 1743292795,
+              "expiresAt": 1743293800
+            },
+            "signerKey": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
+            "signature": "0ae4a3e6de1bfc13f714aa2b2d5e29300b4557e236d8b324aababa9dfd49d0ee36773e623a910dbebb91055f21442dd2f3c16567173974fca522eec2f9d6af05"
+          },
           "note": "official web3 stack"
         }
       ],
@@ -53,7 +75,7 @@
       "rail": {
         "kind": "web3",
         "railId": "base-mainnet-usdc",
-        "custodyProviderId": "custodian-base-main",
+        "custodyProviderId": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
         "sourceAccountRef": "vault:facility-main",
         "destinationAccountRef": "0x2222222222222222222222222222222222222222",
         "jurisdiction": "US"
@@ -77,7 +99,7 @@
       "description": "release escrow over the official web3 rail"
     },
     "signerKey": "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618",
-    "signature": "ffa1cb9483335fdc0470da1c8651532efe18ba98860fda29f42c0cea46bfb142f18108c72d415878373dcbd38ffc48c631defd5c07ca584ce8f7c4c2f34e6102"
+    "signature": "a63339b5f7c7526549b9dc7971af90df54e01c9735d5c3a52f5c28bb381de8f786eccde0d0c29e5a963358ff5a64bd71a8bc7e6facc3b16e14c23f0c2d4a170a"
   },
   "settlement_path": "merkle_proof",
   "settlement_amount": {

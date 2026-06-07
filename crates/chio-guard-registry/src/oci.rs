@@ -1002,6 +1002,7 @@ impl GuardArtifactLayer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::publish::GUARD_OCI_MANIFEST_MEDIA_TYPE;
 
     const DIGEST: &str = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
 
@@ -1100,6 +1101,11 @@ mod tests {
             "schemaVersion": 2,
             "mediaType": OCI_ARTIFACT_MANIFEST_MEDIA_TYPE,
             "artifactType": SIGSTORE_BUNDLE_MEDIA_TYPE,
+            "subject": {
+                "mediaType": GUARD_OCI_MANIFEST_MEDIA_TYPE,
+                "digest": DIGEST,
+                "size": 4096
+            },
             "blobs": [{
                 "mediaType": SIGSTORE_BUNDLE_MEDIA_TYPE,
                 "digest": DIGEST,
@@ -1110,12 +1116,39 @@ mod tests {
             serde_json::to_vec(&manifest)
                 .unwrap_or_else(|error| panic!("manifest should serialize: {error}"))
                 .as_slice(),
+            DIGEST,
         )
         .unwrap_or_else(|error| panic!("descriptor should parse: {error}"));
 
         assert_eq!(descriptor.media_type, SIGSTORE_BUNDLE_MEDIA_TYPE);
         assert_eq!(descriptor.digest, DIGEST);
         assert_eq!(descriptor.size, 17);
+    }
+
+    #[test]
+    fn rejects_sigstore_artifact_manifest_without_subject() {
+        let manifest = serde_json::json!({
+            "schemaVersion": 2,
+            "mediaType": OCI_ARTIFACT_MANIFEST_MEDIA_TYPE,
+            "artifactType": SIGSTORE_BUNDLE_MEDIA_TYPE,
+            "blobs": [{
+                "mediaType": SIGSTORE_BUNDLE_MEDIA_TYPE,
+                "digest": DIGEST,
+                "size": 17
+            }]
+        });
+        let err = sigstore_bundle_descriptor_from_manifest(
+            serde_json::to_vec(&manifest)
+                .unwrap_or_else(|error| panic!("manifest should serialize: {error}"))
+                .as_slice(),
+            DIGEST,
+        )
+        .expect_err("Sigstore artifact manifest without subject must be rejected");
+
+        assert!(
+            matches!(err, GuardRegistryError::ReferrersMalformed { ref message } if message.contains("subject")),
+            "expected missing subject error, got {err:?}"
+        );
     }
 
     #[test]

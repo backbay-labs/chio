@@ -9,8 +9,8 @@ use chio_guard_registry::{
     GuardLoadSource, GuardNetworkState, GuardOfflineLoadError, GuardOfflineLoadRequest,
     GuardRegistryError, GuardSigstoreVerifier, GuardVerificationKind, GuardVerificationReport,
     GuardVerifiedSignature, Sha256Digest, VerifiedAttestation, CHIO_GUARD_VERIFY_EVENT,
-    GUARD_CONFIG_MEDIA_TYPE, GUARD_MANIFEST_LAYER_MEDIA_TYPE, GUARD_MODULE_LAYER_MEDIA_TYPE,
-    GUARD_WIT_LAYER_MEDIA_TYPE,
+    GUARD_ARTIFACT_MEDIA_TYPE, GUARD_CONFIG_MEDIA_TYPE, GUARD_MANIFEST_LAYER_MEDIA_TYPE,
+    GUARD_MODULE_LAYER_MEDIA_TYPE, GUARD_OCI_MANIFEST_MEDIA_TYPE, GUARD_WIT_LAYER_MEDIA_TYPE,
 };
 use oci_distribution::client::{Config, ImageLayer};
 use oci_distribution::manifest::OciImageManifest;
@@ -670,7 +670,9 @@ impl CacheFixture {
                 None,
             ),
         ];
-        let manifest = OciImageManifest::build(&layers, &config, None);
+        let mut manifest = OciImageManifest::build(&layers, &config, None);
+        manifest.media_type = Some(GUARD_OCI_MANIFEST_MEDIA_TYPE.to_owned());
+        manifest.artifact_type = Some(GUARD_ARTIFACT_MEDIA_TYPE.to_owned());
         let manifest_json = match serde_json::to_vec(&manifest) {
             Ok(bytes) => bytes,
             Err(error) => panic!("fixture OCI manifest should serialize: {error}"),

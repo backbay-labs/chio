@@ -187,14 +187,56 @@ jobs:
           PACKAGE_DIR: ${{ matrix.package }}
         run: |
           set -euo pipefail
-          case "$PACKAGE_DIR" in
-            sdks/typescript/packages/browser|sdks/typescript/packages/workers|sdks/typescript/packages/edge|sdks/typescript/packages/deno)
-              echo "required=true" >> "$GITHUB_OUTPUT"
-              ;;
-            *)
-              echo "required=false" >> "$GITHUB_OUTPUT"
-              ;;
-          esac
+          required=$(node <<'NODE'
+            const fs = require("fs");
+            const path = require("path");
+
+            const repoRoot = process.env.GITHUB_WORKSPACE ?? process.cwd();
+            const workspaceRoot = path.join(repoRoot, "sdks/typescript");
+            const packageDir = path.join(repoRoot, process.env.PACKAGE_DIR);
+            const localByName = new Map();
+            const wasmScriptPattern = /\bbuild:wasm\b|build-wasm\.sh/;
+
+            for (const dir of [path.join(workspaceRoot, "chio-ts")]) {
+              const manifestPath = path.join(dir, "package.json");
+              const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+              localByName.set(manifest.name, dir);
+            }
+            for (const entry of fs.readdirSync(path.join(workspaceRoot, "packages"))) {
+              const dir = path.join(workspaceRoot, "packages", entry);
+              const manifestPath = path.join(dir, "package.json");
+              if (!fs.existsSync(manifestPath)) continue;
+              const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+              localByName.set(manifest.name, dir);
+            }
+
+            const seen = new Set();
+            function visit(dir) {
+              const resolved = path.resolve(dir);
+              if (seen.has(resolved)) return false;
+              seen.add(resolved);
+
+              const manifestPath = path.join(resolved, "package.json");
+              const pkg = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+              const scriptText = Object.values(pkg.scripts ?? {}).join("\n");
+              if (wasmScriptPattern.test(scriptText)) return true;
+
+              for (const block of ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"]) {
+                const deps = pkg[block] ?? {};
+                for (const name of Object.keys(deps)) {
+                  if (!name.startsWith("@chio-protocol/")) continue;
+                  const localDir = localByName.get(name);
+                  if (!localDir || path.resolve(localDir) === resolved) continue;
+                  if (visit(localDir)) return true;
+                }
+              }
+              return false;
+            }
+
+            process.stdout.write(visit(packageDir) ? "true" : "false");
+          NODE
+          )
+          echo "required=$required" >> "$GITHUB_OUTPUT"
 
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
         if: steps.wasm.outputs.required == 'true'
@@ -301,7 +343,7 @@ jobs:
             }
 
             let mutated = false;
-            for (const block of ["dependencies", "devDependencies", "optionalDependencies"]) {
+            for (const block of ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"]) {
               const deps = pkg[block] ?? {};
               for (const [name, spec] of Object.entries(deps)) {
                 if (typeof spec !== "string" || spec.startsWith("file:")) continue;
@@ -326,7 +368,7 @@ jobs:
               const path = require("path");
               const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
               const seen = new Set();
-              for (const block of ["dependencies", "devDependencies", "optionalDependencies"]) {
+              for (const block of ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"]) {
                 const deps = pkg[block] ?? {};
                 for (const spec of Object.values(deps)) {
                   if (typeof spec !== "string" || !spec.startsWith("file:")) continue;
