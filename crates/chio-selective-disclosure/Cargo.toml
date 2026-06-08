@@ -21,8 +21,8 @@ default = []
 bbs = ["dep:affinidi-bbs"]
 
 [dependencies]
-chio-core-types = { path = "../chio-core-types" }
-chio-workflow = { path = "../chio-workflow" }
+chio-core-types = { workspace = true }
+chio-workflow = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

@@ -12,13 +12,13 @@ publish = false
 name = "chio_attest_buyer"
 
 [dependencies]
-chio-attest-buyer-core = { path = "../chio-attest-buyer-core" }
-chio-runtime-core = { path = "../chio-runtime-core" }
+chio-attest-buyer-core = { workspace = true }
+chio-runtime-core = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
 [dev-dependencies]
-chio-core-types = { path = "../chio-core-types" }
+chio-core-types = { workspace = true }
 
 [lints]
 workspace = true

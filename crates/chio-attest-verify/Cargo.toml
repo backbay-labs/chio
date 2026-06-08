@@ -12,7 +12,7 @@ publish = false
 name = "chio_attest_verify"
 
 [dependencies]
-chio-core-types = { path = "../chio-core-types" }
+chio-core-types = { workspace = true }
 sigstore = { version = "0.13", default-features = false, features = [
     "cosign",
     "rustls-tls",
@@ -56,7 +56,7 @@ tee-quotes = ["dep:dcap-rs", "dep:sev", "dep:coset", "dep:p256", "dep:p384"]
 kani = []
 
 [dev-dependencies]
-chio-adversarial-suite = { path = "../chio-adversarial-suite" }
+chio-adversarial-suite = { workspace = true }
 tempfile = { workspace = true }
 rcgen = "0.13"
 

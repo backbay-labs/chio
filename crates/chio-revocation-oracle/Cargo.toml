@@ -12,7 +12,7 @@ publish = false
 name = "chio_revocation_oracle"
 
 [dependencies]
-chio-core-types = { path = "../chio-core-types" }
+chio-core-types = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -30,11 +30,11 @@ default = []
 delegation = []
 
 [dev-dependencies]
-chio-test-support = { path = "../chio-test-support" }
+chio-test-support = { workspace = true }
 criterion = { workspace = true }
 proptest = { workspace = true }
-chio-federation = { path = "../chio-federation" }
-chio-kernel-core = { path = "../chio-kernel-core" }
+chio-federation = { workspace = true }
+chio-kernel-core = { workspace = true }
 
 [[bench]]
 name = "oracle_throughput"

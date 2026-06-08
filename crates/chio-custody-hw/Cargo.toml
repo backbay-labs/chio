@@ -34,8 +34,8 @@ pq = ["chio-core-types/pq"]
 sqlite-store = ["dep:rusqlite"]
 
 [dependencies]
-chio-core-types = { path = "../chio-core-types" }
-chio-revocation-oracle = { path = "../chio-revocation-oracle" }
+chio-core-types = { workspace = true }
+chio-revocation-oracle = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
