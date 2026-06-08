@@ -21,7 +21,7 @@ path = "src/main.rs"
 # calls `verify_signature()` over them. The path-dep keeps the replay-gate's
 # verifier wired to the real kernel surface (rather than a hand-rolled stub),
 # so a future change to receipt signing surfaces here.
-chio-core-types = { path = "../../crates/chio-core-types" }
+chio-core-types = { workspace = true }
 chrono = { workspace = true, features = ["clock"] }
 ed25519-dalek = { workspace = true }
 # `cross_version::reverify` decompresses the release bundle's .tgz layer with

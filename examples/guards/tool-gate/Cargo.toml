@@ -8,8 +8,8 @@ publish = false
 crate-type = ["cdylib"]
 
 [dependencies]
-chio-guard-sdk = { path = "../../../crates/chio-guard-sdk" }
-chio-guard-sdk-macros = { path = "../../../crates/chio-guard-sdk-macros" }
+chio-guard-sdk = { workspace = true }
+chio-guard-sdk-macros = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }

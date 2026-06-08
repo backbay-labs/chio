@@ -10,10 +10,10 @@ publish = false
 
 [dependencies]
 async-trait = { workspace = true }
-chio-a2a-edge = { path = "../../crates/chio-a2a-edge" }
-chio-core = { path = "../../crates/chio-core" }
-chio-kernel = { path = "../../crates/chio-kernel" }
-chio-manifest = { path = "../../crates/chio-manifest" }
+chio-a2a-edge = { workspace = true }
+chio-core = { workspace = true }
+chio-kernel = { workspace = true }
+chio-manifest = { workspace = true }
 serde_json = { workspace = true }
 
 [dev-dependencies]
