@@ -42,6 +42,30 @@ fn is_path_byte(b: u8) -> bool {
     )
 }
 
+/// Reduce a raw literal to the path prefix that must exist on disk. Drops a
+/// trailing `::Symbol`, then strips trailing path segments that are empty or
+/// contain a glob `*`. Returns `None` when nothing more specific than a crate
+/// name remains (so a bare `crates/**` or a truncated `crates/chio-` is not
+/// treated as a resolvable path).
+pub fn normalize_for_resolution(raw: &str) -> Option<String> {
+    let head = raw.split("::").next().unwrap_or(raw);
+    let mut segments: Vec<&str> = head.split('/').collect();
+    while let Some(last) = segments.last() {
+        if last.is_empty() || last.contains('*') {
+            segments.pop();
+        } else {
+            break;
+        }
+    }
+    if segments.len() < 2 {
+        return None;
+    }
+    if segments[1].len() <= "chio-".len() {
+        return None;
+    }
+    Some(segments.join("/"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -59,5 +83,27 @@ mod tests {
             got.contains(&"crates/chio-anchor/src/authority.rs".to_string()),
             "stops before `::`; got: {got:?}"
         );
+    }
+
+    #[test]
+    fn normalize_strips_globs_keeps_concrete_prefix() {
+        assert_eq!(
+            normalize_for_resolution("crates/chio-kernel/**").as_deref(),
+            Some("crates/chio-kernel")
+        );
+        assert_eq!(
+            normalize_for_resolution("crates/chio-anchor/src/*.rs").as_deref(),
+            Some("crates/chio-anchor/src")
+        );
+        assert_eq!(
+            normalize_for_resolution("crates/chio-core/src/lib.rs").as_deref(),
+            Some("crates/chio-core/src/lib.rs")
+        );
+    }
+
+    #[test]
+    fn normalize_rejects_bare_or_nameless_prefixes() {
+        assert_eq!(normalize_for_resolution("crates/chio-"), None);
+        assert_eq!(normalize_for_resolution("crates/**"), None);
     }
 }
