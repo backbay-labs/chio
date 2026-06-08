@@ -12,15 +12,15 @@ publish = false
 name = "chio_open_market"
 
 [dependencies]
-chio-core-types = { path = "../chio-core-types" }
-chio-governance = { path = "../chio-governance" }
-chio-listing = { path = "../chio-listing" }
+chio-core-types = { workspace = true }
+chio-governance = { workspace = true }
+chio-listing = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
-chio-test-support = { path = "../chio-test-support" }
+chio-test-support = { workspace = true }
 
 [lints]
 workspace = true
