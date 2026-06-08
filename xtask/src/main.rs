@@ -82,6 +82,7 @@ use std::process::{Command, ExitCode};
 
 use sha2::{Digest, Sha256};
 
+mod crate_paths;
 mod eval_receipt_regen;
 mod snippets_subcommand;
 
