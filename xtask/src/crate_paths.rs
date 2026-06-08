@@ -7,6 +7,11 @@
 //! crate move such a reference would silently match nothing, and the gate or
 //! required-reviewer rule it encodes would go dark while CI stayed green.
 
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use crate::{workspace_root, XtaskError};
+
 /// Extract every `crates/chio-*` path literal from `content`. Matching starts at
 /// each `crates/chio-` occurrence and continues over path bytes, stopping at the
 /// first character that cannot be part of a path reference (quote, whitespace,
@@ -66,9 +71,49 @@ pub fn normalize_for_resolution(raw: &str) -> Option<String> {
     Some(segments.join("/"))
 }
 
+/// A crate-path reference that does not resolve on disk.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Violation {
+    /// Repo-relative file the literal was found in.
+    pub source: String,
+    /// The raw literal exactly as written.
+    pub raw: String,
+    /// The normalized prefix we attempted to resolve.
+    pub resolved: String,
+}
+
+/// Read each file in `files` (relative to `root`), extract its crate-path
+/// literals, and record one `Violation` per literal whose normalized prefix does
+/// not exist under `root`. A file in `files` that cannot be read is skipped (its
+/// presence in the set is the caller's contract, not this resolver's concern).
+pub fn find_violations(root: &Path, files: &[PathBuf]) -> Result<Vec<Violation>, XtaskError> {
+    let mut violations = Vec::new();
+    for rel in files {
+        let content = match fs::read_to_string(root.join(rel)) {
+            Ok(text) => text,
+            Err(_) => continue,
+        };
+        for raw in extract_crate_paths(&content) {
+            if let Some(prefix) = normalize_for_resolution(&raw) {
+                if !root.join(&prefix).exists() {
+                    violations.push(Violation {
+                        source: rel.display().to_string(),
+                        raw,
+                        resolved: prefix,
+                    });
+                }
+            }
+        }
+    }
+    Ok(violations)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::TempDir;
+    use std::fs;
+    use std::path::PathBuf;
 
     #[test]
     fn extract_captures_paths_and_stops_at_delimiters() {
@@ -105,5 +150,35 @@ mod tests {
     fn normalize_rejects_bare_or_nameless_prefixes() {
         assert_eq!(normalize_for_resolution("crates/chio-"), None);
         assert_eq!(normalize_for_resolution("crates/**"), None);
+    }
+
+    #[test]
+    fn find_violations_flags_only_missing_paths() {
+        let temp = match TempDir::new("xtask-crate-paths") {
+            Ok(t) => t,
+            Err(err) => panic!("temp dir: {err}"),
+        };
+        let root = temp.path();
+        if let Err(err) = fs::create_dir_all(root.join("crates/chio-kernel/src")) {
+            panic!("mkdir: {err}");
+        }
+        if let Err(err) = fs::write(root.join("crates/chio-kernel/src/lib.rs"), "") {
+            panic!("write lib: {err}");
+        }
+        let cfg_rel = PathBuf::from("config.toml");
+        let cfg = concat!(
+            "a = \"crates/chio-kernel/**\"\n",
+            "b = \"crates/chio-ghost/src/lib.rs\"\n"
+        );
+        if let Err(err) = fs::write(root.join(&cfg_rel), cfg) {
+            panic!("write cfg: {err}");
+        }
+        let violations = match find_violations(root, &[cfg_rel]) {
+            Ok(v) => v,
+            Err(err) => panic!("find_violations: {err}"),
+        };
+        assert_eq!(violations.len(), 1, "got: {violations:?}");
+        assert_eq!(violations[0].resolved, "crates/chio-ghost/src/lib.rs");
+        assert_eq!(violations[0].source, "config.toml");
     }
 }
