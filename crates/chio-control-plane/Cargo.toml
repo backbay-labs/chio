@@ -20,20 +20,20 @@ default = []
 pq = ["chio-core/pq", "chio-kernel/pq", "chio-store-sqlite/pq"]
 
 [dependencies]
-chio-appraisal = { path = "../chio-appraisal" }
-chio-core = { path = "../chio-core" }
-chio-credentials = { path = "../chio-credentials" }
-chio-data-guards = { path = "../chio-data-guards" }
-chio-errors = { path = "../chio-errors" }
-chio-did = { path = "../chio-did" }
-chio-external-guards = { path = "../chio-external-guards" }
-chio-kernel = { path = "../chio-kernel" }
-chio-guards = { path = "../chio-guards" }
-chio-policy = { path = "../chio-policy" }
-chio-reputation = { path = "../chio-reputation" }
-chio-conformance = { path = "../chio-conformance" }
-chio-mcp-adapter = { path = "../chio-mcp-adapter" }
-chio-store-sqlite = { path = "../chio-store-sqlite" }
+chio-appraisal = { workspace = true }
+chio-core = { workspace = true }
+chio-credentials = { workspace = true }
+chio-data-guards = { workspace = true }
+chio-errors = { workspace = true }
+chio-did = { workspace = true }
+chio-external-guards = { workspace = true }
+chio-kernel = { workspace = true }
+chio-guards = { workspace = true }
+chio-policy = { workspace = true }
+chio-reputation = { workspace = true }
+chio-conformance = { workspace = true }
+chio-mcp-adapter = { workspace = true }
+chio-store-sqlite = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yml = { workspace = true }
@@ -60,10 +60,10 @@ x509-cert = "0.2"
 url = "2"
 
 [dev-dependencies]
-chio-anchor = { path = "../chio-anchor" }
-chio-link = { path = "../chio-link" }
-chio-test-support = { path = "../chio-test-support" }
-chio-settle = { path = "../chio-settle" }
+chio-anchor = { workspace = true }
+chio-link = { workspace = true }
+chio-test-support = { workspace = true }
+chio-settle = { workspace = true }
 rcgen = "0.13"
 
 [lints]

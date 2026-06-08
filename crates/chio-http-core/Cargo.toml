@@ -23,10 +23,10 @@ hex = { workspace = true }
 thiserror = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true, features = ["v7"] }
-chio-core-types = { path = "../chio-core-types" }
-chio-cross-protocol = { path = "../chio-cross-protocol" }
-chio-egress-contract = { path = "../chio-egress-contract" }
-chio-kernel = { path = "../chio-kernel" }
+chio-core-types = { workspace = true }
+chio-cross-protocol = { workspace = true }
+chio-egress-contract = { workspace = true }
+chio-kernel = { workspace = true }
 chio-metrics-spec = { workspace = true }
 
 [features]
@@ -37,8 +37,8 @@ default = []
 reqwest-egress = ["chio-egress-contract/reqwest-egress"]
 
 [dev-dependencies]
-chio-core = { path = "../chio-core" }
-chio-test-support = { path = "../chio-test-support" }
+chio-core = { workspace = true }
+chio-test-support = { workspace = true }
 tokio = { workspace = true }
 reqwest = { workspace = true, default-features = false, features = ["rustls"] }
 

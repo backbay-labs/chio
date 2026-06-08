@@ -19,19 +19,19 @@ name = "chio-wall"
 path = "src/main.rs"
 
 [dependencies]
-chio-control-plane = { path = "../chio-control-plane" }
-chio-core = { path = "../chio-core" }
-chio-guards = { path = "../chio-guards" }
-chio-kernel = { path = "../chio-kernel" }
-chio-store-sqlite = { path = "../chio-store-sqlite" }
-chio-wall-core = { path = "../chio-wall-core" }
+chio-control-plane = { workspace = true }
+chio-core = { workspace = true }
+chio-guards = { workspace = true }
+chio-kernel = { workspace = true }
+chio-store-sqlite = { workspace = true }
+chio-wall-core = { workspace = true }
 chrono = { workspace = true }
 clap = { version = "4", features = ["derive"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
 [dev-dependencies]
-chio-siem = { path = "../chio-siem" }
+chio-siem = { workspace = true }
 tokio = { workspace = true }
 
 [lints]

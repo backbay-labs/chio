@@ -13,9 +13,9 @@ name = "chio_siem"
 
 [dependencies]
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
-chio-egress-contract = { path = "../chio-egress-contract", features = ["reqwest-egress"] }
-chio-kernel = { path = "../chio-kernel" }
-chio-log-redact = { path = "../chio-log-redact" }
+chio-egress-contract = { workspace = true, features = ["reqwest-egress"] }
+chio-kernel = { workspace = true }
+chio-log-redact = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
@@ -27,7 +27,7 @@ url = { workspace = true }
 zeroize = "1"
 
 [dev-dependencies]
-chio-test-support = { path = "../chio-test-support" }
+chio-test-support = { workspace = true }
 wiremock = "0.6"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 

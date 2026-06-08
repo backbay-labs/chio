@@ -12,7 +12,7 @@ publish = false
 name = "chio_log_redact"
 
 [dependencies]
-chio-data-guards-redactors-default = { path = "../chio-data-guards/redactors/default" }
+chio-data-guards-redactors-default = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["registry"] }
