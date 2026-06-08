@@ -13612,6 +13612,7 @@ dependencies = [
  "chio-eval-receipt",
  "chio-spec-codegen",
  "chio-spec-validate",
+ "clap 4.6.0",
  "jsonschema",
  "serde",
  "serde_json",
