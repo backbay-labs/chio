@@ -37,10 +37,10 @@ fuzz = ["dep:arbitrary", "wasmtime-runtime"]
 
 [target.'cfg(not(loom))'.dependencies]
 arc-swap = { workspace = true }
-chio-kernel = { path = "../chio-kernel" }
-chio-core = { path = "../chio-core" }
-chio-config = { path = "../chio-config" }
-chio-guards = { path = "../chio-guards" }
+chio-kernel = { workspace = true }
+chio-core = { workspace = true }
+chio-config = { workspace = true }
+chio-guards = { workspace = true }
 chio-metrics-spec = { workspace = true }
 ed25519-dalek = { workspace = true }
 hex = { workspace = true }

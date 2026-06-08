@@ -31,9 +31,9 @@ path = "tests/cosign_under_crypto_floor.rs"
 required-features = ["pq"]
 
 [dependencies]
-chio-attest-verify = { path = "../chio-attest-verify" }
-chio-egress-contract = { path = "../chio-egress-contract", features = ["reqwest-egress"] }
-chio-reputation = { path = "../chio-reputation", optional = true }
+chio-attest-verify = { workspace = true }
+chio-egress-contract = { workspace = true, features = ["reqwest-egress"] }
+chio-reputation = { workspace = true, optional = true }
 oci-distribution = { version = "0.11", default-features = false, features = ["rustls-tls"] }
 reqwest = { workspace = true, features = ["json", "query", "rustls"] }
 serde = { workspace = true, features = ["derive"] }

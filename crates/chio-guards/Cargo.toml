@@ -16,10 +16,10 @@ public_entrypoint = true
 name = "chio_guards"
 
 [dependencies]
-chio-kernel = { path = "../chio-kernel" }
-chio-core = { path = "../chio-core" }
-chio-core-types = { path = "../chio-core-types" }
-chio-http-session = { path = "../chio-http-session" }
+chio-kernel = { workspace = true }
+chio-core = { workspace = true }
+chio-core-types = { workspace = true }
+chio-http-session = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
@@ -35,7 +35,7 @@ base64 = { workspace = true }
 zeroize = "1"
 
 [dev-dependencies]
-chio-store-sqlite = { path = "../chio-store-sqlite" }
+chio-store-sqlite = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
 

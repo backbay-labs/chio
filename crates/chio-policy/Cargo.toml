@@ -16,10 +16,10 @@ public_entrypoint = true
 name = "chio_policy"
 
 [dependencies]
-chio-appraisal = { path = "../chio-appraisal" }
-chio-core = { path = "../chio-core" }
-chio-guards = { path = "../chio-guards" }
-chio-kernel = { path = "../chio-kernel" }
+chio-appraisal = { workspace = true }
+chio-core = { workspace = true }
+chio-guards = { workspace = true }
+chio-kernel = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yml = { workspace = true }
