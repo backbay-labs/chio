@@ -51,7 +51,7 @@ class ChioAgentRunner:
         tokens and evaluate tool calls. Reused across every tool.
     subject:
         Hex-encoded Ed25519 public key to bind the capability to. If
-        omitted, a deterministic ``agent:<name>`` placeholder is used.
+        omitted, a deterministic ``agent:<name>`` fallback subject is used.
     agent_name:
         Human-readable identifier used when synthesising ``subject``
         and for logging.
@@ -262,7 +262,7 @@ def _discover_tools(runner: AgentRunnerLike) -> list[Any]:
 
 
 def _default_subject(agent_name: str) -> str:
-    """Produce a deterministic subject placeholder for an agent.
+    """Produce a deterministic fallback subject for an agent.
 
     A real deployment supplies its own ``subject``; this fallback keeps
     the runner usable in tests and local demos.

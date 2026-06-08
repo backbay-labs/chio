@@ -12,7 +12,9 @@
 
 use chio_core_types::crypto::{sha256_hex, Keypair};
 use chio_core_types::receipt::{
-    ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
+    body::{ChioReceipt, ChioReceiptBody},
+    decision::{Decision, ToolCallAction},
+    kinds::TrustLevel,
 };
 
 fn action() -> ToolCallAction {
@@ -44,6 +46,7 @@ fn body_with(kp: &Keypair, tenant_id: Option<String>) -> ChioReceiptBody {
         trust_level: TrustLevel::default(),
         tenant_id,
         kernel_key: kp.public_key(),
+        bbs_projection_version: None,
     }
 }
 

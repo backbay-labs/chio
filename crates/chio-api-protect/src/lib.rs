@@ -10,14 +10,16 @@
 //! The embedded sidecar exposes SDK helper routes under `/v1/*` and
 //! `/chio/*`. Not every route performs kernel-mediated authorization:
 //!
-//! - **`POST /v1/evaluate`** (tool-call alias) signs an advisory
-//!   `ChioReceipt` only. It checks local revocation and parameter-hash
-//!   consistency; it does not validate capability scope or run the kernel
-//!   guard pipeline. Successful responses set the `chio-trust-level: advisory`
-//!   header and receipt `trust_level: advisory`. Treat this as observability,
-//!   not as an allow/deny gate.
-//! - **`POST /v1/capabilities/attenuate`** returns HTTP 501 with
-//!   `chio-route-status: not-implemented`. Attenuation is not wired over HTTP.
+//! - **`POST /v1/evaluate/advisory`** signs an advisory `ChioReceipt` only.
+//!   It checks local revocation and parameter-hash consistency; it does not
+//!   validate capability scope or run the kernel guard pipeline. Successful
+//!   responses set the `chio-trust-level: advisory` header and include
+//!   `authorization: false` in the response body. Treat this route as
+//!   observability, not as an allow/deny gate.
+//! - **`POST /v1/capabilities/attenuate`** is a fail-closed control boundary.
+//!   It returns HTTP 403 because attenuation requires the parent subject signer.
+//!   Use the kernel delegation primitive or SDK-local signer helpers so that
+//!   private key remains outside the sidecar.
 //!
 //! See [`README.md`](../README.md) for the full list of routes that are
 //! not production authorization paths.

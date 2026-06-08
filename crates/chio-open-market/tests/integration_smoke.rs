@@ -1,4 +1,4 @@
-use chio_open_market::OpenMarketEconomicsScope;
+use chio_open_market::fee_schedule::OpenMarketEconomicsScope;
 
 #[test]
 fn open_market_scope_requires_non_empty_namespace() {

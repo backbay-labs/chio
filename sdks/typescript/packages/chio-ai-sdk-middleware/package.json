@@ -27,12 +27,15 @@
     "README.md"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "bun test",
     "lint": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "~5.7.0"
   },
   "peerDependencies": {
     "ai": ">=4.0 <6",

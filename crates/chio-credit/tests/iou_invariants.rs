@@ -9,8 +9,9 @@
 
 use chio_credit::crypto::{sha256_hex, Ed25519Backend, Keypair};
 use chio_credit::receipt::{
-    ChioReceipt, ChioReceiptBody, Decision, FinancialReceiptMetadata, GuardEvidence,
-    SettlementStatus, ToolCallAction, TrustLevel,
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    economics::FinancialReceiptMetadata, economics::SettlementStatus, kinds::TrustLevel,
+    metadata::GuardEvidence,
 };
 use chio_credit::{CreditEvaluatorHook, LocalCreditAccount};
 use proptest::prelude::*;
@@ -127,6 +128,7 @@ fn build_signed_receipt(scenario: &ReceiptScenario, kp: &Keypair) -> ChioReceipt
         trust_level: TrustLevel::default(),
         tenant_id: scenario.tenant_id.clone(),
         kernel_key: kp.public_key(),
+        bbs_projection_version: None,
     };
     ChioReceipt::sign(body, kp).unwrap()
 }
@@ -168,6 +170,7 @@ fn hook_does_not_mutate_receipt_bytes() {
         trust_level: TrustLevel::default(),
         tenant_id: None,
         kernel_key: kp.public_key(),
+        bbs_projection_version: None,
     };
     let receipt = ChioReceipt::sign(body, &kp).unwrap();
     let baseline = canonical_json_bytes(&receipt).unwrap();

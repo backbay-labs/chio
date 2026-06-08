@@ -2,9 +2,7 @@
 mod tests {
     use std::collections::{BTreeMap, HashMap};
 
-    use chio_core::capability::{
-        RuntimeAssuranceTier, WorkloadCredentialKind, WorkloadIdentity, WorkloadIdentityScheme,
-    };
+    use chio_core::capability::{runtime_attestation::{RuntimeAssuranceTier}, workload_identity::{WorkloadCredentialKind, WorkloadIdentity, WorkloadIdentityScheme}};
 
     use crate::models::{
         ComputerUseMode, ComputerUseRule, DefaultAction, EgressRule, Extensions,

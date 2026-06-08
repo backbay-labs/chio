@@ -5,7 +5,7 @@
 //! would exceed the configured budget. Cross-currency enforcement uses
 //! the chio-link oracle for conversion.
 
-use chio_core::capability::MonetaryAmount;
+use chio_core::capability::scope::MonetaryAmount;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

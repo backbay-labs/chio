@@ -3,7 +3,7 @@ use std::path::Path as FsPath;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use chio_core::capability::CapabilityToken;
+use chio_core::capability::token::CapabilityToken;
 use rusqlite::{params, Connection};
 use tracing::warn;
 

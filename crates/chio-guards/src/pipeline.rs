@@ -5,7 +5,8 @@
 //! `Verdict::Deny`.  Only if all guards return `Verdict::Allow` does the
 //! pipeline allow the request.
 
-use chio_kernel::{Guard, GuardContext, KernelError, Verdict};
+use chio_core::receipt::metadata::GuardEvidence;
+use chio_kernel::{Guard, GuardContext, GuardDecision, KernelError, Verdict};
 
 /// A pipeline of guards evaluated in registration order.
 ///
@@ -59,34 +60,49 @@ impl Guard for GuardPipeline {
         "guard-pipeline"
     }
 
-    fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
         let mut final_verdict = Verdict::Allow;
+        let mut evidence = Vec::new();
         for guard in &self.guards {
             match guard.evaluate(ctx) {
-                Ok(Verdict::Allow) => continue,
-                Ok(Verdict::PendingApproval) => {
-                    // `PendingApproval` is a sticky escalation state. Keep
-                    // iterating so another guard can still short-circuit to
-                    // Deny, but propagate the pending verdict up the stack if
-                    // no deny occurs.
-                    final_verdict = Verdict::PendingApproval;
-                }
-                Ok(Verdict::Deny) => {
-                    return Err(KernelError::GuardDenied(format!(
-                        "guard \"{}\" denied the request",
-                        guard.name()
-                    )));
+                Ok(decision) => {
+                    evidence.extend(decision.evidence);
+                    match decision.verdict {
+                        Verdict::Allow => continue,
+                        Verdict::PendingApproval => {
+                            // `PendingApproval` is a sticky escalation state. Keep
+                            // iterating so another guard can still short-circuit to
+                            // Deny, but propagate the pending verdict up the stack if
+                            // no deny occurs.
+                            final_verdict = Verdict::PendingApproval;
+                        }
+                        Verdict::Deny => {
+                            evidence.push(GuardEvidence {
+                                guard_name: guard.name().to_string(),
+                                verdict: false,
+                                details: Some(
+                                    "action=deny; reason=guard denied request".to_string(),
+                                ),
+                            });
+                            return Ok(GuardDecision::deny(evidence));
+                        }
+                    }
                 }
                 Err(e) => {
                     // Fail closed: guard errors are treated as denials.
-                    return Err(KernelError::GuardDenied(format!(
-                        "guard \"{}\" error (fail-closed): {e}",
-                        guard.name()
-                    )));
+                    evidence.push(GuardEvidence {
+                        guard_name: guard.name().to_string(),
+                        verdict: false,
+                        details: Some(format!("action=error; reason=fail-closed; error={e}")),
+                    });
+                    return Ok(GuardDecision::deny(evidence));
                 }
             }
         }
-        Ok(final_verdict)
+        Ok(GuardDecision {
+            verdict: final_verdict,
+            evidence,
+        })
     }
 }
 
@@ -99,8 +115,8 @@ mod tests {
         fn name(&self) -> &str {
             "allow-all"
         }
-        fn evaluate(&self, _ctx: &GuardContext) -> Result<Verdict, KernelError> {
-            Ok(Verdict::Allow)
+        fn evaluate(&self, _ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
+            Ok(GuardDecision::allow())
         }
     }
 
@@ -109,8 +125,8 @@ mod tests {
         fn name(&self) -> &str {
             "deny-all"
         }
-        fn evaluate(&self, _ctx: &GuardContext) -> Result<Verdict, KernelError> {
-            Ok(Verdict::Deny)
+        fn evaluate(&self, _ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
+            Ok(GuardDecision::deny(Vec::new()))
         }
     }
 
@@ -119,23 +135,23 @@ mod tests {
         fn name(&self) -> &str {
             "error-guard"
         }
-        fn evaluate(&self, _ctx: &GuardContext) -> Result<Verdict, KernelError> {
+        fn evaluate(&self, _ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
             Err(KernelError::Internal("boom".to_string()))
         }
     }
 
     fn make_ctx() -> (
         chio_kernel::ToolCallRequest,
-        chio_core::capability::ChioScope,
+        chio_core::capability::scope::ChioScope,
         chio_kernel::AgentId,
         chio_kernel::ServerId,
     ) {
         let kp = chio_core::crypto::Keypair::generate();
-        let scope = chio_core::capability::ChioScope::default();
+        let scope = chio_core::capability::scope::ChioScope::default();
         let agent_id = kp.public_key().to_hex();
         let server_id = "srv-test".to_string();
 
-        let cap_body = chio_core::capability::CapabilityTokenBody {
+        let cap_body = chio_core::capability::token::CapabilityTokenBody {
             id: "cap-test".to_string(),
             issuer: kp.public_key(),
             subject: kp.public_key(),
@@ -144,7 +160,8 @@ mod tests {
             expires_at: u64::MAX,
             delegation_chain: vec![],
         };
-        let cap = chio_core::capability::CapabilityToken::sign(cap_body, &kp).expect("sign cap");
+        let cap =
+            chio_core::capability::token::CapabilityToken::sign(cap_body, &kp).expect("sign cap");
 
         let request = chio_kernel::ToolCallRequest {
             request_id: "req-test".to_string(),
@@ -154,6 +171,7 @@ mod tests {
             agent_id: agent_id.clone(),
             arguments: serde_json::json!({"path": "/app/src/main.rs"}),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
@@ -180,7 +198,10 @@ mod tests {
         };
 
         let result = pipeline.evaluate(&ctx);
-        assert!(matches!(result, Ok(Verdict::Allow)));
+        assert!(matches!(
+            result,
+            Ok(decision) if decision.verdict == Verdict::Allow
+        ));
     }
 
     #[test]
@@ -200,8 +221,10 @@ mod tests {
             matched_grant_index: None,
         };
 
-        let result = pipeline.evaluate(&ctx);
-        assert!(result.is_err());
+        let result = pipeline.evaluate(&ctx).expect("pipeline decision");
+        assert_eq!(result.verdict, Verdict::Deny);
+        assert_eq!(result.evidence.len(), 1);
+        assert_eq!(result.evidence[0].guard_name, "deny-all");
     }
 
     #[test]
@@ -220,10 +243,12 @@ mod tests {
             matched_grant_index: None,
         };
 
-        let result = pipeline.evaluate(&ctx);
-        assert!(result.is_err());
-        let err_msg = result.err().map(|e| e.to_string()).unwrap_or_default();
-        assert!(err_msg.contains("fail-closed"), "got: {err_msg}");
+        let result = pipeline.evaluate(&ctx).expect("pipeline decision");
+        assert_eq!(result.verdict, Verdict::Deny);
+        assert_eq!(result.evidence.len(), 1);
+        assert_eq!(result.evidence[0].guard_name, "error-guard");
+        let details = result.evidence[0].details.as_deref().unwrap_or_default();
+        assert!(details.contains("fail-closed"), "got: {details}");
     }
 
     #[test]
@@ -241,6 +266,9 @@ mod tests {
         };
 
         let result = pipeline.evaluate(&ctx);
-        assert!(matches!(result, Ok(Verdict::Allow)));
+        assert!(matches!(
+            result,
+            Ok(decision) if decision.verdict == Verdict::Allow
+        ));
     }
 }

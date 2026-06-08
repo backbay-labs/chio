@@ -10,31 +10,54 @@ import pytest
 import respx
 
 from chio_langchain.tool import ChioTool, ChioToolkit, _json_type_to_python
-from chio_sdk.errors import ChioDeniedError
-from chio_sdk.models import ChioReceipt, Decision, ToolCallAction
-
 
 BASE = "http://127.0.0.1:9090"
 
 
-def _make_receipt_dict(allowed: bool = True) -> dict:
-    decision = (
-        {"verdict": "allow"}
-        if allowed
-        else {"verdict": "deny", "reason": "no permission", "guard": "TestGuard"}
-    )
+def _make_advisory_receipt_dict(outcome: str = "evaluated") -> dict:
     return {
-        "id": "r-1",
+        "id": "1" * 64,
         "timestamp": 1700000000,
         "capability_id": "cap-1",
         "tool_server": "srv",
         "tool_name": "read_file",
-        "action": {"parameters": {"path": "/tmp"}, "parameter_hash": "abc"},
-        "decision": decision,
-        "content_hash": "deadbeef",
+        "action": {"parameters": {"path": "/tmp"}, "parameter_hash": "2" * 64},
+        "decision": None,
+        "receipt_kind": "advisory_evaluation",
+        "boundary_class": "advisory_only",
+        "observation_outcome": outcome,
+        "tool_origin": "caller_executed",
+        "redaction_mode": "none",
+        "content_hash": "3" * 64,
         "policy_hash": "cafe",
-        "kernel_key": "kk",
-        "signature": "ss",
+        "trust_level": "advisory",
+        "kernel_key": "5" * 64,
+        "signature": "6" * 128,
+    }
+
+
+def _advisory_wrapper(receipt: dict) -> dict:
+    return {
+        "schema": "chio.sidecar.advisory-evaluation.v1",
+        "authorization": False,
+        "authorizationBasis": "advisory_only",
+        "receipt": receipt,
+    }
+
+
+def _advisory_verify_report(result: str = "allow") -> dict:
+    return {
+        "signature_valid": True,
+        "signer_trusted": True,
+        "receipt_id_valid": True,
+        "parameter_hash_valid": True,
+        "receipt_kind": "advisory_evaluation",
+        "boundary_class": "advisory_only",
+        "trust_level": "advisory",
+        "result": result,
+        "authorized": False,
+        "signer_key_hex": "5" * 64,
+        "ok": False,
     }
 
 
@@ -63,9 +86,15 @@ class TestChioTool:
             tool._run(path="/tmp")
 
     @respx.mock
-    async def test_allowed_invocation(self) -> None:
-        respx.post(f"{BASE}/v1/evaluate").mock(
-            return_value=httpx.Response(200, json=_make_receipt_dict(allowed=True))
+    async def test_advisory_invocation_is_non_authorizing(self) -> None:
+        respx.post(f"{BASE}/v1/evaluate/advisory").mock(
+            return_value=httpx.Response(
+                200,
+                json=_advisory_wrapper(_make_advisory_receipt_dict()),
+            )
+        )
+        respx.post(f"{BASE}/v1/receipts/verify").mock(
+            return_value=httpx.Response(200, json=_advisory_verify_report())
         )
 
         tool = ChioTool(
@@ -77,15 +106,24 @@ class TestChioTool:
         )
         result = await tool._arun(path="/tmp/test.txt")
         data = json.loads(result)
-        assert data["status"] == "allowed"
-        assert data["receipt_id"] == "r-1"
+        assert data["error"] == "non_authorizing"
+        assert data["receipt_id"] == "1" * 64
         assert tool.last_receipt is not None
-        assert tool.last_receipt.is_allowed
+        assert tool.last_receipt.receipt_kind.value == "advisory_evaluation"
+        assert not tool.last_receipt.is_allowed
 
     @respx.mock
-    async def test_denied_invocation(self) -> None:
-        respx.post(f"{BASE}/v1/evaluate").mock(
-            return_value=httpx.Response(200, json=_make_receipt_dict(allowed=False))
+    async def test_dropped_advisory_invocation(self) -> None:
+        respx.post(f"{BASE}/v1/evaluate/advisory").mock(
+            return_value=httpx.Response(
+                200,
+                json=_advisory_wrapper(
+                    _make_advisory_receipt_dict(outcome="dropped")
+                ),
+            )
+        )
+        respx.post(f"{BASE}/v1/receipts/verify").mock(
+            return_value=httpx.Response(200, json=_advisory_verify_report("deny"))
         )
 
         tool = ChioTool(
@@ -98,11 +136,11 @@ class TestChioTool:
         result = await tool._arun(path="/etc/shadow")
         data = json.loads(result)
         assert data["error"] == "denied"
-        assert data["guard"] == "TestGuard"
+        assert data["receipt_id"] == "1" * 64
 
     @respx.mock
     async def test_denied_error_from_sidecar(self) -> None:
-        respx.post(f"{BASE}/v1/evaluate").mock(
+        respx.post(f"{BASE}/v1/evaluate/advisory").mock(
             return_value=httpx.Response(
                 403,
                 json={

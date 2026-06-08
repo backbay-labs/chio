@@ -30,13 +30,16 @@ use chio_core::appraisal::{
     SignedRuntimeAttestationAppraisalResult, RUNTIME_ATTESTATION_APPRAISAL_REPORT_SCHEMA,
 };
 use chio_core::capability::{
-    CapabilityToken, ChioScope, MonetaryAmount, RuntimeAssuranceTier, RuntimeAttestationEvidence,
+    runtime_attestation::{RuntimeAssuranceTier, RuntimeAttestationEvidence},
+    scope::{ChioScope, MonetaryAmount},
+    token::CapabilityToken,
 };
 use chio_core::crypto::{Keypair, PublicKey};
 use chio_core::listing::GenericTrustAdmissionClass;
 use chio_core::receipt::{
-    ChildRequestReceipt, ChioReceipt, ChioReceiptBody, Decision, ReceiptAttributionMetadata,
-    SettlementStatus, ToolCallAction,
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    economics::SettlementStatus, lineage::ChildRequestReceipt,
+    metadata::ReceiptAttributionMetadata,
 };
 use chio_core::session::{
     ChioIdentityAssertion, EnterpriseIdentityContext, OperationTerminalState,
@@ -271,7 +274,10 @@ mod budget_handlers;
 mod capital_and_liability;
 #[path = "trust_control/certification_handlers.rs"]
 mod certification_handlers;
+#[path = "trust_control/cluster.rs"]
+pub mod cluster;
 #[path = "trust_control/cluster_and_reports.rs"]
+#[cfg(test)]
 mod cluster_and_reports;
 #[path = "trust_control/config_and_public.rs"]
 mod config_and_public;
@@ -281,21 +287,25 @@ mod credit_and_loss;
 mod passport_handlers;
 #[path = "trust_control/receipt_handlers.rs"]
 mod receipt_handlers;
+#[path = "trust_control/report_rendering.rs"]
+pub(crate) mod report_rendering;
+#[path = "trust_control/report_validation.rs"]
+pub(crate) mod report_validation;
+#[path = "trust_control/reports.rs"]
+pub mod reports;
 #[path = "trust_control/risk_finance_handlers.rs"]
 mod risk_finance_handlers;
 #[path = "trust_control/service_runtime.rs"]
-mod service_runtime;
+pub mod service_runtime;
 #[path = "trust_control/service_types.rs"]
 mod service_types;
 #[path = "trust_control/underwriting_and_support.rs"]
 mod underwriting_and_support;
 
-// Re-export each submodule's surface so cross-file references and the
-// `trust_control::X` symbols consumed by chio-control-plane and chio-cli
-// resolve exactly as they did under the prior flat `include!` scope. The
-// submodules carry no colliding item names, so the globs are unambiguous.
+// Re-export stable high-level trust-control types and configuration helpers.
+// Runtime client and remote adapter entrypoints live under named
+// `service_runtime` child modules.
 pub use self::config_and_public::*;
-pub use self::service_runtime::*;
 pub use self::service_types::*;
 // The domain handler modules and credit_and_loss expose only crate-internal
 // (`pub(crate)`) items, so they are re-exported with crate visibility.
@@ -303,7 +313,6 @@ pub(crate) use self::authority_handlers::*;
 pub(crate) use self::budget_handlers::*;
 pub use self::capital_and_liability::*;
 pub(crate) use self::certification_handlers::*;
-pub use self::cluster_and_reports::*;
 pub(crate) use self::credit_and_loss::*;
 pub(crate) use self::passport_handlers::*;
 pub(crate) use self::receipt_handlers::*;

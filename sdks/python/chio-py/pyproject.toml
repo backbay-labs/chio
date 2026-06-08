@@ -24,6 +24,11 @@ dependencies = [
     "pure25519>=0.0.1",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8,<9",
+]
+
 [project.urls]
 Documentation = "https://github.com/backbay-labs/chio/tree/main/sdks/python/chio-py"
 Repository = "https://github.com/backbay-labs/chio"

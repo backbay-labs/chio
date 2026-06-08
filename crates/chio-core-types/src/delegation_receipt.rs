@@ -13,7 +13,7 @@
 //!
 //! # Canonical encoding
 //!
-//! Receipts are signed-into-existence by [`crate::capability::delegate`].
+//! Receipts are signed-into-existence by [`crate::capability::attenuation::delegate`].
 //! Their canonical-JSON encoding is the byte-stable representation that
 //! downstream verifiers (and lineage indexers) hash.
 //! Use [`DelegationReceipt::canonical_bytes`] to obtain a
@@ -37,13 +37,13 @@ use alloc::vec::Vec;
 use serde::{Deserialize, Serialize};
 
 use crate::canonical::CanonicalBytes;
-use crate::capability::{Attenuation, DelegationLink};
+use crate::capability::attenuation::{Attenuation, DelegationLink};
 use crate::error::Result;
 
 /// Structured attenuation applied during a `delegate` mint.
 ///
 /// `ScopeAttenuation` is the high-level surface accepted by
-/// [`crate::capability::delegate`]: callers describe how the parent token
+/// [`crate::capability::attenuation::delegate`]: callers describe how the parent token
 /// is being narrowed, and the helper translates the request into the
 /// per-link [`Attenuation`] vector that `DelegationLink` carries on the
 /// wire. The two surfaces are intentionally distinct: this one is the
@@ -87,7 +87,7 @@ impl ScopeAttenuation {
     }
 }
 
-/// Signed-receipt envelope emitted by [`crate::capability::delegate`].
+/// Signed-receipt envelope emitted by [`crate::capability::attenuation::delegate`].
 ///
 /// Field semantics:
 ///
@@ -136,7 +136,7 @@ impl DelegationReceipt {
 
     /// Reconstruct the complete delegation chain represented by this
     /// receipt: the parent chain followed by the freshly-signed link.
-    /// Verifiers feed this into [`crate::capability::validate_delegation_chain`]
+    /// Verifiers feed this into [`crate::capability::attenuation::validate_delegation_chain`]
     /// to check end-to-end signature continuity.
     #[must_use]
     pub fn complete_chain(&self) -> Vec<DelegationLink> {
@@ -165,7 +165,9 @@ mod tests {
     use super::*;
 
     use crate::capability::{
-        delegate, CapabilityToken, CapabilityTokenBody, ChioScope, Operation, ToolGrant,
+        attenuation::{delegate, Attenuation},
+        scope::{ChioScope, Operation, ToolGrant},
+        token::{CapabilityToken, CapabilityTokenBody},
     };
     use crate::crypto::Keypair;
 
@@ -320,10 +322,9 @@ mod tests {
         assert!(empty.steps.is_empty());
         assert!(empty.child_expires_at.is_none());
 
-        let from_steps =
-            ScopeAttenuation::from_steps(vec![crate::capability::Attenuation::ShortenExpiry {
-                new_expires_at: 1900,
-            }]);
+        let from_steps = ScopeAttenuation::from_steps(vec![Attenuation::ShortenExpiry {
+            new_expires_at: 1900,
+        }]);
         assert_eq!(from_steps.steps.len(), 1);
         assert!(from_steps.child_expires_at.is_none());
     }

@@ -2,14 +2,14 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::capability::MonetaryAmount;
+use crate::capability::scope::MonetaryAmount;
 use crate::credit::{
-    CapitalBookSourceKind, CapitalExecutionAuthorityStep, CapitalExecutionInstructionAction,
-    CapitalExecutionObservation, CapitalExecutionRail, CapitalExecutionReconciledState,
-    CapitalExecutionRole, CapitalExecutionWindow, SignedCapitalBookReport,
-    SignedCapitalExecutionInstruction,
+    validate_capital_execution_authority_step_proof, CapitalBookSourceKind,
+    CapitalExecutionAuthorityStep, CapitalExecutionInstructionAction, CapitalExecutionObservation,
+    CapitalExecutionRail, CapitalExecutionReconciledState, CapitalExecutionRole,
+    CapitalExecutionWindow, SignedCapitalBookReport, SignedCapitalExecutionInstruction,
 };
-use crate::receipt::SignedExportEnvelope;
+use crate::receipt::lineage::SignedExportEnvelope;
 
 use crate::{
     bounded_market_query_limit, liability_claim_adjudication_payable_amount,
@@ -417,6 +417,7 @@ impl LiabilityClaimSettlementInstructionArtifact {
                     "claim settlement authority_chain principal_id cannot be empty".to_string(),
                 );
             }
+            validate_capital_execution_authority_step_proof(step)?;
             if step.approved_at > step.expires_at {
                 return Err(
                     "claim settlement authority_chain requires approved_at <= expires_at"

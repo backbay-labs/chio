@@ -8,7 +8,7 @@ for the full engineering backlog.
 
 | Risk | Severity | Mitigation status | Notes |
 | --- | --- | --- | --- |
-| TOCTOU between guard verdict and tool execution in wrapper integrations | CRITICAL | open | Execution nonce or kernel-dispatched execution |
+| TOCTOU between guard verdict and tool execution in wrapper integrations | CRITICAL | partially mitigated | Kernel dispatch now verifies and consumes `ToolCallRequest::execution_nonce` in strict mode before tool-server invocation. `chio mcp wrap --strict-execution-nonce` now executes allowed calls through that nonce-presenting kernel path. The default `chio mcp wrap` compatibility path and advisory `/v1/evaluate` remain weaker because they do not execute through nonce consumption. |
 | Agent memory stores ungoverned (RAG, scratchpads, conversation history) | HIGH | planned | Memory-write constraints and read receipts |
 | Sidecar bypass: agents can call tools without mediation | HIGH | open | Tool-server auth, network enforcement, honest trust taxonomy |
 | No PyPI/npm packages published; SDKs path-only | CRITICAL | open | CI publishing for Python and TypeScript SDKs |

@@ -35,7 +35,8 @@ use chio_core_types::crypto::{
     Ed25519Backend, HybridBackend, Keypair, MlDsa65Backend, SigningAlgorithm, SigningBackend,
 };
 use chio_core_types::receipt::{
-    ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    kinds::TrustLevel,
 };
 
 const FIXTURE_PATH: &str = "tests/fixtures/v318/receipt_bundle.json";
@@ -81,6 +82,7 @@ fn classical_body(kernel_key: chio_core_types::crypto::PublicKey) -> ChioReceipt
         trust_level: TrustLevel::Mediated,
         tenant_id: None,
         kernel_key,
+        bbs_projection_version: None,
     }
 }
 
@@ -194,6 +196,7 @@ fn v318_fixture_round_trips_under_allow_classical() {
         trust_level: fixture.trust_level,
         tenant_id: fixture.tenant_id.clone(),
         kernel_key: fixture.kernel_key.clone(),
+        bbs_projection_version: None,
     };
     let rebuilt_body = ChioReceiptBody {
         id: rebuilt.id.clone(),
@@ -216,6 +219,7 @@ fn v318_fixture_round_trips_under_allow_classical() {
         trust_level: rebuilt.trust_level,
         tenant_id: rebuilt.tenant_id.clone(),
         kernel_key: rebuilt.kernel_key.clone(),
+        bbs_projection_version: None,
     };
     assert_eq!(
         canonical_json_bytes(&fixture_body).unwrap(),

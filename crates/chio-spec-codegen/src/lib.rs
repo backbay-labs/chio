@@ -27,7 +27,7 @@
 //! ```text
 //! crates/chio-core-types/src/_generated/
 //!   chio_wire_v1.rs   (all types, formatted via prettyplease)
-//!   mod.rs            (placeholder; not pulled into lib.rs yet)
+//!   mod.rs            (header-only module marker; not pulled into lib.rs yet)
 //! ```
 //!
 //! The single-file emission keeps downstream consumers pointing at one
@@ -108,7 +108,7 @@ pub const GENERATED_HEADER: &str = "\
 /// File name for the consolidated chio-wire/v1 Rust output.
 pub const CHIO_WIRE_V1_OUTPUT: &str = "chio_wire_v1.rs";
 
-/// File name for the placeholder module entry under `_generated/`.
+/// File name for the header-only module marker under `_generated/`.
 pub const MOD_FILE: &str = "mod.rs";
 
 /// Errors raised by the codegen pipeline.
@@ -180,7 +180,7 @@ pub type Result<T> = core::result::Result<T, CodegenError>;
 ///    `syn::File`, and pretty-print via `prettyplease`.
 /// 4. Prepend [`GENERATED_HEADER`] and write to
 ///    `out_dir/CHIO_WIRE_V1_OUTPUT`.
-/// 5. Refresh the placeholder `out_dir/MOD_FILE` with [`GENERATED_HEADER`] so
+/// 5. Refresh the header-only `out_dir/MOD_FILE` with [`GENERATED_HEADER`] so
 ///    the integration test's header check stays green.
 ///
 /// The function creates `out_dir` (and parents) if it does not already exist.
@@ -223,14 +223,16 @@ pub fn codegen_rust(schemas_dir: &Path, out_dir: &Path) -> Result<()> {
     let out_path = out_dir.join(CHIO_WIRE_V1_OUTPUT);
     write_if_changed(&out_path, body.as_bytes())?;
 
-    // Refresh the placeholder mod.rs so the header check passes on a fresh clone.
+    // Refresh mod.rs so the header check passes on a fresh clone.
     // mod.rs intentionally does not re-export `chio_wire_v1`; wire it behind a
     // feature flag once the no_std story for generated types is settled.
     let mod_body = format!(
         "{GENERATED_HEADER}\n\
-         //! Placeholder module for the chio-wire/v1 generated types.\n\
+         //! Header-only module marker for the chio-wire/v1 generated types.\n\
          //!\n\
-         //! This file is intentionally empty; the header is required by\n\
+         //! This file intentionally declares no submodules. Generated wire\n\
+         //! bindings remain quarantined until the public API and no_std story\n\
+         //! are explicitly settled. The header is required by\n\
          //! `crates/chio-core-types/tests/_generated_check.rs`.\n"
     );
     let mod_path = out_dir.join(MOD_FILE);

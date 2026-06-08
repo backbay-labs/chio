@@ -368,7 +368,7 @@ pub fn build_layered(
 mod tests {
     use super::*;
 
-    use chio_core_types::capability::{ChioScope, Operation, ToolGrant};
+    use chio_core_types::capability::scope::{ChioScope, Operation, ToolGrant};
     use chio_core_types::crypto::Keypair;
     use chio_kernel::{
         ChioKernel, KernelConfig, KernelError, NestedFlowBridge, ToolCallOutput, ToolCallRequest,
@@ -462,6 +462,7 @@ mod tests {
             agent_id: agent_keypair.public_key().to_hex(),
             arguments: serde_json::json!({ "message": "hello" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,

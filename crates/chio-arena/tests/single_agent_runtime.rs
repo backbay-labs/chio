@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use chio_arena::{parse_scenario_str, ArenaRuntime, KernelStepRequest, ScenarioVerdict};
-use chio_core::{ChioScope, Keypair, Operation, ToolGrant};
+use chio_core::{
+    capability::scope::{ChioScope, Operation, ToolGrant},
+    Keypair,
+};
 use chio_kernel::{
     ChioKernel, KernelConfig, KernelError, NestedFlowBridge, ToolCallRequest, ToolServerConnection,
     DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_MAX_STREAM_DURATION_SECS,
@@ -100,6 +103,7 @@ async fn runs_single_agent_scenario_and_collects_signed_receipt(
         agent_id: capability.subject.to_hex(),
         arguments: json!({ "path": "/tmp/chio-arena.txt" }),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,

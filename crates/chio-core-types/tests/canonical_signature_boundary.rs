@@ -1,7 +1,9 @@
 use chio_core_types::canonical::canonical_json_bytes;
 use chio_core_types::crypto::{sha256_hex, Keypair};
 use chio_core_types::receipt::{
-    ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
+    body::{ChioReceipt, ChioReceiptBody},
+    decision::{Decision, ToolCallAction},
+    kinds::TrustLevel,
 };
 use serde_json::json;
 
@@ -30,6 +32,7 @@ fn receipt_body(keypair: &Keypair) -> ChioReceiptBody {
         trust_level: TrustLevel::Mediated,
         tenant_id: None,
         kernel_key: keypair.public_key(),
+        bbs_projection_version: None,
     }
 }
 

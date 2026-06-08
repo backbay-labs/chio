@@ -32,7 +32,7 @@ use tokio::sync::{mpsc, Mutex};
 use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 
-use chio_core_types::capability::CapabilityToken;
+use chio_core_types::capability::token::CapabilityToken;
 use chio_core_types::crypto::PublicKey;
 use chio_kernel_core::{
     evaluate as evaluate_capability, EvaluateInput, FixedClock, PortableToolCallRequest,
@@ -585,15 +585,15 @@ mod tests {
         let issuer = Keypair::generate();
         let subject = Keypair::generate();
         let capability = CapabilityToken::sign(
-            chio_core_types::capability::CapabilityTokenBody {
+            chio_core_types::capability::token::CapabilityTokenBody {
                 id: "cap".into(),
                 issuer: issuer.public_key(),
                 subject: subject.public_key(),
-                scope: chio_core_types::capability::ChioScope {
-                    grants: vec![chio_core_types::capability::ToolGrant {
+                scope: chio_core_types::capability::scope::ChioScope {
+                    grants: vec![chio_core_types::capability::scope::ToolGrant {
                         server_id: "srv".into(),
                         tool_name: "tool".into(),
-                        operations: vec![chio_core_types::capability::Operation::Invoke],
+                        operations: vec![chio_core_types::capability::scope::Operation::Invoke],
                         constraints: Vec::new(),
                         max_invocations: None,
                         max_cost_per_invocation: None,
@@ -661,15 +661,15 @@ mod tests {
         let issuer = Keypair::generate();
         let subject = Keypair::generate();
         let capability = CapabilityToken::sign(
-            chio_core_types::capability::CapabilityTokenBody {
+            chio_core_types::capability::token::CapabilityTokenBody {
                 id: "cap".into(),
                 issuer: issuer.public_key(),
                 subject: subject.public_key(),
-                scope: chio_core_types::capability::ChioScope {
-                    grants: vec![chio_core_types::capability::ToolGrant {
+                scope: chio_core_types::capability::scope::ChioScope {
+                    grants: vec![chio_core_types::capability::scope::ToolGrant {
                         server_id: "srv".into(),
                         tool_name: "tool".into(),
-                        operations: vec![chio_core_types::capability::Operation::Invoke],
+                        operations: vec![chio_core_types::capability::scope::Operation::Invoke],
                         constraints: Vec::new(),
                         max_invocations: None,
                         max_cost_per_invocation: None,
@@ -719,15 +719,15 @@ mod tests {
         let issuer = Keypair::generate();
         let subject = Keypair::generate();
         let capability = CapabilityToken::sign(
-            chio_core_types::capability::CapabilityTokenBody {
+            chio_core_types::capability::token::CapabilityTokenBody {
                 id: "cap".into(),
                 issuer: issuer.public_key(),
                 subject: subject.public_key(),
-                scope: chio_core_types::capability::ChioScope {
-                    grants: vec![chio_core_types::capability::ToolGrant {
+                scope: chio_core_types::capability::scope::ChioScope {
+                    grants: vec![chio_core_types::capability::scope::ToolGrant {
                         server_id: "srv".into(),
                         tool_name: "tool".into(),
-                        operations: vec![chio_core_types::capability::Operation::Invoke],
+                        operations: vec![chio_core_types::capability::scope::Operation::Invoke],
                         constraints: Vec::new(),
                         max_invocations: None,
                         max_cost_per_invocation: None,
@@ -777,15 +777,15 @@ mod tests {
         let untrusted_issuer = Keypair::generate();
         let subject = Keypair::generate();
         let capability = CapabilityToken::sign(
-            chio_core_types::capability::CapabilityTokenBody {
+            chio_core_types::capability::token::CapabilityTokenBody {
                 id: "cap".into(),
                 issuer: untrusted_issuer.public_key(),
                 subject: subject.public_key(),
-                scope: chio_core_types::capability::ChioScope {
-                    grants: vec![chio_core_types::capability::ToolGrant {
+                scope: chio_core_types::capability::scope::ChioScope {
+                    grants: vec![chio_core_types::capability::scope::ToolGrant {
                         server_id: "srv".into(),
                         tool_name: "tool".into(),
-                        operations: vec![chio_core_types::capability::Operation::Invoke],
+                        operations: vec![chio_core_types::capability::scope::Operation::Invoke],
                         constraints: Vec::new(),
                         max_invocations: None,
                         max_cost_per_invocation: None,
@@ -861,15 +861,15 @@ mod tests {
         let issuer = Keypair::generate();
         let subject = Keypair::generate();
         let capability = CapabilityToken::sign(
-            chio_core_types::capability::CapabilityTokenBody {
+            chio_core_types::capability::token::CapabilityTokenBody {
                 id: "cap".into(),
                 issuer: issuer.public_key(),
                 subject: subject.public_key(),
-                scope: chio_core_types::capability::ChioScope {
-                    grants: vec![chio_core_types::capability::ToolGrant {
+                scope: chio_core_types::capability::scope::ChioScope {
+                    grants: vec![chio_core_types::capability::scope::ToolGrant {
                         server_id: "srv".into(),
                         tool_name: "tool".into(),
-                        operations: vec![chio_core_types::capability::Operation::Invoke],
+                        operations: vec![chio_core_types::capability::scope::Operation::Invoke],
                         constraints: Vec::new(),
                         max_invocations: None,
                         max_cost_per_invocation: None,
@@ -913,15 +913,15 @@ mod tests {
         let issuer = Keypair::generate();
         let subject = Keypair::generate();
         let capability = CapabilityToken::sign(
-            chio_core_types::capability::CapabilityTokenBody {
+            chio_core_types::capability::token::CapabilityTokenBody {
                 id: "cap".into(),
                 issuer: issuer.public_key(),
                 subject: subject.public_key(),
-                scope: chio_core_types::capability::ChioScope {
-                    grants: vec![chio_core_types::capability::ToolGrant {
+                scope: chio_core_types::capability::scope::ChioScope {
+                    grants: vec![chio_core_types::capability::scope::ToolGrant {
                         server_id: "srv".into(),
                         tool_name: "tool".into(),
-                        operations: vec![chio_core_types::capability::Operation::Invoke],
+                        operations: vec![chio_core_types::capability::scope::Operation::Invoke],
                         constraints: Vec::new(),
                         max_invocations: None,
                         max_cost_per_invocation: None,

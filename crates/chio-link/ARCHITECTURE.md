@@ -6,7 +6,9 @@
 
 ## Internal Surfaces
 
-The crate is split into oracle configuration, Chainlink and Pyth backends, cache and TWAP logic, conversion math, circuit-breaker checks, runtime monitoring, and operator control-state traces. `ChioLinkOracle` is the main trust boundary: every backend response must be fresh, pair-exact, and policy-checked before cache insertion or evidence construction can use it.
+The crate is split into oracle configuration, Chainlink and Pyth backends, cache and TWAP logic, conversion math, circuit-breaker checks, runtime monitoring, report classification, and operator control-state traces. `ChioLinkOracle` is the main trust boundary: every backend response must be fresh, pair-exact, and policy-checked before cache insertion or evidence construction can use it.
+
+Unit tests live in `src/tests.rs` and cover the root oracle runtime without making `src/lib.rs` the catch-all test file.
 
 ## Trust Invariants
 
@@ -14,8 +16,4 @@ The security constraint is auditable rate exactness. Pair symbols, feed referenc
 
 ## Verification Focus
 
-Tests should cover backend pair mismatch, stale feed timestamps, sequencer downtime, cache age limits, circuit-breaker divergence, degraded mode, and evidence serialization.
-
-## Improvement Target
-
-Planned improvement: reject backend rates whose `base` or `quote` differs from the configured pair before circuit-breaker comparison or cache insertion, so injected or fallback backends cannot poison evidence with a mismatched currency label.
+Tests should cover backend pair mismatch, stale feed timestamps, sequencer downtime, cache age limits, circuit-breaker divergence, degraded mode, health report alert classification, and evidence serialization.

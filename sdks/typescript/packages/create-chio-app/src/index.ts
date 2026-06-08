@@ -4,8 +4,9 @@
 // template from the in-repo registry into the user's working directory
 // and prints the next command. Network egress is opt-in.
 
-import { cpSync, existsSync, mkdirSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { cpSync, existsSync, mkdirSync, realpathSync, statSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { findTemplate, listTemplateSlugs, TEMPLATES } from "./templates.js";
 
 export interface CliOptions {
@@ -144,10 +145,10 @@ export function runCli(
   };
 }
 
-export function findRepoRoot(start: string): string {
+export function findTemplateRoot(start: string): string {
   let current = start;
   while (true) {
-    const marker = join(current, ".planning");
+    const marker = join(current, "templates", "next-ai-sdk-receipts");
     if (existsSync(marker)) {
       return current;
     }
@@ -159,9 +160,21 @@ export function findRepoRoot(start: string): string {
   }
 }
 
-if (import.meta.main === true) {
+export function isDirectNodeRun(metaUrl: string, argvEntry: string | undefined): boolean {
+  if (argvEntry === undefined) {
+    return false;
+  }
+  try {
+    return realpathSync(fileURLToPath(metaUrl)) === realpathSync(resolve(argvEntry));
+  } catch {
+    return metaUrl === pathToFileURL(resolve(argvEntry)).href;
+  }
+}
+
+if (isDirectNodeRun(import.meta.url, process.argv[1])) {
   const argv = process.argv.slice(2);
-  const root = findRepoRoot(resolve(process.cwd()));
+  const moduleDir = dirname(fileURLToPath(import.meta.url));
+  const root = findTemplateRoot(moduleDir);
   const env = defaultScaffoldEnv(root);
   const result = runCli(argv, env);
   // eslint-disable-next-line no-console

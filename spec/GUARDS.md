@@ -633,15 +633,16 @@ Each entry records a single tool invocation:
 | `allowed` | `boolean` | Whether the invocation was allowed or denied |
 
 **Entry hash computation:** The `entry_hash` is the SHA-256 digest of the
-following fields concatenated in order using little-endian byte encoding for
-integers and UTF-8 for strings:
+following fields concatenated in order. Integers are little-endian bytes,
+strings are encoded as `u64` little-endian byte length followed by UTF-8 bytes,
+and booleans are encoded as `0x01` for true or `0x00` for false:
 
 1. `sequence` (8 bytes, LE)
-2. `prev_hash` (UTF-8 bytes)
+2. `prev_hash` (`u64` byte length LE || UTF-8 bytes)
 3. `timestamp_secs` (8 bytes, LE)
-4. `tool_name` (UTF-8 bytes)
-5. `server_id` (UTF-8 bytes)
-6. `agent_id` (UTF-8 bytes)
+4. `tool_name` (`u64` byte length LE || UTF-8 bytes)
+5. `server_id` (`u64` byte length LE || UTF-8 bytes)
+6. `agent_id` (`u64` byte length LE || UTF-8 bytes)
 7. `bytes_read` (8 bytes, LE)
 8. `bytes_written` (8 bytes, LE)
 9. `delegation_depth` (4 bytes, LE)
@@ -767,20 +768,21 @@ wasm_guards:
 ## 9. Implementation Status
 
 The Implementation column reports whether the guard logic ships in the
-indicated crate. The Default pipeline wiring column reports whether the
-kernel's default guard pipeline registers the guard automatically or whether
-operators MUST wire it themselves. Implementation status does not by itself
-imply that the guard runs against incoming requests.
+indicated crate. The Default control-plane profile column reports whether the
+standard runtime builder installs the guard automatically or whether operators
+MUST wire it themselves. `ChioKernel::new` remains the bare low-level
+constructor and does not install concrete guards by itself. Implementation
+status does not by itself imply that the guard runs against incoming requests.
 
-| Guard | Crate | Implementation | Default pipeline wiring |
+| Guard | Crate | Implementation | Default control-plane profile |
 | --- | --- | --- | --- |
-| InternalNetworkGuard | `chio-guards` | Full | Default-wired |
-| AgentVelocityGuard | `chio-guards` | Full | Default-wired |
+| InternalNetworkGuard | `chio-guards` | Full | Installed by default runtime profile |
+| AgentVelocityGuard | `chio-guards` | Full | Installed by default runtime profile |
 | DataFlowGuard | `chio-guards` | Full | Operator-wired (requires `SessionJournal`) |
 | BehavioralSequenceGuard | `chio-guards` | Full | Operator-wired (requires `SessionJournal`) |
-| ResponseSanitizationGuard | `chio-guards` | Full | Default-wired (post-invocation) |
-| PostInvocationPipeline | `chio-guards` | Full | Default-wired |
-| AdvisoryPipeline | `chio-guards` | Full | Default-wired |
+| ResponseSanitizationGuard | `chio-guards` | Full | Installed by default runtime profile through `SanitizerHook` |
+| PostInvocationPipeline | `chio-guards` | Full | Installed by default runtime profile |
+| AdvisoryPipeline | `chio-guards` | Full | Installed by default runtime profile (session-journal advisory guards remain operator-wired) |
 | AnomalyAdvisoryGuard | `chio-guards` | Full | Operator-wired (requires `SessionJournal`) |
 | DataTransferAdvisoryGuard | `chio-guards` | Full | Operator-wired (requires `SessionJournal`) |
 | PortableFilesystemRootsGuard | `chio-guards` | Full | Operator-wired (filesystem-scoped) |

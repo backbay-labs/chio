@@ -1,6 +1,6 @@
 //! Portable receipt signing.
 //!
-//! Wraps `chio_core_types::ChioReceipt::sign_with_backend` so the kernel core
+//! Wraps `chio_core_types::receipt::body::ChioReceipt::sign_with_backend` so the kernel core
 //! can produce signed receipts without depending on the `chio-kernel` full
 //! crate's keypair-based helper. Using the `SigningBackend` trait keeps
 //! the FIPS-capable signing path available on every adapter.
@@ -10,7 +10,7 @@ use alloc::string::ToString;
 use alloc::vec::Vec;
 
 use chio_core_types::crypto::SigningBackend;
-use chio_core_types::receipt::{ChioReceipt, ChioReceiptBody};
+use chio_core_types::receipt::{body::ChioReceipt, body::ChioReceiptBody};
 
 /// Errors raised by [`sign_receipt`].
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,7 +78,9 @@ pub fn sign_receipt(
             metadata: body.metadata,
             trust_level: body.trust_level,
             tenant_id: body.tenant_id,
+            bbs_projection_version: None,
             kernel_key: body.kernel_key,
+            bbs_signature: None,
             algorithm: Some(backend.algorithm()),
             signature,
         });

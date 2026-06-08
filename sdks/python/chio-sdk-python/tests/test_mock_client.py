@@ -355,6 +355,23 @@ async def test_attenuate_capability_rejects_superset() -> None:
         await chio.attenuate_capability(token, new_scope=wider)
 
 
+async def test_attenuate_capability_fails_closed_for_subset() -> None:
+    chio = allow_all()
+    scope = ChioScope(
+        grants=[
+            ToolGrant(
+                server_id="srv",
+                tool_name="read",
+                operations=[Operation.INVOKE],
+            )
+        ]
+    )
+    token = await chio.create_capability(subject="bb", scope=scope)
+    with pytest.raises(ChioDeniedError) as exc:
+        await chio.attenuate_capability(token, new_scope=scope)
+    assert exc.value.reason_code == "chio_attenuation_requires_subject_signer"
+
+
 async def test_set_policy_swaps_behaviour_midstream() -> None:
     chio = MockChioClient()
     first = await chio.evaluate_tool_call(

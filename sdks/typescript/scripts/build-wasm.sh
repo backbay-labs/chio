@@ -168,6 +168,12 @@ if [ "${ALL_TARGETS}" = true ] && [ "${TARGET_EXPLICIT}" = true ]; then
 fi
 
 if ! command -v wasm-pack >/dev/null 2>&1; then
+  if [ "${CI:-}" = "true" ] || [ "${CHIO_REQUIRE_WASM_TOOLCHAIN:-}" = "1" ]; then
+    echo "ERROR: wasm-pack ${WASM_PACK_VERSION} is required for CI and release wasm builds." >&2
+    echo "  cargo install wasm-pack --version ${WASM_PACK_VERSION} --locked" >&2
+    echo "  cargo install wasm-bindgen-cli --version ${WASM_BINDGEN_VERSION} --locked" >&2
+    exit 1
+  fi
   echo "WARN: wasm-pack not installed. Install with:" >&2
   echo "  cargo install wasm-pack --version ${WASM_PACK_VERSION}" >&2
   echo "WARN: wasm-bindgen-cli (transitive) pinned at ${WASM_BINDGEN_VERSION}." >&2
@@ -250,6 +256,10 @@ build_target() {
       --release \
       --no-opt
   )
+  # wasm-pack emits a .gitignore that excludes generated bindings. npm uses
+  # nested .gitignore files when no .npmignore exists, so add an empty
+  # .npmignore to keep the generated wasm package files publishable.
+  : > "${out_dir}/.npmignore"
 }
 
 package_dir_for() {

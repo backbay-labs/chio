@@ -765,7 +765,7 @@ fn control_client(
             "remote trust admin requires --control-token when --control-url is configured",
         ));
     };
-    trust_control::build_client(url, token)
+    trust_control::service_runtime::client::build_client(url, token)
         .map(Some)
         .map_err(|error| plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string()))
 }

@@ -19,7 +19,13 @@
   ],
   "properties": {
     "schema": { "const": "chio.attest.selective-disclosure-proof.v1" },
-    "projection_version": { "const": "chio.bbs-projection.workflow.v1" },
+    "projection_version": {
+      "enum": [
+        "chio.bbs-projection.workflow.v1",
+        "chio.bbs-projection.step.v1",
+        "chio.bbs-projection.receipt.v1"
+      ]
+    },
     "subject_sha256_hex": { "$ref": "#/$defs/sha256" },
     "ciphersuite": { "const": "BBS_BLS12381G1_XMD:SHA-256_SSWU_RO_" },
     "issuer_fingerprint": { "$ref": "#/$defs/sha256" },

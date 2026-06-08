@@ -5,7 +5,7 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-use chio_core::capability::{ChioScope, Operation, ToolGrant};
+use chio_core::capability::scope::{ChioScope, Operation, ToolGrant};
 use chio_core::crypto::Keypair;
 use chio_core::session::{
     OperationContext, RequestId, RootDefinition, SessionOperation, ToolCallOperation,
@@ -77,6 +77,7 @@ fn make_request(
         agent_id: agent_kp.public_key().to_hex(),
         arguments: args,
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
@@ -459,6 +460,7 @@ async fn filesystem_tool_session_roots_allow_in_root_path() {
         server_id: "srv".to_string(),
         tool_name: "filesystem".to_string(),
         arguments: serde_json::json!({"path": "/workspace/project/src/main.rs"}),
+        execution_nonce: None,
         model_metadata: None,
     });
 
@@ -519,6 +521,7 @@ async fn filesystem_tool_session_roots_deny_out_of_root_path() {
         server_id: "srv".to_string(),
         tool_name: "filesystem".to_string(),
         arguments: serde_json::json!({"path": "/etc/passwd"}),
+        execution_nonce: None,
         model_metadata: None,
     });
 
@@ -570,6 +573,7 @@ async fn filesystem_tool_session_roots_fail_closed_when_missing() {
         server_id: "srv".to_string(),
         tool_name: "filesystem".to_string(),
         arguments: serde_json::json!({"path": "/workspace/project/src/main.rs"}),
+        execution_nonce: None,
         model_metadata: None,
     });
 

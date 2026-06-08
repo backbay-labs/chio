@@ -7,7 +7,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use chio_core::canonical::canonical_json_bytes;
-use chio_core::chio_receipt_id;
+use chio_core::receipt::body::chio_receipt_id;
 use chio_core::crypto::Signature;
 
 /// One-shot guard for the empty-`trusted_kernel_keys` warning.
@@ -340,7 +340,7 @@ fn validate_compliance_receipt(
     }
     if matches!(
         receipt.decision.as_ref(),
-        Some(chio_core::receipt::Decision::Allow)
+        Some(chio_core::receipt::decision::Decision::Allow)
     )
         && !receipt.is_allowed()
     {

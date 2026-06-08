@@ -381,14 +381,30 @@ pub fn extract_method(msg: &Value) -> Option<AcpMethod> {
 
 /// Build a JSON-RPC error response for a given request id.
 pub fn json_rpc_error(id: Option<&Value>, code: i64, message: &str) -> Value {
+    json_rpc_error_with_data(id, code, message, None)
+}
+
+/// Build a JSON-RPC error response with optional machine-readable data.
+pub fn json_rpc_error_with_data(
+    id: Option<&Value>,
+    code: i64,
+    message: &str,
+    data: Option<Value>,
+) -> Value {
     let response_id = json_rpc_response_id(id);
+    let mut error = serde_json::json!({
+        "code": code,
+        "message": message
+    });
+    if let Some(data) = data {
+        if let Some(error_object) = error.as_object_mut() {
+            error_object.insert("data".to_string(), data);
+        }
+    }
     serde_json::json!({
         "jsonrpc": "2.0",
         "id": response_id,
-        "error": {
-            "code": code,
-            "message": message
-        }
+        "error": error
     })
 }
 

@@ -4,13 +4,13 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use chio_core_types::crypto::{Keypair, PublicKey};
-use chio_core_types::receipt::GuardEvidence;
+use chio_core_types::receipt::metadata::GuardEvidence;
 use chio_http_core::{
     AuthMethod, CallerIdentity, ChioHttpRequest, HttpAuthority, HttpAuthorityError,
     HttpAuthorityEvaluation, HttpAuthorityInput, HttpAuthorityPolicy, HttpMethod, HttpReceipt,
     Verdict,
 };
-use chio_kernel::ApprovalStore;
+use chio_kernel::{ApprovalStore, SignedExecutionNonce};
 use chio_openapi::PolicyDecision;
 use serde_json::Value;
 
@@ -19,6 +19,7 @@ pub struct EvaluationResult {
     pub verdict: Verdict,
     pub receipt: HttpReceipt,
     pub evidence: Vec<GuardEvidence>,
+    pub execution_nonce: Option<SignedExecutionNonce>,
 }
 
 /// Route information extracted from the OpenAPI spec.
@@ -97,6 +98,19 @@ impl RequestEvaluator {
         self.authority.approval_store()
     }
 
+    #[cfg(test)]
+    pub fn enable_strict_execution_nonce_for_tests(&mut self) {
+        let cfg = chio_kernel::ExecutionNonceConfig {
+            nonce_ttl_secs: 30,
+            nonce_store_capacity: 1024,
+            require_nonce: true,
+        };
+        let store = Box::new(chio_kernel::InMemoryExecutionNonceStore::from_config(&cfg));
+        if let Err(error) = self.authority.set_execution_nonce_store(cfg, store) {
+            panic!("strict execution nonce test setup failed: {error}");
+        }
+    }
+
     /// Evaluate an incoming HTTP request against the route table.
     pub fn evaluate(
         &self,
@@ -106,6 +120,29 @@ impl RequestEvaluator {
         headers: &HashMap<String, String>,
         body_hash: Option<String>,
         body_length: u64,
+    ) -> Result<EvaluationResult, crate::error::ProtectError> {
+        self.evaluate_with_execution_nonce(
+            method,
+            path,
+            query,
+            headers,
+            body_hash,
+            body_length,
+            None,
+        )
+    }
+
+    /// Evaluate an incoming HTTP request with an optional direct-proxy nonce.
+    #[allow(clippy::too_many_arguments)]
+    pub fn evaluate_with_execution_nonce(
+        &self,
+        method: HttpMethod,
+        path: &str,
+        query: &HashMap<String, String>,
+        headers: &HashMap<String, String>,
+        body_hash: Option<String>,
+        body_length: u64,
+        execution_nonce: Option<&SignedExecutionNonce>,
     ) -> Result<EvaluationResult, crate::error::ProtectError> {
         let request_id = uuid::Uuid::now_v7().to_string();
         let caller = caller_identity_from_headers(headers);
@@ -125,6 +162,7 @@ impl RequestEvaluator {
             requested_tool_server: None,
             requested_tool_name: None,
             requested_arguments: None,
+            execution_nonce,
             model_metadata: None,
             policy: policy_mode(matched_policy),
         })?;
@@ -153,6 +191,7 @@ impl RequestEvaluator {
             tool_name,
             arguments,
             model_metadata,
+            execution_nonce,
             ..
         } = request;
         let (route_pattern, matched_policy, _) = self.match_route_with_status(method, &path);
@@ -174,6 +213,7 @@ impl RequestEvaluator {
             requested_tool_server: tool_server.as_deref(),
             requested_tool_name: tool_name.as_deref(),
             requested_arguments: Some(&arguments),
+            execution_nonce: execution_nonce.as_ref(),
             model_metadata: model_metadata.as_ref(),
             policy: policy_mode(matched_policy),
         })?;
@@ -243,6 +283,7 @@ impl From<HttpAuthorityEvaluation> for EvaluationResult {
             verdict: value.verdict,
             receipt: value.receipt,
             evidence: value.evidence,
+            execution_nonce: value.execution_nonce,
         }
     }
 }
@@ -343,8 +384,9 @@ fn credential_value_is_well_formed(value: &str) -> bool {
 mod tests {
     use super::*;
     use chio_core_types::capability::{
-        CapabilityToken, CapabilityTokenBody, ChioScope, Constraint, ModelMetadata,
-        ModelSafetyTier, Operation, ProvenanceEvidenceClass, ToolGrant,
+        governance::ProvenanceEvidenceClass,
+        scope::{ChioScope, Constraint, ModelMetadata, ModelSafetyTier, Operation, ToolGrant},
+        token::{CapabilityToken, CapabilityTokenBody},
     };
     use chio_http_core::{
         http_status_scope, CHIO_DECISION_RECEIPT_ID_KEY, CHIO_HTTP_STATUS_SCOPE_DECISION,

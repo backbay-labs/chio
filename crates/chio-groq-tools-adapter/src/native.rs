@@ -4,11 +4,11 @@
 //! Groq renders tool calls as `choices[].message.tool_calls[]` entries and
 //! consumes tool results as `tool` role messages on the next turn. The two
 //! structs here are the adapter's normalized projection of those wire shapes:
-//! the OpenAI-compatible `tool_calls[].function.{name, arguments}` envelope is
-//! parsed into a [`FunctionCallPart`] (with `arguments` decoded from its
-//! JSON-encoded string into a [`serde_json::Value`]), and a gated tool result
-//! is held as a [`FunctionResponsePart`] before it is lowered onto a `tool`
-//! message. Pinned to API version `2025-04` (see
+//! the OpenAI-compatible `tool_calls[].{id,function}` envelope is parsed into a
+//! [`FunctionCallPart`] (with `arguments` decoded from its JSON-encoded string
+//! into a [`serde_json::Value`]), and a gated tool result is held as a
+//! [`FunctionResponsePart`] before it is lowered onto a `tool` message. Pinned
+//! to API version `2025-04` (see
 //! [`crate::transport::GROQ_API_VERSION`]).
 
 use serde::{Deserialize, Serialize};
@@ -21,6 +21,8 @@ use serde::{Deserialize, Serialize};
 /// arguments object.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FunctionCallPart {
+    /// Provider-native `tool_calls[].id`, used as the stable invocation id.
+    pub id: String,
     /// Tool name from `tool_calls[].function.name`.
     pub name: String,
     /// Decoded `tool_calls[].function.arguments` JSON object.
@@ -29,8 +31,9 @@ pub struct FunctionCallPart {
 
 impl FunctionCallPart {
     /// Construct a freshly-typed function-call part.
-    pub fn new(name: impl Into<String>, args: serde_json::Value) -> Self {
+    pub fn new(id: impl Into<String>, name: impl Into<String>, args: serde_json::Value) -> Self {
         Self {
+            id: id.into(),
             name: name.into(),
             args,
         }
@@ -41,22 +44,22 @@ impl FunctionCallPart {
 ///
 /// Groq consumes a tool result as a message
 /// `{ "role": "tool", "tool_call_id": "...", "content": "<json-string>" }`.
-/// This struct carries the matching function name and the gated JSON result
+/// This struct carries the matching tool call id and the gated JSON result
 /// payload; the caller serializes it onto the `tool` message it appends to the
 /// conversation.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FunctionResponsePart {
-    /// Function name matching [`FunctionCallPart::name`].
-    pub name: String,
+    /// Provider-native `tool_call_id` matching [`FunctionCallPart::id`].
+    pub tool_call_id: String,
     /// JSON object Groq consumes as the tool result content.
     pub response: serde_json::Value,
 }
 
 impl FunctionResponsePart {
     /// Construct a function-response part.
-    pub fn new(name: impl Into<String>, response: serde_json::Value) -> Self {
+    pub fn new(tool_call_id: impl Into<String>, response: serde_json::Value) -> Self {
         Self {
-            name: name.into(),
+            tool_call_id: tool_call_id.into(),
             response,
         }
     }
@@ -70,7 +73,7 @@ mod tests {
 
     #[test]
     fn function_call_round_trips() {
-        let part = FunctionCallPart::new("get_weather", json!({"city": "Paris"}));
+        let part = FunctionCallPart::new("call_weather_1", "get_weather", json!({"city": "Paris"}));
         let bytes = serde_json::to_vec(&part).unwrap();
         let back: FunctionCallPart = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(part, back);
@@ -78,7 +81,7 @@ mod tests {
 
     #[test]
     fn function_response_round_trips() {
-        let part = FunctionResponsePart::new("get_weather", json!({"temp": 18}));
+        let part = FunctionResponsePart::new("call_weather_1", json!({"temp": 18}));
         let bytes = serde_json::to_vec(&part).unwrap();
         let back: FunctionResponsePart = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(part, back);

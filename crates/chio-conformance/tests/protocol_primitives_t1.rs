@@ -1,9 +1,9 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use chio_core::capability::{
-    compute_attenuation_witness, scope_hash, AttenuationProof, CapabilityToken,
-    CapabilityTokenAttenuationBody, CapabilityTokenBody, Caveat, CaveatKind, ChioScope, Operation,
-    ToolGrant,
+    attenuation::{compute_attenuation_witness, scope_hash, AttenuationProof},
+    scope::{ChioScope, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenAttenuationBody, CapabilityTokenBody},
 };
 use chio_core::crypto::Keypair;
 
@@ -44,11 +44,7 @@ fn capability_unknown_schema_rejected() {
                 expires_at: 2,
                 delegation_chain: vec![],
             },
-            caveats: vec![Caveat {
-                kind: CaveatKind::RestrictTool,
-                predicate: "srv/tool".to_string(),
-                sig: None,
-            }],
+            caveats: vec![],
             scope_attenuations: vec![],
             attenuation_proof: AttenuationProof {
                 parent_scope_hash: scope_hash(&parent).unwrap(),

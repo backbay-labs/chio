@@ -12,6 +12,17 @@ Capability leases bind issuer, subject, scope digest, action class, and validity
 
 Destructive authorization adds a signed governance receipt. The receipt must bind the lease id, workflow id, step hash, issuing kernel, and validity window before a destructive step can proceed.
 
+## Module Map
+
+- `lib.rs` is the crate root. It declares modules and re-exports only the upstream `chio-core-types` and `chio-listing` namespaces needed by this crate's public types.
+- `lease.rs` owns capability lease action classes, lease artifacts, signed lease aliases, and lease verification.
+- `authorization.rs` owns governance receipt artifacts and destructive or step-boundary authorization checks.
+- `generic.rs` owns generic governance charter, case, issue request, evidence, and finding data models plus artifact builders.
+- `evaluation.rs` owns generic governance case evaluation and the effective-state mapping.
+- `validation.rs` owns crate-local non-empty and SHA-256 hex validators.
+- `error.rs` owns public authorization errors.
+- `tests.rs` keeps crate-local behavior tests out of the public API root.
+
 ## Governance Cases
 
 Generic governance cases evaluate listing identity, charter scope, activation binding, appeal or supersession targets, and effective admission impact. Failures return structured findings instead of panicking so callers can report why a listing is disputed, frozen, sanctioned, or clear.

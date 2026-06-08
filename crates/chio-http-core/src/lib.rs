@@ -95,5 +95,5 @@ pub use chio_core_types::plan::{
     PlanEvaluationRequest, PlanEvaluationResponse, PlanVerdict, PlannedToolCall, PlannedToolCallId,
     StepVerdict, StepVerdictKind,
 };
-pub use chio_core_types::receipt::GuardEvidence;
+pub use chio_core_types::receipt::metadata::GuardEvidence;
 pub use chio_core_types::{sha256_hex, Error, Result};

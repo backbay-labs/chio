@@ -9,7 +9,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use chio_core::crypto::Keypair;
-use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, GuardEvidence, ToolCallAction};
+use chio_core::receipt::{
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    metadata::GuardEvidence,
+};
 use chio_egress_contract::HttpEgressContract;
 use chio_siem::alerting::{
     Alert, AlertBackend, AlertSeverity, AlertingConfig, AlertingExporter, OpsGenieBackend,
@@ -42,19 +45,20 @@ fn allow_receipt(id: &str) -> ChioReceipt {
             action: ToolCallAction::from_parameters(serde_json::json!({}))
                 .expect("action parameters serialize"),
             decision: Some(Decision::Allow),
-            receipt_kind: chio_core::ReceiptKind::MediatedDecision,
-            boundary_class: chio_core::BoundaryClass::Prevent,
+            receipt_kind: chio_core::receipt::kinds::ReceiptKind::MediatedDecision,
+            boundary_class: chio_core::receipt::kinds::BoundaryClass::Prevent,
             observation_outcome: None,
-            tool_origin: chio_core::ToolOrigin::CallerExecuted,
-            redaction_mode: chio_core::RedactionMode::None,
+            tool_origin: chio_core::receipt::kinds::ToolOrigin::CallerExecuted,
+            redaction_mode: chio_core::receipt::kinds::RedactionMode::None,
             actor_chain: Vec::new(),
             content_hash: "c".to_string(),
             policy_hash: "p".to_string(),
             evidence: Vec::new(),
             metadata: None,
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
         },
         &keypair,
     )
@@ -76,11 +80,11 @@ fn deny_receipt(id: &str, guard: &str) -> ChioReceipt {
                 reason: "blocked by policy".to_string(),
                 guard: guard.to_string(),
             }),
-            receipt_kind: chio_core::ReceiptKind::MediatedDecision,
-            boundary_class: chio_core::BoundaryClass::Prevent,
+            receipt_kind: chio_core::receipt::kinds::ReceiptKind::MediatedDecision,
+            boundary_class: chio_core::receipt::kinds::BoundaryClass::Prevent,
             observation_outcome: None,
-            tool_origin: chio_core::ToolOrigin::CallerExecuted,
-            redaction_mode: chio_core::RedactionMode::None,
+            tool_origin: chio_core::receipt::kinds::ToolOrigin::CallerExecuted,
+            redaction_mode: chio_core::receipt::kinds::RedactionMode::None,
             actor_chain: Vec::new(),
             content_hash: "c".to_string(),
             policy_hash: "p".to_string(),
@@ -90,9 +94,10 @@ fn deny_receipt(id: &str, guard: &str) -> ChioReceipt {
                 details: None,
             }],
             metadata: None,
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
         },
         &keypair,
     )

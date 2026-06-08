@@ -11,6 +11,13 @@
 //! `wasm32-unknown-unknown` and other embedded targets. The default `std`
 //! feature re-enables `std`-backed error impls via `thiserror`, along with
 //! the `std` feature on every transitive dependency.
+//!
+//! # Generated wire bindings
+//!
+//! Schema-derived Rust bindings live under `src/_generated/` as regenerate-only
+//! artifacts. They are deliberately not included in this crate root yet: the
+//! stable public API remains the hand-maintained no_std-compatible protocol
+//! modules below until generated wire bindings get an explicit API decision.
 
 #![cfg_attr(all(not(feature = "std"), not(test)), no_std)]
 
@@ -40,24 +47,6 @@ mod signer_binding;
 pub use canonical::{
     canonical_json_bytes, canonical_json_string, canonicalize, CanonicalBytes, CanonicalJsonWitness,
 };
-pub use capability::delegate;
-pub use capability::{
-    canonicalize_attestation_verifier, compute_attenuation_witness, scope_hash,
-    validate_attenuation, validate_attenuation_proof, validate_delegation_chain,
-    verify_attenuation_witness, Attenuation, AttenuationProof, AttenuationWitness,
-    AttestationTrustError, AttestationTrustPolicy, AttestationTrustRule, CapabilityNegotiation,
-    CapabilityToken, CapabilityTokenAttenuationBody, CapabilityTokenBody,
-    CapabilityTokenSigningBody, Caveat, CaveatKind, ChioScope, Constraint, ContentReviewTier,
-    DelegationLink, DelegationLinkBody, GovernedApprovalDecision, GovernedApprovalToken,
-    GovernedApprovalTokenBody, GovernedAutonomyContext, GovernedAutonomyTier,
-    GovernedCallChainContext, GovernedCommerceContext, GovernedTransactionIntent,
-    GrantSubsetRelation, MeteredBillingContext, MeteredBillingQuote, MeteredSettlementMode,
-    ModelMetadata, ModelSafetyTier, MonetaryAmount, Operation, PromptGrant,
-    ResolvedRuntimeAssurance, ResourceGrant, RuntimeAssuranceTier, RuntimeAttestationEvidence,
-    ScopeHash, SqlOperationClass, ToolGrant, WorkloadCredentialKind, WorkloadIdentity,
-    WorkloadIdentityError, WorkloadIdentityScheme, CHIO_CAPABILITIES_SCHEMA,
-    CHIO_CAPABILITY_SCHEMA,
-};
 pub use crypto::{
     sha256_hex, Ed25519Backend, Keypair, PublicKey, Signature, SigningAlgorithm, SigningBackend,
 };
@@ -80,22 +69,6 @@ pub use oracle::{OracleConversionEvidence, CHIO_ORACLE_CONVERSION_EVIDENCE_SCHEM
 pub use plan::{
     PlanEvaluationRequest, PlanEvaluationResponse, PlanVerdict, PlannedToolCall, PlannedToolCallId,
     StepVerdict, StepVerdictKind,
-};
-pub use receipt::{
-    canonical_parent_receipt_ids, chio_receipt_id, parent_set_hash, ActorRef, BoundaryClass,
-    ChildRequestReceipt, ChildRequestReceiptBody, ChioReceipt, ChioReceiptBody, ChioReceiptIdInput,
-    Decision, EconomicAmountBoundsReceiptMetadata, EconomicAuthorizationMode,
-    EconomicAuthorizationReceiptMetadata, EconomicAuthorizationReceiptMetadataVersion,
-    EconomicBudgetReceiptMetadata, EconomicLiabilityReceiptMetadata,
-    EconomicMerchantReceiptMetadata, EconomicMeteringReceiptMetadata, EconomicPayeeReceiptMetadata,
-    EconomicPayerReceiptMetadata, EconomicPricingBasisReceiptMetadata, EconomicRailReceiptMetadata,
-    EconomicSettlementReceiptMetadata, FinancialReceiptMetadata, GovernedApprovalReceiptMetadata,
-    GovernedAutonomyReceiptMetadata, GovernedCommerceReceiptMetadata,
-    GovernedTransactionReceiptMetadata, GuardEvidence, MeteredBillingReceiptMetadata,
-    MeteredUsageEvidenceReceiptMetadata, ObservationOutcome, ReceiptAttributionMetadata,
-    ReceiptDagParent, ReceiptHybridLogicalClock, ReceiptKind, ReceiptSemanticFields, RedactionMode,
-    RuntimeAssuranceReceiptMetadata, SettlementStatus, SignedExportEnvelope, ToolCallAction,
-    ToolOrigin, TrustLevel, CHIO_RECEIPT_SCHEMA,
 };
 pub use runtime_attestation::{
     verifier_family_for_attestation_schema, AttestationVerifierFamily,

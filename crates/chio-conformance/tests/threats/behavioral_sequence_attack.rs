@@ -12,11 +12,14 @@
 
 use std::sync::Arc;
 
-use chio_core::capability::{CapabilityToken, CapabilityTokenBody, ChioScope};
+use chio_core::capability::{
+    scope::ChioScope,
+    token::{CapabilityToken, CapabilityTokenBody},
+};
 use chio_core::crypto::Keypair;
 use chio_guards::{BehavioralSequenceGuard, SequencePolicy};
 use chio_http_session::{RecordParams, SessionJournal};
-use chio_kernel::{Guard, GuardContext, ToolCallRequest, Verdict};
+use chio_kernel::{Guard, GuardContext, GuardDecision, ToolCallRequest, Verdict};
 
 fn request_for(tool_name: &str) -> (ToolCallRequest, ChioScope, String, String) {
     let kp = Keypair::generate();
@@ -44,6 +47,7 @@ fn request_for(tool_name: &str) -> (ToolCallRequest, ChioScope, String, String) 
         agent_id: agent_id.clone(),
         arguments: serde_json::json!({}),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
@@ -68,9 +72,9 @@ fn guard_ctx<'a>(
     }
 }
 
-fn verdict(result: Result<Verdict, chio_kernel::KernelError>) -> Verdict {
+fn verdict(result: Result<GuardDecision, chio_kernel::KernelError>) -> Verdict {
     match result {
-        Ok(verdict) => verdict,
+        Ok(decision) => decision.verdict,
         Err(error) => panic!("guard evaluation must not error: {error}"),
     }
 }

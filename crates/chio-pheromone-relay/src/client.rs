@@ -3,7 +3,7 @@ use crate::{
     PHEROMONE_BATCH_RELAY_PATH,
 };
 use chio_core_types::Keypair;
-use chio_federation::PheromoneGossipBatch;
+use chio_federation::pheromone_gossip::PheromoneGossipBatch;
 use chio_pheromone_runtime::PheromoneReceiveReport;
 use std::time::Duration;
 

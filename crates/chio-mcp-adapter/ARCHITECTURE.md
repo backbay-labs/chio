@@ -2,7 +2,20 @@
 
 ## Boundaries
 
-- `lib.rs` owns the public wrapped-MCP adapter facade, adapted server/provider wrappers, serialized transport wrapper, and kernel-facing error mapping.
+- `lib.rs` declares the public adapter modules and keeps existing edge, native,
+  transport, framing, manifest, loaded-weights, and fuzz boundaries intact. It
+  does not flatten the moved APIs at the crate root.
+- `adapter.rs` owns `McpAdapterConfig`, `McpAdapter`, and
+  `SerializedMcpTransport`.
+- `server.rs` owns `AdaptedMcpServer` and its kernel `ToolServerConnection`
+  implementation.
+- `resources.rs` owns `AdaptedMcpResourceProvider` and resource/completion
+  forwarding.
+- `prompts.rs` owns `AdaptedMcpPromptProvider` and prompt/completion
+  forwarding.
+- `result_mapping.rs` owns wrapped MCP tool-result normalization.
+- `errors.rs` owns adapter-error to kernel-error mapping.
+- `url_elicitation.rs` owns URL-required elicitation admission and validation.
 - `transport.rs` owns stdio JSON-RPC framing, upstream request routing, bounded frame reads, initialization, notification buffering, nested-flow request handling, task runtime state, and cancellation propagation.
 - `native.rs` owns the native Chio authoring surface built around `NativeChioServiceBuilder`, including manifest emission and in-process tool/resource/prompt handlers.
 - `loaded_weights.rs` owns the explicit "unavailable" implementation for MCP surfaces that cannot expose native model bytes.

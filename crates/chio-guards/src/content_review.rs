@@ -36,8 +36,8 @@ use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use chio_core::capability::Constraint;
-use chio_kernel::{Guard, GuardContext, KernelError, Verdict};
+use chio_core::capability::scope::Constraint;
+use chio_kernel::{Guard, GuardContext, GuardDecision, KernelError, Verdict};
 
 use crate::action::{extract_action_checked, ToolAction};
 
@@ -267,32 +267,32 @@ impl Guard for ContentReviewGuard {
         "content-review"
     }
 
-    fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
         if !self.enabled {
-            return Ok(Verdict::Allow);
+            return Ok(GuardDecision::allow());
         }
 
         let action = match extract_action_checked(&ctx.request.tool_name, &ctx.request.arguments) {
             Ok(action) => action,
-            Err(_) => return Ok(Verdict::Deny),
+            Err(_) => return Ok(GuardDecision::deny(Vec::new())),
         };
         let (service, endpoint) = match action {
             ToolAction::ExternalApiCall { service, endpoint } => (service, endpoint),
-            _ => return Ok(Verdict::Allow),
+            _ => return Ok(GuardDecision::allow()),
         };
 
         // 1. Monetary approval gating: check the matched grant for a
         //    RequireApprovalAbove constraint and compare to the amount
         //    surfaced in the request body / governed intent.
         if let Some(verdict) = evaluate_amount_threshold(ctx, &service)? {
-            return Ok(verdict);
+            return Ok(GuardDecision::from_verdict(verdict));
         }
 
         // 2. Extract outbound text from the common argument shapes.
         let text = extract_outbound_text(&ctx.request.arguments);
         let text = match text {
             Some(t) if !t.is_empty() => t,
-            _ => return Ok(Verdict::Allow),
+            _ => return Ok(GuardDecision::allow()),
         };
 
         let rules = self.rules_for(&service);
@@ -328,10 +328,10 @@ impl Guard for ContentReviewGuard {
                 detected_categories = ?categories,
                 "content-review denied outbound message"
             );
-            return Ok(Verdict::Deny);
+            return Ok(GuardDecision::deny(Vec::new()));
         }
 
-        Ok(Verdict::Allow)
+        Ok(GuardDecision::allow())
     }
 }
 

@@ -4,10 +4,10 @@ use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
-use crate::capability::{CHIO_CAPABILITIES_SCHEMA, CHIO_CAPABILITY_SCHEMA};
+use crate::capability::{features::CHIO_CAPABILITIES_SCHEMA, token::CHIO_CAPABILITY_SCHEMA};
 use crate::error::{Error, Result};
 use crate::oracle::CHIO_ORACLE_CONVERSION_EVIDENCE_SCHEMA;
-use crate::receipt::{CHIO_RECEIPT_LINEAGE_STATEMENT_SCHEMA, CHIO_RECEIPT_SCHEMA};
+use crate::receipt::{body::CHIO_RECEIPT_SCHEMA, lineage::CHIO_RECEIPT_LINEAGE_STATEMENT_SCHEMA};
 use crate::runtime_attestation::{
     AWS_NITRO_ATTESTATION_SCHEMA, AZURE_MAA_ATTESTATION_SCHEMA,
     ENTERPRISE_VERIFIER_ATTESTATION_SCHEMA, GOOGLE_CONFIDENTIAL_VM_ATTESTATION_SCHEMA,

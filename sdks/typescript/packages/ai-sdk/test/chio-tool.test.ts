@@ -81,6 +81,35 @@ function allowReceipt(id = "r-allow"): ChioReceipt {
   };
 }
 
+function advisoryEvaluationResponse(id = "r-advisory"): Record<string, unknown> {
+  return {
+    schema: "chio.sidecar.advisory-evaluation.v1",
+    authorization: false,
+    authorizationBasis: "advisory_only",
+    receipt: {
+      id,
+      receipt_kind: "advisory_evaluation",
+      boundary_class: "advisory_only",
+      observation_outcome: "evaluated",
+      tool_origin: "host_executed_unmediated",
+      redaction_mode: "none",
+      trust_level: "advisory",
+    },
+  };
+}
+
+function advisoryReceipt(id = "r-advisory"): ChioReceipt {
+  return {
+    id,
+    receipt_kind: "advisory_evaluation",
+    boundary_class: "advisory_only",
+    observation_outcome: "evaluated",
+    tool_origin: "host_executed_unmediated",
+    redaction_mode: "none",
+    trust_level: "advisory",
+  };
+}
+
 function denyReceipt(reason = "no permission", guard = "TestGuard", id = "r-deny"): ChioReceipt {
   return {
     id,
@@ -639,6 +668,40 @@ describe("chioTool: allow path invokes underlying execute", () => {
 
     const result = await wrapped.execute!({ n: 21 });
     expect(result).toEqual({ doubled: 42 });
+  });
+
+  it("rejects advisory evaluation wrappers as execution authorization", async () => {
+    const { fetch } = fakeFetch([advisoryEvaluationResponse()]);
+    const client = new ChioClient({ fetch });
+
+    await expect(
+      client.evaluateToolCall({
+        capability_id: "cap-1",
+        tool_server: "math",
+        tool_name: "double",
+        parameters: { n: 21 },
+      }),
+    ).rejects.toMatchObject({
+      code: "chio_invalid_receipt",
+      message: expect.stringContaining("advisory evaluation"),
+    });
+  });
+
+  it("rejects bare advisory receipts as execution authorization", async () => {
+    const { fetch } = fakeFetch([advisoryReceipt()]);
+    const client = new ChioClient({ fetch });
+
+    await expect(
+      client.evaluateToolCall({
+        capability_id: "cap-1",
+        tool_server: "math",
+        tool_name: "double",
+        parameters: { n: 21 },
+      }),
+    ).rejects.toMatchObject({
+      code: "chio_invalid_receipt",
+      message: expect.stringContaining("advisory receipt"),
+    });
   });
 
   it("lifts receipt.verdict into decision when sidecar omits decision", async () => {

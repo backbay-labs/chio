@@ -4,10 +4,11 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use chio_core::capability::{ChioScope, MonetaryAmount, Operation, ToolGrant};
+use chio_core::capability::scope::{ChioScope, MonetaryAmount, Operation, ToolGrant};
 use chio_core::crypto::Keypair;
 use chio_core::receipt::{
-    ChioReceipt, ChioReceiptBody, Decision, ReceiptAttributionMetadata, ToolCallAction,
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    metadata::ReceiptAttributionMetadata,
 };
 use chio_credentials::{
     PortableNegativeEventEvidenceKind, PortableNegativeEventEvidenceReference,
@@ -181,9 +182,10 @@ fn make_receipt(
                     grant_index: Some(0),
                 }
             })),
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: kernel_kp.public_key(),
+            bbs_projection_version: None,
         },
         kernel_kp,
     )

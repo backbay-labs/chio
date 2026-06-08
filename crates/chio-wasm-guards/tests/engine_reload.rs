@@ -1,4 +1,7 @@
-use chio_core::capability::{CapabilityToken, CapabilityTokenBody, ChioScope};
+use chio_core::capability::{
+    scope::ChioScope,
+    token::{CapabilityToken, CapabilityTokenBody},
+};
 use chio_core::crypto::Keypair;
 use chio_kernel::{Guard, GuardContext, ToolCallRequest, Verdict};
 use chio_wasm_guards::{
@@ -91,6 +94,7 @@ fn make_context_request() -> TestResult<ToolCallRequest> {
         agent_id: "agent-1".to_string(),
         arguments: serde_json::json!({}),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
@@ -111,7 +115,7 @@ fn evaluate_guard(guard: &WasmGuard) -> TestResult<Verdict> {
         session_filesystem_roots: None,
         matched_grant_index: None,
     };
-    Ok(guard.evaluate(&ctx)?)
+    Ok(guard.evaluate(&ctx)?.verdict)
 }
 
 #[test]

@@ -32,8 +32,8 @@ You will need:
   - A Go 1.22+ toolchain or a C++23 compiler for the in-repo Go and C++
     peers (these are not bundled in the source-installed crate; see "Peer
     coverage" below).
-  - Or, no peer toolchain at all if you fetch the pre-built peer
-    binaries via `chio conformance fetch-peers`.
+  - Or, no peer toolchain at all after release-published peer artifacts exist
+    for your language and target in `peers.lock.toml`.
 
 ## Quickstart
 
@@ -46,6 +46,7 @@ cargo install --git https://github.com/backbay-labs/chio chio-cli
 cargo install --git https://github.com/backbay-labs/chio chio-conformance
 
 # 2. Fetch sha256-pinned peer binaries for the languages you care about.
+#    This works only after matching lockfile rows are release-published.
 chio conformance fetch-peers --language python
 
 # 3. Run the harness against the chosen peer and emit a JSON report.
@@ -53,6 +54,16 @@ chio conformance run --peer python --report json --output /tmp/report.json
 ```
 
 Each step is described in detail below.
+
+Pre-release source checkouts currently keep peer rows in `peers.lock.toml`
+with `published = false`. In that state, use source/toolchain execution for
+external peers, or run the lockfile shape check explicitly with
+`chio conformance fetch-peers --check --allow-unpublished-only`. The
+unpublished-only check is not an external consumer smoke test and must not be
+treated as evidence that a pre-built peer binary ran.
+Project PRs run only that shape check while the repo is pre-release; scheduled
+and manual conformance-matrix runs keep the real external-consumer smoke
+release-blocking once peer artifacts are published.
 
 ## 1. Install the conformance crate and the `chio` binary
 
@@ -117,9 +128,22 @@ chio conformance fetch-peers --check
 ```
 
 This parses and validates the lockfile shape, prints the resolved path,
-and lists each entry without making any network calls. Use it in CI
-preflight checks where the actual fetch belongs to a later step, or to
-debug a corrupted lockfile.
+and lists each entry without making any network calls. It fails if the
+selected set contains zero published entries, so CI cannot pass a release
+gate by selecting rows that would all be skipped. Use it in CI preflight
+checks where the actual fetch belongs to a later step, or to debug a
+corrupted lockfile.
+
+Pre-release CI jobs that only validate the lockfile before any peer
+artifact has been uploaded must opt in explicitly:
+
+```bash
+chio conformance fetch-peers --check --allow-unpublished-only
+```
+
+The flag is rejected for real downloads; `fetch-peers` still requires at
+least one selected `published = true` entry before it creates or fetches
+peer binaries.
 
 ### Download binaries for a single language
 
@@ -300,15 +324,14 @@ crate that is no longer on disk.
 
 ## Unpublished peer entries
 
-The lockfile carries `published = false` entries for peers whose
-release artifacts have not been cut yet (cleanup C5 issue D). The
-`fetch-peers` subcommand SKIPS those entries with a clear message
-rather than failing the run with a sha256 mismatch:
+The lockfile may carry `published = false` entries for peers whose release
+artifacts have not been cut yet (cleanup C5 issue D). Mixed selections skip
+those entries with a clear message rather than failing with a sha256
+mismatch, but a selection with zero published rows fails:
 
 ```
 $ chio conformance fetch-peers --language python
-skipping unpublished peer `python / x86_64-unknown-linux-gnu`: lockfile entry has `published = false` (no real binary uploaded yet)
-skipping unpublished peer `python / aarch64-apple-darwin`: lockfile entry has `published = false` (no real binary uploaded yet)
+error: peers lockfile has no published entries for language filter `python`; every selected peer would be skipped
 ```
 
 Once the release pipeline cuts a real artifact, the lockfile
@@ -358,12 +381,14 @@ always wrong if the in-repo runner is happy and the fresh install is not.
 
 ## Continuous-integration story
 
-For the Chio project itself, the `external-consumer-smoke` job in
-`.github/workflows/conformance-matrix.yml` runs nightly on a fresh
-GitHub-hosted runner against a path-installed crate. That catches drift between
-the source tree and the installable package shape within 24 hours. A separate
-registry smoke should replace it only after `chio-conformance` has a
-registry-public dependency closure.
+For the Chio project itself, `.github/workflows/conformance-matrix.yml` keeps
+the peer lockfile shape fail-closed before release. Pull requests run the
+shape check but skip `external-consumer-smoke` while every peer row is
+`published = false`. Scheduled and manual runs keep that smoke release-blocking:
+after at least one peer entry is published, the job fetches and runs the peer;
+until then, it denies the scenario run rather than pretending a fresh external
+consumer executed it. A registry smoke should replace the path-installed crate
+smoke only after `chio-conformance` has a registry-public dependency closure.
 
 External consumers can copy the same pattern into their own CI:
 

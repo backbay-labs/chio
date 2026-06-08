@@ -8,6 +8,12 @@
 
 The crate is intentionally data-contract heavy: public structs model wire artifacts and validator functions enforce schema ids, required references, authority envelopes, safety gates, rollback coverage, and fail-safe drift behavior.
 
+`src/lib.rs` is the public API root. `model.rs` owns schema constants, enums,
+wire artifacts, and signed-envelope type aliases. `error.rs` owns
+`AutonomyContractError`. `validation.rs` owns contract validators and shared
+validation helpers. `tests.rs` keeps fixture and validator regression coverage
+out of the public API root.
+
 ## Trust Invariants
 
 The core security constraint is bounded execution. A validated artifact must not smuggle broader authority through malformed amounts, loose references, mismatched currencies, or unchecked automation modes.

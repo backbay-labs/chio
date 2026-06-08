@@ -10,7 +10,9 @@
 use std::sync::Arc;
 
 use chio_http_session::SessionJournal;
-use chio_kernel::{Guard, GuardContext, KernelError, Verdict};
+#[cfg(test)]
+use chio_kernel::Verdict;
+use chio_kernel::{Guard, GuardContext, GuardDecision, KernelError};
 
 // ---------------------------------------------------------------------------
 // DataFlowConfig
@@ -52,7 +54,7 @@ impl Guard for DataFlowGuard {
         "data-flow"
     }
 
-    fn evaluate(&self, _ctx: &GuardContext) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, _ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
         let snapshot = self.journal.snapshot().map_err(|e| {
             KernelError::Internal(format!("data-flow guard journal error (fail-closed): {e}"))
         })?;
@@ -61,14 +63,14 @@ impl Guard for DataFlowGuard {
         // Check bytes read limit.
         if let Some(max_read) = self.config.max_bytes_read {
             if flow.total_bytes_read >= max_read {
-                return Ok(Verdict::Deny);
+                return Ok(GuardDecision::deny(Vec::new()));
             }
         }
 
         // Check bytes written limit.
         if let Some(max_written) = self.config.max_bytes_written {
             if flow.total_bytes_written >= max_written {
-                return Ok(Verdict::Deny);
+                return Ok(GuardDecision::deny(Vec::new()));
             }
         }
 
@@ -78,11 +80,11 @@ impl Guard for DataFlowGuard {
                 .total_bytes_read
                 .saturating_add(flow.total_bytes_written);
             if total >= max_total {
-                return Ok(Verdict::Deny);
+                return Ok(GuardDecision::deny(Vec::new()));
             }
         }
 
-        Ok(Verdict::Allow)
+        Ok(GuardDecision::allow())
     }
 }
 
@@ -97,16 +99,16 @@ mod tests {
 
     fn make_ctx() -> (
         chio_kernel::ToolCallRequest,
-        chio_core::capability::ChioScope,
+        chio_core::capability::scope::ChioScope,
         String,
         String,
     ) {
         let kp = chio_core::crypto::Keypair::generate();
-        let scope = chio_core::capability::ChioScope::default();
+        let scope = chio_core::capability::scope::ChioScope::default();
         let agent_id = kp.public_key().to_hex();
         let server_id = "srv-test".to_string();
 
-        let cap_body = chio_core::capability::CapabilityTokenBody {
+        let cap_body = chio_core::capability::token::CapabilityTokenBody {
             id: "cap-test".to_string(),
             issuer: kp.public_key(),
             subject: kp.public_key(),
@@ -115,7 +117,8 @@ mod tests {
             expires_at: u64::MAX,
             delegation_chain: vec![],
         };
-        let cap = chio_core::capability::CapabilityToken::sign(cap_body, &kp).expect("sign cap");
+        let cap =
+            chio_core::capability::token::CapabilityToken::sign(cap_body, &kp).expect("sign cap");
 
         let request = chio_kernel::ToolCallRequest {
             request_id: "req-test".to_string(),
@@ -125,6 +128,7 @@ mod tests {
             agent_id: agent_id.clone(),
             arguments: serde_json::json!({"path": "/app/src/main.rs"}),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
@@ -136,7 +140,7 @@ mod tests {
 
     fn guard_ctx<'a>(
         request: &'a chio_kernel::ToolCallRequest,
-        scope: &'a chio_core::capability::ChioScope,
+        scope: &'a chio_core::capability::scope::ChioScope,
         agent_id: &'a String,
         server_id: &'a String,
     ) -> chio_kernel::GuardContext<'a> {

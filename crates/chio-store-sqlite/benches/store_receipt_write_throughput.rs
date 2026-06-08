@@ -3,7 +3,9 @@ use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_core::crypto::Keypair;
-use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction};
+use chio_core::receipt::{
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+};
 use chio_store_sqlite::SqliteReceiptStore;
 use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion};
 
@@ -45,9 +47,10 @@ fn receipt_for_index(index: u64) -> ChioReceipt {
             policy_hash: "bench-policy".to_string(),
             evidence: Vec::new(),
             metadata: None,
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
         },
         &keypair,
     ) {

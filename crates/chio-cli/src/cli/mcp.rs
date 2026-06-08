@@ -11,7 +11,7 @@
 
 use super::*;
 
-use chio_mcp_adapter::McpTransport as _;
+use chio_mcp_adapter::edge::McpTransport as _;
 
 /// Dispatch entry-point for `chio mcp wrap`.
 ///
@@ -69,12 +69,12 @@ pub(crate) fn cmd_mcp_wrap(args: &McpWrapArgs) -> Result<(), CliError> {
 }
 
 /// Load a JSON `tools/list` fixture and decode it as a slice of
-/// [`chio_mcp_adapter::McpToolInfo`]. The fixture format is the same
+/// [`chio_mcp_adapter::edge::McpToolInfo`]. The fixture format is the same
 /// shape MCP servers return, e.g. `{ "tools": [ ... ] }` or a bare
 /// array.
 pub(crate) fn load_tools_fixture(
     path: &std::path::Path,
-) -> Result<Vec<chio_mcp_adapter::McpToolInfo>, CliError> {
+) -> Result<Vec<chio_mcp_adapter::edge::McpToolInfo>, CliError> {
     let raw = std::fs::read_to_string(path).map_err(|e| {
         CliError::cli_io_error(format!("failed to read tools fixture {path:?}: {e}"))
     })?;
@@ -91,7 +91,7 @@ pub(crate) fn load_tools_fixture(
                 "tools fixture {path:?} must be a tools array or object with a 'tools' field"
             ))
         })?;
-    let tools: Vec<chio_mcp_adapter::McpToolInfo> = serde_json::from_value(serde_json::Value::Array(
+    let tools: Vec<chio_mcp_adapter::edge::McpToolInfo> = serde_json::from_value(serde_json::Value::Array(
         array,
     ))
     .map_err(|e| {

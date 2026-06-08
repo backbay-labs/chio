@@ -12,11 +12,11 @@
 //!    namespaces deny when namespace enforcement is configured.
 //! 3. **Operation class.** Upsert, delete, or index-mutation verbs are
 //!    denied when the active grant carries
-//!    [`SqlOperationClass::ReadOnly`](chio_core::capability::SqlOperationClass::ReadOnly).
+//!    [`SqlOperationClass::ReadOnly`](chio_core::capability::scope::SqlOperationClass::ReadOnly).
 //!    The reuse of `SqlOperationClass` is deliberate so a single
 //!    constraint enum covers every database-shaped grant.
 //! 4. **`top_k` ceiling.** A query whose `top_k` exceeds the grant's
-//!    [`Constraint::MaxRowsReturned`](chio_core::capability::Constraint::MaxRowsReturned)
+//!    [`Constraint::MaxRowsReturned`](chio_core::capability::scope::Constraint::MaxRowsReturned)
 //!    is denied.  The guard fails closed when `top_k` is missing from the
 //!    arguments and a ceiling is configured.
 //!
@@ -63,9 +63,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing::warn;
 
-use chio_core::capability::{ChioScope, Constraint, SqlOperationClass, ToolGrant};
+use chio_core::capability::scope::{ChioScope, Constraint, SqlOperationClass, ToolGrant};
 use chio_guards::{extract_action_checked, ToolAction};
-use chio_kernel::{GuardContext, KernelError, Verdict};
+use chio_kernel::{GuardContext, GuardDecision, KernelError};
 use thiserror::Error;
 
 /// Structured reason for a [`VectorDbGuard`] denial.
@@ -496,12 +496,12 @@ impl chio_kernel::Guard for VectorDbGuard {
         "vector-db"
     }
 
-    fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
         let tool = &ctx.request.tool_name;
         let args = &ctx.request.arguments;
         let action = match extract_action_checked(tool, args) {
             Ok(action) => action,
-            Err(_) => return Ok(Verdict::Deny),
+            Err(_) => return Ok(GuardDecision::deny(Vec::new())),
         };
 
         let database = match &action {
@@ -523,7 +523,7 @@ impl chio_kernel::Guard for VectorDbGuard {
         // through `extract_call`, which would deny any call lacking
         // vector-specific fields.
         if !self.config.looks_like_vector(&database, tool) {
-            return Ok(Verdict::Allow);
+            return Ok(GuardDecision::allow());
         }
         let call = match self.extract_call(args) {
             Ok(c) => c,
@@ -535,7 +535,7 @@ impl chio_kernel::Guard for VectorDbGuard {
                     database = %database,
                     "vector-db-guard denied: parse failed"
                 );
-                return Ok(Verdict::Deny);
+                return Ok(GuardDecision::deny(Vec::new()));
             }
         };
 
@@ -543,11 +543,11 @@ impl chio_kernel::Guard for VectorDbGuard {
             // Dry-run/debug mode still validates vector call shape so
             // malformed payloads fail closed, but skips allowlist and
             // scope enforcement once parsing succeeds.
-            return Ok(Verdict::Allow);
+            return Ok(GuardDecision::allow());
         }
 
         match self.check_with_matched_grant(&call, ctx.scope, ctx.matched_grant_index) {
-            Ok(()) => Ok(Verdict::Allow),
+            Ok(()) => Ok(GuardDecision::allow()),
             Err(reason) => {
                 warn!(
                     target: "chio.data-guards.vector",
@@ -557,7 +557,7 @@ impl chio_kernel::Guard for VectorDbGuard {
                     collection = %call.collection,
                     "vector-db-guard denied"
                 );
-                Ok(Verdict::Deny)
+                Ok(GuardDecision::deny(Vec::new()))
             }
         }
     }
@@ -712,7 +712,10 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chio_core::capability::{CapabilityToken, CapabilityTokenBody, Operation, ToolGrant};
+    use chio_core::capability::{
+        scope::{Operation, ToolGrant},
+        token::{CapabilityToken, CapabilityTokenBody},
+    };
     use chio_core::crypto::Keypair;
     use chio_kernel::{Guard, GuardContext, ToolCallRequest, Verdict};
 
@@ -924,6 +927,7 @@ mod tests {
             agent_id: "agent".to_string(),
             arguments: serde_json::json!({"namespace": "tenant-a"}),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
@@ -959,6 +963,7 @@ mod tests {
             agent_id: "agent".to_string(),
             arguments: serde_json::json!({"collection": ["docs"], "top_k": 5}),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,

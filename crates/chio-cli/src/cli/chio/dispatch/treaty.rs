@@ -15,13 +15,13 @@ pub(crate) fn cmd_chio_federation_treaty_intersect(
         ));
     }
     let treaty_scope_json = read_utf8_json_file(treaty_scope_path, "Chio treaty scope")?;
-    let treaty_scope = chio_federation::treaty_scope_from_json(&treaty_scope_json)
+    let treaty_scope = chio_federation::treaty::treaty_scope_from_json(&treaty_scope_json)
         .map_err(|error| CliError::cli_other_error(format!("Chio treaty scope: {error}")))?;
     let mut manifests = Vec::new();
     for manifest_path in manifest_paths {
         let manifest_json = read_utf8_json_file(manifest_path, "Chio governance ladder manifest")?;
         manifests.push(
-            chio_federation::governance_ladder_manifest_from_json(&manifest_json).map_err(
+            chio_federation::treaty::governance_ladder_manifest_from_json(&manifest_json).map_err(
                 |error| {
                     CliError::cli_other_error(format!("Chio governance ladder manifest: {error}"))
                 },
@@ -29,11 +29,11 @@ pub(crate) fn cmd_chio_federation_treaty_intersect(
         );
     }
     let intersection =
-        chio_federation::compute_ladder_intersection(&treaty_scope, &manifests, now_unix_ms)
+        chio_federation::treaty::compute_ladder_intersection(&treaty_scope, &manifests, now_unix_ms)
             .map_err(|error| {
             CliError::cli_other_error(format!("Chio treaty intersection: {error}"))
         })?;
-    let json = chio_federation::ladder_intersection_json(&intersection).map_err(|error| {
+    let json = chio_federation::treaty::ladder_intersection_json(&intersection).map_err(|error| {
         CliError::cli_other_error(format!("Chio treaty intersection: {error}"))
     })?;
     write_json_string(report, &format!("{json}\n"))
@@ -49,11 +49,11 @@ pub(crate) fn cmd_chio_federation_treaty_admit(
     report: &Path,
 ) -> Result<(), CliError> {
     let treaty_scope_json = read_utf8_json_file(treaty_scope_path, "Chio treaty scope")?;
-    let treaty_scope = chio_federation::treaty_scope_from_json(&treaty_scope_json)
+    let treaty_scope = chio_federation::treaty::treaty_scope_from_json(&treaty_scope_json)
         .map_err(|error| CliError::cli_other_error(format!("Chio treaty scope: {error}")))?;
     let intersection_json =
         read_utf8_json_file(ladder_intersection_path, "Chio ladder intersection")?;
-    let ladder_intersection = chio_federation::ladder_intersection_from_json(&intersection_json)
+    let ladder_intersection = chio_federation::treaty::ladder_intersection_from_json(&intersection_json)
         .map_err(|error| {
             CliError::cli_other_error(format!("Chio ladder intersection: {error}"))
         })?;
@@ -65,15 +65,15 @@ pub(crate) fn cmd_chio_federation_treaty_admit(
                     "Chio treaty evidence must use evidence_class=artifact_sha256",
                 ));
             };
-            Ok(chio_federation::CrossBoundaryEvidenceRef {
+            Ok(chio_federation::treaty::CrossBoundaryEvidenceRef {
                 evidence_class: evidence_class.to_string(),
                 artifact_sha256: artifact_sha256.to_string(),
                 verified: true,
             })
         })
         .collect::<Result<Vec<_>, CliError>>()?;
-    let admission = chio_federation::evaluate_cross_boundary_admission(
-        chio_federation::CrossBoundaryAdmissionInput {
+    let admission = chio_federation::treaty::evaluate_cross_boundary_admission(
+        chio_federation::treaty::CrossBoundaryAdmissionInput {
             treaty_scope: &treaty_scope,
             ladder_intersection: &ladder_intersection,
             expected_ladder_intersection_sha256: Some(
@@ -89,7 +89,7 @@ pub(crate) fn cmd_chio_federation_treaty_admit(
         },
     )
     .map_err(|error| CliError::cli_other_error(format!("Chio treaty admission: {error}")))?;
-    let json = chio_federation::cross_boundary_admission_report_json(&admission)
+    let json = chio_federation::treaty::cross_boundary_admission_report_json(&admission)
         .map_err(|error| CliError::cli_other_error(format!("Chio treaty admission: {error}")))?;
     write_json_string(report, &format!("{json}\n"))?;
     if admission.accepted {
@@ -227,10 +227,10 @@ mod tests {
     use super::*;
     use chio_core::crypto::Keypair;
     use chio_federation::{
-        governance_ladder_manifest_sha256, ladder_intersection_sha256,
-        GovernanceLadderActionClass, GovernanceLadderManifest, TreatyScope,
-        CHIO_FEDERATION_GOVERNANCE_LADDER_MANIFEST_SCHEMA,
-        CHIO_FEDERATION_TREATY_SCOPE_SCHEMA,
+        treaty::governance_ladder_manifest_sha256, treaty::ladder_intersection_sha256,
+        treaty::GovernanceLadderActionClass, treaty::GovernanceLadderManifest, treaty::TreatyScope,
+        treaty::CHIO_FEDERATION_GOVERNANCE_LADDER_MANIFEST_SCHEMA,
+        treaty::CHIO_FEDERATION_TREATY_SCOPE_SCHEMA,
     };
     use std::io;
 
@@ -239,7 +239,7 @@ mod tests {
         let manifest_a = treaty_manifest("kernel.buyer");
         let manifest_b = treaty_manifest("kernel.vendor");
         let scope = treaty_scope(&manifest_a, &manifest_b)?;
-        let intersection = chio_federation::compute_ladder_intersection(
+        let intersection = chio_federation::treaty::compute_ladder_intersection(
             &scope,
             &[manifest_a.clone(), manifest_b.clone()],
             1_800_000_001_000,
@@ -270,7 +270,7 @@ mod tests {
             "error should include denial reason: {error_text}"
         );
         let report_json = std::fs::read_to_string(&report_path)?;
-        let report: chio_federation::CrossBoundaryAdmissionReport =
+        let report: chio_federation::treaty::CrossBoundaryAdmissionReport =
             serde_json::from_str(&report_json)?;
         assert!(!report.accepted);
         assert_eq!(
@@ -286,7 +286,7 @@ mod tests {
         let manifest_a = treaty_manifest("kernel.buyer");
         let manifest_b = treaty_manifest("kernel.vendor");
         let scope = treaty_scope(&manifest_a, &manifest_b)?;
-        let intersection = chio_federation::compute_ladder_intersection(
+        let intersection = chio_federation::treaty::compute_ladder_intersection(
             &scope,
             &[manifest_a.clone(), manifest_b.clone()],
             1_800_000_001_000,

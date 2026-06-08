@@ -1,6 +1,6 @@
 import { canonicalizeJson } from "./json.ts";
 import { verifyEd25519Signature } from "./crypto.ts";
-import { parseJsonText } from "./errors.ts";
+import { ChioInvariantError, parseJsonText } from "./errors.ts";
 
 export type CapabilityTimeStatus = "valid" | "not_yet_valid" | "expired";
 
@@ -33,7 +33,7 @@ export interface CapabilityToken {
 
 export interface CapabilityVerification {
   signature_valid: boolean;
-  delegation_chain_valid: boolean;
+  delegation_chain_shape_valid: boolean;
   time_valid: boolean;
   time_status: CapabilityTimeStatus;
 }
@@ -73,7 +73,11 @@ function verifyDelegationChain(chain: DelegationLink[], maxDelegationDepth?: num
 }
 
 export function parseCapabilityJson(input: string): CapabilityToken {
-  return parseJsonText(input);
+  const parsed = parseJsonText<unknown>(input);
+  if (parsed === null || Array.isArray(parsed) || typeof parsed !== "object") {
+    throw new ChioInvariantError("json", "capability must be a JSON object");
+  }
+  return parsed as CapabilityToken;
 }
 
 export function capabilityBody(capability: CapabilityToken): Omit<CapabilityToken, "signature"> {
@@ -144,7 +148,7 @@ export function verifyCapability(
       capability.issuer,
       capability.signature,
     ),
-    delegation_chain_valid: verifyDelegationChain(capability.delegation_chain ?? [], maxDelegationDepth),
+    delegation_chain_shape_valid: verifyDelegationChain(capability.delegation_chain ?? [], maxDelegationDepth),
     time_valid: time_status === "valid",
     time_status,
   };

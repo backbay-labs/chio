@@ -15,6 +15,13 @@ fi
 
 # ci-workspace remains the fast regression gate.
 ./scripts/ci-workspace.sh
+cargo test -p chio-provider-conformance \
+  --features fixtures-gemini,fixtures-mistral,fixtures-groq,fixtures-ollama,fixtures-cohere \
+  --test replay_gemini \
+  --test replay_mistral \
+  --test replay_groq \
+  --test replay_ollama \
+  --test replay_cohere
 ./scripts/qualify-trust-control.sh
 ./scripts/qualify-portable-browser.sh
 ./scripts/qualify-mobile-kernel.sh
@@ -27,11 +34,64 @@ output_root="target/release-qualification"
 conformance_root="${output_root}/conformance"
 log_root="${output_root}/logs"
 coverage_root="${output_root}/coverage"
+peer_root="${output_root}/peers"
 checksum_path="${output_root}/SHA256SUMS"
 manifest_path="${output_root}/artifact-manifest.json"
 certify_seed="${output_root}/certify-release.seed"
-rm -rf "${conformance_root}" "${log_root}" "${coverage_root}"
-mkdir -p "${conformance_root}" "${log_root}" "${coverage_root}"
+rm -rf "${conformance_root}" "${log_root}" "${coverage_root}" "${peer_root}"
+mkdir -p "${conformance_root}" "${log_root}" "${coverage_root}" "${peer_root}"
+
+read_release_python_peer() {
+  python3 - <<'PY'
+import sys
+import tomllib
+
+expected_target = "x86_64-unknown-linux-gnu"
+with open("crates/chio-conformance/peers.lock.toml", "rb") as fh:
+    lock = tomllib.load(fh)
+
+selected = next(
+    (
+        peer
+        for peer in lock.get("peer", [])
+        if (
+            peer.get("language") == "python"
+            and peer.get("target") == expected_target
+            and peer.get("published", True)
+        )
+    ),
+    None,
+)
+if selected is None:
+    print(
+        "release qualification requires a published python peer for "
+        f"{expected_target} in crates/chio-conformance/peers.lock.toml",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+
+print(f"{selected['target']}\t{selected['binary']}")
+PY
+}
+
+run_external_consumer_smoke() {
+  local peer_target="$1"
+  local peer_binary="$2"
+  local report_path="${conformance_root}/external-consumer-smoke-report.json"
+
+  cargo run -p chio-cli --bin chio -- conformance fetch-peers \
+    --language python \
+    --out "${peer_root}"
+
+  cargo run -p chio-cli --bin chio -- conformance run \
+    --peer python \
+    --peer-binary "${peer_root}/python-${peer_target}/${peer_binary}" \
+    --report json \
+    --output "${report_path}"
+}
+
+IFS=$'\t' read -r release_python_target release_python_binary < <(read_release_python_peer)
+run_external_consumer_smoke "${release_python_target}" "${release_python_binary}"
 
 run_conformance_area() {
   local area="$1"

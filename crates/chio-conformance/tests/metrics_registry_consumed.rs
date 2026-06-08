@@ -11,9 +11,13 @@ use std::sync::{Mutex, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_core::capability::{
-    CapabilityToken, CapabilityTokenBody, ChioScope, Operation, ToolGrant,
+    scope::{ChioScope, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenBody},
 };
-use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, GuardEvidence, ToolCallAction};
+use chio_core::receipt::{
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    metadata::GuardEvidence,
+};
 use chio_core::session::OperationTerminalState;
 use chio_core::{sha256_hex, Hash, Keypair};
 use chio_manifest::{ToolDefinition, ToolManifest};
@@ -220,6 +224,7 @@ fn sample_receipt(keypair: &Keypair) -> Result<ChioReceipt, chio_core::Error> {
         trust_level: Default::default(),
         tenant_id: None,
         kernel_key: keypair.public_key(),
+        bbs_projection_version: None,
     };
     ChioReceipt::sign(body, keypair)
 }
@@ -275,6 +280,7 @@ fn mcp_edge_emits_chio_receipt_write_total() -> Result<(), Box<dyn Error>> {
             tool_name: "echo".to_string(),
             arguments: json!({"message": "hello"}),
             agent_id: agent.public_key().to_hex(),
+            execution_nonce: None,
             model_metadata: None,
             route_selection_metadata: None,
             peer_supports_chio_tool_streaming: false,
@@ -328,6 +334,7 @@ fn mcp_edge_emits_chio_receipt_write_total() -> Result<(), Box<dyn Error>> {
             tool_name: "echo".to_string(),
             arguments: json!({"message": "hello"}),
             agent_id: error_agent.public_key().to_hex(),
+            execution_nonce: None,
             model_metadata: None,
             route_selection_metadata: None,
             peer_supports_chio_tool_streaming: false,
@@ -377,6 +384,7 @@ fn acp_edge_emits_chio_receipt_write_total() -> Result<(), Box<dyn Error>> {
         capability: capability_for_tool(&issuer, &agent)?,
         agent_id: agent.public_key().to_hex(),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
@@ -429,6 +437,7 @@ fn acp_edge_emits_chio_receipt_write_total() -> Result<(), Box<dyn Error>> {
             capability: capability_for_tool(&error_issuer, &error_agent)?,
             agent_id: error_agent.public_key().to_hex(),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
@@ -483,6 +492,7 @@ fn a2a_edge_emits_chio_receipt_write_total() -> Result<(), Box<dyn Error>> {
         capability: capability_for_tool(&issuer, &agent)?,
         agent_id: agent.public_key().to_hex(),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
@@ -534,6 +544,7 @@ fn a2a_edge_emits_chio_receipt_write_total() -> Result<(), Box<dyn Error>> {
             capability: capability_for_tool(&error_issuer, &error_agent)?,
             agent_id: error_agent.public_key().to_hex(),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
@@ -595,6 +606,7 @@ fn http_core_emits_kernel_decision_latency_and_guard_evaluations() -> Result<(),
         requested_tool_server: None,
         requested_tool_name: None,
         requested_arguments: None,
+        execution_nonce: None,
         model_metadata: None,
         policy: chio_http_core::HttpAuthorityPolicy::SessionAllow,
     })?;
@@ -696,16 +708,17 @@ fn anchor_emits_chio_anchor_round_latency_seconds() -> Result<(), Box<dyn Error>
 fn federation_emits_chio_federation_hop_total_and_latency() -> Result<(), Box<dyn Error>> {
     let origin = Keypair::generate();
     let tool_host = Keypair::generate();
-    let cosigner = chio_federation::InProcessCoSigner::new(
+    let cosigner = chio_federation::bilateral::InProcessCoSigner::new(
         "origin-kernel",
         origin.clone(),
         tool_host.public_key(),
     );
     let receipt = sample_receipt(&tool_host)?;
-    let before = chio_federation::federation_hop_total(chio_federation::HOP_RESULT_OK);
-    let before_latency = chio_federation::federation_hop_latency_count();
+    let before =
+        chio_federation::metrics::federation_hop_total(chio_federation::metrics::HOP_RESULT_OK);
+    let before_latency = chio_federation::metrics::federation_hop_latency_count();
 
-    let dual = chio_federation::co_sign_with_origin(
+    let dual = chio_federation::bilateral::co_sign_with_origin(
         "origin-kernel",
         &origin.public_key(),
         "tool-host-kernel",
@@ -715,8 +728,9 @@ fn federation_emits_chio_federation_hop_total_and_latency() -> Result<(), Box<dy
     )?;
 
     dual.verify(&origin.public_key(), &tool_host.public_key())?;
-    let after = chio_federation::federation_hop_total(chio_federation::HOP_RESULT_OK);
-    let after_latency = chio_federation::federation_hop_latency_count();
+    let after =
+        chio_federation::metrics::federation_hop_total(chio_federation::metrics::HOP_RESULT_OK);
+    let after_latency = chio_federation::metrics::federation_hop_latency_count();
     assert!(
         after > before,
         "federation hop counter must advance through co_sign_with_origin"
@@ -725,7 +739,7 @@ fn federation_emits_chio_federation_hop_total_and_latency() -> Result<(), Box<dy
         after_latency > before_latency,
         "federation hop latency must advance through co_sign_with_origin"
     );
-    let body = chio_federation::render_federation_metrics_prometheus();
+    let body = chio_federation::metrics::render_federation_metrics_prometheus();
     assert!(body.contains(CHIO_FEDERATION_HOP_TOTAL));
     assert!(body.contains(CHIO_FEDERATION_HOP_LATENCY_SECONDS));
     assert!(body.contains("result=\"ok\""));

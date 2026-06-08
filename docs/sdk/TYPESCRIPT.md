@@ -1,6 +1,6 @@
 # Chio TypeScript SDK Reference
 
-This document covers all five Chio TypeScript packages. Each package communicates with the Chio Rust kernel via a localhost HTTP sidecar. All packages are ESM-first and work with Node.js 18+ and Bun.
+This document covers the core Chio TypeScript HTTP packages. Each package communicates with the Chio Rust kernel via a localhost HTTP sidecar. Published npm packages are release-tested on Node.js 22+ and Bun. Packages are ESM-first; `@chio-protocol/node-http`, `@chio-protocol/express`, `@chio-protocol/fastify`, and `@chio-protocol/elysia` also publish CommonJS `require` entrypoints.
 
 ## Quick Start
 
@@ -13,9 +13,15 @@ npm install @chio-protocol/express    # Express.js
 npm install @chio-protocol/fastify    # Fastify
 npm install @chio-protocol/elysia     # Elysia (Bun)
 
-# Testing and conformance utilities
-npm install @chio-protocol/conformance --save-dev
+# Test utilities ship with each public package. The internal
+# @chio-protocol/conformance workspace is not published to npm.
 ```
+
+## Runtime and Module Format
+
+- Node.js 22+ is the supported npm runtime floor.
+- Use ESM `import` for all TypeScript SDK packages.
+- `require(...)` is supported for `@chio-protocol/node-http`, `@chio-protocol/express`, `@chio-protocol/fastify`, and `@chio-protocol/elysia`.
 
 Minimal Express example:
 
@@ -42,6 +48,12 @@ All Chio TypeScript SDKs communicate with the Chio Rust kernel through localhost
 - **Configurable via**: `CHIO_SIDECAR_URL` environment variable or the `sidecarUrl` config option
 - **No native compilation or FFI**: pure TypeScript/JavaScript over HTTP (uses `fetch`)
 - **Fail-closed by default**: when the sidecar is unreachable, requests receive a 502 response. Set `onSidecarError: "allow"` to forward the request without synthesizing a Chio receipt.
+
+Use the terms precisely:
+
+- **Advisory evaluation**: `POST /v1/evaluate/advisory` and deprecated `POST /v1/evaluate` return `authorization: false`, `authorizationBasis: "advisory_only"`, and an advisory receipt. This is observability, not execution approval.
+- **Mediated evaluation**: `POST /chio/evaluate` evaluates an HTTP request through the sidecar and returns an `EvaluateResponse`.
+- **Mediated execution**: a tool call is executed only after a mediated decision receipt authorizes it. SDKs reject advisory receipts for execution authorization.
 
 ---
 
@@ -203,7 +215,7 @@ const client = new ChioSidecarClient({
   timeoutMs: 5000,
 });
 
-// Evaluate an HTTP request
+// Mediated HTTP evaluation
 const result: EvaluateResponse = await client.evaluate(arcHttpRequest);
 
 // Verify a receipt signature
@@ -223,6 +235,11 @@ class SidecarError extends Error {
   readonly statusCode: number | undefined;
 }
 ```
+
+Allow-shaped `EvaluateResponse` values must carry a receipt with
+`receipt_kind: "mediated_decision"`, `boundary_class: "prevent"`, and
+`trust_level: "mediated"`. The client rejects advisory receipts even when the
+top-level verdict says `allow`.
 
 ### Identity Extraction
 
@@ -513,95 +530,3 @@ The plugin hooks into Elysia's `onBeforeHandle` lifecycle. For each request it:
 4. Sends an evaluation request to the Chio sidecar
 5. Returns a structured error response on deny, or allows the request to proceed
 6. Attaches `X-Chio-Receipt-Id` to the response
-
----
-
-## 5. @chio-protocol/conformance
-
-Test utilities for verifying that TypeScript SDK behavior matches the Rust kernel. Intended for use in integration and conformance test suites.
-
-### Installation
-
-```bash
-npm install @chio-protocol/conformance --save-dev
-```
-
-### Canonical JSON (RFC 8785)
-
-Chio requires canonical JSON for all signed payloads. These functions produce byte-identical output to the Rust kernel.
-
-```ts
-import { canonicalJsonString, canonicalJsonBytes } from "@chio-protocol/conformance";
-
-// Returns a string with sorted keys, no extra whitespace
-const json = canonicalJsonString({ b: 2, a: 1 });
-// '{"a":1,"b":2}'
-
-// Returns UTF-8 bytes
-const bytes = canonicalJsonBytes({ b: 2, a: 1 });
-```
-
-RFC 8785 rules enforced:
-- Object keys sorted lexicographically
-- No whitespace between tokens
-- Numbers as shortest representation
-- `undefined` values are skipped (matching Rust `skip_serializing_if`)
-- Non-finite numbers throw an error
-
-### Receipt Structure Validation
-
-```ts
-import { validateReceiptStructure } from "@chio-protocol/conformance";
-
-const errors: string[] = validateReceiptStructure(receipt);
-if (errors.length > 0) {
-  console.error("Invalid receipt:", errors);
-}
-```
-
-Validates:
-- All required fields are present and correctly typed
-- `id` and `request_id` are non-empty strings
-- `method` is a valid HTTP method
-- `caller_identity_hash` is a 64-character hex string
-- `verdict` has valid structure
-- `evidence` entries have `guard_name` (string) and `verdict` (boolean)
-- `response_status` is a valid HTTP status code (100-599)
-- `timestamp` is a positive number
-- `content_hash` is a 64-character hex string
-- `kernel_key` and `signature` are non-empty strings
-
-### Content Hash Verification
-
-Verify that a receipt's content hash matches the expected request content binding:
-
-```ts
-import { verifyContentHash } from "@chio-protocol/conformance";
-
-const matches = verifyContentHash(
-  receipt,
-  "POST",          // method
-  "/pets/{petId}", // route pattern
-  "/pets/42",      // actual path
-  { limit: "10" }, // query parameters
-  "sha256hex...",  // body hash (or null)
-);
-```
-
-### Verdict Assertion
-
-```ts
-import { assertVerdictMatch } from "@chio-protocol/conformance";
-
-const errors = assertVerdictMatch(receipt.verdict, {
-  verdict: "deny",
-  reason: "rate limit exceeded",
-  guard: "velocity-guard",
-  http_status: 429,
-});
-// Returns string[] of mismatches, empty on success
-```
-
-### E2E Test Helpers
-
-The conformance package includes end-to-end test examples for Express and Fastify in `test/e2e/`. These demonstrate how to spin up a test server with Chio middleware and validate receipt production.

@@ -56,7 +56,7 @@ fn evaluate_tool_call(
         .as_ref()
         .filter(|attestation| attestation.valid)
         .map(|attestation| attestation.tier)
-        .unwrap_or(chio_core::capability::RuntimeAssuranceTier::None);
+        .unwrap_or(chio_core::capability::runtime_attestation::RuntimeAssuranceTier::None);
     let actual_workload_identity = action
         .runtime_attestation
         .as_ref()
@@ -395,7 +395,7 @@ fn evaluate_tool_call(
 
 fn workload_identity_matches(
     expected: &crate::models::WorkloadIdentityMatch,
-    actual: &chio_core::capability::WorkloadIdentity,
+    actual: &chio_core::capability::workload_identity::WorkloadIdentity,
 ) -> bool {
     expected
         .scheme

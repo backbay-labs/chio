@@ -1,6 +1,9 @@
 use std::error::Error;
 
-use chio_core::capability::{CapabilityToken, ChioScope, Operation, ToolGrant};
+use chio_core::capability::{
+    scope::{ChioScope, Operation, ToolGrant},
+    token::CapabilityToken,
+};
 use chio_core::crypto::Keypair;
 use chio_kernel::{
     ChioKernel, KernelConfig, KernelError, NestedFlowBridge, ToolCallRequest, ToolServerConnection,
@@ -90,6 +93,7 @@ fn make_request(request_id: &str, capability: &CapabilityToken) -> ToolCallReque
         agent_id: capability.subject.to_hex(),
         arguments: serde_json::json!({ "payload": "hello" }),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,

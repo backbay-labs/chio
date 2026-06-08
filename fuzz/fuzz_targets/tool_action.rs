@@ -2,7 +2,8 @@
 
 use arbitrary::{Arbitrary, Unstructured};
 use chio_core::capability::{
-    CapabilityToken, CapabilityTokenBody, ChioScope, Operation, ToolGrant,
+    scope::{ChioScope, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core::crypto::Keypair;
 use chio_guards::{EgressAllowlistGuard, McpToolGuard, ShellCommandGuard, ToolAction};
@@ -236,6 +237,7 @@ fn with_guard_context(
         agent_id: agent_id.clone(),
         arguments: args,
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
@@ -306,7 +308,7 @@ fn assert_action_contract(
                 Err(error) => panic!("shell guard should return a verdict: {error}"),
             };
             if let Some(expected) = expected_verdict {
-                assert_guard_verdict(verdict, expected);
+                assert_guard_verdict(verdict.verdict, expected);
             }
         }
         ToolAction::NetworkEgress(host, _port) => {
@@ -316,7 +318,7 @@ fn assert_action_contract(
                 Err(error) => panic!("egress guard should return a verdict: {error}"),
             };
             if let Some(expected) = expected_verdict {
-                assert_guard_verdict(verdict, expected);
+                assert_guard_verdict(verdict.verdict, expected);
             }
         }
         ToolAction::McpTool(name, _mcp_args) => {
@@ -326,7 +328,7 @@ fn assert_action_contract(
                 Err(error) => panic!("mcp guard should return a verdict: {error}"),
             };
             if let Some(expected) = expected_verdict {
-                assert_guard_verdict(verdict, expected);
+                assert_guard_verdict(verdict.verdict, expected);
             }
         }
         ToolAction::Patch(path, diff) => {

@@ -27,8 +27,8 @@
 //! 1. **Structural extract.** Each required entry MUST exist; missing
 //!    files surface as [`ReverifyError::MissingEntry`].
 //! 2. **Signature verify.** Each receipt is parsed as
-//!    [`chio_core_types::ChioReceipt`] and run through
-//!    [`ChioReceipt::verify_signature`](chio_core_types::ChioReceipt::verify_signature).
+//!    [`chio_core_types::receipt::body::ChioReceipt`] and run through
+//!    [`ChioReceipt::verify_signature`](chio_core_types::receipt::body::ChioReceipt::verify_signature).
 //!    Stub-shape receipts (current pre-1.0 goldens emit a placeholder
 //!    JSON object via the `corpus_smoke` driver) deserialize-fail; that
 //!    is recorded as `receipts_unsigned`, NOT a signature failure.
@@ -58,7 +58,7 @@ use std::collections::HashMap;
 use std::io::Read;
 use std::path::Path;
 
-use chio_core_types::ChioReceipt;
+use chio_core_types::receipt::body::ChioReceipt;
 use flate2::read::GzDecoder;
 use sha2::{Digest, Sha256};
 
@@ -125,7 +125,7 @@ pub struct ReverifyReport {
     /// Total number of receipts present in `receipts.ndjson`.
     pub receipts_total: usize,
     /// Receipts that parsed as [`ChioReceipt`] but whose
-    /// [`verify_signature`](chio_core_types::ChioReceipt::verify_signature)
+    /// [`verify_signature`](chio_core_types::receipt::body::ChioReceipt::verify_signature)
     /// returned `Ok(false)` or `Err(_)`. Both are signature failures
     /// from the gate's point of view (a structurally-valid receipt
     /// MUST verify under its embedded kernel key).

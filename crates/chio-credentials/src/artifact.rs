@@ -198,7 +198,7 @@ pub struct ChioCredentialEvidence {
     pub lineage_records: usize,
     pub uncheckpointed_receipts: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub runtime_attestation: Option<chio_core::capability::RuntimeAttestationEvidence>,
+    pub runtime_attestation: Option<chio_core::capability::runtime_attestation::RuntimeAttestationEvidence>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

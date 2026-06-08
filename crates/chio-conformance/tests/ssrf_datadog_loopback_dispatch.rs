@@ -12,7 +12,9 @@ use std::thread;
 use std::time::Duration;
 
 use chio_core::crypto::Keypair;
-use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction};
+use chio_core::receipt::{
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+};
 use chio_egress_contract::HttpEgressContract;
 use chio_siem::event::SiemEvent;
 use chio_siem::exporters::datadog::{DatadogConfig, DatadogExporter};
@@ -59,9 +61,10 @@ fn allow_event(id: &str) -> SiemEvent {
             policy_hash: "p1".to_string(),
             evidence: Vec::new(),
             metadata: None,
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
         },
         &keypair,
     )

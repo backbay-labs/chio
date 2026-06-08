@@ -2,12 +2,15 @@ use serde::{Deserialize, Serialize};
 
 use chio_core::appraisal::AttestationVerifierFamily;
 use chio_core::capability::{
-    GovernedCallChainProvenance, MeteredSettlementMode, MonetaryAmount, RuntimeAssuranceTier,
+    governance::{GovernedCallChainProvenance, MeteredSettlementMode},
+    runtime_attestation::RuntimeAssuranceTier,
+    scope::MonetaryAmount,
 };
 use chio_core::receipt::{
-    ChioReceipt, Decision, EconomicAuthorizationReceiptMetadata,
-    FinancialBudgetAuthorityReceiptMetadata, GovernedTransactionReceiptMetadata,
-    MeteredUsageEvidenceReceiptMetadata, SettlementStatus, SignedExportEnvelope,
+    body::ChioReceipt, decision::Decision, economics::EconomicAuthorizationReceiptMetadata,
+    economics::FinancialBudgetAuthorityReceiptMetadata, economics::SettlementStatus,
+    governance::GovernedTransactionReceiptMetadata,
+    governance::MeteredUsageEvidenceReceiptMetadata, lineage::SignedExportEnvelope,
 };
 use chio_core::session::ChioIdentityAssertion;
 use chio_core::{
@@ -1505,10 +1508,14 @@ pub struct OperatorReport {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use chio_core::capability::{GovernedCallChainContext, GovernedProvenanceEvidenceClass};
+    use chio_core::capability::governance::{
+        GovernedCallChainContext, GovernedProvenanceEvidenceClass,
+    };
     use chio_core::receipt::{
-        FinancialBudgetAuthorityReceiptMetadata, FinancialBudgetAuthorizeReceiptMetadata,
-        FinancialBudgetHoldAuthorityMetadata, FinancialBudgetTerminalReceiptMetadata,
+        economics::FinancialBudgetAuthorityReceiptMetadata,
+        economics::FinancialBudgetAuthorizeReceiptMetadata,
+        economics::FinancialBudgetHoldAuthorityMetadata,
+        economics::FinancialBudgetTerminalReceiptMetadata,
     };
 
     #[test]

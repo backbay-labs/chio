@@ -3437,8 +3437,10 @@ name = "chio-guard-registry"
 version = "0.1.0"
 dependencies = [
  "chio-attest-verify",
+ "chio-egress-contract",
  "chio-reputation",
  "oci-distribution",
+ "reqwest 0.13.2",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -4137,6 +4139,7 @@ dependencies = [
  "chio-core-types",
  "chio-kernel",
  "chio-runtime-core",
+ "chio-weights",
  "serde",
  "serde_json",
 ]
@@ -4151,6 +4154,8 @@ dependencies = [
  "chio-core-types",
  "chio-federation",
  "chio-kernel",
+ "chio-weights",
+ "chrono",
  "rusqlite",
  "serde",
  "serde_json",
@@ -4185,6 +4190,7 @@ dependencies = [
  "chio-core-types",
  "chio-workflow",
  "hex",
+ "jsonschema",
  "serde",
  "serde_json",
  "sha2 0.10.9",

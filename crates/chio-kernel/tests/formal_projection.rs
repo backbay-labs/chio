@@ -2,7 +2,8 @@ use std::time::Duration;
 
 use chio_core::crypto::{sha256_hex, Keypair};
 use chio_core::receipt::{
-    ChioReceipt, ChioReceiptBody, Decision, GuardEvidence, ToolCallAction, TrustLevel,
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    kinds::TrustLevel, metadata::GuardEvidence,
 };
 use chio_kernel::dpop::DpopNonceStore;
 use chio_kernel::{BudgetStore, InMemoryBudgetStore, InMemoryRevocationStore, RevocationStore};
@@ -161,6 +162,7 @@ fn receipt_projection_couples_decision_to_evidence_body() {
         trust_level: TrustLevel::Mediated,
         tenant_id: None,
         kernel_key: keypair.public_key(),
+        bbs_projection_version: None,
     };
 
     let receipt = ChioReceipt::sign(body, &keypair).test_unwrap();

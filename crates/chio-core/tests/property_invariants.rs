@@ -1,8 +1,12 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use chio_core::{
-    validate_attenuation, CapabilityToken, CapabilityTokenBody, ChioScope, Constraint, Keypair,
-    MonetaryAmount, Operation, ToolGrant,
+    capability::{
+        attenuation::validate_attenuation,
+        scope::{ChioScope, Constraint, MonetaryAmount, Operation, ToolGrant},
+        token::{CapabilityToken, CapabilityTokenBody},
+    },
+    Keypair,
 };
 use proptest::prelude::*;
 use proptest::test_runner::Config as ProptestConfig;

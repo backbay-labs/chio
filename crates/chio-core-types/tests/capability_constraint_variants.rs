@@ -11,8 +11,8 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use chio_core_types::capability::{
-    Constraint, ContentReviewTier, ModelMetadata, ModelSafetyTier, ProvenanceEvidenceClass,
-    SqlOperationClass,
+    governance::ProvenanceEvidenceClass,
+    scope::{Constraint, ContentReviewTier, ModelMetadata, ModelSafetyTier, SqlOperationClass},
 };
 use serde_json::{json, Value};
 

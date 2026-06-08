@@ -3,7 +3,10 @@
 use std::collections::BTreeSet;
 
 use chio_core::crypto::Keypair;
-use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, GuardEvidence, ToolCallAction};
+use chio_core::receipt::{
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    metadata::GuardEvidence,
+};
 use chio_siem::event::SiemEvent;
 use chio_siem::exporter::ExportError;
 use chio_siem::exporters::datadog::{DatadogConfig, DatadogExporter};
@@ -25,19 +28,20 @@ fn allow_receipt(id: &str) -> ChioReceipt {
             tool_name: "bash".to_string(),
             action,
             decision: Some(Decision::Allow),
-            receipt_kind: chio_core::ReceiptKind::MediatedDecision,
-            boundary_class: chio_core::BoundaryClass::Prevent,
+            receipt_kind: chio_core::receipt::kinds::ReceiptKind::MediatedDecision,
+            boundary_class: chio_core::receipt::kinds::BoundaryClass::Prevent,
             observation_outcome: None,
-            tool_origin: chio_core::ToolOrigin::CallerExecuted,
-            redaction_mode: chio_core::RedactionMode::None,
+            tool_origin: chio_core::receipt::kinds::ToolOrigin::CallerExecuted,
+            redaction_mode: chio_core::receipt::kinds::RedactionMode::None,
             actor_chain: Vec::new(),
             content_hash: "c1".to_string(),
             policy_hash: "p1".to_string(),
             evidence: Vec::new(),
             metadata: None,
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
         },
         &keypair,
     )
@@ -60,11 +64,11 @@ fn deny_receipt(id: &str, guard: &str) -> ChioReceipt {
                 reason: "file not permitted".to_string(),
                 guard: guard.to_string(),
             }),
-            receipt_kind: chio_core::ReceiptKind::MediatedDecision,
-            boundary_class: chio_core::BoundaryClass::Prevent,
+            receipt_kind: chio_core::receipt::kinds::ReceiptKind::MediatedDecision,
+            boundary_class: chio_core::receipt::kinds::BoundaryClass::Prevent,
             observation_outcome: None,
-            tool_origin: chio_core::ToolOrigin::CallerExecuted,
-            redaction_mode: chio_core::RedactionMode::None,
+            tool_origin: chio_core::receipt::kinds::ToolOrigin::CallerExecuted,
+            redaction_mode: chio_core::receipt::kinds::RedactionMode::None,
             actor_chain: Vec::new(),
             content_hash: "c2".to_string(),
             policy_hash: "p2".to_string(),
@@ -74,9 +78,10 @@ fn deny_receipt(id: &str, guard: &str) -> ChioReceipt {
                 details: Some("forbidden path match".to_string()),
             }],
             metadata: None,
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
         },
         &keypair,
     )

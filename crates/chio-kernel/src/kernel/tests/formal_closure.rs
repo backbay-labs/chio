@@ -27,7 +27,7 @@ impl Guard for FormalClosureGuardError {
         "formal-closure-error"
     }
 
-    fn evaluate(&self, _ctx: &GuardContext) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, _ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
         Err(KernelError::GuardDenied(
             "formal closure guard error".to_string(),
         ))

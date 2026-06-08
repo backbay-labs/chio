@@ -46,7 +46,7 @@ pub enum CliError {
     Policy(#[from] policy::PolicyError),
 
     #[error("adapter error: {0}")]
-    Adapter(#[from] chio_mcp_adapter::AdapterError),
+    Adapter(#[from] chio_mcp_adapter::edge::AdapterError),
 
     #[error("kernel error: {0}")]
     Kernel(#[from] chio_kernel::KernelError),
@@ -339,6 +339,17 @@ pub fn build_kernel(loaded_policy: policy::LoadedPolicy, kernel_kp: &Keypair) ->
 
     let mut kernel = ChioKernel::new(config);
 
+    let default_guard_profile = chio_guards::default_runtime_guard_profile();
+    if !default_guard_profile.pre_invocation_guards.is_empty() {
+        tracing::info!(
+            guard_count = default_guard_profile.pre_invocation_guards.len(),
+            "registering default runtime guard profile"
+        );
+        for guard in default_guard_profile.pre_invocation_guards {
+            kernel.add_guard(guard);
+        }
+    }
+
     if !guard_pipeline.is_empty() {
         tracing::info!(
             guard_count = guard_pipeline.len(),
@@ -346,6 +357,9 @@ pub fn build_kernel(loaded_policy: policy::LoadedPolicy, kernel_kp: &Keypair) ->
         );
         kernel.add_guard(Box::new(guard_pipeline));
     }
+
+    let mut post_invocation_pipeline = post_invocation_pipeline;
+    post_invocation_pipeline.append(default_guard_profile.post_invocation_pipeline);
 
     if !post_invocation_pipeline.is_empty() {
         tracing::info!(
@@ -383,7 +397,11 @@ pub fn configure_receipt_store(
         }
         (None, Some(url)) => {
             let token = require_control_token(control_token)?;
-            kernel.set_receipt_store(trust_control::build_remote_receipt_store(url, token)?)?;
+            kernel.set_receipt_store(
+                trust_control::service_runtime::remote_stores::build_remote_receipt_store(
+                    url, token,
+                )?,
+            )?;
         }
         (None, None) => {}
     }
@@ -411,7 +429,11 @@ pub fn configure_revocation_store(
         }
         (None, Some(url)) => {
             let token = require_control_token(control_token)?;
-            kernel.set_revocation_store(trust_control::build_remote_revocation_store(url, token)?);
+            kernel.set_revocation_store(
+                trust_control::service_runtime::remote_stores::build_remote_revocation_store(
+                    url, token,
+                )?,
+            );
         }
         (None, None) => {}
     }
@@ -442,9 +464,11 @@ pub fn configure_capability_authority(
             ));
         }
         let token = require_control_token(control_token)?;
-        kernel.set_capability_authority(trust_control::build_remote_capability_authority(
-            url, token,
-        )?);
+        kernel.set_capability_authority(
+            trust_control::service_runtime::remote_authority::build_remote_capability_authority(
+                url, token,
+            )?,
+        );
         return Ok(());
     }
 
@@ -510,7 +534,9 @@ pub fn configure_budget_store(
         }
         (None, Some(url)) => {
             let token = require_control_token(control_token)?;
-            kernel.set_budget_store(trust_control::build_remote_budget_store(url, token)?);
+            kernel.set_budget_store(
+                trust_control::service_runtime::budget::build_remote_budget_store(url, token)?,
+            );
         }
         (None, None) => {}
     }
@@ -560,7 +586,7 @@ pub fn issue_default_capabilities(
     kernel: &ChioKernel,
     agent_pk: &chio_core::PublicKey,
     default_capabilities: &[policy::DefaultCapability],
-) -> Result<Vec<chio_core::CapabilityToken>, CliError> {
+) -> Result<Vec<chio_core::capability::token::CapabilityToken>, CliError> {
     default_capabilities
         .iter()
         .cloned()
@@ -815,6 +841,29 @@ mod tests {
         };
 
         let kernel = build_kernel(loaded_policy, &keypair);
-        assert_eq!(kernel.post_invocation_hook_count(), 1);
+        assert_eq!(kernel.post_invocation_hook_count(), 2);
+    }
+
+    #[test]
+    fn build_kernel_registers_default_guard_profile() {
+        let keypair = Keypair::generate();
+        let loaded_policy = policy::LoadedPolicy {
+            format: policy::PolicyFormat::ChioYaml,
+            identity: policy::PolicyIdentity {
+                source_hash: "source".to_string(),
+                runtime_hash: "runtime".to_string(),
+            },
+            kernel: policy::KernelPolicyConfig::default(),
+            default_capabilities: Vec::new(),
+            guard_pipeline: chio_guards::GuardPipeline::new(),
+            post_invocation_pipeline: PostInvocationPipeline::new(),
+            issuance_policy: None,
+            runtime_assurance_policy: None,
+        };
+
+        let kernel = build_kernel(loaded_policy, &keypair);
+
+        assert!(kernel.guard_count() >= 2);
+        assert!(kernel.post_invocation_hook_count() >= 1);
     }
 }

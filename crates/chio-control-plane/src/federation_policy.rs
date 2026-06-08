@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
-use chio_core::federation::{
+use chio_core::federation::open_admission::{
     validate_federated_open_admission_policy, FederatedOpenAdmissionPolicyArtifact,
     SignedFederatedOpenAdmissionPolicy,
 };
@@ -270,8 +270,10 @@ mod federation_policy_error_tests {
     use super::*;
     use chio_core::crypto::Keypair;
     use chio_core::federation::{
-        FederatedOpenAdmissionPolicyArtifact, FederationArtifactKind, FederationArtifactReference,
-        CHIO_FEDERATION_OPEN_ADMISSION_POLICY_SCHEMA,
+        artifacts::{FederationArtifactKind, FederationArtifactReference},
+        open_admission::{
+            FederatedOpenAdmissionPolicyArtifact, CHIO_FEDERATION_OPEN_ADMISSION_POLICY_SCHEMA,
+        },
     };
     use chio_test_support::prelude::*;
 

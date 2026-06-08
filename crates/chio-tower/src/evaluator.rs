@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 
 use chio_core_types::crypto::Keypair;
-use chio_core_types::receipt::GuardEvidence;
+use chio_core_types::receipt::metadata::GuardEvidence;
 use chio_http_core::{
     CallerIdentity, HttpAuthority, HttpAuthorityError, HttpAuthorityInput, HttpAuthorityPolicy,
     HttpMethod, HttpReceipt, PreparedHttpEvaluation, TransportDenyInput, Verdict,
@@ -154,6 +154,7 @@ impl ChioEvaluator {
                 requested_tool_server: None,
                 requested_tool_name: None,
                 requested_arguments: None,
+                execution_nonce: None,
                 model_metadata: None,
                 policy: policy_mode(http_method),
             })
@@ -271,7 +272,10 @@ pub(crate) fn parse_method(method: &str) -> Result<HttpMethod, ChioTowerError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chio_core_types::capability::{CapabilityToken, CapabilityTokenBody, ChioScope};
+    use chio_core_types::capability::{
+        scope::ChioScope,
+        token::{CapabilityToken, CapabilityTokenBody},
+    };
     use chio_http_core::{
         http_authority_tool_grant, http_status_scope, CHIO_HTTP_STATUS_SCOPE_DECISION,
         CHIO_HTTP_STATUS_SCOPE_FINAL,

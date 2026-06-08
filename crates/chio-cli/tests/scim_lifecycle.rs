@@ -9,7 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use chio_control_plane::scim_lifecycle::{
     ScimLifecycleRegistry, CHIO_SCIM_USER_EXTENSION_SCHEMA, SCIM_CORE_USER_SCHEMA,
 };
-use chio_core::capability::{ChioScope, Operation, ToolGrant};
+use chio_core::capability::scope::{ChioScope, Operation, ToolGrant};
 use chio_core::crypto::Keypair;
 use chio_test_support::loopback::{reserve_listen_addr, skip_when_loopback_bind_denied};
 use reqwest::blocking::Client;

@@ -6,7 +6,31 @@
 
 ## Internal Surfaces
 
-The root module defines the activation, quorum, admission, reputation, and qualification data contracts plus their validators. Specialized modules own bilateral DSSE envelopes, treaty ladder intersections, revocation gossip, pheromone gossip, handshake-based trust establishment, metrics, and the default-off selective-disclosure projection.
+The root module defines the activation, quorum, admission, reputation, and qualification data contracts plus their validators. Specialized modules own bilateral DSSE envelopes, treaty ladder intersections, revocation gossip, pheromone gossip, handshake-based trust establishment, and metrics. BBS selective disclosure is owned by `chio-selective-disclosure`.
+
+## Module Map
+
+- `lib.rs`: crate documentation, dependency aliases, and public module declarations.
+- `artifacts.rs`: shared artifact references, trust scopes, delegation controls, and import controls.
+- `activation.rs`: trust-activation exchange artifact, signed activation alias, and activation validation.
+- `quorum.rs`: publisher observations, conflict evidence, anti-eclipse policy, quorum report, signed quorum alias, and quorum validation.
+- `open_admission.rs`: federated stake requirements, open-admission policy artifact, signed policy alias, and admission validation.
+- `reputation.rs`: reputation input references, sybil controls, clearing continuity, reputation clearing artifact, signed clearing alias, and clearing validation.
+- `qualification.rs`: federation scenarios, qualification outcomes, qualification cases, matrix artifact, signed matrix alias, and matrix validation.
+- `validation.rs`: shared internal non-empty, uniqueness, digest, money, and cross-contract validation helpers.
+- `error.rs`: public federation contract error type.
+- Existing modules `bilateral.rs`, `bilateral_dsse.rs`, `metrics.rs`, `pheromone_gossip.rs`, `revocation_gossip.rs`, `treaty.rs`, and `trust_establishment.rs` remain the owning modules for their specialized surfaces.
+- `bilateral_dsse.rs`: DSSE constants, signature-slice and strict Chio bilateral invocation predicate types, statement/envelope builders, signing flows, and verification helpers.
+- `bilateral_dsse/tests.rs`: DSSE encoding, signing, verification, predicate, and policy-summary regressions extracted from the inline module.
+- `bilateral_verifier.rs`: public API root for partial local verifier and strict treaty-bound review exports.
+- `bilateral_verifier/error.rs`: verifier error codes and bilateral DSSE error mapping.
+- `bilateral_verifier/state.rs`: pinned peers, receipt stores, revocation oracle, lease registry, and governance receipt store.
+- `bilateral_verifier/config.rs`: verifier configuration, action-class policy, and successful verifier output types.
+- `bilateral_verifier/treaty.rs`: strict treaty-bound Chio bilateral DSSE review and treaty-reference reconciliation.
+- `bilateral_verifier/cosign.rs`: strict Chio and signature-slice bilateral invocation verification flow.
+- `bilateral_verifier/support.rs`: private canonical JSON, digest, hash-record, and verdict validation helpers.
+- `bilateral_verifier/tests.rs`: verifier unit tests moved from the inline module.
+- `tests.rs`: crate-local root-contract behavior tests.
 
 ## Trust Invariants
 

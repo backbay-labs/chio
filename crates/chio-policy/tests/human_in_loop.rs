@@ -5,7 +5,7 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-use chio_core::capability::Constraint;
+use chio_core::capability::scope::Constraint;
 use chio_policy::models::HumanInLoopTimeoutAction;
 use chio_policy::{compile_policy, HushSpec};
 

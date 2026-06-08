@@ -11,14 +11,15 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist/",
     "README.md"
   ],
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22"
   },
   "peerDependencies": {
     "@chio-protocol/browser": "^0.1.0"
@@ -33,6 +34,9 @@
     "test": "bun test",
     "size-budget": "bash ../../scripts/size-budget.sh passkey",
     "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "typescript": "~5.7.0"
   },
   "publishConfig": {
     "access": "public"

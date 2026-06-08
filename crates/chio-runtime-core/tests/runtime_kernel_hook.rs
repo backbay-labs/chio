@@ -1,9 +1,10 @@
 use chio_core_types::capability::{
-    CapabilityToken, CapabilityTokenBody, ChioScope, GovernedTransactionIntent, Operation,
-    ToolGrant,
+    governance::GovernedTransactionIntent,
+    scope::{ChioScope, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core_types::crypto::Keypair;
-use chio_core_types::SignedExportEnvelope;
+use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_kernel::{RuntimeAdmissionContext, RuntimeAdmissionHook, ToolCallRequest};
 use chio_runtime_core::{
     runtime_admission_bundle_sha256, runtime_peer_weights_sha256, tool_args_sha256,
@@ -254,6 +255,7 @@ fn kernel_hook_accepts_governed_context_reference_and_returns_receipt_metadata(
         agent_id: cap.subject.to_hex(),
         arguments: args,
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
@@ -315,6 +317,7 @@ fn kernel_hook_preserves_millisecond_admission_time() -> Result<(), Box<dyn std:
         agent_id: cap.subject.to_hex(),
         arguments: args,
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
@@ -375,6 +378,7 @@ fn kernel_hook_bypasses_non_chio_request() -> Result<(), Box<dyn std::error::Err
         agent_id: cap.subject.to_hex(),
         arguments: serde_json::json!({"record": "vendor-ledger-7"}),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: Some(GovernedTransactionIntent {
             id: "intent-legacy-1".to_string(),
             server_id: "legacy-ledger".to_string(),
@@ -428,6 +432,7 @@ fn kernel_hook_denies_retired_runtime_context_instead_of_bypassing(
         agent_id: cap.subject.to_hex(),
         arguments: serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: Some(GovernedTransactionIntent {
             id: "intent-retired-context".to_string(),
             server_id: "vendor-ledger".to_string(),
@@ -483,6 +488,7 @@ fn kernel_hook_denies_federated_origin_without_any_runtime_context(
         agent_id: cap.subject.to_hex(),
         arguments: serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
@@ -529,6 +535,7 @@ fn kernel_hook_denies_federated_runtime_request_without_treaty_context(
         agent_id: cap.subject.to_hex(),
         arguments: args,
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
@@ -595,6 +602,7 @@ fn kernel_hook_denies_cross_boundary_request_when_treaty_store_evidence_missing(
         agent_id: cap.subject.to_hex(),
         arguments: args,
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,

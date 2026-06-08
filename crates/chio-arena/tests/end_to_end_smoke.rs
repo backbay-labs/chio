@@ -13,7 +13,10 @@ use chio_arena::{
     ScenarioVerdict, ARENA_PROMOTE_CAP_DEFAULT,
 };
 use chio_core::crypto::{sha256_hex, Keypair};
-use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
+use chio_core::receipt::{
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    kinds::TrustLevel,
+};
 use serde_json::{json, Value};
 
 #[derive(Default)]
@@ -92,6 +95,7 @@ fn deny_receipt() -> Result<ArenaReceipt, Box<dyn std::error::Error>> {
             trust_level: TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
         },
         &keypair,
     )?;

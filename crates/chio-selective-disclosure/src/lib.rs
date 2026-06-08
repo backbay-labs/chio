@@ -2,14 +2,26 @@
 
 #![forbid(unsafe_code)]
 
-use chio_core_types::canonical::canonical_json_bytes;
-use chio_core_types::receipt::{ChioReceiptBody, TrustLevel};
+#[cfg(feature = "bbs")]
+use chio_core_types::receipt::{
+    body::prepare_receipt_body_for_signing, body::ChioReceipt, signing::BbsReceiptSignature,
+    signing::CHIO_RECEIPT_BBS_SIGNATURE_ALGORITHM, signing::CHIO_RECEIPT_BBS_SIGNATURE_SCHEMA,
+};
+use chio_core_types::receipt::{body::ChioReceiptBody, kinds::TrustLevel};
 use chio_workflow::receipt::{StepRecord, WorkflowReceiptBody};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 #[cfg(feature = "bbs")]
 use std::collections::BTreeSet;
 use std::collections::HashMap;
+
+mod encoding;
+
+#[cfg(feature = "bbs")]
+use encoding::decode_message_hex;
+use encoding::{
+    bool_byte, canonical_bytes, decode_hx_field, hash_canonical, opt_string_bytes, push_message,
+    sha256_hex_bytes, subject_sha256_hex, u64_le,
+};
 
 /// Receipt-body projection version used for BBS message vectors.
 pub const PROJECTION_VERSION_RECEIPT_V1: &str = "chio.bbs-projection.receipt.v1";
@@ -29,7 +41,6 @@ pub const BBS_CIPHERSUITE_SHA256: &str = "BBS_BLS12381G1_XMD:SHA-256_SSWU_RO_";
 const MESSAGE_DOMAIN_V1: &[u8] = b"chio.bbs.message.v1";
 #[cfg(feature = "bbs")]
 const HEADER_DOMAIN_V1: &[u8] = b"chio.bbs.header.v1";
-const NONE_SENTINEL: &[u8] = b"\0";
 #[cfg(feature = "bbs")]
 const BBS_SHA256_POINT_BYTES: usize = 48;
 #[cfg(feature = "bbs")]
@@ -158,6 +169,12 @@ pub enum SelectiveDisclosureError {
     SignatureVerificationFailed,
     #[error("BBS proof verification failed")]
     ProofVerificationFailed,
+    #[error("receipt signature verification failed")]
+    ReceiptSignatureInvalid,
+    #[error("receipt does not carry BBS signature material")]
+    ReceiptBbsSignatureMissing,
+    #[error("receipt BBS binding is invalid: {0}")]
+    ReceiptBbsBindingInvalid(String),
     #[error("issuer {0} is not registered")]
     UnknownIssuer(String),
     #[error("issuer public key does not match registry")]
@@ -170,114 +187,17 @@ pub enum SelectiveDisclosureError {
     Crypto(String),
 }
 
-fn sha256_hex_bytes(bytes: &[u8]) -> String {
-    let digest = Sha256::digest(bytes);
-    hex::encode(digest)
-}
-
-fn canonical_bytes<T: Serialize>(value: &T) -> Result<Vec<u8>, SelectiveDisclosureError> {
-    canonical_json_bytes(value).map_err(|e| SelectiveDisclosureError::CanonicalJson(e.to_string()))
-}
-
-fn subject_sha256_hex<T: Serialize>(value: &T) -> Result<String, SelectiveDisclosureError> {
-    Ok(sha256_hex_bytes(&canonical_bytes(value)?))
-}
-
-fn hash_canonical<T: Serialize>(value: &T) -> Result<Vec<u8>, SelectiveDisclosureError> {
-    Ok(Sha256::digest(canonical_bytes(value)?).to_vec())
-}
-
-fn is_lower_sha256_hex(value: &str) -> bool {
-    value.len() == 64
-        && value
-            .as_bytes()
-            .iter()
-            .all(|byte| byte.is_ascii_digit() || matches!(*byte, b'a'..=b'f'))
-}
-
-#[cfg(feature = "bbs")]
-fn is_lower_even_hex(value: &str) -> bool {
-    value.len().is_multiple_of(2)
-        && value
-            .as_bytes()
-            .iter()
-            .all(|byte| byte.is_ascii_digit() || matches!(*byte, b'a'..=b'f'))
-}
-
-fn decode_hx_field(field: &str, raw: &str) -> Result<Vec<u8>, SelectiveDisclosureError> {
-    if raw.is_empty() {
-        return Err(SelectiveDisclosureError::MalformedHexField {
-            field: field.to_string(),
-            reason: "empty string is not a SHA-256 hex digest".to_string(),
-        });
-    }
-    if !is_lower_sha256_hex(raw) {
-        return Err(SelectiveDisclosureError::MalformedHexField {
-            field: field.to_string(),
-            reason: "expected 64 lowercase SHA-256 hex characters".to_string(),
-        });
-    }
-    let bytes = hex::decode(raw).map_err(|e| SelectiveDisclosureError::MalformedHexField {
-        field: field.to_string(),
-        reason: e.to_string(),
-    })?;
-    if bytes.len() != 32 {
-        return Err(SelectiveDisclosureError::MalformedHexField {
-            field: field.to_string(),
-            reason: format!("decoded length {} bytes does not equal 32", bytes.len()),
-        });
-    }
-    Ok(bytes)
-}
-
-#[cfg(feature = "bbs")]
-fn decode_message_hex(field: &str, raw: &str) -> Result<Vec<u8>, SelectiveDisclosureError> {
-    if !is_lower_even_hex(raw) {
-        return Err(SelectiveDisclosureError::MalformedHexField {
-            field: field.to_string(),
-            reason: "expected lowercase even-length hex".to_string(),
-        });
-    }
-    hex::decode(raw).map_err(|e| SelectiveDisclosureError::MalformedHexField {
-        field: field.to_string(),
-        reason: e.to_string(),
-    })
-}
-
-fn opt_string_bytes(value: &Option<String>) -> Vec<u8> {
-    value
-        .as_ref()
-        .map_or_else(|| NONE_SENTINEL.to_vec(), |s| s.as_bytes().to_vec())
-}
-
-fn u64_le(value: u64) -> Vec<u8> {
-    value.to_le_bytes().to_vec()
-}
-
-fn bool_byte(value: bool) -> Vec<u8> {
-    vec![u8::from(value)]
-}
-
-fn push_message(
-    out: &mut Vec<ProjectionMessage>,
-    field: &str,
-    encoding: &str,
-    bytes: Vec<u8>,
-    wholesale_only: bool,
-) {
-    out.push(ProjectionMessage {
-        index: out.len() as u16,
-        field: field.to_string(),
-        encoding: encoding.to_string(),
-        bytes_hex: hex::encode(bytes),
-        wholesale_only,
-    });
-}
-
 /// Project a receipt body using the Chio receipt v1 BBS table.
 pub fn project_receipt_body(
     body: &ChioReceiptBody,
 ) -> Result<Projection, SelectiveDisclosureError> {
+    if let Some(version) = &body.bbs_projection_version {
+        if version != PROJECTION_VERSION_RECEIPT_V1 {
+            return Err(SelectiveDisclosureError::ProjectionVersionMismatch(
+                version.clone(),
+            ));
+        }
+    }
     let mut messages = Vec::with_capacity(14);
     push_message(
         &mut messages,
@@ -805,6 +725,85 @@ pub fn verify_signed_projection(
         .map_err(|_| SelectiveDisclosureError::SignatureVerificationFailed)
 }
 
+/// Convert a full signed projection into receipt-bound BBS material.
+#[cfg(feature = "bbs")]
+#[must_use]
+pub fn receipt_bbs_signature_from_signed_projection(
+    signed: &SignedProjection,
+) -> BbsReceiptSignature {
+    BbsReceiptSignature {
+        schema: CHIO_RECEIPT_BBS_SIGNATURE_SCHEMA.to_string(),
+        projection_version: signed.projection_version.clone(),
+        algorithm: CHIO_RECEIPT_BBS_SIGNATURE_ALGORITHM.to_string(),
+        ciphersuite: signed.ciphersuite.clone(),
+        issuer_fingerprint: signed.issuer_fingerprint.clone(),
+        issuer_public_key_hex: signed.issuer_public_key_hex.clone(),
+        message_count: signed.message_count,
+        signature_hex: signed.signature_hex.clone(),
+    }
+}
+
+/// Sign a receipt body with Ed25519 and embed BBS material over its final
+/// projected receipt body.
+#[cfg(feature = "bbs")]
+pub fn sign_chio_receipt_with_bbs(
+    mut body: ChioReceiptBody,
+    receipt_keypair: &chio_core_types::crypto::Keypair,
+    bbs_keypair: &BbsKeyPair,
+) -> Result<ChioReceipt, SelectiveDisclosureError> {
+    body.bbs_projection_version = Some(PROJECTION_VERSION_RECEIPT_V1.to_string());
+    let prepared = prepare_receipt_body_for_signing(body)
+        .map_err(|error| SelectiveDisclosureError::CanonicalJson(error.to_string()))?;
+    let projection = project_receipt_body(&prepared)?;
+    let signed = sign_projection(&projection, bbs_keypair)?;
+    let bbs_signature = receipt_bbs_signature_from_signed_projection(&signed);
+    ChioReceipt::sign_prepared_with_bbs(prepared, receipt_keypair, bbs_signature)
+        .map_err(|error| SelectiveDisclosureError::CanonicalJson(error.to_string()))
+}
+
+/// Reconstruct the full signed projection carrier from a receipt-bound BBS
+/// signature.
+#[cfg(feature = "bbs")]
+pub fn receipt_signed_projection(
+    receipt: &ChioReceipt,
+) -> Result<SignedProjection, SelectiveDisclosureError> {
+    let signature_valid = receipt
+        .verify_signature()
+        .map_err(|error| SelectiveDisclosureError::CanonicalJson(error.to_string()))?;
+    if !signature_valid {
+        return Err(SelectiveDisclosureError::ReceiptSignatureInvalid);
+    }
+    let Some(bbs_signature) = receipt.bbs_signature.as_ref() else {
+        return Err(SelectiveDisclosureError::ReceiptBbsSignatureMissing);
+    };
+    let body = receipt.body();
+    let version = body.bbs_projection_version.as_deref().ok_or_else(|| {
+        SelectiveDisclosureError::ReceiptBbsBindingInvalid(
+            "receipt body is missing bbs_projection_version".to_string(),
+        )
+    })?;
+    if version != bbs_signature.projection_version {
+        return Err(SelectiveDisclosureError::ReceiptBbsBindingInvalid(
+            "receipt BBS projection version mismatch".to_string(),
+        ));
+    }
+    ensure_supported_projection_version(version)?;
+    let projection = project_receipt_body(&body)?;
+    if bbs_signature.message_count != projection.messages.len() {
+        return Err(SelectiveDisclosureError::SignedProjectionMismatch);
+    }
+    Ok(SignedProjection {
+        schema: SIGNED_PROJECTION_SCHEMA_V1.to_string(),
+        projection_version: bbs_signature.projection_version.clone(),
+        subject_sha256_hex: projection.subject_sha256_hex,
+        ciphersuite: bbs_signature.ciphersuite.clone(),
+        issuer_fingerprint: bbs_signature.issuer_fingerprint.clone(),
+        issuer_public_key_hex: bbs_signature.issuer_public_key_hex.clone(),
+        message_count: bbs_signature.message_count,
+        signature_hex: bbs_signature.signature_hex.clone(),
+    })
+}
+
 /// Derive a selective disclosure proof from a signed projection.
 #[cfg(feature = "bbs")]
 pub fn derive_selective_disclosure_proof(
@@ -855,6 +854,20 @@ pub fn derive_selective_disclosure_proof(
         proof_nonce_hex: hex::encode(nonce),
         proof_bytes_hex: hex::encode(proof.to_bytes()),
     })
+}
+
+/// Derive a selective disclosure proof from BBS material embedded in a Chio
+/// receipt.
+#[cfg(feature = "bbs")]
+pub fn derive_selective_disclosure_proof_from_receipt(
+    receipt: &ChioReceipt,
+    keypair: &BbsKeyPair,
+    disclosure: &DisclosureSet,
+    nonce: &[u8],
+) -> Result<SelectiveDisclosureProof, SelectiveDisclosureError> {
+    let signed = receipt_signed_projection(receipt)?;
+    let projection = project_receipt_body(&receipt.body())?;
+    derive_selective_disclosure_proof(&signed, &projection, keypair, disclosure, nonce)
 }
 
 /// Verify a selective disclosure proof against the issuer registry.

@@ -108,16 +108,6 @@ pub use autonomy::{
 pub use canonical::{
     canonical_json_bytes, canonical_json_string, canonicalize, CanonicalBytes, CanonicalJsonWitness,
 };
-pub use capability::{
-    Attenuation, AttestationTrustError, AttestationTrustPolicy, AttestationTrustRule,
-    CapabilityToken, CapabilityTokenBody, ChioScope, Constraint, DelegationLink,
-    DelegationLinkBody, GovernedApprovalDecision, GovernedApprovalToken, GovernedApprovalTokenBody,
-    GovernedCallChainContext, GovernedCommerceContext, GovernedTransactionIntent,
-    MeteredBillingContext, MeteredBillingQuote, MeteredSettlementMode, MonetaryAmount, Operation,
-    PromptGrant, ResolvedRuntimeAssurance, ResourceGrant, RuntimeAssuranceTier,
-    RuntimeAttestationEvidence, ToolGrant, WorkloadCredentialKind, WorkloadIdentity,
-    WorkloadIdentityError, WorkloadIdentityScheme,
-};
 pub use credit::{
     ensure_capital_execution_custodian_authority, ensure_capital_execution_owner_authority,
     validate_capital_execution_envelope, CapitalAllocationDecisionArtifact,
@@ -197,32 +187,16 @@ pub use extension::{
     CHIO_EXTENSION_MANIFEST_SCHEMA, CHIO_EXTENSION_NEGOTIATION_SCHEMA,
     CHIO_EXTENSION_QUALIFICATION_MATRIX_SCHEMA, CHIO_OFFICIAL_STACK_SCHEMA,
 };
-pub use federation::{
-    validate_federated_open_admission_policy, validate_federated_reputation_clearing,
-    validate_federation_activation_exchange, validate_federation_qualification_matrix,
-    validate_federation_quorum_report, FederatedOpenAdmissionPolicyArtifact,
-    FederatedReputationClearingArtifact, FederatedReputationInputKind,
-    FederatedReputationInputReference, FederatedStakeRequirement, FederatedSybilControl,
-    FederationActivationExchangeArtifact, FederationAntiEclipsePolicy, FederationArtifactKind,
-    FederationArtifactReference, FederationConflictEvidence, FederationContractError,
-    FederationDelegationControl, FederationImportControl, FederationPublisherObservation,
-    FederationQualificationCase, FederationQualificationMatrix, FederationQualificationOutcome,
-    FederationQuorumReport, FederationQuorumState, FederationScenarioKind, FederationTrustScope,
-    SignedFederatedOpenAdmissionPolicy, SignedFederatedReputationClearing,
-    SignedFederationActivationExchange, SignedFederationQualificationMatrix,
-    SignedFederationQuorumReport, CHIO_FEDERATION_ACTIVATION_EXCHANGE_SCHEMA,
-    CHIO_FEDERATION_OPEN_ADMISSION_POLICY_SCHEMA, CHIO_FEDERATION_QUALIFICATION_MATRIX_SCHEMA,
-    CHIO_FEDERATION_QUORUM_REPORT_SCHEMA, CHIO_FEDERATION_REPUTATION_CLEARING_SCHEMA,
-};
-pub use governance::{
+pub use governance::evaluation::evaluate_generic_governance_case;
+pub use governance::generic::{
     build_generic_governance_case_artifact, build_generic_governance_charter_artifact,
-    evaluate_generic_governance_case, GenericGovernanceAuthorityScope,
-    GenericGovernanceCaseArtifact, GenericGovernanceCaseEvaluation,
-    GenericGovernanceCaseEvaluationRequest, GenericGovernanceCaseIssueRequest,
-    GenericGovernanceCaseKind, GenericGovernanceCaseState, GenericGovernanceCharterArtifact,
-    GenericGovernanceCharterIssueRequest, GenericGovernanceEffectiveState,
-    GenericGovernanceEvidenceKind, GenericGovernanceEvidenceReference, GenericGovernanceFinding,
-    GenericGovernanceFindingCode, SignedGenericGovernanceCase, SignedGenericGovernanceCharter,
+    GenericGovernanceAuthorityScope, GenericGovernanceCaseArtifact,
+    GenericGovernanceCaseEvaluation, GenericGovernanceCaseEvaluationRequest,
+    GenericGovernanceCaseIssueRequest, GenericGovernanceCaseKind, GenericGovernanceCaseState,
+    GenericGovernanceCharterArtifact, GenericGovernanceCharterIssueRequest,
+    GenericGovernanceEffectiveState, GenericGovernanceEvidenceKind,
+    GenericGovernanceEvidenceReference, GenericGovernanceFinding, GenericGovernanceFindingCode,
+    SignedGenericGovernanceCase, SignedGenericGovernanceCharter,
     GENERIC_GOVERNANCE_CASE_ARTIFACT_SCHEMA, GENERIC_GOVERNANCE_CHARTER_ARTIFACT_SCHEMA,
 };
 pub use hashing::{sha256, Hash};
@@ -307,26 +281,24 @@ pub use market::{
 };
 pub use merkle::{MerkleProof, MerkleTree};
 pub use message::{AgentMessage, KernelMessage, ToolCallError, ToolCallResult};
-pub use open_market::{
-    build_open_market_fee_schedule_artifact, build_open_market_penalty_artifact,
-    build_open_market_penalty_artifact_with_trusted_signers, evaluate_open_market_penalty,
-    evaluate_open_market_penalty_with_trusted_signers, OpenMarketAbuseClass, OpenMarketBondClass,
-    OpenMarketBondRequirement, OpenMarketCollateralReferenceKind, OpenMarketEconomicsScope,
-    OpenMarketEvidenceKind, OpenMarketEvidenceReference, OpenMarketFeeScheduleArtifact,
-    OpenMarketFeeScheduleIssueRequest, OpenMarketFinding, OpenMarketFindingCode,
-    OpenMarketPenaltyAction, OpenMarketPenaltyArtifact, OpenMarketPenaltyEffectiveState,
-    OpenMarketPenaltyEvaluation, OpenMarketPenaltyEvaluationRequest, OpenMarketPenaltyIssueRequest,
-    OpenMarketPenaltyState, SignedOpenMarketFeeSchedule, SignedOpenMarketPenalty,
-    OPEN_MARKET_FEE_SCHEDULE_ARTIFACT_SCHEMA, OPEN_MARKET_PENALTY_ARTIFACT_SCHEMA,
+pub use open_market::evaluation::{
+    evaluate_open_market_penalty, evaluate_open_market_penalty_with_trusted_signers,
+    OpenMarketPenaltyEvaluation, OpenMarketPenaltyEvaluationRequest,
 };
-pub use receipt::{
-    chio_receipt_id, ActorRef, BoundaryClass, ChildRequestReceipt, ChildRequestReceiptBody,
-    ChioReceipt, ChioReceiptBody, ChioReceiptIdInput, Decision, FinancialReceiptMetadata,
-    GovernedApprovalReceiptMetadata, GovernedCommerceReceiptMetadata,
-    GovernedTransactionReceiptMetadata, GuardEvidence, MeteredBillingReceiptMetadata,
-    MeteredUsageEvidenceReceiptMetadata, ObservationOutcome, ReceiptDagParent,
-    ReceiptHybridLogicalClock, ReceiptKind, ReceiptSemanticFields, RedactionMode, ToolCallAction,
-    ToolOrigin, TrustLevel, CHIO_RECEIPT_SCHEMA,
+pub use open_market::evidence::{
+    OpenMarketEvidenceKind, OpenMarketEvidenceReference, OpenMarketFinding, OpenMarketFindingCode,
+};
+pub use open_market::fee_schedule::{
+    build_open_market_fee_schedule_artifact, OpenMarketBondClass, OpenMarketBondRequirement,
+    OpenMarketCollateralReferenceKind, OpenMarketEconomicsScope, OpenMarketFeeScheduleArtifact,
+    OpenMarketFeeScheduleIssueRequest, SignedOpenMarketFeeSchedule,
+    OPEN_MARKET_FEE_SCHEDULE_ARTIFACT_SCHEMA,
+};
+pub use open_market::penalty::{
+    build_open_market_penalty_artifact, build_open_market_penalty_artifact_with_trusted_signers,
+    OpenMarketAbuseClass, OpenMarketPenaltyAction, OpenMarketPenaltyArtifact,
+    OpenMarketPenaltyEffectiveState, OpenMarketPenaltyIssueRequest, OpenMarketPenaltyState,
+    SignedOpenMarketPenalty, OPEN_MARKET_PENALTY_ARTIFACT_SCHEMA,
 };
 pub use session::{
     ChioIdentityAssertion, CompleteOperation, CompletionArgument, CompletionReference,
@@ -367,31 +339,47 @@ pub use underwriting::{
     UNDERWRITING_POLICY_INPUT_SCHEMA, UNDERWRITING_RISK_TAXONOMY_VERSION,
     UNDERWRITING_SIMULATION_REPORT_SCHEMA,
 };
-pub use web3::{
+pub use web3::anchors::{
     validate_anchor_inclusion_proof, validate_oracle_conversion_evidence,
-    validate_web3_chain_configuration, validate_web3_contract_package,
-    validate_web3_identity_binding, validate_web3_qualification_matrix,
+    verify_anchor_inclusion_proof, verify_checkpoint_statement, AnchorInclusionProof,
+    OracleConversionEvidence, Web3BitcoinAnchor, Web3ChainAnchorRecord, Web3CheckpointStatement,
+    Web3ReceiptInclusion, Web3SuperRootInclusion, CHIO_ANCHOR_CONTROL_STATE_SCHEMA,
+    CHIO_ANCHOR_CONTROL_TRACE_SCHEMA, CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA,
+    CHIO_CHECKPOINT_STATEMENT_SCHEMA, CHIO_LINK_ORACLE_AUTHORITY,
+    CHIO_ORACLE_CONVERSION_EVIDENCE_SCHEMA,
+};
+pub use web3::chain::{
+    validate_web3_chain_configuration, Web3ChainConfiguration, Web3ChainDeployment,
+    Web3ChainGasProfile, Web3ChainRole, CHIO_WEB3_CHAIN_CONFIGURATION_SCHEMA,
+};
+pub use web3::contracts::{
+    validate_web3_contract_package, Web3BindingLanguage, Web3BindingTarget, Web3ContractInterface,
+    Web3ContractKind, Web3ContractPackage, CHIO_WEB3_CONTRACT_PACKAGE_SCHEMA,
+};
+pub use web3::error::Web3ContractError;
+pub use web3::identity::{
+    validate_web3_identity_binding, verify_web3_identity_binding, SignedWeb3IdentityBinding,
+    Web3IdentityBindingCertificate, Web3KeyBindingPurpose, CHIO_KEY_BINDING_CERTIFICATE_SCHEMA,
+};
+pub use web3::qualification::{
+    validate_web3_qualification_matrix, Web3QualificationCase, Web3QualificationMatrix,
+    Web3QualificationOutcome, CHIO_WEB3_QUALIFICATION_MATRIX_SCHEMA,
+};
+pub use web3::settlement::{
     validate_web3_settlement_dispatch, validate_web3_settlement_execution_receipt,
-    validate_web3_trust_profile, verify_anchor_inclusion_proof, verify_checkpoint_statement,
-    verify_web3_identity_binding, AnchorInclusionProof, OracleConversionEvidence,
-    SignedWeb3IdentityBinding, SignedWeb3SettlementDispatch, SignedWeb3SettlementExecutionReceipt,
-    Web3BindingLanguage, Web3BindingTarget, Web3BitcoinAnchor, Web3ChainAnchorRecord,
-    Web3ChainConfiguration, Web3ChainDeployment, Web3ChainFinalityRule, Web3ChainGasProfile,
-    Web3ChainRole, Web3CheckpointStatement, Web3ContractError, Web3ContractInterface,
-    Web3ContractKind, Web3ContractPackage, Web3DisputePolicy, Web3DisputeWindow, Web3FinalityMode,
-    Web3IdentityBindingCertificate, Web3KeyBindingPurpose, Web3QualificationCase,
-    Web3QualificationMatrix, Web3QualificationOutcome, Web3ReceiptInclusion, Web3RegulatedRole,
-    Web3RegulatedRoleAssumption, Web3SettlementDispatchArtifact,
-    Web3SettlementExecutionReceiptArtifact, Web3SettlementLifecycleState, Web3SettlementPath,
-    Web3SettlementSupportBoundary, Web3SuperRootInclusion, Web3TrustProfile,
-    CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA, CHIO_CHECKPOINT_STATEMENT_SCHEMA,
-    CHIO_KEY_BINDING_CERTIFICATE_SCHEMA, CHIO_ORACLE_CONVERSION_EVIDENCE_SCHEMA,
-    CHIO_WEB3_CHAIN_CONFIGURATION_SCHEMA, CHIO_WEB3_CONTRACT_PACKAGE_SCHEMA,
-    CHIO_WEB3_QUALIFICATION_MATRIX_SCHEMA, CHIO_WEB3_SETTLEMENT_DISPATCH_SCHEMA,
-    CHIO_WEB3_SETTLEMENT_RECEIPT_SCHEMA, CHIO_WEB3_TRUST_PROFILE_SCHEMA,
+    SignedWeb3SettlementDispatch, SignedWeb3SettlementExecutionReceipt,
+    Web3SettlementDispatchArtifact, Web3SettlementExecutionReceiptArtifact,
+    Web3SettlementLifecycleState, Web3SettlementSupportBoundary, CHIO_LINK_CONTROL_STATE_SCHEMA,
+    CHIO_LINK_CONTROL_TRACE_SCHEMA, CHIO_SETTLE_CONTROL_STATE_SCHEMA,
+    CHIO_SETTLE_CONTROL_TRACE_SCHEMA, CHIO_WEB3_SETTLEMENT_DISPATCH_SCHEMA,
+    CHIO_WEB3_SETTLEMENT_RECEIPT_SCHEMA,
+};
+pub use web3::trust_profile::{
+    validate_web3_trust_profile, Web3ChainFinalityRule, Web3DisputePolicy, Web3DisputeWindow,
+    Web3FinalityMode, Web3RegulatedRole, Web3RegulatedRoleAssumption, Web3SettlementPath,
+    Web3TrustProfile, CHIO_WEB3_TRUST_PROFILE_SCHEMA,
 };
 
-pub use capability::{validate_attenuation, validate_delegation_chain};
 pub use chio_core_types::{AgentId, CapabilityId, ServerId};
 pub use signed_artifact::{
     built_in_signed_artifact_registry, is_supported_signed_artifact_schema,

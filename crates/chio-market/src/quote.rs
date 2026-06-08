@@ -2,12 +2,12 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::capability::MonetaryAmount;
+use crate::capability::scope::MonetaryAmount;
 use crate::credit::{
     CreditFacilityDisposition, CreditFacilityLifecycleState, SignedCapitalBookReport,
     SignedCreditFacility, SignedCreditProviderRiskPackage,
 };
-use crate::receipt::SignedExportEnvelope;
+use crate::receipt::lineage::SignedExportEnvelope;
 use crate::underwriting::{
     SignedUnderwritingDecision, UnderwritingBudgetAction, UnderwritingDecisionLifecycleState,
     UnderwritingReviewState,

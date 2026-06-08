@@ -29,7 +29,7 @@
   "capability_body_canonical_json": "{\"expires_at\":1710000800,\"id\":\"cap-bindings-invalid-signature\",\"issued_at\":1710000200,\"issuer\":\"66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a\",\"scope\":{\"grants\":[{\"constraints\":[{\"type\":\"path_prefix\",\"value\":\"/workspace/\"}],\"max_invocations\":3,\"operations\":[\"invoke\",\"read_result\"],\"server_id\":\"srv-files\",\"tool_name\":\"file_write\"}]},\"subject\":\"0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d\"}",
   "description": "Capability payload was modified after signing, so signature verification fails.",
   "expected": {
-    "delegation_chain_valid": true,
+    "delegation_chain_shape_valid": true,
     "signature_valid": false,
     "time_status": "valid",
     "time_valid": true

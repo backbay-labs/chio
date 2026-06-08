@@ -79,8 +79,30 @@ class ChioClient
         // Tool evaluation
         // --------------------------------------------------------------
 
-        /** POST /v1/evaluate. Mirrors evaluate_tool_call. */
+        /** Require mediated tool-call authorization. The current sidecar route emits audit receipts only. */
         override fun evaluateToolCall(
+            capabilityId: String,
+            toolServer: String,
+            toolName: String,
+            parameters: Map<String, Any?>,
+        ): ChioReceipt {
+            val receipt =
+                evaluateToolCallAdvisory(
+                    capabilityId = capabilityId,
+                    toolServer = toolServer,
+                    toolName = toolName,
+                    parameters = parameters,
+                )
+            if (receipt.observationOutcome == "dropped") {
+                throw ChioDeniedError("Chio sidecar advisory evaluation refused the tool call")
+            }
+            throw ChioDeniedError(
+                "Chio sidecar returned an advisory evaluation, not an authoritative authorization decision",
+            )
+        }
+
+        /** POST /v1/evaluate/advisory. Returns advisory observation receipts only. */
+        fun evaluateToolCallAdvisory(
             capabilityId: String,
             toolServer: String,
             toolName: String,
@@ -97,15 +119,33 @@ class ChioClient
                     "parameter_hash" to paramHash,
                 )
             val node = postJson(SidecarPaths.EVALUATE_TOOL_CALL, body)
-            val receipt = parser.treeToValue(node, ChioReceipt::class.java)
-            if (!receipt.isAllowed() || !verifyReceipt(receipt)) {
+            if (!isAdvisoryEvaluationWrapper(node)) {
                 throw ChioError(
-                    "Chio sidecar returned a non-authoritative receipt",
+                    "Chio sidecar advisory evaluation response did not use the advisory non-authorization wrapper",
+                    ChioErrorCodes.INVALID_RECEIPT,
+                )
+            }
+            val receiptNode = wrappedAdvisoryReceiptNode(node)
+            val receipt = parser.treeToValue(receiptNode, ChioReceipt::class.java)
+            if (!receipt.isAdvisoryEvaluation()) {
+                throw ChioError(
+                    "Chio sidecar advisory evaluation response did not include an advisory receipt",
+                    ChioErrorCodes.INVALID_RECEIPT,
+                )
+            }
+            if (!verifyReceiptIntegrity(receipt)) {
+                throw ChioError(
+                    "Chio sidecar returned an advisory evaluation receipt that failed integrity checks",
                     ChioErrorCodes.INVALID_RECEIPT,
                 )
             }
             return receipt
         }
+
+        private fun ChioReceipt.isAdvisoryEvaluation(): Boolean =
+            receiptKind == "advisory_evaluation" &&
+                boundaryClass == "advisory_only" &&
+                trustLevel == "advisory"
 
         /** POST /chio/evaluate. Mirrors evaluate_http_request. */
         @JvmOverloads
@@ -196,6 +236,14 @@ class ChioClient
                 node.path("result").asText("") in setOf("allow", "authorized", "Authorized")
         }
 
+        private fun verifyReceiptIntegrity(receipt: ChioReceipt): Boolean {
+            val node = postJson(SidecarPaths.VERIFY_RECEIPT, receipt)
+            return node.path("signature_valid").asBoolean(false) &&
+                node.path("signer_trusted").asBoolean(false) &&
+                node.path("receipt_id_valid").asBoolean(false) &&
+                node.path("parameter_hash_valid").asBoolean(false)
+        }
+
         /** POST /chio/verify. Mirrors verify_http_receipt. */
         fun verifyHttpReceipt(receipt: HttpReceipt): VerifyReceiptResponse {
             val node = postJson(SidecarPaths.VERIFY_HTTP_RECEIPT, receipt)
@@ -238,6 +286,32 @@ class ChioClient
             val node = CanonicalJson.MAPPER.valueToTree<JsonNode>(receipt)
             @Suppress("UNCHECKED_CAST")
             return parser.convertValue(node, Map::class.java) as Map<String, Any?>
+        }
+
+        private fun isAdvisoryEvaluationWrapper(node: JsonNode): Boolean =
+            node.path("schema").asText("") == "chio.sidecar.advisory-evaluation.v1"
+
+        private fun wrappedAdvisoryReceiptNode(node: JsonNode): JsonNode {
+            if (!node.path("authorization").isBoolean || node.path("authorization").asBoolean(true)) {
+                throw ChioError(
+                    "Chio sidecar advisory evaluation did not explicitly mark authorization as false",
+                    ChioErrorCodes.INVALID_RECEIPT,
+                )
+            }
+            if (node.path("authorizationBasis").asText("") != "advisory_only") {
+                throw ChioError(
+                    "Chio sidecar advisory evaluation did not identify its authorization basis",
+                    ChioErrorCodes.INVALID_RECEIPT,
+                )
+            }
+            val receipt = node.get("receipt")
+            if (receipt == null || !receipt.isObject) {
+                throw ChioError(
+                    "Chio sidecar advisory evaluation response is missing receipt",
+                    ChioErrorCodes.INVALID_RECEIPT,
+                )
+            }
+            return receipt
         }
 
         // --------------------------------------------------------------

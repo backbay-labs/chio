@@ -37,7 +37,7 @@
 use serde::{Deserialize, Serialize};
 
 use chio_core_types::canonical::canonical_json_bytes;
-use chio_core_types::capability::MonetaryAmount;
+use chio_core_types::capability::scope::MonetaryAmount;
 use chio_core_types::crypto::{sha256_hex, PublicKey, Signature};
 use chio_underwriting::{price_premium, LookbackWindow, PremiumInputs, PremiumQuote};
 

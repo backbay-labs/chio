@@ -19,10 +19,11 @@ pub use metrics::{
     RECEIPT_WRITE_OUTCOME_ALLOW, RECEIPT_WRITE_OUTCOME_DENY, RECEIPT_WRITE_OUTCOME_ERROR,
     RECEIPT_WRITE_OUTCOME_PENDING_APPROVAL,
 };
-pub use runtime::{
+pub use runtime::tool_calls::{
     execute_bridge_mcp_tool_call, execute_bridge_mcp_tool_call_async, BridgeMcpToolCall,
-    BridgeMcpToolCallRequest, ChioMcpEdge, McpEdgeConfig, McpExposedTool, McpTargetExecutor,
+    BridgeMcpToolCallRequest, McpTargetExecutor,
 };
+pub use runtime::{ChioMcpEdge, McpEdgeConfig, McpExposedTool};
 
 /// libFuzzer entry-point module for `chio-mcp-edge`.
 ///

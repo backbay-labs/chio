@@ -22,10 +22,13 @@
 //!
 //! # Backward compatibility
 //!
-//! The whole feature is opt-in. When `ExecutionNonceConfig::require_nonce`
-//! is `false` (the default), no nonce is minted and the verify path is a
-//! no-op. Existing non-nonce deployments keep working; new tool servers
-//! opt in by flipping `require_nonce` on the kernel's config.
+//! The whole feature is opt-in by installing an `ExecutionNonceConfig`.
+//! With no config installed, no nonce is minted and non-nonce callers keep
+//! working. With a config installed and `require_nonce == false`, allow
+//! responses carry nonces and dispatch verifies any nonce that is presented,
+//! but callers that omit the nonce remain backward-compatible. New strict
+//! deployments flip `require_nonce` to make every execution-bound dispatch
+//! present a fresh nonce.
 
 use std::num::NonZeroUsize;
 use std::sync::Mutex;

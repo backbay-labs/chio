@@ -5,7 +5,9 @@ use alloc::string::{String, ToString};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::capability::{RuntimeAttestationEvidence, WorkloadIdentity};
+use crate::capability::{
+    runtime_attestation::RuntimeAttestationEvidence, workload_identity::WorkloadIdentity,
+};
 
 pub const AZURE_MAA_ATTESTATION_SCHEMA: &str = "chio.runtime-attestation.azure-maa.jwt.v1";
 pub const AWS_NITRO_ATTESTATION_SCHEMA: &str = "chio.runtime-attestation.aws-nitro-attestation.v1";
@@ -230,7 +232,10 @@ fn push_workload_identity_assertions(
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use crate::capability::{RuntimeAssuranceTier, WorkloadCredentialKind, WorkloadIdentityScheme};
+    use crate::capability::{
+        runtime_attestation::RuntimeAssuranceTier,
+        workload_identity::{WorkloadCredentialKind, WorkloadIdentityScheme},
+    };
     use serde_json::json;
 
     fn sample_workload_identity() -> WorkloadIdentity {

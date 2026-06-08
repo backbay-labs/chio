@@ -8,11 +8,12 @@
 //! into the kernel's internals.
 
 use chio_core::canonical::canonical_json_bytes;
+use chio_core::session::OperationTerminalState;
 use chio_tool_call_fabric::{DenyReason, ProviderId, ReceiptId, ToolInvocation, VerdictResult};
 
 use crate::runtime::{ToolCallRequest, ToolCallResponse, Verdict};
 use crate::{AgentId, ServerId};
-use chio_core::capability::CapabilityToken;
+use chio_core::capability::token::CapabilityToken;
 
 /// Errors surfaced when adapting fabric types into the kernel's MCP path.
 ///
@@ -58,6 +59,7 @@ pub fn build_tool_call_request(
         agent_id,
         arguments,
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
@@ -86,8 +88,16 @@ pub fn verdict_result_from_response(
 ) -> VerdictResult {
     let receipt_id = ReceiptId(response.receipt.id.clone());
     match response.verdict {
-        Verdict::Allow => VerdictResult::Allow {
-            redactions: Vec::new(),
+        Verdict::Allow if matches!(response.terminal_state, OperationTerminalState::Completed) => {
+            VerdictResult::Allow {
+                redactions: Vec::new(),
+                receipt_id,
+            }
+        }
+        Verdict::Allow => VerdictResult::Deny {
+            reason: DenyReason::PolicyDeny {
+                rule_id: "kernel.execution_nonce_preflight".to_string(),
+            },
             receipt_id,
         },
         Verdict::Deny => VerdictResult::Deny {
@@ -178,7 +188,7 @@ impl crate::ChioKernel {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use chio_core::receipt::{ChioReceipt, Decision, ToolCallAction};
+    use chio_core::receipt::{body::ChioReceipt, decision::Decision, decision::ToolCallAction};
     use chio_core::session::OperationTerminalState;
     use chio_tool_call_fabric::{Principal, ProvenanceStamp};
     use std::time::{Duration, SystemTime};
@@ -206,7 +216,7 @@ mod tests {
         // to fabric verdict; signature verification is covered by the
         // kernel's own receipt tests.
         let kp = chio_core::crypto::Keypair::generate();
-        let body = chio_core::receipt::ChioReceiptBody {
+        let body = chio_core::receipt::body::ChioReceiptBody {
             id: id.to_string(),
             timestamp: 1_700_000_000,
             capability_id: "cap-test".to_string(),
@@ -217,11 +227,11 @@ mod tests {
                 parameter_hash: "0".repeat(64),
             },
             decision: Some(decision),
-            receipt_kind: chio_core::ReceiptKind::MediatedDecision,
-            boundary_class: chio_core::BoundaryClass::Prevent,
+            receipt_kind: chio_core::receipt::kinds::ReceiptKind::MediatedDecision,
+            boundary_class: chio_core::receipt::kinds::BoundaryClass::Prevent,
             observation_outcome: None,
-            tool_origin: chio_core::ToolOrigin::CallerExecuted,
-            redaction_mode: chio_core::RedactionMode::None,
+            tool_origin: chio_core::receipt::kinds::ToolOrigin::CallerExecuted,
+            redaction_mode: chio_core::receipt::kinds::RedactionMode::None,
             actor_chain: Vec::new(),
             content_hash: "0".repeat(64),
             policy_hash: "0".repeat(64),
@@ -230,6 +240,7 @@ mod tests {
             trust_level: Default::default(),
             tenant_id: None,
             kernel_key: kp.public_key(),
+            bbs_projection_version: None,
         };
         ChioReceipt::sign(body, &kp).unwrap()
     }
@@ -272,6 +283,20 @@ mod tests {
                 reason: "approval pending".to_string(),
             },
             receipt: synthetic_receipt("rcpt_pending", Decision::Allow),
+            execution_nonce: None,
+        }
+    }
+
+    fn nonce_preflight_response() -> ToolCallResponse {
+        ToolCallResponse {
+            request_id: "call_abc123".to_string(),
+            verdict: Verdict::Allow,
+            output: None,
+            reason: None,
+            terminal_state: OperationTerminalState::Incomplete {
+                reason: "execution nonce preflight requires retry with presented nonce".to_string(),
+            },
+            receipt: synthetic_receipt("rcpt_preflight", Decision::Allow),
             execution_nonce: None,
         }
     }
@@ -340,6 +365,25 @@ mod tests {
                 other => panic!("expected policy_deny for pending, got {other:?}"),
             },
             other => panic!("expected deny for pending approval, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn provider_verdict_nonce_preflight_fails_closed() {
+        let inv = sample_invocation();
+        let resp = nonce_preflight_response();
+        let v = verdict_result_from_response(&inv, &resp);
+        match v {
+            VerdictResult::Deny { reason, receipt_id } => {
+                assert_eq!(receipt_id, ReceiptId(resp.receipt.id.clone()));
+                match reason {
+                    DenyReason::PolicyDeny { rule_id } => {
+                        assert_eq!(rule_id, "kernel.execution_nonce_preflight");
+                    }
+                    other => panic!("expected policy_deny for nonce preflight, got {other:?}"),
+                }
+            }
+            other => panic!("expected deny for nonce preflight, got {other:?}"),
         }
     }
 

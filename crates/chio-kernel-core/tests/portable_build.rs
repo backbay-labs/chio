@@ -9,12 +9,14 @@
 //! `wasm32-unknown-unknown` unchanged.
 
 use chio_core_types::capability::{
-    compute_attenuation_witness, scope_hash, AttenuationProof, CapabilityToken,
-    CapabilityTokenAttenuationBody, CapabilityTokenBody, ChioScope, Constraint, Operation,
-    ToolGrant,
+    attenuation::{compute_attenuation_witness, scope_hash, AttenuationProof},
+    scope::{ChioScope, Constraint, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenAttenuationBody, CapabilityTokenBody},
 };
 use chio_core_types::crypto::Keypair;
-use chio_core_types::receipt::{ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
+use chio_core_types::receipt::{
+    body::ChioReceiptBody, decision::Decision, decision::ToolCallAction, kinds::TrustLevel,
+};
 use chio_kernel_core::{
     evaluate, sign_receipt, verify_capability, CapabilityError, EvaluateInput, FixedClock, Guard,
     GuardContext, KernelCoreError, PortableToolCallRequest, Verdict,
@@ -381,7 +383,7 @@ fn evaluate_fails_closed_on_unsupported_constraint() {
         &subject,
         &issuer,
         vec![Constraint::MinimumRuntimeAssurance(
-            chio_core_types::capability::RuntimeAssuranceTier::Attested,
+            chio_core_types::capability::runtime_attestation::RuntimeAssuranceTier::Attested,
         )],
     );
     let request = make_request(&subject);
@@ -426,7 +428,7 @@ fn resolve_matching_grants_fails_closed_when_target_match_has_unsupported_constr
                         tool_name: "echo".to_string(),
                         operations: vec![Operation::Invoke],
                         constraints: vec![Constraint::MinimumRuntimeAssurance(
-                            chio_core_types::capability::RuntimeAssuranceTier::Attested,
+                            chio_core_types::capability::runtime_attestation::RuntimeAssuranceTier::Attested,
                         )],
                         max_invocations: None,
                         max_cost_per_invocation: None,
@@ -490,7 +492,7 @@ fn resolve_matching_grants_ignores_unsupported_constraints_on_unrelated_grants()
                         tool_name: "echo".to_string(),
                         operations: vec![Operation::Invoke],
                         constraints: vec![Constraint::MinimumRuntimeAssurance(
-                            chio_core_types::capability::RuntimeAssuranceTier::Attested,
+                            chio_core_types::capability::runtime_attestation::RuntimeAssuranceTier::Attested,
                         )],
                         max_invocations: None,
                         max_cost_per_invocation: None,
@@ -618,6 +620,7 @@ fn sign_receipt_with_backend() {
         trust_level: TrustLevel::Mediated,
         tenant_id: None,
         kernel_key: keypair.public_key(),
+        bbs_projection_version: None,
     };
 
     let receipt = sign_receipt(body, &backend).unwrap();
@@ -653,6 +656,7 @@ fn sign_receipt_preserves_signed_body_fields() {
         trust_level: TrustLevel::Mediated,
         tenant_id: Some("tenant-a".to_string()),
         kernel_key: keypair.public_key(),
+        bbs_projection_version: None,
     };
 
     let receipt = sign_receipt(body.clone(), &backend).unwrap();
@@ -695,6 +699,7 @@ fn sign_receipt_rejects_kernel_key_mismatch() {
         trust_level: TrustLevel::Mediated,
         tenant_id: None,
         kernel_key: other_keypair.public_key(),
+        bbs_projection_version: None,
     };
 
     let error = sign_receipt(body, &backend).unwrap_err();
@@ -743,6 +748,7 @@ fn sign_receipt_signature_changes_when_economic_authorization_changes() {
         trust_level: TrustLevel::Mediated,
         tenant_id: None,
         kernel_key: keypair.public_key(),
+        bbs_projection_version: None,
     };
 
     let original = sign_receipt(body.clone(), &backend).unwrap();

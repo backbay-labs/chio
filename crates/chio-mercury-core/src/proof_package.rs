@@ -820,9 +820,11 @@ mod tests {
     use chio_core::crypto::Keypair;
     use chio_core::merkle::MerkleTree;
     use chio_core::receipt::{
-        CheckpointPublicationIdentity, CheckpointPublicationIdentityKind,
-        CheckpointPublicationTrustAnchorBinding, CheckpointTrustAnchorIdentity,
-        CheckpointTrustAnchorIdentityKind, ChioReceipt, ChioReceiptBody, Decision, ToolCallAction,
+        body::ChioReceipt, body::ChioReceiptBody, checkpoint::CheckpointPublicationIdentity,
+        checkpoint::CheckpointPublicationIdentityKind,
+        checkpoint::CheckpointPublicationTrustAnchorBinding,
+        checkpoint::CheckpointTrustAnchorIdentity, checkpoint::CheckpointTrustAnchorIdentityKind,
+        decision::Decision, decision::ToolCallAction,
     };
     use chio_kernel::checkpoint::{
         build_checkpoint, build_checkpoint_with_previous, build_inclusion_proof,
@@ -865,9 +867,10 @@ mod tests {
                 policy_hash: format!("policy-proof-{sequence}"),
                 evidence: Vec::new(),
                 metadata: Some(metadata),
-                trust_level: chio_core::TrustLevel::default(),
+                trust_level: chio_core::receipt::kinds::TrustLevel::default(),
                 tenant_id: None,
                 kernel_key: keypair.public_key(),
+                bbs_projection_version: None,
             },
             &keypair,
         )

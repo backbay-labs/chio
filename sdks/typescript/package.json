@@ -24,6 +24,10 @@
     "packages/create-chio-app"
   ],
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node ./scripts/run-publishable-workspaces.mjs build",
+    "test": "node ./scripts/run-publishable-workspaces.mjs test"
   }
 }

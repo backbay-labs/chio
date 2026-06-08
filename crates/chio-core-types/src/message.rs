@@ -10,8 +10,8 @@ use alloc::vec::Vec;
 
 use serde::{Deserialize, Serialize};
 
-use crate::capability::CapabilityToken;
-use crate::receipt::ChioReceipt;
+use crate::capability::token::CapabilityToken;
+use crate::receipt::body::ChioReceipt;
 
 /// Messages sent from the Agent to the Kernel.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -135,12 +135,15 @@ pub enum ToolCallError {
 mod tests {
     use super::*;
     use crate::capability::{
-        CapabilityToken, CapabilityTokenBody, ChioScope, Operation, ToolGrant,
+        scope::{ChioScope, Operation, ToolGrant},
+        token::{CapabilityToken, CapabilityTokenBody},
     };
     use crate::crypto::Keypair;
     use crate::receipt::{
-        BoundaryClass, ChioReceipt, ChioReceiptBody, Decision, GuardEvidence, ReceiptKind,
-        RedactionMode, ToolCallAction, ToolOrigin,
+        body::{ChioReceipt, ChioReceiptBody},
+        decision::{Decision, ToolCallAction},
+        kinds::{BoundaryClass, ReceiptKind, RedactionMode, ToolOrigin, TrustLevel},
+        metadata::GuardEvidence,
     };
 
     fn make_token(kp: &Keypair) -> CapabilityToken {
@@ -191,9 +194,10 @@ mod tests {
                 details: None,
             }],
             metadata: None,
-            trust_level: crate::receipt::TrustLevel::default(),
+            trust_level: TrustLevel::default(),
             tenant_id: None,
             kernel_key: kp.public_key(),
+            bbs_projection_version: None,
         };
         ChioReceipt::sign(body, kp).unwrap()
     }

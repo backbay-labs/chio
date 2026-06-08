@@ -26,8 +26,9 @@ use std::sync::Arc;
 
 use chio_credit::crypto::{sha256_hex, Ed25519Backend, Keypair};
 use chio_credit::receipt::{
-    ChioReceipt, ChioReceiptBody, Decision, FinancialReceiptMetadata, GuardEvidence,
-    SettlementStatus, ToolCallAction, TrustLevel,
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    economics::FinancialReceiptMetadata, economics::SettlementStatus, kinds::TrustLevel,
+    metadata::GuardEvidence,
 };
 use chio_credit::{CreditEvaluatorHook, LocalCreditAccount};
 use chio_guard_registry::GuardPrice;
@@ -110,6 +111,7 @@ fn signed_priced_receipt(kp: &Keypair, receipt_id: &str, amount: u64) -> ChioRec
         trust_level: TrustLevel::default(),
         tenant_id: Some("tenant-a".to_string()),
         kernel_key: kp.public_key(),
+        bbs_projection_version: None,
     };
     ChioReceipt::sign(body, kp).unwrap()
 }
@@ -202,7 +204,7 @@ fn install_priced_guard_run_call_one_iou_one_settlement() {
         receipt.tool_server.clone(),
         receipt.tool_name.clone(),
         receipt.capability_id.clone(),
-        chio_credit::capability::MonetaryAmount {
+        chio_credit::capability::scope::MonetaryAmount {
             currency: envelope.body.currency.clone(),
             units: envelope.body.amount_units,
         },

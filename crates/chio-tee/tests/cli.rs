@@ -4,10 +4,16 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 
 use chio_core::canonical::canonical_json_string;
-use chio_core::capability::{CapabilityToken, CapabilityTokenBody, ChioScope};
+use chio_core::capability::{
+    scope::ChioScope,
+    token::{CapabilityToken, CapabilityTokenBody},
+};
 use chio_core::crypto::{sha256_hex, Keypair};
 use chio_core::message::AgentMessage;
-use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
+use chio_core::receipt::{
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    kinds::TrustLevel,
+};
 use chio_tee::{validate_signed, Frame, Observation, Verdict};
 
 /// Deterministic tenant seed so the test can re-derive the public key and
@@ -71,6 +77,7 @@ fn observation(
         trust_level: TrustLevel::default(),
         tenant_id: None,
         kernel_key: kp.public_key(),
+        bbs_projection_version: None,
     };
     let receipt = ChioReceipt::sign(body, kp).expect("sign receipt");
     Observation { request, receipt }

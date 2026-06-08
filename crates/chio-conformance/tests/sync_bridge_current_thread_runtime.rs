@@ -17,7 +17,7 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use chio_core::capability::{ChioScope, Operation, ToolGrant};
+use chio_core::capability::scope::{ChioScope, Operation, ToolGrant};
 use chio_core::crypto::Keypair;
 use chio_kernel::runtime::{NestedFlowBridge, ToolCallRequest, ToolServerConnection};
 use chio_kernel::{
@@ -128,6 +128,7 @@ fn current_thread_runtime_returns_typed_error_instead_of_deadlocking() {
         agent_id: cap.subject.to_hex(),
         arguments: serde_json::json!({"input": "p0-002"}),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
@@ -202,6 +203,7 @@ fn no_runtime_attached_drives_future_to_completion() {
         agent_id: cap.subject.to_hex(),
         arguments: serde_json::json!({"input": "p0-002-no-rt"}),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,

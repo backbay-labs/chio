@@ -15,7 +15,10 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-use chio_core::capability::{CapabilityToken, CapabilityTokenBody, ChioScope};
+use chio_core::capability::{
+    scope::ChioScope,
+    token::{CapabilityToken, CapabilityTokenBody},
+};
 use chio_core::crypto::Keypair;
 use chio_guards::{
     AmbiguousPolicy, ComputerUseConfig, ComputerUseGuard, EnforcementMode,
@@ -56,6 +59,7 @@ fn make_request(
         agent_id: agent_id.clone(),
         arguments: args,
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
@@ -74,7 +78,7 @@ fn eval<G: Guard>(guard: &G, tool: &str, args: serde_json::Value) -> Verdict {
         session_filesystem_roots: None,
         matched_grant_index: None,
     };
-    guard.evaluate(&ctx).expect("guard evaluate")
+    guard.evaluate(&ctx).expect("guard evaluate").verdict
 }
 
 // ComputerUseGuard

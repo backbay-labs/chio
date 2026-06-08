@@ -14,10 +14,19 @@
 use chio_core::crypto::sha256_hex;
 use chio_core::session::{OperationKind, OperationTerminalState, RequestId, SessionId};
 use chio_core::{
-    CapabilityToken, CapabilityTokenBody, ChildRequestReceipt, ChildRequestReceiptBody,
-    ChioReceipt, ChioReceiptBody, ChioScope, Decision, DelegationLink, DelegationLinkBody,
-    GuardEvidence, Keypair, Operation, ToolAnnotations, ToolCallAction, ToolDefinition, ToolGrant,
-    ToolManifest, ToolManifestBody,
+    capability::{
+        attenuation::{DelegationLink, DelegationLinkBody},
+        scope::{ChioScope, Operation, ToolGrant},
+        token::{CapabilityToken, CapabilityTokenBody},
+    },
+    receipt::body::ChioReceipt,
+    receipt::body::ChioReceiptBody,
+    receipt::decision::Decision,
+    receipt::decision::ToolCallAction,
+    receipt::lineage::ChildRequestReceipt,
+    receipt::lineage::ChildRequestReceiptBody,
+    receipt::metadata::GuardEvidence,
+    Keypair, ToolAnnotations, ToolDefinition, ToolManifest, ToolManifestBody,
 };
 
 // ---------------------------------------------------------------------------
@@ -77,9 +86,10 @@ fn make_receipt_body(kp: &Keypair) -> ChioReceiptBody {
             details: None,
         }],
         metadata: None,
-        trust_level: chio_core::TrustLevel::default(),
+        trust_level: chio_core::receipt::kinds::TrustLevel::default(),
         tenant_id: None,
         kernel_key: kp.public_key(),
+        bbs_projection_version: None,
     }
 }
 

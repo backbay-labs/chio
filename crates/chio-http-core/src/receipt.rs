@@ -5,8 +5,8 @@ use serde_json::{Map, Value};
 
 use chio_core_types::crypto::{Keypair, PublicKey, Signature};
 use chio_core_types::receipt::{
-    ActorRef, BoundaryClass, GuardEvidence, ObservationOutcome, ReceiptKind, RedactionMode,
-    ToolOrigin, TrustLevel,
+    kinds::BoundaryClass, kinds::ObservationOutcome, kinds::ReceiptKind, kinds::RedactionMode,
+    kinds::ToolOrigin, kinds::TrustLevel, metadata::ActorRef, metadata::GuardEvidence,
 };
 use chio_core_types::{canonical_json_bytes, sha256_hex};
 
@@ -272,8 +272,8 @@ impl HttpReceipt {
         self.verdict.is_denied()
     }
 
-    fn chio_receipt_body(&self) -> chio_core_types::ChioReceiptBody {
-        let action = chio_core_types::ToolCallAction {
+    fn chio_receipt_body(&self) -> chio_core_types::receipt::body::ChioReceiptBody {
+        let action = chio_core_types::receipt::decision::ToolCallAction {
             parameters: serde_json::json!({
                 "method": self.method.to_string(),
                 "route": self.route_pattern,
@@ -282,7 +282,7 @@ impl HttpReceipt {
             parameter_hash: self.content_hash.clone(),
         };
 
-        chio_core_types::ChioReceiptBody {
+        chio_core_types::receipt::body::ChioReceiptBody {
             id: self.id.clone(),
             timestamp: self.timestamp,
             capability_id: self.capability_id.clone().unwrap_or_default(),
@@ -303,6 +303,7 @@ impl HttpReceipt {
             trust_level: self.trust_level,
             tenant_id: None,
             kernel_key: self.kernel_key.clone(),
+            bbs_projection_version: None,
         }
     }
 
@@ -310,18 +311,20 @@ impl HttpReceipt {
     pub fn to_chio_receipt_with_keypair(
         &self,
         keypair: &Keypair,
-    ) -> chio_core_types::Result<chio_core_types::ChioReceipt> {
+    ) -> chio_core_types::Result<chio_core_types::receipt::body::ChioReceipt> {
         let mut chio_body = self.chio_receipt_body();
         let canonical = canonical_json_bytes(&chio_body)?;
         chio_body.content_hash = sha256_hex(&canonical);
-        chio_core_types::ChioReceipt::sign(chio_body, keypair)
+        chio_core_types::receipt::body::ChioReceipt::sign(chio_body, keypair)
     }
 
     /// Convert this HTTP receipt into a core ChioReceipt for unified storage.
     ///
     /// This method fails closed because a valid ChioReceipt signature cannot be
     /// derived from an HttpReceipt without the kernel signing keypair.
-    pub fn to_chio_receipt(&self) -> chio_core_types::Result<chio_core_types::ChioReceipt> {
+    pub fn to_chio_receipt(
+        &self,
+    ) -> chio_core_types::Result<chio_core_types::receipt::body::ChioReceipt> {
         Err(chio_core_types::Error::CanonicalJson(
             "cannot convert HttpReceipt into signed ChioReceipt without the kernel keypair"
                 .to_string(),

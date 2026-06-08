@@ -10,7 +10,7 @@ use std::path::Path;
 #[derive(Clone)]
 pub(crate) struct CliRelayBatchReceiver {
     pub(crate) store: std::path::PathBuf,
-    pub(crate) transit_policy: chio_federation::PheromoneTransitPolicy,
+    pub(crate) transit_policy: chio_federation::pheromone_gossip::PheromoneTransitPolicy,
     pub(crate) receiver_config: chio_pheromone_runtime::PheromoneReceiverConfig,
     pub(crate) resolver: chio_pheromone_runtime::VerifiedChioWorkflowResolver,
 }
@@ -19,7 +19,7 @@ pub(crate) struct CliRelayBatchReceiver {
 impl chio_pheromone_relay::RelayBatchReceiver for CliRelayBatchReceiver {
     async fn receive_batch(
         &self,
-        batch: chio_federation::PheromoneGossipBatch,
+        batch: chio_federation::pheromone_gossip::PheromoneGossipBatch,
         authenticated_sender_kernel_id: String,
         received_at_unix_ms: u64,
     ) -> Result<
@@ -29,7 +29,7 @@ impl chio_pheromone_relay::RelayBatchReceiver for CliRelayBatchReceiver {
         let mut config = self.receiver_config.clone();
         config.authenticated_sender_kernel_id = authenticated_sender_kernel_id;
         config.validation_context.now_unix_ms = received_at_unix_ms;
-        let store = chio_pheromone_runtime::SqlitePheromoneRuntimeStore::open(&self.store)
+        let store = chio_pheromone_runtime::store::SqlitePheromoneRuntimeStore::open(&self.store)
             .map_err(|error| chio_pheromone_relay::PheromoneRelayError::Json(error.to_string()))?;
         let receiver =
             chio_pheromone_runtime::PheromoneReceiver::new(store, self.resolver.clone(), config);
@@ -244,7 +244,7 @@ pub(crate) fn cmd_chio_pheromone_relay_enqueue(
         "Chio peer directory",
     )?;
     let batch_json = read_utf8_json_file(batch, "Chio pheromone relay batch")?;
-    let batch: chio_federation::PheromoneGossipBatch = serde_json::from_str(&batch_json)
+    let batch: chio_federation::pheromone_gossip::PheromoneGossipBatch = serde_json::from_str(&batch_json)
         .map_err(|error| CliError::cli_other_error(format!("Chio relay batch: {error}")))?;
     let transit_policy_json =
         read_utf8_json_file(transit_policy, "Chio pheromone relay transit policy")?;
@@ -486,22 +486,22 @@ pub(crate) fn cmd_chio_pheromone_relay_catchup(
 
 pub(crate) fn validate_relay_enqueue_batch(
     directory: &chio_pheromone_relay::PeerDirectory,
-    batch: &chio_federation::PheromoneGossipBatch,
-    transit_policy: &chio_federation::PheromoneTransitPolicy,
+    batch: &chio_federation::pheromone_gossip::PheromoneGossipBatch,
+    transit_policy: &chio_federation::pheromone_gossip::PheromoneTransitPolicy,
     now_unix_ms: u64,
 ) -> Result<(), CliError> {
-    if batch.schema != chio_federation::PHEROMONE_GOSSIP_BATCH_SCHEMA {
+    if batch.schema != chio_federation::pheromone_gossip::PHEROMONE_GOSSIP_BATCH_SCHEMA {
         return Err(CliError::cli_other_error(format!(
             "Chio relay enqueue batch: unsupported schema {}",
             batch.schema
         )));
     }
-    let verification_context = chio_federation::PheromoneGossipBatchVerificationContext {
+    let verification_context = chio_federation::pheromone_gossip::PheromoneGossipBatchVerificationContext {
         now_unix_ms,
         recipient_kernel_id: batch.recipient_kernel_id.clone(),
         authenticated_sender_kernel_id: directory.local_kernel_id().to_string(),
     };
-    chio_federation::verify_pheromone_gossip_batch(batch, transit_policy, &verification_context)
+    chio_federation::pheromone_gossip::verify_pheromone_gossip_batch(batch, transit_policy, &verification_context)
         .map_err(|error| {
             CliError::cli_other_error(format!("Chio relay enqueue batch: {error}"))
         })?;

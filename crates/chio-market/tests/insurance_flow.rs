@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use std::sync::Mutex;
 
 use chio_core_types::canonical::canonical_json_bytes;
-use chio_core_types::capability::MonetaryAmount;
+use chio_core_types::capability::scope::MonetaryAmount;
 use chio_core_types::crypto::{sha256_hex, Keypair};
 use chio_market::{
     quote_and_bind, BoundPolicy, ClaimDecision, ClaimDenialReason, ClaimEvidence,

@@ -10,13 +10,32 @@ protocol behavior to the owning library crates.
 
 - `src/main.rs` wires the binary surface and keeps command modules reachable
   through the single `include!` entrypoint used by `src/bin/chio.rs`.
-- `src/cli/types.rs` owns clap-visible command shapes, environment fallbacks,
-  and help text.
+- `src/cli/types.rs` owns the global clap shell, environment fallbacks, and
+  root command wiring. Its child modules keep command schemas by family:
+  `types/runtime.rs` owns MCP, API, guard, attest, arena, lineage,
+  conformance, and settlement command trees; `types/trust.rs` owns
+  trust-control command schemas; `types/receipt.rs` owns receipt, evidence,
+  and certification schemas; `types/passport.rs` owns passport and verifier
+  flow schemas; `types/replay.rs` owns replay traffic arguments.
 - `src/cli/dispatch.rs` and `src/cli/dispatch/*` route parsed commands to
   command implementations without owning protocol semantics.
 - `src/cli/runtime.rs`, `src/cli/session.rs`, `src/cli/mcp.rs`, and
   `src/cli/replay.rs` adapt operator input into calls against kernel, control
-  plane, MCP, and replay library APIs.
+  plane, MCP, and replay library APIs. `src/cli/runtime/trust_reports.rs`
+  owns trust evidence, authorization context, behavioral feed, exposure,
+  capital, credit facility, bond, and credit-loss reporting handlers.
+- `src/passport.rs` owns passport generation, creation, verification,
+  evaluation, presentation, issuance metadata, and OID4VCI issuance command
+  implementations. `src/passport/verifier.rs` owns verifier policy, challenge,
+  OID4VP, and passport lifecycle status command implementations.
+- `src/cli/trust_commands.rs` is the trust-command handler API root. Its
+  children split durable command families: `trust/shared.rs` holds backend and
+  JSON/YAML loading helpers, `trust/credit.rs` owns credit/loss command
+  handlers and parsers, `trust/liability.rs` owns liability market and claim
+  handlers, `trust/underwriting.rs` owns underwriting input, decision, and
+  appeal handlers, `trust/runtime_attestation.rs` owns runtime-attestation
+  appraisal commands, and `trust/receipt.rs` owns receipt list, operator,
+  checkpoint, and explain rendering.
 - `src/doctor/*` owns local diagnostics. Probes report actionable operator
   health without mutating state unless `--fix` explicitly requests a safe
   repair.

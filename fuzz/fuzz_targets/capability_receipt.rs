@@ -2,7 +2,9 @@
 
 #![no_main]
 
-use chio_core_types::{CapabilityToken, ChioReceipt};
+use chio_core_types::{
+    capability::token::CapabilityToken, receipt::body::ChioReceipt,
+};
 use chio_fuzz::canonical_json::canonical_json_mutate;
 use libfuzzer_sys::{fuzz_mutator, fuzz_target};
 

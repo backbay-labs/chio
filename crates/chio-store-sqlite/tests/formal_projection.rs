@@ -1,10 +1,14 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_core::capability::{
-    CapabilityToken, CapabilityTokenBody, ChioScope, Operation, ToolGrant,
+    scope::{ChioScope, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core::crypto::Keypair;
-use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
+use chio_core::receipt::{
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    kinds::TrustLevel,
+};
 use chio_kernel::{BudgetStore, ReceiptStore, RevocationStore};
 use chio_store_sqlite::{SqliteBudgetStore, SqliteReceiptStore, SqliteRevocationStore};
 
@@ -69,6 +73,7 @@ fn receipt(id: &str, capability_id: &str) -> ChioReceipt {
             trust_level: TrustLevel::Mediated,
             tenant_id: None,
             kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
         },
         &keypair,
     )

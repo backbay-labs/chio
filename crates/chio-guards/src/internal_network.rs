@@ -12,7 +12,9 @@
 
 use std::net::IpAddr;
 
-use chio_kernel::{Guard, GuardContext, KernelError, Verdict};
+#[cfg(test)]
+use chio_kernel::Verdict;
+use chio_kernel::{Guard, GuardContext, GuardDecision, KernelError};
 
 use crate::action::{extract_action_checked, ToolAction};
 
@@ -97,20 +99,20 @@ impl Guard for InternalNetworkGuard {
         "internal-network"
     }
 
-    fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
         let action = match extract_action_checked(&ctx.request.tool_name, &ctx.request.arguments) {
             Ok(action) => action,
-            Err(_) => return Ok(Verdict::Deny),
+            Err(_) => return Ok(GuardDecision::deny(Vec::new())),
         };
 
         let host = match &action {
             ToolAction::NetworkEgress(h, _) => h.as_str(),
-            _ => return Ok(Verdict::Allow),
+            _ => return Ok(GuardDecision::allow()),
         };
 
         match self.check_host(host) {
-            Some(_reason) => Ok(Verdict::Deny),
-            None => Ok(Verdict::Allow),
+            Some(_reason) => Ok(GuardDecision::deny(Vec::new())),
+            None => Ok(GuardDecision::allow()),
         }
     }
 }
@@ -411,11 +413,11 @@ mod tests {
         let guard = InternalNetworkGuard::new();
 
         let kp = chio_core::crypto::Keypair::generate();
-        let scope = chio_core::capability::ChioScope::default();
+        let scope = chio_core::capability::scope::ChioScope::default();
         let agent = kp.public_key().to_hex();
         let server = "srv".to_string();
 
-        let cap_body = chio_core::capability::CapabilityTokenBody {
+        let cap_body = chio_core::capability::token::CapabilityTokenBody {
             id: "cap-test".to_string(),
             issuer: kp.public_key(),
             subject: kp.public_key(),
@@ -424,7 +426,8 @@ mod tests {
             expires_at: u64::MAX,
             delegation_chain: vec![],
         };
-        let cap = chio_core::capability::CapabilityToken::sign(cap_body, &kp).expect("sign cap");
+        let cap =
+            chio_core::capability::token::CapabilityToken::sign(cap_body, &kp).expect("sign cap");
 
         let request = chio_kernel::ToolCallRequest {
             request_id: "req-1".to_string(),
@@ -434,6 +437,7 @@ mod tests {
             agent_id: agent.clone(),
             arguments: serde_json::json!({"path": "/etc/passwd"}),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,

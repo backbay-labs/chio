@@ -2,6 +2,16 @@
 //! and rotation, capability issuance and revocation, SCIM user lifecycle,
 //! enterprise-provider records, and federation admission policies.
 
+use super::cluster::respond_after_leader_visible_write;
+use super::report_rendering::{
+    forward_authority_post_to_leader, forward_post_to_leader, forward_scim_delete_to_leader,
+    forward_scim_post_to_leader,
+};
+use super::report_validation::{
+    enforce_authority_mutation_fence, load_authority_status, load_capability_authority,
+    refresh_authority_mutation_fence, rotate_authority, validate_authority_mutation_auth,
+    validate_service_auth,
+};
 use super::*;
 
 pub(crate) async fn handle_authority_status(
@@ -424,7 +434,7 @@ pub(crate) async fn handle_evaluate_federation_policy(
         Err(response) => return response,
     }
     let now = unix_timestamp_now();
-    match evaluate_federation_policy_request(&state, &request, now) {
+    match service_runtime::issuance::evaluate_federation_policy_request(&state, &request, now) {
         Ok(response) => Json(response).into_response(),
         Err(error) if error.to_string().contains("was not found") => {
             plain_http_error(StatusCode::NOT_FOUND, &error.to_string())

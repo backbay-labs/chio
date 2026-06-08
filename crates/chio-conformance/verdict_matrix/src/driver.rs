@@ -3,9 +3,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use chio_core::capability::{CapabilityToken, ChioScope, Operation, ToolGrant};
+use chio_core::capability::{
+    scope::{ChioScope, Operation, ToolGrant},
+    token::CapabilityToken,
+};
 use chio_core::crypto::Keypair;
-use chio_core::receipt::GuardEvidence;
+use chio_core::receipt::metadata::GuardEvidence;
 use chio_kernel::execution_nonce::{
     ExecutionNonceConfig, ExecutionNonceError, InMemoryExecutionNonceStore, NonceBinding,
 };
@@ -13,8 +16,8 @@ use chio_kernel::post_invocation::{
     PostInvocationContext, PostInvocationHook, PostInvocationVerdict,
 };
 use chio_kernel::{
-    ChioKernel, Guard, GuardContext, KernelConfig, KernelError, NestedFlowBridge, ToolCallRequest,
-    ToolServerConnection, Verdict as KernelVerdict, DEFAULT_CHECKPOINT_BATCH_SIZE,
+    ChioKernel, Guard, GuardContext, GuardDecision, KernelConfig, KernelError, NestedFlowBridge,
+    ToolCallRequest, ToolServerConnection, Verdict as KernelVerdict, DEFAULT_CHECKPOINT_BATCH_SIZE,
     DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES,
 };
 use serde::Deserialize;
@@ -381,6 +384,7 @@ fn evaluate_scenario(scenario: &VerdictScenario) -> Result<VerdictTuple, String>
         agent_id: capability.subject.to_hex(),
         arguments,
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
@@ -556,7 +560,7 @@ fn evaluate_replay_scenario(
             &scenario.script.capability_scopes,
         ),
         ReplayNonceStatus::TraceMissing => {
-            match kernel.require_presented_execution_nonce(request, capability, None) {
+            match kernel.require_presented_execution_nonce(request, capability) {
                 Ok(()) => Err("missing execution nonce was accepted".to_string()),
                 Err(_) => Ok(tuple(
                     Verdict::Error,
@@ -797,8 +801,8 @@ impl Guard for MatrixInputGuard {
         "verdict-matrix-input"
     }
 
-    fn evaluate(&self, _ctx: &GuardContext<'_>) -> Result<KernelVerdict, KernelError> {
-        Ok(KernelVerdict::Deny)
+    fn evaluate(&self, _ctx: &GuardContext<'_>) -> Result<GuardDecision, KernelError> {
+        Ok(GuardDecision::deny(Vec::new()))
     }
 }
 
@@ -935,11 +939,7 @@ mod tests {
 
     fn assert_invalid(scenario: VerdictScenario, expected_reason: &str) {
         let Err(error) = scenario.validate() else {
-            assert!(
-                false,
-                "scenario validation accepted an invalid identity field"
-            );
-            return;
+            panic!("scenario validation accepted an invalid identity field");
         };
         assert!(
             error.to_string().contains(expected_reason),

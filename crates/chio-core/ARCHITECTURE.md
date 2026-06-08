@@ -11,8 +11,17 @@ underwriting, and Web3 contracts.
 The crate also owns the Chio extension standards that do not naturally belong to
 one lower-level protocol crate:
 
-- `extension.rs` defines the extension inventory, official stack package,
-  extension manifest, negotiation report, and qualification matrix.
+- `extension/mod.rs` declares the extension standard API and reexports the
+  private child modules.
+- `extension/model.rs` defines the extension inventory, official stack package,
+  extension manifest, negotiation report, and qualification matrix data models.
+- `extension/error.rs` owns extension contract error reporting.
+- `extension/validation.rs` owns fail-closed shape, reference, guardrail, and
+  qualification matrix validation.
+- `extension/negotiation.rs` owns compatibility negotiation and rejection
+  report construction.
+- `extension/tests.rs` owns extension contract unit tests and reference
+  artifact validation.
 - `identity_network.rs` defines cross-network identity and trust artifacts.
 - `standards.rs` defines shared machine-readable standard catalogs.
 - `lib.rs` is a compatibility facade and should stay additive unless a

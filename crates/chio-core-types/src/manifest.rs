@@ -8,7 +8,7 @@ use alloc::vec::Vec;
 
 use serde::{Deserialize, Serialize};
 
-use crate::capability::MonetaryAmount;
+use crate::capability::scope::MonetaryAmount;
 use crate::crypto::{Keypair, PublicKey, Signature};
 use crate::error::Result;
 use crate::signer_binding::ensure_keypair_matches_embedded_key;

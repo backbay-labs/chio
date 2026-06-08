@@ -29,7 +29,7 @@
   "capability_body_canonical_json": "{\"expires_at\":1710000100,\"id\":\"cap-bindings-expired\",\"issued_at\":1710000000,\"issuer\":\"66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a\",\"scope\":{\"grants\":[{\"constraints\":[{\"type\":\"path_prefix\",\"value\":\"/workspace/\"}],\"max_invocations\":3,\"operations\":[\"invoke\",\"read_result\"],\"server_id\":\"srv-files\",\"tool_name\":\"file_read\"}]},\"subject\":\"0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d\"}",
   "description": "Capability signature is valid, but the token is expired at verification time.",
   "expected": {
-    "delegation_chain_valid": true,
+    "delegation_chain_shape_valid": true,
     "signature_valid": true,
     "time_status": "expired",
     "time_valid": false

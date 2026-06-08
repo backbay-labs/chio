@@ -10,6 +10,17 @@ use chio_log_redact::redacted;
 
 use super::*;
 
+pub(crate) struct GuardRunError {
+    pub(crate) error: KernelError,
+    pub(crate) evidence: Vec<chio_core::receipt::metadata::GuardEvidence>,
+}
+
+impl GuardRunError {
+    fn new(error: KernelError, evidence: Vec<chio_core::receipt::metadata::GuardEvidence>) -> Self {
+        Self { error, evidence }
+    }
+}
+
 impl ChioKernel {
     pub(crate) fn validate_parent_request_continuation(
         &self,
@@ -61,14 +72,14 @@ impl ChioKernel {
                 .iter()
                 .find(|receipt| receipt.id == receipt_id)
                 .cloned()
-                .map(LocalReceiptArtifact::Tool),
+                .map(|receipt| LocalReceiptArtifact::Tool(Box::new(receipt))),
             Err(poisoned) => poisoned
                 .into_inner()
                 .receipts()
                 .iter()
                 .find(|receipt| receipt.id == receipt_id)
                 .cloned()
-                .map(LocalReceiptArtifact::Tool),
+                .map(|receipt| LocalReceiptArtifact::Tool(Box::new(receipt))),
         };
         if tool_match.is_some() {
             return tool_match;
@@ -80,14 +91,14 @@ impl ChioKernel {
                 .iter()
                 .find(|receipt| receipt.id == receipt_id)
                 .cloned()
-                .map(LocalReceiptArtifact::Child),
+                .map(|receipt| LocalReceiptArtifact::Child(Box::new(receipt))),
             Err(poisoned) => poisoned
                 .into_inner()
                 .receipts()
                 .iter()
                 .find(|receipt| receipt.id == receipt_id)
                 .cloned()
-                .map(LocalReceiptArtifact::Child),
+                .map(|receipt| LocalReceiptArtifact::Child(Box::new(receipt))),
         }
     }
 
@@ -255,7 +266,7 @@ impl ChioKernel {
         scope: &ChioScope,
         session_filesystem_roots: Option<&[String]>,
         matched_grant_index: Option<usize>,
-    ) -> Result<(), KernelError> {
+    ) -> Result<Vec<chio_core::receipt::metadata::GuardEvidence>, GuardRunError> {
         let ctx = GuardContext {
             request,
             scope,
@@ -265,37 +276,52 @@ impl ChioKernel {
             matched_grant_index,
         };
 
+        let mut evidence = Vec::new();
         for guard in &self.guards {
             match guard.evaluate(&ctx) {
-                Ok(Verdict::Allow) => {
-                    debug!(guard = guard.name(), "guard passed");
-                }
-                Ok(Verdict::Deny) => {
-                    return Err(KernelError::GuardDenied(format!(
-                        "guard \"{}\" denied the request",
-                        guard.name()
-                    )));
-                }
-                Ok(Verdict::PendingApproval) => {
-                    // The `Guard` trait does not carry the HITL approval flow; that runs via
-                    // `ApprovalGuard::evaluate`. A `Guard` returning `PendingApproval` is an
-                    // unsupported state, so fail closed.
-                    return Err(KernelError::GuardDenied(format!(
-                        "guard \"{}\" returned an unsupported approval verdict",
-                        guard.name()
-                    )));
+                Ok(decision) => {
+                    evidence.extend(decision.evidence);
+                    match decision.verdict {
+                        Verdict::Allow => {
+                            debug!(guard = guard.name(), "guard passed");
+                        }
+                        Verdict::Deny => {
+                            return Err(GuardRunError::new(
+                                KernelError::GuardDenied(format!(
+                                    "guard \"{}\" denied the request",
+                                    guard.name()
+                                )),
+                                evidence,
+                            ));
+                        }
+                        Verdict::PendingApproval => {
+                            // The `Guard` trait does not carry the HITL approval flow; that runs via
+                            // `ApprovalGuard::evaluate`. A `Guard` returning `PendingApproval` is an
+                            // unsupported state, so fail closed.
+                            return Err(GuardRunError::new(
+                                KernelError::GuardDenied(format!(
+                                    "guard \"{}\" returned an unsupported approval verdict",
+                                    guard.name()
+                                )),
+                                evidence,
+                            ));
+                        }
+                    }
                 }
                 Err(e) => {
                     // Fail closed: guard errors are treated as denials.
-                    return Err(KernelError::GuardDenied(format!(
-                        "guard \"{}\" error (fail-closed): {e}",
-                        guard.name()
-                    )));
+                    return Err(GuardRunError::new(
+                        KernelError::GuardDenied(format!(
+                            "guard \"{}\" error (fail-closed): {e}",
+                            guard.name()
+                        )),
+                        evidence,
+                    ));
                 }
             }
         }
 
-        Ok(())
+        Ok(evidence)
     }
 
     pub(crate) fn run_runtime_admission_hook(
@@ -413,6 +439,16 @@ impl ChioKernel {
 
     /// Forward the validated request and optionally report actual invocation cost.
     pub(crate) async fn dispatch_tool_call_with_cost(
+        &self,
+        request: &ToolCallRequest,
+        has_monetary_grant: bool,
+    ) -> Result<(ToolServerOutput, Option<ToolInvocationCost>), KernelError> {
+        self.require_presented_execution_nonce(request, &request.capability)?;
+        self.dispatch_tool_call_with_cost_after_nonce_check(request, has_monetary_grant)
+            .await
+    }
+
+    pub(crate) async fn dispatch_tool_call_with_cost_after_nonce_check(
         &self,
         request: &ToolCallRequest,
         has_monetary_grant: bool,

@@ -79,7 +79,7 @@ fn task_response_from_orchestrated(
     crate::metrics::record_receipt_write_verdict(response.verdict);
 
     match response.verdict {
-        KernelVerdict::Allow => TaskResponse {
+        KernelVerdict::Allow if response.terminal_state.is_completed() => TaskResponse {
             id: task_id,
             status: TaskStatus::Completed,
             status_message: None,
@@ -90,6 +90,13 @@ fn task_response_from_orchestrated(
             }),
             metadata: receipt_metadata,
         },
+        KernelVerdict::Allow => TaskResponse {
+            id: task_id,
+            status: TaskStatus::Working,
+            status_message: terminal_state_reason(&response.terminal_state),
+            message: None,
+            metadata: receipt_metadata,
+        },
         KernelVerdict::Deny | KernelVerdict::PendingApproval => TaskResponse {
             id: task_id,
             status: TaskStatus::Failed,
@@ -97,6 +104,14 @@ fn task_response_from_orchestrated(
             message: None,
             metadata: receipt_metadata,
         },
+    }
+}
+
+fn terminal_state_reason(terminal_state: &OperationTerminalState) -> Option<String> {
+    match terminal_state {
+        OperationTerminalState::Completed => None,
+        OperationTerminalState::Cancelled { reason }
+        | OperationTerminalState::Incomplete { reason } => Some(reason.clone()),
     }
 }
 

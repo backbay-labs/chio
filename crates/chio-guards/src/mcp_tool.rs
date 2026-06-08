@@ -6,7 +6,9 @@
 use std::collections::HashSet;
 use std::io;
 
-use chio_kernel::{GuardContext, KernelError, Verdict};
+#[cfg(test)]
+use chio_kernel::Verdict;
+use chio_kernel::{GuardContext, GuardDecision, KernelError};
 
 use crate::action::{extract_action_checked, ToolAction};
 
@@ -151,19 +153,19 @@ impl chio_kernel::Guard for McpToolGuard {
         "mcp-tool"
     }
 
-    fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
         if !self.enabled {
-            return Ok(Verdict::Allow);
+            return Ok(GuardDecision::allow());
         }
 
         let action = match extract_action_checked(&ctx.request.tool_name, &ctx.request.arguments) {
             Ok(action) => action,
-            Err(_) => return Ok(Verdict::Deny),
+            Err(_) => return Ok(GuardDecision::deny(Vec::new())),
         };
 
         let (tool_name, args) = match &action {
             ToolAction::McpTool(name, args) => (name.as_str(), args),
-            _ => return Ok(Verdict::Allow),
+            _ => return Ok(GuardDecision::allow()),
         };
 
         // Check argument size limit.
@@ -171,12 +173,12 @@ impl chio_kernel::Guard for McpToolGuard {
             .map_err(|e| KernelError::GuardDenied(format!("failed to serialize tool args: {e}")))?;
 
         if args_size > self.max_args_size {
-            return Ok(Verdict::Deny);
+            return Ok(GuardDecision::deny(Vec::new()));
         }
 
         match self.is_allowed(tool_name) {
-            ToolDecision::Allow => Ok(Verdict::Allow),
-            ToolDecision::Block => Ok(Verdict::Deny),
+            ToolDecision::Allow => Ok(GuardDecision::allow()),
+            ToolDecision::Block => Ok(GuardDecision::deny(Vec::new())),
         }
     }
 }
@@ -258,11 +260,11 @@ mod tests {
         let guard = McpToolGuard::with_config(config);
 
         let kp = chio_core::crypto::Keypair::generate();
-        let scope = chio_core::capability::ChioScope::default();
+        let scope = chio_core::capability::scope::ChioScope::default();
         let agent_id = kp.public_key().to_hex();
         let server_id = "srv-test".to_string();
 
-        let cap_body = chio_core::capability::CapabilityTokenBody {
+        let cap_body = chio_core::capability::token::CapabilityTokenBody {
             id: "cap-test".to_string(),
             issuer: kp.public_key(),
             subject: kp.public_key(),
@@ -271,7 +273,8 @@ mod tests {
             expires_at: u64::MAX,
             delegation_chain: vec![],
         };
-        let cap = chio_core::capability::CapabilityToken::sign(cap_body, &kp).expect("sign cap");
+        let cap =
+            chio_core::capability::token::CapabilityToken::sign(cap_body, &kp).expect("sign cap");
 
         let request = chio_kernel::ToolCallRequest {
             request_id: "req-test".to_string(),
@@ -281,6 +284,7 @@ mod tests {
             agent_id: agent_id.clone(),
             arguments: serde_json::json!({"command": "rm -rf /"}),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
@@ -305,11 +309,11 @@ mod tests {
         let guard = McpToolGuard::new();
 
         let kp = chio_core::crypto::Keypair::generate();
-        let scope = chio_core::capability::ChioScope::default();
+        let scope = chio_core::capability::scope::ChioScope::default();
         let agent_id = kp.public_key().to_hex();
         let server_id = "srv-test".to_string();
 
-        let cap_body = chio_core::capability::CapabilityTokenBody {
+        let cap_body = chio_core::capability::token::CapabilityTokenBody {
             id: "cap-test".to_string(),
             issuer: kp.public_key(),
             subject: kp.public_key(),
@@ -318,7 +322,8 @@ mod tests {
             expires_at: u64::MAX,
             delegation_chain: vec![],
         };
-        let cap = chio_core::capability::CapabilityToken::sign(cap_body, &kp).expect("sign cap");
+        let cap =
+            chio_core::capability::token::CapabilityToken::sign(cap_body, &kp).expect("sign cap");
 
         // "shell_exec" is blocked by default.
         let request = chio_kernel::ToolCallRequest {
@@ -329,6 +334,7 @@ mod tests {
             agent_id: agent_id.clone(),
             arguments: serde_json::json!({}),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
@@ -356,6 +362,7 @@ mod tests {
             agent_id: agent_id.clone(),
             arguments: serde_json::json!({"path": "/app/main.rs"}),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
@@ -387,11 +394,11 @@ mod tests {
         let guard = McpToolGuard::with_config(config);
 
         let kp = chio_core::crypto::Keypair::generate();
-        let scope = chio_core::capability::ChioScope::default();
+        let scope = chio_core::capability::scope::ChioScope::default();
         let agent_id = kp.public_key().to_hex();
         let server_id = "srv-test".to_string();
 
-        let cap_body = chio_core::capability::CapabilityTokenBody {
+        let cap_body = chio_core::capability::token::CapabilityTokenBody {
             id: "cap-test".to_string(),
             issuer: kp.public_key(),
             subject: kp.public_key(),
@@ -400,7 +407,8 @@ mod tests {
             expires_at: u64::MAX,
             delegation_chain: vec![],
         };
-        let cap = chio_core::capability::CapabilityToken::sign(cap_body, &kp).expect("sign cap");
+        let cap =
+            chio_core::capability::token::CapabilityToken::sign(cap_body, &kp).expect("sign cap");
 
         let large_args = serde_json::json!({"data": "x".repeat(200)});
         let request = chio_kernel::ToolCallRequest {
@@ -411,6 +419,7 @@ mod tests {
             agent_id: agent_id.clone(),
             arguments: large_args,
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,

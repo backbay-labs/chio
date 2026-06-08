@@ -32,12 +32,11 @@ pub(crate) fn build_app(state: Arc<ProxyState>) -> Router {
         // concurrent release.
         .route("/v1/capabilities", post(sidecar_capabilities_alias_handler))
         .route("/v1/capabilities/release", post(sidecar_release_handler))
-        // Phase B: capability validation and attenuation routes the SDK
-        // already calls. Validate verifies the embedded Ed25519 signature
-        // and checks the local revocation set and `expires_at`.
-        // Attenuate is a structured `not_yet_implemented` 501 stub
-        // because the kernel's `delegate` primitive needs the agent's
-        // private key, which the sidecar does not hold.
+        // Phase B: capability validation route the SDK already calls.
+        // Validate verifies the embedded Ed25519 signature and checks the
+        // local revocation set and `expires_at`. Attenuation is a fail-closed
+        // boundary because the sidecar must not hold the parent subject's
+        // private key.
         .route(
             "/v1/capabilities/validate",
             post(sidecar_validate_capability_handler),
@@ -50,16 +49,17 @@ pub(crate) fn build_app(state: Arc<ProxyState>) -> Router {
         // Phase B: verify a `ChioReceipt` signature against the embedded
         // kernel public key.
         .route("/v1/receipts/verify", post(sidecar_verify_receipt_handler))
-        // Phase A: tool-call evaluation alias. The SDK posts a
+        // Phase A: advisory tool-call evaluation. The SDK posts a
         // `{capability_id, tool_server, tool_name, parameters,
-        // parameter_hash}` body and expects a signed `ChioReceipt`.
-        // Today the sidecar issues a best-effort signed receipt: allow
-        // when the capability is not in the local revocation set, deny
-        // otherwise. The kernel-driven evaluation that `/chio/evaluate`
-        // performs for HTTP requests is not yet wired for tool-call
-        // bodies; the receipt's `policy_hash` records this so callers
-        // can audit the limitation.
-        .route("/v1/evaluate", post(sidecar_evaluate_tool_call_handler))
+        // parameter_hash}` body and receives an explicit advisory wrapper
+        // with `authorization: false`. The kernel-driven evaluation that
+        // `/chio/evaluate` performs for HTTP requests is not wired for
+        // tool-call bodies; callers must not treat this as authorization.
+        .route(
+            "/v1/evaluate/advisory",
+            post(sidecar_evaluate_tool_call_handler),
+        )
+        .route("/v1/evaluate", post(sidecar_removed_evaluate_handler))
         .route("/{*path}", any(proxy_handler))
         .route("/", any(proxy_handler))
         .with_state(state)
@@ -125,6 +125,19 @@ pub(crate) async fn proxy_handler(
     } else {
         Some(chio_core_types::sha256_hex(&body_bytes))
     };
+    let execution_nonce = match extract_execution_nonce_from_maps(&headers) {
+        Ok(nonce) => nonce,
+        Err(message) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                axum::Json(serde_json::json!({
+                    "error": "chio_bad_request",
+                    "message": message,
+                })),
+            )
+                .into_response();
+        }
+    };
 
     if let Some(response) =
         revoked_proxy_response(&state, method, &path, &query, &headers, body_hash.clone()).await
@@ -132,17 +145,21 @@ pub(crate) async fn proxy_handler(
         return response;
     }
 
-    let result =
-        match state
-            .evaluator
-            .evaluate(method, &path, &query, &headers, body_hash, body_length)
-        {
-            Ok(r) => r,
-            Err(e) => {
-                warn!("evaluation error: {e}");
-                return evaluation_error_response(&e);
-            }
-        };
+    let result = match state.evaluator.evaluate_with_execution_nonce(
+        method,
+        &path,
+        &query,
+        &headers,
+        body_hash,
+        body_length,
+        execution_nonce.as_ref(),
+    ) {
+        Ok(r) => r,
+        Err(e) => {
+            warn!("evaluation error: {e}");
+            return evaluation_error_response(&e);
+        }
+    };
 
     // If denied, return structured 403.
     if result.verdict.is_denied() {
@@ -175,6 +192,30 @@ pub(crate) async fn proxy_handler(
                 serde_json::to_string(&error_body).unwrap_or_default(),
             ))
             .unwrap_or_else(|_| denied_status.into_response());
+    }
+
+    if !result.verdict.is_allowed() {
+        let status = match &result.verdict {
+            Verdict::Incomplete { .. } => StatusCode::PRECONDITION_REQUIRED,
+            _ => StatusCode::from_u16(verdict_http_status(&result.verdict))
+                .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+        };
+        let final_receipt =
+            match finalize_and_record_receipt(&state, &result.receipt, status.as_u16()).await {
+                Ok(receipt) => receipt,
+                Err(response) => return response,
+            };
+        return (
+            status,
+            [("X-Chio-Receipt-Id", final_receipt.id.clone())],
+            axum::Json(EvaluateResponse {
+                verdict: result.verdict,
+                receipt: final_receipt,
+                evidence: result.evidence,
+                execution_nonce: result.execution_nonce,
+            }),
+        )
+            .into_response();
     }
 
     // Proxy to upstream.
@@ -446,6 +487,8 @@ pub(crate) async fn revoked_sidecar_evaluate_response(
                 verdict,
                 receipt,
                 evidence: Vec::new(),
+                // Revocation-only HTTP evaluation does not authorize
+                // execution and never mints a dispatch nonce.
                 execution_nonce: None,
             }),
         )

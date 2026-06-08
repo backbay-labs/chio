@@ -13,6 +13,7 @@ name = "chio_store_sqlite"
 
 [features]
 default = []
+pq = ["chio-core/pq", "chio-kernel/pq"]
 # Lineage: gates the recursive-CTE query helpers and the lineage
 # DAG view atop the existing receipt store. Default-off so the
 # receipt store and capability lineage indexers keep their

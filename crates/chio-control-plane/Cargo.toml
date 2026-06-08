@@ -15,6 +15,10 @@ public_entrypoint = true
 [lib]
 name = "chio_control_plane"
 
+[features]
+default = []
+pq = ["chio-core/pq", "chio-kernel/pq", "chio-store-sqlite/pq"]
+
 [dependencies]
 chio-appraisal = { path = "../chio-appraisal" }
 chio-core = { path = "../chio-core" }

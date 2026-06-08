@@ -1,7 +1,13 @@
 use chio_core::{
-    canonical_json_bytes, validate_attenuation, validate_delegation_chain, CapabilityToken,
-    CapabilityTokenBody, ChioScope, Constraint, DelegationLink, DelegationLinkBody, Keypair,
-    MerkleTree, Operation, ToolGrant,
+    canonical_json_bytes,
+    capability::{
+        attenuation::{
+            validate_attenuation, validate_delegation_chain, DelegationLink, DelegationLinkBody,
+        },
+        scope::{ChioScope, Constraint, Operation, ToolGrant},
+        token::{CapabilityToken, CapabilityTokenBody},
+    },
+    Keypair, MerkleTree,
 };
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use serde_json::json;

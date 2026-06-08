@@ -12,8 +12,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use chio_core_types::capability::ProvenanceEvidenceClass;
-use chio_core_types::receipt::ReceiptLineageStatement;
+use chio_core_types::capability::governance::ProvenanceEvidenceClass;
+use chio_core_types::receipt::lineage::ReceiptLineageStatement;
 
 use crate::schema::{EdgeKind, EvidenceClass, LineageEdge, LineageGraph, LineageNode, NodeKind};
 
@@ -356,7 +356,8 @@ mod tests {
     fn signed_lineage_statement_upgrades_to_verified() -> Result<(), Box<dyn std::error::Error>> {
         use chio_core_types::crypto::Keypair;
         use chio_core_types::receipt::{
-            ReceiptLineageEndpoints, ReceiptLineageRelationKind, ReceiptLineageStatementBody,
+            lineage::ReceiptLineageEndpoints, lineage::ReceiptLineageRelationKind,
+            lineage::ReceiptLineageStatementBody,
         };
         use chio_core_types::session::{RequestId, SessionAnchorReference};
 
@@ -405,7 +406,8 @@ mod tests {
     ) -> Result<(), Box<dyn std::error::Error>> {
         use chio_core_types::crypto::Keypair;
         use chio_core_types::receipt::{
-            ReceiptLineageEndpoints, ReceiptLineageRelationKind, ReceiptLineageStatementBody,
+            lineage::ReceiptLineageEndpoints, lineage::ReceiptLineageRelationKind,
+            lineage::ReceiptLineageStatementBody,
         };
         use chio_core_types::session::{RequestId, SessionAnchorReference};
 

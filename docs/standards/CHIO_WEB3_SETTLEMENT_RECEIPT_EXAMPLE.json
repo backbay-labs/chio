@@ -1,102 +1,124 @@
 {
   "dispatch": {
-    "beneficiary_address": "0x2222222222222222222222222222222222222222",
-    "bond_vault_contract": "0x1000000000000000000000000000000000000003",
+    "schema": "chio.web3-settlement-dispatch.v1",
+    "dispatch_id": "dispatch-web3-1",
+    "issued_at": 1743292800,
+    "trust_profile_id": "chio.official-web3-stack",
+    "contract_package_id": "chio.official-web3-contracts",
+    "chain_id": "eip155:8453",
     "capital_instruction": {
       "body": {
+        "schema": "chio.credit.capital-instruction.v1",
+        "instructionId": "cei-web3-1",
+        "issuedAt": 1743292800,
+        "query": {
+          "agentSubject": "subject-1",
+          "receiptLimit": 100,
+          "facilityLimit": 10,
+          "bondLimit": 10,
+          "lossEventLimit": 25
+        },
+        "subjectKey": "subject-1",
+        "sourceId": "capital-source:facility:facility-1",
+        "sourceKind": "facility_commitment",
+        "governedReceiptId": "rcpt-web3-1",
+        "completionFlowRowId": "economic-completion-flow:rcpt-web3-1",
         "action": "transfer_funds",
+        "ownerRole": "operator_treasury",
+        "counterpartyRole": "agent_counterparty",
+        "counterpartyId": "subject-1",
         "amount": {
-          "currency": "USD",
-          "units": 150
+          "units": 150,
+          "currency": "USD"
         },
         "authorityChain": [
           {
+            "role": "operator_treasury",
+            "principalId": "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618",
             "approvedAt": 1743292790,
             "expiresAt": 1743293800,
-            "note": "governed release",
-            "principalId": "treasury-1",
-            "role": "operator_treasury"
+            "authorityProof": {
+              "body": {
+                "schema": "chio.credit.capital-authority-step-proof.v1",
+                "role": "operator_treasury",
+                "principalId": "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618",
+                "approvedAt": 1743292790,
+                "expiresAt": 1743293800
+              },
+              "signerKey": "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618",
+              "signature": "0f7cd244afd2f95c383ab5b0f89978b3517a050cdea1c65f00e7b0ca190c1a39344502be465c33363e3983fd3d2914b964285aa6b1e2a894624b1cf14e5bb406"
+            },
+            "note": "governed release"
           },
           {
+            "role": "custodian",
+            "principalId": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
             "approvedAt": 1743292795,
             "expiresAt": 1743293800,
-            "note": "official web3 stack",
-            "principalId": "custodian-base-main",
-            "role": "custodian"
-          }
-        ],
-        "completionFlowRowId": "economic-completion-flow:rcpt-web3-1",
-        "counterpartyId": "subject-1",
-        "counterpartyRole": "agent_counterparty",
-        "description": "release escrow over the official web3 rail",
-        "evidenceRefs": [
-          {
-            "kind": "receipt",
-            "locator": "receipt:rcpt-web3-1",
-            "observedAt": 1743292800,
-            "referenceId": "rcpt-web3-1"
+            "authorityProof": {
+              "body": {
+                "schema": "chio.credit.capital-authority-step-proof.v1",
+                "role": "custodian",
+                "principalId": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
+                "approvedAt": 1743292795,
+                "expiresAt": 1743293800
+              },
+              "signerKey": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
+              "signature": "0ae4a3e6de1bfc13f714aa2b2d5e29300b4557e236d8b324aababa9dfd49d0ee36773e623a910dbebb91055f21442dd2f3c16567173974fca522eec2f9d6af05"
+            },
+            "note": "official web3 stack"
           }
         ],
         "executionWindow": {
-          "notAfter": 1743293800,
-          "notBefore": 1743292800
-        },
-        "governedReceiptId": "rcpt-web3-1",
-        "instructionId": "cei-web3-1",
-        "intendedState": "pending_execution",
-        "issuedAt": 1743292800,
-        "ownerRole": "operator_treasury",
-        "query": {
-          "agentSubject": "subject-1",
-          "bondLimit": 10,
-          "facilityLimit": 10,
-          "lossEventLimit": 25,
-          "receiptLimit": 100
+          "notBefore": 1743292800,
+          "notAfter": 1743293800
         },
         "rail": {
-          "custodyProviderId": "custodian-base-main",
-          "destinationAccountRef": "0x2222222222222222222222222222222222222222",
-          "jurisdiction": "US",
           "kind": "web3",
           "railId": "base-mainnet-usdc",
-          "sourceAccountRef": "vault:facility-main"
+          "custodyProviderId": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
+          "sourceAccountRef": "vault:facility-main",
+          "destinationAccountRef": "0x2222222222222222222222222222222222222222",
+          "jurisdiction": "US"
         },
+        "intendedState": "pending_execution",
         "reconciledState": "not_observed",
-        "schema": "chio.credit.capital-instruction.v1",
-        "sourceId": "capital-source:facility:facility-1",
-        "sourceKind": "facility_commitment",
-        "subjectKey": "subject-1",
         "supportBoundary": {
-          "automaticDispatchSupported": true,
           "capitalBookAuthoritative": true,
-          "custodyNeutralInstructionSupported": false,
-          "externalExecutionAuthoritative": false
-        }
+          "externalExecutionAuthoritative": false,
+          "automaticDispatchSupported": true,
+          "custodyNeutralInstructionSupported": false
+        },
+        "evidenceRefs": [
+          {
+            "kind": "receipt",
+            "referenceId": "rcpt-web3-1",
+            "observedAt": 1743292800,
+            "locator": "receipt:rcpt-web3-1"
+          }
+        ],
+        "description": "release escrow over the official web3 rail"
       },
-      "signature": "ffa1cb9483335fdc0470da1c8651532efe18ba98860fda29f42c0cea46bfb142f18108c72d415878373dcbd38ffc48c631defd5c07ca584ce8f7c4c2f34e6102",
-      "signerKey": "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618"
-    },
-    "chain_id": "eip155:8453",
-    "contract_package_id": "chio.official-web3-contracts",
-    "dispatch_id": "dispatch-web3-1",
-    "escrow_contract": "0x1000000000000000000000000000000000000002",
-    "escrow_id": "escrow-web3-1",
-    "issued_at": 1743292800,
-    "note": "Dispatches one governed escrow release over the official Base-first contract stack.",
-    "schema": "chio.web3-settlement-dispatch.v1",
-    "settlement_amount": {
-      "currency": "USD",
-      "units": 150
+      "signerKey": "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618",
+      "signature": "a63339b5f7c7526549b9dc7971af90df54e01c9735d5c3a52f5c28bb381de8f786eccde0d0c29e5a963358ff5a64bd71a8bc7e6facc3b16e14c23f0c2d4a170a"
     },
     "settlement_path": "merkle_proof",
+    "settlement_amount": {
+      "units": 150,
+      "currency": "USD"
+    },
+    "escrow_id": "escrow-web3-1",
+    "escrow_contract": "0x1000000000000000000000000000000000000002",
+    "bond_vault_contract": "0x1000000000000000000000000000000000000003",
+    "beneficiary_address": "0x2222222222222222222222222222222222222222",
     "support_boundary": {
-      "anchor_proof_required": true,
-      "custody_boundary_explicit": true,
-      "oracle_evidence_required_for_fx": true,
       "real_dispatch_supported": true,
+      "anchor_proof_required": true,
+      "oracle_evidence_required_for_fx": true,
+      "custody_boundary_explicit": true,
       "reversal_supported": true
     },
-    "trust_profile_id": "chio.official-web3-stack"
+    "note": "Dispatches one governed escrow release over the official Base-first contract stack."
   },
   "execution_receipt_id": "receipt-web3-1",
   "issued_at": 1743292860,

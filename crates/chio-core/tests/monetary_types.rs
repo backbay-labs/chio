@@ -21,8 +21,12 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use chio_core::{
-    Attenuation, CapabilityToken, CapabilityTokenBody, ChioScope, Keypair, MonetaryAmount,
-    Operation, ToolGrant,
+    capability::{
+        attenuation::Attenuation,
+        scope::{ChioScope, MonetaryAmount, Operation, ToolGrant},
+        token::{CapabilityToken, CapabilityTokenBody},
+    },
+    Keypair,
 };
 
 // ---------------------------------------------------------------------------

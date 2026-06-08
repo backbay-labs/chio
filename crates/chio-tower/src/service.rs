@@ -192,7 +192,7 @@ fn denied_status(verdict: &chio_http_core::Verdict) -> http::StatusCode {
 
 /// Guard name attached to the deny verdict the middleware emits when a
 /// request body exceeds the configured `max_body_bytes` limit.
-const TRANSPORT_BODY_SIZE_GUARD: &str = "chio_tower_request_body_size";
+const TRANSPORT_BODY_SIZE_GUARD: &str = "chio_tower_request_body_limit_guard";
 
 /// Build the `413 Payload Too Large` response that fronts an oversized
 /// request body. The response carries:
@@ -351,7 +351,10 @@ mod tests {
     use super::*;
     use crate::evaluator::ChioEvaluator;
     use bytes::Bytes;
-    use chio_core_types::capability::{CapabilityToken, CapabilityTokenBody, ChioScope};
+    use chio_core_types::capability::{
+        scope::ChioScope,
+        token::{CapabilityToken, CapabilityTokenBody},
+    };
     use chio_core_types::crypto::Keypair;
     use chio_http_core::{
         http_authority_tool_grant, http_status_scope, HttpReceipt, CHIO_HTTP_STATUS_SCOPE_FINAL,

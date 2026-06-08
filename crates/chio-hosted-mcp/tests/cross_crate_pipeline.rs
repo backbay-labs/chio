@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use chio_core::receipt::Decision;
+use chio_core::receipt::decision::Decision;
 use chio_siem::event::SiemEvent;
 use chio_siem::exporter::ExportFuture;
 use chio_siem::{Exporter, ExporterManager, SiemConfig};

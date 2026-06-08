@@ -13,7 +13,10 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_core::crypto::Keypair;
-use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
+use chio_core::receipt::{
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    kinds::TrustLevel,
+};
 use chio_store_sqlite::SqliteReceiptStore;
 
 fn workspace_root() -> PathBuf {
@@ -63,6 +66,7 @@ fn signed_receipt(id: &str, capability_id: &str, tenant: Option<&str>) -> ChioRe
             trust_level: TrustLevel::default(),
             tenant_id: tenant.map(str::to_string),
             kernel_key: kp.public_key(),
+            bbs_projection_version: None,
         },
         &kp,
     )

@@ -2,7 +2,8 @@
 
 use chio_core::crypto::Keypair;
 use chio_core::receipt::{
-    ChioReceipt, ChioReceiptBody, Decision, GuardEvidence, ToolCallAction, TrustLevel,
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    kinds::TrustLevel, metadata::GuardEvidence,
 };
 use chio_siem::{CefExporter, CefExporterConfig, SiemEvent};
 
@@ -22,11 +23,11 @@ fn deny_receipt() -> ChioReceipt {
             reason: "forbidden path".to_string(),
             guard: "ForbiddenPathGuard".to_string(),
         }),
-        receipt_kind: chio_core::ReceiptKind::MediatedDecision,
-        boundary_class: chio_core::BoundaryClass::Prevent,
+        receipt_kind: chio_core::receipt::kinds::ReceiptKind::MediatedDecision,
+        boundary_class: chio_core::receipt::kinds::BoundaryClass::Prevent,
         observation_outcome: None,
-        tool_origin: chio_core::ToolOrigin::CallerExecuted,
-        redaction_mode: chio_core::RedactionMode::None,
+        tool_origin: chio_core::receipt::kinds::ToolOrigin::CallerExecuted,
+        redaction_mode: chio_core::receipt::kinds::RedactionMode::None,
         actor_chain: Vec::new(),
         content_hash: "content-hash".to_string(),
         policy_hash: "policy-hash".to_string(),
@@ -43,6 +44,7 @@ fn deny_receipt() -> ChioReceipt {
         trust_level: TrustLevel::Mediated,
         tenant_id: Some("healthcare-pilot".to_string()),
         kernel_key: keypair.public_key(),
+        bbs_projection_version: None,
     };
     ChioReceipt::sign(body, &keypair).unwrap()
 }

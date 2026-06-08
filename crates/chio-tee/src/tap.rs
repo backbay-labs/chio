@@ -18,7 +18,7 @@
 use std::error::Error;
 
 use chio_core::message::AgentMessage;
-use chio_core::receipt::ChioReceipt;
+use chio_core::receipt::body::ChioReceipt;
 
 /// Boxed error returned by `TrafficTap` hooks. `Send + Sync` so taps can
 /// be invoked from any thread without losing the underlying error type.
@@ -71,9 +71,15 @@ mod tests {
     use std::sync::Mutex;
 
     use chio_core::canonical::canonical_json_string;
-    use chio_core::capability::{CapabilityToken, CapabilityTokenBody, ChioScope};
+    use chio_core::capability::{
+        scope::ChioScope,
+        token::{CapabilityToken, CapabilityTokenBody},
+    };
     use chio_core::crypto::{sha256_hex, Keypair};
-    use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
+    use chio_core::receipt::{
+        body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+        kinds::TrustLevel,
+    };
 
     /// Recorded event in the order it was observed by a `RecordingTap`.
     #[derive(Debug, Clone, PartialEq, Eq)]
@@ -210,6 +216,7 @@ mod tests {
             trust_level: TrustLevel::default(),
             tenant_id: None,
             kernel_key: kp.public_key(),
+            bbs_projection_version: None,
         };
         match ChioReceipt::sign(body, kp) {
             Ok(receipt) => receipt,

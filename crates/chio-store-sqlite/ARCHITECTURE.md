@@ -3,16 +3,23 @@
 ## Module Boundaries
 
 `receipt_store` owns receipt persistence, query support, report generation,
-checkpoint projection, and evidence-retention helpers. `budget_store.rs` owns
+checkpoint projection, and evidence-retention helpers. `budget_store` owns
 durable grant usage, authorization holds, mutation events, replication sequence
 allocation, and idempotent replay handling. The smaller store modules own
 approval state, batch approval state, revocations, execution nonces,
 encrypted blobs, IOU envelopes, dead letters, memory provenance, and evidence
 export.
 
+`budget_store.rs` is now the API root for `SqliteBudgetStore` and module
+wiring only. `budget_store/store.rs` contains concrete store methods,
+`trait_impl.rs` implements `BudgetStore`, `model.rs` defines the internal hold
+model, `rows.rs` owns fail-closed row decoding and error mapping, `schema.rs`
+owns migration helpers, `replication.rs` owns sequence allocation, and
+`tests.rs` keeps the budget-store unit coverage.
+
 ## Pain Points
 
-`budget_store.rs` is a high-authority persistence boundary. Several SQLite row
+`budget_store` is a high-authority persistence boundary. Several SQLite row
 decoders read persisted integer fields with `.max(0)` and then cast them into
 unsigned Rust counters. That masks corrupt or manually edited negative
 `invocation_count`, cost, sequence, hold, or mutation fields as zero. A bad row

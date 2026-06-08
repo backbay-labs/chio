@@ -61,7 +61,7 @@ class ChioGraphConfig:
         registration time.
     subject:
         Hex-encoded Ed25519 subject key used when a capability token is
-        minted for the graph. Defaults to a deterministic placeholder so
+        minted for the graph. Defaults to a deterministic fallback subject so
         tests and local demos work without a real keyring.
     ttl_seconds:
         Lifetime of minted capability tokens.

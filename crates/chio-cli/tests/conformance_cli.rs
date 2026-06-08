@@ -64,6 +64,95 @@ fn conformance_run_help_shape_is_stable() {
     assert_snapshot!("conformance_run_help", help_text);
 }
 
+#[test]
+fn fetch_peers_check_rejects_all_unpublished_selection() {
+    let scratch = TempDir::new().expect("create scratch tempdir");
+    let lockfile = scratch.path().join("peers.lock.toml");
+    std::fs::write(
+        &lockfile,
+        r#"
+schema = "chio.conformance.peers/v1"
+
+[[peer]]
+language = "python"
+url = "https://example.com/chio-py-peer-linux-x86_64.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+target = "x86_64-unknown-linux-gnu"
+binary = "chio-py-peer"
+published = false
+"#,
+    )
+    .expect("write peers lockfile");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_chio"))
+        .arg("conformance")
+        .arg("fetch-peers")
+        .arg("--check")
+        .arg("--language")
+        .arg("python")
+        .arg("--lockfile")
+        .arg(&lockfile)
+        .output()
+        .expect("spawn chio conformance fetch-peers --check");
+
+    assert!(
+        !output.status.success(),
+        "all-unpublished peer selection must fail: stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("no published entries for language filter `python`"),
+        "unexpected stderr: {stderr}",
+    );
+}
+
+#[test]
+fn fetch_peers_check_allows_unpublished_selection_when_explicitly_pre_release() {
+    let scratch = TempDir::new().expect("create scratch tempdir");
+    let lockfile = scratch.path().join("peers.lock.toml");
+    std::fs::write(
+        &lockfile,
+        r#"
+schema = "chio.conformance.peers/v1"
+
+[[peer]]
+language = "python"
+url = "https://example.com/chio-py-peer-linux-x86_64.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+target = "x86_64-unknown-linux-gnu"
+binary = "chio-py-peer"
+published = false
+"#,
+    )
+    .expect("write peers lockfile");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_chio"))
+        .arg("conformance")
+        .arg("fetch-peers")
+        .arg("--check")
+        .arg("--allow-unpublished-only")
+        .arg("--language")
+        .arg("python")
+        .arg("--lockfile")
+        .arg(&lockfile)
+        .output()
+        .expect("spawn chio conformance fetch-peers --check");
+
+    assert!(
+        output.status.success(),
+        "explicit pre-release lockfile check must pass: stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("0 published, 1 skipped") && stdout.contains("unpublished, will skip"),
+        "stdout must make skipped pre-release entry explicit: {stdout}",
+    );
+}
+
 /// Drive the live harness against the Python peer and snapshot the JSON report
 /// shape. Silently skips when Python 3.11+ is unavailable or
 /// `CHIO_SKIP_CONFORMANCE_LIVE` is set.

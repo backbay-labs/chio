@@ -9,9 +9,10 @@ contract for **selective-disclosure proofs over chio receipts and
 workflow receipts**. The repository now includes
 `chio-selective-disclosure` with an opt-in `bbs` feature that signs
 receipt, workflow, and step projections and verifies reveal-set BBS
-proof packages. The `chio-federation` `bbs-stub` projection is a SHA-256 commitment placeholder; it cannot satisfy Chio conformance and is not compatible with BBS+ reveal proofs. Hidden
-range predicates, VC Data Integrity interop, and zkVM proofs are still
-deferred.
+proof packages. Legacy federation placeholder proof packages are not a
+conformance surface and any schema ending in `.stub` is rejected by the
+v1 proof schema and verifier. Hidden range predicates, VC Data
+Integrity interop, and zkVM proofs are still deferred.
 
 The v1 contract closes Hard Problem #4 from
 [CHIO_CONCEPT.md](../docs/research/CHIO_CONCEPT.md) v1.1 section 7
@@ -144,7 +145,10 @@ once IRTF and W3C documents stabilise.
 
 Each disclosable top-level field of `ChioReceiptBody` projects to one
 BBS message (one BLS12-381 scalar). Ordering is **alphabetical by
-serde field name**, frozen by `bbs_projection_version` (5.3).
+serde field name**, frozen by `bbs_projection_version` (5.3). The
+`bbs_projection_version` field itself is a projection selector, not a
+projected message; it is bound by `ChioReceiptIdInput` and by the BBS
+header's `projection_version`.
 Alphabetical wins over schema-declared because (a) inserting a field
 forces a new projection version rather than silently shifting
 indices, (b) it is mechanically reproducible from the struct with no
@@ -195,13 +199,26 @@ closed (`disclosure.unknown_projection_version`).
 ### 5.4 New optional `bbs_signature` field
 
 `ChioReceipt` gains an optional
-`bbs_signature: Option<BbsSignatureMaterial>` carrying the BBS+
-signature bytes, issuer fingerprint, and projection version. The
-Ed25519 authoritative signature MUST cover this field via
-`ChioReceiptBody` (omitted when absent so older receipts remain
-byte-identical). Verifiers that ignore selective disclosure MUST
-still re-canonicalize and re-verify Ed25519 with the field included
-when present, preserving the two-commitment binding.
+`bbs_signature: Option<BbsReceiptSignature>` carrying:
+
+- `schema = "chio.receipt.bbs_signature.v1"`
+- `projection_version`
+- `algorithm = "bbs"`
+- `ciphersuite`
+- `issuer_fingerprint`
+- `issuer_public_key_hex`
+- `message_count`
+- `signature_hex`
+
+The Ed25519 authoritative signature MUST cover this field through the
+canonical `ChioReceiptSigningBody` wrapper. `ChioReceiptIdInput`
+includes `bbs_projection_version` but not the BBS signature bytes, so
+producers can compute the final receipt id, project that final body,
+produce the BBS signature, then bind the BBS material into the
+authoritative Ed25519 signature without a circular id dependency.
+Verifiers that ignore selective disclosure MUST still re-canonicalize
+and re-verify Ed25519 with the field included when present, preserving
+the two-commitment binding.
 
 ### 5.5 Per-kernel BBS keypair
 
@@ -465,15 +482,21 @@ verify(envelope, pinned_receipt, pinned_epoch, peer_pin_set):
   2.  verify pinned Ed25519+JCS signature; require
       sha256_hex(canonical_json(body)) == envelope.subject_receipt_sha256
                                               -> subject_receipt_mismatch
-  3.  require pinned.bbs_signature present and
+  3.  for ChioReceipt subjects, require pinned.bbs_signature present and
       body.bbs_projection_version == envelope.projection_version
                                               -> unknown_projection_version
+      for WorkflowReceipt subjects, require envelope.projection_version
+      is a workflow projection version and rely on the proof header's
+      subject hash binding until workflow-embedded BBS material lands
   4.  resolve issuer_bbs_public_key_fingerprint to non-revoked passport
       at pinned_epoch; verify fingerprint    -> bbs_issuer_unknown_or_revoked
   5.  recompute projection (section 5/6) -> message vector M
                                               -> projection_recompute_failed
-  6.  verify pinned.bbs_signature against M and issuer key
+  6.  for ChioReceipt subjects, verify pinned.bbs_signature against M
+      and issuer key
                                               -> bbs_signature_invalid
+      for WorkflowReceipt subjects, continue with proof verification
+      against the trusted issuer key and recomputed workflow projection
   7.  verify envelope.bbs_proof_bytes as BBS+ PoK over the
       disclosed/withheld split, binding disclosed values to indices
                                               -> bbs_proof_invalid
@@ -512,7 +535,9 @@ v1 does not specify a proof-carrying-receipt mode.
 The implemented slice lives in
 [`chio-selective-disclosure`](../crates/chio-selective-disclosure/src/lib.rs).
 It is outside the default build and enabled with the crate's `bbs`
-feature. The `chio-federation` `bbs-stub` feature is a SHA-256 commitment placeholder; it is not compatible with v1 BBS+ proofs.
+feature. Federation no longer ships a parallel selective-disclosure
+proof path; BBS projection, signing, proof derivation, and verification
+are owned by `chio-selective-disclosure`.
 
 The implementation uses `affinidi-bbs = 0.1.0`, pinned because
 `affinidi-bbs = 0.1.1` requires Rust 1.94 while this workspace is pinned

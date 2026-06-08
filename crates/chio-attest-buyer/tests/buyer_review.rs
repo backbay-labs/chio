@@ -7,22 +7,21 @@ use chio_attest_buyer::{
 
 #[test]
 fn buyer_public_data_types_are_chio_owned() {
-    assert_eq!(
+    for type_name in [
         std::any::type_name::<chio_attest_buyer::BuyerAttestationPacket>(),
-        "chio_attest_buyer::BuyerAttestationPacket"
-    );
-    assert_eq!(
         std::any::type_name::<chio_attest_buyer::BuyerAttestationReviewPackage>(),
-        "chio_attest_buyer::BuyerAttestationReviewPackage"
-    );
-    assert_eq!(
         std::any::type_name::<chio_attest_buyer::ReceiptLineageStatement>(),
-        "chio_attest_buyer::ReceiptLineageStatement"
-    );
-    assert_eq!(
         std::any::type_name::<chio_attest_buyer::BilateralInvocation>(),
-        "chio_attest_buyer::BilateralInvocation"
-    );
+    ] {
+        assert!(
+            type_name.starts_with("chio_attest_buyer::types::"),
+            "buyer public type should be defined in the Chio-owned types module: {type_name}"
+        );
+        assert!(
+            !type_name.contains("chio_runtime_core"),
+            "buyer public type must not resolve to a historical runtime type: {type_name}"
+        );
+    }
 }
 
 #[test]
@@ -43,7 +42,10 @@ fn buyer_public_review_messages_use_chio_boundary_wording() {
 #[test]
 fn buyer_error_boundary_is_chio_owned() {
     let error_type = std::any::type_name::<BuyerAttestationError>();
-    assert_eq!(error_type, "chio_attest_buyer::BuyerAttestationError");
+    assert_eq!(
+        error_type,
+        "chio_attest_buyer::error::BuyerAttestationError"
+    );
 
     let error = match buyer_attestation_packet_from_json("{") {
         Ok(_) => panic!("invalid packet JSON should fail"),

@@ -2,8 +2,8 @@
 
 These tests assert that ``ChioTool`` redacts secret-bearing fields from
 its tool arguments BEFORE forwarding them to the sidecar's
-``evaluate_tool_call`` endpoint, so the receipt log never carries the
-raw secret bytes.
+advisory evaluation endpoint, so the receipt log never carries the raw
+secret bytes.
 
 Source of truth: ``chio_adapter_base.redact.redact_args``.
 """
@@ -22,17 +22,48 @@ BASE = "http://127.0.0.1:9090"
 
 def _make_receipt_dict() -> dict:
     return {
-        "id": "r-1",
+        "id": "1" * 64,
         "timestamp": 1700000000,
         "capability_id": "cap-1",
         "tool_server": "fs",
         "tool_name": "chio_file_write",
-        "action": {"parameters": {"path": "/tmp/x"}, "parameter_hash": "abc"},
-        "decision": {"verdict": "allow"},
-        "content_hash": "deadbeef",
+        "action": {"parameters": {"path": "/tmp/x"}, "parameter_hash": "2" * 64},
+        "decision": None,
+        "receipt_kind": "advisory_evaluation",
+        "boundary_class": "advisory_only",
+        "observation_outcome": "evaluated",
+        "tool_origin": "caller_executed",
+        "redaction_mode": "none",
+        "content_hash": "3" * 64,
         "policy_hash": "cafe",
-        "kernel_key": "kk",
-        "signature": "ss",
+        "trust_level": "advisory",
+        "kernel_key": "5" * 64,
+        "signature": "6" * 128,
+    }
+
+
+def _advisory_wrapper(receipt: dict) -> dict:
+    return {
+        "schema": "chio.sidecar.advisory-evaluation.v1",
+        "authorization": False,
+        "authorizationBasis": "advisory_only",
+        "receipt": receipt,
+    }
+
+
+def _advisory_verify_report() -> dict:
+    return {
+        "signature_valid": True,
+        "signer_trusted": True,
+        "receipt_id_valid": True,
+        "parameter_hash_valid": True,
+        "receipt_kind": "advisory_evaluation",
+        "boundary_class": "advisory_only",
+        "trust_level": "advisory",
+        "result": "allow",
+        "authorized": False,
+        "signer_key_hex": "5" * 64,
+        "ok": False,
     }
 
 
@@ -44,8 +75,14 @@ def _make_receipt_dict() -> dict:
 class TestDefaultPolicyRedacts:
     @respx.mock
     async def test_chio_file_write_content_is_redacted(self) -> None:
-        route = respx.post(f"{BASE}/v1/evaluate").mock(
-            return_value=httpx.Response(200, json=_make_receipt_dict())
+        route = respx.post(f"{BASE}/v1/evaluate/advisory").mock(
+            return_value=httpx.Response(
+                200,
+                json=_advisory_wrapper(_make_receipt_dict()),
+            )
+        )
+        respx.post(f"{BASE}/v1/receipts/verify").mock(
+            return_value=httpx.Response(200, json=_advisory_verify_report())
         )
 
         tool = ChioTool(
@@ -72,8 +109,11 @@ class TestDefaultPolicyRedacts:
     async def test_chio_file_edit_patch_is_redacted(self) -> None:
         receipt = _make_receipt_dict()
         receipt["tool_name"] = "chio_file_edit"
-        route = respx.post(f"{BASE}/v1/evaluate").mock(
-            return_value=httpx.Response(200, json=receipt)
+        route = respx.post(f"{BASE}/v1/evaluate/advisory").mock(
+            return_value=httpx.Response(200, json=_advisory_wrapper(receipt))
+        )
+        respx.post(f"{BASE}/v1/receipts/verify").mock(
+            return_value=httpx.Response(200, json=_advisory_verify_report())
         )
 
         tool = ChioTool(
@@ -97,8 +137,11 @@ class TestDefaultPolicyRedacts:
     async def test_unrelated_tool_passes_args_through(self) -> None:
         receipt = _make_receipt_dict()
         receipt["tool_name"] = "search"
-        route = respx.post(f"{BASE}/v1/evaluate").mock(
-            return_value=httpx.Response(200, json=receipt)
+        route = respx.post(f"{BASE}/v1/evaluate/advisory").mock(
+            return_value=httpx.Response(200, json=_advisory_wrapper(receipt))
+        )
+        respx.post(f"{BASE}/v1/receipts/verify").mock(
+            return_value=httpx.Response(200, json=_advisory_verify_report())
         )
 
         tool = ChioTool(
@@ -127,8 +170,11 @@ class TestCustomPolicy:
     async def test_custom_policy_redacts_only_named_fields(self) -> None:
         receipt = _make_receipt_dict()
         receipt["tool_name"] = "my_tool"
-        route = respx.post(f"{BASE}/v1/evaluate").mock(
-            return_value=httpx.Response(200, json=receipt)
+        route = respx.post(f"{BASE}/v1/evaluate/advisory").mock(
+            return_value=httpx.Response(200, json=_advisory_wrapper(receipt))
+        )
+        respx.post(f"{BASE}/v1/receipts/verify").mock(
+            return_value=httpx.Response(200, json=_advisory_verify_report())
         )
 
         custom = RedactionPolicy(body_fields={"my_tool": ("body",)})
@@ -156,8 +202,11 @@ class TestCustomPolicy:
         is no longer redacted under it.
         """
         receipt = _make_receipt_dict()
-        route = respx.post(f"{BASE}/v1/evaluate").mock(
-            return_value=httpx.Response(200, json=receipt)
+        route = respx.post(f"{BASE}/v1/evaluate/advisory").mock(
+            return_value=httpx.Response(200, json=_advisory_wrapper(receipt))
+        )
+        respx.post(f"{BASE}/v1/receipts/verify").mock(
+            return_value=httpx.Response(200, json=_advisory_verify_report())
         )
 
         custom = RedactionPolicy(body_fields={"my_tool": ("body",)})

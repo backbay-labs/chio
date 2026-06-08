@@ -29,8 +29,8 @@ use wasmtime::Engine;
 use crate::abi::WasmGuardAbi;
 use crate::error::WasmGuardError;
 use crate::manifest;
+use crate::runtime::guard::WasmGuard;
 use crate::runtime::wasmtime_backend::WasmtimeBackend;
-use crate::runtime::WasmGuard;
 
 /// Load WASM guards from [`WasmGuardEntry`] configs with manifest verification.
 ///
@@ -108,7 +108,7 @@ pub fn build_guard_pipeline(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chio_kernel::{GuardContext, KernelError, Verdict};
+    use chio_kernel::{GuardContext, GuardDecision, KernelError};
     use ed25519_dalek::Signer;
     use sha2::{Digest, Sha256};
     use std::io::Write;
@@ -443,8 +443,8 @@ mod tests {
         fn name(&self) -> &str {
             &self.guard_name
         }
-        fn evaluate(&self, _ctx: &GuardContext) -> Result<Verdict, KernelError> {
-            Ok(Verdict::Allow)
+        fn evaluate(&self, _ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
+            Ok(GuardDecision::allow())
         }
     }
 

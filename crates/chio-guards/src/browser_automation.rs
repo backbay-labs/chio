@@ -36,7 +36,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use chio_kernel::{Guard, GuardContext, KernelError, Verdict};
+use chio_kernel::{Guard, GuardContext, GuardDecision, KernelError, Verdict};
 
 use crate::action::{extract_action_checked, ToolAction};
 
@@ -247,43 +247,45 @@ impl Guard for BrowserAutomationGuard {
         "browser-automation"
     }
 
-    fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
         if !self.enabled {
-            return Ok(Verdict::Allow);
+            return Ok(GuardDecision::allow());
         }
 
         let action = match extract_action_checked(&ctx.request.tool_name, &ctx.request.arguments) {
             Ok(action) => action,
-            Err(_) => return Ok(Verdict::Deny),
+            Err(_) => return Ok(GuardDecision::deny(Vec::new())),
         };
         let (verb, target) = match action {
             ToolAction::BrowserAction { verb, target } => (verb, target),
-            _ => return Ok(Verdict::Allow),
+            _ => return Ok(GuardDecision::allow()),
         };
 
         let verb_lower = verb.to_ascii_lowercase();
 
         // 1. Verb allowlist.
         if !self.allowed_verbs.is_empty() && !self.allowed_verbs.contains(&verb_lower) {
-            return Ok(Verdict::Deny);
+            return Ok(GuardDecision::deny(Vec::new()));
         }
 
         // 2. Navigation domain gating.
         if is_navigation_verb(&verb_lower) {
             let target_ref = target.as_deref().filter(|s| !is_selector_like(s));
-            return Ok(self.check_navigation(target_ref));
+            return Ok(GuardDecision::from_verdict(
+                self.check_navigation(target_ref),
+            ));
         }
 
         // 3. Credential detection on type/input verbs.
         if self.credential_detection && is_type_verb(&verb_lower) {
             if let Some(text) = extract_type_text(&ctx.request.arguments) {
                 if self.looks_like_credential(&text) {
-                    return Ok(Verdict::Deny);
+                    return Ok(GuardDecision::deny(Vec::new()));
                 }
             }
         }
 
-        Ok(Verdict::Allow)
+        Ok(GuardDecision::allow())
     }
 }
 

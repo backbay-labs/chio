@@ -23,6 +23,7 @@ The package depends only on `httpx` and `pydantic`.
 
 ```python
 from chio_sdk import ChioClient
+from chio_sdk.errors import ChioDeniedError
 
 
 async def main() -> None:
@@ -30,22 +31,40 @@ async def main() -> None:
     async with ChioClient() as client:
         await client.health()
 
-        # Returns a signed receipt on allow; raises ChioError on deny.
-        receipt = await client.evaluate_tool_call(
+        advisory = await client.evaluate_tool_call_advisory(
             capability_id="cap-123",
             tool_server="search-srv",
             tool_name="search_documents",
             parameters={"query": "capability-based security"},
         )
-        print(receipt.id)
+        print(f"advisory receipt: {advisory.id}")
+
+        try:
+            await client.evaluate_tool_call(
+                capability_id="cap-123",
+                tool_server="search-srv",
+                tool_name="search_documents",
+                parameters={"query": "capability-based security"},
+            )
+        except ChioDeniedError as error:
+            print(f"not authorized: {error}")
 ```
+
+`evaluate_tool_call` returns only for authoritative mediated tool-call
+authorization receipts. With the current advisory-only sidecar route, it
+fails closed after integrity-checking the advisory receipt. The sidecar
+advisory routes
+`POST /v1/evaluate/advisory` and deprecated `POST /v1/evaluate` return
+`authorization: false`, `authorizationBasis: "advisory_only"`, and an
+advisory receipt.
 
 Point the client at a non-default sidecar with `ChioClient(base_url=...)`.
 
 ## What is in the box
 
 - `ChioClient` -- async client for sidecar health, capability minting and
-  validation, attenuation, receipt verification, and tool-call evaluation.
+  validation, fail-closed attenuation, receipt verification, and tool-call
+  evaluation.
 - Typed models -- `CapabilityToken`, `ChioScope`, `ToolGrant`,
   `ResourceGrant`, `PromptGrant`, `Operation`, `Constraint`, `Decision`,
   `Verdict`, `ChioReceipt`, `HttpReceipt`, `CallerIdentity`, and the

@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::crypto::{sha256_hex, PublicKey};
-use crate::receipt::SignedExportEnvelope;
+use crate::receipt::lineage::SignedExportEnvelope;
 use crate::util::{
     ensure_generic_listing_signed_by_namespace_owner, generic_listing_body_sha256,
     normalize_namespace, validate_non_empty,

@@ -5,7 +5,7 @@
 // present, the proxy produces signed Chio receipts and validates
 // capability tokens for file and terminal operations.
 
-use chio_core::receipt::ChioReceipt;
+use chio_core::receipt::body::ChioReceipt;
 
 /// Request payload passed to a receipt signer.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,6 +74,9 @@ pub struct AcpCapabilityRequest {
     /// This keeps authorization receipts bound to the actual file or terminal
     /// request payload instead of only a reduced resource string plus hash.
     pub operation_payload: Value,
+    /// Optional execution nonce presented by strict nonce-enabled clients.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_nonce: Option<chio_kernel::SignedExecutionNonce>,
     /// Optional capability token string presented by the agent.
     pub token: Option<String>,
 }
@@ -92,6 +95,9 @@ pub struct AcpVerdict {
     /// Kernel request id that produced `receipt_id`, when available.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub receipt_request_id: Option<String>,
+    /// Execution nonce returned by a strict-mode authorization preflight.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_nonce: Option<chio_kernel::SignedExecutionNonce>,
     /// Human-readable reason for the decision.
     pub reason: String,
 }

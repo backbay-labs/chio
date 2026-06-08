@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use chio_core_types::receipt::ChioReceipt;
+use chio_core_types::receipt::body::ChioReceipt;
 
 use crate::hash::canonical_sha256;
 use crate::treaty::{validate_receipt_lineage_bundle, validate_receipt_lineage_statement};
@@ -150,15 +150,17 @@ pub(super) fn verify_buyer_review_existing_verifier(
         .map_err(|_| "chio_buyer_review_verifier_report_rejected")?;
     let verification_context_json = serde_json::to_string(context.verification_context)
         .map_err(|_| "chio_buyer_review_verifier_report_rejected")?;
-    let typed_package = chio_attest_buyer_core::proof_package_from_json(&proof_package_json)
-        .map_err(|_| "chio_buyer_review_verifier_report_rejected")?;
-    let typed_trust_bundle =
-        chio_attest_buyer_core::verifier_trust_bundle_from_json(&verifier_trust_bundle_json)
+    let typed_package =
+        chio_attest_buyer_core::proof_package::proof_package_from_json(&proof_package_json)
             .map_err(|_| "chio_buyer_review_verifier_report_rejected")?;
+    let typed_trust_bundle = chio_attest_buyer_core::trust_bundle::verifier_trust_bundle_from_json(
+        &verifier_trust_bundle_json,
+    )
+    .map_err(|_| "chio_buyer_review_verifier_report_rejected")?;
     let typed_context =
-        chio_attest_buyer_core::verification_context_from_json(&verification_context_json)
+        chio_attest_buyer_core::context::verification_context_from_json(&verification_context_json)
             .map_err(|_| "chio_buyer_review_verifier_report_rejected")?;
-    let expected_report = chio_attest_buyer_core::verify_package_report(
+    let expected_report = chio_attest_buyer_core::report::verify_package_report(
         &typed_package,
         &typed_trust_bundle,
         &typed_context,
@@ -385,7 +387,7 @@ pub(super) fn proof_package_receipt_subject(
         let subject_sha256 = canonical_sha256(&receipt.body())
             .map_err(|_| "chio_buyer_review_proof_package_mismatch")?;
         return Ok((
-            chio_federation::receipt_subject_name(&receipt.id),
+            chio_federation::bilateral_dsse::receipt_subject_name(&receipt.id),
             subject_sha256,
         ));
     }
@@ -395,7 +397,7 @@ pub(super) fn proof_package_receipt_subject(
 pub(super) fn proof_package_capability_lease_ref(
     proof_package: &serde_json::Value,
     lease_id: &str,
-) -> Result<chio_federation::CapabilityLeaseRef, &'static str> {
+) -> Result<chio_federation::bilateral_dsse::CapabilityLeaseRef, &'static str> {
     let leases = proof_package
         .get("capabilityLeases")
         .and_then(serde_json::Value::as_array)
@@ -417,11 +419,11 @@ pub(super) fn proof_package_capability_lease_ref(
             .get("scopeDigest")
             .and_then(serde_json::Value::as_str)
             .ok_or("chio_buyer_review_proof_package_mismatch")?;
-        return Ok(chio_federation::CapabilityLeaseRef {
+        return Ok(chio_federation::bilateral_dsse::CapabilityLeaseRef {
             lease_id: lease_id.to_string(),
             issuer: issuer.to_string(),
             expires_at_unix_ms,
-            scope_digest: Some(chio_federation::HashRecord {
+            scope_digest: Some(chio_federation::bilateral_dsse::HashRecord {
                 alg: "sha256".to_string(),
                 value: scope_digest.to_string(),
             }),
@@ -433,7 +435,7 @@ pub(super) fn proof_package_capability_lease_ref(
 pub(super) fn proof_package_governance_receipt_ref(
     proof_package: &serde_json::Value,
     receipt_id: &str,
-) -> Result<chio_federation::GovernanceReceiptRef, &'static str> {
+) -> Result<chio_federation::bilateral_dsse::GovernanceReceiptRef, &'static str> {
     let receipts = proof_package
         .get("governanceReceipts")
         .and_then(serde_json::Value::as_array)
@@ -457,10 +459,10 @@ pub(super) fn proof_package_governance_receipt_ref(
         {
             return Err("chio_buyer_review_proof_package_mismatch");
         }
-        return Ok(chio_federation::GovernanceReceiptRef {
+        return Ok(chio_federation::bilateral_dsse::GovernanceReceiptRef {
             receipt_id: receipt_id.to_string(),
             kernel_id: kernel_id.to_string(),
-            digest: chio_federation::HashRecord {
+            digest: chio_federation::bilateral_dsse::HashRecord {
                 alg: "sha256".to_string(),
                 value: digest,
             },

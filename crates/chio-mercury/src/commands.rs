@@ -5,10 +5,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_control_plane::{evidence_export, CliError};
 use chio_core::capability::{
-    CapabilityToken, CapabilityTokenBody, ChioScope, Operation, ToolGrant,
+    scope::{ChioScope, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core::crypto::Keypair;
-use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction};
+use chio_core::receipt::{
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+};
 use chio_core::{canonical_json_bytes, sha256_hex};
 use chio_kernel::build_checkpoint;
 use chio_mercury_core::proof_package::MercuryInquiryPackageArgs;
@@ -99,6 +102,7 @@ mod program_family_lane;
 mod renewal_qualification_lane;
 mod second_account_expansion_lane;
 mod second_portfolio_program_lane;
+mod selective_account_activation_support;
 mod third_program_lane;
 
 use portfolio_program_lane::export_portfolio_program;
@@ -123,6 +127,16 @@ pub use second_account_expansion_lane::{
 use second_portfolio_program_lane::export_second_portfolio_program;
 pub use second_portfolio_program_lane::{
     cmd_mercury_second_portfolio_program_export, cmd_mercury_second_portfolio_program_validate,
+};
+use selective_account_activation_support::{
+    build_selective_account_activation_profile, selective_account_activation_doc_refs,
+    MercurySelectiveAccountActivationApprovalRefresh,
+    MercurySelectiveAccountActivationClaimContainmentRules,
+    MercurySelectiveAccountActivationCustomerHandoffBrief,
+    MercurySelectiveAccountActivationDecisionRecord,
+    MercurySelectiveAccountActivationExportSummary, MercurySelectiveAccountActivationManifest,
+    MercurySelectiveAccountActivationScopeFreeze,
+    MercurySelectiveAccountActivationValidationReport,
 };
 use third_program_lane::export_third_program;
 pub use third_program_lane::{

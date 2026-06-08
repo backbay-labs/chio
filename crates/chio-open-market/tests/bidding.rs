@@ -1,9 +1,14 @@
 //! Integration coverage for the capability marketplace bid/ask protocol.
 
 use chio_open_market::{
-    accept, bid, canonical_json_bytes,
-    capability::MonetaryAmount,
-    crypto::Keypair,
+    bidding::{
+        accept, bid, BidMintContext, BidRequest, BiddingError, RequestedScope, ReservationReceipt,
+        SignedAskResponse, SignedBidRequest, SignedReservationReceipt, VerifiedReservationReceipt,
+        ACCEPTED_BID_SCHEMA, ASK_RESPONSE_SCHEMA, BID_REQUEST_SCHEMA, RESERVATION_RECEIPT_SCHEMA,
+    },
+    canonical_json_bytes,
+    capability::scope::MonetaryAmount,
+    crypto::{sha256_hex, Keypair},
     listing::{
         GenericListingActorKind, GenericListingArtifact, GenericListingBoundary,
         GenericListingCompatibilityReference, GenericListingFreshnessState,
@@ -12,8 +17,6 @@ use chio_open_market::{
         ListingPricingHint, ListingSla, SignedGenericListing, SignedListingPricingHint,
         GENERIC_LISTING_ARTIFACT_SCHEMA, LISTING_PRICING_HINT_SCHEMA,
     },
-    BidMintContext, BidRequest, BiddingError, RequestedScope, SignedBidRequest,
-    ACCEPTED_BID_SCHEMA, ASK_RESPONSE_SCHEMA, BID_REQUEST_SCHEMA,
 };
 
 use chio_test_support::prelude::*;
@@ -188,6 +191,58 @@ fn signed_bid_request(
     .test_expect("sign bid")
 }
 
+fn reservation_receipt(ask: &SignedAskResponse) -> ReservationReceipt {
+    ReservationReceipt {
+        schema: RESERVATION_RECEIPT_SCHEMA.to_string(),
+        receipt_id: "receipt-from-settlement".to_string(),
+        agent_id: ask.body.agent_id.clone(),
+        listing_id: ask.body.listing_id.clone(),
+        ask_digest: sha256_hex(
+            &canonical_json_bytes(&ask.body).test_expect("canonical ask response bytes"),
+        ),
+        reserved_amount: total_token_liability(ask),
+    }
+}
+
+fn total_token_liability(ask: &SignedAskResponse) -> MonetaryAmount {
+    let mut units = 0_u64;
+    for grant in &ask.body.token_offer.scope.grants {
+        let max_total_cost = grant
+            .max_total_cost
+            .as_ref()
+            .test_expect("token grant has max total cost");
+        assert_eq!(max_total_cost.currency, ask.body.quoted_price.currency);
+        units = units
+            .checked_add(max_total_cost.units)
+            .test_expect("token liability does not overflow");
+    }
+    MonetaryAmount {
+        units,
+        currency: ask.body.quoted_price.currency.clone(),
+    }
+}
+
+fn verified_reservation_receipt(
+    ask: &SignedAskResponse,
+    reservation_keypair: &Keypair,
+) -> VerifiedReservationReceipt {
+    let receipt = reservation_receipt(ask);
+    let signed = SignedReservationReceipt::sign(receipt, reservation_keypair)
+        .test_expect("sign reservation");
+    VerifiedReservationReceipt::from_signed(&signed, &reservation_keypair.public_key())
+        .test_expect("verify reservation")
+}
+
+fn verified_reservation_from_body(
+    receipt: ReservationReceipt,
+    reservation_keypair: &Keypair,
+) -> VerifiedReservationReceipt {
+    let signed = SignedReservationReceipt::sign(receipt, reservation_keypair)
+        .test_expect("sign reservation");
+    VerifiedReservationReceipt::from_signed(&signed, &reservation_keypair.public_key())
+        .test_expect("verify reservation")
+}
+
 fn resign_bid_request(agent_keypair: &Keypair, request: &BidRequest) -> SignedBidRequest {
     SignedBidRequest::sign(request.clone(), agent_keypair).test_expect("re-sign bid")
 }
@@ -222,14 +277,15 @@ fn bid_happy_path_mints_token_and_accept_records_settlement() {
     assert_eq!(ask.body.quoted_price.units, 100);
     assert!(ask.verify_signature().test_expect("verify ask"));
 
-    let accepted = accept(&ask, "receipt-from-settlement", 130).test_expect("accept succeeds");
-    assert_eq!(accepted.schema, ACCEPTED_BID_SCHEMA);
-    assert_eq!(accepted.bid_receipt_id, "receipt-from-settlement");
-    assert_eq!(accepted.quoted_price.units, 100);
-
-    // The AcceptedBid body is canonical-JSON signable.
-    let bytes = canonical_json_bytes(&accepted).test_expect("canonical accepted bytes");
-    assert!(!bytes.is_empty());
+    let reservation_receipt = verified_reservation_receipt(&ask, &issuer_keypair);
+    let accepted =
+        accept(&ask, &reservation_receipt, &agent_keypair, 130).test_expect("accept succeeds");
+    assert_eq!(accepted.body.schema, ACCEPTED_BID_SCHEMA);
+    assert_eq!(accepted.body.bid_receipt_id, "receipt-from-settlement");
+    assert_eq!(accepted.body.quoted_price.units, 100);
+    assert!(accepted
+        .verify_signature()
+        .test_expect("verify accepted bid"));
 }
 
 #[test]
@@ -258,12 +314,235 @@ fn accept_rejects_timestamp_before_ask_issuance() {
     )
     .test_expect("bid succeeds");
 
-    let error = accept(&ask, "receipt-from-settlement", 119)
+    let reservation_receipt = verified_reservation_receipt(&ask, &issuer_keypair);
+    let error = accept(&ask, &reservation_receipt, &agent_keypair, 119)
         .test_expect_err("acceptance before issuance rejected");
     assert_eq!(
         error,
         BiddingError::InvalidRequest("accepted_at must not precede ask issued_at".to_string())
     );
+}
+
+#[test]
+fn accept_rejects_bogus_reservation_receipt() {
+    let registry_keypair = Keypair::generate();
+    let operator_keypair = Keypair::generate();
+    let issuer_keypair = operator_keypair.clone();
+    let agent_keypair = Keypair::generate();
+    let listing = listing_entry(
+        &registry_keypair,
+        &operator_keypair,
+        GenericListingStatus::Active,
+        100,
+        600,
+    );
+    let request = signed_bid_request(&agent_keypair, "agent-alpha", 200, 300, 120);
+    let ask = bid(
+        &request,
+        BidMintContext {
+            listing: &listing,
+            issuer_keypair: &issuer_keypair,
+            agent_subject: agent_keypair.public_key(),
+            token_id: "token-abc".to_string(),
+            now: 120,
+        },
+    )
+    .test_expect("bid succeeds");
+
+    let mut receipt = reservation_receipt(&ask);
+    receipt.ask_digest = "0".repeat(64);
+    let reservation_receipt = verified_reservation_from_body(receipt, &issuer_keypair);
+
+    let error = accept(&ask, &reservation_receipt, &agent_keypair, 130)
+        .test_expect_err("bogus reservation rejected");
+    assert!(matches!(error, BiddingError::ReservationReceiptInvalid));
+}
+
+#[test]
+fn reservation_receipt_verification_rejects_wrong_authority() {
+    let registry_keypair = Keypair::generate();
+    let operator_keypair = Keypair::generate();
+    let issuer_keypair = operator_keypair.clone();
+    let wrong_authority_keypair = Keypair::generate();
+    let agent_keypair = Keypair::generate();
+    let listing = listing_entry(
+        &registry_keypair,
+        &operator_keypair,
+        GenericListingStatus::Active,
+        100,
+        600,
+    );
+    let request = signed_bid_request(&agent_keypair, "agent-alpha", 200, 300, 120);
+    let ask = bid(
+        &request,
+        BidMintContext {
+            listing: &listing,
+            issuer_keypair: &issuer_keypair,
+            agent_subject: agent_keypair.public_key(),
+            token_id: "token-abc".to_string(),
+            now: 120,
+        },
+    )
+    .test_expect("bid succeeds");
+
+    let signed = SignedReservationReceipt::sign(reservation_receipt(&ask), &issuer_keypair)
+        .test_expect("sign reservation");
+    let error =
+        VerifiedReservationReceipt::from_signed(&signed, &wrong_authority_keypair.public_key())
+            .test_expect_err("wrong reservation authority rejected");
+    assert!(matches!(error, BiddingError::ReservationReceiptInvalid));
+}
+
+#[test]
+fn accept_rejects_underfunded_reservation_receipt() {
+    let registry_keypair = Keypair::generate();
+    let operator_keypair = Keypair::generate();
+    let issuer_keypair = operator_keypair.clone();
+    let agent_keypair = Keypair::generate();
+    let listing = listing_entry(
+        &registry_keypair,
+        &operator_keypair,
+        GenericListingStatus::Active,
+        100,
+        600,
+    );
+    let request = signed_bid_request(&agent_keypair, "agent-alpha", 200, 300, 120);
+    let ask = bid(
+        &request,
+        BidMintContext {
+            listing: &listing,
+            issuer_keypair: &issuer_keypair,
+            agent_subject: agent_keypair.public_key(),
+            token_id: "token-abc".to_string(),
+            now: 120,
+        },
+    )
+    .test_expect("bid succeeds");
+
+    let mut receipt = reservation_receipt(&ask);
+    receipt.reserved_amount.units -= 1;
+    let reservation_receipt = verified_reservation_from_body(receipt, &issuer_keypair);
+
+    let error = accept(&ask, &reservation_receipt, &agent_keypair, 130)
+        .test_expect_err("underfunded reservation rejected");
+    assert!(matches!(error, BiddingError::ReservationReceiptInvalid));
+}
+
+#[test]
+fn accept_rejects_single_call_reservation_for_multi_invocation_token() {
+    let registry_keypair = Keypair::generate();
+    let operator_keypair = Keypair::generate();
+    let issuer_keypair = operator_keypair.clone();
+    let agent_keypair = Keypair::generate();
+    let listing = listing_entry(
+        &registry_keypair,
+        &operator_keypair,
+        GenericListingStatus::Active,
+        100,
+        600,
+    );
+    let request = signed_bid_request(&agent_keypair, "agent-alpha", 200, 300, 120);
+    let ask = bid(
+        &request,
+        BidMintContext {
+            listing: &listing,
+            issuer_keypair: &issuer_keypair,
+            agent_subject: agent_keypair.public_key(),
+            token_id: "token-abc".to_string(),
+            now: 120,
+        },
+    )
+    .test_expect("bid succeeds");
+    assert_eq!(
+        total_token_liability(&ask).units,
+        ask.body.quoted_price.units * 10
+    );
+
+    let mut receipt = reservation_receipt(&ask);
+    receipt.reserved_amount = ask.body.quoted_price.clone();
+    let reservation_receipt = verified_reservation_from_body(receipt, &issuer_keypair);
+
+    let error = accept(&ask, &reservation_receipt, &agent_keypair, 130)
+        .test_expect_err("single-call reservation rejected for multi-call token");
+    assert!(matches!(error, BiddingError::ReservationReceiptInvalid));
+}
+
+#[test]
+fn accept_rejects_reservation_identity_mismatch() {
+    let registry_keypair = Keypair::generate();
+    let operator_keypair = Keypair::generate();
+    let issuer_keypair = operator_keypair.clone();
+    let agent_keypair = Keypair::generate();
+    let listing = listing_entry(
+        &registry_keypair,
+        &operator_keypair,
+        GenericListingStatus::Active,
+        100,
+        600,
+    );
+    let request = signed_bid_request(&agent_keypair, "agent-alpha", 200, 300, 120);
+    let ask = bid(
+        &request,
+        BidMintContext {
+            listing: &listing,
+            issuer_keypair: &issuer_keypair,
+            agent_subject: agent_keypair.public_key(),
+            token_id: "token-abc".to_string(),
+            now: 120,
+        },
+    )
+    .test_expect("bid succeeds");
+
+    let mut receipt = reservation_receipt(&ask);
+    receipt.agent_id = "agent-other".to_string();
+    let bad_reservation_receipt = verified_reservation_from_body(receipt, &issuer_keypair);
+
+    let error = accept(&ask, &bad_reservation_receipt, &agent_keypair, 130)
+        .test_expect_err("mismatched reservation agent rejected");
+    assert!(matches!(error, BiddingError::ReservationReceiptInvalid));
+
+    let mut receipt = reservation_receipt(&ask);
+    receipt.listing_id = "listing-other".to_string();
+    let reservation_receipt = verified_reservation_from_body(receipt, &issuer_keypair);
+
+    let error = accept(&ask, &reservation_receipt, &agent_keypair, 130)
+        .test_expect_err("mismatched reservation listing rejected");
+    assert!(matches!(error, BiddingError::ReservationReceiptInvalid));
+}
+
+#[test]
+fn accept_rejects_reservation_currency_mismatch() {
+    let registry_keypair = Keypair::generate();
+    let operator_keypair = Keypair::generate();
+    let issuer_keypair = operator_keypair.clone();
+    let agent_keypair = Keypair::generate();
+    let listing = listing_entry(
+        &registry_keypair,
+        &operator_keypair,
+        GenericListingStatus::Active,
+        100,
+        600,
+    );
+    let request = signed_bid_request(&agent_keypair, "agent-alpha", 200, 300, 120);
+    let ask = bid(
+        &request,
+        BidMintContext {
+            listing: &listing,
+            issuer_keypair: &issuer_keypair,
+            agent_subject: agent_keypair.public_key(),
+            token_id: "token-abc".to_string(),
+            now: 120,
+        },
+    )
+    .test_expect("bid succeeds");
+
+    let mut receipt = reservation_receipt(&ask);
+    receipt.reserved_amount.currency = "EUR".to_string();
+    let reservation_receipt = verified_reservation_from_body(receipt, &issuer_keypair);
+
+    let error = accept(&ask, &reservation_receipt, &agent_keypair, 130)
+        .test_expect_err("mismatched reservation currency rejected");
+    assert!(matches!(error, BiddingError::ReservationReceiptInvalid));
 }
 
 #[test]
@@ -454,8 +733,45 @@ fn accept_refuses_empty_bid_receipt_id() {
         },
     )
     .test_expect("bid succeeds");
-    let error = accept(&ask, "", 130).test_expect_err("empty receipt rejected");
-    matches!(error, BiddingError::InvalidRequest(_));
+    let mut receipt = reservation_receipt(&ask);
+    receipt.receipt_id = String::new();
+    let signed =
+        SignedReservationReceipt::sign(receipt, &issuer_keypair).test_expect("sign reservation");
+    let error = VerifiedReservationReceipt::from_signed(&signed, &issuer_keypair.public_key())
+        .test_expect_err("empty receipt rejected");
+    assert!(matches!(error, BiddingError::InvalidRequest(_)));
+}
+
+#[test]
+fn accept_rejects_non_agent_acceptor_signature() {
+    let registry_keypair = Keypair::generate();
+    let operator_keypair = Keypair::generate();
+    let issuer_keypair = operator_keypair.clone();
+    let agent_keypair = Keypair::generate();
+    let listing = listing_entry(
+        &registry_keypair,
+        &operator_keypair,
+        GenericListingStatus::Active,
+        100,
+        600,
+    );
+    let request = signed_bid_request(&agent_keypair, "agent-alpha", 200, 300, 120);
+    let ask = bid(
+        &request,
+        BidMintContext {
+            listing: &listing,
+            issuer_keypair: &issuer_keypair,
+            agent_subject: agent_keypair.public_key(),
+            token_id: "token-abc".to_string(),
+            now: 120,
+        },
+    )
+    .test_expect("bid succeeds");
+    let reservation_receipt = verified_reservation_receipt(&ask, &issuer_keypair);
+
+    let error = accept(&ask, &reservation_receipt, &issuer_keypair, 130)
+        .test_expect_err("provider cannot sign agent acceptance");
+    assert_eq!(error, BiddingError::AuthorityMismatch);
 }
 
 #[test]

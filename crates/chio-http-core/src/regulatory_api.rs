@@ -14,7 +14,7 @@
 
 use chio_core_types::canonical::canonical_json_bytes;
 use chio_core_types::crypto::{Keypair, PublicKey};
-use chio_core_types::receipt::{ChioReceipt, SignedExportEnvelope};
+use chio_core_types::receipt::{body::ChioReceipt, lineage::SignedExportEnvelope};
 use chio_kernel::ReceiptReadContext;
 use serde::{Deserialize, Serialize};
 

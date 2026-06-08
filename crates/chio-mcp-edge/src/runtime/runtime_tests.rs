@@ -1,8 +1,11 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 use super::*;
 use chio_core::capability::{
-    ChioScope, Constraint, ModelMetadata, ModelSafetyTier, Operation, PromptGrant,
-    ProvenanceEvidenceClass, ResourceGrant, ToolGrant,
+    governance::ProvenanceEvidenceClass,
+    scope::{
+        ChioScope, Constraint, ModelMetadata, ModelSafetyTier, Operation, PromptGrant,
+        ResourceGrant, ToolGrant,
+    },
 };
 use chio_core::crypto::Keypair;
 use chio_core::{
@@ -511,6 +514,7 @@ fn make_kernel_error_bridge_fixture(
         tool_name: tool_name.to_string(),
         arguments: json!({}),
         agent_id: agent.public_key().to_hex(),
+        execution_nonce: None,
         model_metadata: None,
         route_selection_metadata: None,
         peer_supports_chio_tool_streaming: false,
@@ -954,6 +958,7 @@ fn execute_bridge_mcp_tool_call_preserves_model_metadata() {
             tool_name: "read_file".to_string(),
             arguments: json!({"path":"/tmp/demo.txt"}),
             agent_id: agent.public_key().to_hex(),
+            execution_nonce: None,
             model_metadata: Some(ModelMetadata {
                 model_id: "gpt-5".to_string(),
                 safety_tier: Some(ModelSafetyTier::High),
@@ -984,6 +989,7 @@ fn pending_approval_receipt_write_uses_pending_outcome_label() {
             tool_name: "read_file".to_string(),
             arguments: json!({"path":"/tmp/demo.txt"}),
             agent_id: agent.public_key().to_hex(),
+            execution_nonce: None,
             model_metadata: None,
             route_selection_metadata: None,
             peer_supports_chio_tool_streaming: false,
@@ -1177,6 +1183,7 @@ fn kernel_error_records_receipt_write_error_outcome() {
             tool_name: "read_file".to_string(),
             arguments: json!({"path":"/tmp/demo.txt"}),
             agent_id: agent.public_key().to_hex(),
+            execution_nonce: None,
             model_metadata: None,
             route_selection_metadata: None,
             peer_supports_chio_tool_streaming: false,
@@ -1335,6 +1342,7 @@ async fn execute_bridge_mcp_tool_call_async_preserves_model_metadata() {
             tool_name: "read_file".to_string(),
             arguments: json!({"path":"/tmp/demo.txt"}),
             agent_id: agent.public_key().to_hex(),
+            execution_nonce: None,
             model_metadata: Some(ModelMetadata {
                 model_id: "gpt-5".to_string(),
                 safety_tier: Some(ModelSafetyTier::High),

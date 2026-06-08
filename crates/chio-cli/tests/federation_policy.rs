@@ -12,17 +12,20 @@ use chio_control_plane::federation_policy::{
     FederationAdmissionPolicyRecord, FederationAdmissionRateLimit,
     FEDERATION_ADMISSION_POLICY_RECORD_SCHEMA, FEDERATION_ADMISSION_POLICY_REGISTRY_VERSION,
 };
-use chio_core::capability::{ChioScope, MonetaryAmount, Operation, ToolGrant};
+use chio_core::capability::scope::{ChioScope, MonetaryAmount, Operation, ToolGrant};
 use chio_core::crypto::Keypair;
 use chio_core::federation::{
-    FederatedOpenAdmissionPolicyArtifact, FederatedStakeRequirement, FederationArtifactKind,
-    FederationArtifactReference, SignedFederatedOpenAdmissionPolicy,
-    CHIO_FEDERATION_OPEN_ADMISSION_POLICY_SCHEMA,
+    artifacts::{FederationArtifactKind, FederationArtifactReference},
+    open_admission::{
+        FederatedOpenAdmissionPolicyArtifact, FederatedStakeRequirement,
+        SignedFederatedOpenAdmissionPolicy, CHIO_FEDERATION_OPEN_ADMISSION_POLICY_SCHEMA,
+    },
 };
 use chio_core::listing::GenericTrustAdmissionClass;
-use chio_core::open_market::OpenMarketBondClass;
+use chio_core::open_market::fee_schedule::OpenMarketBondClass;
 use chio_core::receipt::{
-    ChioReceipt, ChioReceiptBody, Decision, ReceiptAttributionMetadata, ToolCallAction,
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    metadata::ReceiptAttributionMetadata,
 };
 use chio_kernel::{BudgetStore, CapabilityAuthority, LocalCapabilityAuthority, ReceiptStore};
 use chio_store_sqlite::{SqliteBudgetStore, SqliteReceiptStore};
@@ -278,9 +281,10 @@ fn make_receipt(
                     grant_index: Some(0),
                 }
             })),
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: kernel_kp.public_key(),
+            bbs_projection_version: None,
         },
         &kernel_kp,
     )

@@ -9,7 +9,8 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use chio_core::capability::{
-    CapabilityToken, CapabilityTokenBody, ChioScope, Constraint, Operation, ToolGrant,
+    scope::{ChioScope, Constraint, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core::crypto::Keypair;
 use chio_guards::{MemoryGovernanceConfig, MemoryGovernanceGuard};
@@ -44,6 +45,7 @@ fn make_request_in_scope(
         agent_id: agent_id.clone(),
         arguments: args,
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
@@ -69,7 +71,7 @@ fn eval_at<G: Guard>(
         session_filesystem_roots: None,
         matched_grant_index,
     };
-    guard.evaluate(&ctx).expect("guard evaluate")
+    guard.evaluate(&ctx).expect("guard evaluate").verdict
 }
 
 fn scope_with_constraints(constraints: Vec<Constraint>) -> ChioScope {

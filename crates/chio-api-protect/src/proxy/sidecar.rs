@@ -73,10 +73,7 @@ pub(crate) async fn sidecar_evaluate_handler(
             verdict: result.verdict,
             receipt: result.receipt,
             evidence: result.evidence,
-            // This sidecar evaluation endpoint preserves the existing
-            // evaluate-only contract. Execution endpoints attach nonces
-            // when they invoke the kernel tool-call path.
-            execution_nonce: None,
+            execution_nonce: result.execution_nonce,
         }),
     )
         .into_response()
@@ -412,18 +409,18 @@ pub(crate) async fn sidecar_submit_receipt_handler(
             caller_identity_hash,
             session_id: None,
             verdict: Verdict::Allow,
-            receipt_kind: chio_core_types::ReceiptKind::MediatedDecision,
-            boundary_class: chio_core_types::BoundaryClass::Prevent,
+            receipt_kind: chio_core_types::receipt::kinds::ReceiptKind::MediatedDecision,
+            boundary_class: chio_core_types::receipt::kinds::BoundaryClass::Prevent,
             observation_outcome: None,
-            tool_origin: chio_core_types::ToolOrigin::CallerExecuted,
-            redaction_mode: chio_core_types::RedactionMode::None,
+            tool_origin: chio_core_types::receipt::kinds::ToolOrigin::CallerExecuted,
+            redaction_mode: chio_core_types::receipt::kinds::RedactionMode::None,
             actor_chain: Vec::new(),
             evidence: Vec::new(),
             response_status: StatusCode::OK.as_u16(),
             timestamp: chrono::Utc::now().timestamp() as u64,
             content_hash: chio_core_types::sha256_hex(&body_bytes),
             policy_hash: manual_receipt_policy_hash("chio_api_protect_sidecar_receipt_submission"),
-            trust_level: chio_core_types::TrustLevel::Mediated,
+            trust_level: chio_core_types::receipt::kinds::TrustLevel::Mediated,
             capability_id,
             metadata: Some(sidecar_submit_receipt_metadata(&receipt_request)),
             kernel_key: state.signer_keypair.public_key(),
@@ -757,34 +754,6 @@ pub(crate) async fn sidecar_validate_capability_handler(
 }
 
 // ---------------------------------------------------------------------------
-// Capability attenuation (501 not_yet_implemented stub)
-// ---------------------------------------------------------------------------
-
-pub(crate) async fn sidecar_attenuate_capability_handler(
-    State(state): State<Arc<ProxyState>>,
-    request: Request<Body>,
-) -> Response {
-    if let Err(response) =
-        require_sidecar_control_request(&request, state.sidecar_control_token.as_deref())
-    {
-        return response;
-    }
-    // Drain the body so the client sees a clean response even on large
-    // payloads; the body itself is not used because attenuation is not
-    // implemented over HTTP yet.
-    let _ = axum::body::to_bytes(request.into_body(), 1024 * 1024).await;
-    sidecar_not_implemented_route_response(
-        StatusCode::NOT_IMPLEMENTED,
-        "chio_attenuate_not_implemented",
-        "capability attenuation over HTTP is not yet wired; the kernel's `delegate` primitive requires the parent capability subject's private key, which the sidecar does not hold. Use `chio-sdk-python`'s local attenuation helpers, or call the kernel directly until this route lands.",
-        "not-implemented",
-        serde_json::json!({
-            "rfc": "see crates/chio-core-types/src/capability.rs::delegate (feature `delegation`)",
-        }),
-    )
-}
-
-// ---------------------------------------------------------------------------
 // Receipt verification (`ChioReceipt`-shaped, distinct from `/chio/verify`
 // which is `HttpReceipt`-shaped)
 // ---------------------------------------------------------------------------
@@ -818,7 +787,7 @@ fn sidecar_chio_receipt_report(
     signer_trusted: bool,
 ) -> VerifyReceiptResponse {
     let signature_valid = receipt.verify_signature().unwrap_or(false);
-    let receipt_id_valid = chio_core_types::chio_receipt_id(&receipt.body())
+    let receipt_id_valid = chio_core_types::receipt::body::chio_receipt_id(&receipt.body())
         .map(|expected_id| expected_id == receipt.id)
         .unwrap_or(false);
     let parameter_hash_valid = receipt.action.verify_hash().unwrap_or(false);
@@ -999,16 +968,16 @@ pub(crate) async fn sidecar_verify_receipt_handler(
 }
 
 // ---------------------------------------------------------------------------
-// Tool-call evaluation (SDK alias for `evaluate_tool_call`)
+// Tool-call advisory evaluation
 // ---------------------------------------------------------------------------
 //
-// `POST /v1/evaluate` is NOT kernel-mediated authorization. The handler
-// records cap-revocation and parameter-hash alias checks only, signs an
-// `AdvisoryEvaluation` receipt (`TrustLevel::Advisory`), and sets the
-// `chio-trust-level: advisory` response header so v1 authority gates do
-// not mistake the outcome for a mediated allow/deny decision.
+// `POST /v1/evaluate/advisory` is NOT kernel-mediated authorization. It
+// records cap-revocation and parameter-hash checks only, signs an
+// `AdvisoryEvaluation` receipt (`TrustLevel::Advisory`), sets the
+// `chio-trust-level: advisory` response header, and returns
+// `authorization: false`.
 
-/// `POST /v1/evaluate` body shape posted by `chio-sdk-python`'s
+/// `POST /v1/evaluate/advisory` body shape posted by `chio-sdk-python`'s
 /// `ChioClient.evaluate_tool_call`. Distinct from `/chio/evaluate`'s
 /// `ChioHttpRequest` shape because the SDK does not synthesize an HTTP
 /// substrate request for direct tool calls.
@@ -1021,6 +990,19 @@ pub(crate) struct SidecarEvaluateToolCallRequest {
     parameters: serde_json::Value,
     #[serde(default)]
     parameter_hash: Option<String>,
+}
+
+pub(crate) async fn sidecar_removed_evaluate_handler() -> Response {
+    (
+        StatusCode::GONE,
+        axum::Json(serde_json::json!({
+            "error": "chio_route_removed",
+            "message": "use POST /v1/evaluate/advisory for advisory tool-call evaluation",
+            "replacement": "/v1/evaluate/advisory",
+            "authorization": false,
+        })),
+    )
+        .into_response()
 }
 
 pub(crate) async fn sidecar_evaluate_tool_call_handler(
@@ -1083,22 +1065,16 @@ pub(crate) async fn sidecar_evaluate_tool_call_handler(
         None => false,
     };
 
-    // The sidecar `/v1/evaluate` alias only checks revocation state and the
-    // canonical parameter hash; it does not present a capability token,
-    // validate its scope, or run the kernel's authorization pipeline. Emit
-    // an `AdvisoryEvaluation` receipt (no signed `Decision`, advisory trust
-    // level) so downstream v1 authority gates do not mistake this alias
-    // outcome for a kernel-mediated authorization.
-    let alias_check_outcome = if revoked {
+    let advisory_check_outcome = if revoked {
         "capability_revoked"
     } else if hash_mismatch {
         "parameter_hash_mismatch"
     } else {
-        "alias_checks_passed"
+        "advisory_checks_passed"
     };
 
-    // `Dropped` signals "the alias-side checks would refuse to proceed";
-    // `Evaluated` signals "the alias evaluated the call but did not
+    // `Dropped` signals "the advisory-side checks would refuse to proceed";
+    // `Evaluated` signals "the advisory route evaluated the call but did not
     // synchronously authorize anything". Neither implies the kernel mediated
     // the tool call.
     let observation_outcome = if revoked || hash_mismatch {
@@ -1133,13 +1109,15 @@ pub(crate) async fn sidecar_evaluate_tool_call_handler(
             ),
             evidence: Vec::new(),
             metadata: Some(serde_json::json!({
-                "evaluation_kind": "sidecar_tool_call_alias",
-                "alias_check_outcome": alias_check_outcome,
-                "limitation": "kernel-driven tool-call evaluation is not yet wired through the sidecar; this receipt records cap-revocation and parameter-hash checks only and must not be treated as kernel-mediated authorization",
+                "evaluation_kind": "sidecar_tool_call_advisory",
+                "advisory_check_outcome": advisory_check_outcome,
+                "execution_nonce": "not_minted",
+                "limitation": "kernel-driven tool-call evaluation is not yet wired through the sidecar; this receipt records cap-revocation and parameter-hash checks only, does not mint an execution nonce, and must not be treated as kernel-mediated authorization",
             })),
             trust_level: TrustLevel::Advisory,
             tenant_id: None,
             kernel_key: state.signer_keypair.public_key(),
+            bbs_projection_version: None,
         },
         &state.signer_keypair,
     ) {
@@ -1156,16 +1134,6 @@ pub(crate) async fn sidecar_evaluate_tool_call_handler(
     }
 
     sidecar_advisory_tool_call_evaluate_response(receipt)
-}
-
-pub(crate) fn sidecar_bad_request(message: &str) -> (StatusCode, axum::Json<serde_json::Value>) {
-    (
-        StatusCode::BAD_REQUEST,
-        axum::Json(serde_json::json!({
-            "error": "chio_bad_request",
-            "message": message,
-        })),
-    )
 }
 
 #[allow(clippy::result_large_err)]

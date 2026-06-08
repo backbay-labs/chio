@@ -31,8 +31,10 @@
 //       untrusted-issuer deny-arm assertion below fails.
 
 use chio_core::capability::{
-    CapabilityCryptoFloor, CapabilityToken, CapabilityTokenBody, ChioScope, DelegationLink,
-    DelegationLinkBody,
+    attenuation::{DelegationLink, DelegationLinkBody},
+    crypto_floor::CapabilityCryptoFloor,
+    scope::ChioScope,
+    token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core::crypto::Keypair;
 use chio_kernel_core::capability_verify::{

@@ -1,19 +1,27 @@
 use chio_core_types::capability::{
-    CallChainContinuationToken, CallChainContinuationTokenBody, GovernedUpstreamCallChainProof,
-    GovernedUpstreamCallChainProofBody, CHIO_CALL_CHAIN_CONTINUATION_SCHEMA,
+    attenuation::{DelegationLink, DelegationLinkBody},
+    governance::{
+        CallChainContinuationToken, CallChainContinuationTokenBody, GovernedApprovalDecision,
+        GovernedApprovalToken, GovernedApprovalTokenBody, GovernedUpstreamCallChainProof,
+        GovernedUpstreamCallChainProofBody, CHIO_CALL_CHAIN_CONTINUATION_SCHEMA,
+    },
+    scope::ChioScope,
+    token::{CapabilityToken, CapabilityTokenBody},
 };
-use chio_core_types::receipt::{
+use chio_core_types::receipt::lineage::{
     ReceiptLineageEndpoints, ReceiptLineageRelationKind, ReceiptLineageStatement,
     ReceiptLineageStatementBody,
 };
+use chio_core_types::receipt::{
+    body::{ChioReceipt, ChioReceiptBody},
+    decision::{Decision, ToolCallAction},
+    kinds::{BoundaryClass, ReceiptKind, RedactionMode, ToolOrigin, TrustLevel},
+    lineage::{ChildRequestReceipt, ChildRequestReceiptBody},
+};
 use chio_core_types::session::{SessionAnchor, SessionAnchorBody, SessionAnchorContext};
 use chio_core_types::{
-    sha256_hex, BoundaryClass, CapabilityToken, CapabilityTokenBody, ChildRequestReceipt,
-    ChildRequestReceiptBody, ChioReceipt, ChioReceiptBody, ChioScope, Decision, DelegationLink,
-    DelegationLinkBody, Ed25519Backend, GovernedApprovalDecision, GovernedApprovalToken,
-    GovernedApprovalTokenBody, Keypair, OperationKind, OperationTerminalState, ReceiptKind,
-    RedactionMode, RequestId, SessionAuthContext, SessionId, SigningBackend, ToolCallAction,
-    ToolManifest, ToolManifestBody, ToolOrigin, TrustLevel,
+    sha256_hex, Ed25519Backend, Keypair, OperationKind, OperationTerminalState, RequestId,
+    SessionAuthContext, SessionId, SigningBackend, ToolManifest, ToolManifestBody,
 };
 
 fn capability_body(issuer: &Keypair, subject: &Keypair) -> CapabilityTokenBody {
@@ -54,6 +62,7 @@ fn receipt_body(
         trust_level: TrustLevel::Mediated,
         tenant_id: None,
         kernel_key,
+        bbs_projection_version: None,
     })
 }
 

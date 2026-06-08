@@ -10,10 +10,10 @@ pub(crate) struct ExpectedBuyerClosureParity {
 pub(crate) fn materialize_final_runtime_proof_parity_report(
     run_id: &str,
     now_unix_ms: u64,
-    static_package: &chio_attest_buyer_core::ChioProofPackage,
-    static_report: &chio_attest_buyer_core::VerifierReport,
-    final_runtime_package: &chio_attest_buyer_core::ChioProofPackage,
-    context: &chio_attest_buyer_core::ChioVerificationContext,
+    static_package: &chio_attest_buyer_core::proof_package::ChioProofPackage,
+    static_report: &chio_attest_buyer_core::report::VerifierReport,
+    final_runtime_package: &chio_attest_buyer_core::proof_package::ChioProofPackage,
+    context: &chio_attest_buyer_core::context::ChioVerificationContext,
     expected_buyer_closure: Option<&ExpectedBuyerClosureParity>,
 ) -> Result<chio_runtime_core::RuntimeProofParityReport, RuntimeLoopbackError> {
     let parity_trust_bundle_document =
@@ -23,13 +23,16 @@ pub(crate) fn materialize_final_runtime_proof_parity_report(
                     "Chio runtime parity trust bundle build: {error}"
                 ))
             })?;
-    let parity_trust_bundle = chio_attest_buyer_core::ChioVerifierTrustBundle::from_document(
-        parity_trust_bundle_document,
-    )
-    .map_err(|error| {
-        RuntimeLoopbackError::message(format!("Chio runtime parity trust bundle parse: {error}"))
-    })?;
-    let parity_verifier_report = chio_attest_buyer_core::verify_package_report(
+    let parity_trust_bundle =
+        chio_attest_buyer_core::trust_bundle::ChioVerifierTrustBundle::from_document(
+            parity_trust_bundle_document,
+        )
+        .map_err(|error| {
+            RuntimeLoopbackError::message(format!(
+                "Chio runtime parity trust bundle parse: {error}"
+            ))
+        })?;
+    let parity_verifier_report = chio_attest_buyer_core::report::verify_package_report(
         final_runtime_package,
         &parity_trust_bundle,
         context,
@@ -51,16 +54,20 @@ pub(crate) fn materialize_final_runtime_proof_parity_report(
             Some("runtime_proof_semantic_parity_mismatch".to_string())
         },
         generated_at_unix_ms: now_unix_ms,
-        static_proof_package_sha256: chio_attest_buyer_core::package_sha256(static_package)
-            .map_err(|error| {
-                RuntimeLoopbackError::message(format!("Chio static proof package hash: {error}"))
-            })?,
-        runtime_proof_package_sha256: chio_attest_buyer_core::package_sha256(final_runtime_package)
-            .map_err(|error| {
-                RuntimeLoopbackError::message(format!(
-                    "Chio runtime parity proof package hash: {error}"
-                ))
-            })?,
+        static_proof_package_sha256: chio_attest_buyer_core::proof_package::package_sha256(
+            static_package,
+        )
+        .map_err(|error| {
+            RuntimeLoopbackError::message(format!("Chio static proof package hash: {error}"))
+        })?,
+        runtime_proof_package_sha256: chio_attest_buyer_core::proof_package::package_sha256(
+            final_runtime_package,
+        )
+        .map_err(|error| {
+            RuntimeLoopbackError::message(format!(
+                "Chio runtime parity proof package hash: {error}"
+            ))
+        })?,
         static_verifier_report_sha256: canonical_sha256_json(
             static_report,
             "Chio static verifier report canonical hash",
@@ -75,8 +82,8 @@ pub(crate) fn materialize_final_runtime_proof_parity_report(
 }
 
 pub(crate) fn runtime_proof_parity(
-    static_package: &chio_attest_buyer_core::ChioProofPackage,
-    runtime_package: &chio_attest_buyer_core::ChioProofPackage,
+    static_package: &chio_attest_buyer_core::proof_package::ChioProofPackage,
+    runtime_package: &chio_attest_buyer_core::proof_package::ChioProofPackage,
     expected_buyer_closure: Option<&ExpectedBuyerClosureParity>,
 ) -> Result<
     (
@@ -292,7 +299,7 @@ struct LeaseScopeParityBinding {
 }
 
 fn workflow_step_semantics(
-    package: &chio_attest_buyer_core::ChioProofPackage,
+    package: &chio_attest_buyer_core::proof_package::ChioProofPackage,
 ) -> Vec<WorkflowStepParityBinding> {
     package
         .workflow_receipt
@@ -315,7 +322,7 @@ fn workflow_step_semantics(
 }
 
 fn tool_receipt_semantics(
-    package: &chio_attest_buyer_core::ChioProofPackage,
+    package: &chio_attest_buyer_core::proof_package::ChioProofPackage,
 ) -> Vec<ToolReceiptParityBinding> {
     package
         .tool_receipts
@@ -327,14 +334,14 @@ fn tool_receipt_semantics(
             action_parameter_hash: receipt.action.parameter_hash.clone(),
             decision_allowed: matches!(
                 &receipt.decision,
-                Some(chio_core::receipt::Decision::Allow)
+                Some(chio_core::receipt::decision::Decision::Allow)
             ),
         })
         .collect()
 }
 
 fn bilateral_dsse_predicate_semantics(
-    package: &chio_attest_buyer_core::ChioProofPackage,
+    package: &chio_attest_buyer_core::proof_package::ChioProofPackage,
 ) -> Result<Vec<BilateralDssePredicateParityBinding>, RuntimeLoopbackError> {
     package
         .bilateral_envelopes
@@ -367,7 +374,7 @@ fn bilateral_dsse_predicate_semantics(
 }
 
 fn lease_scope_semantics(
-    package: &chio_attest_buyer_core::ChioProofPackage,
+    package: &chio_attest_buyer_core::proof_package::ChioProofPackage,
 ) -> Vec<LeaseScopeParityBinding> {
     package
         .lease_scope_bindings
@@ -388,7 +395,7 @@ fn lease_scope_semantics(
 }
 
 fn governance_authorization_presence(
-    package: &chio_attest_buyer_core::ChioProofPackage,
+    package: &chio_attest_buyer_core::proof_package::ChioProofPackage,
 ) -> Vec<bool> {
     package
         .workflow_receipt
@@ -564,14 +571,18 @@ mod tests {
             &context,
             None,
         )?;
-        let final_package_sha256 =
-            chio_attest_buyer_core::package_sha256(&final_package).map_err(|error| {
-                crate::RuntimeLoopbackError::message(format!("final package hash failed: {error}"))
-            })?;
-        let static_package_sha256 = chio_attest_buyer_core::package_sha256(&static_package)
-            .map_err(|error| {
-                crate::RuntimeLoopbackError::message(format!("static package hash failed: {error}"))
-            })?;
+        let final_package_sha256 = chio_attest_buyer_core::proof_package::package_sha256(
+            &final_package,
+        )
+        .map_err(|error| {
+            crate::RuntimeLoopbackError::message(format!("final package hash failed: {error}"))
+        })?;
+        let static_package_sha256 = chio_attest_buyer_core::proof_package::package_sha256(
+            &static_package,
+        )
+        .map_err(|error| {
+            crate::RuntimeLoopbackError::message(format!("static package hash failed: {error}"))
+        })?;
 
         assert_eq!(report.runtime_proof_package_sha256, final_package_sha256);
         assert_ne!(report.runtime_proof_package_sha256, static_package_sha256);

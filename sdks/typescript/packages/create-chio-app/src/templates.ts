@@ -1,6 +1,6 @@
 // Template registry consumed by the create-chio-app CLI. The list is
-// hard-coded against the in-repo templates so the scaffold step works
-// offline; each entry pins the relative path inside the monorepo and
+// hard-coded against the packaged templates so the scaffold step works
+// offline; each entry pins the relative path inside the npm package and
 // the bench runner that enforces the < 60 s TTFRH budget.
 
 export interface TemplateEntry {
@@ -16,7 +16,7 @@ export const TEMPLATES: readonly TemplateEntry[] = [
     slug: "next-ai-sdk-receipts",
     description:
       "Next.js (App Router) + Vercel AI SDK middleware + receipts viewer.",
-    directory: "sdks/typescript/templates/next-ai-sdk-receipts",
+    directory: "templates/next-ai-sdk-receipts",
     bench: "bench/ttfrh/runners/next_ai_sdk_receipts.rs",
     nextCommand: "bun install && bun run dev",
   },
@@ -24,7 +24,7 @@ export const TEMPLATES: readonly TemplateEntry[] = [
     slug: "fastapi-langchain",
     description:
       "Python FastAPI + LangChain agent with a static receipts viewer.",
-    directory: "sdks/typescript/templates/fastapi-langchain",
+    directory: "templates/fastapi-langchain",
     bench: "bench/ttfrh/runners/fastapi_langchain.rs",
     nextCommand: "uv sync && uv run uvicorn app.main:app --reload",
   },
@@ -32,7 +32,7 @@ export const TEMPLATES: readonly TemplateEntry[] = [
     slug: "cloudflare-worker",
     description:
       "Cloudflare Worker consuming @chio-protocol/workers and KV-backed receipts.",
-    directory: "sdks/typescript/templates/cloudflare-worker",
+    directory: "templates/cloudflare-worker",
     bench: "bench/ttfrh/runners/cloudflare_worker.rs",
     nextCommand: "bun install && bun run dev",
   },

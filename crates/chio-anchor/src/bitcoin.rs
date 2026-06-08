@@ -1,7 +1,7 @@
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
 use chio_core::merkle::MerkleTree;
-use chio_core::web3::{AnchorInclusionProof, Web3BitcoinAnchor, Web3SuperRootInclusion};
+use chio_core::web3::anchors::{AnchorInclusionProof, Web3BitcoinAnchor, Web3SuperRootInclusion};
 use chio_kernel::checkpoint::KernelCheckpoint;
 use opentimestamps::attestation::Attestation;
 use opentimestamps::ser::DigestType;

@@ -19,7 +19,7 @@ mod payments;
 mod retry;
 mod solana;
 
-use chio_core::capability::MonetaryAmount;
+use chio_core::capability::scope::MonetaryAmount;
 use serde::{Deserialize, Serialize};
 
 pub use automation::{

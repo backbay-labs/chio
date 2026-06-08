@@ -6,11 +6,12 @@
 
 use std::sync::Arc;
 
-use chio_core::capability::CapabilityToken;
-use chio_cross_protocol::{
-    BridgeError, CapabilityBridge, CrossProtocolCapabilityRef, CrossProtocolExecutionRequest,
-    CrossProtocolOrchestrator, DiscoveryProtocol,
-};
+use chio_core::capability::token::CapabilityToken;
+use chio_cross_protocol::capability_bridge::{CapabilityBridge, CrossProtocolCapabilityRef};
+use chio_cross_protocol::discovery::DiscoveryProtocol;
+use chio_cross_protocol::error::BridgeError;
+use chio_cross_protocol::execution::CrossProtocolExecutionRequest;
+use chio_cross_protocol::orchestrator::CrossProtocolOrchestrator;
 use chio_kernel::{
     ChioKernel, KernelError, NestedFlowBridge, ToolServerConnection, Verdict as KernelVerdict,
 };
@@ -243,6 +244,7 @@ impl CapabilityChecker for KernelCapabilityChecker {
                     capability_id: None,
                     receipt_id: None,
                     receipt_request_id: None,
+                    execution_nonce: None,
                     reason: "no capability token presented".to_string(),
                 });
             }
@@ -256,6 +258,7 @@ impl CapabilityChecker for KernelCapabilityChecker {
                     capability_id: None,
                     receipt_id: None,
                     receipt_request_id: None,
+                    execution_nonce: None,
                     reason: error.to_string(),
                 });
             }
@@ -280,6 +283,7 @@ impl CapabilityChecker for KernelCapabilityChecker {
                     capability_id: Some(capability.id.clone()),
                     receipt_id: None,
                     receipt_request_id: None,
+                    execution_nonce: None,
                     reason: "ACP authorization requires a tool_call_id binding".to_string(),
                 });
             }
@@ -293,6 +297,7 @@ impl CapabilityChecker for KernelCapabilityChecker {
                     capability_id: Some(capability.id.clone()),
                     receipt_id: None,
                     receipt_request_id: None,
+                    execution_nonce: None,
                     reason: error.to_string(),
                 });
             }
@@ -328,6 +333,7 @@ impl CapabilityChecker for KernelCapabilityChecker {
                         &kernel_request_id,
                     ),
                     dpop_proof: None,
+                    execution_nonce: request.execution_nonce.clone(),
                     governed_intent: None,
                     approval_token: None,
                     model_metadata: None,
@@ -339,13 +345,27 @@ impl CapabilityChecker for KernelCapabilityChecker {
         let capability_id = Some(response.receipt.capability_id.clone());
         let receipt_id = Some(response.receipt.id.clone());
         let receipt_request_id = Some(response.request_id.clone());
+        let execution_nonce = response.execution_nonce.as_deref().cloned();
+
+        let is_nonce_preflight = matches!(response.verdict, KernelVerdict::Allow)
+            && response.output.is_none()
+            && response.execution_nonce.is_some();
 
         match response.verdict {
+            KernelVerdict::Allow if is_nonce_preflight => Ok(AcpVerdict {
+                allowed: false,
+                capability_id,
+                receipt_id,
+                receipt_request_id,
+                execution_nonce,
+                reason: "execution nonce required for ACP operation".to_string(),
+            }),
             KernelVerdict::Allow => Ok(AcpVerdict {
                 allowed: true,
                 capability_id,
                 receipt_id,
                 receipt_request_id,
+                execution_nonce: None,
                 reason: "authorized through kernel-backed ACP guard pipeline".to_string(),
             }),
             KernelVerdict::Deny => Ok(AcpVerdict {
@@ -353,6 +373,7 @@ impl CapabilityChecker for KernelCapabilityChecker {
                 capability_id,
                 receipt_id,
                 receipt_request_id,
+                execution_nonce: None,
                 reason: response
                     .reason
                     .unwrap_or_else(|| "kernel denied ACP operation".to_string()),
@@ -362,6 +383,7 @@ impl CapabilityChecker for KernelCapabilityChecker {
                 capability_id,
                 receipt_id,
                 receipt_request_id,
+                execution_nonce: None,
                 reason: response
                     .reason
                     .unwrap_or_else(|| "ACP operation requires approval".to_string()),

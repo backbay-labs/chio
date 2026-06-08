@@ -10,10 +10,24 @@ use chio_binding_helpers::{
     CapabilityVerification, ManifestVerification, ReceiptVerification,
 };
 use chio_core::{
-    chio_receipt_id, sha256_hex, BoundaryClass, CapabilityToken, CapabilityTokenBody, ChioReceipt,
-    ChioReceiptBody, ChioScope, Constraint, Decision, DelegationLink, DelegationLinkBody,
-    GuardEvidence, Keypair, ObservationOutcome, Operation, ReceiptKind, RedactionMode,
-    ToolCallAction, ToolGrant, ToolOrigin, TrustLevel,
+    capability::{
+        attenuation::{DelegationLink, DelegationLinkBody},
+        scope::{ChioScope, Constraint, Operation, ToolGrant},
+        token::{CapabilityToken, CapabilityTokenBody},
+    },
+    receipt::body::chio_receipt_id,
+    receipt::body::ChioReceipt,
+    receipt::body::ChioReceiptBody,
+    receipt::decision::Decision,
+    receipt::decision::ToolCallAction,
+    receipt::kinds::BoundaryClass,
+    receipt::kinds::ObservationOutcome,
+    receipt::kinds::ReceiptKind,
+    receipt::kinds::RedactionMode,
+    receipt::kinds::ToolOrigin,
+    receipt::kinds::TrustLevel,
+    receipt::metadata::GuardEvidence,
+    sha256_hex, Keypair,
 };
 use chio_manifest::{
     sign_manifest, LatencyHint, RequiredPermissions, SignedManifest,
@@ -150,9 +164,10 @@ fn base_receipt_body(
             "surface": "bindings-vectors",
             "version": 1
         })),
-        trust_level: chio_core::TrustLevel::default(),
+        trust_level: chio_core::receipt::kinds::TrustLevel::default(),
         tenant_id: None,
         kernel_key: keypair.public_key(),
+        bbs_projection_version: None,
     }
 }
 
@@ -193,6 +208,7 @@ fn observation_receipt_body(
         trust_level,
         tenant_id: None,
         kernel_key: keypair.public_key(),
+        bbs_projection_version: None,
     }
 }
 
@@ -225,7 +241,9 @@ fn forged_semantically_invalid_receipt(
         metadata: body.metadata,
         trust_level: body.trust_level,
         tenant_id: body.tenant_id,
+        bbs_projection_version: None,
         kernel_key: body.kernel_key,
+        bbs_signature: None,
         algorithm: None,
         signature,
     }
@@ -805,7 +823,7 @@ fn capability_case_value(
         "capability_body_canonical_json": capability_body_canonical_json(capability).test_unwrap("canonical capability body"),
         "expected": {
             "signature_valid": verification.signature_valid,
-            "delegation_chain_valid": verification.delegation_chain_valid,
+            "delegation_chain_shape_valid": verification.delegation_chain_shape_valid,
             "time_valid": verification.time_valid,
             "time_status": verification.time_status,
         }

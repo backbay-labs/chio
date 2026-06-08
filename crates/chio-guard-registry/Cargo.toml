@@ -1,6 +1,6 @@
 [package]
 name = "chio-guard-registry"
-description = "Chio guard OCI registry client: cosign-verified pull and publish of guard modules with offline cache support"
+description = "Chio guard OCI registry client with local Sigstore bundle verification and offline cache support"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -15,7 +15,7 @@ name = "chio_guard_registry"
 default = []
 # Marketplace: gates the optional `price: GuardPrice` and
 # `reputation_floor: ReputationTier` manifest fields. Default-off so the
-# cosign-gated publish and pull paths keep working unchanged. Enabling
+# local Sigstore bundle verification and pull paths keep working unchanged. Enabling
 # this feature wires the marketplace discovery surface.
 marketplace = ["dep:chio-reputation"]
 # Regression-only feature that pulls chio-attest-verify/pq so
@@ -32,15 +32,16 @@ required-features = ["pq"]
 
 [dependencies]
 chio-attest-verify = { path = "../chio-attest-verify" }
+chio-egress-contract = { path = "../chio-egress-contract", features = ["reqwest-egress"] }
 chio-reputation = { path = "../chio-reputation", optional = true }
 oci-distribution = { version = "0.11", default-features = false, features = ["rustls-tls"] }
+reqwest = { workspace = true, features = ["json", "query", "rustls"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
-serde_json = { workspace = true }
-sha2 = { workspace = true }
 tempfile = { workspace = true }
 testcontainers = { workspace = true }
 tokio = { workspace = true }

@@ -35,8 +35,8 @@ use chio_core_types::crypto::{
     SigningBackend,
 };
 use chio_core_types::receipt::{
-    chio_receipt_id, ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
-    CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY,
+    body::chio_receipt_id, body::ChioReceipt, body::ChioReceiptBody, decision::Decision,
+    decision::ToolCallAction, kinds::TrustLevel, signing::CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY,
 };
 use serde_json::Value;
 
@@ -132,6 +132,7 @@ fn migration_body(kernel_key: PublicKey) -> ChioReceiptBody {
         trust_level: TrustLevel::Mediated,
         tenant_id: None,
         kernel_key,
+        bbs_projection_version: None,
     };
     // Mirror the canonical signing-nonce binding that ChioReceipt::sign_with_backend
     // applies before signing: the pre-binding id is recorded as the signing nonce in
@@ -267,6 +268,7 @@ fn stage1_allow_classical_accepts_v318_bundle_byte_identically() {
         trust_level: fixture.trust_level,
         tenant_id: fixture.tenant_id.clone(),
         kernel_key: fixture.kernel_key.clone(),
+        bbs_projection_version: None,
     })
     .unwrap();
     assert_eq!(body_bytes, fixture_body_bytes, "stage 1 byte drift");

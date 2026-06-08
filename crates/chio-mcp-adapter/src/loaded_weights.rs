@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use chio_core::{LoadedWeights, LoadedWeightsUnavailable};
 
-use crate::McpAdapter;
+use crate::adapter::McpAdapter;
 
 const PROVIDER_NAME: &str = "mcp";
 const UNAVAILABLE_REASON: &str = "MCP protocol bridge does not expose native loaded model bytes";

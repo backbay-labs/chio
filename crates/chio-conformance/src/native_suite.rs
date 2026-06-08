@@ -6,15 +6,20 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use chio_core::canonical::canonical_json_bytes;
 use chio_core::capability::{
-    scope_hash, validate_attenuation, validate_delegation_chain, Attenuation, CapabilityToken,
-    CapabilityTokenBody, ChioScope, Constraint, DelegationLink, DelegationLinkBody,
-    GovernedTransactionIntent, Operation, ToolGrant,
+    attenuation::{
+        scope_hash, validate_attenuation, validate_delegation_chain, Attenuation, DelegationLink,
+        DelegationLinkBody,
+    },
+    governance::GovernedTransactionIntent,
+    scope::{ChioScope, Constraint, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core::crypto::Keypair;
 use chio_core::message::{AgentMessage, KernelMessage, ToolCallError, ToolCallResult};
 use chio_core::receipt::{
-    BoundaryClass, ChioReceipt, ChioReceiptBody, Decision, GovernedTransactionReceiptMetadata,
-    GuardEvidence, ReceiptKind, RedactionMode, ToolCallAction, ToolOrigin,
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    governance::GovernedTransactionReceiptMetadata, kinds::BoundaryClass, kinds::ReceiptKind,
+    kinds::RedactionMode, kinds::ToolOrigin, metadata::GuardEvidence,
 };
 use chio_kernel::dpop::{verify_dpop_proof, DpopConfig, DpopNonceStore, DpopProof, DpopProofBody};
 use chio_kernel::transport::{read_frame, write_frame, TransportError};
@@ -1308,9 +1313,10 @@ fn build_receipt(
                 details: None,
             }],
             metadata,
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: kernel_keypair().public_key(),
+            bbs_projection_version: None,
         },
         &kernel_keypair(),
     )

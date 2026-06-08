@@ -1,8 +1,8 @@
 use bs58::decode as bs58_decode;
 use chio_core::canonical::canonical_json_bytes;
-use chio_core::capability::MonetaryAmount;
-use chio_core::receipt::ChioReceipt;
-use chio_core::web3::{
+use chio_core::capability::scope::MonetaryAmount;
+use chio_core::receipt::body::ChioReceipt;
+use chio_core::web3::identity::{
     verify_web3_identity_binding, SignedWeb3IdentityBinding, Web3KeyBindingPurpose,
 };
 use serde::{Deserialize, Serialize};
@@ -247,8 +247,10 @@ pub fn compare_commitments(
 mod tests {
     use super::*;
     use chio_core::crypto::Keypair;
-    use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction};
-    use chio_core::web3::{SignedWeb3IdentityBinding, Web3IdentityBindingCertificate};
+    use chio_core::receipt::{
+        body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    };
+    use chio_core::web3::identity::{SignedWeb3IdentityBinding, Web3IdentityBindingCertificate};
     use serde_json::json;
 
     use chio_test_support::prelude::*;
@@ -277,16 +279,17 @@ mod tests {
                 policy_hash: "policy".to_string(),
                 evidence: Vec::new(),
                 metadata: None,
-                trust_level: chio_core::TrustLevel::default(),
+                trust_level: chio_core::receipt::kinds::TrustLevel::default(),
                 tenant_id: None,
                 kernel_key: keypair.public_key(),
+                bbs_projection_version: None,
             },
             &keypair,
         )
         .test_unwrap();
         let binding = SignedWeb3IdentityBinding {
             certificate: Web3IdentityBindingCertificate {
-                schema: chio_core::web3::CHIO_KEY_BINDING_CERTIFICATE_SCHEMA.to_string(),
+                schema: chio_core::web3::identity::CHIO_KEY_BINDING_CERTIFICATE_SCHEMA.to_string(),
                 chio_identity: format!("did:chio:{}", keypair.public_key().to_hex()),
                 chio_public_key: keypair.public_key(),
                 chain_scope: vec!["solana:mainnet".to_string()],
@@ -298,7 +301,8 @@ mod tests {
             },
             signature: {
                 let certificate = Web3IdentityBindingCertificate {
-                    schema: chio_core::web3::CHIO_KEY_BINDING_CERTIFICATE_SCHEMA.to_string(),
+                    schema: chio_core::web3::identity::CHIO_KEY_BINDING_CERTIFICATE_SCHEMA
+                        .to_string(),
                     chio_identity: format!("did:chio:{}", keypair.public_key().to_hex()),
                     chio_public_key: keypair.public_key(),
                     chain_scope: vec!["solana:mainnet".to_string()],

@@ -17,7 +17,7 @@
 //! alongside the pipeline verdict so the kernel can embed it in the receipt's
 //! `GuardEvidence`.
 
-use chio_core::receipt::GuardEvidence;
+use chio_core::receipt::metadata::GuardEvidence;
 pub use chio_kernel::{
     PipelineOutcome, PostInvocationContext, PostInvocationHook, PostInvocationPipeline,
     PostInvocationVerdict,

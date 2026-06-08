@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use chio_core::hashing::sha256;
-use chio_core::web3::Web3SettlementExecutionReceiptArtifact;
+use chio_core::web3::settlement::Web3SettlementExecutionReceiptArtifact;
 use serde::{Deserialize, Serialize};
 
 use crate::SettlementError;
@@ -214,7 +214,7 @@ pub fn reconcile_ccip_delivery(
 mod tests {
     use std::collections::HashSet;
 
-    use chio_core::web3::Web3SettlementExecutionReceiptArtifact;
+    use chio_core::web3::settlement::Web3SettlementExecutionReceiptArtifact;
 
     use super::{
         prepare_ccip_settlement_message, reconcile_ccip_delivery, CcipDeliveryObservation,

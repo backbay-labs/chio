@@ -9,7 +9,9 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use chio_core::crypto::Keypair;
-use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction};
+use chio_core::receipt::{
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+};
 use chio_http_core::{
     handle_regulatory_receipts_signed, verify_regulatory_export, RegulatorIdentity,
     RegulatoryApiError, RegulatoryReceiptQueryResult, RegulatoryReceiptSource,
@@ -38,8 +40,9 @@ fn make_receipt(keypair: &Keypair, id: &str, timestamp: u64) -> ChioReceipt {
             policy_hash: "ph".to_string(),
             evidence: Vec::new(),
             metadata: None,
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
             tenant_id: None,
         },
         keypair,

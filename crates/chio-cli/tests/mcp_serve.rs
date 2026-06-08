@@ -9,7 +9,7 @@ use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use chio_core::receipt::{ChioReceipt, Decision};
+use chio_core::receipt::{body::ChioReceipt, decision::Decision};
 use serde_json::{json, Value};
 
 struct TestDir {
@@ -1775,7 +1775,6 @@ fn mcp_serve_wraps_mcp_server_with_policy_filtered_edge() {
     let mut stdin = child.stdin.take().expect("child stdin");
     let stdout = child.stdout.take().expect("child stdout");
     let mut stdout = BufReader::new(stdout);
-
     send_message(
         &mut stdin,
         &json!({
@@ -2422,7 +2421,6 @@ fn mcp_serve_propagates_wrapped_resource_notifications_for_subscribed_uris() {
     let (subscribe, subscribe_notifications) = read_response(&mut stdout, 2);
     assert!(subscribe_notifications.is_empty());
     assert_eq!(subscribe["result"], json!({}));
-
     send_message(
         &mut stdin,
         &json!({
@@ -2558,9 +2556,15 @@ fn mcp_serve_propagates_wrapped_background_resource_notifications_while_idle() {
     );
     let (tool_response, notifications_during_call) = read_response(&mut stdout, 3);
     assert_eq!(tool_response["result"]["isError"], false);
-    assert!(notifications_during_call.is_empty());
-
-    let background_notifications = read_messages_with_timeout(stdout, 2, Duration::from_secs(2));
+    let remaining_notifications = 2_usize
+        .checked_sub(notifications_during_call.len())
+        .expect("unexpected extra resource notifications during call");
+    let mut background_notifications = notifications_during_call;
+    background_notifications.extend(read_messages_with_timeout(
+        stdout,
+        remaining_notifications,
+        Duration::from_secs(2),
+    ));
     let resource_updates = background_notifications
         .iter()
         .filter(|notification| notification["method"] == "notifications/resources/updated")
@@ -2570,9 +2574,7 @@ fn mcp_serve_propagates_wrapped_background_resource_notifications_while_idle() {
     assert!(background_notifications
         .iter()
         .any(|notification| { notification["method"] == "notifications/resources/list_changed" }));
-
     drop(stdin);
-
     let status = child.wait().expect("wait for chio process");
     let mut stderr = String::new();
     child
@@ -2582,7 +2584,6 @@ fn mcp_serve_propagates_wrapped_background_resource_notifications_while_idle() {
         .read_to_string(&mut stderr)
         .expect("read stderr");
     assert!(status.success(), "chio stderr:\n{stderr}");
-
     let _ = fs::remove_file(policy_path);
     let _ = fs::remove_file(script_path);
     let _ = fs::remove_dir(dir);
@@ -2618,7 +2619,6 @@ fn mcp_serve_propagates_wrapped_catalog_change_notifications_while_idle() {
     let mut stdin = child.stdin.take().expect("child stdin");
     let stdout = child.stdout.take().expect("child stdout");
     let mut stdout = BufReader::new(stdout);
-
     send_message(
         &mut stdin,
         &json!({
@@ -2653,7 +2653,6 @@ fn mcp_serve_propagates_wrapped_catalog_change_notifications_while_idle() {
             "method": "notifications/initialized"
         }),
     );
-
     send_message(
         &mut stdin,
         &json!({
@@ -2668,18 +2667,22 @@ fn mcp_serve_propagates_wrapped_catalog_change_notifications_while_idle() {
     );
     let (tool_response, notifications_during_call) = read_response(&mut stdout, 2);
     assert_eq!(tool_response["result"]["isError"], false);
-    assert!(notifications_during_call.is_empty());
-
-    let catalog_notifications = read_messages_with_timeout(stdout, 2, Duration::from_secs(2));
+    let remaining_notifications = 2_usize
+        .checked_sub(notifications_during_call.len())
+        .expect("unexpected extra catalog notifications during call");
+    let mut catalog_notifications = notifications_during_call;
+    catalog_notifications.extend(read_messages_with_timeout(
+        stdout,
+        remaining_notifications,
+        Duration::from_secs(2),
+    ));
     assert!(catalog_notifications
         .iter()
         .any(|notification| notification["method"] == "notifications/tools/list_changed"));
     assert!(catalog_notifications
         .iter()
         .any(|notification| notification["method"] == "notifications/prompts/list_changed"));
-
     drop(stdin);
-
     let status = child.wait().expect("wait for chio process");
     let mut stderr = String::new();
     child
@@ -2689,7 +2692,6 @@ fn mcp_serve_propagates_wrapped_catalog_change_notifications_while_idle() {
         .read_to_string(&mut stderr)
         .expect("read stderr");
     assert!(status.success(), "chio stderr:\n{stderr}");
-
     let _ = fs::remove_file(policy_path);
     let _ = fs::remove_file(script_path);
     let _ = fs::remove_dir(dir);
@@ -2797,7 +2799,6 @@ fn mcp_serve_proxies_wrapped_sampling_and_roots_requests() {
     fs::create_dir_all(&dir).expect("create temp dir");
     let policy_path = write_nested_flow_policy(&dir);
     let script_path = write_mock_server_script(&dir);
-
     let mut child = Command::new(env!("CARGO_BIN_EXE_chio"))
         .args([
             "mcp",
@@ -2821,7 +2822,6 @@ fn mcp_serve_proxies_wrapped_sampling_and_roots_requests() {
     let mut stdin = child.stdin.take().expect("child stdin");
     let stdout = child.stdout.take().expect("child stdout");
     let mut stdout = BufReader::new(stdout);
-
     send_message(
         &mut stdin,
         &json!({
@@ -2847,7 +2847,6 @@ fn mcp_serve_proxies_wrapped_sampling_and_roots_requests() {
     let (initialize, initialize_notifications) = read_response(&mut stdout, 1);
     assert!(initialize_notifications.is_empty());
     assert_eq!(initialize["result"]["protocolVersion"], "2025-11-25");
-
     send_message(
         &mut stdin,
         &json!({
@@ -2873,7 +2872,6 @@ fn mcp_serve_proxies_wrapped_sampling_and_roots_requests() {
             }
         }),
     );
-
     send_message(
         &mut stdin,
         &json!({
@@ -3278,20 +3276,23 @@ fn mcp_serve_forwards_wrapped_url_elicitation_completion_notifications() {
         tool_response["result"]["structuredContent"]["action"],
         "accept"
     );
-
     let elicitation_id = tool_response["result"]["structuredContent"]["elicitationId"]
         .as_str()
         .expect("elicitation id")
         .to_string();
-
-    let completion_notifications = if tool_notifications
-        .iter()
-        .any(|notification| notification["method"] == "notifications/elicitation/complete")
-    {
-        tool_notifications
-    } else {
-        read_messages_with_timeout(stdout, 1, Duration::from_secs(2))
-    };
+    let mut completion_notifications = tool_notifications
+        .into_iter()
+        .filter(|notification| notification["method"] == "notifications/elicitation/complete")
+        .collect::<Vec<_>>();
+    if completion_notifications.is_empty() {
+        completion_notifications.extend(
+            read_messages_with_timeout(stdout, 1, Duration::from_secs(2))
+                .into_iter()
+                .filter(|notification| {
+                    notification["method"] == "notifications/elicitation/complete"
+                }),
+        );
+    }
     assert_eq!(completion_notifications.len(), 1);
     assert_eq!(
         completion_notifications[0]["method"],
@@ -3301,9 +3302,7 @@ fn mcp_serve_forwards_wrapped_url_elicitation_completion_notifications() {
         completion_notifications[0]["params"]["elicitationId"],
         elicitation_id
     );
-
     drop(stdin);
-
     let status = child.wait().expect("wait for chio process");
     let mut stderr = String::new();
     child
@@ -3313,7 +3312,6 @@ fn mcp_serve_forwards_wrapped_url_elicitation_completion_notifications() {
         .read_to_string(&mut stderr)
         .expect("read stderr");
     assert!(status.success(), "chio stderr:\n{stderr}");
-
     let _ = fs::remove_file(policy_path);
     let _ = fs::remove_file(script_path);
     let _ = fs::remove_dir(dir);

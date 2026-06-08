@@ -1,17 +1,21 @@
 use chio_core_types::capability::{
-    CapabilityToken, CapabilityTokenBody, ChioScope, GovernedTransactionIntent, Operation,
-    ToolGrant,
+    governance::GovernedTransactionIntent,
+    scope::{ChioScope, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core_types::crypto::Keypair;
+use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_core_types::receipt::{
-    ActorRef, BoundaryClass, ChioReceipt, ChioReceiptBody, Decision, ReceiptKind, RedactionMode,
-    ToolCallAction, ToolOrigin, TrustLevel,
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    kinds::BoundaryClass, kinds::ReceiptKind, kinds::RedactionMode, kinds::ToolOrigin,
+    kinds::TrustLevel, metadata::ActorRef,
 };
-use chio_core_types::SignedExportEnvelope;
 use chio_federation::{
-    sign_chio_bilateral_dsse_envelope, BilateralPredicateExtensions, CapabilityLeaseRef,
-    DsseEnvelope, GovernanceReceiptRef, HashRecord, PolicyEvaluationSummary, PolicyVerdict,
-    TreatyBindingRef, PAYLOAD_TYPE_IN_TOTO,
+    bilateral_dsse::sign_chio_bilateral_dsse_envelope,
+    bilateral_dsse::BilateralPredicateExtensions, bilateral_dsse::CapabilityLeaseRef,
+    bilateral_dsse::DsseEnvelope, bilateral_dsse::GovernanceReceiptRef, bilateral_dsse::HashRecord,
+    bilateral_dsse::PolicyEvaluationSummary, bilateral_dsse::PolicyVerdict,
+    bilateral_dsse::TreatyBindingRef, bilateral_dsse::PAYLOAD_TYPE_IN_TOTO,
 };
 use chio_kernel::{RuntimeAdmissionContext, RuntimeAdmissionHook, ToolCallRequest};
 use chio_runtime_core::{
@@ -984,6 +988,7 @@ fn chio_runtime_hook_releases_chio_native_reserved_state_after_kernel_abort(
         agent_id: cap.subject.to_hex(),
         arguments: args,
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: Some(GovernedTransactionIntent {
             id: "intent-live-1".to_string(),
             server_id: "vendor-ledger".to_string(),
@@ -1242,7 +1247,7 @@ struct TreatyRuntimeFixture {
     bilateral_invocation: BilateralInvocation,
     bilateral_invocation_sha256: String,
     bilateral_dsse_id: String,
-    bilateral_dsse: chio_federation::DsseEnvelope,
+    bilateral_dsse: chio_federation::bilateral_dsse::DsseEnvelope,
     bilateral_dsse_sha256: String,
 }
 
@@ -1384,6 +1389,7 @@ fn treaty_runtime_fixture_with_policy(
             trust_level: TrustLevel::default(),
             tenant_id: None,
             kernel_key: signer_b.public_key(),
+            bbs_projection_version: None,
         },
         &signer_b,
     )?;
@@ -1588,6 +1594,7 @@ fn treaty_runtime_request(
         agent_id: cap.subject.to_hex(),
         arguments: args,
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,

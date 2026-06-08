@@ -33,7 +33,7 @@ pub(super) struct BuyerReviewHydratedArtifacts {
     pub(super) continuation: CrossKernelContinuation,
     pub(super) admission: CrossBoundaryAdmissionReport,
     pub(super) bilateral: BilateralInvocation,
-    pub(super) bilateral_dsse: chio_federation::DsseEnvelope,
+    pub(super) bilateral_dsse: chio_federation::bilateral_dsse::DsseEnvelope,
     pub(super) proof_package: serde_json::Value,
     pub(super) workflow_receipt: serde_json::Value,
     pub(super) verifier_report: serde_json::Value,

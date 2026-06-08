@@ -4,7 +4,9 @@
 //! allowlists for file access, file write, and patch operations. When
 //! `patch_allow` is empty, it falls back to `file_write_allow`.
 
-use chio_kernel::{GuardContext, KernelError, Verdict};
+#[cfg(test)]
+use chio_kernel::Verdict;
+use chio_kernel::{GuardContext, GuardDecision, KernelError};
 use glob::Pattern;
 
 use crate::action::{extract_action_checked, ToolAction};
@@ -182,26 +184,26 @@ impl chio_kernel::Guard for PathAllowlistGuard {
         "path-allowlist"
     }
 
-    fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
         if !self.enabled && ctx.session_filesystem_roots.is_none() {
-            return Ok(Verdict::Allow);
+            return Ok(GuardDecision::allow());
         }
         let action = match extract_action_checked(&ctx.request.tool_name, &ctx.request.arguments) {
             Ok(action) => action,
-            Err(_) => return Ok(Verdict::Deny),
+            Err(_) => return Ok(GuardDecision::deny(Vec::new())),
         };
         let Some(path) = action.filesystem_path() else {
-            return Ok(Verdict::Allow);
+            return Ok(GuardDecision::allow());
         };
 
         if let Some(session_roots) = ctx.session_filesystem_roots {
             if !self.matches_session_roots(path, session_roots) {
-                return Ok(Verdict::Deny);
+                return Ok(GuardDecision::deny(Vec::new()));
             }
         }
 
         if !self.enabled {
-            return Ok(Verdict::Allow);
+            return Ok(GuardDecision::allow());
         }
 
         let allowed = match &action {
@@ -214,9 +216,9 @@ impl chio_kernel::Guard for PathAllowlistGuard {
         };
 
         if allowed {
-            Ok(Verdict::Allow)
+            Ok(GuardDecision::allow())
         } else {
-            Ok(Verdict::Deny)
+            Ok(GuardDecision::deny(Vec::new()))
         }
     }
 }
@@ -242,10 +244,10 @@ mod tests {
     fn make_guard_context<'a>(
         tool_name: &'a str,
         arguments: serde_json::Value,
-        scope: &'a chio_core::capability::ChioScope,
+        scope: &'a chio_core::capability::scope::ChioScope,
         agent_id: &'a String,
         server_id: &'a String,
-        capability: chio_core::capability::CapabilityToken,
+        capability: chio_core::capability::token::CapabilityToken,
         session_roots: Option<&'a [String]>,
     ) -> chio_kernel::GuardContext<'a> {
         let request = Box::leak(Box::new(chio_kernel::ToolCallRequest {
@@ -256,6 +258,7 @@ mod tests {
             agent_id: agent_id.clone(),
             arguments,
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
@@ -274,9 +277,9 @@ mod tests {
 
     fn make_test_capability(
         kp: &chio_core::crypto::Keypair,
-        scope: &chio_core::capability::ChioScope,
-    ) -> chio_core::capability::CapabilityToken {
-        let cap_body = chio_core::capability::CapabilityTokenBody {
+        scope: &chio_core::capability::scope::ChioScope,
+    ) -> chio_core::capability::token::CapabilityToken {
+        let cap_body = chio_core::capability::token::CapabilityTokenBody {
             id: "cap-test".to_string(),
             issuer: kp.public_key(),
             subject: kp.public_key(),
@@ -285,7 +288,7 @@ mod tests {
             expires_at: u64::MAX,
             delegation_chain: vec![],
         };
-        chio_core::capability::CapabilityToken::sign(cap_body, kp).expect("sign cap")
+        chio_core::capability::token::CapabilityToken::sign(cap_body, kp).expect("sign cap")
     }
 
     #[test]
@@ -350,7 +353,7 @@ mod tests {
     fn disabled_guard_without_session_roots_allows_malformed_filesystem_actions() {
         let guard = PathAllowlistGuard::new();
         let kp = chio_core::crypto::Keypair::generate();
-        let scope = chio_core::capability::ChioScope::default();
+        let scope = chio_core::capability::scope::ChioScope::default();
         let agent_id = kp.public_key().to_hex();
         let server_id = "srv-test".to_string();
         let cap = make_test_capability(&kp, &scope);
@@ -372,7 +375,7 @@ mod tests {
     fn disabled_guard_with_session_roots_denies_malformed_filesystem_actions() {
         let guard = PathAllowlistGuard::new();
         let kp = chio_core::crypto::Keypair::generate();
-        let scope = chio_core::capability::ChioScope::default();
+        let scope = chio_core::capability::scope::ChioScope::default();
         let agent_id = kp.public_key().to_hex();
         let server_id = "srv-test".to_string();
         let cap = make_test_capability(&kp, &scope);
@@ -400,11 +403,11 @@ mod tests {
         ));
 
         let kp = chio_core::crypto::Keypair::generate();
-        let scope = chio_core::capability::ChioScope::default();
+        let scope = chio_core::capability::scope::ChioScope::default();
         let agent_id = kp.public_key().to_hex();
         let server_id = "srv-test".to_string();
 
-        let cap_body = chio_core::capability::CapabilityTokenBody {
+        let cap_body = chio_core::capability::token::CapabilityTokenBody {
             id: "cap-test".to_string(),
             issuer: kp.public_key(),
             subject: kp.public_key(),
@@ -413,7 +416,8 @@ mod tests {
             expires_at: u64::MAX,
             delegation_chain: vec![],
         };
-        let cap = chio_core::capability::CapabilityToken::sign(cap_body, &kp).expect("sign cap");
+        let cap =
+            chio_core::capability::token::CapabilityToken::sign(cap_body, &kp).expect("sign cap");
 
         let request = chio_kernel::ToolCallRequest {
             request_id: "req-test".to_string(),
@@ -423,6 +427,7 @@ mod tests {
             agent_id: agent_id.clone(),
             arguments: serde_json::json!({"path": "/etc/passwd", "content": "bad"}),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
@@ -451,11 +456,11 @@ mod tests {
         ));
 
         let kp = chio_core::crypto::Keypair::generate();
-        let scope = chio_core::capability::ChioScope::default();
+        let scope = chio_core::capability::scope::ChioScope::default();
         let agent_id = kp.public_key().to_hex();
         let server_id = "srv-test".to_string();
 
-        let cap_body = chio_core::capability::CapabilityTokenBody {
+        let cap_body = chio_core::capability::token::CapabilityTokenBody {
             id: "cap-test".to_string(),
             issuer: kp.public_key(),
             subject: kp.public_key(),
@@ -464,7 +469,8 @@ mod tests {
             expires_at: u64::MAX,
             delegation_chain: vec![],
         };
-        let cap = chio_core::capability::CapabilityToken::sign(cap_body, &kp).expect("sign cap");
+        let cap =
+            chio_core::capability::token::CapabilityToken::sign(cap_body, &kp).expect("sign cap");
 
         let request = chio_kernel::ToolCallRequest {
             request_id: "req-test".to_string(),
@@ -478,6 +484,7 @@ mod tests {
                 "content": "bad"
             }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
@@ -532,10 +539,10 @@ mod tests {
     fn session_roots_deny_out_of_root_access_even_when_allowlist_matches() {
         let guard = PathAllowlistGuard::with_config(enabled_config(vec!["**"], vec!["**"], vec![]));
         let kp = chio_core::crypto::Keypair::generate();
-        let scope = chio_core::capability::ChioScope::default();
+        let scope = chio_core::capability::scope::ChioScope::default();
         let agent_id = kp.public_key().to_hex();
         let server_id = "srv-test".to_string();
-        let cap_body = chio_core::capability::CapabilityTokenBody {
+        let cap_body = chio_core::capability::token::CapabilityTokenBody {
             id: "cap-test".to_string(),
             issuer: kp.public_key(),
             subject: kp.public_key(),
@@ -544,7 +551,8 @@ mod tests {
             expires_at: u64::MAX,
             delegation_chain: vec![],
         };
-        let cap = chio_core::capability::CapabilityToken::sign(cap_body, &kp).expect("sign cap");
+        let cap =
+            chio_core::capability::token::CapabilityToken::sign(cap_body, &kp).expect("sign cap");
         let session_roots = vec!["/workspace/project".to_string()];
         let ctx = make_guard_context(
             "filesystem",
@@ -564,10 +572,10 @@ mod tests {
     fn session_roots_fail_closed_when_root_set_is_empty() {
         let guard = PathAllowlistGuard::new();
         let kp = chio_core::crypto::Keypair::generate();
-        let scope = chio_core::capability::ChioScope::default();
+        let scope = chio_core::capability::scope::ChioScope::default();
         let agent_id = kp.public_key().to_hex();
         let server_id = "srv-test".to_string();
-        let cap_body = chio_core::capability::CapabilityTokenBody {
+        let cap_body = chio_core::capability::token::CapabilityTokenBody {
             id: "cap-test".to_string(),
             issuer: kp.public_key(),
             subject: kp.public_key(),
@@ -576,7 +584,8 @@ mod tests {
             expires_at: u64::MAX,
             delegation_chain: vec![],
         };
-        let cap = chio_core::capability::CapabilityToken::sign(cap_body, &kp).expect("sign cap");
+        let cap =
+            chio_core::capability::token::CapabilityToken::sign(cap_body, &kp).expect("sign cap");
         let session_roots: Vec<String> = Vec::new();
         let ctx = make_guard_context(
             "filesystem",
@@ -596,10 +605,10 @@ mod tests {
     fn session_roots_allow_in_root_access_when_other_checks_pass() {
         let guard = PathAllowlistGuard::new();
         let kp = chio_core::crypto::Keypair::generate();
-        let scope = chio_core::capability::ChioScope::default();
+        let scope = chio_core::capability::scope::ChioScope::default();
         let agent_id = kp.public_key().to_hex();
         let server_id = "srv-test".to_string();
-        let cap_body = chio_core::capability::CapabilityTokenBody {
+        let cap_body = chio_core::capability::token::CapabilityTokenBody {
             id: "cap-test".to_string(),
             issuer: kp.public_key(),
             subject: kp.public_key(),
@@ -608,7 +617,8 @@ mod tests {
             expires_at: u64::MAX,
             delegation_chain: vec![],
         };
-        let cap = chio_core::capability::CapabilityToken::sign(cap_body, &kp).expect("sign cap");
+        let cap =
+            chio_core::capability::token::CapabilityToken::sign(cap_body, &kp).expect("sign cap");
         let session_roots = vec!["/workspace/project".to_string()];
         let ctx = make_guard_context(
             "filesystem",

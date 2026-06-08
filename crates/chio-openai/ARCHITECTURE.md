@@ -12,6 +12,9 @@
 - `src/transport.rs` is feature gated behind `provider-adapter` and owns the
   outbound `/v1/responses` and `/v1/chat/completions` HTTP boundary over the
   shared `chio-provider-adapter-core` transport.
+- `src/tests.rs` owns the default-surface unit coverage for manifest
+  conversion, tool-call extraction, direct kernel execution, and response
+  rendering.
 
 ## Pain Points
 

@@ -304,7 +304,7 @@ fn run_log_replay(
             ));
         }
 
-        let receipt: chio_core::receipt::ChioReceipt = match serde_json::from_value(value.clone()) {
+        let receipt: chio_core::receipt::body::ChioReceipt = match serde_json::from_value(value.clone()) {
             Ok(r) => r,
             Err(error) => {
                 let divergence = Divergence {

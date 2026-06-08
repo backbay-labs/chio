@@ -3,7 +3,7 @@ use std::str::FromStr;
 use alloy_primitives::{keccak256, Address, B256, U256};
 use alloy_sol_types::SolValue;
 use chio_core::hashing::sha256;
-use chio_core::web3::Web3SettlementDispatchArtifact;
+use chio_core::web3::settlement::Web3SettlementDispatchArtifact;
 use serde::{Deserialize, Serialize};
 
 use crate::SettlementError;
@@ -346,7 +346,7 @@ mod tests {
         CircleNanopaymentPolicy, Eip3009Domain, Erc4337PaymasterPolicy,
         TransferWithAuthorizationInput, X402SettlementMode,
     };
-    use chio_core::web3::Web3SettlementDispatchArtifact;
+    use chio_core::web3::settlement::Web3SettlementDispatchArtifact;
 
     use chio_test_support::prelude::*;
 

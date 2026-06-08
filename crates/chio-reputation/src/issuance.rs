@@ -123,8 +123,8 @@ fn monetary_limit_reduced(parent: &ToolGrant, child: &ToolGrant) -> bool {
 }
 
 fn monetary_cap_reduced(
-    parent: Option<&chio_core::capability::MonetaryAmount>,
-    child: Option<&chio_core::capability::MonetaryAmount>,
+    parent: Option<&chio_core::capability::scope::MonetaryAmount>,
+    child: Option<&chio_core::capability::scope::MonetaryAmount>,
 ) -> bool {
     match (parent, child) {
         (Some(parent_amount), Some(child_amount)) => {

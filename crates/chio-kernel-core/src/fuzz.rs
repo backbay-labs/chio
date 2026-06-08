@@ -23,7 +23,7 @@
 //! # Chosen entry point
 //!
 //! The receipt-log decode-then-verify pipeline is structured around
-//! [`chio_core_types::ChioReceipt`]:
+//! [`chio_core_types::receipt::body::ChioReceipt`]:
 //!
 //! 1. Split the input bytes on `\n` into NDJSON lines (matching the
 //!    `tests/replay/src/golden_writer.rs` newline-terminated framing).
@@ -52,7 +52,7 @@
 
 use alloc::vec::Vec;
 
-use chio_core_types::receipt::ChioReceipt;
+use chio_core_types::receipt::body::ChioReceipt;
 use chio_core_types::PublicKey;
 
 /// Drive arbitrary bytes through the `chio-kernel-core` receipt-log replay

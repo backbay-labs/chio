@@ -187,7 +187,7 @@ fn enriched_deny_preserves_to_decision_mapping() {
     let v = Verdict::deny_detailed("scope missing", "ScopeGuard", details);
     let decision = v.to_decision();
     match decision {
-        chio_core_types::Decision::Deny { reason, guard } => {
+        chio_core_types::receipt::decision::Decision::Deny { reason, guard } => {
             assert_eq!(reason, "scope missing");
             assert_eq!(guard, "ScopeGuard");
         }

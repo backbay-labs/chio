@@ -1,4 +1,4 @@
-use chio_core_types::capability::ChioScope;
+use chio_core_types::capability::scope::ChioScope;
 
 pub(crate) fn is_scope_subset(child: &ChioScope, parent: &ChioScope) -> bool {
     child.is_subset_of(parent)
@@ -6,7 +6,7 @@ pub(crate) fn is_scope_subset(child: &ChioScope, parent: &ChioScope) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use chio_core_types::capability::{ChioScope, Constraint, Operation, ToolGrant};
+    use chio_core_types::capability::scope::{ChioScope, Constraint, Operation, ToolGrant};
 
     use super::is_scope_subset;
 

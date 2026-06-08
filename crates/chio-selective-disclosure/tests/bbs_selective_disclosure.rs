@@ -1,12 +1,15 @@
 #![cfg(feature = "bbs")]
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-use chio_core_types::capability::MonetaryAmount;
+use chio_core_types::capability::scope::MonetaryAmount;
 use chio_core_types::crypto::{sha256_hex, Keypair};
-use chio_core_types::receipt::{ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
+use chio_core_types::receipt::{
+    body::ChioReceiptBody, decision::Decision, decision::ToolCallAction, kinds::TrustLevel,
+};
 use chio_selective_disclosure::{
-    derive_selective_disclosure_proof, generate_bbs_keypair, project_receipt_body,
-    project_step_record, project_workflow_receipt_body, sign_projection,
+    derive_selective_disclosure_proof, derive_selective_disclosure_proof_from_receipt,
+    generate_bbs_keypair, project_receipt_body, project_step_record, project_workflow_receipt_body,
+    receipt_signed_projection, sign_chio_receipt_with_bbs, sign_projection,
     verify_selective_disclosure_proof, verify_signed_projection, DisclosureSet,
     InMemoryIssuerRegistry, SelectiveDisclosureError, PROJECTION_VERSION_RECEIPT_V1,
     PROJECTION_VERSION_STEP_V1, PROJECTION_VERSION_WORKFLOW_V1,
@@ -15,6 +18,8 @@ use chio_selective_disclosure::{
 use chio_workflow::receipt::{
     StepOutcome, StepRecord, WorkflowOutcome, WorkflowReceiptBody, WORKFLOW_RECEIPT_SCHEMA,
 };
+use serde_json::Value;
+use std::{fs, path::PathBuf};
 
 fn receipt_fixture(kp: &Keypair) -> ChioReceiptBody {
     ChioReceiptBody {
@@ -41,6 +46,7 @@ fn receipt_fixture(kp: &Keypair) -> ChioReceiptBody {
         trust_level: TrustLevel::Mediated,
         tenant_id: Some("buyer-tenant".to_string()),
         kernel_key: kp.public_key(),
+        bbs_projection_version: None,
     }
 }
 
@@ -133,6 +139,55 @@ fn registry_for_key(keypair: &chio_selective_disclosure::BbsKeyPair) -> InMemory
     registry
 }
 
+fn repo_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("repo root")
+}
+
+fn attest_schema_path(relative_path: &str) -> PathBuf {
+    repo_root()
+        .join("spec/schemas/chio-attest/v1")
+        .join(relative_path)
+}
+
+fn assert_attest_schema_accepts(relative_path: &str, instance: &Value) {
+    let schema_path = attest_schema_path(relative_path);
+    let contents = fs::read_to_string(&schema_path).expect("schema file exists");
+    let schema: Value = serde_json::from_str(&contents).expect("schema parses as json");
+    let base_uri = schema_path
+        .parent()
+        .expect("schema parent exists")
+        .canonicalize()
+        .expect("schema parent canonicalizes")
+        .to_string_lossy()
+        .replace('\\', "/");
+    let base_uri = if base_uri.ends_with('/') {
+        format!("file://{base_uri}")
+    } else {
+        format!("file://{base_uri}/")
+    };
+    let validator = jsonschema::options()
+        .with_base_uri(base_uri)
+        .build(&schema)
+        .expect("schema compiles");
+    if let Err(error) = validator.validate(instance) {
+        let mut details = vec![error.to_string()];
+        details.extend(
+            validator
+                .iter_errors(instance)
+                .skip(1)
+                .map(|entry| entry.to_string()),
+        );
+        panic!(
+            "schema `{relative_path}` rejected instance:\ninstance={}\nerrors={}",
+            serde_json::to_string_pretty(instance).expect("instance pretty prints"),
+            details.join(" | ")
+        );
+    }
+}
+
 #[test]
 fn receipt_projection_signs_and_proves_disclosed_fields_with_bbs_selective_disclosure() {
     let ed25519 = Keypair::generate();
@@ -172,6 +227,39 @@ fn receipt_projection_signs_and_proves_disclosed_fields_with_bbs_selective_discl
 }
 
 #[test]
+fn receipt_bound_bbs_signature_drives_selective_disclosure_proofs() {
+    let ed25519 = Keypair::generate();
+    let bbs_keypair = generate_bbs_keypair(b"chio-bbs-signing-key-material-0007", b"chio").unwrap();
+    let receipt =
+        sign_chio_receipt_with_bbs(receipt_fixture(&ed25519), &ed25519, &bbs_keypair).unwrap();
+    assert!(receipt.verify_signature().unwrap());
+    assert_eq!(
+        receipt.body().bbs_projection_version.as_deref(),
+        Some(PROJECTION_VERSION_RECEIPT_V1)
+    );
+    assert!(receipt.bbs_signature.is_some());
+
+    let projection = project_receipt_body(&receipt.body()).expect("receipt projection succeeds");
+    let signed = receipt_signed_projection(&receipt).expect("receipt BBS material is bound");
+    assert_eq!(signed.projection_version, PROJECTION_VERSION_RECEIPT_V1);
+    assert_eq!(signed.subject_sha256_hex, projection.subject_sha256_hex);
+    assert!(
+        verify_signed_projection(&signed, &projection).expect("receipt-bound signature verifies")
+    );
+
+    let proof = derive_selective_disclosure_proof_from_receipt(
+        &receipt,
+        &bbs_keypair,
+        &DisclosureSet(vec![1, 5, 11]),
+        b"auditor-session-nonce",
+    )
+    .expect("receipt-bound proof generation succeeds");
+    let verified = verify_selective_disclosure_proof(&proof, &registry_for_key(&bbs_keypair))
+        .expect("receipt-bound proof verifies");
+    assert_eq!(verified.subject_sha256_hex, projection.subject_sha256_hex);
+}
+
+#[test]
 fn projection_rejects_uppercase_sha256_digest_fields() {
     let ed25519 = Keypair::generate();
     let mut receipt = receipt_fixture(&ed25519);
@@ -202,6 +290,36 @@ fn workflow_and_step_projections_have_stable_versions() {
         .messages
         .iter()
         .any(|message| message.field == "tool_name" && !message.wholesale_only));
+}
+
+#[test]
+fn step_record_proof_validates_against_attest_schema() {
+    let ed25519 = Keypair::generate();
+    let workflow = workflow_fixture(&ed25519);
+    let projection =
+        project_step_record("wf-chio-refund-001", &workflow.steps[2]).expect("step projection");
+    assert_eq!(projection.version, PROJECTION_VERSION_STEP_V1);
+
+    let keypair = generate_bbs_keypair(b"chio-bbs-signing-key-material-step", b"chio").unwrap();
+    let signed = sign_projection(&projection, &keypair).expect("step signing succeeds");
+    assert!(verify_signed_projection(&signed, &projection).expect("step signature verifies"));
+
+    let proof = derive_selective_disclosure_proof(
+        &signed,
+        &projection,
+        &keypair,
+        &DisclosureSet(vec![0, 2, 4, 7]),
+        b"step-record-proof-schema-nonce",
+    )
+    .expect("step proof generation succeeds");
+    assert_eq!(proof.schema, SELECTIVE_DISCLOSURE_PROOF_SCHEMA_V1);
+    assert_eq!(proof.projection_version, PROJECTION_VERSION_STEP_V1);
+    verify_selective_disclosure_proof(&proof, &registry_for_key(&keypair))
+        .expect("step proof verifies");
+    assert_attest_schema_accepts(
+        "selective-disclosure-proof.schema.json",
+        &serde_json::to_value(&proof).expect("proof serializes"),
+    );
 }
 
 #[test]

@@ -31,7 +31,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use chio_core::canonical::canonical_json_bytes;
-use chio_core::capability::CapabilityToken;
+use chio_core::capability::token::CapabilityToken;
 use chio_core::crypto::{
     sign_canonical_with_backend, Keypair, PublicKey, Signature, SigningBackend,
 };

@@ -3,9 +3,14 @@
 ## Boundaries
 
 - `lib.rs` owns the public crate surface, remote MCP module wiring, and the `serve_http(RemoteServeHttpConfig)` entrypoint.
-- `remote_mcp/http_service.rs` owns Axum routing, HTTP request admission, SSE response shaping, hosted MCP session dispatch, OAuth discovery metadata, and request-time authorization validation.
+- `remote_mcp/http_service.rs` owns Axum routing, HTTP request admission, SSE response shaping, hosted MCP session dispatch, and peer capability parsing.
+- `remote_mcp/http_service_auth.rs` owns HTTP session-id extraction, remote auth-state construction, OAuth discovery metadata, local authorization-server wiring, request-time authorization validation, sender constraints, and DPoP runtime checks.
 - `remote_mcp/oauth.rs` owns local authorization-server flow handling, token exchange, bearer extraction, JWT and introspection authentication, protocol header validation, and HTTP error projection.
-- `remote_mcp/session_core.rs` owns remote session lifecycle state, resumable records, shared hosted upstream ownership, session workers, capability issuance, and kernel construction.
+- `remote_mcp/session_core.rs` owns remote session lifecycle state, session workers, capability issuance, and kernel construction.
+- `remote_mcp/session_identity.rs` owns OIDC/JWKS discovery, JWT key resolution, federated principal construction, and enterprise identity context helpers.
+- `remote_mcp/session_resume.rs` owns auth and policy fingerprints, federated agent derivation, and resumable-session integrity tags.
+- `remote_mcp/session_shared_upstream.rs` owns shared hosted upstream ownership, notification taps, and fan-out accounting.
+- `remote_mcp/session_forms.rs` owns admin query structs plus OAuth authorization and token request forms.
 - `remote_mcp/session_store.rs` owns SQLite-backed active session rows, terminal tombstones, resume-record loading, tombstone loading, tombstone purging, and persisted capability freshness checks.
 - `remote_mcp/admin.rs` owns operator-only health, authority, receipt, revocation, budget, session, and trust-control routes.
 

@@ -33,11 +33,12 @@ pub use metrics::{
 #[cfg(feature = "fuzz")]
 pub mod fuzz;
 
-use chio_core::web3::{
+use chio_core::web3::anchors::{
     validate_anchor_inclusion_proof, verify_anchor_inclusion_proof, AnchorInclusionProof,
-    SignedWeb3IdentityBinding, Web3ChainAnchorRecord, Web3CheckpointStatement,
-    Web3ReceiptInclusion, CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA, CHIO_CHECKPOINT_STATEMENT_SCHEMA,
+    Web3ChainAnchorRecord, Web3CheckpointStatement, Web3ReceiptInclusion,
+    CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA, CHIO_CHECKPOINT_STATEMENT_SCHEMA,
 };
+use chio_core::web3::identity::SignedWeb3IdentityBinding;
 use chio_kernel::checkpoint::{KernelCheckpoint, KernelCheckpointBody, ReceiptInclusionProof};
 use chio_kernel::evidence_export::{EvidenceExportBundle, EvidenceToolReceiptRecord};
 use serde::{Deserialize, Serialize};
@@ -186,7 +187,7 @@ pub fn receipt_inclusion_from_kernel(proof: &ReceiptInclusionProof) -> Web3Recei
 }
 
 pub fn build_anchor_inclusion_proof(
-    receipt: chio_core::receipt::ChioReceipt,
+    receipt: chio_core::receipt::body::ChioReceipt,
     inclusion: &ReceiptInclusionProof,
     checkpoint: &KernelCheckpoint,
     chain_anchor: Option<Web3ChainAnchorRecord>,
@@ -309,11 +310,11 @@ mod tests {
     use base64::Engine;
     use chio_core::crypto::Keypair;
     use chio_core::receipt::{
-        CheckpointPublicationIdentity, CheckpointPublicationIdentityKind,
-        CheckpointPublicationTrustAnchorBinding, CheckpointTrustAnchorIdentity,
-        CheckpointTrustAnchorIdentityKind,
+        checkpoint::CheckpointPublicationIdentity, checkpoint::CheckpointPublicationIdentityKind,
+        checkpoint::CheckpointPublicationTrustAnchorBinding,
+        checkpoint::CheckpointTrustAnchorIdentity, checkpoint::CheckpointTrustAnchorIdentityKind,
     };
-    use chio_core::web3::AnchorInclusionProof;
+    use chio_core::web3::anchors::AnchorInclusionProof;
     use chio_kernel::checkpoint::{
         build_checkpoint, build_checkpoint_transparency,
         build_trust_anchored_checkpoint_publication, CheckpointTransparencySummary,

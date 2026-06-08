@@ -21,7 +21,7 @@ use crate::event::SiemEvent;
 use crate::exporter::{ExportError, ExportFuture, Exporter};
 use crate::exporters::require_https_endpoint;
 use crate::redaction::redact_for_operator_log;
-use chio_core::receipt::Decision;
+use chio_core::receipt::decision::Decision;
 use chio_egress_contract::{client_builder_with_contract, send_with_contract, HttpEgressContract};
 
 /// On-the-wire format for the Sumo Logic batch body.
@@ -358,12 +358,13 @@ mod tests {
         })
         .test_expect("construct sumo exporter");
         let keypair = chio_core::crypto::Keypair::generate();
-        let action =
-            chio_core::receipt::ToolCallAction::from_parameters(serde_json::json!({"path":"/tmp"}))
-                .test_expect("hash parameters");
-        let semantics = chio_core::ReceiptSemanticFields::trace_detect_only();
-        let receipt = chio_core::receipt::ChioReceipt::sign(
-            chio_core::receipt::ChioReceiptBody {
+        let action = chio_core::receipt::decision::ToolCallAction::from_parameters(
+            serde_json::json!({"path":"/tmp"}),
+        )
+        .test_expect("hash parameters");
+        let semantics = chio_core::receipt::metadata::ReceiptSemanticFields::trace_detect_only();
+        let receipt = chio_core::receipt::body::ChioReceipt::sign(
+            chio_core::receipt::body::ChioReceiptBody {
                 id: "sumo-trace-allow".to_string(),
                 timestamp: 1_712_345_678,
                 capability_id: "cap-sumo".to_string(),
@@ -381,9 +382,10 @@ mod tests {
                 policy_hash: "policy".to_string(),
                 evidence: Vec::new(),
                 metadata: None,
-                trust_level: chio_core::TrustLevel::Verified,
+                trust_level: chio_core::receipt::kinds::TrustLevel::Verified,
                 tenant_id: None,
                 kernel_key: keypair.public_key(),
+                bbs_projection_version: None,
             },
             &keypair,
         )

@@ -46,7 +46,7 @@ use serde::{Deserialize, Serialize};
 use chio_core::canonical::canonical_json_bytes;
 use chio_core::crypto::{sha256_hex, Keypair};
 use chio_core::message::AgentMessage;
-use chio_core::receipt::{ChioReceipt, Decision};
+use chio_core::receipt::{body::ChioReceipt, decision::Decision};
 use chio_store_sqlite::{SqliteEncryptedBlobStore, TenantId, TenantKey};
 
 use crate::buffer::RawPayloadBuffer;
@@ -518,8 +518,11 @@ mod tests {
     use chio_test_support::prelude::*;
 
     use chio_core::canonical::canonical_json_string;
-    use chio_core::capability::{CapabilityToken, CapabilityTokenBody, ChioScope};
-    use chio_core::receipt::{ChioReceiptBody, ToolCallAction, TrustLevel};
+    use chio_core::capability::{
+        scope::ChioScope,
+        token::{CapabilityToken, CapabilityTokenBody},
+    };
+    use chio_core::receipt::{body::ChioReceiptBody, decision::ToolCallAction, kinds::TrustLevel};
 
     fn keypair() -> Keypair {
         Keypair::from_seed(&[42u8; 32])
@@ -581,6 +584,7 @@ mod tests {
             trust_level: TrustLevel::default(),
             tenant_id: None,
             kernel_key: kp.public_key(),
+            bbs_projection_version: None,
         };
         ChioReceipt::sign(body, kp).test_expect("sign receipt")
     }

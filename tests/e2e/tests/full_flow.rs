@@ -6,15 +6,17 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use chio_core::capability::{
-    CapabilityToken, CapabilityTokenBody, ChioScope, DelegationLink, DelegationLinkBody, Operation,
-    ToolGrant,
+    attenuation::{DelegationLink, DelegationLinkBody},
+    scope::{ChioScope, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core::crypto::Keypair;
-use chio_core::receipt::{ChildRequestReceipt, ChioReceipt};
+use chio_core::receipt::{body::ChioReceipt, lineage::ChildRequestReceipt};
 use chio_guards::{ForbiddenPathGuard, GuardPipeline, ShellCommandGuard};
 use chio_kernel::{
-    CapabilitySnapshot, ChioKernel, Guard, GuardContext, KernelConfig, KernelError, ReceiptStore,
-    ReceiptStoreError, ToolCallOutput, ToolCallRequest, ToolServerConnection, Verdict,
+    CapabilitySnapshot, ChioKernel, Guard, GuardContext, GuardDecision, KernelConfig, KernelError,
+    ReceiptStore, ReceiptStoreError, ToolCallOutput, ToolCallRequest, ToolServerConnection,
+    Verdict,
 };
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -203,6 +205,7 @@ fn make_request(
         agent_id: cap.subject.to_hex(),
         arguments: args,
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
@@ -479,6 +482,7 @@ async fn full_flow_revocation_cascade() {
         federated_origin_kernel_id: None,
         arguments: serde_json::json!({"msg": "before revocation"}),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
     };
@@ -504,6 +508,7 @@ async fn full_flow_revocation_cascade() {
         federated_origin_kernel_id: None,
         arguments: serde_json::json!({"msg": "after revocation"}),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
     };
@@ -582,7 +587,7 @@ async fn full_flow_guard_error_fails_closed() {
         fn name(&self) -> &str {
             "broken-guard"
         }
-        fn evaluate(&self, _ctx: &GuardContext) -> Result<Verdict, KernelError> {
+        fn evaluate(&self, _ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
             Err(KernelError::Internal("simulated guard failure".to_string()))
         }
     }
@@ -819,6 +824,7 @@ async fn full_flow_untrusted_issuer() {
         federated_origin_kernel_id: None,
         arguments: serde_json::json!({}),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
     };

@@ -9,7 +9,7 @@ use crate::treaty::{insert_runtime_loopback_treaty_context, RuntimeLoopbackTreat
 use crate::RuntimeLoopbackError;
 
 pub(crate) struct RuntimeLoopbackExecution {
-    pub(crate) receipt: chio_core::receipt::ChioReceipt,
+    pub(crate) receipt: chio_core::receipt::body::ChioReceipt,
     pub(crate) treaty: Option<RuntimeLoopbackTreatyContext>,
 }
 
@@ -60,13 +60,13 @@ fn runtime_loopback_capability(
     server_id: &str,
     tool_name: &str,
     now_unix_ms: u64,
-) -> Result<chio_core::capability::CapabilityToken, RuntimeLoopbackError> {
+) -> Result<chio_core::capability::token::CapabilityToken, RuntimeLoopbackError> {
     let (issued_at, expires_at) = runtime_loopback_capability_window(now_unix_ms);
-    let scope = chio_core::capability::ChioScope {
-        grants: vec![chio_core::capability::ToolGrant {
+    let scope = chio_core::capability::scope::ChioScope {
+        grants: vec![chio_core::capability::scope::ToolGrant {
             server_id: server_id.to_string(),
             tool_name: tool_name.to_string(),
-            operations: vec![chio_core::capability::Operation::Invoke],
+            operations: vec![chio_core::capability::scope::Operation::Invoke],
             constraints: Vec::new(),
             max_invocations: None,
             max_cost_per_invocation: None,
@@ -75,7 +75,7 @@ fn runtime_loopback_capability(
         }],
         ..Default::default()
     };
-    let body = chio_core::capability::CapabilityTokenBody {
+    let body = chio_core::capability::token::CapabilityTokenBody {
         id: capability_id.to_string(),
         issuer: issuer.public_key(),
         subject: subject.public_key(),
@@ -84,23 +84,23 @@ fn runtime_loopback_capability(
         expires_at,
         delegation_chain: Vec::new(),
     };
-    chio_core::capability::CapabilityToken::sign(body, issuer).map_err(|error| {
+    chio_core::capability::token::CapabilityToken::sign(body, issuer).map_err(|error| {
         RuntimeLoopbackError::message(format!("Chio runtime loopback capability signing: {error}"))
     })
 }
 
 pub(crate) fn runtime_loopback_policy_summary(
     step: &RuntimeLoopbackStep,
-) -> chio_federation::PolicyEvaluationSummary {
+) -> chio_federation::bilateral_dsse::PolicyEvaluationSummary {
     let policy_version = "chio-ladder-v1".to_string();
-    chio_federation::PolicyEvaluationSummary {
-        server_a_verdict: chio_federation::PolicyVerdict {
+    chio_federation::bilateral_dsse::PolicyEvaluationSummary {
+        server_a_verdict: chio_federation::bilateral_dsse::PolicyVerdict {
             verdict: "allow".to_string(),
             policy_id: format!("buyer-policy:{}", step.request.tool_name),
             policy_version: policy_version.clone(),
             rationale_code: Some("lease-bound".to_string()),
         },
-        server_b_verdict: chio_federation::PolicyVerdict {
+        server_b_verdict: chio_federation::bilateral_dsse::PolicyVerdict {
             verdict: "allow".to_string(),
             policy_id: format!(
                 "{}-policy:{}",
@@ -175,10 +175,13 @@ pub(crate) fn runtime_loopback_policy_inputs(
         issued_at_unix_ms,
         expires_at_unix_ms,
     };
-    let signed_trust = chio_core::receipt::SignedExportEnvelope::sign(trust_body, &verifier_key)
-        .map_err(|error| {
-            RuntimeLoopbackError::message(format!("Chio runtime loopback trust signing: {error}"))
-        })?;
+    let signed_trust =
+        chio_core::receipt::lineage::SignedExportEnvelope::sign(trust_body, &verifier_key)
+            .map_err(|error| {
+                RuntimeLoopbackError::message(format!(
+                    "Chio runtime loopback trust signing: {error}"
+                ))
+            })?;
     let weights_body = chio_runtime_core::RuntimePeerWeights {
         schema: chio_runtime_core::CHIO_RUNTIME_PEER_WEIGHTS_SCHEMA.to_string(),
         verifier_id: verifier_id.clone(),
@@ -221,18 +224,20 @@ pub(crate) fn runtime_loopback_policy_inputs(
             effect: "require_review".to_string(),
         }],
     };
-    let signed_policy = chio_core::receipt::SignedExportEnvelope::sign(policy_body, &verifier_key)
-        .map_err(|error| {
-            RuntimeLoopbackError::message(format!("Chio runtime loopback policy signing: {error}"))
-        })?;
+    let signed_policy =
+        chio_core::receipt::lineage::SignedExportEnvelope::sign(policy_body, &verifier_key)
+            .map_err(|error| {
+                RuntimeLoopbackError::message(format!(
+                    "Chio runtime loopback policy signing: {error}"
+                ))
+            })?;
     let signed_weights =
-        chio_core::receipt::SignedExportEnvelope::sign(weights_body, &verifier_key).map_err(
-            |error| {
+        chio_core::receipt::lineage::SignedExportEnvelope::sign(weights_body, &verifier_key)
+            .map_err(|error| {
                 RuntimeLoopbackError::message(format!(
                     "Chio runtime loopback peer weights signing: {error}"
                 ))
-            },
-        )?;
+            })?;
     let query_report_body = serde_json::json!({
         "schema": "chio.pheromone.query-report.v1",
         "accepted": true,
@@ -246,13 +251,12 @@ pub(crate) fn runtime_loopback_policy_inputs(
         }
     });
     let signed_query_report =
-        chio_core::receipt::SignedExportEnvelope::sign(query_report_body, &verifier_key).map_err(
-            |error| {
-                RuntimeLoopbackError::message(format!(
-                    "Chio runtime loopback pheromone query report signing: {error}"
-                ))
-            },
-        )?;
+        chio_core::receipt::lineage::SignedExportEnvelope::sign(query_report_body, &verifier_key)
+            .map_err(|error| {
+            RuntimeLoopbackError::message(format!(
+                "Chio runtime loopback pheromone query report signing: {error}"
+            ))
+        })?;
     Ok((
         signed_trust,
         trusted_keys,
@@ -355,12 +359,12 @@ pub(crate) fn execute_runtime_loopback_step(
     if let Some(origin_kernel_id) = step.request.origin_kernel_id.as_deref() {
         let origin_key = chio_attest_loopback::runtime_buyer_keypair();
         let now_secs = peer_pin_now_unix_ms / 1000;
-        let trust = chio_federation::KernelTrustExchange::new(
+        let trust = chio_federation::trust_establishment::KernelTrustExchange::new(
             &step.request.host_kernel_id,
             vendor_key.clone(),
         )
         .with_trusted_peer(origin_kernel_id, origin_key.public_key());
-        let envelope = chio_federation::PeerHandshakeEnvelope::sign(
+        let envelope = chio_federation::trust_establishment::PeerHandshakeEnvelope::sign(
             origin_kernel_id,
             &step.request.host_kernel_id,
             &format!("loopback-origin-nonce-{step_index}"),
@@ -381,7 +385,7 @@ pub(crate) fn execute_runtime_loopback_step(
             })?;
         kernel = kernel.with_federation_peers(vec![peer]);
         kernel.set_federation_cosigner(std::sync::Arc::new(
-            chio_federation::InProcessCoSigner::new(
+            chio_federation::bilateral::InProcessCoSigner::new(
                 origin_kernel_id,
                 origin_key,
                 vendor_key.public_key(),
@@ -431,7 +435,7 @@ pub(crate) fn execute_runtime_loopback_step(
                 step_index
             ))
         })?;
-    let governed_intent = chio_core::capability::GovernedTransactionIntent {
+    let governed_intent = chio_core::capability::governance::GovernedTransactionIntent {
         id: format!("intent:chio-runtime-loopback:{}", step_index),
         server_id: step.request.server_id.clone(),
         tool_name: step.request.tool_name.clone(),
@@ -467,6 +471,7 @@ pub(crate) fn execute_runtime_loopback_step(
         agent_id: agent_key.public_key().to_hex(),
         arguments,
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: Some(governed_intent),
         approval_token: None,
         model_metadata: None,

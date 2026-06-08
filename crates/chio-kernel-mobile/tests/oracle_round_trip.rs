@@ -6,7 +6,8 @@ use std::path::{Path, PathBuf};
 
 use chio_core_types::crypto::Keypair;
 use chio_core_types::receipt::{
-    ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    kinds::TrustLevel,
 };
 use chio_kernel_mobile::sign_receipt;
 use serde::Deserialize;
@@ -87,6 +88,7 @@ fn sign_fixture_receipt(fixture: &ReceiptFixture) -> Result<ChioReceipt, Box<dyn
         trust_level: TrustLevel::Mediated,
         tenant_id: Some(fixture.tenant_id.clone()),
         kernel_key: keypair.public_key(),
+        bbs_projection_version: None,
     };
 
     let signed_json = sign_receipt(

@@ -71,12 +71,39 @@ tests/replay/
 ```
 cargo build -p chio-replay-gate --tests
 cargo test -p chio-replay-gate
+cargo run -p chio-replay-gate -- --help
+cargo run -p chio-replay-gate -- tests/replay/goldens --json
 ```
 
 The `corpus_smoke` test enumerates the corpus and asserts every manifest is
 well-formed; `golden_byte_equivalence` replays each fixture and byte-compares
 the output against its golden. The CI gate runs under
 `.github/workflows/chio-replay-gate.yml`.
+
+The `chio-replay-gate` binary is scoped to this crate's corpus. It validates a
+goldens root or a single golden scenario directory by regenerating candidate
+bytes from the paired fixture manifest and comparing the three golden
+artifacts as raw bytes. It emits `chio.replay.report/v1` when `--json` is
+passed:
+
+```
+{
+  "schema": "chio.replay.report/v1",
+  "accepted": true,
+  "checkedFixtures": 50,
+  "computedRoot": "<lowercase hex>",
+  "expectedRoot": null,
+  "divergences": []
+}
+```
+
+Exit code `0` means a clean match, `10` means byte or aggregate-root drift,
+`30` means a parse or fixture-shape error, and `1` means a CLI or bless-gate
+error.
+
+For a single scenario directory, `computedRoot` is that scenario's `root.hex`.
+For a multi-fixture run, `computedRoot` is a deterministic aggregate over each
+checked fixture label and root in replay-gate enumeration order.
 
 ## Adding a fixture
 
@@ -90,3 +117,20 @@ manifest, produce its golden by running the gate with `--bless`.
 rules documented in `spec/PROTOCOL.md` (allowed branch, environment, and an
 audit-log entry under `docs/replay-compat.md`). Direct edits to
 `tests/replay/goldens/**` are out of policy.
+
+The bless entry point is:
+
+```
+BLESS_REASON="rationale" scripts/bless-replay-goldens.sh
+```
+
+or, for a focused fixture:
+
+```
+CHIO_BLESS=1 BLESS_REASON="rationale" \
+  cargo run -p chio-replay-gate -- --bless tests/replay/fixtures/allow_simple/01_basic_capability.json
+```
+
+The binary refuses before writing if the existing `CHIO_BLESS` gate does not
+pass. A direct `--bless` without `CHIO_BLESS=1` must fail and mention
+`CHIO_BLESS` in stderr.

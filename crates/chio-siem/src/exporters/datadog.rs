@@ -21,7 +21,7 @@ use crate::alerting::{derive_event_severity, AlertSeverity};
 use crate::event::SiemEvent;
 use crate::exporter::{ExportError, ExportFuture, Exporter};
 use crate::redaction::redact_for_operator_log;
-use chio_core::receipt::Decision;
+use chio_core::receipt::decision::Decision;
 use chio_egress_contract::{client_builder_with_contract, send_with_contract, HttpEgressContract};
 
 /// Configuration for the Datadog Logs exporter.
@@ -365,7 +365,8 @@ mod tests {
     use super::*;
     use chio_core::crypto::Keypair;
     use chio_core::receipt::{
-        ChioReceipt, ChioReceiptBody, Decision, ReceiptSemanticFields, ToolCallAction, TrustLevel,
+        body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+        kinds::TrustLevel, metadata::ReceiptSemanticFields,
     };
     use chio_test_support::prelude::*;
 
@@ -439,11 +440,12 @@ mod tests {
             "path": "/etc/passwd"
         }))
         .test_expect("hash test receipt parameters");
-        let decision = if semantics.receipt_kind == chio_core::ReceiptKind::MediatedDecision {
-            Some(decision)
-        } else {
-            None
-        };
+        let decision =
+            if semantics.receipt_kind == chio_core::receipt::kinds::ReceiptKind::MediatedDecision {
+                Some(decision)
+            } else {
+                None
+            };
         ChioReceipt::sign(
             ChioReceiptBody {
                 id: "trace-datadog-1".to_string(),
@@ -466,6 +468,7 @@ mod tests {
                 trust_level,
                 tenant_id: None,
                 kernel_key: kp.public_key(),
+                bbs_projection_version: None,
             },
             &kp,
         )

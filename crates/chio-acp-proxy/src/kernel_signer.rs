@@ -7,7 +7,7 @@
 use std::sync::Mutex;
 
 use chio_core::crypto::Keypair;
-use chio_core::receipt::{ChioReceiptBody, Decision, ToolCallAction};
+use chio_core::receipt::{body::ChioReceiptBody, decision::Decision, decision::ToolCallAction};
 use chio_kernel::receipt_store::{AuthorizationReceiptConsumption, ReceiptStore};
 
 /// Health snapshot for the kernel signer's checkpoint subsystem.
@@ -487,13 +487,13 @@ impl ReceiptSigner for KernelReceiptSigner {
         let (decision, trust_level, semantics) = match enforcement_mode {
             AcpEnforcementMode::AuditOnly => (
                 None,
-                chio_core::TrustLevel::Verified,
-                chio_core::ReceiptSemanticFields::trace_detect_only(),
+                chio_core::receipt::kinds::TrustLevel::Verified,
+                chio_core::receipt::metadata::ReceiptSemanticFields::trace_detect_only(),
             ),
             AcpEnforcementMode::CryptographicallyEnforced => (
                 Some(Decision::Allow),
-                chio_core::TrustLevel::Mediated,
-                chio_core::ReceiptSemanticFields::mediated_prevent(),
+                chio_core::receipt::kinds::TrustLevel::Mediated,
+                chio_core::receipt::metadata::ReceiptSemanticFields::mediated_prevent(),
             ),
         };
         let mut action_parameters = serde_json::json!({
@@ -512,12 +512,12 @@ impl ReceiptSigner for KernelReceiptSigner {
         let body = ChioReceiptBody {
             // `ChioReceipt::sign` replaces this with the canonical
             // content-addressed receipt id (`chio_receipt_id`), so the literal
-            // value here is only a placeholder for debug logging. The actual
+            // value here is only a pre-signing id for debug logging. The actual
             // per-event uniqueness flows through `action.parameters` (status,
             // title, kind, content_hash) and through `content_hash`, both of
             // which the canonical id input pulls in. Encode the discriminator
-            // into the placeholder anyway so tracing logs and any code path
-            // that inspects the pre-signing body can tell `running` and
+            // into the pre-signing id so tracing logs and any code path that
+            // inspects the pre-signing body can tell `running` and
             // terminal `tool_call_update` events apart, and so a future change
             // that bypasses content-addressing does not silently collide on
             // `acp-{tool_call_id}`.
@@ -581,6 +581,7 @@ impl ReceiptSigner for KernelReceiptSigner {
                 .as_ref()
                 .and_then(|context| context.tenant_id.clone()),
             kernel_key: self.keypair.public_key(),
+            bbs_projection_version: None,
         };
 
         let receipt = ChioReceipt::sign(body, &self.keypair)

@@ -86,7 +86,7 @@ pub fn cmd_reputation_local(command: ReputationLocalCommand<'_>) -> Result<(), C
             ));
         }
         let token = super::require_control_token(control_token)?;
-        trust_control::build_client(url, token)?.local_reputation(
+        trust_control::service_runtime::client::build_client(url, token)?.local_reputation(
             subject_public_key,
             &trust_control::LocalReputationQuery { since, until },
         )?
@@ -231,7 +231,7 @@ pub fn cmd_reputation_compare(command: ReputationCompareCommand<'_>) -> Result<(
             ));
         }
         let token = super::require_control_token(control_token)?;
-        trust_control::build_client(url, token)?.reputation_compare(
+        trust_control::service_runtime::client::build_client(url, token)?.reputation_compare(
             subject_public_key,
             &trust_control::ReputationCompareRequest {
                 passport: passport.clone(),

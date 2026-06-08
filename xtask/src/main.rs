@@ -612,7 +612,7 @@ fn codegen_rust(check_only: bool) -> Result<(), XtaskError> {
     let out_dir = workspace_root.join(CHIO_WIRE_V1_RUST_OUT);
 
     if check_only {
-        // Render BOTH the consolidated chio_wire_v1.rs and the placeholder
+        // Render BOTH the consolidated chio_wire_v1.rs and the generated
         // mod.rs into a temporary staging directory and compare every file
         // byte-for-byte with the on-disk copy, so a stale or missing mod.rs
         // cannot slip past the spec-drift CI lane.
@@ -1231,7 +1231,7 @@ fn codegen_python(check_only: bool) -> Result<(), XtaskError> {
     // top-level `__init__.py` then star-imports every subpackage. Together
     // these provide the documented `from chio_sdk._generated import
     // CapabilityToken` import path; without this step datamodel-codegen's
-    // empty subpackage stubs cause that import to raise `ImportError`.
+    // empty subpackage init files cause that import to raise `ImportError`.
     let subpackage_exports = rewrite_python_subpackage_inits(&staging_out, &schema_digest)?;
 
     let top_init = staging_out.join(PYTHON_INIT_FILE);
@@ -1295,6 +1295,7 @@ fn build_python_file_header(schema_digest: &str) -> String {
 
 fn harden_python_generated_models(root_dir: &Path) -> Result<(), XtaskError> {
     harden_python_jsonrpc_response(&root_dir.join("jsonrpc").join("response_schema.py"))?;
+    harden_python_receipt_record(&root_dir.join("receipt").join("record_schema.py"))?;
     harden_python_provenance_verdict_link(
         &root_dir.join("provenance").join("verdict_link_schema.py"),
     )?;
@@ -1302,6 +1303,32 @@ fn harden_python_generated_models(root_dir: &Path) -> Result<(), XtaskError> {
         &root_dir.join("capability").join("capabilities_schema.py"),
     )?;
     Ok(())
+}
+
+/// Enforce receipt schema constraints that datamodel-code-generator does not
+/// currently express for dependent BBS fields.
+fn harden_python_receipt_record(path: &Path) -> Result<(), XtaskError> {
+    let mut body =
+        fs::read_to_string(path).map_err(|err| XtaskError::Io(display_path(path), err))?;
+    replace_python_codegen_snippet(
+        path,
+        &mut body,
+        "from pydantic import BaseModel, ConfigDict, Field, RootModel, conint, constr",
+        "from pydantic import BaseModel, ConfigDict, Field, RootModel, conint, constr, model_validator",
+    )?;
+    replace_python_codegen_snippet(
+        path,
+        &mut body,
+        "    bbs_projection_version: Literal[\"chio.bbs-projection.receipt.v1\"] = Field(\n        \"chio.bbs-projection.receipt.v1\",\n        description=\"Receipt-body BBS projection version bound into the receipt id when bbs_signature is present.\",\n    )\n",
+        "    bbs_projection_version: Literal[\"chio.bbs-projection.receipt.v1\"] | None = Field(\n        None,\n        description=\"Receipt-body BBS projection version bound into the receipt id when bbs_signature is present.\",\n    )\n",
+    )?;
+    replace_python_codegen_snippet(
+        path,
+        &mut body,
+        "    bbs_signature: BbsReceiptSignature | None = Field(\n        None,\n        description=\"Optional BBS signature material for selective disclosure. When present, the Ed25519 receipt signature covers this material through ChioReceiptSigningBody.\",\n    )\n    algorithm: Algorithm | None = Field(\n",
+        "    bbs_signature: BbsReceiptSignature | None = Field(\n        None,\n        description=\"Optional BBS signature material for selective disclosure. When present, the Ed25519 receipt signature covers this material through ChioReceiptSigningBody.\",\n    )\n\n    @model_validator(mode=\"after\")\n    def _validate_bbs_pairing(self) -> \"ChioReceiptRecord\":\n        has_projection = self.bbs_projection_version is not None\n        has_signature = self.bbs_signature is not None\n        if has_projection != has_signature:\n            raise ValueError(\n                \"bbs_projection_version and bbs_signature must be present together\"\n            )\n        return self\n\n    algorithm: Algorithm | None = Field(\n",
+    )?;
+    fs::write(path, body).map_err(|err| XtaskError::Io(display_path(path), err))
 }
 
 /// Inject a `model_validator` on `ChioCapabilityNegotiationV1` that
@@ -1951,72 +1978,4 @@ impl Drop for TempDir {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn resolve_schema_path_rejects_legacy_prefix_traversal() {
-        let temp = match TempDir::new("xtask-schema-resolve") {
-            Ok(temp) => temp,
-            Err(err) => panic!("failed to create temp dir: {err}"),
-        };
-        let schemas_root = temp.path().join("schemas");
-        if let Err(err) = fs::create_dir_all(&schemas_root) {
-            panic!("failed to create schemas dir: {err}");
-        }
-        let outside_schema = temp.path().join("outside.schema.json");
-        if let Err(err) = fs::write(&outside_schema, "{}") {
-            panic!("failed to write outside schema: {err}");
-        }
-
-        let uri = format!("{SCHEMA_URI_PREFIX}../outside");
-        let index = SchemaIndex::new();
-
-        assert!(resolve_schema_path(&uri, &index, &schemas_root).is_none());
-    }
-
-    #[test]
-    fn pascal_case_handles_kebab_and_snake() {
-        assert_eq!(pascal_case("trust-control"), "TrustControl");
-        assert_eq!(pascal_case("tool_call_request"), "ToolCallRequest");
-        assert_eq!(pascal_case("agent"), "Agent");
-        assert_eq!(pascal_case("inclusion-proof"), "InclusionProof");
-    }
-
-    #[test]
-    fn pascal_case_passes_through_pascal_input() {
-        // Already-PascalCase input is preserved (no separators to split on).
-        assert_eq!(pascal_case("Capability"), "Capability");
-    }
-
-    #[test]
-    fn ts_namespace_name_derives_group_and_stem() {
-        let p = Path::new("spec/schemas/chio-wire/v1/capability/grant.schema.json");
-        assert_eq!(ts_namespace_name(p).as_deref(), Some("Capability_Grant"));
-        let p = Path::new("spec/schemas/chio-wire/v1/trust-control/lease.schema.json");
-        assert_eq!(ts_namespace_name(p).as_deref(), Some("TrustControl_Lease"));
-        let p = Path::new("spec/schemas/chio-wire/v1/jsonrpc/request.schema.json");
-        assert_eq!(ts_namespace_name(p).as_deref(), Some("Jsonrpc_Request"));
-    }
-
-    #[test]
-    fn ts_namespace_name_rejects_non_schema_paths() {
-        assert!(ts_namespace_name(Path::new("/tmp/foo.txt")).is_none());
-    }
-
-    #[test]
-    fn ts_header_includes_pin_and_sha() {
-        let header = ts_header("deadbeef");
-        assert!(header.contains("DO NOT EDIT"));
-        assert!(header.contains("cargo xtask codegen --lang ts"));
-        assert!(header.contains("json-schema-to-typescript 15.0.4"));
-        assert!(header.contains("Schema SHA: deadbeef"));
-        assert!(header.contains("/* eslint-disable */"));
-    }
-
-    #[test]
-    fn normalize_ts_chunk_strips_trailing_newlines() {
-        assert_eq!(normalize_ts_chunk("hello\n\n\n"), "hello");
-        assert_eq!(normalize_ts_chunk("multi\nline\n"), "multi\nline");
-    }
-}
+mod tests;

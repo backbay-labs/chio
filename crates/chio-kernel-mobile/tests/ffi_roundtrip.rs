@@ -14,12 +14,14 @@
 
 use chio_core_types::canonical_json_bytes;
 use chio_core_types::capability::{
-    CapabilityToken, CapabilityTokenBody, ChioScope, DelegationLink, DelegationLinkBody, Operation,
-    ToolGrant,
+    attenuation::{DelegationLink, DelegationLinkBody},
+    scope::{ChioScope, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core_types::crypto::Keypair;
 use chio_core_types::receipt::{
-    ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    kinds::TrustLevel,
 };
 use chio_kernel_core::passport_verify::{
     PortablePassportBody, PortablePassportEnvelope, PORTABLE_PASSPORT_SCHEMA,
@@ -127,6 +129,7 @@ fn make_receipt_body(keypair: &Keypair) -> ChioReceiptBody {
         trust_level: TrustLevel::Mediated,
         tenant_id: None,
         kernel_key: keypair.public_key(),
+        bbs_projection_version: None,
     }
 }
 

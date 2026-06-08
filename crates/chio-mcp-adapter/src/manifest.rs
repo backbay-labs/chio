@@ -1,7 +1,8 @@
 use chio_manifest::{ToolDefinition, ToolManifest};
 use serde_json::Value;
 
-use crate::{AdapterError, McpAdapterConfig, McpToolInfo};
+use crate::adapter::McpAdapterConfig;
+use crate::edge::{AdapterError, McpToolInfo};
 
 pub(crate) fn generate_manifest(
     config: &McpAdapterConfig,

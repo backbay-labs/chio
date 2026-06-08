@@ -2,12 +2,26 @@
 
 ## Module Boundaries
 
-`lib.rs` currently owns the public cross-protocol contract surface end to end:
-target protocol discovery, route planning, capability reference projection,
-orchestrator execution, target executor handoff, route evidence, and trace
-construction. The crate is intentionally a shared substrate for protocol edge
-crates rather than a product surface, so source compatibility of public structs
-and traits matters.
+`lib.rs` declares the public cross-protocol modules and does not flatten their
+APIs at the crate root.
+
+- `discovery.rs`: target protocol enum, parser, display implementation, schema
+  target-protocol lookup, and `TargetProtocolRegistry`.
+- `lifecycle.rs`: runtime lifecycle surfaces and metadata contracts.
+- `semantic_hints.rs`: bridge fidelity and tool semantic-hint extraction.
+- `routing.rs`: route availability, candidate evidence, route-selection
+  evidence, planner decisions, and route metadata.
+- `execution.rs`: kernel-bound execution request, target request/response
+  handoff, target executor trait, and OpenAI-shaped target executor.
+- `capability_bridge.rs`: capability references, capability envelopes, protocol
+  trace data, bridge trait, and attenuation/hash helpers.
+- `orchestrator.rs`: shared orchestration runtime and signed metadata assembly.
+- `validation.rs`: request-boundary validation and schema extension helpers.
+- `error.rs`: cross-protocol bridge error type.
+
+The crate is intentionally a shared substrate for protocol edge crates rather
+than a product surface. Callers import the owning module for each domain instead
+of relying on root-level aliases.
 
 ## Pain Points
 

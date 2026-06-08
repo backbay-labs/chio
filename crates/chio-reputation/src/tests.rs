@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chio_core::Constraint;
+    use chio_core::capability::scope::Constraint;
 
     #[test]
     fn reputation_config_default_is_fail_closed_on_empty_trust_set() {
@@ -70,7 +70,7 @@ mod tests {
     #[test]
     fn empty_trusted_keys_emits_warning_once_on_integrity_check() {
         use chio_core::crypto::Keypair;
-        use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction};
+        use chio_core::receipt::{body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction};
 
         // Ensure a clean slate so this test does not depend on global ordering.
         reset_empty_trusted_keys_warning_for_tests();
@@ -96,9 +96,10 @@ mod tests {
             policy_hash: "policy".to_string(),
             evidence: vec![],
             metadata: None,
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: kernel.public_key(),
+            bbs_projection_version: None,
         };
         let receipt = ChioReceipt::sign(body, &kernel)
             .unwrap_or_else(|error| panic!("sign test receipt: {error}"));
@@ -120,7 +121,7 @@ mod tests {
     #[test]
     fn populated_trusted_keys_validate_signed_receipt() {
         use chio_core::crypto::Keypair;
-        use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction};
+        use chio_core::receipt::{body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction};
 
         let kernel = Keypair::generate();
         let body = ChioReceiptBody {
@@ -142,9 +143,10 @@ mod tests {
             policy_hash: "policy".to_string(),
             evidence: vec![],
             metadata: None,
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: kernel.public_key(),
+            bbs_projection_version: None,
         };
         let receipt = ChioReceipt::sign(body, &kernel)
             .unwrap_or_else(|error| panic!("sign test receipt: {error}"));

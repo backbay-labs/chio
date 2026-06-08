@@ -5,7 +5,7 @@
 
 use regex::Regex;
 
-use chio_kernel::{GuardContext, KernelError, Verdict};
+use chio_kernel::{GuardContext, GuardDecision, KernelError};
 
 use crate::action::{extract_action_checked, ToolAction};
 use crate::forbidden_path::ForbiddenPathGuard;
@@ -209,21 +209,21 @@ impl chio_kernel::Guard for ShellCommandGuard {
         "shell-command"
     }
 
-    fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
         let action = match extract_action_checked(&ctx.request.tool_name, &ctx.request.arguments) {
             Ok(action) => action,
-            Err(_) => return Ok(Verdict::Deny),
+            Err(_) => return Ok(GuardDecision::deny(Vec::new())),
         };
 
         let commandline = match &action {
             ToolAction::ShellCommand(cmd) => cmd.as_str(),
-            _ => return Ok(Verdict::Allow),
+            _ => return Ok(GuardDecision::allow()),
         };
 
         if self.is_forbidden(commandline) {
-            Ok(Verdict::Deny)
+            Ok(GuardDecision::deny(Vec::new()))
         } else {
-            Ok(Verdict::Allow)
+            Ok(GuardDecision::allow())
         }
     }
 }

@@ -2,7 +2,8 @@
 
 use std::collections::HashMap;
 
-use chio_core_types::capability::ModelMetadata;
+use chio_core_types::capability::scope::ModelMetadata;
+use chio_kernel::SignedExecutionNonce;
 use serde::{Deserialize, Serialize};
 
 use crate::identity::CallerIdentity;
@@ -72,6 +73,10 @@ pub struct ChioHttpRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model_metadata: Option<ModelMetadata>,
 
+    /// Optional signed nonce presented to complete a strict nonce preflight.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_nonce: Option<SignedExecutionNonce>,
+
     /// Unix timestamp (seconds) when the request was received.
     pub timestamp: u64,
 }
@@ -103,6 +108,7 @@ impl ChioHttpRequest {
             tool_name: None,
             arguments: None,
             model_metadata: None,
+            execution_nonce: None,
             timestamp: now,
         }
     }

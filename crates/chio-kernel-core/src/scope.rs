@@ -26,7 +26,10 @@ use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
 
-use chio_core_types::capability::{CapabilityToken, ChioScope, Constraint, Operation, ToolGrant};
+use chio_core_types::capability::{
+    scope::{ChioScope, Constraint, Operation, ToolGrant},
+    token::CapabilityToken,
+};
 
 /// Borrowed match result, ordered by specificity.
 ///

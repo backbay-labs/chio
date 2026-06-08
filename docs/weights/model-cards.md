@@ -118,15 +118,34 @@ recorded as `SigningState::UnsignedSoftDepAbsent`.
 Operators bind a card to a provider through:
 
 ```
-chio bind <provider> --card <path-to-card.json>
+chio bind <provider> --card <path-to-card.json> \
+  --weights-binding-mode required \
+  --bundle <cosign-bundle.json> \
+  --issuer-san-regex <issuer-san> \
+  --issuer-oidc <issuer>
 ```
 
 The `chio bind` subcommand at
-`crates/chio-cli/src/commands/bind.rs` loads the card, runs the
-cosign bundle verify, attaches the card to the provider binding
-context, and prints the resolved
+`crates/chio-cli/src/commands/bind.rs` loads the card, verifies the
+cosign bundle when supplied, and prints the resolved
 `(weights_hash, allowed_capability_set)` so the operator can
-sanity-check before promoting to production policy.
+sanity-check before promoting to production policy. When
+`--weights-binding-mode required` or `required_with_pin` is selected,
+the command fails closed unless `--bundle` and issuer pins are present,
+so required-policy binding cannot silently skip signed-card verification.
+
+Runtime provider bindings persist `modelCardId`, `modelCardDigest`,
+`loadedWeightsHash`, and `weightsBindingMode`. The persisted
+`loadedWeightsHash` is expected identity, not observed proof. Runtime
+provider health uses those fields, supplied signed `ModelCard` material,
+and separately supplied runtime-observed loaded-weight evidence to reject
+missing cards, stale cards, card digest mismatches, loaded-weight hash
+mismatches, unavailable hosted-provider weights, out-of-card scopes, and
+banned tools. The compatibility health paths that receive no model-card
+material or no observed loaded-weight evidence treat required modes as not
+healthy rather than accepting caller-supplied hashes as proof. The
+`unavailable` binding mode is an explicit hosted-provider failure state
+for health evaluation, not a standalone schema-shape error.
 
 ## 6. Threat-model coverage
 
@@ -138,9 +157,12 @@ The partial state is documented inline in `spec/security/coverage.yaml`
 under `partial_reason`: the kernel binding refusal verifies the
 cosign-attested `weights_hash`, `allowed_capability_set`, and `banned_tools`
 tuple, but loaded-weight recomputation depends on `chio-providers` exposing a
-recomputable digest. Until that lands, the provider-supplied hash is the
-attested input. The gap surfaces under the Partial heading of
-`docs/security/threat-coverage.md` once the threat-model doc generator runs.
+recomputable digest. Runtime health now fails closed for required modes when
+the signed card material or separately supplied runtime-observed loaded hash is
+absent, but the runtime still depends on provider integrations to expose
+independently recomputable loaded-weight evidence. The gap surfaces under the
+Partial heading of `docs/security/threat-coverage.md` once the threat-model doc
+generator runs.
 
 `covered` and `partial` both PASS the threat-model-coverage CI gate.
 
@@ -150,6 +172,7 @@ attested input. The gap surfaces under the Partial heading of
 - Schema: `spec/schemas/model-card.v1.json`
 - Cosign bundle helper: `crates/chio-weights/src/bundle.rs`
 - Kernel binding refusal: `crates/chio-kernel/src/weights_binding.rs`
+- Runtime provider health: `crates/chio-runtime-core/src/ops.rs`
 - Policy: `crates/chio-policy/src/weights.rs`
 - CLI: `crates/chio-cli/src/commands/bind.rs`
 - Lineage anchor: `crates/chio-weights/src/lineage.rs`

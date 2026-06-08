@@ -15,10 +15,25 @@ human approval workflows.
 - `src/evaluator.rs` owns OpenAPI route matching, caller identity extraction,
   capability extraction, policy-mode mapping, and the call into
   `chio_http_core::HttpAuthority`.
-- `src/proxy.rs` is the product router and test harness container. The
-  implementation is split through `src/proxy/*` for approval routes, HTTP
-  utilities, receipt helpers, router assembly, sidecar endpoints, scope checks,
-  and state/storage.
+- `src/proxy.rs` is the product test harness container and proxy module map.
+- `src/proxy/config.rs` owns `ProtectConfig`.
+- `src/proxy/state.rs` owns proxy state, receipt stores, and `ProtectProxy`
+  startup.
+- `src/proxy/http.rs` owns HTTP request translation, transport capability
+  extraction, header forwarding, query forwarding, and advisory response
+  shaping.
+- `src/proxy/decision.rs` owns allow/deny label and verdict-to-status mapping.
+- `src/proxy/errors.rs` owns JSON error responses for evaluation, approval, and
+  sidecar bad-request paths.
+- `src/proxy/attenuation.rs` owns the fail-closed attenuation control route.
+- `src/proxy/router.rs` owns router assembly, upstream forwarding, revocation
+  preflight responses, and receipt persistence calls.
+- `src/proxy/sidecar.rs` owns sidecar control endpoints for evaluate, verify,
+  mint, release, validate, receipt submission, receipt verification, advisory
+  evaluation, control authorization, TTL parsing, and scope parsing.
+- `src/proxy/approval.rs`, `src/proxy/receipts.rs`, and
+  `src/proxy/scope_subset.rs` own approval route handling, manual receipt
+  construction, and scope-subset checks respectively.
 - `src/spec_discovery.rs` owns OpenAPI discovery/loading and the upstream egress
   contract. It must not weaken outbound host, scheme, redirect, or loopback
   constraints.
@@ -27,12 +42,12 @@ human approval workflows.
 
 ## Pain Points
 
-- Caller identity extraction exists in both `evaluator.rs` and
-  `proxy/http_util.rs`. Divergence here changes signed receipt caller hashes
+- Caller identity extraction exists in both `evaluator.rs` and `proxy/http.rs`.
+  Divergence here changes signed receipt caller hashes
   depending on which product path handled the request.
 - `proxy.rs` still acts as a large integration-test container. That is
   acceptable for now because the tests exercise product routes end to end, but
-  new code should stay in the focused `src/proxy/*` modules.
+  production code should stay in the focused `src/proxy/*` modules.
 - Sidecar compatibility routes serve multiple SDK shapes. Tight validation is
   preferable to silently normalizing malformed authorization material.
 

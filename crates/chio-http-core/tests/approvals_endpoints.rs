@@ -10,7 +10,7 @@
 
 use std::sync::Arc;
 
-use chio_core_types::capability::{
+use chio_core_types::capability::governance::{
     GovernedApprovalDecision, GovernedApprovalToken, GovernedApprovalTokenBody,
 };
 use chio_core_types::crypto::Keypair;

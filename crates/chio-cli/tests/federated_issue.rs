@@ -10,10 +10,11 @@ use chio_control_plane::scim_lifecycle::{
     build_scim_user_record, derive_enterprise_subject_key, ScimLifecycleRegistry, ScimUserResource,
     CHIO_SCIM_USER_EXTENSION_SCHEMA, SCIM_CORE_USER_SCHEMA,
 };
-use chio_core::capability::{ChioScope, MonetaryAmount, Operation, ToolGrant};
+use chio_core::capability::scope::{ChioScope, MonetaryAmount, Operation, ToolGrant};
 use chio_core::crypto::Keypair;
 use chio_core::receipt::{
-    ChioReceipt, ChioReceiptBody, Decision, ReceiptAttributionMetadata, ToolCallAction,
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    metadata::ReceiptAttributionMetadata,
 };
 use chio_kernel::{BudgetStore, CapabilityAuthority, LocalCapabilityAuthority, ReceiptStore};
 use chio_store_sqlite::{SqliteBudgetStore, SqliteReceiptStore};
@@ -184,9 +185,10 @@ fn make_receipt(
                     grant_index: Some(0),
                 }
             })),
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: kernel_kp.public_key(),
+            bbs_projection_version: None,
         },
         &kernel_kp,
     )

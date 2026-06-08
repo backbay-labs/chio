@@ -6,8 +6,16 @@
 
 #![forbid(unsafe_code)]
 
-use serde::Serialize;
 use std::{fmt, path::Path};
+
+mod stores;
+
+use stores::HistoricalRuntimeAdmissionStoreAdapter;
+pub use stores::{
+    ChioRuntimeAdmissionStore, ChioRuntimeTrustFloorStore, InMemoryRuntimeAdmissionStore,
+    JsonRuntimeAdmissionStore, JsonRuntimeTrustFloorStateStore, LayeredRuntimeAdmissionStore,
+    SqliteRuntimeOrchestrationStore,
+};
 
 pub type RuntimeAdmissionBundle = chio_runtime_core::RuntimeAdmissionBundle;
 pub type RuntimeAdmissionCheck = chio_runtime_core::RuntimeAdmissionCheck;
@@ -46,7 +54,10 @@ pub type RuntimeProofRegenerationReport = chio_runtime_core::RuntimeProofRegener
 pub type RuntimeProofSourceRecord = chio_runtime_core::RuntimeProofSourceRecord;
 pub type RuntimeProviderBinding = chio_runtime_core::RuntimeProviderBinding;
 pub type RuntimeProviderBindingsDocument = chio_runtime_core::RuntimeProviderBindingsDocument;
+pub type RuntimeProviderHealthCheck = chio_runtime_core::RuntimeProviderHealthCheck;
 pub type RuntimeProviderHealthReport = chio_runtime_core::RuntimeProviderHealthReport;
+pub type RuntimeProviderLoadedWeightsEvidence =
+    chio_runtime_core::RuntimeProviderLoadedWeightsEvidence;
 pub type RuntimeRecoveryDrillReport = chio_runtime_core::RuntimeRecoveryDrillReport;
 pub type RuntimeRequestBinding = chio_runtime_core::RuntimeRequestBinding;
 pub type RuntimeRunContract = chio_runtime_core::RuntimeRunContract;
@@ -66,6 +77,7 @@ pub type SignedRuntimePheromonePolicy = chio_runtime_core::SignedRuntimePheromon
 pub type SignedRuntimePheromoneQueryReport = chio_runtime_core::SignedRuntimePheromoneQueryReport;
 pub type SignedRuntimeVerifierTrustBundle = chio_runtime_core::SignedRuntimeVerifierTrustBundle;
 pub type TreatyRuntimeArtifactRecord = chio_runtime_core::TreatyRuntimeArtifactRecord;
+pub type WeightsBindingMode = chio_runtime_core::WeightsBindingMode;
 
 pub const CHIO_RUNTIME_ADMISSION_PROFILE_SCHEMA: &str = "chio.runtime.admission-profile.v1";
 pub const CHIO_RUNTIME_ADMISSION_BUNDLE_SCHEMA: &str = "chio.runtime.admission-bundle.v1";
@@ -229,7 +241,7 @@ where
     }
 }
 
-type HistoricalRuntimeError = chio_runtime_core::ChioRuntimeError;
+pub(crate) type HistoricalRuntimeError = chio_runtime_core::ChioRuntimeError;
 
 /// Chio-owned runtime boundary error.
 #[derive(Debug)]
@@ -268,758 +280,16 @@ impl std::error::Error for ChioRuntimeError {
     }
 }
 
-fn wrap_runtime<T>(result: Result<T, HistoricalRuntimeError>) -> Result<T, ChioRuntimeError> {
+pub(crate) fn wrap_runtime<T>(
+    result: Result<T, HistoricalRuntimeError>,
+) -> Result<T, ChioRuntimeError> {
     result.map_err(ChioRuntimeError::from_historical)
 }
 
-fn unwrap_runtime<T>(result: Result<T, ChioRuntimeError>) -> Result<T, HistoricalRuntimeError> {
+pub(crate) fn unwrap_runtime<T>(
+    result: Result<T, ChioRuntimeError>,
+) -> Result<T, HistoricalRuntimeError> {
     result.map_err(ChioRuntimeError::into_historical)
-}
-
-pub trait ChioRuntimeAdmissionStore: Send + Sync {
-    fn bundle(
-        &self,
-        admission_id: &str,
-    ) -> Result<Option<RuntimeAdmissionBundle>, ChioRuntimeError>;
-
-    fn treaty_runtime_artifact(
-        &self,
-        evidence_kind: &str,
-        evidence_id: &str,
-    ) -> Result<Option<TreatyRuntimeArtifactRecord>, ChioRuntimeError>;
-
-    fn consume_destructive_lease(
-        &self,
-        lease_id: &str,
-        admission_id: &str,
-    ) -> Result<(), ChioRuntimeError>;
-
-    fn release_destructive_lease(
-        &self,
-        lease_id: &str,
-        admission_id: &str,
-    ) -> Result<(), ChioRuntimeError>;
-
-    fn consume_treaty_continuation(
-        &self,
-        continuation_id: &str,
-        admission_id: &str,
-    ) -> Result<(), ChioRuntimeError>;
-
-    fn release_treaty_continuation(
-        &self,
-        continuation_id: &str,
-        admission_id: &str,
-    ) -> Result<(), ChioRuntimeError>;
-
-    fn runtime_trust_floor(
-        &self,
-        verifier_id: &str,
-        key_id: &str,
-    ) -> Result<Option<RuntimeTrustFloorEntry>, ChioRuntimeError>;
-
-    fn record_runtime_trust_floor(
-        &self,
-        entry: RuntimeTrustFloorEntry,
-    ) -> Result<(), ChioRuntimeError>;
-
-    fn validate_and_record_runtime_trust_floor(
-        &self,
-        entry: RuntimeTrustFloorEntry,
-        previous_hash_sha256: Option<&str>,
-    ) -> Result<(), ChioRuntimeError>;
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct InMemoryRuntimeAdmissionStore {
-    inner: chio_runtime_core::InMemoryRuntimeAdmissionStore,
-}
-
-impl InMemoryRuntimeAdmissionStore {
-    #[must_use]
-    pub fn new() -> Self {
-        Self {
-            inner: chio_runtime_core::InMemoryRuntimeAdmissionStore::new(),
-        }
-    }
-
-    pub fn insert_bundle(&self, bundle: RuntimeAdmissionBundle) -> Result<(), ChioRuntimeError> {
-        wrap_runtime(self.inner.insert_bundle(bundle))
-    }
-
-    pub fn insert_treaty_runtime_artifact<T: Serialize>(
-        &self,
-        evidence_kind: &str,
-        evidence_id: &str,
-        artifact: &T,
-    ) -> Result<(), ChioRuntimeError> {
-        wrap_runtime(self.inner.insert_treaty_runtime_artifact(
-            evidence_kind,
-            evidence_id,
-            artifact,
-        ))
-    }
-}
-
-impl ChioRuntimeAdmissionStore for InMemoryRuntimeAdmissionStore {
-    fn bundle(
-        &self,
-        admission_id: &str,
-    ) -> Result<Option<RuntimeAdmissionBundle>, ChioRuntimeError> {
-        wrap_runtime(chio_runtime_core::RuntimeAdmissionStore::bundle(
-            &self.inner,
-            admission_id,
-        ))
-    }
-
-    fn treaty_runtime_artifact(
-        &self,
-        evidence_kind: &str,
-        evidence_id: &str,
-    ) -> Result<Option<TreatyRuntimeArtifactRecord>, ChioRuntimeError> {
-        wrap_runtime(
-            chio_runtime_core::RuntimeAdmissionStore::treaty_runtime_artifact(
-                &self.inner,
-                evidence_kind,
-                evidence_id,
-            ),
-        )
-    }
-
-    fn consume_destructive_lease(
-        &self,
-        lease_id: &str,
-        admission_id: &str,
-    ) -> Result<(), ChioRuntimeError> {
-        wrap_runtime(
-            chio_runtime_core::RuntimeAdmissionStore::consume_destructive_lease(
-                &self.inner,
-                lease_id,
-                admission_id,
-            ),
-        )
-    }
-
-    fn release_destructive_lease(
-        &self,
-        lease_id: &str,
-        admission_id: &str,
-    ) -> Result<(), ChioRuntimeError> {
-        wrap_runtime(
-            chio_runtime_core::RuntimeAdmissionStore::release_destructive_lease(
-                &self.inner,
-                lease_id,
-                admission_id,
-            ),
-        )
-    }
-
-    fn consume_treaty_continuation(
-        &self,
-        continuation_id: &str,
-        admission_id: &str,
-    ) -> Result<(), ChioRuntimeError> {
-        wrap_runtime(
-            chio_runtime_core::RuntimeAdmissionStore::consume_treaty_continuation(
-                &self.inner,
-                continuation_id,
-                admission_id,
-            ),
-        )
-    }
-
-    fn release_treaty_continuation(
-        &self,
-        continuation_id: &str,
-        admission_id: &str,
-    ) -> Result<(), ChioRuntimeError> {
-        wrap_runtime(
-            chio_runtime_core::RuntimeAdmissionStore::release_treaty_continuation(
-                &self.inner,
-                continuation_id,
-                admission_id,
-            ),
-        )
-    }
-
-    fn runtime_trust_floor(
-        &self,
-        verifier_id: &str,
-        key_id: &str,
-    ) -> Result<Option<RuntimeTrustFloorEntry>, ChioRuntimeError> {
-        wrap_runtime(
-            chio_runtime_core::RuntimeAdmissionStore::runtime_trust_floor(
-                &self.inner,
-                verifier_id,
-                key_id,
-            ),
-        )
-    }
-
-    fn record_runtime_trust_floor(
-        &self,
-        entry: RuntimeTrustFloorEntry,
-    ) -> Result<(), ChioRuntimeError> {
-        wrap_runtime(
-            chio_runtime_core::RuntimeAdmissionStore::record_runtime_trust_floor(
-                &self.inner,
-                entry,
-            ),
-        )
-    }
-
-    fn validate_and_record_runtime_trust_floor(
-        &self,
-        entry: RuntimeTrustFloorEntry,
-        previous_hash_sha256: Option<&str>,
-    ) -> Result<(), ChioRuntimeError> {
-        wrap_runtime(
-            chio_runtime_core::RuntimeAdmissionStore::validate_and_record_runtime_trust_floor(
-                &self.inner,
-                entry,
-                previous_hash_sha256,
-            ),
-        )
-    }
-}
-
-pub trait ChioRuntimeTrustFloorStore: Send + Sync {
-    fn runtime_trust_floor(
-        &self,
-        verifier_id: &str,
-        key_id: &str,
-    ) -> Result<Option<RuntimeTrustFloorEntry>, ChioRuntimeError>;
-
-    fn record_runtime_trust_floor(
-        &self,
-        entry: RuntimeTrustFloorEntry,
-    ) -> Result<(), ChioRuntimeError>;
-
-    fn validate_and_record_runtime_trust_floor(
-        &self,
-        entry: RuntimeTrustFloorEntry,
-        previous_hash_sha256: Option<&str>,
-    ) -> Result<(), ChioRuntimeError>;
-}
-
-impl<T> ChioRuntimeTrustFloorStore for T
-where
-    T: ChioRuntimeAdmissionStore + ?Sized,
-{
-    fn runtime_trust_floor(
-        &self,
-        verifier_id: &str,
-        key_id: &str,
-    ) -> Result<Option<RuntimeTrustFloorEntry>, ChioRuntimeError> {
-        ChioRuntimeAdmissionStore::runtime_trust_floor(self, verifier_id, key_id)
-    }
-
-    fn record_runtime_trust_floor(
-        &self,
-        entry: RuntimeTrustFloorEntry,
-    ) -> Result<(), ChioRuntimeError> {
-        ChioRuntimeAdmissionStore::record_runtime_trust_floor(self, entry)
-    }
-
-    fn validate_and_record_runtime_trust_floor(
-        &self,
-        entry: RuntimeTrustFloorEntry,
-        previous_hash_sha256: Option<&str>,
-    ) -> Result<(), ChioRuntimeError> {
-        ChioRuntimeAdmissionStore::validate_and_record_runtime_trust_floor(
-            self,
-            entry,
-            previous_hash_sha256,
-        )
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct JsonRuntimeAdmissionStore {
-    inner: chio_runtime_core::JsonRuntimeAdmissionStore,
-}
-
-impl JsonRuntimeAdmissionStore {
-    pub fn open(path: impl AsRef<Path>) -> Result<Self, ChioRuntimeError> {
-        wrap_runtime(chio_runtime_core::JsonRuntimeAdmissionStore::open(path))
-            .map(|inner| Self { inner })
-    }
-
-    pub fn insert_bundle(&self, bundle: RuntimeAdmissionBundle) -> Result<(), ChioRuntimeError> {
-        wrap_runtime(self.inner.insert_bundle(bundle))
-    }
-}
-
-pub struct JsonRuntimeTrustFloorStateStore {
-    inner: chio_runtime_core::JsonRuntimeTrustFloorStateStore,
-}
-
-impl fmt::Debug for JsonRuntimeTrustFloorStateStore {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("JsonRuntimeTrustFloorStateStore")
-            .finish_non_exhaustive()
-    }
-}
-
-impl JsonRuntimeTrustFloorStateStore {
-    pub fn open(path: impl AsRef<Path>) -> Result<Self, ChioRuntimeError> {
-        wrap_runtime(chio_runtime_core::JsonRuntimeTrustFloorStateStore::open(
-            path,
-        ))
-        .map(|inner| Self { inner })
-    }
-}
-
-pub struct LayeredRuntimeAdmissionStore<'a> {
-    admission_store: &'a dyn ChioRuntimeAdmissionStore,
-    trust_floor_store: &'a dyn ChioRuntimeTrustFloorStore,
-}
-
-impl fmt::Debug for LayeredRuntimeAdmissionStore<'_> {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("LayeredRuntimeAdmissionStore")
-            .finish_non_exhaustive()
-    }
-}
-
-impl<'a> LayeredRuntimeAdmissionStore<'a> {
-    #[must_use]
-    pub fn new(
-        admission_store: &'a dyn ChioRuntimeAdmissionStore,
-        trust_floor_store: &'a dyn ChioRuntimeTrustFloorStore,
-    ) -> Self {
-        Self {
-            admission_store,
-            trust_floor_store,
-        }
-    }
-}
-
-pub struct SqliteRuntimeOrchestrationStore {
-    inner: chio_runtime_core::SqliteRuntimeOrchestrationStore,
-}
-
-impl fmt::Debug for SqliteRuntimeOrchestrationStore {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("SqliteRuntimeOrchestrationStore")
-            .finish_non_exhaustive()
-    }
-}
-
-impl SqliteRuntimeOrchestrationStore {
-    pub fn open(path: impl AsRef<Path>) -> Result<Self, ChioRuntimeError> {
-        wrap_runtime(chio_runtime_core::SqliteRuntimeOrchestrationStore::open(
-            path,
-        ))
-        .map(|inner| Self { inner })
-    }
-
-    pub fn insert_bundle(&self, bundle: RuntimeAdmissionBundle) -> Result<(), ChioRuntimeError> {
-        wrap_runtime(self.inner.insert_bundle(bundle))
-    }
-
-    pub fn insert_treaty_runtime_artifact<T: Serialize>(
-        &self,
-        evidence_kind: &str,
-        evidence_id: &str,
-        artifact: &T,
-    ) -> Result<(), ChioRuntimeError> {
-        wrap_runtime(self.inner.insert_treaty_runtime_artifact(
-            evidence_kind,
-            evidence_id,
-            artifact,
-        ))
-    }
-
-    pub fn record_run_state(
-        &self,
-        run_id: &str,
-        status: &str,
-        failure_code: Option<&str>,
-        now_unix_ms: u64,
-    ) -> Result<(), ChioRuntimeError> {
-        wrap_runtime(
-            self.inner
-                .record_run_state(run_id, status, failure_code, now_unix_ms),
-        )
-    }
-
-    pub fn record_step_state(
-        &self,
-        state: RuntimeOrchestrationStepState,
-    ) -> Result<(), ChioRuntimeError> {
-        wrap_runtime(self.inner.record_step_state(state))
-    }
-
-    pub fn record_run_step_state(
-        &self,
-        run_id: &str,
-        state: RuntimeOrchestrationStepState,
-    ) -> Result<(), ChioRuntimeError> {
-        wrap_runtime(self.inner.record_run_step_state(run_id, state))
-    }
-
-    pub fn record_evidence_artifact(
-        &self,
-        run_id: &str,
-        entry: &RuntimeEvidenceManifestEntry,
-        recorded_at_unix_ms: u64,
-    ) -> Result<(), ChioRuntimeError> {
-        wrap_runtime(
-            self.inner
-                .record_evidence_artifact(run_id, entry, recorded_at_unix_ms),
-        )
-    }
-
-    pub fn recorded_run_ids(&self) -> Result<Vec<String>, ChioRuntimeError> {
-        wrap_runtime(self.inner.recorded_run_ids())
-    }
-
-    pub fn status_report(
-        &self,
-        profile: &RuntimeOrchestrationProfile,
-        profile_sha256: String,
-        now_unix_ms: u64,
-        evidence_sink_healthy: bool,
-    ) -> Result<RuntimeOrchestrationStatusReport, ChioRuntimeError> {
-        wrap_runtime(self.inner.status_report(
-            profile,
-            profile_sha256,
-            now_unix_ms,
-            evidence_sink_healthy,
-        ))
-    }
-
-    pub fn recovery_drill_report(
-        &self,
-        run_id: &str,
-        now_unix_ms: u64,
-    ) -> Result<RuntimeRecoveryDrillReport, ChioRuntimeError> {
-        wrap_runtime(self.inner.recovery_drill_report(run_id, now_unix_ms))
-    }
-
-    pub fn recovery_drill_report_for_profile(
-        &self,
-        profile: &RuntimeSupervisorProfile,
-        run_id: &str,
-        now_unix_ms: u64,
-    ) -> Result<RuntimeRecoveryDrillReport, ChioRuntimeError> {
-        wrap_runtime(
-            self.inner
-                .recovery_drill_report_for_profile(profile, run_id, now_unix_ms),
-        )
-    }
-
-    pub fn ops_status_report(
-        &self,
-        profile: &RuntimeSupervisorProfile,
-        now_unix_ms: u64,
-        evidence_sink_healthy: bool,
-        provider_healthy: bool,
-    ) -> Result<RuntimeOpsStatusReport, ChioRuntimeError> {
-        wrap_runtime(self.inner.ops_status_report(
-            profile,
-            now_unix_ms,
-            evidence_sink_healthy,
-            provider_healthy,
-        ))
-    }
-
-    pub fn acquire_run_lease(
-        &self,
-        run_id: &str,
-        owner_id: &str,
-        now_unix_ms: u64,
-        ttl_ms: u64,
-    ) -> Result<RuntimeRunLease, ChioRuntimeError> {
-        wrap_runtime(
-            self.inner
-                .acquire_run_lease(run_id, owner_id, now_unix_ms, ttl_ms),
-        )
-    }
-
-    pub fn heartbeat_run_lease(
-        &self,
-        run_id: &str,
-        owner_id: &str,
-        fencing_token: u64,
-        now_unix_ms: u64,
-        ttl_ms: u64,
-    ) -> Result<RuntimeRunLease, ChioRuntimeError> {
-        wrap_runtime(self.inner.heartbeat_run_lease(
-            run_id,
-            owner_id,
-            fencing_token,
-            now_unix_ms,
-            ttl_ms,
-        ))
-    }
-
-    pub fn scheduler_tick_report(
-        &self,
-        profile: &RuntimeSupervisorProfile,
-        owner_id: &str,
-        now_unix_ms: u64,
-        max_runs: u64,
-    ) -> Result<RuntimeSchedulerTickReport, ChioRuntimeError> {
-        wrap_runtime(
-            self.inner
-                .scheduler_tick_report(profile, owner_id, now_unix_ms, max_runs),
-        )
-    }
-}
-
-macro_rules! impl_chio_runtime_admission_store_for_inner {
-    ($type:ty) => {
-        impl ChioRuntimeAdmissionStore for $type {
-            fn bundle(
-                &self,
-                admission_id: &str,
-            ) -> Result<Option<RuntimeAdmissionBundle>, ChioRuntimeError> {
-                wrap_runtime(chio_runtime_core::RuntimeAdmissionStore::bundle(
-                    &self.inner,
-                    admission_id,
-                ))
-            }
-
-            fn treaty_runtime_artifact(
-                &self,
-                evidence_kind: &str,
-                evidence_id: &str,
-            ) -> Result<Option<TreatyRuntimeArtifactRecord>, ChioRuntimeError> {
-                wrap_runtime(
-                    chio_runtime_core::RuntimeAdmissionStore::treaty_runtime_artifact(
-                        &self.inner,
-                        evidence_kind,
-                        evidence_id,
-                    ),
-                )
-            }
-
-            fn consume_destructive_lease(
-                &self,
-                lease_id: &str,
-                admission_id: &str,
-            ) -> Result<(), ChioRuntimeError> {
-                wrap_runtime(
-                    chio_runtime_core::RuntimeAdmissionStore::consume_destructive_lease(
-                        &self.inner,
-                        lease_id,
-                        admission_id,
-                    ),
-                )
-            }
-
-            fn release_destructive_lease(
-                &self,
-                lease_id: &str,
-                admission_id: &str,
-            ) -> Result<(), ChioRuntimeError> {
-                wrap_runtime(
-                    chio_runtime_core::RuntimeAdmissionStore::release_destructive_lease(
-                        &self.inner,
-                        lease_id,
-                        admission_id,
-                    ),
-                )
-            }
-
-            fn consume_treaty_continuation(
-                &self,
-                continuation_id: &str,
-                admission_id: &str,
-            ) -> Result<(), ChioRuntimeError> {
-                wrap_runtime(
-                    chio_runtime_core::RuntimeAdmissionStore::consume_treaty_continuation(
-                        &self.inner,
-                        continuation_id,
-                        admission_id,
-                    ),
-                )
-            }
-
-            fn release_treaty_continuation(
-                &self,
-                continuation_id: &str,
-                admission_id: &str,
-            ) -> Result<(), ChioRuntimeError> {
-                wrap_runtime(
-                    chio_runtime_core::RuntimeAdmissionStore::release_treaty_continuation(
-                        &self.inner,
-                        continuation_id,
-                        admission_id,
-                    ),
-                )
-            }
-
-            fn runtime_trust_floor(
-                &self,
-                verifier_id: &str,
-                key_id: &str,
-            ) -> Result<Option<RuntimeTrustFloorEntry>, ChioRuntimeError> {
-                wrap_runtime(
-                    chio_runtime_core::RuntimeAdmissionStore::runtime_trust_floor(
-                        &self.inner,
-                        verifier_id,
-                        key_id,
-                    ),
-                )
-            }
-
-            fn record_runtime_trust_floor(
-                &self,
-                entry: RuntimeTrustFloorEntry,
-            ) -> Result<(), ChioRuntimeError> {
-                wrap_runtime(
-                    chio_runtime_core::RuntimeAdmissionStore::record_runtime_trust_floor(
-                        &self.inner,
-                        entry,
-                    ),
-                )
-            }
-
-            fn validate_and_record_runtime_trust_floor(
-                &self,
-                entry: RuntimeTrustFloorEntry,
-                previous_hash_sha256: Option<&str>,
-            ) -> Result<(), ChioRuntimeError> {
-                wrap_runtime(
-                    chio_runtime_core::RuntimeAdmissionStore::validate_and_record_runtime_trust_floor(
-                        &self.inner,
-                        entry,
-                        previous_hash_sha256,
-                    ),
-                )
-            }
-        }
-    };
-}
-
-impl_chio_runtime_admission_store_for_inner!(JsonRuntimeAdmissionStore);
-impl_chio_runtime_admission_store_for_inner!(SqliteRuntimeOrchestrationStore);
-
-impl ChioRuntimeAdmissionStore for LayeredRuntimeAdmissionStore<'_> {
-    fn bundle(
-        &self,
-        admission_id: &str,
-    ) -> Result<Option<RuntimeAdmissionBundle>, ChioRuntimeError> {
-        self.admission_store.bundle(admission_id)
-    }
-
-    fn treaty_runtime_artifact(
-        &self,
-        evidence_kind: &str,
-        evidence_id: &str,
-    ) -> Result<Option<TreatyRuntimeArtifactRecord>, ChioRuntimeError> {
-        self.admission_store
-            .treaty_runtime_artifact(evidence_kind, evidence_id)
-    }
-
-    fn consume_destructive_lease(
-        &self,
-        lease_id: &str,
-        admission_id: &str,
-    ) -> Result<(), ChioRuntimeError> {
-        self.admission_store
-            .consume_destructive_lease(lease_id, admission_id)
-    }
-
-    fn release_destructive_lease(
-        &self,
-        lease_id: &str,
-        admission_id: &str,
-    ) -> Result<(), ChioRuntimeError> {
-        self.admission_store
-            .release_destructive_lease(lease_id, admission_id)
-    }
-
-    fn consume_treaty_continuation(
-        &self,
-        continuation_id: &str,
-        admission_id: &str,
-    ) -> Result<(), ChioRuntimeError> {
-        self.admission_store
-            .consume_treaty_continuation(continuation_id, admission_id)
-    }
-
-    fn release_treaty_continuation(
-        &self,
-        continuation_id: &str,
-        admission_id: &str,
-    ) -> Result<(), ChioRuntimeError> {
-        self.admission_store
-            .release_treaty_continuation(continuation_id, admission_id)
-    }
-
-    fn runtime_trust_floor(
-        &self,
-        verifier_id: &str,
-        key_id: &str,
-    ) -> Result<Option<RuntimeTrustFloorEntry>, ChioRuntimeError> {
-        self.trust_floor_store
-            .runtime_trust_floor(verifier_id, key_id)
-    }
-
-    fn record_runtime_trust_floor(
-        &self,
-        entry: RuntimeTrustFloorEntry,
-    ) -> Result<(), ChioRuntimeError> {
-        self.trust_floor_store.record_runtime_trust_floor(entry)
-    }
-
-    fn validate_and_record_runtime_trust_floor(
-        &self,
-        entry: RuntimeTrustFloorEntry,
-        previous_hash_sha256: Option<&str>,
-    ) -> Result<(), ChioRuntimeError> {
-        self.trust_floor_store
-            .validate_and_record_runtime_trust_floor(entry, previous_hash_sha256)
-    }
-}
-
-impl ChioRuntimeTrustFloorStore for JsonRuntimeTrustFloorStateStore {
-    fn runtime_trust_floor(
-        &self,
-        verifier_id: &str,
-        key_id: &str,
-    ) -> Result<Option<RuntimeTrustFloorEntry>, ChioRuntimeError> {
-        wrap_runtime(
-            chio_runtime_core::RuntimeTrustFloorStore::runtime_trust_floor(
-                &self.inner,
-                verifier_id,
-                key_id,
-            ),
-        )
-    }
-
-    fn record_runtime_trust_floor(
-        &self,
-        entry: RuntimeTrustFloorEntry,
-    ) -> Result<(), ChioRuntimeError> {
-        wrap_runtime(
-            chio_runtime_core::RuntimeTrustFloorStore::record_runtime_trust_floor(
-                &self.inner,
-                entry,
-            ),
-        )
-    }
-
-    fn validate_and_record_runtime_trust_floor(
-        &self,
-        entry: RuntimeTrustFloorEntry,
-        previous_hash_sha256: Option<&str>,
-    ) -> Result<(), ChioRuntimeError> {
-        wrap_runtime(
-            chio_runtime_core::RuntimeTrustFloorStore::validate_and_record_runtime_trust_floor(
-                &self.inner,
-                entry,
-                previous_hash_sha256,
-            ),
-        )
-    }
 }
 
 pub struct ChioRuntimeAdmissionInput<'a> {
@@ -1034,94 +304,6 @@ pub struct ChioRuntimeAdmissionInput<'a> {
     pub runtime_pheromone_policy: Option<&'a SignedRuntimePheromonePolicy>,
     pub runtime_peer_weights: Option<&'a SignedRuntimePeerWeights>,
     pub now_unix_ms: u64,
-}
-
-struct HistoricalRuntimeAdmissionStoreAdapter<'a> {
-    inner: &'a dyn ChioRuntimeAdmissionStore,
-}
-
-impl chio_runtime_core::RuntimeAdmissionStore for HistoricalRuntimeAdmissionStoreAdapter<'_> {
-    fn bundle(
-        &self,
-        admission_id: &str,
-    ) -> Result<Option<RuntimeAdmissionBundle>, HistoricalRuntimeError> {
-        unwrap_runtime(self.inner.bundle(admission_id))
-    }
-
-    fn treaty_runtime_artifact(
-        &self,
-        evidence_kind: &str,
-        evidence_id: &str,
-    ) -> Result<Option<TreatyRuntimeArtifactRecord>, HistoricalRuntimeError> {
-        unwrap_runtime(
-            self.inner
-                .treaty_runtime_artifact(evidence_kind, evidence_id),
-        )
-    }
-
-    fn consume_destructive_lease(
-        &self,
-        lease_id: &str,
-        admission_id: &str,
-    ) -> Result<(), HistoricalRuntimeError> {
-        unwrap_runtime(self.inner.consume_destructive_lease(lease_id, admission_id))
-    }
-
-    fn release_destructive_lease(
-        &self,
-        lease_id: &str,
-        admission_id: &str,
-    ) -> Result<(), HistoricalRuntimeError> {
-        unwrap_runtime(self.inner.release_destructive_lease(lease_id, admission_id))
-    }
-
-    fn consume_treaty_continuation(
-        &self,
-        continuation_id: &str,
-        admission_id: &str,
-    ) -> Result<(), HistoricalRuntimeError> {
-        unwrap_runtime(
-            self.inner
-                .consume_treaty_continuation(continuation_id, admission_id),
-        )
-    }
-
-    fn release_treaty_continuation(
-        &self,
-        continuation_id: &str,
-        admission_id: &str,
-    ) -> Result<(), HistoricalRuntimeError> {
-        unwrap_runtime(
-            self.inner
-                .release_treaty_continuation(continuation_id, admission_id),
-        )
-    }
-
-    fn runtime_trust_floor(
-        &self,
-        verifier_id: &str,
-        key_id: &str,
-    ) -> Result<Option<RuntimeTrustFloorEntry>, HistoricalRuntimeError> {
-        unwrap_runtime(self.inner.runtime_trust_floor(verifier_id, key_id))
-    }
-
-    fn record_runtime_trust_floor(
-        &self,
-        entry: RuntimeTrustFloorEntry,
-    ) -> Result<(), HistoricalRuntimeError> {
-        unwrap_runtime(self.inner.record_runtime_trust_floor(entry))
-    }
-
-    fn validate_and_record_runtime_trust_floor(
-        &self,
-        entry: RuntimeTrustFloorEntry,
-        previous_hash_sha256: Option<&str>,
-    ) -> Result<(), HistoricalRuntimeError> {
-        unwrap_runtime(
-            self.inner
-                .validate_and_record_runtime_trust_floor(entry, previous_hash_sha256),
-        )
-    }
 }
 
 pub fn evaluate_runtime_admission(
@@ -1482,6 +664,40 @@ pub fn generate_runtime_provider_health_report(
         bindings,
         now_unix_ms,
     ))
+}
+
+pub fn generate_runtime_provider_health_report_with_model_cards(
+    profile: &RuntimeSupervisorProfile,
+    bindings: &RuntimeProviderBindingsDocument,
+    model_cards_by_id: &std::collections::BTreeMap<String, chio_weights::card::ModelCard>,
+    now_unix_ms: u64,
+) -> Result<RuntimeProviderHealthReport, ChioRuntimeError> {
+    wrap_runtime(
+        chio_runtime_core::generate_runtime_provider_health_report_with_model_cards(
+            profile,
+            bindings,
+            model_cards_by_id,
+            now_unix_ms,
+        ),
+    )
+}
+
+pub fn generate_runtime_provider_health_report_with_model_card_evidence(
+    profile: &RuntimeSupervisorProfile,
+    bindings: &RuntimeProviderBindingsDocument,
+    model_cards_by_id: &std::collections::BTreeMap<String, chio_weights::card::ModelCard>,
+    loaded_weights_evidence: &[RuntimeProviderLoadedWeightsEvidence],
+    now_unix_ms: u64,
+) -> Result<RuntimeProviderHealthReport, ChioRuntimeError> {
+    wrap_runtime(
+        chio_runtime_core::generate_runtime_provider_health_report_with_model_card_evidence(
+            profile,
+            bindings,
+            model_cards_by_id,
+            loaded_weights_evidence,
+            now_unix_ms,
+        ),
+    )
 }
 
 pub fn generate_runtime_artifact_retention_plan(

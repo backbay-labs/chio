@@ -1,4 +1,7 @@
-use chio_core::{validate_delegation_chain, CapabilityToken, Error as CoreError};
+use chio_core::{
+    capability::{attenuation::validate_delegation_chain, token::CapabilityToken},
+    Error as CoreError,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::Result;
@@ -14,7 +17,7 @@ pub enum CapabilityTimeStatus {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CapabilityVerification {
     pub signature_valid: bool,
-    pub delegation_chain_valid: bool,
+    pub delegation_chain_shape_valid: bool,
     pub time_valid: bool,
     pub time_status: CapabilityTimeStatus,
 }
@@ -41,7 +44,7 @@ pub fn verify_capability(
 
     Ok(CapabilityVerification {
         signature_valid: capability.verify_signature()?,
-        delegation_chain_valid: validate_delegation_chain(
+        delegation_chain_shape_valid: validate_delegation_chain(
             &capability.delegation_chain,
             max_delegation_depth,
         )
@@ -64,7 +67,11 @@ pub fn verify_capability_json(
 mod tests {
     use super::{verify_capability, CapabilityTimeStatus};
     use chio_core::{
-        CapabilityToken, CapabilityTokenBody, ChioScope, Constraint, Keypair, Operation, ToolGrant,
+        capability::{
+            scope::{ChioScope, Constraint, Operation, ToolGrant},
+            token::{CapabilityToken, CapabilityTokenBody},
+        },
+        Keypair,
     };
 
     fn sample_scope() -> ChioScope {
@@ -109,7 +116,7 @@ mod tests {
             verification,
             super::CapabilityVerification {
                 signature_valid: true,
-                delegation_chain_valid: true,
+                delegation_chain_shape_valid: true,
                 time_valid: true,
                 time_status: CapabilityTimeStatus::Valid,
             }

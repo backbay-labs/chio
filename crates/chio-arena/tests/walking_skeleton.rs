@@ -8,7 +8,10 @@ use chio_arena::{
     ARENA_MANIFEST_FILENAME,
 };
 use chio_core::crypto::sha256_hex;
-use chio_core::{ChioScope, Keypair, Operation, ToolGrant};
+use chio_core::{
+    capability::scope::{ChioScope, Operation, ToolGrant},
+    Keypair,
+};
 use chio_kernel::{
     ChioKernel, KernelConfig, KernelError, NestedFlowBridge, ToolCallRequest, ToolServerConnection,
     DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_MAX_STREAM_DURATION_SECS,
@@ -54,6 +57,7 @@ async fn walking_skeleton_loads_runs_and_writes_fixture_shape(
         agent_id: capability.subject.to_hex(),
         arguments: scenario.steps[0].arguments.clone(),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,

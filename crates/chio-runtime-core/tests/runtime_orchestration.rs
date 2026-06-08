@@ -248,7 +248,7 @@ fn write_evidence_fixture_with_verifier(
             &proof_package,
         )?;
     let mut verifier_report = serde_json::json!({
-        "schema": chio_attest_buyer_core::VERIFIER_REPORT_SCHEMA,
+        "schema": chio_attest_buyer_core::report::VERIFIER_REPORT_SCHEMA,
         "packageSha256": proof_package_canonical_sha256.clone(),
         "trustBundleSha256": fixed_hash('8'),
         "contextSha256": fixed_hash('9'),

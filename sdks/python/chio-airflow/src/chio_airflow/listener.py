@@ -11,7 +11,7 @@ Why a listener
 :class:`chio_airflow.ChioOperator` and :func:`chio_airflow.chio_task` both
 push receipt ids themselves at execute time. The listener exists so a
 DAG that mixes Chio-wrapped and un-wrapped tasks still produces a
-consistent timeline: un-wrapped tasks get a synthesised placeholder
+consistent timeline: un-wrapped tasks get a synthesised receipt
 receipt id, and the final DAG-run success / failure hook writes an
 aggregation summary into the run-level XCom (or prints it when XCom
 is unavailable) that includes every receipt id the run produced.
@@ -251,7 +251,7 @@ def _push_run_aggregation(
     # Preferred: a task instance we can write to.
     try:
         tis = list(dag_run.get_task_instances())
-    except Exception:  # noqa: BLE001 -- legacy or stub dag_run
+    except Exception:  # noqa: BLE001 -- legacy or test dag_run
         tis = []
 
     target_ti: Any | None = None

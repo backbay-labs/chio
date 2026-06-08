@@ -167,6 +167,15 @@ fn write_preset_to_temp() -> tempfile::NamedTempFile {
     tmp
 }
 
+fn write_safe_output_fixture() -> tempfile::NamedTempFile {
+    let tmp = tempfile::Builder::new()
+        .suffix(".json")
+        .tempfile()
+        .expect("output fixture tempfile");
+    std::fs::write(tmp.path(), r#"{"content":"SAFE"}"#).expect("write output fixture");
+    tmp
+}
+
 /// Roadmap 4.2 acceptance: the preset denies a `.env` write.
 ///
 /// We pipe the bundled YAML through `chio check` and assert the guard
@@ -178,9 +187,12 @@ fn write_preset_to_temp() -> tempfile::NamedTempFile {
 fn preset_denies_dotenv_write_via_chio_check() {
     let preset = write_preset_to_temp();
     let receipt_db = tempfile::NamedTempFile::new().expect("receipt-db tempfile");
+    let output_fixture = write_safe_output_fixture();
     let output = Command::new(chio_cli_binary())
         .args(["--format", "json", "check", "--policy"])
         .arg(preset.path())
+        .args(["--mode", "full", "--output-fixture"])
+        .arg(output_fixture.path())
         .arg("--receipt-db")
         .arg(receipt_db.path())
         .args([
@@ -218,9 +230,12 @@ fn preset_denies_dotenv_write_via_chio_check() {
 fn preset_allows_safe_file_read_via_chio_check() {
     let preset = write_preset_to_temp();
     let receipt_db = tempfile::NamedTempFile::new().expect("receipt-db tempfile");
+    let output_fixture = write_safe_output_fixture();
     let output = Command::new(chio_cli_binary())
         .args(["--format", "json", "check", "--policy"])
         .arg(preset.path())
+        .args(["--mode", "full", "--output-fixture"])
+        .arg(output_fixture.path())
         .arg("--receipt-db")
         .arg(receipt_db.path())
         .args([
@@ -246,4 +261,122 @@ fn preset_allows_safe_file_read_via_chio_check() {
         Some("ALLOW"),
         "expected ALLOW verdict in stdout; got: {stdout}"
     );
+}
+
+fn write_output_sensitive_policy() -> tempfile::NamedTempFile {
+    let policy = r#"
+kernel: {}
+guards:
+  secret_patterns:
+    enabled: true
+capabilities:
+  default:
+    tools:
+      - server: "fs"
+        tool: "read_file"
+        operations: [invoke]
+        ttl: 3600
+"#;
+    let tmp = tempfile::Builder::new()
+        .suffix(".yaml")
+        .tempfile()
+        .expect("tempfile");
+    std::fs::write(tmp.path(), policy).expect("write policy tmp");
+    tmp
+}
+
+#[test]
+fn check_preflight_rejects_output_sensitive_policy_without_fixture() {
+    let policy = write_output_sensitive_policy();
+    let output = Command::new(chio_cli_binary())
+        .args(["--format", "json", "check", "--policy"])
+        .arg(policy.path())
+        .args([
+            "--server",
+            "fs",
+            "--tool",
+            "read_file",
+            "--params",
+            "{\"path\":\"README.md\"}",
+        ])
+        .output()
+        .expect("spawn chio check");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "expected output-sensitive preflight failure but stdout={stdout}\nstderr={stderr}"
+    );
+    assert!(
+        stderr.contains("preflight") && stderr.contains("--output-fixture"),
+        "stderr must explain preflight fixture requirement: {stderr}"
+    );
+}
+
+#[test]
+fn check_full_mode_requires_explicit_output_fixture() {
+    let policy = write_output_sensitive_policy();
+    let output = Command::new(chio_cli_binary())
+        .args(["--format", "json", "check", "--policy"])
+        .arg(policy.path())
+        .args([
+            "--mode",
+            "full",
+            "--server",
+            "fs",
+            "--tool",
+            "read_file",
+            "--params",
+            "{\"path\":\"README.md\"}",
+        ])
+        .output()
+        .expect("spawn chio check");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "expected full-mode fixture failure but stdout={stdout}\nstderr={stderr}"
+    );
+    assert!(
+        stderr.contains("--mode full") && stderr.contains("--output-fixture"),
+        "stderr must explain full-mode fixture requirement: {stderr}"
+    );
+}
+
+#[test]
+fn check_full_mode_uses_output_fixture_for_output_sensitive_policy() {
+    let policy = write_output_sensitive_policy();
+    let output_fixture = write_safe_output_fixture();
+    let receipt_db = tempfile::NamedTempFile::new().expect("receipt-db tempfile");
+
+    let output = Command::new(chio_cli_binary())
+        .args(["--format", "json", "check", "--policy"])
+        .arg(policy.path())
+        .arg("--receipt-db")
+        .arg(receipt_db.path())
+        .args(["--mode", "full", "--output-fixture"])
+        .arg(output_fixture.path())
+        .args([
+            "--server",
+            "fs",
+            "--tool",
+            "read_file",
+            "--params",
+            "{\"path\":\"README.md\"}",
+        ])
+        .output()
+        .expect("spawn chio check");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "expected fixture-backed ALLOW exit 0 but stdout={stdout}\nstderr={stderr}"
+    );
+    let body: serde_json::Value = serde_json::from_slice(&output.stdout).expect("decode json");
+    assert_eq!(body["verdict"].as_str(), Some("ALLOW"));
+    assert_eq!(body["check_mode"].as_str(), Some("full"));
+    assert_eq!(body["output_fixture"].as_bool(), Some(true));
 }

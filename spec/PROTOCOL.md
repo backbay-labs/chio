@@ -701,17 +701,20 @@ The current pre-release v1 receipt envelope is `ChioReceipt` from
 | `metadata` | Optional structured metadata |
 | `trust_level` | `mediated`, `verified`, or `advisory`, coherent with `receipt_kind` |
 | `tenant_id` | Optional authenticated tenant id |
+| `bbs_projection_version` | Optional BBS projection selector. Present only when `bbs_signature` is present, included in the receipt id, and fixed to `chio.bbs-projection.receipt.v1` for v1 receipt BBS material |
 | `kernel_key` | Verifying public key; bare 64-hex Ed25519, `p256:<130-hex>` SEC1 P-256, or `p384:<194-hex>` SEC1 P-384 |
+| `bbs_signature` | Optional BBS signature material for selective disclosure. When present, it is covered by the authoritative receipt signature |
 | `algorithm` | Optional envelope hint (`ed25519`, `p256`, or `p384`); verification dispatches off the signature prefix, not this field |
-| `signature` | Algorithm-aware hex signature over canonical JSON of `ChioReceiptSigningBody { id, body: ChioReceiptIdInput }`. The schema regex is `^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$`: bare 128-hex for Ed25519, `p256:<DER hex>` for P-256, or `p384:<DER hex>` for P-384 |
+| `signature` | Algorithm-aware hex signature over canonical JSON of `ChioReceiptSigningBody { id, body: ChioReceiptIdInput, bbs_signature? }`. The schema regex is `^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$`: bare 128-hex for Ed25519, `p256:<DER hex>` for P-256, or `p384:<DER hex>` for P-384 |
 
 ### Receipt Identity And DAG
 
 `chio.receipt.v1` is content-addressed. The authoritative receipt identity is
 `id`.
 
-The receipt-id input contains every receipt body field except `id`,
-`algorithm`, and `signature`. The receipt id is:
+The receipt-id input contains every receipt body field except `id`. It includes
+`bbs_projection_version` when present, but excludes `bbs_signature` bytes. The
+receipt id is:
 
 ```text
 id = H(canonical_jcs(ChioReceiptIdInput))
@@ -721,6 +724,13 @@ The signature input is the typed wrapper:
 
 ```text
 ChioReceiptSigningBody { id, body: ChioReceiptIdInput }
+```
+
+When BBS receipt material is present, the signature wrapper also carries
+`bbs_signature`:
+
+```text
+ChioReceiptSigningBody { id, body: ChioReceiptIdInput, bbs_signature }
 ```
 
 Before the id is computed, the producer binds a signing nonce into the
@@ -1189,7 +1199,7 @@ manifests.
 
 The repository ships these primary runtime entrypoints:
 
-- `chio check`
+- `chio check` -- single-call policy evaluation in preflight mode, or full mode with an explicit output fixture for post-output guards
 - `chio run`
 - `chio mcp serve`
 - `chio mcp serve-http`
@@ -1969,9 +1979,9 @@ present. Runtime proof regeneration now also emits a runtime evidence manifest,
 a proof-regeneration input artifact, package-valid signed `ChioReceipt`
 artifacts, strict Chio DSSE envelopes, a signed `WorkflowReceipt v2`,
 `chio.attest.proof-package.v1`, verifier trust and context inputs, and the
-verifier report produced by the existing Chio verifier. A regeneration
-report may set `accepted=true` only when that verifier accepts the regenerated
-package and the report binds proof package, verifier report, and workflow
+verification report produced by the existing verification implementation. A
+regeneration report may set `accepted=true` only when verification accepts the
+regenerated package and the report binds proof package, verification report, and workflow
 receipt hashes. `runtime_proof_semantic_regeneration_pending` is a rejected
 gate state, not a successful runtime proof claim.
 
@@ -2034,7 +2044,7 @@ local artifacts from fixture-shaped evidence to bounded runtime evidence. The
 closure requires verifier-owned treaty runtime state, pre-dispatch denial in
 the kernel, strict Chio DSSE with treaty binding references over real
 request, outcome, and receipt hashes, bounded lineage graph closure, and proof
-regeneration accepted by the existing Chio proof verifier. Hash-only
+regeneration accepted by the existing proof verification implementation. Hash-only
 self-attestation, copied static proof packages, compatibility-only bilateral
 predicates, and package-carried trust roots do not satisfy closure. The
 boundary remains local evidence only and does not add dynamic trust, settlement
@@ -2680,7 +2690,7 @@ The profile is intentionally narrow:
 - Chio currently supports exactly one requested credential with format
   `application/dc+sd-jwt` and type
   `https://chio.world/credentials/types/chio-passport-sd-jwt-vc/v1`
-- verifier trust bootstrap is one Chio verifier metadata document plus one
+- verifier trust bootstrap is one Chio verification metadata document plus one
   verifier `JWKS`
 - verifier or issuer key rotation may preserve active request and credential
   validation only when the rotated trusted keyset is still published through

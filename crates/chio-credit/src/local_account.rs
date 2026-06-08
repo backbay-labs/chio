@@ -25,7 +25,7 @@ use crate::crypto::{sha256_hex, sign_canonical_with_backend, SigningBackend};
 use crate::hook::{
     CreditEvaluatorError, CreditEvaluatorHook, IouEnvelope, IouEnvelopeBody, IOU_ENVELOPE_SCHEMA,
 };
-use crate::receipt::{chio_receipt_id, ChioReceipt};
+use crate::receipt::{body::chio_receipt_id, body::ChioReceipt};
 
 /// Deterministic IOU id derivation from the originating receipt id.
 ///
@@ -165,8 +165,9 @@ mod tests {
     use super::*;
     use crate::crypto::{sha256_hex, Ed25519Backend, Keypair};
     use crate::receipt::{
-        ChioReceipt, ChioReceiptBody, Decision, FinancialReceiptMetadata, GuardEvidence,
-        SettlementStatus, ToolCallAction, TrustLevel,
+        body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+        economics::FinancialReceiptMetadata, economics::SettlementStatus, kinds::TrustLevel,
+        metadata::GuardEvidence,
     };
 
     fn make_action() -> ToolCallAction {
@@ -213,6 +214,7 @@ mod tests {
             trust_level: TrustLevel::default(),
             tenant_id: Some("tenant-a".to_string()),
             kernel_key: kp.public_key(),
+            bbs_projection_version: None,
         };
         ChioReceipt::sign(body, kp).unwrap()
     }

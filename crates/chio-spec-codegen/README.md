@@ -10,9 +10,9 @@ the other three).
 `spec/schemas/chio-wire/v1/**/*.schema.json`, registers every schema with a
 single `typify::TypeSpace`, renders the resulting token stream through
 `prettyplease`, prepends the `// DO NOT EDIT` header, and writes the result to
-`out_dir/chio_wire_v1.rs`. It also writes a placeholder `out_dir/mod.rs` so
-the `_generated_check` integration test always finds a header to validate
-even on a fresh clone.
+`out_dir/chio_wire_v1.rs`. It also writes a header-only `out_dir/mod.rs` so the
+`_generated_check` integration test always finds a generated Rust file to
+validate even on a fresh clone.
 
 ## Toolchain
 
@@ -60,14 +60,15 @@ cargo test  -p chio-core-types --test _generated_check
 ```text
 crates/chio-core-types/src/_generated/
   chio_wire_v1.rs   # all types, header-stamped, prettyplease-formatted
-  mod.rs            # placeholder; not yet wired into lib.rs
+  mod.rs            # header-only marker; not yet wired into lib.rs
 ```
 
-The `mod.rs` is intentionally empty (apart from the header and a doc comment
-explaining the situation). Wiring `chio_wire_v1` into the public surface of
-`chio-core-types` is deferred to a follow-up ticket so the no_std + alloc
-build of `chio-kernel-core` keeps compiling against the stable manual types
-in `crates/chio-core-types/src/{capability,message,...}.rs`.
+The `mod.rs` intentionally declares no submodules. Generated wire bindings are
+quarantined under `_generated/` and are not part of the `chio-core-types`
+public API. Wiring `chio_wire_v1` into the public surface of `chio-core-types`
+requires a deliberate API decision so the no_std + alloc build of
+`chio-kernel-core` keeps compiling against the stable manual types in
+`crates/chio-core-types/src/{capability,message,...}.rs`.
 
 ## House rules
 

@@ -37,13 +37,35 @@ async fn file_watcher_emits_reload_trigger_for_guard_path() -> TestResult {
     let watched_file = dir.path().join("guard.wasm");
     std::fs::write(&watched_file, b"old")?;
     let (tx, mut rx) = tokio::sync::mpsc::channel(4);
-    let _watcher = engine.watch_guard_path("guard-a", dir.path(), tx)?;
+    let _watcher = engine.watch_guard_path("guard-a", &watched_file, tx)?;
 
-    std::fs::write(&watched_file, b"new")?;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    let mut write_attempt = 0_u32;
+    let trigger = loop {
+        write_attempt = write_attempt
+            .checked_add(1)
+            .ok_or_else(|| std::io::Error::other("watch trigger attempts overflowed"))?;
+        std::fs::write(&watched_file, format!("new-{write_attempt}"))?;
 
-    let trigger = tokio::time::timeout(Duration::from_secs(5), rx.recv())
-        .await?
-        .ok_or_else(|| std::io::Error::other("watch trigger channel closed"))?;
+        let now = tokio::time::Instant::now();
+        if now >= deadline {
+            return Err(std::io::Error::other("watch trigger timed out").into());
+        }
+        let poll_interval = Duration::from_millis(100);
+        let wake_at = if now + poll_interval < deadline {
+            now + poll_interval
+        } else {
+            deadline
+        };
+
+        tokio::select! {
+            maybe_trigger = rx.recv() => {
+                break maybe_trigger
+                    .ok_or_else(|| std::io::Error::other("watch trigger channel closed"))?;
+            }
+            _ = tokio::time::sleep_until(wake_at) => {}
+        }
+    };
     assert_eq!(trigger.guard_id, "guard-a");
     match trigger.source {
         ReloadTriggerSource::FileChanged { path } => {

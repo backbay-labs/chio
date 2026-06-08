@@ -110,6 +110,41 @@ def _capability_id_from_token(raw_token: str | None) -> str | None:
         return None
 
 
+def _is_advisory_evaluation_wrapper(data: Any) -> bool:
+    return (
+        isinstance(data, dict)
+        and data.get("schema") == "chio.sidecar.advisory-evaluation.v1"
+    )
+
+
+def _wrapped_advisory_receipt_payload(data: dict[str, Any]) -> Any:
+    if data.get("authorization") is not False:
+        raise ChioError(
+            "Chio sidecar advisory evaluation did not explicitly mark "
+            "authorization as false",
+            code="INVALID_RECEIPT",
+        )
+    if data.get("authorizationBasis") != "advisory_only":
+        raise ChioError(
+            "Chio sidecar advisory evaluation did not identify its "
+            "authorization basis",
+            code="INVALID_RECEIPT",
+        )
+    return data.get("receipt")
+
+
+def _receipt_field_value(value: Any) -> Any:
+    return getattr(value, "value", value)
+
+
+def _receipt_is_advisory_evaluation(receipt: ChioReceipt) -> bool:
+    return (
+        _receipt_field_value(receipt.receipt_kind) == "advisory_evaluation"
+        and _receipt_field_value(receipt.boundary_class) == "advisory_only"
+        and _receipt_field_value(receipt.trust_level) == "advisory"
+    )
+
+
 def _operations_subset(child: list[Any], parent: list[Any]) -> bool:
     return set(_jsonable(child)) <= set(_jsonable(parent))
 
@@ -324,9 +359,11 @@ class ChioClient:
         *,
         new_scope: ChioScope,
     ) -> CapabilityToken:
-        """Ask the sidecar to produce an attenuated child token.
+        """Request capability attenuation from the sidecar fail-closed.
 
-        The new scope must be a subset of the original.
+        The sidecar route is a control boundary, not a signer. It rejects
+        attenuation because minting a child token requires the parent subject
+        signer, which the sidecar must not hold.
         """
         if not _scope_subset(new_scope, token.scope):
             raise ChioValidationError(
@@ -336,8 +373,12 @@ class ChioClient:
             "parent_token": token,
             "new_scope": new_scope,
         }
-        data = await self._post("/v1/capabilities/attenuate", body)
-        return CapabilityToken.model_validate(data)
+        await self._post("/v1/capabilities/attenuate", body)
+        raise ChioDeniedError(
+            "capability attenuation requires the parent subject signer; sidecar returned unsupported success",
+            reason="sidecar attenuation must fail closed until subject-signer delegation is implemented",
+            reason_code="chio_attenuation_requires_subject_signer",
+        )
 
     # ------------------------------------------------------------------
     # Receipt verification
@@ -413,10 +454,37 @@ class ChioClient:
         tool_name: str,
         parameters: dict[str, Any],
     ) -> ChioReceipt:
-        """Evaluate a tool call through the sidecar kernel.
+        """Require mediated tool-call authorization.
 
-        Returns the signed receipt from the kernel.
+        The current sidecar tool-call route emits an audit receipt. This method
+        verifies the advisory receipt's integrity, then fails closed because
+        advisory evaluation is not execution authorization.
         """
+        receipt = await self.evaluate_tool_call_advisory(
+            capability_id=capability_id,
+            tool_server=tool_server,
+            tool_name=tool_name,
+            parameters=parameters,
+        )
+        outcome = getattr(receipt.observation_outcome, "value", receipt.observation_outcome)
+        if outcome == "dropped":
+            raise ChioDeniedError(
+                "Chio sidecar advisory evaluation refused the tool call"
+            )
+        raise ChioDeniedError(
+            "Chio sidecar returned an advisory evaluation, not an "
+            "authoritative authorization decision"
+        )
+
+    async def evaluate_tool_call_advisory(
+        self,
+        *,
+        capability_id: str,
+        tool_server: str,
+        tool_name: str,
+        parameters: dict[str, Any],
+    ) -> ChioReceipt:
+        """Run advisory tool-call evaluation for observability only."""
         param_canonical = _canonical_json(parameters)
         param_hash = _sha256_hex(param_canonical)
 
@@ -427,30 +495,25 @@ class ChioClient:
             "parameters": parameters,
             "parameter_hash": param_hash,
         }
-        data = await self._post("/v1/evaluate", body)
-        receipt = ChioReceipt.model_validate(data)
-        trust_level = getattr(receipt.trust_level, "value", receipt.trust_level)
-        if trust_level == "advisory":
-            if not await self._verify_receipt_integrity(receipt):
-                raise ChioError(
-                    "Chio sidecar returned an advisory receipt that failed "
-                    "integrity checks",
-                    code="INVALID_RECEIPT",
-                )
-            outcome = getattr(
-                receipt.observation_outcome, "value", receipt.observation_outcome
-            )
-            if outcome == "dropped":
-                raise ChioDeniedError(
-                    "Chio sidecar advisory evaluation refused the tool call"
-                )
-            raise ChioDeniedError(
-                "Chio sidecar returned an advisory receipt, not an "
-                "authoritative authorization decision"
-            )
-        if not await self.verify_receipt(receipt):
+        data = await self._post("/v1/evaluate/advisory", body)
+        if not _is_advisory_evaluation_wrapper(data):
             raise ChioError(
-                "Chio sidecar returned an unverified receipt",
+                "Chio sidecar advisory evaluation response did not use the "
+                "advisory non-authorization wrapper",
+                code="INVALID_RECEIPT",
+            )
+        receipt_payload = _wrapped_advisory_receipt_payload(data)
+        receipt = ChioReceipt.model_validate(receipt_payload)
+        if not _receipt_is_advisory_evaluation(receipt):
+            raise ChioError(
+                "Chio sidecar advisory evaluation response did not include "
+                "an advisory receipt",
+                code="INVALID_RECEIPT",
+            )
+        if not await self._verify_receipt_integrity(receipt):
+            raise ChioError(
+                "Chio sidecar returned an advisory evaluation receipt "
+                "that failed integrity checks",
                 code="INVALID_RECEIPT",
             )
         return receipt
@@ -623,7 +686,7 @@ class ChioClient:
         requested_by:
             Hex Ed25519 public key of the agent that initiated the
             call. When omitted the sidecar records an anonymous
-            placeholder; operator-respond will then fail because there
+            subject marker; operator-respond will then fail because there
             is no parseable subject binding, so set this whenever the
             call originates from a real agent.
         ttl_seconds:
@@ -715,7 +778,8 @@ class ChioClient:
             raise ChioDeniedError(
                 data.get("message", "denied"),
                 guard=data.get("guard"),
-                reason=data.get("reason"),
+                reason=data.get("reason") or data.get("error"),
+                reason_code=data.get("reason_code") or data.get("error"),
             )
         if resp.status_code >= 400:
             try:

@@ -64,7 +64,9 @@
 // `InvalidSignature` arm in `scope_superset_after_sign_rejected`.
 
 use chio_core::capability::{
-    CapabilityCryptoFloor, CapabilityToken, CapabilityTokenBody, ChioScope, Operation, ToolGrant,
+    crypto_floor::CapabilityCryptoFloor,
+    scope::{ChioScope, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core::crypto::Keypair;
 use chio_kernel_core::capability_verify::{verify_capability_with_floor, CapabilityError};

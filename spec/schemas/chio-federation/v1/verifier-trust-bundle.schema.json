@@ -317,7 +317,10 @@
       ],
       "properties": {
         "projectionVersion": {
-          "const": "chio.bbs-projection.workflow.v1"
+          "enum": [
+            "chio.bbs-projection.workflow.v1",
+            "chio.bbs-projection.receipt.v1"
+          ]
         },
         "ciphersuite": {
           "const": "BBS_BLS12381G1_XMD:SHA-256_SSWU_RO_"

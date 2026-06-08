@@ -193,13 +193,14 @@ impl SqliteReceiptStore {
                     recorded_at,
                 )| {
                     Ok(MeteredBillingEvidenceRecord {
-                        usage_evidence: chio_core::receipt::MeteredUsageEvidenceReceiptMetadata {
-                            evidence_kind: adapter_kind,
-                            evidence_id,
-                            observed_units: observed_units.max(0) as u64,
-                            evidence_sha256,
-                        },
-                        billed_cost: chio_core::capability::MonetaryAmount {
+                        usage_evidence:
+                            chio_core::receipt::governance::MeteredUsageEvidenceReceiptMetadata {
+                                evidence_kind: adapter_kind,
+                                evidence_id,
+                                observed_units: observed_units.max(0) as u64,
+                                evidence_sha256,
+                            },
+                        billed_cost: chio_core::capability::scope::MonetaryAmount {
                             units: billed_cost_units.max(0) as u64,
                             currency: billed_cost_currency,
                         },

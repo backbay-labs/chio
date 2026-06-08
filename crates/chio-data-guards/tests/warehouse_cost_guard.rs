@@ -10,7 +10,10 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-use chio_core::capability::{CapabilityToken, CapabilityTokenBody, ChioScope};
+use chio_core::capability::{
+    scope::ChioScope,
+    token::{CapabilityToken, CapabilityTokenBody},
+};
 use chio_core::crypto::Keypair;
 use chio_data_guards::{
     DryRunEstimate, WarehouseCostFieldPaths, WarehouseCostGuard, WarehouseCostGuardConfig,
@@ -46,6 +49,7 @@ fn make_request(
         agent_id: agent_id.clone(),
         arguments: args,
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
@@ -65,7 +69,10 @@ fn evaluate(guard: &WarehouseCostGuard, tool: &str, args: serde_json::Value) -> 
         session_filesystem_roots: None,
         matched_grant_index: None,
     };
-    guard.evaluate(&ctx).expect("evaluate should not error")
+    guard
+        .evaluate(&ctx)
+        .expect("evaluate should not error")
+        .verdict
 }
 
 fn limits_1gb_5usd() -> WarehouseCostGuardConfig {

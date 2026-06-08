@@ -2,7 +2,7 @@ use std::error::Error;
 use std::io::{self, BufRead, Write};
 
 use chio_acp_edge::{AcpEdgeConfig, AcpKernelExecutionContext, ChioAcpEdge};
-use chio_core::capability::{ChioScope, Operation, ToolGrant};
+use chio_core::capability::scope::{ChioScope, Operation, ToolGrant};
 use chio_core::crypto::Keypair;
 use chio_kernel::{
     ChioKernel, KernelConfig, KernelError, NestedFlowBridge, ToolCallChunk, ToolCallStream,
@@ -153,6 +153,7 @@ pub fn build_demo_state() -> HelloAcpResult<HelloAcpDemoState> {
         capability,
         agent_id: agent.public_key().to_hex(),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,

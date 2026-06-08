@@ -1,4 +1,4 @@
-use chio_web3::{
+use chio_web3::trust_profile::{
     Web3DisputePolicy, Web3DisputeWindow, Web3SettlementPath, CHIO_WEB3_TRUST_PROFILE_SCHEMA,
 };
 

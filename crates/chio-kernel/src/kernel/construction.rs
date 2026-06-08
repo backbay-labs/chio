@@ -470,7 +470,7 @@ impl ChioKernel {
     #[must_use]
     pub fn run_settlement_observer(
         &self,
-        receipt: &chio_core::receipt::ChioReceipt,
+        receipt: &chio_core::receipt::body::ChioReceipt,
     ) -> settlement_observer::SettlementObserverStatus {
         settlement_observer::run_observer(
             self.settlement_observer.as_ref(),
@@ -513,16 +513,19 @@ impl ChioKernel {
         self.memory_provenance.as_ref().map(Arc::clone)
     }
 
-    /// Install a set of [`chio_federation::FederationPeer`]s
+    /// Install a set of [`chio_federation::trust_establishment::FederationPeer`]s
     /// this kernel trusts for bilateral co-signing. Overwrites any
     /// previously declared set. Callers typically obtain these peers
-    /// from [`chio_federation::KernelTrustExchange::accept_envelope`]
+    /// from [`chio_federation::trust_establishment::KernelTrustExchange::accept_envelope`]
     /// after a successful mTLS handshake.
     ///
     /// Builder-style so deployments can chain `.with_federation_peers(...)`
     /// onto `ChioKernel::new(config)`.
     #[must_use]
-    pub fn with_federation_peers(self, peers: Vec<chio_federation::FederationPeer>) -> Self {
+    pub fn with_federation_peers(
+        self,
+        peers: Vec<chio_federation::trust_establishment::FederationPeer>,
+    ) -> Self {
         let mut next = HashMap::new();
         for peer in peers {
             next.insert(peer.kernel_id.clone(), peer);
@@ -536,14 +539,18 @@ impl ChioKernel {
     #[must_use]
     pub fn with_capability_trust_roots(
         self,
-        roots: Vec<(chio_core::PublicKey, chio_core::capability::ScopeHash)>,
+        roots: Vec<(
+            chio_core::PublicKey,
+            chio_core::capability::attenuation::ScopeHash,
+        )>,
     ) -> Self {
         {
             let _guard = self
                 .capability_trust_roots_write_lock
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
-            let mut next: HashMap<String, chio_core::capability::ScopeHash> = HashMap::new();
+            let mut next: HashMap<String, chio_core::capability::attenuation::ScopeHash> =
+                HashMap::new();
             for (issuer, root) in roots {
                 next.insert(issuer.to_hex(), root);
             }
@@ -558,14 +565,15 @@ impl ChioKernel {
     pub fn set_capability_trust_root(
         &self,
         issuer: chio_core::PublicKey,
-        root: chio_core::capability::ScopeHash,
-    ) -> Option<chio_core::capability::ScopeHash> {
+        root: chio_core::capability::attenuation::ScopeHash,
+    ) -> Option<chio_core::capability::attenuation::ScopeHash> {
         let _guard = self
             .capability_trust_roots_write_lock
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let current = self.capability_trust_roots.load_full();
-        let mut next: HashMap<String, chio_core::capability::ScopeHash> = (*current).clone();
+        let mut next: HashMap<String, chio_core::capability::attenuation::ScopeHash> =
+            (*current).clone();
         let prev = next.insert(issuer.to_hex(), root);
         self.capability_trust_roots.store(Arc::new(next));
         prev
@@ -576,7 +584,7 @@ impl ChioKernel {
     /// `capability_trust_root_resolver_snapshot`.
     pub fn capability_trust_roots_snapshot(
         &self,
-    ) -> HashMap<String, chio_core::capability::ScopeHash> {
+    ) -> HashMap<String, chio_core::capability::attenuation::ScopeHash> {
         (*self.capability_trust_roots.load_full()).clone()
     }
 
@@ -586,11 +594,13 @@ impl ChioKernel {
     /// rotations cannot tear an in-flight verification.
     pub(crate) fn capability_trust_root_resolver_snapshot(
         &self,
-    ) -> impl Fn(&chio_core::PublicKey) -> Option<chio_core::capability::ScopeHash> + Send + Sync + 'static
-    {
-        let snapshot: Arc<HashMap<String, chio_core::capability::ScopeHash>> =
+    ) -> impl Fn(&chio_core::PublicKey) -> Option<chio_core::capability::attenuation::ScopeHash>
+           + Send
+           + Sync
+           + 'static {
+        let snapshot: Arc<HashMap<String, chio_core::capability::attenuation::ScopeHash>> =
             self.capability_trust_roots.load_full();
-        move |issuer: &chio_core::PublicKey| -> Option<chio_core::capability::ScopeHash> {
+        move |issuer: &chio_core::PublicKey| -> Option<chio_core::capability::attenuation::ScopeHash> {
             snapshot.get(&issuer.to_hex()).cloned()
         }
     }
@@ -599,7 +609,7 @@ impl ChioKernel {
         &self,
         remote_kernel_id: Option<&str>,
         now: u64,
-    ) -> Result<chio_core::capability::CapabilityNegotiation, String> {
+    ) -> Result<chio_core::capability::features::CapabilityNegotiation, String> {
         if let Some(remote) = remote_kernel_id {
             if let Some(peer) = self.federation_peer(remote, now) {
                 return Ok(peer.capabilities);
@@ -608,16 +618,16 @@ impl ChioKernel {
                 "no fresh federation peer negotiation profile pinned for remote kernel {remote}"
             ));
         }
-        Ok(chio_core::capability::CapabilityNegotiation::t1_default())
+        Ok(chio_core::capability::features::CapabilityNegotiation::t1_default())
     }
 
     /// Install the bilateral cosigner responsible for
     /// contacting a peer kernel to obtain a co-signature. Production
     /// deployments plug in an mTLS-backed RPC client; tests can use
-    /// [`chio_federation::InProcessCoSigner`].
+    /// [`chio_federation::bilateral::InProcessCoSigner`].
     pub fn set_federation_cosigner(
         &mut self,
-        cosigner: Arc<dyn chio_federation::BilateralCoSigningProtocol>,
+        cosigner: Arc<dyn chio_federation::bilateral::BilateralCoSigningProtocol>,
     ) {
         self.federation_cosigner = Some(cosigner);
     }
@@ -637,7 +647,7 @@ impl ChioKernel {
         &self,
         remote_kernel_id: &str,
         now: u64,
-    ) -> Option<chio_federation::FederationPeer> {
+    ) -> Option<chio_federation::trust_establishment::FederationPeer> {
         let peers = self.federation_peers.load();
         let peer = peers.get(remote_kernel_id)?.clone();
         if peer.is_fresh(now) {
@@ -648,19 +658,21 @@ impl ChioKernel {
     }
 
     /// Snapshot the currently-pinned federation peer set.
-    pub fn federation_peers_snapshot(&self) -> Vec<chio_federation::FederationPeer> {
+    pub fn federation_peers_snapshot(
+        &self,
+    ) -> Vec<chio_federation::trust_establishment::FederationPeer> {
         self.federation_peers.load().values().cloned().collect()
     }
 
     /// Look up a dual-signed receipt by the underlying
-    /// [`chio_core::receipt::ChioReceipt`] id. Returns `None` when the
+    /// [`chio_core::receipt::body::ChioReceipt`] id. Returns `None` when the
     /// receipt did not cross a federation boundary or when the
     /// co-signing hook has not yet produced a dual-signed artifact
     /// for it.
     pub fn dual_signed_receipt(
         &self,
         receipt_id: &str,
-    ) -> Option<chio_federation::DualSignedReceipt> {
+    ) -> Option<chio_federation::bilateral::DualSignedReceipt> {
         self.federation_dual_receipts
             .get(receipt_id)
             .map(|entry| entry.value().clone())
@@ -669,7 +681,7 @@ impl ChioKernel {
     pub fn federation_dsse_envelope(
         &self,
         receipt_id: &str,
-    ) -> Option<chio_federation::DsseEnvelope> {
+    ) -> Option<chio_federation::bilateral_dsse::DsseEnvelope> {
         self.federation_dsse_envelopes
             .get(receipt_id)
             .map(|entry| entry.value().clone())
@@ -686,8 +698,9 @@ impl ChioKernel {
 
     fn treaty_dsse_extensions_from_receipt_metadata(
         &self,
-        receipt: &chio_core::receipt::ChioReceipt,
-    ) -> Result<Option<chio_federation::BilateralPredicateExtensions>, KernelError> {
+        receipt: &chio_core::receipt::body::ChioReceipt,
+    ) -> Result<Option<chio_federation::bilateral_dsse::BilateralPredicateExtensions>, KernelError>
+    {
         let Some(metadata) = receipt.metadata.as_ref() else {
             return Ok(None);
         };
@@ -731,15 +744,17 @@ impl ChioKernel {
                 ))
             })?,
         );
-        Ok(Some(chio_federation::BilateralPredicateExtensions {
-            capability_lease_ref: Some(material.capability_lease_ref),
-            policy_evaluation_summary: Some(material.policy_evaluation_summary),
-            governance_receipt_ref: material.governance_receipt_ref,
-            consistency_anchor: material.consistency_anchor,
-            consistency_model: Some(consistency_model),
-            cross_org_visibility: material.cross_org_visibility,
-            treaty_binding_ref: Some(treaty_binding_ref),
-        }))
+        Ok(Some(
+            chio_federation::bilateral_dsse::BilateralPredicateExtensions {
+                capability_lease_ref: Some(material.capability_lease_ref),
+                policy_evaluation_summary: Some(material.policy_evaluation_summary),
+                governance_receipt_ref: material.governance_receipt_ref,
+                consistency_anchor: material.consistency_anchor,
+                consistency_model: Some(consistency_model),
+                cross_org_visibility: material.cross_org_visibility,
+                treaty_binding_ref: Some(treaty_binding_ref),
+            },
+        ))
     }
 
     /// Post-sign hook. Invoked immediately after
@@ -747,7 +762,7 @@ impl ChioKernel {
     /// signature has already landed in the `ChioReceipt`. When
     /// `federated_origin_kernel_id` is set and the admission-time peer
     /// snapshot is available, this dispatches the receipt to the
-    /// cosigner, assembles a [`chio_federation::DualSignedReceipt`],
+    /// cosigner, assembles a [`chio_federation::bilateral::DualSignedReceipt`],
     /// and stashes it for retrieval via [`Self::dual_signed_receipt`].
     ///
     /// Fail-closed: any error from peer resolution or the cosigner is
@@ -760,8 +775,8 @@ impl ChioKernel {
     pub(crate) fn apply_federation_cosign(
         &self,
         request: &crate::runtime::ToolCallRequest,
-        receipt: &chio_core::receipt::ChioReceipt,
-        admitted_peer: Option<&chio_federation::FederationPeer>,
+        receipt: &chio_core::receipt::body::ChioReceipt,
+        admitted_peer: Option<&chio_federation::trust_establishment::FederationPeer>,
     ) -> Result<(), KernelError> {
         let Some(origin_kernel_id) = request.federated_origin_kernel_id.as_ref() else {
             return Ok(());
@@ -799,7 +814,7 @@ impl ChioKernel {
                 // any non-deny receipt still fails closed here.
                 if matches!(
                     receipt.decision,
-                    Some(chio_core::receipt::Decision::Deny { .. })
+                    Some(chio_core::receipt::decision::Decision::Deny { .. })
                 ) {
                     return Ok(());
                 }
@@ -809,7 +824,7 @@ impl ChioKernel {
                 ));
             }
         };
-        let dual = chio_federation::co_sign_with_origin(
+        let dual = chio_federation::bilateral::co_sign_with_origin(
             origin_kernel_id,
             &peer.public_key,
             &local_kernel_id,
@@ -819,18 +834,19 @@ impl ChioKernel {
         )
         .map_err(|e| KernelError::Internal(format!("bilateral co-sign failed: {e}")))?;
         let timestamp_unix_ms = current_unix_timestamp().saturating_mul(1000);
-        let dsse_envelope = chio_federation::sign_chio_bilateral_dsse_envelope_with_cosigner(
-            receipt,
-            &peer.public_key,
-            &self.config.keypair,
-            origin_kernel_id,
-            &local_kernel_id,
-            &request.tool_name,
-            timestamp_unix_ms,
-            extensions,
-            cosigner.as_ref(),
-        )
-        .map_err(|e| KernelError::Internal(format!("bilateral DSSE co-sign failed: {e}")))?;
+        let dsse_envelope =
+            chio_federation::bilateral_dsse::sign_chio_bilateral_dsse_envelope_with_cosigner(
+                receipt,
+                &peer.public_key,
+                &self.config.keypair,
+                origin_kernel_id,
+                &local_kernel_id,
+                &request.tool_name,
+                timestamp_unix_ms,
+                extensions,
+                cosigner.as_ref(),
+            )
+            .map_err(|e| KernelError::Internal(format!("bilateral DSSE co-sign failed: {e}")))?;
 
         self.federation_dual_receipts
             .insert(receipt.id.clone(), dual);
@@ -967,18 +983,21 @@ impl ChioKernel {
 
     /// Mint a signed execution nonce for an allow verdict.
     ///
-    /// Returns `Ok(None)` when no config is installed (nonces disabled);
+    /// Returns `Ok(None)` when no config is installed (nonces disabled) or
+    /// when this request already presented a nonce for execution. Otherwise
     /// returns `Ok(Some(nonce))` once configured. The nonce binding is
-    /// derived from the capability subject, capability ID, target
-    /// server/tool, and the canonical parameter hash embedded in the
-    /// just-signed allow receipt so the verify-time check is always
-    /// comparing apples to apples.
+    /// derived from the capability subject, capability ID, target server/tool,
+    /// and the canonical parameter hash embedded in the just-signed allow
+    /// receipt so the verify-time check is always comparing apples to apples.
     pub(crate) fn mint_execution_nonce_for_allow(
         &self,
         request: &ToolCallRequest,
         cap: &CapabilityToken,
         receipt: &ChioReceipt,
     ) -> Result<Option<Box<crate::execution_nonce::SignedExecutionNonce>>, KernelError> {
+        if request.execution_nonce.is_some() {
+            return Ok(None);
+        }
         let Some(config) = self.execution_nonce_config.as_ref() else {
             return Ok(None);
         };
@@ -1026,20 +1045,16 @@ impl ChioKernel {
         )
     }
 
-    /// Strict-mode gate. Denies the call fail-closed when the
-    /// kernel is configured to require nonces on every execution-bound
-    /// tool call but the caller did not present one.
+    /// Execution-nonce dispatch gate.
     ///
-    /// `presented` is the nonce the tool server forwarded with the
-    /// execution attempt (for example, lifted from the
-    /// `X-Chio-Execution-Nonce` header). Passing the nonce as a separate
-    /// argument keeps `ToolCallRequest` wire-stable: every other call
-    /// site that builds a request (guards, adapters, tests) continues to
-    /// compile unchanged, and strict mode is gated on the integration
-    /// layer that knows how to shuttle the nonce header.
+    /// Denies fail-closed when strict mode is configured and the request
+    /// lacks a nonce. When strict mode is disabled, a request with no
+    /// nonce remains backward-compatible. Any presented nonce is still
+    /// verified and consumed so opt-in callers cannot bypass binding,
+    /// expiry, signature, or replay checks.
     ///
     /// Returns `Ok(())` when:
-    /// * strict mode is disabled (backward-compat path), OR
+    /// * no nonce is required and none was presented, OR
     /// * a nonce is presented, signed by this kernel, correctly bound,
     ///   non-expired, and has not been consumed.
     ///
@@ -1048,9 +1063,9 @@ impl ChioKernel {
         &self,
         request: &ToolCallRequest,
         cap: &CapabilityToken,
-        presented: Option<&crate::execution_nonce::SignedExecutionNonce>,
     ) -> Result<(), KernelError> {
-        if !self.execution_nonce_required() {
+        let presented = request.execution_nonce.as_ref();
+        if !self.execution_nonce_required() && presented.is_none() {
             return Ok(());
         }
         let presented = presented.ok_or_else(|| {
@@ -1058,12 +1073,11 @@ impl ChioKernel {
                 "execution nonce required but not presented on tool call".to_string(),
             )
         })?;
-        let parameter_hash =
-            chio_core::receipt::ToolCallAction::from_parameters(request.arguments.clone())
-                .map_err(|e| {
-                    KernelError::ReceiptSigningFailed(format!("failed to hash parameters: {e}"))
-                })?
-                .parameter_hash;
+        let parameter_hash = chio_core::receipt::decision::ToolCallAction::from_parameters(
+            request.arguments.clone(),
+        )
+        .map_err(|e| KernelError::ReceiptSigningFailed(format!("failed to hash parameters: {e}")))?
+        .parameter_hash;
         let expected = crate::execution_nonce::NonceBinding {
             subject_id: cap.subject.to_hex(),
             capability_id: cap.id.clone(),
@@ -1073,6 +1087,18 @@ impl ChioKernel {
         };
         self.verify_presented_execution_nonce(presented, &expected)
             .map_err(|e| KernelError::Internal(format!("{e}")))
+    }
+
+    /// Strict-mode nonce issuance gate.
+    ///
+    /// In strict mode, a request that reaches evaluation without a presented
+    /// nonce is an authorization preflight. It may receive a freshly signed
+    /// nonce, but it must not execute the target tool. Actual execution
+    /// presents that nonce on a later request and consumes it immediately
+    /// before dispatch.
+    #[must_use]
+    pub(crate) fn execution_nonce_preflight_required(&self, request: &ToolCallRequest) -> bool {
+        self.execution_nonce_required() && request.execution_nonce.is_none()
     }
 
     pub fn requires_web3_evidence(&self) -> bool {

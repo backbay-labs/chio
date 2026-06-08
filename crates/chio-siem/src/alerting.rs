@@ -47,8 +47,8 @@ use zeroize::Zeroizing;
 use crate::event::SiemEvent;
 use crate::exporter::{ExportError, ExportFuture, Exporter};
 use crate::redaction::redact_for_operator_log;
-use chio_core::chio_receipt_id;
-use chio_core::receipt::{ChioReceipt, Decision, GuardEvidence};
+use chio_core::receipt::body::chio_receipt_id;
+use chio_core::receipt::{body::ChioReceipt, decision::Decision, metadata::GuardEvidence};
 use chio_egress_contract::{client_builder_with_contract, send_with_contract, HttpEgressContract};
 
 // -- Severity -----------------------------------------------------------------
@@ -794,7 +794,8 @@ mod tests {
     use super::*;
     use chio_core::crypto::Keypair;
     use chio_core::receipt::{
-        ChioReceiptBody, GuardEvidence, ReceiptSemanticFields, ToolCallAction,
+        body::ChioReceiptBody, decision::ToolCallAction, metadata::GuardEvidence,
+        metadata::ReceiptSemanticFields,
     };
 
     fn deny_receipt(guard: &str) -> ChioReceipt {
@@ -813,11 +814,11 @@ mod tests {
                     reason: "denied".to_string(),
                     guard: guard.to_string(),
                 }),
-                receipt_kind: chio_core::ReceiptKind::MediatedDecision,
-                boundary_class: chio_core::BoundaryClass::Prevent,
+                receipt_kind: chio_core::receipt::kinds::ReceiptKind::MediatedDecision,
+                boundary_class: chio_core::receipt::kinds::BoundaryClass::Prevent,
                 observation_outcome: None,
-                tool_origin: chio_core::ToolOrigin::CallerExecuted,
-                redaction_mode: chio_core::RedactionMode::None,
+                tool_origin: chio_core::receipt::kinds::ToolOrigin::CallerExecuted,
+                redaction_mode: chio_core::receipt::kinds::RedactionMode::None,
                 actor_chain: Vec::new(),
                 content_hash: "c".to_string(),
                 policy_hash: "p".to_string(),
@@ -827,9 +828,10 @@ mod tests {
                     details: None,
                 }],
                 metadata: None,
-                trust_level: chio_core::TrustLevel::default(),
+                trust_level: chio_core::receipt::kinds::TrustLevel::default(),
                 tenant_id: None,
                 kernel_key: keypair.public_key(),
+                bbs_projection_version: None,
             },
             &keypair,
         )
@@ -849,19 +851,20 @@ mod tests {
                 tool_name: "bash".to_string(),
                 action,
                 decision: Some(Decision::Allow),
-                receipt_kind: chio_core::ReceiptKind::MediatedDecision,
-                boundary_class: chio_core::BoundaryClass::Prevent,
+                receipt_kind: chio_core::receipt::kinds::ReceiptKind::MediatedDecision,
+                boundary_class: chio_core::receipt::kinds::BoundaryClass::Prevent,
                 observation_outcome: None,
-                tool_origin: chio_core::ToolOrigin::CallerExecuted,
-                redaction_mode: chio_core::RedactionMode::None,
+                tool_origin: chio_core::receipt::kinds::ToolOrigin::CallerExecuted,
+                redaction_mode: chio_core::receipt::kinds::RedactionMode::None,
                 actor_chain: Vec::new(),
                 content_hash: "c".to_string(),
                 policy_hash: "p".to_string(),
                 evidence: Vec::new(),
                 metadata: None,
-                trust_level: chio_core::TrustLevel::default(),
+                trust_level: chio_core::receipt::kinds::TrustLevel::default(),
                 tenant_id: None,
                 kernel_key: keypair.public_key(),
+                bbs_projection_version: None,
             },
             &keypair,
         )
@@ -892,9 +895,10 @@ mod tests {
                 policy_hash: "p".to_string(),
                 evidence: Vec::new(),
                 metadata: None,
-                trust_level: chio_core::TrustLevel::Verified,
+                trust_level: chio_core::receipt::kinds::TrustLevel::Verified,
                 tenant_id: None,
                 kernel_key: keypair.public_key(),
+                bbs_projection_version: None,
             },
             &keypair,
         )

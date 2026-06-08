@@ -14,7 +14,10 @@
 
 use std::sync::Arc;
 
-use chio_kernel::{Guard, GuardContext, KernelError, Verdict};
+use chio_core::receipt::metadata::GuardEvidence;
+#[cfg(test)]
+use chio_kernel::Verdict;
+use chio_kernel::{Guard, GuardContext, GuardDecision, KernelError};
 use serde::{Deserialize, Serialize};
 
 // ---------------------------------------------------------------------------
@@ -147,6 +150,33 @@ fn severity_ord(s: AdvisorySeverity) -> u8 {
     }
 }
 
+fn severity_label(s: AdvisorySeverity) -> &'static str {
+    match s {
+        AdvisorySeverity::Info => "info",
+        AdvisorySeverity::Low => "low",
+        AdvisorySeverity::Medium => "medium",
+        AdvisorySeverity::High => "high",
+        AdvisorySeverity::Critical => "critical",
+    }
+}
+
+fn signal_evidence(signal: &AdvisorySignal) -> GuardEvidence {
+    let metadata = match &signal.metadata {
+        Some(metadata) => metadata.to_string(),
+        None => "null".to_string(),
+    };
+    GuardEvidence {
+        guard_name: signal.guard_name.clone(),
+        verdict: !signal.promoted,
+        details: Some(format!(
+            "action=advisory; description={}; severity={}; promoted={}; metadata={metadata}",
+            signal.description,
+            severity_label(signal.severity),
+            signal.promoted
+        )),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Advisory pipeline
 // ---------------------------------------------------------------------------
@@ -209,7 +239,7 @@ impl Guard for AdvisoryPipeline {
         "advisory-pipeline"
     }
 
-    fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
         let mut collected = Vec::new();
         let mut should_deny = false;
 
@@ -224,6 +254,8 @@ impl Guard for AdvisoryPipeline {
             }
         }
 
+        let evidence = collected.iter().map(signal_evidence).collect();
+
         // Store collected signals for evidence export.
         let mut stored = self
             .signals
@@ -232,9 +264,9 @@ impl Guard for AdvisoryPipeline {
         *stored = collected;
 
         if should_deny {
-            Ok(Verdict::Deny)
+            Ok(GuardDecision::deny(evidence))
         } else {
-            Ok(Verdict::Allow)
+            Ok(GuardDecision::allow_with_evidence(evidence))
         }
     }
 }
@@ -423,16 +455,16 @@ mod tests {
 
     fn make_ctx() -> (
         chio_kernel::ToolCallRequest,
-        chio_core::capability::ChioScope,
+        chio_core::capability::scope::ChioScope,
         String,
         String,
     ) {
         let kp = chio_core::crypto::Keypair::generate();
-        let scope = chio_core::capability::ChioScope::default();
+        let scope = chio_core::capability::scope::ChioScope::default();
         let agent_id = kp.public_key().to_hex();
         let server_id = "srv-test".to_string();
 
-        let cap_body = chio_core::capability::CapabilityTokenBody {
+        let cap_body = chio_core::capability::token::CapabilityTokenBody {
             id: "cap-test".to_string(),
             issuer: kp.public_key(),
             subject: kp.public_key(),
@@ -441,7 +473,8 @@ mod tests {
             expires_at: u64::MAX,
             delegation_chain: vec![],
         };
-        let cap = chio_core::capability::CapabilityToken::sign(cap_body, &kp).expect("sign cap");
+        let cap =
+            chio_core::capability::token::CapabilityToken::sign(cap_body, &kp).expect("sign cap");
 
         let request = chio_kernel::ToolCallRequest {
             request_id: "req-test".to_string(),
@@ -451,6 +484,7 @@ mod tests {
             agent_id: agent_id.clone(),
             arguments: serde_json::json!({"path": "/app/src/main.rs"}),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
@@ -462,7 +496,7 @@ mod tests {
 
     fn guard_ctx<'a>(
         request: &'a chio_kernel::ToolCallRequest,
-        scope: &'a chio_core::capability::ChioScope,
+        scope: &'a chio_core::capability::scope::ChioScope,
         agent_id: &'a String,
         server_id: &'a String,
     ) -> chio_kernel::GuardContext<'a> {
@@ -620,7 +654,7 @@ mod tests {
                 guard_name: self.guard_name.clone(),
                 description: "always signals".to_string(),
                 severity: self.severity,
-                metadata: None,
+                metadata: Some(serde_json::json!({"source": "unit-test"})),
                 promoted: false,
             }])
         }
@@ -642,6 +676,31 @@ mod tests {
         let signals = pipeline.last_signals().expect("signals");
         assert_eq!(signals.len(), 1);
         assert!(!signals[0].promoted);
+    }
+
+    #[test]
+    fn advisory_pipeline_returns_signal_evidence() {
+        let mut pipeline = AdvisoryPipeline::new(PromotionPolicy::new());
+        pipeline.add(Box::new(AlwaysSignal {
+            guard_name: "test-signal".to_string(),
+            severity: AdvisorySeverity::High,
+        }));
+
+        let (request, scope, agent_id, server_id) = make_ctx();
+        let ctx = guard_ctx(&request, &scope, &agent_id, &server_id);
+        let decision = pipeline.evaluate(&ctx).expect("ok");
+        assert_eq!(decision.verdict, Verdict::Allow);
+        assert_eq!(decision.evidence.len(), 1);
+
+        let evidence = &decision.evidence[0];
+        assert_eq!(evidence.guard_name, "test-signal");
+        assert!(evidence.verdict);
+        let details = evidence.details.as_deref().expect("details");
+        assert!(details.contains("action=advisory"));
+        assert!(details.contains("description=always signals"));
+        assert!(details.contains("severity=high"));
+        assert!(details.contains("promoted=false"));
+        assert!(details.contains(r#"metadata={"source":"unit-test"}"#));
     }
 
     #[test]

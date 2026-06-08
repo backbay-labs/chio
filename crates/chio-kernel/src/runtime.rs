@@ -1,7 +1,9 @@
 use chio_core::capability::{
-    CapabilityToken, GovernedApprovalToken, GovernedTransactionIntent, ModelMetadata,
+    governance::{GovernedApprovalToken, GovernedTransactionIntent},
+    scope::ModelMetadata,
+    token::CapabilityToken,
 };
-use chio_core::receipt::ChioReceipt;
+use chio_core::receipt::body::ChioReceipt;
 use chio_core::session::{
     CreateElicitationOperation, CreateElicitationResult, CreateMessageOperation,
     CreateMessageResult, OperationContext, OperationTerminalState, RequestId, RootDefinition,
@@ -13,8 +15,8 @@ use crate::{AgentId, KernelError, ServerId};
 
 /// Verdict of a guard or capability evaluation.
 ///
-/// This is the kernel's own verdict type, distinct from `chio_core::Decision`.
-/// The kernel uses this internally; it maps to `chio_core::Decision` when
+/// This is the kernel's own verdict type, distinct from `chio_core::receipt::decision::Decision`.
+/// The kernel uses this internally; it maps to `chio_core::receipt::decision::Decision` when
 /// building receipts.
 ///
 /// The `PendingApproval` variant is a marker: the payload (`ApprovalRequest`)
@@ -36,7 +38,7 @@ pub enum Verdict {
 }
 
 /// A tool call request as seen by the kernel.
-#[derive(Debug)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ToolCallRequest {
     /// Unique request identifier.
     pub request_id: String,
@@ -51,16 +53,25 @@ pub struct ToolCallRequest {
     /// Tool arguments.
     pub arguments: serde_json::Value,
     /// Optional DPoP proof. Required when the matched grant has `dpop_required == Some(true)`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dpop_proof: Option<dpop::DpopProof>,
+    /// Optional execution nonce presented for a strict nonce-protected
+    /// dispatch. The nonce is minted by an allow evaluation and consumed
+    /// exactly once before the tool server is invoked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_nonce: Option<SignedExecutionNonce>,
     /// Optional governed transaction intent bound to this invocation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub governed_intent: Option<GovernedTransactionIntent>,
     /// Optional approval token authorizing this governed invocation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub approval_token: Option<GovernedApprovalToken>,
     /// Optional metadata describing the model executing the calling
     /// agent. Consumed by `Constraint::ModelConstraint` enforcement.
     ///
     /// Absent in legacy callers; when the matched grant carries a
     /// `ModelConstraint` with any requirement, the call is denied.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model_metadata: Option<ModelMetadata>,
     /// Identifier of the origin kernel when this request crosses a federation
     /// boundary (agent in Org A invoking a tool in Org B). When set, the
@@ -70,6 +81,7 @@ pub struct ToolCallRequest {
     ///
     /// The field is skipped from wire serialization when `None` so the
     /// legacy wire format stays byte-identical.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub federated_origin_kernel_id: Option<String>,
 }
 

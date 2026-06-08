@@ -3,7 +3,8 @@
 use std::sync::OnceLock;
 
 use chio_core::capability::{
-    CapabilityToken, CapabilityTokenBody, ChioScope, Operation, ToolGrant,
+    scope::{ChioScope, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core::crypto::Keypair;
 use chio_kernel::{ChioKernel, KernelConfig, DEFAULT_CHECKPOINT_BATCH_SIZE};
@@ -91,6 +92,7 @@ fn make_execution() -> Option<AcpKernelExecutionContext> {
         capability,
         agent_id: agent_id().to_string(),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,

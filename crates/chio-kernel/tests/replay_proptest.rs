@@ -29,8 +29,8 @@ use chio_core::canonical::canonical_json_bytes;
 use chio_core::crypto::{sha256_hex, Keypair};
 use chio_core::merkle::MerkleTree;
 use chio_core::receipt::{
-    chio_receipt_id, ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
-    CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY,
+    body::chio_receipt_id, body::ChioReceipt, body::ChioReceiptBody, decision::Decision,
+    decision::ToolCallAction, kinds::TrustLevel, signing::CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY,
 };
 use proptest::prelude::*;
 use proptest::test_runner::{Config as ProptestConfig, FileFailurePersistence};
@@ -275,6 +275,7 @@ fn body_from_tuple(tuple: &ReceiptTuple, kernel_key: &Keypair) -> ChioReceiptBod
         trust_level: TrustLevel::default(),
         tenant_id: None,
         kernel_key: kernel_key.public_key(),
+        bbs_projection_version: None,
     };
     body.id = chio_receipt_id(&body).expect("canonical receipt id computes");
     body
@@ -289,7 +290,7 @@ fn canonical_body_bytes(body: &ChioReceiptBody) -> Vec<u8> {
 }
 
 /// Bind the `chio_receipt_signing_nonce` metadata key to the pre-nonce
-/// receipt id, mirroring `chio_core_types::receipt::bind_receipt_signing_nonce`
+/// receipt id, mirroring `chio_core_types::receipt::signing::bind_receipt_signing_nonce`
 /// (the private step every `ChioReceipt::sign*` path runs before computing the
 /// content-addressed id). The nonce is the trimmed pre-nonce `body.id`; an
 /// existing non-object metadata value is preserved under `original_metadata`.

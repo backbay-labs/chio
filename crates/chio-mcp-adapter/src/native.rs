@@ -78,7 +78,7 @@ impl NativeTool {
     pub fn flat_price(mut self, units: u64, currency: impl Into<String>) -> Self {
         self.definition.pricing = Some(ToolPricing {
             pricing_model: PricingModel::Flat,
-            base_price: Some(chio_core::MonetaryAmount {
+            base_price: Some(chio_core::capability::scope::MonetaryAmount {
                 units,
                 currency: currency.into(),
             }),
@@ -92,7 +92,7 @@ impl NativeTool {
         self.definition.pricing = Some(ToolPricing {
             pricing_model: PricingModel::PerInvocation,
             base_price: None,
-            unit_price: Some(chio_core::MonetaryAmount {
+            unit_price: Some(chio_core::capability::scope::MonetaryAmount {
                 units,
                 currency: currency.into(),
             }),
@@ -110,7 +110,7 @@ impl NativeTool {
         self.definition.pricing = Some(ToolPricing {
             pricing_model: PricingModel::PerUnit,
             base_price: None,
-            unit_price: Some(chio_core::MonetaryAmount {
+            unit_price: Some(chio_core::capability::scope::MonetaryAmount {
                 units,
                 currency: currency.into(),
             }),
@@ -129,11 +129,11 @@ impl NativeTool {
         let currency = currency.into();
         self.definition.pricing = Some(ToolPricing {
             pricing_model: PricingModel::Hybrid,
-            base_price: Some(chio_core::MonetaryAmount {
+            base_price: Some(chio_core::capability::scope::MonetaryAmount {
                 units: base_units,
                 currency: currency.clone(),
             }),
-            unit_price: Some(chio_core::MonetaryAmount {
+            unit_price: Some(chio_core::capability::scope::MonetaryAmount {
                 units: unit_units,
                 currency,
             }),

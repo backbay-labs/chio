@@ -14,7 +14,7 @@
 use std::sync::Arc;
 
 use chio_core::crypto::PublicKey;
-use chio_core::receipt::ChioReceipt;
+use chio_core::receipt::body::ChioReceipt;
 use chio_settle::{SettlementHook, SettlementHookError, SettlementObservation, SettlementOutcome};
 
 /// Schema string emitted on the wire for settlement-observer status frames.
@@ -99,7 +99,7 @@ fn build_observation_unchecked(receipt: &ChioReceipt) -> Option<SettlementObserv
     let monetary = financial.get("cost_charged").and_then(|cc| {
         let units = cc.as_u64()?;
         let currency = financial.get("currency")?.as_str()?.to_string();
-        Some(chio_core::capability::MonetaryAmount { currency, units })
+        Some(chio_core::capability::scope::MonetaryAmount { currency, units })
     })?;
 
     if monetary.units == 0 {
@@ -182,10 +182,11 @@ pub fn run_observer(
 mod tests {
     use super::*;
 
-    use chio_core::capability::MonetaryAmount;
+    use chio_core::capability::scope::MonetaryAmount;
     use chio_core::crypto::Keypair;
     use chio_core::receipt::{
-        ChioReceiptBody, Decision, GuardEvidence, ToolCallAction, TrustLevel,
+        body::ChioReceiptBody, decision::Decision, decision::ToolCallAction, kinds::TrustLevel,
+        metadata::GuardEvidence,
     };
 
     fn sign_with(body_metadata: serde_json::Value, decision: Decision) -> ChioReceipt {
@@ -208,11 +209,11 @@ mod tests {
             tool_name: "tool-1".to_string(),
             action,
             decision: Some(decision),
-            receipt_kind: chio_core::ReceiptKind::MediatedDecision,
-            boundary_class: chio_core::BoundaryClass::Prevent,
+            receipt_kind: chio_core::receipt::kinds::ReceiptKind::MediatedDecision,
+            boundary_class: chio_core::receipt::kinds::BoundaryClass::Prevent,
             observation_outcome: None,
-            tool_origin: chio_core::ToolOrigin::CallerExecuted,
-            redaction_mode: chio_core::RedactionMode::None,
+            tool_origin: chio_core::receipt::kinds::ToolOrigin::CallerExecuted,
+            redaction_mode: chio_core::receipt::kinds::RedactionMode::None,
             actor_chain: Vec::new(),
             content_hash: "ch-1".to_string(),
             policy_hash: "ph-1".to_string(),
@@ -225,6 +226,7 @@ mod tests {
             trust_level: TrustLevel::default(),
             tenant_id: None,
             kernel_key: kp.public_key(),
+            bbs_projection_version: None,
         };
         ChioReceipt::sign(body, &kp).expect("test receipt signs")
     }

@@ -583,8 +583,9 @@ falls into the following candidate phases.
   `transparency_preview` claim boundaries.
 - [`crates/chio-anchor/src/bundle.rs`](../../crates/chio-anchor/src/bundle.rs),
   [`crates/chio-anchor/src/ops.rs`](../../crates/chio-anchor/src/ops.rs), and
-  [`crates/chio-web3/src/lib.rs`](../../crates/chio-web3/src/lib.rs) already
-  implement checkpoint packaging, publication operations, and verification.
+  [`crates/chio-web3/src/anchors.rs`](../../crates/chio-web3/src/anchors.rs)
+  already implement checkpoint packaging, publication operations, and
+  verification.
   Phase 28 is the step from bounded transparency preview to externally
   checkable append-only semantics.
 

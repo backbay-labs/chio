@@ -2,7 +2,7 @@
 #
 # Source: spec/schemas/chio-wire/v1/**/*.schema.json
 # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
-# Schema sha256: 303b50183ef215723ba3d2cf0370c6cb7ac7f08616ccf6cd5a76dc4214dcf730
+# Schema sha256: 61971d0fd9521328df208fed380e2ce1e207c4d8c906b7576b864af1911371e5
 #
 # Manual edits will be overwritten by the next regeneration; the
 # spec-drift CI lane enforces this header on every file
@@ -14,7 +14,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel, conint, constr
+from pydantic import BaseModel, ConfigDict, Field, RootModel, conint, constr, model_validator
 
 
 class ReceiptKind(Enum):
@@ -85,6 +85,20 @@ class Algorithm(Enum):
     ed25519 = "ed25519"
     p256 = "p256"
     p384 = "p384"
+
+
+class BbsReceiptSignature(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_: Literal["chio.receipt.bbs_signature.v1"] = Field(..., alias="schema")
+    projection_version: Literal["chio.bbs-projection.receipt.v1"]
+    algorithm: Literal["bbs"]
+    ciphersuite: Literal["BBS_BLS12381G1_XMD:SHA-256_SSWU_RO_"]
+    issuer_fingerprint: constr(pattern=r"^[A-Za-z0-9._:-]{1,128}$")
+    issuer_public_key_hex: constr(pattern=r"^[0-9a-f]{192}$")
+    message_count: Literal[14]
+    signature_hex: constr(pattern=r"^([0-9a-f]{2})+$")
 
 
 class ToolCallAction(BaseModel):
@@ -260,12 +274,31 @@ class ChioReceiptRecord(BaseModel):
         None,
         description="Tenant identifier for multi-tenant deployments. Absent in single-tenant mode; derived from the authenticated session's enterprise identity context, never from caller-provided request fields.",
     )
+    bbs_projection_version: Literal["chio.bbs-projection.receipt.v1"] | None = Field(
+        None,
+        description="Receipt-body BBS projection version bound into the receipt id when bbs_signature is present.",
+    )
     kernel_key: constr(
         pattern=r"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$"
     ) = Field(
         ...,
         description="Kernel public key (for verification without out-of-band lookup). Bare 64-char lowercase hex string for Ed25519, `p256:<130-char hex>` for uncompressed SEC1 P-256 (65 bytes; leading byte `0x04`), or `p384:<194-char hex>` for uncompressed SEC1 P-384 (97 bytes; leading byte `0x04`). Anything outside these length classes is rejected at decode time by `PublicKey::from_hex` in `crates/chio-core-types/src/crypto.rs`.",
     )
+    bbs_signature: BbsReceiptSignature | None = Field(
+        None,
+        description="Optional BBS signature material for selective disclosure. When present, the Ed25519 receipt signature covers this material through ChioReceiptSigningBody.",
+    )
+
+    @model_validator(mode="after")
+    def _validate_bbs_pairing(self) -> "ChioReceiptRecord":
+        has_projection = self.bbs_projection_version is not None
+        has_signature = self.bbs_signature is not None
+        if has_projection != has_signature:
+            raise ValueError(
+                "bbs_projection_version and bbs_signature must be present together"
+            )
+        return self
+
     algorithm: Algorithm | None = Field(
         None,
         description="Signing algorithm envelope hint. Verification dispatches off the signature hex prefix, not this field.",
@@ -273,6 +306,6 @@ class ChioReceiptRecord(BaseModel):
     signature: constr(pattern=r"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$") = (
         Field(
             ...,
-            description="Hex-encoded signature over canonical JSON of ChioReceiptSigningBody { id, body: ChioReceiptIdInput }. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.",
+            description="Hex-encoded signature over canonical JSON of ChioReceiptSigningBody { id, body: ChioReceiptIdInput, bbs_signature? }. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.",
         )
     )

@@ -1,12 +1,15 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use chio_core::capability::{CapabilityToken, CapabilityTokenBody, ChioScope};
+use chio_core::capability::{
+    scope::ChioScope,
+    token::{CapabilityToken, CapabilityTokenBody},
+};
 use chio_core::crypto::Keypair;
 use chio_kernel::{Guard, GuardContext, ToolCallRequest, Verdict};
 use chio_wasm_guards::{
-    guard_fetch_blob_span, guard_host_call_span, guard_verify_span, runtime::MockWasmBackend,
-    Engine, WasmGuard, WasmGuardAbi, WasmGuardError, HOST_FETCH_BLOB, SPAN_GUARD_EVALUATE,
+    guard_fetch_blob_span, guard_host_call_span, guard_verify_span, Engine, GuardRequest,
+    GuardVerdict, WasmGuard, WasmGuardAbi, WasmGuardError, HOST_FETCH_BLOB, SPAN_GUARD_EVALUATE,
     SPAN_GUARD_FETCH_BLOB, SPAN_GUARD_HOST_CALL, SPAN_GUARD_RELOAD, SPAN_GUARD_VERIFY,
     VERIFY_MODE_ED25519, VERIFY_RESULT_OK,
 };
@@ -149,7 +152,6 @@ fn field<'a>(span: &'a CapturedSpan, name: &str) -> &'a str {
 fn make_test_request() -> ToolCallRequest {
     let issuer = Keypair::generate();
     let subject = Keypair::generate();
-    let signer = Keypair::generate();
     let capability = match CapabilityToken::sign(
         CapabilityTokenBody {
             id: "cap-1".to_string(),
@@ -160,7 +162,7 @@ fn make_test_request() -> ToolCallRequest {
             expires_at: u64::MAX,
             delegation_chain: vec![],
         },
-        &signer,
+        &issuer,
     ) {
         Ok(token) => token,
         Err(err) => panic!("capability signing failed: {err}"),
@@ -174,10 +176,39 @@ fn make_test_request() -> ToolCallRequest {
         agent_id: "agent-1".to_string(),
         arguments: serde_json::json!({"key": "value"}),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
+    }
+}
+
+struct MockWasmBackend {
+    loaded: bool,
+}
+
+impl MockWasmBackend {
+    fn allowing() -> Self {
+        Self { loaded: false }
+    }
+}
+
+impl WasmGuardAbi for MockWasmBackend {
+    fn load_module(&mut self, _wasm_bytes: &[u8], _fuel_limit: u64) -> Result<(), WasmGuardError> {
+        self.loaded = true;
+        Ok(())
+    }
+
+    fn evaluate(&mut self, _request: &GuardRequest) -> Result<GuardVerdict, WasmGuardError> {
+        if !self.loaded {
+            return Err(WasmGuardError::BackendUnavailable);
+        }
+        Ok(GuardVerdict::Allow)
+    }
+
+    fn backend_name(&self) -> &str {
+        "mock"
     }
 }
 
@@ -219,7 +250,7 @@ fn evaluate_span_records_exact_field_set() {
             Ok(verdict) => verdict,
             Err(err) => panic!("guard evaluation failed: {err}"),
         };
-        assert!(matches!(verdict, Verdict::Allow));
+        assert!(matches!(verdict.verdict, Verdict::Allow));
     });
 
     let spans = captured.snapshot();

@@ -1,0 +1,398 @@
+#!/usr/bin/env python3
+"""Fail on oversized hand-maintained Rust files and malformed generated Rust."""
+
+from __future__ import annotations
+
+import argparse
+from dataclasses import dataclass
+from datetime import date
+from pathlib import Path
+import subprocess
+import sys
+
+
+PRODUCTION_LIMIT = 2_000
+LIB_ROOT_LIMIT = 1_000
+TEST_LIMIT = 2_000
+SUMMARY_LIMIT = 25
+WIRE_GENERATED_PREFIX = "crates/chio-core-types/src/_generated/"
+GENERATED_HEADER_SOURCE = "crates/chio-spec-codegen/src/lib.rs"
+GENERATED_HEADER_CONST_MARKER = 'pub const GENERATED_HEADER: &str = "\\\n'
+ERRORS_GENERATED_PREFIX = "crates/chio-errors/src/_generated/"
+ERRORS_GENERATED_HEADER_SOURCE = "crates/chio-spec-codegen/src/errors_pass.rs"
+ERRORS_GENERATED_HEADER_CONST_MARKER = 'const ERROR_CODES_GENERATED_HEADER: &str = "\\\n'
+
+
+@dataclass(frozen=True)
+class AllowlistEntry:
+    rationale: str
+    expires: str
+    max_lines: int | None = None
+
+
+def allow(expires: str, rationale: str, *, max_lines: int | None = None) -> AllowlistEntry:
+    return AllowlistEntry(rationale=rationale, expires=expires, max_lines=max_lines)
+
+
+ALLOWLIST: dict[str, AllowlistEntry] = {
+    "crates/chio-cli/tests/mcp_serve_http.rs": allow(
+        "2026-07-31",
+        "existing oversized CLI MCP HTTP integration suite; capped to current size until split",
+        max_lines=6_316,
+    ),
+    "crates/chio-cli/tests/passport.rs": allow(
+        "2026-07-31",
+        "existing oversized CLI passport integration suite; capped to current size until split",
+        max_lines=5_390,
+    ),
+    "crates/chio-cli/tests/mcp_serve.rs": allow(
+        "2026-07-31",
+        "existing oversized CLI MCP serve integration suite; capped to current size until split",
+        max_lines=4_496,
+    ),
+    "crates/chio-mcp-edge/src/runtime/runtime_tests.rs": allow(
+        "2026-07-31",
+        "existing oversized MCP edge runtime test suite; capped to current size until split",
+        max_lines=4_349,
+    ),
+    "crates/chio-cli/tests/certify.rs": allow(
+        "2026-07-31",
+        "existing oversized CLI certify integration suite; capped to current size until split",
+        max_lines=3_639,
+    ),
+    "crates/chio-mercury/tests/cli.rs": allow(
+        "2026-07-31",
+        "existing oversized Mercury CLI integration suite; capped to current size until split",
+        max_lines=3_264,
+    ),
+    "crates/chio-cli/tests/trust_cluster.rs": allow(
+        "2026-07-31",
+        "existing oversized CLI trust-cluster integration suite; capped to current size until split",
+        max_lines=3_209,
+    ),
+    "crates/chio-api-protect/src/proxy/tests.rs": allow(
+        "2026-07-31",
+        "existing oversized API protect proxy test suite; capped to current size until split",
+        max_lines=2_971,
+    ),
+    "crates/chio-acp-edge/src/tests/all.rs": allow(
+        "2026-07-31",
+        "existing oversized ACP edge aggregate test suite; capped to current size until split",
+        max_lines=2_881,
+    ),
+    "crates/chio-a2a-edge/src/tests/all.rs": allow(
+        "2026-07-31",
+        "existing oversized A2A edge aggregate test suite; capped to current size until split",
+        max_lines=2_702,
+    ),
+    "crates/chio-cli/tests/federated_issue.rs": allow(
+        "2026-07-31",
+        "existing oversized CLI federated issue integration suite; capped to current size until split",
+        max_lines=2_295,
+    ),
+    "crates/chio-credentials/src/tests.rs": allow(
+        "2026-07-31",
+        "existing oversized credentials test suite; capped to current size until split",
+        max_lines=2_164,
+    ),
+    "crates/chio-core-types/src/capability/tests.rs": allow(
+        "2026-07-31",
+        "existing oversized capability type test suite; capped to current size until split",
+        max_lines=2_141,
+    ),
+    "crates/chio-runtime-core/tests/runtime_buyer_review.rs": allow(
+        "2026-07-31",
+        "existing oversized runtime buyer review integration suite; capped to current size until split",
+        max_lines=2_067,
+    ),
+    "crates/chio-mcp-remote/src/remote_mcp/tests.rs": allow(
+        "2026-07-31",
+        "existing oversized remote MCP test suite; capped to current size until split",
+        max_lines=2_008,
+    ),
+}
+
+
+@dataclass(frozen=True)
+class RustFile:
+    path: str
+    lines: int
+    category: str
+    violations: tuple[str, ...]
+    allowlist: AllowlistEntry | None
+
+
+@dataclass(frozen=True)
+class GeneratedHeaderSpec:
+    prefix: str
+    source: str
+    const_marker: str
+    label: str
+
+
+GENERATED_HEADER_SPECS = (
+    GeneratedHeaderSpec(
+        prefix=WIRE_GENERATED_PREFIX,
+        source=GENERATED_HEADER_SOURCE,
+        const_marker=GENERATED_HEADER_CONST_MARKER,
+        label="chio_spec_codegen::GENERATED_HEADER",
+    ),
+    GeneratedHeaderSpec(
+        prefix=ERRORS_GENERATED_PREFIX,
+        source=ERRORS_GENERATED_HEADER_SOURCE,
+        const_marker=ERRORS_GENERATED_HEADER_CONST_MARKER,
+        label="chio_spec_codegen::errors_pass::ERROR_CODES_GENERATED_HEADER",
+    ),
+)
+
+
+def repo_root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def discover_rust_files(root: Path) -> list[str]:
+    result = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(root),
+            "ls-files",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            "*.rs",
+        ],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    return [
+        line
+        for line in result.stdout.splitlines()
+        if line and (root / line).is_file()
+    ]
+
+
+def line_count(path: Path) -> int:
+    data = path.read_bytes()
+    return data.count(b"\n")
+
+
+def load_generated_header(root: Path, spec: GeneratedHeaderSpec) -> str | None:
+    source = root / spec.source
+    if not source.exists():
+        return None
+    text = source.read_text()
+    start = text.find(spec.const_marker)
+    if start == -1:
+        return None
+    start += len(spec.const_marker)
+    end = text.find('";', start)
+    if end == -1:
+        return None
+    return text[start:end]
+
+
+def classify(path: str) -> str:
+    parts = path.split("/")
+    name = parts[-1]
+    if "/_generated/" in f"/{path}/":
+        return "generated"
+    if path.startswith("examples/") or "/examples/" in f"/{path}/":
+        return "example"
+    if (
+        path.startswith("tests/")
+        or "/tests/" in f"/{path}/"
+        or name == "tests.rs"
+        or name.endswith("_tests.rs")
+        or name.endswith("_test.rs")
+        or name.endswith("_tests_support.rs")
+        or name.endswith("_test_support.rs")
+    ):
+        return "test"
+    return "production"
+
+
+def is_lib_root(path: str) -> bool:
+    return path.endswith("/src/lib.rs")
+
+
+def validate_allowlist(errors: list[str]) -> None:
+    for path, entry in sorted(ALLOWLIST.items()):
+        if not entry.rationale.strip():
+            errors.append(f"{path}: allowlist entry has an empty rationale")
+        if not entry.expires.strip():
+            errors.append(f"{path}: allowlist entry has an empty expiry date")
+            continue
+        try:
+            expires_on = date.fromisoformat(entry.expires)
+        except ValueError:
+            errors.append(
+                f"{path}: allowlist entry expiry {entry.expires!r} is not an ISO date"
+            )
+            continue
+        if expires_on < date.today():
+            errors.append(f"{path}: allowlist entry expired on {entry.expires}")
+        if entry.max_lines is not None and entry.max_lines <= 0:
+            errors.append(f"{path}: allowlist entry has a non-positive max_lines cap")
+
+
+def validate_generated_headers(
+    root: Path,
+    paths: list[str],
+    failures: list[str],
+) -> None:
+    generated_paths = [path for path in paths if classify(path) == "generated"]
+    if not generated_paths:
+        return
+    covered_paths: set[str] = set()
+    for spec in GENERATED_HEADER_SPECS:
+        spec_paths = [
+            path
+            for path in generated_paths
+            if path.startswith(spec.prefix) and path.endswith(".rs")
+        ]
+        if not spec_paths:
+            continue
+        header = load_generated_header(root, spec)
+        if header is None:
+            failures.append(f"{spec.source}: could not read {spec.label}")
+            continue
+        for path in spec_paths:
+            covered_paths.add(path)
+            try:
+                body = (root / path).read_text()
+            except OSError as err:
+                failures.append(f"{path}: could not read generated Rust file: {err}")
+                continue
+            if not body.startswith(header):
+                failures.append(
+                    f"{path}: generated Rust file does not begin with {spec.label}"
+                )
+
+    for path in generated_paths:
+        if path not in covered_paths:
+            failures.append(
+                f"{path}: generated Rust path is not covered by a known generator header check"
+            )
+
+
+def inspect_file(root: Path, path: str) -> RustFile:
+    lines = line_count(root / path)
+    category = classify(path)
+    violations: list[str] = []
+    if category == "production" and lines > PRODUCTION_LIMIT:
+        violations.append(
+            f"production file has {lines} lines, limit is {PRODUCTION_LIMIT}"
+        )
+    if category == "production" and is_lib_root(path) and lines > LIB_ROOT_LIMIT:
+        violations.append(f"src/lib.rs has {lines} lines, limit is {LIB_ROOT_LIMIT}")
+    if category == "test" and lines > TEST_LIMIT:
+        violations.append(f"test file has {lines} lines, limit is {TEST_LIMIT}")
+    allowlist = ALLOWLIST.get(path)
+    if allowlist and allowlist.max_lines is not None and lines > allowlist.max_lines:
+        violations.append(
+            f"allowlisted file has {lines} lines, cap is {allowlist.max_lines}"
+        )
+    return RustFile(
+        path=path,
+        lines=lines,
+        category=category,
+        violations=tuple(violations),
+        allowlist=allowlist,
+    )
+
+
+def print_summary(files: list[RustFile]) -> None:
+    categories = ["generated", "production", "test", "example"]
+    print("Rust file hygiene summary")
+    for category in categories:
+        category_files = sorted(
+            (file for file in files if file.category == category),
+            key=lambda file: (-file.lines, file.path),
+        )
+        if not category_files:
+            continue
+        print(f"\n==> {category} top {min(SUMMARY_LIMIT, len(category_files))}")
+        for file in category_files[:SUMMARY_LIMIT]:
+            marker = ""
+            if file.violations and file.allowlist:
+                marker = f" allowlisted until {file.allowlist.expires}"
+            elif file.violations:
+                marker = " violation"
+            print(f"{file.lines:5d} {file.path}{marker}")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Check Rust source file line-count hygiene."
+    )
+    parser.add_argument(
+        "--root",
+        type=Path,
+        default=repo_root(),
+        help="repository root to inspect",
+    )
+    args = parser.parse_args()
+
+    root = args.root.resolve()
+    errors: list[str] = []
+    validate_allowlist(errors)
+
+    try:
+        paths = discover_rust_files(root)
+    except subprocess.CalledProcessError as exc:
+        stderr = exc.stderr.strip()
+        print(f"failed to list Rust files under {root}: {stderr}", file=sys.stderr)
+        return 1
+
+    files = [inspect_file(root, path) for path in paths]
+    print_summary(files)
+
+    failures: list[str] = []
+    for file in sorted(files, key=lambda candidate: candidate.path):
+        if not file.violations:
+            continue
+        if file.allowlist:
+            uncovered = []
+            if file.category == "test" and file.lines > TEST_LIMIT:
+                if file.allowlist.max_lines is None:
+                    uncovered.append(
+                        "oversized test allowlist entry must set a max_lines cap"
+                    )
+            uncovered.extend(
+                violation
+                for violation in file.violations
+                if violation.startswith("allowlisted file has ")
+            )
+            if uncovered:
+                for violation in uncovered:
+                    failures.append(f"{file.path}: {violation}")
+                continue
+            print(
+                f"allowlisted: {file.path}: {file.allowlist.rationale}; "
+                f"expires {file.allowlist.expires}; "
+                f"max_lines {file.allowlist.max_lines or 'uncapped'}"
+            )
+            continue
+        for violation in file.violations:
+            failures.append(f"{file.path}: {violation}")
+
+    validate_generated_headers(root, paths, failures)
+
+    if errors:
+        failures.extend(errors)
+
+    if failures:
+        print("\nRust file hygiene failures:", file=sys.stderr)
+        for failure in failures:
+            print(f"- {failure}", file=sys.stderr)
+        return 1
+
+    print("\nRust file hygiene check passed")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

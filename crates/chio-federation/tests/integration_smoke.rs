@@ -1,4 +1,6 @@
-use chio_federation::{FederationAntiEclipsePolicy, CHIO_FEDERATION_QUORUM_REPORT_SCHEMA};
+use chio_federation::{
+    quorum::FederationAntiEclipsePolicy, quorum::CHIO_FEDERATION_QUORUM_REPORT_SCHEMA,
+};
 
 #[test]
 fn federation_defaults_require_multi_party_visibility() {

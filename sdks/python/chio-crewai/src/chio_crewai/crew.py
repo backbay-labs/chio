@@ -43,7 +43,7 @@ class ChioCrew(Crew):
     subject_map:
         Optional mapping from role to the hex-encoded Ed25519 public
         key to bind the capability to. Defaults to a deterministic
-        ``agent:<role>`` placeholder.
+        ``agent:<role>`` fallback subject.
     ttl_seconds:
         Lifetime of each minted capability token.
     **crew_kwargs:
@@ -189,7 +189,7 @@ class ChioCrew(Crew):
 
 
 def _default_subject(role: str) -> str:
-    """Produce a deterministic subject placeholder for a role.
+    """Produce a deterministic fallback subject for a role.
 
     A real deployment supplies its own ``subject_map``; this fallback
     keeps the crew runnable in tests and local demos.

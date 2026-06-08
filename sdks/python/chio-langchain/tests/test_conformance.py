@@ -136,8 +136,8 @@ class TestCapabilityTokenConformance:
     def test_token_roundtrip_preserves_fields(self) -> None:
         token = CapabilityToken(
             id="tok-rt",
-            issuer="issuer-key",
-            subject="subject-key",
+            issuer="a" * 64,
+            subject="b" * 64,
             scope=ChioScope(
                 grants=[
                     ToolGrant(
@@ -151,9 +151,9 @@ class TestCapabilityTokenConformance:
             ),
             issued_at=1000,
             expires_at=2000,
-            signature="sig-hex",
+            signature="c" * 128,
         )
-        serialized = token.model_dump_json()
+        serialized = token.model_dump_json(by_alias=True)
         restored = CapabilityToken.model_validate_json(serialized)
         assert restored.id == token.id
         assert restored.scope.grants[0].max_invocations == 100
@@ -183,28 +183,34 @@ class TestReceiptConformance:
 
     def test_receipt_fields(self) -> None:
         receipt = ChioReceipt(
-            id="r-conf",
+            id="1" * 64,
             timestamp=1700000000,
             capability_id="cap-1",
             tool_server="srv",
             tool_name="read_file",
             action=ToolCallAction(
                 parameters={"path": "/tmp"},
-                parameter_hash="abc",
+                parameter_hash="2" * 64,
             ),
             decision=Decision.allow(),
-            content_hash="deadbeef",
+            receipt_kind="mediated_decision",
+            boundary_class="prevent",
+            tool_origin="caller_executed",
+            redaction_mode="none",
+            content_hash="3" * 64,
             policy_hash="cafebabe",
-            kernel_key="kernel-pub",
-            signature="ed25519-sig",
+            trust_level="mediated",
+            kernel_key="5" * 64,
+            signature="6" * 128,
         )
         data = receipt.model_dump(exclude_none=True)
 
         # Verify all required fields are present
         required_fields = {
             "id", "timestamp", "capability_id", "tool_server", "tool_name",
-            "action", "decision", "content_hash", "policy_hash",
-            "kernel_key", "signature",
+            "action", "decision", "receipt_kind", "boundary_class",
+            "tool_origin", "redaction_mode", "content_hash", "policy_hash",
+            "trust_level", "kernel_key", "signature",
         }
         assert required_fields.issubset(data.keys())
 

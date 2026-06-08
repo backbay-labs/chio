@@ -1,16 +1,21 @@
-use std::path::Path;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::SystemTime;
 
 use chio_guard_registry::{
     load_guard_with_policy, verify_dual_mode, AttestError, AttestVerifier, ExpectedIdentity,
-    GuardCache, GuardCacheArtifact, GuardLoadEvent, GuardLoadEventResult, GuardLoadSource,
-    GuardNetworkState, GuardOfflineLoadError, GuardOfflineLoadRequest, GuardRegistryError,
-    GuardSigstoreVerifier, GuardVerificationKind, GuardVerificationReport, GuardVerifiedSignature,
-    Sha256Digest, VerifiedAttestation, CHIO_GUARD_VERIFY_EVENT,
+    GuardCache, GuardCacheArtifact, GuardCacheLayout, GuardLoadEvent, GuardLoadEventResult,
+    GuardLoadSource, GuardNetworkState, GuardOfflineLoadError, GuardOfflineLoadRequest,
+    GuardRegistryError, GuardSigstoreVerifier, GuardVerificationKind, GuardVerificationReport,
+    GuardVerifiedSignature, Sha256Digest, VerifiedAttestation, CHIO_GUARD_VERIFY_EVENT,
+    GUARD_ARTIFACT_MEDIA_TYPE, GUARD_CONFIG_MEDIA_TYPE, GUARD_MANIFEST_LAYER_MEDIA_TYPE,
+    GUARD_MODULE_LAYER_MEDIA_TYPE, GUARD_OCI_MANIFEST_MEDIA_TYPE, GUARD_WIT_LAYER_MEDIA_TYPE,
 };
+use oci_distribution::client::{Config, ImageLayer};
+use oci_distribution::manifest::OciImageManifest;
+use sha2::{Digest, Sha256};
 
-const DIGEST: &str = "sha256:3333333333333333333333333333333333333333333333333333333333333333";
 const MODULE_BYTES: &[u8] = b"\0asm\x01\0\0\0";
 const BUNDLE_BYTES: &[u8] = br#"{"bundle":"fixture"}"#;
 
@@ -150,6 +155,94 @@ fn offline_cached_and_verified_allows_load() {
 }
 
 #[test]
+fn offline_load_denies_tampered_cache_files_before_verifier() {
+    for case in [
+        TamperCase::Manifest,
+        TamperCase::Config,
+        TamperCase::Wit,
+        TamperCase::Module,
+        TamperCase::GuardManifest,
+    ] {
+        let temp = tempdir();
+        let digest = digest();
+        let cache = GuardCache::from_cache_home(temp.path());
+        write_cache(&cache, &digest);
+        let layout = cache.layout(&digest);
+        write_tampered_file(&tamper_path(&layout, case));
+
+        let calls = AtomicUsize::new(0);
+        let request = GuardOfflineLoadRequest {
+            cache: &cache,
+            digest: &digest,
+            network: GuardNetworkState::Offline,
+            verification: GuardVerificationKind::SigstoreOnly,
+        };
+        let result = load_guard_with_policy(request, |_layout| {
+            calls.fetch_add(1, Ordering::SeqCst);
+            Ok(sigstore_report(digest_bytes(1), "unused"))
+        });
+
+        match result {
+            Err(GuardOfflineLoadError::CacheIntegrityDenied {
+                digest: denied_digest,
+                source,
+                event,
+            }) => {
+                assert_eq!(denied_digest, digest.as_str());
+                assert_cache_integrity_error(&source, case);
+                assert_deny_event(
+                    &event,
+                    &digest,
+                    GuardVerificationKind::SigstoreOnly,
+                    GuardLoadSource::OfflineCache,
+                    "cache-integrity-failed",
+                );
+            }
+            other => panic!("expected cache integrity denial for {case:?}, got {other:?}"),
+        }
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            0,
+            "tampered {case:?} must be denied before signature verification"
+        );
+    }
+}
+
+#[test]
+fn offline_ed25519_load_does_not_require_sigstore_bundle_file() {
+    let temp = tempdir();
+    let digest = digest();
+    let cache = GuardCache::from_cache_home(temp.path());
+    let fixture = CacheFixture::new();
+    let result = cache.write_artifact(&digest, fixture.artifact(None));
+    if let Err(error) = result {
+        panic!("cache write should succeed: {error}");
+    }
+
+    let request = GuardOfflineLoadRequest {
+        cache: &cache,
+        digest: &digest,
+        network: GuardNetworkState::Offline,
+        verification: GuardVerificationKind::Ed25519Only,
+    };
+    let load = match load_guard_with_policy(request, |_layout| {
+        Ok(GuardVerificationReport::ed25519_only(
+            GuardVerifiedSignature {
+                digest_sha256: digest_bytes(7),
+                identity: "ed25519-key".to_owned(),
+            },
+        ))
+    }) {
+        Ok(load) => load,
+        Err(error) => panic!("offline Ed25519-only load should allow: {error}"),
+    };
+
+    assert_eq!(load.event.verification, GuardVerificationKind::Ed25519Only);
+    assert_eq!(load.event.source, GuardLoadSource::OfflineCache);
+    assert_eq!(load.event.result, GuardLoadEventResult::Allow);
+}
+
+#[test]
 fn offline_sigstore_load_denies_unverified_rekor_inclusion() {
     let temp = tempdir();
     let digest = digest();
@@ -179,6 +272,7 @@ fn offline_sigstore_load_denies_unverified_rekor_inclusion() {
             ));
             assert_deny_event(
                 &event,
+                &digest,
                 GuardVerificationKind::SigstoreOnly,
                 GuardLoadSource::OfflineCache,
                 "signature-verification-failed",
@@ -244,6 +338,7 @@ fn offline_policy_denies_report_only_sigstore_without_rekor_inclusion() {
             ));
             assert_deny_event(
                 &event,
+                &digest,
                 GuardVerificationKind::SigstoreOnly,
                 GuardLoadSource::OfflineCache,
                 "rekor-inclusion-unverified",
@@ -284,10 +379,11 @@ fn offline_uncached_denies_without_verifier_call() {
             missing,
             event,
         }) => {
-            assert_eq!(denied_digest, DIGEST);
-            assert_eq!(missing.len(), 5);
+            assert_eq!(denied_digest, digest.as_str());
+            assert_eq!(missing.len(), 6);
             assert_deny_event(
                 &event,
+                &digest,
                 GuardVerificationKind::SigstoreOnly,
                 GuardLoadSource::OfflineCache,
                 "offline-cache-miss",
@@ -327,6 +423,7 @@ fn network_signature_failure_denies_load() {
             ));
             assert_deny_event(
                 &event,
+                &digest,
                 GuardVerificationKind::SigstoreOnly,
                 GuardLoadSource::Network,
                 "signature-verification-failed",
@@ -378,6 +475,7 @@ fn dual_mode_digest_mismatch_denies_load_after_both_verifiers_run() {
             }
             assert_deny_event(
                 &event,
+                &digest,
                 GuardVerificationKind::DualVerified,
                 GuardLoadSource::OfflineCache,
                 "signature-verification-failed",
@@ -404,7 +502,7 @@ fn structured_event_labels_distinguish_all_verification_modes() {
     let event = GuardLoadEvent::allow(
         GuardVerificationKind::Ed25519Only,
         GuardLoadSource::OfflineCache,
-        DIGEST,
+        digest().as_str(),
         &GuardVerifiedSignature {
             digest_sha256: digest_bytes(9),
             identity: "ed25519-key".to_owned(),
@@ -429,6 +527,7 @@ fn sigstore_report(digest: [u8; 32], identity: &'static str) -> GuardVerificatio
 
 fn assert_deny_event(
     event: &GuardLoadEvent,
+    digest: &Sha256Digest,
     verification: GuardVerificationKind,
     source: GuardLoadSource,
     reason: &str,
@@ -437,31 +536,84 @@ fn assert_deny_event(
     assert_eq!(event.result, GuardLoadEventResult::Deny);
     assert_eq!(event.verification, verification);
     assert_eq!(event.source, source);
-    assert_eq!(event.digest, DIGEST);
+    assert_eq!(event.digest, digest.as_str());
     assert_eq!(event.reason.as_deref(), Some(reason));
 }
 
 fn write_cache(cache: &GuardCache, digest: &Sha256Digest) {
-    let result = cache.write_artifact(
-        digest,
-        GuardCacheArtifact {
-            manifest_json: br#"{"schemaVersion":2}"#,
-            config_json: br#"{"wit_world":"chio:guard/guard@0.2.0"}"#,
-            wit: b"package chio:guard@0.2.0;",
-            module: MODULE_BYTES,
-            sigstore_bundle_json: BUNDLE_BYTES,
-        },
+    let fixture = CacheFixture::new();
+    assert_eq!(
+        fixture.digest, *digest,
+        "offline test fixture digest must match caller digest"
     );
+    let result = cache.write_artifact(digest, fixture.artifact(Some(BUNDLE_BYTES)));
     if let Err(error) = result {
         panic!("cache write should succeed: {error}");
     }
 }
 
-fn digest() -> Sha256Digest {
-    match DIGEST.parse::<Sha256Digest>() {
-        Ok(digest) => digest,
-        Err(error) => panic!("fixture digest should parse: {error}"),
+#[derive(Debug, Clone, Copy)]
+enum TamperCase {
+    Manifest,
+    Config,
+    Wit,
+    Module,
+    GuardManifest,
+}
+
+fn tamper_path(layout: &GuardCacheLayout, case: TamperCase) -> PathBuf {
+    match case {
+        TamperCase::Manifest => layout.manifest_json_path(),
+        TamperCase::Config => layout.config_json_path(),
+        TamperCase::Wit => layout.wit_bin_path(),
+        TamperCase::Module => layout.module_wasm_path(),
+        TamperCase::GuardManifest => layout.guard_manifest_json_path(),
     }
+}
+
+fn write_tampered_file(path: &Path) {
+    if let Err(error) = fs::write(path, b"tampered-cache-bytes") {
+        panic!("tamper {} should write: {error}", path.display());
+    }
+}
+
+fn assert_cache_integrity_error(error: &GuardRegistryError, case: TamperCase) {
+    match (case, error) {
+        (TamperCase::Manifest, GuardRegistryError::ManifestDigestMismatch { .. }) => {}
+        (
+            TamperCase::Config,
+            GuardRegistryError::DescriptorDigestMismatch {
+                artifact: "config.json",
+                ..
+            },
+        ) => {}
+        (
+            TamperCase::Wit,
+            GuardRegistryError::DescriptorDigestMismatch {
+                artifact: "wit.bin",
+                ..
+            },
+        ) => {}
+        (
+            TamperCase::Module,
+            GuardRegistryError::DescriptorDigestMismatch {
+                artifact: "module.wasm",
+                ..
+            },
+        ) => {}
+        (
+            TamperCase::GuardManifest,
+            GuardRegistryError::DescriptorDigestMismatch {
+                artifact: "guard-manifest.json",
+                ..
+            },
+        ) => {}
+        other => panic!("unexpected cache integrity error: {other:?}"),
+    }
+}
+
+fn digest() -> Sha256Digest {
+    CacheFixture::new().digest
 }
 
 fn digest_bytes(value: u8) -> [u8; 32] {
@@ -482,5 +634,72 @@ fn tempdir() -> tempfile::TempDir {
     match tempfile::tempdir() {
         Ok(temp) => temp,
         Err(error) => panic!("tempdir should be created: {error}"),
+    }
+}
+
+struct CacheFixture {
+    manifest_json: Vec<u8>,
+    config_json: Vec<u8>,
+    wit: Vec<u8>,
+    module: Vec<u8>,
+    guard_manifest_json: Vec<u8>,
+    digest: Sha256Digest,
+}
+
+impl CacheFixture {
+    fn new() -> Self {
+        let config_json = br#"{"wit_world":"chio:guard/guard@0.2.0"}"#.to_vec();
+        let wit = b"package chio:guard@0.2.0;".to_vec();
+        let module = MODULE_BYTES.to_vec();
+        let guard_manifest_json = br#"{"name":"fixture"}"#.to_vec();
+        let config = Config::new(
+            config_json.clone(),
+            GUARD_CONFIG_MEDIA_TYPE.to_owned(),
+            None,
+        );
+        let layers = vec![
+            ImageLayer::new(wit.clone(), GUARD_WIT_LAYER_MEDIA_TYPE.to_owned(), None),
+            ImageLayer::new(
+                module.clone(),
+                GUARD_MODULE_LAYER_MEDIA_TYPE.to_owned(),
+                None,
+            ),
+            ImageLayer::new(
+                guard_manifest_json.clone(),
+                GUARD_MANIFEST_LAYER_MEDIA_TYPE.to_owned(),
+                None,
+            ),
+        ];
+        let mut manifest = OciImageManifest::build(&layers, &config, None);
+        manifest.media_type = Some(GUARD_OCI_MANIFEST_MEDIA_TYPE.to_owned());
+        manifest.artifact_type = Some(GUARD_ARTIFACT_MEDIA_TYPE.to_owned());
+        let manifest_json = match serde_json::to_vec(&manifest) {
+            Ok(bytes) => bytes,
+            Err(error) => panic!("fixture OCI manifest should serialize: {error}"),
+        };
+        let digest_text = format!("sha256:{:x}", Sha256::digest(&manifest_json));
+        let digest = match digest_text.parse::<Sha256Digest>() {
+            Ok(digest) => digest,
+            Err(error) => panic!("fixture digest should parse: {error}"),
+        };
+        Self {
+            manifest_json,
+            config_json,
+            wit,
+            module,
+            guard_manifest_json,
+            digest,
+        }
+    }
+
+    fn artifact<'a>(&'a self, sigstore_bundle_json: Option<&'a [u8]>) -> GuardCacheArtifact<'a> {
+        GuardCacheArtifact {
+            manifest_json: &self.manifest_json,
+            config_json: &self.config_json,
+            wit: &self.wit,
+            module: &self.module,
+            guard_manifest_json: &self.guard_manifest_json,
+            sigstore_bundle_json,
+        }
     }
 }

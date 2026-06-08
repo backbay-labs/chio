@@ -9,6 +9,6 @@ object SidecarPaths {
     const val HEALTH = "/chio/health"
     const val EVALUATE_HTTP = "/chio/evaluate"
     const val VERIFY_HTTP_RECEIPT = "/chio/verify"
-    const val EVALUATE_TOOL_CALL = "/v1/evaluate"
+    const val EVALUATE_TOOL_CALL = "/v1/evaluate/advisory"
     const val VERIFY_RECEIPT = "/v1/receipts/verify"
 }

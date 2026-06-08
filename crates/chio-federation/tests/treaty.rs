@@ -1,10 +1,12 @@
 use chio_core_types::crypto::Keypair;
 use chio_federation::{
-    compute_ladder_intersection, evaluate_cross_boundary_admission,
-    governance_ladder_manifest_sha256, ladder_intersection_sha256, CrossBoundaryAdmissionInput,
-    CrossBoundaryEvidenceRef, GovernanceLadderActionClass, GovernanceLadderManifest, TreatyScope,
-    CHIO_FEDERATION_GOVERNANCE_LADDER_MANIFEST_SCHEMA, CHIO_FEDERATION_LADDER_INTERSECTION_SCHEMA,
-    CHIO_FEDERATION_TREATY_SCOPE_SCHEMA,
+    treaty::compute_ladder_intersection, treaty::evaluate_cross_boundary_admission,
+    treaty::governance_ladder_manifest_sha256, treaty::ladder_intersection_sha256,
+    treaty::CrossBoundaryAdmissionInput, treaty::CrossBoundaryEvidenceRef,
+    treaty::GovernanceLadderActionClass, treaty::GovernanceLadderManifest, treaty::TreatyScope,
+    treaty::CHIO_FEDERATION_GOVERNANCE_LADDER_MANIFEST_SCHEMA,
+    treaty::CHIO_FEDERATION_LADDER_INTERSECTION_SCHEMA,
+    treaty::CHIO_FEDERATION_TREATY_SCOPE_SCHEMA,
 };
 
 #[test]

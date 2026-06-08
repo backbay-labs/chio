@@ -194,11 +194,11 @@ fn kernel_allows_tool_call_when_model_is_in_allowlist() {
         "srv",
         serde_json::json!({"payload": "hello"}),
     );
-    request.model_metadata = Some(chio_core::capability::ModelMetadata {
+    request.model_metadata = Some(chio_core::capability::scope::ModelMetadata {
         model_id: "claude-opus-4".to_string(),
-        safety_tier: Some(chio_core::capability::ModelSafetyTier::High),
+        safety_tier: Some(chio_core::capability::scope::ModelSafetyTier::High),
         provider: Some("anthropic".to_string()),
-        provenance_class: chio_core::capability::ProvenanceEvidenceClass::Asserted,
+        provenance_class: chio_core::capability::governance::ProvenanceEvidenceClass::Asserted,
     });
 
     assert_eq!(
@@ -242,11 +242,11 @@ fn kernel_denies_tool_call_when_model_is_not_in_allowlist() {
         "srv",
         serde_json::json!({"payload": "hello"}),
     );
-    request.model_metadata = Some(chio_core::capability::ModelMetadata {
+    request.model_metadata = Some(chio_core::capability::scope::ModelMetadata {
         model_id: "small-uncensored".to_string(),
-        safety_tier: Some(chio_core::capability::ModelSafetyTier::Low),
+        safety_tier: Some(chio_core::capability::scope::ModelSafetyTier::Low),
         provider: None,
-        provenance_class: chio_core::capability::ProvenanceEvidenceClass::Asserted,
+        provenance_class: chio_core::capability::governance::ProvenanceEvidenceClass::Asserted,
     });
 
     let response = kernel.evaluate_tool_call_blocking(&request).unwrap();
@@ -277,7 +277,7 @@ fn kernel_denies_tool_call_when_model_safety_tier_is_below_minimum() {
             operations: vec![Operation::Invoke],
             constraints: vec![Constraint::ModelConstraint {
                 allowed_model_ids: Vec::new(),
-                min_safety_tier: Some(chio_core::capability::ModelSafetyTier::Standard),
+                min_safety_tier: Some(chio_core::capability::scope::ModelSafetyTier::Standard),
             }],
             max_invocations: None,
             max_cost_per_invocation: None,
@@ -295,11 +295,11 @@ fn kernel_denies_tool_call_when_model_safety_tier_is_below_minimum() {
         "srv",
         serde_json::json!({"payload": "hello"}),
     );
-    request.model_metadata = Some(chio_core::capability::ModelMetadata {
+    request.model_metadata = Some(chio_core::capability::scope::ModelMetadata {
         model_id: "small-uncensored".to_string(),
-        safety_tier: Some(chio_core::capability::ModelSafetyTier::Low),
+        safety_tier: Some(chio_core::capability::scope::ModelSafetyTier::Low),
         provider: None,
-        provenance_class: chio_core::capability::ProvenanceEvidenceClass::Asserted,
+        provenance_class: chio_core::capability::governance::ProvenanceEvidenceClass::Asserted,
     });
 
     let response = kernel.evaluate_tool_call_blocking(&request).unwrap();
@@ -322,7 +322,7 @@ fn kernel_denies_tool_call_when_model_metadata_is_missing_but_required() {
             operations: vec![Operation::Invoke],
             constraints: vec![Constraint::ModelConstraint {
                 allowed_model_ids: vec!["claude-opus-4".to_string()],
-                min_safety_tier: Some(chio_core::capability::ModelSafetyTier::Standard),
+                min_safety_tier: Some(chio_core::capability::scope::ModelSafetyTier::Standard),
             }],
             max_invocations: None,
             max_cost_per_invocation: None,

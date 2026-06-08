@@ -39,20 +39,27 @@ use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_core::capability::{
-    CapabilityToken, GovernedApprovalToken, GovernedTransactionIntent, ModelMetadata,
+    governance::{GovernedApprovalToken, GovernedTransactionIntent},
+    scope::ModelMetadata,
+    token::CapabilityToken,
 };
-#[cfg(test)]
 use chio_core::session::OperationTerminalState;
-use chio_cross_protocol::{
-    runtime_lifecycle_contract, runtime_lifecycle_metadata, semantic_hints_for_tool,
-    target_protocol_for_tool_with_registry, BridgeError, BridgeFidelity, CapabilityBridge,
-    CrossProtocolCapabilityRef, CrossProtocolExecutionRequest, CrossProtocolOrchestrator,
-    DiscoveryProtocol, OpenAiTargetExecutor, OrchestratedToolCall, RuntimeLifecycleSurface,
-    TargetProtocolRegistry,
+use chio_cross_protocol::capability_bridge::{CapabilityBridge, CrossProtocolCapabilityRef};
+use chio_cross_protocol::discovery::{
+    target_protocol_for_tool_with_registry, DiscoveryProtocol, TargetProtocolRegistry,
 };
+use chio_cross_protocol::error::BridgeError;
+use chio_cross_protocol::execution::{CrossProtocolExecutionRequest, OpenAiTargetExecutor};
+use chio_cross_protocol::lifecycle::{
+    runtime_lifecycle_contract, runtime_lifecycle_metadata, RuntimeLifecycleSurface,
+};
+use chio_cross_protocol::orchestrator::{CrossProtocolOrchestrator, OrchestratedToolCall};
+use chio_cross_protocol::semantic_hints::{semantic_hints_for_tool, BridgeFidelity};
 #[cfg(any(test, feature = "compatibility-surface"))]
 use chio_kernel::ToolServerConnection;
-use chio_kernel::{dpop, ChioKernel, ToolCallOutput, Verdict as KernelVerdict};
+use chio_kernel::{
+    dpop, ChioKernel, SignedExecutionNonce, ToolCallOutput, Verdict as KernelVerdict,
+};
 use chio_manifest::{ToolDefinition, ToolManifest};
 use chio_mcp_edge::McpTargetExecutor;
 use serde::{Deserialize, Serialize};
@@ -82,3 +89,7 @@ include!("conversion.rs");
 include!("edge.rs");
 include!("jsonrpc.rs");
 include!("tests/all.rs");
+
+#[cfg(test)]
+#[path = "tests/nonce_preflight.rs"]
+mod nonce_preflight_tests;

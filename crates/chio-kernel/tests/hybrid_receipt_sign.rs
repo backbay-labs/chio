@@ -13,8 +13,9 @@
 use chio_core::canonical::canonical_json_bytes;
 use chio_core::crypto::{Keypair, PublicKey, SigningAlgorithm};
 use chio_core::receipt::{
-    chio_receipt_id, ChioReceiptBody, ChioReceiptSigningBody, Decision, ToolCallAction, TrustLevel,
-    CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY,
+    body::chio_receipt_id, body::ChioReceiptBody, crypto_floor::ReceiptCryptoFloor,
+    decision::Decision, decision::ToolCallAction, kinds::TrustLevel,
+    signing::ChioReceiptSigningBody, signing::CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY,
 };
 use chio_kernel::{
     kernel_signing_backend, sign_receipt_body_with_backend, KernelCryptoFloor,
@@ -22,7 +23,7 @@ use chio_kernel::{
 };
 
 /// Bind the `chio_receipt_signing_nonce` metadata key to the pre-nonce
-/// receipt id, mirroring `chio_core_types::receipt::bind_receipt_signing_nonce`
+/// receipt id, mirroring `chio_core_types::receipt::signing::bind_receipt_signing_nonce`
 /// (the private step `ChioReceipt::sign_with_backend` runs before computing
 /// the content-addressed id). The nonce is the trimmed pre-nonce `body.id`;
 /// an existing non-object metadata value is preserved under
@@ -93,6 +94,7 @@ fn build_body(kernel_key: PublicKey) -> ChioReceiptBody {
         trust_level: TrustLevel::Mediated,
         tenant_id: None,
         kernel_key,
+        bbs_projection_version: None,
     }
 }
 
@@ -199,6 +201,9 @@ fn classical_receipt_byte_identical_under_allow_classical() {
         "signature must verify against the ChioReceiptSigningBody wrapper bytes"
     );
     assert!(receipt.verify_signature().unwrap());
+    assert!(receipt
+        .verify_signature_with_floor(ReceiptCryptoFloor::AllowClassical)
+        .unwrap());
 }
 
 #[test]
@@ -225,6 +230,13 @@ fn hybrid_receipt_round_trip_signs_and_verifies() {
         .kernel_key
         .verify(&wrapper_bytes, &receipt.signature));
     assert!(receipt.verify_signature().unwrap());
+    assert!(receipt
+        .verify_signature_with_floor(ReceiptCryptoFloor::PqRequired)
+        .unwrap());
+    let err = receipt
+        .verify_signature_with_floor(ReceiptCryptoFloor::AllowClassical)
+        .expect_err("hybrid receipt must reject under allow_classical");
+    assert!(err.to_string().contains("crypto_floor=allow_classical"));
 }
 
 #[test]

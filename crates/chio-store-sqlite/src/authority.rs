@@ -2,7 +2,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use chio_core::capability::{CapabilityToken, CapabilityTokenBody, ChioScope};
+use chio_core::capability::{
+    scope::ChioScope,
+    token::{CapabilityToken, CapabilityTokenBody},
+};
 use chio_core::crypto::{Keypair, PublicKey};
 use chio_kernel::{
     AuthoritySnapshot, AuthorityStatus, AuthorityStoreError, AuthorityTrustedKeySnapshot,
@@ -649,7 +652,7 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::*;
-    use chio_core::capability::{Operation, ToolGrant};
+    use chio_core::capability::scope::{Operation, ToolGrant};
     use chio_kernel::LocalCapabilityAuthority;
 
     fn unique_db_path(prefix: &str) -> std::path::PathBuf {

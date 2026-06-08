@@ -13,14 +13,15 @@
       "edge-light": "./dist/index.js",
       "import": "./dist/index.js"
     },
-    "./web/*": "./dist/web/*"
+    "./web/*": "./dist/web/*",
+    "./package.json": "./package.json"
   },
   "files": [
     "dist/",
     "README.md"
   ],
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22"
   },
   "scripts": {
     "build": "bun run build:wasm && tsc -p tsconfig.json",

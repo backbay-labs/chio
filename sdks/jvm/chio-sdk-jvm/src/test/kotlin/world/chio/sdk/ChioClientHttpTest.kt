@@ -79,27 +79,34 @@ class ChioClientHttpTest {
         """.trimIndent()
 
     @Test
-    fun evaluateToolCallSendsParameterHash() {
+    fun evaluateToolCallSendsParameterHashAndRejectsAdvisoryWrapper() {
         val observed = AtomicReference<Map<String, Any?>>()
-        register("/v1/evaluate") { exchange ->
+        register("/v1/evaluate/advisory") { exchange ->
             val body = readBody(exchange)
             val parsed: Map<String, Any?> = jacksonObjectMapper().readValue(body)
             observed.set(parsed)
-            // Minimal valid ChioReceipt response.
+            // The sidecar advisory route returns an explicit non-authorization
+            // wrapper, not a bare mediated receipt.
             val resp =
                 """
                 {
-                  "id": "r1", "timestamp": 1700000000, "capability_id": "cap",
-                  "tool_server": "s", "tool_name": "t",
-                  "action": {"parameters": ${'$'}{params}, "parameter_hash": "${'$'}{ph}"},
-                  "decision": {"verdict": "allow"},
-                  "receipt_kind": "mediated_decision",
-                  "boundary_class": "prevent",
-                  "tool_origin": "caller_executed",
-                  "redaction_mode": "none",
-                  "trust_level": "mediated",
-                  "content_hash": "c", "policy_hash": "p",
-                  "evidence": [], "kernel_key": "k", "signature": "sig"
+                  "schema": "chio.sidecar.advisory-evaluation.v1",
+                  "authorization": false,
+                  "authorizationBasis": "advisory_only",
+                  "receipt": {
+                    "id": "r1", "timestamp": 1700000000, "capability_id": "cap",
+                    "tool_server": "s", "tool_name": "t",
+                    "action": {"parameters": ${'$'}{params}, "parameter_hash": "${'$'}{ph}"},
+                    "decision": null,
+                    "receipt_kind": "advisory_evaluation",
+                    "boundary_class": "advisory_only",
+                    "observation_outcome": "evaluated",
+                    "tool_origin": "host_executed_unmediated",
+                    "redaction_mode": "none",
+                    "trust_level": "advisory",
+                    "content_hash": "c", "policy_hash": "p",
+                    "evidence": [], "kernel_key": "k", "signature": "sig"
+                  }
                 }
                 """.trimIndent()
                     .replace("\${params}", """{"a":1}""")
@@ -107,12 +114,33 @@ class ChioClientHttpTest {
             respond(exchange, 200, resp)
         }
         register("/v1/receipts/verify") { exchange ->
-            respond(exchange, 200, structuredVerifyResponse(true))
+            respond(
+                exchange,
+                200,
+                """
+                {
+                  "signature_valid": true,
+                  "signer_trusted": true,
+                  "receipt_id_valid": true,
+                  "parameter_hash_valid": true,
+                  "receipt_kind": "advisory_evaluation",
+                  "boundary_class": "advisory_only",
+                  "trust_level": "advisory",
+                  "result": "none",
+                  "authorized": false,
+                  "signer_key_hex": "${"d".repeat(64)}",
+                  "ok": false
+                }
+                """.trimIndent(),
+            )
         }
 
         ChioClient(baseUrl, Duration.ofSeconds(2)).use { c ->
-            val receipt = c.evaluateToolCall("cap", "s", "t", mapOf("a" to 1))
-            assertTrue(receipt.isAllowed())
+            val err =
+                assertThrows<ChioDeniedError> {
+                    c.evaluateToolCall("cap", "s", "t", mapOf("a" to 1))
+                }
+            assertTrue(err.message!!.contains("advisory evaluation"))
         }
         val sent = observed.get()
         assertEquals("cap", sent["capability_id"])
@@ -124,8 +152,8 @@ class ChioClientHttpTest {
     }
 
     @Test
-    fun evaluateToolCallRejectsUnverifiedAllowReceipt() {
-        register("/v1/evaluate") { exchange ->
+    fun evaluateToolCallRejectsUnwrappedMediatedReceiptFromAdvisoryRoute() {
+        register("/v1/evaluate/advisory") { exchange ->
             val body = readBody(exchange)
             val parsed: Map<String, Any?> = jacksonObjectMapper().readValue(body)
             val resp =
@@ -155,6 +183,45 @@ class ChioClientHttpTest {
             val err =
                 assertThrows<ChioError> {
                     c.evaluateToolCall("cap", "s", "t", mapOf("a" to 1))
+                }
+            assertEquals(ChioErrorCodes.INVALID_RECEIPT, err.code)
+        }
+    }
+
+    @Test
+    fun evaluateToolCallAdvisoryRejectsWrappedMediatedReceipt() {
+        register("/v1/evaluate/advisory") { exchange ->
+            val body = readBody(exchange)
+            val parsed: Map<String, Any?> = jacksonObjectMapper().readValue(body)
+            val resp =
+                """
+                {
+                  "schema": "chio.sidecar.advisory-evaluation.v1",
+                  "authorization": false,
+                  "authorizationBasis": "advisory_only",
+                  "receipt": {
+                    "id": "r1", "timestamp": 1700000000, "capability_id": "cap",
+                    "tool_server": "s", "tool_name": "t",
+                    "action": {"parameters": ${'$'}{params}, "parameter_hash": "abc"},
+                    "decision": {"verdict": "allow"},
+                    "receipt_kind": "mediated_decision",
+                    "boundary_class": "prevent",
+                    "tool_origin": "caller_executed",
+                    "redaction_mode": "none",
+                    "trust_level": "mediated",
+                    "content_hash": "c", "policy_hash": "p",
+                    "evidence": [], "kernel_key": "k", "signature": "sig"
+                  }
+                }
+                """.trimIndent()
+                    .replace("\${params}", jacksonObjectMapper().writeValueAsString(parsed["parameters"]))
+            respond(exchange, 200, resp)
+        }
+
+        ChioClient(baseUrl, Duration.ofSeconds(2)).use { c ->
+            val err =
+                assertThrows<ChioError> {
+                    c.evaluateToolCallAdvisory("cap", "s", "t", mapOf("a" to 1))
                 }
             assertEquals(ChioErrorCodes.INVALID_RECEIPT, err.code)
         }
@@ -222,7 +289,7 @@ class ChioClientHttpTest {
 
     @Test
     fun deny403MapsToStructuredError() {
-        register("/v1/evaluate") { exchange ->
+        register("/v1/evaluate/advisory") { exchange ->
             val body =
                 """
                 {
@@ -268,7 +335,7 @@ class ChioClientHttpTest {
 
     @Test
     fun timeoutMapsToTimeoutError() {
-        register("/v1/evaluate") { exchange ->
+        register("/v1/evaluate/advisory") { exchange ->
             // Hold the connection longer than the client timeout.
             Thread.sleep(2000)
             respond(exchange, 200, "{}")

@@ -1,9 +1,10 @@
-// Re-execution dispatcher for `chio replay traffic --against <policy-ref>`.
+// Re-execution dispatcher for `chio replay traffic --against <policy-path>`.
 //
 // Pipeline:
-// 1. Resolve the [`PolicyRef`] into a materialized [`policy::LoadedPolicy`]
-//    (workspace-path only; manifest-hash and package-version arms surface
-//    [`PolicyRefError::NotResolvable`] until registry crates land).
+// 1. Resolve the [`PolicyRef`] into a materialized [`policy::LoadedPolicy`].
+//    The shipped CLI accepts workspace-policy paths only; registry-backed
+//    manifest/package refs are rejected at parse time until a real resolver
+//    exists.
 // 2. Build a fresh ephemeral [`ChioKernel`] under that policy.
 // 3. Allocate a fresh [`StorePartition::Replay`]. The dispatcher type-fences
 //    this against the production partition; see `receipt_partition.rs`.
@@ -102,12 +103,17 @@ pub enum ExecuteError {
     #[error("traffic replay with --against requires --tenant-pubkey")]
     MissingTenantPubkey,
 
+    /// The selected policy depends on data the current traffic-frame
+    /// schema does not carry.
+    #[error("unsupported pre-output replay policy: {0}")]
+    UnsupportedPreOutputPolicy(String),
+
     /// A non-line-level failure during dispatch.
     #[error("execute error: {0}")]
     Other(String),
 }
 
-/// Entry point for `chio replay traffic --against <policy-ref>`.
+/// Entry point for `chio replay traffic --against <policy-path>`.
 ///
 /// Walks the NDJSON capture in `args.from`, evaluates each frame's
 /// captured `ToolInvocation` against the policy resolved from
@@ -129,6 +135,7 @@ pub fn run_traffic_replay(
     // 2. Resolve the policy-ref.
     let _resolved = against.resolve()?;
     let loaded_policy = against.load_workspace_policy()?;
+    validate_pre_output_replay_policy(&loaded_policy)?;
     let against_label = against.label();
 
     // 3. Allocate a fresh replay partition so receipt ids are
@@ -149,9 +156,10 @@ pub fn run_traffic_replay(
     // 5. Build the ephemeral kernel.
     let kernel_kp = chio_core::crypto::Keypair::generate();
     let mut kernel = build_kernel(loaded_policy, &kernel_kp);
-    // Register a stub tool server so capability evaluation has a server-id target.
-    kernel.register_tool_server(Box::new(StubToolServer {
-        id: REPLAY_STUB_SERVER_ID.to_string(),
+    // Pre-output replay is admitted only for wildcard server grants, so
+    // this target is an internal evaluation handle, not captured evidence.
+    kernel.register_tool_server(Box::new(ReplayProbeToolServer {
+        id: REPLAY_PRE_OUTPUT_SERVER_ID.to_string(),
     }));
 
     // 6. Iterate the NDJSON stream.
@@ -236,8 +244,8 @@ pub fn run_traffic_replay(
             }
             Err(err) => {
                 // NDJSON-level parse error: surface as a partial outcome
-                // with the line number and a stub frame id so the diff
-                // renderer can still report on it. Frame id is
+                // with the line number and a synthetic frame id so the
+                // diff renderer can still report on it. Frame id is
                 // `parse-error:<line>` so it sorts deterministically.
                 errors = errors.saturating_add(1);
                 let line = err.line();
@@ -292,9 +300,63 @@ pub fn run_traffic_replay(
     })
 }
 
-/// Server id used by the replay stub. Pinned so log lines remain
-/// stable across replay runs.
-const REPLAY_STUB_SERVER_ID: &str = "chio-replay-stub";
+/// Server id used by pre-output replay after policy preflight has
+/// rejected concrete-server policies. Pinned so log lines remain stable
+/// across replay runs.
+const REPLAY_PRE_OUTPUT_SERVER_ID: &str = "chio-replay-pre-output";
+
+#[derive(Debug)]
+struct ReplayProbeToolServer {
+    id: String,
+}
+
+#[async_trait::async_trait]
+impl chio_kernel::ToolServerConnection for ReplayProbeToolServer {
+    fn server_id(&self) -> &str {
+        &self.id
+    }
+
+    fn tool_names(&self) -> Vec<String> {
+        vec!["*".to_string()]
+    }
+
+    async fn invoke(
+        &self,
+        tool_name: &str,
+        arguments: serde_json::Value,
+        _nested_flow_bridge: Option<&mut dyn chio_kernel::NestedFlowBridge>,
+    ) -> Result<serde_json::Value, chio_kernel::KernelError> {
+        Ok(serde_json::json!({
+            "replay_mode": "pre-output",
+            "tool": tool_name,
+            "arguments": arguments,
+        }))
+    }
+}
+
+fn validate_pre_output_replay_policy(
+    loaded_policy: &policy::LoadedPolicy,
+) -> Result<(), ExecuteError> {
+    if !loaded_policy.post_invocation_pipeline.is_empty() {
+        return Err(ExecuteError::UnsupportedPreOutputPolicy(
+            "pre-output replay cannot evaluate post-output guards because traffic frames carry response SHA-256, not redacted response bytes"
+                .to_string(),
+        ));
+    }
+
+    for capability in &loaded_policy.default_capabilities {
+        for grant in &capability.scope.grants {
+            if grant.server_id != "*" {
+                return Err(ExecuteError::UnsupportedPreOutputPolicy(format!(
+                    "pre-output replay cannot evaluate server-specific grant '{}:{}' because traffic frames do not carry the original Chio tool-server id",
+                    grant.server_id, grant.tool_name
+                )));
+            }
+        }
+    }
+
+    Ok(())
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ReplayDecision {
@@ -342,9 +404,10 @@ fn recompute_decision(
     );
     let operation = SessionOperation::ToolCall(ToolCallOperation {
         capability: cap,
-        server_id: REPLAY_STUB_SERVER_ID.to_string(),
+        server_id: REPLAY_PRE_OUTPUT_SERVER_ID.to_string(),
         tool_name: invocation.tool_name.clone(),
         arguments,
+        execution_nonce: None,
         model_metadata: None,
     });
 
@@ -374,17 +437,17 @@ fn recompute_decision(
 }
 
 fn replay_guard_reason(
-    decision: Option<&chio_core::receipt::Decision>,
+    decision: Option<&chio_core::receipt::decision::Decision>,
 ) -> (Option<String>, Option<String>) {
     match decision {
-        Some(chio_core::receipt::Decision::Deny { reason, guard }) => {
+        Some(chio_core::receipt::decision::Decision::Deny { reason, guard }) => {
             (Some(guard.clone()), Some(reason.clone()))
         }
-        Some(chio_core::receipt::Decision::Cancelled { reason })
-        | Some(chio_core::receipt::Decision::Incomplete { reason }) => {
+        Some(chio_core::receipt::decision::Decision::Cancelled { reason })
+        | Some(chio_core::receipt::decision::Decision::Incomplete { reason }) => {
             (None, Some(reason.clone()))
         }
-        Some(chio_core::receipt::Decision::Allow) | None => (None, None),
+        Some(chio_core::receipt::decision::Decision::Allow) | None => (None, None),
     }
 }
 
@@ -528,6 +591,53 @@ capabilities: {}
         path
     }
 
+    fn server_scoped_policy(dir: &std::path::Path) -> PathBuf {
+        let path = dir.join("server-scoped-policy.yaml");
+        let body = r#"
+kernel:
+  max_capability_ttl: 3600
+capabilities:
+  default:
+    tools:
+      - server: "filesystem"
+        tool: "search"
+        operations: [invoke]
+        ttl: 300
+guards: {}
+"#;
+        std::fs::write(&path, body).unwrap();
+        path
+    }
+
+    fn output_sensitive_policy(dir: &std::path::Path) -> PathBuf {
+        let path = dir.join("output-sensitive-policy.yaml");
+        let body = r#"
+kernel:
+  max_capability_ttl: 3600
+guards:
+  query_result:
+    redact_pii_patterns:
+      - "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"
+capabilities: {}
+"#;
+        std::fs::write(&path, body).unwrap();
+        path
+    }
+
+    fn traffic_args(
+        ndjson_path: PathBuf,
+        tenant_pubkey: PathBuf,
+    ) -> TrafficArgs {
+        TrafficArgs {
+            from: ndjson_path,
+            schema: "chio-tee-frame.v1".to_string(),
+            tenant_pubkey: Some(tenant_pubkey),
+            json: false,
+            against: None,
+            run_id: None,
+        }
+    }
+
     #[test]
     fn run_traffic_replay_emits_namespaced_receipt_ids() {
         let dir = tempfile::tempdir().unwrap();
@@ -537,14 +647,7 @@ capabilities: {}
         let ndjson_path = write_capture(&[frame], dir.path());
         let tenant_pubkey = write_tenant_pubkey(dir.path(), &kp);
 
-        let args = TrafficArgs {
-            from: ndjson_path,
-            schema: "chio-tee-frame.v1".to_string(),
-            tenant_pubkey: Some(tenant_pubkey),
-            json: false,
-            against: None,
-            run_id: None,
-        };
+        let args = traffic_args(ndjson_path, tenant_pubkey);
         let against = PolicyRef::WorkspacePath(policy_path);
         let report = run_traffic_replay(&args, &against).unwrap();
 
@@ -578,14 +681,7 @@ capabilities: {}
         let ndjson_path = write_capture(&frames, dir.path());
         let tenant_pubkey = write_tenant_pubkey(dir.path(), &kp);
 
-        let args = TrafficArgs {
-            from: ndjson_path,
-            schema: "chio-tee-frame.v1".to_string(),
-            tenant_pubkey: Some(tenant_pubkey),
-            json: false,
-            against: None,
-            run_id: None,
-        };
+        let args = traffic_args(ndjson_path, tenant_pubkey);
         let against = PolicyRef::WorkspacePath(policy_path);
         let report = run_traffic_replay(&args, &against).unwrap();
 
@@ -606,14 +702,7 @@ capabilities: {}
         let kp = signing_keypair();
         let tenant_pubkey = write_tenant_pubkey(dir.path(), &kp);
 
-        let args = TrafficArgs {
-            from: ndjson_path,
-            schema: "chio-tee-frame.v1".to_string(),
-            tenant_pubkey: Some(tenant_pubkey),
-            json: false,
-            against: None,
-            run_id: None,
-        };
+        let args = traffic_args(ndjson_path, tenant_pubkey);
         let against = PolicyRef::WorkspacePath(policy_path);
         let report = run_traffic_replay(&args, &against).unwrap();
 
@@ -629,32 +718,6 @@ capabilities: {}
     }
 
     #[test]
-    fn run_traffic_replay_propagates_unresolvable_policy_ref() {
-        let dir = tempfile::tempdir().unwrap();
-        let kp = signing_keypair();
-        let frame = signed_frame(&kp, "01H7ZZZZZZZZZZZZZZZZZZZZZZ");
-        let ndjson_path = write_capture(&[frame], dir.path());
-        let tenant_pubkey = write_tenant_pubkey(dir.path(), &kp);
-
-        let args = TrafficArgs {
-            from: ndjson_path,
-            schema: "chio-tee-frame.v1".to_string(),
-            tenant_pubkey: Some(tenant_pubkey),
-            json: false,
-            against: None,
-            run_id: None,
-        };
-        // Manifest-hash arm is not yet resolvable.
-        let hash_str = "ab".repeat(32);
-        let against = PolicyRef::parse(&hash_str).unwrap();
-        let err = run_traffic_replay(&args, &against).unwrap_err();
-        match err {
-            ExecuteError::PolicyRef(PolicyRefError::NotResolvable(_)) => {}
-            other => panic!("expected NotResolvable, got {other:?}"),
-        }
-    }
-
-    #[test]
     fn run_traffic_replay_propagates_workspace_load_error() {
         let dir = tempfile::tempdir().unwrap();
         let kp = signing_keypair();
@@ -662,14 +725,7 @@ capabilities: {}
         let ndjson_path = write_capture(&[frame], dir.path());
         let tenant_pubkey = write_tenant_pubkey(dir.path(), &kp);
 
-        let args = TrafficArgs {
-            from: ndjson_path,
-            schema: "chio-tee-frame.v1".to_string(),
-            tenant_pubkey: Some(tenant_pubkey),
-            json: false,
-            against: None,
-            run_id: None,
-        };
+        let args = traffic_args(ndjson_path, tenant_pubkey);
         let against = PolicyRef::parse("path:/no/such/policy.yaml").unwrap();
         let err = run_traffic_replay(&args, &against).unwrap_err();
         match err {
@@ -696,6 +752,40 @@ capabilities: {}
         let against = PolicyRef::parse("path:/no/such/policy.yaml").unwrap();
         let err = run_traffic_replay(&args, &against).unwrap_err();
         assert!(matches!(err, ExecuteError::MissingTenantPubkey));
+    }
+
+    #[test]
+    fn run_traffic_replay_rejects_server_scoped_policy_in_pre_output_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let policy_path = server_scoped_policy(dir.path());
+        let kp = signing_keypair();
+        let frame = signed_frame(&kp, "01H7ZZZZZZZZZZZZZZZZZZZZZZ");
+        let ndjson_path = write_capture(&[frame], dir.path());
+        let tenant_pubkey = write_tenant_pubkey(dir.path(), &kp);
+
+        let args = traffic_args(ndjson_path, tenant_pubkey);
+        let against = PolicyRef::WorkspacePath(policy_path);
+        let err = run_traffic_replay(&args, &against).unwrap_err();
+
+        assert!(err.to_string().contains("pre-output replay"));
+        assert!(err.to_string().contains("server-specific"));
+    }
+
+    #[test]
+    fn run_traffic_replay_rejects_post_output_guard_in_pre_output_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let policy_path = output_sensitive_policy(dir.path());
+        let kp = signing_keypair();
+        let frame = signed_frame(&kp, "01H7ZZZZZZZZZZZZZZZZZZZZZZ");
+        let ndjson_path = write_capture(&[frame], dir.path());
+        let tenant_pubkey = write_tenant_pubkey(dir.path(), &kp);
+
+        let args = traffic_args(ndjson_path, tenant_pubkey);
+        let against = PolicyRef::WorkspacePath(policy_path);
+        let err = run_traffic_replay(&args, &against).unwrap_err();
+
+        assert!(err.to_string().contains("pre-output replay"));
+        assert!(err.to_string().contains("post-output"));
     }
 
     #[test]

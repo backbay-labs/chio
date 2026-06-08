@@ -3,14 +3,20 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use chio_core::capability::{CapabilityToken, ChioScope, Operation, ToolGrant};
+use chio_core::capability::{
+    scope::{ChioScope, Operation, ToolGrant},
+    token::CapabilityToken,
+};
 use chio_core::crypto::Keypair;
-use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, GuardEvidence, ToolCallAction};
+use chio_core::receipt::{
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    metadata::GuardEvidence,
+};
 use chio_core::session::{OperationContext, RequestId, SessionId};
 use chio_kernel::{
-    capability_matches_request, BudgetStore, ChioKernel, Guard, GuardContext, InMemoryBudgetStore,
-    InMemoryRevocationStore, KernelConfig, KernelError, NestedFlowBridge, ReceiptLog,
-    RevocationStore, Session, ToolCallRequest, ToolServerConnection, Verdict,
+    capability_matches_request, BudgetStore, ChioKernel, Guard, GuardContext, GuardDecision,
+    InMemoryBudgetStore, InMemoryRevocationStore, KernelConfig, KernelError, NestedFlowBridge,
+    ReceiptLog, RevocationStore, Session, ToolCallRequest, ToolServerConnection, Verdict,
     DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_MAX_STREAM_DURATION_SECS,
     DEFAULT_MAX_STREAM_TOTAL_BYTES,
 };
@@ -349,6 +355,7 @@ fn make_request(capability: &CapabilityToken) -> ToolCallRequest {
             "bytes": 4096,
         }),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
@@ -369,6 +376,7 @@ fn make_deny_request(capability: &CapabilityToken) -> ToolCallRequest {
             "bytes": 8192,
         }),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
@@ -389,6 +397,7 @@ fn make_guard_request(capability: &CapabilityToken) -> ToolCallRequest {
             "bytes": 2048,
         }),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
@@ -426,9 +435,10 @@ fn make_receipt_body(keypair: &Keypair, capability: &CapabilityToken) -> ChioRec
             details: None,
         }],
         metadata: None,
-        trust_level: chio_core::TrustLevel::default(),
+        trust_level: chio_core::receipt::kinds::TrustLevel::default(),
         tenant_id: None,
         kernel_key: keypair.public_key(),
+        bbs_projection_version: None,
     }
 }
 
@@ -454,7 +464,7 @@ impl Guard for BenchGuard {
         self.name
     }
 
-    fn evaluate(&self, ctx: &GuardContext<'_>) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, ctx: &GuardContext<'_>) -> Result<GuardDecision, KernelError> {
         if ctx
             .request
             .arguments
@@ -462,9 +472,9 @@ impl Guard for BenchGuard {
             .and_then(|value| value.as_str())
             == Some("read")
         {
-            Ok(Verdict::Allow)
+            Ok(GuardDecision::allow())
         } else {
-            Ok(Verdict::Deny)
+            Ok(GuardDecision::deny(Vec::new()))
         }
     }
 }

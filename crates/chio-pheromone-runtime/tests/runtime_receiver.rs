@@ -5,11 +5,12 @@ use std::path::PathBuf;
 
 use chio_core_types::crypto::sha256_hex;
 use chio_core_types::merkle::MerkleTree;
-use chio_core_types::receipt::SignedExportEnvelope;
+use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_core_types::Keypair;
 use chio_federation::{
-    PheromoneDepositGossip, PheromoneGossipBatch, PheromoneTransitPolicy,
-    PHEROMONE_GOSSIP_BATCH_SCHEMA, PHEROMONE_GOSSIP_SCHEMA, PHEROMONE_TRANSIT_POLICY_SCHEMA,
+    pheromone_gossip::PheromoneDepositGossip, pheromone_gossip::PheromoneGossipBatch,
+    pheromone_gossip::PheromoneTransitPolicy, pheromone_gossip::PHEROMONE_GOSSIP_BATCH_SCHEMA,
+    pheromone_gossip::PHEROMONE_GOSSIP_SCHEMA, pheromone_gossip::PHEROMONE_TRANSIT_POLICY_SCHEMA,
 };
 use chio_pheromone::{
     agent_passport_jwk_thumbprint, agent_passport_key_hash, scarcity_policy_sha256,
@@ -23,12 +24,13 @@ use chio_pheromone::{
     PHEROMONE_OBSERVATION_COST_LEAF_SCHEMA, PHEROMONE_OBSERVATION_COST_STATEMENT_SCHEMA,
     PHEROMONE_OBSERVATION_COST_TELEMETRY_ROOT_SCHEMA, PHEROMONE_SCARCITY_POLICY_SCHEMA,
 };
+use chio_pheromone_runtime::store::SqlitePheromoneRuntimeStore;
 use chio_pheromone_runtime::{
     peer_weights_from_json, runtime_policy_document_sha256, runtime_policy_from_json,
     ChioWorkflowProofPackage, ChioWorkflowVerificationContext, ChioWorkflowVerifierTrustBundle,
     PeerWeightProvider, PheromoneBatchOutcome, PheromoneReceiveReport, PheromoneReceiver,
     PheromoneReceiverConfig, PheromoneRuntimeError, PheromoneRuntimeStore,
-    SqlitePheromoneRuntimeStore, StaticPeerWeightProvider, VerifiedChioWorkflowResolver,
+    StaticPeerWeightProvider, VerifiedChioWorkflowResolver,
 };
 
 fn fixture(path: &str) -> PathBuf {

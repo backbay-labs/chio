@@ -14,7 +14,9 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use chio_http_session::SessionJournal;
-use chio_kernel::{Guard, GuardContext, KernelError, Verdict};
+#[cfg(test)]
+use chio_kernel::Verdict;
+use chio_kernel::{Guard, GuardContext, GuardDecision, KernelError};
 
 // ---------------------------------------------------------------------------
 // SequencePolicy
@@ -58,7 +60,7 @@ impl Guard for BehavioralSequenceGuard {
         "behavioral-sequence"
     }
 
-    fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
         let tool_name = &ctx.request.tool_name;
 
         let snapshot = self.journal.snapshot().map_err(|e| {
@@ -72,7 +74,7 @@ impl Guard for BehavioralSequenceGuard {
         if sequence.is_empty() {
             if let Some(ref required_first) = self.policy.required_first_tool {
                 if tool_name != required_first {
-                    return Ok(Verdict::Deny);
+                    return Ok(GuardDecision::deny(Vec::new()));
                 }
             }
         }
@@ -82,7 +84,7 @@ impl Guard for BehavioralSequenceGuard {
             let invoked: HashSet<&str> = sequence.iter().map(|s| s.as_str()).collect();
             for req in required {
                 if !invoked.contains(req.as_str()) {
-                    return Ok(Verdict::Deny);
+                    return Ok(GuardDecision::deny(Vec::new()));
                 }
             }
         }
@@ -91,7 +93,7 @@ impl Guard for BehavioralSequenceGuard {
         if let Some(last_tool) = sequence.last() {
             for (from, to) in &self.policy.forbidden_transitions {
                 if last_tool == from && tool_name == to {
-                    return Ok(Verdict::Deny);
+                    return Ok(GuardDecision::deny(Vec::new()));
                 }
             }
         }
@@ -107,11 +109,11 @@ impl Guard for BehavioralSequenceGuard {
                 }
             }
             if count >= max_consec {
-                return Ok(Verdict::Deny);
+                return Ok(GuardDecision::deny(Vec::new()));
             }
         }
 
-        Ok(Verdict::Allow)
+        Ok(GuardDecision::allow())
     }
 }
 
@@ -142,16 +144,16 @@ mod tests {
         tool_name: &str,
     ) -> (
         chio_kernel::ToolCallRequest,
-        chio_core::capability::ChioScope,
+        chio_core::capability::scope::ChioScope,
         String,
         String,
     ) {
         let kp = chio_core::crypto::Keypair::generate();
-        let scope = chio_core::capability::ChioScope::default();
+        let scope = chio_core::capability::scope::ChioScope::default();
         let agent_id = kp.public_key().to_hex();
         let server_id = "srv-test".to_string();
 
-        let cap_body = chio_core::capability::CapabilityTokenBody {
+        let cap_body = chio_core::capability::token::CapabilityTokenBody {
             id: "cap-test".to_string(),
             issuer: kp.public_key(),
             subject: kp.public_key(),
@@ -160,7 +162,8 @@ mod tests {
             expires_at: u64::MAX,
             delegation_chain: vec![],
         };
-        let cap = chio_core::capability::CapabilityToken::sign(cap_body, &kp).expect("sign cap");
+        let cap =
+            chio_core::capability::token::CapabilityToken::sign(cap_body, &kp).expect("sign cap");
 
         let request = chio_kernel::ToolCallRequest {
             request_id: "req-test".to_string(),
@@ -170,6 +173,7 @@ mod tests {
             agent_id: agent_id.clone(),
             arguments: serde_json::json!({}),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
@@ -181,7 +185,7 @@ mod tests {
 
     fn guard_ctx<'a>(
         request: &'a chio_kernel::ToolCallRequest,
-        scope: &'a chio_core::capability::ChioScope,
+        scope: &'a chio_core::capability::scope::ChioScope,
         agent_id: &'a String,
         server_id: &'a String,
     ) -> chio_kernel::GuardContext<'a> {

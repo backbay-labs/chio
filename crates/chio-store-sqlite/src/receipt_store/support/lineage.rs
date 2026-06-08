@@ -225,13 +225,14 @@ fn extract_receipt_lineage_statement_identifiers(
     let schema = statement_json
         .get("schema")
         .and_then(serde_json::Value::as_str);
-    if schema != Some(chio_core::receipt::CHIO_RECEIPT_LINEAGE_STATEMENT_SCHEMA) {
+    if schema != Some(chio_core::receipt::lineage::CHIO_RECEIPT_LINEAGE_STATEMENT_SCHEMA) {
         return ReceiptLineageStatementIdentifiers::default();
     }
 
-    if let Ok(statement) = serde_json::from_value::<chio_core::receipt::ReceiptLineageStatement>(
-        statement_json.clone(),
-    ) {
+    if let Ok(statement) = serde_json::from_value::<
+        chio_core::receipt::lineage::ReceiptLineageStatement,
+    >(statement_json.clone())
+    {
         return ReceiptLineageStatementIdentifiers {
             statement_id: Some(statement.id),
             child_receipt_id: Some(statement.child_receipt_id),
@@ -242,9 +243,10 @@ fn extract_receipt_lineage_statement_identifiers(
         };
     }
 
-    if let Ok(statement) = serde_json::from_value::<chio_core::receipt::ReceiptLineageStatementBody>(
-        statement_json.clone(),
-    ) {
+    if let Ok(statement) = serde_json::from_value::<
+        chio_core::receipt::lineage::ReceiptLineageStatementBody,
+    >(statement_json.clone())
+    {
         return ReceiptLineageStatementIdentifiers {
             statement_id: Some(statement.id),
             child_receipt_id: Some(statement.child_receipt_id),

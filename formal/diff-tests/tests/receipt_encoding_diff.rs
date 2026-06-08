@@ -56,9 +56,14 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use chio_core::{
-    canonical_json_bytes, canonical_json_string, sha256_hex, ActorRef, BoundaryClass, ChioReceipt,
-    ChioReceiptBody, Decision, GuardEvidence, Keypair, ReceiptKind, RedactionMode, ToolCallAction,
-    ToolOrigin, TrustLevel,
+    canonical_json_bytes, canonical_json_string,
+    receipt::{
+        body::{ChioReceipt, ChioReceiptBody},
+        decision::{Decision, ToolCallAction},
+        kinds::{BoundaryClass, ReceiptKind, RedactionMode, ToolOrigin, TrustLevel},
+        metadata::{ActorRef, GuardEvidence},
+    },
+    sha256_hex, Keypair,
 };
 use proptest::prelude::*;
 use proptest::test_runner::Config as ProptestConfig;
@@ -313,6 +318,7 @@ fn build_receipt(scaffold: &ReceiptScaffold, keypair: &Keypair) -> ChioReceipt {
         trust_level: TrustLevel::default(),
         tenant_id: None,
         kernel_key: keypair.public_key(),
+        bbs_projection_version: None,
     };
     ChioReceipt::sign(body, keypair).expect("sign receipt")
 }

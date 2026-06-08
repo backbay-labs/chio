@@ -13,7 +13,9 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Instant;
 
-use chio_kernel::{Guard, GuardContext, KernelError, Verdict};
+#[cfg(test)]
+use chio_kernel::Verdict;
+use chio_kernel::{Guard, GuardContext, GuardDecision, KernelError};
 
 // ---------------------------------------------------------------------------
 // TokenBucket (private)
@@ -145,7 +147,7 @@ impl Guard for VelocityGuard {
         "velocity"
     }
 
-    fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
         let grant_index = ctx.matched_grant_index.unwrap_or(0);
         let key = (ctx.request.capability.id.clone(), grant_index);
 
@@ -163,7 +165,7 @@ impl Guard for VelocityGuard {
                 .entry(key.clone())
                 .or_insert_with(|| TokenBucket::new(capacity, max_inv as u64, window_secs));
             if !bucket.try_consume(1) {
-                return Ok(Verdict::Deny);
+                return Ok(GuardDecision::deny(Vec::new()));
             }
         }
 
@@ -179,11 +181,11 @@ impl Guard for VelocityGuard {
                 .entry(key)
                 .or_insert_with(|| TokenBucket::new(capacity, max_spend, window_secs));
             if !bucket.try_consume(spend_units) {
-                return Ok(Verdict::Deny);
+                return Ok(GuardDecision::deny(Vec::new()));
             }
         }
 
-        Ok(Verdict::Allow)
+        Ok(GuardDecision::allow())
     }
 }
 
@@ -220,7 +222,8 @@ mod tests {
     use std::time::Duration;
 
     use chio_core::capability::{
-        CapabilityToken, CapabilityTokenBody, ChioScope, MonetaryAmount, Operation, ToolGrant,
+        scope::{ChioScope, MonetaryAmount, Operation, ToolGrant},
+        token::{CapabilityToken, CapabilityTokenBody},
     };
     use chio_core::crypto::Keypair;
 
@@ -240,6 +243,7 @@ mod tests {
             agent_id: agent_id.to_string(),
             arguments: serde_json::json!({}),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
@@ -484,6 +488,7 @@ mod tests {
             agent_id: agent.clone(),
             arguments: serde_json::json!({}),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
@@ -497,6 +502,7 @@ mod tests {
             agent_id: agent.clone(),
             arguments: serde_json::json!({}),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
@@ -544,7 +550,7 @@ mod tests {
             guard.evaluate(&ctx).expect("should not error");
         }
 
-        // The result must be Ok(Verdict::Deny), not Err.
+        // The result must be Ok(GuardDecision::deny(Vec::new())), not Err.
         let ctx = guard_ctx(&request, &scope, &agent, &server, None);
         let result = guard.evaluate(&ctx);
         assert!(result.is_ok(), "rate limit must return Ok, not Err");

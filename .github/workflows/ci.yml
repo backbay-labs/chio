@@ -93,6 +93,31 @@ jobs:
           RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
         run: cargo fmt --all -- --check
 
+      - name: Rust file hygiene
+        env:
+          CARGO_BUILD_JOBS: "1"
+          RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
+        run: |
+          python3 scripts/check-rust-file-hygiene.py
+          bash scripts/tests/check-rust-file-hygiene.test.sh
+
+      - name: Stub surface hygiene
+        env:
+          CARGO_BUILD_JOBS: "1"
+          RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
+        run: |
+          python3 scripts/check-stub-surfaces.py
+          bash scripts/tests/check-stub-surfaces.test.sh
+          bash scripts/tests/check-sdk-release-python-generated.test.sh
+          bash scripts/tests/check-sdk-release-ts-bun.test.sh
+          bash scripts/tests/conformance-matrix-peer-target.test.sh
+          bash scripts/tests/qualify-release-provider-replay.test.sh
+          bash scripts/tests/qualify-release-peer-smoke.test.sh
+          bash scripts/tests/release-qualification-formal-tools.test.sh
+          bash scripts/tests/release-npm-package-matrix.test.sh
+          bash scripts/tests/release-pypi-package-matrix.test.sh
+          bash scripts/tests/provider-fixture-claims.test.sh
+
       - name: Workspace clippy
         env:
           CARGO_BUILD_JOBS: "1"

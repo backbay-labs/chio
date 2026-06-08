@@ -1,7 +1,7 @@
 //! Post-invocation hook pipeline executed after a tool returns output.
 
-use chio_core::receipt::GuardEvidence;
-use chio_core::{AgentId, ChioScope, ServerId};
+use chio_core::receipt::metadata::GuardEvidence;
+use chio_core::{capability::scope::ChioScope, AgentId, ServerId};
 use serde_json::Value;
 
 use crate::runtime::ToolCallRequest;
@@ -84,6 +84,10 @@ impl PostInvocationPipeline {
 
     pub fn add(&mut self, hook: Box<dyn PostInvocationHook>) {
         self.hooks.push(hook);
+    }
+
+    pub fn append(&mut self, mut other: Self) {
+        self.hooks.append(&mut other.hooks);
     }
 
     #[must_use]

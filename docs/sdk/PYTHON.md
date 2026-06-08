@@ -93,35 +93,49 @@ async with ChioClient() as client:
     # Validate a token
     is_valid = await client.validate_capability(token)
 
-    # Attenuate (narrow) a token
-    narrower_scope = ChioScope(grants=[
-        ToolGrant(
-            server_id="deploy-server",
-            tool_name="deploy",
-            operations=[Operation.INVOKE],
-            max_invocations=5,
-        ),
-    ])
-    child_token = await client.attenuate_capability(
-        token, new_scope=narrower_scope
-    )
+    # Sidecar attenuation fails closed because it requires the parent
+    # subject signer. Mint delegated child tokens in a subject-signer flow.
 ```
 
-### Tool Evaluation
+### Tool-Call Advisory Evaluation
 
 ```python
-receipt = await client.evaluate_tool_call(
+receipt = await client.evaluate_tool_call_advisory(
     capability_id="cap-abc-123",
     tool_server="my-server",
     tool_name="my-tool",
     parameters={"key": "value"},
 )
-
-if receipt.is_allowed:
-    print(f"Allowed, receipt: {receipt.id}")
-else:
-    print(f"Denied by {receipt.decision.guard}: {receipt.decision.reason}")
+print(f"Advisory receipt: {receipt.id}")
 ```
+
+The `chio-api-protect` sidecar advisory routes
+(`POST /v1/evaluate/advisory` and deprecated `POST /v1/evaluate`) return
+`authorization: false`, `authorizationBasis: "advisory_only"`, and an
+advisory receipt. The SDK verifies that receipt's integrity, but advisory
+evaluation is observability only.
+
+### Tool-Call Authorization
+
+```python
+from chio_sdk.errors import ChioDeniedError
+
+try:
+    receipt = await client.evaluate_tool_call(
+        capability_id="cap-abc-123",
+        tool_server="my-server",
+        tool_name="my-tool",
+        parameters={"key": "value"},
+    )
+except ChioDeniedError as error:
+    print(f"Not authorized: {error}")
+else:
+    print(f"Mediated authorization receipt: {receipt.id}")
+```
+
+`evaluate_tool_call` returns only for authoritative mediated tool-call
+authorization receipts. With the current advisory-only sidecar route, it
+fails closed after integrity-checking the advisory receipt.
 
 ### HTTP Request Evaluation
 
@@ -145,6 +159,11 @@ evaluation = await client.evaluate_http_request(
 )
 http_receipt = evaluation.receipt
 ```
+
+`evaluate_http_request` uses the mediated HTTP evaluation route
+`POST /chio/evaluate`. An allow-shaped response must include a mediated
+receipt and pass `verify_http_receipt` before SDK callers treat it as
+authorization. Advisory evaluation is observability only.
 
 ### Receipt Verification
 
@@ -176,7 +195,9 @@ All models use Pydantic v2 and match the Rust kernel's canonical JSON format.
 | `delegation_chain` | `list[DelegationLink]` | Delegation history |
 | `signature` | `str` | Hex-encoded Ed25519 signature |
 
-**ChioReceipt** -- signed proof that a tool call was evaluated by the kernel.
+**ChioReceipt** -- signed proof for a tool-call evaluation. It is execution
+authorization only when `receipt_kind == "mediated_decision"`,
+`boundary_class == "prevent"`, and `trust_level == "mediated"`.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -662,9 +683,12 @@ result = await executor.ainvoke({"input": "Deploy the latest build"})
 
 Chio tools require async invocation. They raise `NotImplementedError` if called synchronously. Use `ainvoke` or `_arun`.
 
-### Accessing Receipts
+### Accessing Advisory Receipts
 
-After each tool invocation, the signed receipt is stored on the tool:
+After each LangChain tool invocation, the signed advisory receipt is stored on
+the tool for audit. This receipt is not execution authorization, so
+`receipt.is_allowed` remains false even when advisory evaluation observed the
+call:
 
 ```python
 tool = toolkit.create_tool(
@@ -675,13 +699,19 @@ tool = toolkit.create_tool(
 
 result = await tool.ainvoke({"environment": "production"})
 receipt = tool.last_receipt  # ChioReceipt or None
-if receipt and receipt.is_allowed:
-    print(f"Deployed with receipt {receipt.id}")
+if receipt:
+    print(f"Advisory evaluation receipt {receipt.id}")
+
+# result is a JSON string such as:
+# {"error": "non_authorizing", "receipt_id": "..."}
 ```
 
 ### Error Handling
 
-On denial or sidecar errors, ChioTool returns a JSON string with error details rather than raising an exception. This allows LangChain agents to observe and react to denials:
+On advisory denial, non-authorizing advisory evaluation, or sidecar errors,
+ChioTool returns a JSON string with error details rather than raising an
+exception. This allows LangChain agents to observe and react to denials without
+treating advisory receipts as mediated execution authorization:
 
 ```json
 {"error": "denied", "guard": "velocity-guard", "reason": "rate limit exceeded"}

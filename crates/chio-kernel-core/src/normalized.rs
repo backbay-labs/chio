@@ -9,8 +9,11 @@ use alloc::vec::Vec;
 use core::convert::TryFrom;
 
 use chio_core_types::capability::{
-    CapabilityToken, ChioScope, Constraint, MonetaryAmount, Operation, PromptGrant, ResourceGrant,
-    RuntimeAssuranceTier, ToolGrant,
+    runtime_attestation::RuntimeAssuranceTier,
+    scope::{
+        ChioScope, Constraint, MonetaryAmount, Operation, PromptGrant, ResourceGrant, ToolGrant,
+    },
+    token::CapabilityToken,
 };
 use serde::{Deserialize, Serialize};
 

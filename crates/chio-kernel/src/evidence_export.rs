@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use chio_core::receipt::{ChildRequestReceipt, ChioReceipt};
+use chio_core::receipt::{body::ChioReceipt, lineage::ChildRequestReceipt};
 use serde::{Deserialize, Serialize};
 
 use crate::capability_lineage::{CapabilityLineageError, CapabilitySnapshot};
@@ -410,7 +410,7 @@ fn trusted_publication_anchor(
             return None;
         }
         if binding.publication_identity.kind
-            == chio_core::receipt::CheckpointPublicationIdentityKind::LocalLog
+            == chio_core::receipt::checkpoint::CheckpointPublicationIdentityKind::LocalLog
             && binding.publication_identity.identity != publication.log_id
         {
             return None;
@@ -733,13 +733,13 @@ mod tests {
         };
         let mut transparency =
             build_checkpoint_transparency(&[first.clone(), second.clone()]).expect("summary");
-        let binding = chio_core::receipt::CheckpointPublicationTrustAnchorBinding {
-            publication_identity: chio_core::receipt::CheckpointPublicationIdentity::new(
-                chio_core::receipt::CheckpointPublicationIdentityKind::LocalLog,
+        let binding = chio_core::receipt::checkpoint::CheckpointPublicationTrustAnchorBinding {
+            publication_identity: chio_core::receipt::checkpoint::CheckpointPublicationIdentity::new(
+                chio_core::receipt::checkpoint::CheckpointPublicationIdentityKind::LocalLog,
                 transparency.publications[0].log_id.clone(),
             ),
-            trust_anchor_identity: chio_core::receipt::CheckpointTrustAnchorIdentity::new(
-                chio_core::receipt::CheckpointTrustAnchorIdentityKind::TransparencyRoot,
+            trust_anchor_identity: chio_core::receipt::checkpoint::CheckpointTrustAnchorIdentity::new(
+                chio_core::receipt::checkpoint::CheckpointTrustAnchorIdentityKind::TransparencyRoot,
                 "root-set-1",
             ),
             trust_anchor_ref: "witness-root".to_string(),

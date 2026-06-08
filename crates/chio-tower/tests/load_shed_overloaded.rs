@@ -2,7 +2,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use chio_core_types::capability::{CapabilityToken, CapabilityTokenBody, ChioScope};
+use chio_core_types::capability::{
+    scope::ChioScope,
+    token::{CapabilityToken, CapabilityTokenBody},
+};
 use chio_core_types::crypto::Keypair;
 use chio_kernel::ToolCallRequest;
 use chio_tower::{KernelRequest, KernelServiceError, TenantConcurrencyLimitLayer};
@@ -61,6 +64,7 @@ fn make_request(request_id: &str, tenant_id: &str) -> KernelRequest {
         agent_id: subject_keypair.public_key().to_hex(),
         arguments: serde_json::json!({}),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,

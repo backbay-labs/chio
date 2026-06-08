@@ -43,7 +43,7 @@ use std::sync::OnceLock;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use chio_kernel::{Guard, GuardContext, KernelError, Verdict};
+use chio_kernel::{Guard, GuardContext, GuardDecision, KernelError};
 
 use crate::action::{extract_action_checked, ToolAction};
 
@@ -264,25 +264,25 @@ impl Guard for CodeExecutionGuard {
         "code-execution"
     }
 
-    fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
         if !self.enabled {
-            return Ok(Verdict::Allow);
+            return Ok(GuardDecision::allow());
         }
 
         let action = match extract_action_checked(&ctx.request.tool_name, &ctx.request.arguments) {
             Ok(action) => action,
-            Err(_) => return Ok(Verdict::Deny),
+            Err(_) => return Ok(GuardDecision::deny(Vec::new())),
         };
         let (language, code) = match action {
             ToolAction::CodeExecution { language, code } => (language, code),
-            _ => return Ok(Verdict::Allow),
+            _ => return Ok(GuardDecision::allow()),
         };
 
         // 1. Language allowlist.
         if !self.language_allowlist.is_empty() {
             let lang = language.to_ascii_lowercase();
             if lang == "unknown" || !self.language_allowlist.contains(&lang) {
-                return Ok(Verdict::Deny);
+                return Ok(GuardDecision::deny(Vec::new()));
             }
         }
 
@@ -298,7 +298,7 @@ impl Guard for CodeExecutionGuard {
                 max_scan_bytes = self.max_scan_bytes,
                 "denying code execution: payload exceeds max_scan_bytes"
             );
-            return Ok(Verdict::Deny);
+            return Ok(GuardDecision::deny(Vec::new()));
         }
         let scanned = code.as_str();
 
@@ -310,7 +310,7 @@ impl Guard for CodeExecutionGuard {
                     module = %name,
                     "denying code execution: dangerous module detected"
                 );
-                return Ok(Verdict::Deny);
+                return Ok(GuardDecision::deny(Vec::new()));
             }
         }
 
@@ -318,7 +318,7 @@ impl Guard for CodeExecutionGuard {
         if !self.network_access {
             let requested = Self::requested_network_access(&ctx.request.arguments).unwrap_or(false);
             if requested || Self::code_uses_network(scanned) {
-                return Ok(Verdict::Deny);
+                return Ok(GuardDecision::deny(Vec::new()));
             }
         }
 
@@ -326,12 +326,12 @@ impl Guard for CodeExecutionGuard {
         if let Some(max_ms) = self.max_execution_time_ms {
             if let Some(requested) = Self::read_execution_time_ms(&ctx.request.arguments) {
                 if requested > max_ms {
-                    return Ok(Verdict::Deny);
+                    return Ok(GuardDecision::deny(Vec::new()));
                 }
             }
         }
 
-        Ok(Verdict::Allow)
+        Ok(GuardDecision::allow())
     }
 }
 

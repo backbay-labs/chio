@@ -135,7 +135,7 @@ class DLQRouter:
           operator triage and optional redrive,
         * the original record value (when
           ``include_original_value=True``) encoded as UTF-8 text when
-          the bytes decode cleanly, else a ``{"hex": "..."}`` stub.
+          the bytes decode cleanly, else a ``{"hex": "..."}`` marker.
         """
         if receipt.is_allowed:
             raise ChioStreamingConfigError(

@@ -16,10 +16,11 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use chio_core::capability::CapabilityCryptoFloor;
+use chio_core::capability::crypto_floor::CapabilityCryptoFloor;
 use chio_core::capability::{
-    compute_attenuation_witness, scope_hash, AttenuationProof, CapabilityToken,
-    CapabilityTokenAttenuationBody, CapabilityTokenBody, ChioScope, Operation, ToolGrant,
+    attenuation::{compute_attenuation_witness, scope_hash, AttenuationProof},
+    scope::{ChioScope, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenAttenuationBody, CapabilityTokenBody},
 };
 use chio_core::crypto::Keypair;
 use chio_kernel_core::{verify_capability_with_floor_and_trust_root, CapabilityError, FixedClock};

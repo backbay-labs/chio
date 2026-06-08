@@ -9,9 +9,12 @@ use crate::{GuardEvidence, HttpReceipt, Verdict};
 ///
 /// On an `Allow` verdict from a kernel configured with
 /// `ExecutionNonceConfig`, the response carries a short-lived signed nonce
-/// that the client MUST re-present before executing the tool call. The
-/// field is `None` on `Deny`/`Cancel`/`Incomplete` and on deployments
-/// without a nonce config, preserving wire-level backward compatibility.
+/// that the client MUST re-present as `ToolCallRequest::execution_nonce`
+/// before executing the tool call. In strict mode, nonce preflight responses
+/// carry `Verdict::Incomplete` plus this field; callers must retry with the
+/// nonce before any side effect is authorized. The field is `None` on
+/// `Deny`/`Cancel`, on deployments without a nonce config, and on advisory
+/// sidecar aliases that do not perform kernel dispatch.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EvaluateResponse {
     pub verdict: Verdict,
@@ -47,10 +50,11 @@ impl VerifyReceiptResponse {
         let signature_valid = receipt.verify_signature().unwrap_or(false);
         let receipt_id_valid = receipt.receipt_id_valid().unwrap_or(false);
         let parameter_hash_valid = is_lower_hex_64(&receipt.content_hash);
-        let semantic_valid = receipt.receipt_kind == chio_core_types::ReceiptKind::MediatedDecision
-            && receipt.boundary_class == chio_core_types::BoundaryClass::Prevent
+        let semantic_valid = receipt.receipt_kind
+            == chio_core_types::receipt::kinds::ReceiptKind::MediatedDecision
+            && receipt.boundary_class == chio_core_types::receipt::kinds::BoundaryClass::Prevent
             && receipt.observation_outcome.is_none()
-            && receipt.trust_level == chio_core_types::TrustLevel::Mediated;
+            && receipt.trust_level == chio_core_types::receipt::kinds::TrustLevel::Mediated;
         let ok = signature_valid
             && signer_trusted
             && receipt_id_valid

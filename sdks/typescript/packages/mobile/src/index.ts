@@ -23,21 +23,21 @@ export type PortablePassportMetadata = {
 };
 
 export async function evaluate(requestJson: JsonString): Promise<JsonString> {
-  return nativeChio().evaluate(requestJson);
+  return (await nativeChio()).evaluate(requestJson);
 }
 
 export async function signReceipt(
   bodyJson: JsonString,
   signingSeedHex: HexString,
 ): Promise<JsonString> {
-  return nativeChio().signReceipt(bodyJson, signingSeedHex);
+  return (await nativeChio()).signReceipt(bodyJson, signingSeedHex);
 }
 
 export async function verifyCapability(
   tokenJson: JsonString,
   authorityPubHex: HexString,
 ): Promise<VerifiedCapability> {
-  return nativeChio().verifyCapability(
+  return (await nativeChio()).verifyCapability(
     tokenJson,
     authorityPubHex,
   ) as Promise<VerifiedCapability>;
@@ -48,7 +48,7 @@ export async function verifyPassport(
   issuerPubHex: HexString,
   nowSecs: number,
 ): Promise<PortablePassportMetadata> {
-  return nativeChio().verifyPassport(
+  return (await nativeChio()).verifyPassport(
     envelopeJson,
     issuerPubHex,
     nowSecs,
@@ -59,18 +59,18 @@ export async function attestAppAttest(
   keyId: string,
   challengeHex: HexString,
 ): Promise<JsonString> {
-  return nativeChio().attestAppAttest(keyId, challengeHex);
+  return (await nativeChio()).attestAppAttest(keyId, challengeHex);
 }
 
 export async function attestPlayIntegrity(nonceHex: HexString): Promise<JsonString> {
-  return nativeChio().attestPlayIntegrity(nonceHex);
+  return (await nativeChio()).attestPlayIntegrity(nonceHex);
 }
 
 export async function verifyMobileReceipt(
   receiptJson: JsonString,
   evidenceJson: JsonString,
 ): Promise<JsonString> {
-  return nativeChio().verifyMobileReceipt(receiptJson, evidenceJson);
+  return (await nativeChio()).verifyMobileReceipt(receiptJson, evidenceJson);
 }
 
 export type { ChioNativeModule } from './NativeChio.js';

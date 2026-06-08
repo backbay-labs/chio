@@ -24,13 +24,15 @@ pub(super) struct BuyerReviewStrictDsseContext<'a> {
 }
 
 pub(super) fn verify_buyer_review_strict_dsse(
-    envelope: &chio_federation::DsseEnvelope,
+    envelope: &chio_federation::bilateral_dsse::DsseEnvelope,
     context: &BuyerReviewStrictDsseContext<'_>,
 ) -> Result<(), &'static str> {
     let Ok((statement, _)) = envelope.decode_statement() else {
         return Err("chio_buyer_review_non_strict_dsse");
     };
-    if statement.predicate_type != chio_federation::PREDICATE_TYPE_CHIO_BILATERAL_INVOCATION {
+    if statement.predicate_type
+        != chio_federation::bilateral_dsse::PREDICATE_TYPE_CHIO_BILATERAL_INVOCATION
+    {
         return Err("chio_buyer_review_non_strict_dsse");
     }
     if statement.predicate.timestamp_unix_ms != context.generated_at_unix_ms {
@@ -40,7 +42,7 @@ pub(super) fn verify_buyer_review_strict_dsse(
         Ok(hash) => hash,
         Err(_) => return Err("chio_buyer_review_lineage_hash_mismatch"),
     };
-    let expected_treaty_binding = chio_federation::TreatyBindingRef {
+    let expected_treaty_binding = chio_federation::bilateral_dsse::TreatyBindingRef {
         treaty_id: context.admission.treaty_id.clone(),
         treaty_scope_sha256: context.packet.treaty_scope_sha256.clone(),
         ladder_intersection_sha256: context.packet.ladder_intersection_sha256.clone(),
@@ -86,7 +88,7 @@ pub(super) fn verify_buyer_review_strict_dsse(
         .ok_or("chio_buyer_review_runtime_report_mismatch")?;
     let expected_governance_receipt_ref =
         proof_package_governance_receipt_ref(context.proof_package, governance_receipt_id)?;
-    let review = chio_federation::TreatyBoundBilateralDsseReview {
+    let review = chio_federation::bilateral_verifier::TreatyBoundBilateralDsseReview {
         expected_treaty_binding: &expected_treaty_binding,
         expected_subject_name: &expected_subject_name,
         expected_subject_sha256: &expected_subject_sha256,
@@ -95,9 +97,11 @@ pub(super) fn verify_buyer_review_strict_dsse(
         expected_consistency_anchor: &context.runtime_step.consistency_anchor,
         signer_public_keys: context.signer_public_keys,
     };
-    chio_federation::verify_treaty_bound_chio_bilateral_invocation(envelope, &review)
-        .map(|_| ())
-        .map_err(|error| buyer_review_strict_dsse_error_code(&error))
+    chio_federation::bilateral_verifier::verify_treaty_bound_chio_bilateral_invocation(
+        envelope, &review,
+    )
+    .map(|_| ())
+    .map_err(|error| buyer_review_strict_dsse_error_code(&error))
 }
 
 pub(super) fn buyer_review_signer_public_keys_from_trust_bundle(
@@ -179,14 +183,16 @@ pub(super) fn buyer_review_signer_public_keys_from_trust_bundle(
     Ok(Some(signer_public_keys))
 }
 
-fn buyer_review_strict_dsse_error_code(error: &chio_federation::VerifierError) -> &'static str {
+fn buyer_review_strict_dsse_error_code(
+    error: &chio_federation::bilateral_verifier::VerifierError,
+) -> &'static str {
     match error {
-        chio_federation::VerifierError::PredicateTypeUnrecognised(_)
-        | chio_federation::VerifierError::StatementMalformed(_)
-        | chio_federation::VerifierError::StatementSchemaInvalid(_) => {
+        chio_federation::bilateral_verifier::VerifierError::PredicateTypeUnrecognised(_)
+        | chio_federation::bilateral_verifier::VerifierError::StatementMalformed(_)
+        | chio_federation::bilateral_verifier::VerifierError::StatementSchemaInvalid(_) => {
             "chio_buyer_review_non_strict_dsse"
         }
-        chio_federation::VerifierError::PredicateSchemaInvalid(message) => {
+        chio_federation::bilateral_verifier::VerifierError::PredicateSchemaInvalid(message) => {
             if message.contains("missing treaty_binding_ref") {
                 "chio_buyer_review_missing_treaty_dsse_binding"
             } else if message.contains("signer_kernel_ids") || message.contains("signer kernels") {
@@ -195,14 +201,14 @@ fn buyer_review_strict_dsse_error_code(error: &chio_federation::VerifierError) -
                 "chio_buyer_review_strict_dsse_binding_mismatch"
             }
         }
-        chio_federation::VerifierError::PeerUnpinnedOrKeyidMismatch(_) => {
+        chio_federation::bilateral_verifier::VerifierError::PeerUnpinnedOrKeyidMismatch(_) => {
             "chio_buyer_review_strict_dsse_signer_mismatch"
         }
-        chio_federation::VerifierError::SignatureServerAInvalid(_)
-        | chio_federation::VerifierError::SignatureServerBInvalid(_) => {
+        chio_federation::bilateral_verifier::VerifierError::SignatureServerAInvalid(_)
+        | chio_federation::bilateral_verifier::VerifierError::SignatureServerBInvalid(_) => {
             "chio_buyer_review_strict_dsse_signature_invalid"
         }
-        chio_federation::VerifierError::DsseMalformed(message) => {
+        chio_federation::bilateral_verifier::VerifierError::DsseMalformed(message) => {
             if message.contains("duplicate signature")
                 || message.contains("signature keyid")
                 || message.contains("signer keys")

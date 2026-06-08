@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use serde::Serialize;
 
-use crate::cache::{GuardCache, GuardCacheLayout};
+use crate::cache::{validate_cached_artifact_layout, GuardCache, GuardCacheLayout};
 use crate::oci::{GuardRegistryError, Sha256Digest};
 use crate::verify::{
     GuardLoadEvent, GuardLoadEventResult, GuardLoadSource, GuardVerificationKind,
@@ -96,6 +96,19 @@ pub enum GuardOfflineLoadError {
         event: Box<GuardLoadEvent>,
     },
 
+    /// Cached artifact files no longer match their pinned OCI manifest or
+    /// descriptor metadata.
+    #[error("guard load denied: cache entry {digest} failed integrity validation: {source}")]
+    CacheIntegrityDenied {
+        /// Pinned digest requested by the load.
+        digest: String,
+        /// Descriptor, digest, size, or read failure from cache validation.
+        #[source]
+        source: Box<GuardRegistryError>,
+        /// Structured deny event for the load.
+        event: Box<GuardLoadEvent>,
+    },
+
     /// Network path reached verification but the signature failed.
     #[error("guard network load denied: signature verification failed: {source}")]
     NetworkSignatureDenied {
@@ -124,6 +137,7 @@ impl GuardOfflineLoadError {
             Self::OfflineCacheMiss { event, .. }
             | Self::OnlineCacheIncomplete { event, .. }
             | Self::CacheStat { event, .. }
+            | Self::CacheIntegrityDenied { event, .. }
             | Self::NetworkSignatureDenied { event, .. }
             | Self::CachedSignatureDenied { event, .. } => event.as_ref(),
         }
@@ -164,6 +178,20 @@ where
                 event: Box::new(event),
             }),
         };
+    }
+
+    if let Err(error) = validate_cached_artifact_layout(request.digest, &layout) {
+        let event = GuardLoadEvent::deny(
+            request.verification,
+            source,
+            digest.clone(),
+            "cache-integrity-failed",
+        );
+        return Err(GuardOfflineLoadError::CacheIntegrityDenied {
+            digest,
+            source: Box::new(error),
+            event: Box::new(event),
+        });
     }
 
     match verify_cached(&layout) {
@@ -224,8 +252,16 @@ fn missing_cache_files(
     request: GuardOfflineLoadRequest<'_>,
     source: GuardLoadSource,
 ) -> GuardOfflineLoadResult<Vec<PathBuf>> {
+    let mut paths = layout.artifact_file_paths().to_vec();
+    if matches!(
+        request.verification,
+        GuardVerificationKind::SigstoreOnly | GuardVerificationKind::DualVerified
+    ) {
+        paths.push(layout.sigstore_bundle_json_path());
+    }
+
     let mut missing = Vec::new();
-    for path in layout.file_paths() {
+    for path in paths {
         match path.try_exists() {
             Ok(true) => {}
             Ok(false) => missing.push(path),

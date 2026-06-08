@@ -16,7 +16,7 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-use chio_core::capability::{ChioScope, Constraint, Operation, ToolGrant};
+use chio_core::capability::scope::{ChioScope, Constraint, Operation, ToolGrant};
 use chio_data_guards::{QueryResultGuard, QueryResultGuardConfig};
 use chio_guards::post_invocation::{
     PostInvocationContext, PostInvocationHook, PostInvocationPipeline, PostInvocationVerdict,

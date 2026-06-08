@@ -19,7 +19,9 @@ and control-plane crates.
   the export layout boundary.
 - `commands/core_cli.rs`, `commands/assurance_release.rs`, `commands/account_delivery.rs`,
   and the lane modules own specific bounded MERCURY product export and validate
-  workflows.
+  workflows. `commands/selective_account_activation_support.rs` owns the
+  selective-account activation support records and profile builder shared by the
+  core and account-delivery command files.
 - `tests/cli.rs` exercises the binary-level user workflows and should cover
   fail-closed filesystem and package validation behavior that only exists in the
   CLI layer.

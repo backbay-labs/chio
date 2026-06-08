@@ -2,11 +2,15 @@
 
 use std::collections::BTreeSet;
 
-use chio_core::web3::{
-    validate_web3_chain_configuration, validate_web3_contract_package,
-    validate_web3_settlement_execution_receipt, Web3BindingLanguage, Web3ChainConfiguration,
-    Web3ChainRole, Web3ContractPackage, Web3SettlementExecutionReceiptArtifact,
-    CHIO_LINK_ORACLE_AUTHORITY,
+use chio_core::web3::anchors::CHIO_LINK_ORACLE_AUTHORITY;
+use chio_core::web3::chain::{
+    validate_web3_chain_configuration, Web3ChainConfiguration, Web3ChainRole,
+};
+use chio_core::web3::contracts::{
+    validate_web3_contract_package, Web3BindingLanguage, Web3ContractPackage,
+};
+use chio_core::web3::settlement::{
+    validate_web3_settlement_execution_receipt, Web3SettlementExecutionReceiptArtifact,
 };
 use chio_link::config::{ARBITRUM_ONE_CAIP2, BASE_MAINNET_CAIP2};
 use chio_web3_bindings::{

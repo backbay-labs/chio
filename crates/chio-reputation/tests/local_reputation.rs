@@ -1,7 +1,8 @@
-use chio_core::capability::{ChioScope, Constraint, MonetaryAmount, Operation, ToolGrant};
+use chio_core::capability::scope::{ChioScope, Constraint, MonetaryAmount, Operation, ToolGrant};
 use chio_core::crypto::Keypair;
 use chio_core::receipt::{
-    ChioReceipt, ChioReceiptBody, Decision, ReceiptAttributionMetadata, ToolCallAction,
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    metadata::ReceiptAttributionMetadata,
 };
 use chio_reputation::{
     compute_local_scorecard, BudgetUsageRecord, CapabilityLineageRecord, IncidentRecord,
@@ -92,9 +93,10 @@ fn receipt(
         policy_hash: policy_hash.to_string(),
         evidence: vec![],
         metadata: Some(metadata),
-        trust_level: chio_core::TrustLevel::default(),
+        trust_level: chio_core::receipt::kinds::TrustLevel::default(),
         tenant_id: None,
         kernel_key: kernel.public_key(),
+        bbs_projection_version: None,
     };
     ChioReceipt::sign(body, kernel)
         .unwrap_or_else(|error| panic!("sign reputation receipt: {error}"))

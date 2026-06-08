@@ -6,9 +6,10 @@ use crate::CliError;
 
 use base64::Engine;
 use chio_guard_registry::{
-    GUARD_ARTIFACT_MEDIA_TYPE, GUARD_CONFIG_MEDIA_TYPE, GUARD_WIT_WORLD, GuardArtifactConfig,
-    GuardCache, GuardOciRef, GuardPublishArtifact, GuardPublishArtifactInput, GuardPublishRef,
-    GuardPullRequest, GuardRegistryClient, GuardRegistryConfig, RegistryCredentials,
+    ExpectedIdentity, GUARD_ARTIFACT_MEDIA_TYPE, GUARD_CONFIG_MEDIA_TYPE, GUARD_WIT_WORLD,
+    GuardArtifactConfig, GuardCache, GuardOciRef, GuardPublishArtifact, GuardPublishArtifactInput,
+    GuardPublishRef, GuardPullRequest, GuardPullSigstoreBundleSource, GuardRegistryClient,
+    GuardRegistryConfig, RegistryCredentials, SigstoreVerifier,
 };
 use chio_wasm_guards::abi::{GuardRequest, GuardVerdict, WasmGuardAbi};
 use chio_wasm_guards::blocklist::{E_GUARD_DIGEST_BLOCKLISTED, GuardDigestBlocklist};
@@ -17,6 +18,7 @@ use chio_wasm_guards::runtime::wasmtime_backend::WasmtimeBackend;
 use flate2::Compression;
 use flate2::write::GzEncoder;
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 
 // ---------------------------------------------------------------------------
 // Templates
@@ -584,22 +586,7 @@ pub(crate) struct GuardPublishCommand<'a> {
 }
 
 pub(crate) fn cmd_guard_publish(command: GuardPublishCommand<'_>) -> Result<(), CliError> {
-    let manifest_path = command.project_dir.join("guard-manifest.yaml");
-    let manifest_content = fs::read_to_string(&manifest_path)
-        .map_err(|e| guard_io_error(format!("failed to read {}: {e}", manifest_path.display())))?;
-    let manifest: GuardManifest = serde_yml::from_str(&manifest_content)
-        .map_err(|e| guard_yaml_error(format!("failed to parse guard-manifest.yaml: {e}")))?;
-
-    let wit_world = manifest.wit_world.as_deref().unwrap_or(GUARD_WIT_WORLD);
-    if wit_world != GUARD_WIT_WORLD {
-        return Err(CliError::guard_error(format!(
-            "guard publish requires wit_world {GUARD_WIT_WORLD}, got {wit_world}"
-        )));
-    }
-
-    let wasm_path = command.project_dir.join(Path::new(&manifest.wasm_path));
-    let wasm_bytes = fs::read(&wasm_path)
-        .map_err(|e| guard_io_error(format!("failed to read {}: {e}", wasm_path.display())))?;
+    let preflight = guard_publish_preflight(command.project_dir)?;
     let wit_bytes = fs::read(command.wit_path).map_err(|e| {
         guard_io_error(format!(
             "failed to read WIT file {}: {e}",
@@ -607,7 +594,8 @@ pub(crate) fn cmd_guard_publish(command: GuardPublishCommand<'_>) -> Result<(), 
         ))
     })?;
 
-    let signer_public_key = resolve_signer_public_key(command.signer_public_key, &manifest)?;
+    let signer_public_key =
+        resolve_signer_public_key(command.signer_public_key, &preflight.manifest)?;
     let artifact_config = GuardArtifactConfig::new(
         signer_public_key,
         command.fuel_limit,
@@ -616,8 +604,8 @@ pub(crate) fn cmd_guard_publish(command: GuardPublishCommand<'_>) -> Result<(), 
     );
     let artifact = GuardPublishArtifact::build(GuardPublishArtifactInput {
         wit: wit_bytes,
-        module: wasm_bytes,
-        manifest: manifest_content.into_bytes(),
+        module: preflight.wasm_bytes,
+        manifest: preflight.manifest_content.into_bytes(),
         config: artifact_config,
         signer_subject: command.signer_subject.map(str::to_owned),
     })
@@ -653,11 +641,78 @@ pub(crate) fn cmd_guard_publish(command: GuardPublishCommand<'_>) -> Result<(), 
     Ok(())
 }
 
+struct GuardPublishPreflight {
+    manifest_content: String,
+    manifest: GuardManifest,
+    wasm_bytes: Vec<u8>,
+}
+
+fn guard_publish_preflight(project_dir: &Path) -> Result<GuardPublishPreflight, CliError> {
+    let manifest_path = project_dir.join("guard-manifest.yaml");
+    let manifest_content = fs::read_to_string(&manifest_path)
+        .map_err(|e| guard_io_error(format!("failed to read {}: {e}", manifest_path.display())))?;
+    let manifest: GuardManifest = serde_yml::from_str(&manifest_content)
+        .map_err(|e| guard_yaml_error(format!("failed to parse guard-manifest.yaml: {e}")))?;
+
+    let wit_world = manifest.wit_world.as_deref().unwrap_or(GUARD_WIT_WORLD);
+    if wit_world != GUARD_WIT_WORLD {
+        return Err(CliError::guard_error(format!(
+            "guard publish requires wit_world {GUARD_WIT_WORLD}, got {wit_world}"
+        )));
+    }
+
+    validate_publish_wasm_sha256(&manifest.wasm_sha256)?;
+
+    let wasm_path = project_dir.join(Path::new(&manifest.wasm_path));
+    let wasm_bytes = fs::read(&wasm_path).map_err(|e| {
+        guard_io_error(format!(
+            "failed to read wasm file {}: {e}",
+            wasm_path.display()
+        ))
+    })?;
+    let actual_sha256 = wasm_sha256_hex(&wasm_bytes);
+    if actual_sha256 != manifest.wasm_sha256 {
+        return Err(CliError::guard_error(format!(
+            "guard publish preflight rejected guard-manifest.yaml: wasm_sha256 mismatch: expected {}, actual {}",
+            manifest.wasm_sha256, actual_sha256
+        )));
+    }
+
+    Ok(GuardPublishPreflight {
+        manifest_content,
+        manifest,
+        wasm_bytes,
+    })
+}
+
+fn validate_publish_wasm_sha256(value: &str) -> Result<(), CliError> {
+    if value.len() != 64 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(CliError::guard_error(
+            "guard publish preflight rejected guard-manifest.yaml: wasm_sha256 must be lowercase hex SHA-256 digest (64 characters)"
+                .to_string(),
+        ));
+    }
+    if value.bytes().any(|byte| matches!(byte, b'A'..=b'F')) {
+        return Err(CliError::guard_error(
+            "guard publish preflight rejected guard-manifest.yaml: wasm_sha256 must be lowercase hex SHA-256 digest (64 characters)"
+                .to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn wasm_sha256_hex(wasm_bytes: &[u8]) -> String {
+    hex::encode(Sha256::digest(wasm_bytes))
+}
+
 pub(crate) struct GuardPullCommand<'a> {
     pub reference: &'a str,
     pub username: Option<&'a str>,
     pub password: Option<&'a str>,
     pub allow_http_registry: Vec<String>,
+    pub sigstore_bundle: Option<&'a Path>,
+    pub sigstore_identity_regex: Option<&'a str>,
+    pub sigstore_oidc_issuer: Option<&'a str>,
 }
 
 pub(crate) fn cmd_guard_pull(command: GuardPullCommand<'_>) -> Result<(), CliError> {
@@ -678,6 +733,38 @@ pub(crate) fn cmd_guard_pull(command: GuardPullCommand<'_>) -> Result<(), CliErr
     }
     let credentials = registry_credentials(command.username, command.password);
     let cache = GuardCache::from_environment().map_err(|e| CliError::guard_error(e.to_string()))?;
+    let sigstore_bundle = match command.sigstore_bundle {
+        Some(path) => Some(std::fs::read(path).map_err(|e| {
+            CliError::cli_io_error(format!(
+                "failed to read Sigstore bundle {}: {e}",
+                path.display()
+            ))
+        })?),
+        None => None,
+    };
+    let sigstore_policy = match (
+        command.sigstore_identity_regex,
+        command.sigstore_oidc_issuer,
+    ) {
+        (None, None) => None,
+        (Some(identity), Some(issuer)) => Some(ExpectedIdentity {
+            certificate_identity_regexp: identity.to_string(),
+            certificate_oidc_issuer: issuer.to_string(),
+        }),
+        _ => {
+            return Err(CliError::guard_error(
+                "--sigstore-identity-regex and --sigstore-oidc-issuer must be supplied together"
+                    .to_string(),
+            ));
+        }
+    };
+    let sigstore_verifier = if sigstore_policy.is_some() {
+        Some(SigstoreVerifier::with_embedded_root().map_err(|e| {
+            CliError::guard_error(format!("failed to load Sigstore trust root: {e}"))
+        })?)
+    } else {
+        None
+    };
     let client = GuardRegistryClient::try_new(GuardRegistryConfig {
         allow_http_registries: command.allow_http_registry,
         ..GuardRegistryConfig::default()
@@ -693,6 +780,11 @@ pub(crate) fn cmd_guard_pull(command: GuardPullCommand<'_>) -> Result<(), CliErr
             reference: &reference,
             credentials: &credentials,
             cache: &cache,
+            sigstore_bundle_json: sigstore_bundle.as_deref(),
+            sigstore_verifier: sigstore_verifier
+                .as_ref()
+                .map(|verifier| verifier as &dyn chio_guard_registry::AttestVerifier),
+            sigstore_expected_identity: sigstore_policy.as_ref(),
         }))
         .map_err(|e| CliError::guard_error(e.to_string()))?;
 
@@ -721,9 +813,36 @@ pub(crate) fn cmd_guard_pull(command: GuardPullCommand<'_>) -> Result<(), CliErr
         response.cached.layout.module_wasm_path().display()
     );
     println!(
-        "sigstore_bundle:  {}",
-        response.cached.layout.sigstore_bundle_json_path().display()
+        "guard_manifest:   {}",
+        response.cached.layout.guard_manifest_json_path().display()
     );
+    let sigstore_bundle_path = response.cached.layout.sigstore_bundle_json_path();
+    if sigstore_bundle_path.exists() {
+        println!("sigstore_bundle:  {}", sigstore_bundle_path.display());
+        match response.sigstore_bundle_source {
+            Some(GuardPullSigstoreBundleSource::CallerProvided) => {
+                if response.sigstore_verified {
+                    println!("sigstore_status:  verified caller-provided bundle before cache admission");
+                } else {
+                    println!("sigstore_status:  cached caller-provided bundle bytes without verification policy");
+                }
+            }
+            Some(GuardPullSigstoreBundleSource::OciReferrer) => {
+                if response.sigstore_verified {
+                    println!("sigstore_status:  verified OCI referrer bundle before cache admission");
+                } else {
+                    println!("sigstore_status:  cached OCI referrer bundle bytes without verification policy");
+                }
+            }
+            None => {
+                println!("sigstore_status:  cached bundle bytes without source metadata");
+            }
+        }
+    } else {
+        println!(
+            "sigstore_bundle:  not cached (no local bundle supplied and no OCI Sigstore referrer found)"
+        );
+    }
 
     Ok(())
 }
@@ -1027,6 +1146,7 @@ fn guard_yaml_error(message: impl Into<String>) -> CliError {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
+    use sha2::{Digest, Sha256};
 
     #[test]
     fn sanitize_package_name_normalizes_input() {
@@ -1101,6 +1221,94 @@ mod tests {
         assert_registry_error(&err, "urn:chio:error:guard:denied", "guard");
         let msg = err.to_string();
         assert!(msg.contains("refusing to scaffold"), "{msg}");
+    }
+
+    fn write_publish_manifest(project_dir: &Path, wasm_path: &str, wasm_sha256: &str) {
+        let manifest_content = format!(
+            "name: test-guard\n\
+             version: \"0.1.0\"\n\
+             abi_version: \"1\"\n\
+             wit_world: {GUARD_WIT_WORLD}\n\
+             wasm_path: \"{wasm_path}\"\n\
+             wasm_sha256: \"{wasm_sha256}\"\n"
+        );
+        fs::write(project_dir.join("guard-manifest.yaml"), manifest_content).unwrap();
+    }
+
+    #[test]
+    fn guard_publish_preflight_rejects_scaffold_sha_before_missing_wasm() {
+        let project_dir = tempfile::tempdir().unwrap();
+        let scaffold_sha = MANIFEST_YAML_TEMPLATE
+            .lines()
+            .find_map(|line| line.strip_prefix("wasm_sha256: \""))
+            .and_then(|value| value.strip_suffix('"'))
+            .unwrap();
+        write_publish_manifest(project_dir.path(), "missing.wasm", scaffold_sha);
+
+        let err = must_cli_err(
+            guard_publish_preflight(project_dir.path()),
+            "publish preflight with scaffold hash",
+        );
+        assert_registry_error(&err, "urn:chio:error:guard:denied", "guard");
+        let msg = err.to_string();
+        assert!(msg.contains("wasm_sha256 must be lowercase hex"), "{msg}");
+        assert!(
+            !msg.contains("failed to read"),
+            "scaffold hash must fail before missing-WASM IO: {msg}"
+        );
+    }
+
+    #[test]
+    fn guard_publish_preflight_rejects_non_hex_sha_before_missing_wasm() {
+        let project_dir = tempfile::tempdir().unwrap();
+        write_publish_manifest(project_dir.path(), "missing.wasm", "abcxyz");
+
+        let err = must_cli_err(
+            guard_publish_preflight(project_dir.path()),
+            "publish preflight with non-hex hash",
+        );
+        assert_registry_error(&err, "urn:chio:error:guard:denied", "guard");
+        let msg = err.to_string();
+        assert!(msg.contains("wasm_sha256 must be lowercase hex"), "{msg}");
+        assert!(
+            !msg.contains("failed to read"),
+            "non-hex hash must fail before missing-WASM IO: {msg}"
+        );
+    }
+
+    #[test]
+    fn guard_publish_preflight_rejects_wasm_sha256_mismatch() {
+        let project_dir = tempfile::tempdir().unwrap();
+        let wasm_bytes = b"\x00asm\x01\x00\x00\x00guard publish preflight mismatch";
+        fs::write(project_dir.path().join("guard.wasm"), wasm_bytes).unwrap();
+        let wrong_sha = "0".repeat(64);
+        write_publish_manifest(project_dir.path(), "guard.wasm", &wrong_sha);
+
+        let err = must_cli_err(
+            guard_publish_preflight(project_dir.path()),
+            "publish preflight with hash mismatch",
+        );
+        assert_registry_error(&err, "urn:chio:error:guard:denied", "guard");
+        let actual_sha = hex::encode(Sha256::digest(wasm_bytes));
+        let msg = err.to_string();
+        assert!(msg.contains("wasm_sha256 mismatch"), "{msg}");
+        assert!(msg.contains(&wrong_sha), "{msg}");
+        assert!(msg.contains(&actual_sha), "{msg}");
+    }
+
+    #[test]
+    fn guard_publish_preflight_accepts_valid_manifest_and_wasm() {
+        let project_dir = tempfile::tempdir().unwrap();
+        let wasm_bytes = b"\x00asm\x01\x00\x00\x00guard publish preflight valid";
+        fs::write(project_dir.path().join("guard.wasm"), wasm_bytes).unwrap();
+        let expected_sha = hex::encode(Sha256::digest(wasm_bytes));
+        write_publish_manifest(project_dir.path(), "guard.wasm", &expected_sha);
+
+        let preflight = guard_publish_preflight(project_dir.path()).unwrap();
+
+        assert_eq!(preflight.manifest.name, "test-guard");
+        assert_eq!(preflight.manifest.wasm_sha256, expected_sha);
+        assert_eq!(preflight.wasm_bytes, wasm_bytes);
     }
 
     #[test]

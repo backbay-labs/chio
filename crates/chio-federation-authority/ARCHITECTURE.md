@@ -17,6 +17,16 @@ federation-contract crates.
 - This crate owns authority-side input validation, local seed lookup, signer to
   authority-key binding, and artifact issuance.
 
+## Source Layout
+
+- `src/lib.rs` defines the authority request, bundle, signing-key, revocation,
+  and peer-pin contracts plus JSON helpers, signing orchestration, checkpoint
+  publication, and verifier trust-bundle assembly.
+- `src/profile.rs` validates authority profiles and owns the profile lookup
+  helpers used by issuance.
+- `src/tests.rs` covers the deterministic authority issuance and validation
+  behavior families.
+
 ## Trust Invariants
 
 - Authority profiles must contain active lease, governance, runtime-policy, BBS,

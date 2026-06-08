@@ -3,8 +3,16 @@
 ## Boundaries
 
 - `lib.rs` owns the public crate surface, shared MCP data contracts, metrics exports, and optional fuzz/otel feature gates.
-- `runtime.rs` owns the `ChioMcpEdge` state machine, session lifecycle, task orchestration, kernel dispatch, runtime event forwarding, and inbound loop control.
+- `runtime.rs` owns `ChioMcpEdge` construction, session lifecycle, request and notification dispatch, provider/resource/prompt/completion handlers, runtime event forwarding, root refresh, nested-flow client requests, and inbound loop control.
+- `runtime/errors.rs` owns structured Chio protocol error argument data.
+- `runtime/jsonrpc.rs` owns JSON-RPC protocol error construction and MCP protocol-version negotiation.
+- `runtime/state.rs` owns edge lifecycle state, pending runtime actions, and logging level parsing.
+- `runtime/tasks.rs` owns MCP task views, task lifecycle state transitions, task request handlers, deferred-task retention, and background task pumping.
+- `runtime/tool_calls.rs` owns bridge-only MCP tool-call execution helpers, `McpTargetExecutor`, tool-call request preparation, kernel tool-call execution, MCP result projection, and URL elicitation persistence.
+- `runtime/receipts.rs` owns receipt-write error metric tracking.
 - `runtime/protocol.rs` owns JSON-RPC envelope parsing, response and notification shaping, task/result metadata, pagination, cancellation matching, capability selection, and wire helpers.
+- `runtime/discovery.rs` owns MCP outward discovery projection and cross-manifest exposed-name binding.
+- `runtime/framing.rs` owns bounded newline-delimited stdio frame decoding.
 - `runtime/nested_flow.rs` owns server-to-client nested-flow client implementations for sampling, roots, elicitation, progress, and cancellation mediation.
 - `metrics.rs` owns MCP edge receipt-write counters and Prometheus rendering through the workspace metrics registry.
 

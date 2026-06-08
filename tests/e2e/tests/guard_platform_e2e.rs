@@ -6,11 +6,14 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::Duration;
 
-use chio_core::capability::{CapabilityToken, CapabilityTokenBody, ChioScope};
+use chio_core::capability::{
+    scope::ChioScope,
+    token::{CapabilityToken, CapabilityTokenBody},
+};
 use chio_core::crypto::Keypair;
 use chio_kernel::{Guard, GuardContext, ToolCallRequest, Verdict};
 use chio_wasm_guards::manifest::{verify_wit_world, REQUIRED_WIT_WORLD};
-use chio_wasm_guards::runtime::MockWasmBackend;
+use chio_wasm_guards::runtime::mock_backend::MockWasmBackend;
 use chio_wasm_guards::{
     Engine, EvalTrace, IncidentWriter, WasmGuard, WasmGuardAbi, WasmGuardError, WatchdogConfig,
 };
@@ -177,6 +180,7 @@ fn capability_request() -> (ToolCallRequest, ChioScope, String, String) {
         agent_id: "agent-1".to_string(),
         arguments: serde_json::json!({"path": "/tmp/example"}),
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
@@ -243,7 +247,7 @@ fn publish_pull_verify_swap_rollback_and_metrics_gate() {
         let verdict = guard
             .evaluate(&ctx)
             .unwrap_or_else(|err| panic!("canary {index} evaluation failed: {err}"));
-        assert!(matches!(verdict, Verdict::Allow));
+        assert!(matches!(verdict.verdict, Verdict::Allow));
         canary_verdicts.push(format!("{verdict:?}"));
     }
 
@@ -266,7 +270,7 @@ fn publish_pull_verify_swap_rollback_and_metrics_gate() {
     let mut dropped = 0u64;
     for index in 0..100 {
         match guard.evaluate(&ctx) {
-            Ok(Verdict::Allow) => {}
+            Ok(decision) if matches!(decision.verdict, Verdict::Allow) => {}
             Ok(other) => panic!("request {index} produced unexpected verdict {other:?}"),
             Err(_) => dropped += 1,
         }

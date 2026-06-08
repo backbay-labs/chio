@@ -9,11 +9,13 @@
 
 use chio_core_types::crypto::{sha256_hex, Ed25519Backend, Keypair, Signature, SigningBackend};
 use chio_core_types::receipt::{
-    ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    kinds::TrustLevel,
 };
 use chio_federation::{
-    co_sign_with_origin, BilateralCoSigningError, CoSigningBody, DualSignedReceipt,
-    ExpectedBilateralPeers, InProcessCoSigner, BILATERAL_DUAL_RECEIPT_SCHEMA,
+    bilateral::co_sign_with_origin, bilateral::BilateralCoSigningError, bilateral::CoSigningBody,
+    bilateral::DualSignedReceipt, bilateral::ExpectedBilateralPeers, bilateral::InProcessCoSigner,
+    bilateral::BILATERAL_DUAL_RECEIPT_SCHEMA,
 };
 
 fn sample_action() -> ToolCallAction {
@@ -45,6 +47,7 @@ fn sample_receipt(tool_host_kp: &Keypair) -> ChioReceipt {
         trust_level: TrustLevel::default(),
         tenant_id: None,
         kernel_key: tool_host_kp.public_key(),
+        bbs_projection_version: None,
     };
     ChioReceipt::sign(body, tool_host_kp).unwrap()
 }

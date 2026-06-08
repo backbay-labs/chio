@@ -9,22 +9,25 @@ use std::thread;
 use alloy_primitives::{keccak256, Address, FixedBytes, B256, U256};
 use alloy_sol_types::{sol, SolCall};
 use chio_core::canonical::canonical_json_bytes;
-use chio_core::capability::MonetaryAmount;
+use chio_core::capability::scope::MonetaryAmount;
 use chio_core::credit::{
     CapitalExecutionInstructionAction, CapitalExecutionRailKind, CreditBondLifecycleState,
     SignedCapitalExecutionInstruction, SignedCreditBond,
 };
 use chio_core::hashing::Hash;
 use chio_core::merkle::leaf_hash;
-use chio_core::receipt::ChioReceipt;
-use chio_core::web3::{
-    validate_web3_settlement_dispatch, validate_web3_settlement_execution_receipt,
-    verify_anchor_inclusion_proof, verify_web3_identity_binding, AnchorInclusionProof,
-    SignedWeb3IdentityBinding, Web3KeyBindingPurpose, Web3SettlementDispatchArtifact,
-    Web3SettlementExecutionReceiptArtifact, Web3SettlementLifecycleState, Web3SettlementPath,
-    Web3SettlementSupportBoundary, CHIO_WEB3_SETTLEMENT_DISPATCH_SCHEMA,
-    CHIO_WEB3_SETTLEMENT_RECEIPT_SCHEMA,
+use chio_core::receipt::body::ChioReceipt;
+use chio_core::web3::anchors::{verify_anchor_inclusion_proof, AnchorInclusionProof};
+use chio_core::web3::identity::{
+    verify_web3_identity_binding, SignedWeb3IdentityBinding, Web3KeyBindingPurpose,
 };
+use chio_core::web3::settlement::{
+    validate_web3_settlement_dispatch, validate_web3_settlement_execution_receipt,
+    Web3SettlementDispatchArtifact, Web3SettlementExecutionReceiptArtifact,
+    Web3SettlementLifecycleState, Web3SettlementSupportBoundary,
+    CHIO_WEB3_SETTLEMENT_DISPATCH_SCHEMA, CHIO_WEB3_SETTLEMENT_RECEIPT_SCHEMA,
+};
+use chio_core::web3::trust_profile::Web3SettlementPath;
 use chio_egress_contract::{client_builder_with_contract, send_with_contract};
 use chio_web3_bindings::{ChioMerkleProof, IChioBondVault, IChioEscrow};
 use secp256k1::ecdsa::RecoverableSignature;
@@ -71,9 +74,16 @@ mod tests {
     };
     use chio_core::crypto::Keypair;
     use chio_core::hashing::sha256_hex;
-    use chio_core::receipt::{ChioReceiptBody, Decision, SignedExportEnvelope, ToolCallAction};
-    use chio_core::web3::{Web3IdentityBindingCertificate, CHIO_KEY_BINDING_CERTIFICATE_SCHEMA};
-    use chio_core::web3::{Web3SettlementDispatchArtifact, Web3SettlementLifecycleState};
+    use chio_core::receipt::{
+        body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+        lineage::SignedExportEnvelope,
+    };
+    use chio_core::web3::identity::{
+        Web3IdentityBindingCertificate, CHIO_KEY_BINDING_CERTIFICATE_SCHEMA,
+    };
+    use chio_core::web3::settlement::{
+        Web3SettlementDispatchArtifact, Web3SettlementLifecycleState,
+    };
     use secp256k1::ecdsa::RecoveryId;
     use secp256k1::PublicKey as SecpPublicKey;
     use serde_json::{json, Value};
@@ -240,6 +250,10 @@ mod tests {
         Keypair::from_seed(&[11u8; 32])
     }
 
+    fn custodian_keypair() -> Keypair {
+        Keypair::from_seed(&[13u8; 32])
+    }
+
     fn sample_binding_for_config(config: &SettlementChainConfig) -> SignedWeb3IdentityBinding {
         let operator = operator_keypair();
         let certificate = Web3IdentityBindingCertificate {
@@ -269,6 +283,8 @@ mod tests {
         amount_units: u64,
     ) -> SignedCapitalExecutionInstruction {
         let keypair = instruction_keypair();
+        let custodian = custodian_keypair();
+        let custodian_id = custodian.public_key().to_hex();
         SignedExportEnvelope::sign(
             CapitalExecutionInstructionArtifact {
                 schema: chio_core::credit::CAPITAL_EXECUTION_INSTRUCTION_ARTIFACT_SCHEMA
@@ -292,20 +308,22 @@ mod tests {
                     currency: "USD".to_string(),
                 }),
                 authority_chain: vec![
-                    CapitalExecutionAuthorityStep {
-                        role: CapitalExecutionRole::OperatorTreasury,
-                        principal_id: "treasury-1".to_string(),
-                        approved_at: 1_743_292_700,
-                        expires_at: 1_743_300_000,
-                        note: Some("governed release".to_string()),
-                    },
-                    CapitalExecutionAuthorityStep {
-                        role: CapitalExecutionRole::Custodian,
-                        principal_id: "custodian-devnet".to_string(),
-                        approved_at: 1_743_292_750,
-                        expires_at: 1_743_300_000,
-                        note: Some("official web3 stack".to_string()),
-                    },
+                    CapitalExecutionAuthorityStep::signed(
+                        CapitalExecutionRole::OperatorTreasury,
+                        &keypair,
+                        1_743_292_700,
+                        1_743_300_000,
+                        Some("governed release".to_string()),
+                    )
+                    .test_expect("treasury authority proof"),
+                    CapitalExecutionAuthorityStep::signed(
+                        CapitalExecutionRole::Custodian,
+                        &custodian,
+                        1_743_292_750,
+                        1_743_300_000,
+                        Some("official web3 stack".to_string()),
+                    )
+                    .test_expect("custodian authority proof"),
                 ],
                 execution_window: CapitalExecutionWindow {
                     not_before: 1_743_292_800,
@@ -314,7 +332,7 @@ mod tests {
                 rail: CapitalExecutionRail {
                     kind: CapitalExecutionRailKind::Web3,
                     rail_id: "ganache-devnet-usdc".to_string(),
-                    custody_provider_id: "custodian-devnet".to_string(),
+                    custody_provider_id: custodian_id,
                     source_account_ref: Some("vault:facility-main".to_string()),
                     destination_account_ref: Some(beneficiary_address.to_string()),
                     jurisdiction: Some(config.chain_id.clone()),
@@ -368,9 +386,10 @@ mod tests {
                 policy_hash: sha256_hex(b"policy:web3"),
                 evidence: Vec::new(),
                 metadata: None,
-                trust_level: chio_core::TrustLevel::default(),
+                trust_level: chio_core::receipt::kinds::TrustLevel::default(),
                 tenant_id: None,
                 kernel_key: keypair.public_key(),
+                bbs_projection_version: None,
             },
             keypair,
         )

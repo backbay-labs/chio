@@ -2,6 +2,7 @@
 //! the public certification discovery/marketplace network, and the generic
 //! trust-activation, governance, and open-market artifact endpoints.
 
+use super::report_validation::validate_service_auth;
 use super::*;
 
 pub(crate) async fn handle_list_certifications(
@@ -157,7 +158,8 @@ pub(crate) async fn handle_issue_generic_trust_activation(
     if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
         return response;
     }
-    match issue_signed_generic_trust_activation(&state.config, &request) {
+    match service_runtime::issuance::issue_signed_generic_trust_activation(&state.config, &request)
+    {
         Ok(artifact) => Json(artifact).into_response(),
         Err(error) => plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     }
@@ -171,7 +173,10 @@ pub(crate) async fn handle_evaluate_generic_trust_activation(
     if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
         return response;
     }
-    match evaluate_generic_trust_activation_request(&state.config, &request) {
+    match service_runtime::issuance::evaluate_generic_trust_activation_request(
+        &state.config,
+        &request,
+    ) {
         Ok(report) => Json(report).into_response(),
         Err(error) => plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     }
@@ -185,7 +190,10 @@ pub(crate) async fn handle_issue_generic_governance_charter(
     if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
         return response;
     }
-    match issue_signed_generic_governance_charter(&state.config, &request) {
+    match service_runtime::issuance::issue_signed_generic_governance_charter(
+        &state.config,
+        &request,
+    ) {
         Ok(artifact) => Json(artifact).into_response(),
         Err(error) => plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     }
@@ -199,7 +207,7 @@ pub(crate) async fn handle_issue_generic_governance_case(
     if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
         return response;
     }
-    match issue_signed_generic_governance_case(&state.config, &request) {
+    match service_runtime::issuance::issue_signed_generic_governance_case(&state.config, &request) {
         Ok(artifact) => Json(artifact).into_response(),
         Err(error) => plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     }
@@ -213,7 +221,7 @@ pub(crate) async fn handle_evaluate_generic_governance_case(
     if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
         return response;
     }
-    match evaluate_generic_governance_case_request(&request) {
+    match service_runtime::issuance::evaluate_generic_governance_case_request(&request) {
         Ok(report) => Json(report).into_response(),
         Err(error) => plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     }
@@ -227,7 +235,8 @@ pub(crate) async fn handle_issue_open_market_fee_schedule(
     if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
         return response;
     }
-    match issue_signed_open_market_fee_schedule(&state.config, &request) {
+    match service_runtime::issuance::issue_signed_open_market_fee_schedule(&state.config, &request)
+    {
         Ok(artifact) => Json(artifact).into_response(),
         Err(error) => plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     }
@@ -241,7 +250,7 @@ pub(crate) async fn handle_issue_open_market_penalty(
     if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
         return response;
     }
-    match issue_signed_open_market_penalty(&state.config, &request) {
+    match service_runtime::issuance::issue_signed_open_market_penalty(&state.config, &request) {
         Ok(artifact) => Json(artifact).into_response(),
         Err(error) => plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     }
@@ -255,7 +264,7 @@ pub(crate) async fn handle_evaluate_open_market_penalty(
     if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
         return response;
     }
-    match evaluate_open_market_penalty_request(&state.config, &request) {
+    match service_runtime::issuance::evaluate_open_market_penalty_request(&state.config, &request) {
         Ok(report) => Json(report).into_response(),
         Err(error) => plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     }
@@ -273,7 +282,7 @@ pub(crate) async fn handle_publish_certification_network(
         Ok(values) => values,
         Err(error) => return plain_http_error(StatusCode::CONFLICT, &error.to_string()),
     };
-    match crate::certify::publish_certification_across_network(
+    match crate::certify::network::publish_certification_across_network(
         &network,
         &request.artifact,
         &request.operator_ids,
@@ -296,7 +305,7 @@ pub(crate) async fn handle_discover_certification(
         Err(error) => return plain_http_error(StatusCode::CONFLICT, &error.to_string()),
     };
     let response =
-        crate::certify::discover_certifications_across_network(&network, &tool_server_id);
+        crate::certify::network::discover_certifications_across_network(&network, &tool_server_id);
     Json(response).into_response()
 }
 
@@ -312,10 +321,8 @@ pub(crate) async fn handle_search_certification_marketplace(
         Ok(values) => values,
         Err(error) => return plain_http_error(StatusCode::CONFLICT, &error.to_string()),
     };
-    Json(crate::certify::search_public_certifications_across_network(
-        &network, &query,
-    ))
-    .into_response()
+    Json(crate::certify::network::search_public_certifications_across_network(&network, &query))
+        .into_response()
 }
 
 pub(crate) async fn handle_transparency_certification_marketplace(
@@ -330,8 +337,12 @@ pub(crate) async fn handle_transparency_certification_marketplace(
         Ok(values) => values,
         Err(error) => return plain_http_error(StatusCode::CONFLICT, &error.to_string()),
     };
-    Json(crate::certify::transparency_public_certifications_across_network(&network, &query))
-        .into_response()
+    Json(
+        crate::certify::network::transparency_public_certifications_across_network(
+            &network, &query,
+        ),
+    )
+    .into_response()
 }
 
 pub(crate) async fn handle_consume_certification_marketplace(
@@ -346,10 +357,8 @@ pub(crate) async fn handle_consume_certification_marketplace(
         Ok(values) => values,
         Err(error) => return plain_http_error(StatusCode::CONFLICT, &error.to_string()),
     };
-    Json(crate::certify::consume_public_certification_across_network(
-        &network, &request,
-    ))
-    .into_response()
+    Json(crate::certify::network::consume_public_certification_across_network(&network, &request))
+        .into_response()
 }
 
 pub(crate) async fn handle_revoke_certification(

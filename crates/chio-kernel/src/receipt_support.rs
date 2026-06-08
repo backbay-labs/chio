@@ -2,15 +2,23 @@ use std::cell::RefCell;
 
 use super::*;
 use chio_appraisal::{verify_runtime_attestation_record, VerifiedRuntimeAttestationRecord};
-use chio_core::capability::{
+use chio_core::capability::governance::{
     GovernedCallChainContext, GovernedCallChainEvidenceSource, GovernedCallChainProvenance,
     GovernedProvenanceEvidenceClass, GovernedUpstreamCallChainProof,
 };
-use chio_core::receipt::GuardEvidence;
+use chio_core::receipt::metadata::GuardEvidence;
 use uuid::Uuid;
 
 use crate::evidence_export::EvidenceLineageReferences;
 use crate::operator_report::GovernedTransactionDiagnostics;
+
+#[path = "receipt_support/signing.rs"]
+mod signing;
+
+pub use signing::{
+    kernel_signing_backend, sign_receipt_body_hybrid_canonical, sign_receipt_body_with_backend,
+    KernelCryptoFloor, KernelSigningBackendError, SignedHybridReceipt,
+};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct GovernedCallChainReceiptEvidence {
@@ -28,6 +36,8 @@ thread_local! {
         const { RefCell::new(None) };
     static GOVERNED_RUNTIME_ATTESTATION_RECORD: RefCell<Option<VerifiedRuntimeAttestationRecord>> =
         const { RefCell::new(None) };
+    static PRE_INVOCATION_GUARD_EVIDENCE: RefCell<Vec<GuardEvidence>> =
+        const { RefCell::new(Vec::new()) };
     static POST_INVOCATION_GUARD_EVIDENCE: RefCell<Vec<GuardEvidence>> =
         const { RefCell::new(Vec::new()) };
 }
@@ -78,6 +88,30 @@ pub(crate) fn scope_governed_runtime_attestation_receipt_record(
 
 fn current_governed_runtime_attestation_record() -> Option<VerifiedRuntimeAttestationRecord> {
     GOVERNED_RUNTIME_ATTESTATION_RECORD.with(|slot| slot.borrow().clone())
+}
+
+pub(crate) struct ScopedPreInvocationGuardEvidence {
+    previous: Vec<GuardEvidence>,
+}
+
+impl Drop for ScopedPreInvocationGuardEvidence {
+    fn drop(&mut self) {
+        let previous = core::mem::take(&mut self.previous);
+        PRE_INVOCATION_GUARD_EVIDENCE.with(|slot| {
+            slot.replace(previous);
+        });
+    }
+}
+
+pub(crate) fn scope_pre_invocation_guard_evidence(
+    evidence: Vec<GuardEvidence>,
+) -> ScopedPreInvocationGuardEvidence {
+    let previous = PRE_INVOCATION_GUARD_EVIDENCE.with(|slot| slot.replace(evidence));
+    ScopedPreInvocationGuardEvidence { previous }
+}
+
+pub(crate) fn current_pre_invocation_guard_evidence() -> Vec<GuardEvidence> {
+    PRE_INVOCATION_GUARD_EVIDENCE.with(|slot| slot.borrow().clone())
 }
 
 pub(crate) struct ScopedPostInvocationGuardEvidence {
@@ -175,380 +209,6 @@ fn governed_transaction_diagnostics(
     };
 
     (!diagnostics.is_empty()).then_some(diagnostics)
-}
-
-// ---------------------------------------------------------------------------
-// Hybrid receipt signing path
-// ---------------------------------------------------------------------------
-//
-// Mirrors `chio_policy::CryptoFloor` so the kernel boot path can branch on
-// the configured floor without taking a circular dependency on the policy
-// crate (chio-policy depends on chio-kernel). Operators that load a
-// HushSpec policy with `crypto_floor` set translate it into this enum
-// before constructing `KernelConfig`. Threat model row
-// `pq_signature_downgrade` is enforced by validation at this boundary.
-
-/// Minimum cryptographic posture enforced by the kernel-side signing path.
-///
-/// The textual encoding (`allow_classical`, `allow_hybrid`, `pq_required`)
-/// matches the `chio_policy::CryptoFloor` wire form so an operator can lift
-/// a parsed policy floor directly without re-encoding it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub enum KernelCryptoFloor {
-    /// Accept classical-only Ed25519/P-256/P-384 envelopes. Default.
-    #[default]
-    AllowClassical,
-    /// Accept hybrid classical-plus-ML-DSA-65 envelopes. Requires a PQ key.
-    AllowHybrid,
-    /// Reject classical-only envelopes; require hybrid signing on every
-    /// signed artifact. Requires a PQ key.
-    PqRequired,
-}
-
-impl KernelCryptoFloor {
-    /// Whether the floor permits hybrid envelopes on the wire.
-    #[must_use]
-    pub fn allows_hybrid(&self) -> bool {
-        matches!(self, Self::AllowHybrid | Self::PqRequired)
-    }
-
-    /// Whether the floor mandates hybrid envelopes (rejects classical-only).
-    #[must_use]
-    pub fn requires_pq(&self) -> bool {
-        matches!(self, Self::PqRequired)
-    }
-
-    /// Whether the floor permits classical-only envelopes on the wire.
-    #[must_use]
-    pub fn allows_classical_only(&self) -> bool {
-        matches!(self, Self::AllowClassical | Self::AllowHybrid)
-    }
-
-    /// Stable wire-format identifier for diagnostics.
-    #[must_use]
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::AllowClassical => "allow_classical",
-            Self::AllowHybrid => "allow_hybrid",
-            Self::PqRequired => "pq_required",
-        }
-    }
-}
-
-/// Sign a [`ChioReceiptBody`] with an arbitrary [`SigningBackend`].
-///
-/// Delegates to `chio_kernel_core::sign_receipt` (the portable signing
-/// kernel) so receipts produced via the hybrid path are byte-identical to
-/// receipts produced via the inline classical path when the same backend
-/// is used. Maps the portable error surface onto [`KernelError`].
-///
-/// # Errors
-///
-/// Returns [`KernelError::ReceiptSigningFailed`] if the body's `kernel_key`
-/// does not match the backend's public key (fail-closed: the signing path
-/// refuses to issue a signature that would not verify).
-pub fn sign_receipt_body_with_backend(
-    body: ChioReceiptBody,
-    backend: &dyn chio_core::crypto::SigningBackend,
-) -> Result<ChioReceipt, KernelError> {
-    chio_kernel_core::sign_receipt(body, backend).map_err(|error| {
-        use chio_kernel_core::ReceiptSigningError;
-        let message = match error {
-            ReceiptSigningError::KernelKeyMismatch => {
-                "kernel signing key does not match receipt body kernel_key".to_string()
-            }
-            ReceiptSigningError::SigningFailed(reason) => reason,
-        };
-        KernelError::ReceiptSigningFailed(message)
-    })
-}
-
-// ---------------------------------------------------------------------------
-// CanonicalBytes consumer wiring for the hybrid signing path
-// ---------------------------------------------------------------------------
-//
-// The `Arc<CanonicalBytes>` newtype lives at
-// `chio_core_types::crypto::SharedCanonicalBytes` (already exported from
-// `chio-core-types/src/canonical.rs`). The receipt-signing path under the
-// hybrid backend consumes that newtype directly so the canonical JSON byte
-// buffer is built once, hashed once for the classical half, and signed once
-// for the ML-DSA-65 half. No byte-equivalence shim is required because the
-// newtype is consumed directly rather than reserialized.
-//
-// The helper below returns the signed `ChioReceipt` paired with the
-// `SharedCanonicalBytes` it signed, so downstream consumers (receipt store,
-// federation cosign, lineage anchor) can persist or retransmit the EXACT
-// bytes the signature was computed over without reserializing the body.
-
-/// Receipt produced by the hybrid signing path together with the canonical
-/// byte buffer that was signed.
-///
-/// Returned by [`sign_receipt_body_hybrid_canonical`] so callers can persist
-/// or retransmit the exact bytes the signature was computed over without
-/// reserializing the body. The buffer is wrapped in
-/// [`SharedCanonicalBytes`] (which is `Arc<CanonicalBytes>`) so multiple
-/// consumers downstream can share a single allocation.
-#[derive(Clone, Debug)]
-pub struct SignedHybridReceipt {
-    /// The signed receipt envelope.
-    pub receipt: ChioReceipt,
-    /// The canonical JSON byte buffer that was signed. Wrapped in
-    /// [`chio_core::crypto::SharedCanonicalBytes`] so multiple downstream
-    /// consumers can share the allocation without copying or
-    /// reserializing.
-    pub canonical: chio_core::crypto::SharedCanonicalBytes,
-}
-
-/// Sign a [`ChioReceiptBody`] through a hybrid signing backend and return
-/// both the signed [`ChioReceipt`] and the [`SharedCanonicalBytes`] that
-/// were signed.
-///
-/// This is the shared-canonical-bytes entrypoint: the hybrid backend
-/// (classical Ed25519 plus ML-DSA-65) is fed the `CanonicalBytes` newtype
-/// directly so the canonical JSON byte buffer is built once, signed once, and
-/// shared by every downstream consumer (storage, lineage anchor, federation
-/// cosign).
-///
-/// # Authoritative signing input
-///
-/// The bytes signed are the canonical JSON encoding of the
-/// [`chio_core::receipt::ChioReceiptSigningBody`] wrapper, which binds
-/// the content-addressed receipt id to the
-/// [`chio_core::receipt::ChioReceiptIdInput`] that derived it. This is
-/// the same byte sequence the classical sibling
-/// [`sign_receipt_body_with_backend`] signs (it delegates to
-/// [`chio_kernel_core::sign_receipt`] and then
-/// [`chio_core::receipt::ChioReceipt::sign_with_backend`]). The two
-/// paths produce byte-identical signed bytes for the same body and
-/// backend.
-///
-/// # Trust-boundary discipline
-///
-/// - Fail-closed: if `body.kernel_key` does not match `backend.public_key()`
-///   the helper returns [`KernelError::ReceiptSigningFailed`] without
-///   touching the canonical buffer or producing a signature.
-/// - Byte-identity: the `canonical` field of the returned
-///   [`SignedHybridReceipt`] is the exact buffer the backend signed. A
-///   downstream verifier MUST consume the same buffer via
-///   [`chio_core::crypto::PublicKey::verify`] to keep the byte chain intact.
-/// - Algorithm agnostic at the trait boundary: the helper accepts any
-///   [`SigningBackend`] (Ed25519, P-256, P-384, or hybrid). When the
-///   backend is the classical-only `Ed25519Backend` the canonical buffer
-///   is still the exact bytes the `sign_with_backend` path signs,
-///   so callers may treat this entrypoint as the canonical-bytes-aware
-///   superset of the `sign_with_backend` path.
-///
-/// # Errors
-///
-/// Returns [`KernelError::ReceiptSigningFailed`] when:
-/// - `body.kernel_key` does not match the backend's public key, OR
-/// - `body` fails semantic validation (see
-///   [`chio_core::receipt::ChioReceiptBody::validate_signable_semantics`]),
-///   OR
-/// - canonical JSON encoding of the receipt id input or signing wrapper
-///   fails, OR
-/// - the signing backend itself rejects the message (for example, FIPS
-///   ECDSA backends that fail to acquire OS randomness).
-pub fn sign_receipt_body_hybrid_canonical(
-    body: ChioReceiptBody,
-    backend: &dyn chio_core::crypto::SigningBackend,
-) -> Result<SignedHybridReceipt, KernelError> {
-    use chio_core::crypto::{
-        canonical_json_shared_bytes, sign_shared_canonical_with_backend, PublicKey,
-    };
-    use chio_core::receipt::{bind_receipt_signing_nonce, chio_receipt_id, ChioReceiptSigningBody};
-
-    // Fail-closed kernel-key match BEFORE any cryptographic work. Mirrors
-    // `chio_kernel_core::sign_receipt` so the byte-identity contract holds
-    // when callers route through either entrypoint.
-    let backend_pk: PublicKey = backend.public_key();
-    if body.kernel_key.algorithm() != backend_pk.algorithm() || body.kernel_key != backend_pk {
-        return Err(KernelError::ReceiptSigningFailed(
-            "kernel signing key does not match receipt body kernel_key".to_string(),
-        ));
-    }
-
-    // Mirror the classical sibling path so the two entrypoints sign the
-    // same authoritative `ChioReceiptSigningBody` wrapper (id plus
-    // `ChioReceiptIdInput`). `ChioReceipt::sign_with_backend` performs
-    // four steps: validate semantics, bind the canonical signing nonce
-    // into metadata, compute the content-addressed id, and build the
-    // wrapper. We replicate them here so the bytes the hybrid backend
-    // signs are byte-identical to what the classical sibling signs for
-    // the same body.
-    let mut body = body;
-    body.validate_signable_semantics().map_err(|error| {
-        KernelError::ReceiptSigningFailed(format!(
-            "receipt body failed semantic validation: {error}"
-        ))
-    })?;
-    // Bind the signing nonce BEFORE computing the id, exactly as the
-    // classical path does, so the content-addressed id (and therefore the
-    // signed bytes) cover the nonce.
-    bind_receipt_signing_nonce(&mut body);
-    body.id = chio_receipt_id(&body).map_err(|error| {
-        KernelError::ReceiptSigningFailed(format!(
-            "canonical JSON encoding of receipt id input failed: {error}"
-        ))
-    })?;
-    let signing_body = ChioReceiptSigningBody::from(&body);
-
-    // Build the SharedCanonicalBytes once over the authoritative
-    // signing wrapper. This is the byte buffer the classical half
-    // hashes and the ML-DSA-65 half signs.
-    let canonical = canonical_json_shared_bytes(&signing_body).map_err(|error| {
-        KernelError::ReceiptSigningFailed(format!(
-            "canonical JSON encoding of receipt signing body failed: {error}"
-        ))
-    })?;
-
-    // Sign through the shared-bytes path so the backend is fed the EXACT
-    // buffer downstream consumers will consume. `Arc::clone` keeps the
-    // allocation; no second canonicalization happens.
-    let signed =
-        sign_shared_canonical_with_backend(backend, canonical.clone()).map_err(|error| {
-            KernelError::ReceiptSigningFailed(format!("hybrid signing failed: {error}"))
-        })?;
-    let (signature, signed_canonical) = signed.into_parts();
-
-    // Defence-in-depth: the buffer the backend signed MUST be the same
-    // allocation we built above. `sign_shared_canonical_with_backend`
-    // does not reserialize, but assert byte-equality so a future change
-    // that reserializes silently fails this contract first.
-    debug_assert_eq!(
-        canonical.as_bytes(),
-        signed_canonical.as_bytes(),
-        "byte-identity drift: shared canonical bytes were re-encoded"
-    );
-
-    let receipt = ChioReceipt {
-        id: body.id,
-        timestamp: body.timestamp,
-        capability_id: body.capability_id,
-        tool_server: body.tool_server,
-        tool_name: body.tool_name,
-        action: body.action,
-        decision: body.decision,
-        receipt_kind: body.receipt_kind,
-        boundary_class: body.boundary_class,
-        observation_outcome: body.observation_outcome,
-        tool_origin: body.tool_origin,
-        redaction_mode: body.redaction_mode,
-        actor_chain: body.actor_chain,
-        content_hash: body.content_hash,
-        policy_hash: body.policy_hash,
-        evidence: body.evidence,
-        metadata: body.metadata,
-        trust_level: body.trust_level,
-        tenant_id: body.tenant_id,
-        kernel_key: body.kernel_key,
-        algorithm: Some(backend.algorithm()),
-        signature,
-    };
-
-    Ok(SignedHybridReceipt {
-        receipt,
-        canonical: signed_canonical,
-    })
-}
-
-/// Errors raised when the kernel boot path constructs a receipt-signing
-/// backend from a configured `crypto_floor` and provisioned key material.
-///
-/// These errors fire at signer construction time, before any receipt is
-/// signed. The kernel boot path MUST surface the error and refuse to
-/// start. Threat model row `pq_signature_downgrade` is the surface this
-/// guards.
-#[derive(Debug, thiserror::Error, PartialEq, Eq)]
-pub enum KernelSigningBackendError {
-    /// `crypto_floor=allow_hybrid` or `crypto_floor=pq_required` was
-    /// configured but no ML-DSA-65 key was provisioned. Fail-closed.
-    #[error(
-        "policy.crypto_floor={floor} requires a post-quantum (ML-DSA-65) signing key but \
-         none was provisioned at kernel boot"
-    )]
-    HybridFloorRequiresPqKey {
-        /// The floor that triggered the rejection.
-        floor: &'static str,
-    },
-
-    /// The provisioned PQ key material could not be loaded into a
-    /// signing backend.
-    #[error("post-quantum signing key import failed: {reason}")]
-    PqKeyImportFailed {
-        /// The reason the key import failed.
-        reason: String,
-    },
-}
-
-/// Construct the kernel-side receipt signing backend from a configured
-/// `crypto_floor` and the operator-provisioned key material.
-///
-/// Returns a boxed [`SigningBackend`] that the kernel calls through for
-/// every receipt. Under [`KernelCryptoFloor::AllowClassical`] this is an
-/// [`Ed25519Backend`] wrapping the historical [`Keypair`]; under
-/// [`KernelCryptoFloor::AllowHybrid`] or [`KernelCryptoFloor::PqRequired`]
-/// it is a [`HybridBackend`] composed of the same Ed25519 backend and an
-/// [`MlDsa65Backend`] derived from `pq_seed`.
-///
-/// `pq_seed` is the 32-byte FIPS 204 keygen seed for the rolled
-/// ML-DSA-65 key. Operators load it from the kernel boot environment
-/// (HSM, sealed file, KMS); the seed never leaves the kernel process.
-///
-/// # Errors
-///
-/// Fails fast with [`KernelSigningBackendError::HybridFloorRequiresPqKey`]
-/// if `crypto_floor` permits hybrid but `pq_seed` is `None`. This is the
-/// same fail-closed behaviour that `chio_policy::CryptoFloor::validate_with_pq_key`
-/// applies at policy load; checking it again at backend construction
-/// catches any drift between the two enums.
-#[cfg(feature = "pq")]
-pub fn kernel_signing_backend(
-    crypto_floor: KernelCryptoFloor,
-    classical_keypair: Keypair,
-    pq_seed: Option<&[u8; 32]>,
-) -> Result<Box<dyn chio_core::crypto::SigningBackend>, KernelSigningBackendError> {
-    use chio_core::crypto::{Ed25519Backend, HybridBackend, MlDsa65Backend};
-
-    let classical = Ed25519Backend::new(classical_keypair);
-
-    if !crypto_floor.allows_hybrid() {
-        return Ok(Box::new(classical));
-    }
-
-    let seed = pq_seed.ok_or(KernelSigningBackendError::HybridFloorRequiresPqKey {
-        floor: crypto_floor.as_str(),
-    })?;
-    let pq = MlDsa65Backend::from_seed(seed);
-    let hybrid = HybridBackend::new(Box::new(classical), pq).map_err(|error| {
-        KernelSigningBackendError::PqKeyImportFailed {
-            reason: error.to_string(),
-        }
-    })?;
-    Ok(Box::new(hybrid))
-}
-
-/// Construct the kernel-side receipt signing backend without the `pq`
-/// feature.
-///
-/// Without the `pq` feature, only [`KernelCryptoFloor::AllowClassical`] is
-/// constructible; any other floor returns
-/// [`KernelSigningBackendError::HybridFloorRequiresPqKey`]. This preserves
-/// the fail-closed contract for default builds.
-#[cfg(not(feature = "pq"))]
-pub fn kernel_signing_backend(
-    crypto_floor: KernelCryptoFloor,
-    classical_keypair: Keypair,
-    _pq_seed: Option<&[u8; 32]>,
-) -> Result<Box<dyn chio_core::crypto::SigningBackend>, KernelSigningBackendError> {
-    use chio_core::crypto::Ed25519Backend;
-
-    if crypto_floor.allows_hybrid() {
-        return Err(KernelSigningBackendError::HybridFloorRequiresPqKey {
-            floor: crypto_floor.as_str(),
-        });
-    }
-    Ok(Box::new(Ed25519Backend::new(classical_keypair)))
 }
 
 pub(super) fn build_child_request_receipt(
@@ -708,7 +368,7 @@ fn receipt_provenance_metadata(
 }
 
 pub(super) fn verify_governed_runtime_attestation_record(
-    attestation: &chio_core::capability::RuntimeAttestationEvidence,
+    attestation: &chio_core::capability::runtime_attestation::RuntimeAttestationEvidence,
     attestation_trust_policy: Option<&AttestationTrustPolicy>,
     now: u64,
 ) -> Result<VerifiedRuntimeAttestationRecord, KernelError> {
@@ -743,7 +403,7 @@ fn verified_runtime_assurance_receipt_metadata(
 }
 
 fn governed_runtime_assurance_receipt_metadata(
-    attestation: Option<&chio_core::capability::RuntimeAttestationEvidence>,
+    attestation: Option<&chio_core::capability::runtime_attestation::RuntimeAttestationEvidence>,
     attestation_trust_policy: Option<&AttestationTrustPolicy>,
     now: u64,
 ) -> Option<RuntimeAssuranceReceiptMetadata> {
@@ -757,18 +417,20 @@ fn governed_runtime_assurance_receipt_metadata(
 fn governed_economic_authorization_metadata(
     request: &ToolCallRequest,
     financial: &FinancialReceiptMetadata,
-) -> Result<Option<chio_core::receipt::EconomicAuthorizationReceiptMetadata>, KernelError> {
+) -> Result<Option<chio_core::receipt::economics::EconomicAuthorizationReceiptMetadata>, KernelError>
+{
     let Some(intent) = request.governed_intent.as_ref() else {
         return Ok(None);
     };
 
-    let approved_max = intent
-        .max_amount
-        .clone()
-        .unwrap_or(chio_core::capability::MonetaryAmount {
-            units: financial.budget_total,
-            currency: financial.currency.clone(),
-        });
+    let approved_max =
+        intent
+            .max_amount
+            .clone()
+            .unwrap_or(chio_core::capability::scope::MonetaryAmount {
+                units: financial.budget_total,
+                currency: financial.currency.clone(),
+            });
     let hold_amount_units = financial.attempted_cost.or_else(|| {
         financial
             .payment_reference
@@ -783,13 +445,13 @@ fn governed_economic_authorization_metadata(
         .map(|metered| {
             canonical_json_bytes(&metered.quote)
                 .map(|quote_bytes| chio_core::sha256_hex(&quote_bytes))
-                .map(
-                    |quote_hash| chio_core::receipt::EconomicPricingBasisReceiptMetadata {
+                .map(|quote_hash| {
+                    chio_core::receipt::economics::EconomicPricingBasisReceiptMetadata {
                         quote_hash: Some(quote_hash),
                         tariff_hash: None,
                         quote_expiry: metered.quote.expires_at,
-                    },
-                )
+                    }
+                })
                 .map_err(|error| {
                     KernelError::ReceiptSigningFailed(format!(
                         "failed to canonicalize metered billing quote for receipt metadata: {error}"
@@ -808,14 +470,14 @@ fn governed_economic_authorization_metadata(
                 "max_billed_units": metered.max_billed_units,
             }))
             .map(|profile_bytes| chio_core::sha256_hex(&profile_bytes))
-            .map(
-                |meter_profile_hash| chio_core::receipt::EconomicMeteringReceiptMetadata {
+            .map(|meter_profile_hash| {
+                chio_core::receipt::economics::EconomicMeteringReceiptMetadata {
                     provider: metered.quote.provider.clone(),
                     meter_profile_hash,
                     max_billable_units: metered.max_billed_units,
                     billing_unit: Some(metered.quote.billing_unit.clone()),
-                },
-            )
+                }
+            })
             .map_err(|error| {
                 KernelError::ReceiptSigningFailed(format!(
                     "failed to canonicalize metering profile for receipt metadata: {error}"
@@ -826,27 +488,27 @@ fn governed_economic_authorization_metadata(
 
     let economic_mode = if let Some(metered) = metered {
         match metered.settlement_mode {
-            chio_core::capability::MeteredSettlementMode::MustPrepay => {
-                chio_core::receipt::EconomicAuthorizationMode::PrepaidFixed
+            chio_core::capability::governance::MeteredSettlementMode::MustPrepay => {
+                chio_core::receipt::economics::EconomicAuthorizationMode::PrepaidFixed
             }
-            chio_core::capability::MeteredSettlementMode::HoldCapture => {
-                chio_core::receipt::EconomicAuthorizationMode::MeteredHoldCapture
+            chio_core::capability::governance::MeteredSettlementMode::HoldCapture => {
+                chio_core::receipt::economics::EconomicAuthorizationMode::MeteredHoldCapture
             }
-            chio_core::capability::MeteredSettlementMode::AllowThenSettle => {
-                chio_core::receipt::EconomicAuthorizationMode::ExternalDispatch
+            chio_core::capability::governance::MeteredSettlementMode::AllowThenSettle => {
+                chio_core::receipt::economics::EconomicAuthorizationMode::ExternalDispatch
             }
         }
     } else if financial.payment_reference.is_some() {
-        chio_core::receipt::EconomicAuthorizationMode::HoldCapture
+        chio_core::receipt::economics::EconomicAuthorizationMode::HoldCapture
     } else {
-        chio_core::receipt::EconomicAuthorizationMode::BudgetOnly
+        chio_core::receipt::economics::EconomicAuthorizationMode::BudgetOnly
     };
 
     Ok(Some(
-        chio_core::receipt::EconomicAuthorizationReceiptMetadata {
-            version: chio_core::receipt::EconomicAuthorizationReceiptMetadataVersion::V1,
+        chio_core::receipt::economics::EconomicAuthorizationReceiptMetadata {
+            version: chio_core::receipt::economics::EconomicAuthorizationReceiptMetadataVersion::V1,
             economic_mode,
-            payer: chio_core::receipt::EconomicPayerReceiptMetadata {
+            payer: chio_core::receipt::economics::EconomicPayerReceiptMetadata {
                 party_id: request.agent_id.clone(),
                 funding_source_ref: commerce
                     .map(|commerce| commerce.shared_payment_token_id.clone())
@@ -855,14 +517,14 @@ fn governed_economic_authorization_metadata(
                 custody_provider: None,
                 obligor_ref: None,
             },
-            merchant: chio_core::receipt::EconomicMerchantReceiptMetadata {
+            merchant: chio_core::receipt::economics::EconomicMerchantReceiptMetadata {
                 merchant_id: commerce
                     .map(|commerce| commerce.seller.clone())
                     .unwrap_or_else(|| request.server_id.clone()),
                 merchant_of_record: None,
                 order_ref: Some(request.request_id.clone()),
             },
-            payee: chio_core::receipt::EconomicPayeeReceiptMetadata {
+            payee: chio_core::receipt::economics::EconomicPayeeReceiptMetadata {
                 beneficiary_id: request.server_id.clone(),
                 settlement_destination_ref: financial
                     .payment_reference
@@ -870,7 +532,7 @@ fn governed_economic_authorization_metadata(
                     .or_else(|| commerce.map(|commerce| commerce.shared_payment_token_id.clone()))
                     .unwrap_or_else(|| request.server_id.clone()),
             },
-            rail: chio_core::receipt::EconomicRailReceiptMetadata {
+            rail: chio_core::receipt::economics::EconomicRailReceiptMetadata {
                 kind: if commerce.is_some() {
                     "shared_payment_token".to_string()
                 } else if metered.is_some() {
@@ -888,13 +550,15 @@ fn governed_economic_authorization_metadata(
                     .clone()
                     .or_else(|| commerce.map(|commerce| commerce.shared_payment_token_id.clone())),
             },
-            amount_bounds: chio_core::receipt::EconomicAmountBoundsReceiptMetadata {
+            amount_bounds: chio_core::receipt::economics::EconomicAmountBoundsReceiptMetadata {
                 approved_max,
-                hold_amount: hold_amount_units.map(|units| chio_core::capability::MonetaryAmount {
-                    units,
-                    currency: financial.currency.clone(),
+                hold_amount: hold_amount_units.map(|units| {
+                    chio_core::capability::scope::MonetaryAmount {
+                        units,
+                        currency: financial.currency.clone(),
+                    }
                 }),
-                settlement_cap: chio_core::capability::MonetaryAmount {
+                settlement_cap: chio_core::capability::scope::MonetaryAmount {
                     units: settlement_cap_units,
                     currency: financial.currency.clone(),
                 },
@@ -902,7 +566,7 @@ fn governed_economic_authorization_metadata(
             pricing_basis,
             metering,
             liability_refs: None,
-            budget: chio_core::receipt::EconomicBudgetReceiptMetadata {
+            budget: chio_core::receipt::economics::EconomicBudgetReceiptMetadata {
                 grant_index: financial.grant_index,
                 cost_charged: financial.cost_charged,
                 currency: financial.currency.clone(),
@@ -912,7 +576,7 @@ fn governed_economic_authorization_metadata(
                 root_budget_holder: financial.root_budget_holder.clone(),
                 attempted_cost: financial.attempted_cost,
             },
-            settlement: chio_core::receipt::EconomicSettlementReceiptMetadata {
+            settlement: chio_core::receipt::economics::EconomicSettlementReceiptMetadata {
                 settlement_status: financial.settlement_status.clone(),
             },
         },
@@ -921,7 +585,9 @@ fn governed_economic_authorization_metadata(
 
 fn inject_governed_economic_authorization_metadata(
     metadata: Option<serde_json::Value>,
-    economic_authorization: Option<chio_core::receipt::EconomicAuthorizationReceiptMetadata>,
+    economic_authorization: Option<
+        chio_core::receipt::economics::EconomicAuthorizationReceiptMetadata,
+    >,
 ) -> Result<Option<serde_json::Value>, KernelError> {
     let Some(economic_authorization) = economic_authorization else {
         return Ok(metadata);
@@ -1113,7 +779,7 @@ pub(super) fn request_model_metadata_receipt_metadata(
 ) -> Option<serde_json::Value> {
     request.model_metadata.as_ref().map(|model_metadata| {
         serde_json::json!({
-            "model_metadata": chio_core::receipt::ModelMetadataReceiptMetadata::from(model_metadata)
+            "model_metadata": chio_core::receipt::metadata::ModelMetadataReceiptMetadata::from(model_metadata)
         })
     })
 }
@@ -1272,10 +938,14 @@ pub(super) fn truncate_stream_to_byte_limit(
 mod tests {
     use super::*;
     use chio_core::capability::{
-        AttestationTrustPolicy, AttestationTrustRule, CapabilityToken, CapabilityTokenBody,
-        ChioScope, GovernedCallChainContext, GovernedProvenanceEvidenceClass,
-        GovernedTransactionIntent, GovernedUpstreamCallChainProof,
-        GovernedUpstreamCallChainProofBody, RuntimeAssuranceTier, RuntimeAttestationEvidence,
+        governance::{
+            GovernedCallChainContext, GovernedProvenanceEvidenceClass, GovernedTransactionIntent,
+            GovernedUpstreamCallChainProof, GovernedUpstreamCallChainProofBody,
+        },
+        runtime_attestation::{RuntimeAssuranceTier, RuntimeAttestationEvidence},
+        scope::ChioScope,
+        token::{CapabilityToken, CapabilityTokenBody},
+        trust_policy::{AttestationTrustPolicy, AttestationTrustRule},
     };
     use chio_core::crypto::sha256_hex;
 
@@ -1395,6 +1065,7 @@ mod tests {
             agent_id: "agent-1".to_string(),
             arguments: serde_json::json!({ "invoice_id": "inv-1" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(GovernedTransactionIntent {
                 id: "intent-1".to_string(),
                 server_id: "srv-pay".to_string(),
@@ -1469,6 +1140,7 @@ mod tests {
             agent_id: "agent-1".to_string(),
             arguments: serde_json::json!({ "invoice_id": "inv-2" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(GovernedTransactionIntent {
                 id: "intent-2".to_string(),
                 server_id: "srv-pay".to_string(),
@@ -1558,6 +1230,7 @@ mod tests {
             agent_id: "agent-1".to_string(),
             arguments: serde_json::json!({ "invoice_id": "inv-verified" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(GovernedTransactionIntent {
                 id: "intent-verified".to_string(),
                 server_id: "srv-pay".to_string(),
@@ -1631,6 +1304,7 @@ mod tests {
             agent_id: "agent-1".to_string(),
             arguments: serde_json::json!({ "invoice_id": "inv-3" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(GovernedTransactionIntent {
                 id: "intent-3".to_string(),
                 server_id: "srv-pay".to_string(),
@@ -1672,6 +1346,7 @@ mod tests {
             agent_id: "agent-1".to_string(),
             arguments: serde_json::json!({ "invoice_id": "inv-4" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(GovernedTransactionIntent {
                 id: "intent-4".to_string(),
                 server_id: "srv-pay".to_string(),
@@ -1733,6 +1408,7 @@ mod tests {
             agent_id: "agent-1".to_string(),
             arguments: serde_json::json!({ "invoice_id": "inv-nitro" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(GovernedTransactionIntent {
                 id: "intent-nitro".to_string(),
                 server_id: "srv-pay".to_string(),
@@ -1795,6 +1471,7 @@ mod tests {
             agent_id: "agent-1".to_string(),
             arguments: serde_json::json!({ "invoice_id": "inv-nitro-mismatch" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(GovernedTransactionIntent {
                 id: "intent-nitro-mismatch".to_string(),
                 server_id: "srv-pay".to_string(),
@@ -1835,27 +1512,29 @@ mod tests {
             agent_id: "agent-1".to_string(),
             arguments: serde_json::json!({ "invoice_id": "inv-economic-1" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(GovernedTransactionIntent {
                 id: "intent-economic-1".to_string(),
                 server_id: "srv-pay".to_string(),
                 tool_name: "charge".to_string(),
                 purpose: "pay supplier".to_string(),
-                max_amount: Some(chio_core::capability::MonetaryAmount {
+                max_amount: Some(chio_core::capability::scope::MonetaryAmount {
                     units: 500,
                     currency: "USD".to_string(),
                 }),
-                commerce: Some(chio_core::capability::GovernedCommerceContext {
+                commerce: Some(chio_core::capability::governance::GovernedCommerceContext {
                     seller: "seller-1".to_string(),
                     shared_payment_token_id: "shared-token-1".to_string(),
                 }),
-                metered_billing: Some(chio_core::capability::MeteredBillingContext {
-                    settlement_mode: chio_core::capability::MeteredSettlementMode::HoldCapture,
-                    quote: chio_core::capability::MeteredBillingQuote {
+                metered_billing: Some(chio_core::capability::governance::MeteredBillingContext {
+                    settlement_mode:
+                        chio_core::capability::governance::MeteredSettlementMode::HoldCapture,
+                    quote: chio_core::capability::governance::MeteredBillingQuote {
                         quote_id: "quote-1".to_string(),
                         provider: "meterd".to_string(),
                         billing_unit: "1k_tokens".to_string(),
                         quoted_units: 42,
-                        quoted_cost: chio_core::capability::MonetaryAmount {
+                        quoted_cost: chio_core::capability::scope::MonetaryAmount {
                             units: 230,
                             currency: "USD".to_string(),
                         },
@@ -1902,7 +1581,7 @@ mod tests {
 
         assert_eq!(
             economic.economic_mode,
-            chio_core::receipt::EconomicAuthorizationMode::MeteredHoldCapture
+            chio_core::receipt::economics::EconomicAuthorizationMode::MeteredHoldCapture
         );
         assert_eq!(economic.budget.currency, "USD");
         assert_eq!(economic.budget.cost_charged, 230);
@@ -1934,6 +1613,7 @@ mod tests {
             agent_id: "agent-1".to_string(),
             arguments: serde_json::json!({ "invoice_id": "inv-legacy-financial" }),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: Some(GovernedTransactionIntent {
                 id: "intent-legacy-financial".to_string(),
                 server_id: "srv-pay".to_string(),

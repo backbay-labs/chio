@@ -503,7 +503,7 @@ impl SqliteReceiptStore {
     pub fn record_checkpoint_publication_trust_anchor_binding(
         &mut self,
         checkpoint_seq: u64,
-        binding: &chio_core::receipt::CheckpointPublicationTrustAnchorBinding,
+        binding: &chio_core::receipt::checkpoint::CheckpointPublicationTrustAnchorBinding,
     ) -> Result<(), ReceiptStoreError> {
         binding
             .validate()
@@ -545,7 +545,7 @@ impl SqliteReceiptStore {
             .optional()?;
         match existing {
             Some(binding_json) => {
-                let existing_binding: chio_core::receipt::CheckpointPublicationTrustAnchorBinding =
+                let existing_binding: chio_core::receipt::checkpoint::CheckpointPublicationTrustAnchorBinding =
                     serde_json::from_str(&binding_json)?;
                 if existing_binding == normalized_binding {
                     return Ok(());

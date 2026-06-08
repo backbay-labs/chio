@@ -4,7 +4,7 @@
 //! external billing systems. Records follow a flat, denormalized schema
 //! that can be directly ingested by CSV/JSON billing pipelines.
 
-use chio_core::capability::MonetaryAmount;
+use chio_core::capability::scope::MonetaryAmount;
 use serde::{Deserialize, Serialize};
 
 use crate::cost::CostMetadata;

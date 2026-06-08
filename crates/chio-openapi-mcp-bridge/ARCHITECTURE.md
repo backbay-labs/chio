@@ -6,11 +6,12 @@
 - `OwnedBridgeToolServer` owns the same dispatch state after kernel registration consumes a bridge.
 - `BridgeConfig` is caller-supplied trust configuration, including upstream base URL and the typed HTTP egress contract that gates every live dispatcher call.
 - `RouteBinding` is the public method/path view. Internal dispatch state must carry any extra routing details without expanding that public struct.
+- `src/tests.rs` owns bridge-level regression tests for manifest generation, route binding, egress enforcement, body/query validation, redirect rejection, and owned server dispatch.
 - The optional `fuzz` module is a feature-gated trust-boundary harness for arbitrary OpenAPI input.
 
 ## Pain Points
 
-- `src/lib.rs` is carrying route binding, URL construction, egress enforcement, response shaping, and test fixtures in one file.
+- `src/lib.rs` still carries route binding and response shaping, while `dispatch.rs` owns URL construction and egress enforcement and `tests.rs` owns test fixtures.
 - Manifest tool generation and route dispatch planning are parallel paths, so drift between advertised input schema and live dispatch behavior is easy to miss.
 - Path parameter expansion still percent-encodes unreserved `.` bytes, so `.` or
   `..` parameter values can become real URL path segments after a downstream

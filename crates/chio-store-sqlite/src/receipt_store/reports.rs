@@ -1,6 +1,6 @@
 use super::*;
 
-use chio_core::capability::GovernedProvenanceEvidenceClass;
+use chio_core::capability::governance::GovernedProvenanceEvidenceClass;
 use chio_kernel::evidence_export::EvidenceLineageReferences;
 use chio_kernel::operator_report::GovernedTransactionDiagnostics;
 use chio_kernel::receipt_query::{ReceiptReadBoundary, ReceiptReadContext};

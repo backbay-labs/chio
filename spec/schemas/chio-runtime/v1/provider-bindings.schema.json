@@ -12,6 +12,21 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "weightsBindingMode": {
+                  "enum": ["required", "required_with_pin"]
+                }
+              },
+              "required": ["weightsBindingMode"]
+            },
+            "then": {
+              "required": ["modelCardId", "modelCardDigest", "loadedWeightsHash"]
+            }
+          }
+        ],
         "required": [
           "providerId",
           "localKernelId",
@@ -21,12 +36,27 @@
         ],
         "properties": {
           "providerId": { "type": "string", "minLength": 1 },
+          "bindingId": { "$ref": "#/$defs/nonPaddedString" },
           "localKernelId": { "type": "string", "minLength": 1 },
           "serverId": { "type": "string", "minLength": 1 },
           "toolName": { "type": "string", "minLength": 1 },
-          "discoveryAllowed": { "type": "boolean" }
+          "discoveryAllowed": { "type": "boolean" },
+          "modelCardId": { "$ref": "#/$defs/nonPaddedString" },
+          "modelCardDigest": { "$ref": "#/$defs/sha256" },
+          "loadedWeightsHash": { "$ref": "#/$defs/sha256" },
+          "weightsBindingMode": {
+            "enum": ["not_required", "required", "required_with_pin", "unavailable"]
+          }
         }
       }
     }
+  },
+  "$defs": {
+    "nonPaddedString": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^\\S(?:.*\\S)?$"
+    },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
   }
 }

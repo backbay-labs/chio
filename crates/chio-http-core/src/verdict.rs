@@ -77,7 +77,7 @@ impl DenyDetails {
 }
 
 /// The verdict for an HTTP request evaluation.
-/// Consistent with `chio_core_types::Decision` but carries HTTP-specific context.
+/// Consistent with `chio_core_types::receipt::decision::Decision` but carries HTTP-specific context.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "verdict", rename_all = "snake_case")]
 pub enum Verdict {
@@ -195,35 +195,43 @@ impl Verdict {
 
     /// Convert to the core Decision type for receipt signing.
     #[must_use]
-    pub fn to_decision(&self) -> chio_core_types::Decision {
+    pub fn to_decision(&self) -> chio_core_types::receipt::decision::Decision {
         match self {
-            Self::Allow => chio_core_types::Decision::Allow,
-            Self::Deny { reason, guard, .. } => chio_core_types::Decision::Deny {
+            Self::Allow => chio_core_types::receipt::decision::Decision::Allow,
+            Self::Deny { reason, guard, .. } => {
+                chio_core_types::receipt::decision::Decision::Deny {
+                    reason: reason.clone(),
+                    guard: guard.clone(),
+                }
+            }
+            Self::Cancel { reason } => chio_core_types::receipt::decision::Decision::Cancelled {
                 reason: reason.clone(),
-                guard: guard.clone(),
             },
-            Self::Cancel { reason } => chio_core_types::Decision::Cancelled {
-                reason: reason.clone(),
-            },
-            Self::Incomplete { reason } => chio_core_types::Decision::Incomplete {
-                reason: reason.clone(),
-            },
+            Self::Incomplete { reason } => {
+                chio_core_types::receipt::decision::Decision::Incomplete {
+                    reason: reason.clone(),
+                }
+            }
         }
     }
 }
 
-impl From<chio_core_types::Decision> for Verdict {
-    fn from(decision: chio_core_types::Decision) -> Self {
+impl From<chio_core_types::receipt::decision::Decision> for Verdict {
+    fn from(decision: chio_core_types::receipt::decision::Decision) -> Self {
         match decision {
-            chio_core_types::Decision::Allow => Self::Allow,
-            chio_core_types::Decision::Deny { reason, guard } => Self::Deny {
+            chio_core_types::receipt::decision::Decision::Allow => Self::Allow,
+            chio_core_types::receipt::decision::Decision::Deny { reason, guard } => Self::Deny {
                 reason,
                 guard,
                 http_status: 403,
                 details: Box::new(DenyDetails::default()),
             },
-            chio_core_types::Decision::Cancelled { reason } => Self::Cancel { reason },
-            chio_core_types::Decision::Incomplete { reason } => Self::Incomplete { reason },
+            chio_core_types::receipt::decision::Decision::Cancelled { reason } => {
+                Self::Cancel { reason }
+            }
+            chio_core_types::receipt::decision::Decision::Incomplete { reason } => {
+                Self::Incomplete { reason }
+            }
         }
     }
 }
@@ -291,7 +299,7 @@ mod tests {
         let decision = v.to_decision();
         assert!(matches!(
             decision,
-            chio_core_types::Decision::Cancelled { .. }
+            chio_core_types::receipt::decision::Decision::Cancelled { .. }
         ));
         let v2 = Verdict::from(decision);
         assert!(matches!(v2, Verdict::Cancel { reason } if reason == "timed out"));
@@ -307,7 +315,7 @@ mod tests {
         let decision = v.to_decision();
         assert!(matches!(
             decision,
-            chio_core_types::Decision::Incomplete { .. }
+            chio_core_types::receipt::decision::Decision::Incomplete { .. }
         ));
         let v2 = Verdict::from(decision);
         assert!(matches!(v2, Verdict::Incomplete { reason } if reason == "partial evaluation"));
@@ -350,7 +358,10 @@ mod tests {
     fn allow_roundtrip_through_decision() {
         let v = Verdict::Allow;
         let decision = v.to_decision();
-        assert!(matches!(decision, chio_core_types::Decision::Allow));
+        assert!(matches!(
+            decision,
+            chio_core_types::receipt::decision::Decision::Allow
+        ));
         let v2 = Verdict::from(decision);
         assert!(v2.is_allowed());
     }

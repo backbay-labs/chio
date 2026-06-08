@@ -4,9 +4,14 @@ use alloc::string::ToString;
 use alloc::vec;
 use alloc::vec::Vec;
 
-use chio_core_types::capability::{CapabilityToken, ChioScope, Operation, ToolGrant};
+use chio_core_types::capability::{
+    scope::{ChioScope, Operation, ToolGrant},
+    token::CapabilityToken,
+};
 use chio_core_types::crypto::{PublicKey, Signature, SigningAlgorithm, SigningBackend};
-use chio_core_types::receipt::{ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
+use chio_core_types::receipt::{
+    body::ChioReceiptBody, decision::Decision, decision::ToolCallAction, kinds::TrustLevel,
+};
 use serde_json::Value;
 
 use crate::capability_verify::CapabilityError;
@@ -52,7 +57,7 @@ fn grant(server: &str, tool: &str) -> ToolGrant {
 
 fn unsigned_capability(ttl: u64) -> CapabilityToken {
     CapabilityToken {
-        schema: chio_core_types::capability::CHIO_CAPABILITY_SCHEMA.to_string(),
+        schema: chio_core_types::capability::token::CHIO_CAPABILITY_SCHEMA.to_string(),
         id: "cap-public-kani".to_string(),
         issuer: public_key(7),
         subject: public_key(9),
@@ -346,6 +351,7 @@ fn receipt_body(kernel_key: PublicKey) -> ChioReceiptBody {
         trust_level: TrustLevel::Mediated,
         tenant_id: None,
         kernel_key,
+        bbs_projection_version: None,
     }
 }
 

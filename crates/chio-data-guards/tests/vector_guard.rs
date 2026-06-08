@@ -11,8 +11,8 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use chio_core::capability::{
-    CapabilityToken, CapabilityTokenBody, ChioScope, Constraint, Operation, SqlOperationClass,
-    ToolGrant,
+    scope::{ChioScope, Constraint, Operation, SqlOperationClass, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core::crypto::Keypair;
 use chio_data_guards::{VectorDbGuard, VectorFieldPaths, VectorGuardConfig};
@@ -59,6 +59,7 @@ fn make_request(
         agent_id: agent_id.clone(),
         arguments: args,
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
@@ -93,7 +94,10 @@ fn evaluate_with_matched_grant(
         session_filesystem_roots: None,
         matched_grant_index,
     };
-    guard.evaluate(&ctx).expect("evaluate should not error")
+    guard
+        .evaluate(&ctx)
+        .expect("evaluate should not error")
+        .verdict
 }
 
 fn cfg_docs_only() -> VectorGuardConfig {

@@ -1,5 +1,5 @@
 use chio_core::hashing::sha256;
-use chio_core::web3::Web3SettlementDispatchArtifact;
+use chio_core::web3::settlement::Web3SettlementDispatchArtifact;
 use serde::{Deserialize, Serialize};
 
 use crate::SettlementError;
@@ -178,7 +178,7 @@ pub fn assess_watchdog_execution(
 
 #[cfg(test)]
 mod tests {
-    use chio_core::web3::Web3SettlementDispatchArtifact;
+    use chio_core::web3::settlement::Web3SettlementDispatchArtifact;
 
     use super::{
         assess_watchdog_execution, build_bond_watchdog_job, build_settlement_watchdog_job,

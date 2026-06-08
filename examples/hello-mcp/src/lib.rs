@@ -1,7 +1,10 @@
 use std::error::Error;
 use std::io::{self, BufRead, Write};
 
-use chio_core::capability::{CapabilityToken, ChioScope, Operation, ToolGrant};
+use chio_core::capability::{
+    scope::{ChioScope, Operation, ToolGrant},
+    token::CapabilityToken,
+};
 use chio_core::crypto::Keypair;
 use chio_kernel::{
     ChioKernel, KernelConfig, KernelError, ToolCallOutput, ToolCallRequest, ToolServerConnection,
@@ -208,6 +211,7 @@ pub fn bridge_call_value() -> HelloMcpResult<Value> {
             agent_id,
             arguments: json!({"name": "world"}),
             dpop_proof: None,
+            execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,

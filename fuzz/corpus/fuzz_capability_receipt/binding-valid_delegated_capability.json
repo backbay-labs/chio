@@ -38,7 +38,7 @@
   "capability_body_canonical_json": "{\"delegation_chain\":[{\"capability_id\":\"cap-bindings-valid\",\"delegatee\":\"91a28a0b74381593a4d9469579208926afc8ad82c8839b7644359b9eba9a4b3a\",\"delegator\":\"66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a\",\"signature\":\"a4c297402d3bef255c8a9648215d9bb9c7fcbfb0a2e4009cfc6202459c10b2e4066de4ef60d4118f612993b6ceb2197095483e94c8a2ccc658ad7ef5b865be00\",\"timestamp\":1710000250}],\"expires_at\":1710000800,\"id\":\"cap-bindings-valid\",\"issued_at\":1710000200,\"issuer\":\"66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a\",\"scope\":{\"grants\":[{\"constraints\":[{\"type\":\"path_prefix\",\"value\":\"/workspace/\"}],\"max_invocations\":3,\"operations\":[\"invoke\",\"read_result\"],\"server_id\":\"srv-files\",\"tool_name\":\"file_read\"}]},\"subject\":\"0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d\"}",
   "description": "Capability is signed correctly, valid at the verification time, and carries a valid delegation link.",
   "expected": {
-    "delegation_chain_valid": true,
+    "delegation_chain_shape_valid": true,
     "signature_valid": true,
     "time_status": "valid",
     "time_valid": true

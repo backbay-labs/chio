@@ -1,4 +1,6 @@
-use chio_core::web3::{CHIO_SETTLE_CONTROL_STATE_SCHEMA, CHIO_SETTLE_CONTROL_TRACE_SCHEMA};
+use chio_core::web3::settlement::{
+    CHIO_SETTLE_CONTROL_STATE_SCHEMA, CHIO_SETTLE_CONTROL_TRACE_SCHEMA,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::{

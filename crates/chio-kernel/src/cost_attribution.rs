@@ -1,4 +1,6 @@
-use chio_core::receipt::{FinancialBudgetAuthorityReceiptMetadata, SettlementStatus};
+use chio_core::receipt::{
+    economics::FinancialBudgetAuthorityReceiptMetadata, economics::SettlementStatus,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::receipt_query::ReceiptReadContext;

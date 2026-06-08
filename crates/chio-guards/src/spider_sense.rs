@@ -37,7 +37,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 
-use chio_kernel::{Guard, GuardContext, KernelError, Verdict};
+use chio_kernel::{Guard, GuardContext, GuardDecision, KernelError, Verdict};
 
 /// Default cosine similarity threshold.
 pub const DEFAULT_SIMILARITY_THRESHOLD: f64 = 0.85;
@@ -315,20 +315,20 @@ impl Guard for SpiderSenseGuard {
         "spider-sense"
     }
 
-    fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
+    fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
         let embedding = match extract_embedding(&ctx.request.arguments) {
             Some(e) => e,
-            None => return Ok(Verdict::Allow),
+            None => return Ok(GuardDecision::allow()),
         };
         if embedding.len() != self.db.dim {
             // Dimension mismatch = fail-closed.
-            return Ok(Verdict::Deny);
+            return Ok(GuardDecision::deny(Vec::new()));
         }
         if embedding.iter().any(|v| !v.is_finite()) {
-            return Ok(Verdict::Deny);
+            return Ok(GuardDecision::deny(Vec::new()));
         }
         let score = self.score(&embedding);
-        Ok(self.verdict_for(score))
+        Ok(GuardDecision::from_verdict(self.verdict_for(score)))
     }
 }
 

@@ -61,17 +61,21 @@ pub(crate) use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 pub(crate) use chio_core::canonical::canonical_json_bytes;
 pub(crate) use chio_core::capability::{
-    AttestationTrustPolicy, CapabilityToken, ChioScope, Constraint, GovernedApprovalDecision,
-    GovernedApprovalToken, GovernedAutonomyTier, Operation, PromptGrant, ResourceGrant,
-    RuntimeAssuranceTier, ToolGrant,
+    governance::{GovernedApprovalDecision, GovernedApprovalToken, GovernedAutonomyTier},
+    runtime_attestation::RuntimeAssuranceTier,
+    scope::{ChioScope, Constraint, Operation, PromptGrant, ResourceGrant, ToolGrant},
+    token::CapabilityToken,
+    trust_policy::AttestationTrustPolicy,
 };
 pub(crate) use chio_core::crypto::{sha256_hex, Keypair};
 pub(crate) use chio_core::receipt::{
-    ChildRequestReceipt, ChildRequestReceiptBody, ChioReceipt, ChioReceiptBody, Decision,
-    FinancialReceiptMetadata, GovernedApprovalReceiptMetadata, GovernedAutonomyReceiptMetadata,
-    GovernedCommerceReceiptMetadata, GovernedTransactionReceiptMetadata,
-    MeteredBillingReceiptMetadata, ReceiptAttributionMetadata, RuntimeAssuranceReceiptMetadata,
-    SettlementStatus, ToolCallAction,
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    economics::FinancialReceiptMetadata, economics::SettlementStatus,
+    governance::GovernedApprovalReceiptMetadata, governance::GovernedAutonomyReceiptMetadata,
+    governance::GovernedCommerceReceiptMetadata, governance::GovernedTransactionReceiptMetadata,
+    governance::MeteredBillingReceiptMetadata, governance::RuntimeAssuranceReceiptMetadata,
+    lineage::ChildRequestReceipt, lineage::ChildRequestReceiptBody,
+    metadata::ReceiptAttributionMetadata,
 };
 pub(crate) use chio_core::session::{
     CompleteOperation, CompletionReference, CompletionResult, CreateElicitationOperation,
@@ -187,15 +191,16 @@ pub use chio_core::credit::{
     MAX_CREDIT_LOSS_LIFECYCLE_LIST_LIMIT, MAX_CREDIT_PROVIDER_LOSS_LIMIT,
     MAX_EXPOSURE_LEDGER_DECISION_LIMIT, MAX_EXPOSURE_LEDGER_RECEIPT_LIMIT,
 };
-pub use chio_core::governance::{
+pub use chio_core::governance::evaluation::evaluate_generic_governance_case;
+pub use chio_core::governance::generic::{
     build_generic_governance_case_artifact, build_generic_governance_charter_artifact,
-    evaluate_generic_governance_case, GenericGovernanceAuthorityScope,
-    GenericGovernanceCaseArtifact, GenericGovernanceCaseEvaluation,
-    GenericGovernanceCaseEvaluationRequest, GenericGovernanceCaseIssueRequest,
-    GenericGovernanceCaseKind, GenericGovernanceCaseState, GenericGovernanceCharterArtifact,
-    GenericGovernanceCharterIssueRequest, GenericGovernanceEffectiveState,
-    GenericGovernanceEvidenceKind, GenericGovernanceEvidenceReference, GenericGovernanceFinding,
-    GenericGovernanceFindingCode, SignedGenericGovernanceCase, SignedGenericGovernanceCharter,
+    GenericGovernanceAuthorityScope, GenericGovernanceCaseArtifact,
+    GenericGovernanceCaseEvaluation, GenericGovernanceCaseEvaluationRequest,
+    GenericGovernanceCaseIssueRequest, GenericGovernanceCaseKind, GenericGovernanceCaseState,
+    GenericGovernanceCharterArtifact, GenericGovernanceCharterIssueRequest,
+    GenericGovernanceEffectiveState, GenericGovernanceEvidenceKind,
+    GenericGovernanceEvidenceReference, GenericGovernanceFinding, GenericGovernanceFindingCode,
+    SignedGenericGovernanceCase, SignedGenericGovernanceCharter,
     GENERIC_GOVERNANCE_CASE_ARTIFACT_SCHEMA, GENERIC_GOVERNANCE_CHARTER_ARTIFACT_SCHEMA,
 };
 pub use chio_core::listing::{
@@ -262,17 +267,24 @@ pub use chio_core::market::{
     MAX_LIABILITY_CLAIM_WORKFLOW_LIMIT, MAX_LIABILITY_MARKET_WORKFLOW_LIMIT,
     MAX_LIABILITY_PROVIDER_LIST_LIMIT,
 };
-pub use chio_core::open_market::{
-    build_open_market_fee_schedule_artifact, build_open_market_penalty_artifact,
-    build_open_market_penalty_artifact_with_trusted_signers, evaluate_open_market_penalty,
-    evaluate_open_market_penalty_with_trusted_signers, OpenMarketAbuseClass, OpenMarketBondClass,
-    OpenMarketBondRequirement, OpenMarketCollateralReferenceKind, OpenMarketEconomicsScope,
-    OpenMarketEvidenceKind, OpenMarketEvidenceReference, OpenMarketFeeScheduleArtifact,
-    OpenMarketFeeScheduleIssueRequest, OpenMarketFinding, OpenMarketFindingCode,
-    OpenMarketPenaltyAction, OpenMarketPenaltyArtifact, OpenMarketPenaltyEffectiveState,
-    OpenMarketPenaltyEvaluation, OpenMarketPenaltyEvaluationRequest, OpenMarketPenaltyIssueRequest,
-    OpenMarketPenaltyState, SignedOpenMarketFeeSchedule, SignedOpenMarketPenalty,
-    OPEN_MARKET_FEE_SCHEDULE_ARTIFACT_SCHEMA, OPEN_MARKET_PENALTY_ARTIFACT_SCHEMA,
+pub use chio_core::open_market::evaluation::{
+    evaluate_open_market_penalty, evaluate_open_market_penalty_with_trusted_signers,
+    OpenMarketPenaltyEvaluation, OpenMarketPenaltyEvaluationRequest,
+};
+pub use chio_core::open_market::evidence::{
+    OpenMarketEvidenceKind, OpenMarketEvidenceReference, OpenMarketFinding, OpenMarketFindingCode,
+};
+pub use chio_core::open_market::fee_schedule::{
+    build_open_market_fee_schedule_artifact, OpenMarketBondClass, OpenMarketBondRequirement,
+    OpenMarketCollateralReferenceKind, OpenMarketEconomicsScope, OpenMarketFeeScheduleArtifact,
+    OpenMarketFeeScheduleIssueRequest, SignedOpenMarketFeeSchedule,
+    OPEN_MARKET_FEE_SCHEDULE_ARTIFACT_SCHEMA,
+};
+pub use chio_core::open_market::penalty::{
+    build_open_market_penalty_artifact, build_open_market_penalty_artifact_with_trusted_signers,
+    OpenMarketAbuseClass, OpenMarketPenaltyAction, OpenMarketPenaltyArtifact,
+    OpenMarketPenaltyEffectiveState, OpenMarketPenaltyIssueRequest, OpenMarketPenaltyState,
+    SignedOpenMarketPenalty, OPEN_MARKET_PENALTY_ARTIFACT_SCHEMA,
 };
 pub use chio_core::underwriting::{
     build_underwriting_decision_artifact, evaluate_underwriting_policy_input,
@@ -426,8 +438,8 @@ mod kernel;
 pub(crate) use kernel::{current_unix_timestamp, MatchingGrant, ReceiptContent};
 
 pub use kernel::{
-    AgentId, CapabilityId, ChildReceiptLog, ChioKernel, Guard, GuardContext, HybridSigningConfig,
-    KernelConfig, KernelError, PromptProvider, ReceiptLog, ResourceProvider,
+    AgentId, CapabilityId, ChildReceiptLog, ChioKernel, Guard, GuardContext, GuardDecision,
+    HybridSigningConfig, KernelConfig, KernelError, PromptProvider, ReceiptLog, ResourceProvider,
     RuntimeAdmissionContext, RuntimeAdmissionDecision, RuntimeAdmissionHook, ServerId,
     StructuredErrorReport, DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_MAX_SIZE_BYTES,
     DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES, DEFAULT_RETENTION_DAYS,

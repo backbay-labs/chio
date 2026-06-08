@@ -3,7 +3,7 @@
 //! This model intentionally reimplements the shipped subset logic without
 //! calling into `chio_core`, so differential tests can detect spec/runtime drift.
 
-/// Mirrors `chio_core::capability::Operation`.
+/// Mirrors `chio_core::capability::scope::Operation`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SpecOperation {
     Invoke,
@@ -14,7 +14,7 @@ pub enum SpecOperation {
     Delegate,
 }
 
-/// Mirrors `chio_core::capability::RuntimeAssuranceTier`.
+/// Mirrors `chio_core::capability::runtime_attestation::RuntimeAssuranceTier`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum SpecRuntimeAssuranceTier {
     None,
@@ -23,14 +23,14 @@ pub enum SpecRuntimeAssuranceTier {
     Verified,
 }
 
-/// Mirrors `chio_core::capability::MonetaryAmount`.
+/// Mirrors `chio_core::capability::scope::MonetaryAmount`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SpecMonetaryAmount {
     pub units: u64,
     pub currency: String,
 }
 
-/// Mirrors `chio_core::capability::Constraint`.
+/// Mirrors `chio_core::capability::scope::Constraint`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SpecConstraint {
     PathPrefix(String),
@@ -46,7 +46,7 @@ pub enum SpecConstraint {
     Custom(String, String),
 }
 
-/// Mirrors `chio_core::capability::ToolGrant`.
+/// Mirrors `chio_core::capability::scope::ToolGrant`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SpecToolGrant {
     pub server_id: String,
@@ -111,7 +111,7 @@ impl SpecToolGrant {
     }
 }
 
-/// Mirrors `chio_core::capability::ResourceGrant`.
+/// Mirrors `chio_core::capability::scope::ResourceGrant`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SpecResourceGrant {
     pub uri_pattern: String,
@@ -129,7 +129,7 @@ impl SpecResourceGrant {
     }
 }
 
-/// Mirrors `chio_core::capability::PromptGrant`.
+/// Mirrors `chio_core::capability::scope::PromptGrant`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SpecPromptGrant {
     pub prompt_name: String,
@@ -147,7 +147,7 @@ impl SpecPromptGrant {
     }
 }
 
-/// Mirrors `chio_core::capability::ChioScope`.
+/// Mirrors `chio_core::capability::scope::ChioScope`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SpecChioScope {
     pub grants: Vec<SpecToolGrant>,

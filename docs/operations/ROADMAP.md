@@ -5,6 +5,13 @@
 > or runtime versions. Current protocol posture is v1-only; use
 > `spec/PROTOCOL.md`, `spec/README.md`, and
 > `docs/release/RELEASE_CANDIDATE.md` for the live boundary.
+>
+> **Large-doc status**
+> - Category: historical roadmap.
+> - Owner: Chio documentation and release maintainers.
+> - Currentness: retained as implementation history; it does not override the
+>   current v1 protocol, release, or qualification documents.
+> - Last verification command: `rg -n "CHIO_FINAL_ARCHITECTURE|EXECUTION_PLAN|ROADMAP" docs spec README.md`.
 
 > **Date**: April 2026
 > **Synthesized from**: 35 protocol docs, 13 guard docs, 8 research agents,

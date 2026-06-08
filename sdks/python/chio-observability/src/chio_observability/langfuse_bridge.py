@@ -37,7 +37,7 @@ else:
 class _SupportsLangFuseSpan(Protocol):
     """Minimal duck-typed interface used by the bridge.
 
-    The real :class:`langfuse.Langfuse` client and the stub used in
+    The real :class:`langfuse.Langfuse` client and the test double used in
     tests both satisfy this protocol. We accept a loose surface so
     the bridge works across v2 and v3 of the LangFuse SDK.
     """

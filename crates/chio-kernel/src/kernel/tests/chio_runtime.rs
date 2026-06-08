@@ -1124,7 +1124,10 @@ fn chio_post_admission_drop_guard_retains_non_monetary_runtime_reservations(
         Some(0),
         None,
         None,
-        Some(metadata),
+        PostAdmissionReceiptContext {
+            extra_metadata: Some(metadata),
+            pre_invocation_guard_evidence: Vec::new(),
+        },
     ));
 
     assert_eq!(admission_calls.load(Ordering::SeqCst), 0);
@@ -1156,6 +1159,7 @@ fn chio_runtime_admission_releases_reservations_on_pre_dispatch_budget_denial(
         agent_id: child_a_kp.public_key().to_hex(),
         arguments: serde_json::json!({}),
         dpop_proof: None,
+                execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
@@ -1188,6 +1192,7 @@ fn chio_runtime_admission_releases_reservations_on_pre_dispatch_budget_denial(
         agent_id: child_b_kp.public_key().to_hex(),
         arguments: serde_json::json!({}),
         dpop_proof: None,
+                execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
@@ -1243,6 +1248,7 @@ fn chio_runtime_release_failure_does_not_mask_pre_dispatch_budget_denial(
         agent_id: child_a_kp.public_key().to_hex(),
         arguments: serde_json::json!({}),
         dpop_proof: None,
+                execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
@@ -1274,6 +1280,7 @@ fn chio_runtime_release_failure_does_not_mask_pre_dispatch_budget_denial(
         agent_id: child_b_kp.public_key().to_hex(),
         arguments: serde_json::json!({}),
         dpop_proof: None,
+                execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,

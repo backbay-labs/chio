@@ -24,6 +24,7 @@ required_markers = {
     "cargo kani setup": "Kani setup",
     "git clone https://github.com/creusot-rs/creusot": "Creusot source checkout",
     "cargo creusot version": "Creusot post-install probe",
+    "cargo install wasm-bindgen-cli --version \"$(cat .tooling/wasm-bindgen.version)\" --locked": "pinned wasm-bindgen-cli installer",
 }
 
 missing = [
@@ -46,6 +47,10 @@ formal_steps = [
     first_line("name: Install Aeneas and Charon"),
     first_line("name: Install Rust verification tools"),
 ]
+portable_steps = [
+    first_line("cargo install wasm-pack --version \"$(cat .tooling/wasm-pack.version)\" --locked"),
+    first_line("cargo install wasm-bindgen-cli --version \"$(cat .tooling/wasm-bindgen.version)\" --locked"),
+]
 early_installs = [line for line in formal_steps if line < rust_cache_step]
 if early_installs:
     raise SystemExit(
@@ -58,6 +63,13 @@ if late:
     raise SystemExit(
         "formal tool install steps must precede ./scripts/qualify-release.sh "
         f"(late line numbers: {late}, release line: {release_step})"
+    )
+
+late_portable = [line for line in portable_steps if line > release_step]
+if late_portable:
+    raise SystemExit(
+        "portable wasm tool install steps must precede ./scripts/qualify-release.sh "
+        f"(late line numbers: {late_portable}, release line: {release_step})"
     )
 
 print("PASS: release-qualification installs strict formal tools before ci-workspace")

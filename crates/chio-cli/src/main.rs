@@ -7,7 +7,8 @@
 //   stdin/stdout pipes, and run the kernel message loop.
 //
 // - `chio check --policy <path> --tool <name> --params <json>`
-//   Load a policy, create a kernel, and evaluate a single tool call.
+//   Load a policy, create a kernel, and evaluate one tool call in preflight
+//   mode, or in full mode with an explicit output fixture.
 //
 // - `chio mcp serve --policy <path> --server-id <id> -- <command> [args...]`
 //   Wrap an MCP server subprocess with the Chio kernel and expose an
@@ -62,10 +63,7 @@ use chio_core::appraisal::{
     RuntimeAttestationAppraisalResultExportRequest, RuntimeAttestationImportedAppraisalPolicy,
     SignedRuntimeAttestationAppraisalResult,
 };
-use chio_core::capability::{
-    ChioScope, GovernedAutonomyTier, MonetaryAmount, RuntimeAssuranceTier,
-    RuntimeAttestationEvidence,
-};
+use chio_core::capability::{governance::{GovernedAutonomyTier}, runtime_attestation::{RuntimeAssuranceTier, RuntimeAttestationEvidence}, scope::{ChioScope, MonetaryAmount}};
 use chio_core::crypto::Keypair;
 use chio_core::message::{AgentMessage, KernelMessage, ToolCallError, ToolCallResult};
 use chio_core::session::{
@@ -77,7 +75,9 @@ use chio_kernel::{
     ChioKernel, RevocationStore, SessionOperationResponse, ToolCallOutput,
     ToolCallRequest as KernelToolCallRequest, ToolCallStream,
 };
-use chio_mcp_adapter::{AdaptedMcpServer, ChioMcpEdge, McpAdapterConfig, McpEdgeConfig};
+use chio_mcp_adapter::adapter::McpAdapterConfig;
+use chio_mcp_adapter::edge::{ChioMcpEdge, McpEdgeConfig};
+use chio_mcp_adapter::server::AdaptedMcpServer;
 
 use crate::policy::load_policy;
 
@@ -117,6 +117,8 @@ fn main() {
 #[path = "cli/runtime.rs"]
 mod runtime_cli;
 pub(crate) use runtime_cli::*;
+#[path = "cli/runtime/trust_reports.rs"]
+mod runtime_trust_reports;
 #[path = "cli/trust_commands.rs"]
 mod trust_commands_cli;
 pub(crate) use trust_commands_cli::*;

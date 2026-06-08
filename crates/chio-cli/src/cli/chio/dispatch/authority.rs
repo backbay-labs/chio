@@ -57,7 +57,7 @@ pub(crate) fn cmd_chio_federation_authority_issue(
     )?;
     write_json_string(
         &out_dir.join("verification-context.json"),
-        &chio_attest_buyer_core::verification_context_json(&bundle.verification_context)
+        &chio_attest_buyer_core::context::verification_context_json(&bundle.verification_context)
             .map_err(|error| CliError::cli_other_error(format!("Chio context JSON: {error}")))?,
     )?;
     Ok(())
@@ -117,19 +117,19 @@ pub(crate) fn cmd_chio_federation_authority_trust_bundle_assemble(
         "Chio peer pins",
     )?)
     .map_err(|error| CliError::cli_other_error(format!("Chio peer pins: {error}")))?;
-    let workflow_intersection: chio_attest_buyer_core::WorkflowIntersectionArtifact = serde_json::from_str(
+    let workflow_intersection: chio_attest_buyer_core::claims::WorkflowIntersectionArtifact = serde_json::from_str(
         &read_utf8_json_file(workflow_intersection, "Chio workflow intersection")?,
     )
     .map_err(|error| {
         CliError::cli_other_error(format!("Chio workflow intersection JSON: {error}"))
     })?;
-    let disclosure_policy: chio_attest_buyer_core::ChioDisclosurePolicy = serde_json::from_str(
+    let disclosure_policy: chio_attest_buyer_core::disclosure::ChioDisclosurePolicy = serde_json::from_str(
         &read_utf8_json_file(disclosure_policy, "Chio disclosure policy")?,
     )
     .map_err(|error| {
         CliError::cli_other_error(format!("Chio disclosure policy JSON: {error}"))
     })?;
-    let checkpoint: chio_attest_buyer_core::SignedChioRevocationCheckpoint = serde_json::from_str(
+    let checkpoint: chio_attest_buyer_core::revocation::SignedChioRevocationCheckpoint = serde_json::from_str(
         &read_utf8_json_file(checkpoint, "Chio revocation checkpoint")?,
     )
     .map_err(|error| {
@@ -145,7 +145,7 @@ pub(crate) fn cmd_chio_federation_authority_trust_bundle_assemble(
     .map_err(|error| CliError::cli_other_error(format!("Chio trust bundle assemble: {error}")))?;
     write_json_string(
         out,
-        &chio_attest_buyer_core::verifier_trust_bundle_json(&document).map_err(|error| {
+        &chio_attest_buyer_core::trust_bundle::verifier_trust_bundle_json(&document).map_err(|error| {
             CliError::cli_other_error(format!("Chio verifier trust bundle JSON: {error}"))
         })?,
     )

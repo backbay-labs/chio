@@ -1,6 +1,9 @@
 use std::sync::atomic::Ordering;
 
-use chio_core::{BoundaryClass, ReceiptKind, RedactionMode, ToolOrigin};
+use chio_core::{
+    receipt::kinds::BoundaryClass, receipt::kinds::ReceiptKind, receipt::kinds::RedactionMode,
+    receipt::kinds::ToolOrigin,
+};
 use chio_log_redact::redacted;
 
 use super::*;
@@ -16,7 +19,7 @@ struct PostInvocationHandling {
     output: ToolServerOutput,
     extra_metadata: Option<serde_json::Value>,
     blocked_reason: Option<String>,
-    evidence: Vec<chio_core::receipt::GuardEvidence>,
+    evidence: Vec<chio_core::receipt::metadata::GuardEvidence>,
 }
 
 #[derive(Clone, Copy)]
@@ -133,7 +136,7 @@ impl ChioKernel {
                 content_hash: receipt_content.content_hash,
                 metadata,
                 timestamp,
-                trust_level: chio_core::TrustLevel::default(),
+                trust_level: chio_core::receipt::kinds::TrustLevel::default(),
                 tenant_id: None,
             })?;
 
@@ -288,7 +291,7 @@ impl ChioKernel {
                 request_metadata,
             ),
             timestamp,
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
         })?;
 
@@ -897,7 +900,7 @@ impl ChioKernel {
                 receipt_attribution_metadata(cap, matched_grant_index),
             ),
             timestamp,
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
         })?;
 
@@ -1061,7 +1064,7 @@ impl ChioKernel {
                 receipt_attribution_metadata(cap, matched_grant_index),
             ),
             timestamp,
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
         })?;
 
@@ -1134,7 +1137,7 @@ impl ChioKernel {
                 receipt_attribution_metadata(cap, matched_grant_index),
             ),
             timestamp,
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
         })?;
 
@@ -1229,7 +1232,7 @@ impl ChioKernel {
                 receipt_attribution_metadata(cap, matched_grant_index),
             ),
             timestamp,
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
         })?;
 
@@ -1327,7 +1330,7 @@ impl ChioKernel {
             content_hash: receipt_content.content_hash,
             metadata,
             timestamp,
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
         })?;
 
@@ -1356,9 +1359,9 @@ impl ChioKernel {
             )?;
         }
 
-        // Mint a short-lived, single-use execution nonce bound to this allow
-        // verdict; opt-in via ExecutionNonceConfig. When no config is
-        // installed the field remains `None` for backward compatibility.
+        // Mint a short-lived, single-use execution nonce for allow responses
+        // that did not already present one. A request that consumed a nonce
+        // to execute must not chain-mint a replacement for the same call.
         let execution_nonce = self.mint_execution_nonce_for_allow(request, cap, &receipt)?;
 
         Ok(ToolCallResponse {
@@ -1367,6 +1370,65 @@ impl ChioKernel {
             output: Some(output),
             reason: None,
             terminal_state: OperationTerminalState::Completed,
+            receipt,
+            execution_nonce,
+        })
+    }
+
+    pub(crate) fn build_execution_nonce_preflight_allow_response_with_metadata(
+        &self,
+        request: &ToolCallRequest,
+        timestamp: u64,
+        matched_grant_index: Option<usize>,
+        extra_metadata: Option<serde_json::Value>,
+    ) -> Result<ToolCallResponse, KernelError> {
+        let cap = &request.capability;
+        let receipt_content = receipt_content_for_output(None, None)?;
+        let request_metadata = request_receipt_metadata(
+            request,
+            self.attestation_trust_policy.as_ref(),
+            timestamp,
+            extra_metadata.as_ref(),
+        )?;
+        let metadata = merge_metadata_objects(
+            merge_metadata_objects(
+                merge_metadata_objects(receipt_content.metadata, request_metadata),
+                extra_metadata,
+            ),
+            receipt_attribution_metadata(cap, matched_grant_index),
+        );
+
+        let action = ToolCallAction::from_parameters(request.arguments.clone()).map_err(|e| {
+            KernelError::ReceiptSigningFailed(format!("failed to hash parameters: {e}"))
+        })?;
+
+        let receipt = self.build_and_sign_receipt(ReceiptParams {
+            request_id: Some(&request.request_id),
+            capability_id: &cap.id,
+            tool_name: &request.tool_name,
+            server_id: &request.server_id,
+            decision: Decision::Incomplete {
+                reason: "execution nonce preflight requires retry with presented nonce".to_string(),
+            },
+            action,
+            content_hash: receipt_content.content_hash,
+            metadata,
+            timestamp,
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
+            tenant_id: None,
+        })?;
+
+        self.record_chio_receipt_with_federation(request, &receipt)?;
+        let execution_nonce = self.mint_execution_nonce_for_allow(request, cap, &receipt)?;
+
+        Ok(ToolCallResponse {
+            request_id: request.request_id.clone(),
+            verdict: Verdict::Allow,
+            output: None,
+            reason: None,
+            terminal_state: OperationTerminalState::Incomplete {
+                reason: "execution nonce preflight requires retry with presented nonce".to_string(),
+            },
             receipt,
             execution_nonce,
         })
@@ -1514,6 +1576,9 @@ impl ChioKernel {
         });
         let metadata = merge_metadata_objects(params.metadata, request_metadata);
 
+        let mut evidence = current_pre_invocation_guard_evidence();
+        evidence.extend(current_post_invocation_guard_evidence());
+
         let body = ChioReceiptBody {
             id: next_receipt_id("rcpt"),
             timestamp: params.timestamp,
@@ -1530,11 +1595,12 @@ impl ChioKernel {
             actor_chain: Vec::new(),
             content_hash: params.content_hash,
             policy_hash: self.config.policy_hash.clone(),
-            evidence: current_post_invocation_guard_evidence(),
+            evidence,
             metadata,
             trust_level: params.trust_level,
             tenant_id,
             kernel_key: self.config.keypair.public_key(),
+            bbs_projection_version: None,
         };
 
         // Delegate the pure signing step to chio-kernel-core so the portable

@@ -10,7 +10,7 @@ use chio_anchor::{
     publish_root, EvmAnchorTarget,
 };
 use chio_core::canonical::canonical_json_bytes;
-use chio_core::capability::MonetaryAmount;
+use chio_core::capability::scope::MonetaryAmount;
 use chio_core::credit::{
     CapitalBookQuery, CapitalBookSourceKind, CapitalExecutionAuthorityStep,
     CapitalExecutionInstructionArtifact, CapitalExecutionInstructionSupportBoundary,
@@ -25,13 +25,17 @@ use chio_core::crypto::Keypair;
 use chio_core::hashing::sha256_hex;
 use chio_core::merkle::MerkleTree;
 use chio_core::receipt::{
-    ChioReceipt, ChioReceiptBody, Decision, SignedExportEnvelope, ToolCallAction,
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    lineage::SignedExportEnvelope,
 };
-use chio_core::web3::{
-    AnchorInclusionProof, OracleConversionEvidence, SignedWeb3IdentityBinding,
-    Web3IdentityBindingCertificate, Web3KeyBindingPurpose, Web3SettlementLifecycleState,
-    Web3SettlementPath, CHIO_LINK_ORACLE_AUTHORITY,
+use chio_core::web3::anchors::{
+    AnchorInclusionProof, OracleConversionEvidence, CHIO_LINK_ORACLE_AUTHORITY,
 };
+use chio_core::web3::identity::{
+    SignedWeb3IdentityBinding, Web3IdentityBindingCertificate, Web3KeyBindingPurpose,
+};
+use chio_core::web3::settlement::Web3SettlementLifecycleState;
+use chio_core::web3::trust_profile::Web3SettlementPath;
 use chio_kernel::checkpoint::{build_checkpoint, build_inclusion_proof};
 use chio_kernel::evidence_export::{
     EvidenceChildReceiptScope, EvidenceExportBundle, EvidenceExportQuery,
@@ -310,7 +314,7 @@ fn operator_binding(
     settlement_address: &str,
 ) -> SignedWeb3IdentityBinding {
     let certificate = Web3IdentityBindingCertificate {
-        schema: chio_core::web3::CHIO_KEY_BINDING_CERTIFICATE_SCHEMA.to_string(),
+        schema: chio_core::web3::identity::CHIO_KEY_BINDING_CERTIFICATE_SCHEMA.to_string(),
         chio_identity: format!("did:chio:{}", keypair.public_key().to_hex()),
         chio_public_key: keypair.public_key(),
         chain_scope: vec![chain_id.to_string()],
@@ -338,6 +342,8 @@ fn sample_capital_instruction(
     not_after: u64,
     amount_units: u64,
 ) -> chio_core::credit::SignedCapitalExecutionInstruction {
+    let custodian = Keypair::from_seed(&[13u8; 32]);
+    let custodian_id = custodian.public_key().to_hex();
     SignedExportEnvelope::sign(
         CapitalExecutionInstructionArtifact {
             schema: chio_core::credit::CAPITAL_EXECUTION_INSTRUCTION_ARTIFACT_SCHEMA.to_string(),
@@ -360,20 +366,22 @@ fn sample_capital_instruction(
                 currency: "USD".to_string(),
             }),
             authority_chain: vec![
-                CapitalExecutionAuthorityStep {
-                    role: CapitalExecutionRole::OperatorTreasury,
-                    principal_id: "treasury-1".to_string(),
-                    approved_at: issued_at.saturating_sub(10),
-                    expires_at: not_after,
-                    note: Some("governed release".to_string()),
-                },
-                CapitalExecutionAuthorityStep {
-                    role: CapitalExecutionRole::Custodian,
-                    principal_id: "custodian-devnet".to_string(),
-                    approved_at: issued_at.saturating_sub(5),
-                    expires_at: not_after,
-                    note: Some("official web3 stack".to_string()),
-                },
+                CapitalExecutionAuthorityStep::signed(
+                    CapitalExecutionRole::OperatorTreasury,
+                    keypair,
+                    issued_at.saturating_sub(10),
+                    not_after,
+                    Some("governed release".to_string()),
+                )
+                .test_expect("treasury authority proof"),
+                CapitalExecutionAuthorityStep::signed(
+                    CapitalExecutionRole::Custodian,
+                    &custodian,
+                    issued_at.saturating_sub(5),
+                    not_after,
+                    Some("official web3 stack".to_string()),
+                )
+                .test_expect("custodian authority proof"),
             ],
             execution_window: CapitalExecutionWindow {
                 not_before: issued_at,
@@ -382,7 +390,7 @@ fn sample_capital_instruction(
             rail: CapitalExecutionRail {
                 kind: CapitalExecutionRailKind::Web3,
                 rail_id: "ganache-devnet-usdc".to_string(),
-                custody_provider_id: "custodian-devnet".to_string(),
+                custody_provider_id: custodian_id,
                 source_account_ref: Some("vault:facility-main".to_string()),
                 destination_account_ref: Some(beneficiary_address.to_string()),
                 jurisdiction: Some(chain_id.to_string()),
@@ -436,9 +444,10 @@ fn sample_receipt(
             policy_hash: sha256_hex(b"policy:web3"),
             evidence: Vec::new(),
             metadata: None,
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: None,
             kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
         },
         keypair,
     )

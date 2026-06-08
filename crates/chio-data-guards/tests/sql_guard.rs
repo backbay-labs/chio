@@ -9,7 +9,10 @@
 
 use std::collections::HashMap;
 
-use chio_core::capability::{CapabilityToken, CapabilityTokenBody, ChioScope};
+use chio_core::capability::{
+    scope::ChioScope,
+    token::{CapabilityToken, CapabilityTokenBody},
+};
 use chio_core::crypto::Keypair;
 use chio_data_guards::{SqlDialect, SqlGuardConfig, SqlOperation, SqlQueryGuard};
 use chio_kernel::{Guard, GuardContext, ToolCallRequest, Verdict};
@@ -42,6 +45,7 @@ fn make_request(
         agent_id: agent_id.clone(),
         arguments: args,
         dpop_proof: None,
+        execution_nonce: None,
         governed_intent: None,
         approval_token: None,
         model_metadata: None,
@@ -61,7 +65,10 @@ fn evaluate(guard: &SqlQueryGuard, tool: &str, args: serde_json::Value) -> Verdi
         session_filesystem_roots: None,
         matched_grant_index: None,
     };
-    guard.evaluate(&ctx).expect("evaluate should not error")
+    guard
+        .evaluate(&ctx)
+        .expect("evaluate should not error")
+        .verdict
 }
 
 fn base_cfg() -> SqlGuardConfig {

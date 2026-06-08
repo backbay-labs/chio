@@ -1,7 +1,7 @@
 #![forbid(clippy::unwrap_used)]
 #![forbid(clippy::expect_used)]
 
-use chio_core::capability::Constraint;
+use chio_core::capability::scope::Constraint;
 use chio_policy::{compile_policy, HushSpec};
 
 fn compile(yaml: &str) -> chio_policy::CompiledPolicy {

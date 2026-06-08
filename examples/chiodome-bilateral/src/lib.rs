@@ -23,11 +23,11 @@ use chio_core::crypto::Keypair;
 use chio_core::hashing::Hash;
 use chio_core::merkle::{leaf_hash, MerkleTree};
 use chio_core::receipt::{
-    ActorRef, BoundaryClass, ChioReceipt, ChioReceiptBody, Decision, FinancialReceiptMetadata,
-    ReceiptKind, RedactionMode, SettlementStatus, ToolCallAction, ToolOrigin, TrustLevel,
+    metadata::ActorRef, kinds::BoundaryClass, body::ChioReceipt, body::ChioReceiptBody, decision::Decision, economics::FinancialReceiptMetadata,
+    kinds::ReceiptKind, kinds::RedactionMode, economics::SettlementStatus, decision::ToolCallAction, kinds::ToolOrigin, kinds::TrustLevel,
 };
 use chio_federation::bilateral_dsse::{sign_dsse_envelope, verify_dsse_envelope, DsseEnvelope};
-use chio_web3::{Web3CheckpointStatement, CHIO_CHECKPOINT_STATEMENT_SCHEMA};
+use chio_web3::anchors::{Web3CheckpointStatement, CHIO_CHECKPOINT_STATEMENT_SCHEMA};
 use sha2::{Digest, Sha256};
 
 const DEFAULT_OUTPUT_DIR: &str = "examples/chiodome-bilateral/fixtures";
@@ -287,6 +287,7 @@ fn build_refund_receipt(kp_org_b: &Keypair) -> Result<ChioReceipt, Box<dyn StdEr
         trust_level: TrustLevel::default(),
         tenant_id: Some("tenant-org-a".to_string()),
         kernel_key: kp_org_b.public_key(),
+        bbs_projection_version: None,
     };
     ChioReceipt::sign(body, kp_org_b)
         .map_err(|e| -> Box<dyn StdError> { format!("receipt sign: {e}").into() })

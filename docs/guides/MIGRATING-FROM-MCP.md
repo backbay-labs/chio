@@ -9,7 +9,8 @@ You'll end with:
 
 - The same MCP client UX you have today.
 - A policy-enforced sidecar between the client and the tool server.
-- Signed receipts for every allow / deny decision.
+- Signed receipts for every mediated allow or deny decision, plus explicit
+  advisory receipts for routes that only observe.
 - Bundled defaults that immediately deny `.env` writes, `.git/**`
   reads, and destructive shell commands.
 
@@ -116,10 +117,22 @@ If your client sends `_meta.modelMetadata` or `_meta.chioModelMetadata`, Chio
 preserves that data on the request and receipt path, but the incoming
 provenance is treated as `asserted` until a trusted subsystem upgrades it.
 
+### Sidecar evaluation boundary
+
+Do not use `POST /v1/evaluate` as execution authorization. It is a deprecated
+compatibility alias for `POST /v1/evaluate/advisory`; both return
+`authorization: false`, `authorizationBasis: "advisory_only"`, and an
+advisory receipt. Mediated evaluation uses kernel-backed routes such as
+`POST /chio/evaluate`. Mediated execution requires a mediated decision receipt,
+not an advisory evaluation receipt.
+
 ## Step 4: Prove one deny, one allow, and one receipt
 
 Run `chio check` against the same file-backed starter policy to confirm the
-kernel path is live:
+kernel path is live. The default mode is preflight: it evaluates policies that
+do not require tool output. If the policy contains output-sensitive guards, use
+`--mode full --output-fixture <json-file>` so the post-output guard pipeline is
+evaluated against explicit fixture output.
 
 ```bash
 chio check --policy ./policy.yaml \
@@ -146,6 +159,16 @@ chio check --policy ./policy.yaml \
   --server shell --tool run_command \
   --params '{"command":"pwd"}'
 # verdict: ALLOW, exit 0
+```
+
+For a policy that scans tool output, provide the tool response fixture:
+
+```bash
+printf '%s\n' '{"stdout":"/workspace/project"}' > /tmp/chio-check-output.json
+chio check --policy ./policy.yaml \
+  --mode full --output-fixture /tmp/chio-check-output.json \
+  --server shell --tool run_command \
+  --params '{"command":"pwd"}'
 ```
 
 End-to-end through your MCP client:
@@ -190,8 +213,11 @@ Once the baseline deny list is in place:
 
    See `docs/guards/` for the catalogue.
 
-3. **Verify receipts.** Every allow / deny is a signed artefact. Use
-   `chio receipt` to query them:
+3. **Verify receipts.** Every mediated allow or deny is a signed artefact.
+   Advisory evaluation receipts are also signed, but they are not
+   authorization. A mediated execution gate must require
+   `receipt_kind: mediated_decision`, `boundary_class: prevent`, and
+   `trust_level: mediated`. Use `chio receipt` to query them:
 
    ```bash
    # Tenant-scoped local read (fails closed unless --tenant or --admin-all is set).
@@ -317,6 +343,16 @@ Not every MCP feature lands on day one. Known gaps:
 - **Remote MCP.** This guide covers stdio edges. For remote MCP
   (Streamable HTTP with OAuth2 / OIDC), use `chio mcp serve-http`;
   the `--preset` flag is a stdio-only convenience today.
+- **Execution nonces.** Kernel-dispatched tool calls support strict,
+  single-use `ToolCallRequest::execution_nonce` enforcement when
+  `ExecutionNonceConfig::require_nonce` is enabled. `chio mcp wrap
+  --strict-execution-nonce` runs allowed `tools/call` requests through
+  a kernel preflight that mints a signed nonce, then re-presents that
+  nonce on the execution request before the wrapped MCP server is
+  invoked. The default `chio mcp wrap` compatibility path remains a
+  manifest-gated pass-through, and advisory `/v1/evaluate` checks do
+  not execute or consume nonces. For TOCTOU-sensitive deployments, use
+  a mediated execution path with strict nonces enabled.
 - **Pre-existing receipts.** Moving to Chio does not retroactively
   attest past tool calls; receipts start at the first call through
   the edge.

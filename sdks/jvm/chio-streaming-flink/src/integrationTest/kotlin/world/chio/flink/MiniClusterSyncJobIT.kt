@@ -58,12 +58,11 @@ class MiniClusterSyncJobIT {
             val receiptTag = ChioOutputTags.receiptTag()
             val receipts = processed.getSideOutput(receiptTag).executeAndCollect("receipts").consume()
 
-            // Main stream only carries allow.
-            assert(main.size == 1) { "expected 1 allow, got ${main.size}" }
-            // DLQ has the deny.
-            assert(dlq.size == 1) { "expected 1 DLQ record, got ${dlq.size}" }
-            // Receipts side output has allow only (deny never emits to receipts).
-            assert(receipts.size == 1) { "expected 1 allow receipt, got ${receipts.size}" }
+            // Advisory-only evaluation cannot authorize execution, so every
+            // record fails closed to the DLQ.
+            assert(main.isEmpty()) { "expected no allow from advisory-only route, got ${main.size}" }
+            assert(dlq.size == 2) { "expected 2 DLQ records, got ${dlq.size}" }
+            assert(receipts.isEmpty()) { "expected no mediated receipts, got ${receipts.size}" }
         } finally {
             sidecar.stop(0)
         }
@@ -77,38 +76,62 @@ class MiniClusterSyncJobIT {
 
     private fun startFakeSidecar(): HttpServer {
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
-        server.createContext("/v1/evaluate") { exchange ->
+        server.createContext("/v1/evaluate/advisory") { exchange ->
             val body = exchange.requestBody.readAllBytes()
             val parsed: Map<String, Any?> = jacksonObjectMapper().readValue(body)
             val toolName = parsed["tool_name"] as String
             val params = parsed["parameters"] as Map<String, Any?>
             val paramHash = parsed["parameter_hash"] as String
-            // tool_name looks like events:consume:<subject>
-            val isDeny = toolName.endsWith(":denied")
-            val decision =
-                if (isDeny) {
-                    """{"verdict":"deny","reason":"blocked","guard":"test-guard"}"""
-                } else {
-                    """{"verdict":"allow"}"""
-                }
             val resp =
                 """
                 {
-                  "id": "srv-${params["request_id"]}",
-                  "timestamp": 1700000000,
-                  "capability_id": "cap",
-                  "tool_server": "srv",
-                  "tool_name": "$toolName",
-                  "action": {"parameters": ${jacksonObjectMapper().writeValueAsString(params)}, "parameter_hash": "$paramHash"},
-                  "decision": $decision,
-                  "content_hash": "$paramHash",
-                  "policy_hash": "p",
-                  "evidence": [],
-                  "kernel_key": "k",
-                  "signature": "s"
+                  "schema": "chio.sidecar.advisory-evaluation.v1",
+                  "authorization": false,
+                  "authorizationBasis": "advisory_only",
+                  "receipt": {
+                    "id": "srv-${params["request_id"]}",
+                    "timestamp": 1700000000,
+                    "capability_id": "cap",
+                    "tool_server": "srv",
+                    "tool_name": "$toolName",
+                    "action": {"parameters": ${jacksonObjectMapper().writeValueAsString(params)}, "parameter_hash": "$paramHash"},
+                    "decision": null,
+                    "receipt_kind": "advisory_evaluation",
+                    "boundary_class": "advisory_only",
+                    "observation_outcome": "evaluated",
+                    "tool_origin": "host_executed_unmediated",
+                    "redaction_mode": "none",
+                    "trust_level": "advisory",
+                    "content_hash": "$paramHash",
+                    "policy_hash": "p",
+                    "evidence": [],
+                    "kernel_key": "k",
+                    "signature": "s"
+                  }
                 }
                 """.trimIndent()
             respond(exchange, 200, resp)
+        }
+        server.createContext("/v1/receipts/verify") { exchange ->
+            respond(
+                exchange,
+                200,
+                """
+                {
+                  "signature_valid": true,
+                  "signer_trusted": true,
+                  "receipt_id_valid": true,
+                  "parameter_hash_valid": true,
+                  "receipt_kind": "advisory_evaluation",
+                  "boundary_class": "advisory_only",
+                  "trust_level": "advisory",
+                  "result": "none",
+                  "authorized": false,
+                  "signer_key_hex": "${"d".repeat(64)}",
+                  "ok": false
+                }
+                """.trimIndent(),
+            )
         }
         server.start()
         return server

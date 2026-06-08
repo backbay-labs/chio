@@ -1,4 +1,4 @@
-use chio_core::capability::{RuntimeAssuranceTier, WorkloadIdentity};
+use chio_core::capability::{runtime_attestation::{RuntimeAssuranceTier}, workload_identity::{WorkloadIdentity}};
 
 // ---------------------------------------------------------------------------
 // Panic mode (global emergency deny-all)

@@ -8,6 +8,7 @@ pub(crate) fn cmd_conformance_run(
     report: Option<&str>,
     scenario: Option<&str>,
     output: Option<&Path>,
+    peer_binary: Option<&Path>,
 ) -> Result<(), CliError> {
     // Reject unknown `--report` values before running the harness so callers
     // don't wait through a full live run before receiving the error.
@@ -15,6 +16,14 @@ pub(crate) fn cmd_conformance_run(
 
     let mut options = chio_conformance::default_run_options();
     options.peers = parse_peer_selection(peer)?;
+    if let Some(binary) = peer_binary {
+        if options.peers.len() != 1 {
+            return Err(CliError::cli_other_error(
+                "--peer-binary requires --peer to select exactly one language".to_string(),
+            ));
+        }
+        options.peer_binaries.push((options.peers[0], binary.to_path_buf()));
+    }
 
     let summary = chio_conformance::run_conformance_harness(&options).map_err(|error| {
         CliError::provider_error(format!("conformance harness failed: {error}"))
@@ -22,10 +31,8 @@ pub(crate) fn cmd_conformance_run(
 
     let scenarios = chio_conformance::load_scenarios_from_dir(&options.scenarios_dir)
         .map_err(|error| CliError::cli_io_error(format!("failed to load scenarios: {error}")))?;
-    let mut results =
-        chio_conformance::load_results_from_dir(&summary.results_dir).map_err(|error| {
-            CliError::cli_io_error(format!("failed to load peer results: {error}"))
-        })?;
+    let mut results = chio_conformance::load_results_from_dir(&summary.results_dir)
+        .map_err(|error| CliError::cli_io_error(format!("failed to load peer results: {error}")))?;
     if let Some(filter) = scenario {
         results.retain(|result| result.scenario_id == filter);
     }
@@ -57,7 +64,9 @@ pub(crate) fn parse_report_format(report: Option<&str>) -> Result<bool, CliError
     }
 }
 
-pub(crate) fn parse_peer_selection(peer: &str) -> Result<Vec<chio_conformance::PeerTarget>, CliError> {
+pub(crate) fn parse_peer_selection(
+    peer: &str,
+) -> Result<Vec<chio_conformance::PeerTarget>, CliError> {
     match peer {
         "all" => Ok(vec![
             chio_conformance::PeerTarget::Js,
@@ -200,13 +209,21 @@ pub(crate) fn resolve_peers_lock_path(explicit: Option<&Path>) -> PathBuf {
 /// `--check`, each published entry is downloaded, sha256-verified, and
 /// extracted under `out/`. The `language` filter restricts the loop to
 /// entries matching that adapter. Entries flagged `published = false` are
-/// skipped with a clear message.
+/// skipped in mixed selections; selecting only unpublished entries fails
+/// unless `allow_unpublished_only` is set for an explicit pre-release gate.
 pub(crate) fn cmd_conformance_fetch_peers(
     check: bool,
     out: &Path,
     language: Option<&str>,
+    allow_unpublished_only: bool,
     lockfile: Option<&Path>,
 ) -> Result<(), CliError> {
+    if allow_unpublished_only && !check {
+        return Err(CliError::cli_other_error(
+            "--allow-unpublished-only is only valid with --check; downloads still require at least one published peer".to_string(),
+        ));
+    }
+
     let lock_path = resolve_peers_lock_path(lockfile);
     let lock = chio_conformance::PeersLock::load(&lock_path).map_err(|error| {
         CliError::cli_other_error(format!(
@@ -233,6 +250,12 @@ pub(crate) fn cmd_conformance_fetch_peers(
     };
     let (published_entries, skipped_entries) =
         chio_conformance::PeersLock::partition_by_published(&entries);
+    ensure_fetch_peer_selection_has_published(
+        &entries,
+        &published_entries,
+        language,
+        allow_unpublished_only,
+    )?;
 
     if check {
         let mut stdout = std::io::stdout().lock();
@@ -315,6 +338,29 @@ pub(crate) fn cmd_conformance_fetch_peers(
     Ok(())
 }
 
+fn ensure_fetch_peer_selection_has_published(
+    entries: &[&chio_conformance::PeerEntry],
+    published_entries: &[&chio_conformance::PeerEntry],
+    language: Option<&str>,
+    allow_unpublished_only: bool,
+) -> Result<(), CliError> {
+    let filter = language.unwrap_or("<none>");
+    if entries.is_empty() {
+        return Err(CliError::cli_other_error(format!(
+            "peers lockfile has no entries matching language filter `{filter}`",
+        )));
+    }
+    if published_entries.is_empty() {
+        if allow_unpublished_only {
+            return Ok(());
+        }
+        return Err(CliError::cli_other_error(format!(
+            "peers lockfile has no published entries for language filter `{filter}`; every selected peer would be skipped (use --allow-unpublished-only only for pre-release lockfile checks)",
+        )));
+    }
+    Ok(())
+}
+
 pub(crate) fn download_and_verify(
     client: &reqwest::blocking::Client,
     entry: &chio_conformance::PeerEntry,
@@ -366,13 +412,18 @@ pub(crate) fn download_and_verify(
     })?;
 
     extract_archive(&archive_path, &extract_dir, &entry.url)?;
+    validate_extracted_peer_binary(entry, &extract_dir)?;
     Ok(())
 }
 
 /// Extract `.tar.gz` (or `.tgz`) bundles into the per-target directory.
-/// `.zip` is recognised by extension but not yet implemented; unknown archive
-/// formats are preserved on disk with a warning rather than failing fatally.
-pub(crate) fn extract_archive(archive: &Path, dest: &Path, source_url: &str) -> Result<(), CliError> {
+/// `.zip` and unknown archive formats are rejected so `fetch-peers` cannot
+/// succeed without an executable peer artifact installed.
+pub(crate) fn extract_archive(
+    archive: &Path,
+    dest: &Path,
+    source_url: &str,
+) -> Result<(), CliError> {
     let lower = archive
         .file_name()
         .and_then(|name| name.to_str())
@@ -399,21 +450,57 @@ pub(crate) fn extract_archive(archive: &Path, dest: &Path, source_url: &str) -> 
         Ok(())
     } else if lower.ends_with(".zip") {
         Err(CliError::cli_other_error(format!(
-            "zip archives are not yet supported (got `{}` from `{source_url}`)",
+            "zip archives are unsupported for conformance peer bundles (got `{}` from `{source_url}`)",
             archive.display(),
         )))
     } else {
-        // Unknown archive format: leave the bundle on disk but warn so the
-        // operator can extract it manually rather than silently shipping a
-        // half-installed peer.
-        let mut stderr = std::io::stderr().lock();
-        let _ = writeln!(
-            stderr,
-            "note: bundle `{}` is not a recognised archive format; downloaded bytes are preserved unchanged",
+        Err(CliError::cli_other_error(format!(
+            "unsupported archive format for conformance peer bundle `{}` from `{source_url}`; expected .tar.gz or .tgz",
             archive.display(),
-        );
-        Ok(())
+        )))
     }
+}
+
+pub(crate) fn validate_extracted_peer_binary(
+    entry: &chio_conformance::PeerEntry,
+    extract_dir: &Path,
+) -> Result<(), CliError> {
+    let binary = Path::new(&entry.binary);
+    if binary.is_absolute()
+        || binary
+            .components()
+            .any(|component| !matches!(component, std::path::Component::Normal(_)))
+    {
+        return Err(CliError::cli_other_error(format!(
+            "conformance peer binary path `{}` must be a relative path inside the archive",
+            entry.binary
+        )));
+    }
+    let binary_path = extract_dir.join(binary);
+    let metadata = fs::metadata(&binary_path).map_err(|error| {
+        CliError::cli_other_error(format!(
+            "conformance peer bundle `{}` for {} / {} did not install declared binary `{}`: {error}",
+            entry.url, entry.language, entry.target, entry.binary
+        ))
+    })?;
+    if !metadata.is_file() {
+        return Err(CliError::cli_other_error(format!(
+            "conformance peer declared binary `{}` is not a regular file",
+            binary_path.display()
+        )));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        if metadata.permissions().mode() & 0o111 == 0 {
+            return Err(CliError::cli_other_error(format!(
+                "conformance peer declared binary `{}` is not executable",
+                binary_path.display()
+            )));
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -457,11 +544,7 @@ mod conformance_error_tests {
         write_test_tar_gz_with_modes(path, &[], entries);
     }
 
-    fn write_test_tar_gz_with_modes(
-        path: &Path,
-        directories: &[&str],
-        entries: &[(&str, &[u8])],
-    ) {
+    fn write_test_tar_gz_with_modes(path: &Path, directories: &[&str], entries: &[(&str, &[u8])]) {
         let file = fs::File::create(path).unwrap();
         let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
         let mut builder = tar::Builder::new(encoder);
@@ -493,6 +576,17 @@ mod conformance_error_tests {
         builder.finish().unwrap();
         let encoder = builder.into_inner().unwrap();
         encoder.finish().unwrap();
+    }
+
+    fn peer_entry(binary: &str) -> chio_conformance::PeerEntry {
+        chio_conformance::PeerEntry {
+            language: "python".to_string(),
+            url: "https://example.invalid/peer.tar.gz".to_string(),
+            sha256: "0".repeat(64),
+            target: "x86_64-unknown-linux-gnu".to_string(),
+            binary: binary.to_string(),
+            published: true,
+        }
     }
 
     #[test]
@@ -540,6 +634,58 @@ mod conformance_error_tests {
     }
 
     #[test]
+    fn conformance_archive_hardening_requires_declared_binary() {
+        let temp = tempfile::tempdir().unwrap();
+        let archive = temp.path().join("peer.tar.gz");
+        let dest = temp.path().join("extract");
+        fs::create_dir_all(&dest).unwrap();
+        write_test_tar_gz_with_modes(&archive, &["bin"], &[("bin/other", b"peer-binary")]);
+
+        extract_archive(&archive, &dest, "https://example.invalid/peer.tar.gz").unwrap();
+        let err = match validate_extracted_peer_binary(&peer_entry("bin/peer"), &dest) {
+            Ok(()) => panic!("expected missing declared binary to fail"),
+            Err(err) => err,
+        };
+
+        assert!(
+            err.to_string()
+                .contains("did not install declared binary `bin/peer`"),
+            "{err}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn conformance_archive_hardening_requires_executable_declared_binary() {
+        let temp = tempfile::tempdir().unwrap();
+        let archive = temp.path().join("peer.tar.gz");
+        let dest = temp.path().join("extract");
+        fs::create_dir_all(&dest).unwrap();
+        write_test_tar_gz(&archive, &[("bin/nonexec", b"peer-binary")]);
+
+        extract_archive(&archive, &dest, "https://example.invalid/peer.tar.gz").unwrap();
+        let err = match validate_extracted_peer_binary(&peer_entry("bin/nonexec"), &dest) {
+            Ok(()) => panic!("expected non-executable declared binary to fail"),
+            Err(err) => err,
+        };
+
+        assert!(err.to_string().contains("is not executable"), "{err}");
+    }
+
+    #[test]
+    fn conformance_archive_hardening_rejects_escape_binary_path() {
+        let temp = tempfile::tempdir().unwrap();
+        let dest = temp.path().join("extract");
+        fs::create_dir_all(&dest).unwrap();
+        let err = match validate_extracted_peer_binary(&peer_entry("../peer"), &dest) {
+            Ok(()) => panic!("expected escaping binary path to fail"),
+            Err(err) => err,
+        };
+
+        assert!(err.to_string().contains("must be a relative path"), "{err}");
+    }
+
+    #[test]
     fn conformance_archive_hardening_refreshes_existing_file() {
         let temp = tempfile::tempdir().unwrap();
         let archive = temp.path().join("peer.tar.gz");
@@ -567,6 +713,36 @@ mod conformance_error_tests {
         };
         assert!(err.to_string().contains("not portable"), "{err}");
         assert!(!temp.path().join("escape").exists());
+    }
+
+    #[test]
+    fn conformance_archive_hardening_rejects_zip_bundle() {
+        let temp = tempfile::tempdir().unwrap();
+        let archive = temp.path().join("peer.zip");
+        let dest = temp.path().join("extract");
+        fs::create_dir_all(&dest).unwrap();
+        fs::write(&archive, b"not-a-real-zip").unwrap();
+
+        let err = match extract_archive(&archive, &dest, "https://example.invalid/peer.zip") {
+            Ok(()) => panic!("expected zip archive to fail"),
+            Err(err) => err,
+        };
+        assert!(err.to_string().contains("zip archives are unsupported"));
+    }
+
+    #[test]
+    fn conformance_archive_hardening_rejects_unknown_bundle_format() {
+        let temp = tempfile::tempdir().unwrap();
+        let archive = temp.path().join("peer.bin");
+        let dest = temp.path().join("extract");
+        fs::create_dir_all(&dest).unwrap();
+        fs::write(&archive, b"raw-binary").unwrap();
+
+        let err = match extract_archive(&archive, &dest, "https://example.invalid/peer.bin") {
+            Ok(()) => panic!("expected unknown archive to fail"),
+            Err(err) => err,
+        };
+        assert!(err.to_string().contains("unsupported archive format"));
     }
 
     #[test]

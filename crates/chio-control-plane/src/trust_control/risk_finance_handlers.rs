@@ -2,6 +2,14 @@
 //! capital reports and issuance; the liability insurance market and claims
 //! workflows; underwriting; runtime-attestation appraisal; and reputation.
 
+use super::report_validation::validate_service_auth;
+use super::reports::{
+    build_exposure_ledger_report_with_context, build_runtime_attestation_appraisal_import_report,
+    build_signed_runtime_attestation_appraisal_report,
+    build_signed_runtime_attestation_appraisal_result,
+    issue_signed_capital_allocation_decision_detailed,
+    issue_signed_capital_execution_instruction_detailed,
+};
 use super::*;
 
 pub(crate) async fn handle_exposure_ledger_report(
@@ -1636,7 +1644,10 @@ pub(crate) async fn handle_issue_portable_reputation_summary(
     if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
         return response;
     }
-    match issue_signed_portable_reputation_summary(&state.config, &request) {
+    match service_runtime::reputation::issue_signed_portable_reputation_summary(
+        &state.config,
+        &request,
+    ) {
         Ok(artifact) => Json(artifact).into_response(),
         Err(error) => plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string()),
     }
@@ -1650,7 +1661,8 @@ pub(crate) async fn handle_issue_portable_negative_event(
     if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
         return response;
     }
-    match issue_signed_portable_negative_event(&state.config, &request) {
+    match service_runtime::reputation::issue_signed_portable_negative_event(&state.config, &request)
+    {
         Ok(artifact) => Json(artifact).into_response(),
         Err(error) => plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string()),
     }
@@ -1664,7 +1676,7 @@ pub(crate) async fn handle_evaluate_portable_reputation(
     if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
         return response;
     }
-    match evaluate_portable_reputation_request(&request) {
+    match service_runtime::reputation::evaluate_portable_reputation_request(&request) {
         Ok(report) => Json(report).into_response(),
         Err(error) => plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string()),
     }

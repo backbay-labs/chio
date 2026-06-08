@@ -1,7 +1,8 @@
-use chio_core::web3::{
-    validate_web3_settlement_execution_receipt, AnchorInclusionProof, OracleConversionEvidence,
-    Web3SettlementDispatchArtifact, Web3SettlementExecutionReceiptArtifact,
-    Web3SettlementLifecycleState, CHIO_WEB3_SETTLEMENT_RECEIPT_SCHEMA,
+use chio_core::web3::anchors::{AnchorInclusionProof, OracleConversionEvidence};
+use chio_core::web3::settlement::{
+    validate_web3_settlement_execution_receipt, Web3SettlementDispatchArtifact,
+    Web3SettlementExecutionReceiptArtifact, Web3SettlementLifecycleState,
+    CHIO_WEB3_SETTLEMENT_RECEIPT_SCHEMA,
 };
 use chio_egress_contract::{client_builder_with_contract, send_with_contract};
 use serde::{Deserialize, Serialize};
@@ -91,7 +92,7 @@ pub struct ExecutionProjectionInput<'a> {
     pub execution_receipt_id: String,
     pub settlement_reference: String,
     pub observed_at: Option<u64>,
-    pub observed_amount: chio_core::capability::MonetaryAmount,
+    pub observed_amount: chio_core::capability::scope::MonetaryAmount,
     pub anchor_proof: Option<&'a AnchorInclusionProof>,
     pub oracle_evidence: Option<&'a OracleConversionEvidence>,
     pub failure_reason: Option<String>,
@@ -393,10 +394,10 @@ mod tests {
 
     use alloy_primitives::{Address, B256, U256};
     use alloy_sol_types::SolCall;
-    use chio_core::web3::{
-        Web3FinalityMode, Web3SettlementDispatchArtifact, Web3SettlementLifecycleState,
-        Web3SettlementPath,
+    use chio_core::web3::settlement::{
+        Web3SettlementDispatchArtifact, Web3SettlementLifecycleState,
     };
+    use chio_core::web3::trust_profile::{Web3FinalityMode, Web3SettlementPath};
     use chio_web3_bindings::{IChioBondVault, IChioEscrow};
     use serde_json::{json, Value};
 
@@ -1085,7 +1086,7 @@ mod tests {
                 execution_receipt_id: "exec-2".to_string(),
                 settlement_reference: "settlement-2".to_string(),
                 observed_at: Some(1_700_001_000),
-                observed_amount: chio_core::capability::MonetaryAmount {
+                observed_amount: chio_core::capability::scope::MonetaryAmount {
                     units: dispatch.settlement_amount.units / 2,
                     currency: dispatch.settlement_amount.currency.clone(),
                 },

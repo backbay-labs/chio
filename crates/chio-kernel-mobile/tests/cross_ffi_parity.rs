@@ -8,7 +8,8 @@ mod chio_cpp_kernel_ffi;
 use std::ffi::CString;
 
 use chio_core_types::capability::{
-    CapabilityToken, CapabilityTokenBody, ChioScope, Operation, ToolGrant,
+    scope::{ChioScope, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core_types::crypto::Keypair;
 use chio_kernel_mobile::evaluate as mobile_evaluate;

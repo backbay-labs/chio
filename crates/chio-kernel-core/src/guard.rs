@@ -18,7 +18,7 @@
 
 use alloc::string::String;
 
-use chio_core_types::capability::ChioScope;
+use chio_core_types::capability::scope::ChioScope;
 
 use crate::Verdict;
 

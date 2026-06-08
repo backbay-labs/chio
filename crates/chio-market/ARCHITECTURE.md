@@ -13,6 +13,8 @@ The main internal areas are:
 - `settlement.rs`: payout and settlement instruction/receipt artifacts.
 - `workflow.rs`: market and claim workflow query/report types.
 - `insurance_flow.rs`: high-level quote, bind, claim verification, and settlement request handoff without depending on `chio-settle`.
+- `tests.rs`: root-level regression coverage for provider, quote, placement,
+  claim, payout, settlement, and workflow validators.
 
 ## Pain Points
 

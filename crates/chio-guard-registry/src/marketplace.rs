@@ -5,7 +5,7 @@
 //! are additive: a manifest layer without a `marketplace` block parses
 //! cleanly with `price = GuardPrice::zero("USD")` and
 //! `reputation_floor = ReputationTier::Tier0`, preserving the
-//! cosign-gated publish and pull semantics verbatim.
+//! local Sigstore-bundle verification and pull semantics verbatim.
 //!
 //! This module is gated behind the `marketplace` cargo feature so the
 //! default `chio-guard-registry` build, including the `--no-default-features`
@@ -26,7 +26,7 @@ pub const MARKETPLACE_BLOCK_KEY: &str = "marketplace";
 
 /// Per-invocation guard price expressed in currency minor units.
 ///
-/// Mirrors `chio_core::capability::MonetaryAmount` shape but lives on
+/// Mirrors `chio_core::capability::scope::MonetaryAmount` shape but lives on
 /// the registry surface so callers that only depend on
 /// `chio-guard-registry` do not pull `chio-core` transitively.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -8,13 +8,13 @@
 # available locally.
 #
 # `published = false` flags an entry as a forward-looking placeholder: the
-# release pipeline has not yet uploaded the corresponding binary, so
-# `chio conformance fetch-peers` SKIPS the entry with a clear message
-# rather than failing the run with a sha256 mismatch. Once the release
-# pipeline cuts a real artifact, the lockfile updater MUST replace the
-# placeholder sha256 (the all-zeros / all-ones strings below), update the
-# url to the cut tag, and flip `published = true`. This comment documents
-# that gating contract.
+# release pipeline has not yet uploaded the corresponding binary. Mixed
+# selections skip unpublished rows, but a selection with zero published rows
+# fails so release/download gates cannot pass by skipping every peer. Once the
+# release pipeline cuts a real artifact, the lockfile updater MUST replace the
+# placeholder sha256 (the all-zeros / all-ones strings below), update the url
+# to the cut tag, and flip `published = true`. This comment documents that
+# gating contract.
 #
 # House rules:
 #   - `url` MUST be https.
@@ -23,7 +23,8 @@
 #   - `target` SHOULD be a Rust target triple (matches the host the binary
 #     was built for).
 #   - `binary` is the executable name inside the downloaded archive.
-#   - `published = false` SKIPS the entry during fetch-peers. Default true.
+#   - `published = false` skips the entry only when at least one selected row
+#     is published. Default true.
 
 schema = "chio.conformance.peers/v1"
 

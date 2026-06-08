@@ -1,11 +1,11 @@
 use super::*;
 
 pub(crate) fn select_capability_for_request(
-    capabilities: &[chio_core::CapabilityToken],
+    capabilities: &[chio_core::capability::token::CapabilityToken],
     tool: &str,
     server: &str,
     params: &serde_json::Value,
-) -> Option<chio_core::CapabilityToken> {
+) -> Option<chio_core::capability::token::CapabilityToken> {
     capabilities
         .iter()
         .find(|capability| {
@@ -79,6 +79,7 @@ pub(crate) fn handle_agent_message(
                     agent_id: session_agent_id.to_string(),
                     arguments: tool_call.arguments,
                     dpop_proof: None,
+                execution_nonce: None,
                     governed_intent: None,
                     approval_token: None,
                     model_metadata: None,
@@ -235,6 +236,7 @@ pub(crate) fn normalize_agent_message(
                 server_id: server_id.clone(),
                 tool_name: tool.clone(),
                 arguments: params.clone(),
+                execution_nonce: None,
                 model_metadata: None,
             }),
         ),
@@ -265,13 +267,13 @@ pub(crate) fn control_request_id(session_id: &SessionId, suffix: &str) -> Reques
 pub(crate) fn make_error_receipt(
     _kernel: &mut ChioKernel,
     request: &KernelToolCallRequest,
-) -> Result<chio_core::ChioReceipt, chio_core::error::Error> {
-    let action = chio_core::receipt::ToolCallAction::from_parameters(request.arguments.clone());
+) -> Result<chio_core::receipt::body::ChioReceipt, chio_core::error::Error> {
+    let action = chio_core::receipt::decision::ToolCallAction::from_parameters(request.arguments.clone());
     let action = match action {
         Ok(a) => a,
-        Err(_) => chio_core::receipt::ToolCallAction::from_parameters(serde_json::json!({}))
+        Err(_) => chio_core::receipt::decision::ToolCallAction::from_parameters(serde_json::json!({}))
             .unwrap_or_else(|_| {
-                chio_core::receipt::ToolCallAction {
+                chio_core::receipt::decision::ToolCallAction {
                     parameter_hash: "error".to_string(),
                     parameters: serde_json::json!({}),
                 }
@@ -280,7 +282,7 @@ pub(crate) fn make_error_receipt(
 
     // Kernel failures still need a signed deny receipt for audit continuity.
     let kp = Keypair::generate();
-    let body = chio_core::receipt::ChioReceiptBody {
+    let body = chio_core::receipt::body::ChioReceiptBody {
         id: format!("rcpt-error-{}", request.request_id),
         timestamp: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -290,32 +292,35 @@ pub(crate) fn make_error_receipt(
         tool_server: request.server_id.clone(),
         tool_name: request.tool_name.clone(),
         action,
-        decision: Some(chio_core::receipt::Decision::Deny {
+        decision: Some(chio_core::receipt::decision::Decision::Deny {
             reason: "internal kernel error".to_string(),
             guard: "kernel".to_string(),
         }),
-        receipt_kind: chio_core::ReceiptKind::MediatedDecision,
-        boundary_class: chio_core::BoundaryClass::Prevent,
+        receipt_kind: chio_core::receipt::kinds::ReceiptKind::MediatedDecision,
+        boundary_class: chio_core::receipt::kinds::BoundaryClass::Prevent,
         observation_outcome: None,
-        tool_origin: chio_core::ToolOrigin::CallerExecuted,
-        redaction_mode: chio_core::RedactionMode::None,
+        tool_origin: chio_core::receipt::kinds::ToolOrigin::CallerExecuted,
+        redaction_mode: chio_core::receipt::kinds::RedactionMode::None,
         actor_chain: Vec::new(),
         content_hash: chio_core::sha256_hex(b"null"),
         policy_hash: "error".to_string(),
         evidence: vec![],
         metadata: None,
-        trust_level: chio_core::TrustLevel::default(),
+        trust_level: chio_core::receipt::kinds::TrustLevel::default(),
         tenant_id: None,
         kernel_key: kp.public_key(),
+        bbs_projection_version: None,
     };
 
-    chio_core::receipt::ChioReceipt::sign(body, &kp)
+    chio_core::receipt::body::ChioReceipt::sign(body, &kp)
 }
 
+#[cfg(test)]
 pub(crate) struct StubToolServer {
     pub(crate) id: String,
 }
 
+#[cfg(test)]
 #[async_trait::async_trait]
 impl chio_kernel::ToolServerConnection for StubToolServer {
     fn server_id(&self) -> &str {
@@ -527,7 +532,7 @@ mod tests {
         kernel: &ChioKernel,
         policy: &policy::ChioPolicy,
         agent_kp: &Keypair,
-    ) -> chio_core::CapabilityToken {
+    ) -> chio_core::capability::token::CapabilityToken {
         let default_capabilities = policy::build_default_capabilities(
             &policy.capabilities,
             policy.kernel.max_capability_ttl,
@@ -543,7 +548,7 @@ mod tests {
     fn open_ready_session(
         kernel: &mut ChioKernel,
         agent_id: &str,
-        capabilities: Vec<chio_core::CapabilityToken>,
+        capabilities: Vec<chio_core::capability::token::CapabilityToken>,
     ) -> SessionId {
         let session_id = kernel.open_session(agent_id.to_string(), capabilities).unwrap();
         kernel.activate_session(&session_id).unwrap();
@@ -577,7 +582,7 @@ capabilities:
         let policy = policy::parse_policy(yaml).unwrap();
         let kp = Keypair::generate();
         let kernel = build_kernel(load_test_policy_runtime(&policy), &kp);
-        assert_eq!(kernel.guard_count(), 1); // pipeline counts as 1
+        assert_eq!(kernel.guard_count(), 4); // default profile + configured pipeline
     }
 
     #[tokio::test]
@@ -622,6 +627,7 @@ capabilities:
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({"path": "/app/src/main.rs"}),
             dpop_proof: None,
+                execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
@@ -822,6 +828,7 @@ capabilities:
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({"path": "/app/src/main.rs"}),
             dpop_proof: None,
+                execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,
@@ -866,6 +873,7 @@ capabilities:
             agent_id: agent_kp.public_key().to_hex(),
             arguments: serde_json::json!({"path": "/home/user/.ssh/id_rsa"}),
             dpop_proof: None,
+                execution_nonce: None,
             governed_intent: None,
             approval_token: None,
             model_metadata: None,

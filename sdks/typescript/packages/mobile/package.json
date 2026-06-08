@@ -15,7 +15,8 @@
     "./expo-plugin": {
       "types": "./build/expo-plugin/withChio.d.ts",
       "import": "./build/expo-plugin/withChio.js"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "android/",
@@ -31,6 +32,9 @@
     "react-native",
     "mobile-attestation"
   ],
+  "engines": {
+    "node": ">=22"
+  },
   "peerDependencies": {
     "@chio-protocol/browser": "^0.1.0",
     "expo": ">=50.0.0",

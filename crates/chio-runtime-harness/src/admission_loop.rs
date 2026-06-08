@@ -13,7 +13,7 @@ pub(crate) struct RuntimeLoopbackAdmissionOutput {
     pub(crate) admission_hashes: Vec<String>,
     pub(crate) terminal_admission_report_sha256: Option<String>,
     pub(crate) evidence_manifest_entries: Vec<chio_runtime_core::RuntimeEvidenceManifestEntry>,
-    pub(crate) live_tool_receipts: Vec<chio_core::receipt::ChioReceipt>,
+    pub(crate) live_tool_receipts: Vec<chio_core::receipt::body::ChioReceipt>,
     pub(crate) live_treaty_contexts: Vec<Option<RuntimeLoopbackTreatyContext>>,
 }
 

@@ -4,8 +4,8 @@ use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
 
-use crate::capability::MonetaryAmount;
-use crate::receipt::SignedExportEnvelope;
+use crate::capability::scope::MonetaryAmount;
+use crate::receipt::lineage::SignedExportEnvelope;
 
 use crate::{bounded_market_query_limit, MAX_LIABILITY_PROVIDER_LIST_LIMIT};
 

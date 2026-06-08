@@ -3,6 +3,15 @@
 //! reports, settlement and metered-billing reconciliation, authorization
 //! reports, and capability lineage.
 
+use super::cluster::respond_after_leader_visible_write;
+use super::report_rendering::{forward_post_to_leader, receipt_decision_kind, terminal_state_kind};
+use super::report_validation::{
+    resolve_control_read_principal, validate_metered_billing_reconciliation_request,
+    validate_service_auth, ResolvedControlReadPrincipal,
+};
+use super::reports::{
+    build_economic_completion_flow_report, build_operator_report, build_signed_behavioral_feed,
+};
 use super::*;
 
 pub(crate) async fn handle_list_tool_receipts(
@@ -681,7 +690,7 @@ pub(crate) async fn handle_record_metered_billing_reconciliation(
         Err(response) => return response,
     };
     let evidence = MeteredBillingEvidenceRecord {
-        usage_evidence: chio_core::receipt::MeteredUsageEvidenceReceiptMetadata {
+        usage_evidence: chio_core::receipt::governance::MeteredUsageEvidenceReceiptMetadata {
             evidence_kind: request.adapter_kind.clone(),
             evidence_id: request.evidence_id.clone(),
             observed_units: request.observed_units,
