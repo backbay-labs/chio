@@ -17,12 +17,12 @@ name = "chio_mcp_remote"
 
 [dependencies]
 async-trait = { workspace = true }
-chio-control-plane = { path = "../chio-control-plane" }
+chio-control-plane = { workspace = true }
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
-chio-egress-contract = { path = "../chio-egress-contract", features = ["reqwest-egress"] }
-chio-kernel = { path = "../chio-kernel" }
-chio-mcp-adapter = { path = "../chio-mcp-adapter" }
-chio-store-sqlite = { path = "../chio-store-sqlite" }
+chio-egress-contract = { workspace = true, features = ["reqwest-egress"] }
+chio-kernel = { workspace = true }
+chio-mcp-adapter = { workspace = true }
+chio-store-sqlite = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
@@ -40,7 +40,7 @@ sha2 = { workspace = true }
 subtle = "2.6"
 
 [dev-dependencies]
-chio-siem = { path = "../chio-siem" }
+chio-siem = { workspace = true }
 
 [lints]
 workspace = true

@@ -13,7 +13,7 @@ name = "chio_provider_adapter_core"
 
 [dependencies]
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
-chio-tool-call-fabric = { path = "../chio-tool-call-fabric" }
+chio-tool-call-fabric = { workspace = true }
 async-trait = { workspace = true }
 reqwest = { workspace = true, features = ["json", "query", "rustls"] }
 serde_json = { workspace = true }
@@ -21,7 +21,7 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]
-chio-test-support = { path = "../chio-test-support" }
+chio-test-support = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 wiremock = { workspace = true }
 

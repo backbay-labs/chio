@@ -12,7 +12,7 @@ publish = false
 name = "chio_edge_metrics"
 
 [dependencies]
-chio-kernel = { path = "../chio-kernel" }
+chio-kernel = { workspace = true }
 chio-metrics-spec = { workspace = true }
 
 [lints]

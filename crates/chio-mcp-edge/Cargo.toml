@@ -18,10 +18,10 @@ name = "chio_mcp_edge"
 [dependencies]
 async-trait = { workspace = true }
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
-chio-cross-protocol = { path = "../chio-cross-protocol" }
-chio-edge-metrics = { path = "../chio-edge-metrics" }
-chio-kernel = { path = "../chio-kernel" }
-chio-manifest = { path = "../chio-manifest" }
+chio-cross-protocol = { workspace = true }
+chio-edge-metrics = { workspace = true }
+chio-kernel = { workspace = true }
+chio-manifest = { workspace = true }
 chio-metrics-spec = { workspace = true }
 chrono = { workspace = true, features = ["clock"] }
 serde = { workspace = true }

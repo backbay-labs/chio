@@ -10,16 +10,16 @@ publish = false
 
 [dependencies]
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
-chio-anthropic-tools-adapter = { path = "../chio-anthropic-tools-adapter", features = ["computer-use"], optional = true }
-chio-bedrock-converse-adapter = { path = "../chio-bedrock-converse-adapter", optional = true }
-chio-cohere-tools-adapter = { path = "../chio-cohere-tools-adapter", optional = true }
-chio-gemini-tools-adapter = { path = "../chio-gemini-tools-adapter", optional = true }
-chio-groq-tools-adapter = { path = "../chio-groq-tools-adapter", optional = true }
-chio-manifest = { path = "../chio-manifest", optional = true }
-chio-mistral-tools-adapter = { path = "../chio-mistral-tools-adapter", optional = true }
-chio-ollama-tools-adapter = { path = "../chio-ollama-tools-adapter", optional = true }
+chio-anthropic-tools-adapter = { workspace = true, features = ["computer-use"], optional = true }
+chio-bedrock-converse-adapter = { workspace = true, optional = true }
+chio-cohere-tools-adapter = { workspace = true, optional = true }
+chio-gemini-tools-adapter = { workspace = true, optional = true }
+chio-groq-tools-adapter = { workspace = true, optional = true }
+chio-manifest = { workspace = true, optional = true }
+chio-mistral-tools-adapter = { workspace = true, optional = true }
+chio-ollama-tools-adapter = { workspace = true, optional = true }
 chio-openai = { package = "chio-openai-adapter", path = "../chio-openai", features = ["provider-adapter"], optional = true }
-chio-tool-call-fabric = { path = "../chio-tool-call-fabric" }
+chio-tool-call-fabric = { workspace = true }
 chrono = { workspace = true, features = ["clock"] }
 clap = { version = "4", features = ["derive"] }
 serde = { workspace = true, features = ["derive"] }
