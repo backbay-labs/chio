@@ -127,6 +127,7 @@ fn main() -> ExitCode {
         "codegen" => run_codegen(args.collect()),
         "errors" => run_errors(args.collect()),
         "snippets" => run_snippets(args.collect()),
+        "check-crate-paths" => crate_paths::run(args.collect()),
         "" | "help" | "--help" | "-h" => {
             print_help();
             return ExitCode::SUCCESS;
@@ -149,6 +150,7 @@ fn print_help() {
     println!("  eval-receipt-regen [--check]");
     println!("  errors regen [--check]");
     println!("  snippets regen [--check]");
+    println!("  check-crate-paths");
     println!("  codegen rust [--check]");
     println!("  codegen --check");
     println!("  codegen --lang rust [--check]");
