@@ -65,7 +65,7 @@ public_entrypoint = true
 
 [dependencies]
 chio-core = { package = "chio-core-types", version = "0.1.0", path = "../chio-core-types" }
-chio-kernel = { version = "0.1.0", path = "../chio-kernel" }
+chio-kernel = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }
@@ -73,8 +73,8 @@ thiserror = { workspace = true }
 toml = "0.8"
 reqwest = { workspace = true, features = ["blocking", "form", "query", "rustls"] }
 tiny_http = "0.12"
-chio-selective-disclosure = { version = "0.1.0", path = "../chio-selective-disclosure", default-features = false, optional = true }
-chio-workflow = { version = "0.1.0", path = "../chio-workflow", optional = true }
+chio-selective-disclosure = { workspace = true, default-features = false, optional = true }
+chio-workflow = { workspace = true, optional = true }
 
 [[test]]
 name = "verdict_matrix_rust_driver"
@@ -99,19 +99,19 @@ path = "verdict_matrix/tests/verdict_matrix_cross_language.rs"
 [dev-dependencies]
 # Cross-language verdict-matrix oracle exercises the WASM
 # browser kernel through its native (non-wasm32) cargo test surface.
-chio-kernel-browser = { version = "0.1.0", path = "../chio-kernel-browser" }
-chio-federation = { version = "0.1.0", path = "../chio-federation", features = ["demo"] }
+chio-kernel-browser = { workspace = true }
+chio-federation = { workspace = true, features = ["demo"] }
 # Attenuation chain-binding conformance test exercises
 # verify_capability_with_floor_and_trust_root via chio-kernel-core directly.
 # Sibling-sum budget conformance tests exercise
 # evaluate_with_crypto_floor_and_budgets via chio-kernel-core directly.
 # Portable verifier surface for negotiated-floor capability tests.
-chio-kernel-core = { version = "0.1.0", path = "../chio-kernel-core" }
-chio-custody-hw = { version = "0.1.0", path = "../chio-custody-hw" }
-chio-http-core = { version = "0.1.0", path = "../chio-http-core" }
-chio-http-session = { version = "0.1.0", path = "../chio-http-session" }
-chio-guards = { version = "0.1.0", path = "../chio-guards" }
-chio-weights = { version = "0.1.0", path = "../chio-weights" }
+chio-kernel-core = { workspace = true }
+chio-custody-hw = { workspace = true }
+chio-http-core = { workspace = true }
+chio-http-session = { workspace = true }
+chio-guards = { workspace = true }
+chio-weights = { workspace = true }
 base64ct = { workspace = true, features = ["alloc"] }
 # Negative conformance fixture: `b4_bilateral_dsse_signature_slice.rs`
 # re-encodes signature bytes in base64 to forge a DSSE envelope;
@@ -130,20 +130,20 @@ chrono = { workspace = true, features = ["clock"] }
 # Threat-model coverage tests load curated adversarial
 # vectors and assert each of the six initial threat IDs is backed
 # by at least one non-pending DENY-asserted case.
-chio-adversarial-suite = { version = "0.1.0", path = "../chio-adversarial-suite" }
+chio-adversarial-suite = { workspace = true }
 # SSRF negative-conformance tests exercise typed HttpEgressContract
 # enforcement through real production callers (chio-siem WebhookExporter,
 # chio-siem SplunkHecExporter, chio-siem DatadogExporter, chio-link
 # PythHermesClient, chio-openapi-mcp-bridge OpenApiMcpBridge,
 # chio-a2a-adapter A2aAdapter).
-chio-egress-contract = { version = "0.1.0", path = "../chio-egress-contract" }
-chio-siem = { version = "0.1.0", path = "../chio-siem" }
-chio-link = { version = "0.1.0", path = "../chio-link" }
-chio-openapi-mcp-bridge = { version = "0.1.0", path = "../chio-openapi-mcp-bridge" }
-chio-a2a-adapter = { version = "0.1.0", path = "../chio-a2a-adapter" }
-chio-mcp-remote = { version = "0.1.0", path = "../chio-mcp-remote" }
-chio-api-protect = { version = "0.1.0", path = "../chio-api-protect" }
-chio-external-guards = { version = "0.1.0", path = "../chio-external-guards" }
+chio-egress-contract = { workspace = true }
+chio-siem = { workspace = true }
+chio-link = { workspace = true }
+chio-openapi-mcp-bridge = { workspace = true }
+chio-a2a-adapter = { workspace = true }
+chio-mcp-remote = { workspace = true }
+chio-api-protect = { workspace = true }
+chio-external-guards = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 url = "2"
 zeroize = "1"
@@ -151,29 +151,29 @@ zeroize = "1"
 # AnchorWitnessClient (RekorClient + OtsClient) and the WitnessState
 # state machine via the chio-anchor crate. tokio drives the async
 # trait surface; tiny_http stages the mock Rekor server.
-chio-anchor = { version = "0.1.0", path = "../chio-anchor" }
+chio-anchor = { workspace = true }
 async-trait = "0.1"
 # Negative conformance test: anchor_batch_witness_impersonation_rejected.rs
 # forges a Rekor SET
 # under an attacker-held P-256 key to prove the verifier rejects it.
 p256 = { version = "0.13", default-features = false, features = ["ecdsa", "pem"] }
 rand = { workspace = true }
-chio-store-sqlite = { version = "0.1.0", path = "../chio-store-sqlite" }
+chio-store-sqlite = { workspace = true }
 rusqlite = { workspace = true }
 tempfile = { workspace = true }
 # Registry-consumed smoke test pulls in the six edges plus
 # chio-wasm-guards so it can drive each emission boundary directly.
-chio-mcp-edge = { version = "0.1.0", path = "../chio-mcp-edge" }
-chio-acp-edge = { version = "0.1.0", path = "../chio-acp-edge" }
-chio-a2a-edge = { version = "0.1.0", path = "../chio-a2a-edge" }
-chio-manifest = { version = "0.1.0", path = "../chio-manifest" }
-chio-wasm-guards = { version = "0.1.0", path = "../chio-wasm-guards", default-features = false, features = ["wasmtime-runtime"] }
+chio-mcp-edge = { workspace = true }
+chio-acp-edge = { workspace = true }
+chio-a2a-edge = { workspace = true }
+chio-manifest = { workspace = true }
+chio-wasm-guards = { workspace = true, default-features = false, features = ["wasmtime-runtime"] }
 chio-metrics-spec = { workspace = true }
 wat = "1.246"
 # tee_quote_forgery threat-evidence test imports chio-tee-frame to
 # drive validate_signed and verify_tenant_sig deny branches with forged
 # tenant signatures.
-chio-tee-frame = { version = "0.1.0", path = "../chio-tee-frame" }
+chio-tee-frame = { workspace = true }
 
 [lints]
 workspace = true
