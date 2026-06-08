@@ -50,9 +50,9 @@ ignore = [
     # last-checked = 2026-05-02; proc-macro-error is a compile-time transitive of sigstore 0.13 through
     # json-syntax/locspan-derive. No runtime code is shipped from this crate.
     "RUSTSEC-2024-0370",
-    # last-checked = 2026-06-07; proc-macro-error2 is unmaintained (RUSTSEC-0000-0000). It is a compile-time
+    # last-checked = 2026-06-08; proc-macro-error2 is unmaintained (RUSTSEC-2026-0173). It is a compile-time
     # transitive through alloy-sol-macro and sigstore/oci-spec codegen. No runtime code is shipped from this crate.
-    "RUSTSEC-0000-0000",
+    "RUSTSEC-2026-0173",
 ]
 
 # cargo-deny 0.16 enforces an explicit allow-list only: unlisted licenses are
