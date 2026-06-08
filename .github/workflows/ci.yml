@@ -88,7 +88,7 @@ jobs:
         run: bash ./scripts/check-anchor-batch-async-witness.sh
 
       - name: crate-path go-dark guard
-        run: cargo xtask check-crate-paths
+        run: cargo xtask check crate-paths
 
       - name: Workspace format
         env:
