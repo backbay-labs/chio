@@ -26,6 +26,9 @@ wasmtime-runtime = ["dep:wasmtime", "dep:wasmparser", "dep:pollster"]
 # Declares that this crate's tracing spans are stable for exporters wired with
 # tracing-opentelemetry by the embedding binary.
 tracing-opentelemetry = []
+# Exposes deterministic mock runtime pieces for out-of-crate integration
+# tests without putting them in the production default feature set.
+test-support = []
 # Enables `chio_wasm_guards::fuzz`, the libFuzzer entry-point module.
 # Off by default; turned on only by the `chio-fuzz` standalone workspace
 # at `../../fuzz`. Pulls in `wasmtime-runtime` because the

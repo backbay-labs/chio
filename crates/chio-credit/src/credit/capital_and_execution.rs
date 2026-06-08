@@ -1220,7 +1220,14 @@ mod tests {
     #[test]
     fn capital_execution_envelope_rejects_future_dated_authority_approval() {
         let mut artifact = valid_capital_instruction_artifact();
-        artifact.authority_chain[0].approved_at = artifact.issued_at + 1;
+        let treasury = Keypair::generate();
+        artifact.authority_chain[0] = signed_authority_step(
+            CapitalExecutionRole::OperatorTreasury,
+            &treasury,
+            artifact.issued_at + 1,
+            artifact.execution_window.not_after,
+            None,
+        );
 
         let error = validate_capital_execution_envelope(
             &artifact.authority_chain,

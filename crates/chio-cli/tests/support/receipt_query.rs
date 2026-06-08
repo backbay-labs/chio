@@ -6,6 +6,7 @@
     clippy::unwrap_used
 )]
 
+pub(crate) use super::receipt_query_capital_authority::*;
 pub(crate) use super::receipt_query_helpers::*;
 
 pub(crate) use std::collections::BTreeMap;

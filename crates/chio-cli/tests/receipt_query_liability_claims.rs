@@ -506,6 +506,15 @@ fn test_liability_claim_workflow_surfaces_inner() {
     }
 
     let capital_instruction_input_path = dir.join("liability-payout-capital-instruction.json");
+    let capital_instruction_now = unix_now_secs();
+    let (capital_instruction_authority_chain, capital_instruction_custodian_id) =
+        signed_capital_authority_chain(
+            CapitalExecutionRole::OperatorTreasury,
+            capital_instruction_now.saturating_sub(30),
+            capital_instruction_now.saturating_add(3600),
+            capital_instruction_now.saturating_sub(20),
+            capital_instruction_now.saturating_add(3600),
+        );
     std::fs::write(
         &capital_instruction_input_path,
         serde_json::to_vec_pretty(&serde_json::json!({
@@ -520,28 +529,15 @@ fn test_liability_claim_workflow_surfaces_inner() {
             "action": "transfer_funds",
             "governedReceiptId": governed_receipt_id,
             "amount": { "units": 18000, "currency": "USD" },
-            "authorityChain": [
-                {
-                    "role": "operator_treasury",
-                    "principalId": "treasury-claims-1",
-                    "approvedAt": unix_now_secs().saturating_sub(30),
-                    "expiresAt": unix_now_secs().saturating_add(3600)
-                },
-                {
-                    "role": "custodian",
-                    "principalId": "custodian-claims-1",
-                    "approvedAt": unix_now_secs().saturating_sub(20),
-                    "expiresAt": unix_now_secs().saturating_add(3600)
-                }
-            ],
+            "authorityChain": capital_instruction_authority_chain,
             "executionWindow": {
-                "notBefore": unix_now_secs().saturating_sub(60),
-                "notAfter": unix_now_secs().saturating_add(3600)
+                "notBefore": capital_instruction_now.saturating_sub(60),
+                "notAfter": capital_instruction_now.saturating_add(3600)
             },
             "rail": {
                 "kind": "manual",
                 "railId": "claim-payout-manual-1",
-                "custodyProviderId": "custodian-claims-1",
+                "custodyProviderId": capital_instruction_custodian_id,
                 "sourceAccountRef": "facility-claims-main"
             },
             "description": "automatic claim payout transfer"
@@ -663,16 +659,24 @@ fn test_liability_claim_workflow_surfaces_inner() {
 
     let stale_settlement_instruction_input_path =
         dir.join("liability-stale-settlement-instruction.json");
+    let stale_settlement_now = unix_now_secs();
+    let (stale_settlement_authority_chain, stale_settlement_custodian_id) =
+        signed_capital_authority_chain(
+            CapitalExecutionRole::FacilityProvider,
+            stale_settlement_now.saturating_sub(600),
+            stale_settlement_now.saturating_sub(10),
+            stale_settlement_now.saturating_sub(60),
+            stale_settlement_now.saturating_add(3600),
+        );
+    let stale_settlement_authority_chain_json =
+        serde_json::to_string_pretty(&stale_settlement_authority_chain)
+            .expect("serialize stale settlement authority chain");
     std::fs::write(
         &stale_settlement_instruction_input_path,
         format!(
-            "{{\n  \"payoutReceipt\": {payout_receipt_json},\n  \"capitalBook\": {capital_book_json},\n  \"settlementKind\": \"facility_reimbursement\",\n  \"settlementAmount\": {{ \"units\": 18000, \"currency\": \"USD\" }},\n  \"topology\": {{\n    \"payer\": {{ \"role\": \"facility_provider\", \"partyId\": \"facility-provider-claims-1\" }},\n    \"payee\": {{ \"role\": \"operator_treasury\", \"partyId\": \"operator-treasury-claims-1\" }},\n    \"beneficiary\": {{ \"role\": \"agent_counterparty\", \"partyId\": \"acme@example.com\" }}\n  }},\n  \"authorityChain\": [\n    {{\n      \"role\": \"facility_provider\",\n      \"principalId\": \"facility-provider-claims-1\",\n      \"approvedAt\": {},\n      \"expiresAt\": {}\n    }},\n    {{\n      \"role\": \"custodian\",\n      \"principalId\": \"custodian-claims-1\",\n      \"approvedAt\": {},\n      \"expiresAt\": {}\n    }}\n  ],\n  \"executionWindow\": {{\n    \"notBefore\": {},\n    \"notAfter\": {}\n  }},\n  \"rail\": {{\n    \"kind\": \"wire\",\n    \"railId\": \"claims-settlement-wire-1\",\n    \"custodyProviderId\": \"custodian-claims-1\",\n    \"sourceAccountRef\": \"facility-provider-recovery-1\"\n  }},\n  \"settlementReference\": \"facility-recovery-reference-1\",\n  \"note\": \"reimburse the operator treasury after claim payout\"\n}}\n",
-            unix_now_secs().saturating_sub(600),
-            unix_now_secs().saturating_sub(10),
-            unix_now_secs().saturating_sub(60),
-            unix_now_secs().saturating_add(3600),
-            unix_now_secs().saturating_sub(120),
-            unix_now_secs().saturating_add(3600)
+            "{{\n  \"payoutReceipt\": {payout_receipt_json},\n  \"capitalBook\": {capital_book_json},\n  \"settlementKind\": \"facility_reimbursement\",\n  \"settlementAmount\": {{ \"units\": 18000, \"currency\": \"USD\" }},\n  \"topology\": {{\n    \"payer\": {{ \"role\": \"facility_provider\", \"partyId\": \"facility-provider-claims-1\" }},\n    \"payee\": {{ \"role\": \"operator_treasury\", \"partyId\": \"operator-treasury-claims-1\" }},\n    \"beneficiary\": {{ \"role\": \"agent_counterparty\", \"partyId\": \"acme@example.com\" }}\n  }},\n  \"authorityChain\": {stale_settlement_authority_chain_json},\n  \"executionWindow\": {{\n    \"notBefore\": {},\n    \"notAfter\": {}\n  }},\n  \"rail\": {{\n    \"kind\": \"wire\",\n    \"railId\": \"claims-settlement-wire-1\",\n    \"custodyProviderId\": \"{stale_settlement_custodian_id}\",\n    \"sourceAccountRef\": \"facility-provider-recovery-1\"\n  }},\n  \"settlementReference\": \"facility-recovery-reference-1\",\n  \"note\": \"reimburse the operator treasury after claim payout\"\n}}\n",
+            stale_settlement_now.saturating_sub(120),
+            stale_settlement_now.saturating_add(3600)
         ),
     )
     .expect("write stale settlement instruction input");
@@ -708,16 +712,22 @@ fn test_liability_claim_workflow_surfaces_inner() {
     );
 
     let settlement_instruction_input_path = dir.join("liability-settlement-instruction.json");
+    let settlement_now = unix_now_secs();
+    let (settlement_authority_chain, settlement_custodian_id) = signed_capital_authority_chain(
+        CapitalExecutionRole::FacilityProvider,
+        settlement_now.saturating_sub(30),
+        settlement_now.saturating_add(3600),
+        settlement_now.saturating_sub(20),
+        settlement_now.saturating_add(3600),
+    );
+    let settlement_authority_chain_json = serde_json::to_string_pretty(&settlement_authority_chain)
+        .expect("serialize settlement authority chain");
     std::fs::write(
         &settlement_instruction_input_path,
         format!(
-            "{{\n  \"payoutReceipt\": {payout_receipt_json},\n  \"capitalBook\": {capital_book_json},\n  \"settlementKind\": \"facility_reimbursement\",\n  \"settlementAmount\": {{ \"units\": 18000, \"currency\": \"USD\" }},\n  \"topology\": {{\n    \"payer\": {{ \"role\": \"facility_provider\", \"partyId\": \"facility-provider-claims-1\" }},\n    \"payee\": {{ \"role\": \"operator_treasury\", \"partyId\": \"operator-treasury-claims-1\" }},\n    \"beneficiary\": {{ \"role\": \"agent_counterparty\", \"partyId\": \"acme@example.com\" }}\n  }},\n  \"authorityChain\": [\n    {{\n      \"role\": \"facility_provider\",\n      \"principalId\": \"facility-provider-claims-1\",\n      \"approvedAt\": {},\n      \"expiresAt\": {}\n    }},\n    {{\n      \"role\": \"custodian\",\n      \"principalId\": \"custodian-claims-1\",\n      \"approvedAt\": {},\n      \"expiresAt\": {}\n    }}\n  ],\n  \"executionWindow\": {{\n    \"notBefore\": {},\n    \"notAfter\": {}\n  }},\n  \"rail\": {{\n    \"kind\": \"wire\",\n    \"railId\": \"claims-settlement-wire-1\",\n    \"custodyProviderId\": \"custodian-claims-1\",\n    \"sourceAccountRef\": \"facility-provider-recovery-1\"\n  }},\n  \"settlementReference\": \"facility-recovery-reference-1\",\n  \"note\": \"reimburse the operator treasury after claim payout\"\n}}\n",
-            unix_now_secs().saturating_sub(30),
-            unix_now_secs().saturating_add(3600),
-            unix_now_secs().saturating_sub(20),
-            unix_now_secs().saturating_add(3600),
-            unix_now_secs().saturating_sub(120),
-            unix_now_secs().saturating_add(3600)
+            "{{\n  \"payoutReceipt\": {payout_receipt_json},\n  \"capitalBook\": {capital_book_json},\n  \"settlementKind\": \"facility_reimbursement\",\n  \"settlementAmount\": {{ \"units\": 18000, \"currency\": \"USD\" }},\n  \"topology\": {{\n    \"payer\": {{ \"role\": \"facility_provider\", \"partyId\": \"facility-provider-claims-1\" }},\n    \"payee\": {{ \"role\": \"operator_treasury\", \"partyId\": \"operator-treasury-claims-1\" }},\n    \"beneficiary\": {{ \"role\": \"agent_counterparty\", \"partyId\": \"acme@example.com\" }}\n  }},\n  \"authorityChain\": {settlement_authority_chain_json},\n  \"executionWindow\": {{\n    \"notBefore\": {},\n    \"notAfter\": {}\n  }},\n  \"rail\": {{\n    \"kind\": \"wire\",\n    \"railId\": \"claims-settlement-wire-1\",\n    \"custodyProviderId\": \"{settlement_custodian_id}\",\n    \"sourceAccountRef\": \"facility-provider-recovery-1\"\n  }},\n  \"settlementReference\": \"facility-recovery-reference-1\",\n  \"note\": \"reimburse the operator treasury after claim payout\"\n}}\n",
+            settlement_now.saturating_sub(120),
+            settlement_now.saturating_add(3600)
         ),
     )
     .expect("write settlement instruction input");

@@ -708,7 +708,7 @@ fn budget_store_hold_authority_requires_exact_lease_inmemory() {
 }
 
 #[test]
-fn budget_store_event_id_reuse_rejects_authority_rollover_sqlite() {
+fn budget_store_event_id_retry_survives_authority_rollover_sqlite() {
     let path = unique_db_path("chio-hold-authority-event-reuse");
     let store = SqliteBudgetStore::open(&path).unwrap();
     let hold_id = "hold-cap-lease-0";
@@ -730,7 +730,7 @@ fn budget_store_event_id_reuse_rejects_authority_rollover_sqlite() {
         )
         .unwrap());
 
-    let error = store
+    assert!(store
         .try_charge_cost_with_ids_and_authority(
             "cap-lease",
             0,
@@ -742,7 +742,21 @@ fn budget_store_event_id_reuse_rejects_authority_rollover_sqlite() {
             Some(event_id),
             Some(&changed),
         )
-        .expect_err("reused event id with different authority should fail closed");
+        .unwrap());
+
+    let error = store
+        .try_charge_cost_with_ids_and_authority(
+            "cap-lease",
+            0,
+            Some(10),
+            101,
+            Some(200),
+            Some(1000),
+            Some(hold_id),
+            Some(event_id),
+            Some(&changed),
+        )
+        .expect_err("reused event id with a different mutation should fail closed");
     assert!(error
         .to_string()
         .contains("was reused for a different mutation"));
@@ -1149,6 +1163,57 @@ fn import_snapshot_records_replay_is_idempotent_when_peer_cursor_is_lost_sqlite(
     assert_eq!(
         replicated_events[0].event_id,
         "hold-import-replay-0:authorize"
+    );
+
+    let _ = fs::remove_file(source_path);
+    let _ = fs::remove_file(target_path);
+}
+
+#[test]
+fn import_snapshot_records_duplicate_event_ignores_peer_transport_fields_sqlite() {
+    let source_path = unique_db_path("chio-budget-import-transport-source");
+    let target_path = unique_db_path("chio-budget-import-transport-target");
+    let source = SqliteBudgetStore::open(&source_path).unwrap();
+
+    assert!(source
+        .try_charge_cost_with_ids(
+            "cap-import-transport",
+            0,
+            Some(10),
+            25,
+            Some(100),
+            Some(500),
+            Some("hold-import-transport-0"),
+            Some("hold-import-transport-0:authorize"),
+        )
+        .unwrap());
+    let usage = source
+        .get_usage("cap-import-transport", 0)
+        .unwrap()
+        .expect("source usage");
+    let events = source
+        .list_mutation_events(10, Some("cap-import-transport"), Some(0))
+        .unwrap();
+    let mut replayed_event = events[0].clone();
+    replayed_event.recorded_at = replayed_event.recorded_at.saturating_add(30);
+    replayed_event.event_seq = replayed_event.event_seq.saturating_add(5);
+    replayed_event.usage_seq = replayed_event.usage_seq.map(|seq| seq.saturating_add(5));
+
+    let target = SqliteBudgetStore::open(&target_path).unwrap();
+    target
+        .import_snapshot_records(std::slice::from_ref(&usage), &events)
+        .unwrap();
+    target
+        .import_snapshot_records(std::slice::from_ref(&usage), &[replayed_event])
+        .unwrap();
+
+    let replicated_events = target
+        .list_mutation_events(10, Some("cap-import-transport"), Some(0))
+        .unwrap();
+    assert_eq!(replicated_events.len(), 1);
+    assert_eq!(
+        replicated_events[0].event_id,
+        "hold-import-transport-0:authorize"
     );
 
     let _ = fs::remove_file(source_path);

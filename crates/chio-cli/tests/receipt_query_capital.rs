@@ -557,6 +557,13 @@ fn test_capital_instruction_issue_surfaces() {
         .reserve_requirement_amount
         .clone();
 
+    let (authority_chain, custodian_id) = signed_capital_authority_chain(
+        CapitalExecutionRole::OperatorTreasury,
+        now.saturating_sub(30),
+        now.saturating_add(3_600),
+        now.saturating_sub(20),
+        now.saturating_add(3_600),
+    );
     let request_json = serde_json::json!({
         "query": {
             "agentSubject": subject_key,
@@ -568,20 +575,7 @@ fn test_capital_instruction_issue_surfaces() {
         "sourceKind": "reserve_book",
         "action": "lock_reserve",
         "amount": reserve_amount.clone(),
-        "authorityChain": [
-            {
-                "role": "operator_treasury",
-                "principalId": "treasury-1",
-                "approvedAt": now.saturating_sub(30),
-                "expiresAt": now.saturating_add(3_600)
-            },
-            {
-                "role": "custodian",
-                "principalId": "custodian-1",
-                "approvedAt": now.saturating_sub(20),
-                "expiresAt": now.saturating_add(3_600)
-            }
-        ],
+        "authorityChain": authority_chain,
         "executionWindow": {
             "notBefore": now.saturating_sub(60),
             "notAfter": now.saturating_add(3_600)
@@ -589,7 +583,7 @@ fn test_capital_instruction_issue_surfaces() {
         "rail": {
             "kind": "manual",
             "railId": "reserve-manual-1",
-            "custodyProviderId": "custodian-1",
+            "custodyProviderId": custodian_id,
             "sourceAccountRef": "reserve-book-main"
         },
         "observedExecution": {
@@ -800,6 +794,13 @@ fn test_capital_instruction_issue_rejects_stale_authority_and_mismatch() {
         .reserve_requirement_amount
         .clone();
 
+    let (stale_authority_chain, stale_custodian_id) = signed_capital_authority_chain(
+        CapitalExecutionRole::OperatorTreasury,
+        now.saturating_sub(100),
+        now.saturating_sub(10),
+        now.saturating_sub(100),
+        now.saturating_sub(10),
+    );
     let stale_response = client
         .post(format!("{base_url}/v1/capital/instructions/issue"))
         .header(
@@ -817,20 +818,7 @@ fn test_capital_instruction_issue_rejects_stale_authority_and_mismatch() {
             "sourceKind": "reserve_book",
             "action": "release_reserve",
             "amount": reserve_amount.clone(),
-            "authorityChain": [
-                {
-                    "role": "operator_treasury",
-                    "principalId": "treasury-1",
-                    "approvedAt": now.saturating_sub(100),
-                    "expiresAt": now.saturating_sub(10)
-                },
-                {
-                    "role": "custodian",
-                    "principalId": "custodian-1",
-                    "approvedAt": now.saturating_sub(100),
-                    "expiresAt": now.saturating_sub(10)
-                }
-            ],
+            "authorityChain": stale_authority_chain,
             "executionWindow": {
                 "notBefore": now.saturating_sub(60),
                 "notAfter": now.saturating_add(3_600)
@@ -838,7 +826,7 @@ fn test_capital_instruction_issue_rejects_stale_authority_and_mismatch() {
             "rail": {
                 "kind": "manual",
                 "railId": "reserve-manual-1",
-                "custodyProviderId": "custodian-1"
+                "custodyProviderId": stale_custodian_id
             }
         }))
         .send()
@@ -852,6 +840,13 @@ fn test_capital_instruction_issue_rejects_stale_authority_and_mismatch() {
         .expect("stale capital instruction error")
         .contains("stale"));
 
+    let (mismatch_authority_chain, mismatch_custodian_id) = signed_capital_authority_chain(
+        CapitalExecutionRole::OperatorTreasury,
+        now.saturating_sub(30),
+        now.saturating_add(3_600),
+        now.saturating_sub(20),
+        now.saturating_add(3_600),
+    );
     let mismatch_response = client
         .post(format!("{base_url}/v1/capital/instructions/issue"))
         .header(
@@ -869,20 +864,7 @@ fn test_capital_instruction_issue_rejects_stale_authority_and_mismatch() {
             "sourceKind": "reserve_book",
             "action": "lock_reserve",
             "amount": reserve_amount.clone(),
-            "authorityChain": [
-                {
-                    "role": "operator_treasury",
-                    "principalId": "treasury-1",
-                    "approvedAt": now.saturating_sub(30),
-                    "expiresAt": now.saturating_add(3_600)
-                },
-                {
-                    "role": "custodian",
-                    "principalId": "custodian-1",
-                    "approvedAt": now.saturating_sub(20),
-                    "expiresAt": now.saturating_add(3_600)
-                }
-            ],
+            "authorityChain": mismatch_authority_chain,
             "executionWindow": {
                 "notBefore": now.saturating_sub(60),
                 "notAfter": now.saturating_add(3_600)
@@ -890,7 +872,7 @@ fn test_capital_instruction_issue_rejects_stale_authority_and_mismatch() {
             "rail": {
                 "kind": "manual",
                 "railId": "reserve-manual-1",
-                "custodyProviderId": "custodian-1"
+                "custodyProviderId": mismatch_custodian_id
             },
             "observedExecution": {
                 "observedAt": now,
@@ -1027,6 +1009,13 @@ fn test_capital_allocation_issue_surfaces() {
     assert_eq!(bond_issue.status(), reqwest::StatusCode::OK);
     let issued_bond: SignedCreditBond = bond_issue.json().expect("parse issued bond");
 
+    let (authority_chain, custodian_id) = signed_capital_authority_chain(
+        CapitalExecutionRole::OperatorTreasury,
+        now.saturating_sub(30),
+        now.saturating_add(3_600),
+        now.saturating_sub(20),
+        now.saturating_add(3_600),
+    );
     let request_json = serde_json::json!({
         "query": {
             "agentSubject": subject_key,
@@ -1036,20 +1025,7 @@ fn test_capital_allocation_issue_surfaces() {
             "lossEventLimit": 10
         },
         "receiptId": governed_receipt_id,
-        "authorityChain": [
-            {
-                "role": "operator_treasury",
-                "principalId": "treasury-1",
-                "approvedAt": now.saturating_sub(30),
-                "expiresAt": now.saturating_add(3_600)
-            },
-            {
-                "role": "custodian",
-                "principalId": "custodian-1",
-                "approvedAt": now.saturating_sub(20),
-                "expiresAt": now.saturating_add(3_600)
-            }
-        ],
+        "authorityChain": authority_chain,
         "executionWindow": {
             "notBefore": now.saturating_sub(60),
             "notAfter": now.saturating_add(3_600)
@@ -1057,7 +1033,7 @@ fn test_capital_allocation_issue_surfaces() {
         "rail": {
             "kind": "manual",
             "railId": "capital-allocation-manual-1",
-            "custodyProviderId": "custodian-1",
+            "custodyProviderId": custodian_id,
             "sourceAccountRef": "operator-capital-main"
         },
         "description": "allocate governed capital for the selected receipt"
@@ -1336,6 +1312,13 @@ fn test_capital_allocation_issue_fail_closed_and_boundary_outcomes() {
         .expect("issue queue bond");
     assert_eq!(queue_bond_issue.status(), reqwest::StatusCode::OK);
 
+    let (manual_authority_chain, manual_custodian_id) = signed_capital_authority_chain(
+        CapitalExecutionRole::OperatorTreasury,
+        now.saturating_sub(30),
+        now.saturating_add(3_600),
+        now.saturating_sub(20),
+        now.saturating_add(3_600),
+    );
     let manual_review_response = client
         .post(format!("{base_url}/v1/capital/allocations/issue"))
         .header(
@@ -1351,20 +1334,7 @@ fn test_capital_allocation_issue_fail_closed_and_boundary_outcomes() {
                 "lossEventLimit": 10
             },
             "receiptId": rc_capital_allocation_manual_pending_1.id.as_str(),
-            "authorityChain": [
-                {
-                    "role": "operator_treasury",
-                    "principalId": "treasury-1",
-                    "approvedAt": now.saturating_sub(30),
-                    "expiresAt": now.saturating_add(3_600)
-                },
-                {
-                    "role": "custodian",
-                    "principalId": "custodian-1",
-                    "approvedAt": now.saturating_sub(20),
-                    "expiresAt": now.saturating_add(3_600)
-                }
-            ],
+            "authorityChain": manual_authority_chain,
             "executionWindow": {
                 "notBefore": now.saturating_sub(60),
                 "notAfter": now.saturating_add(3_600)
@@ -1372,7 +1342,7 @@ fn test_capital_allocation_issue_fail_closed_and_boundary_outcomes() {
             "rail": {
                 "kind": "manual",
                 "railId": "capital-allocation-manual-boundary-1",
-                "custodyProviderId": "custodian-1",
+                "custodyProviderId": manual_custodian_id,
                 "sourceAccountRef": "operator-capital-main"
             }
         }))
@@ -1391,6 +1361,13 @@ fn test_capital_allocation_issue_fail_closed_and_boundary_outcomes() {
         finding.code == CapitalAllocationDecisionReasonCode::ReserveBookMissing
     }));
 
+    let (ambiguous_authority_chain, ambiguous_custodian_id) = signed_capital_authority_chain(
+        CapitalExecutionRole::OperatorTreasury,
+        now.saturating_sub(30),
+        now.saturating_add(3_600),
+        now.saturating_sub(20),
+        now.saturating_add(3_600),
+    );
     let ambiguous_response = client
         .post(format!("{base_url}/v1/capital/allocations/issue"))
         .header(
@@ -1405,20 +1382,7 @@ fn test_capital_allocation_issue_fail_closed_and_boundary_outcomes() {
                 "bondLimit": 10,
                 "lossEventLimit": 10
             },
-            "authorityChain": [
-                {
-                    "role": "operator_treasury",
-                    "principalId": "treasury-1",
-                    "approvedAt": now.saturating_sub(30),
-                    "expiresAt": now.saturating_add(3_600)
-                },
-                {
-                    "role": "custodian",
-                    "principalId": "custodian-1",
-                    "approvedAt": now.saturating_sub(20),
-                    "expiresAt": now.saturating_add(3_600)
-                }
-            ],
+            "authorityChain": ambiguous_authority_chain,
             "executionWindow": {
                 "notBefore": now.saturating_sub(60),
                 "notAfter": now.saturating_add(3_600)
@@ -1426,7 +1390,7 @@ fn test_capital_allocation_issue_fail_closed_and_boundary_outcomes() {
             "rail": {
                 "kind": "manual",
                 "railId": "capital-allocation-queue-boundary-1",
-                "custodyProviderId": "custodian-1",
+                "custodyProviderId": ambiguous_custodian_id,
                 "sourceAccountRef": "operator-capital-main"
             }
         }))
@@ -1441,6 +1405,13 @@ fn test_capital_allocation_issue_fail_closed_and_boundary_outcomes() {
         .expect("ambiguous capital allocation error")
         .contains("multiple approved actionable governed receipts"));
 
+    let (queue_authority_chain, queue_custodian_id) = signed_capital_authority_chain(
+        CapitalExecutionRole::OperatorTreasury,
+        now.saturating_sub(30),
+        now.saturating_add(3_600),
+        now.saturating_sub(20),
+        now.saturating_add(3_600),
+    );
     let queue_response = client
         .post(format!("{base_url}/v1/capital/allocations/issue"))
         .header(
@@ -1456,20 +1427,7 @@ fn test_capital_allocation_issue_fail_closed_and_boundary_outcomes() {
                 "lossEventLimit": 10
             },
             "receiptId": rc_capital_allocation_queue_pending_2.id.as_str(),
-            "authorityChain": [
-                {
-                    "role": "operator_treasury",
-                    "principalId": "treasury-1",
-                    "approvedAt": now.saturating_sub(30),
-                    "expiresAt": now.saturating_add(3_600)
-                },
-                {
-                    "role": "custodian",
-                    "principalId": "custodian-1",
-                    "approvedAt": now.saturating_sub(20),
-                    "expiresAt": now.saturating_add(3_600)
-                }
-            ],
+            "authorityChain": queue_authority_chain,
             "executionWindow": {
                 "notBefore": now.saturating_sub(60),
                 "notAfter": now.saturating_add(3_600)
@@ -1477,7 +1435,7 @@ fn test_capital_allocation_issue_fail_closed_and_boundary_outcomes() {
             "rail": {
                 "kind": "manual",
                 "railId": "capital-allocation-queue-boundary-1",
-                "custodyProviderId": "custodian-1",
+                "custodyProviderId": queue_custodian_id,
                 "sourceAccountRef": "operator-capital-main"
             }
         }))

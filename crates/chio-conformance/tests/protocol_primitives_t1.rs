@@ -2,7 +2,6 @@
 
 use chio_core::capability::{
     attenuation::{compute_attenuation_witness, scope_hash, AttenuationProof},
-    caveat::{Caveat, CaveatKind},
     scope::{ChioScope, Operation, ToolGrant},
     token::{CapabilityToken, CapabilityTokenAttenuationBody, CapabilityTokenBody},
 };
@@ -45,11 +44,7 @@ fn capability_unknown_schema_rejected() {
                 expires_at: 2,
                 delegation_chain: vec![],
             },
-            caveats: vec![Caveat {
-                kind: CaveatKind::RestrictTool,
-                predicate: "srv/tool".to_string(),
-                sig: None,
-            }],
+            caveats: vec![],
             scope_attenuations: vec![],
             attenuation_proof: AttenuationProof {
                 parent_scope_hash: scope_hash(&parent).unwrap(),

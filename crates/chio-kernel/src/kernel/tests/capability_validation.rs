@@ -719,17 +719,15 @@ fn delegated_tool_call_with_scope_escalation_denies() {
         &parent.id,
         &parent_kp,
         &child_kp.public_key(),
-        &child_scope,
+        &parent_scope,
         link_timestamp,
     );
-    let child = make_chain_bound_capability(
+    let child = make_chain_bound_plain_capability(
         &kernel,
         "cap-escalated-child",
         child_kp.public_key(),
         child_scope.clone(),
         vec![link],
-        &child_scope,
-        None,
     );
 
     let response = kernel
@@ -866,14 +864,12 @@ fn delegated_tool_call_exceeding_configured_max_depth_denies() {
         &delegable_scope,
         current_unix_timestamp(),
     );
-    let child = make_chain_bound_capability(
+    let child = make_chain_bound_plain_capability(
         &kernel,
         "cap-max-depth-child",
         child_kp.public_key(),
         child_scope,
         vec![root_to_parent, parent_to_child],
-        &delegable_scope,
-        None,
     );
 
     let response = kernel

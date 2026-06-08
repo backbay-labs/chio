@@ -6,8 +6,8 @@
 pub mod backend;
 pub(crate) mod evidence;
 pub mod guard;
-#[cfg(test)]
-mod mock_backend;
+#[cfg(any(test, feature = "test-support"))]
+pub mod mock_backend;
 pub mod module;
 #[cfg(feature = "wasmtime-runtime")]
 pub mod wasmtime_backend;

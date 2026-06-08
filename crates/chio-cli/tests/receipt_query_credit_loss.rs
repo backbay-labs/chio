@@ -501,6 +501,13 @@ fn test_credit_loss_lifecycle_recovery_write_off_and_release_fail_closed() {
         .expect("reserve release metadata error")
         .contains("requires executionWindow"));
 
+    let (release_authority_chain, release_custodian_id) = signed_capital_authority_chain(
+        CapitalExecutionRole::OperatorTreasury,
+        now.saturating_sub(30),
+        now.saturating_add(3_600),
+        now.saturating_sub(20),
+        now.saturating_add(3_600),
+    );
     let release_issue = client
         .post(format!("{base_url}/v1/bond-losses/issue"))
         .header(
@@ -512,20 +519,7 @@ fn test_credit_loss_lifecycle_recovery_write_off_and_release_fail_closed() {
                 "bondId": bond_id.as_str(),
                 "eventKind": "reserve_release"
             },
-            "authorityChain": [
-                {
-                    "role": "operator_treasury",
-                    "principalId": "treasury-1",
-                    "approvedAt": now.saturating_sub(30),
-                    "expiresAt": now.saturating_add(3_600)
-                },
-                {
-                    "role": "custodian",
-                    "principalId": "custodian-1",
-                    "approvedAt": now.saturating_sub(20),
-                    "expiresAt": now.saturating_add(3_600)
-                }
-            ],
+            "authorityChain": release_authority_chain,
             "executionWindow": {
                 "notBefore": now.saturating_sub(60),
                 "notAfter": now.saturating_add(3_600)
@@ -533,7 +527,7 @@ fn test_credit_loss_lifecycle_recovery_write_off_and_release_fail_closed() {
             "rail": {
                 "kind": "manual",
                 "railId": "reserve-release-manual-1",
-                "custodyProviderId": "custodian-1",
+                "custodyProviderId": release_custodian_id,
                 "sourceAccountRef": "reserve-book-main"
             },
             "observedExecution": {
@@ -584,7 +578,7 @@ fn test_credit_loss_lifecycle_recovery_write_off_and_release_fail_closed() {
             .rail
             .as_ref()
             .map(|rail| rail.custody_provider_id.as_str()),
-        Some("custodian-1")
+        Some(release_custodian_id.as_str())
     );
     assert_eq!(
         release_event.body.description.as_deref(),
@@ -776,6 +770,13 @@ fn test_credit_loss_lifecycle_reserve_slash_requires_valid_execution_metadata() 
         .expect("reserve slash metadata error")
         .contains("requires executionWindow"));
 
+    let (stale_authority_chain, stale_custodian_id) = signed_capital_authority_chain(
+        CapitalExecutionRole::OperatorTreasury,
+        now.saturating_sub(100),
+        now.saturating_sub(10),
+        now.saturating_sub(100),
+        now.saturating_sub(10),
+    );
     let stale_authority = client
         .post(format!("{base_url}/v1/bond-losses/issue"))
         .header(
@@ -787,20 +788,7 @@ fn test_credit_loss_lifecycle_reserve_slash_requires_valid_execution_metadata() 
                 "bondId": bond_id.as_str(),
                 "eventKind": "reserve_slash"
             },
-            "authorityChain": [
-                {
-                    "role": "operator_treasury",
-                    "principalId": "treasury-1",
-                    "approvedAt": now.saturating_sub(100),
-                    "expiresAt": now.saturating_sub(10)
-                },
-                {
-                    "role": "custodian",
-                    "principalId": "custodian-1",
-                    "approvedAt": now.saturating_sub(100),
-                    "expiresAt": now.saturating_sub(10)
-                }
-            ],
+            "authorityChain": stale_authority_chain,
             "executionWindow": {
                 "notBefore": now.saturating_sub(60),
                 "notAfter": now.saturating_add(3_600)
@@ -808,7 +796,7 @@ fn test_credit_loss_lifecycle_reserve_slash_requires_valid_execution_metadata() 
             "rail": {
                 "kind": "manual",
                 "railId": "reserve-slash-manual-1",
-                "custodyProviderId": "custodian-1",
+                "custodyProviderId": stale_custodian_id,
                 "sourceAccountRef": "reserve-book-main"
             }
         }))
@@ -823,6 +811,13 @@ fn test_credit_loss_lifecycle_reserve_slash_requires_valid_execution_metadata() 
         .expect("stale reserve slash error")
         .contains("stale"));
 
+    let (slash_authority_chain, slash_custodian_id) = signed_capital_authority_chain(
+        CapitalExecutionRole::OperatorTreasury,
+        now.saturating_sub(30),
+        now.saturating_add(3_600),
+        now.saturating_sub(20),
+        now.saturating_add(3_600),
+    );
     let slash_issue = client
         .post(format!("{base_url}/v1/bond-losses/issue"))
         .header(
@@ -838,20 +833,7 @@ fn test_credit_loss_lifecycle_reserve_slash_requires_valid_execution_metadata() 
                     "currency": "USD"
                 }
             },
-            "authorityChain": [
-                {
-                    "role": "operator_treasury",
-                    "principalId": "treasury-1",
-                    "approvedAt": now.saturating_sub(30),
-                    "expiresAt": now.saturating_add(3_600)
-                },
-                {
-                    "role": "custodian",
-                    "principalId": "custodian-1",
-                    "approvedAt": now.saturating_sub(20),
-                    "expiresAt": now.saturating_add(3_600)
-                }
-            ],
+            "authorityChain": slash_authority_chain,
             "executionWindow": {
                 "notBefore": now.saturating_sub(60),
                 "notAfter": now.saturating_add(3_600)
@@ -859,7 +841,7 @@ fn test_credit_loss_lifecycle_reserve_slash_requires_valid_execution_metadata() 
             "rail": {
                 "kind": "manual",
                 "railId": "reserve-slash-manual-1",
-                "custodyProviderId": "custodian-1",
+                "custodyProviderId": slash_custodian_id,
                 "sourceAccountRef": "reserve-book-main"
             },
             "appealWindowEndsAt": now.saturating_add(1_800),

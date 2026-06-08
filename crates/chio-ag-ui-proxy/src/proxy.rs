@@ -742,11 +742,12 @@ mod tests {
         child_id: &str,
         parent_id: &str,
     ) -> CapabilityToken {
+        let delegatee = Keypair::generate().public_key();
         let parent_link = DelegationLink::sign(
             DelegationLinkBody {
                 capability_id: parent_id.to_string(),
                 delegator: issuer.public_key(),
-                delegatee: Keypair::generate().public_key(),
+                delegatee: delegatee.clone(),
                 attenuations: vec![],
                 timestamp: 0,
                 scope_hash: None,
@@ -758,7 +759,7 @@ mod tests {
             CapabilityTokenBody {
                 id: child_id.to_string(),
                 issuer: issuer.public_key(),
-                subject: Keypair::generate().public_key(),
+                subject: delegatee,
                 scope: ChioScope {
                     grants: vec![ToolGrant {
                         server_id: AG_UI_SERVER_ID.to_string(),
@@ -795,11 +796,12 @@ mod tests {
         parent_id: &str,
         component_id: &str,
     ) -> CapabilityToken {
+        let delegatee = Keypair::generate().public_key();
         let parent_link = DelegationLink::sign(
             DelegationLinkBody {
                 capability_id: parent_id.to_string(),
                 delegator: issuer.public_key(),
-                delegatee: Keypair::generate().public_key(),
+                delegatee: delegatee.clone(),
                 attenuations: vec![],
                 timestamp: 0,
                 scope_hash: None,
@@ -811,7 +813,7 @@ mod tests {
             CapabilityTokenBody {
                 id: child_id.to_string(),
                 issuer: issuer.public_key(),
-                subject: Keypair::generate().public_key(),
+                subject: delegatee,
                 scope: ChioScope {
                     grants: vec![ToolGrant {
                         server_id: AG_UI_SERVER_ID.to_string(),
@@ -852,11 +854,12 @@ mod tests {
         parent_id: &str,
         event_id: &str,
     ) -> CapabilityToken {
+        let delegatee = Keypair::generate().public_key();
         let parent_link = DelegationLink::sign(
             DelegationLinkBody {
                 capability_id: parent_id.to_string(),
                 delegator: issuer.public_key(),
-                delegatee: Keypair::generate().public_key(),
+                delegatee: delegatee.clone(),
                 attenuations: vec![],
                 timestamp: 0,
                 scope_hash: None,
@@ -868,7 +871,7 @@ mod tests {
             CapabilityTokenBody {
                 id: child_id.to_string(),
                 issuer: issuer.public_key(),
-                subject: Keypair::generate().public_key(),
+                subject: delegatee,
                 scope: ChioScope {
                     grants: vec![ToolGrant {
                         server_id: AG_UI_SERVER_ID.to_string(),

@@ -941,7 +941,7 @@ fn sample_market_fixtures() -> MarketFixtures {
             external_reference_id: "settle-exec-1".to_string(),
             amount: usd(5_000),
         },
-        observed_payer_id: "facility-provider-1".to_string(),
+        observed_payer_id: facility_provider_id,
         observed_payee_id: "subject-1".to_string(),
         note: None,
     });

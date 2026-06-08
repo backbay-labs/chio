@@ -500,7 +500,7 @@ impl FakeMtlsA2aServer {
         let materials = generate_mtls_test_materials();
         let listener = bind_fake_a2a_listener("fake mTLS A2A listener")?;
         let address = listener.local_addr().expect("listener address");
-        let base_url = format!("https://localhost:{}", address.port());
+        let base_url = format!("https://{address}");
         let requests = Arc::new(Mutex::new(Vec::new()));
         let requests_for_thread = Arc::clone(&requests);
         let server_tls_config = build_test_server_tls_config(&materials);
@@ -509,7 +509,14 @@ impl FakeMtlsA2aServer {
 
         let handle = thread::spawn(move || {
             ready_tx.send(()).expect("server ready");
-            for _ in 0..2 {
+            let mut handled_requests = 0_usize;
+            let mut accepted_connections = 0_usize;
+            while handled_requests < 2 {
+                accepted_connections += 1;
+                assert!(
+                    accepted_connections <= 6,
+                    "fake mTLS A2A server exceeded retry budget before receiving expected requests"
+                );
                 let (tcp_stream, _) = listener.accept().expect("accept request");
                 tcp_stream
                     .set_read_timeout(Some(Duration::from_secs(2)))
@@ -518,7 +525,23 @@ impl FakeMtlsA2aServer {
                     ureq::rustls::ServerConnection::new(Arc::clone(&server_tls_config))
                         .expect("create rustls server connection");
                 let mut stream = ureq::rustls::StreamOwned::new(connection, tcp_stream);
-                let request = read_http_request(&mut stream);
+                let request = match try_read_http_request(&mut stream) {
+                    Ok(request) if !request.is_empty() => request,
+                    Ok(_) => continue,
+                    Err(error)
+                        if matches!(
+                            error.kind(),
+                            std::io::ErrorKind::ConnectionAborted
+                                | std::io::ErrorKind::ConnectionReset
+                                | std::io::ErrorKind::TimedOut
+                                | std::io::ErrorKind::UnexpectedEof
+                                | std::io::ErrorKind::WouldBlock
+                        ) =>
+                    {
+                        continue;
+                    }
+                    Err(error) => panic!("read mTLS request: {error}"),
+                };
                 requests_for_thread
                     .lock()
                     .expect("lock request log")
@@ -553,6 +576,7 @@ impl FakeMtlsA2aServer {
                 };
                 write_http_json_response(&mut stream, 200, &response);
                 stream.flush().expect("flush response");
+                handled_requests += 1;
             }
         });
 
@@ -605,7 +629,8 @@ fn generate_mtls_test_materials() -> MtlsTestMaterials {
         .expect("self-sign CA certificate");
 
     let mut server_params =
-        CertificateParams::new(vec!["localhost".to_string()]).expect("server params");
+        CertificateParams::new(vec!["localhost".to_string(), "127.0.0.1".to_string()])
+            .expect("server params");
     server_params.distinguished_name = DistinguishedName::new();
     server_params
         .distinguished_name
@@ -711,13 +736,17 @@ fn mtls_agent_card_payload(base_url: &str) -> Value {
 }
 
 fn read_http_request<R: Read>(stream: &mut R) -> String {
+    try_read_http_request(stream).expect("read request")
+}
+
+fn try_read_http_request<R: Read>(stream: &mut R) -> std::io::Result<String> {
     let mut request = Vec::new();
     let mut chunk = [0_u8; 1024];
     let mut header_end = None;
     let mut content_length = 0_usize;
 
     loop {
-        let read = stream.read(&mut chunk).expect("read request");
+        let read = stream.read(&mut chunk)?;
         if read == 0 {
             break;
         }
@@ -734,7 +763,7 @@ fn read_http_request<R: Read>(stream: &mut R) -> String {
             }
         }
     }
-    String::from_utf8_lossy(&request).into_owned()
+    Ok(String::from_utf8_lossy(&request).into_owned())
 }
 
 fn write_http_json_response<W: Write>(stream: &mut W, status: u16, body: &Value) {

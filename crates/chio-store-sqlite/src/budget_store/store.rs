@@ -240,7 +240,7 @@ impl SqliteBudgetStore {
         let duplicate_event = if let Some(existing) =
             Self::load_mutation_event(transaction, &record.event_id)?
         {
-            if existing != *record {
+            if !Self::same_imported_mutation(&existing, record) {
                 if Self::rolled_back_authorize_can_be_replaced(transaction, &existing, record)? {
                     transaction.execute(
                         "DELETE FROM budget_mutation_events WHERE event_id = ?1",
@@ -320,6 +320,27 @@ impl SqliteBudgetStore {
 
         Self::apply_imported_hold_state(transaction, record)?;
         Ok(())
+    }
+
+    fn same_imported_mutation(
+        existing: &BudgetMutationRecord,
+        imported: &BudgetMutationRecord,
+    ) -> bool {
+        existing.event_id == imported.event_id
+            && existing.hold_id == imported.hold_id
+            && existing.capability_id == imported.capability_id
+            && existing.grant_index == imported.grant_index
+            && existing.kind == imported.kind
+            && existing.allowed == imported.allowed
+            && existing.exposure_units == imported.exposure_units
+            && existing.realized_spend_units == imported.realized_spend_units
+            && existing.max_invocations == imported.max_invocations
+            && existing.max_cost_per_invocation == imported.max_cost_per_invocation
+            && existing.max_total_cost_units == imported.max_total_cost_units
+            && existing.invocation_count_after == imported.invocation_count_after
+            && existing.total_cost_exposed_after == imported.total_cost_exposed_after
+            && existing.total_cost_realized_spend_after == imported.total_cost_realized_spend_after
+            && existing.authority == imported.authority
     }
 
     pub fn list_usages_after(
@@ -941,7 +962,7 @@ impl SqliteBudgetStore {
         capability_id: &str,
         grant_index: usize,
         hold_id: Option<&str>,
-        authority: Option<&BudgetEventAuthority>,
+        _authority: Option<&BudgetEventAuthority>,
         exposure_units: u64,
         realized_spend_units: u64,
         max_invocations: Option<u32>,
@@ -967,17 +988,12 @@ impl SqliteBudgetStore {
                     max_total_exposure_units,
                     invocation_count_after,
                     total_cost_exposed_after,
-                    total_cost_realized_spend_after,
-                    authority_id,
-                    lease_id,
-                    lease_epoch
+                    total_cost_realized_spend_after
                 FROM budget_mutation_events
                 WHERE event_id = ?1
                 "#,
                 params![event_id],
                 |row| {
-                    let authority =
-                        sqlite_budget_event_authority(row.get(13)?, row.get(14)?, row.get(15)?)?;
                     Ok((
                         row.get::<_, Option<String>>(0)?,
                         row.get::<_, String>(1)?,
@@ -992,7 +1008,6 @@ impl SqliteBudgetStore {
                         budget_u32_from_row(row, 10, "invocation_count_after")?,
                         budget_u64_from_row(row, 11, "total_cost_exposed_after")?,
                         budget_u64_from_row(row, 12, "total_cost_realized_spend_after")?,
-                        authority,
                     ))
                 },
             )
@@ -1011,7 +1026,6 @@ impl SqliteBudgetStore {
             existing_invocation_count_after,
             existing_total_cost_exposed_after,
             existing_total_cost_realized_spend_after,
-            existing_authority,
         )) = existing
         else {
             return Ok(None);
@@ -1087,11 +1101,6 @@ impl SqliteBudgetStore {
                 )?;
             }
             return Ok(None);
-        }
-        if existing_authority.as_ref() != authority {
-            return Err(BudgetStoreError::Invariant(format!(
-                "budget event_id `{event_id}` was reused for a different mutation"
-            )));
         }
         Ok(Some(existing_allowed))
     }
