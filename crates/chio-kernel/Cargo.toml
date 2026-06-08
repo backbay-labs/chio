@@ -40,25 +40,25 @@ pq = ["chio-core-types/pq", "chio-core/pq"]
 delegation = ["chio-core-types/delegation"]
 
 [dependencies]
-chio-appraisal = { path = "../chio-appraisal" }
-chio-core = { path = "../chio-core" }
-chio-core-types = { path = "../chio-core-types" }
-chio-custody-hw = { path = "../chio-custody-hw" }
-chio-weights = { path = "../chio-weights" }
+chio-appraisal = { workspace = true }
+chio-core = { workspace = true }
+chio-core-types = { workspace = true }
+chio-custody-hw = { workspace = true }
+chio-weights = { workspace = true }
 chrono = { workspace = true, features = ["serde"] }
-chio-kernel-core = { path = "../chio-kernel-core" }
-chio-credit = { path = "../chio-credit" }
-chio-federation = { path = "../chio-federation" }
-chio-governance = { path = "../chio-governance" }
-chio-link = { path = "../chio-link", default-features = false }
-chio-log-redact = { path = "../chio-log-redact" }
+chio-kernel-core = { workspace = true }
+chio-credit = { workspace = true }
+chio-federation = { workspace = true }
+chio-governance = { workspace = true }
+chio-link = { workspace = true, default-features = false }
+chio-log-redact = { workspace = true }
 chio-metrics-spec = { workspace = true }
-chio-tool-call-fabric = { path = "../chio-tool-call-fabric" }
+chio-tool-call-fabric = { workspace = true }
 lru = "0.16.3"
-chio-listing = { path = "../chio-listing" }
-chio-market = { path = "../chio-market" }
-chio-open-market = { path = "../chio-open-market" }
-chio-settle = { path = "../chio-settle" }
+chio-listing = { workspace = true }
+chio-market = { workspace = true }
+chio-open-market = { workspace = true }
+chio-settle = { workspace = true }
 arc-swap = { workspace = true }
 async-trait = { workspace = true }
 dashmap = { workspace = true }
@@ -71,15 +71,15 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 opentelemetry-semantic-conventions = { workspace = true, optional = true }
 rusqlite = { workspace = true }
-chio-underwriting = { path = "../chio-underwriting" }
+chio-underwriting = { workspace = true }
 uuid = { workspace = true, features = ["v7"] }
 ureq = { version = "2.10", features = ["json"] }
 rand = { workspace = true }
 base64 = { workspace = true }
 
 [dev-dependencies]
-chio-store-sqlite = { path = "../chio-store-sqlite" }
-chio-test-support = { path = "../chio-test-support" }
+chio-store-sqlite = { workspace = true }
+chio-test-support = { workspace = true }
 criterion = { workspace = true }
 dhat = { workspace = true }
 loom = { workspace = true }

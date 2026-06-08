@@ -20,17 +20,17 @@ name = "core_primitives"
 harness = false
 
 [dependencies]
-chio-appraisal = { path = "../chio-appraisal" }
-chio-autonomy = { path = "../chio-autonomy" }
-chio-core-types = { path = "../chio-core-types" }
-chio-credit = { path = "../chio-credit" }
-chio-federation = { path = "../chio-federation" }
-chio-governance = { path = "../chio-governance" }
-chio-listing = { path = "../chio-listing" }
-chio-market = { path = "../chio-market" }
-chio-open-market = { path = "../chio-open-market" }
-chio-underwriting = { path = "../chio-underwriting" }
-chio-web3 = { path = "../chio-web3" }
+chio-appraisal = { workspace = true }
+chio-autonomy = { workspace = true }
+chio-core-types = { workspace = true }
+chio-credit = { workspace = true }
+chio-federation = { workspace = true }
+chio-governance = { workspace = true }
+chio-listing = { workspace = true }
+chio-market = { workspace = true }
+chio-open-market = { workspace = true }
+chio-underwriting = { workspace = true }
+chio-web3 = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

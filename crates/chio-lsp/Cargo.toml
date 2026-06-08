@@ -16,7 +16,7 @@ name = "chio-lsp"
 path = "src/main.rs"
 
 [dependencies]
-chio-errors = { path = "../chio-errors" }
+chio-errors = { workspace = true }
 dashmap = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
