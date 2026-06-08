@@ -2,12 +2,18 @@
 //!
 //! Subcommands so far:
 //!
+//! Argument parsing is `clap`-derived (see `cli.rs`); run `cargo xtask --help`
+//! for the full tree. The historical leaf spellings remain as aliases:
+//!
 //! ```text
 //! cargo xtask validate-scenarios
-//! cargo xtask freeze-vectors
-//! cargo xtask freeze-vectors --check
-//! cargo xtask eval-receipt-regen
-//! cargo xtask eval-receipt-regen --check
+//! cargo xtask freeze-vectors [--check]
+//! cargo xtask eval-receipt-regen [--check]
+//! cargo xtask codegen <rust|ts|go|python> [--check]
+//! cargo xtask codegen --lang <rust|ts|go|python> [--check]
+//! cargo xtask errors regen [--check]
+//! cargo xtask snippets regen [--check]
+//! cargo xtask check crate-paths
 //! ```
 //!
 //! `validate-scenarios` walks `tests/conformance/scenarios/**/*.json`, looks

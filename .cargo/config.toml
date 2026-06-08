@@ -1,11 +1,9 @@
 # Cargo aliases for workspace tasks.
 #
-# `cargo xtask <subcommand>` dispatches into the xtask crate (xtask/),
-# which exposes subcommands such as:
-#   freeze-vectors [--check]
-#   validate-scenarios
-#   eval-receipt-regen [--check]
-#   codegen --lang <rust|ts|go|python> [--check]
+# `cargo xtask <command>` dispatches into the xtask crate (xtask/), a
+# clap-derived CLI. Run `cargo xtask --help` for the full noun-verb tree.
+# Historical leaf spellings (validate-scenarios, freeze-vectors,
+# eval-receipt-regen, codegen, errors regen, snippets regen) remain as aliases.
 #
 # The alias keeps the invocation stable across local and
 # CI hosts; both forms (`cargo xtask ...` and `cargo run -p xtask -- ...`)
