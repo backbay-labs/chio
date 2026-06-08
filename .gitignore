@@ -19,6 +19,10 @@ sdks/rust/chio-guard-sdk-compat/Cargo.lock
 # Local planning / orchestration state (not part of the published project)
 .worktrees/
 .planning/
+# Local agent scratch (untracked; never commit)
+.codex/
+# Coverage output is generated; keep docs, not the dir
+/coverage/
 
 # Local cleanup-audit working notes
 .cleanup-audit/
