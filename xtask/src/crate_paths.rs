@@ -68,7 +68,12 @@ pub fn normalize_for_resolution(raw: &str) -> Option<String> {
     if segments[1].len() <= "chio-".len() {
         return None;
     }
-    Some(segments.join("/"))
+    let joined = segments.join("/");
+    let trimmed = joined.trim_end_matches('.');
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(trimmed.to_string())
 }
 
 /// A crate-path reference that does not resolve on disk.
@@ -236,6 +241,18 @@ mod tests {
     fn normalize_rejects_bare_or_nameless_prefixes() {
         assert_eq!(normalize_for_resolution("crates/chio-"), None);
         assert_eq!(normalize_for_resolution("crates/**"), None);
+    }
+
+    #[test]
+    fn normalize_strips_trailing_sentence_period() {
+        assert_eq!(
+            normalize_for_resolution("crates/chio-kernel/src/lib.rs.").as_deref(),
+            Some("crates/chio-kernel/src/lib.rs")
+        );
+        assert_eq!(
+            normalize_for_resolution("crates/chio-foo.").as_deref(),
+            Some("crates/chio-foo")
+        );
     }
 
     #[test]
