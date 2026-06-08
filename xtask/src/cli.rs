@@ -222,9 +222,15 @@ mod tests {
     #[test]
     fn historical_freeze_vectors_check_parses() {
         let cli = parse(&["xtask", "freeze-vectors", "--check"]);
-        assert!(matches!(cli.command, Command::FreezeVectors { check: true }));
+        assert!(matches!(
+            cli.command,
+            Command::FreezeVectors { check: true }
+        ));
         let cli = parse(&["xtask", "freeze-vectors"]);
-        assert!(matches!(cli.command, Command::FreezeVectors { check: false }));
+        assert!(matches!(
+            cli.command,
+            Command::FreezeVectors { check: false }
+        ));
     }
 
     #[test]

@@ -65,3 +65,27 @@ fn normalize_ts_chunk_strips_trailing_newlines() {
     assert_eq!(normalize_ts_chunk("hello\n\n\n"), "hello");
     assert_eq!(normalize_ts_chunk("multi\nline\n"), "multi\nline");
 }
+
+#[test]
+fn codegen_argv_round_trips_positional_and_flag() {
+    // The clap dispatch rebuilds the exact argv the legacy run_codegen parses.
+    use crate::cli::{CodegenArgs, Lang};
+    let pos = CodegenArgs {
+        lang_positional: Some(Lang::Rust),
+        lang_flag: None,
+        check: true,
+    };
+    assert_eq!(
+        codegen_argv(&pos),
+        vec!["rust".to_string(), "--check".to_string()]
+    );
+    let flag = CodegenArgs {
+        lang_positional: None,
+        lang_flag: Some(Lang::Python),
+        check: false,
+    };
+    assert_eq!(
+        codegen_argv(&flag),
+        vec!["--lang".to_string(), "python".to_string()]
+    );
+}

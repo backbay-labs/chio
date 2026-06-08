@@ -82,7 +82,10 @@ use std::process::{Command, ExitCode};
 
 use sha2::{Digest, Sha256};
 
-#[allow(dead_code)]
+use clap::Parser;
+
+use cli::{CheckCommand, Cli, CodegenArgs, ErrorsCompat, GenCommand, Lang, SnippetsCompat};
+
 mod cli;
 mod crate_paths;
 mod eval_receipt_regen;
@@ -120,22 +123,8 @@ impl fmt::Display for XtaskError {
 }
 
 fn main() -> ExitCode {
-    let mut args = env::args().skip(1);
-    let cmd = args.next().unwrap_or_default();
-    let result = match cmd.as_str() {
-        "validate-scenarios" => validate_scenarios(args.collect()),
-        "freeze-vectors" => freeze_vectors(args.collect()),
-        "eval-receipt-regen" => eval_receipt_regen::run(args.collect()),
-        "codegen" => run_codegen(args.collect()),
-        "errors" => run_errors(args.collect()),
-        "snippets" => run_snippets(args.collect()),
-        "check-crate-paths" => crate_paths::run(args.collect()),
-        "" | "help" | "--help" | "-h" => {
-            print_help();
-            return ExitCode::SUCCESS;
-        }
-        other => Err(XtaskError::Usage(format!("unknown subcommand: {other}"))),
-    };
+    let cli = Cli::parse();
+    let result = dispatch(cli.command);
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
@@ -145,22 +134,94 @@ fn main() -> ExitCode {
     }
 }
 
-fn print_help() {
-    println!("xtask subcommands:");
-    println!("  validate-scenarios");
-    println!("  freeze-vectors [--check]");
-    println!("  eval-receipt-regen [--check]");
-    println!("  errors regen [--check]");
-    println!("  snippets regen [--check]");
-    println!("  check-crate-paths");
-    println!("  codegen rust [--check]");
-    println!("  codegen --check");
-    println!("  codegen --lang rust [--check]");
-    println!("  codegen --lang go [--check]");
-    println!("  codegen ts [--check]");
-    println!("  codegen --lang ts [--check]");
-    println!("  codegen python [--check]");
-    println!("  codegen --lang python [--check]");
+/// Translate the parsed clap command into the existing handler calls. Leaf
+/// aliases and their `gen ...` equivalents route to the identical handler, so
+/// behavior is byte-for-byte preserved. Noun-group placeholders fail closed.
+fn dispatch(command: cli::Command) -> Result<(), XtaskError> {
+    match command {
+        // -- gen group --
+        cli::Command::Gen { command } => match command {
+            GenCommand::Codegen(args) => run_codegen(codegen_argv(&args)),
+            GenCommand::Errors { check } => errors_regen(check_argv(check)),
+            GenCommand::Snippets { check } => run_snippets(snippets_regen_argv(check)),
+            GenCommand::EvalReceipt { check } => eval_receipt_regen::run(check_argv(check)),
+            GenCommand::FreezeVectors { check } => freeze_vectors(check_argv(check)),
+        },
+        // -- check group --
+        cli::Command::Check { command } => match command {
+            CheckCommand::CratePaths => crate_paths::run(Vec::new()),
+        },
+        // -- noun-group parents: leaves land in Phase 3 (fail closed) --
+        cli::Command::Qualify { .. }
+        | cli::Command::Verify { .. }
+        | cli::Command::Fuzz { .. }
+        | cli::Command::Mutants { .. }
+        | cli::Command::Release { .. }
+        | cli::Command::SupplyChain { .. }
+        | cli::Command::Tools { .. } => Err(XtaskError::Usage(
+            "this command group has no implemented subcommands yet (Phase 3)".into(),
+        )),
+        // -- back-compat leaf aliases (identical handlers) --
+        cli::Command::ValidateScenarios => validate_scenarios(Vec::new()),
+        cli::Command::FreezeVectors { check } => freeze_vectors(check_argv(check)),
+        cli::Command::EvalReceiptRegen { check } => eval_receipt_regen::run(check_argv(check)),
+        cli::Command::Codegen(args) => run_codegen(codegen_argv(&args)),
+        cli::Command::Errors { command } => match command {
+            ErrorsCompat::Regen { check } => errors_regen(check_argv(check)),
+        },
+        cli::Command::Snippets { command } => match command {
+            SnippetsCompat::Regen { check } => run_snippets(snippets_regen_argv(check)),
+        },
+    }
+}
+
+/// Rebuild the `Vec<String>` argv that `run_codegen` already parses, so its
+/// in-function flag handling (`xtask/src/main.rs` `run_codegen`) is reused
+/// verbatim. Prefers the positional form when supplied (preserving the
+/// `codegen rust` spelling stamped into generated headers), else the `--lang`
+/// flag form.
+fn codegen_argv(args: &CodegenArgs) -> Vec<String> {
+    let mut out = Vec::new();
+    match (args.lang_positional, args.lang_flag) {
+        (Some(lang), _) => out.push(lang_str(lang).to_string()),
+        (None, Some(lang)) => {
+            out.push("--lang".to_string());
+            out.push(lang_str(lang).to_string());
+        }
+        (None, None) => {}
+    }
+    if args.check {
+        out.push("--check".to_string());
+    }
+    out
+}
+
+fn lang_str(lang: Lang) -> &'static str {
+    match lang {
+        Lang::Rust => "rust",
+        Lang::Ts => "ts",
+        Lang::Go => "go",
+        Lang::Python => "python",
+    }
+}
+
+/// Argv for a bare `[--check]` leaf (freeze-vectors / eval-receipt / errors-body).
+fn check_argv(check: bool) -> Vec<String> {
+    if check {
+        vec!["--check".to_string()]
+    } else {
+        Vec::new()
+    }
+}
+
+/// `run_snippets` expects `["regen", maybe "--check"]` (its `run` reads the
+/// `regen` subcommand first). Rebuild that exact argv.
+fn snippets_regen_argv(check: bool) -> Vec<String> {
+    let mut out = vec!["regen".to_string()];
+    if check {
+        out.push("--check".to_string());
+    }
+    out
 }
 
 const SCHEMA_URI_PREFIX: &str = "https://chio-protocol.dev/schemas/";
@@ -514,19 +575,6 @@ fn run_codegen(args: Vec<String>) -> Result<(), XtaskError> {
 fn run_snippets(args: Vec<String>) -> Result<(), XtaskError> {
     let workspace_root = workspace_root()?;
     snippets_subcommand::run(args, &workspace_root)
-}
-
-fn run_errors(args: Vec<String>) -> Result<(), XtaskError> {
-    let mut iter = args.into_iter();
-    let sub = iter
-        .next()
-        .ok_or_else(|| XtaskError::Usage("errors <subcommand>".into()))?;
-    match sub.as_str() {
-        "regen" => errors_regen(iter.collect()),
-        other => Err(XtaskError::Usage(format!(
-            "unknown errors subcommand: {other}"
-        ))),
-    }
 }
 
 fn errors_regen(args: Vec<String>) -> Result<(), XtaskError> {
