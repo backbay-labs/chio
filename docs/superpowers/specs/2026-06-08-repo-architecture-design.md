@@ -38,7 +38,7 @@ input rejects at load); `unwrap_used`/`expect_used` denied in new Rust.
   behavior exactly (proven by dual-run parity), never widen or silently drop one.
 - No docs-tree content rewrite beyond the README and the moved files. The
   `docs/` reorganization (320 markdown files) is a separate later effort.
-- No new third-party dependencies beyond `clap` (already a vetted workspace dep).
+- No new third-party dependencies beyond `clap` (already pinned per-crate at 4.x in 5 crates and vetted; this phase reuses it, not a new dependency surface).
 
 ### The overarching risk this spec is built around
 
@@ -111,9 +111,11 @@ bash into typed, unit-tested Rust. Only thin external-tool wrappers and imperati
 installers stay as shell.
 
 `xtask` is converted from its hand-rolled `match` dispatcher (1,981 lines) to a
-derive-based `clap` CLI (`clap` is already a workspace dep used by 6 crates, so no
-new third-party surface). Generated `--help` replaces the hand-maintained
-`println!` help block.
+derive-based `clap` CLI (`clap` is already pinned at 4.x in 5 crates - chio-cli,
+chio-control-plane, chio-wall, chio-mercury, chio-provider-conformance - so adopting
+it in xtask reuses an already-vetted dependency rather than adding a new one; note
+it is pinned per-crate, not yet in `[workspace.dependencies]`). Generated `--help`
+replaces the hand-maintained `println!` help block.
 
 Subcommand tree (noun-verb; every leaf maps to one CI job step):
 
@@ -341,14 +343,21 @@ blast-radius work is last and sits behind the `check crate-paths` guard.
   helper. Build and wire `cargo xtask check crate-paths` (the go-dark guard) and
   add it to `ci.yml`. This guard is a prerequisite for Phases 5 and 6.
 
-- **Phase 2 - `[workspace.dependencies]` centralization (no moves).** Add the 90
+- **Phase 2 - `[workspace.dependencies]` centralization (no moves).** Add the 97
   missing internal crates to the root table keyed by package name (paths still
-  pointing at current `crates/chio-x`); flip the 447 member path deps to
-  `{ workspace = true }`, preserving `package =` rename on 32, `features` on 25,
-  and `optional`. Note: the 4 standalone workspaces (`fuzz/`, `verdict_matrix`,
-  `sdks/rust/chio-guard-sdk-compat`, `sdks/lambda/chio-lambda-extension`) do not
-  inherit the root table and are handled in Phase 6. Independently valuable: one
-  source of truth for internal versions.
+  pointing at current `crates/chio-x`); flip the ~415 plain member path deps to
+  `{ workspace = true }`, preserving `features` (25) and `optional`. Important
+  correction (verified): the 32 `package =` rename lines (31
+  `chio-core = { package = "chio-core-types" }` + 1
+  `chio-openai = { package = "chio-openai-adapter" }`) CANNOT be centralized via
+  member-side `package = ... , workspace = true`, because Cargo inherits workspace
+  deps by the dependency KEY, not the package name (the alias would rebind to the
+  wrong crate or fail to resolve). Those 32 stay path-based in this phase; fully
+  centralizing them needs a source change (`use chio_core` -> `use chio_core_types`)
+  that is out of scope here. Note: the 4 standalone workspaces (`fuzz/`,
+  `verdict_matrix`, `sdks/rust/chio-guard-sdk-compat`,
+  `sdks/lambda/chio-lambda-extension`) do not inherit the root table and are handled
+  in Phase 6. Independently valuable: one source of truth for internal versions.
 
 - **Phase 3 - script consolidation into xtask (waves).** Port pure-logic gates
   first; collapse the pheromone (15->1) and runtime (6->1) clusters; fold the
