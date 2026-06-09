@@ -65,6 +65,48 @@ def test_nearest_manifest_walks_to_real_cargo_toml() -> None:
     )
 
 
+def test_crate_for_path_resolves_nested_members_to_package_name() -> None:
+    assert (
+        repo_model.crate_for_path("integrations/editors/zed-chio/src/lib.rs")
+        == "zed-chio"
+    )
+    assert (
+        repo_model.crate_for_path(
+            "integrations/aws-bedrock/control-plane/src/lib.rs"
+        )
+        == "chio-bedrock-control-plane"
+    )
+    assert (
+        repo_model.crate_for_path("crates/chio-kernel/src/kernel/mod.rs")
+        == "chio-kernel"
+    )
+
+
+def test_validation_command_for_nested_members_uses_manifest_path() -> None:
+    assert (
+        repo_model.validation_command_for_path(
+            "integrations/editors/zed-chio/src/lib.rs"
+        )
+        == "cargo test --manifest-path integrations/editors/zed-chio/Cargo.toml"
+    )
+    assert (
+        repo_model.validation_command_for_path(
+            "integrations/aws-bedrock/control-plane/src/lib.rs"
+        )
+        == "cargo test --manifest-path "
+        "integrations/aws-bedrock/control-plane/Cargo.toml"
+    )
+    assert repo_model.validation_command_for_path(
+        "examples/hello-mcp/src/main.rs"
+    ) == "cargo test --manifest-path examples/hello-mcp/Cargo.toml"
+    assert repo_model.validation_command_for_path(
+        "formal/rust-verification/creusot-core/src/lib.rs"
+    ) == (
+        "cargo test --manifest-path "
+        "formal/rust-verification/creusot-core/Cargo.toml"
+    )
+
+
 def test_scoped_concepts_are_path_sensitive() -> None:
     text = "Capability tokens validate delegated revocation scopes before dispatch."
     scoped = repo_model.scoped_concepts("crates/chio-kernel/src/kernel/mod.rs", text)
