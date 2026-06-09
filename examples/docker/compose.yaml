@@ -5,7 +5,7 @@ services:
     image: chio-trust-demo:local
     build:
       context: ../..
-      dockerfile: Dockerfile
+      dockerfile: deploy/docker/Dockerfile
       target: chio-trust-demo
     environment:
       CHIO_SERVICE_TOKEN: ${CHIO_SERVICE_TOKEN:-demo-token}
@@ -24,7 +24,7 @@ services:
     image: chio-mcp-demo:local
     build:
       context: ../..
-      dockerfile: Dockerfile
+      dockerfile: deploy/docker/Dockerfile
       target: chio-mcp-demo
     environment:
       CHIO_AUTH_TOKEN: ${CHIO_AUTH_TOKEN:-demo-token}

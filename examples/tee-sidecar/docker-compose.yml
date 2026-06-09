@@ -2,7 +2,7 @@ services:
   chio-tee:
     build:
       context: ../..
-      dockerfile: Dockerfile.tee
+      dockerfile: deploy/docker/Dockerfile.tee
     image: chio-tee:local
     environment:
       CHIO_TEE_CONFIG: /etc/chio/tee.toml

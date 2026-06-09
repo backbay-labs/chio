@@ -2,7 +2,7 @@
 
 Container packaging smoke for `chio-tee`.
 
-This example builds `Dockerfile.tee`, mounts a sidecar TOML file at
+This example builds `deploy/docker/Dockerfile.tee`, mounts a sidecar TOML file at
 `/etc/chio/tee.toml`, and gives the tee a persistent spool volume. It is meant
 for operators wiring the TEE sidecar next to an application container, not for
 public internet exposure.
@@ -39,7 +39,7 @@ let `[tee] mode = "shadow"` in `chio-tee.toml` provide the same setting.
 
 - The config mount is read-only.
 - The spool path is a named Docker volume mounted at `/var/lib/chio/tee`.
-- The container runs as the non-root `chio` user created by `Dockerfile.tee`.
+- The container runs as the non-root `chio` user created by `deploy/docker/Dockerfile.tee`.
 - The sidecar drops Linux capabilities and sets `no-new-privileges`.
 - No host port is published by default.
 

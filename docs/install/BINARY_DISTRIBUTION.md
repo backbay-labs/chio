@@ -42,7 +42,7 @@ docker run --rm ghcr.io/backbay-labs/chio-sidecar:latest --help
 
 The image:
 
-- is built from `Dockerfile.sidecar` (Alpine base, non-root user `chio`, UID
+- is built from `deploy/docker/Dockerfile.sidecar` (Alpine base, non-root user `chio`, UID
   `10001`);
 - defaults to `chio --help`; operators override the command with `run`,
   `mcp serve-http`, or another real subcommand at deploy time;

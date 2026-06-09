@@ -2,7 +2,7 @@
 
 ## Overview
 
-`Dockerfile.sidecar` produces a minimal runtime image for the `chio` sidecar
+`deploy/docker/Dockerfile.sidecar` produces a minimal runtime image for the `chio` sidecar
 binary. The image is a two-stage build: stage 1 compiles a release `chio`
 binary against the committed `Cargo.lock`, and stage 2 ships only that
 binary plus `tini` and CA roots on top of a stripped Alpine base. The final
@@ -14,7 +14,7 @@ image runs as a non-root `chio:chio` user (uid/gid 10001) with
 Build the image from the repository root:
 
 ```bash
-docker build -f Dockerfile.sidecar -t chio-sidecar:local .
+docker build -f deploy/docker/Dockerfile.sidecar -t chio-sidecar:local .
 ```
 
 The builder stage installs `protoc` because `chio-envoy-ext-authz` (reachable
@@ -25,7 +25,7 @@ consistent so any future dependency change that pulls
 break the Docker build.
 
 The build copies the full workspace so that path dependencies resolve. Keep
-the `COPY` list in `Dockerfile.sidecar` in sync with anything the Rust
+the `COPY` list in `deploy/docker/Dockerfile.sidecar` in sync with anything the Rust
 build reaches at compile time:
 
 - `wit/` is consumed by `chio-wasm-guards` via

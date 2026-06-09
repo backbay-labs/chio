@@ -2,7 +2,7 @@
 # Valid modes: verdict-only, shadow, enforce.
 mode = "shadow"
 
-# Runtime paths match Dockerfile.tee and docker-compose.yml.
+# Runtime paths match deploy/docker/Dockerfile.tee and docker-compose.yml.
 runtime_dir = "/run/chio-tee"
 spool_dir = "/var/lib/chio/tee/spool"
 
