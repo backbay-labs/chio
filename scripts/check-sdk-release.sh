@@ -463,7 +463,7 @@ PY
         --exclude='*/.artifacts' \
         --exclude='*/.next' \
         --exclude='*.tgz' \
-        -cf - .cargo .tooling Cargo.lock Cargo.toml rust-toolchain.toml bench crates docs/demo/passkey editors examples formal integrations sdks/typescript tests xtask
+        -cf - .cargo .tooling Cargo.lock Cargo.toml rust-toolchain.toml bench crates docs/demo/passkey examples formal integrations sdks/typescript tests xtask
     ) | (
       cd "${repo_copy_dir}"
       tar -xf -
