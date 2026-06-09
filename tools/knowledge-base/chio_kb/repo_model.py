@@ -445,19 +445,43 @@ def package_for_path(path: str) -> str:
     return ""
 
 
+CARGO_MANIFEST_ROOTS = ("crates", "tests", "examples", "bench", "integrations", "formal")
+
+
 def nearest_manifest_for_path(path: str) -> str:
     norm = normalize_path(path)
     parts = pathlib.PurePath(norm).parts
     if norm.endswith("Cargo.toml"):
         return norm
-    if len(parts) >= 2 and parts[0] == "crates":
-        return f"crates/{parts[1]}/Cargo.toml"
-    if len(parts) >= 3 and parts[0] == "tests":
-        return f"tests/{parts[1]}/Cargo.toml"
-    if len(parts) >= 2 and parts[0] in {"examples", "bench", "integrations", "formal"}:
+    if not parts:
+        return ""
+    if parts[0] == "sdks":
+        if len(parts) >= 2:
+            return f"{parts[0]}/{parts[1]}"
+        return ""
+    if parts[0] not in CARGO_MANIFEST_ROOTS:
+        return ""
+
+    # Crate directories vary in depth: crates/chio-core is two segments, but
+    # nested members such as integrations/editors/zed-chio and
+    # integrations/aws-bedrock/control-plane are three. Walk the ancestors of
+    # the file from deepest to shallowest and use the nearest directory that
+    # actually contains a Cargo.toml.
+    root = repo_root_from_env()
+    file_dir = pathlib.PurePath(norm).parent
+    ancestors = (file_dir, *file_dir.parents)
+    for ancestor in ancestors:
+        ancestor_parts = ancestor.parts
+        if not ancestor_parts or ancestor_parts[0] not in CARGO_MANIFEST_ROOTS:
+            break
+        candidate = f"{ancestor.as_posix()}/Cargo.toml"
+        if (root / candidate).is_file():
+            return candidate
+
+    # Filesystem unavailable (indexing a path with no local checkout): fall
+    # back to the conventional single-segment crate layout.
+    if len(parts) >= 2:
         return f"{parts[0]}/{parts[1]}/Cargo.toml"
-    if len(parts) >= 2 and parts[0] == "sdks":
-        return f"{parts[0]}/{parts[1]}"
     return ""
 
 

@@ -48,6 +48,23 @@ def test_canonicality_and_generation() -> None:
     assert generated.canonicality == "generated"
 
 
+def test_nearest_manifest_walks_to_real_cargo_toml() -> None:
+    assert (
+        repo_model.nearest_manifest_for_path("crates/chio-core/src/lib.rs")
+        == "crates/chio-core/Cargo.toml"
+    )
+    assert (
+        repo_model.nearest_manifest_for_path("integrations/editors/zed-chio/src/lib.rs")
+        == "integrations/editors/zed-chio/Cargo.toml"
+    )
+    assert (
+        repo_model.nearest_manifest_for_path(
+            "integrations/aws-bedrock/control-plane/src/lib.rs"
+        )
+        == "integrations/aws-bedrock/control-plane/Cargo.toml"
+    )
+
+
 def test_scoped_concepts_are_path_sensitive() -> None:
     text = "Capability tokens validate delegated revocation scopes before dispatch."
     scoped = repo_model.scoped_concepts("crates/chio-kernel/src/kernel/mod.rs", text)
