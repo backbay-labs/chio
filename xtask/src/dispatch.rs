@@ -13,7 +13,7 @@ pub(crate) fn dispatch(command: cli::Command) -> Result<(), XtaskError> {
     match command {
         // -- gen group --
         cli::Command::Gen { command } => match command {
-            GenCommand::Codegen(args) => run_codegen(codegen_argv(&args)),
+            GenCommand::Codegen(args) => run_codegen(codegen_argv(&args)?),
             GenCommand::Errors { check } => errors_regen(check_argv(check)),
             GenCommand::Snippets { check } => run_snippets(snippets_regen_argv(check)),
             GenCommand::EvalReceipt { check } => eval_receipt_regen::run(check_argv(check)),
@@ -37,7 +37,7 @@ pub(crate) fn dispatch(command: cli::Command) -> Result<(), XtaskError> {
         cli::Command::ValidateScenarios => validate_scenarios(Vec::new()),
         cli::Command::FreezeVectors { check } => freeze_vectors(check_argv(check)),
         cli::Command::EvalReceiptRegen { check } => eval_receipt_regen::run(check_argv(check)),
-        cli::Command::Codegen(args) => run_codegen(codegen_argv(&args)),
+        cli::Command::Codegen(args) => run_codegen(codegen_argv(&args)?),
         cli::Command::Errors { command } => match command {
             ErrorsCompat::Regen { check } => errors_regen(check_argv(check)),
         },
@@ -49,13 +49,21 @@ pub(crate) fn dispatch(command: cli::Command) -> Result<(), XtaskError> {
 
 /// Rebuild the `Vec<String>` argv that `run_codegen` already parses, so its
 /// in-function flag handling (`xtask/src/main.rs` `run_codegen`) is reused
-/// verbatim. Prefers the positional form when supplied (preserving the
-/// `codegen rust` spelling stamped into generated headers), else the `--lang`
-/// flag form.
-pub(crate) fn codegen_argv(args: &CodegenArgs) -> Vec<String> {
+/// verbatim. Accepts exactly one language selector: the positional form
+/// (preserving the `codegen rust` spelling stamped into generated headers) or
+/// the `--lang` flag form. Supplying both is rejected so a stray flag cannot
+/// silently override the positional argument.
+pub(crate) fn codegen_argv(args: &CodegenArgs) -> Result<Vec<String>, XtaskError> {
     let mut out = Vec::new();
     match (args.lang_positional, args.lang_flag) {
-        (Some(lang), _) => out.push(lang_str(lang).to_string()),
+        (Some(positional), Some(flag)) => {
+            return Err(XtaskError::Usage(format!(
+                "codegen language given twice: positional `{}` and --lang `{}`",
+                lang_str(positional),
+                lang_str(flag)
+            )));
+        }
+        (Some(lang), None) => out.push(lang_str(lang).to_string()),
         (None, Some(lang)) => {
             out.push("--lang".to_string());
             out.push(lang_str(lang).to_string());
@@ -65,7 +73,7 @@ pub(crate) fn codegen_argv(args: &CodegenArgs) -> Vec<String> {
     if args.check {
         out.push("--check".to_string());
     }
-    out
+    Ok(out)
 }
 
 fn lang_str(lang: Lang) -> &'static str {
