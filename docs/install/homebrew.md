@@ -10,7 +10,7 @@ brew install --formula /tmp/chio.rb
 ## About the tap
 
 The release-binaries workflow renders the installable formula from
-[`Homebrew/chio.rb.tmpl`](../../Homebrew/chio.rb.tmpl) and publishes the
+[`packaging/homebrew/chio.rb.tmpl`](../../packaging/homebrew/chio.rb.tmpl) and publishes the
 result as the `chio.rb` release asset alongside the platform archives.
 
 ## Upgrading

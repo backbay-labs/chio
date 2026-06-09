@@ -137,7 +137,7 @@ don't need the Rust toolchain.
 
 **Files**:
 - `.github/workflows/release-binaries.yml` (new: cross-compile for linux-x86_64, linux-aarch64, darwin-x86_64, darwin-aarch64, windows-x86_64)
-- `Homebrew/chio.rb.tmpl` release formula template (new)
+- `packaging/homebrew/chio.rb.tmpl` release formula template (new)
 - `deploy/docker/Dockerfile.sidecar` (public image, no GHCR auth required)
 
 **Refs**: `docs/protocols/DX-AND-ADOPTION-ROADMAP.md` section 3
