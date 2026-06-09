@@ -16,7 +16,7 @@ PACKAGE_SEED_DIR = ROOT / "seeds" / "graphiti"
 
 
 def default_seed_dir() -> pathlib.Path:
-    repo_seed_dir = pathlib.Path(os.environ.get("CHIO_KB_REPO_ROOT", "/workspace")) / "ops" / "knowledge-base" / "seeds" / "graphiti"
+    repo_seed_dir = pathlib.Path(os.environ.get("CHIO_KB_REPO_ROOT", "/workspace")) / "tools" / "knowledge-base" / "seeds" / "graphiti"
     if repo_seed_dir.exists():
         return repo_seed_dir
     return PACKAGE_SEED_DIR

@@ -32,7 +32,7 @@ substrate, copy the file into the Chio Treaty directory, register it
 in the root module, and rebuild:
 
 ```bash
-cp papers/sensor-grounded-admission/lean/SensorGroundedAdmission.lean \
+cp docs/papers/sensor-grounded-admission/lean/SensorGroundedAdmission.lean \
    formal/lean4/Chio/Chio/Treaty/SensorGroundedAdmission.lean
 
 # Append `import Chio.Treaty.SensorGroundedAdmission` to
