@@ -14,7 +14,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 #[command(name = "xtask", about = "Chio workspace task runner", version)]
 pub struct Cli {
     #[command(subcommand)]
-    pub command: Command,
+    pub command: Option<Command>,
 }
 
 /// Target language for `gen codegen`.
@@ -204,9 +204,16 @@ mod tests {
     use super::*;
     use clap::Parser;
 
-    fn parse(args: &[&str]) -> Cli {
+    /// Parse `args` and return the (required-by-the-test) subcommand. Panics
+    /// if parsing fails or yields no subcommand, so callers can match on the
+    /// `Command` variant directly. The bare-invocation case is exercised by
+    /// `no_subcommand_parses_to_none`, which inspects the `Option` instead.
+    fn parse(args: &[&str]) -> Command {
         match Cli::try_parse_from(args) {
-            Ok(cli) => cli,
+            Ok(cli) => match cli.command {
+                Some(command) => command,
+                None => panic!("expected `{args:?}` to carry a subcommand"),
+            },
             Err(err) => panic!("expected `{args:?}` to parse, got: {err}"),
         }
     }
@@ -214,38 +221,34 @@ mod tests {
     #[test]
     fn historical_validate_scenarios_parses() {
         assert!(matches!(
-            parse(&["xtask", "validate-scenarios"]).command,
+            parse(&["xtask", "validate-scenarios"]),
             Command::ValidateScenarios
         ));
     }
 
     #[test]
     fn historical_freeze_vectors_check_parses() {
-        let cli = parse(&["xtask", "freeze-vectors", "--check"]);
         assert!(matches!(
-            cli.command,
+            parse(&["xtask", "freeze-vectors", "--check"]),
             Command::FreezeVectors { check: true }
         ));
-        let cli = parse(&["xtask", "freeze-vectors"]);
         assert!(matches!(
-            cli.command,
+            parse(&["xtask", "freeze-vectors"]),
             Command::FreezeVectors { check: false }
         ));
     }
 
     #[test]
     fn historical_eval_receipt_regen_check_parses() {
-        let cli = parse(&["xtask", "eval-receipt-regen", "--check"]);
         assert!(matches!(
-            cli.command,
+            parse(&["xtask", "eval-receipt-regen", "--check"]),
             Command::EvalReceiptRegen { check: true }
         ));
     }
 
     #[test]
     fn historical_codegen_positional_and_flag_parse() {
-        let pos = parse(&["xtask", "codegen", "rust", "--check"]);
-        match pos.command {
+        match parse(&["xtask", "codegen", "rust", "--check"]) {
             Command::Codegen(args) => {
                 assert_eq!(args.lang_positional, Some(Lang::Rust));
                 assert_eq!(args.lang_flag, None);
@@ -253,8 +256,7 @@ mod tests {
             }
             other => panic!("expected Codegen, got {other:?}"),
         }
-        let flag = parse(&["xtask", "codegen", "--lang", "python", "--check"]);
-        match flag.command {
+        match parse(&["xtask", "codegen", "--lang", "python", "--check"]) {
             Command::Codegen(args) => {
                 assert_eq!(args.lang_positional, None);
                 assert_eq!(args.lang_flag, Some(Lang::Python));
@@ -267,13 +269,13 @@ mod tests {
     #[test]
     fn historical_errors_and_snippets_regen_parse() {
         assert!(matches!(
-            parse(&["xtask", "errors", "regen", "--check"]).command,
+            parse(&["xtask", "errors", "regen", "--check"]),
             Command::Errors {
                 command: ErrorsCompat::Regen { check: true }
             }
         ));
         assert!(matches!(
-            parse(&["xtask", "snippets", "regen", "--check"]).command,
+            parse(&["xtask", "snippets", "regen", "--check"]),
             Command::Snippets {
                 command: SnippetsCompat::Regen { check: true }
             }
@@ -283,7 +285,7 @@ mod tests {
     #[test]
     fn new_check_crate_paths_parses() {
         assert!(matches!(
-            parse(&["xtask", "check", "crate-paths"]).command,
+            parse(&["xtask", "check", "crate-paths"]),
             Command::Check {
                 command: CheckCommand::CratePaths
             }
@@ -292,7 +294,7 @@ mod tests {
 
     #[test]
     fn new_gen_codegen_parses() {
-        match parse(&["xtask", "gen", "codegen", "--lang", "ts"]).command {
+        match parse(&["xtask", "gen", "codegen", "--lang", "ts"]) {
             Command::Gen {
                 command: GenCommand::Codegen(args),
             } => assert_eq!(args.lang_flag, Some(Lang::Ts)),
@@ -315,16 +317,12 @@ mod tests {
     }
 
     #[test]
-    fn no_subcommand_is_a_parse_error() {
-        // Bare `cargo xtask` must not silently succeed; clap requires a
-        // subcommand and prints help to stderr with a non-zero exit.
+    fn no_subcommand_parses_to_none() {
+        // Bare `cargo xtask` parses with no subcommand; `main.rs` then prints
+        // the help tree and exits 0, matching the historical hand-rolled CLI.
         match Cli::try_parse_from(["xtask"]) {
-            Ok(cli) => panic!("bare invocation parsed: {:?}", cli.command),
-            Err(err) => assert_eq!(
-                err.kind(),
-                clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand,
-                "got: {err}"
-            ),
+            Ok(cli) => assert!(cli.command.is_none(), "got: {:?}", cli.command),
+            Err(err) => panic!("bare invocation must parse, got: {err}"),
         }
     }
 }

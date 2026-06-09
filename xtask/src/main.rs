@@ -87,7 +87,7 @@ use std::process::{Command, ExitCode};
 
 use sha2::{Digest, Sha256};
 
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 
 use cli::Cli;
 
@@ -103,7 +103,17 @@ pub(crate) use error::XtaskError;
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    let result = dispatch(cli.command);
+    let result = match cli.command {
+        // Bare `cargo xtask` prints the help tree and exits 0, matching the
+        // historical hand-rolled CLI. An unknown subcommand still fails at the
+        // clap layer (non-zero), so this path only covers the no-argument case.
+        None => {
+            let _ = Cli::command().print_long_help();
+            println!();
+            Ok(())
+        }
+        Some(command) => dispatch(command),
+    };
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
