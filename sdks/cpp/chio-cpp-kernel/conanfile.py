@@ -38,8 +38,25 @@ class ChioCppKernelConan(ConanFile):
             out.append(line)
         return "\n".join(out).strip()
 
+    def _workspace_dependency_paths(self, repo_root):
+        # Map each [workspace.dependencies] key to its repo-relative path.
+        # Internal crates are centralized in the root [workspace.dependencies],
+        # so a member's `{ workspace = true }` edge resolves to the crate dir
+        # that must be vendored.
+        manifest = (repo_root / "Cargo.toml").read_text()
+        section = self._extract_manifest_section(manifest, "[workspace.dependencies]")
+        paths = {}
+        for line in section.splitlines():
+            match = re.match(r"\s*([A-Za-z0-9_-]+)\s*=\s*\{(.*)\}\s*$", line)
+            if not match:
+                continue
+            path_match = re.search(r'path\s*=\s*"([^"]+)"', match.group(2))
+            if path_match:
+                paths[match.group(1)] = path_match.group(1)
+        return paths
+
     @staticmethod
-    def _path_dependency_members(crate_manifest, repo_root):
+    def _path_dependency_members(crate_manifest, repo_root, workspace_paths):
         text = crate_manifest.read_text()
         repo_root = repo_root.resolve()
         members = []
@@ -51,9 +68,25 @@ class ChioCppKernelConan(ConanFile):
                 members.append(dependency_dir.relative_to(repo_root).as_posix())
             except ValueError:
                 continue
+        # Follow `{ workspace = true }` edges via the centralized root table.
+        for key, body in re.findall(
+            r"(?m)^\s*([A-Za-z0-9_-]+)\s*=\s*\{([^}]*)\}\s*$", text
+        ):
+            if not re.search(r"workspace\s*=\s*true", body):
+                continue
+            if key not in workspace_paths:
+                continue
+            dependency_dir = (repo_root / workspace_paths[key]).resolve()
+            if not (dependency_dir / "Cargo.toml").exists():
+                continue
+            try:
+                members.append(dependency_dir.relative_to(repo_root).as_posix())
+            except ValueError:
+                continue
         return members
 
     def _rust_workspace_members(self, repo_root):
+        workspace_paths = self._workspace_dependency_paths(repo_root)
         members = set()
         pending = list(self._rust_workspace_roots)
         while pending:
@@ -66,7 +99,9 @@ class ChioCppKernelConan(ConanFile):
             members.add(crate)
             pending.extend(
                 dependency
-                for dependency in self._path_dependency_members(crate_manifest, repo_root)
+                for dependency in self._path_dependency_members(
+                    crate_manifest, repo_root, workspace_paths
+                )
                 if dependency not in members
             )
         return sorted(members)
