@@ -2,7 +2,7 @@
 
 Mirrors the unit suite in ``tests/test_middleware.py`` but talks to a
 real Kafka-compatible broker (Redpanda) brought up by
-``infra/streaming-flink-compose.yml``. Gated by ``CHIO_INTEGRATION=1``
+``deploy/compose/streaming-flink-compose.yml``. Gated by ``CHIO_INTEGRATION=1``
 (see ``conftest.py``).
 
 The dockerised Flink JobManager / TaskManager from the same compose

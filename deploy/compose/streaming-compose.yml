@@ -6,12 +6,12 @@
 # already publishes redis on 6379).
 #
 # Usage:
-#   docker compose -f infra/streaming-compose.yml up -d
+#   docker compose -f deploy/compose/streaming-compose.yml up -d
 #   CHIO_INTEGRATION=1 \
 #     CHIO_TEST_REDIS_URL=redis://localhost:16379 \
 #     CHIO_TEST_NATS_URL=nats://localhost:14222 \
 #     uv run pytest sdks/python/chio-streaming/tests/integration -v
-#   docker compose -f infra/streaming-compose.yml down -v
+#   docker compose -f deploy/compose/streaming-compose.yml down -v
 
 name: chio-streaming-it
 

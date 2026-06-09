@@ -8,7 +8,7 @@ into the main stable/MSRV workspace lanes; see `Cargo.toml` for the empty
 The targets are enumerated in `target-map.toml`, which is the single source of
 truth for the harness set: it maps each `[[bin]]` to its owning crate, seed
 corpus, and the source-path globs that trigger it on a PR. That file MUST stay
-in lockstep with `.clusterfuzzlite/build.sh` and `infra/oss-fuzz/build.sh`.
+in lockstep with `.clusterfuzzlite/build.sh` and `fuzz/oss-fuzz/build.sh`.
 Additional targets add their `[[bin]]` entry in `Cargo.toml` alongside their
 `fuzz_target!` definition under `fuzz_targets/` and a `[targets.<name>]` block
 in `target-map.toml`.

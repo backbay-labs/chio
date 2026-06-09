@@ -2,7 +2,7 @@
 
 Same shape as ``tests/test_nats.py`` (in-memory fakes) but against a
 real NATS server with JetStream enabled. Brought up by
-``infra/streaming-compose.yml`` and gated by ``CHIO_INTEGRATION=1``.
+``deploy/compose/streaming-compose.yml`` and gated by ``CHIO_INTEGRATION=1``.
 """
 
 from __future__ import annotations

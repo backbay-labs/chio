@@ -3,15 +3,15 @@
 # Brought up by `sdks/python/chio-streaming/Makefile`'s
 # `infra-flink-up` / `test-integration-flink` targets. Ports are
 # offset from defaults so this stack coexists with the Redis + NATS
-# `infra/streaming-compose.yml` stack and any host-side Kafka that
+# `deploy/compose/streaming-compose.yml` stack and any host-side Kafka that
 # may already be running.
 #
 # Usage (manual):
-#   docker compose -f infra/streaming-flink-compose.yml up -d --wait
+#   docker compose -f deploy/compose/streaming-flink-compose.yml up -d --wait
 #   CHIO_INTEGRATION=1 \
 #     CHIO_TEST_KAFKA_BOOTSTRAP=localhost:19092 \
 #     uv run pytest sdks/python/chio-streaming/tests/integration -v
-#   docker compose -f infra/streaming-flink-compose.yml down -v
+#   docker compose -f deploy/compose/streaming-flink-compose.yml down -v
 #
 # The Flink integration test (`test_flink_kafka_integration.py`) runs
 # PyFlink in-process via `LocalStreamEnvironment`, so no dockerised

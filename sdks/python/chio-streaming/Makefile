@@ -7,8 +7,8 @@
 # Resolve the repo root so the compose file path works regardless of
 # where `make` was invoked from.
 REPO_ROOT       := $(shell git rev-parse --show-toplevel)
-COMPOSE         := docker compose -f $(REPO_ROOT)/infra/streaming-compose.yml
-COMPOSE_FLINK   := docker compose -f $(REPO_ROOT)/infra/streaming-flink-compose.yml
+COMPOSE         := docker compose -f $(REPO_ROOT)/deploy/compose/streaming-compose.yml
+COMPOSE_FLINK   := docker compose -f $(REPO_ROOT)/deploy/compose/streaming-flink-compose.yml
 
 # Flink Kafka connector JAR is staged here. PyFlink 2.2 ships KafkaSource
 # wiring in its Python wheel but the connector classes for KafkaSink

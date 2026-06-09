@@ -2,7 +2,7 @@
 
 These exercise the same API shape as ``tests/test_redis_streams.py``
 (unit tests with an in-memory double) but talk to a real Redis. The
-broker is brought up by ``infra/streaming-compose.yml`` and gated by
+broker is brought up by ``deploy/compose/streaming-compose.yml`` and gated by
 ``CHIO_INTEGRATION=1`` -- see ``conftest.py``.
 """
 

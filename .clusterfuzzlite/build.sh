@@ -10,7 +10,7 @@
 #
 # Companion docs in docs/fuzzing/continuous.md (ClusterFuzzLite bridge section).
 #
-# This script mirrors infra/oss-fuzz/build.sh. The two scripts MUST enumerate
+# This script mirrors fuzz/oss-fuzz/build.sh. The two scripts MUST enumerate
 # the same target set; the OSS-Fuzz copy is the source-of-truth, so any new
 # fuzz target lands in BOTH files in the same change set.
 
