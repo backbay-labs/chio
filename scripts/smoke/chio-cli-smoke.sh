@@ -385,7 +385,7 @@ smoke_core() {
   run_cmd_expect_failure "core" "check-deny" "${CHIO_BIN}" \
     --format json \
     check \
-    --policy "crates/chio-cli/src/policies/code_agent.yaml" \
+    --policy "crates/products/chio-cli/src/policies/code_agent.yaml" \
     --server fs \
     --tool write_file \
     --params '{"path":"/workspace/project/.env","content":"BAD=1"}'
@@ -657,9 +657,9 @@ edition = "2021"
 publish = false
 
 [dependencies]
-chio-core = { path = "${ROOT}/crates/chio-core" }
-chio-kernel = { path = "${ROOT}/crates/chio-kernel" }
-chio-store-sqlite = { path = "${ROOT}/crates/chio-store-sqlite" }
+chio-core = { path = "${ROOT}/crates/core/chio-core" }
+chio-kernel = { path = "${ROOT}/crates/kernel/chio-kernel" }
+chio-store-sqlite = { path = "${ROOT}/crates/platform/chio-store-sqlite" }
 rusqlite = { version = "0.39", features = ["bundled"] }
 serde_json = "1"
 EOF

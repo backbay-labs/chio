@@ -1,4 +1,4 @@
-# chio-cpp ships a Rust workspace member (crates/chio-bindings-ffi) that
+# chio-cpp ships a Rust workspace member (crates/sdk/chio-bindings-ffi) that
 # must be built before CMake configure. The portfile invokes
 # `cargo build -p chio-bindings-ffi --release` against the source tarball,
 # then points CMake at the resulting libchio_bindings_ffi.a via
@@ -24,7 +24,7 @@ vcpkg_from_github(
 find_program(CARGO_EXECUTABLE cargo)
 if(NOT CARGO_EXECUTABLE)
     message(FATAL_ERROR
-        "chio-cpp requires cargo on PATH to build crates/chio-bindings-ffi. "
+        "chio-cpp requires cargo on PATH to build crates/sdk/chio-bindings-ffi. "
         "Install a Rust toolchain via rustup, or use the prebuilt binaries "
         "from the OCI Object Storage binary cache.")
 endif()

@@ -2,138 +2,138 @@
 resolver = "2"
 members = [
     # Core & types
-    "crates/chio-core",
-    "crates/chio-core-types",
-    "crates/chio-errors",
-    "crates/chio-adversarial-suite",
-    "crates/chio-arena",
+    "crates/core/chio-core",
+    "crates/core/chio-core-types",
+    "crates/core/chio-errors",
+    "crates/core/chio-adversarial-suite",
+    "crates/core/chio-arena",
     #
     # Kernel variants
-    "crates/chio-kernel",
-    "crates/chio-kernel-browser",
-    "crates/chio-kernel-core",
-    "crates/chio-kernel-mobile",
-    "crates/chio-lsp",
+    "crates/kernel/chio-kernel",
+    "crates/kernel/chio-kernel-browser",
+    "crates/kernel/chio-kernel-core",
+    "crates/kernel/chio-kernel-mobile",
+    "crates/tooling/chio-lsp",
     #
     # Guards & policy
-    "crates/chio-data-guards",
-    "crates/chio-data-guards/redactors/default",
-    "crates/chio-external-guards",
-    "crates/chio-guard-registry",
-    "crates/chio-guard-sdk",
-    "crates/chio-guard-sdk-macros",
-    "crates/chio-guards",
-    "crates/chio-policy",
-    "crates/chio-wasm-guards",
+    "crates/guards/chio-data-guards",
+    "crates/guards/chio-data-guards/redactors/default",
+    "crates/guards/chio-external-guards",
+    "crates/guards/chio-guard-registry",
+    "crates/sdk/chio-guard-sdk",
+    "crates/sdk/chio-guard-sdk-macros",
+    "crates/guards/chio-guards",
+    "crates/guards/chio-policy",
+    "crates/guards/chio-wasm-guards",
     #
     # Protocol adapters & edges
-    "crates/chio-a2a-adapter",
-    "crates/chio-a2a-edge",
-    "crates/chio-acp-edge",
-    "crates/chio-acp-proxy",
-    "crates/chio-ag-ui-proxy",
-    "crates/chio-anthropic-tools-adapter",
-    "crates/chio-bedrock-converse-adapter",
-    "crates/chio-cohere-tools-adapter",
-    "crates/chio-cross-protocol",
-    "crates/chio-edge-metrics",
-    "crates/chio-egress-contract",
-    "crates/chio-envoy-ext-authz",
-    "crates/chio-gemini-tools-adapter",
-    "crates/chio-groq-tools-adapter",
-    "crates/chio-mcp-adapter",
-    "crates/chio-mcp-edge",
-    "crates/chio-mcp-remote",
-    "crates/chio-mistral-tools-adapter",
-    "crates/chio-ollama-tools-adapter",
-    "crates/chio-openai",
-    "crates/chio-openapi",
-    "crates/chio-openapi-mcp-bridge",
-    "crates/chio-provider-adapter-core",
-    "crates/chio-provider-conformance",
-    "crates/chio-tool-call-fabric",
-    "crates/chio-tower",
+    "crates/protocol/chio-a2a-adapter",
+    "crates/protocol/chio-a2a-edge",
+    "crates/protocol/chio-acp-edge",
+    "crates/protocol/chio-acp-proxy",
+    "crates/protocol/chio-ag-ui-proxy",
+    "crates/protocol/chio-anthropic-tools-adapter",
+    "crates/protocol/chio-bedrock-converse-adapter",
+    "crates/protocol/chio-cohere-tools-adapter",
+    "crates/protocol/chio-cross-protocol",
+    "crates/protocol/chio-edge-metrics",
+    "crates/protocol/chio-egress-contract",
+    "crates/protocol/chio-envoy-ext-authz",
+    "crates/protocol/chio-gemini-tools-adapter",
+    "crates/protocol/chio-groq-tools-adapter",
+    "crates/protocol/chio-mcp-adapter",
+    "crates/protocol/chio-mcp-edge",
+    "crates/protocol/chio-mcp-remote",
+    "crates/protocol/chio-mistral-tools-adapter",
+    "crates/protocol/chio-ollama-tools-adapter",
+    "crates/protocol/chio-openai-adapter",
+    "crates/protocol/chio-openapi",
+    "crates/protocol/chio-openapi-mcp-bridge",
+    "crates/protocol/chio-provider-adapter-core",
+    "crates/protocol/chio-provider-conformance",
+    "crates/protocol/chio-tool-call-fabric",
+    "crates/protocol/chio-tower",
     #
     # Economics & settlement
-    "crates/chio-anchor",
-    "crates/chio-appraisal",
-    "crates/chio-autonomy",
-    "crates/chio-credit",
-    "crates/chio-link",
-    "crates/chio-listing",
-    "crates/chio-market",
-    "crates/chio-open-market",
-    "crates/chio-settle",
-    "crates/chio-underwriting",
-    "crates/chio-web3",
-    "crates/chio-web3-bindings",
+    "crates/economy/chio-anchor",
+    "crates/economy/chio-appraisal",
+    "crates/economy/chio-autonomy",
+    "crates/economy/chio-credit",
+    "crates/economy/chio-link",
+    "crates/economy/chio-listing",
+    "crates/economy/chio-market",
+    "crates/economy/chio-open-market",
+    "crates/economy/chio-settle",
+    "crates/economy/chio-underwriting",
+    "crates/economy/chio-web3",
+    "crates/economy/chio-web3-bindings",
     #
     # Supply-chain attestation
-    "crates/chio-replay-corpus",
-    "crates/chio-attest-buyer",
-    "crates/chio-attest-verify",
-    "crates/chio-custody-hw",
-    "crates/chio-weights",
-    "crates/chio-tee",
-    "crates/chio-tee-frame",
+    "crates/trust/chio-replay-corpus",
+    "crates/trust/chio-attest-buyer",
+    "crates/trust/chio-attest-verify",
+    "crates/trust/chio-custody-hw",
+    "crates/trust/chio-weights",
+    "crates/trust/chio-tee",
+    "crates/trust/chio-tee-frame",
     #
     # Identity, credentials, federation
-    "crates/chio-credentials",
-    "crates/chio-did",
-    "crates/chio-federation",
-    "crates/chio-governance",
-    "crates/chio-attest-buyer-core",
-    "crates/chio-federation-authority",
-    "crates/chio-attest-loopback",
-    "crates/chio-runtime-harness",
-    "crates/chio-runtime-core",
-    "crates/chio-runtime",
-    "crates/chio-pheromone",
-    "crates/chio-pheromone-relay",
-    "crates/chio-pheromone-runtime",
-    "crates/chio-revocation-oracle",
-    "crates/chio-reputation",
-    "crates/chio-selective-disclosure",
+    "crates/trust/chio-credentials",
+    "crates/trust/chio-did",
+    "crates/trust/chio-federation",
+    "crates/trust/chio-governance",
+    "crates/trust/chio-attest-buyer-core",
+    "crates/trust/chio-federation-authority",
+    "crates/trust/chio-attest-loopback",
+    "crates/kernel/chio-runtime-harness",
+    "crates/kernel/chio-runtime-core",
+    "crates/kernel/chio-runtime",
+    "crates/trust/chio-pheromone",
+    "crates/trust/chio-pheromone-relay",
+    "crates/trust/chio-pheromone-runtime",
+    "crates/trust/chio-revocation-oracle",
+    "crates/trust/chio-reputation",
+    "crates/trust/chio-selective-disclosure",
     #
     # Observability & ops
-    "crates/chio-lineage",
-    "crates/chio-log-redact",
-    "crates/chio-metering",
-    "crates/chio-metrics-spec",
-    "crates/chio-otel-receipt-exporter",
-    "crates/chio-siem",
+    "crates/observability/chio-lineage",
+    "crates/observability/chio-log-redact",
+    "crates/economy/chio-metering",
+    "crates/observability/chio-metrics-spec",
+    "crates/observability/chio-otel-receipt-exporter",
+    "crates/observability/chio-siem",
     #
     # Control plane & storage
-    "crates/chio-config",
-    "crates/chio-control-plane",
-    "crates/chio-manifest",
-    "crates/chio-store-sqlite",
-    "crates/chio-workflow",
+    "crates/platform/chio-config",
+    "crates/platform/chio-control-plane",
+    "crates/platform/chio-manifest",
+    "crates/platform/chio-store-sqlite",
+    "crates/platform/chio-workflow",
     "integrations/aws-bedrock/control-plane",
     "integrations/mcp-adapter",
     #
     # HTTP & session
-    "crates/chio-hosted-mcp",
-    "crates/chio-http-core",
-    "crates/chio-http-session",
+    "crates/protocol/chio-hosted-mcp",
+    "crates/platform/chio-http-core",
+    "crates/platform/chio-http-session",
     #
     # Products
-    "crates/chio-api-protect",
-    "crates/chio-cli",
-    "crates/chio-mercury",
-    "crates/chio-mercury-core",
-    "crates/chio-wall",
-    "crates/chio-wall-core",
+    "crates/products/chio-api-protect",
+    "crates/products/chio-cli",
+    "crates/products/chio-mercury",
+    "crates/products/chio-mercury-core",
+    "crates/products/chio-wall",
+    "crates/products/chio-wall-core",
     #
     # SDK support
-    "crates/chio-binding-helpers",
-    "crates/chio-bindings-ffi",
-    "crates/chio-cpp-kernel-ffi",
-    "crates/chio-conformance",
-    "crates/chio-conformance/verdict_matrix/drivers/lambda",
-    "crates/chio-eval-receipt",
-    "crates/chio-spec-codegen",
-    "crates/chio-spec-validate",
+    "crates/sdk/chio-binding-helpers",
+    "crates/sdk/chio-bindings-ffi",
+    "crates/sdk/chio-cpp-kernel-ffi",
+    "crates/tooling/chio-conformance",
+    "crates/tooling/chio-conformance/verdict_matrix/drivers/lambda",
+    "crates/sdk/chio-eval-receipt",
+    "crates/tooling/chio-spec-codegen",
+    "crates/tooling/chio-spec-validate",
     #
     # Examples
     "examples/bilateral-invocation",
@@ -148,7 +148,7 @@ members = [
     "examples/otel-genai",
     #
     # Tests
-    "crates/chio-test-support",
+    "crates/tooling/chio-test-support",
     "formal/diff-tests",
     "tests/e2e",
     "tests/replay",
@@ -164,7 +164,7 @@ members = [
 exclude = [
     # PyO3 extension package: built through maturin with an explicit Python
     # sysconfig, not by the default Rust workspace gate.
-    "crates/chio-eval-receipt/py",
+    "crates/sdk/chio-eval-receipt/py",
 ]
 
 [workspace.package]
@@ -317,7 +317,7 @@ csv = "1"
 # crates plus chio-wasm-guards consume the registry by
 # `chio-metrics-spec = { workspace = true }` rather than each carrying its own
 # `path = "..."` redeclaration.
-chio-metrics-spec = { path = "crates/chio-metrics-spec" }
+chio-metrics-spec = { path = "crates/observability/chio-metrics-spec" }
 
 # Internal Chio crates centralized here (Phase 2). Each member consumes them as
 # `chio-x = { workspace = true }` (plus per-member features / default-features /
@@ -326,100 +326,100 @@ chio-metrics-spec = { path = "crates/chio-metrics-spec" }
 # block. Entries are path-only on purpose: the same crate is consumed with
 # differing default-features by different members, so feature/default-features
 # selection must stay on the member side.
-chio-a2a-adapter = { path = "crates/chio-a2a-adapter" }
-chio-a2a-edge = { path = "crates/chio-a2a-edge" }
-chio-acp-edge = { path = "crates/chio-acp-edge" }
-chio-acp-proxy = { path = "crates/chio-acp-proxy" }
-chio-adversarial-suite = { path = "crates/chio-adversarial-suite" }
-chio-anchor = { path = "crates/chio-anchor" }
-chio-anthropic-tools-adapter = { path = "crates/chio-anthropic-tools-adapter" }
-chio-api-protect = { path = "crates/chio-api-protect" }
-chio-appraisal = { path = "crates/chio-appraisal" }
-chio-arena = { path = "crates/chio-arena" }
-chio-attest-buyer = { path = "crates/chio-attest-buyer" }
-chio-attest-buyer-core = { path = "crates/chio-attest-buyer-core" }
-chio-attest-loopback = { path = "crates/chio-attest-loopback" }
-chio-attest-verify = { path = "crates/chio-attest-verify" }
-chio-autonomy = { path = "crates/chio-autonomy" }
-chio-bedrock-converse-adapter = { path = "crates/chio-bedrock-converse-adapter" }
-chio-binding-helpers = { path = "crates/chio-binding-helpers" }
-chio-cohere-tools-adapter = { path = "crates/chio-cohere-tools-adapter" }
-chio-config = { path = "crates/chio-config" }
-chio-conformance = { path = "crates/chio-conformance" }
-chio-control-plane = { path = "crates/chio-control-plane" }
-chio-core = { path = "crates/chio-core" }
-chio-core-types = { path = "crates/chio-core-types" }
-chio-credentials = { path = "crates/chio-credentials" }
-chio-credit = { path = "crates/chio-credit" }
-chio-cross-protocol = { path = "crates/chio-cross-protocol" }
-chio-custody-hw = { path = "crates/chio-custody-hw" }
-chio-data-guards = { path = "crates/chio-data-guards" }
-chio-data-guards-redactors-default = { path = "crates/chio-data-guards/redactors/default" }
-chio-did = { path = "crates/chio-did" }
-chio-edge-metrics = { path = "crates/chio-edge-metrics" }
-chio-egress-contract = { path = "crates/chio-egress-contract" }
-chio-errors = { path = "crates/chio-errors" }
-chio-eval-receipt = { path = "crates/chio-eval-receipt" }
-chio-external-guards = { path = "crates/chio-external-guards" }
-chio-federation = { path = "crates/chio-federation" }
-chio-federation-authority = { path = "crates/chio-federation-authority" }
-chio-gemini-tools-adapter = { path = "crates/chio-gemini-tools-adapter" }
-chio-governance = { path = "crates/chio-governance" }
-chio-groq-tools-adapter = { path = "crates/chio-groq-tools-adapter" }
-chio-guard-registry = { path = "crates/chio-guard-registry" }
-chio-guard-sdk = { path = "crates/chio-guard-sdk" }
-chio-guard-sdk-macros = { path = "crates/chio-guard-sdk-macros" }
-chio-guards = { path = "crates/chio-guards" }
-chio-hosted-mcp = { path = "crates/chio-hosted-mcp" }
-chio-http-core = { path = "crates/chio-http-core" }
-chio-http-session = { path = "crates/chio-http-session" }
-chio-kernel = { path = "crates/chio-kernel" }
-chio-kernel-browser = { path = "crates/chio-kernel-browser" }
-chio-kernel-core = { path = "crates/chio-kernel-core" }
-chio-lineage = { path = "crates/chio-lineage" }
-chio-link = { path = "crates/chio-link" }
-chio-listing = { path = "crates/chio-listing" }
-chio-log-redact = { path = "crates/chio-log-redact" }
-chio-manifest = { path = "crates/chio-manifest" }
-chio-market = { path = "crates/chio-market" }
-chio-mcp-adapter = { path = "crates/chio-mcp-adapter" }
-chio-mcp-edge = { path = "crates/chio-mcp-edge" }
-chio-mcp-remote = { path = "crates/chio-mcp-remote" }
-chio-mercury-core = { path = "crates/chio-mercury-core" }
-chio-metering = { path = "crates/chio-metering" }
-chio-mistral-tools-adapter = { path = "crates/chio-mistral-tools-adapter" }
-chio-ollama-tools-adapter = { path = "crates/chio-ollama-tools-adapter" }
-chio-open-market = { path = "crates/chio-open-market" }
-chio-openai-adapter = { path = "crates/chio-openai" }
-chio-openapi = { path = "crates/chio-openapi" }
-chio-openapi-mcp-bridge = { path = "crates/chio-openapi-mcp-bridge" }
-chio-otel-receipt-exporter = { path = "crates/chio-otel-receipt-exporter" }
-chio-pheromone = { path = "crates/chio-pheromone" }
-chio-pheromone-relay = { path = "crates/chio-pheromone-relay" }
-chio-pheromone-runtime = { path = "crates/chio-pheromone-runtime" }
-chio-policy = { path = "crates/chio-policy" }
-chio-provider-adapter-core = { path = "crates/chio-provider-adapter-core" }
-chio-provider-conformance = { path = "crates/chio-provider-conformance" }
-chio-replay-corpus = { path = "crates/chio-replay-corpus" }
-chio-reputation = { path = "crates/chio-reputation" }
-chio-revocation-oracle = { path = "crates/chio-revocation-oracle" }
-chio-runtime = { path = "crates/chio-runtime" }
-chio-runtime-core = { path = "crates/chio-runtime-core" }
-chio-runtime-harness = { path = "crates/chio-runtime-harness" }
-chio-selective-disclosure = { path = "crates/chio-selective-disclosure" }
-chio-settle = { path = "crates/chio-settle" }
-chio-siem = { path = "crates/chio-siem" }
-chio-spec-codegen = { path = "crates/chio-spec-codegen" }
-chio-spec-validate = { path = "crates/chio-spec-validate" }
-chio-store-sqlite = { path = "crates/chio-store-sqlite" }
-chio-tee = { path = "crates/chio-tee" }
-chio-tee-frame = { path = "crates/chio-tee-frame" }
-chio-test-support = { path = "crates/chio-test-support" }
-chio-tool-call-fabric = { path = "crates/chio-tool-call-fabric" }
-chio-underwriting = { path = "crates/chio-underwriting" }
-chio-wall-core = { path = "crates/chio-wall-core" }
-chio-wasm-guards = { path = "crates/chio-wasm-guards" }
-chio-web3 = { path = "crates/chio-web3" }
-chio-web3-bindings = { path = "crates/chio-web3-bindings" }
-chio-weights = { path = "crates/chio-weights" }
-chio-workflow = { path = "crates/chio-workflow" }
+chio-a2a-adapter = { path = "crates/protocol/chio-a2a-adapter" }
+chio-a2a-edge = { path = "crates/protocol/chio-a2a-edge" }
+chio-acp-edge = { path = "crates/protocol/chio-acp-edge" }
+chio-acp-proxy = { path = "crates/protocol/chio-acp-proxy" }
+chio-adversarial-suite = { path = "crates/core/chio-adversarial-suite" }
+chio-anchor = { path = "crates/economy/chio-anchor" }
+chio-anthropic-tools-adapter = { path = "crates/protocol/chio-anthropic-tools-adapter" }
+chio-api-protect = { path = "crates/products/chio-api-protect" }
+chio-appraisal = { path = "crates/economy/chio-appraisal" }
+chio-arena = { path = "crates/core/chio-arena" }
+chio-attest-buyer = { path = "crates/trust/chio-attest-buyer" }
+chio-attest-buyer-core = { path = "crates/trust/chio-attest-buyer-core" }
+chio-attest-loopback = { path = "crates/trust/chio-attest-loopback" }
+chio-attest-verify = { path = "crates/trust/chio-attest-verify" }
+chio-autonomy = { path = "crates/economy/chio-autonomy" }
+chio-bedrock-converse-adapter = { path = "crates/protocol/chio-bedrock-converse-adapter" }
+chio-binding-helpers = { path = "crates/sdk/chio-binding-helpers" }
+chio-cohere-tools-adapter = { path = "crates/protocol/chio-cohere-tools-adapter" }
+chio-config = { path = "crates/platform/chio-config" }
+chio-conformance = { path = "crates/tooling/chio-conformance" }
+chio-control-plane = { path = "crates/platform/chio-control-plane" }
+chio-core = { path = "crates/core/chio-core" }
+chio-core-types = { path = "crates/core/chio-core-types" }
+chio-credentials = { path = "crates/trust/chio-credentials" }
+chio-credit = { path = "crates/economy/chio-credit" }
+chio-cross-protocol = { path = "crates/protocol/chio-cross-protocol" }
+chio-custody-hw = { path = "crates/trust/chio-custody-hw" }
+chio-data-guards = { path = "crates/guards/chio-data-guards" }
+chio-data-guards-redactors-default = { path = "crates/guards/chio-data-guards/redactors/default" }
+chio-did = { path = "crates/trust/chio-did" }
+chio-edge-metrics = { path = "crates/protocol/chio-edge-metrics" }
+chio-egress-contract = { path = "crates/protocol/chio-egress-contract" }
+chio-errors = { path = "crates/core/chio-errors" }
+chio-eval-receipt = { path = "crates/sdk/chio-eval-receipt" }
+chio-external-guards = { path = "crates/guards/chio-external-guards" }
+chio-federation = { path = "crates/trust/chio-federation" }
+chio-federation-authority = { path = "crates/trust/chio-federation-authority" }
+chio-gemini-tools-adapter = { path = "crates/protocol/chio-gemini-tools-adapter" }
+chio-governance = { path = "crates/trust/chio-governance" }
+chio-groq-tools-adapter = { path = "crates/protocol/chio-groq-tools-adapter" }
+chio-guard-registry = { path = "crates/guards/chio-guard-registry" }
+chio-guard-sdk = { path = "crates/sdk/chio-guard-sdk" }
+chio-guard-sdk-macros = { path = "crates/sdk/chio-guard-sdk-macros" }
+chio-guards = { path = "crates/guards/chio-guards" }
+chio-hosted-mcp = { path = "crates/protocol/chio-hosted-mcp" }
+chio-http-core = { path = "crates/platform/chio-http-core" }
+chio-http-session = { path = "crates/platform/chio-http-session" }
+chio-kernel = { path = "crates/kernel/chio-kernel" }
+chio-kernel-browser = { path = "crates/kernel/chio-kernel-browser" }
+chio-kernel-core = { path = "crates/kernel/chio-kernel-core" }
+chio-lineage = { path = "crates/observability/chio-lineage" }
+chio-link = { path = "crates/economy/chio-link" }
+chio-listing = { path = "crates/economy/chio-listing" }
+chio-log-redact = { path = "crates/observability/chio-log-redact" }
+chio-manifest = { path = "crates/platform/chio-manifest" }
+chio-market = { path = "crates/economy/chio-market" }
+chio-mcp-adapter = { path = "crates/protocol/chio-mcp-adapter" }
+chio-mcp-edge = { path = "crates/protocol/chio-mcp-edge" }
+chio-mcp-remote = { path = "crates/protocol/chio-mcp-remote" }
+chio-mercury-core = { path = "crates/products/chio-mercury-core" }
+chio-metering = { path = "crates/economy/chio-metering" }
+chio-mistral-tools-adapter = { path = "crates/protocol/chio-mistral-tools-adapter" }
+chio-ollama-tools-adapter = { path = "crates/protocol/chio-ollama-tools-adapter" }
+chio-open-market = { path = "crates/economy/chio-open-market" }
+chio-openai-adapter = { path = "crates/protocol/chio-openai-adapter" }
+chio-openapi = { path = "crates/protocol/chio-openapi" }
+chio-openapi-mcp-bridge = { path = "crates/protocol/chio-openapi-mcp-bridge" }
+chio-otel-receipt-exporter = { path = "crates/observability/chio-otel-receipt-exporter" }
+chio-pheromone = { path = "crates/trust/chio-pheromone" }
+chio-pheromone-relay = { path = "crates/trust/chio-pheromone-relay" }
+chio-pheromone-runtime = { path = "crates/trust/chio-pheromone-runtime" }
+chio-policy = { path = "crates/guards/chio-policy" }
+chio-provider-adapter-core = { path = "crates/protocol/chio-provider-adapter-core" }
+chio-provider-conformance = { path = "crates/protocol/chio-provider-conformance" }
+chio-replay-corpus = { path = "crates/trust/chio-replay-corpus" }
+chio-reputation = { path = "crates/trust/chio-reputation" }
+chio-revocation-oracle = { path = "crates/trust/chio-revocation-oracle" }
+chio-runtime = { path = "crates/kernel/chio-runtime" }
+chio-runtime-core = { path = "crates/kernel/chio-runtime-core" }
+chio-runtime-harness = { path = "crates/kernel/chio-runtime-harness" }
+chio-selective-disclosure = { path = "crates/trust/chio-selective-disclosure" }
+chio-settle = { path = "crates/economy/chio-settle" }
+chio-siem = { path = "crates/observability/chio-siem" }
+chio-spec-codegen = { path = "crates/tooling/chio-spec-codegen" }
+chio-spec-validate = { path = "crates/tooling/chio-spec-validate" }
+chio-store-sqlite = { path = "crates/platform/chio-store-sqlite" }
+chio-tee = { path = "crates/trust/chio-tee" }
+chio-tee-frame = { path = "crates/trust/chio-tee-frame" }
+chio-test-support = { path = "crates/tooling/chio-test-support" }
+chio-tool-call-fabric = { path = "crates/protocol/chio-tool-call-fabric" }
+chio-underwriting = { path = "crates/economy/chio-underwriting" }
+chio-wall-core = { path = "crates/products/chio-wall-core" }
+chio-wasm-guards = { path = "crates/guards/chio-wasm-guards" }
+chio-web3 = { path = "crates/economy/chio-web3" }
+chio-web3-bindings = { path = "crates/economy/chio-web3-bindings" }
+chio-weights = { path = "crates/trust/chio-weights" }
+chio-workflow = { path = "crates/platform/chio-workflow" }

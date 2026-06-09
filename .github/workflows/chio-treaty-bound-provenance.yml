@@ -3,10 +3,10 @@ name: Chio Treaty-Bound Provenance
 on:
   pull_request:
     paths:
-      - "crates/chio-attest-buyer/**"
-      - "crates/chio-attest-buyer-core/**"
-      - "crates/chio-runtime-core/**"
-      - "crates/chio-cli/**"
+      - "crates/trust/chio-attest-buyer/**"
+      - "crates/trust/chio-attest-buyer-core/**"
+      - "crates/kernel/chio-runtime-core/**"
+      - "crates/products/chio-cli/**"
       - "scripts/check-chio-treaty-bound-provenance.sh"
       - "spec/schemas/chio-federation/v1/*treaty*.schema.json"
       - "spec/schemas/chio-federation/v1/*ladder*.schema.json"
@@ -21,10 +21,10 @@ on:
   push:
     branches: ["main"]
     paths:
-      - "crates/chio-attest-buyer/**"
-      - "crates/chio-attest-buyer-core/**"
-      - "crates/chio-runtime-core/**"
-      - "crates/chio-cli/**"
+      - "crates/trust/chio-attest-buyer/**"
+      - "crates/trust/chio-attest-buyer-core/**"
+      - "crates/kernel/chio-runtime-core/**"
+      - "crates/products/chio-cli/**"
       - "scripts/check-chio-treaty-bound-provenance.sh"
       - "spec/schemas/chio-federation/v1/*treaty*.schema.json"
       - "spec/schemas/chio-federation/v1/*ladder*.schema.json"

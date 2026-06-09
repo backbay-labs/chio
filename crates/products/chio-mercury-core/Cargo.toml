@@ -1,0 +1,23 @@
+[package]
+name = "chio-mercury-core"
+description = "Typed MERCURY evidence contracts layered on Chio receipt truth"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_mercury_core"
+
+[dependencies]
+chio-core = { package = "chio-core-types", path = "../../core/chio-core-types" }
+chio-kernel = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

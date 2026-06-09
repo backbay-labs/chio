@@ -8,7 +8,7 @@ from pathlib import Path
 
 checks = [
     {
-        "file": "crates/chio-mcp-edge/src/runtime/tool_calls.rs",
+        "file": "crates/protocol/chio-mcp-edge/src/runtime/tool_calls.rs",
         "required": [
             "evaluate_tool_call_operation",
             "self.kernel.evaluate_session_operation",
@@ -16,7 +16,7 @@ checks = [
         ],
     },
     {
-        "file": "crates/chio-api-protect/src/evaluator.rs",
+        "file": "crates/products/chio-api-protect/src/evaluator.rs",
         "required": [
             "self.authority.evaluate",
             "capability_id",
@@ -24,7 +24,7 @@ checks = [
         ],
     },
     {
-        "file": "crates/chio-openapi/src/proxy.rs",
+        "file": "crates/protocol/chio-openapi/src/proxy.rs",
         "required": [
             "evaluate",
             "receipt",
@@ -35,7 +35,7 @@ checks = [
 
 failures = []
 process_lifecycle_spawns = {
-    Path("crates/chio-acp-proxy/src/transport.rs"):
+    Path("crates/protocol/chio-acp-proxy/src/transport.rs"):
         "ACP transport spawn starts the wrapped agent process; ACP messages are mediated by the proxy interceptor before forwarding",
 }
 
@@ -61,9 +61,9 @@ for crate in Path("crates").glob("chio-*"):
     if any(part in crate.name for part in ("adapter", "edge", "bridge", "proxy")):
         adapter_roots.add(crate / "src")
 for explicit in (
-    "crates/chio-api-protect/src",
-    "crates/chio-cross-protocol/src",
-    "crates/chio-openapi/src",
+    "crates/products/chio-api-protect/src",
+    "crates/protocol/chio-cross-protocol/src",
+    "crates/protocol/chio-openapi/src",
 ):
     adapter_roots.add(Path(explicit))
 for root in sorted(adapter_roots):

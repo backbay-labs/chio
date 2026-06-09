@@ -48,7 +48,7 @@
   "bindings": [
     {
       "language": "rust",
-      "crate_path": "crates/chio-web3-bindings/src/lib.rs",
+      "crate_path": "crates/economy/chio-web3-bindings/src/lib.rs",
       "module_name": "chio_web3_bindings",
       "contract_ids": [
         "chio.root-registry",

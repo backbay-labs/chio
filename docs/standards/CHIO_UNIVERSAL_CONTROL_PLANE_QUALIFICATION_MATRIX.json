@@ -22,17 +22,17 @@
       "id": "FABRIC3-01",
       "summary": "Claim-eligible authoritative bindings never silently default to Native; route selection is explicit or registry-derived with signed route evidence.",
       "witnesses": [
-        "crates/chio-cross-protocol/src/lib.rs",
-        "crates/chio-a2a-edge/src/lib.rs",
-        "crates/chio-acp-edge/src/lib.rs"
+        "crates/protocol/chio-cross-protocol/src/lib.rs",
+        "crates/protocol/chio-a2a-edge/src/lib.rs",
+        "crates/protocol/chio-acp-edge/src/lib.rs"
       ]
     },
     {
       "id": "FABRIC3-02",
       "summary": "CrossProtocolOrchestrator resolves target executors through one shared registry contract rather than edge-local branch tables.",
       "witnesses": [
-        "crates/chio-cross-protocol/src/lib.rs",
-        "crates/chio-mcp-edge/src/runtime.rs",
+        "crates/protocol/chio-cross-protocol/src/lib.rs",
+        "crates/protocol/chio-mcp-edge/src/runtime.rs",
         "docs/adr/ADR-0010-current-v1-receipt-kind-trace-semantics.md"
       ]
     },
@@ -40,61 +40,61 @@
       "id": "FABRIC3-03",
       "summary": "At least two authoritative multi-hop routes execute across more than one protocol boundary with continuous receipt lineage and route evidence.",
       "witnesses": [
-        "crates/chio-a2a-edge/src/lib.rs",
-        "crates/chio-acp-edge/src/lib.rs",
-        "crates/chio-cross-protocol/src/lib.rs"
+        "crates/protocol/chio-a2a-edge/src/lib.rs",
+        "crates/protocol/chio-acp-edge/src/lib.rs",
+        "crates/protocol/chio-cross-protocol/src/lib.rs"
       ]
     },
     {
       "id": "CTRL3-01",
       "summary": "Governed intent is a first-class input to route planning rather than a passive metadata echo.",
       "witnesses": [
-        "crates/chio-cross-protocol/src/lib.rs"
+        "crates/protocol/chio-cross-protocol/src/lib.rs"
       ]
     },
     {
       "id": "CTRL3-02",
       "summary": "The control plane can select, attenuate, or deny candidate routes based on policy, capability, intent, and runtime availability.",
       "witnesses": [
-        "crates/chio-cross-protocol/src/lib.rs",
-        "crates/chio-http-core/src/authority.rs"
+        "crates/protocol/chio-cross-protocol/src/lib.rs",
+        "crates/platform/chio-http-core/src/authority.rs"
       ]
     },
     {
       "id": "CTRL3-03",
       "summary": "Signed route-selection evidence is surfaced consistently on qualified HTTP/API, MCP, A2A, and ACP authoritative paths. OpenAI remains deferred until separately qualified.",
       "witnesses": [
-        "crates/chio-cross-protocol/src/lib.rs",
-        "crates/chio-http-core/src/authority.rs",
-        "crates/chio-mcp-edge/src/runtime.rs",
-        "crates/chio-a2a-edge/src/lib.rs",
-        "crates/chio-acp-edge/src/lib.rs"
+        "crates/protocol/chio-cross-protocol/src/lib.rs",
+        "crates/platform/chio-http-core/src/authority.rs",
+        "crates/protocol/chio-mcp-edge/src/runtime.rs",
+        "crates/protocol/chio-a2a-edge/src/lib.rs",
+        "crates/protocol/chio-acp-edge/src/lib.rs"
       ]
     },
     {
       "id": "LIFE3-01",
       "summary": "Stream, cancel, resume, and partial-output semantics are defined by one shared lifecycle contract used by every claim-eligible protocol surface.",
       "witnesses": [
-        "crates/chio-cross-protocol/src/lib.rs",
-        "crates/chio-a2a-edge/src/lib.rs",
-        "crates/chio-acp-edge/src/lib.rs"
+        "crates/protocol/chio-cross-protocol/src/lib.rs",
+        "crates/protocol/chio-a2a-edge/src/lib.rs",
+        "crates/protocol/chio-acp-edge/src/lib.rs"
       ]
     },
     {
       "id": "LIFE3-02",
       "summary": "Bridge fidelity and publication gating are derived from runtime route and lifecycle capability evidence rather than static schema hints alone.",
       "witnesses": [
-        "crates/chio-cross-protocol/src/lib.rs",
-        "crates/chio-a2a-edge/src/lib.rs",
-        "crates/chio-acp-edge/src/lib.rs"
+        "crates/protocol/chio-cross-protocol/src/lib.rs",
+        "crates/protocol/chio-a2a-edge/src/lib.rs",
+        "crates/protocol/chio-acp-edge/src/lib.rs"
       ]
     },
     {
       "id": "LIFE3-03",
       "summary": "Compatibility-only helpers remain isolated, non-default, and explicitly non-claim-eligible.",
       "witnesses": [
-        "crates/chio-a2a-edge/src/lib.rs",
-        "crates/chio-acp-edge/src/lib.rs"
+        "crates/protocol/chio-a2a-edge/src/lib.rs",
+        "crates/protocol/chio-acp-edge/src/lib.rs"
       ]
     },
     {

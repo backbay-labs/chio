@@ -735,7 +735,7 @@
       "status": "assumed",
       "proof_path": "formal/lean4/Chio/Chio/Proofs/AttenuationWitness.lean",
       "mapsTo": ["P1"],
-      "notes": "Chain-binding soundness: a v2 capability token is admitted by the verifier iff its attenuation_proof.parent_scope_hash matches the trust-root scope hash (direct issue) or the last delegation link's signed scope_hash (delegated chain). Status remains assumed until the Lean toolchain is available in CI; the Rust shell is exercised by crates/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs and the protocol-side check is implemented in chio_core_types::capability::CapabilityToken::validate_chain_binding."
+      "notes": "Chain-binding soundness: a v2 capability token is admitted by the verifier iff its attenuation_proof.parent_scope_hash matches the trust-root scope hash (direct issue) or the last delegation link's signed scope_hash (delegated chain). Status remains assumed until the Lean toolchain is available in CI; the Rust shell is exercised by crates/tooling/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs and the protocol-side check is implemented in chio_core_types::capability::CapabilityToken::validate_chain_binding."
     },
     {
       "id": "theorem.handshake.negotiation_safety",
@@ -759,7 +759,7 @@
       "status": "assumed",
       "proof_path": "formal/lean4/Chio/Chio/Proofs/SiblingSumBudget.lean",
       "mapsTo": ["P1"],
-      "notes": "Sibling-sum budget enforcement: when the BudgetRegistry admits a child, the running sum after admission is bounded by the parent's share. This rejects cross-hop amplification where two siblings jointly oversubscribe their parent's budget. Status remains assumed until the Lean toolchain is available in CI; the Rust shell is exercised by crates/chio-conformance/tests/budget_split_rejects_oversubscribed_siblings.rs and the cross-hop case by crates/chio-conformance/tests/budget_split_cross_hop_rejects_amplification.rs. The protocol-side check is implemented in chio_kernel_core::budget_split::BudgetSplit::try_admit_child."
+      "notes": "Sibling-sum budget enforcement: when the BudgetRegistry admits a child, the running sum after admission is bounded by the parent's share. This rejects cross-hop amplification where two siblings jointly oversubscribe their parent's budget. Status remains assumed until the Lean toolchain is available in CI; the Rust shell is exercised by crates/tooling/chio-conformance/tests/budget_split_rejects_oversubscribed_siblings.rs and the cross-hop case by crates/tooling/chio-conformance/tests/budget_split_cross_hop_rejects_amplification.rs. The protocol-side check is implemented in chio_kernel_core::budget_split::BudgetSplit::try_admit_child."
     },
     {
       "id": "proof.treaty_admission_iff_predicate_intersection",

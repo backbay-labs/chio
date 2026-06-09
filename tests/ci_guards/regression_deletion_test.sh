@@ -48,9 +48,9 @@ git config commit.gpgsign false
 
 # Seed: one regression test under crates/<owner>/tests, one under
 # legacy tests/regression_*.rs, plus an unrelated file.
-mkdir -p crates/chio-kernel-core/tests
+mkdir -p crates/kernel/chio-kernel-core/tests
 mkdir -p tests
-cat > crates/chio-kernel-core/tests/regression_deadbeef.rs <<'EOF'
+cat > crates/kernel/chio-kernel-core/tests/regression_deadbeef.rs <<'EOF'
 // fuzz-promoted regression test for crash deadbeef
 #[test]
 fn regression_deadbeef() {}
@@ -94,7 +94,7 @@ git reset -q --hard "$BASE"
 # ----------------------------------------------------------------------
 # case 2: delete a regression test, no issue link anywhere -> exit 1
 # ----------------------------------------------------------------------
-git rm -q crates/chio-kernel-core/tests/regression_deadbeef.rs
+git rm -q crates/kernel/chio-kernel-core/tests/regression_deadbeef.rs
 git commit -q -m "case2: drop a regression test with no justification"
 unset PR_BODY
 rc=$(run_guard)
@@ -125,7 +125,7 @@ git reset -q --hard "$BASE"
 # ----------------------------------------------------------------------
 # case 4: delete + paired issue URL in commit message -> exit 0
 # ----------------------------------------------------------------------
-git rm -q crates/chio-kernel-core/tests/regression_deadbeef.rs
+git rm -q crates/kernel/chio-kernel-core/tests/regression_deadbeef.rs
 git commit -q -m "case4: drop deadbeef regression
 
 Crash was reclassified as a duplicate of

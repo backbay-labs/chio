@@ -59,7 +59,7 @@
     {
       "id": "claim.http.egress_contract",
       "status": "enforced",
-      "schema_artifact": "crates/chio-egress-contract/src/lib.rs",
+      "schema_artifact": "crates/protocol/chio-egress-contract/src/lib.rs",
       "summary": "Every kernel/guard/adapter outbound HTTP path declares a typed HttpEgressContract and runs through chio_egress_contract::send_with_contract (or the URL-only enforce_url helper for non-reqwest substrates) before bytes leave the substrate. The contract validates target URL on the initial request, every redirect target, and the response body size; loopback, link-local, IPv6 ULA, unbounded redirects, and oversize responses fail closed. A workspace lint at scripts/check-http-egress-contract.sh catches regressions; new callers must thread the contract through their config.",
       "introduced_in": "http-egress-contract",
       "depends_on_theorems": ["theorem.egress.contract_enforcement"],
@@ -107,7 +107,7 @@
     {
       "id": "claim.federation.conformance_tier",
       "status": "proposed",
-      "schema_artifact_proposed": "crates/chio-federation/src/trust_establishment.rs",
+      "schema_artifact_proposed": "crates/trust/chio-federation/src/trust_establishment.rs",
       "summary": "Federation handshakes bind a Bronze, Silver, or Gold conformance tier into the signed challenge, and quorum policy rejects peers below min_tier before admission.",
       "introduced_by": "federation-conformance-tier-proposal",
       "depends_on_theorems": ["theorem.federation.conformance_tier_gate"],

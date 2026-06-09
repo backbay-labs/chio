@@ -101,7 +101,7 @@ jobs:
               next
             }
             END { flush_bench() }
-          ' crates/chio-kernel/Cargo.toml > "${benches_file}"
+          ' crates/kernel/chio-kernel/Cargo.toml > "${benches_file}"
           bench_count="$(wc -l < "${benches_file}" | tr -d ' ')"
           if [ "${bench_count}" = "0" ]; then
             echo "::notice::baseline has no chio-kernel benchmarks; comparison will be skipped"
@@ -151,7 +151,7 @@ jobs:
               next
             }
             END { flush_bench() }
-          ' crates/chio-kernel/Cargo.toml > "${benches_file}"
+          ' crates/kernel/chio-kernel/Cargo.toml > "${benches_file}"
           bench_count="$(wc -l < "${benches_file}" | tr -d ' ')"
           if [ "${bench_count}" = "0" ]; then
             echo "::error::no chio-kernel benchmarks found in Cargo.toml" >&2

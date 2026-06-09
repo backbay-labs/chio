@@ -1,0 +1,57 @@
+# Focused cargo-mutants config for chio-guards.
+#
+# cargo-mutants 25.x does not auto-discover this file from the crate
+# directory. Load it explicitly with:
+#
+#   cargo mutants --config crates/guards/chio-guards/mutants.toml --package chio-guards
+#
+# Globs are workspace-rooted because cargo-mutants resolves paths with slashes
+# against the source-tree root even when this file is loaded explicitly.
+
+timeout_multiplier = 3.0
+minimum_test_timeout = 60
+
+examine_globs = [
+    "crates/guards/chio-guards/src/pipeline.rs",
+    "crates/guards/chio-guards/src/shell_command.rs",
+    "crates/guards/chio-guards/src/forbidden_path.rs",
+    "crates/guards/chio-guards/src/path_allowlist.rs",
+    "crates/guards/chio-guards/src/path_normalization.rs",
+    "crates/guards/chio-guards/src/egress_allowlist.rs",
+    "crates/guards/chio-guards/src/internal_network.rs",
+    "crates/guards/chio-guards/src/secret_leak.rs",
+    "crates/guards/chio-guards/src/patch_integrity.rs",
+    "crates/guards/chio-guards/src/mcp_tool.rs",
+    "crates/guards/chio-guards/src/prompt_injection.rs",
+    "crates/guards/chio-guards/src/jailbreak.rs",
+    "crates/guards/chio-guards/src/jailbreak_detector.rs",
+    "crates/guards/chio-guards/src/input_injection.rs",
+    "crates/guards/chio-guards/src/response_sanitization.rs",
+    "crates/guards/chio-guards/src/data_flow.rs",
+    "crates/guards/chio-guards/src/behavioral_sequence.rs",
+    "crates/guards/chio-guards/src/behavioral_profile.rs",
+    "crates/guards/chio-guards/src/agent_velocity.rs",
+    "crates/guards/chio-guards/src/velocity.rs",
+    "crates/guards/chio-guards/src/code_execution.rs",
+    "crates/guards/chio-guards/src/browser_automation.rs",
+    "crates/guards/chio-guards/src/computer_use.rs",
+    "crates/guards/chio-guards/src/remote_desktop.rs",
+    "crates/guards/chio-guards/src/content_review.rs",
+    "crates/guards/chio-guards/src/memory_governance.rs",
+    "crates/guards/chio-guards/src/post_invocation.rs",
+]
+
+exclude_globs = [
+    # rationale: pure helper, advisory, external bridge, test, and bench code
+    # is covered by integration or guard-specific tests instead of mutants.
+    "crates/guards/chio-guards/src/action.rs", # rationale: excluded helper or verification surface.
+    "crates/guards/chio-guards/src/text_utils.rs", # rationale: excluded helper or verification surface.
+    "crates/guards/chio-guards/src/advisory.rs", # rationale: excluded helper or verification surface.
+    "crates/guards/chio-guards/src/spider_sense.rs", # rationale: excluded helper or verification surface.
+    "crates/guards/chio-guards/src/external/**", # rationale: excluded helper or verification surface.
+    "**/tests.rs", # rationale: excluded helper or verification surface.
+    "**/test_*.rs", # rationale: excluded helper or verification surface.
+    "**/*_test.rs", # rationale: excluded helper or verification surface.
+    "**/tests/**", # rationale: excluded helper or verification surface.
+    "**/benches/**", # rationale: excluded helper or verification surface.
+]

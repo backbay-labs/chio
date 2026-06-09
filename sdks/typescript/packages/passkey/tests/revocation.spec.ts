@@ -4,7 +4,7 @@
 // the kernel within one revocation-oracle epoch (one second in the test
 // config) after the issuer revokes the underlying WebAuthn credential.
 // The kernel side of the same scenario is covered by
-// crates/chio-custody-hw end-to-end; this file pins the browser-side
+// crates/trust/chio-custody-hw end-to-end; this file pins the browser-side
 // contract so the SDK surface signals the cascade with a stable
 // urn:chio:error:* code.
 //
@@ -20,7 +20,7 @@
 //   5. Operator revokes the credential at the issuer; the issuer pushes a
 //      revocation entry to the revocation oracle (modelled here by the
 //      RevocationState set, which is the test-double of
-//      crates/chio-revocation-oracle).
+//      crates/trust/chio-revocation-oracle).
 //   6. The revocation epoch ticks (one second in the test config; here we
 //      advance a virtual clock so the test runs deterministically).
 //   7. Browser re-calls the kernel with the same capability; kernel

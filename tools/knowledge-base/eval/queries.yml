@@ -6,11 +6,11 @@ fixtures:
     query: capability validation kernel token scope fail closed grants
     limit: 12
     expected_top_paths:
-      - crates/chio-kernel/src/kernel/mod.rs
-      - crates/chio-core-types/src/capability.rs
+      - crates/kernel/chio-kernel/src/kernel/mod.rs
+      - crates/core/chio-core-types/src/capability.rs
     expected_any_paths:
-      - crates/chio-kernel/src/kernel/delegation.rs
-      - crates/chio-http-core/src/authority.rs
+      - crates/kernel/chio-kernel/src/kernel/delegation.rs
+      - crates/platform/chio-http-core/src/authority.rs
     forbidden_top_paths:
       - .planning
       - target
@@ -23,13 +23,13 @@ fixtures:
     query: delegated capability revocation validation token revoked expiration attenuation
     limit: 12
     expected_top_paths:
-      - crates/chio-kernel/src/kernel/delegation.rs
-      - crates/chio-kernel/src/revocation_store.rs
+      - crates/kernel/chio-kernel/src/kernel/delegation.rs
+      - crates/kernel/chio-kernel/src/revocation_store.rs
     expected_any_paths:
-      - crates/chio-kernel-core/src/capability_verify.rs
-      - crates/chio-core-types/src/capability.rs
+      - crates/kernel/chio-kernel-core/src/capability_verify.rs
+      - crates/core/chio-core-types/src/capability.rs
     forbidden_top_paths:
-      - crates/chio-tee
+      - crates/trust/chio-tee
       - .planning
     max_latency_ms: 2500
 
@@ -57,11 +57,11 @@ fixtures:
     query: guard pipeline input output policy evaluator deny allow redaction
     limit: 12
     expected_top_paths:
-      - crates/chio-guards/src
-      - crates/chio-kernel/src/kernel/evaluator.rs
+      - crates/guards/chio-guards/src
+      - crates/kernel/chio-kernel/src/kernel/evaluator.rs
     expected_any_paths:
-      - crates/chio-guards/src/mcp_tool.rs
-      - crates/chio-guards/src/lib.rs
+      - crates/guards/chio-guards/src/mcp_tool.rs
+      - crates/guards/chio-guards/src/lib.rs
     forbidden_top_paths:
       - .planning
     max_latency_ms: 2500
@@ -73,11 +73,11 @@ fixtures:
     query: policy compiler validate ruleset schema fail closed evaluate conditions
     limit: 12
     expected_top_paths:
-      - crates/chio-policy/src/validate.rs
-      - crates/chio-policy/src/evaluate/engine.rs
+      - crates/guards/chio-policy/src/validate.rs
+      - crates/guards/chio-policy/src/evaluate/engine.rs
     expected_any_paths:
-      - crates/chio-policy/src/lib.rs
-      - crates/chio-policy/src/models.rs
+      - crates/guards/chio-policy/src/lib.rs
+      - crates/guards/chio-policy/src/models.rs
     forbidden_top_paths:
       - .planning
     max_latency_ms: 2500
@@ -89,11 +89,11 @@ fixtures:
     query: MCP adapter transport envelope initialize tools call receipt bridge
     limit: 12
     expected_top_paths:
-      - crates/chio-mcp-adapter/src/lib.rs
-      - crates/chio-mcp-adapter/src/transport.rs
+      - crates/protocol/chio-mcp-adapter/src/lib.rs
+      - crates/protocol/chio-mcp-adapter/src/transport.rs
     expected_any_paths:
-      - crates/chio-mcp-adapter/src/native.rs
-      - crates/chio-mcp-edge/src/runtime.rs
+      - crates/protocol/chio-mcp-adapter/src/native.rs
+      - crates/protocol/chio-mcp-edge/src/runtime.rs
     forbidden_top_paths:
       - .planning
     max_latency_ms: 2500
@@ -160,14 +160,14 @@ fixtures:
     include_memory: true
     limit: 5
     expected_top_paths:
-      - crates/chio-kernel/src/kernel/delegation.rs
-      - crates/chio-kernel/src/revocation_store.rs
+      - crates/kernel/chio-kernel/src/kernel/delegation.rs
+      - crates/kernel/chio-kernel/src/revocation_store.rs
     expected_any_paths:
-      - crates/chio-core-types/src/capability.rs
+      - crates/core/chio-core-types/src/capability.rs
       - spec/PROTOCOL.md
-      - crates/chio-revocation-oracle/tests/swarm_revocation_e2e.rs
+      - crates/trust/chio-revocation-oracle/tests/swarm_revocation_e2e.rs
     forbidden_top_paths:
-      - crates/chio-tee
+      - crates/trust/chio-tee
     expected_text_terms:
       - revocation
       - read_first
@@ -182,12 +182,12 @@ fixtures:
     include_memory: true
     limit: 5
     expected_top_paths:
-      - crates/chio-cli/src/evidence_export.rs
-      - crates/chio-kernel/src/evidence_export.rs
+      - crates/products/chio-cli/src/evidence_export.rs
+      - crates/kernel/chio-kernel/src/evidence_export.rs
     expected_any_paths:
       - spec/COMPLIANCE-CERTIFICATE.md
       - docs/release/QUALIFICATION.md
-      - crates/chio-kernel/tests/compliance_certificate_hybrid.rs
+      - crates/kernel/chio-kernel/tests/compliance_certificate_hybrid.rs
     max_latency_ms: 7000
 
   - id: compound-test-revocation
@@ -197,14 +197,14 @@ fixtures:
     query: delegated capability revocation
     limit: 12
     expected_top_paths:
-      - crates/chio-revocation-oracle/tests/swarm_revocation_e2e.rs
-      - crates/chio-revocation-oracle/tests/receipt_chain_proof.rs
+      - crates/trust/chio-revocation-oracle/tests/swarm_revocation_e2e.rs
+      - crates/trust/chio-revocation-oracle/tests/receipt_chain_proof.rs
     expected_any_paths:
-      - crates/chio-revocation-oracle/tests/property_oracle.rs
-      - crates/chio-kernel-core/tests/revocation_view_concurrency.rs
+      - crates/trust/chio-revocation-oracle/tests/property_oracle.rs
+      - crates/kernel/chio-kernel-core/tests/revocation_view_concurrency.rs
     forbidden_top_paths:
-      - crates/chio-tee
-      - crates/chio-kernel-mobile
+      - crates/trust/chio-tee
+      - crates/kernel/chio-kernel-mobile
     max_latency_ms: 2500
 
   - id: compound-test-compliance-certificate
@@ -214,25 +214,25 @@ fixtures:
     query: compliance certificate evidence export signed receipts
     limit: 12
     expected_top_paths:
-      - crates/chio-kernel/tests/compliance_certificate_hybrid.rs
-      - crates/chio-cli/tests/evidence_export.rs
+      - crates/kernel/chio-kernel/tests/compliance_certificate_hybrid.rs
+      - crates/products/chio-cli/tests/evidence_export.rs
     expected_any_paths:
-      - crates/chio-kernel/src/kernel/tests/compliance_score.rs
-      - crates/chio-http-core/tests/compliance_score_endpoint.rs
+      - crates/kernel/chio-kernel/src/kernel/tests/compliance_score.rs
+      - crates/platform/chio-http-core/tests/compliance_score_endpoint.rs
     max_latency_ms: 2500
 
   - id: graph-neighbors-mcp-adapter
     suite: deep
     category: graph-navigation-impact
     target_tool: kb_neighbors
-    query: crates/chio-mcp-adapter/src/lib.rs
+    query: crates/protocol/chio-mcp-adapter/src/lib.rs
     depth: 2
     limit: 12
     expected_top_paths:
-      - crates/chio-mcp-adapter/src/lib.rs
-      - crates/chio-mcp-adapter/src/transport.rs
+      - crates/protocol/chio-mcp-adapter/src/lib.rs
+      - crates/protocol/chio-mcp-adapter/src/transport.rs
     expected_any_paths:
-      - crates/chio-mcp-adapter
+      - crates/protocol/chio-mcp-adapter
       - integrations/mcp-adapter/tests/transport_round_trip.rs
     forbidden_top_paths:
       - docs/sdk/PYTHON.md
@@ -250,10 +250,10 @@ fixtures:
     query: capability:kernel-validation
     limit: 20
     expected_top_paths:
-      - crates/chio-kernel/src/kernel/mod.rs
-      - crates/chio-kernel/src/kernel/delegation.rs
+      - crates/kernel/chio-kernel/src/kernel/mod.rs
+      - crates/kernel/chio-kernel/src/kernel/delegation.rs
     expected_any_paths:
-      - crates/chio-core-types/src/capability.rs
+      - crates/core/chio-core-types/src/capability.rs
       - spec/PROTOCOL.md
     expected_text_terms:
       - primary_match
@@ -272,15 +272,15 @@ fixtures:
     include_memory: true
     limit: 6
     expected_top_paths:
-      - crates/chio-guards/src/pipeline.rs
-      - crates/chio-kernel/src/kernel/evaluator.rs
+      - crates/guards/chio-guards/src/pipeline.rs
+      - crates/kernel/chio-kernel/src/kernel/evaluator.rs
     expected_any_paths:
-      - crates/chio-guards/tests/output_sanitization.rs
-      - crates/chio-policy/tests/compile_policy.rs
+      - crates/guards/chio-guards/tests/output_sanitization.rs
+      - crates/guards/chio-policy/tests/compile_policy.rs
       - spec/PROTOCOL.md
     forbidden_top_paths:
-      - crates/chio-cli/src/evidence_export.rs
-      - crates/chio-store-sqlite/src/evidence_export.rs
+      - crates/products/chio-cli/src/evidence_export.rs
+      - crates/platform/chio-store-sqlite/src/evidence_export.rs
     expected_text_terms:
       - guard-policy
       - receipt
@@ -295,15 +295,15 @@ fixtures:
     include_memory: true
     limit: 6
     expected_top_paths:
-      - crates/chio-mcp-adapter/src/lib.rs
-      - crates/chio-mcp-adapter/src/transport.rs
+      - crates/protocol/chio-mcp-adapter/src/lib.rs
+      - crates/protocol/chio-mcp-adapter/src/transport.rs
     expected_any_paths:
       - docs/conformance/verdict-matrix.md
       - integrations/mcp-adapter/tests/transport_round_trip.rs
-      - crates/chio-conformance/verdict_matrix/tests/verdict_matrix_cross_language.rs
+      - crates/tooling/chio-conformance/verdict_matrix/tests/verdict_matrix_cross_language.rs
     forbidden_top_paths:
-      - crates/chio-cli/src/evidence_export.rs
-      - crates/chio-kernel/src/evidence_export.rs
+      - crates/products/chio-cli/src/evidence_export.rs
+      - crates/kernel/chio-kernel/src/evidence_export.rs
     expected_text_terms:
       - mcp-adapter
       - sdk-conformance
@@ -320,8 +320,8 @@ fixtures:
       - spec/COMPLIANCE-CERTIFICATE.md
       - docs/release/QUALIFICATION.md
     expected_any_paths:
-      - crates/chio-kernel/src/compliance_certificate.rs
-      - crates/chio-kernel/tests/compliance_certificate_hybrid.rs
+      - crates/kernel/chio-kernel/src/compliance_certificate.rs
+      - crates/kernel/chio-kernel/tests/compliance_certificate_hybrid.rs
     forbidden_any_paths:
       - .
       - .planning
@@ -332,13 +332,13 @@ fixtures:
     suite: deep
     category: graph-navigation-impact
     target_tool: kb_impact
-    query: crates/chio-kernel/src/kernel/delegation.rs
+    query: crates/kernel/chio-kernel/src/kernel/delegation.rs
     limit: 16
     expected_top_paths:
-      - crates/chio-kernel/src/kernel/delegation.rs
+      - crates/kernel/chio-kernel/src/kernel/delegation.rs
     expected_any_paths:
-      - crates/chio-revocation-oracle/tests/swarm_revocation_e2e.rs
-      - crates/chio-kernel-core/tests/revocation_view_concurrency.rs
+      - crates/trust/chio-revocation-oracle/tests/swarm_revocation_e2e.rs
+      - crates/kernel/chio-kernel-core/tests/revocation_view_concurrency.rs
       - spec/PROTOCOL.md
     forbidden_any_paths:
       - .planning

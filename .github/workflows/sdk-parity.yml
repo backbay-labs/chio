@@ -4,12 +4,12 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
-      - "crates/chio-api-protect/**"
-      - "crates/chio-core-types/**"
-      - "crates/chio-http-core/**"
-      - "crates/chio-kernel/**"
-      - "crates/chio-kernel-core/**"
-      - "crates/chio-conformance/**"
+      - "crates/products/chio-api-protect/**"
+      - "crates/core/chio-core-types/**"
+      - "crates/platform/chio-http-core/**"
+      - "crates/kernel/chio-kernel/**"
+      - "crates/kernel/chio-kernel-core/**"
+      - "crates/tooling/chio-conformance/**"
       - "sdks/**"
       - "scripts/check-sdk-parity.sh"
       - "scripts/check-bindings-parity.sh"
@@ -22,12 +22,12 @@ on:
   push:
     branches: ["main"]
     paths:
-      - "crates/chio-api-protect/**"
-      - "crates/chio-core-types/**"
-      - "crates/chio-http-core/**"
-      - "crates/chio-kernel/**"
-      - "crates/chio-kernel-core/**"
-      - "crates/chio-conformance/**"
+      - "crates/products/chio-api-protect/**"
+      - "crates/core/chio-core-types/**"
+      - "crates/platform/chio-http-core/**"
+      - "crates/kernel/chio-kernel/**"
+      - "crates/kernel/chio-kernel-core/**"
+      - "crates/tooling/chio-conformance/**"
       - "sdks/**"
       - "scripts/check-sdk-parity.sh"
       - "scripts/check-bindings-parity.sh"

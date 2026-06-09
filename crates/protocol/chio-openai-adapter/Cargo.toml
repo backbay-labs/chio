@@ -1,0 +1,52 @@
+[package]
+name = "chio-openai-adapter"
+description = "OpenAI tool-call adapter for Chio: intercepts Chat Completions and Responses API tool calls, mediates them through the Chio kernel for capability validation and signed receipts, and (under the provider-adapter feature) forwards native requests to the OpenAI API over the shared HTTP transport"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_openai"
+
+[package.metadata.chio]
+# OpenAI Responses API snapshot pin. Bumping this is a deliberate PR with a
+# fixture re-record. Source: https://platform.openai.com/docs/api-reference/responses
+openai_responses_api_snapshot = "2026-04-25"
+
+[dependencies]
+async-trait = { workspace = true }
+chio-core = { package = "chio-core-types", path = "../../core/chio-core-types" }
+chio-cross-protocol = { workspace = true }
+chio-kernel = { workspace = true }
+chio-manifest = { workspace = true }
+chio-provider-adapter-core = { workspace = true, optional = true }
+chio-tool-call-fabric = { workspace = true, optional = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+wiremock = { workspace = true }
+
+[features]
+# Default features keep the existing public surface compiling unchanged.
+default = []
+
+# `provider-adapter` opts into the ProviderAdapter surface (lift/lower into
+# the chio-tool-call-fabric ToolInvocation shape) plus the outbound HTTP
+# transport that forwards native requests to the OpenAI API. Pinned to OpenAI
+# Responses API snapshot 2026-04-25 (see package.metadata).
+provider-adapter = ["dep:chio-tool-call-fabric", "dep:chio-provider-adapter-core"]
+
+[[bench]]
+name = "verdict_latency"
+harness = false
+
+[lints]
+workspace = true

@@ -7,23 +7,23 @@ registry="$(mktemp)"
 observed="$(mktemp)"
 trap 'rm -f "${registry}" "${observed}"' EXIT
 
-cut -d'|' -f1 crates/chio-metrics-spec/metrics.snapshot | sort -u > "${registry}"
+cut -d'|' -f1 crates/observability/chio-metrics-spec/metrics.snapshot | sort -u > "${registry}"
 
 # Scope includes the edge crates that consume the registry plus
 # `chio-wasm-guards`. The grep is anchored at `crates/<name>/src` to avoid
 # pulling matches out of `target/` artifacts.
 rg -P --no-filename -o '(?<![A-Za-z0-9_])chio_[a-z0-9_]*(seconds|total|depth|bytes|ready|size)(?![A-Za-z0-9_])' \
-  crates/chio-metrics-spec \
-  crates/chio-kernel/src \
-  crates/chio-mcp-edge/src \
-  crates/chio-acp-edge/src \
-  crates/chio-a2a-edge/src \
-  crates/chio-http-core/src \
-  crates/chio-anchor/src \
-  crates/chio-federation/src \
-  crates/chio-pheromone-relay/src \
-  crates/chio-wasm-guards/src \
-  crates/chio-siem \
+  crates/observability/chio-metrics-spec \
+  crates/kernel/chio-kernel/src \
+  crates/protocol/chio-mcp-edge/src \
+  crates/protocol/chio-acp-edge/src \
+  crates/protocol/chio-a2a-edge/src \
+  crates/platform/chio-http-core/src \
+  crates/economy/chio-anchor/src \
+  crates/trust/chio-federation/src \
+  crates/trust/chio-pheromone-relay/src \
+  crates/guards/chio-wasm-guards/src \
+  crates/observability/chio-siem \
   deploy/prometheus \
   .github/workflows \
   scripts \
@@ -42,7 +42,7 @@ while IFS= read -r metric; do
 done < "${observed}"
 
 if [[ "${failed}" -ne 0 ]]; then
-  echo "add new metric names to crates/chio-metrics-spec before using them" >&2
+  echo "add new metric names to crates/observability/chio-metrics-spec before using them" >&2
   exit 1
 fi
 

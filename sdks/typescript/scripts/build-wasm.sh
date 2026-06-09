@@ -206,7 +206,7 @@ if command -v wasm-bindgen >/dev/null 2>&1; then
   fi
 fi
 
-CRATE_DIR="${REPO_ROOT}/crates/chio-kernel-browser"
+CRATE_DIR="${REPO_ROOT}/crates/kernel/chio-kernel-browser"
 
 if [ ! -d "${CRATE_DIR}" ]; then
   echo "ERROR: crate directory not found: ${CRATE_DIR}" >&2

@@ -534,7 +534,7 @@ if [[ ! -s "${RAW_OUTPUT_PATH}" ]]; then
 fi
 
 # --- prepend the chio header -----------------------------------------------
-# Mirror the Rust generated header (crates/chio-spec-codegen/src/lib.rs
+# Mirror the Rust generated header (crates/tooling/chio-spec-codegen/src/lib.rs
 # GENERATED_HEADER) with Go-style `//` comments. The header lives BEFORE
 # the oapi-codegen banner, which we keep as a secondary attribution stamp.
 HEADER_FILE="${WORK_DIR}/header.txt"

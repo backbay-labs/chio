@@ -11,14 +11,14 @@ timeout_multiplier = 3.0
 minimum_test_timeout = 60
 
 examine_globs = [
-    "crates/chio-guards/src/pipeline.rs",
-    "crates/chio-guards/src/forbidden_path.rs",
-    "crates/chio-guards/src/path_allowlist.rs",
-    "crates/chio-guards/src/path_normalization.rs",
-    "crates/chio-guards/src/egress_allowlist.rs",
-    "crates/chio-guards/src/secret_leak.rs",
-    "crates/chio-guards/src/data_flow.rs",
-    "crates/chio-guards/src/behavioral_sequence.rs",
+    "crates/guards/chio-guards/src/pipeline.rs",
+    "crates/guards/chio-guards/src/forbidden_path.rs",
+    "crates/guards/chio-guards/src/path_allowlist.rs",
+    "crates/guards/chio-guards/src/path_normalization.rs",
+    "crates/guards/chio-guards/src/egress_allowlist.rs",
+    "crates/guards/chio-guards/src/secret_leak.rs",
+    "crates/guards/chio-guards/src/data_flow.rs",
+    "crates/guards/chio-guards/src/behavioral_sequence.rs",
 ]
 
 exclude_globs = [
@@ -29,7 +29,7 @@ exclude_globs = [
     "**/benches/**",
     "**/build.rs",
     "**/fuzz.rs",
-    "crates/chio-guards/src/action.rs",
-    "crates/chio-guards/src/advisory.rs",
-    "crates/chio-guards/src/external/**",
+    "crates/guards/chio-guards/src/action.rs",
+    "crates/guards/chio-guards/src/advisory.rs",
+    "crates/guards/chio-guards/src/external/**",
 ]

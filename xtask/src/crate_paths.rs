@@ -1,31 +1,54 @@
 //! `cargo xtask check-crate-paths` - fail-closed guard against crate-path drift.
 //!
-//! Scans config files that embed literal `crates/chio-*` path references (CI path
-//! filters, CODEOWNERS, mutation/kani/threat configs, formal manifests,
+//! Scans config files that embed literal `crates/<group>/chio-*` path references
+//! (CI path filters, CODEOWNERS, mutation/kani/threat configs, formal manifests,
 //! qualification matrices) and asserts every reference resolves to an existing
 //! file or directory. A reference that no longer resolves is an error: after a
 //! crate move such a reference would silently match nothing, and the gate or
 //! required-reviewer rule it encodes would go dark while CI stayed green.
+//!
+//! Crates live under one of 11 functional group folders
+//! (`crates/<group>/chio-*`); the extractor anchors on `crates/<group>/chio-`
+//! for each known group so a literal that lost its group segment (or names an
+//! unknown group) is not silently skipped.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::{workspace_root, XtaskError};
 
-/// Extract every `crates/chio-*` path literal from `content`. Matching starts at
-/// each `crates/chio-` occurrence and continues over path bytes, stopping at the
-/// first character that cannot be part of a path reference (quote, whitespace,
-/// `:`, comma). Trailing glob/symbol decoration is preserved here and stripped by
+/// The 11 functional crate-group folders under `crates/`. A path literal that
+/// names a crate is `crates/<group>/chio-...`; the extractor recognizes only
+/// these group prefixes so a stale `crates/chio-...` literal (missing its group
+/// segment after the Phase 6 move) does not match and silently go dark.
+const CRATE_GROUPS: [&str; 11] = [
+    "core",
+    "kernel",
+    "guards",
+    "protocol",
+    "economy",
+    "trust",
+    "observability",
+    "platform",
+    "products",
+    "sdk",
+    "tooling",
+];
+
+/// Extract every `crates/<group>/chio-*` path literal from `content`. Matching
+/// starts at each `crates/<group>/chio-` occurrence (for a known group) and
+/// continues over path bytes, stopping at the first character that cannot be
+/// part of a path reference (quote, whitespace, `:`, comma). Trailing
+/// glob/symbol decoration is preserved here and stripped by
 /// `normalize_for_resolution`.
 pub fn extract_crate_paths(content: &str) -> Vec<String> {
     let bytes = content.as_bytes();
-    let needle = b"crates/chio-";
     let mut out = Vec::new();
     let mut i = 0usize;
-    while i + needle.len() <= bytes.len() {
-        if &bytes[i..i + needle.len()] == needle {
+    while i < bytes.len() {
+        if let Some(prefix_len) = group_prefix_len(&bytes[i..]) {
             let start = i;
-            let mut j = i + needle.len();
+            let mut j = i + prefix_len;
             while j < bytes.len() && is_path_byte(bytes[j]) {
                 j += 1;
             }
@@ -38,6 +61,25 @@ pub fn extract_crate_paths(content: &str) -> Vec<String> {
         }
     }
     out
+}
+
+/// If `bytes` begins with `crates/<group>/chio-` for a known group, return the
+/// length of that prefix; otherwise `None`.
+fn group_prefix_len(bytes: &[u8]) -> Option<usize> {
+    const HEAD: &[u8] = b"crates/";
+    if !bytes.starts_with(HEAD) {
+        return None;
+    }
+    for group in CRATE_GROUPS {
+        let mut prefix = Vec::with_capacity(HEAD.len() + group.len() + "/chio-".len());
+        prefix.extend_from_slice(HEAD);
+        prefix.extend_from_slice(group.as_bytes());
+        prefix.extend_from_slice(b"/chio-");
+        if bytes.starts_with(&prefix) {
+            return Some(prefix.len());
+        }
+    }
+    None
 }
 
 fn is_path_byte(b: u8) -> bool {
@@ -114,14 +156,15 @@ pub fn normalize_for_resolution(raw: &str) -> Option<Resolution> {
     Some(Resolution::Path(path))
 }
 
-/// Join `segments` into a `crates/chio-<name>/...` prefix, returning `None`
-/// when nothing more specific than a bare crate name (or a truncated
-/// `crates/chio-`) remains. Trims a trailing sentence period.
+/// Join `segments` into a `crates/<group>/chio-<name>/...` prefix, returning
+/// `None` when nothing more specific than a bare crate name (or a truncated
+/// `crates/<group>/chio-`) remains. The crate-name segment is the third
+/// (`crates` / `<group>` / `chio-<name>`). Trims a trailing sentence period.
 fn concrete_prefix(segments: &[&str]) -> Option<String> {
-    if segments.len() < 2 {
+    if segments.len() < 3 {
         return None;
     }
-    if segments[1].len() <= "chio-".len() {
+    if segments[2].len() <= "chio-".len() {
         return None;
     }
     let joined = segments.join("/");
@@ -328,76 +371,97 @@ mod tests {
     fn extract_captures_paths_and_stops_at_delimiters() {
         let content = concat!(
             "paths:\n",
-            "  - \"crates/chio-kernel/**\"\n",
-            "x: crates/chio-anchor/src/authority.rs::Symbol\n"
+            "  - \"crates/kernel/chio-kernel/**\"\n",
+            "x: crates/economy/chio-anchor/src/authority.rs::Symbol\n"
         );
         let got = extract_crate_paths(content);
         assert!(
-            got.contains(&"crates/chio-kernel/**".to_string()),
+            got.contains(&"crates/kernel/chio-kernel/**".to_string()),
             "got: {got:?}"
         );
         assert!(
-            got.contains(&"crates/chio-anchor/src/authority.rs".to_string()),
+            got.contains(&"crates/economy/chio-anchor/src/authority.rs".to_string()),
             "stops before `::`; got: {got:?}"
         );
+    }
+
+    #[test]
+    fn extract_ignores_group_less_literal() {
+        // A `crates/chio-...` literal that lost its `<group>/` segment after the
+        // move must NOT be extracted: this is the exact go-dark shape the
+        // post-Phase-6 needle defends against. (Were it still extracted, a
+        // resolver miss would be reported, but a literal that the gate never
+        // sees at all is the silent failure mode; this test pins that the
+        // group-anchored needle does not regress to matching bare `crates/chio-`.)
+        let got = extract_crate_paths("x: crates/chio-kernel/src/lib.rs\n");
+        assert!(
+            got.is_empty(),
+            "group-less literal must not match; got: {got:?}"
+        );
+        // An unknown group is likewise not a recognized crate folder.
+        let got = extract_crate_paths("x: crates/bogus/chio-kernel/**\n");
+        assert!(got.is_empty(), "unknown group must not match; got: {got:?}");
     }
 
     #[test]
     fn normalize_classifies_dir_prefix_glob_and_exact() {
         // A trailing `/**` strips to a directory-existence check.
         assert_eq!(
-            normalize_for_resolution("crates/chio-kernel/**"),
-            Some(Resolution::Path("crates/chio-kernel".to_string()))
+            normalize_for_resolution("crates/kernel/chio-kernel/**"),
+            Some(Resolution::Path("crates/kernel/chio-kernel".to_string()))
         );
         // A final-segment glob keeps its parent dir and pattern so the guard
         // can require at least one match.
         assert_eq!(
-            normalize_for_resolution("crates/chio-anchor/src/*.rs"),
+            normalize_for_resolution("crates/economy/chio-anchor/src/*.rs"),
             Some(Resolution::GlobInDir {
-                dir: "crates/chio-anchor/src".to_string(),
+                dir: "crates/economy/chio-anchor/src".to_string(),
                 pattern: "*.rs".to_string(),
             })
         );
         // A final-segment glob with a literal stem (e.g. `capability*.rs`).
         assert_eq!(
-            normalize_for_resolution("crates/chio-core-types/src/capability*.rs"),
+            normalize_for_resolution("crates/core/chio-core-types/src/capability*.rs"),
             Some(Resolution::GlobInDir {
-                dir: "crates/chio-core-types/src".to_string(),
+                dir: "crates/core/chio-core-types/src".to_string(),
                 pattern: "capability*.rs".to_string(),
             })
         );
         // A recursive glob whose parent path itself contains `**` cannot be
         // resolved by a single read_dir, so it strips to a dir-prefix check.
         assert_eq!(
-            normalize_for_resolution("crates/chio-core-types/src/_generated/**/*.rs"),
+            normalize_for_resolution("crates/core/chio-core-types/src/_generated/**/*.rs"),
             Some(Resolution::Path(
-                "crates/chio-core-types/src/_generated".to_string()
+                "crates/core/chio-core-types/src/_generated".to_string()
             ))
         );
         // An exact path is a plain existence check.
         assert_eq!(
-            normalize_for_resolution("crates/chio-core/src/lib.rs"),
-            Some(Resolution::Path("crates/chio-core/src/lib.rs".to_string()))
+            normalize_for_resolution("crates/core/chio-core/src/lib.rs"),
+            Some(Resolution::Path(
+                "crates/core/chio-core/src/lib.rs".to_string()
+            ))
         );
     }
 
     #[test]
     fn normalize_rejects_bare_or_nameless_prefixes() {
-        assert_eq!(normalize_for_resolution("crates/chio-"), None);
+        assert_eq!(normalize_for_resolution("crates/kernel/chio-"), None);
+        assert_eq!(normalize_for_resolution("crates/kernel/**"), None);
         assert_eq!(normalize_for_resolution("crates/**"), None);
     }
 
     #[test]
     fn normalize_strips_trailing_sentence_period() {
         assert_eq!(
-            normalize_for_resolution("crates/chio-kernel/src/lib.rs."),
+            normalize_for_resolution("crates/kernel/chio-kernel/src/lib.rs."),
             Some(Resolution::Path(
-                "crates/chio-kernel/src/lib.rs".to_string()
+                "crates/kernel/chio-kernel/src/lib.rs".to_string()
             ))
         );
         assert_eq!(
-            normalize_for_resolution("crates/chio-foo."),
-            Some(Resolution::Path("crates/chio-foo".to_string()))
+            normalize_for_resolution("crates/kernel/chio-foo."),
+            Some(Resolution::Path("crates/kernel/chio-foo".to_string()))
         );
     }
 
@@ -422,20 +486,20 @@ mod tests {
             Err(err) => panic!("temp dir: {err}"),
         };
         let root = temp.path();
-        if let Err(err) = fs::create_dir_all(root.join("crates/chio-core-types/src")) {
+        if let Err(err) = fs::create_dir_all(root.join("crates/core/chio-core-types/src")) {
             panic!("mkdir: {err}");
         }
         // A matching file makes the `name*.rs` glob resolve.
         if let Err(err) = fs::write(
-            root.join("crates/chio-core-types/src/capability_token.rs"),
+            root.join("crates/core/chio-core-types/src/capability_token.rs"),
             "",
         ) {
             panic!("write match: {err}");
         }
         let cfg_rel = PathBuf::from("config.toml");
         let cfg = concat!(
-            "a = \"crates/chio-core-types/src/capability*.rs\"\n",
-            "b = \"crates/chio-core-types/src/scope*.rs\"\n"
+            "a = \"crates/core/chio-core-types/src/capability*.rs\"\n",
+            "b = \"crates/core/chio-core-types/src/scope*.rs\"\n"
         );
         if let Err(err) = fs::write(root.join(&cfg_rel), cfg) {
             panic!("write cfg: {err}");
@@ -449,7 +513,7 @@ mod tests {
         assert_eq!(violations.len(), 1, "got: {violations:?}");
         assert_eq!(
             violations[0].resolved,
-            "crates/chio-core-types/src/scope*.rs"
+            "crates/core/chio-core-types/src/scope*.rs"
         );
     }
 
@@ -460,16 +524,16 @@ mod tests {
             Err(err) => panic!("temp dir: {err}"),
         };
         let root = temp.path();
-        if let Err(err) = fs::create_dir_all(root.join("crates/chio-kernel/src")) {
+        if let Err(err) = fs::create_dir_all(root.join("crates/kernel/chio-kernel/src")) {
             panic!("mkdir: {err}");
         }
-        if let Err(err) = fs::write(root.join("crates/chio-kernel/src/lib.rs"), "") {
+        if let Err(err) = fs::write(root.join("crates/kernel/chio-kernel/src/lib.rs"), "") {
             panic!("write lib: {err}");
         }
         let cfg_rel = PathBuf::from("config.toml");
         let cfg = concat!(
-            "a = \"crates/chio-kernel/**\"\n",
-            "b = \"crates/chio-kernel/src/lib.rs\"\n"
+            "a = \"crates/kernel/chio-kernel/**\"\n",
+            "b = \"crates/kernel/chio-kernel/src/lib.rs\"\n"
         );
         if let Err(err) = fs::write(root.join(&cfg_rel), cfg) {
             panic!("write cfg: {err}");
@@ -488,16 +552,16 @@ mod tests {
             Err(err) => panic!("temp dir: {err}"),
         };
         let root = temp.path();
-        if let Err(err) = fs::create_dir_all(root.join("crates/chio-kernel/src")) {
+        if let Err(err) = fs::create_dir_all(root.join("crates/kernel/chio-kernel/src")) {
             panic!("mkdir: {err}");
         }
-        if let Err(err) = fs::write(root.join("crates/chio-kernel/src/lib.rs"), "") {
+        if let Err(err) = fs::write(root.join("crates/kernel/chio-kernel/src/lib.rs"), "") {
             panic!("write lib: {err}");
         }
         let cfg_rel = PathBuf::from("config.toml");
         let cfg = concat!(
-            "a = \"crates/chio-kernel/**\"\n",
-            "b = \"crates/chio-ghost/src/lib.rs\"\n"
+            "a = \"crates/kernel/chio-kernel/**\"\n",
+            "b = \"crates/kernel/chio-ghost/src/lib.rs\"\n"
         );
         if let Err(err) = fs::write(root.join(&cfg_rel), cfg) {
             panic!("write cfg: {err}");
@@ -507,7 +571,10 @@ mod tests {
             Err(err) => panic!("find_violations: {err}"),
         };
         assert_eq!(violations.len(), 1, "got: {violations:?}");
-        assert_eq!(violations[0].resolved, "crates/chio-ghost/src/lib.rs");
+        assert_eq!(
+            violations[0].resolved,
+            "crates/kernel/chio-ghost/src/lib.rs"
+        );
         assert_eq!(violations[0].source, "config.toml");
     }
 

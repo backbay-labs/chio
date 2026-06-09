@@ -37,5 +37,5 @@ jobs:
       - name: Fail closed on uncommitted trust-root drift
         run: |
           set -euo pipefail
-          git diff -- crates/chio-attest-verify/sigstore-root
-          git diff --exit-code -- crates/chio-attest-verify/sigstore-root
+          git diff -- crates/trust/chio-attest-verify/sigstore-root
+          git diff --exit-code -- crates/trust/chio-attest-verify/sigstore-root

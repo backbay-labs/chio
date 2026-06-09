@@ -249,7 +249,7 @@ function authorityAllow(): ChioReceiptAuthority {
 }
 
 /// Matches the wire shape produced by `VerifyReceiptResponse` in
-/// `crates/chio-http-core/src/evaluation.rs`: `result` is `"allow"` not
+/// `crates/platform/chio-http-core/src/evaluation.rs`: `result` is `"allow"` not
 /// `"authorized"`. The middleware must accept this value.
 function sidecarVerifyAllow(): Record<string, unknown> {
   return {
@@ -416,7 +416,7 @@ describe("receipt authority verification", () => {
   it("accepts the sidecar's result: \"allow\" response shape from /chio/verify", async () => {
     // The Rust `/chio/verify` route returns `result: "allow"` (see
     // `VerifyReceiptResponse::from_http_receipt` in
-    // `crates/chio-http-core/src/evaluation.rs`); the middleware must
+    // `crates/platform/chio-http-core/src/evaluation.rs`); the middleware must
     // accept that shape and authorize when every authority field is true.
     let modelCalls = 0;
     const fetchMock = async (input: RequestInfo | URL) => {

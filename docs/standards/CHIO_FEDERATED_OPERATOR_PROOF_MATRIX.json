@@ -8,23 +8,23 @@
       "id": "multi_hop_imported_upstream_lineage",
       "summary": "Operator B can import operator A evidence and preserve upstream lineage across a multi-hop federated issuance path.",
       "witnesses": [
-        "crates/chio-cli/tests/federated_issue.rs",
-        "crates/chio-cli/tests/evidence_export.rs"
+        "crates/products/chio-cli/tests/federated_issue.rs",
+        "crates/products/chio-cli/tests/evidence_export.rs"
       ]
     },
     {
       "id": "federated_reconciliation_review",
       "summary": "Governed reconciliation review remains explicit and local rather than being silently rewritten by imported evidence.",
       "witnesses": [
-        "crates/chio-cli/tests/receipt_query.rs",
-        "crates/chio-cli/tests/evidence_export.rs"
+        "crates/products/chio-cli/tests/receipt_query.rs",
+        "crates/products/chio-cli/tests/evidence_export.rs"
       ]
     },
     {
       "id": "adversarial_multi_operator_open_market",
       "summary": "Visibility across operators does not imply local trust or economic activation; adversarial paths remain fail-closed.",
       "witnesses": [
-        "crates/chio-cli/tests/certify.rs",
+        "crates/products/chio-cli/tests/certify.rs",
         "docs/release/PARTNER_PROOF.md"
       ]
     }

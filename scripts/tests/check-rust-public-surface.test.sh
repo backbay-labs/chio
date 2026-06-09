@@ -50,15 +50,15 @@ write_workspace() {
   local root="$1"
   shift
   mkdir -p "$root/crates"
-  write_member "$root/crates/chio-cli" "chio-cli"
-  write_member "$root/crates/chio-core" "chio-core"
-  mark_public_entrypoint "$root/crates/chio-cli/Cargo.toml"
-  mark_public_entrypoint "$root/crates/chio-core/Cargo.toml"
+  write_member "$root/crates/products/chio-cli" "chio-cli"
+  write_member "$root/crates/core/chio-core" "chio-core"
+  mark_public_entrypoint "$root/crates/products/chio-cli/Cargo.toml"
+  mark_public_entrypoint "$root/crates/core/chio-core/Cargo.toml"
   cat > "$root/Cargo.toml" <<EOF
 [workspace]
 members = [
-    "crates/chio-cli",
-    "crates/chio-core",
+    "crates/products/chio-cli",
+    "crates/core/chio-core",
 ]
 
 [workspace.metadata.chio]
@@ -129,10 +129,10 @@ grep -F "workspace.metadata.chio.rust_registry_public_crates must be declared." 
 
 root_only_public_entrypoint="$work/root-only-public-entrypoint"
 write_workspace "$root_only_public_entrypoint" '    "chio-cli",' '    "chio-core",'
-unmark_public_entrypoint "$root_only_public_entrypoint/crates/chio-core/Cargo.toml"
+unmark_public_entrypoint "$root_only_public_entrypoint/crates/core/chio-core/Cargo.toml"
 assert_rc "$(run_checker "$root_only_public_entrypoint/Cargo.toml" "$work/root-only-public-entrypoint.out" "$work/root-only-public-entrypoint.err")" 1 \
   "root-listed public entrypoint without package marker fails"
-grep -F "crates/chio-core/Cargo.toml is listed in workspace.metadata.chio.rust_public_entrypoints but does not declare package.metadata.chio.public_entrypoint = true." \
+grep -F "crates/core/chio-core/Cargo.toml is listed in workspace.metadata.chio.rust_public_entrypoints but does not declare package.metadata.chio.public_entrypoint = true." \
   "$work/root-only-public-entrypoint.err" >/dev/null
 
 duplicate="$work/duplicate"
@@ -189,8 +189,8 @@ import sys
 workspace = Path(sys.argv[1])
 workspace.write_text(
     workspace.read_text(encoding="utf-8").replace(
-        '    "crates/chio-core",\n]',
-        '    "crates/chio-core",\n    "crates/chio-missing",\n]',
+        '    "crates/core/chio-core",\n]',
+        '    "crates/core/chio-core",\n    "crates/chio-missing",\n]',
     ),
     encoding="utf-8",
 )
@@ -202,23 +202,23 @@ grep -F "workspace member 'crates/chio-missing' points to missing manifest crate
 
 invalid_member_manifest="$work/invalid-member-manifest"
 write_workspace "$invalid_member_manifest" '    "chio-cli",' '    "chio-core",'
-printf '[package\n' > "$invalid_member_manifest/crates/chio-core/Cargo.toml"
+printf '[package\n' > "$invalid_member_manifest/crates/core/chio-core/Cargo.toml"
 assert_rc "$(run_checker "$invalid_member_manifest/Cargo.toml" "$work/invalid-member-manifest.out" "$work/invalid-member-manifest.err")" 1 \
   "invalid workspace member manifest fails"
-grep -F "workspace member 'crates/chio-core' has invalid TOML:" \
+grep -F "workspace member 'crates/core/chio-core' has invalid TOML:" \
   "$work/invalid-member-manifest.err" >/dev/null
 
 missing_package_table="$work/missing-package-table"
 write_workspace "$missing_package_table" '    "chio-cli",' '    "chio-core",'
-printf '[lib]\npath = \"src/lib.rs\"\n' > "$missing_package_table/crates/chio-core/Cargo.toml"
+printf '[lib]\npath = \"src/lib.rs\"\n' > "$missing_package_table/crates/core/chio-core/Cargo.toml"
 assert_rc "$(run_checker "$missing_package_table/Cargo.toml" "$work/missing-package-table.out" "$work/missing-package-table.err")" 1 \
   "workspace member without package table fails"
-grep -F "crates/chio-core/Cargo.toml does not declare a [package] table." \
+grep -F "crates/core/chio-core/Cargo.toml does not declare a [package] table." \
   "$work/missing-package-table.err" >/dev/null
 
 missing_package_name="$work/missing-package-name"
 write_workspace "$missing_package_name" '    "chio-cli",' '    "chio-core",'
-python3 - "$missing_package_name/crates/chio-core/Cargo.toml" <<'PY'
+python3 - "$missing_package_name/crates/core/chio-core/Cargo.toml" <<'PY'
 from pathlib import Path
 import sys
 
@@ -235,12 +235,12 @@ manifest.write_text(
 PY
 assert_rc "$(run_checker "$missing_package_name/Cargo.toml" "$work/missing-package-name.out" "$work/missing-package-name.err")" 1 \
   "workspace member without package name fails"
-grep -F "crates/chio-core/Cargo.toml does not declare a non-empty package name." \
+grep -F "crates/core/chio-core/Cargo.toml does not declare a non-empty package name." \
   "$work/missing-package-name.err" >/dev/null
 
 duplicate_package_name="$work/duplicate-package-name"
 write_workspace "$duplicate_package_name" '    "chio-cli",' '    "chio-core",'
-python3 - "$duplicate_package_name/crates/chio-core/Cargo.toml" <<'PY'
+python3 - "$duplicate_package_name/crates/core/chio-core/Cargo.toml" <<'PY'
 from pathlib import Path
 import sys
 
@@ -255,7 +255,7 @@ manifest.write_text(
 PY
 assert_rc "$(run_checker "$duplicate_package_name/Cargo.toml" "$work/duplicate-package-name.out" "$work/duplicate-package-name.err")" 1 \
   "duplicate workspace package names fail"
-grep -F "workspace package name 'chio-cli' appears in multiple member manifests: crates/chio-cli/Cargo.toml, crates/chio-core/Cargo.toml." \
+grep -F "workspace package name 'chio-cli' appears in multiple member manifests: crates/products/chio-cli/Cargo.toml, crates/core/chio-core/Cargo.toml." \
   "$work/duplicate-package-name.err" >/dev/null
 
 unlisted_publishable="$work/unlisted-publishable"
@@ -268,8 +268,8 @@ import sys
 workspace = Path(sys.argv[1])
 workspace.write_text(
     workspace.read_text(encoding="utf-8").replace(
-        '    "crates/chio-core",\n]',
-        '    "crates/chio-core",\n    "crates/chio-leaky",\n]',
+        '    "crates/core/chio-core",\n]',
+        '    "crates/core/chio-core",\n    "crates/chio-leaky",\n]',
     ),
     encoding="utf-8",
 )
@@ -296,8 +296,8 @@ workspace = Path(sys.argv[1])
 workspace.write_text(
     workspace.read_text(encoding="utf-8")
     .replace(
-        '    "crates/chio-core",\n]',
-        '    "crates/chio-core",\n    "crates/chio-harness",\n]',
+        '    "crates/core/chio-core",\n]',
+        '    "crates/core/chio-core",\n    "crates/chio-harness",\n]',
     )
     .replace(
         "rust_registry_public_crates = []\n",
@@ -320,16 +320,16 @@ grep -F 'crates/chio-harness/Cargo.toml is registry-public but dependency `chio-
 
 missing_readme="$work/missing-readme"
 write_workspace "$missing_readme" '    "chio-cli",' '    "chio-core",'
-rm "$missing_readme/crates/chio-core/README.md"
+rm "$missing_readme/crates/core/chio-core/README.md"
 assert_rc "$(run_checker "$missing_readme/Cargo.toml" "$work/missing-readme.out" "$work/missing-readme.err")" 1 \
   "missing public entrypoint README fails"
-grep -F "crates/chio-core/Cargo.toml points to missing README 'README.md'" \
+grep -F "crates/core/chio-core/Cargo.toml points to missing README 'README.md'" \
   "$work/missing-readme.err" >/dev/null
 
 escaped_readme="$work/escaped-readme"
 write_workspace "$escaped_readme" '    "chio-cli",' '    "chio-core",'
 printf '# shared\n' > "$escaped_readme/crates/README.md"
-python3 - "$escaped_readme/crates/chio-core/Cargo.toml" <<'PY'
+python3 - "$escaped_readme/crates/core/chio-core/Cargo.toml" <<'PY'
 from pathlib import Path
 import sys
 
@@ -344,12 +344,12 @@ manifest.write_text(
 PY
 assert_rc "$(run_checker "$escaped_readme/Cargo.toml" "$work/escaped-readme.out" "$work/escaped-readme.err")" 1 \
   "public entrypoint README escaping crate root fails"
-grep -F "crates/chio-core/Cargo.toml declares README '../README.md' outside the package directory." \
+grep -F "crates/core/chio-core/Cargo.toml declares README '../README.md' outside the package directory." \
   "$work/escaped-readme.err" >/dev/null
 
 directory_readme="$work/directory-readme"
 write_workspace "$directory_readme" '    "chio-cli",' '    "chio-core",'
-python3 - "$directory_readme/crates/chio-core/Cargo.toml" <<'PY'
+python3 - "$directory_readme/crates/core/chio-core/Cargo.toml" <<'PY'
 from pathlib import Path
 import sys
 
@@ -364,12 +364,12 @@ manifest.write_text(
 PY
 assert_rc "$(run_checker "$directory_readme/Cargo.toml" "$work/directory-readme.out" "$work/directory-readme.err")" 1 \
   "public entrypoint README directory fails"
-grep -F "crates/chio-core/Cargo.toml declares README 'src' but it is not a file." \
+grep -F "crates/core/chio-core/Cargo.toml declares README 'src' but it is not a file." \
   "$work/directory-readme.err" >/dev/null
 
 missing_description="$work/missing-description"
 write_workspace "$missing_description" '    "chio-cli",' '    "chio-core",'
-python3 - "$missing_description/crates/chio-core/Cargo.toml" <<'PY'
+python3 - "$missing_description/crates/core/chio-core/Cargo.toml" <<'PY'
 from pathlib import Path
 import sys
 
@@ -386,22 +386,22 @@ manifest.write_text(
 PY
 assert_rc "$(run_checker "$missing_description/Cargo.toml" "$work/missing-description.out" "$work/missing-description.err")" 1 \
   "missing public entrypoint description fails"
-grep -F "crates/chio-core/Cargo.toml is a public entrypoint but does not declare a non-empty package description." \
+grep -F "crates/core/chio-core/Cargo.toml is a public entrypoint but does not declare a non-empty package description." \
   "$work/missing-description.err" >/dev/null
 
 missing_target="$work/missing-target"
 write_workspace "$missing_target" '    "chio-cli",' '    "chio-core",'
-rm "$missing_target/crates/chio-core/src/lib.rs"
+rm "$missing_target/crates/core/chio-core/src/lib.rs"
 assert_rc "$(run_checker "$missing_target/Cargo.toml" "$work/missing-target.out" "$work/missing-target.err")" 1 \
   "missing public entrypoint implementation target fails"
-grep -F "crates/chio-core/Cargo.toml is a public entrypoint but does not declare an existing lib or bin target." \
+grep -F "crates/core/chio-core/Cargo.toml is a public entrypoint but does not declare an existing lib or bin target." \
   "$work/missing-target.err" >/dev/null
 
 local_public_marker="$work/local-public-marker"
 write_workspace "$local_public_marker" '    "chio-cli",'
 assert_rc "$(run_checker "$local_public_marker/Cargo.toml" "$work/local-public-marker.out" "$work/local-public-marker.err")" 1 \
   "package-local public entrypoint marker missing from root list fails"
-grep -F "crates/chio-core/Cargo.toml declares package.metadata.chio.public_entrypoint = true but is missing from workspace.metadata.chio.rust_public_entrypoints." \
+grep -F "crates/core/chio-core/Cargo.toml declares package.metadata.chio.public_entrypoint = true but is missing from workspace.metadata.chio.rust_public_entrypoints." \
   "$work/local-public-marker.err" >/dev/null
 
 echo "check-rust-public-surface.test.sh: all assertions passed"

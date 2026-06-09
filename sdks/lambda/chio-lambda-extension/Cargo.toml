@@ -19,10 +19,10 @@ name = "chio-lambda-extension"
 path = "src/main.rs"
 
 [dependencies]
-chio-kernel = { path = "../../../crates/chio-kernel" }
-chio-kernel-core = { path = "../../../crates/chio-kernel-core" }
-chio-core-types = { path = "../../../crates/chio-core-types" }
-chio-store-sqlite = { path = "../../../crates/chio-store-sqlite" }
+chio-kernel = { path = "../../../crates/kernel/chio-kernel" }
+chio-kernel-core = { path = "../../../crates/kernel/chio-kernel-core" }
+chio-core-types = { path = "../../../crates/core/chio-core-types" }
+chio-store-sqlite = { path = "../../../crates/platform/chio-store-sqlite" }
 
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "time", "net", "io-util"] }
 hyper = { version = "1", features = ["full"] }

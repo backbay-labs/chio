@@ -439,7 +439,7 @@ fn ops_failure_code_flow(root: &Path, fx: &OpsFixtures) -> Result<(), XtaskError
         "failure-code-registry.schema.json",
         &fx.failure_code_registry,
     )?;
-    let src = root.join("crates/chio-runtime-core/src");
+    let src = root.join("crates/kernel/chio-runtime-core/src");
     for code in [
         "runtime_provider_discovery_not_allowed",
         "runtime_evidence_artifact_hash_mismatch",

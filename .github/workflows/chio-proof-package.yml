@@ -6,8 +6,8 @@ on:
   # verification context.
   pull_request:
     paths:
-      - "crates/chio-attest-*/**"
-      - "crates/chio-federation*/**"
+      - "crates/trust/chio-attest-*/**"
+      - "crates/trust/chio-federation*/**"
       - "examples/chio-3vendor/**"
       - "scripts/check-chio-proof-package.sh"
       - "spec/schemas/chio-attest/**"
@@ -16,8 +16,8 @@ on:
   push:
     branches: ["main"]
     paths:
-      - "crates/chio-attest-*/**"
-      - "crates/chio-federation*/**"
+      - "crates/trust/chio-attest-*/**"
+      - "crates/trust/chio-federation*/**"
       - "examples/chio-3vendor/**"
       - "scripts/check-chio-proof-package.sh"
       - "spec/schemas/chio-attest/**"

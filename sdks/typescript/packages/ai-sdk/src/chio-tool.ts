@@ -335,7 +335,7 @@ export function chioTool<PARAMS, RESULT>(
  * is non-OK, the body is not parseable, or fetch is unavailable.
  *
  * The Rust `/chio/verify` handler in
- * `crates/chio-api-protect/src/proxy.rs::sidecar_verify_handler`
+ * `crates/products/chio-api-protect/src/proxy.rs::sidecar_verify_handler`
  * deserializes the request body directly as an `HttpReceipt`, so the
  * receipt body MUST be sent unwrapped (not as `{ receipt: ... }`).
  */

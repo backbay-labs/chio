@@ -26,12 +26,12 @@
 #       (d) Cross-crate / cross-file calls where the producer of the policy
 #           and the consumer of the sync wrapper live in different files.
 #
-# `crates/chio-anchor/src/batch.rs::verify_anchor_batch_with_witness_policy`,
+# `crates/economy/chio-anchor/src/batch.rs::verify_anchor_batch_with_witness_policy`,
 # which returns `AnchorError::SyncRouteRequiresAdvisoryPolicy` when the
 # policy carries `require_public_witness=true`. That gate is the spec MUST
 # (PROTOCOL.md "Anchor batch public-witness lane" lines ~980-993)
 # enforcement. The companion negative conformance fixture at
-# `crates/chio-conformance/tests/b3_anchor_batch_sync_path_rejected_under_public_witness.rs`
+# `crates/tooling/chio-conformance/tests/b3_anchor_batch_sync_path_rejected_under_public_witness.rs`
 # pins the gate; if the gate is reverted, the fixture fails.
 #
 # ============================================================================
@@ -63,7 +63,7 @@
 # The script's ALGORITHM is best-effort by design (see SOUNDNESS
 # CONTRACT above); the load-bearing public-witness lane gate is the
 # runtime `AnchorError::SyncRouteRequiresAdvisoryPolicy` arm in
-# `crates/chio-anchor/src/batch.rs::verify_anchor_batch_with_witness_policy`.
+# `crates/economy/chio-anchor/src/batch.rs::verify_anchor_batch_with_witness_policy`.
 # This lint is a fast-feedback companion: it fails loudly on detected
 # violations, but a clean exit does NOT prove the absence of a bypass.
 # Audit R4 P1-010 requires CI posture to be non-advisory; the
@@ -146,7 +146,7 @@ while IFS= read -r file; do
 
         window="$(sed -n "${start},${end}p" "$file")"
         if printf '%s\n' "$window" | grep -Eq "$POLICY_TRUE_RE"; then
-            printf '%s:%s: sync wrapper called near literal require_public_witness=true (best-effort lint; see runtime gate at crates/chio-anchor/src/batch.rs::verify_anchor_batch_with_witness_policy)\n' \
+            printf '%s:%s: sync wrapper called near literal require_public_witness=true (best-effort lint; see runtime gate at crates/economy/chio-anchor/src/batch.rs::verify_anchor_batch_with_witness_policy)\n' \
                 "$file" "$linenum" >> "$failures_file"
         fi
     done < <(grep -nE "$SYNC_CALL_RE" "$file" 2>/dev/null \
@@ -165,7 +165,7 @@ if [[ -s "$failures_file" ]]; then
     echo "or use WitnessPolicy::advisory() for explicit advisory-only callers."
     echo
     echo "[PUBLIC-WITNESS-LINT] NOTE: this lint is the fast-feedback companion to"
-    echo "  the runtime gate at crates/chio-anchor/src/batch.rs"
+    echo "  the runtime gate at crates/economy/chio-anchor/src/batch.rs"
     echo "  (AnchorError::SyncRouteRequiresAdvisoryPolicy). The runtime gate"
     echo "  is load-bearing; this lint can produce false negatives (see"
     echo "  SOUNDNESS CONTRACT in this script). Failing here is a real bug;"
@@ -174,9 +174,9 @@ if [[ -s "$failures_file" ]]; then
 fi
 
 if [[ "$advisory_caller" -eq 1 ]]; then
-    echo "[PUBLIC-WITNESS-LINT] anchor-batch async-witness lint passed (best-effort; --advisory caller acknowledged the load-bearing runtime gate at crates/chio-anchor/src/batch.rs)"
+    echo "[PUBLIC-WITNESS-LINT] anchor-batch async-witness lint passed (best-effort; --advisory caller acknowledged the load-bearing runtime gate at crates/economy/chio-anchor/src/batch.rs)"
 else
     echo "[PUBLIC-WITNESS-LINT] anchor-batch async-witness lint passed"
-    echo "[PUBLIC-WITNESS-LINT] NOTE: this is a best-effort grep heuristic. A clean exit does NOT prove the absence of a bypass; the load-bearing public-witness lane gate is the runtime AnchorError::SyncRouteRequiresAdvisoryPolicy arm in crates/chio-anchor/src/batch.rs. Pass --advisory only for explicit local advisory runs."
+    echo "[PUBLIC-WITNESS-LINT] NOTE: this is a best-effort grep heuristic. A clean exit does NOT prove the absence of a bypass; the load-bearing public-witness lane gate is the runtime AnchorError::SyncRouteRequiresAdvisoryPolicy arm in crates/economy/chio-anchor/src/batch.rs. Pass --advisory only for explicit local advisory runs."
 fi
 exit 0

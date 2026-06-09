@@ -7,7 +7,7 @@
 # every threat ID either:
 #
 #   1. has a populated test body at
-#      crates/chio-conformance/tests/threats/<id>.rs
+#      crates/tooling/chio-conformance/tests/threats/<id>.rs
 #      (a file that exists and does NOT contain `unimplemented!`),
 #      OR
 #
@@ -16,7 +16,7 @@
 #
 #   3. carries `coverage_state: partial` plus a non-empty
 #      `deferred_to` reference AND a populated test body at
-#      `crates/chio-conformance/tests/threats/<id>.rs`, plus a
+#      `crates/tooling/chio-conformance/tests/threats/<id>.rs`, plus a
 #      companion evidence file at
 #      `audits/evidence/threats/<id>.json` recording
 #      `status: "partial"`, `closure_scope: "<scope>"`,
@@ -47,7 +47,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 THREAT_MODEL="${CHIO_THREAT_MODEL_PATH:-$REPO_ROOT/spec/security/chio-threat-model.v1.json}"
-STUBS_DIR="${CHIO_THREAT_STUBS_DIR:-$REPO_ROOT/crates/chio-conformance/tests/threats}"
+STUBS_DIR="${CHIO_THREAT_STUBS_DIR:-$REPO_ROOT/crates/tooling/chio-conformance/tests/threats}"
 EVIDENCE_DIR="${CHIO_THREAT_EVIDENCE_DIR:-$REPO_ROOT/audits/evidence/threats}"
 
 if [[ ! -f "$THREAT_MODEL" ]]; then

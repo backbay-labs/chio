@@ -1,0 +1,26 @@
+[package]
+name = "chio-ag-ui-proxy"
+description = "AG-UI proxy for Chio -- capability-validated interception of agent-to-UI event streams"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_ag_ui_proxy"
+
+[dependencies]
+chio-core = { workspace = true }
+chio-kernel-core = { path = "../../kernel/chio-kernel-core", default-features = false }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

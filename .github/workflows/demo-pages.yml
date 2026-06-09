@@ -11,7 +11,7 @@ on:
     branches: [main]
     paths:
       - 'docs/demo/**'
-      - 'crates/chio-kernel-browser/**'
+      - 'crates/kernel/chio-kernel-browser/**'
       - 'sdks/typescript/packages/browser/**'
       - 'sdks/typescript/scripts/build-wasm.sh'
       - '.github/workflows/demo-pages.yml'

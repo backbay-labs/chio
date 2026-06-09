@@ -47,7 +47,7 @@ import sys
 import tomllib
 
 expected_target = "x86_64-unknown-linux-gnu"
-with open("crates/chio-conformance/peers.lock.toml", "rb") as fh:
+with open("crates/tooling/chio-conformance/peers.lock.toml", "rb") as fh:
     lock = tomllib.load(fh)
 
 selected = next(
@@ -65,7 +65,7 @@ selected = next(
 if selected is None:
     print(
         "release qualification requires a published python peer for "
-        f"{expected_target} in crates/chio-conformance/peers.lock.toml",
+        f"{expected_target} in crates/tooling/chio-conformance/peers.lock.toml",
         file=sys.stderr,
     )
     raise SystemExit(1)

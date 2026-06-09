@@ -30,7 +30,7 @@ def test_doc_rank_penalizes_planning_unless_requested() -> None:
 
 def test_code_rank_penalizes_generated_and_unrequested_tests() -> None:
     row = {
-        "file_path": "crates/chio-core-types/src/_generated/chio_wire_v1.rs",
+        "file_path": "crates/core/chio-core-types/src/_generated/chio_wire_v1.rs",
         "score": 0.90,
         "crate": "chio-core-types",
         "symbol_hint": "",

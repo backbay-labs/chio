@@ -1,4 +1,4 @@
-# chio-cpp-kernel ships a Rust workspace member (crates/chio-cpp-kernel-ffi)
+# chio-cpp-kernel ships a Rust workspace member (crates/sdk/chio-cpp-kernel-ffi)
 # that must be built before CMake configure. The portfile invokes
 # `cargo build -p chio-cpp-kernel-ffi --release` against the source tarball,
 # then points CMake at the resulting libchio_cpp_kernel_ffi.a via the
@@ -21,7 +21,7 @@ find_program(CARGO_EXECUTABLE cargo)
 if(NOT CARGO_EXECUTABLE)
     message(FATAL_ERROR
         "chio-cpp-kernel requires cargo on PATH to build "
-        "crates/chio-cpp-kernel-ffi. Install a Rust toolchain via rustup, or "
+        "crates/sdk/chio-cpp-kernel-ffi. Install a Rust toolchain via rustup, or "
         "use the prebuilt binaries from the OCI Object Storage binary cache.")
 endif()
 
@@ -43,7 +43,7 @@ vcpkg_cmake_configure(
         -DCHIO_CPP_KERNEL_BUILD_TESTS=OFF
         -DCHIO_CPP_KERNEL_BUILD_EXAMPLES=OFF
         -DCHIO_CPP_KERNEL_ENABLE_FFI=ON
-        "-DCHIO_CPP_KERNEL_FFI_INCLUDE_DIR=${SOURCE_PATH}/crates/chio-cpp-kernel-ffi/include"
+        "-DCHIO_CPP_KERNEL_FFI_INCLUDE_DIR=${SOURCE_PATH}/crates/sdk/chio-cpp-kernel-ffi/include"
         "-DCHIO_CPP_KERNEL_FFI_LIBRARY=${SOURCE_PATH}/target/release/${CHIO_KERNEL_FFI_LIB_NAME}"
 )
 

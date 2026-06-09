@@ -33,8 +33,8 @@ Behaviour:
   - Sets CHIO_BLESS=1 and exports BLESS_REASON for the child process.
   - Refuses to run if CI=true (CI is banned from blessing).
   - Refuses to run on branch 'main' or 'release/*'.
-  - Refuses to run if changes exist under crates/chio-core/src/,
-    crates/chio-core-types/src/, or crates/chio-kernel/src/receipt_support.rs
+  - Refuses to run if changes exist under crates/core/chio-core/src/,
+    crates/core/chio-core-types/src/, or crates/kernel/chio-kernel/src/receipt_support.rs
     without a corresponding modification to docs/replay-compat.md.
   - Refuses to run if other unrelated paths (outside the bless allowlist of
     tests/replay/goldens/, tests/replay/.bless-audit.log, and
@@ -150,7 +150,7 @@ dirty_paths_matching() {
 }
 
 # Replay-source paths whose modification requires a docs/replay-compat.md delta.
-SOURCE_PATTERN='^(crates/chio-core/src/|crates/chio-core-types/src/|crates/chio-kernel/src/receipt_support\.rs$)'
+SOURCE_PATTERN='^(crates/core/chio-core/src/|crates/core/chio-core-types/src/|crates/kernel/chio-kernel/src/receipt_support\.rs$)'
 SOURCE_DIRTY="$(dirty_paths_matching "$SOURCE_PATTERN")"
 
 # Paths in the bless allowlist (always permitted to be dirty during a bless).

@@ -39,7 +39,7 @@ WORKDIR /workspace
 #
 # Note on protobuf: the vendored Envoy protos consumed by
 # chio-envoy-ext-authz's tonic-build live under
-# `crates/chio-envoy-ext-authz/proto` (not a top-level `proto/`), so the
+# `crates/protocol/chio-envoy-ext-authz/proto` (not a top-level `proto/`), so the
 # `COPY crates ./crates` line below covers them transparently -- no
 # separate top-level `COPY proto` needed.
 COPY Cargo.toml Cargo.lock ./

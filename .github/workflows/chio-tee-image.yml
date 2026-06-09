@@ -5,10 +5,10 @@ on:
     paths:
       - deploy/docker/Dockerfile.tee
       - .github/workflows/chio-tee-image.yml
-      - crates/chio-tee/**
-      - crates/chio-tee-frame/**
-      - crates/chio-core-types/**
-      - crates/chio-store-sqlite/**
+      - crates/trust/chio-tee/**
+      - crates/trust/chio-tee-frame/**
+      - crates/core/chio-core-types/**
+      - crates/platform/chio-store-sqlite/**
       - Cargo.toml
       - Cargo.lock
       - examples/tee-sidecar/**
@@ -19,10 +19,10 @@ on:
     paths:
       - deploy/docker/Dockerfile.tee
       - .github/workflows/chio-tee-image.yml
-      - crates/chio-tee/**
-      - crates/chio-tee-frame/**
-      - crates/chio-core-types/**
-      - crates/chio-store-sqlite/**
+      - crates/trust/chio-tee/**
+      - crates/trust/chio-tee-frame/**
+      - crates/core/chio-core-types/**
+      - crates/platform/chio-store-sqlite/**
       - Cargo.toml
       - Cargo.lock
       - examples/tee-sidecar/**

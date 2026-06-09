@@ -39,7 +39,7 @@
 //! exits non-zero on drift; CI uses this mode to catch unfrozen vectors.
 //!
 //! `codegen rust` (alias: `codegen --lang rust`) regenerates the
-//! schema-derived Rust types under `crates/chio-core-types/src/_generated/`
+//! schema-derived Rust types under `crates/core/chio-core-types/src/_generated/`
 //! by invoking `chio_spec_codegen::codegen_rust`. With `--check` it renders
 //! the codegen to memory and exits non-zero if the bytes disagree with the
 //! on-disk file (used by the spec-drift CI lane).
@@ -414,7 +414,7 @@ pub(crate) fn freeze_vectors(args: Vec<String>) -> Result<(), XtaskError> {
 /// Relative path (from workspace root) of the chio-wire/v1 schema directory.
 const CHIO_WIRE_V1_SCHEMAS: &str = "spec/schemas/chio-wire/v1";
 /// Relative path (from workspace root) of the generated Rust output dir.
-const CHIO_WIRE_V1_RUST_OUT: &str = "crates/chio-core-types/src/_generated";
+const CHIO_WIRE_V1_RUST_OUT: &str = "crates/core/chio-core-types/src/_generated";
 
 pub(crate) fn run_codegen(args: Vec<String>) -> Result<(), XtaskError> {
     // Accepted forms:
@@ -1352,20 +1352,20 @@ fn harden_python_provenance_verdict_link(path: &Path) -> Result<(), XtaskError> 
     replace_python_codegen_snippet(
         path,
         &mut body,
-        "    evidenceClass: EvidenceClass | None = Field(\n        None,\n        description=\"Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.\",\n    )\n\n\nclass ChioProvenanceVerdictLink2(BaseModel):",
-        "    evidenceClass: EvidenceClass | None = Field(\n        None,\n        description=\"Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.\",\n    )\n\n    @model_validator(mode=\"after\")\n    def _allow_excludes_rejection_fields(self) -> \"ChioProvenanceVerdictLink1\":\n        if \"reason\" in self.model_fields_set or \"guard\" in self.model_fields_set:\n            raise ValueError(\"allow verdict must not include reason or guard\")\n        return self\n\n\nclass ChioProvenanceVerdictLink2(BaseModel):",
+        "    evidenceClass: EvidenceClass | None = Field(\n        None,\n        description=\"Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.\",\n    )\n\n\nclass ChioProvenanceVerdictLink2(BaseModel):",
+        "    evidenceClass: EvidenceClass | None = Field(\n        None,\n        description=\"Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.\",\n    )\n\n    @model_validator(mode=\"after\")\n    def _allow_excludes_rejection_fields(self) -> \"ChioProvenanceVerdictLink1\":\n        if \"reason\" in self.model_fields_set or \"guard\" in self.model_fields_set:\n            raise ValueError(\"allow verdict must not include reason or guard\")\n        return self\n\n\nclass ChioProvenanceVerdictLink2(BaseModel):",
     )?;
     replace_python_codegen_snippet(
         path,
         &mut body,
-        "    evidenceClass: EvidenceClass | None = Field(\n        None,\n        description=\"Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.\",\n    )\n\n\nclass ChioProvenanceVerdictLink4(BaseModel):",
-        "    evidenceClass: EvidenceClass | None = Field(\n        None,\n        description=\"Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.\",\n    )\n\n    @model_validator(mode=\"after\")\n    def _cancel_excludes_guard(self) -> \"ChioProvenanceVerdictLink3\":\n        if \"guard\" in self.model_fields_set:\n            raise ValueError(\"cancel verdict must not include guard\")\n        return self\n\n\nclass ChioProvenanceVerdictLink4(BaseModel):",
+        "    evidenceClass: EvidenceClass | None = Field(\n        None,\n        description=\"Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.\",\n    )\n\n\nclass ChioProvenanceVerdictLink4(BaseModel):",
+        "    evidenceClass: EvidenceClass | None = Field(\n        None,\n        description=\"Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.\",\n    )\n\n    @model_validator(mode=\"after\")\n    def _cancel_excludes_guard(self) -> \"ChioProvenanceVerdictLink3\":\n        if \"guard\" in self.model_fields_set:\n            raise ValueError(\"cancel verdict must not include guard\")\n        return self\n\n\nclass ChioProvenanceVerdictLink4(BaseModel):",
     )?;
     replace_python_codegen_snippet(
         path,
         &mut body,
-        "    evidenceClass: EvidenceClass | None = Field(\n        None,\n        description=\"Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.\",\n    )\n\n\nclass ChioProvenanceVerdictLink(",
-        "    evidenceClass: EvidenceClass | None = Field(\n        None,\n        description=\"Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.\",\n    )\n\n    @model_validator(mode=\"after\")\n    def _incomplete_excludes_guard(self) -> \"ChioProvenanceVerdictLink4\":\n        if \"guard\" in self.model_fields_set:\n            raise ValueError(\"incomplete verdict must not include guard\")\n        return self\n\n\nclass ChioProvenanceVerdictLink(",
+        "    evidenceClass: EvidenceClass | None = Field(\n        None,\n        description=\"Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.\",\n    )\n\n\nclass ChioProvenanceVerdictLink(",
+        "    evidenceClass: EvidenceClass | None = Field(\n        None,\n        description=\"Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.\",\n    )\n\n    @model_validator(mode=\"after\")\n    def _incomplete_excludes_guard(self) -> \"ChioProvenanceVerdictLink4\":\n        if \"guard\" in self.model_fields_set:\n            raise ValueError(\"incomplete verdict must not include guard\")\n        return self\n\n\nclass ChioProvenanceVerdictLink(",
     )?;
     fs::write(path, body).map_err(|err| XtaskError::Io(display_path(path), err))
 }

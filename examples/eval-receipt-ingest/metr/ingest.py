@@ -7,7 +7,7 @@ import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-FIXTURE_DIR = ROOT / "crates/chio-eval-receipt/tests/fixtures"
+FIXTURE_DIR = ROOT / "crates/sdk/chio-eval-receipt/tests/fixtures"
 OUTPUT = ROOT / "examples/eval-receipt-ingest/metr/out/metr-sample-bundle.json"
 
 SCENARIOS = (
@@ -65,7 +65,7 @@ def build_bundle():
             "name": "chio-verdict-matrix",
             "scenario_count": 48,
             "corpus_sha256": "47e8d5394c807196d9567d97515e786cb1abfb0c7676e54db269ca82c735422f",
-            "manifest_path": "crates/chio-conformance/verdict_matrix/manifest.toml",
+            "manifest_path": "crates/tooling/chio-conformance/verdict_matrix/manifest.toml",
         },
         "receipts": [
             receipt_entry(index, scenario_id, category, verdict)

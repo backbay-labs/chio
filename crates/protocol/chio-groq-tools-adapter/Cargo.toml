@@ -1,0 +1,37 @@
+[package]
+name = "chio-groq-tools-adapter"
+description = "Groq OpenAI-compatible chat/completions tool-use adapter for Chio (pinned to API 2025-04)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+publish = false
+
+[lib]
+name = "chio_groq_tools_adapter"
+
+# Pinned upstream API version. Bumping requires a deliberate PR with a fixture
+# re-record. The same string is exposed at `crate::transport::GROQ_API_VERSION`.
+[package.metadata.chio]
+groq_api_version = "2025-04"
+
+[dependencies]
+chio-core = { package = "chio-core-types", path = "../../core/chio-core-types" }
+chio-provider-adapter-core = { workspace = true }
+chio-tool-call-fabric = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+wiremock = { workspace = true }
+
+[[bench]]
+name = "verdict_latency"
+
+[lints]
+workspace = true

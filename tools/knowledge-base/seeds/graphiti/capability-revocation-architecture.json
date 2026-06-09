@@ -6,17 +6,17 @@
   "body": {
     "summary": "Capability revocation work starts in kernel delegation and revocation stores, checks core capability token and grant semantics, and validates behavior through revocation-oracle plus kernel/core tests.",
     "authoritative_files": [
-      "crates/chio-kernel/src/kernel/delegation.rs",
-      "crates/chio-kernel/src/revocation_store.rs",
-      "crates/chio-core-types/src/capability.rs",
-      "crates/chio-kernel-core/src/capability_verify.rs",
+      "crates/kernel/chio-kernel/src/kernel/delegation.rs",
+      "crates/kernel/chio-kernel/src/revocation_store.rs",
+      "crates/core/chio-core-types/src/capability.rs",
+      "crates/kernel/chio-kernel-core/src/capability_verify.rs",
       "spec/PROTOCOL.md"
     ],
     "tests": [
-      "crates/chio-revocation-oracle/tests/swarm_revocation_e2e.rs",
-      "crates/chio-revocation-oracle/tests/receipt_chain_proof.rs",
-      "crates/chio-revocation-oracle/tests/property_oracle.rs",
-      "crates/chio-kernel-core/tests/revocation_view_concurrency.rs"
+      "crates/trust/chio-revocation-oracle/tests/swarm_revocation_e2e.rs",
+      "crates/trust/chio-revocation-oracle/tests/receipt_chain_proof.rs",
+      "crates/trust/chio-revocation-oracle/tests/property_oracle.rs",
+      "crates/kernel/chio-kernel-core/tests/revocation_view_concurrency.rs"
     ],
     "constraints": [
       "Treat revocation as part of capability validation and receipt evidence, not an isolated product feature.",

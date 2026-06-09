@@ -856,12 +856,12 @@ mod tests {
     #[test]
     fn clause_4_dirty_unrelated_path_refuses() {
         let env = StubEnv::happy();
-        let git = StubGit::happy().with_dirty(&["crates/chio-kernel/src/lib.rs"]);
+        let git = StubGit::happy().with_dirty(&["crates/kernel/chio-kernel/src/lib.rs"]);
         let err = evaluate_gate(&env, &git, true, fixture(), fixed_now())
             .expect_err("must refuse dirty unrelated path");
         match err {
             BlessGateError::DirtyWorkingTree(paths) => {
-                assert!(paths.contains("crates/chio-kernel/src/lib.rs"));
+                assert!(paths.contains("crates/kernel/chio-kernel/src/lib.rs"));
             }
             other => panic!("got {other:?}"),
         }

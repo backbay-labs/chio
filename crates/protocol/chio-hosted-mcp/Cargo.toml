@@ -1,0 +1,34 @@
+[package]
+name = "chio-hosted-mcp"
+description = "Hosted MCP runtime surface for Chio"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+publish = false
+
+[package.metadata.chio]
+public_entrypoint = true
+
+[lib]
+name = "chio_hosted_mcp"
+
+[dependencies]
+chio-control-plane = { workspace = true }
+chio-mcp-remote = { workspace = true }
+
+[dev-dependencies]
+base64 = "0.22"
+chio-core = { package = "chio-core-types", path = "../../core/chio-core-types" }
+chio-kernel = { workspace = true }
+chio-siem = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+reqwest = { workspace = true, features = ["blocking", "form", "json", "query", "rustls"] }
+sha2 = { workspace = true }
+url = "2"
+
+[lints]
+workspace = true

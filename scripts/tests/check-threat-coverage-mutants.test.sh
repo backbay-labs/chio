@@ -64,7 +64,7 @@ threat = {
     "coverage_state": state,
 }
 if has_coveredby == "1":
-    threat["coveredBy"] = [f"crates/chio-conformance/tests/threats/{threat_id}.rs"]
+    threat["coveredBy"] = [f"crates/tooling/chio-conformance/tests/threats/{threat_id}.rs"]
 
 with open(path, "w") as fh:
     json.dump({"threats": [threat]}, fh)
@@ -290,7 +290,7 @@ with open(sys.argv[1], "w") as fh:
         "surfaces": ["native_chio"],
         "coverage_state": "partial",
         "deferred_to": "future-threat-coverage-closure",
-        "coveredBy": ["crates/chio-conformance/tests/threats/partial_with_deferred.rs"],
+        "coveredBy": ["crates/tooling/chio-conformance/tests/threats/partial_with_deferred.rs"],
     }]}, fh)
     fh.write("\n")
 PY

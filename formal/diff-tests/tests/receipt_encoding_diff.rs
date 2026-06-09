@@ -16,7 +16,7 @@
 //! cross-language oracle. The corpus was produced by the Rust binding-helpers
 //! generator and is exercised in lockstep by:
 //!
-//!   - Rust:        `crates/chio-binding-helpers/tests/vector_fixtures.rs`
+//!   - Rust:        `crates/sdk/chio-binding-helpers/tests/vector_fixtures.rs`
 //!     `receipt_fixture_cases_round_trip_through_public_api`
 //!   - Python:      `sdks/python/chio-py/tests/test_vectors.py`
 //!     compares `receipt_body_canonical_json(receipt)` against the

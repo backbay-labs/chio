@@ -75,11 +75,11 @@ examples/**/obj/
 sdks/dotnet/**/bin/
 sdks/dotnet/**/obj/
 # verdict-matrix deployment-shape driver build outputs (dotnet / jvm / go)
-crates/chio-conformance/verdict_matrix/drivers/**/bin/
-crates/chio-conformance/verdict_matrix/drivers/**/obj/
-crates/chio-conformance/verdict_matrix/drivers/**/build/
-crates/chio-conformance/verdict_matrix/drivers/**/.gradle/
-crates/chio-conformance/verdict_matrix/drivers/k8s/k8s
+crates/tooling/chio-conformance/verdict_matrix/drivers/**/bin/
+crates/tooling/chio-conformance/verdict_matrix/drivers/**/obj/
+crates/tooling/chio-conformance/verdict_matrix/drivers/**/build/
+crates/tooling/chio-conformance/verdict_matrix/drivers/**/.gradle/
+crates/tooling/chio-conformance/verdict_matrix/drivers/k8s/k8s
 
 # Generated coverage artifacts
 /coverage/*
@@ -106,8 +106,8 @@ sdks/typescript/chio-ts/dist/
 sdks/typescript/chio-ts/node_modules/
 sdks/python/chio-py/build/
 sdks/python/chio-py/src/*.egg-info/
-crates/chio-cli/dashboard/dist/
-crates/chio-cli/dashboard/node_modules/
+crates/products/chio-cli/dashboard/dist/
+crates/products/chio-cli/dashboard/node_modules/
 tests/conformance/results/generated/
 tests/conformance/reports/generated/
 

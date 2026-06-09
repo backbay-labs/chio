@@ -9,16 +9,16 @@
         {
           "name": "http_receipt",
           "schemaRef": "spec/schemas/chio-http/v1/http-receipt.schema.json",
-          "typeWitness": "crates/chio-http-core/src/receipt.rs"
+          "typeWitness": "crates/platform/chio-http-core/src/receipt.rs"
         },
         {
           "name": "kernel_checkpoint_statement",
-          "typeWitness": "crates/chio-kernel/src/checkpoint.rs"
+          "typeWitness": "crates/kernel/chio-kernel/src/checkpoint.rs"
         },
         {
           "name": "anchor_inclusion_proof_example",
           "exampleRef": "docs/standards/CHIO_ANCHOR_INCLUSION_PROOF_EXAMPLE.json",
-          "typeWitness": "crates/chio-kernel/src/checkpoint.rs"
+          "typeWitness": "crates/kernel/chio-kernel/src/checkpoint.rs"
         }
       ]
     },
@@ -29,12 +29,12 @@
         {
           "name": "settlement_profile",
           "profileRef": "docs/standards/CHIO_SETTLE_PROFILE.md",
-          "typeWitness": "crates/chio-settle/src"
+          "typeWitness": "crates/economy/chio-settle/src"
         },
         {
           "name": "settlement_receipt_example",
           "exampleRef": "docs/standards/CHIO_WEB3_SETTLEMENT_RECEIPT_EXAMPLE.json",
-          "typeWitness": "crates/chio-settle/src/observe.rs"
+          "typeWitness": "crates/economy/chio-settle/src/observe.rs"
         }
       ]
     },
@@ -44,15 +44,15 @@
       "artifacts": [
         {
           "name": "underwriting_decision_artifact",
-          "typeWitness": "crates/chio-underwriting/src/lib.rs"
+          "typeWitness": "crates/economy/chio-underwriting/src/lib.rs"
         },
         {
           "name": "credit_facility_artifact",
-          "typeWitness": "crates/chio-credit/src/lib.rs"
+          "typeWitness": "crates/economy/chio-credit/src/lib.rs"
         },
         {
           "name": "capital_execution_instruction",
-          "typeWitness": "crates/chio-credit/src/credit/capital_and_execution.rs"
+          "typeWitness": "crates/economy/chio-credit/src/credit/capital_and_execution.rs"
         }
       ]
     },
@@ -62,11 +62,11 @@
       "artifacts": [
         {
           "name": "liability_claim_settlement_receipt",
-          "typeWitness": "crates/chio-market/src/lib.rs"
+          "typeWitness": "crates/economy/chio-market/src/lib.rs"
         },
         {
           "name": "open_market_fee_schedule",
-          "typeWitness": "crates/chio-open-market/src/lib.rs"
+          "typeWitness": "crates/economy/chio-open-market/src/lib.rs"
         }
       ]
     }

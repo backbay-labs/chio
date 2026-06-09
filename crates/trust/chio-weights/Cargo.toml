@@ -1,0 +1,53 @@
+[package]
+name = "chio-weights"
+description = "Chio model-card surface (signed weights cards, cosign bundle helper, kernel binding refusal, arc bind --card)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_weights"
+
+[dependencies]
+chio-core-types = { workspace = true }
+chio-attest-verify = { workspace = true }
+chio-lineage = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
+sha2 = { workspace = true }
+hex = { workspace = true }
+
+[dev-dependencies]
+chio-provider-conformance = { workspace = true }
+toml = { workspace = true }
+
+[features]
+default = []
+# Smoke subset gate: PR CI runs cross-provider equivalence on the
+# canonical 8-fixture cross_provider matrix (one fixture per provider
+# / adversary class) when this feature is enabled. The full
+# 8-provider * 12-fixture sweep (96 fixtures) runs nightly via the
+# existing nightly conformance lane and is not duplicated here.
+smoke = []
+# `kani` is an opt-in feature toggle for the model-checked harness
+# module (`src/kani_public_harnesses.rs`). The module body itself is
+# gated by `#[cfg(kani)]` so production builds never compile it; this
+# feature is kept available for tooling that wants to opt in without
+# invoking the Kani toolchain. No production code path depends on it.
+kani = []
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+
+[lints.rust]
+# `cfg(kani)` is set automatically by the Kani toolchain (see
+# `crates/trust/chio-weights/src/kani_public_harnesses.rs`). Register the
+# cfg with check-cfg so default `cargo build` / `cargo clippy` passes
+# do not warn about an unknown cfg name.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }

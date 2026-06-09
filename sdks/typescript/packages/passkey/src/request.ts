@@ -11,7 +11,7 @@
 //     etc.) and forwarded as base64url-encoded bytes.
 //   * No envelope is signed in the browser. The audience-pinned
 //     PasskeyCapability is signed server-side by the issuer using the
-//     HybridBackend (see crates/chio-custody-hw/src/issuer.rs).
+//     HybridBackend (see crates/trust/chio-custody-hw/src/issuer.rs).
 //   * Fail-closed at every step. A missing issuer challenge, a missing
 //     navigator.credentials, a non-2xx fetch, or a structurally invalid
 //     capability all throw with a stable urn:chio:error:custody:* code.

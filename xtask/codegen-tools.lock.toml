@@ -13,8 +13,8 @@ schema_version = 1
 [rust]
 tool = "typify"
 version = "0.4.3"
-# Pinned via Cargo's `=` requirement in crates/chio-spec-codegen/Cargo.toml.
-consumed_by = "crates/chio-spec-codegen/Cargo.toml"
+# Pinned via Cargo's `=` requirement in crates/tooling/chio-spec-codegen/Cargo.toml.
+consumed_by = "crates/tooling/chio-spec-codegen/Cargo.toml"
 notes = """
 typify is invoked in-process from the chio-spec-codegen library. Version
 0.4.3 is the floor that supports schemars 0.8 RootSchema parsing of the

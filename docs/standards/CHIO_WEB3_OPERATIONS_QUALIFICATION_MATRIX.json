@@ -6,7 +6,7 @@
       "id": "link.global_pause_and_runtime_alerts",
       "component": "chio-link",
       "evidence": [
-        "crates/chio-link/src/lib.rs",
+        "crates/economy/chio-link/src/lib.rs",
         "target/web3-ops-qualification/runtime-reports/chio-link-runtime-report.json",
         "target/web3-ops-qualification/control-state/chio-link-control-state.json",
         "target/web3-ops-qualification/control-traces/chio-link-control-trace.json"
@@ -18,7 +18,7 @@
       "id": "anchor.indexer_drift_and_recovery_only_controls",
       "component": "chio-anchor",
       "evidence": [
-        "crates/chio-anchor/src/ops.rs",
+        "crates/economy/chio-anchor/src/ops.rs",
         "target/web3-ops-qualification/runtime-reports/chio-anchor-runtime-report.json",
         "target/web3-ops-qualification/control-state/chio-anchor-control-state.json",
         "target/web3-ops-qualification/control-traces/chio-anchor-control-trace.json"
@@ -30,7 +30,7 @@
       "id": "settle.reorg_recovery_and_refund_only_controls",
       "component": "chio-settle",
       "evidence": [
-        "crates/chio-settle/src/ops.rs",
+        "crates/economy/chio-settle/src/ops.rs",
         "target/web3-ops-qualification/runtime-reports/chio-settle-runtime-report.json",
         "target/web3-ops-qualification/control-state/chio-settle-control-state.json",
         "target/web3-ops-qualification/control-traces/chio-settle-control-trace.json"
@@ -44,7 +44,7 @@
       "evidence": [
         "contracts/reports/local-devnet-qualification.json",
         "contracts/deployments/runtime-devnet.json",
-        "crates/chio-settle/tests/runtime_devnet.rs"
+        "crates/economy/chio-settle/tests/runtime_devnet.rs"
       ],
       "command": "pnpm --dir contracts devnet:smoke && CARGO_TARGET_DIR=target/chio-settle-runtime CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test -p chio-settle --test runtime_devnet -- --nocapture",
       "expectedOutcome": "The local end-to-end lane keeps contract, anchor, settlement, and observation evidence aligned."
@@ -53,8 +53,8 @@
       "id": "kernel.web3_evidence_fail_closed_gates",
       "component": "chio-kernel-plus-control-plane",
       "evidence": [
-        "crates/chio-kernel/src/lib.rs",
-        "crates/chio-control-plane/src/lib.rs",
+        "crates/kernel/chio-kernel/src/lib.rs",
+        "crates/platform/chio-control-plane/src/lib.rs",
         "scripts/qualify-web3-runtime.sh",
         "target/web3-ops-qualification/incident-audit.json"
       ],

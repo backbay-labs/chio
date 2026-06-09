@@ -17,8 +17,8 @@
     "contracts/artifacts/ChioPriceResolver.json"
   ],
   "bindings": [
-    "crates/chio-web3-bindings/src/interfaces.rs",
-    "crates/chio-web3-bindings/src/lib.rs"
+    "crates/economy/chio-web3-bindings/src/interfaces.rs",
+    "crates/economy/chio-web3-bindings/src/lib.rs"
   ],
   "deployment_manifests": [
     "contracts/deployments/base-mainnet.template.json",

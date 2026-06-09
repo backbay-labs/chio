@@ -4,7 +4,7 @@
 # Cross-reference gate for formal/MAPPING.md. Asserts that every named
 # TLA+ safety/liveness invariant in formal/tla/RevocationPropagation.tla
 # and every #[kani::proof] harness in
-# crates/chio-kernel-core/src/kani_public_harnesses.rs has a
+# crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs has a
 # corresponding row in formal/MAPPING.md. Exits non-zero with a
 # human-readable diff if any property is unmapped.
 
@@ -18,7 +18,7 @@ cd "${repo_root}"
 
 mapping="formal/MAPPING.md"
 tla="formal/tla/RevocationPropagation.tla"
-kani="crates/chio-kernel-core/src/kani_public_harnesses.rs"
+kani="crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs"
 
 # --- Sanity: source files must exist ----------------------------------------
 missing_inputs=0

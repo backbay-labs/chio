@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-source_file="crates/chio-kernel-core/src/formal_aeneas.rs"
+source_file="crates/kernel/chio-kernel-core/src/formal_aeneas.rs"
 work_dir="target/formal/aeneas-production"
 llbc_dir="${work_dir}/llbc"
 lean_dir="${work_dir}/lean"

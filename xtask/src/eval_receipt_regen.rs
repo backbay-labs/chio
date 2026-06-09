@@ -58,7 +58,7 @@ fn generate_vector() -> Result<String, XtaskError> {
             category: "capability_subset",
             verdict: "allow",
             receipt_payload: include_str!(
-                "../../crates/chio-eval-receipt/tests/fixtures/capability-subset-001-read-exact.receipt.json"
+                "../../crates/sdk/chio-eval-receipt/tests/fixtures/capability-subset-001-read-exact.receipt.json"
             ),
             trace_id: "trace-capability-001",
             sample_id: "sample-capability-001",
@@ -69,7 +69,7 @@ fn generate_vector() -> Result<String, XtaskError> {
             category: "revocation_propagation",
             verdict: "allow",
             receipt_payload: include_str!(
-                "../../crates/chio-eval-receipt/tests/fixtures/revocation-propagation-001-active-read.receipt.json"
+                "../../crates/sdk/chio-eval-receipt/tests/fixtures/revocation-propagation-001-active-read.receipt.json"
             ),
             trace_id: "trace-revocation-001",
             sample_id: "sample-revocation-001",
@@ -80,7 +80,7 @@ fn generate_vector() -> Result<String, XtaskError> {
             category: "replay_verdict",
             verdict: "allow",
             receipt_payload: include_str!(
-                "../../crates/chio-eval-receipt/tests/fixtures/replay-verdict-001-fresh-read.receipt.json"
+                "../../crates/sdk/chio-eval-receipt/tests/fixtures/replay-verdict-001-fresh-read.receipt.json"
             ),
             trace_id: "trace-replay-001",
             sample_id: "sample-replay-001",

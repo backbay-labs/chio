@@ -9,7 +9,7 @@ from types import ModuleType
 def repo_root() -> Path:
     current = Path(__file__).resolve()
     for parent in current.parents:
-        if (parent / "crates/chio-conformance/verdict_matrix").exists():
+        if (parent / "crates/tooling/chio-conformance/verdict_matrix").exists():
             return parent
     raise RuntimeError(f"could not find repo root from {current}")
 
@@ -18,7 +18,7 @@ def load_driver() -> ModuleType:
     root = repo_root()
     driver_path = (
         root
-        / "crates/chio-conformance/verdict_matrix/drivers/python/run_scenarios.py"
+        / "crates/tooling/chio-conformance/verdict_matrix/drivers/python/run_scenarios.py"
     )
     spec = importlib.util.spec_from_file_location(
         "verdict_matrix_python_driver",
@@ -34,7 +34,7 @@ def load_driver() -> ModuleType:
 
 async def test_python_driver_matches_verdict_matrix_corpus() -> None:
     driver = load_driver()
-    root = repo_root() / "crates/chio-conformance/verdict_matrix/scenarios"
+    root = repo_root() / "crates/tooling/chio-conformance/verdict_matrix/scenarios"
     report = await driver.run_scenarios(root)
 
     assert report["driver"] == "python-sdk"

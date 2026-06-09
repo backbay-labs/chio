@@ -105,7 +105,7 @@ grep -F "crates/chio-demo/src/lib.rs:2" \
 
 federation_bbs_stub="$work/federation-bbs-stub"
 init_case "$federation_bbs_stub"
-write_file "$federation_bbs_stub/crates/chio-federation/src/selective_disclosure.rs" \
+write_file "$federation_bbs_stub/crates/trust/chio-federation/src/selective_disclosure.rs" \
   "#[cfg(feature = \"bbs-stub\")]" \
   "pub fn project() { /* bbs-stub placeholder projection */ }"
 track_case "$federation_bbs_stub"
@@ -116,7 +116,7 @@ grep -F "production stub-surface hit is not allowlisted" \
 
 federation_unrelated="$work/federation-unrelated"
 init_case "$federation_unrelated"
-write_file "$federation_unrelated/crates/chio-federation/src/selective_disclosure.rs" \
+write_file "$federation_unrelated/crates/trust/chio-federation/src/selective_disclosure.rs" \
   "#[cfg(feature = \"bbs-stub\")]" \
   "pub fn project() { /* bbs-stub placeholder projection */ }" \
   "pub fn unrelated() { /* TODO: unrelated production work */ }"
@@ -128,7 +128,7 @@ grep -F "production stub-surface hit is not allowlisted" \
 
 guard_unrelated="$work/guard-unrelated"
 init_case "$guard_unrelated"
-write_file "$guard_unrelated/crates/chio-cli/src/guard.rs" \
+write_file "$guard_unrelated/crates/products/chio-cli/src/guard.rs" \
   "// Replace this stub with real policy logic before shipping." \
   "pub fn unrelated() { /* TODO: unrelated production work */ }"
 track_case "$guard_unrelated"
@@ -139,12 +139,12 @@ grep -F "does not match reviewed allowlist patterns" \
 
 sidecar_deny="$work/sidecar-deny"
 init_case "$sidecar_deny"
-write_file "$sidecar_deny/crates/chio-api-protect/src/proxy/sidecar.rs" \
+write_file "$sidecar_deny/crates/products/chio-api-protect/src/proxy/sidecar.rs" \
   "// Capability attenuation (501 not_yet_implemented stub)"
 track_case "$sidecar_deny"
 assert_rc "$(run_checker "$sidecar_deny" "$work/sidecar-deny.out" "$work/sidecar-deny.err")" 1 \
   "sidecar attenuation stub remains a hard failure"
-grep -F "crates/chio-api-protect/src/proxy/sidecar.rs:1" "$work/sidecar-deny.err" >/dev/null
+grep -F "crates/products/chio-api-protect/src/proxy/sidecar.rs:1" "$work/sidecar-deny.err" >/dev/null
 grep -F "production stub-surface hit is not allowlisted" "$work/sidecar-deny.err" >/dev/null
 
 echo "check-stub-surfaces.test.sh: all assertions passed"

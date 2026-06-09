@@ -33,8 +33,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-chio-core-types = { path = "$SOURCE/crates/chio-core-types" }
-chio-selective-disclosure = { path = "$SOURCE/crates/chio-selective-disclosure", features = ["bbs"] }
+chio-core-types = { path = "$SOURCE/crates/core/chio-core-types" }
+chio-selective-disclosure = { path = "$SOURCE/crates/trust/chio-selective-disclosure", features = ["bbs"] }
 serde_json = { version = "1" }
 EOF
 

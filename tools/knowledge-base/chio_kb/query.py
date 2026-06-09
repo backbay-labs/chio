@@ -83,9 +83,9 @@ NOISY_CONTEXT_DOC_PREFIXES = (
 )
 
 EVIDENCE_EXPORT_PATHS = {
-    "crates/chio-cli/src/evidence_export.rs",
-    "crates/chio-kernel/src/evidence_export.rs",
-    "crates/chio-store-sqlite/src/evidence_export.rs",
+    "crates/products/chio-cli/src/evidence_export.rs",
+    "crates/kernel/chio-kernel/src/evidence_export.rs",
+    "crates/platform/chio-store-sqlite/src/evidence_export.rs",
 }
 
 
@@ -103,82 +103,82 @@ DOMAIN_CODE_HINTS: list[tuple[set[str], list[str]]] = [
     (
         {"capability", "validation"},
         [
-            "crates/chio-kernel/src/kernel/mod.rs",
-            "crates/chio-core-types/src/capability.rs",
-            "crates/chio-kernel/src/kernel/delegation.rs",
-            "crates/chio-http-core/src/authority.rs",
-            "crates/chio-kernel-core/src/capability_verify.rs",
-            "crates/chio-kernel-core/src/scope.rs",
+            "crates/kernel/chio-kernel/src/kernel/mod.rs",
+            "crates/core/chio-core-types/src/capability.rs",
+            "crates/kernel/chio-kernel/src/kernel/delegation.rs",
+            "crates/platform/chio-http-core/src/authority.rs",
+            "crates/kernel/chio-kernel-core/src/capability_verify.rs",
+            "crates/kernel/chio-kernel-core/src/scope.rs",
         ],
     ),
     (
         {"delegated", "capability", "revocation"},
         [
-            "crates/chio-kernel/src/kernel/delegation.rs",
-            "crates/chio-kernel/src/revocation_store.rs",
-            "crates/chio-core-types/src/capability.rs",
-            "crates/chio-kernel-core/src/capability_verify.rs",
+            "crates/kernel/chio-kernel/src/kernel/delegation.rs",
+            "crates/kernel/chio-kernel/src/revocation_store.rs",
+            "crates/core/chio-core-types/src/capability.rs",
+            "crates/kernel/chio-kernel-core/src/capability_verify.rs",
         ],
     ),
     (
         {"guard", "pipeline"},
         [
-            "crates/chio-guards/src/pipeline.rs",
-            "crates/chio-guards/src/lib.rs",
-            "crates/chio-kernel/src/kernel/evaluator.rs",
-            "crates/chio-guards/src/mcp_tool.rs",
+            "crates/guards/chio-guards/src/pipeline.rs",
+            "crates/guards/chio-guards/src/lib.rs",
+            "crates/kernel/chio-kernel/src/kernel/evaluator.rs",
+            "crates/guards/chio-guards/src/mcp_tool.rs",
         ],
     ),
     (
         {"policy", "compiler"},
         [
-            "crates/chio-policy/src/validate.rs",
-            "crates/chio-policy/src/evaluate/engine.rs",
-            "crates/chio-policy/src/lib.rs",
-            "crates/chio-policy/src/models.rs",
-            "crates/chio-policy/src/compiler.rs",
+            "crates/guards/chio-policy/src/validate.rs",
+            "crates/guards/chio-policy/src/evaluate/engine.rs",
+            "crates/guards/chio-policy/src/lib.rs",
+            "crates/guards/chio-policy/src/models.rs",
+            "crates/guards/chio-policy/src/compiler.rs",
         ],
     ),
     (
         {"mcp", "adapter"},
         [
-            "crates/chio-mcp-adapter/src/lib.rs",
-            "crates/chio-mcp-adapter/src/transport.rs",
-            "crates/chio-mcp-adapter/src/native.rs",
-            "crates/chio-mcp-edge/src/runtime.rs",
+            "crates/protocol/chio-mcp-adapter/src/lib.rs",
+            "crates/protocol/chio-mcp-adapter/src/transport.rs",
+            "crates/protocol/chio-mcp-adapter/src/native.rs",
+            "crates/protocol/chio-mcp-edge/src/runtime.rs",
         ],
     ),
     (
         {"compliance", "certificate"},
         [
-            "crates/chio-kernel/src/compliance_certificate.rs",
-            "crates/chio-kernel/tests/compliance_certificate_hybrid.rs",
-            "crates/chio-acp-proxy/src/compliance.rs",
-            "crates/chio-store-sqlite/src/receipt_store/reports.rs",
-            "crates/chio-store-sqlite/src/evidence_export.rs",
-            "crates/chio-cli/src/evidence_export.rs",
-            "crates/chio-kernel/src/evidence_export.rs",
-            "crates/chio-core-types/src/receipt.rs",
+            "crates/kernel/chio-kernel/src/compliance_certificate.rs",
+            "crates/kernel/chio-kernel/tests/compliance_certificate_hybrid.rs",
+            "crates/protocol/chio-acp-proxy/src/compliance.rs",
+            "crates/platform/chio-store-sqlite/src/receipt_store/reports.rs",
+            "crates/platform/chio-store-sqlite/src/evidence_export.rs",
+            "crates/products/chio-cli/src/evidence_export.rs",
+            "crates/kernel/chio-kernel/src/evidence_export.rs",
+            "crates/core/chio-core-types/src/receipt.rs",
         ],
     ),
     (
         {"evidence", "export"},
         [
-            "crates/chio-cli/src/evidence_export.rs",
-            "crates/chio-kernel/src/evidence_export.rs",
-            "crates/chio-store-sqlite/src/evidence_export.rs",
-            "crates/chio-store-sqlite/src/receipt_store/reports.rs",
-            "crates/chio-http-core/src/receipt.rs",
+            "crates/products/chio-cli/src/evidence_export.rs",
+            "crates/kernel/chio-kernel/src/evidence_export.rs",
+            "crates/platform/chio-store-sqlite/src/evidence_export.rs",
+            "crates/platform/chio-store-sqlite/src/receipt_store/reports.rs",
+            "crates/platform/chio-http-core/src/receipt.rs",
         ],
     ),
     (
         {"release", "qualification"},
         [
-            "crates/chio-cli/src/evidence_export.rs",
-            "crates/chio-kernel/src/evidence_export.rs",
-            "crates/chio-store-sqlite/src/evidence_export.rs",
-            "crates/chio-conformance/src/report.rs",
-            "crates/chio-conformance/src/runner.rs",
+            "crates/products/chio-cli/src/evidence_export.rs",
+            "crates/kernel/chio-kernel/src/evidence_export.rs",
+            "crates/platform/chio-store-sqlite/src/evidence_export.rs",
+            "crates/tooling/chio-conformance/src/report.rs",
+            "crates/tooling/chio-conformance/src/runner.rs",
         ],
     ),
 ]
@@ -246,20 +246,20 @@ DOMAIN_TEST_HINTS: list[tuple[set[str], list[str]]] = [
     (
         {"revocation"},
         [
-            "crates/chio-revocation-oracle/tests/swarm_revocation_e2e.rs",
-            "crates/chio-revocation-oracle/tests/receipt_chain_proof.rs",
-            "crates/chio-revocation-oracle/tests/property_oracle.rs",
-            "crates/chio-revocation-oracle/tests/scaffold.rs",
-            "crates/chio-kernel-core/tests/revocation_view_concurrency.rs",
-            "crates/chio-cli/tests/trust_revocation.rs",
+            "crates/trust/chio-revocation-oracle/tests/swarm_revocation_e2e.rs",
+            "crates/trust/chio-revocation-oracle/tests/receipt_chain_proof.rs",
+            "crates/trust/chio-revocation-oracle/tests/property_oracle.rs",
+            "crates/trust/chio-revocation-oracle/tests/scaffold.rs",
+            "crates/kernel/chio-kernel-core/tests/revocation_view_concurrency.rs",
+            "crates/products/chio-cli/tests/trust_revocation.rs",
         ],
     ),
     (
         {"delegation", "revocation"},
         [
-            "crates/chio-revocation-oracle/tests/swarm_revocation_e2e.rs",
-            "crates/chio-revocation-oracle/tests/receipt_chain_proof.rs",
-            "crates/chio-conformance/tests/threats/delegation_chain_abuse.rs",
+            "crates/trust/chio-revocation-oracle/tests/swarm_revocation_e2e.rs",
+            "crates/trust/chio-revocation-oracle/tests/receipt_chain_proof.rs",
+            "crates/tooling/chio-conformance/tests/threats/delegation_chain_abuse.rs",
             "tests/conformance/native/scenarios/delegation-attenuation.json",
             "tests/conformance/native/scenarios/revocation-propagation.json",
         ],
@@ -267,25 +267,25 @@ DOMAIN_TEST_HINTS: list[tuple[set[str], list[str]]] = [
     (
         {"compliance", "certificate"},
         [
-            "crates/chio-kernel/tests/compliance_certificate_hybrid.rs",
-            "crates/chio-cli/tests/evidence_export.rs",
-            "crates/chio-kernel/src/kernel/tests/compliance_score.rs",
-            "crates/chio-http-core/tests/compliance_score_endpoint.rs",
+            "crates/kernel/chio-kernel/tests/compliance_certificate_hybrid.rs",
+            "crates/products/chio-cli/tests/evidence_export.rs",
+            "crates/kernel/chio-kernel/src/kernel/tests/compliance_score.rs",
+            "crates/platform/chio-http-core/tests/compliance_score_endpoint.rs",
         ],
     ),
     (
         {"evidence", "export"},
         [
-            "crates/chio-cli/tests/evidence_export.rs",
-            "crates/chio-kernel/tests/compliance_certificate_hybrid.rs",
-            "crates/chio-store-sqlite/src/receipt_store/tests.rs",
+            "crates/products/chio-cli/tests/evidence_export.rs",
+            "crates/kernel/chio-kernel/tests/compliance_certificate_hybrid.rs",
+            "crates/platform/chio-store-sqlite/src/receipt_store/tests.rs",
         ],
     ),
     (
         {"guard", "pipeline"},
         [
-            "crates/chio-guards/tests/integration.rs",
-            "crates/chio-guards/tests/output_sanitization.rs",
+            "crates/guards/chio-guards/tests/integration.rs",
+            "crates/guards/chio-guards/tests/output_sanitization.rs",
             "tests/e2e/tests/guard_platform_e2e.rs",
             "tests/conformance/fixtures/guard/tool-gate.yaml",
         ],
@@ -293,9 +293,9 @@ DOMAIN_TEST_HINTS: list[tuple[set[str], list[str]]] = [
     (
         {"policy", "compiler"},
         [
-            "crates/chio-policy/tests/compile_policy.rs",
-            "crates/chio-policy/tests/validate_boundary.rs",
-            "crates/chio-policy/tests/integration_smoke.rs",
+            "crates/guards/chio-policy/tests/compile_policy.rs",
+            "crates/guards/chio-policy/tests/validate_boundary.rs",
+            "crates/guards/chio-policy/tests/integration_smoke.rs",
         ],
     ),
     (
@@ -303,16 +303,16 @@ DOMAIN_TEST_HINTS: list[tuple[set[str], list[str]]] = [
         [
             "integrations/mcp-adapter/tests/transport_round_trip.rs",
             "integrations/mcp-adapter/tests/conformance_suite.rs",
-            "crates/chio-mcp-adapter/tests/integration_smoke.rs",
-            "crates/chio-cli/tests/mcp_wrap_e2e.rs",
+            "crates/protocol/chio-mcp-adapter/tests/integration_smoke.rs",
+            "crates/products/chio-cli/tests/mcp_wrap_e2e.rs",
         ],
     ),
     (
         {"sdk", "conformance"},
         [
-            "crates/chio-conformance/tests/mcp_core_live.rs",
-            "crates/chio-conformance/tests/mcp_core_cpp_live.rs",
-            "crates/chio-conformance/verdict_matrix/tests/verdict_matrix_cross_language.rs",
+            "crates/tooling/chio-conformance/tests/mcp_core_live.rs",
+            "crates/tooling/chio-conformance/tests/mcp_core_cpp_live.rs",
+            "crates/tooling/chio-conformance/verdict_matrix/tests/verdict_matrix_cross_language.rs",
             "sdks/typescript/packages/conformance/test/verdict_matrix.test.ts",
         ],
     ),
@@ -474,7 +474,7 @@ def _single_query_plan(intent: str, feature_or_task: str) -> QueryPlan:
             code_query="MCP adapter transport envelope initialize tools call receipt bridge",
             docs_query="MCP adapter conformance edge protocol bridge docs",
             tests_query="MCP adapter transport conformance suite tools call",
-            graph_query="crates/chio-mcp-adapter/src/lib.rs",
+            graph_query="crates/protocol/chio-mcp-adapter/src/lib.rs",
             memory_query="MCP adapter SDK conformance workflow",
         )
     if intent == "sdk-conformance":
@@ -690,12 +690,12 @@ def _code_rank(row: dict[str, Any], query: str, filters: Mapping[str, Any] | Non
         components["evidence_export_anchor"] = 1.20
         why.append("evidence export implementation anchor")
     if intent == "release-qualification" and path in {
-        "crates/chio-cli/src/evidence_export.rs",
-        "crates/chio-kernel/src/evidence_export.rs",
+        "crates/products/chio-cli/src/evidence_export.rs",
+        "crates/kernel/chio-kernel/src/evidence_export.rs",
     }:
         components["release_qualification_anchor"] = 0.55
         why.append("release qualification evidence anchor")
-    if intent == "compliance-certificate" and path == "crates/chio-kernel/src/compliance_certificate.rs":
+    if intent == "compliance-certificate" and path == "crates/kernel/chio-kernel/src/compliance_certificate.rs":
         components["compliance_certificate_anchor"] = 0.45
         why.append("compliance certificate implementation anchor")
     if filters:
@@ -1029,10 +1029,10 @@ async def _test_hint_rows(value: str, limit: int) -> list[dict[str, Any]]:
         score = 2.80 - (0.12 * index)
         why = ["curated Chio test path hint"]
         if terms & {"revocation", "revoked"}:
-            if "crates/chio-revocation-oracle/tests/" in path:
+            if "crates/trust/chio-revocation-oracle/tests/" in path:
                 score += 0.50
                 why.append("revocation-oracle test preferred for revocation query")
-            if path == "crates/chio-kernel-core/tests/revocation_view_concurrency.rs":
+            if path == "crates/kernel/chio-kernel-core/tests/revocation_view_concurrency.rs":
                 score += 0.95
                 why.append("kernel-core revocation test preferred")
             if path.endswith("/scaffold.rs"):
@@ -1044,10 +1044,10 @@ async def _test_hint_rows(value: str, limit: int) -> list[dict[str, Any]]:
         if terms & {"guard", "redaction", "redact", "output"} and path.endswith("output_sanitization.rs"):
             score += 0.45
             why.append("output sanitization test preferred for redaction query")
-        if terms & {"guard", "policy", "compiler"} and path == "crates/chio-policy/tests/compile_policy.rs":
+        if terms & {"guard", "policy", "compiler"} and path == "crates/guards/chio-policy/tests/compile_policy.rs":
             score += 1.05
             why.append("policy compiler test preferred for guard policy query")
-        if terms & {"sdk", "conformance", "verdict"} and path == "crates/chio-conformance/verdict_matrix/tests/verdict_matrix_cross_language.rs":
+        if terms & {"sdk", "conformance", "verdict"} and path == "crates/tooling/chio-conformance/verdict_matrix/tests/verdict_matrix_cross_language.rs":
             score += 1.10
             why.append("cross-language verdict matrix test preferred for SDK conformance query")
         out.append(
@@ -1720,12 +1720,12 @@ async def _scoped_context_enrichment(entity: str, limit: int) -> dict[str, list[
     return {
         "implementation": _entities(
             [
-                "crates/chio-kernel/src/kernel/mod.rs",
-                "crates/chio-core-types/src/capability.rs",
-                "crates/chio-kernel/src/kernel/delegation.rs",
-                "crates/chio-http-core/src/authority.rs",
-                "crates/chio-kernel-core/src/capability_verify.rs",
-                "crates/chio-kernel-core/src/scope.rs",
+                "crates/kernel/chio-kernel/src/kernel/mod.rs",
+                "crates/core/chio-core-types/src/capability.rs",
+                "crates/kernel/chio-kernel/src/kernel/delegation.rs",
+                "crates/platform/chio-http-core/src/authority.rs",
+                "crates/kernel/chio-kernel-core/src/capability_verify.rs",
+                "crates/kernel/chio-kernel-core/src/scope.rs",
             ],
             "implementation",
         ),
@@ -1739,9 +1739,9 @@ async def _scoped_context_enrichment(entity: str, limit: int) -> dict[str, list[
         ),
         "tests": _entities(
             [
-                "crates/chio-revocation-oracle/tests/swarm_revocation_e2e.rs",
-                "crates/chio-revocation-oracle/tests/receipt_chain_proof.rs",
-                "crates/chio-kernel-core/tests/revocation_view_concurrency.rs",
+                "crates/trust/chio-revocation-oracle/tests/swarm_revocation_e2e.rs",
+                "crates/trust/chio-revocation-oracle/tests/receipt_chain_proof.rs",
+                "crates/kernel/chio-kernel-core/tests/revocation_view_concurrency.rs",
             ],
             "test",
         ),
@@ -2351,15 +2351,15 @@ async def brief_feature(
         guard_code = _prioritize_paths(
             code,
             [
-                "crates/chio-guards/src/pipeline.rs",
-                "crates/chio-kernel/src/kernel/evaluator.rs",
+                "crates/guards/chio-guards/src/pipeline.rs",
+                "crates/kernel/chio-kernel/src/kernel/evaluator.rs",
             ],
         )
         guard_tests = _prioritize_paths(
             tests,
             [
-                "crates/chio-guards/tests/output_sanitization.rs",
-                "crates/chio-policy/tests/compile_policy.rs",
+                "crates/guards/chio-guards/tests/output_sanitization.rs",
+                "crates/guards/chio-policy/tests/compile_policy.rs",
             ],
         )
         read_candidates = [*guard_code[:2], *preferred_docs[:1], *guard_tests[:2], *guard_code[2:5], *preferred_docs[1:3]]
@@ -2368,7 +2368,7 @@ async def brief_feature(
             tests,
             [
                 "integrations/mcp-adapter/tests/transport_round_trip.rs",
-                "crates/chio-conformance/verdict_matrix/tests/verdict_matrix_cross_language.rs",
+                "crates/tooling/chio-conformance/verdict_matrix/tests/verdict_matrix_cross_language.rs",
             ],
         )
         mcp_docs = _prioritize_paths(preferred_docs, ["docs/conformance/verdict-matrix.md"])

@@ -1,6 +1,6 @@
 # Chio ext_authz gRPC adapter: Deployment + Service + Namespace
 #
-# Runs the Chio sidecar image (see crates/chio-envoy-ext-authz + deploy/sidecar)
+# Runs the Chio sidecar image (see crates/protocol/chio-envoy-ext-authz + deploy/sidecar)
 # as a cluster-wide Deployment. Istio's `extensionProviders` entry in
 # `01-meshconfig-patch.yaml` points at the `chio-sidecar` Service created here.
 #

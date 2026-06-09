@@ -9,14 +9,14 @@
       "spec/COMPLIANCE-CERTIFICATE.md",
       "docs/release/QUALIFICATION.md",
       "docs/release/RELEASE_AUDIT.md",
-      "crates/chio-cli/src/evidence_export.rs",
-      "crates/chio-kernel/src/evidence_export.rs",
-      "crates/chio-store-sqlite/src/evidence_export.rs"
+      "crates/products/chio-cli/src/evidence_export.rs",
+      "crates/kernel/chio-kernel/src/evidence_export.rs",
+      "crates/platform/chio-store-sqlite/src/evidence_export.rs"
     ],
     "tests": [
-      "crates/chio-kernel/tests/compliance_certificate_hybrid.rs",
-      "crates/chio-cli/tests/evidence_export.rs",
-      "crates/chio-http-core/tests/compliance_score_endpoint.rs"
+      "crates/kernel/chio-kernel/tests/compliance_certificate_hybrid.rs",
+      "crates/products/chio-cli/tests/evidence_export.rs",
+      "crates/platform/chio-http-core/tests/compliance_score_endpoint.rs"
     ],
     "constraints": [
       "Release qualification evidence takes priority over product-specific code for compliance certificate queries.",

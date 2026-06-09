@@ -4,10 +4,10 @@ on:
   pull_request:
     paths:
       - .github/workflows/chio-tee-fips.yml
-      - crates/chio-tee/**
-      - crates/chio-tee-frame/**
-      - crates/chio-core-types/**
-      - crates/chio-store-sqlite/**
+      - crates/trust/chio-tee/**
+      - crates/trust/chio-tee-frame/**
+      - crates/core/chio-core-types/**
+      - crates/platform/chio-store-sqlite/**
       - Cargo.toml
       - Cargo.lock
   push:
@@ -16,10 +16,10 @@ on:
       - 'project/**'
     paths:
       - .github/workflows/chio-tee-fips.yml
-      - crates/chio-tee/**
-      - crates/chio-tee-frame/**
-      - crates/chio-core-types/**
-      - crates/chio-store-sqlite/**
+      - crates/trust/chio-tee/**
+      - crates/trust/chio-tee-frame/**
+      - crates/core/chio-core-types/**
+      - crates/platform/chio-store-sqlite/**
       - Cargo.toml
       - Cargo.lock
   workflow_dispatch:

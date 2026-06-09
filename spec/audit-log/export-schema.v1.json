@@ -92,7 +92,7 @@
           "const": "Authorization"
         }
       },
-      "description": "OCSF 1.3.0 Authorization mapping from crates/chio-siem/src/ocsf.rs."
+      "description": "OCSF 1.3.0 Authorization mapping from crates/observability/chio-siem/src/ocsf.rs."
     },
     "cef": {
       "type": "object",

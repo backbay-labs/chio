@@ -48,7 +48,7 @@ def _load_default_yaml() -> str:
 DEFAULT_POLICY_YAML: str = _load_default_yaml()
 """Raw YAML string of the bundled default policy.
 
-Kept in sync with ``crates/chio-cli/src/policies/code_agent.yaml`` so the
+Kept in sync with ``crates/products/chio-cli/src/policies/code_agent.yaml`` so the
 Python SDK and the ``chio mcp serve --preset code-agent`` flag evaluate
 the same rules.
 """

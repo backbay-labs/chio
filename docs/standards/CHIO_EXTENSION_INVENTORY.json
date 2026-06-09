@@ -5,7 +5,7 @@
     {
       "id": "chio.canonical.capability",
       "name": "Capability and approval artifacts",
-      "crate_path": "crates/chio-core-types/src/capability/mod.rs",
+      "crate_path": "crates/core/chio-core-types/src/capability/mod.rs",
       "contract_kind": "capability",
       "artifact_schemas": [
         "capability_token",
@@ -17,7 +17,7 @@
     {
       "id": "chio.canonical.receipt",
       "name": "Signed receipts and checkpoints",
-      "crate_path": "crates/chio-core-types/src/receipt/mod.rs",
+      "crate_path": "crates/core/chio-core-types/src/receipt/mod.rs",
       "contract_kind": "receipt",
       "artifact_schemas": [
         "chio.receipt.v1",
@@ -29,7 +29,7 @@
     {
       "id": "chio.canonical.policy",
       "name": "Local policy activation and trust decisions",
-      "crate_path": "crates/chio-policy/src/evaluate.rs",
+      "crate_path": "crates/guards/chio-policy/src/evaluate.rs",
       "contract_kind": "policy",
       "artifact_schemas": [
         "chio.policy.runtime.v1",
@@ -41,7 +41,7 @@
     {
       "id": "chio.canonical.artifacts",
       "name": "Signed Chio artifact families",
-      "crate_path": "crates/chio-core/src/lib.rs",
+      "crate_path": "crates/core/chio-core/src/lib.rs",
       "contract_kind": "artifact_family",
       "artifact_schemas": [
         "chio.manifest.v1",
@@ -58,7 +58,7 @@
       "name": "Capability authority backend",
       "point_kind": "authority",
       "owner": "kernel",
-      "contract_path": "crates/chio-kernel/src/authority.rs::CapabilityAuthority",
+      "contract_path": "crates/kernel/chio-kernel/src/authority.rs::CapabilityAuthority",
       "stability": "supported",
       "allowed_isolations": [
         "in_process",
@@ -85,7 +85,7 @@
       "name": "Receipt store backend",
       "point_kind": "store",
       "owner": "kernel",
-      "contract_path": "crates/chio-kernel/src/receipt_store.rs::ReceiptStore",
+      "contract_path": "crates/kernel/chio-kernel/src/receipt_store.rs::ReceiptStore",
       "stability": "supported",
       "allowed_isolations": [
         "in_process",
@@ -111,7 +111,7 @@
       "name": "Revocation store backend",
       "point_kind": "store",
       "owner": "kernel",
-      "contract_path": "crates/chio-kernel/src/revocation_runtime.rs::RevocationStore",
+      "contract_path": "crates/kernel/chio-kernel/src/revocation_runtime.rs::RevocationStore",
       "stability": "supported",
       "allowed_isolations": [
         "in_process",
@@ -137,7 +137,7 @@
       "name": "Budget store backend",
       "point_kind": "store",
       "owner": "kernel",
-      "contract_path": "crates/chio-kernel/src/budget_store.rs::BudgetStore",
+      "contract_path": "crates/kernel/chio-kernel/src/budget_store.rs::BudgetStore",
       "stability": "supported",
       "allowed_isolations": [
         "in_process",
@@ -163,7 +163,7 @@
       "name": "Tool server connection",
       "point_kind": "tool_server_connection",
       "owner": "kernel",
-      "contract_path": "crates/chio-kernel/src/runtime.rs::ToolServerConnection",
+      "contract_path": "crates/kernel/chio-kernel/src/runtime.rs::ToolServerConnection",
       "stability": "supported",
       "allowed_isolations": [
         "in_process",
@@ -195,7 +195,7 @@
       "name": "Resource provider",
       "point_kind": "resource_provider",
       "owner": "kernel",
-      "contract_path": "crates/chio-kernel/src/lib.rs::ResourceProvider",
+      "contract_path": "crates/kernel/chio-kernel/src/lib.rs::ResourceProvider",
       "stability": "supported",
       "allowed_isolations": [
         "in_process",
@@ -220,7 +220,7 @@
       "name": "Prompt provider",
       "point_kind": "prompt_provider",
       "owner": "kernel",
-      "contract_path": "crates/chio-kernel/src/lib.rs::PromptProvider",
+      "contract_path": "crates/kernel/chio-kernel/src/lib.rs::PromptProvider",
       "stability": "supported",
       "allowed_isolations": [
         "in_process",
@@ -245,7 +245,7 @@
       "name": "MCP compatibility adapter",
       "point_kind": "adapter",
       "owner": "ecosystem_bridges",
-      "contract_path": "crates/chio-mcp-adapter/src/lib.rs::McpAdapter",
+      "contract_path": "crates/protocol/chio-mcp-adapter/src/lib.rs::McpAdapter",
       "stability": "supported",
       "allowed_isolations": [
         "subprocess",
@@ -270,7 +270,7 @@
       "name": "A2A compatibility adapter",
       "point_kind": "adapter",
       "owner": "ecosystem_bridges",
-      "contract_path": "crates/chio-a2a-adapter/src/invoke.rs::A2aAdapter",
+      "contract_path": "crates/protocol/chio-a2a-adapter/src/invoke.rs::A2aAdapter",
       "stability": "experimental",
       "allowed_isolations": [
         "remote_service"
