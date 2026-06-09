@@ -7,7 +7,7 @@ The macro owns the exported WASM ABI, allocator exports, request
 deserialization, return-code encoding, and deny-reason export.
 `chio-guard-sdk` owns the host-compatible `GuardRequest` and `GuardVerdict`
 types, so this example must not duplicate ABI serialization logic.
-`crates/chio-wasm-guards/tests/example_guard_integration.rs` owns the compiled
+`crates/guards/chio-wasm-guards/tests/example_guard_integration.rs` owns the compiled
 WASM host round trip for example guards, and the guard conformance fixture owns
 the stable example behavior table.
 
@@ -32,7 +32,7 @@ closed instead of being canonicalized in guest code.
 
 ## Affected Dependents
 
-`crates/chio-wasm-guards/tests/example_guard_integration.rs` loads the compiled
+`crates/guards/chio-wasm-guards/tests/example_guard_integration.rs` loads the compiled
 `enriched-inspector` WASM artifact and should gain host-round-trip regressions
 for malformed write evidence and configured-path segment boundaries.
 `tests/conformance/fixtures/guard/enriched-fields.yaml` should gain fixture

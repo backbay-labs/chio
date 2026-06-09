@@ -1,6 +1,6 @@
 # hello-mcp
 
-Minimal MCP example using [`crates/chio-mcp-edge`](../../crates/chio-mcp-edge/).
+Minimal MCP example using [`crates/protocol/chio-mcp-edge`](../../crates/protocol/chio-mcp-edge/).
 
 ## What It Demonstrates
 

@@ -12,7 +12,7 @@
 
   The Lean toolchain is currently unavailable in CI, so the manifest
   status for this theorem is `assumed`. The Rust shell is exercised by
-  `crates/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs`
+  `crates/tooling/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs`
   and the protocol-side check is implemented in
   `chio_core_types::capability::CapabilityToken::validate_chain_binding`.
 -/

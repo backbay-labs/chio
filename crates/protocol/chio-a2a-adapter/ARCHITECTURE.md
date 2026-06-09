@@ -30,7 +30,7 @@
 
 - `chio-kernel` sees this crate as a `ToolServerConnection`; the outward behavior should stay as `KernelError::ToolServerError` for adapter failures.
 - `chio-a2a-edge` and cross-protocol docs rely on the A2A bridge preserving task lifecycle and receipt semantics; no transitive public schema change is planned.
-- Integration tests under `crates/chio-a2a-adapter/tests` exercise discovery and invocation over loopback fake A2A servers; they should keep using the existing public API.
+- Integration tests under `crates/protocol/chio-a2a-adapter/tests` exercise discovery and invocation over loopback fake A2A servers; they should keep using the existing public API.
 
 ## Planned Material Improvement
 

@@ -30,7 +30,7 @@
 
 ## Affected Dependents
 
-`crates/chio-cli/src/market.rs` consumes marketplace pricing for `guard market list`, `info`, and `install`. The CLI catalog path uses the checked API so malformed catalog prices fail closed instead of being displayed or persisted. Trust-control startup separately validates tenant read-token ids because those tenant principals participate in read-boundary authorization.
+`crates/products/chio-cli/src/market.rs` consumes marketplace pricing for `guard market list`, `info`, and `install`. The CLI catalog path uses the checked API so malformed catalog prices fail closed instead of being displayed or persisted. Trust-control startup separately validates tenant read-token ids because those tenant principals participate in read-boundary authorization.
 
 ## Completed Material Improvement
 

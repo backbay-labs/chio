@@ -11,7 +11,7 @@ Normative spec: `spec/CONFIGURATION.md`
 >
 > - The nested `adapters.mcp/a2a/acp` schema described here is NOT the
 >   shipped schema. The current loader uses flat Vec sections. See
->   `crates/chio-config/src/schema.rs` for the actual schema.
+>   `crates/platform/chio-config/src/schema.rs` for the actual schema.
 > - `kernel.keypair` is NOT shipped. The current field is `kernel.signing_key`.
 > - `chio start --config chio.yaml` does NOT exist. The CLI uses per-command
 >   `--config` flags on individual subcommands.

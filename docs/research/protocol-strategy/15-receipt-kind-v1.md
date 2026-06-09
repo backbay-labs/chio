@@ -60,7 +60,7 @@ not current signed authority.
 
 ### `ChioReceiptBody` (the canonical signing input)
 
-Defined at `crates/chio-core-types/src/receipt.rs:158-181`. Field list:
+Defined at `crates/core/chio-core-types/src/receipt.rs:158-181`. Field list:
 
 - `id: String`
 - `timestamp: u64`
@@ -84,7 +84,7 @@ Defined at `crates/chio-core-types/src/receipt.rs:158-181`. Field list:
 
 ### `GuardEvidence` (referenced by doc 00 at `receipt.rs:1176`)
 
-`crates/chio-core-types/src/receipt.rs:1174-1184`:
+`crates/core/chio-core-types/src/receipt.rs:1174-1184`:
 
 ```rust
 pub struct GuardEvidence {
@@ -101,8 +101,8 @@ pub struct GuardEvidence {
   migration debt or historical planning notes, not a public compatibility
   surface.
 - Signing path: `Keypair::sign_canonical` and `sign_canonical_with_backend`
-  (`crates/chio-core-types/src/crypto.rs:206,866`) call
-  `canonical_json_bytes` (`crates/chio-core-types/src/canonical.rs:102`)
+  (`crates/core/chio-core-types/src/crypto.rs:206,866`) call
+  `canonical_json_bytes` (`crates/core/chio-core-types/src/canonical.rs:102`)
   which sorts object keys by UTF-16 code-unit order per RFC 8785.
   Every body field participates in signing; there is no
   hash-then-sign-the-hash optimization today.

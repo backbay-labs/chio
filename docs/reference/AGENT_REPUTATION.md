@@ -529,7 +529,7 @@ party can:
 3. Compute a cross-organizational composite score by aggregating metrics
 4. Weight credentials by the trust it places in each issuing Kernel
 
-This alpha now ships in `crates/chio-credentials` and via the CLI commands
+This alpha now ships in `crates/trust/chio-credentials` and via the CLI commands
 `chio passport create`, `chio passport evaluate`, `chio passport verify`, and
 `chio passport present`. The current implementation is intentionally
 single-issuer: each passport is a bundle of one or more independently
@@ -577,7 +577,7 @@ identifier. No registry lookup is needed for basic resolution. Extended
 resolution (service endpoints, delegation metadata) can be published to
 a Chio receipt log as a special `did:chio:update` receipt type.
 
-This basic resolver now ships in `crates/chio-did` and is exposed via
+This basic resolver now ships in `crates/trust/chio-did` and is exposed via
 `chio did resolve`. The current shipped service type is
 `ChioReceiptLogService`, which allows an operator-local resolver to attach one
 or more receipt-log URLs without changing the self-certifying base identity.

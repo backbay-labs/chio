@@ -35,7 +35,7 @@ curl -fsSL -o /tmp/chio.rb https://github.com/backbay-labs/chio/releases/latest/
 brew install --formula /tmp/chio.rb
 
 # Or, from a local checkout
-cargo install --path crates/chio-cli
+cargo install --path crates/products/chio-cli
 chio --version
 ```
 

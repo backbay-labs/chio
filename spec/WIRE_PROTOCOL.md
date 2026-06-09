@@ -66,7 +66,7 @@ Example: a payload length of `256` bytes is encoded as
 ### 2.3 Receiver Behavior And Error Recovery
 
 Native receiver behavior is defined by the shipped transport implementation in
-`crates/chio-kernel/src/transport.rs`.
+`crates/kernel/chio-kernel/src/transport.rs`.
 
 - If EOF occurs before the 4-byte prefix is fully read, the receiver
   **MUST** treat the connection as closed and deliver no partial message.
@@ -91,8 +91,8 @@ Recovery rules:
 
 The native message catalog is defined by:
 
-- `crates/chio-core-types/src/message.rs`
-- `crates/chio-kernel/src/transport.rs`
+- `crates/core/chio-core-types/src/message.rs`
+- `crates/kernel/chio-kernel/src/transport.rs`
 
 #### 2.4.1 AgentMessage
 
@@ -200,7 +200,7 @@ Normative requirements:
 ## 3. Hosted MCP HTTP Session Transport
 
 The hosted edge is implemented by `chio mcp serve-http` in
-`crates/chio-cli/src/remote_mcp/http_service.rs`.
+`crates/products/chio-cli/src/remote_mcp/http_service.rs`.
 
 ### 3.1 Endpoint Shape
 
@@ -622,4 +622,4 @@ Normative requirements:
   not handwritten examples alone.
 
 The shipped validation harness for this document is
-`crates/chio-core-types/tests/wire_protocol_schema.rs`.
+`crates/core/chio-core-types/tests/wire_protocol_schema.rs`.

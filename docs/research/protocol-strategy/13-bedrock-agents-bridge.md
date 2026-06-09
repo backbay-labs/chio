@@ -6,7 +6,7 @@
 
 ## TL;DR
 
-Add a `chio-bedrock-agents-adapter` crate (sibling, not extension, of `chio-bedrock-converse-adapter` at [`crates/chio-bedrock-converse-adapter/src/lib.rs:1`](../../../crates/chio-bedrock-converse-adapter/src/lib.rs#L1)). MVP: full `ToolServerConnection::invoke` mediation for `RETURN_CONTROL` action groups; trace-only logging for `LAMBDA` action groups (`boundary_class = detect_only`, AWS trust boundary); default-on trace redaction (free-form reasoning replaced by salted hashes; opt-in verbatim retention under stricter bounds); reuse the converse adapter's signed `IamPrincipalsConfig` for caller identity. KB citation gating and multi-agent collaboration deferred. Region: us-east-1 + us-west-2 at MVP, full thirteen-region list as a follow-on. The decision boundary is sharp: Chio mediates runtime parameters only for `RETURN_CONTROL`, because that is the only mode where the caller (and therefore Chio) executes the action.
+Add a `chio-bedrock-agents-adapter` crate (sibling, not extension, of `chio-bedrock-converse-adapter` at [`crates/protocol/chio-bedrock-converse-adapter/src/lib.rs:1`](../../../crates/protocol/chio-bedrock-converse-adapter/src/lib.rs#L1)). MVP: full `ToolServerConnection::invoke` mediation for `RETURN_CONTROL` action groups; trace-only logging for `LAMBDA` action groups (`boundary_class = detect_only`, AWS trust boundary); default-on trace redaction (free-form reasoning replaced by salted hashes; opt-in verbatim retention under stricter bounds); reuse the converse adapter's signed `IamPrincipalsConfig` for caller identity. KB citation gating and multi-agent collaboration deferred. Region: us-east-1 + us-west-2 at MVP, full thirteen-region list as a follow-on. The decision boundary is sharp: Chio mediates runtime parameters only for `RETURN_CONTROL`, because that is the only mode where the caller (and therefore Chio) executes the action.
 
 ## API shape
 
@@ -66,9 +66,9 @@ Bedrock Agents `InvokeAgent` responses use event-stream framing. The
 `streamingConfigurations.streamFinalResponse` setting controls final-response
 streaming and must be set intentionally; the adapter implements
 `ToolServerConnection::invoke_stream`
-([`crates/chio-kernel/src/runtime.rs:292`](../../../crates/chio-kernel/src/runtime.rs#L292))
+([`crates/kernel/chio-kernel/src/runtime.rs:292`](../../../crates/kernel/chio-kernel/src/runtime.rs#L292))
 and returns `ToolServerStreamResult`
-([`crates/chio-kernel/src/runtime.rs:136`](../../../crates/chio-kernel/src/runtime.rs#L136)).
+([`crates/kernel/chio-kernel/src/runtime.rs:136`](../../../crates/kernel/chio-kernel/src/runtime.rs#L136)).
 
 Event mapping:
 
@@ -78,19 +78,19 @@ Event mapping:
 - `FilePart` -> `ToolCallChunk { data: { "kind": "file", "name", "media_type", "bytes_sha256" } }`. File bytes never appear in the chunk; the adapter materializes them to a kernel scratch store and surfaces only the hash. Egress goes through `chio-egress-contract` on a separate hop.
 - Error envelopes -> `ToolServerStreamResult::Incomplete { stream, reason }` with the AWS exception name as `reason`.
 
-The sub-evaluation pattern makes the streaming bridge non-trivial: a single user-facing `InvokeAgent` may fan out to N `RETURN_CONTROL` sub-invocations, each independently mediated, each with its own receipt, all linked in a tree rooted on the outer `invocation_id`. Structurally analogous to `NestedFlowBridge` ([`crates/chio-kernel/src/runtime.rs:156`](../../../crates/chio-kernel/src/runtime.rs#L156)); the same lineage discipline applies.
+The sub-evaluation pattern makes the streaming bridge non-trivial: a single user-facing `InvokeAgent` may fan out to N `RETURN_CONTROL` sub-invocations, each independently mediated, each with its own receipt, all linked in a tree rooted on the outer `invocation_id`. Structurally analogous to `NestedFlowBridge` ([`crates/kernel/chio-kernel/src/runtime.rs:156`](../../../crates/kernel/chio-kernel/src/runtime.rs#L156)); the same lineage discipline applies.
 
 ## IAM integration
 
-The converse adapter already has the answer: `IamPrincipalsConfig` ([`crates/chio-bedrock-converse-adapter/src/iam_principals.rs:90`](../../../crates/chio-bedrock-converse-adapter/src/iam_principals.rs#L90)) is a Sigstore-signed TOML loader mapping STS `GetCallerIdentity` ARNs to Chio owner/team labels via ordered first-match wildcard patterns. Process-wide STS caching in `AwsStsCallerIdentityProvider` ([`crates/chio-bedrock-converse-adapter/src/iam_principals.rs:42`](../../../crates/chio-bedrock-converse-adapter/src/iam_principals.rs#L42)). Mapping yields `ResolvedBedrockPrincipal` ([`crates/chio-bedrock-converse-adapter/src/iam_principals.rs:117`](../../../crates/chio-bedrock-converse-adapter/src/iam_principals.rs#L117)) producing `Principal::BedrockIam { caller_arn, account_id, assumed_role_session_arn }` ([`crates/chio-tool-call-fabric/src/lib.rs:66`](../../../crates/chio-tool-call-fabric/src/lib.rs#L66)).
+The converse adapter already has the answer: `IamPrincipalsConfig` ([`crates/protocol/chio-bedrock-converse-adapter/src/iam_principals.rs:90`](../../../crates/protocol/chio-bedrock-converse-adapter/src/iam_principals.rs#L90)) is a Sigstore-signed TOML loader mapping STS `GetCallerIdentity` ARNs to Chio owner/team labels via ordered first-match wildcard patterns. Process-wide STS caching in `AwsStsCallerIdentityProvider` ([`crates/protocol/chio-bedrock-converse-adapter/src/iam_principals.rs:42`](../../../crates/protocol/chio-bedrock-converse-adapter/src/iam_principals.rs#L42)). Mapping yields `ResolvedBedrockPrincipal` ([`crates/protocol/chio-bedrock-converse-adapter/src/iam_principals.rs:117`](../../../crates/protocol/chio-bedrock-converse-adapter/src/iam_principals.rs#L117)) producing `Principal::BedrockIam { caller_arn, account_id, assumed_role_session_arn }` ([`crates/protocol/chio-tool-call-fabric/src/lib.rs:66`](../../../crates/protocol/chio-tool-call-fabric/src/lib.rs#L66)).
 
-The new adapter consumes this identically. To avoid duplication: extract `iam_principals.rs` into a `chio-bedrock-iam` crate both adapters depend on (follow-on, not MVP-blocking). For MVP, the new adapter takes the same constructor inputs as `BedrockAdapter::new_with_signed_iam_principals_config` ([`crates/chio-bedrock-converse-adapter/src/lib.rs:145`](../../../crates/chio-bedrock-converse-adapter/src/lib.rs#L145)) and uses `pub use` re-exports.
+The new adapter consumes this identically. To avoid duplication: extract `iam_principals.rs` into a `chio-bedrock-iam` crate both adapters depend on (follow-on, not MVP-blocking). For MVP, the new adapter takes the same constructor inputs as `BedrockAdapter::new_with_signed_iam_principals_config` ([`crates/protocol/chio-bedrock-converse-adapter/src/lib.rs:145`](../../../crates/protocol/chio-bedrock-converse-adapter/src/lib.rs#L145)) and uses `pub use` re-exports.
 
 Fail-closed property is preserved: an unsigned or unmapped principal cannot construct a `BedrockAgentsAdapter`, period.
 
 ## Receipt fields
 
-Add the following to the receipt body emitted by this adapter (slotted into the existing `ChioReceiptBody` shape at [`crates/chio-core-types/src/receipt.rs:159`](../../../crates/chio-core-types/src/receipt.rs#L159), most likely inside a typed `provider_specific` payload to avoid widening the core schema):
+Add the following to the receipt body emitted by this adapter (slotted into the existing `ChioReceiptBody` shape at [`crates/core/chio-core-types/src/receipt.rs:159`](../../../crates/core/chio-core-types/src/receipt.rs#L159), most likely inside a typed `provider_specific` payload to avoid widening the core schema):
 
 - `agent_id: String` (ten-char Bedrock ID).
 - `agent_alias_id: String` (ten-char alias ID).
@@ -106,7 +106,7 @@ Add the following to the receipt body emitted by this adapter (slotted into the 
 - `caller_chain: Vec<String>` (the `callerChain[].agentAliasArn` list from `TracePart`; in multi-agent collaboration this captures the supervisor path).
 - `mediation_scope: enum { trace_only, full_runtime }` (`trace_only` for Lambda, `full_runtime` for RETURN_CONTROL).
 
-The `policy_hash` and `evidence` fields on `ChioReceiptBody` ([`crates/chio-core-types/src/receipt.rs:168`](../../../crates/chio-core-types/src/receipt.rs#L168)) are unchanged. The Bedrock Agents-specific block sits alongside, addressable by `body_hash`.
+The `policy_hash` and `evidence` fields on `ChioReceiptBody` ([`crates/core/chio-core-types/src/receipt.rs:168`](../../../crates/core/chio-core-types/src/receipt.rs#L168)) are unchanged. The Bedrock Agents-specific block sits alongside, addressable by `body_hash`.
 
 ## Manifest mapping
 
@@ -160,7 +160,7 @@ Layout: `crates/chio-bedrock-agents-adapter/src/{lib.rs, adapter.rs, transport.r
 
 Bedrock Agents runtime is available in thirteen regions: us-east-1, us-west-2, ap-southeast-1, ap-southeast-2, ap-northeast-1, ap-northeast-2, ap-south-1, ca-central-1, eu-central-1, eu-west-1, eu-west-2, eu-west-3, sa-east-1 ([endpoints reference](https://docs.aws.amazon.com/general/latest/gr/bedrock.html)). FIPS endpoints exist only in us-east-1 and us-west-2 (`bedrock-agent-runtime-fips.{us-east-1,us-west-2}.amazonaws.com`).
 
-This is materially different from the Converse adapter, which is pinned to `us-east-1` at v1 ([`BEDROCK_REGION`](../../../crates/chio-bedrock-converse-adapter/src/transport.rs#L1)). The Agents adapter should not inherit that pin. MVP recommendation:
+This is materially different from the Converse adapter, which is pinned to `us-east-1` at v1 ([`BEDROCK_REGION`](../../../crates/protocol/chio-bedrock-converse-adapter/src/transport.rs#L1)). The Agents adapter should not inherit that pin. MVP recommendation:
 
 - MVP: accept `us-east-1` and `us-west-2` only. These are the two FIPS regions and the only two with mature multi-model availability.
 - Follow-on: add the eleven remaining regions in a single PR once the EU and AP behavior is validated against real account billing. Each region needs a smoke test under a real Bedrock account because feature parity has historically lagged (e.g. Claude availability differed across regions through 2024).

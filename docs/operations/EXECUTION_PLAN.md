@@ -91,31 +91,31 @@ are not public v2 protocol features. References to them as "planned" or
 
 ### Monetary budgets (implemented in current v1)
 
-`MonetaryAmount`, `max_cost_per_invocation`, and `max_total_cost` on `ToolGrant` are implemented in `crates/chio-core/src/capability.rs`. `BudgetStore::try_charge_cost` enforces atomic monetary limits in `crates/chio-kernel/src/budget_store.rs`. `FinancialReceiptMetadata` is embedded in the receipt `metadata` field for every monetized invocation. See [AGENT_ECONOMY.md](../reference/AGENT_ECONOMY.md) for the full design; Phase 1 of that document is now implemented. Operator guide: [MONETARY_BUDGETS_GUIDE.md](../reference/MONETARY_BUDGETS_GUIDE.md).
+`MonetaryAmount`, `max_cost_per_invocation`, and `max_total_cost` on `ToolGrant` are implemented in `crates/core/chio-core/src/capability.rs`. `BudgetStore::try_charge_cost` enforces atomic monetary limits in `crates/kernel/chio-kernel/src/budget_store.rs`. `FinancialReceiptMetadata` is embedded in the receipt `metadata` field for every monetized invocation. See [AGENT_ECONOMY.md](../reference/AGENT_ECONOMY.md) for the full design; Phase 1 of that document is now implemented. Operator guide: [MONETARY_BUDGETS_GUIDE.md](../reference/MONETARY_BUDGETS_GUIDE.md).
 
 ### DPoP proof-of-possession (implemented in current v1)
 
-`ToolGrant.dpop_required` enables per-grant DPoP enforcement. The kernel validates `chio.dpop_proof.v1` proofs with nonce replay prevention. Implementation is in `crates/chio-kernel/src/dpop.rs`. Operator guide: [DPOP_INTEGRATION_GUIDE.md](../reference/DPOP_INTEGRATION_GUIDE.md).
+`ToolGrant.dpop_required` enables per-grant DPoP enforcement. The kernel validates `chio.dpop_proof.v1` proofs with nonce replay prevention. Implementation is in `crates/kernel/chio-kernel/src/dpop.rs`. Operator guide: [DPOP_INTEGRATION_GUIDE.md](../reference/DPOP_INTEGRATION_GUIDE.md).
 
 ### Receipt query API (implemented in current v1)
 
-`GET /v1/receipts/query` on the trust-control service supports eight filter dimensions and cursor-based pagination. The CLI exposes `chio receipt list` with equivalent filters. Capability lineage JOINs (`/v1/lineage/{capability_id}/chain`, `GET /v1/agents/{subject_key}/receipts`) are also available. See `crates/chio-kernel/src/receipt_query.rs` and `crates/chio-kernel/src/capability_lineage.rs`. Operator guide: [RECEIPT_QUERY_API.md](../reference/RECEIPT_QUERY_API.md).
+`GET /v1/receipts/query` on the trust-control service supports eight filter dimensions and cursor-based pagination. The CLI exposes `chio receipt list` with equivalent filters. Capability lineage JOINs (`/v1/lineage/{capability_id}/chain`, `GET /v1/agents/{subject_key}/receipts`) are also available. See `crates/kernel/chio-kernel/src/receipt_query.rs` and `crates/kernel/chio-kernel/src/capability_lineage.rs`. Operator guide: [RECEIPT_QUERY_API.md](../reference/RECEIPT_QUERY_API.md).
 
 ### Velocity guard (implemented in current v1)
 
-`VelocityGuard` token-bucket rate limiting per `(capability_id, grant_index)` is in `crates/chio-guards/src/velocity.rs`. It runs in the standard guard pipeline before any tool server invocation. Operator guide: [VELOCITY_GUARDS.md](../reference/VELOCITY_GUARDS.md).
+`VelocityGuard` token-bucket rate limiting per `(capability_id, grant_index)` is in `crates/guards/chio-guards/src/velocity.rs`. It runs in the standard guard pipeline before any tool server invocation. Operator guide: [VELOCITY_GUARDS.md](../reference/VELOCITY_GUARDS.md).
 
 ### Merkle-committed receipt batches (implemented in current v1)
 
-`KernelCheckpoint` commits batches of receipts to a Merkle root signed by the kernel key. See `crates/chio-kernel/src/checkpoint.rs`.
+`KernelCheckpoint` commits batches of receipts to a Merkle root signed by the kernel key. See `crates/kernel/chio-kernel/src/checkpoint.rs`.
 
 ### SIEM exporters (implemented in current v1)
 
-Splunk HEC and Elasticsearch bulk exporters with a bounded dead-letter queue ship in `crates/chio-siem`, enabled via `--features siem` on `chio-cli`.
+Splunk HEC and Elasticsearch bulk exporters with a bounded dead-letter queue ship in `crates/observability/chio-siem`, enabled via `--features siem` on `chio-cli`.
 
 ### Receipt retention with time/size rotation (implemented in current v1)
 
-`RetentionConfig` on `KernelConfig` supports automatic archival by age (days) and live database size. See `crates/chio-kernel/src/receipt_store.rs`.
+`RetentionConfig` on `KernelConfig` supports automatic archival by age (days) and live database size. See `crates/kernel/chio-kernel/src/receipt_store.rs`.
 
 ### TypeScript SDK (implemented in current v1)
 
@@ -299,8 +299,8 @@ Create the session substrate that everything else will use.
 
 ### Primary repo areas
 
-- `crates/chio-core`
-- `crates/chio-kernel`
+- `crates/core/chio-core`
+- `crates/kernel/chio-kernel`
 
 ### Deliverables
 
@@ -349,9 +349,9 @@ Make HushSpec and `chio-policy` the runtime truth.
 
 ### Primary repo areas
 
-- `crates/chio-policy`
-- `crates/chio-cli`
-- `crates/chio-kernel`
+- `crates/guards/chio-policy`
+- `crates/products/chio-cli`
+- `crates/kernel/chio-kernel`
 
 ### Deliverables
 
@@ -396,9 +396,9 @@ Support MCP-compatible tool workflows at the edge.
 ### Primary repo areas
 
 - new MCP edge module or crate
-- `crates/chio-core`
-- `crates/chio-kernel`
-- `crates/chio-mcp-adapter`
+- `crates/core/chio-core`
+- `crates/kernel/chio-kernel`
+- `crates/protocol/chio-mcp-adapter`
 
 ### Deliverables
 
@@ -448,8 +448,8 @@ Implement non-tool server primitives.
 ### Primary repo areas
 
 - new edge module or crate
-- `crates/chio-core`
-- `crates/chio-kernel`
+- `crates/core/chio-core`
+- `crates/kernel/chio-kernel`
 - provider interfaces
 
 ### Deliverables
@@ -563,8 +563,8 @@ Make long-running work first-class.
 ### Primary repo areas
 
 - session module
-- `crates/chio-core`
-- `crates/chio-kernel`
+- `crates/core/chio-core`
+- `crates/kernel/chio-kernel`
 
 ### Deliverables
 
@@ -610,8 +610,8 @@ Replace local-only trust assumptions with service-backed trust.
 ### Primary repo areas
 
 - new trust services or crates
-- `crates/chio-kernel`
-- `crates/chio-core`
+- `crates/kernel/chio-kernel`
+- `crates/core/chio-core`
 
 ### Deliverables
 
@@ -632,7 +632,7 @@ Replace local-only trust assumptions with service-backed trust.
 
 - SQLite backend first
 - append-only semantics at application layer
-- receipt query API for verification and ops, implemented in current v1 as `GET /v1/receipts/query` on the trust-control service and `chio receipt list` CLI; see `crates/chio-kernel/src/receipt_query.rs`
+- receipt query API for verification and ops, implemented in current v1 as `GET /v1/receipts/query` on the trust-control service and `chio receipt list` CLI; see `crates/kernel/chio-kernel/src/receipt_query.rs`
 
 #### `WP7.3` Remote runtime
 
@@ -657,7 +657,7 @@ Make adoption cheap and claims test-backed.
 
 ### Primary repo areas
 
-- `crates/chio-mcp-adapter`
+- `crates/protocol/chio-mcp-adapter`
 - `tests`
 - `docs`
 - generated schema or SDK areas if added
@@ -705,8 +705,8 @@ Make the clustered trust-control path deterministic enough for repeated full-sui
 
 ### Primary repo areas
 
-- `crates/chio-control-plane/src/trust_control.rs`
-- `crates/chio-kernel/src/budget_store.rs`
+- `crates/platform/chio-control-plane/src/trust_control.rs`
+- `crates/kernel/chio-kernel/src/budget_store.rs`
 - authority, receipt, and revocation store implementations
 - clustered trust-control tests
 
@@ -751,10 +751,10 @@ Turn the authenticated remote MCP edge into a reconnect-safe, deployment-hard ru
 
 ### Primary repo areas
 
-- `crates/chio-mcp-remote/src/remote_mcp/`
-- `crates/chio-mcp-adapter`
-- `crates/chio-core`
-- `crates/chio-kernel`
+- `crates/protocol/chio-mcp-remote/src/remote_mcp/`
+- `crates/protocol/chio-mcp-adapter`
+- `crates/core/chio-core`
+- `crates/kernel/chio-kernel`
 
 ### Deliverables
 
@@ -797,10 +797,10 @@ Finish one coherent ownership model for tasks, streams, cancellation, and async 
 
 ### Primary repo areas
 
-- `crates/chio-core`
-- `crates/chio-kernel`
-- `crates/chio-mcp-adapter`
-- `crates/chio-mcp-remote/src/remote_mcp/`
+- `crates/core/chio-core`
+- `crates/kernel/chio-kernel`
+- `crates/protocol/chio-mcp-adapter`
+- `crates/protocol/chio-mcp-remote/src/remote_mcp/`
 - conformance and integration tests
 
 ### Deliverables
@@ -844,11 +844,11 @@ Turn negotiated roots into an enforced boundary for filesystem-shaped tool and r
 
 ### Primary repo areas
 
-- `crates/chio-core`
-- `crates/chio-kernel`
-- `crates/chio-guards`
-- `crates/chio-policy`
-- `crates/chio-cli`
+- `crates/core/chio-core`
+- `crates/kernel/chio-kernel`
+- `crates/guards/chio-guards`
+- `crates/guards/chio-policy`
+- `crates/products/chio-cli`
 
 ### Deliverables
 
@@ -891,9 +891,9 @@ Make the policy story and native adoption story coherent for operators and devel
 
 ### Primary repo areas
 
-- `crates/chio-cli/src/policy.rs`
-- `crates/chio-policy`
-- `crates/chio-guards`
+- `crates/products/chio-cli/src/policy.rs`
+- `crates/guards/chio-policy`
+- `crates/guards/chio-guards`
 - `examples`
 - `docs`
 - new SDK/helper crate if added

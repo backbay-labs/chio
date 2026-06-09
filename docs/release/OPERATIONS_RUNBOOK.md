@@ -158,7 +158,7 @@ Hosted session lifecycle tuning now uses these canonical env names:
 
 ### Dashboard
 
-The dashboard is served by `chio trust serve` from `crates/chio-cli/dashboard/dist`.
+The dashboard is served by `chio trust serve` from `crates/products/chio-cli/dashboard/dist`.
 Build it before deployment:
 
 ```bash

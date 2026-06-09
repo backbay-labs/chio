@@ -96,7 +96,7 @@ over the canonical request body. The device-polity signature and the
 operator-polity signature must be drawn from independent keys; the
 strict bilateral DSSE verifier carried by the prior substrate
 \cite{programmableSovereigntyAnonymous}
-(\codepath{crates/chio-federation/src/bilateral_dsse.rs}) rejects
+(\codepath{crates/trust/chio-federation/src/bilateral_dsse.rs}) rejects
 envelopes with reused signer keys, wrong predicate types, and
 noncanonical payloads. The reduction \thm{destructive_action_requires_bilateral_admission}
 in Section~\ref{sec:model-ra} specializes the treaty intersection

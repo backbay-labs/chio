@@ -17,9 +17,9 @@
 
   The Lean toolchain is currently unavailable in CI, so the manifest
   status for this theorem is `assumed`. The Rust shell is exercised by
-  `crates/chio-conformance/tests/budget_split_rejects_oversubscribed_siblings.rs`
+  `crates/tooling/chio-conformance/tests/budget_split_rejects_oversubscribed_siblings.rs`
   and the cross-hop case by
-  `crates/chio-conformance/tests/budget_split_cross_hop_rejects_amplification.rs`.
+  `crates/tooling/chio-conformance/tests/budget_split_cross_hop_rejects_amplification.rs`.
   The protocol-side check is implemented in
   `chio_kernel_core::budget_split::BudgetSplit::try_admit_child`.
 -/

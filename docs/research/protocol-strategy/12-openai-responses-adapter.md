@@ -144,7 +144,7 @@ house rules).
 Caller-executed means the kernel can run the standard
 `ToolServerConnection::invoke` mediation: lift -> verdict -> lower (the
 same shape as Anthropic's tool-use blocks today, see
-`crates/chio-anthropic-tools-adapter/src/adapter.rs:38-99`).
+`crates/protocol/chio-anthropic-tools-adapter/src/adapter.rs:38-99`).
 
 `host-executed-provider-reported` means Chio records that the request was made
 and that OpenAI reported execution, but cannot constrain inputs that are
@@ -208,7 +208,7 @@ evaluation:
 - Every `response.function_call_arguments.done` event triggers one
   `ToolServerConnection::invoke` evaluation, gated the same way the
   Anthropic adapter gates `content_block_stop` for `tool_use` blocks
-  (`crates/chio-anthropic-tools-adapter/src/streaming.rs:1-80`). The
+  (`crates/protocol/chio-anthropic-tools-adapter/src/streaming.rs:1-80`). The
   adapter buffers the `output_item.added` and arguments-delta frames
   until `.done`, then evaluates; deny fails closed before any frame
   for that item is released downstream.
@@ -232,8 +232,8 @@ a verdict or simply log.
 ## Compare and contrast with `chio-anthropic-tools-adapter`
 
 Reusable from Anthropic
-([`crates/chio-anthropic-tools-adapter/src/adapter.rs:30-120`][anth-adapter],
-[`crates/chio-anthropic-tools-adapter/src/streaming.rs:29-80`][anth-stream]):
+([`crates/protocol/chio-anthropic-tools-adapter/src/adapter.rs:30-120`][anth-adapter],
+[`crates/protocol/chio-anthropic-tools-adapter/src/streaming.rs:29-80`][anth-stream]):
 
 - The `lift` / `evaluate` / `lower` shape composes verbatim for
   `function` tools.
@@ -253,7 +253,7 @@ Structurally different:
 - Anthropic has only three "server tools" (`bash`,
   `text_editor`, `computer_use`) and they each surface to the caller
   for execution (see `SERVER_TOOL_NAMES` in
-  `crates/chio-anthropic-tools-adapter/src/adapter.rs:24-28`). OpenAI
+  `crates/protocol/chio-anthropic-tools-adapter/src/adapter.rs:24-28`). OpenAI
   has six host-executed tools that never surface inputs/outputs in
   full.
 - Anthropic streaming uses `content_block_start` / `_delta` / `_stop`
@@ -263,7 +263,7 @@ Structurally different:
 
 Extract: a `LlmToolAdapter` trait into
 `chio-provider-adapter-core` (which today is a near-empty crate -
-`crates/chio-provider-adapter-core/src/lib.rs`) covering:
+`crates/protocol/chio-provider-adapter-core/src/lib.rs`) covering:
 
 ```rust
 pub trait LlmToolAdapter {
@@ -308,7 +308,7 @@ official API pin, fixture corpus, and migration story.
 OpenAI uses bearer API keys. The adapter binds an opaque key handle
 (not the raw key) to a `CallerIdentity::auth_method =
 AuthMethod::ApiKey { key_name: "Authorization", key_hash }` per
-`crates/chio-http-core/src/identity.rs:14-20`. The key is stored only
+`crates/platform/chio-http-core/src/identity.rs:14-20`. The key is stored only
 as its SHA-256 hash on the receipt; the live key sits in
 `chio-credentials` keyed by tenant + `subject`.
 
@@ -350,7 +350,7 @@ Per-call (non-streaming) and per-stream-segment receipt extras:
 `input_hash` and `tool_results_hash` are the replay-binding fields and
 must be canonicalized via `chio_core::canonical::canonical_json_bytes`
 (same path the Anthropic adapter uses, see
-`crates/chio-anthropic-tools-adapter/src/adapter.rs:79-83`).
+`crates/protocol/chio-anthropic-tools-adapter/src/adapter.rs:79-83`).
 
 ## Edge cases
 
@@ -417,5 +417,5 @@ model and probably wants its own adapter sub-module).
 [apiref]: https://platform.openai.com/docs/api-reference/responses
 [stream]: https://developers.openai.com/api/reference/resources/responses/streaming-events
 [csguide]: https://community.openai.com/t/responses-api-streaming-the-simple-guide-to-events/1363122
-[anth-adapter]: ../../../crates/chio-anthropic-tools-adapter/src/adapter.rs
-[anth-stream]: ../../../crates/chio-anthropic-tools-adapter/src/streaming.rs
+[anth-adapter]: ../../../crates/protocol/chio-anthropic-tools-adapter/src/adapter.rs
+[anth-stream]: ../../../crates/protocol/chio-anthropic-tools-adapter/src/streaming.rs

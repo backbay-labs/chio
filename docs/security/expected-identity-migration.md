@@ -15,25 +15,25 @@ trusted identity required a code change rather than a configuration change.
 After the migration: production callers resolve a tenant identifier into an
 `ExpectedIdentity` through `TenantPolicyResolver::expected_for_tenant`. The
 `ExpectedIdentity` value flows from a Sigstore-signed per-tenant policy file
-(`crates/chio-attest-verify/src/policy.rs`) loaded once at startup with a
+(`crates/trust/chio-attest-verify/src/policy.rs`) loaded once at startup with a
 90-day staleness horizon (default; configurable). The inline-regex API stays
 available for unit tests and legacy operator configuration via a
 `#[doc(hidden)]` constructor (`ExpectedIdentity::doc_hidden_inline`) so the
 workspace grep gate
-(`! grep -rE 'ExpectedIdentity\s*\{' crates/ --include='*.rs' | grep -v 'crates/chio-attest-verify' | grep -v doc-hidden`)
+(`! grep -rE 'ExpectedIdentity\s*\{' crates/ --include='*.rs' | grep -v 'crates/trust/chio-attest-verify' | grep -v doc-hidden`)
 keeps every remaining inline site visible to reviewers.
 
 ## Per-call-site before / after
 
 The following table enumerates every workspace call site of `ExpectedIdentity`.
 Bootstrap policies are at
-`crates/chio-attest-verify/tests/fixtures/policies/bootstrap.toml`; production
+`crates/trust/chio-attest-verify/tests/fixtures/policies/bootstrap.toml`; production
 deployments override the placeholder signature with one signed by their
 release identity.
 
 ### Production sites
 
-#### 1. `crates/chio-guard-registry/src/verify.rs`
+#### 1. `crates/guards/chio-guard-registry/src/verify.rs`
 
 `expected_identity_from_config` is the operator-configuration helper used by
 the kernel-side guard registry to translate `[fulcio_subject_regex,
@@ -83,17 +83,17 @@ coverage. They are listed here to satisfy the migration audit invariant and
 to give reviewers a single place to cross-reference when changing the
 trust-boundary type.
 
-#### 2. `crates/chio-attest-verify/tests/integration.rs`
+#### 2. `crates/trust/chio-attest-verify/tests/integration.rs`
 
 `github_release_identity()` constructs the canonical workspace release
 identity for verifier integration tests. Lives inside `chio-attest-verify`
 itself, so the workspace grep gate exempts it (the `grep -v
-'crates/chio-attest-verify'` filter).
+'crates/trust/chio-attest-verify'` filter).
 
 Before / after: unchanged. The literal `ExpectedIdentity { ... }` form is
 allowed inside the source-of-truth crate.
 
-#### 3. `crates/chio-bedrock-converse-adapter/tests/principal.rs`
+#### 3. `crates/protocol/chio-bedrock-converse-adapter/tests/principal.rs`
 
 `expected_identity()` builds a fixed-shape identity for the bedrock-adapter
 principal tests.
@@ -122,7 +122,7 @@ fn expected_identity() -> ExpectedIdentity { // doc-hidden return type
 }
 ```
 
-#### 4. `crates/chio-guard-registry/tests/cosign_under_crypto_floor.rs`
+#### 4. `crates/guards/chio-guard-registry/tests/cosign_under_crypto_floor.rs`
 
 `make_expected()` already routed through the
 `expected_identity_from_config` helper (call site #1). The function-return
@@ -134,7 +134,7 @@ only the function-return line is annotated.
 
 ## Bootstrap policy
 
-`crates/chio-attest-verify/tests/fixtures/policies/bootstrap.toml` is the
+`crates/trust/chio-attest-verify/tests/fixtures/policies/bootstrap.toml` is the
 chicken-and-egg seed every operator inherits before authoring a
 tenant-specific override. Its `signed_at` field records `2026-04-01T00:00:00Z`
 and its `signature` field is a documented placeholder; production deployments
@@ -158,10 +158,10 @@ The four entries above are the complete enumeration of workspace
 
 | #   | Path                                                                   | Kind        | Migration                                  |
 | --- | ---------------------------------------------------------------------- | ----------- | ------------------------------------------ |
-| 1   | `crates/chio-guard-registry/src/verify.rs`                             | production  | routes through `doc_hidden_inline`         |
-| 2   | `crates/chio-attest-verify/tests/integration.rs`                       | test        | crate-internal; exempt from gate           |
-| 3   | `crates/chio-bedrock-converse-adapter/tests/principal.rs`              | test        | calls `doc_hidden_inline`                  |
-| 4   | `crates/chio-guard-registry/tests/cosign_under_crypto_floor.rs`        | test        | annotated `// doc-hidden return type`      |
+| 1   | `crates/guards/chio-guard-registry/src/verify.rs`                             | production  | routes through `doc_hidden_inline`         |
+| 2   | `crates/trust/chio-attest-verify/tests/integration.rs`                       | test        | crate-internal; exempt from gate           |
+| 3   | `crates/protocol/chio-bedrock-converse-adapter/tests/principal.rs`              | test        | calls `doc_hidden_inline`                  |
+| 4   | `crates/guards/chio-guard-registry/tests/cosign_under_crypto_floor.rs`        | test        | annotated `// doc-hidden return type`      |
 
 Adding a new call site:
 

@@ -4,7 +4,7 @@
 >
 > **Erratum:** The n8n priority-1 framing below originally cited the Cisco Talos 686% abuse spike. Per the n8n threat-chain mapping ([11-n8n-threat-mapping.md](11-n8n-threat-mapping.md)), that spike is **Chain D** (unauthenticated webhook ingress abuse), which is **below Chio's layer and is NOT blocked by Chio**. The actually-blocked threat is **Chain C** (prompt-injection-driven agent-to-webhook exfiltration), where workflow-ID allowlist + typed input constraints + `HttpEgressContract` authority pinning + loopback / link-local / ULA denial give end-to-end coverage and receipts add chain-of-custody. Keep n8n as priority-1; restrict the value-prop wording to Chain C.
 >
-> **Follow-up erratum (PR 652 review):** Several examples below use design shorthand. `args_schema` is not today's `SkillStep` field; current workflow manifests use `input_contract` / `output_contract` in `crates/chio-workflow/src/manifest.rs`. Likewise `policy_version` and `manifest_id` are not current standard receipt fields in `ChioReceiptBody`; they are proposed receipt metadata/core additions to settle in the decision packet ([18-decision-packet.md](18-decision-packet.md)).
+> **Follow-up erratum (PR 652 review):** Several examples below use design shorthand. `args_schema` is not today's `SkillStep` field; current workflow manifests use `input_contract` / `output_contract` in `crates/platform/chio-workflow/src/manifest.rs`. Likewise `policy_version` and `manifest_id` are not current standard receipt fields in `ChioReceiptBody`; they are proposed receipt metadata/core additions to settle in the decision packet ([18-decision-packet.md](18-decision-packet.md)).
 >
 > Exact GitHub Agent Workflow Firewall / `gh-aw` product naming and coverage should be refreshed from official GitHub sources before any Actions adapter plan; the security boundary here is agent attribution outside the runner, not an in-runner firewall claim.
 
@@ -40,19 +40,19 @@ Grep over `crates/`, `sdks/`, and `docs/` surfaced the following:
   inside the DAG, not the agent's REST trigger.
 - **GitHub Actions**: only referenced in supply-chain contexts (Sigstore
   Fulcio OIDC identity at
-  `crates/chio-attest-verify/tests/fixtures/oidc_mismatch.rs:3`, CI
+  `crates/trust/chio-attest-verify/tests/fixtures/oidc_mismatch.rs:3`, CI
   billing runbook, ClusterFuzzLite). No integration that mediates an
   agent dispatching a workflow.
 - **n8n, Zapier, Make.com, Step Functions, Argo Workflows**: zero hits.
   Argo appears as a future-question annotation in the K8s Jobs doc
   (`docs/protocols/K8S-JOBS-INTEGRATION.md:429`).
 - **Egress gate**: `HttpEgressContract` at
-  `crates/chio-egress-contract/src/lib.rs:15`. Already pins scheme,
+  `crates/protocol/chio-egress-contract/src/lib.rs:15`. Already pins scheme,
   authority set, redirect chain, response byte cap; fail-closes on
   missing contract via `enforce_required`
-  (`crates/chio-egress-contract/src/lib.rs:84`).
+  (`crates/protocol/chio-egress-contract/src/lib.rs:84`).
 - **Bridge contract**: `ToolServerConnection`
-  (`crates/chio-kernel/src/runtime.rs:255`) is the primary policy gate;
+  (`crates/kernel/chio-kernel/src/runtime.rs:255`) is the primary policy gate;
   the egress contract is a second, narrower gate after the bridge has
   resolved the call. Complementary: bridge gate binds *which tool*,
   egress gate binds *which wire destination*.
@@ -172,7 +172,7 @@ bridge). The pattern:
 
 ### Tool manifest entry
 
-The skill manifest (`crates/chio-workflow/src/manifest.rs:13`) is a step
+The skill manifest (`crates/platform/chio-workflow/src/manifest.rs:13`) is a step
 list; today's `SkillStep` has `input_contract` / `output_contract`, not
 `args_schema`. The examples below are the desired typed input constraints
 for an orchestrator-egress manifest shape, not current code. Example for
@@ -232,7 +232,7 @@ The signed decision receipt embeds:
 - `tool_input_hash`: SHA-256 of canonicalized tool arguments (so the
   receipt binds to the exact dispatch payload).
 - `egress_target`: the `ValidatedHttpEgressTarget`
-  (`crates/chio-egress-contract/src/lib.rs:42-47`) returned from
+  (`crates/protocol/chio-egress-contract/src/lib.rs:42-47`) returned from
   enforcement (scheme + authority + tenant namespace).
 - `provider_run_id`: the dispatch / run identifier returned by the
   platform (GitHub returns a 204 with no body for `dispatches` so we
@@ -291,7 +291,7 @@ hitting an attacker-controlled host via path or argument smuggling.
   cross-receipt demo (agent dispatch -> Actions run -> Sigstore release
   signature, all chained). Use the existing Sigstore identity
   infrastructure
-  (`crates/chio-attest-verify/tests/fixtures/oidc_mismatch.rs:3`) as the
+  (`crates/trust/chio-attest-verify/tests/fixtures/oidc_mismatch.rs:3`) as the
   trust anchor on the Actions side.
 - **Defer with hooks**: Temporal, Airflow, Step Functions, Argo. Keep
   the tool-manifest schema generic enough that an adapter for any of
@@ -307,9 +307,9 @@ hitting an attacker-controlled host via path or argument smuggling.
 - GitHub Agent Workflows / Firewall docs to refresh before planning:
   <https://github.github.io/gh-aw/>
 - `HttpEgressContract`:
-  `crates/chio-egress-contract/src/lib.rs:15`
+  `crates/protocol/chio-egress-contract/src/lib.rs:15`
 - `ToolServerConnection`:
-  `crates/chio-kernel/src/runtime.rs:255`
+  `crates/kernel/chio-kernel/src/runtime.rs:255`
 - `chio-temporal` Python SDK:
   `sdks/python/chio-temporal/README.md:1`
 - `chio-airflow` Python SDK:

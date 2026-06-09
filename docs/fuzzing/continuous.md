@@ -341,9 +341,9 @@ Inventory:
 
 | Crate              | Harness                                                            | Target surface                                                                     |
 |--------------------|--------------------------------------------------------------------|------------------------------------------------------------------------------------|
-| `chio-credentials` | `crates/chio-credentials/tests/dudect/jwt_verify.rs`               | `verify_chio_passport_jwt_vc_json` parse-and-fail path                             |
-| `chio-kernel-core` | `crates/chio-kernel-core/tests/dudect/mac_eq.rs`                   | `chio_core_types::crypto::Signature` byte-equality compare (the MAC-eq surface)    |
-| `chio-kernel-core` | `crates/chio-kernel-core/tests/dudect/scope_subset.rs`             | `NormalizedScope::is_subset_of` capability-algebra subset check                    |
+| `chio-credentials` | `crates/trust/chio-credentials/tests/dudect/jwt_verify.rs`               | `verify_chio_passport_jwt_vc_json` parse-and-fail path                             |
+| `chio-kernel-core` | `crates/kernel/chio-kernel-core/tests/dudect/mac_eq.rs`                   | `chio_core_types::crypto::Signature` byte-equality compare (the MAC-eq surface)    |
+| `chio-kernel-core` | `crates/kernel/chio-kernel-core/tests/dudect/scope_subset.rs`             | `NormalizedScope::is_subset_of` capability-algebra subset check                    |
 
 Run locally. Use `--test <binary>` to select a specific dudect harness
 target rather than a positional `TESTNAME` filter; the harnesses are

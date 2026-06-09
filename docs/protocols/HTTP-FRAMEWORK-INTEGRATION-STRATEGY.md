@@ -452,9 +452,9 @@ the kernel reachable for most developers.
 
 | Package | Purpose | Crate / CLI |
 |---------|---------|-------------|
-| `chio-http-core` | Normalized request/session/receipt model | `crates/chio-http-core` |
-| `chio-openapi` | Import/generate manifests from OpenAPI specs | `crates/chio-openapi` |
-| `chio api protect` | Reverse-proxy / sidecar entrypoint for any HTTP API | `crates/chio-cli` (`chio-api-protect` subcommand) |
+| `chio-http-core` | Normalized request/session/receipt model | `crates/platform/chio-http-core` |
+| `chio-openapi` | Import/generate manifests from OpenAPI specs | `crates/protocol/chio-openapi` |
+| `chio api protect` | Reverse-proxy / sidecar entrypoint for any HTTP API | `crates/products/chio-cli` (`chio-api-protect` subcommand) |
 
 ### Phase 2: First Substrates (Python, TypeScript, Go) [In repo]
 
@@ -478,15 +478,15 @@ the kernel reachable for most developers.
 
 | Package / Surface | Purpose | Package Name |
 |-------------------|---------|--------------|
-| `chio-http-session` | Multi-step journal for session-aware deterministic guards | `crates/chio-http-session` |
-| session-aware guard suite (internal milestone v3.4) | All session-aware deterministic guards (delegation depth, data-flow limits, rotation velocity) | `crates/chio-guards` |
+| `chio-http-session` | Multi-step journal for session-aware deterministic guards | `crates/platform/chio-http-session` |
+| session-aware guard suite (internal milestone v3.4) | All session-aware deterministic guards (delegation depth, data-flow limits, rotation velocity) | `crates/guards/chio-guards` |
 | signed advisory observations | Emit non-blocking behavioral/risk evidence before default hard-blocking | integrated into guard pipeline |
 
 ### Phase 5: Remaining Substrates [In repo]
 
 | Package | Language | Covers | Package Name |
 |---------|----------|--------|--------------|
-| `chio-tower` | Rust | Axum and replayable Tower body types; current gRPC coverage is the generic Tower/HTTP2 path rather than a dedicated `tonic::body::Body` qualification | `crates/chio-tower` |
+| `chio-tower` | Rust | Axum and replayable Tower body types; current gRPC coverage is the generic Tower/HTTP2 path rather than a dedicated `tonic::body::Body` qualification | `crates/protocol/chio-tower` |
 | `chio-spring-boot` | Java/Kotlin | Spring Boot auto-configuration, ChioFilter servlet filter | `sdks/jvm/chio-spring-boot` |
 | `ChioMiddleware` | C# | ASP.NET Core middleware | `sdks/dotnet/ChioMiddleware` |
 
@@ -495,9 +495,9 @@ the kernel reachable for most developers.
 | Package | Protocol | Package Name | Status |
 |---------|----------|--------------|--------|
 | OpenAI caller-executed function tools | OpenAI function calling interception | TBD | Deferred until receipt/read-boundary gates and adapter qualification land |
-| `chio-openapi-mcp-bridge` | OpenAPI-to-MCP bridging with Chio governance | `crates/chio-openapi-mcp-bridge` | In repo |
-| `chio-a2a-edge` | A2A bidirectional bridging | `crates/chio-a2a-edge` | In repo |
-| `chio-acp-edge` | ACP bidirectional bridging | `crates/chio-acp-edge` | In repo |
+| `chio-openapi-mcp-bridge` | OpenAPI-to-MCP bridging with Chio governance | `crates/protocol/chio-openapi-mcp-bridge` | In repo |
+| `chio-a2a-edge` | A2A bidirectional bridging | `crates/protocol/chio-a2a-edge` | In repo |
+| `chio-acp-edge` | ACP bidirectional bridging | `crates/protocol/chio-acp-edge` | In repo |
 
 ## 9. Important Constraint
 

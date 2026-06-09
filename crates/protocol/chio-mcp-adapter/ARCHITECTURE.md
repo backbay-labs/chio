@@ -40,7 +40,7 @@
 ## Dependents
 
 - `chio-cli`, `chio-control-plane`, `chio-hosted-mcp`, `chio-mcp-remote`, and `examples/hello-tool` depend on the public adapter and native-service APIs.
-- `crates/chio-mcp-edge` owns first-class MCP hosting behavior; adapter changes must not move hosting responsibilities back into this crate.
+- `crates/protocol/chio-mcp-edge` owns first-class MCP hosting behavior; adapter changes must not move hosting responsibilities back into this crate.
 - `spec/schemas/chio-wire/v1/jsonrpc` documents the transport JSON-RPC framing mirrored by `transport.rs`.
 - `docs/start-here/NATIVE_ADOPTION_GUIDE.md` documents the native builder surface exposed from this crate.
 

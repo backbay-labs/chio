@@ -25,7 +25,7 @@
 
 ## Dependents
 
-- `crates/chio-provider-conformance` depends on Gemini fixture behavior and API-version pins.
+- `crates/protocol/chio-provider-conformance` depends on Gemini fixture behavior and API-version pins.
 - `examples/cross-provider-policy` depends on the captured Gemini fixture path for cross-provider verdict equality, not on private response parsing helpers.
 - No downstream crate should depend on private `lib.rs` parsing helpers.
 

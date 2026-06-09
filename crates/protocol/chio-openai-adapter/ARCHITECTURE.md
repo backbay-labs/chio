@@ -45,7 +45,7 @@
 
 ## Affected Dependents
 
-- `crates/chio-provider-conformance` consumes the OpenAI provider-adapter
+- `crates/protocol/chio-provider-conformance` consumes the OpenAI provider-adapter
   behavior through replay fixtures.
 - Downstream callers that inject `MockHttpTransport` or another custom
   `ProviderHttpTransport` depend on `OpenAiTransport` enforcing the same

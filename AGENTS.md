@@ -14,20 +14,21 @@ Chio is a protocol for secure, attested tool access in AI agent systems. It repl
 
 ## Crate Map
 
-The workspace ships ~105 crates. The table below lists representative crates per group; see `Cargo.toml` for the full list.
+The workspace ships 107 crates, organized into 11 functional subfolders under `crates/`. Every crate lives at `crates/<group>/chio-<name>`; see `Cargo.toml` for the full member list. The table below names each folder, its representative crates, and its purpose.
 
-| Group | Representative crates | Purpose |
-|-------|-----------------------|---------|
-| Core protocol | `chio-core`, `chio-core-types` | Shared types: capabilities, scopes, grants, receipts, canonical JSON, signing. |
-| Kernel | `chio-kernel`, `chio-kernel-core`, `chio-kernel-browser`, `chio-kernel-mobile` | Capability validation, guard pipeline, receipt signing, platform variants. |
-| Guards & Policy | `chio-guards`, `chio-data-guards`, `chio-external-guards`, `chio-wasm-guards`, `chio-policy`, `chio-guard-sdk` | Native guard implementations, policy evaluation, and the guard authoring SDK. |
-| Adapters & Edges | `chio-mcp-adapter`, `chio-mcp-edge`, `chio-a2a-adapter`, `chio-a2a-edge`, `chio-acp-edge`, `chio-acp-proxy`, `chio-openapi-mcp-bridge`, `chio-cross-protocol`, `chio-ag-ui-proxy` | Wrap external protocols (MCP, A2A, ACP, OpenAPI, AG-UI) as Chio tool servers. |
-| Economics & Settlement | `chio-credit`, `chio-market`, `chio-settle`, `chio-link`, `chio-anchor`, `chio-underwriting`, `chio-appraisal` | Pricing, markets, settlement rails, and anchoring for metered tool access. |
-| Identity & Federation | `chio-did`, `chio-credentials`, `chio-federation`, `chio-governance`, `chio-reputation` | DID handling, verifiable credentials, multi-authority federation, governance. |
-| Observability | `chio-siem`, `chio-metering` | SIEM event export and metering for billing and audit. |
-| Control Plane & Storage | `chio-control-plane`, `chio-store-sqlite`, `chio-manifest` | Runtime wiring, persistent stores, signed tool manifests. |
-| HTTP & Session | `chio-http-core`, `chio-http-session` | Shared HTTP primitives and session lifecycle. |
-| Products | `chio-cli`, `chio-wall`, `chio-api-protect` | End-user binaries and product surfaces built on the protocol. |
+| Folder (`crates/<group>`) | Representative crates | Purpose |
+|---------------------------|-----------------------|---------|
+| `core` | `chio-core`, `chio-core-types`, `chio-errors`, `chio-arena`, `chio-adversarial-suite` | Shared types (capabilities, scopes, grants, receipts, canonical JSON, signing), error vocabulary, and the adversarial test arena. |
+| `kernel` | `chio-kernel`, `chio-kernel-core`, `chio-kernel-browser`, `chio-kernel-mobile`, `chio-runtime`, `chio-runtime-core`, `chio-runtime-harness` | Capability validation, guard pipeline, receipt signing, platform variants, and runtime wiring/harness. |
+| `guards` | `chio-guards`, `chio-data-guards`, `chio-external-guards`, `chio-wasm-guards`, `chio-policy`, `chio-guard-registry` | Native guard implementations, policy evaluation, and the guard registry. |
+| `protocol` | `chio-mcp-adapter`, `chio-mcp-edge`, `chio-a2a-adapter`, `chio-acp-edge`, `chio-openai-adapter`, `chio-openapi-mcp-bridge`, `chio-cross-protocol`, `chio-tower` | Wrap external protocols (MCP, A2A, ACP, OpenAPI, AG-UI) and provider tool-call dialects as Chio tool servers (27 crates). |
+| `economy` | `chio-credit`, `chio-market`, `chio-settle`, `chio-link`, `chio-anchor`, `chio-underwriting`, `chio-appraisal`, `chio-metering`, `chio-web3` | Pricing, markets, settlement rails, anchoring, metering, and web3 bindings for metered tool access. |
+| `trust` | `chio-did`, `chio-credentials`, `chio-federation`, `chio-governance`, `chio-reputation`, `chio-attest-verify`, `chio-pheromone`, `chio-tee`, `chio-weights` | DID handling, verifiable credentials, federation, governance, attestation, TEE, pheromone trust signals (20 crates). |
+| `observability` | `chio-siem`, `chio-lineage`, `chio-log-redact`, `chio-metrics-spec`, `chio-otel-receipt-exporter` | SIEM event export, lineage, log redaction, metrics spec, and OTel receipt export. |
+| `platform` | `chio-control-plane`, `chio-store-sqlite`, `chio-manifest`, `chio-config`, `chio-workflow`, `chio-http-core`, `chio-http-session` | Runtime wiring, persistent stores, signed tool manifests, config, workflow, and shared HTTP/session primitives. |
+| `products` | `chio-cli`, `chio-wall`, `chio-wall-core`, `chio-mercury`, `chio-mercury-core`, `chio-api-protect` | End-user binaries and product surfaces built on the protocol. |
+| `sdk` | `chio-guard-sdk`, `chio-guard-sdk-macros`, `chio-binding-helpers`, `chio-bindings-ffi`, `chio-cpp-kernel-ffi`, `chio-eval-receipt` | Guard authoring SDK, FFI bindings, and receipt evaluation helpers. |
+| `tooling` | `chio-conformance`, `chio-spec-codegen`, `chio-spec-validate`, `chio-lsp`, `chio-test-support` | Conformance suite, spec codegen/validation, LSP, and shared test support. |
 
 ## Build and Test
 
@@ -49,10 +50,10 @@ cargo fmt --all -- --check
 ## Key Files
 
 - Protocol spec: `spec/PROTOCOL.md`
-- Core types: `crates/chio-core/src/lib.rs`
-- Kernel: `crates/chio-kernel/src/lib.rs`
-- Native guards: `crates/chio-guards/src/lib.rs`
-- Policy engine: `crates/chio-policy/src/lib.rs`
-- Manifest format: `crates/chio-manifest/src/lib.rs`
+- Core types: `crates/core/chio-core/src/lib.rs`
+- Kernel: `crates/kernel/chio-kernel/src/lib.rs`
+- Native guards: `crates/guards/chio-guards/src/lib.rs`
+- Policy engine: `crates/guards/chio-policy/src/lib.rs`
+- Manifest format: `crates/platform/chio-manifest/src/lib.rs`
 - Docs index: `docs/README.md`
 - Python adapter primitives (redact, security, receipts, filters): `sdks/python/chio-adapter-base/`; integration overview at `docs/integrations/CHIO-ADAPTER-BASE.md`.

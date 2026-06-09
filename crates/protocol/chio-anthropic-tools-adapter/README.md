@@ -129,7 +129,7 @@ shape cannot be trusted.
 ## Crate layout
 
 ```text
-crates/chio-anthropic-tools-adapter/
+crates/protocol/chio-anthropic-tools-adapter/
   Cargo.toml         pin metadata, computer-use feature, workspace lints
   README.md          this file
   src/
@@ -162,5 +162,5 @@ Both invocations must succeed in CI.
 
 ## References
 
-- Fabric trait surface: `crates/chio-tool-call-fabric/src/lib.rs`.
-- Conformance harness skeleton: `crates/chio-provider-conformance/`.
+- Fabric trait surface: `crates/protocol/chio-tool-call-fabric/src/lib.rs`.
+- Conformance harness skeleton: `crates/protocol/chio-provider-conformance/`.

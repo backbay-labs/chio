@@ -41,7 +41,7 @@ The extensions launch the language server over stdio. The contract is:
 Third-party editors (Neovim, Helix, JetBrains, Emacs lsp-mode) can
 adopt `chio-lsp` against this contract without first-party packaging.
 The binary ships from the `chio-lsp` Rust crate at
-`crates/chio-lsp/`; the `chio` CLI also exposes `chio lsp` as an
+`crates/tooling/chio-lsp/`; the `chio` CLI also exposes `chio lsp` as an
 alternative entrypoint that proxies to the same server.
 
 ## Installing locally

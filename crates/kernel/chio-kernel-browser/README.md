@@ -66,7 +66,7 @@ This produces `target/browser/wasm32-unknown-unknown/release/chio_kernel_browser
 
 ```bash
 # from the repo root
-wasm-pack build --target web --release crates/chio-kernel-browser
+wasm-pack build --target web --release crates/kernel/chio-kernel-browser
 ```
 
 `wasm-pack` emits a `pkg/` directory inside the crate containing:
@@ -200,7 +200,7 @@ and runs the headless browser bindings test suite with latency output.
 
 Drive the acceptance flow from the `examples/` directory:
 
-1. `wasm-pack build --target web --release crates/chio-kernel-browser`.
+1. `wasm-pack build --target web --release crates/kernel/chio-kernel-browser`.
 2. Serve the crate root through any static file server
    (`python -m http.server`, `npx http-server`, etc.).
 3. Open `examples/demo.html` in a supported browser.

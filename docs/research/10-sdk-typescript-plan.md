@@ -26,7 +26,7 @@ Local evidence:
 
 - the current JS peer is hand-rolled and already covers initialization, auth, session reuse, nested callbacks, transcript capture, and scenario execution in one file: [tests/conformance/peers/js/client.mjs](../../tests/conformance/peers/js/client.mjs)
 - the peer is ESM-only today: [tests/conformance/peers/js/package.json](../../tests/conformance/peers/js/package.json)
-- `arc-core` is intentionally runtime-free and already states it is suitable for WASM and embedded environments: [crates/arc-core/src/lib.rs](../../crates/chio-core/src/lib.rs)
+- `arc-core` is intentionally runtime-free and already states it is suitable for WASM and embedded environments: [crates/arc-core/src/lib.rs](../../crates/core/chio-core/src/lib.rs)
 
 Implication:
 
@@ -409,7 +409,7 @@ Local:
 
 - [tests/conformance/peers/js/client.mjs](../../tests/conformance/peers/js/client.mjs)
 - [tests/conformance/peers/js/package.json](../../tests/conformance/peers/js/package.json)
-- [crates/arc-core/src/lib.rs](../../crates/chio-core/src/lib.rs)
+- [crates/arc-core/src/lib.rs](../../crates/core/chio-core/src/lib.rs)
 - [../BINDINGS_CORE_PLAN.md](../operations/BINDINGS_CORE_PLAN.md)
 
 External:

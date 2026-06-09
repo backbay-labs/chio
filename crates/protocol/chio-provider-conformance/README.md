@@ -28,7 +28,7 @@ cargo run -p chio-provider-conformance --bin record -- \
 Record-supported providers are `openai`, `anthropic`, and `bedrock`. The
 `--scenario` value is the fixture id without `.ndjson`; the CLI rejects
 path-like values and only writes inside
-`crates/chio-provider-conformance/fixtures/<provider>/`.
+`crates/protocol/chio-provider-conformance/fixtures/<provider>/`.
 
 Required environment:
 

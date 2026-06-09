@@ -43,7 +43,7 @@ revocation stores), and `chio-egress-contract` (outbound HTTP safety).
 ## Crate layout
 
 ```
-crates/chio-mcp-remote/
+crates/protocol/chio-mcp-remote/
   Cargo.toml
   src/
     lib.rs              re-exports; includes remote MCP runtime files

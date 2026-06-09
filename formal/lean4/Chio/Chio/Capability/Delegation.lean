@@ -17,9 +17,9 @@
                                     invariants (subset-of transitivity
                                     over `ChioScope`).
 
-  Mirrors: `crates/chio-core-types/src/capability.rs`
+  Mirrors: `crates/core/chio-core-types/src/capability.rs`
            (`Capability::delegate`, `validate_delegation_chain`),
-           `crates/chio-kernel-core/src/revocation_view.rs`
+           `crates/kernel/chio-kernel-core/src/revocation_view.rs`
            (`RevocationSnapshot::is_revoked`).
 -/
 

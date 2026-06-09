@@ -46,7 +46,7 @@ re-record the Bedrock conformance fixtures.
 ## Crate layout
 
 ```text
-crates/chio-bedrock-converse-adapter/
+crates/protocol/chio-bedrock-converse-adapter/
   Cargo.toml      workspace SDK dependency, pin metadata, lints
   README.md       this file
   src/
@@ -140,6 +140,6 @@ cargo build -p chio-bedrock-converse-adapter
 
 ## References
 
-- Fabric trait surface: `crates/chio-tool-call-fabric/src/lib.rs`.
+- Fabric trait surface: `crates/protocol/chio-tool-call-fabric/src/lib.rs`.
 - Sibling adapter convention:
-  `crates/chio-anthropic-tools-adapter/`.
+  `crates/protocol/chio-anthropic-tools-adapter/`.

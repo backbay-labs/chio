@@ -21,7 +21,7 @@ The purpose is to prove that:
 
 Chio's remaining blockers are now adoption and proof, not missing core runtime primitives.
 
-The repo already has strong local integration coverage in `crates/chio-cli/tests`, especially:
+The repo already has strong local integration coverage in `crates/products/chio-cli/tests`, especially:
 
 - `mcp_serve.rs`
 - `mcp_serve_http.rs`
@@ -158,7 +158,7 @@ Notes:
 
 - `chio-conformance` should own scenario loading, report generation, and peer process orchestration.
 - The existing `chio-cli/tests` suite should remain intact and continue to act as the implementation-focused integration suite.
-- External peer assets should live under `tests/conformance/peers`, not inside `crates/chio-cli/tests`.
+- External peer assets should live under `tests/conformance/peers`, not inside `crates/products/chio-cli/tests`.
 
 ## Test Layers
 
@@ -173,10 +173,10 @@ Primary purpose:
 
 Existing assets to reuse:
 
-- `crates/chio-cli/tests/mcp_serve.rs`
-- `crates/chio-cli/tests/mcp_serve_http.rs`
-- `crates/chio-cli/tests/mcp_auth_server.rs`
-- `crates/chio-cli/tests/trust_cluster.rs`
+- `crates/products/chio-cli/tests/mcp_serve.rs`
+- `crates/products/chio-cli/tests/mcp_serve_http.rs`
+- `crates/products/chio-cli/tests/mcp_auth_server.rs`
+- `crates/products/chio-cli/tests/trust_cluster.rs`
 
 ### Layer 2: peer interoperability tests
 
@@ -421,7 +421,7 @@ Mitigation:
 2. `tests/conformance/scenarios/` with MCP core scenarios
 3. `tests/conformance/peers/js/`
 4. `tests/conformance/peers/python/`
-5. `crates/chio-conformance` runner
+5. `crates/tooling/chio-conformance` runner
 6. generated `docs/reports/compatibility-matrix.md`
 
 ## Bottom Line

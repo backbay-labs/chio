@@ -1404,7 +1404,7 @@ mechanisms working together:
    it can be evicted from the store, closing the cache-eviction replay
    window.
 
-Implementation: `crates/chio-kernel/src/kernel/mod.rs`, steps 7-8 of
+Implementation: `crates/kernel/chio-kernel/src/kernel/mod.rs`, steps 7-8 of
 `validate_governed_approval_token()`.
 
 ### Separation of Concerns

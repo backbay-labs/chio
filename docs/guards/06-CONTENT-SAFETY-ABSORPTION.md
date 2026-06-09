@@ -606,7 +606,7 @@ This requires adding `unicode-normalization` to `chio-guards/Cargo.toml`.
 ## 8. File Layout After Port
 
 ```
-crates/chio-guards/src/
+crates/guards/chio-guards/src/
   lib.rs                          (add new guard exports)
   text_canonicalization.rs        (new: ported from text_utils.rs)
   jailbreak.rs                    (new: JailbreakGuard + JailbreakDetector)

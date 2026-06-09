@@ -45,7 +45,7 @@ is not first-class today.** Practical interception points:
 - **Custom `LLMService`**: subclass observes `function_call` output, runs verdict,
   dispatches or injects refusal.
 - **MCP path**: when the tool is served by an MCP server, existing `chio-mcp-edge`
-  (`crates/chio-mcp-edge/`) already gates it.
+  (`crates/protocol/chio-mcp-edge/`) already gates it.
 
 Known sharp edge: an interrupted tool call leaves an unmatched `function_call` in the
 LLM context, breaking subsequent turns with a 400 ([livekit/agents#5092](https://github.com/livekit/agents/issues/5092)).
@@ -98,7 +98,7 @@ STT and TTS pipelines, WebRTC signalling, session lifecycle.
 Chio is not a session manager. The verdict path is a thin synchronous slice between
 "LLM decided to call a tool" and "the tool actually runs." This is the same shape
 already enforced for Anthropic tool use via `chio-tool-call-fabric` and the
-provider adapter (`crates/chio-anthropic-tools-adapter`). OpenAI function-tool
+provider adapter (`crates/protocol/chio-anthropic-tools-adapter`). OpenAI function-tool
 adapter work remains deferred until v1 receipt/read-boundary gates land. The
 voice bridge work is about getting the platform-native tool-call event *into*
 that fabric.
@@ -124,7 +124,7 @@ on a numeric baseline. Realistic per-stage budget for Chio's slice:
 
 Ed25519 [benchmarks](https://medium.com/@moeghifar/post-quantum-digital-signatures-the-benchmark-of-ml-dsa-against-ecdsa-and-eddsa-d4406a5918d9)
 at ~25 us per sign (~50k ops/sec/core). ML-DSA-65 adds ~100-200 us per sign, ~50 us
-per verify. Both fit. The hybrid path (`crates/chio-core-types/src/pq.rs:31`) is not
+per verify. Both fit. The hybrid path (`crates/core/chio-core-types/src/pq.rs:31`) is not
 the bottleneck.
 
 The bottleneck is the durability write. Two options:
@@ -198,7 +198,7 @@ LiveKit's agent ecosystem is Python-centric. Defer.
 ## 5. Identity model
 
 Voice calls have two principals where today's `CallerIdentity`
-(`crates/chio-http-core/src/identity.rs:44`) has one.
+(`crates/platform/chio-http-core/src/identity.rs:44`) has one.
 
 **Agent identity** is already covered by `CallerIdentity.subject` + `auth_method`:
 LiveKit binds via JWT room token (bearer + token hash), Pipecat infers from session,
@@ -269,12 +269,12 @@ replay-safety for retries.
   in-region next to the voice platform, strict per-region affinity. Document the
   regional deployment requirement up front.
 - **Async write failure modes**: queue saturation must fail closed (Deny). Queue
-  depth becomes a first-class SLO in `crates/chio-metrics-spec`.
+  depth becomes a first-class SLO in `crates/observability/chio-metrics-spec`.
 - **LiveKit interruption + missing tool result** ([livekit/agents#5092](https://github.com/livekit/agents/issues/5092)):
   the Deny path must always emit a synthetic tool-result payload. Highest-risk
   integration detail at MVP.
 - **Cross-platform consistency**: the same tool via four bridges must produce
-  structurally identical receipts. Extend `crates/chio-provider-conformance` with a
+  structurally identical receipts. Extend `crates/protocol/chio-provider-conformance` with a
   `voice/` fixture family.
 - **Audio replay attacks**: not Chio's concern. Signed receipts authenticate the
   tool-call event, not the audio. Replayed audio that produces a new tool call goes
@@ -304,9 +304,9 @@ replay-safety for retries.
 - Voice latency budgeting: <https://hamming.ai/resources/voice-ai-latency-whats-fast-whats-slow-how-to-fix-it>
 - Voice latency budgeting: <https://smallest.ai/blog/designing-voice-assistants-stt-llm-tts-tools-and-latency-budget>
 - Signature benchmark Ed25519 vs ML-DSA: <https://medium.com/@moeghifar/post-quantum-digital-signatures-the-benchmark-of-ml-dsa-against-ecdsa-and-eddsa-d4406a5918d9>
-- Internal: `crates/chio-http-core/src/identity.rs:44` (CallerIdentity)
-- Internal: `crates/chio-core-types/src/receipt.rs:159` (ChioReceiptBody)
-- Internal: `crates/chio-core-types/src/pq.rs:31` (ML-DSA-65 backend)
-- Internal: `crates/chio-guards/src/action.rs:16` (ToolAction)
+- Internal: `crates/platform/chio-http-core/src/identity.rs:44` (CallerIdentity)
+- Internal: `crates/core/chio-core-types/src/receipt.rs:159` (ChioReceiptBody)
+- Internal: `crates/core/chio-core-types/src/pq.rs:31` (ML-DSA-65 backend)
+- Internal: `crates/guards/chio-guards/src/action.rs:16` (ToolAction)
 - Internal sibling doc: `docs/research/protocol-strategy/09-event-action-schema.md`
 - Internal sibling doc: `docs/research/protocol-strategy/00-overview.md`

@@ -24,7 +24,7 @@
 
 ## Dependents
 
-- `crates/chio-provider-conformance` depends on Ollama fixture behavior and API-version pins.
+- `crates/protocol/chio-provider-conformance` depends on Ollama fixture behavior and API-version pins.
 - `tests/localhost_replay.rs` depends on the recorded Ollama fixture and the shared mock transport path.
 - Cross-provider equality checks depend on the captured Ollama fixture path for canonical invocation bytes.
 - `streaming.rs` and direct native lifting depend on the same config pin as outbound transport because both stamp provider provenance.

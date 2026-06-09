@@ -39,8 +39,8 @@ creation, SQLite-backed evidence export, and validation-package rendering.
 
 ## Affected Dependents
 
-- `crates/chio-wall-core` remains the source of typed contract validation.
-- CLI tests under `crates/chio-wall/tests` exercise exported on-disk packages.
+- `crates/products/chio-wall-core` remains the source of typed contract validation.
+- CLI tests under `crates/products/chio-wall/tests` exercise exported on-disk packages.
 - Documentation under `docs/chio-wall` is the source of truth for output layout
   and fail-closed operating expectations.
 

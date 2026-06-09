@@ -37,7 +37,7 @@ truth; they do not become a second ledger.
 
 ### 2.1 Invocation-Count Budgets
 
-`ToolGrant` in `crates/chio-core/src/capability.rs` carries an optional invocation cap:
+`ToolGrant` in `crates/core/chio-core/src/capability.rs` carries an optional invocation cap:
 
 ```rust
 pub struct ToolGrant {
@@ -49,7 +49,7 @@ pub struct ToolGrant {
 }
 ```
 
-The kernel enforces this via `BudgetStore::try_increment` in `crates/chio-kernel/src/budget_store.rs`. Each budget record is keyed by `(capability_id, grant_index)`:
+The kernel enforces this via `BudgetStore::try_increment` in `crates/kernel/chio-kernel/src/budget_store.rs`. Each budget record is keyed by `(capability_id, grant_index)`:
 
 ```rust
 pub struct BudgetUsageRecord {
@@ -63,7 +63,7 @@ pub struct BudgetUsageRecord {
 
 ### 2.2 BudgetStore Trait
 
-The `BudgetStore` trait (`crates/chio-kernel/src/budget_store.rs`) now covers
+The `BudgetStore` trait (`crates/kernel/chio-kernel/src/budget_store.rs`) now covers
 both invocation-count and monetary accounting:
 
 ```rust
@@ -118,11 +118,11 @@ Delta queries via `list_usages_after(limit, after_seq)` enable efficient replica
 
 ### 2.4 Budget Enforcement in the Kernel
 
-`ChioKernel::check_and_increment_budget` in `crates/chio-kernel/src/lib.rs` iterates matching grants that arrive pre-sorted by specificity from `resolve_matching_grants` upstream. If all matching grants with `max_invocations` are exhausted, the method returns `KernelError::BudgetExhausted`. The calling code then passes the error message (e.g. "invocation budget exhausted for capability ...") to `build_deny_response`, which produces a signed `Decision::Deny` receipt with guard `"kernel"` and the budget-exhaustion error as the reason string.
+`ChioKernel::check_and_increment_budget` in `crates/kernel/chio-kernel/src/lib.rs` iterates matching grants that arrive pre-sorted by specificity from `resolve_matching_grants` upstream. If all matching grants with `max_invocations` are exhausted, the method returns `KernelError::BudgetExhausted`. The calling code then passes the error message (e.g. "invocation budget exhausted for capability ...") to `build_deny_response`, which produces a signed `Decision::Deny` receipt with guard `"kernel"` and the budget-exhaustion error as the reason string.
 
 ### 2.5 Delegation Attenuation
 
-`Attenuation::ReduceBudget` in `crates/chio-core/src/capability.rs` already supports narrowing invocation counts during delegation:
+`Attenuation::ReduceBudget` in `crates/core/chio-core/src/capability.rs` already supports narrowing invocation counts during delegation:
 
 ```rust
 pub enum Attenuation {
@@ -139,7 +139,7 @@ pub enum Attenuation {
 
 ### 2.6 Receipt Metadata
 
-`ChioReceipt` and `ChioReceiptBody` in `crates/chio-core/src/receipt.rs` carry:
+`ChioReceipt` and `ChioReceiptBody` in `crates/core/chio-core/src/receipt.rs` carry:
 
 ```rust
 pub metadata: Option<serde_json::Value>,
@@ -173,7 +173,7 @@ rely on persisted local state rather than ad hoc inference.
 
 #### 3.1.1 New Types in `chio-core`
 
-Add to `crates/chio-core/src/capability.rs`:
+Add to `crates/core/chio-core/src/capability.rs`:
 
 ```rust
 /// A monetary amount with currency denomination.
@@ -217,7 +217,7 @@ fail-closed by v1 consumers until a future public evolution decision exists.
 
 #### 3.1.2 Attenuation for Cost Budgets
 
-Add a new `Attenuation` variant in `crates/chio-core/src/capability.rs`:
+Add a new `Attenuation` variant in `crates/core/chio-core/src/capability.rs`:
 
 ```rust
 pub enum Attenuation {
@@ -243,7 +243,7 @@ pub enum Attenuation {
 
 #### 3.1.3 Budget Store Extensions
 
-Extend `BudgetUsageRecord` in `crates/chio-kernel/src/budget_store.rs`:
+Extend `BudgetUsageRecord` in `crates/kernel/chio-kernel/src/budget_store.rs`:
 
 ```rust
 pub struct BudgetUsageRecord {
@@ -306,7 +306,7 @@ END
 
 #### 3.2.1 Tool Server Cost Response
 
-Tool servers must be able to report the actual cost of an invocation. Extend the `ToolServerConnection` trait in `crates/chio-kernel/src/lib.rs`:
+Tool servers must be able to report the actual cost of an invocation. Extend the `ToolServerConnection` trait in `crates/kernel/chio-kernel/src/lib.rs`:
 
 ```rust
 /// Cost reported by a tool server after invocation.
@@ -382,7 +382,7 @@ For reconciliation, the receipt log (section 3.5) records the delegation depth a
 
 #### 3.4.1 New Constraint Variants
 
-Add to `Constraint` in `crates/chio-core/src/capability.rs`:
+Add to `Constraint` in `crates/core/chio-core/src/capability.rs`:
 
 ```rust
 pub enum Constraint {
@@ -554,7 +554,7 @@ evidence in one receipt document.
 
 #### 3.5.3 Receipt Store Indexing
 
-Add columns to `chio_tool_receipts` in `crates/chio-kernel/src/receipt_store.rs`:
+Add columns to `chio_tool_receipts` in `crates/kernel/chio-kernel/src/receipt_store.rs`:
 
 ```sql
 ALTER TABLE chio_tool_receipts
@@ -572,7 +572,7 @@ The `SqliteReceiptStore::append_chio_receipt` method extracts `financial.cost_ch
 
 #### 3.6.1 PaymentAdapter Trait
 
-Add a new module `crates/chio-kernel/src/payment.rs`:
+Add a new module `crates/kernel/chio-kernel/src/payment.rs`:
 
 ```rust
 /// Result of a payment authorization or settlement action.
@@ -1216,7 +1216,7 @@ Operational guides for current v1 features:
 
 These deliverables are implemented in the current pre-release v1 branch:
 
-- `MonetaryAmount` type in `crates/chio-core/src/capability.rs`.
+- `MonetaryAmount` type in `crates/core/chio-core/src/capability.rs`.
 - `max_cost_per_invocation` and `max_total_cost` fields on `ToolGrant`; `is_subset_of` enforces cost caps through delegation chains.
 - `ReduceCostPerInvocation` and `ReduceTotalCost` attenuation variants.
 - `total_cost_charged` in `BudgetUsageRecord` and `capability_grant_budgets` table.
@@ -1226,19 +1226,19 @@ These deliverables are implemented in the current pre-release v1 branch:
 - Kernel cost verification in `evaluate_tool_call_with_session_roots`.
 - `FinancialReceiptMetadata` populated into receipt `metadata` field, including `grant_index`, `cost_charged`, `currency`, `budget_remaining`, `budget_total`, `delegation_depth`, `root_budget_holder`, and `settlement_status`.
 - Receipt store cost indexing columns (`cost_charged`, `cost_currency`).
-- `VelocityGuard` token-bucket rate limiting in `crates/chio-guards/src/velocity.rs`.
+- `VelocityGuard` token-bucket rate limiting in `crates/guards/chio-guards/src/velocity.rs`.
 - Unit and integration tests for all of the above.
 
 **Shipped files:**
 
 | File | What shipped |
 |------|-------------|
-| `crates/chio-core/src/capability.rs` | `MonetaryAmount`, `ToolGrant` monetary fields, attenuation variants, `is_subset_of` monetary checks |
-| `crates/chio-kernel/src/budget_store.rs` | `BudgetUsageRecord.total_cost_charged`, `try_charge_cost`, schema migration, replication |
-| `crates/chio-kernel/src/lib.rs` | `ToolInvocationCost`, `invoke_with_cost`, kernel cost verification, receipt population |
-| `crates/chio-core/src/receipt.rs` | `FinancialReceiptMetadata` (serialized into `metadata` field) |
-| `crates/chio-kernel/src/receipt_store.rs` | Cost indexing columns, `RetentionConfig`, archival rotation |
-| `crates/chio-guards/src/velocity.rs` | `VelocityGuard` token-bucket implementation |
+| `crates/core/chio-core/src/capability.rs` | `MonetaryAmount`, `ToolGrant` monetary fields, attenuation variants, `is_subset_of` monetary checks |
+| `crates/kernel/chio-kernel/src/budget_store.rs` | `BudgetUsageRecord.total_cost_charged`, `try_charge_cost`, schema migration, replication |
+| `crates/kernel/chio-kernel/src/lib.rs` | `ToolInvocationCost`, `invoke_with_cost`, kernel cost verification, receipt population |
+| `crates/core/chio-core/src/receipt.rs` | `FinancialReceiptMetadata` (serialized into `metadata` field) |
+| `crates/kernel/chio-kernel/src/receipt_store.rs` | Cost indexing columns, `RetentionConfig`, archival rotation |
+| `crates/guards/chio-guards/src/velocity.rs` | `VelocityGuard` token-bucket implementation |
 
 ### Next -- Observability (~3 months effort; maps to Q3 2026 in the Strategic Roadmap)
 
@@ -1252,7 +1252,7 @@ These deliverables are implemented in the current pre-release v1 branch:
 Implemented bridge baseline:
 
 - `PaymentAdapter` trait and truthful settlement mapping in
-  `crates/chio-kernel/src/payment.rs`
+  `crates/kernel/chio-kernel/src/payment.rs`
 - `X402PaymentAdapter` for prepaid API flows and `AcpPaymentAdapter` for
   shared-payment-token commerce approvals
 - operator-visible settlement backlog reporting and sidecar reconciliation
@@ -1260,7 +1260,7 @@ Implemented bridge baseline:
 
 Remaining incremental work:
 
-- `PaymentAdapter` trait and `PaymentError` in `crates/chio-kernel/src/payment.rs`.
+- `PaymentAdapter` trait and `PaymentError` in `crates/kernel/chio-kernel/src/payment.rs`.
 - `StripePaymentAdapter` implementation.
 - Hold-and-capture flow (authorize before invocation, capture or release after cost report).
 - Kernel integration: optional adapter on `ChioKernel`, with truthful receipt semantics and deeper reconciliation automation for post-execution settlement failures.

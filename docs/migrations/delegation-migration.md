@@ -1,7 +1,7 @@
 # Delegation Migration
 
 This migration flips `delegation` to default-on in
-`crates/chio-kernel/Cargo.toml`. The kernel now consults the installed
+`crates/kernel/chio-kernel/Cargo.toml`. The kernel now consults the installed
 `RevocationView` snapshot on every delegated dispatch and denies the
 capability if any link in its delegation chain (or the leaf capability
 itself) appears in the revoked set. This is the trust-boundary's
@@ -10,7 +10,7 @@ gate in an earlier phase.
 
 ## What changed
 
-- `crates/chio-kernel/Cargo.toml`'s `default` feature set now contains
+- `crates/kernel/chio-kernel/Cargo.toml`'s `default` feature set now contains
   both `legacy-sync` and `delegation`. A standard
   `chio-kernel = { version = "..." }` dependency picks both up
   transparently, with no Cargo.toml edits required by consumers.
@@ -113,22 +113,22 @@ After upgrading:
    pick up `delegation` automatically with no Cargo.toml change.
 2. The kernel's revocation behaviour is unchanged when no
    `RevocationView` is installed (tested by
-   `crates/chio-kernel/src/kernel/delegation.rs::tests::no_view_installed_returns_ok`).
+   `crates/kernel/chio-kernel/src/kernel/delegation.rs::tests::no_view_installed_returns_ok`).
 3. Federation-gossip-enabled deployments observe the delegation
    acceptance gate: revoking a planner capability propagates to its
    children and produces a deny receipt within 500 ms median across
    100 trials. The acceptance harness is
-   `crates/chio-revocation-oracle/tests/swarm_revocation_e2e.rs`.
+   `crates/trust/chio-revocation-oracle/tests/swarm_revocation_e2e.rs`.
 4. The receipt-chain proof gate
-   (`crates/chio-revocation-oracle/tests/receipt_chain_proof.rs`)
+   (`crates/trust/chio-revocation-oracle/tests/receipt_chain_proof.rs`)
    asserts no allow receipt has `seen_epoch >= revoke_epoch`.
 
 ## References
 
 - Kernel-side consultation surface:
-  `crates/chio-kernel/src/kernel/delegation.rs`
+  `crates/kernel/chio-kernel/src/kernel/delegation.rs`
 - View cache:
-  `crates/chio-kernel-core/src/revocation_view.rs`
+  `crates/kernel/chio-kernel-core/src/revocation_view.rs`
 - Recursive-delegation Lean theorems:
   `formal/lean4/Chio/Chio/Capability/Delegation.lean`
 - TLA+ depth bound and freshness invariants:

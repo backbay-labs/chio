@@ -31,10 +31,10 @@ Representative governed endpoints already exposed by the service include:
 
 The authoritative runtime wiring lives in:
 
-- [cluster_and_reports.rs](../../crates/chio-control-plane/src/trust_control/cluster_and_reports.rs)
-- [receipt_handlers.rs](../../crates/chio-control-plane/src/trust_control/receipt_handlers.rs)
-- [risk_finance_handlers.rs](../../crates/chio-control-plane/src/trust_control/risk_finance_handlers.rs)
-- [service_runtime.rs](../../crates/chio-control-plane/src/trust_control/service_runtime.rs)
+- [cluster_and_reports.rs](../../crates/platform/chio-control-plane/src/trust_control/cluster_and_reports.rs)
+- [receipt_handlers.rs](../../crates/platform/chio-control-plane/src/trust_control/receipt_handlers.rs)
+- [risk_finance_handlers.rs](../../crates/platform/chio-control-plane/src/trust_control/risk_finance_handlers.rs)
+- [service_runtime.rs](../../crates/platform/chio-control-plane/src/trust_control/service_runtime.rs)
 
 ## Core Operator Outputs
 

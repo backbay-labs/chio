@@ -212,7 +212,7 @@ kubectl delete -f examples/istio-ext-authz/00-chio-sidecar-deployment.yaml
 
 - `docs/protocols/ENVOY-EXT-AUTHZ-INTEGRATION.md` section 6 -- architectural
   rationale for the Istio layering.
-- `crates/chio-envoy-ext-authz/` -- Envoy ext_authz gRPC adapter source.
+- `crates/protocol/chio-envoy-ext-authz/` -- Envoy ext_authz gRPC adapter source.
 - `deploy/cloud-run`, `deploy/ecs`, `deploy/azure` -- managed multi-container
   sidecar deploy targets.
 - `examples/istio-ext-authz/ci-validation.md` -- how to validate these

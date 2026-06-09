@@ -31,7 +31,7 @@ files are NOT auto-discovered, and even when loaded explicitly via
 `--config` their globs are matched relative to the source-tree root rather
 than the per-crate root. All per-crate scoping is therefore consolidated
 into the single workspace-root file with workspace-rooted globs (e.g.
-`crates/chio-kernel-core/src/evaluate.rs`).
+`crates/kernel/chio-kernel-core/src/evaluate.rs`).
 
 | Path                                         | Role                                                  |
 |----------------------------------------------|-------------------------------------------------------|

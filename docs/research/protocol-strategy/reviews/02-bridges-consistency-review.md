@@ -19,7 +19,7 @@ cluster reads as internally coherent.
 
 ## Verified `ToolServerConnection` trait shape
 
-Trait lives at `crates/chio-kernel/src/runtime.rs:255`. Verbatim surface:
+Trait lives at `crates/kernel/chio-kernel/src/runtime.rs:255`. Verbatim surface:
 
 ```rust
 #[async_trait::async_trait]
@@ -39,15 +39,15 @@ pub trait ToolServerConnection: Send + Sync {
 ```
 
 Supporting types: `ToolCallChunk { data: Value }` at
-`crates/chio-kernel/src/runtime.rs:111`, `ToolCallStream { chunks: Vec<...> }`
+`crates/kernel/chio-kernel/src/runtime.rs:111`, `ToolCallStream { chunks: Vec<...> }`
 at `runtime.rs:117`, `ToolServerStreamResult::{Complete, Incomplete{stream,
 reason}}` at `runtime.rs:136`, `NestedFlowBridge` at `runtime.rs:156`,
 `ToolServerEvent::{ElicitationCompleted, ResourceUpdated, ResourcesListChanged,
 ToolsListChanged, PromptsListChanged}` at `runtime.rs:312`.
 
-Existing reference impls: `crates/chio-mcp-adapter/src/lib.rs:410`
-(`AdaptedMcpServer`), `crates/chio-mcp-adapter/src/native.rs:384`
-(`NativeChioService`), `crates/chio-a2a-adapter/src/invoke.rs:1315`
+Existing reference impls: `crates/protocol/chio-mcp-adapter/src/lib.rs:410`
+(`AdaptedMcpServer`), `crates/protocol/chio-mcp-adapter/src/native.rs:384`
+(`NativeChioService`), `crates/protocol/chio-a2a-adapter/src/invoke.rs:1315`
 (`A2aAdapter`). All five bridge proposals follow this pattern.
 
 ## Per-bridge consistency check
@@ -63,7 +63,7 @@ Existing reference impls: `crates/chio-mcp-adapter/src/lib.rs:410`
 All five maps are sound against the real trait surface. Three caveats:
 
 1. Doc 08 wants a new `KernelError::ToolInterrupted { interrupt_id, payload }`
-   variant; `KernelError` lives at `crates/chio-kernel/src/kernel/mod.rs` (the
+   variant; `KernelError` lives at `crates/kernel/chio-kernel/src/kernel/mod.rs` (the
    exact line cited in doc 08 as `:473` was not verified line-for-line, but
    the variant is unambiguously additive). Flag this as a kernel-side change
    the AGNTCY bridge depends on.
@@ -84,7 +84,7 @@ not "bridge"; it is direction-of-flow:
 
 - `chio-*-edge`: expose Chio out to an external protocol consumer (Chio is
   the server, external is the client). Examples: `chio-acp-edge` (Zed ACP,
-  `crates/chio-acp-edge/src/lib.rs:3-11` confirms this is Zed's Agent Client
+  `crates/protocol/chio-acp-edge/src/lib.rs:3-11` confirms this is Zed's Agent Client
   Protocol), `chio-a2a-edge`, `chio-mcp-edge`.
 - `chio-*-adapter`: consume an external protocol as a Chio tool server (Chio
   is the client/mediator). Examples: `chio-mcp-adapter`, `chio-a2a-adapter`,
@@ -139,7 +139,7 @@ concretely (lines 237-302) and adds: a `refresh()` method, `DirError`,
 Crate location: doc 02 floats `chio-directory` (line 207); doc 00-overview
 v1 originally implied `chio-federation` (rejected reasonably in doc-08:227
 because `chio-federation` is heavier-weight: relay peering, quarantine,
-observability, per `crates/chio-federation/src/lib.rs:1-30` which is mostly
+observability, per `crates/trust/chio-federation/src/lib.rs:1-30` which is mostly
 bilateral-trust and gossip code). **Pick `chio-directory`.** It is a leaf
 crate with a single trait and no kernel dependency. The federation crate is
 about bilateral runtime trust, not read-only peer indexes.
@@ -151,7 +151,7 @@ receipt metadata as provenance. Doc 08 says the same plus `blob_sha256`,
 
 ## Bridge identity stories vs. `CallerIdentity`
 
-Verified shape at `crates/chio-http-core/src/identity.rs:8-65`:
+Verified shape at `crates/platform/chio-http-core/src/identity.rs:8-65`:
 
 ```rust
 pub enum AuthMethod { Bearer { token_hash }, ApiKey { key_name, key_hash },
@@ -238,7 +238,7 @@ doc 13 should mark them as optional/follow-on.
    formats. Cosmetic.
 
 6. **`chio-openapi-mcp-bridge`.** Workspace already has a `-bridge` crate
-   (`crates/chio-openapi-mcp-bridge`). This contradicts the recommendation
+   (`crates/protocol/chio-openapi-mcp-bridge`). This contradicts the recommendation
    to ban `-bridge` from the naming convention. Either rename that crate to
    `chio-openapi-mcp-adapter` in a separate cleanup (it is currently a
    one-off, not a convention) or accept `-bridge` as a third valid suffix
@@ -325,7 +325,7 @@ similarly, or supersede with v2.
 ## 3-line summary
 
 1. Bridge cluster is broadly consistent: all five map onto the real
-   `ToolServerConnection` trait at `crates/chio-kernel/src/runtime.rs:255`
+   `ToolServerConnection` trait at `crates/kernel/chio-kernel/src/runtime.rs:255`
    without inventing methods, and each receipt block has a matching
    `ExtensionNamespace` in doc 15.
 2. Naming recommendation: drop the new `chio-bridge-*` prefix; use the

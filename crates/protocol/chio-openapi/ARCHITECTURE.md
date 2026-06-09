@@ -38,7 +38,7 @@
 
 ## Affected Dependents
 
-- `crates/chio-openapi-mcp-bridge` calls `OpenApiSpec::parse` before building
+- `crates/protocol/chio-openapi-mcp-bridge` calls `OpenApiSpec::parse` before building
   route bindings and manifests. It should inherit stricter parameter validation
   without code changes.
 - `spec/OPENAPI-INTEGRATION.md` is the normative contract for this crate and

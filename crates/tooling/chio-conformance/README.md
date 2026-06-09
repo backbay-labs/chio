@@ -70,7 +70,7 @@ subcommand.
 | Go      | in-repo only  | Built from `sdks/go/chio-go/`                               |
 
 C++ P0 scenario coverage (`mcp_core` and `auth`) is covered by the
-`cpp_peer_p0` integration test in `crates/chio-conformance/tests/`.
+`cpp_peer_p0` integration test in `crates/tooling/chio-conformance/tests/`.
 
 ## Feature flags
 

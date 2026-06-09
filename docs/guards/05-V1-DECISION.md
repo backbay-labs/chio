@@ -208,15 +208,15 @@ revisit the per-call fresh-Store model (consider instance pooling).
 
 | File | Change |
 |------|--------|
-| `crates/chio-wasm-guards/src/abi.rs` | Add `action_type`, `extracted_path`, `extracted_target`, `filesystem_roots`, `matched_grant_index` to `GuardRequest`. Remove `session_metadata`. |
-| `crates/chio-wasm-guards/src/runtime.rs` | Update `build_request` to call `extract_action()` and populate new fields. Fix doc-comment on `WasmGuardRuntime` (does not sort). |
-| `crates/chio-wasm-guards/src/runtime.rs` | `WasmtimeBackend`: accept `Chio<Engine>`, add `WasmHostState`, register `chio.*` host functions, add `chio_alloc`/`chio_deny_reason` support, add `ResourceLimiter`. |
-| `crates/chio-wasm-guards/Cargo.toml` | Add dep on `chio-guards` (for `extract_action`). |
-| `crates/chio-config/src/schema.rs` | No change in v1. Add `config: HashMap` in v1.1. |
+| `crates/guards/chio-wasm-guards/src/abi.rs` | Add `action_type`, `extracted_path`, `extracted_target`, `filesystem_roots`, `matched_grant_index` to `GuardRequest`. Remove `session_metadata`. |
+| `crates/guards/chio-wasm-guards/src/runtime.rs` | Update `build_request` to call `extract_action()` and populate new fields. Fix doc-comment on `WasmGuardRuntime` (does not sort). |
+| `crates/guards/chio-wasm-guards/src/runtime.rs` | `WasmtimeBackend`: accept `Chio<Engine>`, add `WasmHostState`, register `chio.*` host functions, add `chio_alloc`/`chio_deny_reason` support, add `ResourceLimiter`. |
+| `crates/guards/chio-wasm-guards/Cargo.toml` | Add dep on `chio-guards` (for `extract_action`). |
+| `crates/platform/chio-config/src/schema.rs` | No change in v1. Add `config: HashMap` in v1.1. |
 | Startup code (proxy/CLI) | Wire `compile_policy()` + sorted WASM entries + advisory pipeline in correct order. |
-| New file: `crates/chio-wasm-guards/src/manifest.rs` | Guard manifest parsing + SHA-256 verification. |
-| New file: `crates/chio-wasm-guards/src/host.rs` | `WasmHostState` struct, `chio.log`/`chio.get_config`/`chio.get_time_unix_secs` implementations. |
-| New file: `crates/chio-wasm-guards/benches/` | Benchmark suite for the validation measurements. |
+| New file: `crates/guards/chio-wasm-guards/src/manifest.rs` | Guard manifest parsing + SHA-256 verification. |
+| New file: `crates/guards/chio-wasm-guards/src/host.rs` | `WasmHostState` struct, `chio.log`/`chio.get_config`/`chio.get_time_unix_secs` implementations. |
+| New file: `crates/guards/chio-wasm-guards/benches/` | Benchmark suite for the validation measurements. |
 
 ---
 

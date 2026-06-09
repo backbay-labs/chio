@@ -54,7 +54,7 @@ publication claims while leaving command orchestration to `chio-mercury`.
 
 ## Affected Dependents
 
-- `crates/chio-mercury` exports and validates MERCURY product packages through
+- `crates/products/chio-mercury` exports and validates MERCURY product packages through
   these contracts.
 - Chio evidence export, checkpoint, and receipt crates are upstream inputs to
   proof package verification, but this slice should not move their semantics.

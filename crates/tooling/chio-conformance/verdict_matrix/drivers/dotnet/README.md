@@ -2,7 +2,7 @@
 
 This .NET 8 project is the dotnet deployment-shape driver for the Chio
 verdict matrix. It is registered in
-`crates/chio-conformance/verdict_matrix/manifest.toml` as `dotnet-sdk` with
+`crates/tooling/chio-conformance/verdict_matrix/manifest.toml` as `dotnet-sdk` with
 `status = "transport-client"` and `matrix_role = "deployment-shape"`. The
 `sdks/dotnet/ChioMiddleware` package provides the host kernel bindings the
 driver invokes through a Chio sidecar.
@@ -10,10 +10,10 @@ driver invokes through a Chio sidecar.
 ## Contract
 
 The driver loads the canonical scenario corpus from
-`crates/chio-conformance/verdict_matrix/scenarios/` and emits a JSON report
+`crates/tooling/chio-conformance/verdict_matrix/scenarios/` and emits a JSON report
 shaped as `(verdict, reason_code, scope_set)` per scenario. The
 `verdict_matrix.deployment_shape_smoke` integration test in
-`crates/chio-conformance` is the cross-deployment smoke gate that asserts the
+`crates/tooling/chio-conformance` is the cross-deployment smoke gate that asserts the
 dotnet driver is registered, wired, and returns the same verdict tuples as the
 Rust kernel reference for the canonical scenario subset.
 
@@ -33,7 +33,7 @@ in-process kernel and therefore no verdict it can honestly emit on its own.
 ## Run
 
 ```bash
-cd crates/chio-conformance/verdict_matrix/drivers/dotnet
+cd crates/tooling/chio-conformance/verdict_matrix/drivers/dotnet
 dotnet test --nologo --verbosity quiet
 ```
 

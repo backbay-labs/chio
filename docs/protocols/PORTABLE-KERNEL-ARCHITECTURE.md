@@ -461,7 +461,7 @@ chio-kernel/
 
 ### Phase 2: Extract `chio-kernel-core`
 
-Create `crates/chio-kernel-core/` with the pure-computation subset. Move types,
+Create `crates/kernel/chio-kernel-core/` with the pure-computation subset. Move types,
 traits, and validation logic. `chio-kernel` depends on `chio-kernel-core` and
 re-exports its public API.
 

@@ -17,7 +17,7 @@ The deployment configuration file is
 
 ## Source Contract
 
-`crates/chio-siem/src/alerting.rs` provides `PagerDutyBackend`, posts Events
+`crates/observability/chio-siem/src/alerting.rs` provides `PagerDutyBackend`, posts Events
 API v2 payloads, and maps Chio severity into PagerDuty severity strings. The
 pilot does not edit that source in P1.
 

@@ -261,7 +261,7 @@ gate.
 
 ### Affected Dependents
 
-The real workspace manifest and `crates/chio-wall/Cargo.toml` are the only
+The real workspace manifest and `crates/products/chio-wall/Cargo.toml` are the only
 metadata changes expected. The structural checker should prove that the newly
 declared product entrypoint has a README, description, package-local marker,
 and binary implementation target.

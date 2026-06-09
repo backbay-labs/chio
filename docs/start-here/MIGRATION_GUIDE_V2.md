@@ -183,7 +183,7 @@ Elasticsearch.
 
 ```toml
 [dependencies]
-chio-siem = { path = "../crates/chio-siem" }
+chio-siem = { path = "../crates/observability/chio-siem" }
 ```
 
 **2. Configure and run the ExporterManager.**

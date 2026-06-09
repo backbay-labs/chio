@@ -1,7 +1,7 @@
 # Kotlin API reference: `uniffi.chio_kernel_mobile`
 
 This document mirrors the UDL interface in
-`crates/chio-kernel-mobile/src/chio_kernel_mobile.udl` one-to-one. It
+`crates/kernel/chio-kernel-mobile/src/chio_kernel_mobile.udl` one-to-one. It
 is the contract `uniffi-bindgen generate --language kotlin` produces
 and the contract the Android app side should code against.
 

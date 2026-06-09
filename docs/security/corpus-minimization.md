@@ -58,7 +58,7 @@ bottom; the `seeds_before` and `bytes_before` columns are frozen.
 ## Adversarial-promoted seeds
 
 `scripts/promote_fuzz_seed.sh --mode adversarial` lands triage-
-pending crashes under `crates/chio-adversarial-suite/cases/<class>/`
+pending crashes under `crates/core/chio-adversarial-suite/cases/<class>/`
 and adds the underlying byte seed to `fuzz/corpus/<target>/`. The
 cmin sweep above covers the byte-side corpora; the JSON case files
 are not fed through cmin (they are coverage artifacts of the

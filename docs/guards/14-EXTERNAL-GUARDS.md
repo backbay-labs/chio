@@ -20,9 +20,9 @@ verdicts, and what evidence lands on receipts.
 
 Source of truth:
 
-- `crates/chio-external-guards/src/` -- public API, kernel bridge,
+- `crates/guards/chio-external-guards/src/` -- public API, kernel bridge,
   endpoint-security validation
-- `crates/chio-guards/src/external/` -- adapter infrastructure
+- `crates/guards/chio-guards/src/external/` -- adapter infrastructure
   (circuit breaker, token bucket, TTL cache, retry)
 
 ---
@@ -63,7 +63,7 @@ evaluate(ctx):
                                          -> Verdict on success (also cached)
 ```
 
-Key invariants (see `crates/chio-guards/src/external/mod.rs`):
+Key invariants (see `crates/guards/chio-guards/src/external/mod.rs`):
 
 - Cache is checked **before** the token bucket. Cache hits do not spend
   rate-limit budget.
@@ -154,7 +154,7 @@ returns `GuardDenied` with a diagnostic name rather than panicking.
 ## 6. Policy Wiring
 
 External guards are instantiated through the policy-compiler path in
-`crates/chio-cli/src/policy.rs`. Authoring lives on the
+`crates/products/chio-cli/src/policy.rs`. Authoring lives on the
 HushSpec-canonical pipeline (see `E13: Policy and Adoption
 Unification`). The shape is the same for every provider:
 
@@ -268,18 +268,18 @@ claim requires its own qualification lane, not a documentation change.
 
 ## 10. References
 
-- `crates/chio-external-guards/src/lib.rs` -- `ScopedAsyncGuard`,
+- `crates/guards/chio-external-guards/src/lib.rs` -- `ScopedAsyncGuard`,
   re-exports.
-- `crates/chio-external-guards/src/external/endpoint_security.rs` --
+- `crates/guards/chio-external-guards/src/external/endpoint_security.rs` --
   URL and IP validation.
-- `crates/chio-guards/src/external/mod.rs` -- `ExternalGuard`,
+- `crates/guards/chio-guards/src/external/mod.rs` -- `ExternalGuard`,
   `AsyncGuardAdapter`, `CircuitOpenVerdict`, `RateLimitedVerdict`,
   `AsyncGuardAdapterConfig`.
-- `crates/chio-guards/src/external/circuit_breaker.rs` --
+- `crates/guards/chio-guards/src/external/circuit_breaker.rs` --
   three-state breaker.
-- `crates/chio-guards/src/external/cache.rs`,
+- `crates/guards/chio-guards/src/external/cache.rs`,
   `token_bucket.rs`, `retry.rs` -- supporting primitives.
-- `crates/chio-cli/src/policy.rs` -- policy-compiler wiring and
+- `crates/products/chio-cli/src/policy.rs` -- policy-compiler wiring and
   `build_pipeline_from_external_guard_policy` test.
 - `docs/guards/12-SELECTIVE-ABSORPTION-PLAN.md` -- historical
   porting context for the async adapter.

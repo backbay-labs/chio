@@ -2,7 +2,7 @@
 
 This Rust crate is the Lambda deployment-shape driver for the Chio verdict
 matrix. It is registered in
-`crates/chio-conformance/verdict_matrix/manifest.toml` as
+`crates/tooling/chio-conformance/verdict_matrix/manifest.toml` as
 `lambda-deployment-shape` with `status = "transport-client"` and
 `matrix_role = "deployment-shape"`. The
 `sdks/lambda/chio-lambda-extension` runtime provides the host kernel
@@ -11,10 +11,10 @@ bindings the driver invokes through a Chio sidecar.
 ## Contract
 
 The driver loads the canonical scenario corpus from
-`crates/chio-conformance/verdict_matrix/scenarios/` and emits a JSON report
+`crates/tooling/chio-conformance/verdict_matrix/scenarios/` and emits a JSON report
 on stdout shaped as `(verdict, reason_code, scope_set)` per scenario. The
 `verdict_matrix.deployment_shape_smoke` integration test in
-`crates/chio-conformance` is the cross-deployment smoke gate that asserts
+`crates/tooling/chio-conformance` is the cross-deployment smoke gate that asserts
 the Lambda driver is registered, wired, and returns the same verdict tuples
 as the Rust kernel reference for the canonical scenario subset.
 

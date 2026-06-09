@@ -51,7 +51,7 @@ interface host {
 
 The first three host calls (`log`, `get-config`, `get-time-unix-secs`)
 mirror the raw `Linker::func_wrap` registrations that 0.1.0 hosts wired
-ad hoc through `crates/chio-wasm-guards/src/host.rs`. The 0.2.0 contract
+ad hoc through `crates/guards/chio-wasm-guards/src/host.rs`. The 0.2.0 contract
 moves those calls into the WIT-native surface so the four guest SDKs
 (Rust, TypeScript via jco, Python via componentize-py, Go via wit-bindgen-go)
 all consume the same generated bindings.
@@ -116,7 +116,7 @@ impl bindings::chio::guard::host::Host for GuardHost {
 ```
 
 P1.T2 deletes the three `Linker::func_wrap` registrations at
-`crates/chio-wasm-guards/src/host.rs` lines 110, 159, and 221, plus the
+`crates/guards/chio-wasm-guards/src/host.rs` lines 110, 159, and 221, plus the
 JSON-serialization shim that compensated for them, and replaces them with
 `bindgen!`-generated wiring. P1.T3 lands the `bundle-handle` resource table
 and the `fetch-blob` host-call body. P1.T4 adds the `wit_world` manifest field

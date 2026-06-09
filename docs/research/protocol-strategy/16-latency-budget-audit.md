@@ -7,7 +7,7 @@
 
 > **Erratum (resolved in-tree):**
 > - **Bench-stub coverage was broader than reported below.** A subsequent verification pass ([reviews/04-receipts-kernel-latency-review.md](reviews/04-receipts-kernel-latency-review.md)) confirmed **11+ stubs**, not 4: `single_guard`, `cap_verify_ed25519`, `receipt_sign`, `guard_pipeline_5`, `scope_match`, `time_bound`, `revocation_lookup`, `budget_decrement`, `receipt_append`, `session_lookup`, `dispatch_deny` were all `b.iter(|| black_box(0_u64))`. The bench bodies now drive real dispatch through `dispatch_request_fixture` rather than constants. The hybrid family (`hybrid_receipt_sign`, `canonical_bytes_hybrid`, `pq_key_load_after_self_quote`, `compliance_certificate_hybrid`) is still wired as tests, not live Criterion benches; do not cite those names as benchmark evidence until they are added to the bench target set. The remaining open work in this area is gating benches with `required-features` per bench file.
-> - **`build_and_sign_receipt` path was wrong.** Below this doc cites `crates/chio-http-core/src/responses.rs:1506-1507`; the actual location is [`crates/chio-kernel/src/kernel/responses.rs:1459-1517`](../../../crates/chio-kernel/src/kernel/responses.rs#L1459). Several other `responses.rs` references in this doc omit the `chio-kernel/src/kernel/` crate qualifier.
+> - **`build_and_sign_receipt` path was wrong.** Below this doc cites `crates/platform/chio-http-core/src/responses.rs:1506-1507`; the actual location is [`crates/kernel/chio-kernel/src/kernel/responses.rs:1459-1517`](../../../crates/kernel/chio-kernel/src/kernel/responses.rs#L1459). Several other `responses.rs` references in this doc omit the `chio-kernel/src/kernel/` crate qualifier.
 
 ## TL;DR
 
@@ -18,7 +18,7 @@ two canonical-JSON passes, and a projection guard. Best estimate for
 Ed25519-only path: **median ~2-4 ms, p99 ~10-20 ms** with no external guards.
 The shipped pilot SLO is p50 < 75 ms / p95 < 250 ms / p99 < 1 s
 (`docs/operator-runbook/slo.md:32-36`) and the sustained nightly probe warns at
-p99 = 50 ms (`crates/chio-kernel/benches/sustained_p99_30min.rs:14`).
+p99 = 50 ms (`crates/kernel/chio-kernel/benches/sustained_p99_30min.rs:14`).
 Voice integration at sub-200ms is **conditional**: feasible with Ed25519-only,
 in-process guards (Cedar), and async receipt write; infeasible with hybrid
 Ed25519+ML-DSA-65 plus OpenFGA Check plus synchronous SQLite persistence in
@@ -33,10 +33,10 @@ budget in CI is built on the new bodies.
 ## Hot-path trace
 
 For an HTTP bridge request through `HttpAuthority::evaluate`
-(`crates/chio-http-core/src/authority.rs:305-339`):
+(`crates/platform/chio-http-core/src/authority.rs:305-339`):
 
 1. HTTP frame parse, routing (outside Chio).
-2. `CallerIdentity` extraction (`crates/chio-http-core/src/identity.rs:43-65`).
+2. `CallerIdentity` extraction (`crates/platform/chio-http-core/src/identity.rs:43-65`).
 3. `identity_hash()`: canonical JSON + SHA-256
    (`identity.rs:82-85`).
 4. `validate_presented_capability` when a token is supplied
@@ -50,19 +50,19 @@ For an HTTP bridge request through `HttpAuthority::evaluate`
    route, then calls `evaluate_tool_call_blocking_with_metadata` (line 595).
 7. Kernel pre-admission in
    `ChioKernel::evaluate_tool_call_async_with_session_context`
-   (`crates/chio-kernel/src/kernel/mod.rs:3299-3460`): tenant resolution,
+   (`crates/kernel/chio-kernel/src/kernel/mod.rs:3299-3460`): tenant resolution,
    emergency-stop, receipt-version admission, capability verify, time bounds,
    revocation, delegation, subject binding.
 8. Guard chain. `HttpAuthority` registers one in-process guard,
    `HttpProjectionGuard` (`authority.rs:283`). External guards loaded via
    `AsyncGuardAdapter` add their own pipeline
-   (`crates/chio-guards/src/external/mod.rs:308`).
+   (`crates/guards/chio-guards/src/external/mod.rs:308`).
 9. Tool-server invocation of the inner authorization probe
    (`authority.rs:179-192`).
 10. Kernel receipt sign via `build_and_sign_receipt`
-    (`crates/chio-kernel/src/kernel/responses.rs:1459-1517`). Ed25519-only
+    (`crates/kernel/chio-kernel/src/kernel/responses.rs:1459-1517`). Ed25519-only
     unless `with_hybrid_signing_backend` is configured (`mod.rs:1213`).
-11. Outer `HttpReceipt::sign` (`crates/chio-http-core/src/receipt.rs:108-130`),
+11. Outer `HttpReceipt::sign` (`crates/platform/chio-http-core/src/receipt.rs:108-130`),
     a second canonical JSON + Ed25519 sign.
 12. Response return (outside Chio).
 
@@ -121,7 +121,7 @@ SLA.
 | HTTP framing + routing | 50-200 us | Framework, not Chio. |
 | `identity_hash` | 5-15 us | Small canonical JSON + SHA-256. |
 | `validate_presented_capability` (V1 Ed25519) | 100-300 us | One Ed25519 verify (50-100 us with `ed25519-dalek`) plus JSON parse and time/issuer checks (`authority.rs:769-812`). |
-| Hybrid capability verify (Ed25519 + ML-DSA-65) | 250-500 us | ML-DSA-65 verify ~100-150 us; both halves serialize through `Signature::from_hybrid_parts` (`crates/chio-core-types/src/pq.rs:166-170`); **sequential** today. |
+| Hybrid capability verify (Ed25519 + ML-DSA-65) | 250-500 us | ML-DSA-65 verify ~100-150 us; both halves serialize through `Signature::from_hybrid_parts` (`crates/core/chio-core-types/src/pq.rs:166-170`); **sequential** today. |
 | `content_hash` | 20-100 us | Canonical JSON + SHA-256 over request metadata; body-size dependent. |
 | `kernel.issue_capability` (inner) | 100-200 us | Ed25519 sign + canonical JSON. |
 | `plan_authoritative_route` | 20-80 us | In-mem route-table lookup + metadata serialize. |
@@ -204,8 +204,8 @@ invisible inside the voice budget.
 ## Double-gating overhead (doc 05 reconciliation)
 
 Doc 05 calls for two gates: `ToolServerConnection`
-(`crates/chio-kernel/src/runtime.rs:255`) and the narrower `HttpEgressContract`
-(`crates/chio-egress-contract/src/lib.rs:15`). The egress gate is **not** a
+(`crates/kernel/chio-kernel/src/runtime.rs:255`) and the narrower `HttpEgressContract`
+(`crates/protocol/chio-egress-contract/src/lib.rs:15`). The egress gate is **not** a
 second sign+verify cycle; `HttpEgressContract::enforce_url` is a pure-Rust
 allowlist + URL parse (scheme, authority set, redirect chain, response byte
 cap, DNS-resolution policy) per doc 05 line 39-43. Estimated 20-80 us per
@@ -226,7 +226,7 @@ latency budget.** The real risk is forgetting to wire one of the two gates
    `HttpAuthority`. Needs a version flag for Envoy/auditors that consume the
    outer receipt header.
 3. **Pipelined hybrid signing**. Today `HybridBackend::sign_bytes` runs
-   Ed25519 then ML-DSA-65 sequentially (`crates/chio-core-types/src/pq.rs:166-170`).
+   Ed25519 then ML-DSA-65 sequentially (`crates/core/chio-core-types/src/pq.rs:166-170`).
    Run them concurrently on a rayon pool. Saves ~50-100 us per hybrid sign.
    Watch thread-pool contention under load.
 4. **TTL cache for capability verification**, keyed by token hash + issuer
@@ -273,7 +273,7 @@ gating benches with `required-features` per bench file.
 
 Also recommended: wire **per-stage tracing spans** that feed child histograms
 into the existing `chio_kernel_decision_latency_seconds`
-(`crates/chio-http-core/src/metrics.rs:158-165`):
+(`crates/platform/chio-http-core/src/metrics.rs:158-165`):
 `chio_cap_verify_seconds`,
 `chio_guard_chain_seconds{guard="..."}`,
 `chio_receipt_sign_seconds{algorithm="..."}`,

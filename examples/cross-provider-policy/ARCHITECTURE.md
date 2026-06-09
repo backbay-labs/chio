@@ -30,7 +30,7 @@ invariant. The public command name and flags must stay compatible.
 The package is invoked by humans and by the example surface documentation
 through `cargo run -p cross-provider-policy -- --dry-run`. The provider
 conformance workflow owns the stricter shared oracle in
-`crates/chio-provider-conformance/tests/cross_provider_equality.rs`; this
+`crates/protocol/chio-provider-conformance/tests/cross_provider_equality.rs`; this
 example mirrors that oracle for a policy-demo surface. No transitive crate API
 changes are required.
 

@@ -8,7 +8,7 @@
 ## TL;DR
 
 The bench-stub finding was **confirmed and broader than the doc reported (resolved in-tree).**
-Every per-stage Criterion bench in `crates/chio-kernel/benches/` except
+Every per-stage Criterion bench in `crates/kernel/chio-kernel/benches/` except
 `dispatch_allow` (and `dispatch_allow_dhat`) used to be literally
 `b.iter(|| black_box(0_u64))` (`single_guard.rs:8`, `cap_verify_ed25519.rs:7`,
 `receipt_sign.rs:7`, `guard_pipeline_5.rs:7`); the bench-regression workflow
@@ -21,38 +21,38 @@ re-baselining latency claims against the new bodies. The receipt-shape and
 event-action proposals in 15 and 09 ground cleanly, with three name
 inconsistencies and one mislabelled file path (doc 16 cites `chio-http-core/src/responses.rs:1506-1507` for `build_and_sign_receipt`; the
 function actually lives at
-`crates/chio-kernel/src/kernel/responses.rs:1459-1517`).
+`crates/kernel/chio-kernel/src/kernel/responses.rs:1459-1517`).
 
 ## Verified citation table
 
 | Claim (source) | Cited path | Verified? |
 |---|---|---|
-| `policy_hash` on receipt body, line 159 (doc 15 line 27, doc 00) | `crates/chio-core-types/src/receipt.rs:168` | Partial. `ChioReceiptBody` starts at line 159 but `policy_hash` is at line 168. Doc 15 also notes "168" later. |
-| `GuardEvidence` at line 1176 (doc 04, doc 15 line 51) | `crates/chio-core-types/src/receipt.rs:1174-1184` | Verified. |
-| Sequential hybrid signing (doc 16 line 118, 223) | `crates/chio-core-types/src/pq.rs:166-170` | Verified. `sign_bytes` calls `classical.sign_bytes` then `pq.sign_bytes` in sequence; no parallelization. |
-| `single_guard.rs:8` stub | `crates/chio-kernel/benches/single_guard.rs:8` | Verified literal `black_box(0_u64)`. |
-| `cap_verify_ed25519.rs:7` stub | `crates/chio-kernel/benches/cap_verify_ed25519.rs:7` (doc cites line 7, body is line 8) | Verified, off-by-one (`bench_function` is line 7, `iter` is line 8). |
-| `receipt_sign.rs:8` stub | `crates/chio-kernel/benches/receipt_sign.rs:7-8` | Verified. |
-| `guard_pipeline_5.rs:8` stub | `crates/chio-kernel/benches/guard_pipeline_5.rs:7-8` | Verified. |
-| `dispatch_allow.rs:12-14` live | `crates/chio-kernel/benches/dispatch_allow.rs:9-14` | Verified - uses `DispatchAllowFixture::dispatch_allow_once()`. |
+| `policy_hash` on receipt body, line 159 (doc 15 line 27, doc 00) | `crates/core/chio-core-types/src/receipt.rs:168` | Partial. `ChioReceiptBody` starts at line 159 but `policy_hash` is at line 168. Doc 15 also notes "168" later. |
+| `GuardEvidence` at line 1176 (doc 04, doc 15 line 51) | `crates/core/chio-core-types/src/receipt.rs:1174-1184` | Verified. |
+| Sequential hybrid signing (doc 16 line 118, 223) | `crates/core/chio-core-types/src/pq.rs:166-170` | Verified. `sign_bytes` calls `classical.sign_bytes` then `pq.sign_bytes` in sequence; no parallelization. |
+| `single_guard.rs:8` stub | `crates/kernel/chio-kernel/benches/single_guard.rs:8` | Verified literal `black_box(0_u64)`. |
+| `cap_verify_ed25519.rs:7` stub | `crates/kernel/chio-kernel/benches/cap_verify_ed25519.rs:7` (doc cites line 7, body is line 8) | Verified, off-by-one (`bench_function` is line 7, `iter` is line 8). |
+| `receipt_sign.rs:8` stub | `crates/kernel/chio-kernel/benches/receipt_sign.rs:7-8` | Verified. |
+| `guard_pipeline_5.rs:8` stub | `crates/kernel/chio-kernel/benches/guard_pipeline_5.rs:7-8` | Verified. |
+| `dispatch_allow.rs:12-14` live | `crates/kernel/chio-kernel/benches/dispatch_allow.rs:9-14` | Verified - uses `DispatchAllowFixture::dispatch_allow_once()`. |
 | CI runs benches at workflow line 108 | `.github/workflows/bench-regression.yml:108` | Verified - `cargo bench -p chio-kernel --bench "$bench"` inside a loop fed by an awk pass over `Cargo.toml`. |
-| `ToolAction` variants line 16-46 (doc 09 line 14) | `crates/chio-guards/src/action.rs:16-46` | Verified. 12 variants exactly. |
-| `HttpAuthority::evaluate` at line 305 (doc 16) | `crates/chio-http-core/src/authority.rs:305-339` | Verified. |
-| `issue_capability` invoked at line 545 (doc 16) | `crates/chio-http-core/src/authority.rs:545` | Verified. |
-| `build_and_sign_receipt` cited at `responses.rs:1506-1507` (doc 16) | **`crates/chio-kernel/src/kernel/responses.rs:1459-1517`** | **Wrong crate.** File `chio-http-core/src/responses.rs` does not exist. The kernel-side function is at the cited line range, but doc 16 names the wrong crate path. |
-| `HttpReceipt::sign` at line 108-130 (doc 16) | `crates/chio-http-core/src/receipt.rs:108-130` | Verified. |
-| `chio-kernel/src/dpop.rs` (doc 16, doc 03) | `crates/chio-kernel/src/dpop.rs:1-358` | Verified; chio-native invocation DPoP, schema `chio.dpop_proof.v1`. |
+| `ToolAction` variants line 16-46 (doc 09 line 14) | `crates/guards/chio-guards/src/action.rs:16-46` | Verified. 12 variants exactly. |
+| `HttpAuthority::evaluate` at line 305 (doc 16) | `crates/platform/chio-http-core/src/authority.rs:305-339` | Verified. |
+| `issue_capability` invoked at line 545 (doc 16) | `crates/platform/chio-http-core/src/authority.rs:545` | Verified. |
+| `build_and_sign_receipt` cited at `responses.rs:1506-1507` (doc 16) | **`crates/kernel/chio-kernel/src/kernel/responses.rs:1459-1517`** | **Wrong crate.** File `chio-http-core/src/responses.rs` does not exist. The kernel-side function is at the cited line range, but doc 16 names the wrong crate path. |
+| `HttpReceipt::sign` at line 108-130 (doc 16) | `crates/platform/chio-http-core/src/receipt.rs:108-130` | Verified. |
+| `chio-kernel/src/dpop.rs` (doc 16, doc 03) | `crates/kernel/chio-kernel/src/dpop.rs:1-358` | Verified; chio-native invocation DPoP, schema `chio.dpop_proof.v1`. |
 | `slo.md:32-36` | `docs/operator-runbook/slo.md:31-36` | Verified (p50 < 75 ms, p95 < 250 ms, p99 < 1 s). |
-| `sustained_p99_30min.rs:14` `P99_WARN_MICROS = 50_000` | `crates/chio-kernel/benches/sustained_p99_30min.rs:14` | Verified. |
+| `sustained_p99_30min.rs:14` `P99_WARN_MICROS = 50_000` | `crates/kernel/chio-kernel/benches/sustained_p99_30min.rs:14` | Verified. |
 | `PROTOCOL.md:7-8` additive v3 | `spec/PROTOCOL.md:7-10` | Verified. |
 | `PROTOCOL.md:172-180` hybrid signing | `spec/PROTOCOL.md:171-180` | Verified (Ed25519 default, `hybrid:<classical>:<pq>:<alg_set>` prefix). |
 | `PROTOCOL.md:305-329` ceiling negotiation | `spec/PROTOCOL.md:305-329` | Verified. |
-| `TOOL_MANIFEST_SCHEMA = "chio.manifest.v1"` line 20 | `crates/chio-manifest/src/lib.rs:20` | Verified. |
-| `RequiredPermissions` at line 165 (doc 09) | `crates/chio-manifest/src/lib.rs:163-177` | Verified - struct has only `read_paths`, `write_paths`, `network_hosts`, `environment_variables`. No `event_*` fields. |
-| `ToolServerConnection` trait at line 255 (task brief) | `crates/chio-kernel/src/runtime.rs:255` | Verified. |
-| `ToolCallChunk` at line 109-125 (task brief) | `crates/chio-kernel/src/runtime.rs:109-125` | Verified. |
-| `ToolServerStreamResult` (task brief) | `crates/chio-kernel/src/runtime.rs:134-142` | Verified. |
-| RFC 8785 canonical JSON | `crates/chio-core-types/src/canonical.rs:1-12`; `spec/PROTOCOL.md:169-171` references "canonical JSON" but the literal string "8785" does not appear in `PROTOCOL.md`. | Partial - implementation file labels it RFC 8785, spec does not name the RFC. |
+| `TOOL_MANIFEST_SCHEMA = "chio.manifest.v1"` line 20 | `crates/platform/chio-manifest/src/lib.rs:20` | Verified. |
+| `RequiredPermissions` at line 165 (doc 09) | `crates/platform/chio-manifest/src/lib.rs:163-177` | Verified - struct has only `read_paths`, `write_paths`, `network_hosts`, `environment_variables`. No `event_*` fields. |
+| `ToolServerConnection` trait at line 255 (task brief) | `crates/kernel/chio-kernel/src/runtime.rs:255` | Verified. |
+| `ToolCallChunk` at line 109-125 (task brief) | `crates/kernel/chio-kernel/src/runtime.rs:109-125` | Verified. |
+| `ToolServerStreamResult` (task brief) | `crates/kernel/chio-kernel/src/runtime.rs:134-142` | Verified. |
+| RFC 8785 canonical JSON | `crates/core/chio-core-types/src/canonical.rs:1-12`; `spec/PROTOCOL.md:169-171` references "canonical JSON" but the literal string "8785" does not appear in `PROTOCOL.md`. | Partial - implementation file labels it RFC 8785, spec does not name the RFC. |
 
 ## Bench-stub verification (resolved in-tree)
 
@@ -72,7 +72,7 @@ Identical body in `cap_verify_ed25519.rs`, `receipt_sign.rs`,
 async-kernel pivot lands."
 
 Cargo manifest enumerates the benches at
-`crates/chio-kernel/Cargo.toml` lines 90-187:
+`crates/kernel/chio-kernel/Cargo.toml` lines 90-187:
 
 - Stubs (confirmed by reading the files): `cap_verify_ed25519`, `scope_match`,
   `time_bound`, `revocation_lookup`, `budget_decrement`, `single_guard`,
@@ -237,7 +237,7 @@ points are semantic:
 
 9. **DPoP duplication is real and intentional.** Two distinct surfaces:
 
-   - Chio-native invocation DPoP at `crates/chio-kernel/src/dpop.rs:1-358`,
+   - Chio-native invocation DPoP at `crates/kernel/chio-kernel/src/dpop.rs:1-358`,
      schema `chio.dpop_proof.v1` (line 45). Binds capability_id +
      tool_server + tool_name + action_hash + nonce + issued_at.
    - RFC 9449 JWT DPoP at the HTTP edge - **not yet implemented.** Doc
@@ -323,12 +323,12 @@ points are semantic:
 ## Three-line summary
 
 1. Bench-stub claim **verified, and worse**: CI ingests every bench from
-   `crates/chio-kernel/Cargo.toml` (workflow line 101-108) and runs the
+   `crates/kernel/chio-kernel/Cargo.toml` (workflow line 101-108) and runs the
    stubs along with the live ones, so the regression check is comparing
    `black_box(0_u64)` to itself for 10+ supposed primitives.
 2. Most consequential ungrounded citation: doc 16 line 125 attributes
    `build_and_sign_receipt` to `chio-http-core/src/responses.rs:1506-1507`
    - that file does not exist; the function lives at
-   `crates/chio-kernel/src/kernel/responses.rs:1459-1517`.
+   `crates/kernel/chio-kernel/src/kernel/responses.rs:1459-1517`.
 3. Path:
    this file.

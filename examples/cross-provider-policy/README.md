@@ -12,4 +12,4 @@ The dry run loads `policy.yaml`, evaluates the deterministic single-weather-tool
 
 The deep adapter replay harness covers the OpenAI, Anthropic, and Bedrock providers. The Gemini, Mistral, Groq, Ollama, and Cohere providers use the NDJSON capture path that backs the cross-provider verdict-equality oracle.
 
-The command is offline-only. It reads the fixture corpus under `crates/chio-provider-conformance/fixtures/{openai,anthropic,bedrock,gemini,mistral,groq,ollama,cohere}` and does not require any upstream credentials.
+The command is offline-only. It reads the fixture corpus under `crates/protocol/chio-provider-conformance/fixtures/{openai,anthropic,bedrock,gemini,mistral,groq,ollama,cohere}` and does not require any upstream credentials.

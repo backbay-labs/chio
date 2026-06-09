@@ -10,7 +10,7 @@ platform claims.
 - `control_path.rs` owns all public Chio-Wall schemas, product enums, validation
   errors, artifact references, buyer-review packages, and control packages.
 - `lib.rs` is the compatibility re-export surface for the CLI and tests.
-- `crates/chio-wall` owns command orchestration, file output, Chio evidence
+- `crates/products/chio-wall` owns command orchestration, file output, Chio evidence
   export, and JSON rendering. It should not duplicate core package invariants.
 - `docs/chio-wall/*` owns product scope, supported claims, output layout, and
   non-claims for the bounded buyer motion.
@@ -39,10 +39,10 @@ platform claims.
 
 ## Affected Dependents
 
-- `crates/chio-wall` exports and validates packages through these core types.
+- `crates/products/chio-wall` exports and validates packages through these core types.
 - `docs/chio-wall/VALIDATION_PACKAGE.md` defines the artifact layout the core
   validator should enforce.
-- Tests under `crates/chio-wall/tests` are the dependent gate for CLI-generated
+- Tests under `crates/products/chio-wall/tests` are the dependent gate for CLI-generated
   packages.
 
 ## Planned Improvement

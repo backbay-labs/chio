@@ -1,7 +1,7 @@
 # Privacy Practices Narrative
 
 Privacy evidence in the repository covers receipt and log redaction
-(`crates/chio-log-redact/src/lib.rs`), the audit-log export schema
+(`crates/observability/chio-log-redact/src/lib.rs`), the audit-log export schema
 (`spec/audit-log/export-schema.v1.json`), and the documented
 minimum-necessary and telemetry de-identification posture
 (`compliance/hitrust/policies/de-identification.md`).

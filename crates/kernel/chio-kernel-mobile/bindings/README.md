@@ -99,7 +99,7 @@ mkdir -p out/swift
 uniffi-bindgen generate \
     --language swift \
     --out-dir out/swift \
-    crates/chio-kernel-mobile/src/chio_kernel_mobile.udl
+    crates/kernel/chio-kernel-mobile/src/chio_kernel_mobile.udl
 ```
 
 `out/swift/chio_kernel_mobile.swift` is the module file to drop into
@@ -137,7 +137,7 @@ mkdir -p out/kotlin
 uniffi-bindgen generate \
     --language kotlin \
     --out-dir out/kotlin \
-    crates/chio-kernel-mobile/src/chio_kernel_mobile.udl
+    crates/kernel/chio-kernel-mobile/src/chio_kernel_mobile.udl
 ```
 
 `out/kotlin/uniffi/chio_kernel_mobile/chio_kernel_mobile.kt` is the
@@ -199,9 +199,9 @@ verification step during local development:
 ```bash
 # After cargo install uniffi-bindgen (see Prerequisites):
 uniffi-bindgen generate --language swift --out-dir out \
-    crates/chio-kernel-mobile/src/chio_kernel_mobile.udl
+    crates/kernel/chio-kernel-mobile/src/chio_kernel_mobile.udl
 uniffi-bindgen generate --language kotlin --out-dir out \
-    crates/chio-kernel-mobile/src/chio_kernel_mobile.udl
+    crates/kernel/chio-kernel-mobile/src/chio_kernel_mobile.udl
 ```
 
 The Swift / Kotlin files listed in this directory

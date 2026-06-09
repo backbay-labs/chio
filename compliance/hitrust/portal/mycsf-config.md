@@ -41,7 +41,7 @@ offered as inherited evidence. They are not currently uploaded anywhere.
 | CI and provenance | `.github/workflows/`, `.github/workflows/reproducible-build.yml` | Development, Operations, Compliance |
 | Threat coverage | `docs/security/threat-coverage.md`, `spec/security/chio-threat-model.v1.json` | Risk Management, Privacy, Incident Management |
 | Supply-chain and formal evidence | `supply-chain/`, `formal/` | Asset Management, Development |
-| Receipt redaction | `crates/chio-log-redact/src/lib.rs` | Privacy, Operations |
+| Receipt redaction | `crates/observability/chio-log-redact/src/lib.rs` | Privacy, Operations |
 
 ## Access and retention controls (planned)
 

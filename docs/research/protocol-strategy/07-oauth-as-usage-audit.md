@@ -8,7 +8,7 @@
 
 ## TL;DR
 
-The OAuth 2.1 authorization server at `crates/chio-mcp-remote/src/remote_mcp/oauth.rs` is **live, opt-in scaffolding** - not dead code, not on-by-default, and exercised by tests. The AS is gated by exactly one CLI flag, `--auth-server-seed-file` (see `crates/chio-cli/src/cli/types.rs:1675-1677`). When that flag is absent the AS module compiles in but no routes activate and the AS-only endpoints return 404. When present, six routes mount on the same axum router as the MCP edge and the AS issues Ed25519 JWTs bound to the local resource. Five integration tests in `crates/chio-cli/tests/mcp_auth_server.rs` hit it end-to-end against a real spawned `chio mcp serve-http` process. There is no evidence of an external customer running it in production, and the current planning verdict is narrower than this historical audit: the code is gated scaffolding, not a plan-ready product surface.
+The OAuth 2.1 authorization server at `crates/protocol/chio-mcp-remote/src/remote_mcp/oauth.rs` is **live, opt-in scaffolding** - not dead code, not on-by-default, and exercised by tests. The AS is gated by exactly one CLI flag, `--auth-server-seed-file` (see `crates/products/chio-cli/src/cli/types.rs:1675-1677`). When that flag is absent the AS module compiles in but no routes activate and the AS-only endpoints return 404. When present, six routes mount on the same axum router as the MCP edge and the AS issues Ed25519 JWTs bound to the local resource. Five integration tests in `crates/products/chio-cli/tests/mcp_auth_server.rs` hit it end-to-end against a real spawned `chio mcp serve-http` process. There is no evidence of an external customer running it in production, and the current planning verdict is narrower than this historical audit: the code is gated scaffolding, not a plan-ready product surface.
 
 Recommended outcome: **(c) keep behind an optional feature flag** - effectively what the codebase already does. Couple that with the rename and scope-clamp from doc 03 so the surface stays bounded to the `chio-governed-rar-v1` profile.
 
@@ -16,15 +16,15 @@ Recommended outcome: **(c) keep behind an optional feature flag** - effectively 
 
 ### Module entry point and call graph
 
-- The AS is `include!`d into `chio-mcp-remote` at `crates/chio-mcp-remote/src/lib.rs:10` (no feature gate; always compiled).
-- `LocalAuthorizationServer` is declared in `crates/chio-mcp-remote/src/remote_mcp/session_core.rs:627`; methods (`authorization_page`, `approve_authorization`, `exchange_token`, `jwks`) live in `oauth.rs:22`.
-- Construction: `crates/chio-mcp-remote/src/remote_mcp/http_service.rs:1727-1752` (`build_local_auth_server`). Returns `Ok(None)` if `config.auth_server_seed_path.is_none()` (line 1731). Without the seed, `state.local_auth_server` is `None` (`http_service.rs:198`).
+- The AS is `include!`d into `chio-mcp-remote` at `crates/protocol/chio-mcp-remote/src/lib.rs:10` (no feature gate; always compiled).
+- `LocalAuthorizationServer` is declared in `crates/protocol/chio-mcp-remote/src/remote_mcp/session_core.rs:627`; methods (`authorization_page`, `approve_authorization`, `exchange_token`, `jwks`) live in `oauth.rs:22`.
+- Construction: `crates/protocol/chio-mcp-remote/src/remote_mcp/http_service.rs:1727-1752` (`build_local_auth_server`). Returns `Ok(None)` if `config.auth_server_seed_path.is_none()` (line 1731). Without the seed, `state.local_auth_server` is `None` (`http_service.rs:198`).
 
 Three downstream crates depend on `chio-mcp-remote`:
 
-- `crates/chio-cli` (Cargo.toml:44) - the only production-facing consumer; calls `remote_mcp::serve_http(...)` at `crates/chio-cli/src/cli/runtime.rs:590-599`, dispatched from `chio mcp serve-http` (`crates/chio-cli/src/cli/dispatch.rs:118, 152`).
-- `crates/chio-hosted-mcp` (Cargo.toml:20) - compatibility re-export per `crates/chio-control-plane/tests/runtime_boundaries.rs:22-46`.
-- `crates/chio-conformance` (Cargo.toml:145) - exposes a `LocalOAuth` mode that spins the AS up as one of two supported auth postures (`crates/chio-conformance/src/runner.rs:36, 313, 420`; `crates/chio-conformance/src/bin/chio_conformance_runner.rs:77`).
+- `crates/products/chio-cli` (Cargo.toml:44) - the only production-facing consumer; calls `remote_mcp::serve_http(...)` at `crates/products/chio-cli/src/cli/runtime.rs:590-599`, dispatched from `chio mcp serve-http` (`crates/products/chio-cli/src/cli/dispatch.rs:118, 152`).
+- `crates/protocol/chio-hosted-mcp` (Cargo.toml:20) - compatibility re-export per `crates/platform/chio-control-plane/tests/runtime_boundaries.rs:22-46`.
+- `crates/tooling/chio-conformance` (Cargo.toml:145) - exposes a `LocalOAuth` mode that spins the AS up as one of two supported auth postures (`crates/tooling/chio-conformance/src/runner.rs:36, 313, 420`; `crates/tooling/chio-conformance/src/bin/chio_conformance_runner.rs:77`).
 
 No internal Chio code calls into `LocalAuthorizationServer` other than the four `handle_*` axum handlers and the conformance runner.
 
@@ -42,7 +42,7 @@ The mount is **not** feature-gated; routes are always registered. The four AS-on
 
 ### Configuration and bootstrap
 
-The AS is enabled by exactly one CLI flag at `crates/chio-cli/src/cli/types.rs:1675-1677`: `--auth-server-seed-file <PathBuf>`. Default `None`. No environment-variable fallback. No `CHIO_*` secret bootstrap.
+The AS is enabled by exactly one CLI flag at `crates/products/chio-cli/src/cli/types.rs:1675-1677`: `--auth-server-seed-file <PathBuf>`. Default `None`. No environment-variable fallback. No `CHIO_*` secret bootstrap.
 
 When set, the seed is loaded or created at `http_service.rs:1734` via `load_or_create_authority_keypair`, which lazily mints an Ed25519 keypair on first run. Adjacent optional knobs gate behavior once the AS is on: `auth_jwt_audience`, `auth_jwt_issuer`, `auth_scopes`, `auth_subject` (single-subject AS, see `docs/operations/HA_CONTROL_AUTH_PLAN.md:101-104`), `auth_code_ttl_secs`, `auth_access_token_ttl_secs`, `public_base_url` (drives the advertised issuer via `resolve_local_auth_issuer` at `http_service.rs:1713-1725`).
 
@@ -52,8 +52,8 @@ No `chio-config` defaults file or YAML scaffold references `auth_server_seed_pat
 
 Substantial coverage at three levels:
 
-- Unit / module tests in `crates/chio-mcp-remote/src/remote_mcp/tests.rs` (75 test fns; 42 references to oauth/authorization/jwks/sender_constraint/token_exchange). Examples: `chio_oauth_discovery_profile_metadata_advertises_sender_constraints` (line 690), `chio_oauth_discovery_validation_rejects_profile_mismatch` (line 738).
-- End-to-end integration tests in `crates/chio-cli/tests/mcp_auth_server.rs` (5 `#[test]` fns), each spawning a real `chio mcp serve-http` binary and exchanging real HTTP across the well-known discovery, `/oauth/authorize`, `/oauth/token`, and `/mcp` routes: lines 375, 747, 849, 967, 1101.
+- Unit / module tests in `crates/protocol/chio-mcp-remote/src/remote_mcp/tests.rs` (75 test fns; 42 references to oauth/authorization/jwks/sender_constraint/token_exchange). Examples: `chio_oauth_discovery_profile_metadata_advertises_sender_constraints` (line 690), `chio_oauth_discovery_validation_rejects_profile_mismatch` (line 738).
+- End-to-end integration tests in `crates/products/chio-cli/tests/mcp_auth_server.rs` (5 `#[test]` fns), each spawning a real `chio mcp serve-http` binary and exchanging real HTTP across the well-known discovery, `/oauth/authorize`, `/oauth/token`, and `/mcp` routes: lines 375, 747, 849, 967, 1101.
 - Conformance `LocalOAuth` mode at `chio-conformance/src/runner.rs:313, 420`.
 
 `docs/release/QUALIFICATION.md:337` and `docs/release/PARTNER_PROOF.md:190` list these tests as ship-gating evidence.

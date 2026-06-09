@@ -22,21 +22,21 @@ with a normative "out-of-band auth floor" recommendation.
 ## Verified claims (citations confirmed)
 
 1. **OAuth AS runtime gating.** Doc 07 says the AS is one CLI flag away from
-   running. Confirmed: `crates/chio-mcp-remote/src/remote_mcp/http_service.rs`
+   running. Confirmed: `crates/protocol/chio-mcp-remote/src/remote_mcp/http_service.rs`
    wires the well-known and `/oauth/*` routes unconditionally (see the
    `state.local_auth_server` 404 guard at the AS-only handler call sites in
-   that file), and `crates/chio-mcp-remote/Cargo.toml` does NOT yet define an
+   that file), and `crates/protocol/chio-mcp-remote/Cargo.toml` does NOT yet define an
    `auth-server-bridge` feature - so doc 07's recommendation (move it behind a
    Cargo feature) is genuinely outstanding work, not already done.
 
 2. **`SessionAuthMethod::OAuthBearer` field list.** Doc 03 lists `issuer`,
    `subject`, `audience`, `scopes`, `federated_claims`, `enterprise_identity`,
    `token_fingerprint`. Confirmed at
-   `crates/chio-mcp-remote/src/remote_mcp/oauth.rs:852-872`.
+   `crates/protocol/chio-mcp-remote/src/remote_mcp/oauth.rs:852-872`.
 
 3. **Sequential hybrid signing at `pq.rs:166-170`.** Doc 16 and doc 14 both
    cite this. Confirmed verbatim at
-   `crates/chio-core-types/src/pq.rs:166-170`:
+   `crates/core/chio-core-types/src/pq.rs:166-170`:
 
    ```
    fn sign_bytes(&self, message: &[u8]) -> Result<Signature> {
@@ -50,11 +50,11 @@ with a normative "out-of-band auth floor" recommendation.
    recommendation is well-grounded.
 
 4. **did:chio shape.** Doc 03 says "self-certifying Ed25519." The implicit
-   "64-hex" claim is enforced at `crates/chio-did/src/lib.rs:33-34` (error
+   "64-hex" claim is enforced at `crates/trust/chio-did/src/lib.rs:33-34` (error
    variant requires 64 hex chars) and the `FromStr` impl at
-   `crates/chio-did/src/lib.rs:130-144` checks `suffix.len() != 64` and
+   `crates/trust/chio-did/src/lib.rs:130-144` checks `suffix.len() != 64` and
    ASCII-hex. The `DidChio::from_public_key` constructor at
-   `crates/chio-did/src/lib.rs:51-59` refuses anything except
+   `crates/trust/chio-did/src/lib.rs:51-59` refuses anything except
    `SigningAlgorithm::Ed25519`. The doc-00 inventory description matches the
    code.
 
@@ -67,25 +67,25 @@ with a normative "out-of-band auth floor" recommendation.
 
 6. **`AuthMethod` enum variants in `CallerIdentity`.** Doc 03 lists "Bearer,
    ApiKey, Cookie, MtlsCertificate, Anonymous." Confirmed at
-   `crates/chio-http-core/src/identity.rs:8-37`. Doc 03's "(`identity.rs:8-37`)"
+   `crates/platform/chio-http-core/src/identity.rs:8-37`. Doc 03's "(`identity.rs:8-37`)"
    citation is accurate; the doc-08 references to
    `identity.rs:44` point at `pub struct CallerIdentity` (not `AuthMethod`),
    which is also correct (line 44 starts the struct).
 
 7. **Agent Passport location.** Doc 03 line 47 says "native JSON-signed
-   bundle." Confirmed at `crates/chio-credentials/src/passport.rs:1-17`
+   bundle." Confirmed at `crates/trust/chio-credentials/src/passport.rs:1-17`
    (`pub struct AgentPassport { schema, subject, credentials, merkle_roots,
    enterprise_identity_provenance, issued_at, valid_until, trust_tier }`).
    The `include!("passport.rs")` from
-   `crates/chio-credentials/src/lib.rs:86` is unusual but valid.
+   `crates/trust/chio-credentials/src/lib.rs:86` is unusual but valid.
 
 8. **Two-DPoP confusion is real and acknowledged.** Doc 03 line 28-30
    explicitly distinguishes "RFC 9449 JWT DPoP at the HTTP boundary"
    (proposed) from `chio.dpop_proof.v1` (the existing internal invocation
-   proof at `crates/chio-kernel/src/dpop.rs:1-100`). The two are NOT the
+   proof at `crates/kernel/chio-kernel/src/dpop.rs:1-100`). The two are NOT the
    same. The internal one is a canonical-JSON-signed body bound to
    `capability_id`, `tool_server`, `tool_name`, `action_hash`, `nonce`,
-   `issued_at`, `agent_key` - confirmed at `crates/chio-kernel/src/dpop.rs:60-78`.
+   `issued_at`, `agent_key` - confirmed at `crates/kernel/chio-kernel/src/dpop.rs:60-78`.
    RFC 9449 is JWT-shaped with `htm`, `htu`, `jti`, `iat`, `ath`. Different
    wire shape, different binding scope.
 
@@ -141,7 +141,7 @@ with a normative "out-of-band auth floor" recommendation.
 
 - Doc 07 line 96 and `00-overview-v2.md` line 22 recommend gating the AS
   behind a Cargo feature named `auth-server-bridge`.
-- Reality: `crates/chio-mcp-remote/Cargo.toml` has no `[features]` section
+- Reality: `crates/protocol/chio-mcp-remote/Cargo.toml` has no `[features]` section
   at all. The recommendation is correctly characterized as future work
   ("Remaining lift is small" at doc 07 line 95), so this is not a
   contradiction with the code, but the two overviews state the outcome as
@@ -194,7 +194,7 @@ with a normative "out-of-band auth floor" recommendation.
   - Doc 15 line 301 (indirectly): `actor_chain: Vec<ActorRef>` as a v3
     receipt body field, with doc 03's open question 5 leaving open
     whether it also lives on `CallerIdentity`.
-- Reality: `crates/chio-http-core/src/identity.rs:44-65` is a plain struct
+- Reality: `crates/platform/chio-http-core/src/identity.rs:44-65` is a plain struct
   with no extensions map. Adding a new field is back-compat only if
   `#[serde(default, skip_serializing_if = "Option::is_none")]` is applied
   (matches the existing `tenant` and `agent_id` pattern at lines 59-64).
@@ -229,11 +229,11 @@ with a normative "out-of-band auth floor" recommendation.
 
 - Doc 03 line 130 says "Implement RFC 9449 JWT DPoP at the HTTP edge per
   end-state-A plan." Doc 16 cites
-  `crates/chio-kernel/src/dpop.rs` as the existing DPoP implementation.
+  `crates/kernel/chio-kernel/src/dpop.rs` as the existing DPoP implementation.
 - Doc 03 line 30 explicitly notes these are different: the kernel ships
   `chio.dpop_proof.v1` (chio-native), and the spec promises but does not
   yet ship RFC 9449 at the HTTP edge.
-- Confirmed at `crates/chio-kernel/src/dpop.rs:44-78`: schema
+- Confirmed at `crates/kernel/chio-kernel/src/dpop.rs:44-78`: schema
   `chio.dpop_proof.v1`, body fields capability_id/tool_server/tool_name/
   action_hash/nonce/issued_at/agent_key. This is NOT RFC 9449 (no `htm`,
   `htu`, `jti`, `iat`, `ath`).
@@ -270,11 +270,11 @@ with a normative "out-of-band auth floor" recommendation.
 
 ## Ungrounded claims
 
-- **doc 03 line 23**: `crates/chio-kernel/src/operator_report.rs:71-75`.
+- **doc 03 line 23**: `crates/kernel/chio-kernel/src/operator_report.rs:71-75`.
   Not checked in this review (out of scope) but the path exists.
   Constants for the three `cnf` proof families are claimed at this line;
   worth a confirmatory grep on the next pass.
-- **doc 03 line 48**: `crates/chio-credentials/src/oid4vp.rs`. File
+- **doc 03 line 48**: `crates/trust/chio-credentials/src/oid4vp.rs`. File
   exists (confirmed via crate listing). Shape not audited.
 - **doc 15 line 50**: `GuardEvidence at receipt.rs:1174-1184`. Not
   audited.

@@ -71,8 +71,8 @@ Manifest gate and authority pinning do not block: Chio sees only the
 agent's trigger to a legitimate n8n host, then the exfil POST to
 `onrender.com` originates **from** the n8n host (not the agent), well
 beyond `HttpEgressContract` reach. Receipts
-(`crates/chio-core-types/src/receipt.rs:105`) and the
-`ToolServerConnection` identity bind (`crates/chio-kernel/src/runtime.rs:255`)
+(`crates/core/chio-core-types/src/receipt.rs:105`) and the
+`ToolServerConnection` identity bind (`crates/kernel/chio-kernel/src/runtime.rs:255`)
 give forensic value: post-breach, IR can replay "agent X triggered
 workflow Y at time T with payload Z" and cross-reference Y's node list
 against IOC feeds. **NOT blocked**: in-workflow `node.execute()`,
@@ -95,9 +95,9 @@ This is where Chio's value is highest for Chio-routed agent-to-webhook egress.
 The proposed `n8n.webhook_trigger` manifest with a per-tenant (host,
 workflow_id) tuple plus typed input constraints rejects an injected workflow ID
 or a suspicious payload field. `HttpEgressContract.allowed_authority_set`
-(`crates/chio-egress-contract/src/lib.rs:27`) rejects an injected
+(`crates/protocol/chio-egress-contract/src/lib.rs:27`) rejects an injected
 target host before DNS is trusted; `deny_loopback` / `deny_link_local`
-/ `deny_ipv6_ula` (`crates/chio-egress-contract/src/lib.rs:30-34`)
+/ `deny_ipv6_ula` (`crates/protocol/chio-egress-contract/src/lib.rs:30-34`)
 block SSRF pivots. Signed receipts (`receipt.rs:223`) record the
 attempted call, decision, payload hash, and policy version so IR can
 replay. Per-agent identity bind lets policy say "agent A may trigger
@@ -219,7 +219,7 @@ To maximize Chain C coverage and improve Chain F:
    Closes Chain F's agent-driven pathway.
 6. **TLS pin field on `HttpEgressContract`**: SPKI hash of the n8n
    instance's certificate. Closes the Chain E DNS-spoof gap. Currently
-   absent (`crates/chio-egress-contract/src/lib.rs:15-39` has no TLS
+   absent (`crates/protocol/chio-egress-contract/src/lib.rs:15-39` has no TLS
    pinning field). File as a follow-up.
 7. **Tenant-scoped n8n instance binding**: receipt carries
    `tenant_id` (`receipt.rs:144`) and `tool_server`
@@ -251,12 +251,12 @@ To maximize Chain C coverage and improve Chain F:
   <https://www.upwind.io/feed/cve-2026-21858-n8n-unauthenticated-rce>
 - SentinelOne, CVE-2026-27493:
   <https://www.sentinelone.com/vulnerability-database/cve-2026-27493/>
-- Chio code: `crates/chio-egress-contract/src/lib.rs:15`,
-  `crates/chio-egress-contract/src/lib.rs:30-34`,
-  `crates/chio-egress-contract/src/lib.rs:74-79`,
-  `crates/chio-core-types/src/receipt.rs:105`,
-  `crates/chio-core-types/src/receipt.rs:144`,
-  `crates/chio-core-types/src/receipt.rs:223`,
-  `crates/chio-kernel/src/runtime.rs:255`,
-  `crates/chio-workflow/src/manifest.rs:113`
+- Chio code: `crates/protocol/chio-egress-contract/src/lib.rs:15`,
+  `crates/protocol/chio-egress-contract/src/lib.rs:30-34`,
+  `crates/protocol/chio-egress-contract/src/lib.rs:74-79`,
+  `crates/core/chio-core-types/src/receipt.rs:105`,
+  `crates/core/chio-core-types/src/receipt.rs:144`,
+  `crates/core/chio-core-types/src/receipt.rs:223`,
+  `crates/kernel/chio-kernel/src/runtime.rs:255`,
+  `crates/platform/chio-workflow/src/manifest.rs:113`
 - Prior swarm doc: `docs/research/protocol-strategy/05-workflow-orchestrator-mediation.md`

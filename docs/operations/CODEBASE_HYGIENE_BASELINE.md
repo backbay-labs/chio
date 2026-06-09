@@ -24,7 +24,7 @@ packages and 588,730 bytes of metadata.
 
 | Category | Current evidence | Planned handling |
 | --- | ---: | --- |
-| Generated Rust | 4 tracked generated Rust files. Largest is `crates/chio-core-types/src/_generated/chio_wire_v1.rs` at 30,223 lines. | Phase 8 quarantines generated Rust behind generator and check boundaries. |
+| Generated Rust | 4 tracked generated Rust files. Largest is `crates/core/chio-core-types/src/_generated/chio_wire_v1.rs` at 30,223 lines. | Phase 8 quarantines generated Rust behind generator and check boundaries. |
 | Production Rust | 1,089 tracked production Rust files. 44 hand-maintained production files are currently at or above 2,000 lines. | Phases 1 through 6 split crate roots, core protocol files, control-plane slabs, runtime slabs, and remaining production hotspots. |
 | Test Rust | 556 tracked test Rust files. 18 test files are currently at or above 2,000 lines. | Phase 7 splits test aggregates by behavior family without deleting coverage. |
 | Example Rust | 26 tracked example Rust files. Largest is `examples/chio-3vendor/src/commands.rs` at 935 lines. | No immediate split required by the Rust hygiene threshold. |
@@ -43,78 +43,78 @@ entry is currently required.
 
 | File | Lines | Category | Owner crate or area | Planned phase |
 | --- | ---: | --- | --- | --- |
-| `crates/chio-core-types/src/_generated/chio_wire_v1.rs` | 30,223 | generated | `chio-core-types` | Phase 8.1 |
-| `crates/chio-cli/tests/receipt_query.rs` | 16,159 | test | `chio-cli` | Phase 7.1 |
-| `crates/chio-kernel/src/kernel/tests/all.rs` | 11,910 | test | `chio-kernel` | Phase 7.2 |
-| `crates/chio-store-sqlite/src/receipt_store/tests.rs` | 7,028 | test | `chio-store-sqlite` | Phase 7.3 |
-| `crates/chio-acp-proxy/src/tests/all.rs` | 6,941 | test | `chio-acp-proxy` | Phase 7.3 |
-| `crates/chio-cli/tests/mcp_serve_http.rs` | 6,316 | test | `chio-cli` | Phase 7 follow-up after receipt split |
-| `crates/chio-a2a-adapter/src/tests/all.rs` | 6,259 | test | `chio-a2a-adapter` | Phase 7.3 |
-| `crates/chio-core-types/src/capability.rs` | 5,495 | production | `chio-core-types` | Phase 3.1 |
-| `crates/chio-control-plane/src/trust_control/cluster_and_reports.rs` | 5,458 | production | `chio-control-plane` | Phase 4.2 |
-| `crates/chio-cli/tests/passport.rs` | 5,387 | test | `chio-cli` | Phase 7 follow-up |
-| `crates/chio-control-plane/src/trust_control/service_runtime.rs` | 5,310 | production | `chio-control-plane` | Phase 4.1 |
-| `crates/chio-cli/tests/mcp_serve.rs` | 4,496 | test | `chio-cli` | Phase 7 follow-up |
-| `crates/chio-store-sqlite/src/budget_store/tests.rs` | 1,451 | test | `chio-store-sqlite` | split from `budget_store.rs` in Phase 6.1 |
-| `crates/chio-mcp-edge/src/runtime/runtime_tests.rs` | 4,346 | test | `chio-mcp-edge` | Phase 7 follow-up |
-| `crates/chio-cli/src/cli/trust/receipt.rs` | 1,874 | production | `chio-cli` | split from `trust_commands.rs` in Phase 6.1 |
-| `crates/chio-cli/src/cli/types/trust.rs` | 1,433 | production | `chio-cli` | split from `types.rs` in Phase 6.1 |
-| `crates/chio-cli/tests/certify.rs` | 3,639 | test | `chio-cli` | Phase 7 follow-up |
-| `crates/chio-control-plane/src/attestation/verification.rs` | 1,221 | production | `chio-control-plane` | split from `attestation.rs` in Phase 6.1 |
-| `crates/chio-federation/src/bilateral_verifier/cosign.rs` | 837 | production | `chio-federation` | split from `bilateral_verifier.rs` in Phase 6.1 |
-| `crates/chio-core-types/src/receipt.rs` | 3,438 | production | `chio-core-types` | Phase 3.2 |
-| `crates/chio-wasm-guards/src/runtime.rs` | 3,357 | production | `chio-wasm-guards` | Phase 5.1 |
-| `crates/chio-mcp-edge/src/runtime.rs` | 3,310 | production | `chio-mcp-edge` | Phase 5.2 |
-| `crates/chio-control-plane/src/policy.rs` | 1,830 | production | `chio-control-plane` | split inline tests to `policy/tests.rs` in Phase 6.1 |
-| `crates/chio-mercury/tests/cli.rs` | 3,262 | test | `chio-mercury` | Phase 7 follow-up |
-| `crates/chio-cli/tests/trust_cluster.rs` | 3,208 | test | `chio-cli` | Phase 7 follow-up |
-| `crates/chio-attest-buyer-core/src/lib.rs` | 3,200 | production lib root | `chio-attest-buyer-core` | Phase 2.1 |
-| `crates/chio-mcp-remote/src/remote_mcp/session_core.rs` | 1,891 | production | `chio-mcp-remote` | split identity, resume, shared-upstream, and form includes in Phase 6.1 |
-| `crates/chio-api-protect/src/proxy/tests.rs` | 2,973 | test | `chio-api-protect` | split from `proxy.rs` in Phase 6.1 |
-| `crates/chio-control-plane/src/evidence_export.rs` | 1,372 | production | `chio-control-plane` | split verification/package loading and inline tests in Phase 6.1 |
-| `crates/chio-control-plane/src/evidence_export/verification.rs` | 800 | production | `chio-control-plane` | split from `evidence_export.rs` in Phase 6.1 |
-| `crates/chio-control-plane/src/evidence_export/tests.rs` | 873 | test | `chio-control-plane` | split from `evidence_export.rs` in Phase 6.1 |
-| `crates/chio-control-plane/src/trust_control/capital_and_liability.rs` | 1,511 | production | `chio-control-plane` | split liability workflows in Phase 6.1 |
-| `crates/chio-control-plane/src/trust_control/capital_and_liability/liability.rs` | 1,410 | production | `chio-control-plane` | split from `capital_and_liability.rs` in Phase 6.1 |
-| `crates/chio-acp-edge/src/tests/all.rs` | 2,881 | test | `chio-acp-edge` | Phase 7 follow-up |
-| `crates/chio-federation/src/lib.rs` | 2,803 | production lib root | `chio-federation` | Phase 2.2 |
-| `crates/chio-a2a-edge/src/tests/all.rs` | 2,702 | test | `chio-a2a-edge` | Phase 7 follow-up |
-| `crates/chio-control-plane/src/trust_control/service_types.rs` | 1,819 | production | `chio-control-plane` | split cluster and budget wire types in Phase 6.1 |
-| `crates/chio-control-plane/src/trust_control/service_types/cluster_budget.rs` | 876 | production | `chio-control-plane` | split from `service_types.rs` in Phase 6.1 |
-| `crates/chio-cross-protocol/src/lib.rs` | 2,651 | production lib root | `chio-cross-protocol` | Phase 2.3 |
-| `crates/chio-control-plane/src/trust_control/underwriting_and_support.rs` | 1,626 | production | `chio-control-plane` | split policy input and runtime support in Phase 6.1 |
-| `crates/chio-control-plane/src/trust_control/underwriting_and_support/policy_support.rs` | 1,006 | production | `chio-control-plane` | split from `underwriting_and_support.rs` in Phase 6.1 |
-| `crates/chio-federation/src/bilateral_dsse.rs` | 1,713 | production | `chio-federation` | split inline DSSE tests in Phase 6.1 |
-| `crates/chio-federation/src/bilateral_dsse/tests.rs` | 898 | test | `chio-federation` | split from `bilateral_dsse.rs` in Phase 6.1 |
-| `crates/chio-control-plane/src/certify.rs` | 1,979 | production | `chio-control-plane` | split cross-operator certification network surface in Phase 6.1 |
-| `crates/chio-control-plane/src/certify/network.rs` | 601 | production | `chio-control-plane` | split from `certify.rs` in Phase 6.1 |
-| `crates/chio-cli/src/passport.rs` | 1,432 | production | `chio-cli` | split verifier policy, challenge, OID4VP, and status commands in Phase 6.1 |
-| `crates/chio-cli/src/passport/verifier.rs` | 1,040 | production | `chio-cli` | split from `passport.rs` in Phase 6.1 |
-| `crates/chio-mcp-remote/src/remote_mcp/http_service.rs` | 1,237 | production | `chio-mcp-remote` | split HTTP auth and session support in Phase 6.1 |
-| `crates/chio-mcp-remote/src/remote_mcp/http_service_auth.rs` | 1,218 | production | `chio-mcp-remote` | split from `http_service.rs` in Phase 6.1 |
-| `crates/chio-kernel/src/kernel/validation.rs` | 2,423 | production | `chio-kernel` | Phase 6.1 |
-| `crates/chio-cli/src/cli/runtime.rs` | 2,387 | production | `chio-cli` | Phase 6.1 |
-| `crates/chio-core-types/src/session.rs` | 2,354 | production | `chio-core-types` | Phase 6.1 |
-| `crates/chio-mcp-adapter/src/lib.rs` | 2,304 | production lib root | `chio-mcp-adapter` | Phase 2.4 |
-| `crates/chio-cli/tests/federated_issue.rs` | 2,294 | test | `chio-cli` | Phase 7 follow-up |
-| `crates/chio-open-market/src/lib.rs` | 2,285 | production lib root | `chio-open-market` | Phase 1.2 |
-| `crates/chio-autonomy/src/lib.rs` | 2,226 | production lib root | `chio-autonomy` | Phase 6.2 |
-| `crates/chio-credentials/src/tests.rs` | 2,164 | test | `chio-credentials` | Phase 7 follow-up |
-| `crates/chio-policy/src/models.rs` | 2,157 | production | `chio-policy` | Phase 6.1 |
-| `crates/chio-kernel/src/budget_store.rs` | 2,153 | production | `chio-kernel` | Phase 6.1 |
-| `crates/chio-http-core/src/authority.rs` | 2,122 | production | `chio-http-core` | Phase 6.1 |
-| `crates/chio-governance/src/lib.rs` | 2,116 | production lib root | `chio-governance` | Phase 1.1 |
-| `crates/chio-control-plane/src/trust_control/credit_and_loss.rs` | 2,094 | production | `chio-control-plane` | Phase 6.1 |
-| `crates/chio-runtime-core/tests/runtime_buyer_review.rs` | 2,062 | test | `chio-runtime-core` | Phase 7 follow-up |
-| `crates/chio-core/src/extension.rs` | 2,061 | production | `chio-core` | Phase 6.1 |
-| `crates/chio-web3/src/lib.rs` | 2,055 | production lib root | `chio-web3` | Phase 1.3 |
-| `crates/chio-kernel/src/kernel/mod.rs` | 2,040 | production | `chio-kernel` | Phase 6.1 |
+| `crates/core/chio-core-types/src/_generated/chio_wire_v1.rs` | 30,223 | generated | `chio-core-types` | Phase 8.1 |
+| `crates/products/chio-cli/tests/receipt_query.rs` | 16,159 | test | `chio-cli` | Phase 7.1 |
+| `crates/kernel/chio-kernel/src/kernel/tests/all.rs` | 11,910 | test | `chio-kernel` | Phase 7.2 |
+| `crates/platform/chio-store-sqlite/src/receipt_store/tests.rs` | 7,028 | test | `chio-store-sqlite` | Phase 7.3 |
+| `crates/protocol/chio-acp-proxy/src/tests/all.rs` | 6,941 | test | `chio-acp-proxy` | Phase 7.3 |
+| `crates/products/chio-cli/tests/mcp_serve_http.rs` | 6,316 | test | `chio-cli` | Phase 7 follow-up after receipt split |
+| `crates/protocol/chio-a2a-adapter/src/tests/all.rs` | 6,259 | test | `chio-a2a-adapter` | Phase 7.3 |
+| `crates/core/chio-core-types/src/capability.rs` | 5,495 | production | `chio-core-types` | Phase 3.1 |
+| `crates/platform/chio-control-plane/src/trust_control/cluster_and_reports.rs` | 5,458 | production | `chio-control-plane` | Phase 4.2 |
+| `crates/products/chio-cli/tests/passport.rs` | 5,387 | test | `chio-cli` | Phase 7 follow-up |
+| `crates/platform/chio-control-plane/src/trust_control/service_runtime.rs` | 5,310 | production | `chio-control-plane` | Phase 4.1 |
+| `crates/products/chio-cli/tests/mcp_serve.rs` | 4,496 | test | `chio-cli` | Phase 7 follow-up |
+| `crates/platform/chio-store-sqlite/src/budget_store/tests.rs` | 1,451 | test | `chio-store-sqlite` | split from `budget_store.rs` in Phase 6.1 |
+| `crates/protocol/chio-mcp-edge/src/runtime/runtime_tests.rs` | 4,346 | test | `chio-mcp-edge` | Phase 7 follow-up |
+| `crates/products/chio-cli/src/cli/trust/receipt.rs` | 1,874 | production | `chio-cli` | split from `trust_commands.rs` in Phase 6.1 |
+| `crates/products/chio-cli/src/cli/types/trust.rs` | 1,433 | production | `chio-cli` | split from `types.rs` in Phase 6.1 |
+| `crates/products/chio-cli/tests/certify.rs` | 3,639 | test | `chio-cli` | Phase 7 follow-up |
+| `crates/platform/chio-control-plane/src/attestation/verification.rs` | 1,221 | production | `chio-control-plane` | split from `attestation.rs` in Phase 6.1 |
+| `crates/trust/chio-federation/src/bilateral_verifier/cosign.rs` | 837 | production | `chio-federation` | split from `bilateral_verifier.rs` in Phase 6.1 |
+| `crates/core/chio-core-types/src/receipt.rs` | 3,438 | production | `chio-core-types` | Phase 3.2 |
+| `crates/guards/chio-wasm-guards/src/runtime.rs` | 3,357 | production | `chio-wasm-guards` | Phase 5.1 |
+| `crates/protocol/chio-mcp-edge/src/runtime.rs` | 3,310 | production | `chio-mcp-edge` | Phase 5.2 |
+| `crates/platform/chio-control-plane/src/policy.rs` | 1,830 | production | `chio-control-plane` | split inline tests to `policy/tests.rs` in Phase 6.1 |
+| `crates/products/chio-mercury/tests/cli.rs` | 3,262 | test | `chio-mercury` | Phase 7 follow-up |
+| `crates/products/chio-cli/tests/trust_cluster.rs` | 3,208 | test | `chio-cli` | Phase 7 follow-up |
+| `crates/trust/chio-attest-buyer-core/src/lib.rs` | 3,200 | production lib root | `chio-attest-buyer-core` | Phase 2.1 |
+| `crates/protocol/chio-mcp-remote/src/remote_mcp/session_core.rs` | 1,891 | production | `chio-mcp-remote` | split identity, resume, shared-upstream, and form includes in Phase 6.1 |
+| `crates/products/chio-api-protect/src/proxy/tests.rs` | 2,973 | test | `chio-api-protect` | split from `proxy.rs` in Phase 6.1 |
+| `crates/platform/chio-control-plane/src/evidence_export.rs` | 1,372 | production | `chio-control-plane` | split verification/package loading and inline tests in Phase 6.1 |
+| `crates/platform/chio-control-plane/src/evidence_export/verification.rs` | 800 | production | `chio-control-plane` | split from `evidence_export.rs` in Phase 6.1 |
+| `crates/platform/chio-control-plane/src/evidence_export/tests.rs` | 873 | test | `chio-control-plane` | split from `evidence_export.rs` in Phase 6.1 |
+| `crates/platform/chio-control-plane/src/trust_control/capital_and_liability.rs` | 1,511 | production | `chio-control-plane` | split liability workflows in Phase 6.1 |
+| `crates/platform/chio-control-plane/src/trust_control/capital_and_liability/liability.rs` | 1,410 | production | `chio-control-plane` | split from `capital_and_liability.rs` in Phase 6.1 |
+| `crates/protocol/chio-acp-edge/src/tests/all.rs` | 2,881 | test | `chio-acp-edge` | Phase 7 follow-up |
+| `crates/trust/chio-federation/src/lib.rs` | 2,803 | production lib root | `chio-federation` | Phase 2.2 |
+| `crates/protocol/chio-a2a-edge/src/tests/all.rs` | 2,702 | test | `chio-a2a-edge` | Phase 7 follow-up |
+| `crates/platform/chio-control-plane/src/trust_control/service_types.rs` | 1,819 | production | `chio-control-plane` | split cluster and budget wire types in Phase 6.1 |
+| `crates/platform/chio-control-plane/src/trust_control/service_types/cluster_budget.rs` | 876 | production | `chio-control-plane` | split from `service_types.rs` in Phase 6.1 |
+| `crates/protocol/chio-cross-protocol/src/lib.rs` | 2,651 | production lib root | `chio-cross-protocol` | Phase 2.3 |
+| `crates/platform/chio-control-plane/src/trust_control/underwriting_and_support.rs` | 1,626 | production | `chio-control-plane` | split policy input and runtime support in Phase 6.1 |
+| `crates/platform/chio-control-plane/src/trust_control/underwriting_and_support/policy_support.rs` | 1,006 | production | `chio-control-plane` | split from `underwriting_and_support.rs` in Phase 6.1 |
+| `crates/trust/chio-federation/src/bilateral_dsse.rs` | 1,713 | production | `chio-federation` | split inline DSSE tests in Phase 6.1 |
+| `crates/trust/chio-federation/src/bilateral_dsse/tests.rs` | 898 | test | `chio-federation` | split from `bilateral_dsse.rs` in Phase 6.1 |
+| `crates/platform/chio-control-plane/src/certify.rs` | 1,979 | production | `chio-control-plane` | split cross-operator certification network surface in Phase 6.1 |
+| `crates/platform/chio-control-plane/src/certify/network.rs` | 601 | production | `chio-control-plane` | split from `certify.rs` in Phase 6.1 |
+| `crates/products/chio-cli/src/passport.rs` | 1,432 | production | `chio-cli` | split verifier policy, challenge, OID4VP, and status commands in Phase 6.1 |
+| `crates/products/chio-cli/src/passport/verifier.rs` | 1,040 | production | `chio-cli` | split from `passport.rs` in Phase 6.1 |
+| `crates/protocol/chio-mcp-remote/src/remote_mcp/http_service.rs` | 1,237 | production | `chio-mcp-remote` | split HTTP auth and session support in Phase 6.1 |
+| `crates/protocol/chio-mcp-remote/src/remote_mcp/http_service_auth.rs` | 1,218 | production | `chio-mcp-remote` | split from `http_service.rs` in Phase 6.1 |
+| `crates/kernel/chio-kernel/src/kernel/validation.rs` | 2,423 | production | `chio-kernel` | Phase 6.1 |
+| `crates/products/chio-cli/src/cli/runtime.rs` | 2,387 | production | `chio-cli` | Phase 6.1 |
+| `crates/core/chio-core-types/src/session.rs` | 2,354 | production | `chio-core-types` | Phase 6.1 |
+| `crates/protocol/chio-mcp-adapter/src/lib.rs` | 2,304 | production lib root | `chio-mcp-adapter` | Phase 2.4 |
+| `crates/products/chio-cli/tests/federated_issue.rs` | 2,294 | test | `chio-cli` | Phase 7 follow-up |
+| `crates/economy/chio-open-market/src/lib.rs` | 2,285 | production lib root | `chio-open-market` | Phase 1.2 |
+| `crates/economy/chio-autonomy/src/lib.rs` | 2,226 | production lib root | `chio-autonomy` | Phase 6.2 |
+| `crates/trust/chio-credentials/src/tests.rs` | 2,164 | test | `chio-credentials` | Phase 7 follow-up |
+| `crates/guards/chio-policy/src/models.rs` | 2,157 | production | `chio-policy` | Phase 6.1 |
+| `crates/kernel/chio-kernel/src/budget_store.rs` | 2,153 | production | `chio-kernel` | Phase 6.1 |
+| `crates/platform/chio-http-core/src/authority.rs` | 2,122 | production | `chio-http-core` | Phase 6.1 |
+| `crates/trust/chio-governance/src/lib.rs` | 2,116 | production lib root | `chio-governance` | Phase 1.1 |
+| `crates/platform/chio-control-plane/src/trust_control/credit_and_loss.rs` | 2,094 | production | `chio-control-plane` | Phase 6.1 |
+| `crates/kernel/chio-runtime-core/tests/runtime_buyer_review.rs` | 2,062 | test | `chio-runtime-core` | Phase 7 follow-up |
+| `crates/core/chio-core/src/extension.rs` | 2,061 | production | `chio-core` | Phase 6.1 |
+| `crates/economy/chio-web3/src/lib.rs` | 2,055 | production lib root | `chio-web3` | Phase 1.3 |
+| `crates/kernel/chio-kernel/src/kernel/mod.rs` | 2,040 | production | `chio-kernel` | Phase 6.1 |
 | `xtask/src/main.rs` | 2,022 | production | `xtask` | Phase 6.1 |
-| `crates/chio-kernel/src/session.rs` | 2,012 | production | `chio-kernel` | Phase 6.1 |
-| `crates/chio-control-plane/src/trust_control/config_and_public.rs` | 2,009 | production | `chio-control-plane` | Phase 6.1 |
-| `crates/chio-mcp-remote/src/remote_mcp/tests.rs` | 2,008 | test | `chio-mcp-remote` | Phase 7 follow-up |
-| `crates/chio-kernel/src/receipt_support.rs` | 2,007 | production | `chio-kernel` | Phase 6.1 |
-| `crates/chio-mercury/src/commands/core_cli.rs` | 2,002 | production | `chio-mercury` | Phase 6.1 |
+| `crates/kernel/chio-kernel/src/session.rs` | 2,012 | production | `chio-kernel` | Phase 6.1 |
+| `crates/platform/chio-control-plane/src/trust_control/config_and_public.rs` | 2,009 | production | `chio-control-plane` | Phase 6.1 |
+| `crates/protocol/chio-mcp-remote/src/remote_mcp/tests.rs` | 2,008 | test | `chio-mcp-remote` | Phase 7 follow-up |
+| `crates/kernel/chio-kernel/src/receipt_support.rs` | 2,007 | production | `chio-kernel` | Phase 6.1 |
+| `crates/products/chio-mercury/src/commands/core_cli.rs` | 2,002 | production | `chio-mercury` | Phase 6.1 |
 
 ## Lib Root Inventory
 
@@ -122,33 +122,33 @@ The current `src/lib.rs` inventory shows 27 crate roots over 1,000 lines:
 
 | File | Lines | Planned phase |
 | --- | ---: | --- |
-| `crates/chio-attest-buyer-core/src/lib.rs` | 3,200 | Phase 2.1 |
-| `crates/chio-federation/src/lib.rs` | 2,803 | Phase 2.2 |
-| `crates/chio-cross-protocol/src/lib.rs` | 2,651 | Phase 2.3 |
-| `crates/chio-mcp-adapter/src/lib.rs` | 2,304 | Phase 2.4 |
-| `crates/chio-open-market/src/lib.rs` | 2,285 | Phase 1.2 |
-| `crates/chio-autonomy/src/lib.rs` | 2,226 | Phase 6.2 |
-| `crates/chio-governance/src/lib.rs` | 2,116 | Phase 1.1 |
-| `crates/chio-web3/src/lib.rs` | 2,055 | Phase 1.3 |
-| `crates/chio-attest-loopback/src/lib.rs` | 1,920 | Phase 6.2 |
-| `crates/chio-runtime/src/lib.rs` | 1,742 | Phase 6.2 |
-| `crates/chio-pheromone/src/lib.rs` | 1,740 | Phase 6.2 |
-| `crates/chio-appraisal/src/lib.rs` | 1,705 | Phase 6.2 |
-| `crates/chio-egress-contract/src/lib.rs` | 1,692 | Phase 6.2 |
-| `crates/chio-federation-authority/src/lib.rs` | 1,661 | Phase 6.2 |
-| `crates/chio-listing/src/lib.rs` | 1,641 | Phase 6.2 |
-| `crates/chio-pheromone-runtime/src/lib.rs` | 1,579 | Phase 6.2 |
-| `crates/chio-kernel-browser/src/lib.rs` | 1,563 | Phase 6.2 |
-| `crates/chio-underwriting/src/lib.rs` | 1,560 | Phase 6.2 |
-| `crates/chio-credit/src/lib.rs` | 1,560 | Phase 6.2 |
-| `crates/chio-market/src/lib.rs` | 1,551 | Phase 6.2 |
-| `crates/chio-openai/src/lib.rs` | 1,428 | Phase 6.2 |
-| `crates/chio-link/src/lib.rs` | 1,396 | Phase 6.2 |
-| `crates/chio-openapi-mcp-bridge/src/lib.rs` | 1,277 | Phase 6.2 |
-| `crates/chio-cpp-kernel-ffi/src/lib.rs` | 1,148 | Phase 6.2 |
-| `crates/chio-groq-tools-adapter/src/lib.rs` | 1,077 | Phase 6.2 |
-| `crates/chio-selective-disclosure/src/lib.rs` | 1,050 | Phase 6.2 |
-| `crates/chio-mistral-tools-adapter/src/lib.rs` | 1,046 | Phase 6.2 |
+| `crates/trust/chio-attest-buyer-core/src/lib.rs` | 3,200 | Phase 2.1 |
+| `crates/trust/chio-federation/src/lib.rs` | 2,803 | Phase 2.2 |
+| `crates/protocol/chio-cross-protocol/src/lib.rs` | 2,651 | Phase 2.3 |
+| `crates/protocol/chio-mcp-adapter/src/lib.rs` | 2,304 | Phase 2.4 |
+| `crates/economy/chio-open-market/src/lib.rs` | 2,285 | Phase 1.2 |
+| `crates/economy/chio-autonomy/src/lib.rs` | 2,226 | Phase 6.2 |
+| `crates/trust/chio-governance/src/lib.rs` | 2,116 | Phase 1.1 |
+| `crates/economy/chio-web3/src/lib.rs` | 2,055 | Phase 1.3 |
+| `crates/trust/chio-attest-loopback/src/lib.rs` | 1,920 | Phase 6.2 |
+| `crates/kernel/chio-runtime/src/lib.rs` | 1,742 | Phase 6.2 |
+| `crates/trust/chio-pheromone/src/lib.rs` | 1,740 | Phase 6.2 |
+| `crates/economy/chio-appraisal/src/lib.rs` | 1,705 | Phase 6.2 |
+| `crates/protocol/chio-egress-contract/src/lib.rs` | 1,692 | Phase 6.2 |
+| `crates/trust/chio-federation-authority/src/lib.rs` | 1,661 | Phase 6.2 |
+| `crates/economy/chio-listing/src/lib.rs` | 1,641 | Phase 6.2 |
+| `crates/trust/chio-pheromone-runtime/src/lib.rs` | 1,579 | Phase 6.2 |
+| `crates/kernel/chio-kernel-browser/src/lib.rs` | 1,563 | Phase 6.2 |
+| `crates/economy/chio-underwriting/src/lib.rs` | 1,560 | Phase 6.2 |
+| `crates/economy/chio-credit/src/lib.rs` | 1,560 | Phase 6.2 |
+| `crates/economy/chio-market/src/lib.rs` | 1,551 | Phase 6.2 |
+| `crates/protocol/chio-openai-adapter/src/lib.rs` | 1,428 | Phase 6.2 |
+| `crates/economy/chio-link/src/lib.rs` | 1,396 | Phase 6.2 |
+| `crates/protocol/chio-openapi-mcp-bridge/src/lib.rs` | 1,277 | Phase 6.2 |
+| `crates/sdk/chio-cpp-kernel-ffi/src/lib.rs` | 1,148 | Phase 6.2 |
+| `crates/protocol/chio-groq-tools-adapter/src/lib.rs` | 1,077 | Phase 6.2 |
+| `crates/trust/chio-selective-disclosure/src/lib.rs` | 1,050 | Phase 6.2 |
+| `crates/protocol/chio-mistral-tools-adapter/src/lib.rs` | 1,046 | Phase 6.2 |
 
 ## Stub Surface Snapshot
 
@@ -157,13 +157,13 @@ and production markers. The production hits that need explicit policy are:
 
 | File | Current hit | Planned handling |
 | --- | --- | --- |
-| `crates/chio-api-protect/src/proxy/sidecar.rs` | `Capability attenuation (501 not_yet_implemented stub)` marker. | Task 0.3 must initially fail or flag this unless Task 5.3 replaces it with real attenuation or fail-closed unsupported behavior. |
-| `crates/chio-custody-hw/src/capability.rs`, `issuer.rs`, and `mint.rs` | `new_stub_unsigned` helpers are used around unsigned passkey capability construction. | Task 0.3 must either prove these are test or explicit bootstrap surfaces, or require a production cleanup before final close. |
-| `crates/chio-config/src/interpolation.rs` | Parser leaves a placeholder to allow later resolution. | Task 0.3 must classify whether this is a legitimate domain term or an actionable placeholder surface. |
-| `crates/chio-metering/src/export.rs` | Timestamp fallback uses a placeholder. | Task 0.3 must classify whether the fallback is acceptable production behavior. |
-| `crates/chio-lineage/src/anchor.rs` | PQ signature language says stub. | Task 0.3 must classify or force cleanup. |
-| `crates/chio-guard-registry/src/pull.rs` | Mentions placeholder JSON. | Task 0.3 must classify or force cleanup. |
-| `crates/chio-policy/src/detection.rs` | Uses `stub` as a detector name in policy tests and logic. | Task 0.3 must avoid a false positive if this is domain data, not unfinished behavior. |
+| `crates/products/chio-api-protect/src/proxy/sidecar.rs` | `Capability attenuation (501 not_yet_implemented stub)` marker. | Task 0.3 must initially fail or flag this unless Task 5.3 replaces it with real attenuation or fail-closed unsupported behavior. |
+| `crates/trust/chio-custody-hw/src/capability.rs`, `issuer.rs`, and `mint.rs` | `new_stub_unsigned` helpers are used around unsigned passkey capability construction. | Task 0.3 must either prove these are test or explicit bootstrap surfaces, or require a production cleanup before final close. |
+| `crates/platform/chio-config/src/interpolation.rs` | Parser leaves a placeholder to allow later resolution. | Task 0.3 must classify whether this is a legitimate domain term or an actionable placeholder surface. |
+| `crates/economy/chio-metering/src/export.rs` | Timestamp fallback uses a placeholder. | Task 0.3 must classify whether the fallback is acceptable production behavior. |
+| `crates/observability/chio-lineage/src/anchor.rs` | PQ signature language says stub. | Task 0.3 must classify or force cleanup. |
+| `crates/guards/chio-guard-registry/src/pull.rs` | Mentions placeholder JSON. | Task 0.3 must classify or force cleanup. |
+| `crates/guards/chio-policy/src/detection.rs` | Uses `stub` as a detector name in policy tests and logic. | Task 0.3 must avoid a false positive if this is domain data, not unfinished behavior. |
 
 Large non-production hit families include replay fixture placeholders under
 `tests/replay`, threat-coverage test stubs under `scripts/tests`, and research
@@ -235,7 +235,7 @@ Final Rust hygiene state:
 
 | Category | Final evidence |
 | --- | --- |
-| Generated Rust | 4 tracked generated Rust files. Largest is `crates/chio-core-types/src/_generated/chio_wire_v1.rs` at 30,223 lines. |
+| Generated Rust | 4 tracked generated Rust files. Largest is `crates/core/chio-core-types/src/_generated/chio_wire_v1.rs` at 30,223 lines. |
 | Production Rust | 1,198 tracked production Rust files. No hand-maintained production Rust file exceeds 2,000 lines. |
 | Production lib roots | No production `src/lib.rs` exceeds 1,000 lines. |
 | Test Rust | 715 tracked test Rust files. 15 test files remain at or above 2,000 lines and are classified as test-only by the hygiene gate. |

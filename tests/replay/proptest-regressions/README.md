@@ -1,7 +1,7 @@
 # Replay Proptest Regressions
 
 This directory is the checked-in archive root for minimized failures from
-`crates/chio-kernel/tests/replay_proptest.rs`.
+`crates/kernel/chio-kernel/tests/replay_proptest.rs`.
 
 The replay proptest suite uses `FileFailurePersistence::Direct` and writes
 its failure database to:
@@ -26,6 +26,6 @@ To promote a real regression into the archive:
 3. Commit the minimized `replay_proptest.txt` alongside the fix or the
    intentional behavior-change review.
 
-Do not add M02 libfuzzer seed glue here. `crates/chio-kernel/fuzz/seeds/`
+Do not add M02 libfuzzer seed glue here. `crates/kernel/chio-kernel/fuzz/seeds/`
 is owned by the M02 fuzzing lane; this directory is only the replay
 proptest failure archive consumed by M04 CI.

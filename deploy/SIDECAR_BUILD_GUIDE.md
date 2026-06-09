@@ -41,7 +41,7 @@ build reaches at compile time:
   `cargo build --workspace` when that happens.
 
 The vendored Envoy protos consumed by `chio-envoy-ext-authz`'s
-`tonic-build` live under `crates/chio-envoy-ext-authz/proto` (not a
+`tonic-build` live under `crates/protocol/chio-envoy-ext-authz/proto` (not a
 top-level `proto/`), so the existing `COPY crates ./crates` line covers
 them transparently. No separate top-level `COPY proto` is required.
 

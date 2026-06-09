@@ -1,6 +1,6 @@
 # Velocity Guards
 
-The `VelocityGuard` in `crates/chio-guards/src/velocity.rs` limits how fast an agent can invoke tools using a token bucket algorithm. It operates as a synchronous `Guard` in the kernel pipeline, sitting before the tool server receives the request.
+The `VelocityGuard` in `crates/guards/chio-guards/src/velocity.rs` limits how fast an agent can invoke tools using a token bucket algorithm. It operates as a synchronous `Guard` in the kernel pipeline, sitting before the tool server receives the request.
 
 ## Token Bucket Rate Limiting
 

@@ -17,7 +17,7 @@ Concretely:
 - `Frameworks/ChioKernel.xcframework` contains the generated static
   libraries and UniFFI Swift headers.
 - The C-ABI mobile attestation entry points
-  (`crates/chio-kernel-mobile/src/lib.rs`) return challenge envelopes
+  (`crates/kernel/chio-kernel-mobile/src/lib.rs`) return challenge envelopes
   and verifier results instead of `AttestationUnavailable`.
 
 ## Build

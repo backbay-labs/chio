@@ -4,7 +4,7 @@
 Normative spec: `spec/COMPLIANCE-CERTIFICATE.md`
 
 > **Status**: The certificate generation and verification APIs described here
-> are implemented in `crates/chio-acp-proxy/src/compliance.rs`. The normative
+> are implemented in `crates/protocol/chio-acp-proxy/src/compliance.rs`. The normative
 > specification for certificate structure, generation algorithm, abort errors,
 > and verification modes is `spec/COMPLIANCE-CERTIFICATE.md`. This document
 > is retained as a non-normative companion for design rationale, regulatory

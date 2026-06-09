@@ -15,7 +15,7 @@ language, with two cross-language directories for distinct kinds of artifact.
 | `k8s/` | Kubernetes controller, CRDs, and admission webhooks. |
 | `lambda/` | AWS Lambda extension (Rust) and the Python Lambda runtime. |
 | `python/` | Python SDKs: `chio-py` (the pure in-process `chio-sdk`), `chio-sdk-python` (the thin sidecar client and adapter base), and the framework adapters (`chio-django`, `chio-langgraph`, and so on). |
-| `rust/` | Rust guard SDK compatibility shim (`chio-guard-sdk-compat`) re-exporting the canonical `crates/chio-guard-sdk`. |
+| `rust/` | Rust guard SDK compatibility shim (`chio-guard-sdk-compat`) re-exporting the canonical `crates/sdk/chio-guard-sdk`. |
 | `swift/` | Swift / Apple-platform SDK and App Attest support. |
 | `typescript/` | The published core `chio-ts` (`@chio-protocol/sdk`) plus the framework-integration workspace under `typescript/packages/`. |
 

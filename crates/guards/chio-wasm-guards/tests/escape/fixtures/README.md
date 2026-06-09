@@ -1,6 +1,6 @@
 # Escape harness static fixtures
 
-Static byte fixtures consumed by `crates/chio-wasm-guards/tests/escape/`.
+Static byte fixtures consumed by `crates/guards/chio-wasm-guards/tests/escape/`.
 The malformed-component-encoding class lives here (raw `.wasm` blobs);
 the signed-but-malicious class is generated programmatically at test
 time via `ed25519_dalek` so the harness does not depend on a checked-in

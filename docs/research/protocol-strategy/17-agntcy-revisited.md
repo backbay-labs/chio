@@ -19,7 +19,7 @@ been absorbed by Linux-Foundation A2A
 SLIM, OASF, Identity, and Directory remain healthy, but **none of them
 carry tool-call traffic** in a way that fits Chio's
 `ToolServerConnection` contract
-([crates/chio-kernel/src/runtime.rs:255](../../../crates/chio-kernel/src/runtime.rs)).
+([crates/kernel/chio-kernel/src/runtime.rs:255](../../../crates/kernel/chio-kernel/src/runtime.rs)).
 The only viable Chio integration point is **consume-only**: read
 AGNTCY Directory + Identity records via a `DirectoryProvider` seam, in
 the same shape doc 02 already proposed, to drive bridge wire-up for
@@ -155,7 +155,7 @@ surface.
 
 **Bridge fit:** **Consume-only**, identical pattern to existing HTTP
 identity inheritance
-([crates/chio-http-core/src/identity.rs:44](../../../crates/chio-http-core/src/identity.rs)).
+([crates/platform/chio-http-core/src/identity.rs:44](../../../crates/platform/chio-http-core/src/identity.rs)).
 If Chio is about to call an agent that presents an AGNTCY VC in its
 bridge metadata, the bridge resolves the VC and feeds the verified
 DID into the receipt's actor chain. No new crate; this is a feature

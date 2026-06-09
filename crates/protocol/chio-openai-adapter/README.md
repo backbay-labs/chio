@@ -33,7 +33,7 @@ This crate pins to OpenAI Responses API snapshot **`2026-04-25`**.
 - Recorded in `Cargo.toml` under `[package.metadata.chio]` as
   `openai_responses_api_snapshot = "2026-04-25"`.
 - Streaming event names captured in
-  `crates/chio-provider-conformance/fixtures/openai/EVENTS.md`.
+  `crates/protocol/chio-provider-conformance/fixtures/openai/EVENTS.md`.
 
 Bumping the pin is a deliberate PR. The bump must:
 
@@ -41,7 +41,7 @@ Bumping the pin is a deliberate PR. The bump must:
    in this crate's `Cargo.toml`.
 2. Update the snapshot string in this README.
 3. Re-record every OpenAI fixture under
-   `crates/chio-provider-conformance/fixtures/openai/`.
+   `crates/protocol/chio-provider-conformance/fixtures/openai/`.
 4. Update the streaming event-name table referenced by
    `EVENTS.md`.
 5. Bump the `api_version` string returned by
@@ -161,5 +161,5 @@ Both must succeed; CI enforces this build matrix.
 ## Cross-references
 
 - Fabric trait surface:
-  [`crates/chio-tool-call-fabric/src/lib.rs`](../chio-tool-call-fabric/src/lib.rs).
+  [`crates/protocol/chio-tool-call-fabric/src/lib.rs`](../chio-tool-call-fabric/src/lib.rs).
 - Spec: [`spec/PROTOCOL.md`](../../spec/PROTOCOL.md).

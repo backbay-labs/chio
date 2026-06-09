@@ -2,7 +2,7 @@
 
 The verdict matrix is the cross-SDK semantic equality harness for Chio tool
 access decisions. The Rust kernel path ships first, with the scenario corpus,
-driver, and diff oracle living under `crates/chio-conformance/verdict_matrix/`.
+driver, and diff oracle living under `crates/tooling/chio-conformance/verdict_matrix/`.
 
 ## Corpus
 
@@ -47,7 +47,7 @@ divergence from the Rust kernel expected tuple for each scenario.
 ## Corpus rotation
 
 The corpus rotation process is intentionally narrow. A rotation changes one or
-more files under `crates/chio-conformance/verdict_matrix/scenarios/`, recomputes
+more files under `crates/tooling/chio-conformance/verdict_matrix/scenarios/`, recomputes
 the sorted scenario index hash, updates both `scenario_index_hash` and
 `corpus_sha256` in `manifest.toml`, and updates this page with the new
 scenario count and hash. The diff-oracle self test must pass before
@@ -82,7 +82,7 @@ verdict, and redaction determinism must all report `unsupported = 0`.
 
 The Go HTTP SDK driver is required. It emits local semantic tuples for all 48
 scenarios through the Go verdict-matrix driver under
-`crates/chio-conformance/verdict_matrix/drivers/go/` and is checked from
+`crates/tooling/chio-conformance/verdict_matrix/drivers/go/` and is checked from
 `sdks/go/chio-go-http` with `go test -run VerdictMatrix ./...`. The required
 CI job fails if the driver reports unsupported scenarios or diverges from the
 expected tuple set.
@@ -122,14 +122,14 @@ does not include a revocation store, execution nonce store, or guard pipeline.
 Run these gates locally:
 
 ```bash
-test -d crates/chio-conformance/verdict_matrix/scenarios/capability_subset
-test -d crates/chio-conformance/verdict_matrix/scenarios/revocation_propagation
-test -d crates/chio-conformance/verdict_matrix/scenarios/replay_verdict
-test -d crates/chio-conformance/verdict_matrix/scenarios/redaction_determinism
-test "$(find crates/chio-conformance/verdict_matrix/scenarios/capability_subset -name '*.json' | wc -l)" -ge 12
-test "$(find crates/chio-conformance/verdict_matrix/scenarios/revocation_propagation -name '*.json' | wc -l)" -ge 12
-test "$(find crates/chio-conformance/verdict_matrix/scenarios/replay_verdict -name '*.json' | wc -l)" -ge 12
-test "$(find crates/chio-conformance/verdict_matrix/scenarios/redaction_determinism -name '*.json' | wc -l)" -ge 12
+test -d crates/tooling/chio-conformance/verdict_matrix/scenarios/capability_subset
+test -d crates/tooling/chio-conformance/verdict_matrix/scenarios/revocation_propagation
+test -d crates/tooling/chio-conformance/verdict_matrix/scenarios/replay_verdict
+test -d crates/tooling/chio-conformance/verdict_matrix/scenarios/redaction_determinism
+test "$(find crates/tooling/chio-conformance/verdict_matrix/scenarios/capability_subset -name '*.json' | wc -l)" -ge 12
+test "$(find crates/tooling/chio-conformance/verdict_matrix/scenarios/revocation_propagation -name '*.json' | wc -l)" -ge 12
+test "$(find crates/tooling/chio-conformance/verdict_matrix/scenarios/replay_verdict -name '*.json' | wc -l)" -ge 12
+test "$(find crates/tooling/chio-conformance/verdict_matrix/scenarios/redaction_determinism -name '*.json' | wc -l)" -ge 12
 cargo test -p chio-conformance --test verdict_matrix_rust_driver --quiet
 cargo test -p chio-conformance --test diff_oracle_self_test --quiet
 cargo test -p chio-conformance --test verdict_matrix_cross_language --quiet

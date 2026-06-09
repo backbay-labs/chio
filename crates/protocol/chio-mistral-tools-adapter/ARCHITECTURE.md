@@ -26,7 +26,7 @@
 
 ## Dependents
 
-- `crates/chio-provider-conformance` depends on Mistral fixture behavior and API-version pins.
+- `crates/protocol/chio-provider-conformance` depends on Mistral fixture behavior and API-version pins.
 - Cross-provider equality checks depend on the captured Mistral fixture path for canonical invocation bytes.
 - `streaming.rs` depends on the OpenAI-compatible `tool_calls` decoder; moving it requires updating only the internal module import.
 

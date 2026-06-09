@@ -7,7 +7,7 @@
   request deserialization, return-code encoding, and deny-reason export.
 - `chio-guard-sdk` owns the host-compatible `GuardRequest` and `GuardVerdict`
   types. This example should not duplicate ABI serialization logic.
-- `crates/chio-wasm-guards/tests/example_guard_integration.rs` owns the
+- `crates/guards/chio-wasm-guards/tests/example_guard_integration.rs` owns the
   compiled-WASM host round trip for example guards.
 
 ## Pain Points
@@ -34,7 +34,7 @@
 
 ## Affected Dependents
 
-- `crates/chio-wasm-guards/tests/example_guard_integration.rs` loads the
+- `crates/guards/chio-wasm-guards/tests/example_guard_integration.rs` loads the
   compiled `tool-gate` WASM artifact. It should gain a current-host regression
   for padded tool names so the native policy and host round trip stay aligned.
 - No SDK, macro, or host runtime public API change is planned.

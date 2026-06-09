@@ -27,7 +27,7 @@
 
 ## Dependents
 
-- `crates/chio-provider-conformance` depends on Groq fixture behavior and API-version pins.
+- `crates/protocol/chio-provider-conformance` depends on Groq fixture behavior and API-version pins.
 - `examples/cross-provider-policy` depends on the captured Groq fixture path for cross-provider verdict equality, not on private parsing helpers.
 - `streaming.rs` depends on the OpenAI-compatible `tool_calls` decoder; moving it requires updating only the internal module import.
 

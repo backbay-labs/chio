@@ -201,7 +201,7 @@ policies, passport presentations, and certification artifacts.
 
 The native agent-to-kernel protocol uses length-prefixed JSON messages with a
 `type` discriminator. The core messages are defined by `AgentMessage` and
-`KernelMessage` in `crates/chio-core/src/message.rs`.
+`KernelMessage` in `crates/core/chio-core/src/message.rs`.
 
 The normative wire definition for this shipped surface now lives in
 [WIRE_PROTOCOL.md](WIRE_PROTOCOL.md).
@@ -271,7 +271,7 @@ this release.
 ## 5. Capability Contract
 
 The shipped capability token is `CapabilityToken` from
-`crates/chio-core/src/capability.rs`.
+`crates/core/chio-core/src/capability.rs`.
 
 Capability tokens are schema-tagged signed artifacts. Newly issued tokens carry
 `schema: "chio.capability.v1"` in the schema-aware signing input. Load-time and
@@ -453,7 +453,7 @@ with `CapabilityError::AttenuationViolation`.
 The Lean theorem `theorem.attenuation.witness_soundness` in
 `formal/lean4/Chio/Chio/Proofs/AttenuationWitness.lean` models the
 chain-binding check, and the Rust shell is exercised by
-`crates/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs`.
+`crates/tooling/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs`.
 
 #### Sibling-Sum Budget Enforcement (W1.2)
 
@@ -490,8 +490,8 @@ and pass it through; portable callers can supply their own
 theorem `theorem.budget.sibling_sum_soundness` in
 `formal/lean4/Chio/Chio/Proofs/SiblingSumBudget.lean` models the
 admit check, and the Rust shell is exercised by
-`crates/chio-conformance/tests/budget_split_rejects_oversubscribed_siblings.rs`
-and `crates/chio-conformance/tests/budget_split_cross_hop_rejects_amplification.rs`.
+`crates/tooling/chio-conformance/tests/budget_split_rejects_oversubscribed_siblings.rs`
+and `crates/tooling/chio-conformance/tests/budget_split_cross_hop_rejects_amplification.rs`.
 
 ### 5.2 Governed Transaction Extensions
 
@@ -678,7 +678,7 @@ unless and until they receive their own manifest entry and proof lane.
 ## 6. Receipt Contract
 
 The current pre-release v1 receipt envelope is `ChioReceipt` from
-`crates/chio-core-types/src/receipt.rs`.
+`crates/core/chio-core-types/src/receipt.rs`.
 
 | Field | Meaning |
 | --- | --- |
@@ -1026,7 +1026,7 @@ W2.3 promotes the executable subset of `claim.anchor.batch_continuity` from
 proposed to enforced and ships the production wiring that backs it. Rekor
 Merkle inclusion-proof checking and formal anti-equivocation theorem coverage
 remain proposed evidence until implemented. The relevant artifacts live under
-`crates/chio-anchor/src/witness*`:
+`crates/economy/chio-anchor/src/witness*`:
 
 - `AnchorWitnessClient`: an `async_trait` with `publish(&AnchorBatch)` and
   `verify_inclusion(&WitnessReceipt)`.
@@ -1090,7 +1090,7 @@ treat witness state as non-binding. This is a tightening of the per-state
 arrow rules above: making the routing rule load-bearing decouples it from
 the per-state table so a future state addition cannot accidentally re-open
 the bypass. The runtime gate at
-`crates/chio-anchor/src/batch.rs::verify_anchor_batch_with_witness_policy`
+`crates/economy/chio-anchor/src/batch.rs::verify_anchor_batch_with_witness_policy`
 returning `AnchorError::SyncRouteRequiresAdvisoryPolicy` is the load-bearing
 enforcement; the companion `scripts/check-anchor-batch-async-witness.sh`
 lint is best-effort fast feedback only and does not provide a soundness
@@ -1118,7 +1118,7 @@ Rejection criteria the W2.3 negative-conformance suite exercises:
   commitment evidence is present in the receipt contract.
 
 The negative tests live as standalone files at
-`crates/chio-conformance/tests/anchor_batch_{forged_root,misordered_proof,witness_impersonation,stale_witness_fallback}_rejected.rs`
+`crates/tooling/chio-conformance/tests/anchor_batch_{forged_root,misordered_proof,witness_impersonation,stale_witness_fallback}_rejected.rs`
 (plus `anchor_batch_stale_witness_fallback.rs`) and exercise the real
 `verify_anchor_batch` and `verify_anchor_batch_with_witness_policy` paths.
 
@@ -1289,7 +1289,7 @@ verifier. A workspace lint at `scripts/check-http-egress-contract.sh`
 catches regressions; a self-test at
 `scripts/tests/check-http-egress-contract.test.sh` proves the lint accepts
 wired callers and rejects bare reqwest dispatch. Five standalone SSRF
-negative-conformance tests in `crates/chio-conformance/tests/ssrf_*.rs`
+negative-conformance tests in `crates/tooling/chio-conformance/tests/ssrf_*.rs`
 exercise the failure paths through real production callers.
 
 ## 9. Trust-Control Contract
@@ -2246,7 +2246,7 @@ Base-first escrow and bond-vault lane back to Chio receipts, checkpoints, and
 capital state without mutating prior signed truth or hiding custody
 assumptions. That surface is now backed locally by one packaged Solidity
 contract family in `contracts/`, one artifact-derived Rust Alloy bindings
-target in `crates/chio-web3-bindings/`, and one bounded local-devnet
+target in `crates/economy/chio-web3-bindings/`, and one bounded local-devnet
 qualification run. Four contracts in that package are immutable; the one
 exception is `IChioIdentityRegistry`, which remains owner-managed and mutable
 for operator registration and key-binding changes. Chio therefore does not
@@ -2263,7 +2263,7 @@ conservative conversion margins recorded back into receipt financial metadata.
 `chio_link_runtime_v1` is the only supported runtime FX authority model on this
 surface; backend labels such as Chainlink or Pyth remain subordinate source
 details inside that authority envelope. It is backed locally by
-`crates/chio-link/`, kernel integration in `crates/chio-kernel/`, and
+`crates/economy/chio-link/`, kernel integration in `crates/kernel/chio-kernel/`, and
 deterministic qualification coverage rather than live external infrastructure.
 The auxiliary `ChioPriceResolver` contract is a contract-side reference reader,
 not a replacement authority for kernel charging or settlement receipts. This
@@ -2282,7 +2282,7 @@ tiered confirmation and dispute-window policy; preserves reserve requirement
 metadata from signed bond artifacts while only locking collateral on-chain in
 the bond vault; and keeps Solana support
 bounded to Ed25519 verification plus canonical instruction preparation rather
-than live broadcast. It is backed locally by `crates/chio-settle/`, the shared
+than live broadcast. It is backed locally by `crates/economy/chio-settle/`, the shared
 official contracts in `contracts/`, and one runtime-devnet qualification lane.
 Those lanes are only claimed when Chio also has local durable receipt storage,
 kernel-signed checkpoints, and evidence exports that keep checkpoint signer

@@ -13,8 +13,8 @@ not moved underneath it.
 
 | Input | Source | Contract requirement |
 |-------|--------|----------------------|
-| Scenario corpus | `crates/chio-conformance/verdict_matrix/manifest.toml` | Read-only. `scenario_count` must be 48 and `corpus_sha256` must be `47e8d5394c807196d9567d97515e786cb1abfb0c7676e54db269ca82c735422f`. |
-| Scenario metadata | `crates/chio-conformance/verdict_matrix/scenarios/**` | Scenario id, category, and expected verdict are copied into each receipt wrapper. |
+| Scenario corpus | `crates/tooling/chio-conformance/verdict_matrix/manifest.toml` | Read-only. `scenario_count` must be 48 and `corpus_sha256` must be `47e8d5394c807196d9567d97515e786cb1abfb0c7676e54db269ca82c735422f`. |
+| Scenario metadata | `crates/tooling/chio-conformance/verdict_matrix/scenarios/**` | Scenario id, category, and expected verdict are copied into each receipt wrapper. |
 | Inner receipt | Rust verdict-matrix driver output | Preserved byte-for-byte as the inner Chio receipt payload. The export helper hashes the receipt payload and does not reinterpret its signature. |
 | Eval run metadata | Partner pipeline output | Mapped into the bundle `eval_run` block. METR P1 Q&A locks this to a Python vivaria trace post-processing path. |
 
@@ -53,7 +53,7 @@ The exporter produces an unsigned bundle with these top-level fields:
 
 ## Export Helper Contract
 
-`crates/chio-eval-receipt/src/export.rs` exposes:
+`crates/sdk/chio-eval-receipt/src/export.rs` exposes:
 
 ```rust
 pub fn export_scenario_run(receipts: &[Receipt], run_meta: EvalRunMeta) -> Bundle
@@ -112,7 +112,7 @@ connects back to the exact export surface reviewed by the partner.
 
 ## Non-Goals
 
-- Do not edit `crates/chio-conformance/verdict_matrix/**` in P2.
+- Do not edit `crates/tooling/chio-conformance/verdict_matrix/**` in P2.
 - Do not add outer signatures in P2.
 - Do not change the inner Chio receipt schema.
 - Do not claim public partner publication until P5 evidence exists.

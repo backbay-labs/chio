@@ -13,8 +13,8 @@ peers cannot declare or interpret each other's governance intensity without
 it.
 
 The ladder manifest is signed and pinned at the federation handshake
-([../crates/chio-federation/src/trust_establishment.rs](../crates/chio-federation/src/trust_establishment.rs))
-and feeds [../crates/chio-governance/src/lib.rs](../crates/chio-governance/src/lib.rs)
+([../crates/trust/chio-federation/src/trust_establishment.rs](../crates/trust/chio-federation/src/trust_establishment.rs))
+and feeds [../crates/trust/chio-governance/src/lib.rs](../crates/trust/chio-governance/src/lib.rs)
 case kinds when validation fails.
 
 The keywords MUST, MUST NOT, REQUIRED, SHOULD, SHOULD NOT, MAY are to be
@@ -352,7 +352,7 @@ financial commitments, sanction enforcement, passport state changes,
 charter amendments.
 
 **Required artefacts:** signed governance receipt under
-[../crates/chio-governance/src/lib.rs](../crates/chio-governance/src/lib.rs);
+[../crates/trust/chio-governance/src/lib.rs](../crates/trust/chio-governance/src/lib.rs);
 bilateral co-signature when `co_sign != "none"`; workflow receipt at the
 boundary tick.
 
@@ -402,7 +402,7 @@ is commutative and absorbs divergence: pheromone deposits, IOC listings,
 status updates, advisory findings, public credential listings.
 
 **Signature shape:** bilateral tree under
-[../crates/chio-federation/src/bilateral.rs](../crates/chio-federation/src/bilateral.rs).
+[../crates/trust/chio-federation/src/bilateral.rs](../crates/trust/chio-federation/src/bilateral.rs).
 No anchor field is required.
 
 **Divergent co-sign handling:** convergence is automatic on reconnect.
@@ -421,7 +421,7 @@ charter amendments, tier promotions, scoped sanction lifecycle.
 **Signature shape:** bilateral tree plus a `consistency_anchor` of either
 `hash-chain` (parent receipt SHA-256 in the body) or `chio-anchor` (epoch
 root from
-[../crates/chio-anchor/src/lib.rs](../crates/chio-anchor/src/lib.rs)).
+[../crates/economy/chio-anchor/src/lib.rs](../crates/economy/chio-anchor/src/lib.rs)).
 
 **Divergent co-sign handling:** detected at verification. A receipt whose
 parent-hash or anchor-epoch does not match the receiver's view of the
@@ -607,10 +607,10 @@ Signature blocks are elided for brevity.
 ### 5.2 Financial Ladder
 
 Drawn from
-[../crates/chio-autonomy/src/lib.rs](../crates/chio-autonomy/src/lib.rs),
-[../crates/chio-market/src/lib.rs](../crates/chio-market/src/lib.rs),
-[../crates/chio-credit/src/lib.rs](../crates/chio-credit/src/lib.rs),
-and [../crates/chio-settle/src/lib.rs](../crates/chio-settle/src/lib.rs).
+[../crates/economy/chio-autonomy/src/lib.rs](../crates/economy/chio-autonomy/src/lib.rs),
+[../crates/economy/chio-market/src/lib.rs](../crates/economy/chio-market/src/lib.rs),
+[../crates/economy/chio-credit/src/lib.rs](../crates/economy/chio-credit/src/lib.rs),
+and [../crates/economy/chio-settle/src/lib.rs](../crates/economy/chio-settle/src/lib.rs).
 
 ```json
 {
@@ -769,9 +769,9 @@ unless mapped to the product-owned classes by verifier-owned policy.
 ### 5.3 Compliance Ladder
 
 Drawn from
-[../crates/chio-governance/src/lib.rs](../crates/chio-governance/src/lib.rs)
+[../crates/trust/chio-governance/src/lib.rs](../crates/trust/chio-governance/src/lib.rs)
 and
-[../crates/chio-credentials/src/lib.rs](../crates/chio-credentials/src/lib.rs).
+[../crates/trust/chio-credentials/src/lib.rs](../crates/trust/chio-credentials/src/lib.rs).
 
 ```json
 {

@@ -151,7 +151,7 @@ vs granted, which guard denied, and a next-steps suggestion.
 
 **Files**:
 - `sdks/python/chio-sdk-python/src/chio_sdk/errors.py`
-- `crates/chio-http-core/src/verdict.rs` (enrich Deny variant)
+- `crates/platform/chio-http-core/src/verdict.rs` (enrich Deny variant)
 
 **Refs**: `docs/protocols/DX-AND-ADOPTION-ROADMAP.md` section 6
 
@@ -173,10 +173,10 @@ verdict. Tool servers validate the nonce before executing. Closes the
 window between evaluate() and execution.
 
 **Files**:
-- `crates/chio-kernel/src/execution_nonce.rs` (new: `ExecutionNonce`, `ExecutionNonceStore`)
-- `crates/chio-kernel/src/kernel/mod.rs` (issue nonce in evaluate response)
-- `crates/chio-http-core/src/verdict.rs` (add nonce to allow verdict)
-- `crates/chio-core-types/src/lib.rs` (ExecutionNonce type)
+- `crates/kernel/chio-kernel/src/execution_nonce.rs` (new: `ExecutionNonce`, `ExecutionNonceStore`)
+- `crates/kernel/chio-kernel/src/kernel/mod.rs` (issue nonce in evaluate response)
+- `crates/platform/chio-http-core/src/verdict.rs` (add nonce to allow verdict)
+- `crates/core/chio-core-types/src/lib.rs` (ExecutionNonce type)
 
 **Refs**: `docs/protocols/STRUCTURAL-SECURITY-FIXES.md` section 1
 
@@ -190,8 +190,8 @@ Record trust level on every receipt. Document which integration pattern
 provides which trust level.
 
 **Files**:
-- `crates/chio-core-types/src/capability.rs` (add `TrustLevel` enum)
-- `crates/chio-kernel/src/kernel/mod.rs` (record trust level on receipts)
+- `crates/core/chio-core-types/src/capability.rs` (add `TrustLevel` enum)
+- `crates/kernel/chio-kernel/src/kernel/mod.rs` (record trust level on receipts)
 - `docs/protocols/STRUCTURAL-SECURITY-FIXES.md` (already designed)
 
 **Refs**: `docs/protocols/STRUCTURAL-SECURITY-FIXES.md` section 2
@@ -205,9 +205,9 @@ from advisory ones. Operators can filter receipts by trust level.
 at load time. Reject unsigned modules unless explicitly opted out.
 
 **Files**:
-- `crates/chio-wasm-guards/src/manifest.rs` (add signature field)
-- `crates/chio-wasm-guards/src/runtime.rs` (verify before compilation)
-- `crates/chio-cli/src/guards/sign.rs` (new: `chio guard sign` command)
+- `crates/guards/chio-wasm-guards/src/manifest.rs` (add signature field)
+- `crates/guards/chio-wasm-guards/src/runtime.rs` (verify before compilation)
+- `crates/products/chio-cli/src/guards/sign.rs` (new: `chio guard sign` command)
 
 **Refs**: `docs/protocols/STRUCTURAL-SECURITY-FIXES.md` section 4
 
@@ -221,8 +221,8 @@ rejects all new evaluate() calls. `kernel.emergency_resume()` re-enables.
 Exposed via authenticated HTTP API.
 
 **Files**:
-- `crates/chio-kernel/src/kernel/mod.rs` (add `AtomicBool` emergency flag, check in evaluate path)
-- `crates/chio-http-core/src/routes.rs` (add `/emergency-stop` and `/emergency-resume` endpoints)
+- `crates/kernel/chio-kernel/src/kernel/mod.rs` (add `AtomicBool` emergency flag, check in evaluate path)
+- `crates/platform/chio-http-core/src/routes.rs` (add `/emergency-stop` and `/emergency-resume` endpoints)
 
 **Refs**: `docs/protocols/STRUCTURAL-SECURITY-FIXES.md` section 5
 
@@ -241,9 +241,9 @@ is untouched -- the file paths below point at files that need modification,
 not files that already have this feature.
 
 **Files**:
-- `crates/chio-store-sqlite/src/receipt_store.rs` (modify: add tenant_id column, WHERE clause)
-- `crates/chio-core-types/src/receipt.rs` (modify: add tenant_id field)
-- `crates/chio-kernel/src/kernel/mod.rs` (modify: populate tenant_id from session)
+- `crates/platform/chio-store-sqlite/src/receipt_store.rs` (modify: add tenant_id column, WHERE clause)
+- `crates/core/chio-core-types/src/receipt.rs` (modify: add tenant_id field)
+- `crates/kernel/chio-kernel/src/kernel/mod.rs` (modify: populate tenant_id from session)
 
 **Refs**: `docs/protocols/STRUCTURAL-SECURITY-FIXES.md` section 6
 
@@ -271,8 +271,8 @@ not files that already have this feature.
 `extract_action()` to populate them from tool call arguments.
 
 **Files**:
-- `crates/chio-guards/src/action.rs` (add variants per ADR-TYPE-EVOLUTION.md section 3)
-- `crates/chio-guards/src/action.rs` fn `extract_action()` (add heuristics for new tool names)
+- `crates/guards/chio-guards/src/action.rs` (add variants per ADR-TYPE-EVOLUTION.md section 3)
+- `crates/guards/chio-guards/src/action.rs` fn `extract_action()` (add heuristics for new tool names)
 
 **Refs**: `docs/protocols/ADR-TYPE-EVOLUTION.md` section 3
 
@@ -285,8 +285,8 @@ Existing guards continue to work (Unknown fallback unchanged).
 memory governance constraints to the `Constraint` enum.
 
 **Files**:
-- `crates/chio-core-types/src/capability.rs` (add variants per ADR-TYPE-EVOLUTION.md section 3)
-- `crates/chio-kernel/src/kernel/mod.rs` (constraint checking for new variants)
+- `crates/core/chio-core-types/src/capability.rs` (add variants per ADR-TYPE-EVOLUTION.md section 3)
+- `crates/kernel/chio-kernel/src/kernel/mod.rs` (constraint checking for new variants)
 
 **Refs**: `docs/protocols/ADR-TYPE-EVOLUTION.md` section 3
 
@@ -299,8 +299,8 @@ compiles, serializes, and is enforced by the kernel.
 `ToolCallRequest`. Add `ModelMetadata` and `ModelSafetyTier` types.
 
 **Files**:
-- `crates/chio-core-types/src/capability.rs` (ModelMetadata, ModelSafetyTier, ModelConstraint)
-- `crates/chio-kernel/src/kernel/mod.rs` (constraint evaluation logic)
+- `crates/core/chio-core-types/src/capability.rs` (ModelMetadata, ModelSafetyTier, ModelConstraint)
+- `crates/kernel/chio-kernel/src/kernel/mod.rs` (constraint evaluation logic)
 
 **Refs**: `docs/protocols/ARCHITECTURAL-EXTENSIONS.md` section 1
 
@@ -314,9 +314,9 @@ endpoint. Takes a list of planned tool calls, evaluates all against scope
 and guards, returns per-step verdicts before any execute.
 
 **Files**:
-- `crates/chio-core-types/src/plan.rs` (new: `PlannedToolCall`, `PlanEvaluationRequest`, `PlanEvaluationResponse`, `PlanVerdict`)
-- `crates/chio-kernel/src/kernel/mod.rs` (add `evaluate_plan()`)
-- `crates/chio-http-core/src/routes.rs` (add `/evaluate-plan` endpoint)
+- `crates/core/chio-core-types/src/plan.rs` (new: `PlannedToolCall`, `PlanEvaluationRequest`, `PlanEvaluationResponse`, `PlanVerdict`)
+- `crates/kernel/chio-kernel/src/kernel/mod.rs` (add `evaluate_plan()`)
+- `crates/platform/chio-http-core/src/routes.rs` (add `/evaluate-plan` endpoint)
 
 **Refs**: `docs/protocols/ARCHITECTURAL-EXTENSIONS.md` section 2
 
@@ -338,9 +338,9 @@ and guards, returns per-step verdicts before any execute.
 sync Guard trait. Includes text canonicalization and fingerprint dedup.
 
 **Files**:
-- `crates/chio-guards/src/prompt_injection.rs` (new)
-- `crates/chio-guards/src/text_utils.rs` (new: canonicalization, shared with jailbreak)
-- `crates/chio-guards/src/lib.rs` (register)
+- `crates/guards/chio-guards/src/prompt_injection.rs` (new)
+- `crates/guards/chio-guards/src/text_utils.rs` (new: canonicalization, shared with jailbreak)
+- `crates/guards/chio-guards/src/lib.rs` (register)
 
 **Source**: the prior internal guard library
 **Refs**: `docs/guards/06-CONTENT-SAFETY-ABSORPTION.md` section 1.2, 5.2
@@ -354,8 +354,8 @@ returns Deny. Existing guards unaffected.
 scoring, optional LLM judge). LLM judge deferred to host function in v2.
 
 **Files**:
-- `crates/chio-guards/src/jailbreak.rs` (new)
-- `crates/chio-guards/src/jailbreak_detector.rs` (new: ML scoring layer)
+- `crates/guards/chio-guards/src/jailbreak.rs` (new)
+- `crates/guards/chio-guards/src/jailbreak_detector.rs` (new: ML scoring layer)
 
 **Source**: the prior internal guard library
 **Refs**: `docs/guards/06-CONTENT-SAFETY-ABSORPTION.md` section 1.1, 5.1
@@ -370,8 +370,8 @@ Add secret detection, entropy scanning, Luhn validation, allowlist/denylist,
 overlap resolution, and full redaction strategy support.
 
 **Files**:
-- `crates/chio-guards/src/response_sanitization.rs` (extend existing)
-- `crates/chio-guards/src/post_invocation.rs` (extend pipeline)
+- `crates/guards/chio-guards/src/response_sanitization.rs` (extend existing)
+- `crates/guards/chio-guards/src/post_invocation.rs` (extend pipeline)
 
 **Source**: the prior internal guard library
 **Refs**: `docs/guards/07-OUTPUT-SANITIZER-ABSORPTION.md`
@@ -385,10 +385,10 @@ API keys, and high-entropy strings from tool results.
 Implement the approval guard, approval store, and resume flow.
 
 **Files**:
-- `crates/chio-kernel/src/runtime.rs` (add PendingApproval variant)
-- `crates/chio-kernel/src/approval.rs` (new: `ApprovalGuard`, `ApprovalStore`, `BatchApprovalStore`)
-- `crates/chio-http-core/src/routes.rs` (add `/approvals/pending`, `/approvals/{id}/respond`, `/approvals/batch`)
-- `crates/chio-kernel/src/kernel/mod.rs` (integrate approval guard, resume validation)
+- `crates/kernel/chio-kernel/src/runtime.rs` (add PendingApproval variant)
+- `crates/kernel/chio-kernel/src/approval.rs` (new: `ApprovalGuard`, `ApprovalStore`, `BatchApprovalStore`)
+- `crates/platform/chio-http-core/src/routes.rs` (add `/approvals/pending`, `/approvals/{id}/respond`, `/approvals/batch`)
+- `crates/kernel/chio-kernel/src/kernel/mod.rs` (integrate approval guard, resume validation)
 
 **Refs**: `docs/protocols/HUMAN-IN-THE-LOOP-PROTOCOL.md` sections 2-10, 13
 
@@ -404,9 +404,9 @@ Pending requests are written to durable storage; on restart, the kernel
 reloads pending requests and resumes listening for responses.
 
 **Files**:
-- `crates/chio-store-sqlite/src/approval_store.rs` (new: `SqliteApprovalStore`)
-- `crates/chio-store-sqlite/src/batch_approval_store.rs` (new: `SqliteBatchApprovalStore`)
-- `crates/chio-kernel/src/approval.rs` (define `ApprovalStore`, `BatchApprovalStore` traits)
+- `crates/platform/chio-store-sqlite/src/approval_store.rs` (new: `SqliteApprovalStore`)
+- `crates/platform/chio-store-sqlite/src/batch_approval_store.rs` (new: `SqliteBatchApprovalStore`)
+- `crates/kernel/chio-kernel/src/approval.rs` (define `ApprovalStore`, `BatchApprovalStore` traits)
 
 **Refs**: `docs/protocols/HUMAN-IN-THE-LOOP-PROTOCOL.md` sections 10, 13
 (specifically: "Pending requests survive in approval store" at the
@@ -422,7 +422,7 @@ Restart the kernel. The pending approval is still queryable via
 and dashboard channels follow.
 
 **Files**:
-- `crates/chio-kernel/src/approval_channels.rs` (new: trait + WebhookChannel)
+- `crates/kernel/chio-kernel/src/approval_channels.rs` (new: trait + WebhookChannel)
 
 **Refs**: `docs/protocols/HUMAN-IN-THE-LOOP-PROTOCOL.md` section 6
 
@@ -462,8 +462,8 @@ demonstrates safe file reads allowed and `.env` writes denied.
 wraps any MCP filesystem server with Chio.
 
 **Files**:
-- `crates/chio-cli/src/policies/code_agent.yaml` (new: bundled default policy)
-- `crates/chio-cli/src/mcp/serve.rs` (add `--preset code-agent` flag)
+- `crates/products/chio-cli/src/policies/code_agent.yaml` (new: bundled default policy)
+- `crates/products/chio-cli/src/mcp/serve.rs` (add `--preset code-agent` flag)
 
 **Refs**: `docs/protocols/DX-AND-ADOPTION-ROADMAP.md` section 4.4
 
@@ -497,7 +497,7 @@ guide in <5 minutes and have Chio protecting their tool calls.
 **What**: Port action-type allowlisting with Observe/Guardrail/FailClosed modes.
 
 **Files**:
-- `crates/chio-guards/src/computer_use.rs` (new)
+- `crates/guards/chio-guards/src/computer_use.rs` (new)
 
 **Source**: the prior internal guard library
 **Refs**: `docs/guards/08-DESKTOP-CUA-GUARD-ABSORPTION.md` section 1.1
@@ -510,7 +510,7 @@ Screenshot actions respect rate limits.
 **What**: Port input-type restrictions and postcondition probe validation.
 
 **Files**:
-- `crates/chio-guards/src/input_injection.rs` (new)
+- `crates/guards/chio-guards/src/input_injection.rs` (new)
 
 **Source**: the prior internal guard library
 **Refs**: `docs/guards/08-DESKTOP-CUA-GUARD-ABSORPTION.md` section 1.2
@@ -523,7 +523,7 @@ allowlist. Actions without postcondition probes denied in strict mode.
 **What**: Port per-channel enable/disable with transfer size limits.
 
 **Files**:
-- `crates/chio-guards/src/remote_desktop.rs` (new)
+- `crates/guards/chio-guards/src/remote_desktop.rs` (new)
 
 **Source**: the prior internal guard library
 **Refs**: `docs/guards/08-DESKTOP-CUA-GUARD-ABSORPTION.md` section 1.3
@@ -538,8 +538,8 @@ File transfer exceeding size limit denied. Unknown channels denied
 pre-computed pattern database.
 
 **Files**:
-- `crates/chio-guards/src/spider_sense.rs` (new)
-- `crates/chio-guards/data/spider_sense_patterns.json` (new: pattern DB)
+- `crates/guards/chio-guards/src/spider_sense.rs` (new)
+- `crates/guards/chio-guards/data/spider_sense_patterns.json` (new: pattern DB)
 
 **Source**: the prior internal guard library
 **Refs**: `docs/guards/06-CONTENT-SAFETY-ABSORPTION.md` section 1.3, 4.1
@@ -555,8 +555,8 @@ to guard instances registered on the kernel. Complete the 5 missing guard
 types in the compilation pipeline.
 
 **Files**:
-- `crates/chio-policy/src/compiler.rs` (extend: add missing guard types)
-- `crates/chio-policy/src/rulesets/` (new: port 7 built-in rulesets from the prior internal guard library)
+- `crates/guards/chio-policy/src/compiler.rs` (extend: add missing guard types)
+- `crates/guards/chio-policy/src/rulesets/` (new: port 7 built-in rulesets from the prior internal guard library)
 
 **Source**: the prior internal guard library
 **Refs**: `docs/guards/09-POLICY-ENGINE-ABSORPTION.md` sections 1-6
@@ -570,8 +570,8 @@ that includes all 12 guard types.
 env vars in guard config. Capability intersection on load.
 
 **Files**:
-- `crates/chio-wasm-guards/src/runtime.rs` (add `load_guards_from_policy()`)
-- `crates/chio-wasm-guards/src/placeholders.rs` (new: `resolve_placeholders()`)
+- `crates/guards/chio-wasm-guards/src/runtime.rs` (add `load_guards_from_policy()`)
+- `crates/guards/chio-wasm-guards/src/placeholders.rs` (new: `resolve_placeholders()`)
 
 **Source**: the prior internal guard library
 **Refs**: `docs/guards/12-SELECTIVE-ABSORPTION-PLAN.md` section 1
@@ -660,10 +660,10 @@ operations, predicates, LIMIT clauses. Fail-closed on parse failure.
 Blocks DELETE/UPDATE without WHERE.
 
 **Files**:
-- `crates/chio-data-guards/Cargo.toml` (new crate, dep on sqlparser)
-- `crates/chio-data-guards/src/lib.rs` (new)
-- `crates/chio-data-guards/src/sql_guard.rs` (new)
-- `crates/chio-data-guards/src/sql_parser.rs` (new: dialect-aware analysis)
+- `crates/guards/chio-data-guards/Cargo.toml` (new crate, dep on sqlparser)
+- `crates/guards/chio-data-guards/src/lib.rs` (new)
+- `crates/guards/chio-data-guards/src/sql_guard.rs` (new)
+- `crates/guards/chio-data-guards/src/sql_parser.rs` (new: dialect-aware analysis)
 
 **Refs**: `docs/guards/10-DATA-LAYER-GUARDS.md` section 3.1
 
@@ -676,7 +676,7 @@ Blocks DELETE/UPDATE without WHERE.
 embedding exfiltration protection.
 
 **Files**:
-- `crates/chio-data-guards/src/vector_guard.rs` (new)
+- `crates/guards/chio-data-guards/src/vector_guard.rs` (new)
 
 **Refs**: `docs/guards/10-DATA-LAYER-GUARDS.md` section 3.2
 
@@ -690,8 +690,8 @@ ReadOnly. `top_k=500` denied when `MaxRowsReturned=50`.
 arguments. MaxBytesScanned and MaxCostPerQuery enforcement.
 
 **Files**:
-- `crates/chio-data-guards/src/warehouse_cost_guard.rs` (new)
-- `crates/chio-metering/src/lib.rs` (add `CostDimension::WarehouseQuery`)
+- `crates/guards/chio-data-guards/src/warehouse_cost_guard.rs` (new)
+- `crates/economy/chio-metering/src/lib.rs` (add `CostDimension::WarehouseQuery`)
 
 **Refs**: `docs/guards/10-DATA-LAYER-GUARDS.md` section 3.3,
 `docs/protocols/DATA-LAYER-INTEGRATION.md` section 5.3
@@ -711,7 +711,7 @@ records `CostDimension::WarehouseQuery` with actual bytes and cost.
 on query results.
 
 **Files**:
-- `crates/chio-data-guards/src/result_guard.rs` (new)
+- `crates/guards/chio-data-guards/src/result_guard.rs` (new)
 
 **Refs**: `docs/guards/10-DATA-LAYER-GUARDS.md` section 4
 
@@ -733,7 +733,7 @@ before returning to the agent.
 limits, dangerous module detection (os, subprocess, socket).
 
 **Files**:
-- `crates/chio-guards/src/code_execution.rs` (new)
+- `crates/guards/chio-guards/src/code_execution.rs` (new)
 
 **Refs**: `docs/guards/13-CODE-EXECUTION-GUARDS.md` section 2
 
@@ -748,7 +748,7 @@ the constraint.
 detection in Type actions.
 
 **Files**:
-- `crates/chio-guards/src/browser_automation.rs` (new)
+- `crates/guards/chio-guards/src/browser_automation.rs` (new)
 
 **Refs**: `docs/guards/13-CODE-EXECUTION-GUARDS.md` section 3
 
@@ -771,10 +771,10 @@ Deny.
 shim over Chio's `/evaluate` endpoint.
 
 **Files**:
-- `crates/chio-envoy-ext-authz/Cargo.toml` (new crate)
-- `crates/chio-envoy-ext-authz/src/lib.rs` (new)
-- `crates/chio-envoy-ext-authz/src/grpc_service.rs` (new)
-- `crates/chio-envoy-ext-authz/proto/` (vendored envoy auth proto)
+- `crates/protocol/chio-envoy-ext-authz/Cargo.toml` (new crate)
+- `crates/protocol/chio-envoy-ext-authz/src/lib.rs` (new)
+- `crates/protocol/chio-envoy-ext-authz/src/grpc_service.rs` (new)
+- `crates/protocol/chio-envoy-ext-authz/proto/` (vendored envoy auth proto)
 
 **Refs**: `docs/protocols/ENVOY-EXT-AUTHZ-INTEGRATION.md` sections 3-4
 
@@ -870,7 +870,7 @@ email text, payment amounts). PII detection, tone/profanity, configurable
 per-service.
 
 **Files**:
-- `crates/chio-guards/src/content_review.rs` (new)
+- `crates/guards/chio-guards/src/content_review.rs` (new)
 
 **Refs**: `docs/protocols/SAAS-COMMUNICATION-INTEGRATION.md` section 6
 
@@ -920,10 +920,10 @@ Resource types outside granted scopes are denied.
 the prior internal guard library.
 
 **Files**:
-- `crates/chio-siem/src/exporters/datadog.rs` (new)
-- `crates/chio-siem/src/exporters/sumo_logic.rs` (new)
-- `crates/chio-siem/src/exporters/webhook.rs` (new)
-- `crates/chio-siem/src/alerting.rs` (new)
+- `crates/observability/chio-siem/src/exporters/datadog.rs` (new)
+- `crates/observability/chio-siem/src/exporters/sumo_logic.rs` (new)
+- `crates/observability/chio-siem/src/exporters/webhook.rs` (new)
+- `crates/observability/chio-siem/src/alerting.rs` (new)
 
 **Source**: the prior internal guard library
 **Refs**: `docs/guards/11-SIEM-OBSERVABILITY-COMPLETION.md` section 2
@@ -938,7 +938,7 @@ on high-severity guard denials.
 **What**: Map Chio receipts to OCSF Authorization event class (3002).
 
 **Files**:
-- `crates/chio-siem/src/ocsf.rs` (new)
+- `crates/observability/chio-siem/src/ocsf.rs` (new)
 
 **Refs**: `docs/guards/11-SIEM-OBSERVABILITY-COMPLETION.md` section 3
 
@@ -973,10 +973,10 @@ tool name, verdict, guard evidence, and cost metadata.
 token bucket, TtlCache, retry with jitter.
 
 **Files**:
-- `crates/chio-guards/src/external/mod.rs` (new)
-- `crates/chio-guards/src/external/circuit_breaker.rs` (new)
-- `crates/chio-guards/src/external/cache.rs` (new)
-- `crates/chio-guards/src/external/retry.rs` (new)
+- `crates/guards/chio-guards/src/external/mod.rs` (new)
+- `crates/guards/chio-guards/src/external/circuit_breaker.rs` (new)
+- `crates/guards/chio-guards/src/external/cache.rs` (new)
+- `crates/guards/chio-guards/src/external/retry.rs` (new)
 
 **Refs**: `docs/guards/12-SELECTIVE-ABSORPTION-PLAN.md` section 2
 
@@ -991,9 +991,9 @@ the external service. Cache hit returns cached verdict without API call.
 `VertexSafetyGuard` as `ExternalGuard` implementations.
 
 **Files**:
-- `crates/chio-guards/src/external/bedrock.rs` (new)
-- `crates/chio-guards/src/external/azure_content_safety.rs` (new)
-- `crates/chio-guards/src/external/vertex_safety.rs` (new)
+- `crates/guards/chio-guards/src/external/bedrock.rs` (new)
+- `crates/guards/chio-guards/src/external/azure_content_safety.rs` (new)
+- `crates/guards/chio-guards/src/external/vertex_safety.rs` (new)
 
 **Refs**: `docs/protocols/ARCHITECTURAL-EXTENSIONS.md` section 3
 
@@ -1007,9 +1007,9 @@ verdict captured as `GuardEvidence` in receipt.
 **What**: VirusTotal, Safe Browsing, Snyk as `ExternalGuard` implementations.
 
 **Files**:
-- `crates/chio-guards/src/external/threat_intel/virustotal.rs` (new)
-- `crates/chio-guards/src/external/threat_intel/safe_browsing.rs` (new)
-- `crates/chio-guards/src/external/threat_intel/snyk.rs` (new)
+- `crates/guards/chio-guards/src/external/threat_intel/virustotal.rs` (new)
+- `crates/guards/chio-guards/src/external/threat_intel/safe_browsing.rs` (new)
+- `crates/guards/chio-guards/src/external/threat_intel/snyk.rs` (new)
 
 **Source**: the prior internal guard library
 **Refs**: `docs/guards/12-SELECTIVE-ABSORPTION-PLAN.md` section 3
@@ -1042,10 +1042,10 @@ guard denies navigation to a flagged URL.
 scope checking, sync guard pipeline, receipt signing. No tokio, rusqlite, ureq.
 
 **Files**:
-- `crates/chio-kernel-core/Cargo.toml` (new)
-- `crates/chio-kernel-core/src/lib.rs` (new: evaluate, sign_receipt, verify_capability)
-- `crates/chio-kernel/Cargo.toml` (depend on chio-kernel-core)
-- `crates/chio-kernel/src/kernel/mod.rs` (delegate to core for evaluation)
+- `crates/kernel/chio-kernel-core/Cargo.toml` (new)
+- `crates/kernel/chio-kernel-core/src/lib.rs` (new: evaluate, sign_receipt, verify_capability)
+- `crates/kernel/chio-kernel/Cargo.toml` (depend on chio-kernel-core)
+- `crates/kernel/chio-kernel/src/kernel/mod.rs` (delegate to core for evaluation)
 
 **Refs**: `docs/protocols/PORTABLE-KERNEL-ARCHITECTURE.md` sections 1-2
 
@@ -1057,8 +1057,8 @@ Binary size < 1MB stripped.
 **What**: `wasm-bindgen` bindings for browser-based Chio evaluation.
 
 **Files**:
-- `crates/chio-kernel-browser/Cargo.toml` (new)
-- `crates/chio-kernel-browser/src/lib.rs` (new)
+- `crates/kernel/chio-kernel-browser/Cargo.toml` (new)
+- `crates/kernel/chio-kernel-browser/src/lib.rs` (new)
 
 **Refs**: `docs/protocols/PORTABLE-KERNEL-ARCHITECTURE.md` section 4
 
@@ -1071,8 +1071,8 @@ Web Crypto for entropy.
 **What**: UniFFI bindings for embedding Chio in mobile apps.
 
 **Files**:
-- `crates/chio-kernel-mobile/Cargo.toml` (new)
-- `crates/chio-kernel-mobile/src/lib.rs` (new)
+- `crates/kernel/chio-kernel-mobile/Cargo.toml` (new)
+- `crates/kernel/chio-kernel-mobile/src/lib.rs` (new)
 
 **Refs**: `docs/protocols/PORTABLE-KERNEL-ARCHITECTURE.md` section 4
 
@@ -1107,11 +1107,11 @@ This requires a cross-crate migration:
 6. Extend receipt/capability serialization to include algorithm identifier
 
 **Files**:
-- `crates/chio-core-types/src/crypto.rs` (add `SigningBackend` trait, algorithm enum)
-- `crates/chio-core-types/src/capability.rs` (update `CapabilityToken::sign/verify`)
-- `crates/chio-core-types/src/receipt.rs` (update receipt signing)
-- `crates/chio-kernel/src/dpop.rs` (update DPoP signing/verification)
-- `crates/chio-kernel/src/kernel/mod.rs` (update approval token verification)
+- `crates/core/chio-core-types/src/crypto.rs` (add `SigningBackend` trait, algorithm enum)
+- `crates/core/chio-core-types/src/capability.rs` (update `CapabilityToken::sign/verify`)
+- `crates/core/chio-core-types/src/receipt.rs` (update receipt signing)
+- `crates/kernel/chio-kernel/src/dpop.rs` (update DPoP signing/verification)
+- `crates/kernel/chio-kernel/src/kernel/mod.rs` (update approval token verification)
 - `Cargo.toml` (add aws-lc-rs optional dep behind `fips` feature)
 
 **Refs**: `docs/protocols/COMPLIANCE-ROADMAP.md` section 2
@@ -1204,7 +1204,7 @@ budget limits, track tool call costs, and export billing records.
 (department -> team -> agent). **This is product work, not documentation.**
 
 **Files**:
-- `crates/chio-metering/src/budget_hierarchy.rs` (new)
+- `crates/economy/chio-metering/src/budget_hierarchy.rs` (new)
 
 **Refs**: `docs/protocols/ECONOMIC-LAYER-OVERVIEW.md` section 7
 
@@ -1311,7 +1311,7 @@ application containers on Cloud Run, ECS Fargate, and Azure Container Apps.
 Enforce `MemoryStoreAllowlist`, `MaxRetentionTtl`, `MaxMemoryEntries`.
 
 **Files**:
-- `crates/chio-guards/src/memory_governance.rs` (new)
+- `crates/guards/chio-guards/src/memory_governance.rs` (new)
 
 **Refs**: `docs/protocols/STRUCTURAL-SECURITY-FIXES.md` section 3
 
@@ -1325,7 +1325,7 @@ are denied.
 verify the write was authorized.
 
 **Files**:
-- `crates/chio-kernel/src/memory_provenance.rs` (new)
+- `crates/kernel/chio-kernel/src/memory_provenance.rs` (new)
 
 **Refs**: `docs/protocols/STRUCTURAL-SECURITY-FIXES.md` section 3
 
@@ -1355,9 +1355,9 @@ API. The raw reporting infrastructure exists; this story adds the scoring
 model (0-1000 range, weighted factors) and the CLI/HTTP surface.
 
 **Files**:
-- `crates/chio-kernel/src/compliance_score.rs` (new: scoring model on top of existing ComplianceReport)
-- `crates/chio-kernel/src/operator_report.rs` (extend: add score computation)
-- `crates/chio-http-core/src/routes.rs` (add `/compliance/score` endpoint)
+- `crates/kernel/chio-kernel/src/compliance_score.rs` (new: scoring model on top of existing ComplianceReport)
+- `crates/kernel/chio-kernel/src/operator_report.rs` (extend: add score computation)
+- `crates/platform/chio-http-core/src/routes.rs` (add `/compliance/score` endpoint)
 
 **Refs**: `docs/protocols/FUTURE-MOATS-AND-RESEARCH.md` section 1
 
@@ -1375,8 +1375,8 @@ This story adds EMA baselines, z-score anomaly detection, and integration
 with the velocity guard pipeline.
 
 **Files**:
-- `crates/chio-guards/src/behavioral_profile.rs` (new: guard that reads from existing behavioral feed)
-- `crates/chio-kernel/src/operator_report.rs` (extend: add anomaly scoring on top of existing BehavioralFeedReport)
+- `crates/guards/chio-guards/src/behavioral_profile.rs` (new: guard that reads from existing behavioral feed)
+- `crates/kernel/chio-kernel/src/operator_report.rs` (extend: add anomaly scoring on top of existing BehavioralFeedReport)
 
 **Refs**: `docs/protocols/FUTURE-MOATS-AND-RESEARCH.md` section 2
 
@@ -1390,7 +1390,7 @@ from `chio-store-sqlite` receipt queries.
 wrapped in `SignedExportEnvelope`.
 
 **Files**:
-- `crates/chio-http-core/src/regulatory_api.rs` (new)
+- `crates/platform/chio-http-core/src/regulatory_api.rs` (new)
 
 **Refs**: `docs/protocols/FUTURE-MOATS-AND-RESEARCH.md` section 3
 
@@ -1412,9 +1412,9 @@ kernel's public key.
 ### 20.1 Agent Passport: Trust-Tier Synthesis and WASM Portability (depends on Phases 14, 19.1, 19.2) [SHIPPED 1da2900]
 
 **What**: The core passport system already ships: `AgentPassport` in
-`crates/chio-credentials/src/passport.rs`, challenge flows, OID4VCI/VP,
-and cross-issuer portfolio evaluation in `crates/chio-credentials/src/cross_issuer.rs`.
-CLI passport flows exist in `crates/chio-cli/src/passport.rs`.
+`crates/trust/chio-credentials/src/passport.rs`, challenge flows, OID4VCI/VP,
+and cross-issuer portfolio evaluation in `crates/trust/chio-credentials/src/cross_issuer.rs`.
+CLI passport flows exist in `crates/products/chio-cli/src/passport.rs`.
 
 This phase adds **trust-tier synthesis** (populating the passport with
 compliance scores from 19.1 and behavioral profiles from 19.2) and
@@ -1422,9 +1422,9 @@ compliance scores from 19.1 and behavioral profiles from 19.2) and
 browser/mobile agents). It is NOT creating passport support from scratch.
 
 **Files**:
-- `crates/chio-credentials/src/passport.rs` (extend: add trust_tier field from compliance score)
-- `crates/chio-credentials/src/trust_tier.rs` (new: synthesize tier from compliance + behavioral data)
-- `crates/chio-kernel-core/src/passport_verify.rs` (new: WASM-compatible verification)
+- `crates/trust/chio-credentials/src/passport.rs` (extend: add trust_tier field from compliance score)
+- `crates/trust/chio-credentials/src/trust_tier.rs` (new: synthesize tier from compliance + behavioral data)
+- `crates/kernel/chio-kernel-core/src/passport_verify.rs` (new: WASM-compatible verification)
 
 **Refs**: `docs/protocols/FUTURE-MOATS-AND-RESEARCH.md` section 4
 
@@ -1438,8 +1438,8 @@ kernel verifies the passport and reads the tier.
 placement -> chio-settle claims payout. Premium pricing from receipt history.
 
 **Files**:
-- `crates/chio-underwriting/src/premium.rs` (new: premium pricing from receipt score)
-- `crates/chio-market/src/insurance_flow.rs` (new: end-to-end flow)
+- `crates/economy/chio-underwriting/src/premium.rs` (new: premium pricing from receipt score)
+- `crates/economy/chio-market/src/insurance_flow.rs` (new: end-to-end flow)
 
 **Refs**: `docs/protocols/FUTURE-MOATS-AND-RESEARCH.md` section 5,
 `docs/protocols/ECONOMIC-LAYER-OVERVIEW.md` section 4
@@ -1452,7 +1452,7 @@ evidence is processed through the settlement flow.
 
 **What**: The federation crate already ships signed activation, quorum
 governance, open-admission, reputation, and qualification artifacts
-(`crates/chio-federation/src/lib.rs`). CLI/control-plane federation-policy
+(`crates/trust/chio-federation/src/lib.rs`). CLI/control-plane federation-policy
 and federated-issue flows are shipped.
 
 This phase adds **bilateral runtime co-signing** (two kernels in different
@@ -1461,9 +1461,9 @@ orgs both sign the same receipt when an agent crosses org boundaries) and
 creating federation from scratch.
 
 **Files**:
-- `crates/chio-federation/src/bilateral.rs` (new: bilateral receipt co-signing protocol)
-- `crates/chio-federation/src/trust_establishment.rs` (new: mTLS key exchange)
-- `crates/chio-kernel/src/kernel/mod.rs` (extend: co-sign receipt with remote kernel)
+- `crates/trust/chio-federation/src/bilateral.rs` (new: bilateral receipt co-signing protocol)
+- `crates/trust/chio-federation/src/trust_establishment.rs` (new: mTLS key exchange)
+- `crates/kernel/chio-kernel/src/kernel/mod.rs` (extend: co-sign receipt with remote kernel)
 
 **Refs**: `docs/protocols/FUTURE-MOATS-AND-RESEARCH.md` section 6
 
@@ -1477,8 +1477,8 @@ Trust established via mTLS handshake between kernels.
 usage for billing.
 
 **Files**:
-- `crates/chio-listing/src/discovery.rs` (extend: search and compare)
-- `crates/chio-open-market/src/bidding.rs` (new: bid/ask protocol)
+- `crates/economy/chio-listing/src/discovery.rs` (extend: search and compare)
+- `crates/economy/chio-open-market/src/bidding.rs` (new: bid/ask protocol)
 
 **Acceptance**: A tool server listed via `chio-listing` is discoverable
 by agents. Agents can compare prices and bid for access. Receipts serve

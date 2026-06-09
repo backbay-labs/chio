@@ -75,8 +75,8 @@ projection, derivation, or anchor of receipts.
 
 Every allowed tool call produces an `ChioReceipt` signed by the kernel. When
 the call is cost-bearing, the receipt carries `FinancialReceiptMetadata`
-(see `crates/chio-core/src/receipt.rs`) plus a `CostMetadata` block from
-`chio-metering` (`crates/chio-metering/src/lib.rs`). The financial fields
+(see `crates/core/chio-core/src/receipt.rs`) plus a `CostMetadata` block from
+`chio-metering` (`crates/economy/chio-metering/src/lib.rs`). The financial fields
 include:
 
 - `cost_charged` / `cost_currency` -- the amount the kernel committed
@@ -120,7 +120,7 @@ chio receipt list --tenant <tenant-id> --capability <cap-id> --tool-server <serv
   --since <unix-ts> --until <unix-ts> --min-cost <minor-units>
 ```
 
-See `crates/chio-cli/src/cli/types.rs:1883` for the full filter list.
+See `crates/products/chio-cli/src/cli/types.rs:1883` for the full filter list.
 
 ---
 
@@ -132,7 +132,7 @@ detectable even if the kernel operator is compromised.
 
 ### 4.1 What gets anchored
 
-The kernel produces a `KernelCheckpoint` (`crates/chio-kernel/src/checkpoint.rs`)
+The kernel produces a `KernelCheckpoint` (`crates/kernel/chio-kernel/src/checkpoint.rs`)
 at operator-configured intervals. Each checkpoint commits to a batch of
 receipts by Merkle root plus a range `[batch_start_seq, batch_end_seq]`.
 The checkpoint body is canonical JSON and signed by the kernel.
@@ -146,12 +146,12 @@ was committed to every lane that matters to the relying party.
 
 | Lane | Module | Purpose |
 |------|--------|---------|
-| EVM root registry | `crates/chio-anchor/src/evm.rs` | Direct publish of the Merkle root to a ChioRootRegistry contract (`prepare_root_publication`, `confirm_root_publication`). |
-| Bitcoin via OTS | `crates/chio-anchor/src/bitcoin.rs` | Super-root aggregation timestamped via OpenTimestamps (`prepare_ots_submission`, `verify_ots_proof_for_submission`). |
-| Solana memo | `crates/chio-anchor/src/solana.rs` | Canonical memo publication (`prepare_solana_memo_publication`, `verify_solana_anchor`). |
-| Chainlink Functions | `crates/chio-anchor/src/functions.rs` | Off-chain attestation verification path with fallback assessment. |
+| EVM root registry | `crates/economy/chio-anchor/src/evm.rs` | Direct publish of the Merkle root to a ChioRootRegistry contract (`prepare_root_publication`, `confirm_root_publication`). |
+| Bitcoin via OTS | `crates/economy/chio-anchor/src/bitcoin.rs` | Super-root aggregation timestamped via OpenTimestamps (`prepare_ots_submission`, `verify_ots_proof_for_submission`). |
+| Solana memo | `crates/economy/chio-anchor/src/solana.rs` | Canonical memo publication (`prepare_solana_memo_publication`, `verify_solana_anchor`). |
+| Chainlink Functions | `crates/economy/chio-anchor/src/functions.rs` | Off-chain attestation verification path with fallback assessment. |
 
-The `AnchorServiceConfig` struct (`crates/chio-anchor/src/lib.rs:98`)
+The `AnchorServiceConfig` struct (`crates/economy/chio-anchor/src/lib.rs:98`)
 composes the target set; the runtime can enforce lane-availability policies
 through `ops::ensure_anchor_operation_allowed`.
 
@@ -170,7 +170,7 @@ let report = verify_proof_bundle(&bundle, &checkpoint)?;
 `verify_proof_bundle` is fail-closed: a single invalid lane rejects the
 bundle. Use `verify_proof_bundle_with_discovery` when you want to evaluate
 freshness against a published discovery artifact
-(`crates/chio-anchor/src/discovery.rs`).
+(`crates/economy/chio-anchor/src/discovery.rs`).
 
 ### 4.4 Recipe: anchor a batch
 
@@ -195,7 +195,7 @@ drive scheduled publication without custom orchestration code.
 
 `chio-settle` turns approved capital instructions into real contract calls
 and projects the on-chain state back into the receipt family. The module
-layout lives in `crates/chio-settle/src/lib.rs`.
+layout lives in `crates/economy/chio-settle/src/lib.rs`.
 
 ### 5.1 When to settle on-chain
 
@@ -214,7 +214,7 @@ actual transfer happens off-chain.
 
 ### 5.2 EVM path
 
-Primary entry points (`crates/chio-settle/src/evm.rs`):
+Primary entry points (`crates/economy/chio-settle/src/evm.rs`):
 
 - `prepare_web3_escrow_dispatch` + `finalize_escrow_dispatch`
 - `prepare_bond_lock` / `prepare_bond_release` / `prepare_bond_impair` /
@@ -231,7 +231,7 @@ submit, confirm, project.
 
 ### 5.3 Solana path
 
-Ed25519-native surface (`crates/chio-settle/src/solana.rs`):
+Ed25519-native surface (`crates/economy/chio-settle/src/solana.rs`):
 
 - `prepare_solana_settlement` -- builds a settlement transaction using the
   Ed25519 program for signature verification.
@@ -242,10 +242,10 @@ Ed25519-native surface (`crates/chio-settle/src/solana.rs`):
 
 ### 5.4 Cross-chain and HTTP rails
 
-- CCIP cross-chain messaging: `crates/chio-settle/src/ccip.rs`
+- CCIP cross-chain messaging: `crates/economy/chio-settle/src/ccip.rs`
   (`prepare_ccip_settlement_message`, `reconcile_ccip_delivery`).
 - x402 HTTP 402 requirements: `build_x402_payment_requirements` in
-  `crates/chio-settle/src/payments.rs`.
+  `crates/economy/chio-settle/src/payments.rs`.
 - EIP-3009 meta-transactions: `prepare_transfer_with_authorization`.
 - Circle nanopayments: `evaluate_circle_nanopayment`.
 - ERC-4337 paymaster compatibility: `prepare_paymaster_compatibility`.
@@ -295,12 +295,12 @@ new settlements while existing ones drain.
 
 Reputation converts a receipt corpus into a portable signal of how an agent
 has behaved. `chio-reputation` is intentionally pure and storage-agnostic
-(`crates/chio-reputation/src/lib.rs:1`): scoring never touches the network
+(`crates/trust/chio-reputation/src/lib.rs:1`): scoring never touches the network
 and never mutates anything.
 
 ### 6.1 Local scoring
 
-`compute_local_scorecard` (`crates/chio-reputation/src/score.rs:3`) takes a
+`compute_local_scorecard` (`crates/trust/chio-reputation/src/score.rs:3`) takes a
 `LocalReputationCorpus` -- receipts, capability-lineage records, and
 budget-usage rows -- and produces a `LocalReputationScorecard` with eight
 weighted dimensions:
@@ -336,7 +336,7 @@ chio reputation local \
   --policy <optional-policy-yaml>
 ```
 
-See `crates/chio-cli/src/cli/types.rs:2727`. To compare live state against a
+See `crates/products/chio-cli/src/cli/types.rs:2727`. To compare live state against a
 portable passport:
 
 ```
@@ -355,12 +355,12 @@ to detect staleness or federation-boundary discrepancies.
 
 The agent passport is how an agent proves standing to a party outside its
 home authority. It is a bundle of signed Verifiable Credentials keyed to
-the subject's DID (see `crates/chio-did/` for did:chio), synthesized from
+the subject's DID (see `crates/trust/chio-did/` for did:chio), synthesized from
 local evidence (receipts, reputation, certifications, runtime assurance).
 
 ### 7.1 Bundle contents
 
-An `AgentPassport` (`crates/chio-credentials/src/...`) typically contains:
+An `AgentPassport` (`crates/trust/chio-credentials/src/...`) typically contains:
 
 - A reputation credential over the subject's local scorecard.
 - Attestation windows describing the covered evidence period.
@@ -433,7 +433,7 @@ chio passport present \
   --max-credentials 2
 ```
 
-See `crates/chio-cli/src/cli/types.rs:2222` for the full option surface.
+See `crates/products/chio-cli/src/cli/types.rs:2222` for the full option surface.
 
 ---
 
@@ -569,7 +569,7 @@ chio trust federated-issue \
   --delegation-policy signed-delegation-policy.json
 ```
 
-See `crates/chio-cli/src/cli/types.rs:667` for the full option set.
+See `crates/products/chio-cli/src/cli/types.rs:667` for the full option set.
 
 ---
 
@@ -582,66 +582,66 @@ access via the Rust crates for code paths that are not yet wrapped.
 
 | Subcommand | Purpose | Source |
 |-----------|---------|--------|
-| `chio receipt list` | Filter and page receipts, including by cost range. | `crates/chio-cli/src/cli/types.rs:1883` |
-| `chio evidence export` | Create a verifiable offline evidence package. | `crates/chio-cli/src/cli/types.rs:1920` |
-| `chio evidence verify` | Verify an exported evidence package. | `crates/chio-cli/src/cli/types.rs:1948` |
-| `chio evidence import` | Import a bilateral package for later federation. | `crates/chio-cli/src/cli/types.rs:1954` |
-| `chio evidence federation-policy create` | Sign a bilateral receipt-sharing policy. | `crates/chio-cli/src/cli/types.rs:1967` |
-| `chio certify check` / `verify` / `registry ...` | Conformance certifications feeding trust tiers. | `crates/chio-cli/src/cli/types.rs:2007` |
-| `chio passport create / verify / evaluate / present` | Passport bundle lifecycle. | `crates/chio-cli/src/cli/types.rs:2222` |
-| `chio passport policy ...` | Signed verifier-policy artifacts. | `crates/chio-cli/src/cli/types.rs:2300` |
-| `chio passport challenge create / respond / submit / verify` | Challenge-bound presentations. | `crates/chio-cli/src/cli/types.rs:2331` |
-| `chio passport status ...` | Publish, resolve, and revoke lifecycle state. | `crates/chio-cli/src/cli/types.rs:2312` |
-| `chio passport issuance ...` | OID4VCI-style pre-authorized issuance flows. | `crates/chio-cli/src/cli/types.rs:2318` |
-| `chio passport oid4vp ...` | OID4VP request and verification flow. | `crates/chio-cli/src/cli/types.rs:2324` |
-| `chio reputation local` | Compute a local scorecard. | `crates/chio-cli/src/cli/types.rs:2727` |
-| `chio reputation compare` | Compare local corpus against a passport. | `crates/chio-cli/src/cli/types.rs:2744` |
-| `chio cert generate / verify / inspect` | ACP session compliance certificates. | `crates/chio-cli/src/cli/types.rs:2767` |
+| `chio receipt list` | Filter and page receipts, including by cost range. | `crates/products/chio-cli/src/cli/types.rs:1883` |
+| `chio evidence export` | Create a verifiable offline evidence package. | `crates/products/chio-cli/src/cli/types.rs:1920` |
+| `chio evidence verify` | Verify an exported evidence package. | `crates/products/chio-cli/src/cli/types.rs:1948` |
+| `chio evidence import` | Import a bilateral package for later federation. | `crates/products/chio-cli/src/cli/types.rs:1954` |
+| `chio evidence federation-policy create` | Sign a bilateral receipt-sharing policy. | `crates/products/chio-cli/src/cli/types.rs:1967` |
+| `chio certify check` / `verify` / `registry ...` | Conformance certifications feeding trust tiers. | `crates/products/chio-cli/src/cli/types.rs:2007` |
+| `chio passport create / verify / evaluate / present` | Passport bundle lifecycle. | `crates/products/chio-cli/src/cli/types.rs:2222` |
+| `chio passport policy ...` | Signed verifier-policy artifacts. | `crates/products/chio-cli/src/cli/types.rs:2300` |
+| `chio passport challenge create / respond / submit / verify` | Challenge-bound presentations. | `crates/products/chio-cli/src/cli/types.rs:2331` |
+| `chio passport status ...` | Publish, resolve, and revoke lifecycle state. | `crates/products/chio-cli/src/cli/types.rs:2312` |
+| `chio passport issuance ...` | OID4VCI-style pre-authorized issuance flows. | `crates/products/chio-cli/src/cli/types.rs:2318` |
+| `chio passport oid4vp ...` | OID4VP request and verification flow. | `crates/products/chio-cli/src/cli/types.rs:2324` |
+| `chio reputation local` | Compute a local scorecard. | `crates/products/chio-cli/src/cli/types.rs:2727` |
+| `chio reputation compare` | Compare local corpus against a passport. | `crates/products/chio-cli/src/cli/types.rs:2744` |
+| `chio cert generate / verify / inspect` | ACP session compliance certificates. | `crates/products/chio-cli/src/cli/types.rs:2767` |
 
 ### 10.2 `chio trust` economic export subcommands
 
 | Subcommand | Produces | Source |
 |-----------|----------|--------|
-| `chio trust behavioral-feed ...` | Signed insurer-facing behavioral feed. | `crates/chio-cli/src/cli/types.rs:962` |
-| `chio trust exposure-ledger ...` | Signed `ExposureLedgerReport`. | `crates/chio-cli/src/cli/types.rs:990` |
-| `chio trust credit-scorecard ...` | Signed `CreditScorecardReport`. | `crates/chio-cli/src/cli/types.rs:1021` |
-| `chio trust capital-book ...` | Signed live capital book. | `crates/chio-cli/src/cli/types.rs:1052` |
-| `chio trust capital-instruction ...` | Custody-neutral instruction artifact. | `crates/chio-cli/src/cli/types.rs:588` |
-| `chio trust capital-allocation ...` | Simulation-first allocation decision. | `crates/chio-cli/src/cli/types.rs:594` |
-| `chio trust facility ...` | Credit facility artifacts. | `crates/chio-cli/src/cli/types.rs:600` |
-| `chio trust bond ...` | Credit bond artifacts. | `crates/chio-cli/src/cli/types.rs:606` |
-| `chio trust loss ...` | Loss-lifecycle artifacts. | `crates/chio-cli/src/cli/types.rs:612` |
-| `chio trust credit-backtest ...` | Deterministic backtests over evidence. | `crates/chio-cli/src/cli/types.rs:618` |
-| `chio trust provider-risk-package ...` | Signed insurer-facing risk bundle. | `crates/chio-cli/src/cli/types.rs:624` |
-| `chio trust liability-provider ...` | Provider registry lifecycle. | `crates/chio-cli/src/cli/types.rs:630` |
-| `chio trust liability-market ...` | Quote / placement / bound-coverage flow. | `crates/chio-cli/src/cli/types.rs:636` |
-| `chio trust underwriting-input ...` | Signed `UnderwritingPolicyInput`. | `crates/chio-cli/src/cli/types.rs:642` |
-| `chio trust underwriting-decision ...` | Evaluated `UnderwritingDecisionArtifact`. | `crates/chio-cli/src/cli/types.rs:648` |
-| `chio trust underwriting-appeal ...` | Appeal lifecycle. | `crates/chio-cli/src/cli/types.rs:654` |
-| `chio trust appraisal ...` | Signed runtime-attestation appraisal report. | `crates/chio-cli/src/cli/types.rs:558` |
-| `chio trust authorization-context ...` | Derived external authorization context. | `crates/chio-cli/src/cli/types.rs:552` |
-| `chio trust evidence-share ...` | Shared evidence references. | `crates/chio-cli/src/cli/types.rs:546` |
-| `chio trust provider ...` | Enterprise federation provider records. | `crates/chio-cli/src/cli/types.rs:534` |
-| `chio trust federation-policy ...` | Permissionless admission policies. | `crates/chio-cli/src/cli/types.rs:540` |
-| `chio trust revoke` / `status` | Capability revocation lifecycle. | `crates/chio-cli/src/cli/types.rs:660` |
-| `chio trust federated-issue` | Issue after verifying portable presentation. | `crates/chio-cli/src/cli/types.rs:667` |
-| `chio trust federated-delegation-policy-create` | Signed federated delegation policy. | `crates/chio-cli/src/cli/types.rs:694` |
-| `chio trust serve` | Shared trust-control HTTP service. | `crates/chio-cli/src/cli/types.rs:467` |
+| `chio trust behavioral-feed ...` | Signed insurer-facing behavioral feed. | `crates/products/chio-cli/src/cli/types.rs:962` |
+| `chio trust exposure-ledger ...` | Signed `ExposureLedgerReport`. | `crates/products/chio-cli/src/cli/types.rs:990` |
+| `chio trust credit-scorecard ...` | Signed `CreditScorecardReport`. | `crates/products/chio-cli/src/cli/types.rs:1021` |
+| `chio trust capital-book ...` | Signed live capital book. | `crates/products/chio-cli/src/cli/types.rs:1052` |
+| `chio trust capital-instruction ...` | Custody-neutral instruction artifact. | `crates/products/chio-cli/src/cli/types.rs:588` |
+| `chio trust capital-allocation ...` | Simulation-first allocation decision. | `crates/products/chio-cli/src/cli/types.rs:594` |
+| `chio trust facility ...` | Credit facility artifacts. | `crates/products/chio-cli/src/cli/types.rs:600` |
+| `chio trust bond ...` | Credit bond artifacts. | `crates/products/chio-cli/src/cli/types.rs:606` |
+| `chio trust loss ...` | Loss-lifecycle artifacts. | `crates/products/chio-cli/src/cli/types.rs:612` |
+| `chio trust credit-backtest ...` | Deterministic backtests over evidence. | `crates/products/chio-cli/src/cli/types.rs:618` |
+| `chio trust provider-risk-package ...` | Signed insurer-facing risk bundle. | `crates/products/chio-cli/src/cli/types.rs:624` |
+| `chio trust liability-provider ...` | Provider registry lifecycle. | `crates/products/chio-cli/src/cli/types.rs:630` |
+| `chio trust liability-market ...` | Quote / placement / bound-coverage flow. | `crates/products/chio-cli/src/cli/types.rs:636` |
+| `chio trust underwriting-input ...` | Signed `UnderwritingPolicyInput`. | `crates/products/chio-cli/src/cli/types.rs:642` |
+| `chio trust underwriting-decision ...` | Evaluated `UnderwritingDecisionArtifact`. | `crates/products/chio-cli/src/cli/types.rs:648` |
+| `chio trust underwriting-appeal ...` | Appeal lifecycle. | `crates/products/chio-cli/src/cli/types.rs:654` |
+| `chio trust appraisal ...` | Signed runtime-attestation appraisal report. | `crates/products/chio-cli/src/cli/types.rs:558` |
+| `chio trust authorization-context ...` | Derived external authorization context. | `crates/products/chio-cli/src/cli/types.rs:552` |
+| `chio trust evidence-share ...` | Shared evidence references. | `crates/products/chio-cli/src/cli/types.rs:546` |
+| `chio trust provider ...` | Enterprise federation provider records. | `crates/products/chio-cli/src/cli/types.rs:534` |
+| `chio trust federation-policy ...` | Permissionless admission policies. | `crates/products/chio-cli/src/cli/types.rs:540` |
+| `chio trust revoke` / `status` | Capability revocation lifecycle. | `crates/products/chio-cli/src/cli/types.rs:660` |
+| `chio trust federated-issue` | Issue after verifying portable presentation. | `crates/products/chio-cli/src/cli/types.rs:667` |
+| `chio trust federated-delegation-policy-create` | Signed federated delegation policy. | `crates/products/chio-cli/src/cli/types.rs:694` |
+| `chio trust serve` | Shared trust-control HTTP service. | `crates/products/chio-cli/src/cli/types.rs:467` |
 
 ### 10.3 Anchor and settle surfaces
 
 Anchoring and settlement currently expose programmatic APIs rather than
 first-class `chio` subcommands. The relevant entry points:
 
-- `chio-anchor::prepare_root_publication` (EVM) -- `crates/chio-anchor/src/evm.rs`
-- `chio-anchor::prepare_ots_submission` (Bitcoin) -- `crates/chio-anchor/src/bitcoin.rs`
-- `chio-anchor::prepare_solana_memo_publication` -- `crates/chio-anchor/src/solana.rs`
-- `chio-anchor::verify_proof_bundle` -- `crates/chio-anchor/src/bundle.rs`
+- `chio-anchor::prepare_root_publication` (EVM) -- `crates/economy/chio-anchor/src/evm.rs`
+- `chio-anchor::prepare_ots_submission` (Bitcoin) -- `crates/economy/chio-anchor/src/bitcoin.rs`
+- `chio-anchor::prepare_solana_memo_publication` -- `crates/economy/chio-anchor/src/solana.rs`
+- `chio-anchor::verify_proof_bundle` -- `crates/economy/chio-anchor/src/bundle.rs`
 - `chio-settle::prepare_web3_escrow_dispatch` and bond functions --
-  `crates/chio-settle/src/evm.rs`
-- `chio-settle::prepare_solana_settlement` -- `crates/chio-settle/src/solana.rs`
-- `chio-settle::prepare_ccip_settlement_message` -- `crates/chio-settle/src/ccip.rs`
-- `chio-settle::build_x402_payment_requirements` -- `crates/chio-settle/src/payments.rs`
+  `crates/economy/chio-settle/src/evm.rs`
+- `chio-settle::prepare_solana_settlement` -- `crates/economy/chio-settle/src/solana.rs`
+- `chio-settle::prepare_ccip_settlement_message` -- `crates/economy/chio-settle/src/ccip.rs`
+- `chio-settle::build_x402_payment_requirements` -- `crates/economy/chio-settle/src/payments.rs`
 
 The settlement runtime report schema is published at
 `docs/standards/CHIO_SETTLE_RUNTIME_REPORT_EXAMPLE.json`; the settle profile

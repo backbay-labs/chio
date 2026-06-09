@@ -37,7 +37,7 @@ receipt-signing with no changes to the upstream service.
 ## Crate layout
 
 ```
-crates/chio-api-protect/
+crates/products/chio-api-protect/
   Cargo.toml          workspace deps, reqwest-egress feature via chio-http-core
   src/
     lib.rs            public re-exports: ProtectConfig, ProtectProxy, EvaluationResult, RouteEntry
