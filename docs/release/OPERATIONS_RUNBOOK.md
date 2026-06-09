@@ -182,7 +182,7 @@ Run the production qualification lane from the repo root:
 For the ship-facing bounded release gate specifically:
 
 ```bash
-./scripts/qualify-bounded-chio.sh
+cargo xtask qualify bounded-chio
 ./scripts/qualify-trust-control.sh
 ```
 

@@ -39,7 +39,7 @@ pub enum Command {
         #[command(subcommand)]
         command: CheckCommand,
     },
-    /// Release / profile qualification gates (parents only for now).
+    /// Release / profile qualification gates.
     Qualify {
         #[command(subcommand)]
         command: QualifyCommand,
@@ -203,7 +203,15 @@ macro_rules! pending_group {
     };
 }
 
-pending_group!(QualifyCommand);
+/// Qualification leaves. `bounded-chio` asserts the bounded release matrix
+/// contract; it replaces the retired `scripts/qualify-bounded-chio.sh`.
+#[derive(Subcommand, Debug)]
+pub enum QualifyCommand {
+    /// Assert the bounded Chio release qualification matrix contract.
+    #[command(name = "bounded-chio")]
+    BoundedChio,
+}
+
 pending_group!(VerifyCommand);
 pending_group!(FuzzCommand);
 pending_group!(MutantsCommand);
@@ -368,6 +376,29 @@ mod tests {
             Err(err) => assert_eq!(
                 err.kind(),
                 clap::error::ErrorKind::MissingRequiredArgument,
+                "got: {err}"
+            ),
+        }
+    }
+
+    #[test]
+    fn qualify_bounded_chio_parses() {
+        assert!(matches!(
+            parse(&["xtask", "qualify", "bounded-chio"]),
+            Command::Qualify {
+                command: QualifyCommand::BoundedChio
+            }
+        ));
+    }
+
+    #[test]
+    fn qualify_unknown_profile_is_a_parse_error() {
+        // Fail-closed: an unknown qualification profile never parses to a no-op.
+        match Cli::try_parse_from(["xtask", "qualify", "not-a-profile"]) {
+            Ok(cli) => panic!("unknown qualify profile parsed: {:?}", cli.command),
+            Err(err) => assert_eq!(
+                err.kind(),
+                clap::error::ErrorKind::InvalidSubcommand,
                 "got: {err}"
             ),
         }

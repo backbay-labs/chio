@@ -97,6 +97,7 @@ mod dispatch;
 mod error;
 mod eval_receipt_regen;
 mod fixtures;
+mod qualify;
 mod snippets_subcommand;
 
 pub(crate) use dispatch::dispatch;

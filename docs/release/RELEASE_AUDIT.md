@@ -102,7 +102,7 @@ Not qualified by the formal lane:
 
 Primary bounded-ship evidence commands:
 
-- `./scripts/qualify-bounded-chio.sh`
+- `cargo xtask qualify bounded-chio`
 - `./scripts/qualify-release.sh`
 - `./scripts/check-formal-proofs.sh`
 - `cargo test -p chio-formal-diff-tests`

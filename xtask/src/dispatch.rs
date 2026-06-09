@@ -1,8 +1,11 @@
 //! Translation layer between the parsed clap command tree and the existing
 //! handler functions.
 
-use crate::cli::{self, CheckCommand, CodegenArgs, ErrorsCompat, GenCommand, Lang, SnippetsCompat};
+use crate::cli::{
+    self, CheckCommand, CodegenArgs, ErrorsCompat, GenCommand, Lang, QualifyCommand, SnippetsCompat,
+};
 use crate::fixtures;
+use crate::qualify;
 use crate::XtaskError;
 use crate::{crate_paths, eval_receipt_regen};
 use crate::{errors_regen, freeze_vectors, run_codegen, run_snippets, validate_scenarios};
@@ -32,15 +35,18 @@ pub(crate) fn dispatch(command: cli::Command) -> Result<(), XtaskError> {
                 fixtures::Mode::from_flags(schema_only, negative_only)?,
             ),
         },
-        // -- noun-group parents: leaves land in Phase 3 (fail closed) --
-        cli::Command::Qualify { .. }
-        | cli::Command::Verify { .. }
+        // -- qualify group --
+        cli::Command::Qualify { command } => match command {
+            QualifyCommand::BoundedChio => qualify::run("bounded-chio"),
+        },
+        // -- noun-group parents: leaves land in a later phase (fail closed) --
+        cli::Command::Verify { .. }
         | cli::Command::Fuzz { .. }
         | cli::Command::Mutants { .. }
         | cli::Command::Release { .. }
         | cli::Command::SupplyChain { .. }
         | cli::Command::Tools { .. } => Err(XtaskError::Usage(
-            "this command group has no implemented subcommands yet (Phase 3)".into(),
+            "this command group has no implemented subcommands yet".into(),
         )),
         // -- back-compat leaf aliases (identical handlers) --
         cli::Command::ValidateScenarios => validate_scenarios(Vec::new()),
