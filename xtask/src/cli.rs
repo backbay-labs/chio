@@ -154,6 +154,17 @@ pub enum CheckCommand {
     /// Assert every `crates/chio-*` path literal in config resolves on disk.
     #[command(name = "crate-paths")]
     CratePaths,
+    /// Run a pheromone fixture-and-schema gate by facet name.
+    Fixtures {
+        /// Facet name (e.g. `relay-observability`). See ci-gates/pheromone.toml.
+        facet: String,
+        /// Schema/metadata validation only; skip cargo tests and orchestration.
+        #[arg(long, conflicts_with = "negative_only")]
+        schema_only: bool,
+        /// Negative-corpus path only.
+        #[arg(long)]
+        negative_only: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -290,6 +301,75 @@ mod tests {
                 command: CheckCommand::CratePaths
             }
         ));
+    }
+
+    #[test]
+    fn check_fixtures_parses_with_facet() {
+        match parse(&["xtask", "check", "fixtures", "relay-observability"]) {
+            Command::Check {
+                command:
+                    CheckCommand::Fixtures {
+                        facet,
+                        schema_only,
+                        negative_only,
+                    },
+            } => {
+                assert_eq!(facet, "relay-observability");
+                assert!(!schema_only && !negative_only);
+            }
+            other => panic!("expected check fixtures, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn check_fixtures_schema_only_parses() {
+        match parse(&["xtask", "check", "fixtures", "relay", "--schema-only"]) {
+            Command::Check {
+                command:
+                    CheckCommand::Fixtures {
+                        facet,
+                        schema_only,
+                        negative_only,
+                    },
+            } => {
+                assert_eq!(facet, "relay");
+                assert!(schema_only);
+                assert!(!negative_only);
+            }
+            other => panic!("expected check fixtures, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn check_fixtures_schema_only_and_negative_only_conflict() {
+        match Cli::try_parse_from([
+            "xtask",
+            "check",
+            "fixtures",
+            "relay",
+            "--schema-only",
+            "--negative-only",
+        ]) {
+            Ok(_) => panic!("conflicting flags parsed"),
+            Err(err) => assert_eq!(
+                err.kind(),
+                clap::error::ErrorKind::ArgumentConflict,
+                "got: {err}"
+            ),
+        }
+    }
+
+    #[test]
+    fn check_fixtures_requires_a_facet() {
+        // Fail-closed: a bare `check fixtures` with no facet is a parse error.
+        match Cli::try_parse_from(["xtask", "check", "fixtures"]) {
+            Ok(_) => panic!("missing facet parsed"),
+            Err(err) => assert_eq!(
+                err.kind(),
+                clap::error::ErrorKind::MissingRequiredArgument,
+                "got: {err}"
+            ),
+        }
     }
 
     #[test]

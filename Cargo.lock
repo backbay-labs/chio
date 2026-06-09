@@ -13618,6 +13618,7 @@ dependencies = [
  "serde_json",
  "serde_yml",
  "sha2 0.10.9",
+ "toml 0.8.23",
 ]
 
 [[package]]

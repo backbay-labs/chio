@@ -2,6 +2,7 @@
 //! handler functions.
 
 use crate::cli::{self, CheckCommand, CodegenArgs, ErrorsCompat, GenCommand, Lang, SnippetsCompat};
+use crate::fixtures;
 use crate::XtaskError;
 use crate::{crate_paths, eval_receipt_regen};
 use crate::{errors_regen, freeze_vectors, run_codegen, run_snippets, validate_scenarios};
@@ -22,6 +23,14 @@ pub(crate) fn dispatch(command: cli::Command) -> Result<(), XtaskError> {
         // -- check group --
         cli::Command::Check { command } => match command {
             CheckCommand::CratePaths => crate_paths::run(Vec::new()),
+            CheckCommand::Fixtures {
+                facet,
+                schema_only,
+                negative_only,
+            } => fixtures::run(
+                &facet,
+                fixtures::Mode::from_flags(schema_only, negative_only)?,
+            ),
         },
         // -- noun-group parents: leaves land in Phase 3 (fail closed) --
         cli::Command::Qualify { .. }
