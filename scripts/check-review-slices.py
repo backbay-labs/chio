@@ -199,7 +199,7 @@ SLICES: tuple[ReviewSlice, ...] = (
         "release manifests, audit evidence, and operational knowledge-base files",
         (
             "audits/**",
-            "ops/**",
+            "tools/knowledge-base/**",
             "releases.toml",
         ),
     ),
