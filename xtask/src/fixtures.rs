@@ -256,8 +256,18 @@ pub(crate) fn run_schema_block(
     let registry = load_registry(root, manifest)?;
 
     for entry in &facet.schemas {
-        let want = format!("{}/{}", manifest.schema_dir, entry.file);
-        let schema_path = schema_dir.join(&entry.file);
+        // A `file` containing a slash is a root-relative path (e.g. a
+        // chio-runtime schema the runtime facet pulls in cross-directory); a
+        // bare filename lives in the facet's `schema_dir`. `want` must mirror
+        // the registry's stored `schemaFile` in both cases.
+        let (want, schema_path) = if entry.file.contains('/') {
+            (entry.file.clone(), root.join(&entry.file))
+        } else {
+            (
+                format!("{}/{}", manifest.schema_dir, entry.file),
+                schema_dir.join(&entry.file),
+            )
+        };
         let schema = load_json(&schema_path)?;
         assert_schema_shape(&entry.file, &schema, check)?;
         match registry.get(&entry.id) {
@@ -849,9 +859,8 @@ mod tests {
     #[test]
     fn unknown_facet_is_an_error_not_a_skip() {
         let manifest = load();
-        match manifest.facet_by_name("does-not-exist") {
-            Some(found) => panic!("unknown facet resolved to {}", found.name),
-            None => {}
+        if let Some(found) = manifest.facet_by_name("does-not-exist") {
+            panic!("unknown facet resolved to {}", found.name);
         }
     }
 

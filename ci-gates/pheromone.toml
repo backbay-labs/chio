@@ -419,7 +419,7 @@ schemas = [
   { id = "chio.pheromone-observation-cost-telemetry-root.v1", file = "observation-cost-telemetry-root.schema.json" },
   { id = "chio.pheromone-observation-cost-leaf.v1", file = "observation-cost-leaf.schema.json" },
   { id = "chio.pheromone-observation-cost-verifier-root.v1", file = "observation-cost-verifier-root.schema.json" },
-  { id = "chio.runtime.trust-floor-state.v1", file = "trust-floor-state.schema.json" },
+  { id = "chio.runtime.trust-floor-state.v1", file = "spec/schemas/chio-runtime/v1/trust-floor-state.schema.json" },
   { id = "chio.pheromone-scarcity-policy.v1", file = "scarcity-policy.schema.json" },
   { id = "chio.pheromone-scarcity-window-id.v1", file = "scarcity-window-id.schema.json" },
   { id = "chio.pheromone.receive-report.v1", file = "receive-report.schema.json" },
