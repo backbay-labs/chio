@@ -1,0 +1,96 @@
+# ci-gates/runtime.toml
+# Single source of truth for the chio-runtime fixture-and-schema gate cluster,
+# the consolidated replacement for the six `scripts/check-chio-runtime-*.sh`
+# gates. Consumed by `cargo xtask check fixtures <runtime-facet>`. Fail-closed:
+# this file MUST enumerate exactly the six runtime facets; an unknown facet on
+# the CLI is an error, and the xtask test `runtime_manifest_enumerates_all`
+# rejects a short manifest.
+#
+# Only the tabular per-facet data lives here (schema/document validate pairs,
+# cargo-test argv tails). The imperative per-facet steps the manifest cannot
+# express (multi-step CLI admission/orchestration/ops pipelines, derived-fixture
+# generation, report-content assertions, the cross-script recursion the scripts
+# performed) live in typed Rust handlers keyed by `kind` in
+# `xtask/src/fixtures_runtime.rs`.
+#
+# `validate` pairs name a schema and a committed document. A schema or document
+# value containing a slash is resolved root-relative (e.g. an attest or
+# federation schema, or the runtime-spine fixture tree); a bare filename for the
+# schema lives in `schema_dir`.
+
+schema_dir = "spec/schemas/chio-runtime/v1"
+
+[[facet]]
+name = "runtime-spine-fixtures"
+kind = "spine_fixtures"
+fixture_dir = "examples/chio-3vendor/fixtures/runtime-spine"
+# These are the static schema-only validations the spine-fixtures script runs
+# against committed fixtures (the signed-body and scenario derivations the
+# script builds at runtime live in the handler).
+validate = [
+  { schema = "admission-profile.schema.json", doc = "examples/chio-3vendor/fixtures/runtime-spine/profile.json" },
+  { schema = "admission-bundle.schema.json", doc = "examples/chio-3vendor/fixtures/runtime-spine/bundle.json" },
+  { schema = "verifier-trust-bundle.schema.json", doc = "examples/chio-3vendor/fixtures/runtime-spine/runtime-trust-schema-only.json" },
+  { schema = "trusted-verifiers.schema.json", doc = "examples/chio-3vendor/fixtures/runtime-spine/trusted-verifiers-schema-only.json" },
+  { schema = "spec/schemas/chio-pheromone/v1/query-report.schema.json", doc = "examples/chio-3vendor/fixtures/runtime-spine/pheromone-query-report.json" },
+  { schema = "step-evidence.schema.json", doc = "examples/chio-3vendor/fixtures/runtime-spine/runtime-step-evidence.json" },
+  { schema = "evidence-manifest.schema.json", doc = "examples/chio-3vendor/fixtures/runtime-spine/runtime-evidence-manifest.json" },
+  { schema = "proof-regeneration-input.schema.json", doc = "examples/chio-3vendor/fixtures/runtime-spine/runtime-proof-regeneration-input.json" },
+  { schema = "proof-regeneration-report.schema.json", doc = "examples/chio-3vendor/fixtures/runtime-spine/runtime-proof-regeneration-report.json" },
+  { schema = "proof-parity-report.schema.json", doc = "examples/chio-3vendor/fixtures/runtime-spine/runtime-proof-parity-report.json" },
+]
+
+[[facet]]
+name = "runtime-spine"
+kind = "spine"
+fixture_dir = "examples/chio-3vendor/fixtures/runtime-spine"
+# The spine schema-only block runs the spine-fixtures facet first, then validates
+# the two attest fixtures below (handled by the spine_fixtures recursion in the
+# handler). The full admission pipeline and its negative assertions are imperative.
+validate = [
+  { schema = "spec/schemas/chio-attest/v1/proof-package.schema.json", doc = "examples/chio-3vendor/fixtures/buyer-auditor-proof-package.json" },
+  { schema = "spec/schemas/chio-attest/v1/verifier-report.schema.json", doc = "examples/chio-3vendor/fixtures/verifier-report.json" },
+]
+cargo_tests = [
+  ["-p", "chio-runtime-core", "--tests"],
+]
+
+[[facet]]
+name = "runtime-proof-parity"
+kind = "proof_parity"
+fixture_dir = "examples/chio-3vendor/fixtures/runtime-spine"
+cargo_tests = [
+  ["-p", "chio-runtime-core", "runtime_workflow_report"],
+  ["-p", "chio-runtime-core", "proof_regeneration_report"],
+  ["-p", "chio-runtime-core", "runtime_proof_regeneration"],
+  ["-p", "chio-cli", "chio_runtime", "--bin", "chio"],
+]
+
+[[facet]]
+name = "runtime-policy"
+kind = "policy"
+fixture_dir = "examples/chio-3vendor/fixtures/runtime-spine"
+cargo_tests = [
+  ["-p", "chio-runtime-core", "chio_native_runtime_policy_material_emits_chio_decision", "--test", "runtime_pheromone_policy"],
+  ["-p", "chio-runtime-core", "runtime_trust_floor", "--test", "runtime_trust"],
+  ["-p", "chio-cli", "chio_runtime", "--bin", "chio"],
+]
+
+[[facet]]
+name = "runtime-ops-hardening"
+kind = "ops_hardening"
+fixture_dir = "examples/chio-3vendor/fixtures/runtime-spine"
+cargo_tests = [
+  ["-p", "chio-runtime-core", "runtime_ops"],
+  ["-p", "chio-cli", "--bin", "chio", "chio_native_runtime_surface_parses"],
+]
+
+[[facet]]
+name = "runtime-orchestration"
+kind = "orchestration"
+fixture_dir = "examples/chio-3vendor/fixtures/runtime-spine"
+cargo_tests = [
+  ["-p", "chio-runtime-core", "runtime_orchestration"],
+  ["-p", "chio-runtime-core", "runtime_proof_drift"],
+  ["-p", "chio-cli", "--bin", "chio", "chio_native_runtime_surface_parses"],
+]

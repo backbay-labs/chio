@@ -26,6 +26,21 @@ use crate::XtaskError;
 /// Relative path (from the workspace root) of the gate manifest.
 pub(crate) const MANIFEST_PATH: &str = "ci-gates/pheromone.toml";
 
+/// Relative path (from the workspace root) of the chio-runtime gate manifest.
+pub(crate) const RUNTIME_MANIFEST_PATH: &str = "ci-gates/runtime.toml";
+
+/// The six chio-runtime facets, consolidated from `scripts/check-chio-runtime-*.sh`.
+/// Compile-time fail-closed enumeration: the runtime manifest must list exactly
+/// these names, and the CLI rejects anything else.
+pub(crate) const RUNTIME_KNOWN_FACETS: [&str; 6] = [
+    "runtime-spine-fixtures",
+    "runtime-spine",
+    "runtime-proof-parity",
+    "runtime-policy",
+    "runtime-ops-hardening",
+    "runtime-orchestration",
+];
+
 /// The 15 pheromone facets. Compile-time fail-closed enumeration: the manifest
 /// must list exactly these names, and the CLI rejects anything else.
 pub(crate) const KNOWN_FACETS: [&str; 15] = [
@@ -109,6 +124,31 @@ impl Manifest {
     }
 }
 
+// -- Runtime manifest types -----------------------------------------------
+
+#[derive(serde::Deserialize, Debug)]
+pub(crate) struct RuntimeManifest {
+    pub schema_dir: String,
+    pub facet: Vec<RuntimeFacet>,
+}
+
+#[derive(serde::Deserialize, Debug)]
+pub(crate) struct RuntimeFacet {
+    pub name: String,
+    pub kind: String,
+    pub fixture_dir: String,
+    #[serde(default)]
+    pub validate: Vec<ValidatePair>,
+    #[serde(default)]
+    pub cargo_tests: Vec<Vec<String>>,
+}
+
+impl RuntimeManifest {
+    pub(crate) fn facet_by_name(&self, name: &str) -> Option<&RuntimeFacet> {
+        self.facet.iter().find(|facet| facet.name == name)
+    }
+}
+
 impl RecurseEdge {
     fn mode(&self) -> Result<Mode, XtaskError> {
         match self.mode.as_str() {
@@ -182,17 +222,37 @@ pub(crate) fn load_manifest_from(path: &Path) -> Result<Manifest, XtaskError> {
         .map_err(|err| XtaskError::Manifest(format!("failed to parse {}: {err}", display(path))))
 }
 
+/// Load the chio-runtime manifest from the workspace root.
+pub(crate) fn load_runtime_manifest() -> Result<RuntimeManifest, XtaskError> {
+    let root = crate::workspace_root()?;
+    load_runtime_manifest_from(&root.join(RUNTIME_MANIFEST_PATH))
+}
+
+/// Load and parse the chio-runtime manifest from an explicit path.
+pub(crate) fn load_runtime_manifest_from(path: &Path) -> Result<RuntimeManifest, XtaskError> {
+    let raw = fs::read_to_string(path).map_err(|err| XtaskError::Io(display(path), err))?;
+    toml::from_str(&raw)
+        .map_err(|err| XtaskError::Manifest(format!("failed to parse {}: {err}", display(path))))
+}
+
 fn display(path: &Path) -> String {
     path.display().to_string()
 }
 
 // -- Entry point ----------------------------------------------------------
 
-/// Run a pheromone facet gate. Fail-closed: an unknown facet is an error and a
-/// manifest that does not enumerate exactly the 15 known facets is rejected
-/// before any gate runs.
+/// Run a fixture-and-schema gate by facet name. Pheromone facets resolve
+/// against `ci-gates/pheromone.toml`; the six chio-runtime facets resolve
+/// against `ci-gates/runtime.toml`. Fail-closed: a facet in neither manifest is
+/// an error, and each manifest must enumerate exactly its known facets before
+/// any gate runs.
 pub(crate) fn run(facet_name: &str, mode: Mode) -> Result<(), XtaskError> {
     let root = crate::workspace_root()?;
+    if RUNTIME_KNOWN_FACETS.contains(&facet_name) {
+        let manifest = load_runtime_manifest()?;
+        assert_runtime_manifest_enumeration(&manifest)?;
+        return run_runtime_with(&root, &manifest, facet_name, mode);
+    }
     let manifest = load_manifest()?;
     assert_manifest_enumeration(&manifest)?;
     run_with(&root, &manifest, facet_name, mode)
@@ -207,6 +267,21 @@ fn assert_manifest_enumeration(manifest: &Manifest) -> Result<(), XtaskError> {
     if names != expected {
         return Err(XtaskError::Manifest(format!(
             "manifest must enumerate exactly the 15 known facets, found {names:?}"
+        )));
+    }
+    Ok(())
+}
+
+/// Fail-closed enumeration: the runtime manifest must list exactly
+/// [`RUNTIME_KNOWN_FACETS`].
+fn assert_runtime_manifest_enumeration(manifest: &RuntimeManifest) -> Result<(), XtaskError> {
+    let mut names: Vec<&str> = manifest.facet.iter().map(|f| f.name.as_str()).collect();
+    names.sort_unstable();
+    let mut expected = RUNTIME_KNOWN_FACETS.to_vec();
+    expected.sort_unstable();
+    if names != expected {
+        return Err(XtaskError::Manifest(format!(
+            "runtime manifest must enumerate exactly the 6 known runtime facets, found {names:?}"
         )));
     }
     Ok(())
@@ -239,6 +314,56 @@ fn run_with(
     }
 
     dispatch_handler(root, manifest, facet, mode)
+}
+
+// -- Runtime entry point ---------------------------------------------------
+
+/// Resolve a runtime facet and dispatch to its typed handler. The runtime
+/// facets carry far more imperative work than the pheromone facets (multi-step
+/// admission/orchestration/ops pipelines, derived-fixture generation), so the
+/// manifest only supplies the tabular validate/cargo-test data and the handler
+/// owns the rest.
+fn run_runtime_with(
+    root: &Path,
+    manifest: &RuntimeManifest,
+    facet_name: &str,
+    mode: Mode,
+) -> Result<(), XtaskError> {
+    let facet = manifest
+        .facet_by_name(facet_name)
+        .ok_or_else(|| XtaskError::Usage(format!("unknown runtime facet: {facet_name}")))?;
+    dispatch_runtime_handler(root, manifest, facet, mode)
+}
+
+/// Validate every manifest `validate` pair for a runtime facet. Both the schema
+/// and the document may be root-relative (slash-bearing): a bare schema
+/// filename lives in `schema_dir`, anything else is resolved from the workspace
+/// root, and documents are always given as root-relative paths.
+fn run_runtime_validate_pairs(
+    root: &Path,
+    manifest: &RuntimeManifest,
+    facet: &RuntimeFacet,
+) -> Result<(), XtaskError> {
+    let schema_dir = root.join(&manifest.schema_dir);
+    for pair in &facet.validate {
+        let schema_path = resolve_schema(root, &schema_dir, &pair.schema);
+        let doc_path = if pair.doc.contains('/') {
+            root.join(&pair.doc)
+        } else {
+            root.join(&facet.fixture_dir).join(&pair.doc)
+        };
+        validate_document(&schema_path, &doc_path)?;
+    }
+    Ok(())
+}
+
+/// Run a runtime facet's manifest `cargo_tests` argv tails in order, each gated
+/// to a non-zero passed count (matching the scripts' `run_cargo_test_filter`).
+fn run_runtime_cargo_tests(root: &Path, facet: &RuntimeFacet) -> Result<(), XtaskError> {
+    for tail in &facet.cargo_tests {
+        run_cargo_test(root, tail)?;
+    }
+    Ok(())
 }
 
 // -- Generic schema + validate block --------------------------------------
@@ -827,6 +952,7 @@ fn metadata_negative_case_ids(
 }
 
 include!("fixtures_facets.rs");
+include!("fixtures_runtime.rs");
 
 #[cfg(test)]
 mod tests {
@@ -841,6 +967,16 @@ mod tests {
     fn load() -> Manifest {
         load_manifest_from(&manifest_path())
             .unwrap_or_else(|err| panic!("manifest must load: {err}"))
+    }
+
+    fn runtime_manifest_path() -> PathBuf {
+        let root = crate::workspace_root().unwrap_or_else(|err| panic!("workspace root: {err}"));
+        root.join(RUNTIME_MANIFEST_PATH)
+    }
+
+    fn load_runtime() -> RuntimeManifest {
+        load_runtime_manifest_from(&runtime_manifest_path())
+            .unwrap_or_else(|err| panic!("runtime manifest must load: {err}"))
     }
 
     #[test]
@@ -1051,6 +1187,140 @@ mod tests {
             .unwrap_or_else(|err| panic!("observability schema block: {err}"));
         run_metadata_block(&root, facet)
             .unwrap_or_else(|err| panic!("observability metadata: {err}"));
+    }
+
+    // -- runtime manifest tests -------------------------------------------
+
+    #[test]
+    fn runtime_manifest_enumerates_all_known_facets() {
+        let manifest = load_runtime();
+        let mut names: Vec<&str> = manifest.facet.iter().map(|f| f.name.as_str()).collect();
+        names.sort_unstable();
+        let mut expected = RUNTIME_KNOWN_FACETS.to_vec();
+        expected.sort_unstable();
+        assert_eq!(
+            names, expected,
+            "runtime manifest must list exactly the six runtime facets"
+        );
+    }
+
+    #[test]
+    fn runtime_manifest_passes_enumeration_assertion() {
+        let manifest = load_runtime();
+        assert_runtime_manifest_enumeration(&manifest)
+            .unwrap_or_else(|err| panic!("runtime enumeration: {err}"));
+    }
+
+    #[test]
+    fn every_known_runtime_facet_resolves() {
+        let manifest = load_runtime();
+        for name in RUNTIME_KNOWN_FACETS {
+            assert!(
+                manifest.facet_by_name(name).is_some(),
+                "missing runtime facet {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn unknown_runtime_facet_is_an_error_not_a_skip() {
+        let manifest = load_runtime();
+        if let Some(found) = manifest.facet_by_name("runtime-does-not-exist") {
+            panic!("unknown runtime facet resolved to {}", found.name);
+        }
+    }
+
+    #[test]
+    fn every_runtime_facet_kind_is_dispatchable() {
+        // Fail-closed: a runtime manifest kind with no handler arm must be a
+        // Manifest error, not a silent pass.
+        let manifest = load_runtime();
+        let known_kinds = [
+            "spine_fixtures",
+            "spine",
+            "proof_parity",
+            "policy",
+            "ops_hardening",
+            "orchestration",
+        ];
+        for facet in &manifest.facet {
+            assert!(
+                known_kinds.contains(&facet.kind.as_str()),
+                "runtime facet {} has unhandled kind {}",
+                facet.name,
+                facet.kind
+            );
+        }
+    }
+
+    #[test]
+    fn runtime_facet_names_are_disjoint_from_pheromone_facets() {
+        // The `runtime` and `transit` pheromone facets are a different domain
+        // from the chio-runtime facets; the runtime facet names must never
+        // collide with a pheromone facet name, or `run` would route ambiguously.
+        for runtime_name in RUNTIME_KNOWN_FACETS {
+            assert!(
+                !KNOWN_FACETS.contains(&runtime_name),
+                "runtime facet {runtime_name} collides with a pheromone facet name"
+            );
+        }
+    }
+
+    #[test]
+    fn runtime_facets_carry_runtime_prefix() {
+        // The CLI routes `check fixtures <facet>` to the runtime manifest only
+        // when the name is in RUNTIME_KNOWN_FACETS, so every runtime facet must
+        // be enumerated there; assert the prefix invariant the routing relies on.
+        for name in RUNTIME_KNOWN_FACETS {
+            assert!(
+                name.starts_with("runtime-"),
+                "runtime facet {name} must carry the runtime- prefix"
+            );
+        }
+    }
+
+    #[test]
+    fn runtime_spine_fixtures_validate_pairs_use_root_relative_docs() {
+        // The runtime-spine-fixtures static validate pairs reference documents
+        // by root-relative paths (they live under examples/...), and one schema
+        // is the cross-directory pheromone query-report schema. Confirm the
+        // manifest carries that shape so the slash-bearing resolver applies.
+        let manifest = load_runtime();
+        let facet = manifest
+            .facet_by_name("runtime-spine-fixtures")
+            .unwrap_or_else(|| panic!("runtime-spine-fixtures facet missing"));
+        assert!(
+            facet.validate.iter().all(|p| p.doc.contains('/')),
+            "spine-fixtures docs must be root-relative"
+        );
+        assert!(
+            facet
+                .validate
+                .iter()
+                .any(|p| p.schema == "spec/schemas/chio-pheromone/v1/query-report.schema.json"),
+            "spine-fixtures must pull the cross-directory pheromone query-report schema"
+        );
+    }
+
+    #[test]
+    fn runtime_cargo_test_tails_are_present_where_expected() {
+        // Arg handling: the proof-parity facet's cargo_tests must include the
+        // chio-cli runtime filter the script ran, encoded as an argv tail.
+        let manifest = load_runtime();
+        let facet = manifest
+            .facet_by_name("runtime-proof-parity")
+            .unwrap_or_else(|| panic!("runtime-proof-parity facet missing"));
+        assert!(
+            facet.cargo_tests.iter().any(|tail| tail
+                == &vec![
+                    "-p".to_string(),
+                    "chio-cli".to_string(),
+                    "chio_runtime".to_string(),
+                    "--bin".to_string(),
+                    "chio".to_string(),
+                ]),
+            "proof-parity must run the chio-cli chio_runtime filter"
+        );
     }
 
     #[test]

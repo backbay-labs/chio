@@ -154,9 +154,10 @@ pub enum CheckCommand {
     /// Assert every `crates/chio-*` path literal in config resolves on disk.
     #[command(name = "crate-paths")]
     CratePaths,
-    /// Run a pheromone fixture-and-schema gate by facet name.
+    /// Run a fixture-and-schema gate by facet name.
     Fixtures {
-        /// Facet name (e.g. `relay-observability`). See ci-gates/pheromone.toml.
+        /// Facet name. Pheromone facets are in ci-gates/pheromone.toml; the
+        /// six `runtime-*` facets are in ci-gates/runtime.toml.
         facet: String,
         /// Schema/metadata validation only; skip cargo tests and orchestration.
         #[arg(long, conflicts_with = "negative_only")]
