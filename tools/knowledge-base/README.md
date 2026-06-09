@@ -15,8 +15,8 @@ The graph is retrieval support only. Repository files, tests, and current CI rem
 ## Setup
 
 ```sh
-cp ops/knowledge-base/.env.example ops/knowledge-base/.env
-$EDITOR ops/knowledge-base/.env
+cp tools/knowledge-base/.env.example tools/knowledge-base/.env
+$EDITOR tools/knowledge-base/.env
 make kb-up
 make kb-update
 make kb-smoke
@@ -66,14 +66,14 @@ make kb-lock-check  # Verify pyproject.toml matches the checked-in uv.lock
 You can also run the CocoIndex app directly:
 
 ```sh
-cd ops/knowledge-base
+cd tools/knowledge-base
 docker compose exec -T chio-kb-mcp cocoindex -d /app show chio_kb.index --tree
 docker compose exec -T chio-kb-mcp cocoindex -d /app update --force chio_kb.index
 docker compose exec chio-kb-mcp cocoindex -d /app update --force --live chio_kb.index
 ```
 
-The KB Python environment is locked by `ops/knowledge-base/uv.lock`; run
-`make kb-lock-check` or `cd ops/knowledge-base && uv lock --check` before
+The KB Python environment is locked by `tools/knowledge-base/uv.lock`; run
+`make kb-lock-check` or `cd tools/knowledge-base && uv lock --check` before
 building container changes. Runtime images are pinned by digest in
 `docker-compose.yml` and `Dockerfile.kb-mcp`; refresh those digests deliberately
 when upgrading Postgres, Neo4j, Graphiti MCP, or the uv Python base.
@@ -179,16 +179,16 @@ Neo4j stores `Chio`-prefixed labels such as `ChioEntity`, `ChioFolder`, `ChioFil
 
 Scoped concept nodes such as `capability:kernel-validation`, `receipt:protocol`, `policy:compiler`, and `guard:pipeline` are preferred over generic global concept hubs during traversal. `kb_context`, `kb_neighbors`, and `kb_impact` report hub suppression evidence when broad hubs are skipped.
 
-Graphiti should receive high-value temporal episodes only: architecture summaries, planning decisions, release notes, PR repair summaries, and agent session notes. Do not feed raw source files into Graphiti. Curated seed episodes live under `ops/knowledge-base/seeds/graphiti/` and are loaded with `make kb-seed-memory`.
+Graphiti should receive high-value temporal episodes only: architecture summaries, planning decisions, release notes, PR repair summaries, and agent session notes. Do not feed raw source files into Graphiti. Curated seed episodes live under `tools/knowledge-base/seeds/graphiti/` and are loaded with `make kb-seed-memory`.
 
 ## Evaluation
 
-The evaluation harness lives in `ops/knowledge-base/eval/queries.yml`. It covers the core retrieval fixtures plus deeper dogfood fixtures for docs/spec retrieval, feature briefs, compound test discovery, graph navigation/impact, and Graphiti memory.
+The evaluation harness lives in `tools/knowledge-base/eval/queries.yml`. It covers the core retrieval fixtures plus deeper dogfood fixtures for docs/spec retrieval, feature briefs, compound test discovery, graph navigation/impact, and Graphiti memory.
 
 ```sh
 make kb-eval
 make kb-dogfood
-cd ops/knowledge-base && docker compose exec -T chio-kb-mcp chio-kb-eval --suite deep --format markdown
+cd tools/knowledge-base && docker compose exec -T chio-kb-mcp chio-kb-eval --suite deep --format markdown
 ```
 
 Grades are based on precision@5, recall@10, MRR@10, p95 latency, canonical path misses, forbidden top-3 hits, graph noise checks, and required Graphiti memory terms. The stack is acceptable when the overall grade is A and every reported category is A.

@@ -23,7 +23,7 @@ PACKAGE_FIXTURE_PATH = ROOT / "eval" / "queries.yml"
 
 
 def fixture_path() -> pathlib.Path:
-    repo_path = pathlib.Path(os.environ.get("CHIO_KB_REPO_ROOT", "/workspace")) / "ops" / "knowledge-base" / "eval" / "queries.yml"
+    repo_path = pathlib.Path(os.environ.get("CHIO_KB_REPO_ROOT", "/workspace")) / "tools" / "knowledge-base" / "eval" / "queries.yml"
     if repo_path.exists():
         return repo_path
     return PACKAGE_FIXTURE_PATH

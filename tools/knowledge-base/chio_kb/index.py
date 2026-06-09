@@ -51,7 +51,7 @@ def _openai_config() -> tuple[str | None, str | None]:
     if (api_url is None or "api.openai.com" in api_url) and not api_key.startswith("sk-"):
         raise RuntimeError(
             "OPENAI_API_KEY does not look like an OpenAI API key for api.openai.com. "
-            "Update ops/knowledge-base/.env or export a valid shell key before kb-update."
+            "Update tools/knowledge-base/.env or export a valid shell key before kb-update."
         )
     return api_key, api_url
 
