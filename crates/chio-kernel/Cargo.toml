@@ -50,7 +50,7 @@ chio-kernel-core = { workspace = true }
 chio-credit = { workspace = true }
 chio-federation = { workspace = true }
 chio-governance = { workspace = true }
-chio-link = { workspace = true, default-features = false }
+chio-link = { path = "../chio-link", default-features = false }
 chio-log-redact = { workspace = true }
 chio-metrics-spec = { workspace = true }
 chio-tool-call-fabric = { workspace = true }

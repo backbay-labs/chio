@@ -37,7 +37,7 @@ chio-core = { workspace = true, optional = true }
 chio-credit = { workspace = true, optional = true }
 chio-egress-contract = { workspace = true, features = ["reqwest-egress"], optional = true }
 chio-web3 = { workspace = true, optional = true }
-chio-web3-bindings = { workspace = true, default-features = false, features = ["web3"], optional = true }
+chio-web3-bindings = { path = "../chio-web3-bindings", default-features = false, features = ["web3"], optional = true }
 alloy-primitives = { version = "1.5.7", default-features = false, features = ["std"], optional = true }
 alloy-sol-types = { version = "1.5.7", default-features = false, features = ["std"], optional = true }
 bs58 = { workspace = true, optional = true }

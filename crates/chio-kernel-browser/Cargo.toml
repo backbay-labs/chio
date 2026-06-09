@@ -36,8 +36,8 @@ crate-type = ["cdylib", "rlib"]
 # canonical `ToolCallRequest` / `Verdict` / `CapabilityToken` / `ChioReceipt`
 # shapes flow across the wasm boundary unchanged.
 [dependencies]
-chio-kernel-core = { workspace = true, default-features = false }
-chio-core-types = { workspace = true, default-features = false }
+chio-kernel-core = { path = "../chio-kernel-core", default-features = false }
+chio-core-types = { path = "../chio-core-types", default-features = false }
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
 serde_json = { version = "1", default-features = false, features = ["alloc"] }
 

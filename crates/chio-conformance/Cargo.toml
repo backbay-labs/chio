@@ -73,7 +73,7 @@ thiserror = { workspace = true }
 toml = "0.8"
 reqwest = { workspace = true, features = ["blocking", "form", "query", "rustls"] }
 tiny_http = "0.12"
-chio-selective-disclosure = { workspace = true, default-features = false, optional = true }
+chio-selective-disclosure = { path = "../chio-selective-disclosure", default-features = false, optional = true }
 chio-workflow = { workspace = true, optional = true }
 
 [[test]]
@@ -167,7 +167,7 @@ chio-mcp-edge = { workspace = true }
 chio-acp-edge = { workspace = true }
 chio-a2a-edge = { workspace = true }
 chio-manifest = { workspace = true }
-chio-wasm-guards = { workspace = true, default-features = false, features = ["wasmtime-runtime"] }
+chio-wasm-guards = { path = "../chio-wasm-guards", default-features = false, features = ["wasmtime-runtime"] }
 chio-metrics-spec = { workspace = true }
 wat = "1.246"
 # tee_quote_forgery threat-evidence test imports chio-tee-frame to

@@ -23,7 +23,7 @@ name = "chio_kernel_core"
 # `std` feature through our own feature flag so downstream consumers can
 # select between the hosted `std` build and the portable `no_std + alloc`
 # build used by the scripted host + wasm proof.
-chio-core-types = { workspace = true, default-features = false }
+chio-core-types = { path = "../chio-core-types", default-features = false }
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
 serde_json = { version = "1", default-features = false, features = ["alloc"] }
 # `arbitrary` is gated behind the `fuzz` feature so production builds stay
