@@ -70,6 +70,7 @@ fn normalize_ts_chunk_strips_trailing_newlines() {
 fn codegen_argv_round_trips_positional_and_flag() {
     // The clap dispatch rebuilds the exact argv the legacy run_codegen parses.
     use crate::cli::{CodegenArgs, Lang};
+    use crate::dispatch::codegen_argv;
     let pos = CodegenArgs {
         lang_positional: Some(Lang::Rust),
         lang_flag: None,

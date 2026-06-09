@@ -81,7 +81,6 @@
 use std::collections::BTreeMap;
 use std::env;
 use std::ffi::OsStr;
-use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
@@ -90,43 +89,17 @@ use sha2::{Digest, Sha256};
 
 use clap::Parser;
 
-use cli::{CheckCommand, Cli, CodegenArgs, ErrorsCompat, GenCommand, Lang, SnippetsCompat};
+use cli::Cli;
 
 mod cli;
 mod crate_paths;
+mod dispatch;
+mod error;
 mod eval_receipt_regen;
 mod snippets_subcommand;
 
-#[derive(Debug)]
-enum XtaskError {
-    Usage(String),
-    Io(String, std::io::Error),
-    Yaml(String, serde_yml::Error),
-    Json(String, serde_json::Error),
-    Drift(String),
-    Validation(String),
-    Codegen(chio_spec_codegen::CodegenError),
-    Process(String),
-    ToolMissing(String),
-    ToolFailed(String),
-}
-
-impl fmt::Display for XtaskError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Usage(msg) => write!(f, "usage: {msg}"),
-            Self::Io(path, err) => write!(f, "io error on {path}: {err}"),
-            Self::Yaml(path, err) => write!(f, "yaml error in {path}: {err}"),
-            Self::Json(path, err) => write!(f, "json error in {path}: {err}"),
-            Self::Drift(detail) => write!(f, "manifest drift: {detail}"),
-            Self::Validation(detail) => write!(f, "scenario validation failed: {detail}"),
-            Self::Codegen(err) => write!(f, "codegen failed: {err}"),
-            Self::Process(msg) => write!(f, "subprocess error: {msg}"),
-            Self::ToolMissing(detail) => write!(f, "codegen tool missing: {detail}"),
-            Self::ToolFailed(detail) => write!(f, "codegen tool failed: {detail}"),
-        }
-    }
-}
+pub(crate) use dispatch::dispatch;
+pub(crate) use error::XtaskError;
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
@@ -140,99 +113,9 @@ fn main() -> ExitCode {
     }
 }
 
-/// Translate the parsed clap command into the existing handler calls. Leaf
-/// aliases and their `gen ...` equivalents route to the identical handler, so
-/// behavior is byte-for-byte preserved. Noun-group reserved leaves fail closed.
-fn dispatch(command: cli::Command) -> Result<(), XtaskError> {
-    match command {
-        // -- gen group --
-        cli::Command::Gen { command } => match command {
-            GenCommand::Codegen(args) => run_codegen(codegen_argv(&args)),
-            GenCommand::Errors { check } => errors_regen(check_argv(check)),
-            GenCommand::Snippets { check } => run_snippets(snippets_regen_argv(check)),
-            GenCommand::EvalReceipt { check } => eval_receipt_regen::run(check_argv(check)),
-            GenCommand::FreezeVectors { check } => freeze_vectors(check_argv(check)),
-        },
-        // -- check group --
-        cli::Command::Check { command } => match command {
-            CheckCommand::CratePaths => crate_paths::run(Vec::new()),
-        },
-        // -- noun-group parents: leaves land in Phase 3 (fail closed) --
-        cli::Command::Qualify { .. }
-        | cli::Command::Verify { .. }
-        | cli::Command::Fuzz { .. }
-        | cli::Command::Mutants { .. }
-        | cli::Command::Release { .. }
-        | cli::Command::SupplyChain { .. }
-        | cli::Command::Tools { .. } => Err(XtaskError::Usage(
-            "this command group has no implemented subcommands yet (Phase 3)".into(),
-        )),
-        // -- back-compat leaf aliases (identical handlers) --
-        cli::Command::ValidateScenarios => validate_scenarios(Vec::new()),
-        cli::Command::FreezeVectors { check } => freeze_vectors(check_argv(check)),
-        cli::Command::EvalReceiptRegen { check } => eval_receipt_regen::run(check_argv(check)),
-        cli::Command::Codegen(args) => run_codegen(codegen_argv(&args)),
-        cli::Command::Errors { command } => match command {
-            ErrorsCompat::Regen { check } => errors_regen(check_argv(check)),
-        },
-        cli::Command::Snippets { command } => match command {
-            SnippetsCompat::Regen { check } => run_snippets(snippets_regen_argv(check)),
-        },
-    }
-}
-
-/// Rebuild the `Vec<String>` argv that `run_codegen` already parses, so its
-/// in-function flag handling (`xtask/src/main.rs` `run_codegen`) is reused
-/// verbatim. Prefers the positional form when supplied (preserving the
-/// `codegen rust` spelling stamped into generated headers), else the `--lang`
-/// flag form.
-fn codegen_argv(args: &CodegenArgs) -> Vec<String> {
-    let mut out = Vec::new();
-    match (args.lang_positional, args.lang_flag) {
-        (Some(lang), _) => out.push(lang_str(lang).to_string()),
-        (None, Some(lang)) => {
-            out.push("--lang".to_string());
-            out.push(lang_str(lang).to_string());
-        }
-        (None, None) => {}
-    }
-    if args.check {
-        out.push("--check".to_string());
-    }
-    out
-}
-
-fn lang_str(lang: Lang) -> &'static str {
-    match lang {
-        Lang::Rust => "rust",
-        Lang::Ts => "ts",
-        Lang::Go => "go",
-        Lang::Python => "python",
-    }
-}
-
-/// Argv for a bare `[--check]` leaf (freeze-vectors / eval-receipt / errors-body).
-fn check_argv(check: bool) -> Vec<String> {
-    if check {
-        vec!["--check".to_string()]
-    } else {
-        Vec::new()
-    }
-}
-
-/// `run_snippets` expects `["regen", maybe "--check"]` (its `run` reads the
-/// `regen` subcommand first). Rebuild that exact argv.
-fn snippets_regen_argv(check: bool) -> Vec<String> {
-    let mut out = vec!["regen".to_string()];
-    if check {
-        out.push("--check".to_string());
-    }
-    out
-}
-
 const SCHEMA_URI_PREFIX: &str = "https://chio-protocol.dev/schemas/";
 
-fn validate_scenarios(args: Vec<String>) -> Result<(), XtaskError> {
+pub(crate) fn validate_scenarios(args: Vec<String>) -> Result<(), XtaskError> {
     if let Some(arg) = args.into_iter().next() {
         return Err(XtaskError::Usage(format!(
             "validate-scenarios: unexpected argument: {arg}"
@@ -430,7 +313,7 @@ fn walk_json(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), XtaskError> {
 const VECTORS_DIR: &str = "tests/bindings/vectors";
 const VECTORS_MANIFEST: &str = "tests/bindings/vectors/MANIFEST.sha256";
 
-fn freeze_vectors(args: Vec<String>) -> Result<(), XtaskError> {
+pub(crate) fn freeze_vectors(args: Vec<String>) -> Result<(), XtaskError> {
     let mut check_only = false;
     for arg in args {
         match arg.as_str() {
@@ -521,7 +404,7 @@ const CHIO_WIRE_V1_SCHEMAS: &str = "spec/schemas/chio-wire/v1";
 /// Relative path (from workspace root) of the generated Rust output dir.
 const CHIO_WIRE_V1_RUST_OUT: &str = "crates/chio-core-types/src/_generated";
 
-fn run_codegen(args: Vec<String>) -> Result<(), XtaskError> {
+pub(crate) fn run_codegen(args: Vec<String>) -> Result<(), XtaskError> {
     // Accepted forms:
     //   cargo xtask codegen rust [--check]
     //   cargo xtask codegen --lang rust [--check]
@@ -578,12 +461,12 @@ fn run_codegen(args: Vec<String>) -> Result<(), XtaskError> {
     }
 }
 
-fn run_snippets(args: Vec<String>) -> Result<(), XtaskError> {
+pub(crate) fn run_snippets(args: Vec<String>) -> Result<(), XtaskError> {
     let workspace_root = workspace_root()?;
     snippets_subcommand::run(args, &workspace_root)
 }
 
-fn errors_regen(args: Vec<String>) -> Result<(), XtaskError> {
+pub(crate) fn errors_regen(args: Vec<String>) -> Result<(), XtaskError> {
     let mut check_only = false;
     for arg in args {
         match arg.as_str() {
