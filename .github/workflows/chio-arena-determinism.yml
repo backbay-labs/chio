@@ -44,33 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          persist-credentials: false
-
-      - name: Install Rust toolchain
-        run: |
-          set -euo pipefail
-          rustup toolchain install stable --profile minimal
-          rustup default stable
-
-      - name: Install protobuf compiler
-        run: |
-          set -euo pipefail
-          export DEBIAN_FRONTEND=noninteractive
-          for attempt in 1 2 3; do
-            if timeout 180s sudo apt-get update \
-                && timeout 180s sudo apt-get install -y protobuf-compiler; then
-              exit 0
-            fi
-            echo "protobuf compiler install attempt ${attempt} failed; retrying" >&2
-            sleep $((attempt * 10))
-          done
-          echo "protobuf compiler install failed after retries" >&2
-          exit 1
-
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+      - uses: ./.github/actions/setup-rust
 
       - name: Verify reference scenarios are present
         # Defence in depth: the determinism_gate test references these by
