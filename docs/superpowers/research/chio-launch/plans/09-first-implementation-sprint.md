@@ -4,7 +4,7 @@
 
 **Goal:** Build the smallest verifier-grade Transaction Passport slice that can prove one governed tool call and fail for one real policy digest mismatch.
 
-**Architecture:** Add schema and verifier support before adding UI. The first slice should create `chio.transaction-passport.v1`, `chio.transaction.evidence-graph.v1`, and `chio.transaction.verifier-report.v1` as registry-backed artifacts, then expose a minimal `chio proof verify` path over committed fixtures.
+**Architecture:** Add schema and verifier support before adding UI. The first slice should create `chio.transaction-passport.v1`, `chio.transaction.evidence-graph.v1`, `chio.transaction.verifier-policy.v1`, and `chio.transaction.verifier-report.v1` as registry-backed artifacts, then expose a minimal `chio proof verify` path over committed bundle fixtures.
 
 **Tech Stack:** Rust workspace, `serde`, `serde_json`, existing canonical JSON/signature helpers, `spec/schemas/registry.json`, `chio-core-types`, `chio-control-plane` or a new `chio-proof` module if owner review chooses a split.
 
@@ -16,6 +16,7 @@ Create or modify these paths:
 
 - Create: `spec/schemas/chio-transaction/v1/transaction-passport.schema.json`
 - Create: `spec/schemas/chio-transaction/v1/evidence-graph.schema.json`
+- Create: `spec/schemas/chio-transaction/v1/verifier-policy.schema.json`
 - Create: `spec/schemas/chio-transaction/v1/verifier-report.schema.json`
 - Modify: `spec/schemas/registry.json`
 - Modify: `spec/schemas/MANIFEST.sha256`
@@ -32,7 +33,11 @@ Create or modify these paths:
 - Create: `crates/chio-cli/src/cli/dispatch/proof.rs`
 - Create: `crates/chio-cli/tests/proof_verify.rs`
 - Create: `fixtures/chio-launch/minimal-passport/valid/transaction-passport.json`
+- Create: `fixtures/chio-launch/minimal-passport/valid/evidence-graph.json`
+- Create: `fixtures/chio-launch/minimal-passport/valid/verifier-policy.json`
 - Create: `fixtures/chio-launch/minimal-passport/invalid-policy-digest-mismatch/transaction-passport.json`
+- Create: `fixtures/chio-launch/minimal-passport/invalid-policy-digest-mismatch/evidence-graph.json`
+- Create: `fixtures/chio-launch/minimal-passport/invalid-policy-digest-mismatch/verifier-policy.json`
 
 Both `chio-control-plane` and `chio-cli` already have `chio-test-support` in dev-dependencies. Use `use chio_test_support::prelude::*;` in new tests rather than `.unwrap()` or `.expect()`.
 
@@ -40,7 +45,7 @@ Both `chio-control-plane` and `chio-cli` already have `chio-test-support` in dev
 
 - [ ] **Step 1: Add failing registry test**
 
-Create or extend `crates/chio-core-types/tests/signed_artifact_schema.rs` with a test that asserts the three schema IDs are recognized by the signed-artifact compatibility gate. Follow local style in that test file if it intentionally keeps its existing clippy allowance; otherwise prefer `chio_test_support::prelude::*`.
+Create or extend `crates/chio-core-types/tests/signed_artifact_schema.rs` with a test that asserts the four schema IDs are recognized by the signed-artifact compatibility gate. Follow local style in that test file if it intentionally keeps its existing clippy allowance; otherwise prefer `chio_test_support::prelude::*`.
 
 ```rust
 use chio_test_support::prelude::*;
@@ -52,6 +57,9 @@ fn transaction_passport_schemas_are_known() {
     ));
     assert!(chio_core_types::is_supported_signed_artifact_schema(
         "chio.transaction.evidence-graph.v1"
+    ));
+    assert!(chio_core_types::is_supported_signed_artifact_schema(
+        "chio.transaction.verifier-policy.v1"
     ));
     assert!(chio_core_types::is_supported_signed_artifact_schema(
         "chio.transaction.verifier-report.v1"
@@ -71,7 +79,7 @@ Expected: fail because the schema constants are not accepted.
 
 - [ ] **Step 3: Add schema files, registry entries, manifest hashes, and script coverage**
 
-Add minimal JSON schemas with required `schema`, `id`, `issued_at`, and digest fields. Add all three IDs to `spec/schemas/registry.json` using the existing fields: `schema`, `artifactKind`, `introducedBy`, and `schemaFile`. Update `spec/schemas/MANIFEST.sha256`. Add `spec/schemas/chio-transaction/` to the checked roots in `scripts/check-chio-schema-registry.sh`. Add constants and acceptance entries in `crates/chio-core-types/src/signed_artifact.rs`.
+Add minimal JSON schemas with required `schema`, `id`, `issued_at`, digest fields, and bundle-relative artifact path fields. Add all four IDs to `spec/schemas/registry.json` using the existing fields: `schema`, `artifactKind`, `introducedBy`, and `schemaFile`. Update `spec/schemas/MANIFEST.sha256`. Add `spec/schemas/chio-transaction/` to the checked roots in `scripts/check-chio-schema-registry.sh`. Add constants and acceptance entries in `crates/chio-core-types/src/signed_artifact.rs`.
 
 - [ ] **Step 4: Run the test again**
 
@@ -103,7 +111,9 @@ fn transaction_passport_rejects_unknown_schema_id() {
         schema: "chio.transaction-passport.v999".to_string(),
         id: "passport-invalid-schema".to_string(),
         evidence_graph_sha256: "0".repeat(64),
+        evidence_graph_path: "evidence-graph.json".to_string(),
         verifier_policy_sha256: "1".repeat(64),
+        verifier_policy_path: "verifier-policy.json".to_string(),
     };
 
     let error = chio_control_plane::transaction_passport::verify_minimal_passport_schema(&passport)
@@ -137,7 +147,9 @@ pub struct TransactionPassport {
     pub schema: String,
     pub id: String,
     pub evidence_graph_sha256: String,
+    pub evidence_graph_path: String,
     pub verifier_policy_sha256: String,
+    pub verifier_policy_path: String,
 }
 
 #[derive(Debug, Error)]
@@ -200,7 +212,7 @@ Expected: fail because digest validation is not implemented.
 
 - [ ] **Step 3: Add digest validation**
 
-Add a helper that requires exactly 64 ASCII hex characters for `evidence_graph_sha256` and `verifier_policy_sha256`. Return separate error messages naming the failing field.
+Add a helper that requires exactly 64 ASCII hex characters for `evidence_graph_sha256` and `verifier_policy_sha256`. Also reject absolute paths, parent-directory traversal, and empty artifact paths in `evidence_graph_path` and `verifier_policy_path`; the CLI will resolve these paths relative to the passport file parent directory. Return separate error messages naming the failing field.
 
 - [ ] **Step 4: Run the test again**
 
@@ -220,15 +232,22 @@ Create `crates/chio-cli/tests/proof_verify.rs` with a test that runs the binary 
 
 ```rust
 use chio_test_support::prelude::*;
+use std::path::PathBuf;
 
 #[test]
 fn proof_verify_accepts_minimal_passport_fixture() {
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|crates_dir| crates_dir.parent())
+        .test_expect("workspace root is parent of crates/chio-cli");
+    let fixture = workspace_root.join(
+        "fixtures/chio-launch/minimal-passport/valid/transaction-passport.json",
+    );
+
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
-        .args([
-            "proof",
-            "verify",
-            "fixtures/chio-launch/minimal-passport/valid/transaction-passport.json",
-        ])
+        .arg("proof")
+        .arg("verify")
+        .arg(fixture)
         .output()
         .test_expect("chio command runs");
 
@@ -249,9 +268,9 @@ cargo test -p chio-cli --test proof_verify proof_verify_accepts_minimal_passport
 
 Expected: fail because the command and fixture do not exist.
 
-- [ ] **Step 3: Add fixtures and command path**
+- [ ] **Step 3: Add bundle fixtures and command path**
 
-Add a minimal valid fixture. Add a `Proof` command variant and `ProofCommands::Verify { path: PathBuf }` in `crates/chio-cli/src/cli/types.rs`. Add `crates/chio-cli/src/cli/dispatch/proof.rs` with a `dispatch_proof` function that loads the JSON, calls the minimal verifier, and writes compact JSON with `schema`, `verdict`, and `passport_id`. Wire the module and match arm in `crates/chio-cli/src/cli/dispatch.rs`.
+Add a minimal valid fixture directory with `transaction-passport.json`, `evidence-graph.json`, and `verifier-policy.json`. The passport must carry `evidence_graph_path` and `verifier_policy_path` values that are relative to its parent directory, plus `evidence_graph_sha256` and `verifier_policy_sha256` values computed from the exact committed artifact bytes. Add a `Proof` command variant and `ProofCommands::Verify { path: PathBuf }` in `crates/chio-cli/src/cli/types.rs`. Add `crates/chio-cli/src/cli/dispatch/proof.rs` with a `dispatch_proof` function that loads the passport JSON, resolves artifact paths relative to the passport file parent directory, hashes artifact bytes, calls the minimal verifier, and writes compact JSON with `schema`, `verdict`, and `passport_id`. Wire the module and match arm in `crates/chio-cli/src/cli/dispatch.rs`.
 
 - [ ] **Step 4: Run the CLI test again**
 
@@ -267,7 +286,7 @@ Expected: pass.
 
 - [ ] **Step 1: Add failing negative CLI test**
 
-Add a test that runs `chio proof verify` against the invalid policy mismatch fixture and expects nonzero exit plus a field-specific error. This fixture must be a real digest mismatch, not a malformed hash: the passport references policy digest `A`, while the bundled policy bytes hash to `B`.
+Add a test that runs `chio proof verify` against the invalid policy mismatch fixture and expects nonzero exit plus a field-specific error. This fixture must be a real digest mismatch, not a malformed hash: the passport references policy digest `A` in `verifier_policy_sha256`, while the bytes loaded from `verifier_policy_path` hash to `B`. Use the same `CARGO_MANIFEST_DIR` workspace-root helper from the valid fixture test.
 
 - [ ] **Step 2: Run the failing test**
 
@@ -281,7 +300,7 @@ Expected: fail until the invalid fixture and digest comparison path exist.
 
 - [ ] **Step 3: Add invalid fixture and error mapping**
 
-Create the invalid fixture with valid hex digests that do not match the bundled policy bytes. Ensure the CLI exits nonzero and prints `verifier policy digest mismatch`.
+Create the invalid fixture directory with `transaction-passport.json`, `evidence-graph.json`, and `verifier-policy.json`. Keep `evidence_graph_sha256` equal to the hash of `evidence-graph.json`, but set `verifier_policy_sha256` to a different valid 64-character hex digest than the hash of `verifier-policy.json`. Ensure the CLI exits nonzero and prints `verifier policy digest mismatch`.
 
 - [ ] **Step 4: Run targeted tests**
 
@@ -304,4 +323,4 @@ cargo test -p chio-control-plane --test transaction_passport
 cargo test -p chio-cli --test proof_verify
 ```
 
-The sprint is complete only when all commands pass and the fixtures prove one accepted minimal passport plus one rejected authority-relevant mismatch.
+The sprint is complete only when all commands pass and the fixtures prove one accepted minimal passport plus one rejected authority-relevant mismatch over real bundled evidence graph and verifier policy bytes.
