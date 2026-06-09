@@ -482,7 +482,7 @@ def classify(path: str) -> str:
     }:
         return "generated"
     if path.startswith(".github/ISSUE_TEMPLATE/") or path.startswith(
-        ("audits/", "editors/", "formal/")
+        ("audits/", "integrations/editors/", "formal/")
     ):
         return "docs"
     if path.startswith("deploy/"):

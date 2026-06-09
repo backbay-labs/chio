@@ -31,7 +31,7 @@ WORKDIR /workspace
 # in sync with anything the Rust build reaches at compile time:
 #   - `wit/` is consumed by chio-wasm-guards via `wasmtime::component::bindgen!`
 #     (chio-cli -> chio-wasm-guards path dep).
-#   - `bench/`, `editors/`, `examples/`, `formal/`, `tests/`, `xtask/`,
+#   - `bench/`, `integrations/editors/`, `examples/`, `formal/`, `tests/`, `xtask/`,
 #     `integrations/` are declared as workspace members (or contain
 #     them), so their absence breaks the workspace Cargo.lock
 #     resolution.
@@ -46,7 +46,7 @@ COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 COPY contracts ./contracts
 COPY bench ./bench
-COPY editors ./editors
+COPY integrations/editors ./integrations/editors
 COPY wit ./wit
 COPY examples ./examples
 # `formal/` is copied so `cargo build --workspace` Cargo.lock

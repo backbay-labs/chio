@@ -25,7 +25,7 @@ COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 COPY bench ./bench
 COPY contracts ./contracts
-COPY editors ./editors
+COPY integrations/editors ./integrations/editors
 COPY wit ./wit
 COPY examples ./examples
 COPY formal ./formal
