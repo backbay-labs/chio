@@ -10,7 +10,8 @@ on:
       - "spec/CHIO_PHEROMONE.md"
       - "spec/schemas/chio-pheromone/**"
       - "spec/schemas/registry.json"
-      - "scripts/check-chio-pheromone-transit.sh"
+      - "ci-gates/pheromone.toml"
+      - "xtask/**"
       - ".github/workflows/chio-pheromone-transit.yml"
   push:
     branches:
@@ -23,7 +24,8 @@ on:
       - "spec/CHIO_PHEROMONE.md"
       - "spec/schemas/chio-pheromone/**"
       - "spec/schemas/registry.json"
-      - "scripts/check-chio-pheromone-transit.sh"
+      - "ci-gates/pheromone.toml"
+      - "xtask/**"
       - ".github/workflows/chio-pheromone-transit.yml"
 
 jobs:
@@ -33,4 +35,4 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable (pins to rust-toolchain.toml 1.93.0)
       - name: Run Chio pheromone transit gate
-        run: bash scripts/check-chio-pheromone-transit.sh
+        run: cargo xtask check fixtures transit

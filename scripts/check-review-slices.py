@@ -211,6 +211,7 @@ SLICES: tuple[ReviewSlice, ...] = (
             ".github/**",
             ".tooling/**",
             "scripts/**",
+            "ci-gates/**",
             "xtask/**",
             ".cargo/**",
             ".kani/**",

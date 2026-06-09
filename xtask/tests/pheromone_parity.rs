@@ -1,16 +1,14 @@
-// Dual-run parity harness for the pheromone fixture-and-schema gate cluster.
+// Retirement guard for the pheromone fixture-and-schema gate cluster.
 //
-// For each facet and each mode, run BOTH the legacy script and the consolidated
-// `cargo xtask check fixtures <facet>` leaf and assert identical exit codes.
-// This is the load-bearing proof that the consolidation is behavior-identical:
-// the cluster has no `*.test.sh` meta-tests, so parity is the only behavior
-// contract.
-//
-// Gated behind CHIO_PHEROMONE_PARITY=1 so a normal `cargo test -p xtask` does
-// not trigger the multi-minute cargo and npm chains. CI runs it explicitly.
+// The 15 legacy `scripts/check-chio-pheromone-*.sh` gates were consolidated into
+// `cargo xtask check fixtures <facet>` and deleted after a green dual-run parity
+// sweep (15 facets x 3 modes, all exit codes identical). The dual-run harness
+// that proved that parity lived here and is preserved in git history; once the
+// scripts are gone it can no longer dual-run, so this file now enforces that the
+// scripts stay retired. A re-added script would resurrect the divergence the
+// consolidation closed and would not be exercised by any workflow.
 
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::path::PathBuf;
 
 const FACETS: [&str; 15] = [
     "directory-lifecycle",
@@ -37,50 +35,18 @@ fn root() -> PathBuf {
     }
 }
 
-fn script_exit(root: &Path, facet: &str, mode: &[&str]) -> i32 {
-    Command::new("bash")
-        .arg(format!("scripts/check-chio-pheromone-{facet}.sh"))
-        .args(mode)
-        .current_dir(root)
-        .status()
-        .map(|status| status.code().unwrap_or(-1))
-        .unwrap_or(-1)
-}
-
-fn xtask_exit(root: &Path, facet: &str, mode: &[&str]) -> i32 {
-    let mut args = vec!["run", "-q", "-p", "xtask", "--", "check", "fixtures", facet];
-    args.extend_from_slice(mode);
-    Command::new("cargo")
-        .args(&args)
-        .current_dir(root)
-        .status()
-        .map(|status| status.code().unwrap_or(-1))
-        .unwrap_or(-1)
-}
-
 #[test]
-fn pheromone_dual_run_parity() {
-    if std::env::var("CHIO_PHEROMONE_PARITY").ok().as_deref() != Some("1") {
-        eprintln!("skipped: set CHIO_PHEROMONE_PARITY=1 to run the multi-minute parity gate");
-        return;
-    }
+fn pheromone_scripts_are_retired() {
     let root = root();
-    let modes: [&[&str]; 3] = [&[], &["--schema-only"], &["--negative-only"]];
-    let mut mismatches = Vec::new();
+    let mut present = Vec::new();
     for facet in FACETS {
-        for mode in modes {
-            let old = script_exit(&root, facet, mode);
-            let new = xtask_exit(&root, facet, mode);
-            let label = if mode.is_empty() { "all" } else { mode[0] };
-            eprintln!("{facet} {label}: script={old} xtask={new}");
-            if old != new {
-                mismatches.push(format!("{facet} {label}: script={old} xtask={new}"));
-            }
+        let path = root.join(format!("scripts/check-chio-pheromone-{facet}.sh"));
+        if path.exists() {
+            present.push(facet);
         }
     }
     assert!(
-        mismatches.is_empty(),
-        "parity mismatches:\n{}",
-        mismatches.join("\n")
+        present.is_empty(),
+        "legacy pheromone scripts must stay retired; still present: {present:?}"
     );
 }
