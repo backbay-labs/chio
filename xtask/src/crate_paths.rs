@@ -310,7 +310,7 @@ pub fn run(args: Vec<String>) -> Result<(), XtaskError> {
                 v.raw, v.resolved, v.source
             );
         }
-        Err(XtaskError::Validation(format!(
+        Err(XtaskError::CratePaths(format!(
             "{} crate-path reference(s) do not resolve; a crate move likely went dark",
             violations.len()
         )))
