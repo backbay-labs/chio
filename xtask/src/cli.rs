@@ -175,10 +175,10 @@ pub enum SnippetsCompat {
 }
 
 // Noun-group children: parents introduced now, leaves land in Phase 3. Each
-// enum carries a single hidden placeholder so the derive compiles and the
-// parent shows in `--help`; invoking a placeholder is a fail-closed error
+// enum carries a single hidden reserved variant so the derive compiles and the
+// parent shows in `--help`; invoking a reserved leaf is a fail-closed error
 // handled in `main.rs`.
-/// Placeholder leaf for a noun group whose real leaves land in Phase 3.
+/// Reserved leaf for a noun group whose real leaves land in Phase 3.
 /// Hidden from `--help` so the tree advertises only implemented surface, but
 /// present so the `Subcommand` derive has a variant to generate.
 macro_rules! pending_group {

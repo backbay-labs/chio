@@ -142,7 +142,7 @@ fn main() -> ExitCode {
 
 /// Translate the parsed clap command into the existing handler calls. Leaf
 /// aliases and their `gen ...` equivalents route to the identical handler, so
-/// behavior is byte-for-byte preserved. Noun-group placeholders fail closed.
+/// behavior is byte-for-byte preserved. Noun-group reserved leaves fail closed.
 fn dispatch(command: cli::Command) -> Result<(), XtaskError> {
     match command {
         // -- gen group --
