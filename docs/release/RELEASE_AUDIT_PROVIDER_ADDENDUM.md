@@ -16,6 +16,6 @@ The following commands verify the provider-adapter evidence:
 
 ```bash
 cargo test -p chio-bedrock-converse-adapter --test error_taxonomy_doctest
-grep -q 'iam_principals.toml' RELEASE_AUDIT.md
+grep -q 'iam_principals.toml' docs/release/RELEASE_AUDIT_PROVIDER_ADDENDUM.md
 test -f docs/integrations/providers.md
 ```
