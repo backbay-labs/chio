@@ -40,6 +40,7 @@ jobs:
   chio-pheromone-relay-alert-routing:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
       - uses: ./.github/actions/setup-rust
       - uses: ./.github/actions/setup-node
         with:
