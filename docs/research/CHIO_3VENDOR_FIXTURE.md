@@ -43,7 +43,7 @@ rejected by strict Chio verification.
 
 Buyer Corp performs three separate bilateral handshakes (one per
 vendor). Each handshake exchanges
-[PeerHandshakeEnvelope](../../crates/chio-federation/src/trust_establishment.rs)
+[PeerHandshakeEnvelope](../../crates/trust/chio-federation/src/trust_establishment.rs)
 challenges, then immediately exchanges
 [chio.federation.governance-ladder-manifest.v1](../../spec/CHIO_LADDER.md) manifests and
 produces a co-signed `chio.federation.ladder-intersection.v1` per pair.
@@ -179,7 +179,7 @@ pairwise intersections to `workflow.grant_issue` and
 ## 2. Open-Market BidRequest, AskResponses, AcceptedBid
 
 Buyer Corp posts one
-[BidRequest](../../crates/chio-open-market/src/bidding.rs) per vendor
+[BidRequest](../../crates/economy/chio-open-market/src/bidding.rs) per vendor
 under the `support-ticket-fulfillment` listing namespace.
 
 ### 2.1 BidRequest (to Vendor C / PaySwift)
@@ -246,7 +246,7 @@ workflow authority composes into one workflow grant (section 3).
 ## 3. Workflow Start: SkillManifest And Grant
 
 The buyer's
-[WorkflowAuthority](../../crates/chio-workflow/src/authority.rs) issues
+[WorkflowAuthority](../../crates/platform/chio-workflow/src/authority.rs) issues
 a workflow grant binding the three capability tokens to one workflow
 execution. The skill manifest sketch:
 
@@ -280,7 +280,7 @@ the workflow-intersection artifact and verifier-owned trust bundle.
 
 The buyer agent calls `dataco.crm-server.customer_record.read`.
 DataCo's kernel (Org B in
-[bilateral.rs](../../crates/chio-federation/src/bilateral.rs)
+[bilateral.rs](../../crates/trust/chio-federation/src/bilateral.rs)
 nomenclature; tool host) signs first, then asks the buyer kernel (Org
 A; origin) to co-sign.
 
@@ -305,7 +305,7 @@ A; origin) to co-sign.
 `parent_receipt_id: null` because this is the first step. The
 `consistency_anchor` field is an `// illustrative, not normative` choice;
 [CHIO_LADDER.md](../../spec/CHIO_LADDER.md) section 4.2 names the
-anchor type but [chio-workflow](../../crates/chio-workflow/src/receipt.rs)
+anchor type but [chio-workflow](../../crates/platform/chio-workflow/src/receipt.rs)
 does not yet store one inside `StepRecord` (Gap G3).
 
 ### 4.2 Bilateral co-signed wrapper
@@ -322,9 +322,9 @@ does not yet store one inside `StepRecord` (Gap G3).
 ```
 
 Both signatures are over the canonical bytes of `CoSigningBody` (see
-[bilateral.rs](../../crates/chio-federation/src/bilateral.rs) lines
+[bilateral.rs](../../crates/trust/chio-federation/src/bilateral.rs) lines
 39-77). Either side independently verifies via
-[`DualSignedReceipt::verify`](../../crates/chio-federation/src/bilateral.rs).
+[`DualSignedReceipt::verify`](../../crates/trust/chio-federation/src/bilateral.rs).
 
 The intersected ladder class
 `treaty:buyer-dataco:support-ops/data.customer_record_read` requires
@@ -361,7 +361,7 @@ drafted response.
 
 The `parent_receipt_sha256` field is the hash-chain consistency anchor
 required by `consistency_model: "totally-ordered"`. (Gap G3:
-[chio-workflow `StepRecord`](../../crates/chio-workflow/src/receipt.rs)
+[chio-workflow `StepRecord`](../../crates/platform/chio-workflow/src/receipt.rs)
 lacks both `parent_receipt_sha256` and `consistency_anchor` fields. The
 ladder spec requires them.)
 
@@ -467,9 +467,9 @@ receipt.
 ## 7. Workflow Finalisation
 
 The buyer's
-[WorkflowAuthority](../../crates/chio-workflow/src/authority.rs) builds
+[WorkflowAuthority](../../crates/platform/chio-workflow/src/authority.rs) builds
 the final
-[WorkflowReceipt](../../crates/chio-workflow/src/receipt.rs).
+[WorkflowReceipt](../../crates/platform/chio-workflow/src/receipt.rs).
 
 ```json
 {
@@ -725,7 +725,7 @@ Each gap is a wire- or schema-level mesh failure exposed by the fixture.
 Resolved items are kept here for audit continuity.
 
 - **G1. Handshake envelope omits ladder-manifest reference.**
-  [trust_establishment.rs:108-114](../../crates/chio-federation/src/trust_establishment.rs)
+  [trust_establishment.rs:108-114](../../crates/trust/chio-federation/src/trust_establishment.rs)
   defines `PeerHandshakeEnvelope` as `{challenge, declared_public_key,
   signature}`. No slot for `manifest_sha256`, `manifest_id`, or the
   manifest body. The handshake completes and pins the peer before any

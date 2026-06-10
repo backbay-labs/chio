@@ -1,7 +1,6 @@
 /**
- * Typealias shims that keep the legacy `world.chio.*` imports
- * working for one release after the SDK moved to the new module.
- * Remove in 0.2.0.
+ * Typealias shims that keep the `world.chio.*` imports working for one
+ * release. Remove in 0.2.0.
  */
 @file:JvmName("ChioSdkAliases")
 

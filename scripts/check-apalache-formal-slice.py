@@ -83,7 +83,7 @@ def check_revocation_cut() -> None:
     )
     require(
         "parent[child] = root" not in descends,
-        "DescendsFrom must not be the old direct-parent-only predicate",
+        "DescendsFrom must not be a direct-parent-only predicate",
     )
     require(
         "root \\notin revoked" not in delegate,

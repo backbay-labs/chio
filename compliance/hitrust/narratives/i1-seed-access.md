@@ -4,8 +4,8 @@ Chio access control is implemented through capability issuance,
 validation, attenuation, revocation, sender constraints, and kernel
 admission checks. The evidence is the protocol and security specs
 (`spec/PROTOCOL.md`, `spec/SECURITY.md`), the kernel implementation
-(`crates/chio-kernel-core/src/evaluate.rs`,
-`crates/chio-core-types/src/capability.rs`), and the formal proofs that
+(`crates/kernel/chio-kernel-core/src/evaluate.rs`,
+`crates/core/chio-core-types/src/capability.rs`), and the formal proofs that
 constrain these call sites (`formal/MAPPING.md`).
 
 This family is self-assessed as implemented for the in-scope deployment.

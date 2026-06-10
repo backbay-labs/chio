@@ -50,8 +50,7 @@ jobs:
             bin_suffix: ""
             cross: true
           - target: x86_64-apple-darwin
-            # GitHub retired macos-13; macos-15-intel is the supported
-            # hosted Intel macOS label for x86_64 release builds.
+            # macos-15-intel is the hosted Intel macOS label for x86_64 release builds.
             runner: macos-15-intel
             archive: tar.gz
             bin_suffix: ""

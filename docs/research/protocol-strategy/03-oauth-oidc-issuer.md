@@ -8,7 +8,7 @@
 
 ## TL;DR
 
-Chio should adopt a hybrid **issuer-of-last-resort plus PDP-with-step-up** posture. The codebase already ships a non-trivial OAuth 2.1 authorization server inside the hosted MCP edge (`crates/chio-mcp-remote/src/remote_mcp/oauth.rs`) with PKCE, RFC 8693 token exchange, RFC 9396 rich authorization details, RFC 8414 metadata, RFC 9728 protected-resource metadata, and a Chio-specific sender-constraint extension. Walking that back would discard real, tested code. But Chio should *not* market itself as a general-purpose enterprise IdP that competes with WorkOS, Stytch, or Scalekit. The right framing is: Chio is a policy decision point (PDP) for agent tool calls that, where no upstream AS can express the governance contract Chio needs (governed RAR, transaction-context, attestation-bound sender constraint), mints a narrow access token bound to a single protected resource (the Chio MCP edge). For everything else, Chio consumes and verifies upstream OAuth/OIDC tokens, surfaces them in `CallerIdentity`, and returns step-up challenges when policy requires fresher human approval. Issuer scope stays bounded to the `chio-governed-rar-v1` profile; broad user-facing authentication and lifecycle remain non-goals.
+Chio should adopt a hybrid **issuer-of-last-resort plus PDP-with-step-up** posture. The codebase already ships a non-trivial OAuth 2.1 authorization server inside the hosted MCP edge (`crates/protocol/chio-mcp-remote/src/remote_mcp/oauth.rs`) with PKCE, RFC 8693 token exchange, RFC 9396 rich authorization details, RFC 8414 metadata, RFC 9728 protected-resource metadata, and a Chio-specific sender-constraint extension. Walking that back would discard real, tested code. But Chio should *not* market itself as a general-purpose enterprise IdP that competes with WorkOS, Stytch, or Scalekit. The right framing is: Chio is a policy decision point (PDP) for agent tool calls that, where no upstream AS can express the governance contract Chio needs (governed RAR, transaction-context, attestation-bound sender constraint), mints a narrow access token bound to a single protected resource (the Chio MCP edge). For everything else, Chio consumes and verifies upstream OAuth/OIDC tokens, surfaces them in `CallerIdentity`, and returns step-up challenges when policy requires fresher human approval. Issuer scope stays bounded to the `chio-governed-rar-v1` profile; broad user-facing authentication and lifecycle remain non-goals.
 
 ## Phase 1: What Chio Has Today
 
@@ -16,28 +16,28 @@ Chio should adopt a hybrid **issuer-of-last-resort plus PDP-with-step-up** postu
 
 The most important finding is that the hosted MCP edge already runs a `LocalAuthorizationServer` that goes well beyond a stub. The endpoints registered by the router include the standard well-known documents plus an authorize/token/jwks triple:
 
-- `crates/chio-mcp-remote/src/remote_mcp/http_service.rs:216-239` wires `/.well-known/oauth-protected-resource`, `/.well-known/oauth-protected-resource/mcp`, `/.well-known/oauth-authorization-server`, `/.well-known/oauth-authorization-server/{*rest}`, `/oauth/authorize`, `/oauth/token`, and `/oauth/jwks.json`.
-- Path constants live in `crates/chio-mcp-remote/src/remote_mcp/session_core.rs:86-101`.
+- `crates/protocol/chio-mcp-remote/src/remote_mcp/http_service.rs:216-239` wires `/.well-known/oauth-protected-resource`, `/.well-known/oauth-protected-resource/mcp`, `/.well-known/oauth-authorization-server`, `/.well-known/oauth-authorization-server/{*rest}`, `/oauth/authorize`, `/oauth/token`, and `/oauth/jwks.json`.
+- Path constants live in `crates/protocol/chio-mcp-remote/src/remote_mcp/session_core.rs:86-101`.
 
 What this AS supports:
 
-- **PKCE S256 only** (`crates/chio-mcp-remote/src/remote_mcp/oauth.rs:283-296, 589-595`). Plain PKCE and non-PKCE flows are refused.
+- **PKCE S256 only** (`crates/protocol/chio-mcp-remote/src/remote_mcp/oauth.rs:283-296, 589-595`). Plain PKCE and non-PKCE flows are refused.
 - **Authorization code grant with resource-parameter binding** (RFC 8707): the `resource` field is required and must equal the advertised protected resource (`oauth.rs:561-574`).
 - **RFC 8693 token exchange** with `urn:ietf:params:oauth:grant-type:token-exchange` and `urn:ietf:params:oauth:token-type:access_token` subject token type (`oauth.rs:216-225, 328-409`).
-- **RFC 9396 rich authorization requests** under a Chio-specific profile (`chio-governed-rar-v1`). Only three `type` values are accepted: `chio_governed_tool`, `chio_governed_commerce`, `chio_governed_metered_billing` (`crates/chio-kernel/src/operator_report.rs:62-66`).
+- **RFC 9396 rich authorization requests** under a Chio-specific profile (`chio-governed-rar-v1`). Only three `type` values are accepted: `chio_governed_tool`, `chio_governed_commerce`, `chio_governed_metered_billing` (`crates/kernel/chio-kernel/src/operator_report.rs:62-66`).
 - **Chio transaction context**, a non-standard top-level parameter and JWT claim carrying intent hash, approval evidence, runtime-assurance digest, delegated call-chain, and an optional identity continuity assertion (`oauth.rs:36-83, 444-461`).
-- **Sender-constrained tokens via `cnf`** with three proof families: chio-native DPoP key (`chio_dpop_v1`), mTLS thumbprint (`chio_mtls_thumbprint_v1`), and attestation digest (`chio_attestation_binding_v1`). Constants: `crates/chio-kernel/src/operator_report.rs:71-75`. Binding logic: `oauth.rs:43-48, 305-314`. Spec: `spec/PROTOCOL.md:1405-1434`.
+- **Sender-constrained tokens via `cnf`** with three proof families: chio-native DPoP key (`chio_dpop_v1`), mTLS thumbprint (`chio_mtls_thumbprint_v1`), and attestation digest (`chio_attestation_binding_v1`). Constants: `crates/kernel/chio-kernel/src/operator_report.rs:71-75`. Binding logic: `oauth.rs:43-48, 305-314`. Spec: `spec/PROTOCOL.md:1405-1434`.
 - **JWKS publication** with EdDSA / OKP / Ed25519 keys (`oauth.rs:527-538`).
 - **AS metadata document** publishing the canonical Chio profile id and schema alongside standard fields (`http_service.rs:1413-1422`, `spec/PROTOCOL.md:1436-1448`).
 - **Bounded DCR**: the metadata document references an optional upstream `registration_endpoint` (`http_service.rs:1497-1505`), but Chio does not itself implement RFC 7591 dynamic client registration. Static `client_id` strings are accepted at the authorize endpoint without enforcement (`oauth.rs:553-559`).
 
 ### A separate runtime DPoP layer (chio-native, not RFC 9449)
 
-The kernel ships its own DPoP variant for tool invocation in `crates/chio-kernel/src/dpop.rs:1-100`. Schema is `chio.dpop_proof.v1`. Body fields are `capability_id`, `tool_server`, `tool_name`, `action_hash`, `nonce`, `issued_at`, `agent_key`. This is *not* RFC 9449 JWT DPoP. The gap is explicit: the spec promises RFC-shaped DPoP at the HTTP boundary but ships a Chio-native proof everywhere. The intended end state is that the edge verifies HTTP DPoP and synthesizes internal caller context, keeping `chio.dpop_proof.v1` as the internal invocation proof. See `spec/PROTOCOL.md` for the DPoP boundary contract.
+The kernel ships its own DPoP variant for tool invocation in `crates/kernel/chio-kernel/src/dpop.rs:1-100`. Schema is `chio.dpop_proof.v1`. Body fields are `capability_id`, `tool_server`, `tool_name`, `action_hash`, `nonce`, `issued_at`, `agent_key`. This is *not* RFC 9449 JWT DPoP. The gap is explicit: the spec promises RFC-shaped DPoP at the HTTP boundary but ships a Chio-native proof everywhere. The intended end state is that the edge verifies HTTP DPoP and synthesizes internal caller context, keeping `chio.dpop_proof.v1` as the internal invocation proof. See `spec/PROTOCOL.md` for the DPoP boundary contract.
 
 ### Identity surface that consumes, not issues, broadly
 
-`CallerIdentity` in `crates/chio-http-core/src/identity.rs:44-65` knows Bearer, ApiKey, Cookie, MtlsCertificate, Anonymous. Note what it does *not* know: OAuth issuer, scopes, federated claims, sender-constraint. Those live one layer up in the hosted edge as `SessionAuthMethod::OAuthBearer` with fields `issuer`, `subject`, `audience`, `scopes`, `federated_claims`, `enterprise_identity`, `token_fingerprint` (`crates/chio-mcp-remote/src/remote_mcp/oauth.rs:851-872`). This split is meaningful: the universal core CallerIdentity is a token-hash-and-subject pair, while the hosted edge keeps a richer OAuth-shaped projection that only some surfaces use.
+`CallerIdentity` in `crates/platform/chio-http-core/src/identity.rs:44-65` knows Bearer, ApiKey, Cookie, MtlsCertificate, Anonymous. Note what it does *not* know: OAuth issuer, scopes, federated claims, sender-constraint. Those live one layer up in the hosted edge as `SessionAuthMethod::OAuthBearer` with fields `issuer`, `subject`, `audience`, `scopes`, `federated_claims`, `enterprise_identity`, `token_fingerprint` (`crates/protocol/chio-mcp-remote/src/remote_mcp/oauth.rs:851-872`). This split is meaningful: the universal core CallerIdentity is a token-hash-and-subject pair, while the hosted edge keeps a richer OAuth-shaped projection that only some surfaces use.
 
 The hosted edge has three OAuth verifier modes (`oauth.rs:783-819`):
 
@@ -49,9 +49,9 @@ There is no client-credentials, device-code, CIBA, FAPI, or refresh-token implem
 
 ### Adjacent identity stack
 
-- `did:chio` self-certifying Ed25519 plus `did:web`/`did:key`/`did:jwk` interop (well-trodden in `crates/chio-did/`).
-- Agent Passport: native JSON-signed bundle, W3C VC v1 compatible (`crates/chio-credentials/`).
-- A narrow OID4VP verifier-side bridge under `crates/chio-credentials/src/oid4vp.rs`, paired with a non-goal in `spec/PROTOCOL.md:107-109` against generic OID4VP/SIOP/DIDComm.
+- `did:chio` self-certifying Ed25519 plus `did:web`/`did:key`/`did:jwk` interop (well-trodden in `crates/trust/chio-did/`).
+- Agent Passport: native JSON-signed bundle, W3C VC v1 compatible (`crates/trust/chio-credentials/`).
+- A narrow OID4VP verifier-side bridge under `crates/trust/chio-credentials/src/oid4vp.rs`, paired with a non-goal in `spec/PROTOCOL.md:107-109` against generic OID4VP/SIOP/DIDComm.
 - Hybrid PQ signatures (Ed25519 + ML-DSA-65) at `spec/PROTOCOL.md:172-177`.
 - Federation via `federated_origin_kernel_id` in delegation receipts.
 - A `step_up` outcome already exists in the underwriting decision vocabulary (`spec/PROTOCOL.md:1789`) but it is a credit/budget decision, not an OAuth step-up auth challenge.
@@ -115,7 +115,7 @@ Chio's stated identity is "universal security kernel for AI agent tool calls" (`
 
 Chio should plant its flag on the third row. The recommended posture has three concrete commitments:
 
-1. **Default: consumer + verifier.** All hosted-edge surfaces, all sidecar profiles, and all MCP bridges should accept upstream OAuth/OIDC tokens (JWT or introspected) as the primary admission mechanism. Today's `JwtBearer` and `IntrospectionBearer` paths (`oauth.rs:798-817`) are the right foundation. Extend `CallerIdentity` (`crates/chio-http-core/src/identity.rs:8-37`) to carry OAuth-shaped fields natively rather than projecting them on the hosted edge alone.
+1. **Default: consumer + verifier.** All hosted-edge surfaces, all sidecar profiles, and all MCP bridges should accept upstream OAuth/OIDC tokens (JWT or introspected) as the primary admission mechanism. Today's `JwtBearer` and `IntrospectionBearer` paths (`oauth.rs:798-817`) are the right foundation. Extend `CallerIdentity` (`crates/platform/chio-http-core/src/identity.rs:8-37`) to carry OAuth-shaped fields natively rather than projecting them on the hosted edge alone.
 2. **Surface: PDP with step-up challenge.** When a tool call exceeds the authority of the inbound token (RAR insufficient, intent hash not yet approved, runtime-assurance digest stale, identity assertion missing), return an OAuth-shaped challenge response that names the missing `authorization_details`, the protected resource, and a recommended AS to redirect to. This is the natural extension of the existing underwriting `step_up` outcome (`spec/PROTOCOL.md:1789`). The signal is informational; the actual fresh authorization happens at the customer's chosen AS.
 3. **Bounded issuer-of-last-resort.** Keep the existing `LocalAuthorizationServer` (`oauth.rs:22-539`), but reframe and rename it as the **Chio Governed Authorization Bridge**. Its only purpose is to mint tokens scoped to the Chio MCP edge as the protected resource when no upstream AS understands the `chio-governed-rar-v1` profile. It is not an enterprise IdP. It does not implement DCR, refresh tokens, social login, password flows, MFA, SCIM, or session UI beyond the approval page. Tokens it mints have short TTLs and are bound to a single resource.
 
@@ -125,7 +125,7 @@ The non-goal at `spec/PROTOCOL.md:100` ("automatic SCIM provisioning lifecycle")
 
 ### Why not pure consumer
 
-Three reasons. First, the code is already there and has tests (`crates/chio-cli/tests/mcp_auth_server.rs`, hosted-mcp auth_flows tests). Second, the `chio-governed-rar-v1` profile is genuinely novel: no upstream AS currently understands `chio_transaction_context.runtimeAssuranceEvidenceSha256` or attestation-bound `cnf` claims. Until upstream ASs catch up (or Chio publishes the profile and seeds adoption), an issuer-of-last-resort lets customers run governed RAR without forcing them to wait on their existing IdP vendor. Third, MCP's authz spec encourages bring-your-own-AS but accepts self-hosted; Chio can ship the easy path today and migrate to delegated AS over time.
+Three reasons. First, the code is already there and has tests (`crates/products/chio-cli/tests/mcp_auth_server.rs`, hosted-mcp auth_flows tests). Second, the `chio-governed-rar-v1` profile is genuinely novel: no upstream AS currently understands `chio_transaction_context.runtimeAssuranceEvidenceSha256` or attestation-bound `cnf` claims. Until upstream ASs catch up (or Chio publishes the profile and seeds adoption), an issuer-of-last-resort lets customers run governed RAR without forcing them to wait on their existing IdP vendor. Third, MCP's authz spec encourages bring-your-own-AS but accepts self-hosted; Chio can ship the easy path today and migrate to delegated AS over time.
 
 ### Sketch: what to build
 

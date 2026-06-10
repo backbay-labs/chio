@@ -18,7 +18,7 @@ Historical internal milestone `v2.34` added a packaged runtime realization:
 - compiled ABI and bytecode artifacts under `contracts/artifacts/`
 - compiled interface artifacts under `contracts/artifacts/interfaces/`
 - deployment manifests under `contracts/deployments/`
-- artifact-derived Alloy bindings under `crates/chio-web3-bindings/`
+- artifact-derived Alloy bindings under `crates/economy/chio-web3-bindings/`
 - local qualification evidence under `contracts/reports/`
 
 The objective is specific: Chio can now reconcile one real external rail
@@ -78,7 +78,7 @@ The official profile consists of these machine-readable artifacts:
 - `chio.settle-runtime-report.v1`
 
 The corresponding reference files live in `docs/standards/`; the core web3
-artifacts parse against `crates/chio-core/src/web3.rs`, while the runtime
+artifacts parse against `crates/core/chio-core/src/web3.rs`, while the runtime
 overlay artifacts parse against the bounded types in `chio-anchor` and
 `chio-settle`.
 

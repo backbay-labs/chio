@@ -11,7 +11,7 @@
 ## TL;DR
 
 The cleanest candidate for the `PolicyEngineProvider` proof-of-concept from
-doc 04 is `McpToolGuard` (`crates/chio-guards/src/mcp_tool.rs`, 429 LOC):
+doc 04 is `McpToolGuard` (`crates/guards/chio-guards/src/mcp_tool.rs`, 429 LOC):
 small, high-density (block list, allow list, default action, arg-size cap,
 enable flag), self-contained, stable, and entity-typed
 (`Agent / invoke / Tool`). Port shrinks ~80 lines of decision code into
@@ -77,7 +77,7 @@ worth porting. Right home for `CedarPolicyGuard` as a sibling adapter.
 - **Size.** 429 LOC; ~80 are decision logic. The rest is tests, config
   plumbing, and a hand-rolled JSON byte-counter. One-PR port.
 - **Density.** Five orthogonal conditions in `is_allowed` plus arg-size
-  (`crates/chio-guards/src/mcp_tool.rs:118-178`): enabled, block precedence,
+  (`crates/guards/chio-guards/src/mcp_tool.rs:118-178`): enabled, block precedence,
   allowlist-mode toggle, default action, arg-size cap. Each is a boolean
   predicate, exactly what Cedar `when`/`unless` encodes best.
 - **Self-contained.** Touches only `request.tool_name`, `request.arguments`,
@@ -97,7 +97,7 @@ wildcards but multi-segment glob (`*.foo.com`) needs custom pre-processing.
 
 ### 3.1 Original logic (sketch)
 
-From `crates/chio-guards/src/mcp_tool.rs:154-178`:
+From `crates/guards/chio-guards/src/mcp_tool.rs:154-178`:
 
 ```rust
 fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
@@ -231,7 +231,7 @@ at `validate()` time, which is the load-time check we need.
 
 ### 3.4 Wiring code
 
-`CedarPolicyGuard` lives at `crates/chio-external-guards/src/external/cedar.rs`,
+`CedarPolicyGuard` lives at `crates/guards/chio-external-guards/src/external/cedar.rs`,
 implements `PolicyEngineProvider`, and is wrapped into `ExternalGuard` by
 the doc-04 blanket adapter. Sketch:
 
@@ -297,7 +297,7 @@ impl PolicyEngineProvider for CedarPolicyGuard {
 `action = Action::"invoke"`, `resource = Chio::Tool::"<server>/<tool>"`,
 plus the context record. The blanket adapter from doc 04 then wraps this
 into `ExternalGuard` so the existing `AsyncGuardAdapter` /
-`ScopedAsyncGuard` (`crates/chio-external-guards/src/lib.rs:35-139`)
+`ScopedAsyncGuard` (`crates/guards/chio-external-guards/src/lib.rs:35-139`)
 applies cache, circuit breaker, and rate limit unchanged. Registration:
 
 ```rust
@@ -313,7 +313,7 @@ kernel.add_guard(Box::new(ScopedAsyncGuard::new(
 ### 3.5 Test fixture parity
 
 Drive both implementations with the same `GuardCallContext` across the
-matrix from `crates/chio-guards/src/mcp_tool.rs:181-428`:
+matrix from `crates/guards/chio-guards/src/mcp_tool.rs:181-428`:
 
 | # | block | allow | default | tool | arg_size | Verdict |
 |---|-------|-------|---------|------|----------|---------|
@@ -348,7 +348,7 @@ and public Cedar benchmarks.
 
 Eval-overhead jump is likely acceptable for `McpToolGuard` because (a) the
 kernel already does a sync-to-async hop via `ScopedAsyncGuard::block_on`
-(`crates/chio-external-guards/src/lib.rs:66-94`) for HTTP cloud guardrails,
+(`crates/guards/chio-external-guards/src/lib.rs:66-94`) for HTTP cloud guardrails,
 (b) `AsyncGuardAdapter::TtlCache` keyed on `(tool, agent, args_hash)` can
 collapse repeated decisions when workloads actually repeat, and (c) Cedar is
 in-process with policy/schema loaded once at startup. The cache hit rate must
@@ -406,7 +406,7 @@ namespace map. Reserve `policy.cedar`:
 
 Sits inside `extensions["policy.cedar"]` per Cedar-backed call. The
 existing `ChioReceiptBody.policy_hash`
-(`crates/chio-core-types/src/receipt.rs:166`) still aggregates digests
+(`crates/core/chio-core-types/src/receipt.rs:166`) still aggregates digests
 across the pipeline; the extension is per-engine detail.
 
 Replay: fetch artifact by `policy_digest`, reconstruct request from
@@ -425,7 +425,7 @@ set against the schema before construction. Failure returns
 boot.
 
 **Bootstrap path.** Control plane builds guards at
-`crates/chio-control-plane/src/lib.rs:368` via `add_guard`. The
+`crates/platform/chio-control-plane/src/lib.rs:368` via `add_guard`. The
 config-loading code preceding that call must surface a fatal
 `KernelError::ConfigError` on `CedarLoadError`; the load function returns
 `Result`, so boot does not start until every guard is constructed.
@@ -461,7 +461,7 @@ Kernel exits non-zero. No partial-load, no degraded mode.
 **Runtime failures.** Cedar eval errors (e.g. missing entity attributes)
 return `ExternalGuardError::Permanent`, mapped by the adapter to
 `Verdict::Deny` without tripping the breaker
-(`crates/chio-guards/src/external/mod.rs:381-398`). Fail-closed at request
+(`crates/guards/chio-guards/src/external/mod.rs:381-398`). Fail-closed at request
 level mirrors fail-closed at load level.
 
 ---
@@ -493,7 +493,7 @@ Items needing `cargo` against `cedar-policy` 4.x to settle:
 
 ## Summary
 
-1. Chosen guard: **`McpToolGuard`** (`crates/chio-guards/src/mcp_tool.rs`,
+1. Chosen guard: **`McpToolGuard`** (`crates/guards/chio-guards/src/mcp_tool.rs`,
    429 LOC; high-density list-and-branch policy that maps cleanly to
    Cedar `Agent / invoke / Tool`).
 2. Recommendation: **Option A' (Cedar greenfield + two flagship ports:

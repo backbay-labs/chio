@@ -7,10 +7,10 @@
     "summary": "Chio is a secure, attested tool access protocol. Agents are untrusted. The runtime kernel validates time-bounded capability tokens, runs guard and policy evaluation before tool calls cross trust boundaries, and signs append-only receipt records.",
     "authoritative_files": [
       "spec/PROTOCOL.md",
-      "crates/chio-core-types/src/capability.rs",
-      "crates/chio-kernel/src/kernel/mod.rs",
-      "crates/chio-guards/src",
-      "crates/chio-policy/src"
+      "crates/core/chio-core-types/src/capability.rs",
+      "crates/kernel/chio-kernel/src/kernel/mod.rs",
+      "crates/guards/chio-guards/src",
+      "crates/guards/chio-policy/src"
     ],
     "editing_guidance": [
       "Start with protocol and core type contracts before changing kernel behavior.",

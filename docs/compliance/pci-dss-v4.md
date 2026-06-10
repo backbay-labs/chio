@@ -46,7 +46,7 @@ This mapping covers all 12 requirement groups with coverage level, gaps, and cus
 |--------|---------------------|--------------|----------|------|-------------------------|
 | **Req 1** | Install and maintain network security controls | Application layer; Chio runs as sidecar to tool servers. No network segmentation enforcement. | out-of-scope | Chio does not enforce firewall rules or segmentation | Firewall rules, network segmentation, CDE isolation |
 | 1.2 | Configuration standards for NSCs | N/A | out-of-scope | N/A | Network device standards |
-| 1.3 | Restrict inbound and outbound traffic | `crates/chio-guards/src/egress_allowlist.rs` limits which egress targets agents can reach | partial | Chio enforces at application layer, not network | Network ACLs |
+| 1.3 | Restrict inbound and outbound traffic | `crates/guards/chio-guards/src/egress_allowlist.rs` limits which egress targets agents can reach | partial | Chio enforces at application layer, not network | Network ACLs |
 | 1.4 | NSCs installed between trusted and untrusted networks | N/A | out-of-scope | N/A | Network perimeter |
 | 1.5 | Control risks from computing devices | N/A | out-of-scope | N/A | Endpoint management |
 | **Req 2** | Apply secure configurations to all system components | Unified config (`docs/protocols/UNIFIED-CONFIGURATION.md`); fail-closed defaults | partial | No PCI-specific baseline document | PCI secure-baseline for org |
@@ -54,7 +54,7 @@ This mapping covers all 12 requirement groups with coverage level, gaps, and cus
 | 2.2.7 | Non-console admin access uses strong crypto | HTTP endpoints support TLS; mTLS documented for tool-server transport | partial | `min_tls_version` config option is planned, not yet enforced | TLS configuration |
 | 2.3 | Wireless environments secured | N/A | out-of-scope | N/A | Wireless policy |
 | **Req 3** | Protect stored account data | Chio does not store CHD. Receipt content hashes are SHA-256 of arguments (not raw CHD) | partial | Guard evidence (e.g., `response_sanitization` output snippets) may contain sensitive substrings before redaction | Encryption at rest for data stores |
-| 3.2 | Account data storage minimized | Receipts store hashes, not raw arguments; see `crates/chio-core-types/src/receipt.rs` | strong | None in receipt payload | PAN minimization in tool servers |
+| 3.2 | Account data storage minimized | Receipts store hashes, not raw arguments; see `crates/core/chio-core-types/src/receipt.rs` | strong | None in receipt payload | PAN minimization in tool servers |
 | 3.3 | SAD is not stored after authorization | N/A | out-of-scope | N/A | SAD handling in tool servers |
 | 3.4 | PAN is rendered unreadable | PAN redaction in guard outputs is configurable via `secret_leak.rs` / `response_sanitization.rs` patterns | partial | No shipped PAN-specific pattern library | PAN pattern set for `response_sanitization` |
 | 3.5 | Cryptographic keys used to protect PAN are secured | Chio signing keys are not PAN-encryption keys; FIPS/HSM path planned (`docs/protocols/COMPLIANCE-ROADMAP.md` section 2) | partial | HSM backends (Vault/KMS) not yet shipped | Key management for PAN |
@@ -71,12 +71,12 @@ This mapping covers all 12 requirement groups with coverage level, gaps, and cus
 | 6.2 | Bespoke and custom software is developed securely | `cargo test --workspace`, `cargo fmt --check`, canonical JSON (RFC 8785) for all signed payloads | strong | None at protocol layer | SDLC evidence |
 | 6.3 | Security vulnerabilities are identified and addressed | GitHub issue tracker; dependency review | partial | No formal vuln disclosure policy | Vuln disclosure policy |
 | 6.4 | Public-facing web applications are protected | Chio is not public-facing by default; `chio trust serve` requires Bearer auth (`docs/RECEIPT_QUERY_API.md`) | partial | No WAF integration | WAF for public endpoints |
-| 6.5 | Changes to systems and software are managed | Policy hash in every receipt (`crates/chio-core-types/src/receipt.rs`) ties call to policy version | strong | No change-management workflow shipped | Change-management process |
-| **Req 7** | Restrict access to system components and cardholder data by business need to know | Capability tokens (`crates/chio-core-types/src/capability.rs`) scope access to specific tools and servers | strong | None at tool-access layer | Role/permission design |
+| 6.5 | Changes to systems and software are managed | Policy hash in every receipt (`crates/core/chio-core-types/src/receipt.rs`) ties call to policy version | strong | No change-management workflow shipped | Change-management process |
+| **Req 7** | Restrict access to system components and cardholder data by business need to know | Capability tokens (`crates/core/chio-core-types/src/capability.rs`) scope access to specific tools and servers | strong | None at tool-access layer | Role/permission design |
 | 7.2 | Access is defined and assigned appropriately | `ToolGrant` with `scope`, `constraints`, expiry; delegation attenuation in `capability.rs` | strong | None | Role definitions |
 | 7.2.5 | Application and system accounts least-privilege | Capability-based least-privilege is the default | strong | None | Grant design per agent |
 | 7.3 | Access is managed through access-control systems | Capability issuance via `chio-governance` / `chio-control-plane`; revocation via `revocation_runtime.rs` | strong | None | Access-control ownership |
-| **Req 8** | Identify users and authenticate access | DPoP proof-of-possession (`crates/chio-kernel/src/dpop.rs`) binds Ed25519 keypair to every call | strong | Agent identity is not a human user; mapping needed | Mapping agent-to-operator identity |
+| **Req 8** | Identify users and authenticate access | DPoP proof-of-possession (`crates/kernel/chio-kernel/src/dpop.rs`) binds Ed25519 keypair to every call | strong | Agent identity is not a human user; mapping needed | Mapping agent-to-operator identity |
 | 8.2 | User identification and related accounts are managed | `CapabilityToken.subject` uniquely identifies each agent; `WorkloadIdentity` captures metadata | strong | Account lifecycle docs are deployment-specific | Lifecycle procedures |
 | 8.3 | Strong authentication for users is established | Ed25519 keypair per agent; DPoP replay-safe via `action_hash` + nonce | strong | None at agent layer | MFA for human operators |
 | 8.4 | MFA is implemented into the CDE | N/A for agents | customer-responsibility | Agents use cryptographic authentication, not MFA | MFA for humans |
@@ -85,13 +85,13 @@ This mapping covers all 12 requirement groups with coverage level, gaps, and cus
 | **Req 9** | Restrict physical access to cardholder data | Physical controls | out-of-scope | N/A | Data center, clean desk |
 | 9.2-9.5 | Physical access controls | N/A | out-of-scope | N/A | Physical security |
 | **Req 10** | Log and monitor all access to system components and cardholder data | Every tool invocation produces a signed `ChioReceipt`; batches Merkle-committed via `KernelCheckpoint` | strong | None at tool-call layer | Log aggregation |
-| 10.2 | Audit logs are implemented | Receipt store (`crates/chio-kernel/src/receipt_store.rs`); append-only, sequential | strong | None | Log destination |
-| 10.3 | Audit logs are protected from destruction and unauthorized modification | Merkle commitments in `crates/chio-kernel/src/checkpoint.rs`; inclusion proofs via `build_inclusion_proof` | strong | None | Archive storage |
-| 10.4 | Audit logs are reviewed | `chio trust serve` dashboard; receipt query API (`crates/chio-kernel/src/receipt_query.rs`) | partial | No alerting engine in Chio itself (SIEM export covers this) | Review rota |
+| 10.2 | Audit logs are implemented | Receipt store (`crates/kernel/chio-kernel/src/receipt_store.rs`); append-only, sequential | strong | None | Log destination |
+| 10.3 | Audit logs are protected from destruction and unauthorized modification | Merkle commitments in `crates/kernel/chio-kernel/src/checkpoint.rs`; inclusion proofs via `build_inclusion_proof` | strong | None | Archive storage |
+| 10.4 | Audit logs are reviewed | `chio trust serve` dashboard; receipt query API (`crates/kernel/chio-kernel/src/receipt_query.rs`) | partial | No alerting engine in Chio itself (SIEM export covers this) | Review rota |
 | 10.5 | Audit-log history is retained | `RetentionConfig.retention_days` and `max_size_bytes`; archival preserves checkpoint rows | strong | 1-year minimum (PCI) must be set explicitly | Retention configuration |
 | 10.6 | Time-synchronization mechanisms are used | Receipts carry Unix timestamps from kernel clock; operator must ensure NTP on host | partial | No NTP enforcement inside Chio | Host time-sync |
-| 10.7 | Failures of critical security control systems are detected | Fail-closed pipeline produces deny receipts on error; SIEM adapter (`crates/chio-siem/src/exporter.rs`) streams events | partial | No automatic alert escalation inside Chio | Alert routing |
-| **Req 11** | Test security of systems and networks regularly | `cargo test --workspace`, guard integration tests under `crates/chio-kernel/tests/` | partial | No automated pen-test pipeline | Pen-testing, vuln scanning |
+| 10.7 | Failures of critical security control systems are detected | Fail-closed pipeline produces deny receipts on error; SIEM adapter (`crates/observability/chio-siem/src/exporter.rs`) streams events | partial | No automatic alert escalation inside Chio | Alert routing |
+| **Req 11** | Test security of systems and networks regularly | `cargo test --workspace`, guard integration tests under `crates/kernel/chio-kernel/tests/` | partial | No automated pen-test pipeline | Pen-testing, vuln scanning |
 | 11.2 | Wireless access points are identified | N/A | out-of-scope | N/A | Wireless scan |
 | 11.3 | External and internal vulnerabilities are identified and addressed | Dependency scanning is deployer-managed | customer-responsibility | N/A | Vuln scanning |
 | 11.4 | External and internal penetration testing | Not automated in Chio | customer-responsibility | N/A | Pen-test program |
@@ -99,7 +99,7 @@ This mapping covers all 12 requirement groups with coverage level, gaps, and cus
 | 11.6 | Unauthorized changes on payment pages are detected | N/A | out-of-scope | N/A | Page integrity |
 | **Req 12** | Support information security with organizational policies and programs | Organizational | out-of-scope | N/A | Infosec policy, training, incident response |
 | 12.3 | Risks to the CDE are formally identified | `chio-underwriting` risk tiering can contribute | partial | Not a PCI-specific risk assessment | Risk assessment |
-| 12.5 | PCI scope is documented and validated | Chio compliance certificate (`crates/chio-cli/src/cert.rs`) supports scope evidence | partial | No PCI-specific scope template | Scope documentation |
+| 12.5 | PCI scope is documented and validated | Chio compliance certificate (`crates/products/chio-cli/src/cert.rs`) supports scope evidence | partial | No PCI-specific scope template | Scope documentation |
 | 12.6 | Security awareness education is ongoing | N/A | customer-responsibility | N/A | Training |
 | 12.8 | Third-party service providers are managed | Capability scoping restricts which third-party tool servers an agent can reach | partial | Chio does not audit TPSPs | TPSP due diligence |
 | 12.10 | Suspected and confirmed security incidents are responded to | Evidence export bundles usable for investigation; revocation for containment | partial | No IR playbook in Chio | IR plan |
@@ -126,16 +126,16 @@ Customer-responsibility items that implementers must not assume Chio provides:
 
 ## Cross-References
 
-- Capability tokens, grants, delegation: `crates/chio-core-types/src/capability.rs`
-- Receipt structure and signing: `crates/chio-core-types/src/receipt.rs`, `crates/chio-kernel/src/receipt_support.rs`
-- Receipt store and retention: `crates/chio-kernel/src/receipt_store.rs`, `crates/chio-store-sqlite/src/receipt_store/evidence_retention.rs`
-- Checkpoints: `crates/chio-kernel/src/checkpoint.rs`
-- DPoP: `crates/chio-kernel/src/dpop.rs`
-- Revocation: `crates/chio-kernel/src/revocation_runtime.rs`, `crates/chio-kernel/src/revocation_store.rs`
-- Budgets: `crates/chio-kernel/src/budget_store.rs`, `crates/chio-metering/src/budget.rs`
-- Guards (egress/path/secret-leak/response-sanitization): `crates/chio-guards/src/`
-- SIEM export: `crates/chio-siem/src/exporter.rs`
-- Compliance certificate: `crates/chio-cli/src/cert.rs`
-- Receipt query API: `crates/chio-kernel/src/receipt_query.rs` and `docs/RECEIPT_QUERY_API.md`
+- Capability tokens, grants, delegation: `crates/core/chio-core-types/src/capability.rs`
+- Receipt structure and signing: `crates/core/chio-core-types/src/receipt.rs`, `crates/kernel/chio-kernel/src/receipt_support.rs`
+- Receipt store and retention: `crates/kernel/chio-kernel/src/receipt_store.rs`, `crates/platform/chio-store-sqlite/src/receipt_store/evidence_retention.rs`
+- Checkpoints: `crates/kernel/chio-kernel/src/checkpoint.rs`
+- DPoP: `crates/kernel/chio-kernel/src/dpop.rs`
+- Revocation: `crates/kernel/chio-kernel/src/revocation_runtime.rs`, `crates/kernel/chio-kernel/src/revocation_store.rs`
+- Budgets: `crates/kernel/chio-kernel/src/budget_store.rs`, `crates/economy/chio-metering/src/budget.rs`
+- Guards (egress/path/secret-leak/response-sanitization): `crates/guards/chio-guards/src/`
+- SIEM export: `crates/observability/chio-siem/src/exporter.rs`
+- Compliance certificate: `crates/products/chio-cli/src/cert.rs`
+- Receipt query API: `crates/kernel/chio-kernel/src/receipt_query.rs` and `docs/RECEIPT_QUERY_API.md`
 - Trust model and key management: `docs/protocols/TRUST-MODEL-AND-KEY-MANAGEMENT.md`
 - Unified configuration: `docs/protocols/UNIFIED-CONFIGURATION.md`

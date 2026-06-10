@@ -89,7 +89,7 @@ because the in-platform SDKs already exist.
 ## `HttpEgressContract` verified surface
 
 Citations across docs 01, 05, 06, 11 collapse to one struct at
-`crates/chio-egress-contract/src/lib.rs:14-39`. Per-field verification:
+`crates/protocol/chio-egress-contract/src/lib.rs:14-39`. Per-field verification:
 
 | Doc claim | Source line | Verdict |
 |-----------|------------|---------|
@@ -163,7 +163,7 @@ allowlisting, and email security."
 ### chio-envoy-ext-authz QUIC/gRPC coverage (doc 06)
 
 Doc 06 line 13 cites the crate as HTTP-only:
-`crates/chio-envoy-ext-authz/src/lib.rs:1` and
+`crates/protocol/chio-envoy-ext-authz/src/lib.rs:1` and
 `build.rs:24-25`. **Verified**: build.rs lists exactly
 `external_auth.proto` and `attribute_context.proto` (plus base/status
 helpers), and tool identity is derived as `http.<method>.<path>`
@@ -183,11 +183,11 @@ context regardless of the wire transport; no Chio change required."
 
 Doc 06 line 64 says `PresignedUrlGuard` should live next to
 `SqlQueryGuard` in `chio-data-guards`. **Verified viable**:
-`crates/chio-data-guards/src/lib.rs:40-50` already re-exports
+`crates/guards/chio-data-guards/src/lib.rs:40-50` already re-exports
 `SqlQueryGuard`, `VectorDbGuard`, `WarehouseCostGuard`, `QueryResultGuard`.
 The module layout is "one file per guard", so a `presigned_url_guard.rs`
 sibling is mechanically straightforward. Doc 06's exact line citation
-(`crates/chio-data-guards/src/lib.rs:50`) lands on
+(`crates/guards/chio-data-guards/src/lib.rs:50`) lands on
 `pub use sql_guard::SqlQueryGuard;` which is the right anchor.
 
 ### `chio-wire-mediation` deferral (doc 06)
@@ -201,7 +201,7 @@ elsewhere in the cluster. **Consistent**.
 
 Doc 01 conclusion item 1 (lines 177-184): `ToolAction` lacks
 `EventPublish`/`EventConsume`. Verified at
-`crates/chio-guards/src/action.rs:16-46` (range cited exactly): 12
+`crates/guards/chio-guards/src/action.rs:16-46` (range cited exactly): 12
 variants, none of which represent broker semantics. The closest is
 `ExternalApiCall { service, endpoint }` at line 39. **Mismatch is
 real.**
@@ -215,7 +215,7 @@ Doc 05's sketched `chio.orchestrator-egress` server (lines 173-191)
 uses `ToolServerConnection`-shaped tools (`tool_name` strings) and
 double-gates via `HttpEgressContract` (lines 208-213). Verified:
 `ToolServerConnection` is the trait at
-`crates/chio-kernel/src/runtime.rs:255` (doc 01/05 citation is
+`crates/kernel/chio-kernel/src/runtime.rs:255` (doc 01/05 citation is
 correct). Composition story is sound: the bridge gate binds "which
 tool", the egress contract binds "which authority", and the contract
 is enforced *after* the bridge resolves the call. No new ergonomic
@@ -231,7 +231,7 @@ line 9. **Correct citation.**
 ### `chio-workflow/src/manifest.rs:13`
 
 Doc 05 line 167 cites `SkillManifest` at
-`crates/chio-workflow/src/manifest.rs:13`. Actual struct is at line 17
+`crates/platform/chio-workflow/src/manifest.rs:13`. Actual struct is at line 17
 (line 13 falls inside the doc comment that precedes it). Minor citation
 drift, not a substantive error. Doc 11 cites
 `manifest.rs:113` for `SkillStep`, which **is** correct.
@@ -272,7 +272,7 @@ mis-attribute to "n8n is hot, therefore priority-1 blocked".
 - Phase 3 receipt block (line 219-222): note that
   `ValidatedHttpEgressTarget` does not currently derive Serialize;
   embedding in a receipt requires either a projection or a derive.
-- Line 167: bump citation to `crates/chio-workflow/src/manifest.rs:17`
+- Line 167: bump citation to `crates/platform/chio-workflow/src/manifest.rs:17`
   (struct start) or keep line 13 if pointing at the doc comment, but
   call that out.
 

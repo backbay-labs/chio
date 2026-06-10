@@ -8,7 +8,7 @@ verify those signatures against the upstream workflow identity.
 The signature scheme is identical across channels: a detached
 [cosign](https://github.com/sigstore/cosign) signature plus a Fulcio
 short-lived certificate. The Rust verification crate
-[`crates/chio-attest-verify`](../../crates/chio-attest-verify/README.md)
+[`crates/trust/chio-attest-verify`](../../crates/trust/chio-attest-verify/README.md)
 consumes the same trust root and identity
 contract; CLI consumers can fall back to `cosign verify-blob` directly.
 
@@ -25,7 +25,7 @@ production artifact:
 Or, if you already have Chio installed, the `chio attest verify`
 subcommand wraps `chio_attest_verify::SigstoreVerifier` and avoids the
 external `cosign` install. See the crate
-[README](../../crates/chio-attest-verify/README.md) for the trait
+[README](../../crates/trust/chio-attest-verify/README.md) for the trait
 surface (`verify_bundle`, `verify_blob`, `verify_bytes`).
 
 ## OIDC identity contract
@@ -159,7 +159,7 @@ not, the registry has been tampered with.
 ## In-process verification (Rust callers)
 
 Rust callers should consume the
-[`chio_attest_verify`](../../crates/chio-attest-verify/README.md)
+[`chio_attest_verify`](../../crates/trust/chio-attest-verify/README.md)
 crate rather than shelling out to `cosign`. The crate exposes a single
 `AttestVerifier` trait with three methods:
 
@@ -194,7 +194,7 @@ let claims = verifier.verify_blob(
 ```
 
 The crate ships the Sigstore Public Good Instance trust root in tree
-under `crates/chio-attest-verify/sigstore-root/` and refreshes it
+under `crates/trust/chio-attest-verify/sigstore-root/` and refreshes it
 quarterly via the trust-root re-bake job.
 
 ## Failure mode (fail-closed)
@@ -221,7 +221,7 @@ See `spec/PROTOCOL.md` for the supply-chain attestation contract.
 
 ## See also
 
-- `crates/chio-attest-verify/README.md` -- trait surface, embedded
+- `crates/trust/chio-attest-verify/README.md` -- trait surface, embedded
   trust root, OIDC issuer regex contract, integration test inventory.
 - `docs/install/PUBLISHING.md` -- operator-facing release runbook for
   PyPI and npm, including OIDC trusted publisher setup.

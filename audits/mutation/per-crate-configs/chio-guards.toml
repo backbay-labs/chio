@@ -76,16 +76,16 @@
 #
 # ITEMIZED EXCLUSION RATIONALE (per file):
 #
-#   crates/chio-guards/src/action.rs
+#   crates/guards/chio-guards/src/action.rs
 #     OK -- pure type definitions for the Action enum; no decision
 #     logic.
 #
-#   crates/chio-guards/src/advisory.rs
+#   crates/guards/chio-guards/src/advisory.rs
 #     OK -- advisory-by-design guard surface. By construction
 #     advisory guards do not deny; their decisions are not on the
 #     trust boundary.
 #
-#   crates/chio-guards/src/external/**
+#   crates/guards/chio-guards/src/external/**
 #     PARTIAL-DEFER -- remote-process bridges, integration-tested
 #     rather than mutation-tested. external/ kill-rate evidence comes
 #     from the integration-test suite, not cargo-mutants.
@@ -95,17 +95,17 @@ timeout_multiplier = 3.0
 minimum_test_timeout = 60
 
 examine_globs = [
-    "crates/chio-guards/src/pipeline.rs",
-    "crates/chio-guards/src/forbidden_path.rs",
-    "crates/chio-guards/src/path_allowlist.rs",
-    "crates/chio-guards/src/path_normalization.rs",
-    "crates/chio-guards/src/egress_allowlist.rs",
-    "crates/chio-guards/src/secret_leak.rs",
-    "crates/chio-guards/src/data_flow.rs",
-    "crates/chio-guards/src/behavioral_sequence.rs",
+    "crates/guards/chio-guards/src/pipeline.rs",
+    "crates/guards/chio-guards/src/forbidden_path.rs",
+    "crates/guards/chio-guards/src/path_allowlist.rs",
+    "crates/guards/chio-guards/src/path_normalization.rs",
+    "crates/guards/chio-guards/src/egress_allowlist.rs",
+    "crates/guards/chio-guards/src/secret_leak.rs",
+    "crates/guards/chio-guards/src/data_flow.rs",
+    "crates/guards/chio-guards/src/behavioral_sequence.rs",
     # Decision-capable per audits/evidence/mutation exclusion audit/exclude-audit.md.
-    "crates/chio-guards/src/text_utils.rs",
-    "crates/chio-guards/src/spider_sense.rs",
+    "crates/guards/chio-guards/src/text_utils.rs",
+    "crates/guards/chio-guards/src/spider_sense.rs",
 ]
 
 # Itemized exclusions (rationale per file in the header above).
@@ -117,7 +117,7 @@ exclude_globs = [
     "**/benches/**",
     "**/build.rs",
     "**/fuzz.rs",
-    "crates/chio-guards/src/action.rs",
-    "crates/chio-guards/src/advisory.rs",
-    "crates/chio-guards/src/external/**",
+    "crates/guards/chio-guards/src/action.rs",
+    "crates/guards/chio-guards/src/advisory.rs",
+    "crates/guards/chio-guards/src/external/**",
 ]

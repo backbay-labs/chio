@@ -20,17 +20,17 @@ COPY tests/e2e ./tests/e2e
 RUN cargo build --release --locked -p chio-cli --bin chio
 
 FROM node:${NODE_VERSION}-alpine@sha256:968df39aedcea65eeb078fb336ed7191baf48f972b4479711397108be0966920 AS dashboard-builder
-WORKDIR /workspace/crates/chio-cli/dashboard
+WORKDIR /workspace/crates/products/chio-cli/dashboard
 
-COPY crates/chio-cli/dashboard/package.json ./
-COPY crates/chio-cli/dashboard/package-lock.json ./
+COPY crates/products/chio-cli/dashboard/package.json ./
+COPY crates/products/chio-cli/dashboard/package-lock.json ./
 RUN npm ci --no-fund --no-audit
 
-COPY crates/chio-cli/dashboard/index.html ./
-COPY crates/chio-cli/dashboard/tsconfig.json ./
-COPY crates/chio-cli/dashboard/tsconfig.app.json ./
-COPY crates/chio-cli/dashboard/vite.config.ts ./
-COPY crates/chio-cli/dashboard/src ./src
+COPY crates/products/chio-cli/dashboard/index.html ./
+COPY crates/products/chio-cli/dashboard/tsconfig.json ./
+COPY crates/products/chio-cli/dashboard/tsconfig.app.json ./
+COPY crates/products/chio-cli/dashboard/vite.config.ts ./
+COPY crates/products/chio-cli/dashboard/src ./src
 
 RUN npm run build
 
@@ -58,7 +58,7 @@ CMD ["--help"]
 
 FROM chio AS chio-trust-demo
 WORKDIR /opt/chio
-COPY --from=dashboard-builder --chown=chio:chio /workspace/crates/chio-cli/dashboard/dist ./dashboard/dist
+COPY --from=dashboard-builder --chown=chio:chio /workspace/crates/products/chio-cli/dashboard/dist ./dashboard/dist
 EXPOSE 8940
 ENTRYPOINT []
 CMD ["/bin/sh", "-lc", "exec /sbin/tini -- /usr/local/bin/chio --receipt-db /var/lib/chio/receipts.sqlite --revocation-db /var/lib/chio/revocations.sqlite --authority-db /var/lib/chio/authority.sqlite --budget-db /var/lib/chio/budgets.sqlite trust serve --listen 0.0.0.0:8940 --service-token \"${CHIO_SERVICE_TOKEN:-demo-token}\""]

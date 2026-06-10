@@ -1099,13 +1099,12 @@ def test_typeerror_fallback_two_kwargs_same_canonical_both_redact() -> None:
     must redact independently and round-trip under their original
     wrapper-name keys; neither value may be silently dropped.
 
-    Before the C1 fix, the TypeError-fallback alias-map path collapsed
-    both values into a single ``canonical_view[canonical]`` entry, so
-    the second kwarg overwrote the first and only one bucket survived
-    in the rebuilt ``redacted_kwargs``. The fix mirrors the
-    merge-conflict semantics from the variadic / overflow paths:
-    redact each kwarg independently, keyed by its ORIGINAL wrapper
-    name.
+    The TypeError-fallback alias-map path must not collapse both
+    values into a single ``canonical_view[canonical]`` entry, which
+    would let the second kwarg overwrite the first so only one bucket
+    survives in the rebuilt ``redacted_kwargs``. It mirrors the
+    merge-conflict semantics of the variadic / overflow paths: redact
+    each kwarg independently, keyed by its ORIGINAL wrapper name.
     """
 
     def write(body: str, path: str) -> None:
@@ -2018,13 +2017,11 @@ def test_typeerror_fallback_colliding_positional_aliases_redact_independently() 
 
 
 def test_build_alias_map_is_importable_from_top_level() -> None:
-    """Regression:
-
-    ``build_alias_map`` is a public helper (no underscore prefix) and
-    is advertised in the PR description as exposing the wrapper-name
-    -> canonical-name routing algorithm. It must be re-exported from
-    the top-level ``chio_adapter_base`` namespace so wildcard imports
-    and tooling-generated API docs surface it.
+    """``build_alias_map`` is a public helper (no underscore prefix)
+    exposing the wrapper-name -> canonical-name routing algorithm. It
+    must be re-exported from the top-level ``chio_adapter_base``
+    namespace so wildcard imports and tooling-generated API docs
+    surface it.
     """
 
     import chio_adapter_base

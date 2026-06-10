@@ -11,11 +11,11 @@ func TestVerdictMatrixGoDriverMatchesCorpus(t *testing.T) {
 	root := filepath.Clean("../../..")
 	driverPath := filepath.Join(
 		root,
-		"crates/chio-conformance/verdict_matrix/drivers/go/run_scenarios.go",
+		"crates/tooling/chio-conformance/verdict_matrix/drivers/go/run_scenarios.go",
 	)
 	scenarioRoot := filepath.Join(
 		root,
-		"crates/chio-conformance/verdict_matrix/scenarios",
+		"crates/tooling/chio-conformance/verdict_matrix/scenarios",
 	)
 	cmd := exec.Command(
 		"go",

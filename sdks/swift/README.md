@@ -17,7 +17,7 @@ Concretely:
 - `Frameworks/ChioKernel.xcframework` contains the generated static
   libraries and UniFFI Swift headers.
 - The C-ABI mobile attestation entry points
-  (`crates/chio-kernel-mobile/src/lib.rs`) return challenge envelopes
+  (`crates/kernel/chio-kernel-mobile/src/lib.rs`) return challenge envelopes
   and verifier results instead of `AttestationUnavailable`.
 
 ## Build
@@ -29,8 +29,8 @@ The build script:
 2. Run `uniffi-bindgen generate --language swift`.
 3. Create
    `target/release-qualification/mobile-kernel/ios/ChioKernel.xcframework`.
-4. Copy the produced artifact into `sdks/swift/Frameworks/` when a
-   release slice refreshes the committed binary target.
+4. Copy the produced artifact into `sdks/swift/Frameworks/` to refresh
+   the committed binary target.
 
 ## Minimum Platform
 

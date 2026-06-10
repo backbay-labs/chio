@@ -40,11 +40,3 @@ accepted responses.
 - The `/echo` request schema in `main.go` and `openapi.yaml` must stay aligned.
 - Smoke evidence must prove all three HTTP decisions and persisted sidecar
   receipts.
-
-## Current Improvement Target
-
-The example currently builds the router only inside `main`, so route behavior
-cannot be tested without booting the Chio sidecar. It also accepts missing or
-zero-valued `/echo` fields that the OpenAPI contract does not describe, and
-its smoke flow uses an outdated capability grant plus a receipt-list path that
-does not match the sidecar HTTP receipt store.

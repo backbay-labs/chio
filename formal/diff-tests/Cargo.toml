@@ -8,7 +8,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-chio-core = { package = "chio-core-types", path = "../../crates/chio-core-types" }
+chio-core = { package = "chio-core-types", path = "../../crates/core/chio-core-types" }
 chio-kernel-core = { workspace = true }
 proptest = { version = "1.10", default-features = false, features = ["std", "bit-set"] }
 serde_json = { workspace = true }

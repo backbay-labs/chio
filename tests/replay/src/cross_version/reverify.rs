@@ -375,7 +375,7 @@ mod reverify_tests {
     /// Pack the three named entries into a gzip-framed tarball at
     /// `path`. Each `(name, bytes)` pair becomes one tar entry rooted
     /// at `replay-bundle/<name>` (matches the layout the
-    /// release-tagged.yml workflow will produce).
+    /// release-tagged.yml workflow produces).
     fn write_synthetic_bundle(path: &Path, files: &[(&str, &[u8])]) {
         let file = std::fs::File::create(path).unwrap();
         let encoder = GzEncoder::new(file, Compression::default());

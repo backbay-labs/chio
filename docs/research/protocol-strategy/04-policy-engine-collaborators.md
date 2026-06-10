@@ -1,6 +1,6 @@
 # 04 - Policy Engine Collaborators: OPA, Cedar, OpenFGA, Tetragon
 
-> **Erratum:** [`ChioReceiptBody.policy_hash`](../../../crates/chio-core-types/src/receipt.rs#L159) is the current signed receipt field and is a hex or operator-pinned `String`, not `[u8; 32]`. The `policy_digest` wording below is an internal per-engine digest sketch, not a current core receipt field. See [reviews/03-policy-guards-review.md](reviews/03-policy-guards-review.md).
+> **Erratum:** [`ChioReceiptBody.policy_hash`](../../../crates/core/chio-core-types/src/receipt.rs#L159) is the current signed receipt field and is a hex or operator-pinned `String`, not `[u8; 32]`. The `policy_digest` wording below is an internal per-engine digest sketch, not a current core receipt field. See [reviews/03-policy-guards-review.md](reviews/03-policy-guards-review.md).
 
 ## TL;DR
 
@@ -25,25 +25,25 @@ the receipt's `evidence` and `policy_hash` fields so audits can replay.
 
 Chio's kernel mediates every tool call via the bridge contract
 `ToolServerConnection`
-(`crates/chio-kernel/src/runtime.rs:255`). Before forwarding, the kernel runs
+(`crates/kernel/chio-kernel/src/runtime.rs:255`). Before forwarding, the kernel runs
 a list of `Guard` implementations
-(`crates/chio-kernel/src/kernel/mod.rs:964`), each producing a `Verdict`
-(`crates/chio-kernel/src/runtime.rs:29`). The verdict is one of
+(`crates/kernel/chio-kernel/src/kernel/mod.rs:964`), each producing a `Verdict`
+(`crates/kernel/chio-kernel/src/runtime.rs:29`). The verdict is one of
 `Allow | Deny | PendingApproval`. A signed `ChioReceipt`
-(`crates/chio-core-types/src/receipt.rs:105`) records the outcome, including a
+(`crates/core/chio-core-types/src/receipt.rs:105`) records the outcome, including a
 `policy_hash`, a `content_hash`, and a `Vec<GuardEvidence>` array
-(`crates/chio-core-types/src/receipt.rs:1176`) that names each guard and its
+(`crates/core/chio-core-types/src/receipt.rs:1176`) that names each guard and its
 verdict.
 
 The native extension surfaces today:
 
 1. **In-process sync guards.** `Guard::evaluate(&GuardContext) -> Result<Verdict, KernelError>`. The trait is synchronous. Examples: `ForbiddenPathGuard`,
    `EgressAllowlistGuard`, `McpToolGuard`, all listed in
-   `crates/chio-guards/src/lib.rs:11-27`.
+   `crates/guards/chio-guards/src/lib.rs:11-27`.
 
 2. **Async external guards.** `chio-guards::external::ExternalGuard` defines
    the async contract
-   (`crates/chio-guards/src/external/mod.rs:119-129`):
+   (`crates/guards/chio-guards/src/external/mod.rs:119-129`):
    ```rust
    #[async_trait]
    pub trait ExternalGuard: Send + Sync {
@@ -55,33 +55,33 @@ The native extension surfaces today:
    ```
    `AsyncGuardAdapter` composes a circuit breaker, token bucket, TTL cache,
    and retry-with-jitter around any `ExternalGuard`
-   (`crates/chio-guards/src/external/mod.rs:308-400`). Default failure mode is
+   (`crates/guards/chio-guards/src/external/mod.rs:308-400`). Default failure mode is
    **fail-closed**: `CircuitOpenVerdict::Deny` and
    `RateLimitedVerdict::Deny` are the defaults
-   (`crates/chio-guards/src/external/mod.rs:133-170`). This matches the
+   (`crates/guards/chio-guards/src/external/mod.rs:133-170`). This matches the
    `CLAUDE.md` house rule.
 
 3. **Sync-to-async kernel bridge.** `chio-external-guards::ScopedAsyncGuard`
    wraps an `AsyncGuardAdapter` as a sync `Guard` so it can be installed on
    the kernel pipeline
-   (`crates/chio-external-guards/src/lib.rs:35-139`). Concrete adapters
+   (`crates/guards/chio-external-guards/src/lib.rs:35-139`). Concrete adapters
    already living in the tree:
    `BedrockGuardrailGuard`, `AzureContentSafetyGuard`, `VertexSafetyGuard`,
    `SafeBrowsingGuard`, `SnykGuard`, `VirusTotalGuard`
-   (`crates/chio-external-guards/src/lib.rs:14-39`).
+   (`crates/guards/chio-external-guards/src/lib.rs:14-39`).
 
 4. **WASM guards** authored against `chio-guard-sdk` and packaged as
    `.arcguard` OCI artifacts via `chio-guard-registry`. SDK ABI is JSON over
-   linear memory (`crates/chio-guard-sdk/src/types.rs:29-56`). Macros in
+   linear memory (`crates/sdk/chio-guard-sdk/src/types.rs:29-56`). Macros in
    `chio-guard-sdk-macros` will (per the comment at
-   `crates/chio-guard-sdk/src/lib.rs:22`) generate the `evaluate` export.
+   `crates/sdk/chio-guard-sdk/src/lib.rs:22`) generate the `evaluate` export.
 
 5. **Envoy ext_authz bridge.** `chio-envoy-ext-authz` exposes
    `envoy.service.auth.v3.Authorization/Check`
-   (`crates/chio-envoy-ext-authz/src/service.rs:51-82`). This is the "Chio is
+   (`crates/protocol/chio-envoy-ext-authz/src/service.rs:51-82`). This is the "Chio is
    the policy decision point that Envoy calls" direction: Envoy speaks
    ext_authz to a Chio service which delegates to an `EnvoyKernel` trait
-   (`crates/chio-envoy-ext-authz/src/service.rs:26-31`). Chio is the PDP, not
+   (`crates/protocol/chio-envoy-ext-authz/src/service.rs:26-31`). Chio is the PDP, not
    the PEP, in this pattern.
 
 The relevant insight: Chio already has both directions of the collaborator
@@ -136,7 +136,7 @@ fleet point at the sidecar; everyone else gets a self-contained binary.
 }
 ```
 This is a near-direct serialization of `GuardCallContext`
-(`crates/chio-guards/src/external/mod.rs:77-87`) plus a few extras from
+(`crates/guards/chio-guards/src/external/mod.rs:77-87`) plus a few extras from
 `GuardContext`. Stable schema; bump a version string when fields are added so
 Rego policies can guard on it.
 
@@ -159,7 +159,7 @@ replay.
 
 **Failure semantics.** Sidecar unreachable -> `ExternalGuardError::Transient`
 -> circuit breaker opens after the configured failure threshold -> `CircuitOpenVerdict::Deny` (fail-closed default at
-`crates/chio-guards/src/external/mod.rs:136`). Embedded `regorus` panics are
+`crates/guards/chio-guards/src/external/mod.rs:136`). Embedded `regorus` panics are
 caught by the adapter and become Deny.
 
 ---
@@ -207,7 +207,7 @@ issuance/revocation rather than per call.
 **Recommendation.** **Ship first.** This is the lowest-friction integration
 and the policy engine whose design philosophy lines up most cleanly with
 Chio's. A `CedarPolicyGuard` would live at
-`crates/chio-external-guards/src/external/cedar.rs` and implement
+`crates/guards/chio-external-guards/src/external/cedar.rs` and implement
 `ExternalGuard`. No new async transport, no new health-check surface.
 
 ---
@@ -310,7 +310,7 @@ TracingPolicy). Do not try to fit Tetragon under `ExternalGuard`.
 
 ### The `PolicyEngineProvider` trait
 
-A single new trait in `crates/chio-external-guards/src/lib.rs` layered on top
+A single new trait in `crates/guards/chio-external-guards/src/lib.rs` layered on top
 of `ExternalGuard`. It exists so engine-aware code (config loaders, receipt
 emitters, policy-hash aggregation) can treat all engines uniformly:
 
@@ -350,12 +350,12 @@ For an allow verdict backed by engine `E` with policy digest `D` and decision
 ID `id`:
 
 - `ChioReceiptBody.policy_hash`
-  (`crates/chio-core-types/src/receipt.rs:166`) is computed by hashing the
+  (`crates/core/chio-core-types/src/receipt.rs:166`) is computed by hashing the
   concatenation of every contributing policy digest in pipeline order. This
   already accommodates multi-guard pipelines; engine providers just contribute
   another digest.
 - `ChioReceiptBody.evidence`
-  (`crates/chio-core-types/src/receipt.rs:169`) gets one `GuardEvidence` per
+  (`crates/core/chio-core-types/src/receipt.rs:169`) gets one `GuardEvidence` per
   provider: `guard_name = format!("{}:{}", engine, instance_name)`, `verdict`
   = allow/deny, `details` = JSON-encoded `{decision_id, obligations,
   diagnostics}`.
@@ -370,12 +370,12 @@ Default fail-closed already applies because `ExternalGuard` is the substrate:
 
 - Engine unreachable / timeout -> `ExternalGuardError::Transient` -> retry
   -> circuit opens after threshold -> `CircuitOpenVerdict::Deny` (default at
-  `crates/chio-guards/src/external/mod.rs:136`).
+  `crates/guards/chio-guards/src/external/mod.rs:136`).
 - Engine returns malformed response ->
   `ExternalGuardError::Permanent` -> `Verdict::Deny`, breaker untouched
-  (`crates/chio-guards/src/external/mod.rs:381-398`).
+  (`crates/guards/chio-guards/src/external/mod.rs:381-398`).
 - Engine rate-limited by Chio's own `TokenBucket` -> `RateLimitedVerdict::Deny`
-  (default at `crates/chio-guards/src/external/mod.rs:155`).
+  (default at `crates/guards/chio-guards/src/external/mod.rs:155`).
 
 The one new policy: **policy digest unavailable at startup -> refuse to
 register the guard.** This matches the CLAUDE.md rule that invalid policies

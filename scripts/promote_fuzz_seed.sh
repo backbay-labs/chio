@@ -21,7 +21,7 @@
 #   --mode adversarial  Promotes a libFuzzer crash that decodes cleanly
 #                       through one of the trust-boundary surfaces into
 #                       a triage-pending case under
-#                       crates/chio-adversarial-suite/cases/<class>/<sha>.json
+#                       crates/core/chio-adversarial-suite/cases/<class>/<sha>.json
 #                       with `expected_verdict: "DENY"` placeholder and
 #                       `pending: true`. Requires --class (one of the
 #                       eight attack classes) and --threat-id (a
@@ -55,7 +55,7 @@ Promotes a fuzz seed into a permanent regression test:
     [dev-dependencies]. When proptest is missing, falls back to the
     plain regression and warns.
   - In adversarial mode: writes a triage-pending case under
-    crates/chio-adversarial-suite/cases/<class>/<sha>.json with
+    crates/core/chio-adversarial-suite/cases/<class>/<sha>.json with
     `expected_verdict: "DENY"` and `pending: true`. Requires --class
     (one of the eight adversarial attack classes) and --threat-id (a
     chio-threat-model.v1.json identifier).
@@ -383,10 +383,10 @@ EOF
         ;;
     adversarial)
         # Triage gate: emit a pending case under
-        # crates/chio-adversarial-suite/cases/<class>/<sha16>.json so a
+        # crates/core/chio-adversarial-suite/cases/<class>/<sha16>.json so a
         # human triager can confirm the verdict, fill in expected_reason,
         # and strip the pending flag.
-        CASES_DIR="$REPO_ROOT/crates/chio-adversarial-suite/cases/$CLASS"
+        CASES_DIR="$REPO_ROOT/crates/core/chio-adversarial-suite/cases/$CLASS"
         mkdir -p "$CASES_DIR"
         CASE_ID="${CLASS//_/-}-${SHA16}"
         OUT="$CASES_DIR/${CASE_ID}.json"

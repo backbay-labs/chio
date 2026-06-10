@@ -36,8 +36,8 @@ bash scripts/tests/release-qualification-formal-tools.test.sh
 bash scripts/tests/release-npm-package-matrix.test.sh
 bash scripts/tests/release-pypi-package-matrix.test.sh
 bash scripts/tests/provider-fixture-claims.test.sh
-# Keep the CI warning gate focused on repo-shipping targets; test/bench-only
-# lint backlogs are exercised by `cargo test` and can be migrated separately.
+# The CI warning gate covers repo-shipping targets; test/bench-only lint is
+# exercised by `cargo test`.
 cargo clippy --workspace --lib --bins --examples -- -D warnings
 cargo build --workspace
 # `chio-wasm-guards` pulls in large wasmtime-backed integration binaries when

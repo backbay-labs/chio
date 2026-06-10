@@ -21,7 +21,7 @@ only on `chio-core-types` and `chio-credentials` (reputation is not a
 dependency; outcomes feed reputation via outcome receipts, not the other
 way around). Federation gossip lives in a thin sibling module under
 `chio-federation`, mirroring how `chio-revocation-oracle` and
-`../crates/chio-federation/src/revocation_gossip.rs` factor today.
+`../crates/trust/chio-federation/src/revocation_gossip.rs` factor today.
 
 Key words MUST, SHOULD, and MAY are used per RFC 2119. Canonical JSON
 follows RFC 8785 (JCS): UTF-8, sorted object keys, no insignificant
@@ -143,7 +143,7 @@ indicators, and private customer data MUST NOT be copied into this object.
 
 ## 3. Federation Gossip
 
-The gossip pattern mirrors `../crates/chio-federation/src/revocation_gossip.rs`:
+The gossip pattern mirrors `../crates/trust/chio-federation/src/revocation_gossip.rs`:
 bilateral push queues, per-peer FIFO ring, deterministic flush. Pheromones
 differ from revocation roots in two ways: (a) **no supersession**: a newer
 deposit never replaces an older one (concentration is a sum, not a current
@@ -306,7 +306,7 @@ weighted_contribution = strength_at(t) * peer_weight(kernel_id, reputation_epoch
 ### 4.3 Reputation epoch pinning
 
 `reputation_epoch` is a chio-anchor epoch identifier (see
-`../crates/chio-anchor/src/lib.rs`). Pinning makes results reproducible:
+`../crates/economy/chio-anchor/src/lib.rs`). Pinning makes results reproducible:
 a third party that reconstructs from the deposit corpus and the same
 anchored reputation snapshot recovers the same `total_strength`.
 Substrates MUST refuse a query whose `reputation_epoch` is unknown to
@@ -319,7 +319,7 @@ the local anchor view (no silent fallback to the latest epoch).
 ### 5.1 Per-agent passport signing
 
 Deposits MUST be signed by per-agent passport keys (the keys minted under
-`chio.agent-passport.v1`; see `../crates/chio-credentials/src/lib.rs`).
+`chio.agent-passport.v1`; see `../crates/trust/chio-credentials/src/lib.rs`).
 Kernel keys are explicitly rejected: a deposit whose verifying key matches
 the kernel's federation identity MUST be rejected with
 `unknown_origin_agent`.
@@ -606,7 +606,7 @@ identifier evolves.
 ## 12. Test Corpus Expectations
 
 The `chio-pheromone` crate ships, at minimum, the following fixtures
-under `crates/chio-pheromone/tests/fixtures/`:
+under `crates/trust/chio-pheromone/tests/fixtures/`:
 
 1. **deposit-roundtrip.json**: a valid deposit body, its JCS encoding,
    and its Ed25519 signature; re-canonicalize, re-sign, verify

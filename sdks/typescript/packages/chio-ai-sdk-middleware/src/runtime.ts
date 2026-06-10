@@ -163,7 +163,7 @@ async function applyReceiptAuthority(
         accept: "application/json",
       },
       // Send the raw receipt body. The Rust `/chio/verify` handler in
-      // `crates/chio-api-protect/src/proxy.rs::sidecar_verify_handler`
+      // `crates/products/chio-api-protect/src/proxy.rs::sidecar_verify_handler`
       // deserializes the request body directly as `HttpReceipt`, so
       // wrapping it as `{ receipt }` would cause the real sidecar to
       // return 400 bad_request.

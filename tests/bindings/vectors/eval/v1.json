@@ -22,7 +22,7 @@
     "name": "chio-verdict-matrix",
     "scenario_count": 48,
     "corpus_sha256": "47e8d5394c807196d9567d97515e786cb1abfb0c7676e54db269ca82c735422f",
-    "manifest_path": "crates/chio-conformance/verdict_matrix/manifest.toml"
+    "manifest_path": "crates/tooling/chio-conformance/verdict_matrix/manifest.toml"
   },
   "receipts": [
     {
@@ -63,7 +63,7 @@
     {
       "kind": "test-sha256",
       "key_id": "local-test",
-      "signature": "40e8d6f70ab688681678fb63862052214771954ccee652377c2b9d5f554dc137",
+      "signature": "5e30d00c4dba2bacb1b22dd10f725797603338a511571980a706f496c1711f03",
       "signed_payload": "bundle_without_signatures:rfc8785"
     }
   ]

@@ -8,7 +8,7 @@ source code.
 
 ## 1. The `Guard` Trait
 
-Defined in `crates/chio-kernel/src/kernel/mod.rs` and re-exported from
+Defined in `crates/kernel/chio-kernel/src/kernel/mod.rs` and re-exported from
 `chio_kernel`:
 
 ```rust
@@ -31,7 +31,7 @@ different contexts.
 ### 1.1 `Verdict` (Kernel)
 
 The kernel's own `Verdict` is a simple two-variant enum defined in
-`crates/chio-kernel/src/runtime.rs`:
+`crates/kernel/chio-kernel/src/runtime.rs`:
 
 ```rust
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,7 +49,7 @@ fail-closed design: guards cannot "pass" on a decision.
 
 ### 1.2 `Verdict` (HTTP Layer)
 
-A separate, richer `Verdict` exists in `crates/chio-http-core/src/verdict.rs`
+A separate, richer `Verdict` exists in `crates/platform/chio-http-core/src/verdict.rs`
 for the HTTP substrate:
 
 ```rust
@@ -75,7 +75,7 @@ HTTP `Verdict` is used at the transport layer.
 ## 2. `GuardContext`
 
 The context struct passed to every guard during evaluation, defined in
-`crates/chio-kernel/src/kernel/mod.rs`:
+`crates/kernel/chio-kernel/src/kernel/mod.rs`:
 
 ```rust
 pub struct GuardContext<'a> {
@@ -393,7 +393,7 @@ denial via the fail-closed rule.
 
 #### `ForbiddenPathGuard` ("forbidden-path")
 
-**File:** `crates/chio-guards/src/forbidden_path.rs`
+**File:** `crates/guards/chio-guards/src/forbidden_path.rs`
 
 Blocks access to sensitive filesystem paths using glob patterns. Default
 forbidden patterns include `.ssh/`, `.aws/`, `.env`, `.gnupg/`,
@@ -408,7 +408,7 @@ forbidden patterns include `.ssh/`, `.aws/`, `.env`, `.gnupg/`,
 
 #### `ShellCommandGuard` ("shell-command")
 
-**File:** `crates/chio-guards/src/shell_command.rs`
+**File:** `crates/guards/chio-guards/src/shell_command.rs`
 
 Blocks dangerous shell commands using regex patterns. Default patterns
 catch `rm -rf /`, `curl | bash`, reverse shells, base64 exfiltration.
@@ -422,7 +422,7 @@ catch `rm -rf /`, `curl | bash`, reverse shells, base64 exfiltration.
 
 #### `EgressAllowlistGuard` ("egress-allowlist")
 
-**File:** `crates/chio-guards/src/egress_allowlist.rs`
+**File:** `crates/guards/chio-guards/src/egress_allowlist.rs`
 
 Controls network egress by domain allowlist. Default allows common AI APIs
 and package registries. All other egress is denied (fail-closed).
@@ -433,7 +433,7 @@ and package registries. All other egress is denied (fail-closed).
 
 #### `PathAllowlistGuard` ("path-allowlist")
 
-**File:** `crates/chio-guards/src/path_allowlist.rs`
+**File:** `crates/guards/chio-guards/src/path_allowlist.rs`
 
 Allowlist-based path access control. **Disabled by default** (must be
 explicitly configured). Supports separate allowlists for file access, file
@@ -448,7 +448,7 @@ write, and patch operations.
 
 #### `McpToolGuard` ("mcp-tool")
 
-**File:** `crates/chio-guards/src/mcp_tool.rs`
+**File:** `crates/guards/chio-guards/src/mcp_tool.rs`
 
 Restricts which MCP tools an agent may invoke. Supports allow/block lists,
 default action, and argument size limits.
@@ -461,7 +461,7 @@ default action, and argument size limits.
 
 #### `SecretLeakGuard` ("secret-leak")
 
-**File:** `crates/chio-guards/src/secret_leak.rs`
+**File:** `crates/guards/chio-guards/src/secret_leak.rs`
 
 Detects secrets in file write content using regex patterns. Catches AWS
 keys, GitHub tokens, OpenAI keys, Anthropic keys, private keys, NPM
@@ -474,7 +474,7 @@ and generic API key/secret patterns.
 
 #### `PatchIntegrityGuard` ("patch-integrity")
 
-**File:** `crates/chio-guards/src/patch_integrity.rs`
+**File:** `crates/guards/chio-guards/src/patch_integrity.rs`
 
 Validates patch/diff safety. Checks:
 - Maximum additions (default 1000) and deletions (default 500).
@@ -484,7 +484,7 @@ Validates patch/diff safety. Checks:
 
 #### `InternalNetworkGuard` ("internal-network")
 
-**File:** `crates/chio-guards/src/internal_network.rs`
+**File:** `crates/guards/chio-guards/src/internal_network.rs`
 
 SSRF prevention guard. Blocks network egress to:
 - RFC 1918 private ranges, loopback, link-local, broadcast, 0.0.0.0/8.
@@ -497,7 +497,7 @@ SSRF prevention guard. Blocks network egress to:
 
 #### `VelocityGuard` ("velocity")
 
-**File:** `crates/chio-guards/src/velocity.rs`
+**File:** `crates/guards/chio-guards/src/velocity.rs`
 
 Per-grant rate limiting using token buckets keyed by
 `(capability_id, grant_index)`. Supports invocation rate limits and
@@ -509,7 +509,7 @@ floating-point drift.
 
 #### `AgentVelocityGuard` ("agent-velocity")
 
-**File:** `crates/chio-guards/src/agent_velocity.rs`
+**File:** `crates/guards/chio-guards/src/agent_velocity.rs`
 
 Cross-capability rate limiting keyed by agent identity and session.
 
@@ -519,7 +519,7 @@ Cross-capability rate limiting keyed by agent identity and session.
 
 #### `DataFlowGuard` ("data-flow")
 
-**File:** `crates/chio-guards/src/data_flow.rs`
+**File:** `crates/guards/chio-guards/src/data_flow.rs`
 
 Enforces cumulative bytes-read/written limits via session journal.
 Requires an `Chio<SessionJournal>`.
@@ -529,7 +529,7 @@ Requires an `Chio<SessionJournal>`.
 
 #### `BehavioralSequenceGuard` ("behavioral-sequence")
 
-**File:** `crates/chio-guards/src/behavioral_sequence.rs`
+**File:** `crates/guards/chio-guards/src/behavioral_sequence.rs`
 
 Enforces tool ordering policies via session journal:
 - Required predecessors (tool X requires tool Y to have run first).
@@ -541,7 +541,7 @@ Fails closed if journal is unavailable.
 
 #### `ResponseSanitizationGuard` ("response-sanitization")
 
-**File:** `crates/chio-guards/src/response_sanitization.rs`
+**File:** `crates/guards/chio-guards/src/response_sanitization.rs`
 
 PII/PHI pattern detection with configurable sensitivity levels. Scans for
 SSNs, emails, phone numbers, credit cards, dates of birth, medical record
@@ -554,7 +554,7 @@ numbers, ICD-10 codes.
 
 ### 6.2 Advisory Guards (`chio-guards::advisory`)
 
-**File:** `crates/chio-guards/src/advisory.rs`
+**File:** `crates/guards/chio-guards/src/advisory.rs`
 
 Non-blocking guards that emit observations without denying requests.
 
@@ -598,7 +598,7 @@ multiples of the threshold (1x = Medium, 2x = High, 3x = Critical).
 
 ### 6.3 WASM Guards (`chio-wasm-guards` crate)
 
-**File:** `crates/chio-wasm-guards/src/runtime.rs`
+**File:** `crates/guards/chio-wasm-guards/src/runtime.rs`
 
 #### `WasmGuard`
 
@@ -620,14 +620,14 @@ code does not sort -- see Section 3.2 note above.)
 
 ### 6.4 `GuardPipeline` ("guard-pipeline")
 
-**File:** `crates/chio-guards/src/pipeline.rs`
+**File:** `crates/guards/chio-guards/src/pipeline.rs`
 
 Composition wrapper that itself implements `Guard`. Runs child guards in
 sequence with fail-closed semantics. See Section 3.3 above.
 
 ### 6.5 Post-Invocation Hooks
 
-**File:** `crates/chio-guards/src/post_invocation.rs`
+**File:** `crates/guards/chio-guards/src/post_invocation.rs`
 
 A separate pipeline for inspecting tool **responses** after invocation:
 
@@ -650,7 +650,7 @@ pre-dispatch.
 
 ### 6.6 Test Guards (in kernel tests)
 
-**File:** `crates/chio-kernel/src/kernel/tests/all.rs`
+**File:** `crates/kernel/chio-kernel/src/kernel/tests/all.rs`
 
 Several test-only guard implementations:
 
@@ -667,7 +667,7 @@ Several test-only guard implementations:
 
 ## 7. `ToolAction` Extraction
 
-**File:** `crates/chio-guards/src/action.rs`
+**File:** `crates/guards/chio-guards/src/action.rs`
 
 Guards do not directly inspect raw tool names and arguments. Instead, they
 use `extract_action()` to derive a `ToolAction` enum:

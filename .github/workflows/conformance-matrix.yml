@@ -21,8 +21,8 @@ on:
   pull_request:
     paths:
       - ".github/workflows/conformance-matrix.yml"
-      - "crates/chio-conformance/**"
-      - "crates/chio-cli/**"
+      - "crates/tooling/chio-conformance/**"
+      - "crates/products/chio-cli/**"
       - "tests/conformance/**"
       - "docs/conformance.md"
   schedule:
@@ -113,14 +113,14 @@ jobs:
       - name: Install chio-conformance (path install)
         # Once chio-conformance has a registry-public dependency closure, swap for:
         #   cargo install chio-conformance --version <pin>
-        run: cargo install --path crates/chio-conformance --locked
+        run: cargo install --path crates/tooling/chio-conformance --locked
 
       - name: Install chio CLI (provides `chio conformance` subcommands)
         # `chio conformance run` and `chio conformance fetch-peers` are
         # owned by the chio-cli crate; the source-install consumer also
         # installs both crates in sequence (see docs/conformance.md
         # "Standalone consumer" section).
-        run: cargo install --path crates/chio-cli --locked
+        run: cargo install --path crates/products/chio-cli --locked
 
       - name: Detect published python peer
         id: python-peer
@@ -128,7 +128,7 @@ jobs:
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import tomllib
           expected_target = "x86_64-unknown-linux-gnu"
-          with open("crates/chio-conformance/peers.lock.toml", "rb") as fh:
+          with open("crates/tooling/chio-conformance/peers.lock.toml", "rb") as fh:
               lock = tomllib.load(fh)
           selected = next(
               (
@@ -152,7 +152,7 @@ jobs:
       - name: Require published python peer
         if: steps.python-peer.outputs.published != 'true'
         run: |
-          echo "external-consumer-smoke requires a python peer for ${{ steps.python-peer.outputs.expected_target }} with published = true in crates/chio-conformance/peers.lock.toml" >&2
+          echo "external-consumer-smoke requires a python peer for ${{ steps.python-peer.outputs.expected_target }} with published = true in crates/tooling/chio-conformance/peers.lock.toml" >&2
           echo "The pre-release shape check is separate; this release-blocking smoke must not pass without fetching and running a real peer." >&2
           exit 1
 

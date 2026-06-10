@@ -37,187 +37,187 @@ def allow(reason: str, expires: str) -> AllowlistEntry:
 
 
 ALLOWLIST: dict[str, AllowlistEntry] = {
-    "crates/chio-acp-edge/src/bridge.rs": allow(
+    "crates/protocol/chio-acp-edge/src/bridge.rs": allow(
         "intentional advisory permission preview text, enforcement happens at invoke time",
         "2026-12-31",
     ),
-    "crates/chio-anchor/src/witness.rs": allow(
+    "crates/economy/chio-anchor/src/witness.rs": allow(
         "reviewed test fixture helper",
         "2026-12-31",
     ),
-    "crates/chio-anchor/src/witness/rekor.rs": allow(
+    "crates/economy/chio-anchor/src/witness/rekor.rs": allow(
         "reviewed test fixture helper",
         "2026-12-31",
     ),
-    "crates/chio-arena/src/promote.rs": allow(
+    "crates/core/chio-arena/src/promote.rs": allow(
         "reviewed test seam for injecting CHIO_BLESS environment access",
         "2026-12-31",
     ),
-    "crates/chio-attest-verify/src/lib.rs": allow(
+    "crates/trust/chio-attest-verify/src/lib.rs": allow(
         "negative crate invariant text forbids live todo and unimplemented constructs",
         "2026-12-31",
     ),
-    "crates/chio-cli/dashboard/src/components/BudgetSparkline.tsx": allow(
+    "crates/products/chio-cli/dashboard/src/components/BudgetSparkline.tsx": allow(
         "UI empty-state placeholder, not an implementation stub",
         "2026-12-31",
     ),
-    "crates/chio-cli/dashboard/src/components/FilterSidebar.tsx": allow(
+    "crates/products/chio-cli/dashboard/src/components/FilterSidebar.tsx": allow(
         "HTML input placeholder attributes, not implementation stubs",
         "2026-12-31",
     ),
-    "crates/chio-cli/dashboard/src/components/ReceiptTable.tsx": allow(
+    "crates/products/chio-cli/dashboard/src/components/ReceiptTable.tsx": allow(
         "UI Suspense loading placeholder, not an implementation stub",
         "2026-12-31",
     ),
-    "crates/chio-cli/dashboard/src/index.css": allow(
+    "crates/products/chio-cli/dashboard/src/index.css": allow(
         "CSS class for UI empty-state placeholder",
         "2026-12-31",
     ),
-    "crates/chio-cli/src/cli/mcp/manifest.rs": allow(
+    "crates/products/chio-cli/src/cli/mcp/manifest.rs": allow(
         "generated guard-manifest scaffold intentionally carries review TODO text",
         "2026-12-31",
     ),
-    "crates/chio-cli/src/cli/replay/validate.rs": allow(
+    "crates/products/chio-cli/src/cli/replay/validate.rs": allow(
         "reviewed replay validation fixture placeholder overwritten by signature tests",
         "2026-12-31",
     ),
-    "crates/chio-cli/src/cli/session.rs": allow(
+    "crates/products/chio-cli/src/cli/session.rs": allow(
         "reviewed CLI session fixture payload",
         "2026-12-31",
     ),
-    "crates/chio-cli/src/doctor/cosign.rs": allow(
+    "crates/products/chio-cli/src/doctor/cosign.rs": allow(
         "reviewed doctor test fixture writes stub JSON under cfg(test)",
         "2026-12-31",
     ),
-    "crates/chio-cli/src/guard.rs": allow(
+    "crates/products/chio-cli/src/guard.rs": allow(
         "deny-by-default guard scaffold template, not a shipped allow path",
         "2026-12-31",
     ),
-    "crates/chio-cli/templates/init/README.md.tmpl": allow(
+    "crates/products/chio-cli/templates/init/README.md.tmpl": allow(
         "template README for generated example tool server",
         "2026-12-31",
     ),
-    "crates/chio-config/src/interpolation.rs": allow(
+    "crates/platform/chio-config/src/interpolation.rs": allow(
         "domain placeholder resolution term, not an unfinished implementation",
         "2026-12-31",
     ),
-    "crates/chio-conformance/peers.lock.toml": allow(
+    "crates/tooling/chio-conformance/peers.lock.toml": allow(
         "pre-publication peer lock placeholders are guarded by published=false",
         "2026-12-31",
     ),
-    "crates/chio-conformance/src/peers.rs": allow(
+    "crates/tooling/chio-conformance/src/peers.rs": allow(
         "peer-lock placeholder pins fail closed unless published=false",
         "2026-12-31",
     ),
-    "crates/chio-conformance/verdict_matrix/drivers/lambda/src/lib.rs": allow(
+    "crates/tooling/chio-conformance/verdict_matrix/drivers/lambda/src/lib.rs": allow(
         "negative documentation says Lambda availability gate is not a placeholder",
         "2026-12-31",
     ),
-    "crates/chio-core-types/src/crypto.rs": allow(
+    "crates/core/chio-core-types/src/crypto.rs": allow(
         "reviewed fail-closed comments around non-Ed25519 byte conversions",
         "2026-12-31",
     ),
-    "crates/chio-core-types/src/plan.rs": allow(
+    "crates/core/chio-core-types/src/plan.rs": allow(
         "planned dependency edges are recorded as audit metadata in v1",
         "2026-12-31",
     ),
-    "crates/chio-core-types/src/receipt/kinds.rs": allow(
+    "crates/core/chio-core-types/src/receipt/kinds.rs": allow(
         "advisory trust level is an intentional receipt enum variant",
         "2026-12-31",
     ),
-    "crates/chio-custody-hw/src/lib.rs": allow(
+    "crates/trust/chio-custody-hw/src/lib.rs": allow(
         "negative crate-level invariant forbids trust-boundary stubs",
         "2026-12-31",
     ),
-    "crates/chio-custody-hw/src/verifier.rs": allow(
+    "crates/trust/chio-custody-hw/src/verifier.rs": allow(
         "reviewed cfg(test) WebAuthn assertion fixture",
         "2026-12-31",
     ),
-    "crates/chio-envoy-ext-authz/proto/envoy/config/core/v3/base.proto": allow(
+    "crates/protocol/chio-envoy-ext-authz/proto/envoy/config/core/v3/base.proto": allow(
         "protocol fixture text for opaque Envoy fields",
         "2026-12-31",
     ),
-    "crates/chio-envoy-ext-authz/src/service.rs": allow(
+    "crates/protocol/chio-envoy-ext-authz/src/service.rs": allow(
         "reviewed adapter test seam documented in trait comment",
         "2026-12-31",
     ),
-    "crates/chio-http-core/src/routes.rs": allow(
+    "crates/platform/chio-http-core/src/routes.rs": allow(
         "route-template placeholder terminology",
         "2026-12-31",
     ),
-    "crates/chio-kernel-browser/src/clock.rs": allow(
+    "crates/kernel/chio-kernel-browser/src/clock.rs": allow(
         "cfg(not wasm32) host-target test stub returns fail-closed time",
         "2026-12-31",
     ),
-    "crates/chio-kernel-browser/src/rng.rs": allow(
+    "crates/kernel/chio-kernel-browser/src/rng.rs": allow(
         "cfg(not wasm32) host-target stub always fails outside browser wasm",
         "2026-12-31",
     ),
-    "crates/chio-lineage/src/anchor.rs": allow(
+    "crates/observability/chio-lineage/src/anchor.rs": allow(
         "signing state explicitly distinguishes unsigned signer hint from real signature",
         "2026-12-31",
     ),
-    "crates/chio-log-redact/src/engine.rs": allow(
+    "crates/observability/chio-log-redact/src/engine.rs": allow(
         "fail-closed redaction placeholder prevents original secret exposure",
         "2026-12-31",
     ),
-    "crates/chio-metering/src/export.rs": allow(
+    "crates/economy/chio-metering/src/export.rs": allow(
         "timestamp fallback text is reviewed and deterministic",
         "2026-12-31",
     ),
-    "crates/chio-pheromone-relay/src/metrics.rs": allow(
+    "crates/trust/chio-pheromone-relay/src/metrics.rs": allow(
         "SQL bind placeholder terminology, not an unfinished stub surface",
         "2026-12-31",
     ),
-    "crates/chio-policy/src/detection.rs": allow(
+    "crates/guards/chio-policy/src/detection.rs": allow(
         "policy detector name used as domain data and covered by tests",
         "2026-12-31",
     ),
-    "crates/chio-revocation-oracle/src/signer.rs": allow(
+    "crates/trust/chio-revocation-oracle/src/signer.rs": allow(
         "reviewed digest-only test signature marker",
         "2026-12-31",
     ),
-    "crates/chio-spec-codegen/src/main.rs": allow(
+    "crates/tooling/chio-spec-codegen/src/main.rs": allow(
         "reviewed threat-model test-stub generator command surface",
         "2026-12-31",
     ),
-    "crates/chio-spec-codegen/src/threat_coverage_doc.rs": allow(
+    "crates/tooling/chio-spec-codegen/src/threat_coverage_doc.rs": allow(
         "reviewed threat-model test-stub documentation generator",
         "2026-12-31",
     ),
-    "crates/chio-spec-codegen/src/threat_model.rs": allow(
+    "crates/tooling/chio-spec-codegen/src/threat_model.rs": allow(
         "reviewed threat-model test-stub generator, expected to fail closed until populated",
         "2026-12-31",
     ),
-    "crates/chio-store-sqlite/src/receipt_store/evidence_retention.rs": allow(
+    "crates/platform/chio-store-sqlite/src/receipt_store/evidence_retention.rs": allow(
         "SQL bind placeholder terminology, not an unfinished stub surface",
         "2026-12-31",
     ),
-    "crates/chio-tee/src/tap.rs": allow(
+    "crates/trust/chio-tee/src/tap.rs": allow(
         "reviewed TrafficTap test-double implementations",
         "2026-12-31",
     ),
-    "crates/chio-wasm-guards/src/fuzz.rs": allow(
+    "crates/guards/chio-wasm-guards/src/fuzz.rs": allow(
         "fuzz fixture text describing an allocator stub",
         "2026-12-31",
     ),
-    "crates/chio-wasm-guards/src/lib.rs": allow(
+    "crates/guards/chio-wasm-guards/src/lib.rs": allow(
         "exports the placeholder-resolution API module",
         "2026-12-31",
     ),
-    "crates/chio-wasm-guards/src/placeholders.rs": allow(
+    "crates/guards/chio-wasm-guards/src/placeholders.rs": allow(
         "domain placeholder-resolution API for guard configuration",
         "2026-12-31",
     ),
-    "crates/chio-wasm-guards/src/runtime/wasmtime_backend.rs": allow(
+    "crates/guards/chio-wasm-guards/src/runtime/wasmtime_backend.rs": allow(
         "domain placeholder-resolution API use for guard configuration",
         "2026-12-31",
     ),
-    "crates/chio-weights/src/lib.rs": allow(
+    "crates/trust/chio-weights/src/lib.rs": allow(
         "negative crate invariant text forbids verifier and trust-boundary stubs",
         "2026-12-31",
     ),
-    "crates/chio-weights/src/lineage.rs": allow(
+    "crates/trust/chio-weights/src/lineage.rs": allow(
         "PQ-hybrid signing-state placeholder mirrors explicit unsigned lineage state",
         "2026-12-31",
     ),
@@ -232,139 +232,138 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
 }
 
 ALLOWLIST_MATCHES: dict[str, tuple[str, ...]] = {
-    "crates/chio-acp-edge/src/bridge.rs": (
+    "crates/protocol/chio-acp-edge/src/bridge.rs": (
         r"permission preview is advisory only; enforcement happens at invoke time",
     ),
-    "crates/chio-anchor/src/witness.rs": (
+    "crates/economy/chio-anchor/src/witness.rs": (
         r"rekor:placeholder",
     ),
-    "crates/chio-anchor/src/witness/rekor.rs": (
+    "crates/economy/chio-anchor/src/witness/rekor.rs": (
         r"rekor:placeholder",
     ),
-    "crates/chio-arena/src/promote.rs": (
+    "crates/core/chio-arena/src/promote.rs": (
         r"CHIO_BLESS gate\. Tests inject a stub",
     ),
-    "crates/chio-attest-verify/src/lib.rs": (
+    "crates/trust/chio-attest-verify/src/lib.rs": (
         r"contains no `todo!`,",
     ),
-    "crates/chio-cli/dashboard/src/components/BudgetSparkline.tsx": (
+    "crates/products/chio-cli/dashboard/src/components/BudgetSparkline.tsx": (
         r"No cost data.*placeholder",
         r"sparkline-placeholder",
     ),
-    "crates/chio-cli/dashboard/src/components/FilterSidebar.tsx": (
+    "crates/products/chio-cli/dashboard/src/components/FilterSidebar.tsx": (
         r'placeholder="(hex key|server name|tool name)\.\.\."',
     ),
-    "crates/chio-cli/dashboard/src/components/ReceiptTable.tsx": (
+    "crates/products/chio-cli/dashboard/src/components/ReceiptTable.tsx": (
         r"sparkline-placeholder",
     ),
-    "crates/chio-cli/dashboard/src/index.css": (
+    "crates/products/chio-cli/dashboard/src/index.css": (
         r"Budget sparkline placeholder",
         r"sparkline-placeholder",
     ),
-    "crates/chio-cli/src/cli/mcp/manifest.rs": (
+    "crates/products/chio-cli/src/cli/mcp/manifest.rs": (
         r"TODO: review the inferred scopes below before promoting",
         r"TODO: review and promote",
     ),
-    "crates/chio-cli/src/cli/replay/validate.rs": (
+    "crates/products/chio-cli/src/cli/replay/validate.rs": (
         r"Unsigned placeholder matching the schema regex",
         r"unsigned placeholder tenant_sig",
     ),
-    "crates/chio-cli/src/cli/session.rs": (
+    "crates/products/chio-cli/src/cli/session.rs": (
         r'"stub": true',
     ),
-    "crates/chio-cli/src/doctor/cosign.rs": (
+    "crates/products/chio-cli/src/doctor/cosign.rs": (
         r'\\"stub\\": true',
     ),
-    "crates/chio-cli/src/guard.rs": (
+    "crates/products/chio-cli/src/guard.rs": (
         r"Replace this stub with real policy logic before shipping",
         r'wasm_sha256: "TODO: run `chio guard build`',
         r'manifest\.contains\("wasm_sha256: \\"TODO:',
     ),
-    "crates/chio-cli/templates/init/README.md.tmpl": (
+    "crates/products/chio-cli/templates/init/README.md.tmpl": (
         r"hello_server\.rs.*tool server stub",
     ),
-    "crates/chio-config/src/interpolation.rs": (
+    "crates/platform/chio-config/src/interpolation.rs": (
         r"Leave a placeholder so the rest of parsing can proceed",
     ),
-    "crates/chio-conformance/peers.lock.toml": (
+    "crates/tooling/chio-conformance/peers.lock.toml": (
         r"published = false.*placeholder",
         r"placeholder sha256",
     ),
-    "crates/chio-conformance/src/peers.rs": (
+    "crates/tooling/chio-conformance/src/peers.rs": (
         r"placeholder entries.*published = false",
         r"placeholder sha256 pins",
         r"placeholder pins; flip published=true",
     ),
-    "crates/chio-conformance/verdict_matrix/drivers/lambda/src/lib.rs": (
+    "crates/tooling/chio-conformance/verdict_matrix/drivers/lambda/src/lib.rs": (
         r"not a placeholder",
     ),
-    "crates/chio-core-types/src/crypto.rs": (
+    "crates/core/chio-core-types/src/crypto.rs": (
         r"32-byte placeholder",
         r"all-zero placeholder",
     ),
-    "crates/chio-core-types/src/plan.rs": (
+    "crates/core/chio-core-types/src/plan.rs": (
         r"Advisory only in v1",
     ),
-    "crates/chio-core-types/src/receipt/kinds.rs": (
+    "crates/core/chio-core-types/src/receipt/kinds.rs": (
         r"advisory only",
     ),
-    "crates/chio-custody-hw/src/lib.rs": (
+    "crates/trust/chio-custody-hw/src/lib.rs": (
         r"trust-boundary stubs",
-        r"todo!.+unimplemented!.+panic!",
     ),
-    "crates/chio-custody-hw/src/verifier.rs": (
+    "crates/trust/chio-custody-hw/src/verifier.rs": (
         r"signature are placeholders",
     ),
-    "crates/chio-envoy-ext-authz/proto/envoy/config/core/v3/base.proto": (
+    "crates/protocol/chio-envoy-ext-authz/proto/envoy/config/core/v3/base.proto": (
         r"opaque placeholders",
     ),
-    "crates/chio-envoy-ext-authz/src/service.rs": (
+    "crates/protocol/chio-envoy-ext-authz/src/service.rs": (
         r"tests can stub this trait",
     ),
-    "crates/chio-http-core/src/routes.rs": (
+    "crates/platform/chio-http-core/src/routes.rs": (
         r"`\{id\}` placeholder",
     ),
-    "crates/chio-kernel-browser/src/clock.rs": (
+    "crates/kernel/chio-kernel-browser/src/clock.rs": (
         r"stub so `cargo test -p chio-kernel-browser`",
         r"stub intentionally returns `0`",
     ),
-    "crates/chio-kernel-browser/src/rng.rs": (
+    "crates/kernel/chio-kernel-browser/src/rng.rs": (
         r"Host-target stub",
         r"Native stub that always fails",
     ),
-    "crates/chio-lineage/src/anchor.rs": (
+    "crates/observability/chio-lineage/src/anchor.rs": (
         r"stub for a real PQ signature",
     ),
-    "crates/chio-log-redact/src/engine.rs": (
+    "crates/observability/chio-log-redact/src/engine.rs": (
         r"fail-closed placeholder",
     ),
-    "crates/chio-metering/src/export.rs": (
+    "crates/economy/chio-metering/src/export.rs": (
         r"Falls back to a placeholder",
     ),
-    "crates/chio-pheromone-relay/src/metrics.rs": (
+    "crates/trust/chio-pheromone-relay/src/metrics.rs": (
         r"placeholders = statuses",
         r"IN \(\{placeholders\}\)",
     ),
-    "crates/chio-policy/src/detection.rs": (
+    "crates/guards/chio-policy/src/detection.rs": (
         r'"stub"',
         r"detector_name, \"stub\"",
     ),
-    "crates/chio-revocation-oracle/src/signer.rs": (
+    "crates/trust/chio-revocation-oracle/src/signer.rs": (
         r"digest-stub-sha256",
     ),
-    "crates/chio-spec-codegen/src/main.rs": (
+    "crates/tooling/chio-spec-codegen/src/main.rs": (
         r"chio-spec-codegen --threat-model <input\.json> --out <stubs-dir>",
         r"stub Rust test",
         r"threat-stub",
         r"--out <stubs-dir>",
         r"<stubs-dir>",
     ),
-    "crates/chio-spec-codegen/src/threat_coverage_doc.rs": (
+    "crates/tooling/chio-spec-codegen/src/threat_coverage_doc.rs": (
         r"threats stub directory",
         r"Test stub",
         r"not yet emitted",
     ),
-    "crates/chio-spec-codegen/src/threat_model.rs": (
+    "crates/tooling/chio-spec-codegen/src/threat_model.rs": (
         r"threat-stub",
         r"stub source",
         r"Stub test",
@@ -385,35 +384,34 @@ ALLOWLIST_MATCHES: dict[str, tuple[str, ...]] = {
         r"let stub",
         r"contains_live_unimplemented_marker",
     ),
-    "crates/chio-store-sqlite/src/receipt_store/evidence_retention.rs": (
+    "crates/platform/chio-store-sqlite/src/receipt_store/evidence_retention.rs": (
         r"bind placeholders",
     ),
-    "crates/chio-tee/src/tap.rs": (
+    "crates/trust/chio-tee/src/tap.rs": (
         r"Stub `TrafficTap` implementation",
     ),
-    "crates/chio-wasm-guards/src/fuzz.rs": (
+    "crates/guards/chio-wasm-guards/src/fuzz.rs": (
         r"chio_alloc` stub",
     ),
-    "crates/chio-wasm-guards/src/lib.rs": (
+    "crates/guards/chio-wasm-guards/src/lib.rs": (
         r"placeholders",
     ),
-    "crates/chio-wasm-guards/src/placeholders.rs": (
+    "crates/guards/chio-wasm-guards/src/placeholders.rs": (
         r"[Pp]laceholder",
         r"placeholders",
         r"\$\{VAR",
     ),
-    "crates/chio-wasm-guards/src/runtime/wasmtime_backend.rs": (
+    "crates/guards/chio-wasm-guards/src/runtime/wasmtime_backend.rs": (
         r"[Pp]laceholder",
         r"placeholders",
         r"PlaceholderEnv",
         r"PlaceholderError",
         r"resolve_placeholders",
     ),
-    "crates/chio-weights/src/lib.rs": (
+    "crates/trust/chio-weights/src/lib.rs": (
         r"trust-boundary stubs",
-        r"todo!.+unimplemented!.+panic!",
     ),
-    "crates/chio-weights/src/lineage.rs": (
+    "crates/trust/chio-weights/src/lineage.rs": (
         r"signing state placeholder",
     ),
     "spec/schemas/chio-attest/v1/selective-disclosure-proof.schema.json": (

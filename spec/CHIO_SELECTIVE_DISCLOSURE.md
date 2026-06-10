@@ -58,14 +58,14 @@ BBS step projection remains limited to stable step summary fields.
 ### 2.1 Implemented slice
 
 - BBS secondary commitments over a single
-  [`ChioReceipt`](../crates/chio-core-types/src/receipt.rs) body.
+  [`ChioReceipt`](../crates/core/chio-core-types/src/receipt.rs) body.
 - BBS secondary commitments over a
-  [`WorkflowReceipt`](../crates/chio-workflow/src/receipt.rs) body and
+  [`WorkflowReceipt`](../crates/platform/chio-workflow/src/receipt.rs) body and
   its inner `StepRecord` list.
 - A canonical envelope schema (`chio.selective-disclosure-proof.v1`)
   for reveal-set proofs.
 - An opt-in implementation crate:
-  [`chio-selective-disclosure`](../crates/chio-selective-disclosure/src/lib.rs).
+  [`chio-selective-disclosure`](../crates/trust/chio-selective-disclosure/src/lib.rs).
 
 ### 2.2 Target scope still open
 
@@ -533,7 +533,7 @@ v1 does not specify a proof-carrying-receipt mode.
 ## 10. Implementation Crate Placement
 
 The implemented slice lives in
-[`chio-selective-disclosure`](../crates/chio-selective-disclosure/src/lib.rs).
+[`chio-selective-disclosure`](../crates/trust/chio-selective-disclosure/src/lib.rs).
 It is outside the default build and enabled with the crate's `bbs`
 feature. Federation no longer ships a parallel selective-disclosure
 proof path; BBS projection, signing, proof derivation, and verification
@@ -576,7 +576,7 @@ pub fn verify(
 ```
 
 `verify` fail-closes mirroring
-[chio-attest-verify](../crates/chio-attest-verify/src/lib.rs): every
+[chio-attest-verify](../crates/trust/chio-attest-verify/src/lib.rs): every
 error path returns a stable `DisclosureError` whose `code()` yields
 one of section 12's canonical strings.
 

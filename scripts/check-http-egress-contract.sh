@@ -38,9 +38,9 @@ REPO_ROOT="${CHIO_EGRESS_LINT_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$REPO_ROOT"
 
 ALLOW_LIST=(
-    "crates/chio-egress-contract/"
-    "crates/chio-http-core/"
-    "crates/chio-mcp-adapter/"
+    "crates/protocol/chio-egress-contract/"
+    "crates/platform/chio-http-core/"
+    "crates/protocol/chio-mcp-adapter/"
 )
 
 # Compose a regex that catches:

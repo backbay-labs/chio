@@ -22,7 +22,7 @@ required = [
     "scripts/tuf-rebake.sh --write",
     "scripts/tuf-rebake.sh --check",
     "cargo test -p chio-attest-verify --test integration constructor_loads_embedded_trust_root -- --exact",
-    "git diff --exit-code -- crates/chio-attest-verify/sigstore-root",
+    "git diff --exit-code -- crates/trust/chio-attest-verify/sigstore-root",
 ]
 missing = [marker for marker in required if marker not in text]
 if missing:

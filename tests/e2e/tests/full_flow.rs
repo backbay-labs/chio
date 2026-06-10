@@ -399,9 +399,8 @@ async fn full_flow_revocation_cascade() {
     let agent_a_kp = Keypair::generate();
     let agent_b_kp = Keypair::generate();
 
-    // Issue capability A to agent_a.
     // Issue cap A so the kernel has seen agent_a as a valid subject.
-    // We don't use cap_a directly -- the point is to revoke its capability ID
+    // cap_a is not used directly; the point is to revoke its capability ID
     // and see the cascade affect cap_b's delegation chain.
     let cap_a = kernel
         .issue_capability(

@@ -344,7 +344,7 @@ and reject `main`-branch images at deploy time.
 
 In-tree code MUST go through `chio_attest_verify::AttestVerifier`
 rather than calling `sigstore-rs` directly. The trait surface is
-documented in [`crates/chio-attest-verify/README.md`](../../crates/chio-attest-verify/README.md)
+documented in [`crates/trust/chio-attest-verify/README.md`](../../crates/trust/chio-attest-verify/README.md)
 and exposes `verify_blob`, `verify_bytes`, and
 `verify_bundle` with a single canonical `ExpectedIdentity`
 (`certificate_identity_regexp`, `certificate_oidc_issuer`). The
@@ -449,7 +449,7 @@ release archives, even if they are attached to a release name.
 
 In-tree code MUST go through `chio_attest_verify::AttestVerifier`
 rather than calling `sigstore-rs` directly. The trait surface is
-documented in [`crates/chio-attest-verify/README.md`](../../crates/chio-attest-verify/README.md)
+documented in [`crates/trust/chio-attest-verify/README.md`](../../crates/trust/chio-attest-verify/README.md)
 and exposes `verify_blob`, `verify_bytes`, and
 `verify_bundle` with a single canonical `ExpectedIdentity`
 (`certificate_identity_regexp`, `certificate_oidc_issuer`). The

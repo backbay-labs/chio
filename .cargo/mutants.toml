@@ -6,7 +6,7 @@
 # files, and even if those were loaded via `--config`, glob entries containing
 # path separators are matched relative to the source-tree root rather than the
 # per-crate root. Per-crate scoping must therefore be expressed here as globs
-# rooted at the workspace (e.g. `crates/chio-kernel-core/src/evaluate.rs`).
+# rooted at the workspace (e.g. `crates/kernel/chio-kernel-core/src/evaluate.rs`).
 #
 # Additional cargo-mutants discovery rule that constrains this config:
 #   cargo-mutants discovers source files by walking `mod` declarations.
@@ -85,76 +85,76 @@ minimum_test_timeout = 60
 # workspace-root config in CI.
 examine_globs = [
     # chio-kernel-core - pure-compute verdict path.
-    "crates/chio-kernel-core/src/evaluate.rs",
-    "crates/chio-kernel-core/src/capability_verify.rs",
-    "crates/chio-kernel-core/src/scope.rs",
-    "crates/chio-kernel-core/src/receipts.rs",
-    "crates/chio-kernel-core/src/passport_verify.rs",
-    "crates/chio-kernel-core/src/guard.rs",
-    "crates/chio-kernel-core/src/normalized.rs",
+    "crates/kernel/chio-kernel-core/src/evaluate.rs",
+    "crates/kernel/chio-kernel-core/src/capability_verify.rs",
+    "crates/kernel/chio-kernel-core/src/scope.rs",
+    "crates/kernel/chio-kernel-core/src/receipts.rs",
+    "crates/kernel/chio-kernel-core/src/passport_verify.rs",
+    "crates/kernel/chio-kernel-core/src/guard.rs",
+    "crates/kernel/chio-kernel-core/src/normalized.rs",
 
     # chio-policy - evaluator + compiler + validators.
-    "crates/chio-policy/src/evaluate.rs",
-    "crates/chio-policy/src/compiler.rs",
-    "crates/chio-policy/src/conditions.rs",
-    "crates/chio-policy/src/detection.rs",
-    "crates/chio-policy/src/merge.rs",
-    "crates/chio-policy/src/resolve.rs",
-    "crates/chio-policy/src/validate.rs",
-    "crates/chio-policy/src/regex_safety.rs",
-    "crates/chio-policy/src/receipt.rs",
+    "crates/guards/chio-policy/src/evaluate.rs",
+    "crates/guards/chio-policy/src/compiler.rs",
+    "crates/guards/chio-policy/src/conditions.rs",
+    "crates/guards/chio-policy/src/detection.rs",
+    "crates/guards/chio-policy/src/merge.rs",
+    "crates/guards/chio-policy/src/resolve.rs",
+    "crates/guards/chio-policy/src/validate.rs",
+    "crates/guards/chio-policy/src/regex_safety.rs",
+    "crates/guards/chio-policy/src/receipt.rs",
 
     # chio-guards - boundary-enforcing native guard set.
-    "crates/chio-guards/src/pipeline.rs",
-    "crates/chio-guards/src/shell_command.rs",
-    "crates/chio-guards/src/forbidden_path.rs",
-    "crates/chio-guards/src/path_allowlist.rs",
-    "crates/chio-guards/src/path_normalization.rs",
-    "crates/chio-guards/src/egress_allowlist.rs",
-    "crates/chio-guards/src/internal_network.rs",
-    "crates/chio-guards/src/secret_leak.rs",
-    "crates/chio-guards/src/patch_integrity.rs",
-    "crates/chio-guards/src/mcp_tool.rs",
-    "crates/chio-guards/src/prompt_injection.rs",
-    "crates/chio-guards/src/jailbreak.rs",
-    "crates/chio-guards/src/jailbreak_detector.rs",
-    "crates/chio-guards/src/input_injection.rs",
-    "crates/chio-guards/src/response_sanitization.rs",
-    "crates/chio-guards/src/data_flow.rs",
-    "crates/chio-guards/src/behavioral_sequence.rs",
-    "crates/chio-guards/src/text_utils.rs",
-    "crates/chio-guards/src/spider_sense.rs",
-    "crates/chio-guards/src/behavioral_profile.rs",
-    "crates/chio-guards/src/agent_velocity.rs",
-    "crates/chio-guards/src/velocity.rs",
-    "crates/chio-guards/src/code_execution.rs",
-    "crates/chio-guards/src/browser_automation.rs",
-    "crates/chio-guards/src/computer_use.rs",
-    "crates/chio-guards/src/remote_desktop.rs",
-    "crates/chio-guards/src/content_review.rs",
-    "crates/chio-guards/src/memory_governance.rs",
-    "crates/chio-guards/src/post_invocation.rs",
+    "crates/guards/chio-guards/src/pipeline.rs",
+    "crates/guards/chio-guards/src/shell_command.rs",
+    "crates/guards/chio-guards/src/forbidden_path.rs",
+    "crates/guards/chio-guards/src/path_allowlist.rs",
+    "crates/guards/chio-guards/src/path_normalization.rs",
+    "crates/guards/chio-guards/src/egress_allowlist.rs",
+    "crates/guards/chio-guards/src/internal_network.rs",
+    "crates/guards/chio-guards/src/secret_leak.rs",
+    "crates/guards/chio-guards/src/patch_integrity.rs",
+    "crates/guards/chio-guards/src/mcp_tool.rs",
+    "crates/guards/chio-guards/src/prompt_injection.rs",
+    "crates/guards/chio-guards/src/jailbreak.rs",
+    "crates/guards/chio-guards/src/jailbreak_detector.rs",
+    "crates/guards/chio-guards/src/input_injection.rs",
+    "crates/guards/chio-guards/src/response_sanitization.rs",
+    "crates/guards/chio-guards/src/data_flow.rs",
+    "crates/guards/chio-guards/src/behavioral_sequence.rs",
+    "crates/guards/chio-guards/src/text_utils.rs",
+    "crates/guards/chio-guards/src/spider_sense.rs",
+    "crates/guards/chio-guards/src/behavioral_profile.rs",
+    "crates/guards/chio-guards/src/agent_velocity.rs",
+    "crates/guards/chio-guards/src/velocity.rs",
+    "crates/guards/chio-guards/src/code_execution.rs",
+    "crates/guards/chio-guards/src/browser_automation.rs",
+    "crates/guards/chio-guards/src/computer_use.rs",
+    "crates/guards/chio-guards/src/remote_desktop.rs",
+    "crates/guards/chio-guards/src/content_review.rs",
+    "crates/guards/chio-guards/src/memory_governance.rs",
+    "crates/guards/chio-guards/src/post_invocation.rs",
 
     # chio-credentials - lib.rs is the only entry that survives cargo-mutants
     # discovery; the other 13 trust-boundary files are `include!`d into it
     # (see header). trust_tier.rs is a real `mod`.
-    "crates/chio-credentials/src/lib.rs",
-    "crates/chio-credentials/src/trust_tier.rs",
+    "crates/trust/chio-credentials/src/lib.rs",
+    "crates/trust/chio-credentials/src/trust_tier.rs",
 
     # chio-attest-verify - Sigstore verification boundary.
-    "crates/chio-attest-verify/src/lib.rs",
-    "crates/chio-attest-verify/src/sigstore.rs",
+    "crates/trust/chio-attest-verify/src/lib.rs",
+    "crates/trust/chio-attest-verify/src/sigstore.rs",
 
     # chio-anchor - anchoring publication and discovery boundary.
-    "crates/chio-anchor/src/lib.rs",
-    "crates/chio-anchor/src/automation.rs",
-    "crates/chio-anchor/src/bitcoin.rs",
-    "crates/chio-anchor/src/bundle.rs",
-    "crates/chio-anchor/src/discovery.rs",
-    "crates/chio-anchor/src/evm.rs",
-    "crates/chio-anchor/src/functions.rs",
-    "crates/chio-anchor/src/ops.rs",
-    "crates/chio-anchor/src/solana.rs",
+    "crates/economy/chio-anchor/src/lib.rs",
+    "crates/economy/chio-anchor/src/automation.rs",
+    "crates/economy/chio-anchor/src/bitcoin.rs",
+    "crates/economy/chio-anchor/src/bundle.rs",
+    "crates/economy/chio-anchor/src/discovery.rs",
+    "crates/economy/chio-anchor/src/evm.rs",
+    "crates/economy/chio-anchor/src/functions.rs",
+    "crates/economy/chio-anchor/src/ops.rs",
+    "crates/economy/chio-anchor/src/solana.rs",
 ]
 
 # Workspace-wide skip list. Pure plumbing, generated code, test/bench
@@ -173,18 +173,18 @@ exclude_globs = [
     # chio-kernel-core: platform adapters + formal-methods scaffolding.
     # rationale: platform clocks, RNG adapters, and formal harnesses are covered
     # by dedicated deterministic and verification lanes, not mutation scoring.
-    "crates/chio-kernel-core/src/clock.rs", # rationale: excluded helper or verification surface.
-    "crates/chio-kernel-core/src/rng.rs", # rationale: excluded helper or verification surface.
-    "crates/chio-kernel-core/src/formal_aeneas.rs", # rationale: excluded helper or verification surface.
-    "crates/chio-kernel-core/src/formal_core.rs", # rationale: excluded helper or verification surface.
-    "crates/chio-kernel-core/src/kani_harnesses.rs", # rationale: excluded helper or verification surface.
-    "crates/chio-kernel-core/src/kani_public_harnesses.rs", # rationale: excluded helper or verification surface.
+    "crates/kernel/chio-kernel-core/src/clock.rs", # rationale: excluded helper or verification surface.
+    "crates/kernel/chio-kernel-core/src/rng.rs", # rationale: excluded helper or verification surface.
+    "crates/kernel/chio-kernel-core/src/formal_aeneas.rs", # rationale: excluded helper or verification surface.
+    "crates/kernel/chio-kernel-core/src/formal_core.rs", # rationale: excluded helper or verification surface.
+    "crates/kernel/chio-kernel-core/src/kani_harnesses.rs", # rationale: excluded helper or verification surface.
+    "crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs", # rationale: excluded helper or verification surface.
     # chio-policy: pure data + version constants + embedded YAML rulesets.
     # rationale: pure models, constants, and embedded ruleset data are exercised
     # through evaluator/compiler mutations and schema validation lanes.
-    "crates/chio-policy/src/models.rs", # rationale: excluded helper or verification surface.
-    "crates/chio-policy/src/version.rs", # rationale: excluded helper or verification surface.
-    "crates/chio-policy/src/rulesets/**", # rationale: excluded helper or verification surface.
+    "crates/guards/chio-policy/src/models.rs", # rationale: excluded helper or verification surface.
+    "crates/guards/chio-policy/src/version.rs", # rationale: excluded helper or verification surface.
+    "crates/guards/chio-policy/src/rulesets/**", # rationale: excluded helper or verification surface.
     # chio-guards: pure types, advisory-by-design guards, and the external/
     # adapter tree (remote-process bridges, integration-tested rather than
     # mutation-tested). text_utils.rs and spider_sense.rs are intentionally
@@ -192,11 +192,11 @@ exclude_globs = [
     # rationale: these remaining files are helper, advisory, or process-bridge
     # surfaces with better coverage from integration and adapter tests than
     # mutants.
-    "crates/chio-guards/src/action.rs", # rationale: excluded helper or verification surface.
-    "crates/chio-guards/src/advisory.rs", # rationale: excluded helper or verification surface.
-    "crates/chio-guards/src/external/**", # rationale: excluded helper or verification surface.
+    "crates/guards/chio-guards/src/action.rs", # rationale: excluded helper or verification surface.
+    "crates/guards/chio-guards/src/advisory.rs", # rationale: excluded helper or verification surface.
+    "crates/guards/chio-guards/src/external/**", # rationale: excluded helper or verification surface.
     # chio-anchor: fuzz harness is covered by the fuzz lane.
     # rationale: fuzz harness code is the oracle input surface, not the target
     # production anchor implementation under mutation.
-    "crates/chio-anchor/src/fuzz.rs", # rationale: excluded helper or verification surface.
+    "crates/economy/chio-anchor/src/fuzz.rs", # rationale: excluded helper or verification surface.
 ]

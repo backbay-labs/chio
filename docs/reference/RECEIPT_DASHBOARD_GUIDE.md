@@ -5,13 +5,13 @@ The Chio receipt dashboard is a React SPA that visualizes the kernel's receipt l
 ## Building the Dashboard
 
 ```bash
-cd crates/chio-cli/dashboard
+cd crates/products/chio-cli/dashboard
 npm install
 npm run test
 npm run build
 ```
 
-The build output lands in `crates/chio-cli/dashboard/dist/`. The trust-control server serves the `dist/` directory as a static catch-all after all API routes. No separate web server is needed.
+The build output lands in `crates/products/chio-cli/dashboard/dist/`. The trust-control server serves the `dist/` directory as a static catch-all after all API routes. No separate web server is needed.
 
 The dashboard has no dependency on the `siem` feature flag. It communicates with the trust-control server's existing HTTP API.
 

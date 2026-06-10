@@ -4,8 +4,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 scope=(
-  crates/chio-kernel/src
-  crates/chio-siem/src
+  crates/kernel/chio-kernel/src
+  crates/observability/chio-siem/src
 )
 
 failed=0

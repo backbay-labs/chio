@@ -26,6 +26,5 @@ export function readServerEnv(): ServerEnv {
     );
   }
   const mode = process.env.CHIO_BUNDLE_MODE === "static" ? "static" : "server";
-  // Wave future: static mode.
   return { bundleDir: raw, mode };
 }

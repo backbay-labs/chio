@@ -27,7 +27,7 @@ Chio now ships one bounded Functions fallback with these rules:
 
 ## Bounded Default Policy
 
-The default runtime policy in `crates/chio-anchor/src/functions.rs` is:
+The default runtime policy in `crates/economy/chio-anchor/src/functions.rs` is:
 
 - maximum receipt batch size: `25`
 - maximum request size: `30000` bytes

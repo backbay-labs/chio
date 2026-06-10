@@ -3,9 +3,9 @@ name: Chio Pheromone Relay Observability
 on:
   pull_request:
     paths:
-      - "crates/chio-pheromone-relay/**"
-      - "crates/chio-cli/**"
-      - "crates/chio-metrics-spec/**"
+      - "crates/trust/chio-pheromone-relay/**"
+      - "crates/products/chio-cli/**"
+      - "crates/observability/chio-metrics-spec/**"
       - "examples/chio-3vendor/**"
       - "docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md"
       - "docs/release/chio-pheromone-relay/**"
@@ -19,9 +19,9 @@ on:
   push:
     branches: [main]
     paths:
-      - "crates/chio-pheromone-relay/**"
-      - "crates/chio-cli/**"
-      - "crates/chio-metrics-spec/**"
+      - "crates/trust/chio-pheromone-relay/**"
+      - "crates/products/chio-cli/**"
+      - "crates/observability/chio-metrics-spec/**"
       - "examples/chio-3vendor/**"
       - "docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md"
       - "docs/release/chio-pheromone-relay/**"
@@ -43,9 +43,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: crates/chio-cli/dashboard/package-lock.json
+          cache-dependency-path: crates/products/chio-cli/dashboard/package-lock.json
       - name: Install dashboard dependencies
         run: npm ci
-        working-directory: crates/chio-cli/dashboard
+        working-directory: crates/products/chio-cli/dashboard
       - name: Check Chio pheromone relay observability
         run: cargo xtask check fixtures relay-observability

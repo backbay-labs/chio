@@ -5,7 +5,7 @@
 // load the SDK without the peer dep installed (e.g. in unit tests, or
 // in environments where the wasm build of @chio-protocol/browser is not
 // yet available). The local fallback decodes the canonical-JSON envelope
-// shape the issuer mints (see crates/chio-custody-hw/src/capability.rs)
+// shape the issuer mints (see crates/trust/chio-custody-hw/src/capability.rs)
 // and validates required fields. It does NOT verify the issuer signature
 // - that is fail-closed at the kernel verifier.
 

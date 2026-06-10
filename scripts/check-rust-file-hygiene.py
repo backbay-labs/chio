@@ -15,11 +15,11 @@ PRODUCTION_LIMIT = 2_000
 LIB_ROOT_LIMIT = 1_000
 TEST_LIMIT = 2_000
 SUMMARY_LIMIT = 25
-WIRE_GENERATED_PREFIX = "crates/chio-core-types/src/_generated/"
-GENERATED_HEADER_SOURCE = "crates/chio-spec-codegen/src/lib.rs"
+WIRE_GENERATED_PREFIX = "crates/core/chio-core-types/src/_generated/"
+GENERATED_HEADER_SOURCE = "crates/tooling/chio-spec-codegen/src/lib.rs"
 GENERATED_HEADER_CONST_MARKER = 'pub const GENERATED_HEADER: &str = "\\\n'
-ERRORS_GENERATED_PREFIX = "crates/chio-errors/src/_generated/"
-ERRORS_GENERATED_HEADER_SOURCE = "crates/chio-spec-codegen/src/errors_pass.rs"
+ERRORS_GENERATED_PREFIX = "crates/core/chio-errors/src/_generated/"
+ERRORS_GENERATED_HEADER_SOURCE = "crates/tooling/chio-spec-codegen/src/errors_pass.rs"
 ERRORS_GENERATED_HEADER_CONST_MARKER = 'const ERROR_CODES_GENERATED_HEADER: &str = "\\\n'
 
 
@@ -35,77 +35,77 @@ def allow(expires: str, rationale: str, *, max_lines: int | None = None) -> Allo
 
 
 ALLOWLIST: dict[str, AllowlistEntry] = {
-    "crates/chio-cli/tests/mcp_serve_http.rs": allow(
+    "crates/products/chio-cli/tests/mcp_serve_http.rs": allow(
         "2026-07-31",
         "existing oversized CLI MCP HTTP integration suite; capped to current size until split",
         max_lines=6_316,
     ),
-    "crates/chio-cli/tests/passport.rs": allow(
+    "crates/products/chio-cli/tests/passport.rs": allow(
         "2026-07-31",
         "existing oversized CLI passport integration suite; capped to current size until split",
         max_lines=5_390,
     ),
-    "crates/chio-cli/tests/mcp_serve.rs": allow(
+    "crates/products/chio-cli/tests/mcp_serve.rs": allow(
         "2026-07-31",
         "existing oversized CLI MCP serve integration suite; capped to current size until split",
         max_lines=4_496,
     ),
-    "crates/chio-mcp-edge/src/runtime/runtime_tests.rs": allow(
+    "crates/protocol/chio-mcp-edge/src/runtime/runtime_tests.rs": allow(
         "2026-07-31",
         "existing oversized MCP edge runtime test suite; capped to current size until split",
         max_lines=4_349,
     ),
-    "crates/chio-cli/tests/certify.rs": allow(
+    "crates/products/chio-cli/tests/certify.rs": allow(
         "2026-07-31",
         "existing oversized CLI certify integration suite; capped to current size until split",
         max_lines=3_639,
     ),
-    "crates/chio-mercury/tests/cli.rs": allow(
+    "crates/products/chio-mercury/tests/cli.rs": allow(
         "2026-07-31",
         "existing oversized Mercury CLI integration suite; capped to current size until split",
         max_lines=3_264,
     ),
-    "crates/chio-cli/tests/trust_cluster.rs": allow(
+    "crates/products/chio-cli/tests/trust_cluster.rs": allow(
         "2026-07-31",
         "existing oversized CLI trust-cluster integration suite; capped to current size until split",
         max_lines=3_209,
     ),
-    "crates/chio-api-protect/src/proxy/tests.rs": allow(
+    "crates/products/chio-api-protect/src/proxy/tests.rs": allow(
         "2026-07-31",
         "existing oversized API protect proxy test suite; capped to current size until split",
         max_lines=2_971,
     ),
-    "crates/chio-acp-edge/src/tests/all.rs": allow(
+    "crates/protocol/chio-acp-edge/src/tests/all.rs": allow(
         "2026-07-31",
         "existing oversized ACP edge aggregate test suite; capped to current size until split",
         max_lines=2_881,
     ),
-    "crates/chio-a2a-edge/src/tests/all.rs": allow(
+    "crates/protocol/chio-a2a-edge/src/tests/all.rs": allow(
         "2026-07-31",
         "existing oversized A2A edge aggregate test suite; capped to current size until split",
         max_lines=2_702,
     ),
-    "crates/chio-cli/tests/federated_issue.rs": allow(
+    "crates/products/chio-cli/tests/federated_issue.rs": allow(
         "2026-07-31",
         "existing oversized CLI federated issue integration suite; capped to current size until split",
         max_lines=2_295,
     ),
-    "crates/chio-credentials/src/tests.rs": allow(
+    "crates/trust/chio-credentials/src/tests.rs": allow(
         "2026-07-31",
         "existing oversized credentials test suite; capped to current size until split",
         max_lines=2_164,
     ),
-    "crates/chio-core-types/src/capability/tests.rs": allow(
+    "crates/core/chio-core-types/src/capability/tests.rs": allow(
         "2026-07-31",
         "existing oversized capability type test suite; capped to current size until split",
         max_lines=2_141,
     ),
-    "crates/chio-runtime-core/tests/runtime_buyer_review.rs": allow(
+    "crates/kernel/chio-runtime-core/tests/runtime_buyer_review.rs": allow(
         "2026-07-31",
         "existing oversized runtime buyer review integration suite; capped to current size until split",
         max_lines=2_067,
     ),
-    "crates/chio-mcp-remote/src/remote_mcp/tests.rs": allow(
+    "crates/protocol/chio-mcp-remote/src/remote_mcp/tests.rs": allow(
         "2026-07-31",
         "existing oversized remote MCP test suite; capped to current size until split",
         max_lines=2_008,

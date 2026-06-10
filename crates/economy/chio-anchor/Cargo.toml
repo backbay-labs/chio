@@ -1,0 +1,91 @@
+[package]
+name = "chio-anchor"
+description = "Anchoring runtime and proof normalization for Chio checkpoints"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_anchor"
+
+[features]
+default = ["web3"]
+web3 = [
+    "dep:alloy-primitives",
+    "dep:alloy-sol-types",
+    "dep:async-trait",
+    "dep:chio-core",
+    "dep:chio-egress-contract",
+    "dep:chio-kernel",
+    "dep:chio-web3",
+    "dep:chio-web3-bindings",
+    "dep:base64",
+    "dep:hex",
+    "dep:opentimestamps",
+    "dep:p256",
+    "dep:pem",
+    "dep:reqwest",
+    "dep:serde",
+    "dep:serde_json",
+    "dep:thiserror",
+]
+# Enables `chio_anchor::fuzz`, the libFuzzer entry-point module driving
+# `verify_proof_bundle` and `verify_checkpoint_publication_records`. Off by
+# default; turned on only by the `chio-fuzz` standalone workspace at
+# `../../fuzz`. The `fuzz` feature implies `web3` because the verifier
+# surface lives behind that gate.
+fuzz = ["web3", "dep:arbitrary"]
+# `kani` is an opt-in feature toggle for the model-checked harness
+# module (`src/kani_public_harnesses.rs`). The module body itself is
+# gated by `#[cfg(kani)]` so production builds never compile it; this
+# feature is kept available for tooling that wants to opt in without
+# invoking the Kani toolchain. No production code path depends on it.
+#
+# `kani` implies `web3`: the entire crate body in `src/lib.rs` is gated
+# by `#![cfg(feature = "web3")]`. Without this implication
+# `cargo kani -p chio-anchor --features kani` would compile a crate
+# with zero items and find zero harnesses.
+kani = ["web3"]
+
+[dependencies]
+chio-core = { workspace = true, optional = true }
+chio-egress-contract = { workspace = true, features = ["reqwest-egress"], optional = true }
+chio-kernel = { workspace = true, optional = true }
+chio-metrics-spec = { workspace = true }
+chio-web3 = { workspace = true, optional = true }
+chio-web3-bindings = { path = "../chio-web3-bindings", default-features = false, features = ["web3"], optional = true }
+alloy-primitives = { version = "1.5.7", default-features = false, features = ["std"], optional = true }
+alloy-sol-types = { version = "1.5.7", default-features = false, features = ["std"], optional = true }
+async-trait = { version = "0.1", optional = true }
+base64 = { workspace = true, optional = true }
+hex = { workspace = true, optional = true }
+opentimestamps = { version = "0.2.0", optional = true }
+# Rekor signed-entry-timestamp (SET) verification: P-256 ECDSA against
+# the pinned Sigstore Rekor public key.
+p256 = { version = "0.13", default-features = false, features = ["ecdsa", "pem"], optional = true }
+pem = { version = "3", optional = true }
+reqwest = { workspace = true, features = ["form", "json", "query", "rustls"], optional = true }
+serde = { workspace = true, features = ["derive"], optional = true }
+serde_json = { workspace = true, optional = true }
+thiserror = { workspace = true, optional = true }
+# Gated behind the `fuzz` feature; production builds never see it.
+arbitrary = { version = "1", features = ["derive"], optional = true }
+
+[dev-dependencies]
+chio-test-support = { workspace = true }
+tokio = { workspace = true }
+rand = { workspace = true }
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+
+[lints.rust]
+# `cfg(kani)` is set automatically by the Kani toolchain (see
+# `crates/economy/chio-anchor/src/kani_public_harnesses.rs`). Register the
+# cfg with check-cfg so default `cargo build` / `cargo clippy` passes
+# do not warn about an unknown cfg name.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }

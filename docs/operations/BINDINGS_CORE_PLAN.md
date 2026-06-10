@@ -124,7 +124,7 @@ packages/
 
 ## Crate Responsibilities
 
-### `crates/chio-binding-helpers`
+### `crates/sdk/chio-binding-helpers`
 
 Purpose:
 
@@ -171,7 +171,7 @@ Example surface:
 - `verify_manifest(manifest_json, trust_roots) -> ManifestVerification`
 - `compile_policy(input_yaml) -> CompiledPolicyArtifact`
 
-### `crates/chio-bindings-ffi`
+### `crates/sdk/chio-bindings-ffi`
 
 Purpose:
 
@@ -466,7 +466,7 @@ Objective:
 
 Deliverables:
 
-- `crates/chio-binding-helpers`
+- `crates/sdk/chio-binding-helpers`
 - vector generator tests
 - stable JSON fixtures under `tests/bindings/vectors/`
 
@@ -559,7 +559,7 @@ Exit criteria:
 
 Tasks:
 
-- add `crates/chio-binding-helpers`
+- add `crates/sdk/chio-binding-helpers`
 - define a bindings-safe error model
 - add vector generation tests
 - write a short `BINDINGS_API.md` if the surface grows beyond a few modules
@@ -607,7 +607,7 @@ Tasks:
 
 ## Recommended Immediate Next Moves
 
-1. Add `crates/chio-binding-helpers` with only canonical JSON, hashing, signature, receipt, capability, and manifest helpers.
+1. Add `crates/sdk/chio-binding-helpers` with only canonical JSON, hashing, signature, receipt, capability, and manifest helpers.
 2. Add `tests/bindings/vectors/` and generate the first canonical JSON, hash, and receipt verification fixtures from Rust.
 3. Scaffold `sdks/typescript/chio-ts` and route the existing JS peer through it for remote HTTP coverage.
 4. After the TS package shape stabilizes, scaffold `sdks/python/chio-py` plus a minimal PyO3 module.

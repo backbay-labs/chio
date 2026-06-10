@@ -179,7 +179,7 @@ this run; restructuring `include!()` into `mod` declarations is a
 follow-up.
 
 The 7 timeouts cluster on a small set of schema-recognition functions
-in `crates/chio-credentials/src/lib.rs` lines 57-71
+in `crates/trust/chio-credentials/src/lib.rs` lines 57-71
 (`is_supported_passport_schema`,
 `is_supported_passport_verifier_policy_schema`,
 `is_supported_passport_presentation_challenge_schema`). The pattern:
@@ -268,7 +268,7 @@ substituted. Crates that did not finish in this session are flagged
 
 ## Open follow-ups
 
-- Itemize `crates/chio-guards/src/external/**` per-file test coverage.
+- Itemize `crates/guards/chio-guards/src/external/**` per-file test coverage.
 - Confirm `mutants.yml` workflow status; the hosted nightly lane is the
   authoritative measurement.
 - The >=65% drives are out of scope for this baseline; they sit on the

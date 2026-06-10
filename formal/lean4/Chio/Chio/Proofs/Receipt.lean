@@ -129,11 +129,9 @@ theorem receipt_immutability
     bounded `ReceiptBody` model in `Chio.Core.Receipt` treats `id` as an
     opaque `String` field with NO modeled canonicalizer or hash
     function. There is therefore nothing in this development to prove
-    injectivity against; the earlier `theorem id_input_set_pinned`
-    (`(h : body₁ = body₂) : body₁ = body₂ := h`) was pure reflexivity
-    and proved nothing about content-addressing.
+    injectivity against.
 
-    A genuine proof would require: (1) a Lean model of the JCS canonical
+    Mechanizing this property would require: (1) a Lean model of the JCS canonical
     serializer (`canonical_jcs`) over the `ChioReceiptIdInput` field set,
     (2) a model of the hash `H` (e.g. SHA-256), and (3) a collision-
     resistance / injectivity assumption on `H` discharged as a crypto

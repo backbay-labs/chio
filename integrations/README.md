@@ -18,13 +18,13 @@ diagrams) that has to ship alongside an AWS Marketplace listing.
   listing. Its public APIs are deterministic and testable without AWS
   credentials; production callers bind them to `aws-sdk-marketplaceentitlement`
   and `aws-sdk-marketplacemetering` at the process edge. The Bedrock request
-  path itself wraps `crates/chio-bedrock-converse-adapter`.
+  path itself wraps `crates/protocol/chio-bedrock-converse-adapter`.
 
 - `mcp-adapter/` (`chio-mcp-adapter-integration`): the distribution packaging
   for Chio's registry-listed MCP server. It extends the core MCP edge transport
   with Streamable HTTP, OAuth 2.1 + PKCE, RFC 9728 Protected Resource Metadata,
   and receipt emission. The core MCP edge transport lives in
-  `crates/chio-mcp-edge`.
+  `crates/protocol/chio-mcp-edge`.
 
 These two crates live here rather than under `crates/` because they are
 platform-specific distribution wrappers, not part of the core protocol

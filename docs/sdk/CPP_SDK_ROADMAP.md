@@ -18,9 +18,9 @@ long-horizon C++ SDK completion effort.
 | Owner | Write scope |
 | --- | --- |
 | Coordinator | `Cargo.toml`, `.github/**`, `scripts/**`, SDK matrix, conformance runner, main `sdks/cpp/chio-cpp/**`, this file |
-| Worker A | `crates/chio-bindings-ffi/**`, optional `tests/abi/**` |
+| Worker A | `crates/sdk/chio-bindings-ffi/**`, optional `tests/abi/**` |
 | Worker H | `sdks/guard/chio-guard-cpp/**` |
-| Worker I | `sdks/cpp/chio-cpp-kernel/**`, `crates/chio-cpp-kernel-ffi/**` |
+| Worker I | `sdks/cpp/chio-cpp-kernel/**`, `crates/sdk/chio-cpp-kernel-ffi/**` |
 
 Agents must not edit outside their write scope. Shared-file changes are
 coordinator-only.

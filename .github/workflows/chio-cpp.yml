@@ -4,9 +4,9 @@ on:
   push:
     paths:
       - ".github/workflows/chio-cpp.yml"
-      - "crates/chio-bindings-ffi/**"
-      - "crates/chio-cpp-kernel-ffi/**"
-      - "crates/chio-conformance/**"
+      - "crates/sdk/chio-bindings-ffi/**"
+      - "crates/sdk/chio-cpp-kernel-ffi/**"
+      - "crates/tooling/chio-conformance/**"
       - "sdks/cpp/chio-cpp/**"
       - "sdks/cpp/chio-cpp-kernel/**"
       - "sdks/cpp/chio-drogon/**"
@@ -21,9 +21,9 @@ on:
   pull_request:
     paths:
       - ".github/workflows/chio-cpp.yml"
-      - "crates/chio-bindings-ffi/**"
-      - "crates/chio-cpp-kernel-ffi/**"
-      - "crates/chio-conformance/**"
+      - "crates/sdk/chio-bindings-ffi/**"
+      - "crates/sdk/chio-cpp-kernel-ffi/**"
+      - "crates/tooling/chio-conformance/**"
       - "sdks/cpp/chio-cpp/**"
       - "sdks/cpp/chio-cpp-kernel/**"
       - "sdks/cpp/chio-drogon/**"
@@ -72,8 +72,8 @@ jobs:
           cargo test -p chio-bindings-ffi
           cargo build -p chio-bindings-ffi
           mkdir -p target
-          cbindgen crates/chio-bindings-ffi -o target/chio_ffi.generated.h
-          python3 - crates/chio-bindings-ffi/include/chio/chio_ffi.h target/chio_ffi.generated.h <<'PY'
+          cbindgen crates/sdk/chio-bindings-ffi -o target/chio_ffi.generated.h
+          python3 - crates/sdk/chio-bindings-ffi/include/chio/chio_ffi.h target/chio_ffi.generated.h <<'PY'
           from pathlib import Path
           import difflib
           import sys

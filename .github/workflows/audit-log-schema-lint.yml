@@ -4,17 +4,17 @@ on:
   pull_request:
     paths:
       - "spec/audit-log/export-schema.v1.json"
-      - "crates/chio-siem/src/exporters/cef.rs"
-      - "crates/chio-siem/src/exporters/cef.golden.txt"
-      - "crates/chio-siem/tests/cef_emitter.rs"
+      - "crates/observability/chio-siem/src/exporters/cef.rs"
+      - "crates/observability/chio-siem/src/exporters/cef.golden.txt"
+      - "crates/observability/chio-siem/tests/cef_emitter.rs"
       - ".github/workflows/audit-log-schema-lint.yml"
   push:
     branches: [main]
     paths:
       - "spec/audit-log/export-schema.v1.json"
-      - "crates/chio-siem/src/exporters/cef.rs"
-      - "crates/chio-siem/src/exporters/cef.golden.txt"
-      - "crates/chio-siem/tests/cef_emitter.rs"
+      - "crates/observability/chio-siem/src/exporters/cef.rs"
+      - "crates/observability/chio-siem/src/exporters/cef.golden.txt"
+      - "crates/observability/chio-siem/tests/cef_emitter.rs"
       - ".github/workflows/audit-log-schema-lint.yml"
   workflow_dispatch:
 
@@ -47,10 +47,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -s crates/chio-siem/src/exporters/cef.golden.txt
-          grep -q '^CEF:0|' crates/chio-siem/src/exporters/cef.golden.txt
-          grep -q 'receipt_id' crates/chio-siem/src/exporters/cef.golden.txt
-          grep -q 'redaction_status' crates/chio-siem/src/exporters/cef.golden.txt
+          test -s crates/observability/chio-siem/src/exporters/cef.golden.txt
+          grep -q '^CEF:0|' crates/observability/chio-siem/src/exporters/cef.golden.txt
+          grep -q 'receipt_id' crates/observability/chio-siem/src/exporters/cef.golden.txt
+          grep -q 'redaction_status' crates/observability/chio-siem/src/exporters/cef.golden.txt
 
       - name: Run CEF emitter test
         shell: bash

@@ -19,7 +19,7 @@
  *      verdict cell renders the cascade.
  *
  * The flow is the engineering counterpart to the kernel-side e2e in
- * crates/chio-custody-hw; this page exists so reviewers can see the
+ * crates/trust/chio-custody-hw; this page exists so reviewers can see the
  * contract end-to-end without standing up an issuer.
  *
  * Trust contract: the page never holds key material, never signs an

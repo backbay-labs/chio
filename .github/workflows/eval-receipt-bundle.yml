@@ -4,7 +4,7 @@ on:
   pull_request:
     paths:
       - "spec/eval/**"
-      - "crates/chio-eval-receipt/**"
+      - "crates/sdk/chio-eval-receipt/**"
       - "tests/bindings/vectors/eval/**"
       - "tests/bindings/vectors/MANIFEST.sha256"
       - "xtask/src/eval_receipt_regen.rs"
@@ -14,7 +14,7 @@ on:
       - main
     paths:
       - "spec/eval/**"
-      - "crates/chio-eval-receipt/**"
+      - "crates/sdk/chio-eval-receipt/**"
       - "tests/bindings/vectors/eval/**"
       - "tests/bindings/vectors/MANIFEST.sha256"
       - "xtask/src/eval_receipt_regen.rs"

@@ -30,7 +30,7 @@ The remaining work after this execution pass is mostly hardening and adoption wo
 
 At the start of this roadmap, the repo already has:
 
-- `crates/chio-binding-helpers` with canonical JSON, hashing, signing, receipt, capability, and manifest helpers
+- `crates/sdk/chio-binding-helpers` with canonical JSON, hashing, signing, receipt, capability, and manifest helpers
 - checked-in shared vectors under `tests/bindings/vectors/`
 - `sdks/typescript/chio-ts` invariant helpers plus a low-level transport/session layer
 - the JS conformance peer importing shared transport code from `chio-ts`
@@ -75,7 +75,7 @@ The roadmap is successful if all of the following are true:
 
 Do not spend this 4 to 6 week window on:
 
-- `crates/chio-bindings-ffi`
+- `crates/sdk/chio-bindings-ffi`
 - `crates/chio-bindings-wasm`
 - `sdks/python/chio-py/chio-native`
 - Go CGO bridge work

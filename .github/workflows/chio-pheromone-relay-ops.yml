@@ -3,11 +3,11 @@ name: Chio Pheromone Relay Ops
 on:
   pull_request:
     paths:
-      - "crates/chio-pheromone-relay/**"
-      - "crates/chio-pheromone-runtime/**"
-      - "crates/chio-federation/**"
-      - "crates/chio-cli/**"
-      - "crates/chio-metrics-spec/**"
+      - "crates/trust/chio-pheromone-relay/**"
+      - "crates/trust/chio-pheromone-runtime/**"
+      - "crates/trust/chio-federation/**"
+      - "crates/products/chio-cli/**"
+      - "crates/observability/chio-metrics-spec/**"
       - "examples/chio-3vendor/**"
       - "docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md"
       - "spec/schemas/chio-pheromone/**"
@@ -18,11 +18,11 @@ on:
   push:
     branches: [main]
     paths:
-      - "crates/chio-pheromone-relay/**"
-      - "crates/chio-pheromone-runtime/**"
-      - "crates/chio-federation/**"
-      - "crates/chio-cli/**"
-      - "crates/chio-metrics-spec/**"
+      - "crates/trust/chio-pheromone-relay/**"
+      - "crates/trust/chio-pheromone-runtime/**"
+      - "crates/trust/chio-federation/**"
+      - "crates/products/chio-cli/**"
+      - "crates/observability/chio-metrics-spec/**"
       - "examples/chio-3vendor/**"
       - "docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md"
       - "spec/schemas/chio-pheromone/**"

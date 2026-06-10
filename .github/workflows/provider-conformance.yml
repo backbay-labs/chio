@@ -8,16 +8,16 @@ on:
     paths:
       - Cargo.toml
       - Cargo.lock
-      - crates/chio-provider-conformance/**
-      - crates/chio-openai/**
-      - crates/chio-tool-call-fabric/**
-      - crates/chio-anthropic-tools-adapter/**
-      - crates/chio-bedrock-converse-adapter/**
-      - crates/chio-gemini-tools-adapter/**
-      - crates/chio-mistral-tools-adapter/**
-      - crates/chio-groq-tools-adapter/**
-      - crates/chio-ollama-tools-adapter/**
-      - crates/chio-cohere-tools-adapter/**
+      - crates/protocol/chio-provider-conformance/**
+      - crates/protocol/chio-openai-adapter/**
+      - crates/protocol/chio-tool-call-fabric/**
+      - crates/protocol/chio-anthropic-tools-adapter/**
+      - crates/protocol/chio-bedrock-converse-adapter/**
+      - crates/protocol/chio-gemini-tools-adapter/**
+      - crates/protocol/chio-mistral-tools-adapter/**
+      - crates/protocol/chio-groq-tools-adapter/**
+      - crates/protocol/chio-ollama-tools-adapter/**
+      - crates/protocol/chio-cohere-tools-adapter/**
       - .github/workflows/provider-conformance.yml
   push:
     branches:
@@ -26,16 +26,16 @@ on:
     paths:
       - Cargo.toml
       - Cargo.lock
-      - crates/chio-provider-conformance/**
-      - crates/chio-openai/**
-      - crates/chio-tool-call-fabric/**
-      - crates/chio-anthropic-tools-adapter/**
-      - crates/chio-bedrock-converse-adapter/**
-      - crates/chio-gemini-tools-adapter/**
-      - crates/chio-mistral-tools-adapter/**
-      - crates/chio-groq-tools-adapter/**
-      - crates/chio-ollama-tools-adapter/**
-      - crates/chio-cohere-tools-adapter/**
+      - crates/protocol/chio-provider-conformance/**
+      - crates/protocol/chio-openai-adapter/**
+      - crates/protocol/chio-tool-call-fabric/**
+      - crates/protocol/chio-anthropic-tools-adapter/**
+      - crates/protocol/chio-bedrock-converse-adapter/**
+      - crates/protocol/chio-gemini-tools-adapter/**
+      - crates/protocol/chio-mistral-tools-adapter/**
+      - crates/protocol/chio-groq-tools-adapter/**
+      - crates/protocol/chio-ollama-tools-adapter/**
+      - crates/protocol/chio-cohere-tools-adapter/**
       - .github/workflows/provider-conformance.yml
 
 permissions:

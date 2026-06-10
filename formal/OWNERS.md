@@ -26,7 +26,7 @@ The formal owners (primary and backup) are jointly on the hook for:
   deliberately, never silently.
 - **Invariant maintenance:** when the capability algebra, scope lattice,
   receipt chain, or revocation propagation rules change in
-  `crates/chio-core-types/` or `crates/chio-kernel-core/`, update the
+  `crates/core/chio-core-types/` or `crates/kernel/chio-kernel-core/`, update the
   corresponding TLA+ specs, Lean4 lemmas, and Kani harnesses so the
   formal artifacts stay in sync with executable code.
 - **Counterexample triage:** when Apalache or Kani produces a

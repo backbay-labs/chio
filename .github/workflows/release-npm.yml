@@ -288,7 +288,7 @@ jobs:
           semver_re='(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?(\+([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?'
           # Non-greedy leading strip so pre-release tags whose suffix
           # contains `v` (e.g. ts/v1.2.3-preview.1) are extracted
-          # correctly. See release-pypi.yml for the same fix.
+          # correctly. release-pypi.yml handles the same case.
           if [[ "$REF_NAME" =~ ^ts/v(${semver_re})$ ]]; then
             tag_version="${BASH_REMATCH[1]}"
           elif [[ "$REF_NAME" =~ ^ts/$SLUG-v(${semver_re})$ ]]; then

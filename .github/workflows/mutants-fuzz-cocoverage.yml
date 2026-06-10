@@ -15,7 +15,7 @@ on:
     # 05:45 UTC nightly. Late enough that mutants-nightly (05:00) has a
     # head start producing surviving-mutant artifacts; this workflow can
     # run independently because it re-derives the surviving-mutant set
-    # from a fresh cargo-mutants invocation. Source doc: nightly only.
+    # from a fresh cargo-mutants invocation. Nightly cadence only.
     - cron: "45 5 * * *"
   workflow_dispatch:
     inputs:
@@ -44,9 +44,9 @@ jobs:
   cocoverage:
     name: cocoverage (${{ matrix.package }})
     runs-on: ubuntu-latest
-    # Source doc allots 4 h per crate for the cargo-mutants sweep; the
-    # fuzz-replay phase adds a bounded budget on top. 300 min keeps
-    # headroom under the GitHub 6 h cap.
+    # The cargo-mutants sweep allots 4 h per crate; the fuzz-replay phase
+    # adds a bounded budget on top. 300 min keeps headroom under the
+    # GitHub 6 h cap.
     timeout-minutes: 300
     strategy:
       fail-fast: false
@@ -89,11 +89,11 @@ jobs:
           rustup toolchain install nightly --profile minimal
           rustup component add rust-src --toolchain nightly
 
-      - name: Install cargo-mutants (pinned per Decision 12)
+      - name: Install cargo-mutants (pinned)
         if: steps.forced.outputs.skip == 'false'
         run: |
           set -euo pipefail
-          # Decision 12: cargo-mutants pinned exactly; do not float.
+          # cargo-mutants is pinned exactly; do not float.
           cargo install cargo-mutants --version 25.3.1 --locked
 
       - name: Install cargo-fuzz

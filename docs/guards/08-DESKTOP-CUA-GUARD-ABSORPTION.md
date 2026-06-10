@@ -662,17 +662,17 @@ Rationale:
 
 | File | Change |
 |------|--------|
-| `crates/chio-guards/src/action.rs` | Add `BrowserAction`, `DesktopAction`, `ScreenCapture` variants and subtype enums. Extend `extract_action`. |
-| `crates/chio-guards/src/lib.rs` | Add `pub mod computer_use`, `pub mod input_injection`, `pub mod side_channel`, `pub mod browser_navigation`, `pub mod browser_input`, `pub mod screen_capture`. Re-export guard types. |
-| `crates/chio-guards/src/computer_use.rs` | New file. Port of `ComputerUseGuard`. |
-| `crates/chio-guards/src/input_injection.rs` | New file. Port of `InputInjectionCapabilityGuard`. |
-| `crates/chio-guards/src/side_channel.rs` | New file. Port of `RemoteDesktopSideChannelGuard`. |
-| `crates/chio-guards/src/browser_navigation.rs` | New file. `BrowserNavigationGuard`. |
-| `crates/chio-guards/src/browser_input.rs` | New file. `BrowserInputGuard`. |
-| `crates/chio-guards/src/screen_capture.rs` | New file. `ScreenCaptureGuard`. |
-| `crates/chio-guards/src/pipeline.rs` | Register CUA guards in default pipeline at correct priority. |
-| `crates/chio-wasm-guards/src/abi.rs` | Add `action_subtype` to `GuardRequest`. Add new `action_type` values. |
-| `crates/chio-wasm-guards/src/runtime.rs` | Populate CUA fields in `build_request`. |
+| `crates/guards/chio-guards/src/action.rs` | Add `BrowserAction`, `DesktopAction`, `ScreenCapture` variants and subtype enums. Extend `extract_action`. |
+| `crates/guards/chio-guards/src/lib.rs` | Add `pub mod computer_use`, `pub mod input_injection`, `pub mod side_channel`, `pub mod browser_navigation`, `pub mod browser_input`, `pub mod screen_capture`. Re-export guard types. |
+| `crates/guards/chio-guards/src/computer_use.rs` | New file. Port of `ComputerUseGuard`. |
+| `crates/guards/chio-guards/src/input_injection.rs` | New file. Port of `InputInjectionCapabilityGuard`. |
+| `crates/guards/chio-guards/src/side_channel.rs` | New file. Port of `RemoteDesktopSideChannelGuard`. |
+| `crates/guards/chio-guards/src/browser_navigation.rs` | New file. `BrowserNavigationGuard`. |
+| `crates/guards/chio-guards/src/browser_input.rs` | New file. `BrowserInputGuard`. |
+| `crates/guards/chio-guards/src/screen_capture.rs` | New file. `ScreenCaptureGuard`. |
+| `crates/guards/chio-guards/src/pipeline.rs` | Register CUA guards in default pipeline at correct priority. |
+| `crates/guards/chio-wasm-guards/src/abi.rs` | Add `action_subtype` to `GuardRequest`. Add new `action_type` values. |
+| `crates/guards/chio-wasm-guards/src/runtime.rs` | Populate CUA fields in `build_request`. |
 | `spec/GUARDS.md` | Document the six new guards. |
 
 ---

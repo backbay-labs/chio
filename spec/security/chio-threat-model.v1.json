@@ -45,14 +45,14 @@
       "residualRisk": "Compatibility profiles still allow bearer-style capability use when sender constraint is not required, and replay protection weakens across restart or failover when nonce state is only process-local.",
       "coverage_state": "pending",
       "coveredBy": [
-        "crates/chio-conformance/tests/threats/capability_token_theft.rs",
-        "crates/chio-adversarial-suite/cases/clock_rewound/clock-rewound-001.json",
-        "crates/chio-adversarial-suite/cases/clock_rewound/clock-rewound-002.json",
-        "crates/chio-adversarial-suite/cases/clock_rewound/clock-rewound-005.json",
-        "crates/chio-adversarial-suite/cases/future_dated/future-dated-002.json",
-        "crates/chio-adversarial-suite/cases/partial_signature/partial-signature-005.json",
-        "crates/chio-adversarial-suite/cases/scope_superset/scope-superset-003.json",
-        "crates/chio-adversarial-suite/cases/scope_superset/scope-superset-005.json"
+        "crates/tooling/chio-conformance/tests/threats/capability_token_theft.rs",
+        "crates/core/chio-adversarial-suite/cases/clock_rewound/clock-rewound-001.json",
+        "crates/core/chio-adversarial-suite/cases/clock_rewound/clock-rewound-002.json",
+        "crates/core/chio-adversarial-suite/cases/clock_rewound/clock-rewound-005.json",
+        "crates/core/chio-adversarial-suite/cases/future_dated/future-dated-002.json",
+        "crates/core/chio-adversarial-suite/cases/partial_signature/partial-signature-005.json",
+        "crates/core/chio-adversarial-suite/cases/scope_superset/scope-superset-003.json",
+        "crates/core/chio-adversarial-suite/cases/scope_superset/scope-superset-005.json"
       ],
       "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
     },
@@ -80,17 +80,17 @@
       "residualRisk": "Plaintext local-development modes intentionally do not provide peer authenticity, and receipt trust still depends on deployment-specific trust-anchor distribution.",
       "coverage_state": "pending",
       "coveredBy": [
-        "crates/chio-conformance/tests/threats/kernel_impersonation.rs",
-        "crates/chio-adversarial-suite/cases/anchor_grafted/anchor-grafted-002.json",
-        "crates/chio-adversarial-suite/cases/anchor_grafted/anchor-grafted-005.json",
-        "crates/chio-adversarial-suite/cases/clock_rewound/clock-rewound-004.json",
-        "crates/chio-adversarial-suite/cases/future_dated/future-dated-005.json",
-        "crates/chio-adversarial-suite/cases/partial_signature/partial-signature-001.json",
-        "crates/chio-adversarial-suite/cases/partial_signature/partial-signature-002.json",
-        "crates/chio-adversarial-suite/cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-001.json",
-        "crates/chio-adversarial-suite/cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-002.json",
-        "crates/chio-adversarial-suite/cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-003.json",
-        "crates/chio-adversarial-suite/cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-005.json"
+        "crates/tooling/chio-conformance/tests/threats/kernel_impersonation.rs",
+        "crates/core/chio-adversarial-suite/cases/anchor_grafted/anchor-grafted-002.json",
+        "crates/core/chio-adversarial-suite/cases/anchor_grafted/anchor-grafted-005.json",
+        "crates/core/chio-adversarial-suite/cases/clock_rewound/clock-rewound-004.json",
+        "crates/core/chio-adversarial-suite/cases/future_dated/future-dated-005.json",
+        "crates/core/chio-adversarial-suite/cases/partial_signature/partial-signature-001.json",
+        "crates/core/chio-adversarial-suite/cases/partial_signature/partial-signature-002.json",
+        "crates/core/chio-adversarial-suite/cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-001.json",
+        "crates/core/chio-adversarial-suite/cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-002.json",
+        "crates/core/chio-adversarial-suite/cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-003.json",
+        "crates/core/chio-adversarial-suite/cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-005.json"
       ],
       "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
     },
@@ -118,9 +118,9 @@
       "coverage_state": "pending",
       "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed; previous deferred scope: future milestone (kernel-side tool-server dispatch sandbox-escape coverage; current tests close the wasm-guard host-import + fuel paths only, see audits/evidence/threats/tool_server_escape.json::deferred_follow_up)",
       "coveredBy": [
-        "crates/chio-conformance/tests/threats/tool_server_escape.rs",
-        "crates/chio-adversarial-suite/cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-004.json",
-        "crates/chio-wasm-guards/tests/escape/signed_but_malicious.rs"
+        "crates/tooling/chio-conformance/tests/threats/tool_server_escape.rs",
+        "crates/core/chio-adversarial-suite/cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-004.json",
+        "crates/guards/chio-wasm-guards/tests/escape/signed_but_malicious.rs"
       ]
     },
     {
@@ -146,18 +146,18 @@
       "residualRisk": "The native framed lane has no separate in-band anti-replay mechanism outside the sender-proof and capability systems, so non-DPoP grants remain replayable within their validity window if the transport is exposed.",
       "coverage_state": "pending",
       "coveredBy": [
-        "crates/chio-conformance/tests/threats/native_channel_replay.rs",
-        "crates/chio-adversarial-suite/cases/anchor_grafted/anchor-grafted-001.json",
-        "crates/chio-adversarial-suite/cases/anchor_grafted/anchor-grafted-003.json",
-        "crates/chio-adversarial-suite/cases/anchor_grafted/anchor-grafted-004.json",
-        "crates/chio-adversarial-suite/cases/clock_rewound/clock-rewound-003.json",
-        "crates/chio-adversarial-suite/cases/future_dated/future-dated-001.json",
-        "crates/chio-adversarial-suite/cases/future_dated/future-dated-003.json",
-        "crates/chio-adversarial-suite/cases/partial_signature/partial-signature-003.json",
-        "crates/chio-adversarial-suite/cases/replayed_nonce/replayed-nonce-001.json",
-        "crates/chio-adversarial-suite/cases/replayed_nonce/replayed-nonce-002.json",
-        "crates/chio-adversarial-suite/cases/replayed_nonce/replayed-nonce-003.json",
-        "crates/chio-adversarial-suite/cases/revocation_rollback/revocation-rollback-003.json"
+        "crates/tooling/chio-conformance/tests/threats/native_channel_replay.rs",
+        "crates/core/chio-adversarial-suite/cases/anchor_grafted/anchor-grafted-001.json",
+        "crates/core/chio-adversarial-suite/cases/anchor_grafted/anchor-grafted-003.json",
+        "crates/core/chio-adversarial-suite/cases/anchor_grafted/anchor-grafted-004.json",
+        "crates/core/chio-adversarial-suite/cases/clock_rewound/clock-rewound-003.json",
+        "crates/core/chio-adversarial-suite/cases/future_dated/future-dated-001.json",
+        "crates/core/chio-adversarial-suite/cases/future_dated/future-dated-003.json",
+        "crates/core/chio-adversarial-suite/cases/partial_signature/partial-signature-003.json",
+        "crates/core/chio-adversarial-suite/cases/replayed_nonce/replayed-nonce-001.json",
+        "crates/core/chio-adversarial-suite/cases/replayed_nonce/replayed-nonce-002.json",
+        "crates/core/chio-adversarial-suite/cases/replayed_nonce/replayed-nonce-003.json",
+        "crates/core/chio-adversarial-suite/cases/revocation_rollback/revocation-rollback-003.json"
       ],
       "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
     },
@@ -187,11 +187,11 @@
       "residualRisk": "Size checks and lifecycle rules reduce but do not eliminate asymmetric workload attacks, and authenticated callers can still consume their own allowed quota share.",
       "coverage_state": "pending",
       "coveredBy": [
-        "crates/chio-conformance/tests/threats/resource_exhaustion_dos.rs",
-        "crates/chio-wasm-guards/tests/escape/fuel_exhaustion.rs",
-        "crates/chio-wasm-guards/tests/escape/oversize_memory.rs",
-        "crates/chio-wasm-guards/tests/escape/deep_recursion.rs",
-        "crates/chio-wasm-guards/tests/escape/table_grow.rs"
+        "crates/tooling/chio-conformance/tests/threats/resource_exhaustion_dos.rs",
+        "crates/guards/chio-wasm-guards/tests/escape/fuel_exhaustion.rs",
+        "crates/guards/chio-wasm-guards/tests/escape/oversize_memory.rs",
+        "crates/guards/chio-wasm-guards/tests/escape/deep_recursion.rs",
+        "crates/guards/chio-wasm-guards/tests/escape/table_grow.rs"
       ],
       "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
     },
@@ -220,18 +220,18 @@
       "residualRisk": "The shipped runtime is stronger than unchecked delegation metadata, but it is not yet a universally recursive, fail-closed delegated-authority proof system at every entry point.",
       "coverage_state": "pending",
       "coveredBy": [
-        "crates/chio-conformance/tests/threats/delegation_chain_abuse.rs",
-        "crates/chio-adversarial-suite/cases/future_dated/future-dated-004.json",
-        "crates/chio-adversarial-suite/cases/partial_signature/partial-signature-004.json",
-        "crates/chio-adversarial-suite/cases/replayed_nonce/replayed-nonce-004.json",
-        "crates/chio-adversarial-suite/cases/replayed_nonce/replayed-nonce-005.json",
-        "crates/chio-adversarial-suite/cases/revocation_rollback/revocation-rollback-001.json",
-        "crates/chio-adversarial-suite/cases/revocation_rollback/revocation-rollback-002.json",
-        "crates/chio-adversarial-suite/cases/revocation_rollback/revocation-rollback-004.json",
-        "crates/chio-adversarial-suite/cases/revocation_rollback/revocation-rollback-005.json",
-        "crates/chio-adversarial-suite/cases/scope_superset/scope-superset-001.json",
-        "crates/chio-adversarial-suite/cases/scope_superset/scope-superset-002.json",
-        "crates/chio-adversarial-suite/cases/scope_superset/scope-superset-004.json"
+        "crates/tooling/chio-conformance/tests/threats/delegation_chain_abuse.rs",
+        "crates/core/chio-adversarial-suite/cases/future_dated/future-dated-004.json",
+        "crates/core/chio-adversarial-suite/cases/partial_signature/partial-signature-004.json",
+        "crates/core/chio-adversarial-suite/cases/replayed_nonce/replayed-nonce-004.json",
+        "crates/core/chio-adversarial-suite/cases/replayed_nonce/replayed-nonce-005.json",
+        "crates/core/chio-adversarial-suite/cases/revocation_rollback/revocation-rollback-001.json",
+        "crates/core/chio-adversarial-suite/cases/revocation_rollback/revocation-rollback-002.json",
+        "crates/core/chio-adversarial-suite/cases/revocation_rollback/revocation-rollback-004.json",
+        "crates/core/chio-adversarial-suite/cases/revocation_rollback/revocation-rollback-005.json",
+        "crates/core/chio-adversarial-suite/cases/scope_superset/scope-superset-001.json",
+        "crates/core/chio-adversarial-suite/cases/scope_superset/scope-superset-002.json",
+        "crates/core/chio-adversarial-suite/cases/scope_superset/scope-superset-004.json"
       ],
       "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
     },
@@ -259,8 +259,8 @@
       "residualRisk": "DNS time-of-check/time-of-use gaps remain deployment-sensitive, but substrate callers now require explicit scheme and authority allowlists, address-class denials, redirect ceilings, and response-size ceilings before outbound HTTP is accepted.",
       "coverage_state": "pending",
       "coveredBy": [
-        "crates/chio-http-core/tests/http_egress_contract.rs",
-        "crates/chio-conformance/tests/threats/ssrf_via_http_substrate.rs"
+        "crates/platform/chio-http-core/tests/http_egress_contract.rs",
+        "crates/tooling/chio-conformance/tests/threats/ssrf_via_http_substrate.rs"
       ],
       "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
     },
@@ -287,7 +287,7 @@
       "residualRisk": "Regex-based pattern detection is incomplete, may false-positive in non-medical contexts, and does not scan image or binary response content.",
       "coverage_state": "pending",
       "coveredBy": [
-        "crates/chio-conformance/tests/threats/pii_phi_exposure.rs"
+        "crates/tooling/chio-conformance/tests/threats/pii_phi_exposure.rs"
       ],
       "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
     },
@@ -317,7 +317,7 @@
       "residualRisk": "Rate limits are process-local, and an attacker controlling multiple agent identities can multiply the effective allowed rate.",
       "coverage_state": "pending",
       "coveredBy": [
-        "crates/chio-conformance/tests/threats/agent_velocity_abuse.rs"
+        "crates/tooling/chio-conformance/tests/threats/agent_velocity_abuse.rs"
       ],
       "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
     },
@@ -344,7 +344,7 @@
       "residualRisk": "Per-session accounting can be bypassed through many short sessions, and byte counts do not measure semantic information density or compression.",
       "coverage_state": "pending",
       "coveredBy": [
-        "crates/chio-conformance/tests/threats/cumulative_data_exfiltration.rs"
+        "crates/tooling/chio-conformance/tests/threats/cumulative_data_exfiltration.rs"
       ],
       "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
     },
@@ -371,7 +371,7 @@
       "residualRisk": "The guard cannot prevent cross-session dangerous sequences, non-adjacent forbidden transitions, or semantically dangerous invocations hidden behind benign tool names.",
       "coverage_state": "pending",
       "coveredBy": [
-        "crates/chio-conformance/tests/threats/behavioral_sequence_attack.rs"
+        "crates/tooling/chio-conformance/tests/threats/behavioral_sequence_attack.rs"
       ],
       "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
     },
@@ -398,7 +398,7 @@
       "residualRisk": "Linear memory pressure within the runtime limit and compilation CPU for pathologically complex modules are not fully capped by Chio fuel metering.",
       "coverage_state": "pending",
       "coveredBy": [
-        "crates/chio-conformance/tests/threats/wasm_guard_resource_exhaustion.rs"
+        "crates/tooling/chio-conformance/tests/threats/wasm_guard_resource_exhaustion.rs"
       ],
       "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
     },
@@ -428,11 +428,11 @@
       "coverage_state": "pending",
       "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed; previous deferred scope: future milestone (hybrid-PQ artifact downgrade vector; current test closes the classical-only verifier-side rejection path only, see audits/evidence/threats/pq_signature_downgrade.json::deferred_follow_up)",
       "covered_by_tests": [
-        "crates/chio-attest-verify/tests/migration.rs::end_to_end_migration_walks_three_stages",
-        "crates/chio-attest-verify/tests/migration.rs::stage3_pq_required_accepts_rolled_hybrid_and_rejects_v318_bundle",
-        "crates/chio-attest-verify/tests/v318_migration.rs::v318_fixture_rejected_under_pq_required",
-        "crates/chio-kernel/tests/pq_key_load_after_self_quote.rs::rejected_self_quote_refuses_to_load_pq_key",
-        "crates/chio-kernel/tests/hybrid_receipt_sign.rs::pq_required_with_seed_constructs_hybrid_backend"
+        "crates/trust/chio-attest-verify/tests/migration.rs::end_to_end_migration_walks_three_stages",
+        "crates/trust/chio-attest-verify/tests/migration.rs::stage3_pq_required_accepts_rolled_hybrid_and_rejects_v318_bundle",
+        "crates/trust/chio-attest-verify/tests/v318_migration.rs::v318_fixture_rejected_under_pq_required",
+        "crates/kernel/chio-kernel/tests/pq_key_load_after_self_quote.rs::rejected_self_quote_refuses_to_load_pq_key",
+        "crates/kernel/chio-kernel/tests/hybrid_receipt_sign.rs::pq_required_with_seed_constructs_hybrid_backend"
       ]
     },
     {
@@ -459,13 +459,13 @@
       "residualRisk": "Until platform quote verification lands, TEE deployment claims depend on external operator evidence and are not independently verified by Chio.",
       "coverage_state": "pending",
       "covered_by_tests": [
-        "crates/chio-attest-verify/tests/cross_backend_conformance.rs",
-        "crates/chio-attest-verify/tests/expect_report_data.rs",
-        "crates/chio-attest-verify/tests/tdx_integration.rs",
-        "crates/chio-attest-verify/tests/sev_snp_integration.rs",
-        "crates/chio-attest-verify/tests/nitro_unit.rs",
-        "crates/chio-attest-verify/tests/nitro_root_rotation.rs",
-        "crates/chio-kernel/tests/pq_key_load_after_self_quote.rs::allow_hybrid_loads_pq_only_after_verified_self_quote"
+        "crates/trust/chio-attest-verify/tests/cross_backend_conformance.rs",
+        "crates/trust/chio-attest-verify/tests/expect_report_data.rs",
+        "crates/trust/chio-attest-verify/tests/tdx_integration.rs",
+        "crates/trust/chio-attest-verify/tests/sev_snp_integration.rs",
+        "crates/trust/chio-attest-verify/tests/nitro_unit.rs",
+        "crates/trust/chio-attest-verify/tests/nitro_root_rotation.rs",
+        "crates/kernel/chio-kernel/tests/pq_key_load_after_self_quote.rs::allow_hybrid_loads_pq_only_after_verified_self_quote"
       ],
       "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
     },
@@ -494,13 +494,13 @@
       "residualRisk": "A compromised authenticator or issuer account can still request fresh capabilities until revocation propagates, and platform phishing resistance depends on correct relying-party and origin configuration.",
       "coverage_state": "pending",
       "coveredBy": [
-        "crates/chio-custody-hw/src/verifier.rs",
-        "crates/chio-custody-hw/src/nonce_store.rs",
-        "crates/chio-custody-hw/src/revocation.rs",
-        "crates/chio-custody-hw/tests/replay_resistance.rs",
-        "crates/chio-custody-hw/tests/revocation_cascade.rs",
-        "crates/chio-custody-hw/tests/end_to_end.rs",
-        "crates/chio-conformance/tests/threats/passkey_credential_theft.rs"
+        "crates/trust/chio-custody-hw/src/verifier.rs",
+        "crates/trust/chio-custody-hw/src/nonce_store.rs",
+        "crates/trust/chio-custody-hw/src/revocation.rs",
+        "crates/trust/chio-custody-hw/tests/replay_resistance.rs",
+        "crates/trust/chio-custody-hw/tests/revocation_cascade.rs",
+        "crates/trust/chio-custody-hw/tests/end_to_end.rs",
+        "crates/tooling/chio-conformance/tests/threats/passkey_credential_theft.rs"
       ],
       "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
     },
@@ -529,9 +529,9 @@
       "residualRisk": "Deployments that reuse broad audience names across environments can still create operational confusion even when cryptographic envelope checks are correct.",
       "coverage_state": "pending",
       "coveredBy": [
-        "crates/chio-custody-hw/src/capability.rs",
-        "crates/chio-custody-hw/tests/audience_confusion.rs",
-        "crates/chio-conformance/tests/threats/audience_confusion.rs"
+        "crates/trust/chio-custody-hw/src/capability.rs",
+        "crates/trust/chio-custody-hw/tests/audience_confusion.rs",
+        "crates/tooling/chio-conformance/tests/threats/audience_confusion.rs"
       ],
       "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
     },
@@ -563,10 +563,10 @@
       "residualRisk": "Hosted providers that do not expose loaded model bytes cannot bind under this check; deployments must use local recomputation or a signed model-card bundle with a provider surface that can produce a recomputed loaded-weight digest.",
       "coverage_state": "pending",
       "coveredBy": [
-        "crates/chio-conformance/tests/threats/weights_hash_spoof.rs",
-        "crates/chio-kernel/tests/weights_binding.rs",
-        "crates/chio-weights/tests/lineage_anchor.rs",
-        "crates/chio-weights/tests/equivalence.rs"
+        "crates/tooling/chio-conformance/tests/threats/weights_hash_spoof.rs",
+        "crates/kernel/chio-kernel/tests/weights_binding.rs",
+        "crates/trust/chio-weights/tests/lineage_anchor.rs",
+        "crates/trust/chio-weights/tests/equivalence.rs"
       ],
       "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
     },
@@ -595,9 +595,9 @@
       "residualRisk": "Platform attestation services do not protect flows that reuse server challenges or accept broad audiences; deployments must keep nonce state durable enough for their mobile issuance window.",
       "coverage_state": "pending",
       "coveredBy": [
-        "crates/chio-conformance/tests/threats/mobile_attestation_replay.rs",
-        "crates/chio-custody-hw/tests/attestation_app_attest.rs",
-        "crates/chio-custody-hw/tests/attestation_play_integrity.rs"
+        "crates/tooling/chio-conformance/tests/threats/mobile_attestation_replay.rs",
+        "crates/trust/chio-custody-hw/tests/attestation_app_attest.rs",
+        "crates/trust/chio-custody-hw/tests/attestation_play_integrity.rs"
       ],
       "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
     },
@@ -626,9 +626,9 @@
       "residualRisk": "A fully compromised mobile OS can still interfere with UI and request timing; this control only prevents export of the device-bound signing key from being treated as normal custody.",
       "coverage_state": "pending",
       "coveredBy": [
-        "crates/chio-conformance/tests/threats/device_key_extraction.rs",
-        "crates/chio-custody-hw/tests/attestation_app_attest.rs",
-        "crates/chio-custody-hw/tests/attestation_play_integrity.rs"
+        "crates/tooling/chio-conformance/tests/threats/device_key_extraction.rs",
+        "crates/trust/chio-custody-hw/tests/attestation_app_attest.rs",
+        "crates/trust/chio-custody-hw/tests/attestation_play_integrity.rs"
       ],
       "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
     },
@@ -656,8 +656,8 @@
       "residualRisk": "Google-signed verdict freshness still depends on issuer nonce storage and clock policy; a weak deployment can make a valid token replayable by accepting stale nonce state.",
       "coverage_state": "pending",
       "coveredBy": [
-        "crates/chio-conformance/tests/threats/play_integrity_token_replay.rs",
-        "crates/chio-custody-hw/tests/attestation_play_integrity.rs"
+        "crates/tooling/chio-conformance/tests/threats/play_integrity_token_replay.rs",
+        "crates/trust/chio-custody-hw/tests/attestation_play_integrity.rs"
       ],
       "deferred_to": "backlog (strict threat-mutants evidence backfill): row has in-tree tests or corpus links, but current evidence is bootstrap/generated metadata and is not release-closed"
     }

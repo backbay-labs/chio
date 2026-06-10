@@ -31,9 +31,9 @@ As shipped before this rewrite:
 The code already has the right seams:
 
 - kernel extension points for `CapabilityAuthority`, `ReceiptStore`, `RevocationStore`, and now `BudgetStore`
-- CLI/runtime construction concentrated in `crates/chio-cli/src/main.rs`
-- hosted HTTP auth and admin behavior concentrated in `crates/chio-mcp-remote/src/remote_mcp/`
-- control-plane HTTP client and server behavior concentrated in `crates/chio-control-plane/src/trust_control.rs`
+- CLI/runtime construction concentrated in `crates/products/chio-cli/src/main.rs`
+- hosted HTTP auth and admin behavior concentrated in `crates/protocol/chio-mcp-remote/src/remote_mcp/`
+- control-plane HTTP client and server behavior concentrated in `crates/platform/chio-control-plane/src/trust_control.rs`
 
 The rewrite should preserve those seams instead of inventing a second trust model.
 

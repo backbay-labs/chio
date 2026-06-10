@@ -86,7 +86,7 @@ this repository, or is marked as a gap. Posture by family:
 | Systems Acquisition, Development, and Maintenance | provenance, supply chain, formal evidence | Implemented and evidenced |
 | Incident Management | `compliance/hitrust/ir-runbook.md` | Documented; first-cycle execution evidence is a gap |
 | Business Continuity Management | none in repository | Gap; DR evidence required |
-| Privacy Practices | PHI boundary, telemetry de-identification, receipt redaction (`crates/chio-log-redact/`) | Partial; policy documented, BAA and PHI handling is out-of-tree |
+| Privacy Practices | PHI boundary, telemetry de-identification, receipt redaction (`crates/observability/chio-log-redact/`) | Partial; policy documented, BAA and PHI handling is out-of-tree |
 
 ## Evidence inheritance
 

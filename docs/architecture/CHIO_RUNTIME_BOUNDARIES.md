@@ -8,21 +8,21 @@ quietly collapse back into monolithic shells.
 
 | Surface | Runtime shell responsibility | Extracted boundary |
 | --- | --- | --- |
-| `crates/chio-mcp-remote/src/remote_mcp/http_service.rs` | hosted MCP session lifecycle, auth, edge routing, and transport orchestration | `crates/chio-mcp-remote/src/remote_mcp/admin.rs` owns remote admin routes, admin-only storage access, and session trust control handlers |
-| `crates/chio-control-plane/src/trust_control.rs` | trust-service routing, issuance, registry operations, remote client entrypoints, and cluster coordination | `crates/chio-control-plane/src/trust_control/health.rs` owns health-report composition and cluster health projection; `crates/chio-control-plane/src/federation_policy.rs` owns the bounded federation-policy model; `crates/chio-control-plane/src/scim_lifecycle.rs` owns the bounded SCIM lifecycle model |
-| `crates/chio-mcp-edge/src/runtime.rs` | `ChioMcpEdge` state machine, task orchestration, runtime event forwarding, and inbound loop control | `crates/chio-mcp-edge/src/runtime/protocol.rs` owns JSON-RPC shaping, task/result metadata, transport glue, pagination, and capability selection helpers |
-| `crates/chio-kernel/src/lib.rs` | kernel policy flow, dispatch, receipt persistence, checkpoint triggering, and public crate surface | `crates/chio-kernel/src/receipt_support.rs` owns receipt hashing and metadata helpers; `crates/chio-kernel/src/request_matching.rs` owns session request tracking plus capability and constraint matching |
+| `crates/protocol/chio-mcp-remote/src/remote_mcp/http_service.rs` | hosted MCP session lifecycle, auth, edge routing, and transport orchestration | `crates/protocol/chio-mcp-remote/src/remote_mcp/admin.rs` owns remote admin routes, admin-only storage access, and session trust control handlers |
+| `crates/platform/chio-control-plane/src/trust_control.rs` | trust-service routing, issuance, registry operations, remote client entrypoints, and cluster coordination | `crates/platform/chio-control-plane/src/trust_control/health.rs` owns health-report composition and cluster health projection; `crates/platform/chio-control-plane/src/federation_policy.rs` owns the bounded federation-policy model; `crates/platform/chio-control-plane/src/scim_lifecycle.rs` owns the bounded SCIM lifecycle model |
+| `crates/protocol/chio-mcp-edge/src/runtime.rs` | `ChioMcpEdge` state machine, task orchestration, runtime event forwarding, and inbound loop control | `crates/protocol/chio-mcp-edge/src/runtime/protocol.rs` owns JSON-RPC shaping, task/result metadata, transport glue, pagination, and capability selection helpers |
+| `crates/kernel/chio-kernel/src/lib.rs` | kernel policy flow, dispatch, receipt persistence, checkpoint triggering, and public crate surface | `crates/kernel/chio-kernel/src/receipt_support.rs` owns receipt hashing and metadata helpers; `crates/kernel/chio-kernel/src/request_matching.rs` owns session request tracking plus capability and constraint matching |
 
 ## Layering Rules
 
-- `chio-cli` stays a shell. `crates/chio-cli/src/main.rs` re-exports runtime
+- `chio-cli` stays a shell. `crates/products/chio-cli/src/main.rs` re-exports runtime
   surfaces from `chio-hosted-mcp` and `chio-control-plane` instead of inlining
   additional giant modules.
 - `chio-mcp-remote` owns the remote MCP HTTP edge. `chio-hosted-mcp`
   remains a compatibility crate that re-exports the remote server entrypoint.
 - `chio-control-plane` owns the trust-control service directly: the
   `trust_control` module and its submodule tree live in
-  `crates/chio-control-plane/src/`, and `chio-cli` re-exports them rather than
+  `crates/platform/chio-control-plane/src/`, and `chio-cli` re-exports them rather than
   the library reaching back into the binary crate's source.
 - `chio-mcp-edge` keeps protocol glue separate from the runtime loop so JSON-RPC
   behavior can change without widening the edge state machine.
@@ -75,7 +75,7 @@ pilot lives in `formal/aeneas`.
 
 ## Regression Guard
 
-`crates/chio-control-plane/tests/runtime_boundaries.rs` is the source-shape
+`crates/platform/chio-control-plane/tests/runtime_boundaries.rs` is the source-shape
 guard for this boundary. It verifies:
 
 - the extracted ownership files exist

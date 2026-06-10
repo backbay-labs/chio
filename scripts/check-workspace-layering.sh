@@ -4,17 +4,19 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 domain_manifests=(
-  "crates/chio-core/Cargo.toml"
-  "crates/chio-manifest/Cargo.toml"
-  "crates/chio-did/Cargo.toml"
-  "crates/chio-guards/Cargo.toml"
-  "crates/chio-policy/Cargo.toml"
-  "crates/chio-reputation/Cargo.toml"
-  "crates/chio-credentials/Cargo.toml"
-  "crates/chio-kernel/Cargo.toml"
+  "crates/core/chio-core/Cargo.toml"
+  "crates/platform/chio-manifest/Cargo.toml"
+  "crates/trust/chio-did/Cargo.toml"
+  "crates/guards/chio-guards/Cargo.toml"
+  "crates/guards/chio-policy/Cargo.toml"
+  "crates/trust/chio-reputation/Cargo.toml"
+  "crates/trust/chio-credentials/Cargo.toml"
+  "crates/kernel/chio-kernel/Cargo.toml"
 )
 
-blocked_workspace_paths='path = "\\.\\./(chio-cli|chio-control-plane|chio-hosted-mcp)"'
+# Match any relative path dependency on these top-of-stack crates regardless of
+# depth or group folder (e.g. `path = "../../products/chio-cli"`).
+blocked_workspace_paths='path = "[^"]*/(chio-cli|chio-control-plane|chio-hosted-mcp)"'
 blocked_transport_deps='^(clap|axum|reqwest)[[:space:]]*='
 failed=0
 

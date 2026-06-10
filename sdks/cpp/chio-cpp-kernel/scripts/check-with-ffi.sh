@@ -42,7 +42,7 @@ cmake -S sdks/cpp/chio-cpp-kernel -B "${build_dir}" \
   -DCHIO_CPP_KERNEL_BUILD_TESTS=ON \
   -DCHIO_CPP_KERNEL_BUILD_EXAMPLES=ON \
   -DCHIO_CPP_KERNEL_ENABLE_FFI=ON \
-  -DCHIO_CPP_KERNEL_FFI_INCLUDE_DIR="${repo_root}/crates/chio-cpp-kernel-ffi/include" \
+  -DCHIO_CPP_KERNEL_FFI_INCLUDE_DIR="${repo_root}/crates/sdk/chio-cpp-kernel-ffi/include" \
   -DCHIO_CPP_KERNEL_FFI_LIBRARY="${ffi_lib}"
 cmake --build "${build_dir}"
 ctest --test-dir "${build_dir}" --output-on-failure

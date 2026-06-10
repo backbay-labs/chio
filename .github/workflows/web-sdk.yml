@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'crates/chio-kernel-browser/**'
+      - 'crates/kernel/chio-kernel-browser/**'
       - 'sdks/typescript/packages/browser/**'
       - 'sdks/typescript/packages/workers/**'
       - 'sdks/typescript/packages/edge/**'
@@ -13,7 +13,7 @@ on:
       - '.github/workflows/web-sdk.yml'
   pull_request:
     paths:
-      - 'crates/chio-kernel-browser/**'
+      - 'crates/kernel/chio-kernel-browser/**'
       - 'sdks/typescript/packages/browser/**'
       - 'sdks/typescript/packages/workers/**'
       - 'sdks/typescript/packages/edge/**'

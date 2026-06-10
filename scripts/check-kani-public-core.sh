@@ -11,7 +11,7 @@ fi
 python3 - <<'PY'
 from pathlib import Path
 
-source = Path("crates/chio-kernel-core/src/kani_public_harnesses.rs")
+source = Path("crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs")
 text = source.read_text(encoding="utf-8")
 expected = [
     "public_verify_capability_rejects_untrusted_issuer_before_signature",

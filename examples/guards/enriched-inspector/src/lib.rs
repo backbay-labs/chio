@@ -1,7 +1,7 @@
 //! Example guard: enriched field inspection + host functions.
 //!
-//! Demonstrates GEXM-02 (reading action_type and extracted_path)
-//! and GEXM-03 (calling chio::log and chio::get_config host functions).
+//! Reads the enriched `action_type` and `extracted_path` fields and calls the
+//! `chio::log` and `chio::get_config` host functions.
 //!
 //! Policy: blocks file_write actions to /etc (or a configurable
 //! blocked_path from guard config). Allows everything else.
@@ -20,7 +20,6 @@ const INVALID_CONFIG_REASON: &str = "blocked_path config is empty or not normali
 
 #[chio_guard]
 fn evaluate(req: GuardRequest) -> GuardVerdict {
-    // GEXM-03: Use host functions
     log(log_level::INFO, "enriched inspector evaluating request");
 
     let blocked_path = get_config(CONFIG_BLOCKED_PATH_KEY);

@@ -38,60 +38,60 @@ stability promise.
 
 ### Pheromone substrate
 
-- `crates/chio-pheromone/src/lib.rs:382` defines
+- `crates/trust/chio-pheromone/src/lib.rs:382` defines
   `ObservationCostVerificationMode`.
-- `crates/chio-pheromone/src/lib.rs:389` defines
+- `crates/trust/chio-pheromone/src/lib.rs:389` defines
   `PheromoneScarcityPolicy` with `deny_unknown_fields`, but
   `newcomer_horizon_epochs` is now an explicit field rather than a Rust-side
   serde default.
-- `crates/chio-pheromone/src/lib.rs:454` carries
+- `crates/trust/chio-pheromone/src/lib.rs:454` carries
   `PheromoneValidationContext.scarcity_policies`.
-- `crates/chio-pheromone/src/lib.rs:494` to
-  `crates/chio-pheromone/src/lib.rs:508` has in-memory counters keyed by
+- `crates/trust/chio-pheromone/src/lib.rs:494` to
+  `crates/trust/chio-pheromone/src/lib.rs:508` has in-memory counters keyed by
   epoch, window, treaty, namespace, class, kernel, and passport dimensions.
-- `crates/chio-pheromone/src/lib.rs:684` now rejects empty live scarcity
+- `crates/trust/chio-pheromone/src/lib.rs:684` now rejects empty live scarcity
   policy material with `scarcity_policy_missing` instead of creating
   compatibility admissions.
-- `crates/chio-pheromone/src/lib.rs:1322` verifies observation-cost commitments
+- `crates/trust/chio-pheromone/src/lib.rs:1322` verifies observation-cost commitments
   by resolving receiver-owned verifier roots, checking trust-floor revocation,
   verifying the signed statement, and proving the RFC 6962 telemetry inclusion
   path.
 
 ### Pheromone runtime
 
-- `crates/chio-pheromone-runtime/src/lib.rs:40` defines
+- `crates/trust/chio-pheromone-runtime/src/lib.rs:40` defines
   `PheromoneRuntimeError`; workflow verification failures now use the
   Chio-owned `chio_workflow_verification` boundary rather than exposing the
   historical proof-package error type.
-- `crates/chio-pheromone-runtime/src/lib.rs:112` defines Chio-owned workflow
+- `crates/trust/chio-pheromone-runtime/src/lib.rs:112` defines Chio-owned workflow
   proof-package, trust-bundle, and verification-context wrappers for public
   receiver construction, while the historical verifier types stay private
   backend details.
-- `crates/chio-pheromone-runtime/src/lib.rs:155` defines
+- `crates/trust/chio-pheromone-runtime/src/lib.rs:155` defines
   `PheromoneAdmissionPolicyDocument`.
-- `crates/chio-pheromone-runtime/src/lib.rs:227` validates the transit policy
+- `crates/trust/chio-pheromone-runtime/src/lib.rs:227` validates the transit policy
   JSON schema before serde, line 239 rejects empty live scarcity policies, and
   line 246 rejects overlapping scarcity windows during policy load.
-- `crates/chio-pheromone-runtime/src/lib.rs:634` builds
+- `crates/trust/chio-pheromone-runtime/src/lib.rs:634` builds
   `VerifiedChioWorkflowResolver` from the Chio workflow wrappers and only then
   delegates to the historical verifier core for read-only proof-package
   validation.
-- `crates/chio-pheromone-runtime/src/lib.rs:639` persists
+- `crates/trust/chio-pheromone-runtime/src/lib.rs:639` persists
   `chio_pheromone_scarcity_buckets`; line 655 begins the more granular pair
   bucket table. The persistent model is close to the target bucket scope.
 
 ### Relay
 
-- `crates/chio-pheromone-relay/src/service.rs:421` enforces inbound batch peer
+- `crates/trust/chio-pheromone-relay/src/service.rs:421` enforces inbound batch peer
   roles and calls pinned ladder checks at line 445.
-- `crates/chio-pheromone-relay/src/service.rs:498` validates catch-up
+- `crates/trust/chio-pheromone-relay/src/service.rs:498` validates catch-up
   requests. In the current worktree it checks `Receiver | Hub` at line 521 and
   treaty subscription at line 532. Returned catch-up frames are rechecked
   against requester directory ladder pins at line 541 before a successful
   response is served.
-- `crates/chio-pheromone-relay/src/service.rs:682` enforces outbound receiver
+- `crates/trust/chio-pheromone-relay/src/service.rs:682` enforces outbound receiver
   or hub role, max batch size, treaty subscription, and pinned ladder refs.
-- `crates/chio-pheromone-relay/src/service.rs:716` binds transit hops to
+- `crates/trust/chio-pheromone-relay/src/service.rs:716` binds transit hops to
   directory-pinned ladder references.
 
 The relay direction is right: access decisions use directory material, not
@@ -100,44 +100,44 @@ relay path, including catch-up and future replay endpoints.
 
 ### Treaty, buyer proof, and DSSE
 
-- `crates/chio-runtime-core/src/treaty.rs:374` rejects destructive
+- `crates/kernel/chio-runtime-core/src/treaty.rs:374` rejects destructive
   `crdt_commutative` action classes during computed intersection.
-- `crates/chio-runtime-core/src/treaty.rs:458` rejects the same invariant
+- `crates/kernel/chio-runtime-core/src/treaty.rs:458` rejects the same invariant
   when loading an intersection. That is the correct fail-closed invariant.
-- `crates/chio-runtime-core/src/buyer/packet.rs:19` exposes a public
+- `crates/kernel/chio-runtime-core/src/buyer/packet.rs:19` exposes a public
   hash-only buyer verifier. The current worktree returns unresolved when no
   hydrated DSSE hash is supplied at line 122. Final architecture makes that
   public semantic non-negotiable: hash-only paths can be informative, but they
   cannot be accepted.
-- `crates/chio-runtime-core/src/buyer/review_package.rs:226` hashes the
+- `crates/kernel/chio-runtime-core/src/buyer/review_package.rs:226` hashes the
   hydrated bilateral DSSE and passes it into the packet verifier at line 227.
   That is the right full-review path.
-- `crates/chio-runtime-core/src/buyer/strict_dsse.rs:89` builds
+- `crates/kernel/chio-runtime-core/src/buyer/strict_dsse.rs:89` builds
   `TreatyBoundBilateralDsseReview` from verifier-owned package and trust
   context.
-- `crates/chio-federation/src/bilateral_verifier.rs:494` defines
+- `crates/trust/chio-federation/src/bilateral_verifier.rs:494` defines
   `TreatyBoundBilateralDsseReview`; line 508 verifies the treaty-bound strict
   bilateral DSSE.
-- `crates/chio-federation/src/bilateral.rs`,
-  `crates/chio-federation/src/bilateral_dsse.rs`, and
-  `crates/chio-federation/src/bilateral_verifier.rs` expose production
+- `crates/trust/chio-federation/src/bilateral.rs`,
+  `crates/trust/chio-federation/src/bilateral_dsse.rs`, and
+  `crates/trust/chio-federation/src/bilateral_verifier.rs` expose production
   documentation and verifier error text as strict Chio bilateral DSSE wording.
-- `crates/chio-federation/src/lib.rs` and the active CLI receipt explain help
+- `crates/trust/chio-federation/src/lib.rs` and the active CLI receipt explain help
   text use Chio production wording for selective disclosure and DSSE
   conformance. Focused public-surface guards keep retired wording out of active
   production comments.
-- `crates/chio-kernel/src/kernel/tests/federation_cosign.rs:334` verifies that
+- `crates/kernel/chio-kernel/src/kernel/tests/federation_cosign.rs:334` verifies that
   runtime treaty metadata is preserved into kernel-produced DSSE. Line 439
   tests request, signer, lease, and governance mismatches fail closed.
 
 ### CLI and artifacts
 
-- `crates/chio-cli/src/cli/types.rs:350` defines top-level
+- `crates/products/chio-cli/src/cli/types.rs:350` defines top-level
   `chio federation`.
-- `crates/chio-cli/src/cli/types.rs:356` defines top-level `chio attest`.
-- `crates/chio-cli/src/cli/types.rs:362` defines top-level `chio runtime`.
-- `crates/chio-cli/src/cli/types.rs:368` defines top-level `chio pheromone`.
-- `crates/chio-cli/src/cli/types.rs` now gives the public `chio runtime` and
+- `crates/products/chio-cli/src/cli/types.rs:356` defines top-level `chio attest`.
+- `crates/products/chio-cli/src/cli/types.rs:362` defines top-level `chio runtime`.
+- `crates/products/chio-cli/src/cli/types.rs:368` defines top-level `chio pheromone`.
+- `crates/products/chio-cli/src/cli/types.rs` now gives the public `chio runtime` and
   `chio pheromone` command trees Chio-named type boundaries
   (`ChioRuntimeCommands` and `ChioPheromoneCommands`).
 - The public `chio federation authority` and `chio federation treaty` command
@@ -192,26 +192,26 @@ relay path, including catch-up and future replay endpoints.
   DualSignedReceipt as non-section-6 conformant and the DSSE artifact as
   treaty-bound Chio bilateral invocation material without emitting the old
   Chio bilateral spec path.
-- `crates/chio-attest-buyer/src/lib.rs` is now the Chio-named buyer proof API
+- `crates/trust/chio-attest-buyer/src/lib.rs` is now the Chio-named buyer proof API
   boundary. It now accepts live `chio.attest.buyer-attestation-packet.v1`
   packets and `chio.attest.buyer-attestation-review-package.v1` full review
   packages, and emits Chio verification and review report schemas, while using
   the hardened buyer core for strict DSSE semantics.
   Fallible public helpers now return the Chio-owned `BuyerAttestationError`
   rather than publicly aliasing or reexporting the historical runtime error.
-- `crates/chio-cli/src/cli/chio/dispatch/buyer.rs` exposes Chio-named buyer
+- `crates/products/chio-cli/src/cli/chio/dispatch/buyer.rs` exposes Chio-named buyer
   command handlers. `chio attest buyer ...` routes through those handlers.
   Buyer proof replay runs through Chio buyer APIs, so the CLI no longer names
   `chio_attest_buyer_core::` or `chio_runtime_core::` inside the buyer dispatch
   module.
-- `crates/chio-cli/src/cli/chio/dispatch/buyer.rs` exposes
+- `crates/products/chio-cli/src/cli/chio/dispatch/buyer.rs` exposes
   `cmd_chio_attest_buyer_verify_proof` for Chio-native proof-package
   verification.
-- `crates/chio-cli/src/cli/chio/dispatch/pheromone/runtime.rs:27` and
+- `crates/products/chio-cli/src/cli/chio/dispatch/pheromone/runtime.rs:27` and
   line 109 expose Chio-named pheromone receive and query handlers. The public
   `chio pheromone receive/query` dispatcher calls those handlers at
-  `crates/chio-cli/src/cli/dispatch.rs:3143` and line 3161.
-- `crates/chio-cli/src/cli/chio/dispatch/pheromone/*.rs` expose Chio-named
+  `crates/products/chio-cli/src/cli/dispatch.rs:3143` and line 3161.
+- `crates/products/chio-cli/src/cli/chio/dispatch/pheromone/*.rs` expose Chio-named
   relay handlers for core relay, alert routing, delivery evidence, assurance
   export/replay/recovery/archive/closeout, peer-directory rotation, and
   supervisor lint. Public `chio pheromone ...` dispatch now uses Chio-named
@@ -222,7 +222,7 @@ relay path, including catch-up and future replay endpoints.
   subtrees now use Chio-named type boundaries.
 - Nested `chio pheromone relay alert delivery` and `alert assurance` subtrees
   now use Chio-named type boundaries.
-- `crates/chio-cli/src/cli/chio/dispatch/runtime/*.rs` expose Chio-named
+- `crates/products/chio-cli/src/cli/chio/dispatch/runtime/*.rs` expose Chio-named
   runtime handlers for admission, signing and peer-weight hashing, pheromone
   evaluation, orchestration, operations, retention planning, and loopback.
   Public `chio runtime ...` dispatch now uses Chio-named command enum matches
@@ -230,7 +230,7 @@ relay path, including catch-up and future replay endpoints.
 - Nested public `chio runtime policy`, `peer-weights`, `pheromone`,
   `orchestrate`, `ops`, and `ops retention` subtrees now use Chio-named type
   boundaries.
-- `crates/chio-runtime/src/lib.rs` is now the Chio-named runtime admission and
+- `crates/kernel/chio-runtime/src/lib.rs` is now the Chio-named runtime admission and
   orchestration facade. Public `chio runtime ...` dispatch modules call
   `chio_runtime::` instead of naming `chio_runtime_core::` directly. The
   facade now uses explicit runtime API exports rather than a wildcard reexport
@@ -239,7 +239,7 @@ relay path, including catch-up and future replay endpoints.
   `ChioRuntimeAdmissionHook`. CLI-facing fallible runtime facade
   helpers now return `chio_runtime::ChioRuntimeError` through thin wrappers
   instead of direct-reexporting historical helper signatures.
-- `crates/chio-cli/src/cli/chio/dispatch/treaty.rs` exposes Chio-named
+- `crates/products/chio-cli/src/cli/chio/dispatch/treaty.rs` exposes Chio-named
   federation treaty handlers for intersection, admission, and packet
   verification. Public `chio federation authority ...` and
   `chio federation treaty ...` dispatch uses Chio-named command enum matches
@@ -250,11 +250,11 @@ relay path, including catch-up and future replay endpoints.
 - Treaty evidence validators now accept Chio-native federation IDs for
   cross-kernel continuations, receipt lineage statements, receipt lineage
   bundles, and bilateral invocations.
-- `crates/chio-cli/src/cli/chio/dispatch/authority.rs` exposes Chio-named
+- `crates/products/chio-cli/src/cli/chio/dispatch/authority.rs` exposes Chio-named
   federation authority handlers for issuance, checkpoint publication, and trust
   bundle assembly. Public `chio federation authority ...` dispatch calls those
   handlers.
-- `crates/chio-attest-verify/Cargo.toml:2` already defines
+- `crates/trust/chio-attest-verify/Cargo.toml:2` already defines
   `chio-attest-verify`; its description says it is the shared Sigstore
   verification surface for supply-chain attestation. Its README and lib trust
   boundary also cover Rekor, Fulcio, and TEE quote verification. Buyer proof
@@ -728,7 +728,7 @@ outside this verifier. The commitment proves observation work, measured in
 ### Telemetry Root and Leaf
 
 The only v1 telemetry proof algorithm is `rfc6962-sha256-v1`, matching
-`crates/chio-core-types/src/merkle.rs`:
+`crates/core/chio-core-types/src/merkle.rs`:
 
 - leaf hash: `SHA256(0x00 || leaf_bytes)`
 - node hash: `SHA256(0x01 || left || right)`
@@ -1030,12 +1030,12 @@ validates replay and wrong-recipient rejection reports.
   Acceptance: buyer proof moves toward `chio-attest-buyer`; existing
   `chio-attest-verify` remains the Sigstore and TEE verification crate and does
   not import buyer proof logic.
-  Current verification: `crates/chio-attest-buyer/src/lib.rs` owns the public
+  Current verification: `crates/trust/chio-attest-buyer/src/lib.rs` owns the public
   buyer proof API and the full-review legacy replay API, fallible public
   helpers expose the Chio-owned `BuyerAttestationError`,
-  `crates/chio-cli/src/cli/chio/dispatch/buyer.rs` calls
+  `crates/products/chio-cli/src/cli/chio/dispatch/buyer.rs` calls
   `chio_attest_buyer` without direct historical verifier crate references, and
-  repository search shows no buyer proof API in `crates/chio-attest-verify`.
+  repository search shows no buyer proof API in `crates/trust/chio-attest-verify`.
 
 ### P2
 
@@ -1106,7 +1106,7 @@ validates replay and wrong-recipient rejection reports.
 - Crate/module rename plan.
   Acceptance: `chio-runtime-core` no longer owns public module names after
   split; signed fixture compatibility tests still pass.
-  Current verification: `crates/chio-runtime` builds and tests as the
+  Current verification: `crates/kernel/chio-runtime` builds and tests as the
   Chio-named runtime boundary without wildcard-reexporting the historical core
   and without aliasing `ChioRuntimeError` to the historical runtime error;
   `ChioRuntimeAdmissionHook` is a Chio-named wrapper rather than a public

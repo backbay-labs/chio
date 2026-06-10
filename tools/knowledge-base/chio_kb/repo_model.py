@@ -153,7 +153,7 @@ SCOPED_CONCEPT_RULES = [
         "Capability kernel validation",
         "capability",
         "Capability validation behavior in the runtime kernel.",
-        ("crates/chio-kernel", "crates/chio-kernel-core", "spec/PROTOCOL.md"),
+        ("crates/kernel/chio-kernel", "crates/kernel/chio-kernel-core", "spec/PROTOCOL.md"),
         r"\bcapabilit(?:y|ies)\b|delegat|revocation|scope|token",
     ),
     (
@@ -161,7 +161,7 @@ SCOPED_CONCEPT_RULES = [
         "Capability core types",
         "capability",
         "Capability token and grant data model in core types.",
-        ("crates/chio-core", "crates/chio-core-types", "spec/PROTOCOL.md"),
+        ("crates/core/chio-core", "crates/core/chio-core-types", "spec/PROTOCOL.md"),
         r"\bcapabilit(?:y|ies)\b|grant|attenuat|delegat",
     ),
     (
@@ -169,7 +169,7 @@ SCOPED_CONCEPT_RULES = [
         "Capability conformance",
         "capability",
         "Capability behavior covered by conformance and replay fixtures.",
-        ("crates/chio-conformance", "tests/conformance", "tests/replay"),
+        ("crates/tooling/chio-conformance", "tests/conformance", "tests/replay"),
         r"\bcapabilit(?:y|ies)\b|revocation|scope|verdict|conformance",
     ),
     (
@@ -185,7 +185,7 @@ SCOPED_CONCEPT_RULES = [
         "Receipt storage",
         "receipt",
         "Receipt persistence and evidence export storage behavior.",
-        ("crates/chio-store-sqlite", "crates/chio-cli", "docs"),
+        ("crates/platform/chio-store-sqlite", "crates/products/chio-cli", "docs"),
         r"\breceipt(?:s)?\b|store|storage|checkpoint|evidence",
     ),
     (
@@ -201,7 +201,7 @@ SCOPED_CONCEPT_RULES = [
         "Policy compiler",
         "policy",
         "Policy compiler and policy schema behavior.",
-        ("crates/chio-policy", "docs/guards", "spec"),
+        ("crates/guards/chio-policy", "docs/guards", "spec"),
         r"\bpolic(?:y|ies)\b|compiler|compile_policy|schema",
     ),
     (
@@ -209,7 +209,7 @@ SCOPED_CONCEPT_RULES = [
         "Policy runtime",
         "policy",
         "Runtime policy evaluation and fail-closed behavior.",
-        ("crates/chio-kernel", "crates/chio-guards", "crates/chio-policy", "docs"),
+        ("crates/kernel/chio-kernel", "crates/guards/chio-guards", "crates/guards/chio-policy", "docs"),
         r"\bpolic(?:y|ies)\b|deny|allow|fail-closed|guard",
     ),
     (
@@ -217,7 +217,7 @@ SCOPED_CONCEPT_RULES = [
         "Guard pipeline",
         "guard",
         "Guard pipeline evaluation and composition behavior.",
-        ("crates/chio-guards", "crates/chio-kernel", "docs/guards"),
+        ("crates/guards/chio-guards", "crates/kernel/chio-kernel", "docs/guards"),
         r"\bguard(?:s|ed)?\b|pipeline|redact|sanitize",
     ),
     (
@@ -225,7 +225,7 @@ SCOPED_CONCEPT_RULES = [
         "Data guard",
         "guard",
         "Data guard behavior for warehouse and data-access controls.",
-        ("crates/chio-data-guards", "docs/guards"),
+        ("crates/guards/chio-data-guards", "docs/guards"),
         r"\bguard(?:s|ed)?\b|warehouse|data|redact|sanitize",
     ),
     (
@@ -233,7 +233,7 @@ SCOPED_CONCEPT_RULES = [
         "Wasm guard",
         "guard",
         "Wasm guard runtime and guard SDK behavior.",
-        ("crates/chio-wasm-guards", "crates/chio-guard-sdk", "docs/guards"),
+        ("crates/guards/chio-wasm-guards", "crates/sdk/chio-guard-sdk", "docs/guards"),
         r"\bguard(?:s|ed)?\b|wasm|wit|component",
     ),
 ]
@@ -482,7 +482,7 @@ def nearest_manifest_for_path(path: str) -> str:
     if parts[0] not in CARGO_MANIFEST_ROOTS:
         return ""
 
-    # Crate directories vary in depth: crates/chio-core is two segments, but
+    # Crate directories vary in depth: crates/core/chio-core is two segments, but
     # nested members such as integrations/editors/zed-chio and
     # integrations/aws-bedrock/control-plane are three. Walk the ancestors of
     # the file from deepest to shallowest and use the nearest directory that

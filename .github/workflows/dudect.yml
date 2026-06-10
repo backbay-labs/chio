@@ -124,10 +124,10 @@ jobs:
         if: steps.forced.outputs.skip == 'false'
         run: |
           set -euo pipefail
-          # dudect-bencher 0.7 compiles cleanly on stable; the source doc
-          # picks nightly to keep the dudect lane on the same toolchain
-          # as the libFuzzer lane (fuzz.yml) which simplifies cross-tool
-          # diffing and shared sanitizer experiments later.
+          # dudect-bencher 0.7 compiles cleanly on stable; nightly is
+          # pinned to keep the dudect lane on the same toolchain as the
+          # libFuzzer lane (fuzz.yml), which keeps cross-tool diffing and
+          # sanitizer runs on one toolchain.
           rustup toolchain install nightly --profile minimal
           rustup default nightly
 
@@ -142,8 +142,8 @@ jobs:
           # distributions. `--nocapture` forwards dudect-bencher's stdout
           # (which carries the "max t = ..." lines) through cargo so we
           # can grep them. The harness is wired as `harness = false` so
-          # `ctbench_main!` provides its own argv parser; we pass no
-          # extra dudect flags today (defaults match the source doc).
+          # `ctbench_main!` provides its own argv parser; no extra dudect
+          # flags are passed, so its defaults apply.
           cargo test \
             -p ${{ matrix.harness.crate }} \
             --features dudect \
@@ -253,8 +253,8 @@ jobs:
           set -euo pipefail
           mkdir -p prior-run
           # `gh run download` exits non-zero if the prior run has no
-          # artifacts (rare but possible if it was cancelled before
-          # upload). Soft-fail so we just treat that as "no baseline".
+          # artifacts (possible if it was cancelled before upload).
+          # Soft-fail and treat that as "no baseline".
           gh run download "${{ steps.prior.outputs.prior_id }}" \
             --pattern 'dudect-nightly-*' \
             --dir prior-run \

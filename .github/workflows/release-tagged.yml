@@ -105,9 +105,8 @@ jobs:
             echo "ERROR: ${matrix} is missing." >&2
             exit 1
           fi
-          # Append a fully-populated entry. supported_until is left empty;
-          # the reviewer fills it in per the ratchet rule documented in
-          # docs/replay-compat.md.
+          # Append a fully-populated entry. supported_until is left empty and
+          # populated later per the ratchet rule in docs/replay-compat.md.
           {
             printf '\n'
             printf '[[entry]]\n'

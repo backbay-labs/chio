@@ -20,9 +20,9 @@ hex-encoding step; doc 15 separately promotes `policy_digest` as its own
 canonical. (2) Doc 04 lists `BedrockGuardrailGuard`/`AzureContentSafetyGuard`
 etc. as "already living in the tree" at `chio-external-guards/src/lib.rs:14-39`,
 but the lines there are re-exports - the modules themselves are at
-`crates/chio-guards/src/external/{bedrock.rs,azure_content_safety.rs,...}`
+`crates/guards/chio-guards/src/external/{bedrock.rs,azure_content_safety.rs,...}`
 included via `#[path = ...]` attributes in
-`crates/chio-external-guards/src/external/mod.rs:14-23`. Cosmetic, but the
+`crates/guards/chio-external-guards/src/external/mod.rs:14-23`. Cosmetic, but the
 implied home for `cedar.rs` is wrong: it cannot just be dropped at
 `chio-external-guards/src/external/cedar.rs` without also wiring it in
 `chio-guards/src/external/`.
@@ -43,7 +43,7 @@ jailbreak, jailbreak_detector, prompt_injection, computer_use,
 input_injection, remote_desktop, spider_sense, browser_automation,
 code_execution, content_review, memory_governance, post_invocation
 pipeline). `chio-data-guards` adds 4 (`SqlQueryGuard`
-(`crates/chio-data-guards/src/sql_guard.rs:29`), result, vector,
+(`crates/guards/chio-data-guards/src/sql_guard.rs:29`), result, vector,
 warehouse-cost). `chio-external-guards` adds 6 cloud guards
 (`BedrockGuardrailGuard`, `AzureContentSafetyGuard`, `VertexSafetyGuard`,
 `SnykGuard`, `VirusTotalGuard`, `SafeBrowsingGuard`).
@@ -82,13 +82,13 @@ mcp_tool, path_allowlist, internal_network, and arguably code_execution.
 
 ### Verified
 
-1. **`McpToolGuard`.** `crates/chio-guards/src/mcp_tool.rs`, 429 LOC.
+1. **`McpToolGuard`.** `crates/guards/chio-guards/src/mcp_tool.rs`, 429 LOC.
    Policy density description (block precedence, allowlist toggle,
    default action, arg-size cap, enabled flag) accurate at
    `mcp_tool.rs:118-140` and `mcp_tool.rs:154-178`.
 
 2. **`ExternalGuard` trait.** At
-   `crates/chio-guards/src/external/mod.rs:119-129`: `name`, `cache_key`,
+   `crates/guards/chio-guards/src/external/mod.rs:119-129`: `name`, `cache_key`,
    `async eval -> Result<Verdict, ExternalGuardError>`. Matches doc 04
    verbatim.
 
@@ -98,14 +98,14 @@ mcp_tool, path_allowlist, internal_network, and arguably code_execution.
    line 157, terminal `Verdict::Deny` on permanent-error path at line 396.
 
 4. **`ScopedAsyncGuard` sync bridge.**
-   `crates/chio-external-guards/src/lib.rs:35-139`, with `block_on` and
+   `crates/guards/chio-external-guards/src/lib.rs:35-139`, with `block_on` and
    `block_on_fallback_thread`. Doc 10's `:66-94` citation is correct.
 
 5. **`ChioExtAuthzService`.**
-   `crates/chio-envoy-ext-authz/src/service.rs:39-82`; `EnvoyKernel` at
+   `crates/protocol/chio-envoy-ext-authz/src/service.rs:39-82`; `EnvoyKernel` at
    line 26-31. "Chio is the PDP" framing in doc 04 line 80-83 correct.
 
-6. **`GuardEvidence`.** `crates/chio-core-types/src/receipt.rs:1176`:
+6. **`GuardEvidence`.** `crates/core/chio-core-types/src/receipt.rs:1176`:
    `guard_name: String`, `verdict: bool`, `details: Option<String>`.
 
 7. **Cedar / regorus / openfga-rs crates.** `cedar-policy` 4.10.0
@@ -115,7 +115,7 @@ mcp_tool, path_allowlist, internal_network, and arguably code_execution.
    the real API.
 
 8. **`add_guard` boot path.**
-   `crates/chio-control-plane/src/lib.rs:368`. A failed
+   `crates/platform/chio-control-plane/src/lib.rs:368`. A failed
    `CedarPolicyGuard::load` returning `Err` short-circuits before
    `add_guard`, so doc 10 section 7's fail-at-load argument holds.
 
@@ -126,13 +126,13 @@ mcp_tool, path_allowlist, internal_network, and arguably code_execution.
    `policy_digest() -> [u8; 32]`, `evaluate() -> EngineDecision`,
    `EngineDecision { verdict, decision_id, obligations, diagnostics }`).
    One latent drift: doc 04 (line 311) says the trait "lives in
-   `crates/chio-external-guards/src/lib.rs`"; doc 10 (line 226) places
+   `crates/guards/chio-external-guards/src/lib.rs`"; doc 10 (line 226) places
    the concrete `CedarPolicyGuard` at
-   `crates/chio-external-guards/src/external/cedar.rs` but does not name
+   `crates/guards/chio-external-guards/src/external/cedar.rs` but does not name
    the trait file. Both consistent, but neither doc notes that the
    cloud guards in `chio-external-guards/src/external/` are actually
    sourced from `chio-guards/src/external/*` via `#[path = ...]`
-   attributes in `crates/chio-external-guards/src/external/mod.rs:14-23`.
+   attributes in `crates/guards/chio-external-guards/src/external/mod.rs:14-23`.
    A clean `cedar.rs` either needs the same `#[path = ...]` pattern, or
    needs to break the convention. Recommend doc 10 add a one-line note.
 
@@ -172,7 +172,7 @@ mcp_tool, path_allowlist, internal_network, and arguably code_execution.
 12. **Doc 04 claim that the cloud guards live at
     `chio-external-guards/src/lib.rs:14-39`.** The cited lines are
     re-exports; the actual definitions live at
-    `crates/chio-guards/src/external/{bedrock.rs,azure_content_safety.rs,
+    `crates/guards/chio-guards/src/external/{bedrock.rs,azure_content_safety.rs,
     vertex_safety.rs,threat_intel/mod.rs}`. Path attribute lines:
     `chio-external-guards/src/external/mod.rs:14-23`. Doc 04 line 67-69
     should be corrected.

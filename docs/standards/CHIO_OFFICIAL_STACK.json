@@ -10,7 +10,7 @@
       "extension_point_ids": [
         "chio.kernel.capability_authority"
       ],
-      "crate_path": "crates/chio-kernel/src/authority.rs::LocalCapabilityAuthority",
+      "crate_path": "crates/kernel/chio-kernel/src/authority.rs::LocalCapabilityAuthority",
       "implementation_source": "first_party"
     },
     {
@@ -19,7 +19,7 @@
       "extension_point_ids": [
         "chio.kernel.capability_authority"
       ],
-      "crate_path": "crates/chio-control-plane/src/trust_control.rs::RemoteCapabilityAuthority",
+      "crate_path": "crates/platform/chio-control-plane/src/trust_control.rs::RemoteCapabilityAuthority",
       "implementation_source": "first_party"
     },
     {
@@ -28,7 +28,7 @@
       "extension_point_ids": [
         "chio.kernel.receipt_store"
       ],
-      "crate_path": "crates/chio-store-sqlite/src/receipt_store.rs::SqliteReceiptStore",
+      "crate_path": "crates/platform/chio-store-sqlite/src/receipt_store.rs::SqliteReceiptStore",
       "implementation_source": "first_party"
     },
     {
@@ -37,7 +37,7 @@
       "extension_point_ids": [
         "chio.kernel.receipt_store"
       ],
-      "crate_path": "crates/chio-control-plane/src/trust_control.rs::RemoteReceiptStore",
+      "crate_path": "crates/platform/chio-control-plane/src/trust_control.rs::RemoteReceiptStore",
       "implementation_source": "first_party"
     },
     {
@@ -46,7 +46,7 @@
       "extension_point_ids": [
         "chio.kernel.revocation_store"
       ],
-      "crate_path": "crates/chio-store-sqlite/src/revocation_store.rs::SqliteRevocationStore",
+      "crate_path": "crates/platform/chio-store-sqlite/src/revocation_store.rs::SqliteRevocationStore",
       "implementation_source": "first_party"
     },
     {
@@ -55,7 +55,7 @@
       "extension_point_ids": [
         "chio.kernel.revocation_store"
       ],
-      "crate_path": "crates/chio-control-plane/src/trust_control.rs::RemoteRevocationStore",
+      "crate_path": "crates/platform/chio-control-plane/src/trust_control.rs::RemoteRevocationStore",
       "implementation_source": "first_party"
     },
     {
@@ -64,7 +64,7 @@
       "extension_point_ids": [
         "chio.kernel.budget_store"
       ],
-      "crate_path": "crates/chio-store-sqlite/src/budget_store.rs::SqliteBudgetStore",
+      "crate_path": "crates/platform/chio-store-sqlite/src/budget_store.rs::SqliteBudgetStore",
       "implementation_source": "first_party"
     },
     {
@@ -73,7 +73,7 @@
       "extension_point_ids": [
         "chio.kernel.budget_store"
       ],
-      "crate_path": "crates/chio-control-plane/src/trust_control.rs::RemoteBudgetStore",
+      "crate_path": "crates/platform/chio-control-plane/src/trust_control.rs::RemoteBudgetStore",
       "implementation_source": "first_party"
     },
     {
@@ -84,7 +84,7 @@
         "chio.kernel.resource_provider",
         "chio.kernel.prompt_provider"
       ],
-      "crate_path": "crates/chio-mcp-adapter/src/native.rs::NativeChioService",
+      "crate_path": "crates/protocol/chio-mcp-adapter/src/native.rs::NativeChioService",
       "implementation_source": "first_party"
     },
     {
@@ -96,7 +96,7 @@
         "chio.kernel.prompt_provider",
         "chio.adapter.mcp"
       ],
-      "crate_path": "crates/chio-mcp-adapter/src/lib.rs::McpAdapter",
+      "crate_path": "crates/protocol/chio-mcp-adapter/src/lib.rs::McpAdapter",
       "implementation_source": "first_party"
     },
     {
@@ -106,7 +106,7 @@
         "chio.kernel.tool_server_connection",
         "chio.adapter.a2a"
       ],
-      "crate_path": "crates/chio-a2a-adapter/src/invoke.rs::A2aAdapter",
+      "crate_path": "crates/protocol/chio-a2a-adapter/src/invoke.rs::A2aAdapter",
       "implementation_source": "first_party"
     }
   ],

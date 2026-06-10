@@ -13,7 +13,7 @@
  *   - capability/v1.json: cases tagged `verify_only: true`.
  *
  * Explicitly excluded:
- *   - Receipt and capability SIGNING cases (verify-only ships first).
+ *   - Receipt and capability SIGNING cases (browser/edge is verify-only).
  *   - manifest, hashing, signing corpora (server-side concerns).
  *   - Any vector requiring fresh entropy or live time.
  *

@@ -105,10 +105,9 @@ jobs:
       - name: Run replay-gate corpus smoke
         run: cargo test -p chio-replay-gate --release --test corpus_smoke
 
-      - name: Run replay-gate golden byte-equivalence (when goldens land)
-        # The golden_byte_equivalence source file may be absent until the
-        # initial bless lands; skip-on-missing keeps the gate green while
-        # still wiring the invocation.
+      - name: Run replay-gate golden byte-equivalence
+        # The golden_byte_equivalence source file is optional; skip-on-missing
+        # keeps the gate green when no goldens are present.
         #
         # Fail-closed contract: a compile error in the test target (or any
         # transitive workspace dependency) must NOT be mistaken for a missing
@@ -130,7 +129,7 @@ jobs:
 
           target_src="tests/replay/tests/golden_byte_equivalence.rs"
           if [ ! -f "${target_src}" ]; then
-            echo "golden_byte_equivalence source ${target_src} not present (pre-T5 state); skipping"
+            echo "golden_byte_equivalence source ${target_src} not present; skipping"
             exit 0
           fi
 
@@ -320,8 +319,7 @@ jobs:
 
       - name: Compile replay proptest target
         # Compilation can exceed the runtime budget on a cold runner, so keep
-        # it outside the 30s harness timer. The next step is the actual
-        # property execution budget.
+        # it outside the 30s harness timer applied to the execution step.
         run: cargo test -p chio-kernel --test replay_proptest --release --no-run
 
       - name: Run replay proptest (30s budget)

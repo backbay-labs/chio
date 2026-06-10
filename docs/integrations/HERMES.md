@@ -15,7 +15,7 @@ and confuses the audit trail.
 `chio mcp serve --preset code-agent` wraps an upstream MCP server, runs
 every `tools/call` through the bundled `code-agent` policy, emits a
 signed receipt, and forwards the call. The `--` separator marks the
-start of the wrapped server's argv (`crates/chio-cli/src/cli/types.rs:1486-1529`;
+start of the wrapped server's argv (`crates/products/chio-cli/src/cli/types.rs:1486-1529`;
 `command: Vec<String>` is declared with `trailing_var_arg = true,
 required = true`).
 
@@ -43,7 +43,7 @@ mcp_servers:
       # `--server-id` MUST match the server identifier the bundled
       # `code-agent` policy grants (`fs`, `shell`, `git`); using
       # `filesystem` or any other id will fail-closed because the
-      # capability grants in `crates/chio-cli/src/policies/code_agent.yaml`
+      # capability grants in `crates/products/chio-cli/src/policies/code_agent.yaml`
       # only mention `fs`/`shell`/`git`. Run a separate `chio mcp serve`
       # entry per server-id to wrap shell or git MCP servers.
       - npx
@@ -144,7 +144,7 @@ returned `CapabilityToken` into
 `~/.hermes/profiles/<active>/chio-capabilities.json`. `hermes chio list`
 reads only the local cache; `chio-sdk-python` has no list RPC today.
 `hermes chio revoke` invokes
-`chio trust revoke --capability-id <id>` (`crates/chio-cli/src/cli/types.rs:1897-1902`)
+`chio trust revoke --capability-id <id>` (`crates/products/chio-cli/src/cli/types.rs:1897-1902`)
 and updates the cache.
 
 There is no `hermes chio status` subcommand by design; use the

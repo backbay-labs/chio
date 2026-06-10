@@ -11,8 +11,8 @@ AGNTCY's Agent Connect Protocol is REST/OpenAPI 3.1.1, frozen at v0.2.3
 in the archived `agntcy/acp-spec` repository, with agent-as-tool
 primitives (`Agent`, `Run`, optional `Thread`). Bridge it as
 `chio-bridge-agntcy` (NOT `chio-acp-*`: those slots already hold Zed
-Agent Client Protocol at `crates/chio-acp-edge` and
-`crates/chio-acp-proxy`). Map ACP `Run` to
+Agent Client Protocol at `crates/protocol/chio-acp-edge` and
+`crates/protocol/chio-acp-proxy`). Map ACP `Run` to
 `ToolServerConnection::invoke` via the `/runs/wait` endpoint,
 `/runs/stream` to `invoke_stream`, interrupts surface inline. Inherit
 identity from the HTTP substrate because ACP declares no
@@ -50,7 +50,7 @@ Two-step in ACP: `POST /agents/search` returns `Agent[]` with
 returns `AgentACPDescriptor` with `spec.input/output/interrupts/capabilities`.
 
 `ToolServerConnection::tool_names()`
-(`crates/chio-kernel/src/runtime.rs:260`) is synchronous. The bridge
+(`crates/kernel/chio-kernel/src/runtime.rs:260`) is synchronous. The bridge
 builds an in-memory map at construction time from an operator
 allowlist, exposing each agent under its **metadata name slug**
 (kebab-case, deduped), not the UUID, to keep capability scopes
@@ -110,7 +110,7 @@ the override and the kernel falls back to `invoke()`.
 
 Each SSE event maps to one `ToolCallChunk` in
 `ToolServerStreamResult::Complete(ToolCallStream { chunks })`
-(`crates/chio-kernel/src/runtime.rs:117,136`). Terminal SSE event
+(`crates/kernel/chio-kernel/src/runtime.rs:117,136`). Terminal SSE event
 (`type: result` or `type: error`) closes the stream; an
 `Incomplete { reason }` is emitted if the SSE connection drops before
 terminal frame (`reason = "sse-disconnect"`).
@@ -128,7 +128,7 @@ does NOT use `drain_events` for interrupts, because interrupts are
 synchronous with a specific `run_id` and resumption requires the
 `POST /threads/{tid}/runs/{run_id}` ("resume") endpoint.
 
-`drain_events()` (`crates/chio-kernel/src/runtime.rs:306`) returns an
+`drain_events()` (`crates/kernel/chio-kernel/src/runtime.rs:306`) returns an
 empty vec in MVP. A future revision could surface `ToolsListChanged`
 when `/agents/search` results diverge from the cached snapshot, but
 this requires operator opt-in (auto-importing tools widens trust).
@@ -150,7 +150,7 @@ separate Identity Service that issues verifiable credentials and
 expects them to be carried in standard HTTP headers.
 
 The bridge therefore inherits the HTTP substrate's auth and constructs
-`CallerIdentity` (`crates/chio-http-core/src/identity.rs:44`) per the
+`CallerIdentity` (`crates/platform/chio-http-core/src/identity.rs:44`) per the
 operator-configured scheme. Three supported modes for MVP:
 
 1. **Bearer** (default). Operator hands the bridge a static token (or
@@ -200,7 +200,7 @@ ACP error sources:
   is waiting on caller input).
 
 Mapping to `KernelError` (defined at
-`crates/chio-kernel/src/kernel/mod.rs:473`):
+`crates/kernel/chio-kernel/src/kernel/mod.rs:473`):
 
 | ACP failure                                      | Chio mapping                                                           | Retry  |
 |--------------------------------------------------|------------------------------------------------------------------------|--------|
@@ -327,7 +327,7 @@ an `invoke()`.
 
 **Hard rule, encoded in the trait docs:** `advisory_capabilities` is
 purely informational. The bridge MUST NOT pass these strings into
-`CapabilityToken::scope` (`crates/chio-core-types/src/capability.rs`),
+`CapabilityToken::scope` (`crates/core/chio-core-types/src/capability.rs`),
 into Cedar policy, into manifest-driven scope inference, or anywhere
 else that affects an authorization decision. They exist for operator
 diagnostics ("the upstream peer claims to support these tools") and
@@ -338,7 +338,7 @@ function from `Vec<String>` (advisory) to scope types within
 
 ## 6. Receipt Fields
 
-`ChioReceiptBody` (`crates/chio-core-types/src/receipt.rs:159`) already
+`ChioReceiptBody` (`crates/core/chio-core-types/src/receipt.rs:159`) already
 carries `metadata: Option<serde_json::Value>`. The bridge populates a
 nested object under `metadata.agntcy_acp`:
 
@@ -437,7 +437,7 @@ agents return `KernelError::OutOfScope` without making an HTTP call.
 - `chio-acp-bridge` / `chio-acp-client`: collides with existing
   `chio-acp-edge` and `chio-acp-proxy`, which implement Zed's Agent
   Client Protocol (verified at
-  `crates/chio-acp-edge/src/lib.rs:1-20`). The `chio-acp-*` namespace
+  `crates/protocol/chio-acp-edge/src/lib.rs:1-20`). The `chio-acp-*` namespace
   is taken and means a different protocol.
 - `chio-agntcy-acp`: works grammatically but breaks Chio's existing
   `chio-bridge-*` prefix convention used by the other tool-server
@@ -610,9 +610,9 @@ in the tool-server registry exactly like any other
 - Webex production reference:
   [developer.webex.com/blog](https://developer.webex.com/blog/webex-leverages-agntcy-directory-and-identity-for-agentic-apps).
 - Chio code references:
-  `crates/chio-kernel/src/runtime.rs:255` (ToolServerConnection),
-  `crates/chio-kernel/src/runtime.rs:136` (ToolServerStreamResult),
-  `crates/chio-kernel/src/kernel/mod.rs:473` (KernelError),
-  `crates/chio-http-core/src/identity.rs:44` (CallerIdentity),
-  `crates/chio-core-types/src/receipt.rs:159` (ChioReceiptBody),
-  `crates/chio-acp-edge/src/lib.rs:1` (Zed ACP, namespace collision).
+  `crates/kernel/chio-kernel/src/runtime.rs:255` (ToolServerConnection),
+  `crates/kernel/chio-kernel/src/runtime.rs:136` (ToolServerStreamResult),
+  `crates/kernel/chio-kernel/src/kernel/mod.rs:473` (KernelError),
+  `crates/platform/chio-http-core/src/identity.rs:44` (CallerIdentity),
+  `crates/core/chio-core-types/src/receipt.rs:159` (ChioReceiptBody),
+  `crates/protocol/chio-acp-edge/src/lib.rs:1` (Zed ACP, namespace collision).

@@ -7,7 +7,7 @@
 //! ```
 //!
 //! followed by a workflow grep for `required: true`. This binary parses
-//! a tiny CLI surface (no clap dep), runs every configured template
+//! the CLI surface (no clap dep), runs every configured template
 //! plan against the configured budget, and prints a per-template line.
 //! Exit code 1 indicates at least one breach.
 

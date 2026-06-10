@@ -41,7 +41,7 @@ body:
     id: source_location
     attributes:
       label: Source location
-      placeholder: crates/chio-kernel-core/src/evaluate.rs:96
+      placeholder: crates/kernel/chio-kernel-core/src/evaluate.rs:96
     validations:
       required: true
 

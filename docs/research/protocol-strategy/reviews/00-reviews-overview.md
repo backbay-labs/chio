@@ -40,7 +40,7 @@ These claims hold up under code grounding. They can be cited downstream without 
 - **chio-streaming Python SDK** exists at `sdks/python/chio-streaming/`, 5013 LOC across 12 modules. All seven brokers from doc 01 confirmed: Kafka top-level `middleware.py` plus per-broker `nats.py`, `pulsar.py`, `eventbridge.py`, `pubsub.py`, `redis_streams.py`, `flink.py`. ([C5](05-egress-orchestrator-review.md))
 - **chio-temporal** (1291 LOC, `ChioActivityInterceptor`) and **chio-airflow** (1384 LOC, `ChioOperator` + decorator + DAG listener) exist as Python SDKs. Doc 05's framing matches. ([C5](05-egress-orchestrator-review.md))
 - **Bench stubs (historical, resolved in-tree)**: verification at the time confirmed **11+ stubs**, not 4: `single_guard`, `cap_verify_ed25519`, `receipt_sign`, `guard_pipeline_5`, `scope_match`, `time_bound`, `revocation_lookup`, `budget_decrement`, `receipt_append`, `session_lookup`, `dispatch_deny` were all `b.iter(|| black_box(0_u64))`. The bench bodies now drive real dispatch through `dispatch_request_fixture`; the hybrid family is still wired as tests rather than live Criterion benches and CI runs benches from Cargo.toml without `required-features` gating, so re-baselining and gating are the remaining open work. ([C4](04-receipts-kernel-latency-review.md))
-- **`ToolServerConnection` trait** at `crates/chio-kernel/src/runtime.rs:255` is real and unchanged. All five new bridge proposals map onto it without inventing methods. ([C2](02-bridges-consistency-review.md))
+- **`ToolServerConnection` trait** at `crates/kernel/chio-kernel/src/runtime.rs:255` is real and unchanged. All five new bridge proposals map onto it without inventing methods. ([C2](02-bridges-consistency-review.md))
 - **Guard inventory** in doc 10 is exact. 16 guards spot-checked, all LOC counts match. `ExternalGuard`, `AsyncGuardAdapter`, `ScopedAsyncGuard`, `ChioExtAuthzService`, `McpToolGuard`, `GuardEvidence` citations all resolve. ([C3](03-policy-guards-review.md))
 - **OAuth AS** at `chio-mcp-remote/src/remote_mcp/oauth.rs`: live but opt-in scaffolding (doc 07). Hybrid signing claims and OAuth profile in `spec/PROTOCOL.md:1351-1453` hold. ([C1](01-identity-credentials-review.md))
 - **Strategic discipline respected end-to-end.** No doc violates the v2 non-goals in `spec/PROTOCOL.md:96-115`. No proposed bridge drifts into permissionless peer discovery, pub-sub, or wire-protocol replacement. ([C6](06-vision-non-goals-review.md))
@@ -59,7 +59,7 @@ The earlier versions of [`00-overview.md`](../00-overview.md) and [`05-workflow-
 
 ### 2. Bench-stub coverage is broader than reported (addressed, follow-up plan required)
 
-Doc 16 named 4 stubs. The real count is 11+. Doc 16 also has a wrong file path: it attributes `build_and_sign_receipt` to `crates/chio-http-core/src/responses.rs:1506-1507`. That file does not exist. The function lives at `crates/chio-kernel/src/kernel/responses.rs:1459-1517`.
+Doc 16 named 4 stubs. The real count is 11+. Doc 16 also has a wrong file path: it attributes `build_and_sign_receipt` to `crates/platform/chio-http-core/src/responses.rs:1506-1507`. That file does not exist. The function lives at `crates/kernel/chio-kernel/src/kernel/responses.rs:1459-1517`.
 
 **Fix applied:** Doc 16 and overview-v2 now carry the 11-stub finding and the
 correct `responses.rs` path. The remaining work is the bench-stub engineering
@@ -84,7 +84,7 @@ final wire shape before implementation. ([C1](01-identity-credentials-review.md)
 
 ### 5. `policy_hash` is `String`, not `[u8; 32]` (addressed with PR 652 follow-up)
 
-[`crates/chio-core-types/src/receipt.rs`](../../../../crates/chio-core-types/src/receipt.rs) defines `policy_hash` as a hex `String`. Earlier docs used byte-array sketches for `policy_digest`; after the v1-only collapse, `policy_hash` is the current signed receipt field and `policy_digest` remains only a historical per-engine sketch term.
+[`crates/core/chio-core-types/src/receipt.rs`](../../../../crates/core/chio-core-types/src/receipt.rs) defines `policy_hash` as a hex `String`. Earlier docs used byte-array sketches for `policy_digest`; after the v1-only collapse, `policy_hash` is the current signed receipt field and `policy_digest` remains only a historical per-engine sketch term.
 
 **Fix applied:** Receipt-facing current v1 docs name `policy_hash`; historical
 `policy_digest` sketches are labeled as non-current. ([C3](03-policy-guards-review.md))
@@ -107,7 +107,7 @@ ACP and keep `chio-directory` as the only AGNTCY-aligned path. ([C2](02-bridges-
 
 ### 8. Three-ACPs warning dropped from v2 overview
 
-[`00-overview.md`](../00-overview.md) has the warning about Zed ACP vs IBM ACP vs AGNTCY ACP. [`00-overview-v2.md`](../00-overview-v2.md) does not. Worse: doc 02 (the decentralized-networks doc) still uses the superseded `chio-bridge-acp` name at lines 132 and 243, which the naming warning explicitly forbade and doc 08 retracts. The `chio-acp-*` namespace already belongs to Zed ACP in `crates/chio-acp-edge`.
+[`00-overview.md`](../00-overview.md) has the warning about Zed ACP vs IBM ACP vs AGNTCY ACP. [`00-overview-v2.md`](../00-overview-v2.md) does not. Worse: doc 02 (the decentralized-networks doc) still uses the superseded `chio-bridge-acp` name at lines 132 and 243, which the naming warning explicitly forbade and doc 08 retracts. The `chio-acp-*` namespace already belongs to Zed ACP in `crates/protocol/chio-acp-edge`.
 
 **Fix applied:** The three-ACPs warning is restored in overview-v2; AGNTCY ACP
 adapter naming is superseded by the `chio-directory` decision. ([C6](06-vision-non-goals-review.md))

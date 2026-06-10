@@ -10,7 +10,7 @@ receipt overage through Marketplace metering.
 
 The listing is scoped to AWS Marketplace SaaS contract in the AI Agents
 and Tools category. It wraps the existing
-`crates/chio-bedrock-converse-adapter` Rust substrate for distribution and
+`crates/protocol/chio-bedrock-converse-adapter` Rust substrate for distribution and
 keeps the adapter source unchanged. The listed region is `us-east-1` only;
 multi-region support is recorded as a future candidate in `REGIONS.md`.
 

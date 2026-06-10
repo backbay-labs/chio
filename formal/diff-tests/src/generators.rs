@@ -251,7 +251,7 @@ pub fn arb_spec_scope() -> impl Strategy<Value = SpecChioScope> {
 ///
 /// Construction: start with a parent scope and derive a child by:
 /// 1. Keeping a subset of grants (using boolean mask)
-/// 2. Keeping the same operations per grant (narrowing is complex)
+/// 2. Keeping the same operations per grant
 /// 3. Optionally adding constraints
 /// 4. Optionally reducing budget
 pub fn arb_attenuated_scope_pair() -> impl Strategy<Value = (SpecChioScope, SpecChioScope)> {

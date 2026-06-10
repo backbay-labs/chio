@@ -1,0 +1,67 @@
+# chio-mercury Architecture
+
+`chio-mercury` is the product CLI that turns typed MERCURY contracts from
+`chio-mercury-core` plus Chio evidence exports into proof, inquiry, reviewer,
+qualification, and distribution packages. It should stay a command orchestration
+crate. Product evidence schemas and validators belong in `chio-mercury-core`;
+receipt storage and evidence export mechanics belong in the Chio store, kernel,
+and control-plane crates.
+
+## Boundaries
+
+- `main.rs` owns the `mercury` binary command tree and dispatch. It should keep
+  command parsing thin and delegate behavior to `commands`.
+- `commands.rs` owns CLI orchestration helpers, shared package writers, proof
+  and inquiry export, verification, pilot export, supervised-live export, and
+  the bounded product lane dispatch surface.
+- `commands/shared.rs` contains shared filesystem, package, receipt-store, and
+  profile builders that are included into the command module. These helpers form
+  the export layout boundary.
+- `commands/core_cli.rs`, `commands/assurance_release.rs`, `commands/account_delivery.rs`,
+  and the lane modules own specific bounded MERCURY product export and validate
+  workflows. `commands/selective_account_activation_support.rs` owns the
+  selective-account activation support records and profile builder shared by the
+  core and account-delivery command files.
+- `tests/cli.rs` exercises the binary-level user workflows and should cover
+  fail-closed filesystem and package validation behavior that only exists in the
+  CLI layer.
+
+## Structural Notes
+
+- The command crate is built from `include!`-based modules and large shared
+  helper files, so package-layout invariants are not all represented in core
+  contract validation and live in the CLI layer.
+- Generated package paths mix fixed filenames and filenames derived from product
+  identifiers. Derived filename boundaries reject confusing or ambiguous names
+  before writing artifacts.
+- Core MERCURY validation covers typed product contracts; the CLI owns local
+  filesystem safety when valid product identifiers become filenames.
+
+## Security And API Constraints
+
+- Export commands must fail closed before emitting partial or misleading proof
+  packages when user-supplied evidence, bundle manifests, or captures are
+  malformed.
+- Generated paths must remain inside the requested output tree and must be
+  unambiguous in logs, summaries, and reviewer packages.
+- Public CLI behavior should remain compatible for valid existing MERCURY
+  bundle IDs and package exports.
+- Canonical JSON bytes, receipt hashes, checkpoint continuity, and package
+  verification semantics must remain unchanged.
+
+## Dependents
+
+- `chio-mercury-core` supplies bundle manifests, pilot fixtures, supervised-live
+  captures, and package validators consumed by this CLI.
+- `chio-control-plane`, `chio-kernel`, and `chio-store-sqlite` provide evidence
+  export, checkpoint, and receipt-store inputs.
+- Product documentation and reviewer artifacts consume the generated package
+  layout emitted by this crate.
+
+## Derived Manifest Filenames
+
+When a command writes multiple bundle manifests, the file stem is derived from
+`MercuryBundleManifest::bundle_id`. `bundle_manifest_file_name` rejects that
+projection when it is empty, padded, `.` or `..`, or carries path separators or
+control characters, so a valid product identifier cannot become an ambiguous or
+escaping filename.

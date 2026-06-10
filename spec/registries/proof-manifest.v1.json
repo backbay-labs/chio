@@ -15,11 +15,11 @@
         },
         {
           "kind": "rust_test",
-          "ref": "crates/chio-core-types/src/capability.rs::capability_token_signature_verification"
+          "ref": "crates/core/chio-core-types/src/capability.rs::capability_token_signature_verification"
         },
         {
           "kind": "conformance_test",
-          "ref": "crates/chio-conformance/tests/threats/capability_token_theft.rs"
+          "ref": "crates/tooling/chio-conformance/tests/threats/capability_token_theft.rs"
         }
       ]
     },
@@ -33,7 +33,7 @@
         },
         {
           "kind": "conformance_test",
-          "ref": "crates/chio-conformance/tests/threats/kernel_impersonation.rs"
+          "ref": "crates/tooling/chio-conformance/tests/threats/kernel_impersonation.rs"
         }
       ]
     },
@@ -47,7 +47,7 @@
         },
         {
           "kind": "conformance_test",
-          "ref": "crates/chio-conformance/tests/threats/delegation_chain_abuse.rs"
+          "ref": "crates/tooling/chio-conformance/tests/threats/delegation_chain_abuse.rs"
         }
       ]
     },
@@ -57,9 +57,9 @@
       "introduced_by": "capability-budget-sibling-sum",
       "evidence": [
         {"kind": "lean_theorem", "ref": "theorem.budget.sibling_sum_soundness"},
-        {"kind": "rust_test", "ref": "crates/chio-kernel-core/src/budget_split.rs::second_oversubscribed_sibling_is_rejected"},
-        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/budget_split_rejects_oversubscribed_siblings.rs::parent_at_5000_bps_cannot_mint_two_children_at_4000_bps_each"},
-        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/budget_split_cross_hop_rejects_amplification.rs::parent_5000_child_4000_two_grandchildren_3000_each_second_rejected"}
+        {"kind": "rust_test", "ref": "crates/kernel/chio-kernel-core/src/budget_split.rs::second_oversubscribed_sibling_is_rejected"},
+        {"kind": "conformance_test", "ref": "crates/tooling/chio-conformance/tests/budget_split_rejects_oversubscribed_siblings.rs::parent_at_5000_bps_cannot_mint_two_children_at_4000_bps_each"},
+        {"kind": "conformance_test", "ref": "crates/tooling/chio-conformance/tests/budget_split_cross_hop_rejects_amplification.rs::parent_5000_child_4000_two_grandchildren_3000_each_second_rejected"}
       ]
     },
     {
@@ -69,9 +69,9 @@
       "evidence": [
         {"kind": "lean_theorem", "ref": "theorem.attenuation.witness_soundness"},
         {"kind": "lean_theorem", "ref": "theorem.attenuation.witness_completeness"},
-        {"kind": "rust_test", "ref": "crates/chio-core-types/src/capability.rs::attenuation_witness_roundtrip_and_forgery_rejection"},
-        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/protocol_primitives_t1.rs::forged_attenuation_proof_rejected"},
-        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs::attenuated_token_with_inflated_parent_scope_hash_is_rejected"}
+        {"kind": "rust_test", "ref": "crates/core/chio-core-types/src/capability.rs::attenuation_witness_roundtrip_and_forgery_rejection"},
+        {"kind": "conformance_test", "ref": "crates/tooling/chio-conformance/tests/protocol_primitives_t1.rs::forged_attenuation_proof_rejected"},
+        {"kind": "conformance_test", "ref": "crates/tooling/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs::attenuated_token_with_inflated_parent_scope_hash_is_rejected"}
       ]
     },
     {
@@ -81,8 +81,8 @@
       "promoted_by": "runtime-enforcement",
       "evidence": [
         {"kind": "lean_theorem", "ref": "theorem.handshake.negotiation_safety"},
-        {"kind": "rust_test", "ref": "crates/chio-core-types/src/capability.rs::capability_negotiation_intersection_rejects_malformed_feature"},
-        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/protocol_primitives_t1.rs::capability_unknown_schema_rejected"}
+        {"kind": "rust_test", "ref": "crates/core/chio-core-types/src/capability.rs::capability_negotiation_intersection_rejects_malformed_feature"},
+        {"kind": "conformance_test", "ref": "crates/tooling/chio-conformance/tests/protocol_primitives_t1.rs::capability_unknown_schema_rejected"}
       ]
     },
     {
@@ -93,8 +93,8 @@
       "evidence": [
         {"kind": "lean_theorem", "ref": "theorem.receipt.id_input_set_pinned"},
         {"kind": "lean_theorem", "ref": "theorem.receipt.id_collision_resistance"},
-        {"kind": "rust_test", "ref": "crates/chio-core-types/src/receipt.rs::receipt_id_is_authoritative_and_content_addressed"},
-        {"kind": "rust_test", "ref": "crates/chio-core-types/src/receipt.rs::receipt_sign_and_verify"}
+        {"kind": "rust_test", "ref": "crates/core/chio-core-types/src/receipt.rs::receipt_id_is_authoritative_and_content_addressed"},
+        {"kind": "rust_test", "ref": "crates/core/chio-core-types/src/receipt.rs::receipt_sign_and_verify"}
       ]
     },
     {
@@ -102,23 +102,23 @@
       "claim_ref": "claim.anchor.batch_continuity",
       "introduced_by": "anchor-public-witness-lane",
       "evidence": [
-        {"kind": "rust_test", "ref": "crates/chio-anchor/src/batch.rs::anchor_batch_roundtrip_and_negative_roots"},
-        {"kind": "rust_test", "ref": "crates/chio-anchor/src/batch.rs::verifies_legacy_signature_that_omitted_pending_witness_state"},
-        {"kind": "rust_test", "ref": "crates/chio-anchor/src/witness.rs::witness_policy_rejects_pending_when_required"},
-        {"kind": "rust_test", "ref": "crates/chio-anchor/src/witness.rs::sync_require_public_witness_rejects_self_asserted_witnessed"},
-        {"kind": "rust_test", "ref": "crates/chio-anchor/src/witness/rekor.rs::rekor_body_b64_round_trips_real_batch_hash"},
-        {"kind": "rust_test", "ref": "crates/chio-anchor/src/witness/ots.rs::ots_verify_inclusion_rejects_bitcoin_marker_without_trusted_evidence"},
-        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/anchor_batch_forged_root_rejected.rs"},
-        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/anchor_batch_misordered_proof_rejected.rs"},
-        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/anchor_batch_witness_impersonation_rejected.rs"},
-        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/anchor_batch_stale_witness_fallback.rs"}
+        {"kind": "rust_test", "ref": "crates/economy/chio-anchor/src/batch.rs::anchor_batch_roundtrip_and_negative_roots"},
+        {"kind": "rust_test", "ref": "crates/economy/chio-anchor/src/batch.rs::verifies_legacy_signature_that_omitted_pending_witness_state"},
+        {"kind": "rust_test", "ref": "crates/economy/chio-anchor/src/witness.rs::witness_policy_rejects_pending_when_required"},
+        {"kind": "rust_test", "ref": "crates/economy/chio-anchor/src/witness.rs::sync_require_public_witness_rejects_self_asserted_witnessed"},
+        {"kind": "rust_test", "ref": "crates/economy/chio-anchor/src/witness/rekor.rs::rekor_body_b64_round_trips_real_batch_hash"},
+        {"kind": "rust_test", "ref": "crates/economy/chio-anchor/src/witness/ots.rs::ots_verify_inclusion_rejects_bitcoin_marker_without_trusted_evidence"},
+        {"kind": "conformance_test", "ref": "crates/tooling/chio-conformance/tests/anchor_batch_forged_root_rejected.rs"},
+        {"kind": "conformance_test", "ref": "crates/tooling/chio-conformance/tests/anchor_batch_misordered_proof_rejected.rs"},
+        {"kind": "conformance_test", "ref": "crates/tooling/chio-conformance/tests/anchor_batch_witness_impersonation_rejected.rs"},
+        {"kind": "conformance_test", "ref": "crates/tooling/chio-conformance/tests/anchor_batch_stale_witness_fallback.rs"}
       ],
       "evidence_proposed": [
         {"kind": "lean_theorem", "ref": "theorem.anchor.merkle_inclusion"},
         {"kind": "lean_theorem", "ref": "theorem.anchor.public_witness_anti_equivocation"},
-        {"kind": "rekor_merkle_inclusion_verifier", "ref": "crates/chio-anchor/src/witness/rekor.rs"},
-        {"kind": "ots_trusted_bitcoin_header_verifier", "ref": "crates/chio-anchor/src/witness/ots.rs"},
-        {"kind": "rust_test", "ref": "crates/chio-anchor/src/witness/ots.rs::ots_inclusion_proof_round_trips_through_parser"},
+        {"kind": "rekor_merkle_inclusion_verifier", "ref": "crates/economy/chio-anchor/src/witness/rekor.rs"},
+        {"kind": "ots_trusted_bitcoin_header_verifier", "ref": "crates/economy/chio-anchor/src/witness/ots.rs"},
+        {"kind": "rust_test", "ref": "crates/economy/chio-anchor/src/witness/ots.rs::ots_inclusion_proof_round_trips_through_parser"},
         {"kind": "doc", "ref": "docs/security/public-witness-semantics.md"}
       ]
     }
@@ -130,7 +130,7 @@
       "introduced_by": "receipt-lineage-dag-proposal",
       "evidence": [
         {"kind": "lean_theorem", "ref": "theorem.receipt.dag_acyclicity"},
-        {"kind": "rust_test", "ref": "crates/chio-core-types/src/receipt.rs::receipt_lineage_statement_sign_and_verify"}
+        {"kind": "rust_test", "ref": "crates/core/chio-core-types/src/receipt.rs::receipt_lineage_statement_sign_and_verify"}
       ],
       "evidence_proposed": [
         {"kind": "tla_module", "ref": "formal/tla/ReceiptDagAcyclicity.tla"}
@@ -142,9 +142,9 @@
       "introduced_by": "hybrid-pq-signature-proposal",
       "evidence_proposed": [
         {"kind": "lean_theorem", "ref": "theorem.signature.hybrid_soundness"},
-        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/capability_token_hybrid_round_trip.rs"},
-        {"kind": "schema_test", "ref": "crates/chio-core-types/tests/wire_protocol_schema.rs::capability_token_schema_accepts_live_hybrid_wire_values"},
-        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/cross_surface_hybrid_pq_interop.rs"}
+        {"kind": "conformance_test", "ref": "crates/tooling/chio-conformance/tests/capability_token_hybrid_round_trip.rs"},
+        {"kind": "schema_test", "ref": "crates/core/chio-core-types/tests/wire_protocol_schema.rs::capability_token_schema_accepts_live_hybrid_wire_values"},
+        {"kind": "conformance_test", "ref": "crates/tooling/chio-conformance/tests/cross_surface_hybrid_pq_interop.rs"}
       ]
     },
     {
@@ -153,11 +153,11 @@
       "introduced_by": "federation-conformance-tier-proposal",
       "evidence_proposed": [
         {"kind": "lean_theorem", "ref": "theorem.federation.conformance_tier_gate"},
-        {"kind": "rust_test", "ref": "crates/chio-federation/tests/trust_establishment.rs::quorum_policy_rejects_peer_below_min_tier"},
-        {"kind": "rust_test", "ref": "crates/chio-federation/tests/trust_establishment.rs::conformance_tier_is_signed_and_pinned_at_handshake"},
-        {"kind": "conformance_fixture", "ref": "crates/chio-conformance/tests/cross_surface/t2_1_mcp_wrapped_no_bypass.json"},
-        {"kind": "conformance_fixture", "ref": "crates/chio-conformance/tests/cross_surface/t2_1_hosted_native_http_no_bypass.json"},
-        {"kind": "conformance_fixture", "ref": "crates/chio-conformance/tests/cross_surface/t2_1_a2a_http_edge_no_bypass.json"}
+        {"kind": "rust_test", "ref": "crates/trust/chio-federation/tests/trust_establishment.rs::quorum_policy_rejects_peer_below_min_tier"},
+        {"kind": "rust_test", "ref": "crates/trust/chio-federation/tests/trust_establishment.rs::conformance_tier_is_signed_and_pinned_at_handshake"},
+        {"kind": "conformance_fixture", "ref": "crates/tooling/chio-conformance/tests/cross_surface/t2_1_mcp_wrapped_no_bypass.json"},
+        {"kind": "conformance_fixture", "ref": "crates/tooling/chio-conformance/tests/cross_surface/t2_1_hosted_native_http_no_bypass.json"},
+        {"kind": "conformance_fixture", "ref": "crates/tooling/chio-conformance/tests/cross_surface/t2_1_a2a_http_edge_no_bypass.json"}
       ]
     },
     {
@@ -165,11 +165,11 @@
       "claim_ref": "claim.http.egress_contract",
       "introduced_by": "http-egress-contract",
       "evidence": [
-        {"kind": "rust_test", "ref": "crates/chio-conformance/tests/ssrf_loopback_rejected.rs::webhook_dispatch_rejects_loopback_target"},
-        {"kind": "rust_test", "ref": "crates/chio-conformance/tests/ssrf_link_local_rejected.rs::splunk_hec_construction_rejects_link_local_target"},
-        {"kind": "rust_test", "ref": "crates/chio-conformance/tests/ssrf_ipv6_ula_rejected.rs::pyth_contract_rejects_ipv6_ula_target"},
-        {"kind": "rust_test", "ref": "crates/chio-conformance/tests/ssrf_redirect_overflow_rejected.rs::redirect_chain_above_ceiling_is_rejected"},
-        {"kind": "rust_test", "ref": "crates/chio-conformance/tests/ssrf_oversize_response_rejected.rs::contract_rejects_oversize_response"},
+        {"kind": "rust_test", "ref": "crates/tooling/chio-conformance/tests/ssrf_loopback_rejected.rs::webhook_dispatch_rejects_loopback_target"},
+        {"kind": "rust_test", "ref": "crates/tooling/chio-conformance/tests/ssrf_link_local_rejected.rs::splunk_hec_construction_rejects_link_local_target"},
+        {"kind": "rust_test", "ref": "crates/tooling/chio-conformance/tests/ssrf_ipv6_ula_rejected.rs::pyth_contract_rejects_ipv6_ula_target"},
+        {"kind": "rust_test", "ref": "crates/tooling/chio-conformance/tests/ssrf_redirect_overflow_rejected.rs::redirect_chain_above_ceiling_is_rejected"},
+        {"kind": "rust_test", "ref": "crates/tooling/chio-conformance/tests/ssrf_oversize_response_rejected.rs::contract_rejects_oversize_response"},
         {"kind": "workspace_lint", "ref": "scripts/check-http-egress-contract.sh"},
         {"kind": "workspace_lint_test", "ref": "scripts/tests/check-http-egress-contract.test.sh"}
       ]

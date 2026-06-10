@@ -1,0 +1,46 @@
+[package]
+name = "chio-mcp-edge"
+description = "MCP edge runtime and shared transport contracts for Chio"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+publish = false
+
+[package.metadata.chio]
+public_entrypoint = true
+
+[lib]
+name = "chio_mcp_edge"
+
+[dependencies]
+async-trait = { workspace = true }
+chio-core = { package = "chio-core-types", path = "../../core/chio-core-types" }
+chio-cross-protocol = { workspace = true }
+chio-edge-metrics = { workspace = true }
+chio-kernel = { workspace = true }
+chio-manifest = { workspace = true }
+chio-metrics-spec = { workspace = true }
+chrono = { workspace = true, features = ["clock"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+# `arbitrary` is gated behind the `fuzz` feature so production builds stay
+# free of fuzz instrumentation. Pulled in by `fuzz/fuzz_targets/mcp_envelope_decode.rs`
+# via `chio-mcp-edge = { features = ["fuzz"] }`.
+arbitrary = { version = "1", features = ["derive"], optional = true }
+
+[features]
+otel = ["chio-kernel/otel"]
+# Enables `chio_mcp_edge::fuzz`, the libFuzzer entry-point module driving
+# the decode-then-evaluator-dispatch pipeline. Off by default; turned on only
+# by the `chio-fuzz` standalone workspace at `../../fuzz`. Production builds
+# never pull in `arbitrary` and never expose `fuzz` symbols.
+fuzz = ["dep:arbitrary"]
+
+[lints]
+workspace = true

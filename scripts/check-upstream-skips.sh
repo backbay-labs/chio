@@ -6,7 +6,7 @@
 # Fuzz targets occasionally trip on instability in upstream deps
 # (wasmtime nightly, libfuzzer-sys releases, arbitrary, regex-syntax,
 # etc.) instead of real Chio bugs. The skip table at
-# fuzz/upstream_skips.toml lets us record those false positives with a
+# fuzz/upstream_skips.toml records those false positives with a
 # bounded sunset date so they cannot rot. This script enforces the
 # bounds:
 #

@@ -1,10 +1,6 @@
 package chio:guard@0.2.0;
 
 interface types {
-    // Verbatim from on-disk wit/chio-guard/world.wit @ 0.1.0; types are
-    // unchanged across the 0.1 -> 0.2 bump. The 0.2 delta is purely additive:
-    // new `interface host`, new `interface policy-context`, two `import`
-    // lines on the world. No field is renamed, removed, or retyped.
     variant verdict {
         allow,
         deny(string),

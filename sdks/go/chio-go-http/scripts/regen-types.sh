@@ -66,19 +66,10 @@ if [[ ! -d "${SCHEMAS_DIR}" ]]; then
 fi
 
 # --- compute the schema content SHA ----------------------------------------
-# Earlier versions of this script ran `git log -1` over the schema subtree
-# so the stamp reflected the latest commit that touched a schema. That made
-# the stamp depend on git history rather than the actual schema bytes:
-#   1. A no-op rebase or commit message edit shifted the SHA without any
-#      schema change, dirtying the regenerated file.
-#   2. Shallow CI clones (where `git log` returns nothing for the subtree)
-#      stamped 'unknown' even when the bytes were correct.
-#   3. Staged-but-unindexed-in-HEAD schema edits were classified as 'clean'
-#      because `git diff` (working-tree vs index) returned 0 for them.
-#
-# We replace that with a content hash of the lex-sorted schema files: the
-# stamp becomes a deterministic function of the bytes feeding into
-# oapi-codegen, regardless of repository state.
+# The stamp is a content hash of the lex-sorted schema files, making it a
+# deterministic function of the bytes feeding into oapi-codegen regardless of
+# repository state (rebases, shallow clones, and dirty working trees do not
+# shift it).
 cd "${WORKSPACE_ROOT}"
 SCHEMA_HEAD_SHA="$(
   python3 - "${SCHEMAS_DIR}" <<'PY'
@@ -251,13 +242,10 @@ def rewrite(node, lifts: dict, prefix: str):
                 if len(non_null) == 1 and isinstance(non_null[0], dict):
                     inlined = non_null[0]
                     del node["oneOf"]
-                    # Merge inlined keys into the parent. The comment used
-                    # to claim `$schema`, `$id`, `title` were dropped, but
-                    # only `$schema` and `$id` were actually skipped, so a
-                    # member's `title` leaked through and overwrote the
-                    # parent's display name in the generated Go field
-                    # comment. Add `title` to the skip-list to match the
-                    # documented intent.
+                    # Merge the inlined member's keys into the parent. Skip
+                    # `$schema`, `$id`, and `title` so the member's `title`
+                    # does not overwrite the parent's display name in the
+                    # generated Go field comment.
                     for key, value in inlined.items():
                         if key in ("$schema", "$id", "title"):
                             continue
@@ -534,7 +522,7 @@ if [[ ! -s "${RAW_OUTPUT_PATH}" ]]; then
 fi
 
 # --- prepend the chio header -----------------------------------------------
-# Mirror the Rust generated header (crates/chio-spec-codegen/src/lib.rs
+# Mirror the Rust generated header (crates/tooling/chio-spec-codegen/src/lib.rs
 # GENERATED_HEADER) with Go-style `//` comments. The header lives BEFORE
 # the oapi-codegen banner, which we keep as a secondary attribution stamp.
 HEADER_FILE="${WORK_DIR}/header.txt"

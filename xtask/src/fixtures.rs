@@ -1000,9 +1000,9 @@ fn run_sre_metrics(root: &Path) -> Result<(), XtaskError> {
     run_bash(root, "scripts/check-sre-metrics-registry.sh")
 }
 
-/// `pushd crates/chio-cli/dashboard && npm <args>` for the dashboard facets.
+/// `pushd crates/products/chio-cli/dashboard && npm <args>` for the dashboard facets.
 fn run_npm(root: &Path, args: &[&str]) -> Result<(), XtaskError> {
-    let dashboard = root.join("crates/chio-cli/dashboard");
+    let dashboard = root.join("crates/products/chio-cli/dashboard");
     let status = Command::new("npm")
         .args(args)
         .current_dir(&dashboard)

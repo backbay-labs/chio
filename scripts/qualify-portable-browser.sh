@@ -180,9 +180,9 @@ echo "[portable-browser] chrome_version=${CHROME_VERSION_DETECTED:-unknown}"
 echo "[portable-browser] chromedriver_version=${CHROMEDRIVER_VERSION_DETECTED:-unknown}"
 
 echo "[portable-browser] building wasm package"
-wasm-pack build --target web --release crates/chio-kernel-browser
+wasm-pack build --target web --release crates/kernel/chio-kernel-browser
 
-WASM_ARTIFACT="crates/chio-kernel-browser/pkg/chio_kernel_browser_bg.wasm"
+WASM_ARTIFACT="crates/kernel/chio-kernel-browser/pkg/chio_kernel_browser_bg.wasm"
 if [[ ! -f "$WASM_ARTIFACT" ]]; then
   echo "[portable-browser] missing wasm artifact: $WASM_ARTIFACT" >&2
   exit 1
@@ -198,7 +198,7 @@ REPORT_MD="$ARTIFACT_DIR/report.md"
 rm -f "$LOG_FILE"
 
 echo "[portable-browser] running headless browser bindings tests"
-wasm-pack test --release --headless --chrome --chromedriver "$CHROMEDRIVER" crates/chio-kernel-browser -- --nocapture | tee "$LOG_FILE"
+wasm-pack test --release --headless --chrome --chromedriver "$CHROMEDRIVER" crates/kernel/chio-kernel-browser -- --nocapture | tee "$LOG_FILE"
 
 LATENCY_LINE="$(grep -o 'qualify_browser_evaluate_latency_ms=[0-9.]*' "$LOG_FILE" | tail -n 1 || true)"
 if [[ -z "$LATENCY_LINE" ]]; then
@@ -237,7 +237,7 @@ import sys
 summary_path = sys.argv[1]
 data = {
     "schema": "chio.browser-kernel-qualification.v1",
-    "wasm_artifact": "crates/chio-kernel-browser/pkg/chio_kernel_browser_bg.wasm",
+    "wasm_artifact": "crates/kernel/chio-kernel-browser/pkg/chio_kernel_browser_bg.wasm",
     "artifact_bytes": int(os.environ["ARTIFACT_BYTES"]),
     "evaluate_latency_ms": float(os.environ["LATENCY_MS"]),
     "cargo_target_dir": os.environ["CARGO_TARGET_DIR"],

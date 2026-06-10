@@ -75,7 +75,7 @@ fixtures/
 
 ## See also
 
-- `crates/chio-attest-loopback/` - the fixture library this example wraps
-- `crates/chio-attest-buyer-core/` - buyer-side attestation types
-- `crates/chio-pheromone/` - pheromone deposit and observation cost types
+- `crates/trust/chio-attest-loopback/` - the fixture library this example wraps
+- `crates/trust/chio-attest-buyer-core/` - buyer-side attestation types
+- `crates/trust/chio-pheromone/` - pheromone deposit and observation cost types
 - `docs/integrations/` - integration guides for the broader attestation flow

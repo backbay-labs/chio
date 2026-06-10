@@ -27,42 +27,42 @@
       "id": "FABRIC-01",
       "summary": "CrossProtocolOrchestrator resolves authoritative non-native targets through an explicit executor seam rather than collapsing every path to Native.",
       "witnesses": [
-        "crates/chio-cross-protocol/src/lib.rs",
-        "crates/chio-mcp-edge/src/runtime.rs"
+        "crates/protocol/chio-cross-protocol/src/lib.rs",
+        "crates/protocol/chio-mcp-edge/src/runtime.rs"
       ]
     },
     {
       "id": "FABRIC-02",
       "summary": "At least one authoritative bridge path executes protocol-to-protocol without terminating immediately in DiscoveryProtocol::Native.",
       "witnesses": [
-        "crates/chio-acp-edge/src/lib.rs",
-        "crates/chio-mcp-edge/src/runtime.rs"
+        "crates/protocol/chio-acp-edge/src/lib.rs",
+        "crates/protocol/chio-mcp-edge/src/runtime.rs"
       ]
     },
     {
       "id": "FABRIC-03",
       "summary": "Bridge execution preserves attenuation, trace lineage, fidelity semantics, and receipt references across the authoritative path.",
       "witnesses": [
-        "crates/chio-cross-protocol/src/lib.rs",
-        "crates/chio-acp-edge/src/lib.rs",
-        "crates/chio-a2a-edge/src/lib.rs"
+        "crates/protocol/chio-cross-protocol/src/lib.rs",
+        "crates/protocol/chio-acp-edge/src/lib.rs",
+        "crates/protocol/chio-a2a-edge/src/lib.rs"
       ]
     },
     {
       "id": "KERNEL-01",
       "summary": "chio-api-protect routes HTTP authorization through the shared embedded kernel-backed authority path.",
       "witnesses": [
-        "crates/chio-http-core/src/authority.rs",
-        "crates/chio-api-protect/src/evaluator.rs"
+        "crates/platform/chio-http-core/src/authority.rs",
+        "crates/products/chio-api-protect/src/evaluator.rs"
       ]
     },
     {
       "id": "KERNEL-02",
       "summary": "chio-tower uses the same shared kernel-backed HTTP authority/evidence path as chio-api-protect.",
       "witnesses": [
-        "crates/chio-http-core/src/authority.rs",
-        "crates/chio-tower/src/evaluator.rs",
-        "crates/chio-tower/src/service.rs"
+        "crates/platform/chio-http-core/src/authority.rs",
+        "crates/protocol/chio-tower/src/evaluator.rs",
+        "crates/protocol/chio-tower/src/service.rs"
       ]
     },
     {
@@ -83,7 +83,7 @@
       "id": "KERNEL-04",
       "summary": "The supported HTTP/API surfaces can now be described literally as sharing one kernel-backed authority story.",
       "witnesses": [
-        "crates/chio-http-core/src/authority.rs",
+        "crates/platform/chio-http-core/src/authority.rs",
         "docs/sdk/PLATFORM.md",
         "docs/sdk/GO.md",
         "docs/sdk/PYTHON.md"
@@ -93,22 +93,22 @@
       "id": "LIFE-01",
       "summary": "A2A authoritative mediation now exposes blocking send plus deferred-task stream/get/cancel lifecycle semantics without overstating push-stream behavior.",
       "witnesses": [
-        "crates/chio-a2a-edge/src/lib.rs"
+        "crates/protocol/chio-a2a-edge/src/lib.rs"
       ]
     },
     {
       "id": "LIFE-02",
       "summary": "ACP authoritative mediation now exposes preview plus blocking invoke and deferred-task stream/cancel/resume lifecycle semantics on the authoritative path.",
       "witnesses": [
-        "crates/chio-acp-edge/src/lib.rs"
+        "crates/protocol/chio-acp-edge/src/lib.rs"
       ]
     },
     {
       "id": "LIFE-03",
       "summary": "Compatibility helpers are isolated from the default authoritative claim surface.",
       "witnesses": [
-        "crates/chio-a2a-edge/src/lib.rs",
-        "crates/chio-acp-edge/src/lib.rs"
+        "crates/protocol/chio-a2a-edge/src/lib.rs",
+        "crates/protocol/chio-acp-edge/src/lib.rs"
       ]
     },
     {

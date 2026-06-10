@@ -13,8 +13,8 @@
 # Service. The first carries a capability token and must return HTTP 200
 # with an `x-chio-receipt-id` header injected by the Chio adapter. The second
 # omits all credentials and must come back as HTTP 403 from the DENY policy
-# (no token -> Istio DENY action triggers before Chio ever runs, matching the
-# fail-closed invariant in the roadmap).
+# (no token -> Istio DENY action triggers before Chio ever runs, which is the
+# fail-closed invariant).
 #
 # Exits 0 on success, non-zero with a human-readable diagnostic on failure.
 set -euo pipefail

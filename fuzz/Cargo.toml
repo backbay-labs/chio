@@ -25,32 +25,32 @@ path = "src/lib.rs"
 [workspace]
 
 [dependencies]
-chio-a2a-adapter = { path = "../crates/chio-a2a-adapter", features = ["fuzz"] }
-chio-acp-edge = { path = "../crates/chio-acp-edge", features = ["fuzz"] }
-chio-anchor = { path = "../crates/chio-anchor", features = ["fuzz"] }
-chio-attest-verify = { path = "../crates/chio-attest-verify" }
-chio-config = { path = "../crates/chio-config", features = ["fuzz"] }
-chio-core = { path = "../crates/chio-core" }
+chio-a2a-adapter = { path = "../crates/protocol/chio-a2a-adapter", features = ["fuzz"] }
+chio-acp-edge = { path = "../crates/protocol/chio-acp-edge", features = ["fuzz"] }
+chio-anchor = { path = "../crates/economy/chio-anchor", features = ["fuzz"] }
+chio-attest-verify = { path = "../crates/trust/chio-attest-verify" }
+chio-config = { path = "../crates/platform/chio-config", features = ["fuzz"] }
+chio-core = { path = "../crates/core/chio-core" }
 # No `fuzz` feature on chio-core-types or chio-manifest; both are pure-serde
 # Deserialize surfaces, so the fuzz harness drives `serde_json::from_slice`
 # directly.
-chio-core-types = { path = "../crates/chio-core-types" }
-chio-data-guards = { path = "../crates/chio-data-guards" }
-chio-eval-receipt = { path = "../crates/chio-eval-receipt" }
-chio-federation = { path = "../crates/chio-federation" }
-chio-guards = { path = "../crates/chio-guards" }
-chio-kernel = { path = "../crates/chio-kernel" }
-chio-manifest = { path = "../crates/chio-manifest" }
-chio-underwriting = { path = "../crates/chio-underwriting" }
-chio-credentials = { path = "../crates/chio-credentials", features = ["fuzz"] }
-chio-did = { path = "../crates/chio-did", features = ["fuzz"] }
-chio-kernel-core = { path = "../crates/chio-kernel-core", features = ["fuzz"] }
-chio-mcp-adapter = { path = "../crates/chio-mcp-adapter", features = ["fuzz"] }
-chio-mcp-edge = { path = "../crates/chio-mcp-edge", features = ["fuzz"] }
-chio-openapi-mcp-bridge = { path = "../crates/chio-openapi-mcp-bridge", features = ["fuzz"] }
-chio-policy = { path = "../crates/chio-policy" }
-chio-revocation-oracle = { path = "../crates/chio-revocation-oracle" }
-chio-wasm-guards = { path = "../crates/chio-wasm-guards", features = ["fuzz"] }
+chio-core-types = { path = "../crates/core/chio-core-types" }
+chio-data-guards = { path = "../crates/guards/chio-data-guards" }
+chio-eval-receipt = { path = "../crates/sdk/chio-eval-receipt" }
+chio-federation = { path = "../crates/trust/chio-federation" }
+chio-guards = { path = "../crates/guards/chio-guards" }
+chio-kernel = { path = "../crates/kernel/chio-kernel" }
+chio-manifest = { path = "../crates/platform/chio-manifest" }
+chio-underwriting = { path = "../crates/economy/chio-underwriting" }
+chio-credentials = { path = "../crates/trust/chio-credentials", features = ["fuzz"] }
+chio-did = { path = "../crates/trust/chio-did", features = ["fuzz"] }
+chio-kernel-core = { path = "../crates/kernel/chio-kernel-core", features = ["fuzz"] }
+chio-mcp-adapter = { path = "../crates/protocol/chio-mcp-adapter", features = ["fuzz"] }
+chio-mcp-edge = { path = "../crates/protocol/chio-mcp-edge", features = ["fuzz"] }
+chio-openapi-mcp-bridge = { path = "../crates/protocol/chio-openapi-mcp-bridge", features = ["fuzz"] }
+chio-policy = { path = "../crates/guards/chio-policy" }
+chio-revocation-oracle = { path = "../crates/trust/chio-revocation-oracle" }
+chio-wasm-guards = { path = "../crates/guards/chio-wasm-guards", features = ["fuzz"] }
 libfuzzer-sys = "0.4"
 # `derive` feature lets per-target structs use `#[derive(Arbitrary)]`.
 arbitrary = { version = "1", features = ["derive"] }
@@ -208,10 +208,8 @@ test = false
 doc = false
 bench = false
 
-# Main-branch fuzz targets preserved while resolving the roadmap merge.
-# These keep the existing `fuzz_*` binary names so their seed corpus
-# directories under `fuzz/corpus/fuzz_*` continue to line up with
-# cargo-fuzz defaults.
+# These keep a `fuzz_*` binary name so their seed-corpus directories
+# under `fuzz/corpus/fuzz_*` line up with cargo-fuzz defaults.
 [[bin]]
 name = "fuzz_policy_parse_compile"
 path = "fuzz_targets/policy_parse_compile.rs"

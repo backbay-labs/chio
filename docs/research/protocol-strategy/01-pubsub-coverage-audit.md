@@ -8,9 +8,9 @@
 The product-owner hypothesis is **partially confirmed and partially wrong, in
 both directions**. The kernel itself does not (and should not) sit as a generic
 broker subscriber: every Rust bridge in the workspace implements
-`ToolServerConnection` (`crates/chio-kernel/src/runtime.rs:255`), which is a
+`ToolServerConnection` (`crates/kernel/chio-kernel/src/runtime.rs:255`), which is a
 request/response surface, and the only typed egress contract is HTTP-only
-(`crates/chio-egress-contract/src/lib.rs:14-39`). There are zero NATS, Kafka,
+(`crates/protocol/chio-egress-contract/src/lib.rs:14-39`). There are zero NATS, Kafka,
 AMQP, RabbitMQ, EventBridge, GCP Pub/Sub, or WebSub references in any Rust
 crate manifest, and only two passing string mentions in code (a Rekor comment
 and a Spine/NATS doc-line in `chio-kernel/src/revocation_runtime.rs:9`). But
@@ -44,7 +44,7 @@ SDK.**
   Chio currently sees the MCP RPC, not the broker semantics. No typed
   `NatsEgressContract` analogous to `HttpEgressContract`. No manifest
   primitive for `subject` allowlists. The doc reference in
-  `crates/chio-kernel/src/revocation_runtime.rs:9` ("distributed revocation
+  `crates/kernel/chio-kernel/src/revocation_runtime.rs:9` ("distributed revocation
   feed via Spine/NATS") is aspirational, not implemented.
 - **Recommendation:** Keep the Python middleware as the canonical consumer
   story. Add a `NatsSubject` constraint and a `events:consume:{subject}` /
@@ -146,7 +146,7 @@ SDK.**
   README table.
 - **Gap:** Total, and arguably structural: WebSub is HTTP webhook callbacks,
   which means coverage can ride on the existing `HttpEgressContract`
-  (`crates/chio-egress-contract/src/lib.rs:14-39`) for the hub-callback POST,
+  (`crates/protocol/chio-egress-contract/src/lib.rs:14-39`) for the hub-callback POST,
   but the subscription verification handshake (GET with `hub.challenge`) and
   inbound notification ingest are not modeled. Inbound webhook ingestion is
   a wider gap than WebSub alone - it is how any third-party event service
@@ -176,7 +176,7 @@ at the protocol level.
 
 1. **Promote pub/sub scope primitives into `chio-manifest` and `chio-guards`
    `ToolAction`.** Today `ToolAction`
-   (`crates/chio-guards/src/action.rs:16-46`) has no `EventPublish` /
+   (`crates/guards/chio-guards/src/action.rs:16-46`) has no `EventPublish` /
    `EventConsume` variants; the closest is `ExternalApiCall`. Adding these
    plus topic/subject/ARN allowlist constraints is the smallest change that
    lets Rust-side kernels enforce what the Python middleware already
@@ -187,7 +187,7 @@ at the protocol level.
    ~300 LOC + integration test. Closes the "we cover the brokers enterprises
    actually run" claim. (Effort: small-medium, one engineer-month.)
 3. **Define non-HTTP egress contracts.**
-   `crates/chio-egress-contract/src/lib.rs:14` is HTTP-only. Add
+   `crates/protocol/chio-egress-contract/src/lib.rs:14` is HTTP-only. Add
    `BrokerEgressContract` (or sibling types per broker family) so kernels
    embedded in publishers can fail-closed on broker target before SDK code
    runs. This is the prerequisite for trustworthy "agent publishes

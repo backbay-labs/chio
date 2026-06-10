@@ -251,7 +251,7 @@ A SWIFT PKI compromise, a DirectTrust root compromise, or an FPKI cross-certific
 
 ## 8. What This Document Does Not Do
 
-It does not propose a chio protocol change. The protocol-layer work to support the postures recommended in section 5 is small (set-valued bootstrap roots in passports, intersection check at handshake) and lives in the existing [chio-credentials](../../crates/chio-credentials/) and [chio-federation::trust_establishment](../../crates/chio-federation/src/trust_establishment.rs) surfaces.
+It does not propose a chio protocol change. The protocol-layer work to support the postures recommended in section 5 is small (set-valued bootstrap roots in passports, intersection check at handshake) and lives in the existing [chio-credentials](../../crates/trust/chio-credentials/) and [chio-federation::trust_establishment](../../crates/trust/chio-federation/src/trust_establishment.rs) surfaces.
 
 It does not commit to a sequencing decision. Section 6 is a recommendation grounded in current institutional readiness; the actual sequencing is a go-to-market decision that depends on commercial relationships and budget cycles outside the scope of this research.
 
@@ -280,5 +280,5 @@ Institutional and PKI grounding:
 Internal references:
 
 - [CHIO_CONCEPT.md](CHIO_CONCEPT.md), section 2.5 "Trust Anchor Honesty" and section 4.2 "Action-Class to Governance-Mode Mapping (with consistency model)."
-- [chio-federation::trust_establishment](../../crates/chio-federation/src/trust_establishment.rs).
-- [chio-credentials](../../crates/chio-credentials/).
+- [chio-federation::trust_establishment](../../crates/trust/chio-federation/src/trust_establishment.rs).
+- [chio-credentials](../../crates/trust/chio-credentials/).

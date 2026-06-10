@@ -19,10 +19,10 @@
 #   notes    = optional human-readable rationale
 
 [targets.canonical_json]
-crate    = "chio-canonical-json"
+crate    = "chio-core-types"
 path     = "fuzz/fuzz_targets/canonical_json.rs"
 triggers = [
-    "crates/chio-canonical-json/**",
+    "crates/core/chio-core-types/src/canonical.rs",
     "spec/schemas/canonical/**",
     "tests/bindings/vectors/canonical/**",
 ]
@@ -33,33 +33,33 @@ notes    = "Round-trips canonical JSON; catches sort drift and float canonicaliz
 crate    = "chio-core-types"
 path     = "fuzz/fuzz_targets/capability_receipt.rs"
 triggers = [
-    "crates/chio-core-types/src/capability*.rs",
-    "crates/chio-core-types/src/receipt*.rs",
+    "crates/core/chio-core-types/src/capability*.rs",
+    "crates/core/chio-core-types/src/receipt*.rs",
     "spec/schemas/capability/**",
     "spec/schemas/receipt/**",
     "tests/bindings/vectors/capability/**",
     "tests/bindings/vectors/receipt/**",
 ]
 seeds    = "fuzz/corpus/capability_receipt"
-notes    = "Capability + receipt round-trip; intersects M03 capability algebra invariants."
+notes    = "Capability + receipt round-trip; exercises the capability-algebra invariants."
 
 [targets.manifest_roundtrip]
 crate    = "chio-manifest"
 path     = "fuzz/fuzz_targets/manifest_roundtrip.rs"
 triggers = [
-    "crates/chio-manifest/**",
-    "crates/chio-core-types/src/manifest*.rs",
+    "crates/platform/chio-manifest/**",
+    "crates/core/chio-core-types/src/manifest*.rs",
     "spec/schemas/manifest/**",
     "tests/bindings/vectors/manifest/**",
 ]
 seeds    = "fuzz/corpus/manifest_roundtrip"
-notes    = "Tool-manifest decode plus canonicalization; downstream of M01 manifest vectors."
+notes    = "Tool-manifest decode plus canonicalization."
 
 [targets.federation_trust_establishment]
 crate    = "chio-federation"
 path     = "fuzz/fuzz_targets/federation_trust_establishment.rs"
 triggers = [
-    "crates/chio-federation/**",
+    "crates/trust/chio-federation/**",
     "spec/schemas/federation/**",
     "fuzz/fuzz_targets/federation_trust_establishment.rs",
     "fuzz/corpus/federation_trust_establishment/**",
@@ -71,7 +71,7 @@ notes    = "Kernel trust-establishment envelopes, peer pins, freshness, and fail
 crate    = "chio-underwriting"
 path     = "fuzz/fuzz_targets/underwriting_policy_input.rs"
 triggers = [
-    "crates/chio-underwriting/**",
+    "crates/economy/chio-underwriting/**",
     "spec/schemas/underwriting/**",
     "fuzz/fuzz_targets/underwriting_policy_input.rs",
     "fuzz/corpus/underwriting_policy_input/**",
@@ -83,7 +83,7 @@ notes    = "Underwriting policy, decision, marketplace, and premium decode surfa
 crate    = "chio-attest-verify"
 path     = "fuzz/fuzz_targets/attest_verify.rs"
 triggers = [
-    "crates/chio-attest-verify/**",
+    "crates/trust/chio-attest-verify/**",
     "spec/schemas/attestation/**",
 ]
 seeds    = "fuzz/corpus/attest_verify"
@@ -93,7 +93,7 @@ notes    = "Sigstore bundle parser + cert chain verify; trust-boundary."
 crate    = "chio-credentials"
 path     = "fuzz/fuzz_targets/jwt_vc_verify.rs"
 triggers = [
-    "crates/chio-credentials/src/**",
+    "crates/trust/chio-credentials/src/**",
     "spec/schemas/credentials/**",
     "tests/bindings/vectors/credentials/**",
 ]
@@ -104,7 +104,7 @@ notes    = "JWT VC verifier; trust-boundary; constant-time compare assertions li
 crate    = "chio-credentials"
 path     = "fuzz/fuzz_targets/oid4vp_presentation.rs"
 triggers = [
-    "crates/chio-credentials/src/**",
+    "crates/trust/chio-credentials/src/**",
     "spec/schemas/oid4vp/**",
 ]
 seeds    = "fuzz/corpus/oid4vp_presentation"
@@ -114,7 +114,7 @@ notes    = "OID4VP holder response decode."
 crate    = "chio-did"
 path     = "fuzz/fuzz_targets/did_resolve.rs"
 triggers = [
-    "crates/chio-did/**",
+    "crates/trust/chio-did/**",
     "spec/schemas/did/**",
 ]
 seeds    = "fuzz/corpus/did_resolve"
@@ -124,7 +124,7 @@ notes    = "chio-did parser plus resolver."
 crate    = "chio-anchor"
 path     = "fuzz/fuzz_targets/anchor_bundle_verify.rs"
 triggers = [
-    "crates/chio-anchor/**",
+    "crates/economy/chio-anchor/**",
     "spec/schemas/anchor/**",
 ]
 seeds    = "fuzz/corpus/anchor_bundle_verify"
@@ -134,8 +134,8 @@ notes    = "Anchor proof bundle plus checkpoint records; trust-boundary."
 crate    = "chio-mcp-edge"
 path     = "fuzz/fuzz_targets/mcp_envelope_decode.rs"
 triggers = [
-    "crates/chio-mcp-edge/**",
-    "crates/chio-policy/**",
+    "crates/protocol/chio-mcp-edge/**",
+    "crates/guards/chio-policy/**",
     "spec/schemas/mcp/**",
 ]
 seeds    = "fuzz/corpus/mcp_envelope_decode"
@@ -145,7 +145,7 @@ notes    = "MCP NDJSON decode plus edge dispatch; pipes into evaluator post-deco
 crate    = "chio-a2a-adapter"
 path     = "fuzz/fuzz_targets/a2a_envelope_decode.rs"
 triggers = [
-    "crates/chio-a2a-adapter/**",
+    "crates/protocol/chio-a2a-adapter/**",
     "spec/schemas/a2a/**",
 ]
 seeds    = "fuzz/corpus/a2a_envelope_decode"
@@ -155,7 +155,7 @@ notes    = "A2A SSE parse plus per-event fan-out."
 crate    = "chio-acp-edge"
 path     = "fuzz/fuzz_targets/acp_envelope_decode.rs"
 triggers = [
-    "crates/chio-acp-edge/**",
+    "crates/protocol/chio-acp-edge/**",
     "spec/schemas/acp/**",
 ]
 seeds    = "fuzz/corpus/acp_envelope_decode"
@@ -165,7 +165,7 @@ notes    = "ACP NDJSON plus handle_jsonrpc dispatch."
 crate    = "chio-wasm-guards"
 path     = "fuzz/fuzz_targets/wasm_preinstantiate_validate.rs"
 triggers = [
-    "crates/chio-wasm-guards/**",
+    "crates/guards/chio-wasm-guards/**",
     "spec/schemas/wasm-guard/**",
 ]
 seeds    = "fuzz/corpus/wasm_preinstantiate_validate"
@@ -175,7 +175,7 @@ notes    = "ComponentBackend, WasmtimeBackend, format detect; trust-boundary."
 crate    = "chio-wasm-guards"
 path     = "fuzz/fuzz_targets/wit_host_call_boundary.rs"
 triggers = [
-    "crates/chio-wasm-guards/**",
+    "crates/guards/chio-wasm-guards/**",
     "spec/schemas/wasm-guard/**",
 ]
 seeds    = "fuzz/corpus/wit_host_call_boundary"
@@ -185,7 +185,7 @@ notes    = "GuardRequest/GuestDenyResponse serde deserialization; trust-boundary
 crate    = "chio-wasm-guards"
 path     = "fuzz/fuzz_targets/wasm_guard_escape.rs"
 triggers = [
-    "crates/chio-wasm-guards/**",
+    "crates/guards/chio-wasm-guards/**",
     "spec/schemas/wasm-guard/**",
 ]
 seeds    = "fuzz/corpus/wasm_guard_escape"
@@ -195,7 +195,7 @@ notes    = "Runtime-execution surface; 8 escape classes via evaluate."
 crate    = "chio-config"
 path     = "fuzz/fuzz_targets/chio_yaml_parse.rs"
 triggers = [
-    "crates/chio-config/**",
+    "crates/platform/chio-config/**",
     "spec/schemas/config/**",
 ]
 seeds    = "fuzz/corpus/chio_yaml_parse"
@@ -205,7 +205,7 @@ notes    = "chio-config YAML loader."
 crate    = "chio-openapi-mcp-bridge"
 path     = "fuzz/fuzz_targets/openapi_ingest.rs"
 triggers = [
-    "crates/chio-openapi-mcp-bridge/**",
+    "crates/protocol/chio-openapi-mcp-bridge/**",
     "spec/schemas/openapi/**",
 ]
 seeds    = "fuzz/corpus/openapi_ingest"
@@ -215,7 +215,7 @@ notes    = "OpenApiMcpBridge::from_spec ingest path."
 crate    = "chio-kernel-core"
 path     = "fuzz/fuzz_targets/receipt_log_replay.rs"
 triggers = [
-    "crates/chio-kernel-core/src/**",
+    "crates/kernel/chio-kernel-core/src/**",
     "spec/schemas/receipt/**",
 ]
 seeds    = "fuzz/corpus/receipt_log_replay"
@@ -225,7 +225,7 @@ notes    = "Receipt log replay decode plus chain-invariant state-machine."
 crate    = "chio-eval-receipt"
 path     = "fuzz/fuzz_targets/eval_receipt_bundle.rs"
 triggers = [
-    "crates/chio-eval-receipt/**",
+    "crates/sdk/chio-eval-receipt/**",
     "spec/eval/**",
     "fuzz/fuzz_targets/eval_receipt_bundle.rs",
     "fuzz/corpus/eval_receipt_bundle/**",
@@ -237,7 +237,7 @@ notes    = "Eval-report bundle parser and fail-closed verifier."
 crate    = "chio-policy"
 path     = "fuzz/fuzz_targets/policy_parse_compile.rs"
 triggers = [
-    "crates/chio-policy/**",
+    "crates/guards/chio-policy/**",
     "spec/schemas/policy/**",
     "fuzz/fuzz_targets/policy_parse_compile.rs",
     "fuzz/corpus/fuzz_policy_parse_compile/**",
@@ -249,7 +249,7 @@ notes    = "HushSpec parser, validator, compiler, and YAML round-trip."
 crate    = "chio-data-guards"
 path     = "fuzz/fuzz_targets/sql_parser.rs"
 triggers = [
-    "crates/chio-data-guards/**",
+    "crates/guards/chio-data-guards/**",
     "spec/schemas/data-guards/**",
     "fuzz/fuzz_targets/sql_parser.rs",
     "fuzz/corpus/fuzz_sql_parser/**",
@@ -261,9 +261,9 @@ notes    = "SQL parser and SQL guard fail-closed analysis across dialects."
 crate    = "chio-kernel"
 path     = "fuzz/fuzz_targets/merkle_checkpoint.rs"
 triggers = [
-    "crates/chio-core/src/merkle*.rs",
-    "crates/chio-core/src/hashing*.rs",
-    "crates/chio-kernel/src/checkpoint*.rs",
+    "crates/core/chio-core/src/merkle*.rs",
+    "crates/core/chio-core/src/hashing*.rs",
+    "crates/kernel/chio-kernel/src/checkpoint*.rs",
     "spec/schemas/receipt/**",
     "fuzz/fuzz_targets/merkle_checkpoint.rs",
     "fuzz/corpus/fuzz_merkle_checkpoint/**",
@@ -275,7 +275,7 @@ notes    = "Merkle tree inclusion proofs and signed checkpoint validation."
 crate    = "chio-revocation-oracle"
 path     = "fuzz/fuzz_targets/revocation_oracle_merkle.rs"
 triggers = [
-    "crates/chio-revocation-oracle/**",
+    "crates/trust/chio-revocation-oracle/**",
     "fuzz/fuzz_targets/revocation_oracle_merkle.rs",
     "fuzz/corpus/revocation_oracle_merkle/**",
 ]
@@ -286,11 +286,11 @@ notes    = "Revocation oracle sparse-Merkle insert, inclusion, and non-inclusion
 crate    = "chio-guards"
 path     = "fuzz/fuzz_targets/tool_action.rs"
 triggers = [
-    "crates/chio-guards/**",
-    "crates/chio-kernel/src/**",
-    "crates/chio-core/src/capability*.rs",
-    "crates/chio-http-core/src/**",
-    "crates/chio-api-protect/src/**",
+    "crates/guards/chio-guards/**",
+    "crates/kernel/chio-kernel/src/**",
+    "crates/core/chio-core/src/capability*.rs",
+    "crates/platform/chio-http-core/src/**",
+    "crates/products/chio-api-protect/src/**",
     "spec/schemas/capability/**",
     "fuzz/fuzz_targets/tool_action.rs",
     "fuzz/corpus/fuzz_tool_action/**",

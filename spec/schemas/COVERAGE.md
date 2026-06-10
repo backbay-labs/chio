@@ -20,9 +20,9 @@ document. Update the tables below when a schema is added, removed, or renamed.
 
 The schema files are hand-typed and are the source of truth for the wire and
 HTTP contracts. The hand-maintained Rust protocol types live in
-`crates/chio-core-types`; when a Rust type and its schema disagree, fix one so
+`crates/core/chio-core-types`; when a Rust type and its schema disagree, fix one so
 they match again before shipping. The schema-derived Rust snapshot lives under
-`crates/chio-core-types/src/_generated/` as regenerate-only code with the
+`crates/core/chio-core-types/src/_generated/` as regenerate-only code with the
 canonical `chio_spec_codegen::GENERATED_HEADER`; it is not exported from
 `chio-core-types::lib` yet.
 

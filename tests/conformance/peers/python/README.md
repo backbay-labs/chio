@@ -1,14 +1,14 @@
 # Python Peer
 
-This directory now contains the first executable Python peer adapter.
+An executable Python peer adapter.
 
-Current shipped slice:
+Capabilities:
 
 - Streamable HTTP client against a live `chio mcp serve-http` edge
 - machine-readable `ScenarioResult` JSON output
 - transcript emission compatible with the Rust conformance runner
 
-Current MCP core coverage:
+MCP core coverage:
 
 - initialize
 - tools/list
@@ -16,13 +16,13 @@ Current MCP core coverage:
 - resources/list
 - prompts/list
 
-Current task/auth/notification additions:
+Task/auth/notification coverage:
 
 - remote HTTP task lifecycle scenarios
 - remote HTTP auth-family scenarios using local OAuth discovery, auth-code + PKCE, token exchange, and protected-resource challenge handling
 - remote HTTP notification and subscription scenarios for wrapped resource updates and catalog `list_changed` delivery
 
-Deferred:
+Not yet supported:
 
 - Python server peer
 - stdio peer mode

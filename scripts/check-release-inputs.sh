@@ -6,7 +6,7 @@ cd "$(dirname "$0")/.."
 matches=()
 while IFS= read -r path; do
   case "${path}" in
-    */__pycache__/*|*.pyc|*.pyo|*.pyd|sdks/python/chio-py/build/*|sdks/python/chio-py/src/*.egg-info|sdks/python/chio-py/src/*.egg-info/*|sdks/typescript/chio-ts/dist/*|sdks/typescript/chio-ts/node_modules/*|crates/chio-cli/dashboard/dist/*|crates/chio-cli/dashboard/node_modules/*|tests/conformance/results/generated/*|tests/conformance/reports/generated/*)
+    */__pycache__/*|*.pyc|*.pyo|*.pyd|sdks/python/chio-py/build/*|sdks/python/chio-py/src/*.egg-info|sdks/python/chio-py/src/*.egg-info/*|sdks/typescript/chio-ts/dist/*|sdks/typescript/chio-ts/node_modules/*|crates/products/chio-cli/dashboard/dist/*|crates/products/chio-cli/dashboard/node_modules/*|tests/conformance/results/generated/*|tests/conformance/reports/generated/*)
       matches+=("${path}")
       ;;
   esac

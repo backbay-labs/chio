@@ -1,12 +1,3 @@
-// chio:guards/redact world (M10 Phase 1 Task 5).
-//
-// M06 Phase 1 reserves the chio:guards/redact@0.1.0 namespace with
-// a package + reserved comment only. M10 Phase 1 ships the concrete
-// interface bodies and redactor world below.
-//
-// Source of truth: spec/PROTOCOL.md (redactor host call shape for
-// chio:guards/redact@0.1.0 and the fail-closed persistence rule below).
-//
 // Errors are fail-closed: an Err return from the guest MUST cause the
 // tee to refuse persistence and write `tee.redact_failed` to the
 // receipt log.
@@ -44,7 +35,7 @@ interface redact {
 
     /// Manifest summarizing a redaction pass; signed into the frame.
     record redaction-manifest {
-        /// e.g. "m06-redactors@1.5.0+default".
+        /// e.g. "redactors@1.5.0+default".
         pass-id: string,
         matches: list<redaction-match>,
         elapsed-micros: u64,

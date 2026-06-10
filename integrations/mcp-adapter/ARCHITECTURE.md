@@ -22,16 +22,12 @@ in `chio-mcp-edge`, `chio-kernel`, `chio-policy`, storage crates, and
   fixture lane.
 - `lib.rs` is the public facade over those surfaces.
 
-## Pain Points
+## Credential Boundary
 
-`StreamableHttpTransport` currently stores an exchange log with the same
-authorization header value it would send on the wire. That makes a bearer token
-available through diagnostic/test APIs. The builder also accepts tokens with
-leading or trailing whitespace, so an accidentally padded credential can be
-stored and replayed as a different Authorization header than the caller likely
-intended.
-
-This is an adapter-owned boundary. The core MCP edge does not see this
+`transport.rs` separates secret-bearing request material from diagnostic
+exchange evidence. The builder validates the bearer token before constructing
+the transport, the wire headers carry the real token, and the exchange log
+stores only a redacted Authorization value. The core MCP edge does not see this
 integration crate's local exchange log, and OAuth helpers do not mediate the
 builder token once it is supplied.
 
@@ -42,18 +38,3 @@ builder token once it is supplied.
 - Reject missing, padded, or control-character bearer tokens fail closed.
 - Do not expose bearer token material through `exchange_log`.
 - Do not change core `chio-mcp-edge` behavior or registry fixture semantics.
-
-## Affected Dependents
-
-The direct dependents are integration tests and any local packaging consumers
-that inspect `StreamableHttpExchange`. Valid bearer tokens keep working. Tests
-that relied on seeing the literal Authorization credential should switch to
-asserting the redacted diagnostic value.
-
-## Planned Improvement
-
-Introduce an explicit transport credential boundary in `transport.rs`: validate
-the bearer token before constructing the transport, retain the real token for
-wire construction, and store only a redacted Authorization value in the exchange
-log. This is architectural because it separates secret-bearing request material
-from diagnostic exchange evidence at the owning adapter layer.

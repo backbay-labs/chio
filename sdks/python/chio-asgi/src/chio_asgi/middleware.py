@@ -124,8 +124,8 @@ class ChioASGIMiddleware:
                     body_complete = True
             return message
 
-        # Read body to compute hash (we need to peek at the body)
-        # For the first request message, read and buffer it
+        # Buffer the first request message so the body can be hashed before
+        # the inner app consumes it.
         first_message = await receive_wrapper()
 
         body_hash: str | None = None

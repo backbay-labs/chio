@@ -7,13 +7,13 @@
 
 ## TL;DR
 
-- The Rust kernel cannot today name "publish to Kafka topic X" or "consume NATS subject Y" in its `ToolAction` enum (`crates/chio-guards/src/action.rs:16-46`), so any policy that the Python `chio-streaming` SDK enforces is unverifiable on replay - the kernel sees a generic `ExternalApiCall` or `McpTool` at best. The minimum viable fix is two new variants (`EventPublish`, `EventConsume`) plus a unified `EventDestination` / `EventSource` shape that absorbs Kafka, NATS, Pulsar, EventBridge, Pub/Sub, SNS, SQS, and Redis Streams under a single schema with optional broker-specific fields.
+- The Rust kernel cannot today name "publish to Kafka topic X" or "consume NATS subject Y" in its `ToolAction` enum (`crates/guards/chio-guards/src/action.rs:16-46`), so any policy that the Python `chio-streaming` SDK enforces is unverifiable on replay - the kernel sees a generic `ExternalApiCall` or `McpTool` at best. The minimum viable fix is two new variants (`EventPublish`, `EventConsume`) plus a unified `EventDestination` / `EventSource` shape that absorbs Kafka, NATS, Pulsar, EventBridge, Pub/Sub, SNS, SQS, and Redis Streams under a single schema with optional broker-specific fields.
 - Adoption is now planned as current `chio.manifest.v1` work because Chio is unreleased. PR 652 review corrected an overclaim here: current negotiation covers capability compatibility limits, not manifest compatibility limits, and the v1-only posture removes manifest version negotiation before release.
 - Receipt body extension work is folded into current v1 receipt-kind semantics. The path forward is unified event shape + current v1 manifest planning + current v1 receipt semantics. The Python SDK can upgrade because the current `parameters` dict carries the same logical fields just untyped.
 
 ## Current state of `ToolAction`
 
-`ToolAction` (`crates/chio-guards/src/action.rs:16-46`) is a 12-variant enum with no extension trait, no trait bounds beyond `Clone + Debug`, and no provision for adding broker-shaped actions. The closest existing variants are:
+`ToolAction` (`crates/guards/chio-guards/src/action.rs:16-46`) is a 12-variant enum with no extension trait, no trait bounds beyond `Clone + Debug`, and no provision for adding broker-shaped actions. The closest existing variants are:
 
 - `ExternalApiCall { service: String, endpoint: String }` (line 39) - what `chio-streaming` calls fall through to today via `slack_`, `stripe_`, etc. prefixes (line 369-395). Brokers do not match any prefix.
 - `MemoryWrite { store: String, key: String }` (line 41) and `MemoryRead` (line 43) - structurally similar (named target + key) but semantically for vector DBs only.
@@ -23,11 +23,11 @@
 
 ## Current state of manifest constraints
 
-`crates/chio-manifest/src/lib.rs` (368 lines, single file) defines:
+`crates/platform/chio-manifest/src/lib.rs` (368 lines, single file) defines:
 
 - `ToolManifest` (line 25) with `schema: String` pinned to `chio.manifest.v1` (line 20). `validate_manifest()` rejects any other value with `UnsupportedSchema` (line 237-239).
 - `ToolDefinition` (line 115) carries `input_schema: serde_json::Value` (line 123) - free-form JSON Schema. There is no typed constraint vocabulary like "HTTP host allowlist" or "filesystem path prefix" inside the manifest; those live in guards and `chio-egress-contract`.
-- `RequiredPermissions` (line 165) has `read_paths`, `write_paths`, `network_hosts`, `environment_variables`. **There is no `event_subjects` or `broker_targets` field.** This is the most direct gap. Compare with `HttpEgressContract` (`crates/chio-egress-contract/src/lib.rs:14-39`) which has `tenant_egress_namespace`, `allowed_schemes`, `allowed_authority_set` - typed and constrained. Brokers have no analogue.
+- `RequiredPermissions` (line 165) has `read_paths`, `write_paths`, `network_hosts`, `environment_variables`. **There is no `event_subjects` or `broker_targets` field.** This is the most direct gap. Compare with `HttpEgressContract` (`crates/protocol/chio-egress-contract/src/lib.rs:14-39`) which has `tenant_egress_namespace`, `allowed_schemes`, `allowed_authority_set` - typed and constrained. Brokers have no analogue.
 - The pattern for adding constraints is therefore split across two crates: a typed contract in a sibling crate (egress-contract style), referenced indirectly from manifest input/output schemas. The goal is to bring broker constraints up to the same first-class level by adding them under `RequiredPermissions` plus a new sibling crate `chio-broker-contract` (parallel to `chio-egress-contract`).
 
 Schema posture: `spec/PROTOCOL.md:305-329` describes capability compatibility negotiation, but PR 652 now treats Chio-owned pre-release manifest work as current v1 evolution. Manifest compatibility negotiation is not implemented today and should not be added before release. A peer that cannot validate the current v1 manifest shape fails closed instead of accepting event-publish permissions it cannot enforce.
@@ -76,7 +76,7 @@ pub struct EventPayloadDescriptor {
 }
 ```
 
-Reusing existing payload-shape constraints: `chio-data-guards` already owns `QueryResultGuard` (`crates/chio-data-guards/src/result_guard.rs:121`) and `VectorDbGuard` (`vector_guard.rs:318`) for shape and content rules. The broker layer **delegates** to a new `chio-data-guards::EventPayloadGuard` (sibling) that takes `EventPayloadDescriptor` and applies max-size, allowed-content-types, and required-schema-id checks. Do not duplicate the data-shape vocabulary.
+Reusing existing payload-shape constraints: `chio-data-guards` already owns `QueryResultGuard` (`crates/guards/chio-data-guards/src/result_guard.rs:121`) and `VectorDbGuard` (`vector_guard.rs:318`) for shape and content rules. The broker layer **delegates** to a new `chio-data-guards::EventPayloadGuard` (sibling) that takes `EventPayloadDescriptor` and applies max-size, allowed-content-types, and required-schema-id checks. Do not duplicate the data-shape vocabulary.
 
 - `headers` is `EventHeaders { entries: BTreeMap<String, String> }` plus `BrokerEgressContract`-side allow/deny rules. Headers are the de facto attribute-propagation channel for every broker (Kafka record headers, NATS headers, Pub/Sub attributes, EventBridge has no native headers but the SDK projects them into the detail). Constraints live in the new `chio-broker-contract` crate as `BrokerHeadersPolicy { required: BTreeSet<String>, forbidden: BTreeSet<String>, value_regex: BTreeMap<String, String> }`.
 
@@ -151,7 +151,7 @@ The cost is that policy authors must consult the table to know which field carri
 
 ## Receipt embedding
 
-The receipt body (`crates/chio-core-types/src/receipt.rs:158-181`) currently holds `action: ToolCallAction` where `ToolCallAction` is `{ parameters: Value, parameter_hash: String }` (line 1148-1153). Event-action receipts need richer fields than an opaque parameter blob.
+The receipt body (`crates/core/chio-core-types/src/receipt.rs:158-181`) currently holds `action: ToolCallAction` where `ToolCallAction` is `{ parameters: Value, parameter_hash: String }` (line 1148-1153). Event-action receipts need richer fields than an opaque parameter blob.
 
 **Current v1 plan:** embed an `event_decision` block under
 `ChioReceiptBody.metadata: Option<Value>` (line 172) until the typed current v1
@@ -247,7 +247,7 @@ SDK module layout (`core.py`, `middleware.py` for Kafka, `nats.py`, `pubsub.py`,
    current v1 field lands.
 
 5. **Manifest event-action fixtures and conformance tests.**
-   `crates/chio-conformance/` adds rejection coverage for manifests that carry
+   `crates/tooling/chio-conformance/` adds rejection coverage for manifests that carry
    event permissions before the current v1 event-action implementation is
    enabled.
 

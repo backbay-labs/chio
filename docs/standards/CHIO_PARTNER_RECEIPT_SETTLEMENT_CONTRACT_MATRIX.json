@@ -8,35 +8,35 @@
       "id": "receipt_checkpoint",
       "summary": "Governed receipts, kernel checkpoints, and inclusion proofs form the root evidentiary contract.",
       "witnesses": [
-        "crates/chio-http-core/src/receipt.rs",
-        "crates/chio-kernel/src/checkpoint.rs",
-        "crates/chio-kernel/tests/retention.rs"
+        "crates/platform/chio-http-core/src/receipt.rs",
+        "crates/kernel/chio-kernel/src/checkpoint.rs",
+        "crates/kernel/chio-kernel/tests/retention.rs"
       ]
     },
     {
       "id": "settlement_reconciliation",
       "summary": "Settlement reconciliation, payout, and settlement instruction/receipt artifacts remain linked to governed receipt truth.",
       "witnesses": [
-        "crates/chio-settle/src",
-        "crates/chio-cli/tests/receipt_query.rs"
+        "crates/economy/chio-settle/src",
+        "crates/products/chio-cli/tests/receipt_query.rs"
       ]
     },
     {
       "id": "risk_credit_capital",
       "summary": "Underwriting, exposure, facility, bond, loss-lifecycle, and capital artifacts are partner-reviewable economic contracts rather than internal-only state.",
       "witnesses": [
-        "crates/chio-underwriting/src/lib.rs",
-        "crates/chio-credit/src/lib.rs",
-        "crates/chio-cli/tests/receipt_query.rs"
+        "crates/economy/chio-underwriting/src/lib.rs",
+        "crates/economy/chio-credit/src/lib.rs",
+        "crates/products/chio-cli/tests/receipt_query.rs"
       ]
     },
     {
       "id": "liability_market",
       "summary": "Liability provider, quote, bind, claim, dispute, adjudication, payout, and settlement artifacts are surfaced as governed partner contracts.",
       "witnesses": [
-        "crates/chio-market/src/lib.rs",
-        "crates/chio-open-market/src/lib.rs",
-        "crates/chio-cli/tests/receipt_query.rs"
+        "crates/economy/chio-market/src/lib.rs",
+        "crates/economy/chio-open-market/src/lib.rs",
+        "crates/products/chio-cli/tests/receipt_query.rs"
       ]
     }
   ],

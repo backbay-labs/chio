@@ -15,19 +15,6 @@ There is no crate or package-manager manifest. The example depends only on the
 workspace `chio` binary and Python's standard library for local artifact
 inspection.
 
-## Pain Points
-
-The smoke script currently inlines package inspection, summary generation, and
-tamper-error assertions. Those checks are too shallow for the evidence bundle
-as a teaching artifact: they do not verify manifest file hashes, query read
-boundary, receipt/lineage consistency, receipt semantics, or summary drift as
-one offline package contract.
-
-The tamper assertion has also drifted from the current CLI JSON error shape.
-The verifier now reports the registry string code under
-`context.string_code`; the old `context.legacy_string_code` assertion makes
-the smoke fail even though tamper detection itself still works.
-
 ## Security And API Constraints
 
 - Preserve this as an offline-only verifier example. Do not add live
@@ -46,17 +33,3 @@ the smoke fail even though tamper detection itself still works.
 dependent gate. `examples/README.md` and `examples/EXAMPLE_SURFACE_MATRIX.md`
 describe the same offline-verification surface and need no update unless the
 file set or behavior changes.
-
-No crate API or shared helper edits are planned.
-
-## Planned Material Improvement
-
-Add a package-owned verifier that validates the fixture and smoke artifacts as
-one offline evidence contract: manifest hash coverage, `admin_all` query
-boundary, receipt count, uncheckpointed receipt count, receipt semantics,
-receipt/lineage capability consistency, summary consistency, and current
-tamper-error shape. Update `smoke.sh` so shell code only orchestrates CLI
-verification and tampering, while the verifier owns artifact validation and
-summary generation. Add focused unit tests for valid fixture verification,
-tamper-error validation, summary drift, manifest hash mismatch, and
-receipt/lineage mismatch.

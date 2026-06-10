@@ -96,8 +96,8 @@ async def build_chio_worker(
         :class:`ChioActivityInterceptor`.
     sidecar_url:
         Sidecar base URL. Only used when ``chio_client`` is ``None`` in
-        the interceptor chain; the builder always passes ``chio_client``
-        so this is a pass-through for completeness.
+        the interceptor chain; the builder always passes ``chio_client``,
+        so this argument is unused on that path.
     ttl_seconds:
         Lifetime of the minted capability token when ``scope`` is set.
     interceptors:

@@ -9,7 +9,7 @@ integration, LangSmith/LangFuse bridging, and real-time receipt streaming.
 
 ## 1. Current State: What chio-siem Has
 
-The `chio-siem` crate (`crates/chio-siem/src/`) provides the foundational
+The `chio-siem` crate (`crates/observability/chio-siem/src/`) provides the foundational
 infrastructure for forwarding Chio receipts to external SIEM systems. It
 depends on `chio-core` for `ChioReceipt` and `FinancialReceiptMetadata`, and
 on `rusqlite` for direct read access to the kernel receipt database. It does
@@ -224,7 +224,7 @@ Add an `ocsf` module to `chio-siem` that transforms `SiemEvent` into the
 OCSF Authorization JSON structure:
 
 ```rust
-// crates/chio-siem/src/ocsf.rs
+// crates/observability/chio-siem/src/ocsf.rs
 pub fn to_ocsf_authorization(event: &SiemEvent) -> serde_json::Value { ... }
 pub fn to_ocsf_detection_finding(event: &SiemEvent) -> serde_json::Value { ... }
 ```
@@ -488,7 +488,7 @@ out to all registered exporters on each poll cycle.
 
 Adding a new exporter requires:
 
-1. Create `crates/chio-siem/src/exporters/foo.rs`.
+1. Create `crates/observability/chio-siem/src/exporters/foo.rs`.
 2. Define `FooConfig` (with `Serialize`/`Deserialize` for config file
    loading).
 3. Implement `Exporter for FooExporter`.

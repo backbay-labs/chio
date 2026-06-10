@@ -23,7 +23,7 @@ solver, and 30 minute per-invariant timeout in CI.
 | --- | --- | --- | --- |
 | `MonotoneLogApalache` | `MonotoneLogApalache.tla` | `MCMonotoneLogApalache.cfg` | Port of `formal/tla/RevocationPropagation.tla` `MonotoneLog` with explicit Apalache type annotations. |
 | `RevocationCutCompleteness` | `RevocationCutCompleteness.tla` | `MCRevocationCutCompleteness.cfg` | Lifts Lean `revocation_is_cut` into a bounded state-machine invariant over transitive delegation cuts. |
-| `ReceiptBeforeAllow` | `ReceiptBeforeAllow.tla` | `MCReceiptBeforeAllow.cfg` | Names the Apalache invariant that replaces the prior joint discharge of `RETIRED-SQLITE-CROSS-ROW`, with receipt persistence and allow publication split into separate actions. |
+| `ReceiptBeforeAllow` | `ReceiptBeforeAllow.tla` | `MCReceiptBeforeAllow.cfg` | A capability may appear in an authority's allowed set only after an allow receipt for that authority and capability exists in the log. Receipt persistence and allow publication are separate actions, and the invariant is the named evidence for `RETIRED-SQLITE-CROSS-ROW`. |
 | `KernelTransitionCancelSafe` | `KernelTransitionCancelSafe.tla` | `MCKernelTransitionCancelSafe.cfg` | Models an interrupted kernel transition and proves rollback leaves budget and receipt state unchanged. |
 
 ## Local smoke commands
@@ -35,5 +35,5 @@ apalache-mc check --length=6 --config=formal/apalache/MCReceiptBeforeAllow.cfg f
 apalache-mc check --length=6 --config=formal/apalache/MCKernelTransitionCancelSafe.cfg formal/apalache/KernelTransitionCancelSafe.tla
 ```
 
-The nightly workflow also runs the existing `RevocationEventuallySeen`
+The nightly workflow also runs the `RevocationEventuallySeen`
 liveness check via `--temporal=` against `formal/tla/RevocationPropagation.tla`.

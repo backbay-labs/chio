@@ -88,7 +88,7 @@ are machine-readably enumerated in `formal/assumptions.toml`.
   in the proof manifest before the formal lane should pass.
 - `formal/assumptions.toml` is the external-system assumption registry.
 - `scripts/check-aeneas-production.sh` extracts the production-linked pure
-  core from `crates/chio-kernel-core/src/formal_aeneas.rs`, and
+  core from `crates/kernel/chio-kernel-core/src/formal_aeneas.rs`, and
   `scripts/check-aeneas-equivalence.sh` builds the tracked Lean equivalence
   module before the Aeneas lane can pass; the older pilot remains as
   compatibility evidence for `formal/aeneas/pilot.toml`.

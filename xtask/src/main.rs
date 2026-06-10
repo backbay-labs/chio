@@ -1,9 +1,8 @@
 //! Workspace task runner.
 //!
-//! Subcommands so far:
-//!
 //! Argument parsing is `clap`-derived (see `cli.rs`); run `cargo xtask --help`
-//! for the full tree. The historical leaf spellings remain as aliases:
+//! for the full tree. The flat leaf spellings are aliases for the noun-group
+//! leaves:
 //!
 //! ```text
 //! cargo xtask validate-scenarios
@@ -19,10 +18,10 @@
 //! `validate-scenarios` walks `tests/conformance/scenarios/**/*.json`, looks
 //! up each scenario's declared `$schema` URI (resolved primarily through an
 //! index of `$id` values discovered under `spec/schemas/**`, with a
-//! fallback to the legacy `https://chio-protocol.dev/schemas/` strip-prefix
+//! fallback to the `https://chio-protocol.dev/schemas/` strip-prefix
 //! mapping), and validates the scenario via `chio-spec-validate`.
-//! Scenarios without a `$schema` field are skipped (so that legacy
-//! conformance descriptors continue to load). Scenarios that DO declare a
+//! Scenarios without a `$schema` field are skipped (so a conformance
+//! descriptor that declares no schema still loads). Scenarios that DO declare a
 //! `$schema` URI but fail to resolve are treated as a hard failure rather
 //! than a SKIP, so a typo in the URI cannot silently bypass validation.
 //! Prints a per-scenario `PASS|FAIL|SKIP` line and exits non-zero on any
@@ -39,7 +38,7 @@
 //! exits non-zero on drift; CI uses this mode to catch unfrozen vectors.
 //!
 //! `codegen rust` (alias: `codegen --lang rust`) regenerates the
-//! schema-derived Rust types under `crates/chio-core-types/src/_generated/`
+//! schema-derived Rust types under `crates/core/chio-core-types/src/_generated/`
 //! by invoking `chio_spec_codegen::codegen_rust`. With `--check` it renders
 //! the codegen to memory and exits non-zero if the bytes disagree with the
 //! on-disk file (used by the spec-drift CI lane).
@@ -106,9 +105,9 @@ pub(crate) use error::XtaskError;
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let result = match cli.command {
-        // Bare `cargo xtask` prints the help tree and exits 0, matching the
-        // historical hand-rolled CLI. An unknown subcommand still fails at the
-        // clap layer (non-zero), so this path only covers the no-argument case.
+        // Bare `cargo xtask` prints the help tree and exits 0. An unknown
+        // subcommand still fails at the clap layer (non-zero), so this path only
+        // covers the no-argument case.
         None => {
             let _ = Cli::command().print_long_help();
             println!();
@@ -146,13 +145,11 @@ pub(crate) fn validate_scenarios(args: Vec<String>) -> Result<(), XtaskError> {
 
     // Build a `$id` URI -> schema-path index by scanning every
     // *.schema.json under spec/schemas/. Each schema declares its canonical
-    // identifier in `$id`; scenarios authored against a schema reference
-    // that exact value (which does NOT match the on-disk path one-to-one,
-    // see for example
+    // identifier in `$id`; scenarios reference that exact value, which does
+    // NOT match the on-disk path one-to-one (for example
     // `chio-wire/v1/capability/token/v1` vs the file
-    // `chio-wire/v1/capability/token.schema.json`). We resolve the URI via
-    // this index and fall back to the legacy strip-prefix path mapping for
-    // hosts that pre-date `$id` adoption.
+    // `chio-wire/v1/capability/token.schema.json`). A URI resolves via this
+    // index first and falls back to the strip-prefix path mapping otherwise.
     let schema_index = build_schema_index(&schemas_root)?;
 
     let mut failures: Vec<String> = Vec::new();
@@ -251,9 +248,8 @@ fn build_schema_index(schemas_root: &Path) -> Result<SchemaIndex, XtaskError> {
 
 /// Resolve a `$schema` URI to a schema path using (in order):
 ///   1. an exact match in the `$id` index built from `spec/schemas/`,
-///   2. the legacy strip-prefix mapping (`<prefix><rel>` ->
-///      `<schemas_root>/<rel>` plus `.schema.json`), retained for
-///      backwards compatibility with scenarios that pre-date `$id` adoption.
+///   2. the strip-prefix mapping (`<prefix><rel>` ->
+///      `<schemas_root>/<rel>` plus `.schema.json`).
 ///
 /// Returns `None` when neither path resolves to a file on disk; callers
 /// then surface a hard failure rather than silently skipping the scenario.
@@ -414,7 +410,7 @@ pub(crate) fn freeze_vectors(args: Vec<String>) -> Result<(), XtaskError> {
 /// Relative path (from workspace root) of the chio-wire/v1 schema directory.
 const CHIO_WIRE_V1_SCHEMAS: &str = "spec/schemas/chio-wire/v1";
 /// Relative path (from workspace root) of the generated Rust output dir.
-const CHIO_WIRE_V1_RUST_OUT: &str = "crates/chio-core-types/src/_generated";
+const CHIO_WIRE_V1_RUST_OUT: &str = "crates/core/chio-core-types/src/_generated";
 
 pub(crate) fn run_codegen(args: Vec<String>) -> Result<(), XtaskError> {
     // Accepted forms:
@@ -741,9 +737,8 @@ fn codegen_go(check_only: bool) -> Result<(), XtaskError> {
 }
 
 /// Invoke the Go regen script with the workspace root as CWD. Surfaces a
-/// dedicated `Process` error for shell-level failures instead of wrapping
-/// them in the Rust-specific `Codegen(Typify(...))` variant, which made
-/// shell errors look like a typify panic in CI logs.
+/// dedicated `Process` error for shell-level failures so they are not
+/// misreported as a Rust-side `Codegen` failure.
 fn run_go_regen_script(script_path: &Path, workspace_root: &Path) -> Result<(), XtaskError> {
     let status = std::process::Command::new("bash")
         .arg(script_path)
@@ -1035,9 +1030,9 @@ fn run_json2ts(json2ts: &Path, schema: &Path) -> Result<String, XtaskError> {
 }
 
 /// Normalize a json2ts emission so it composes inside a namespace block.
-/// The current pipeline strips per-chunk banner comments via
-/// `--no-bannerComment`, so this function only collapses the trailing
-/// blank-line padding that `prettier` (the json2ts formatter) appends.
+/// `run_json2ts` passes `--no-bannerComment`, so per-chunk banner comments
+/// are already absent; this function only collapses the trailing blank-line
+/// padding that `prettier` (the json2ts formatter) appends.
 fn normalize_ts_chunk(raw: &str) -> String {
     let trimmed = raw.trim_end_matches(['\n', '\r']);
     trimmed.to_string()
@@ -1352,20 +1347,20 @@ fn harden_python_provenance_verdict_link(path: &Path) -> Result<(), XtaskError> 
     replace_python_codegen_snippet(
         path,
         &mut body,
-        "    evidenceClass: EvidenceClass | None = Field(\n        None,\n        description=\"Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.\",\n    )\n\n\nclass ChioProvenanceVerdictLink2(BaseModel):",
-        "    evidenceClass: EvidenceClass | None = Field(\n        None,\n        description=\"Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.\",\n    )\n\n    @model_validator(mode=\"after\")\n    def _allow_excludes_rejection_fields(self) -> \"ChioProvenanceVerdictLink1\":\n        if \"reason\" in self.model_fields_set or \"guard\" in self.model_fields_set:\n            raise ValueError(\"allow verdict must not include reason or guard\")\n        return self\n\n\nclass ChioProvenanceVerdictLink2(BaseModel):",
+        "    evidenceClass: EvidenceClass | None = Field(\n        None,\n        description=\"Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.\",\n    )\n\n\nclass ChioProvenanceVerdictLink2(BaseModel):",
+        "    evidenceClass: EvidenceClass | None = Field(\n        None,\n        description=\"Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.\",\n    )\n\n    @model_validator(mode=\"after\")\n    def _allow_excludes_rejection_fields(self) -> \"ChioProvenanceVerdictLink1\":\n        if \"reason\" in self.model_fields_set or \"guard\" in self.model_fields_set:\n            raise ValueError(\"allow verdict must not include reason or guard\")\n        return self\n\n\nclass ChioProvenanceVerdictLink2(BaseModel):",
     )?;
     replace_python_codegen_snippet(
         path,
         &mut body,
-        "    evidenceClass: EvidenceClass | None = Field(\n        None,\n        description=\"Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.\",\n    )\n\n\nclass ChioProvenanceVerdictLink4(BaseModel):",
-        "    evidenceClass: EvidenceClass | None = Field(\n        None,\n        description=\"Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.\",\n    )\n\n    @model_validator(mode=\"after\")\n    def _cancel_excludes_guard(self) -> \"ChioProvenanceVerdictLink3\":\n        if \"guard\" in self.model_fields_set:\n            raise ValueError(\"cancel verdict must not include guard\")\n        return self\n\n\nclass ChioProvenanceVerdictLink4(BaseModel):",
+        "    evidenceClass: EvidenceClass | None = Field(\n        None,\n        description=\"Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.\",\n    )\n\n\nclass ChioProvenanceVerdictLink4(BaseModel):",
+        "    evidenceClass: EvidenceClass | None = Field(\n        None,\n        description=\"Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.\",\n    )\n\n    @model_validator(mode=\"after\")\n    def _cancel_excludes_guard(self) -> \"ChioProvenanceVerdictLink3\":\n        if \"guard\" in self.model_fields_set:\n            raise ValueError(\"cancel verdict must not include guard\")\n        return self\n\n\nclass ChioProvenanceVerdictLink4(BaseModel):",
     )?;
     replace_python_codegen_snippet(
         path,
         &mut body,
-        "    evidenceClass: EvidenceClass | None = Field(\n        None,\n        description=\"Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.\",\n    )\n\n\nclass ChioProvenanceVerdictLink(",
-        "    evidenceClass: EvidenceClass | None = Field(\n        None,\n        description=\"Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.\",\n    )\n\n    @model_validator(mode=\"after\")\n    def _incomplete_excludes_guard(self) -> \"ChioProvenanceVerdictLink4\":\n        if \"guard\" in self.model_fields_set:\n            raise ValueError(\"incomplete verdict must not include guard\")\n        return self\n\n\nclass ChioProvenanceVerdictLink(",
+        "    evidenceClass: EvidenceClass | None = Field(\n        None,\n        description=\"Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.\",\n    )\n\n\nclass ChioProvenanceVerdictLink(",
+        "    evidenceClass: EvidenceClass | None = Field(\n        None,\n        description=\"Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.\",\n    )\n\n    @model_validator(mode=\"after\")\n    def _incomplete_excludes_guard(self) -> \"ChioProvenanceVerdictLink4\":\n        if \"guard\" in self.model_fields_set:\n            raise ValueError(\"incomplete verdict must not include guard\")\n        return self\n\n\nclass ChioProvenanceVerdictLink(",
     )?;
     fs::write(path, body).map_err(|err| XtaskError::Io(display_path(path), err))
 }

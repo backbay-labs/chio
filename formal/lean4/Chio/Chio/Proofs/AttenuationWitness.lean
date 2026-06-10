@@ -12,7 +12,7 @@
 
   The Lean toolchain is currently unavailable in CI, so the manifest
   status for this theorem is `assumed`. The Rust shell is exercised by
-  `crates/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs`
+  `crates/tooling/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs`
   and the protocol-side check is implemented in
   `chio_core_types::capability::CapabilityToken::validate_chain_binding`.
 -/
@@ -93,7 +93,7 @@ theorem chain_binding_admits_honest_direct_issue
   unfold chainBindingCheck
   simp
 
-/-- The W1.1 P0 attack scenario: an issuer with true authority
+/-- Attack scenario: an issuer with true authority
     `scopeX` mints a token whose `parentScopeHash` points at
     `scopeBigger != scopeX`. The verifier rejects it with
     `rejectChainBinding`, even if the witness body internally proves

@@ -629,14 +629,14 @@ let fuel_consumed = self.fuel_limit.saturating_sub(fuel_remaining);
 
 Existing files relevant to this work:
 
-- `crates/chio-wasm-guards/src/lib.rs` -- crate root, re-exports
-- `crates/chio-wasm-guards/src/abi.rs` -- `GuardRequest`, `GuardVerdict`, `WasmGuardAbi` trait
-- `crates/chio-wasm-guards/src/config.rs` -- `WasmGuardConfig` with fuel/priority/advisory
-- `crates/chio-wasm-guards/src/error.rs` -- `WasmGuardError` enum
-- `crates/chio-wasm-guards/src/runtime.rs` -- `WasmGuard`, `WasmGuardRuntime`, `WasmtimeBackend`, `MockWasmBackend`
-- `crates/chio-kernel/src/kernel/mod.rs` (line 451) -- `Guard` trait definition
-- `crates/chio-kernel/src/kernel/mod.rs` (line 463) -- `GuardContext` struct
-- `crates/chio-kernel/src/runtime.rs` (line 17) -- `Verdict` enum
-- `crates/chio-guards/src/pipeline.rs` -- `GuardPipeline` (pattern for composing guards)
-- `crates/chio-config/src/schema.rs` (line 41) -- `wasm_guards: Vec<WasmGuardEntry>`
-- `crates/chio-mcp-adapter/src/lib.rs` -- pattern for wrapping external systems behind Chio traits
+- `crates/guards/chio-wasm-guards/src/lib.rs` -- crate root, re-exports
+- `crates/guards/chio-wasm-guards/src/abi.rs` -- `GuardRequest`, `GuardVerdict`, `WasmGuardAbi` trait
+- `crates/guards/chio-wasm-guards/src/config.rs` -- `WasmGuardConfig` with fuel/priority/advisory
+- `crates/guards/chio-wasm-guards/src/error.rs` -- `WasmGuardError` enum
+- `crates/guards/chio-wasm-guards/src/runtime.rs` -- `WasmGuard`, `WasmGuardRuntime`, `WasmtimeBackend`, `MockWasmBackend`
+- `crates/kernel/chio-kernel/src/kernel/mod.rs` (line 451) -- `Guard` trait definition
+- `crates/kernel/chio-kernel/src/kernel/mod.rs` (line 463) -- `GuardContext` struct
+- `crates/kernel/chio-kernel/src/runtime.rs` (line 17) -- `Verdict` enum
+- `crates/guards/chio-guards/src/pipeline.rs` -- `GuardPipeline` (pattern for composing guards)
+- `crates/platform/chio-config/src/schema.rs` (line 41) -- `wasm_guards: Vec<WasmGuardEntry>`
+- `crates/protocol/chio-mcp-adapter/src/lib.rs` -- pattern for wrapping external systems behind Chio traits

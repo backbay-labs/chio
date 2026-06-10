@@ -38,8 +38,8 @@
       "summary": "Delegated-authority language matches the hot path actually shipped.",
       "witnesses": [
         "spec/PROTOCOL.md",
-        "crates/chio-core-types/src/capability/mod.rs",
-        "crates/chio-kernel/src/kernel/mod.rs"
+        "crates/core/chio-core-types/src/capability/mod.rs",
+        "crates/kernel/chio-kernel/src/kernel/mod.rs"
       ]
     },
     {

@@ -122,9 +122,9 @@ def _resolve_within(path: str, root: Path) -> Path:
 def _resolve_within_impl(path: str, root: Path) -> Path:
     """Internal: resolve ``path`` under ``root`` without the deprecation warning.
 
-    Internal call sites in this module use this helper so the migration
-    does not flood the receipt log with warnings on every shell/git
-    dispatch. The public ``_resolve_within`` warns and delegates here.
+    Internal call sites in this module use this helper so that warnings do
+    not flood the receipt log on every shell/git dispatch. The public
+    ``_resolve_within`` warns and delegates here.
     """
     return _adapter_base_resolve_within(path, root)
 
@@ -169,12 +169,13 @@ def _run_subprocess_impl(
     timeout: int,
     stdin: str | None = None,
 ) -> dict[str, Any]:
-    """Internal: bounded subprocess run returning the legacy dict shape.
+    """Internal: bounded subprocess run returning the dict shape.
 
     Wraps :class:`BoundedSubprocess` and adapts the
-    :class:`BoundedSubprocessResult` dataclass back to the historical
-    chio-hermes dict so the executor / handler code that calls into
-    this module sees the same shape as before the migration.
+    :class:`BoundedSubprocessResult` dataclass back to the chio-hermes
+    dict so the executor / handler code that calls into this module
+    sees the dict keys (``argv`` / ``returncode`` / ``stdout`` /
+    ``stderr`` / optional ``output_truncated``).
     """
     runner = _BoundedSubprocess(
         max_bytes=subprocess_max_bytes(),

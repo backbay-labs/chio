@@ -1,0 +1,45 @@
+language = "C"
+pragma_once = true
+include_guard = "CHIO_CPP_KERNEL_FFI_H"
+style = "both"
+cpp_compat = true
+usize_is_size_t = true
+documentation = true
+header = """
+/*
+ * Chio C++ kernel FFI ABI.
+ *
+ * This header is generated from crates/sdk/chio-cpp-kernel-ffi with cbindgen.
+ * The ABI is intentionally narrow: JSON strings in, JSON strings out, and
+ * explicit Rust-owned buffer release.
+ */
+"""
+
+[defines]
+"target_os = windows" = "CHIO_KERNEL_FFI_TARGET_WINDOWS"
+
+[export]
+include = [
+  "CHIO_CPP_KERNEL_FFI_ABI_VERSION",
+  "CHIO_KERNEL_FFI_STATUS_OK",
+  "CHIO_KERNEL_FFI_STATUS_ERROR",
+  "CHIO_KERNEL_FFI_STATUS_PANIC",
+  "CHIO_KERNEL_FFI_STATUS_NULL_ARGUMENT",
+  "CHIO_KERNEL_FFI_ERROR_NONE",
+  "CHIO_KERNEL_FFI_ERROR_INVALID_JSON",
+  "CHIO_KERNEL_FFI_ERROR_INVALID_HEX",
+  "CHIO_KERNEL_FFI_ERROR_INVALID_CAPABILITY",
+  "CHIO_KERNEL_FFI_ERROR_INVALID_PASSPORT",
+  "CHIO_KERNEL_FFI_ERROR_KEY_MISMATCH",
+  "CHIO_KERNEL_FFI_ERROR_SIGNING_FAILED",
+  "CHIO_KERNEL_FFI_ERROR_INTERNAL",
+  "ChioKernelFfiBuffer",
+  "ChioKernelFfiResult",
+  "chio_kernel_ffi_abi_version",
+  "chio_kernel_build_info",
+  "chio_kernel_buffer_free",
+  "chio_kernel_evaluate_json",
+  "chio_kernel_sign_receipt_json",
+  "chio_kernel_verify_capability_json",
+  "chio_kernel_verify_passport_json",
+]

@@ -128,7 +128,7 @@ selects one class via the `class` field, names the population through
 | Scope-superset escape  | `scope-escape`            | none             |
 
 Optional parameter overrides per class are documented on the corresponding
-Rust modules under `crates/chio-arena/src/adversary/` (for example,
+Rust modules under `crates/core/chio-arena/src/adversary/` (for example,
 `patterns` for `prompt-injection` and `replay-attempt`, `variants` for
 `capability-overrequest`, and `escalations` for `scope-escape`). Reference
 TOML examples for every class live under `arena/scenarios/adversary/`.

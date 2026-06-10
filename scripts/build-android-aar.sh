@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MODULE="${ROOT}/sdks/jvm/chio-kernel-mobile"
 KOTLIN_OUT="${MODULE}/src/main/kotlin"
 JNI_OUT="${MODULE}/src/main/jniLibs"
-UDL="${ROOT}/crates/chio-kernel-mobile/src/chio_kernel_mobile.udl"
+UDL="${ROOT}/crates/kernel/chio-kernel-mobile/src/chio_kernel_mobile.udl"
 
 if [[ "${1:-}" == "--test-only" ]]; then
   bash -n "$0"

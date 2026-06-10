@@ -1,20 +1,19 @@
 /-
   Syntactic predicate language for Chio constitutional admission.
 
-  Action-plan item V1 (Predicate ADT). The existing `Constitution` type
-  stores predicates as `List (ReceiptId -> Bool)`, i.e., opaque closures
-  Lean cannot inspect. That makes `BackwardRefines` essentially
-  unconstructable for any non-trivial polity and renders the decidability
-  claim a category error.
+  The `Constitution` type in `Intersection.lean` stores predicates as
+  `List (ReceiptId -> Bool)`, i.e., opaque closures Lean cannot inspect.
+  That makes `BackwardRefines` unconstructable for any non-trivial polity
+  and renders the decidability claim a category error.
 
-  The fix (following the Cedar approach) is to introduce a syntactic ADT
-  for predicates plus a `denote` interpreter, so refinement becomes
-  decidable on syntax rather than on closures.
+  Following the Cedar approach, this module provides a syntactic ADT for
+  predicates plus a `denote` interpreter, so refinement is decidable on
+  syntax rather than on closures.
 
-  This file is additive. It does NOT modify `Intersection.lean`. A
-  follow-up revision can swap `Predicate` into the polity model when
-  the bridge soundness theorem to the existing `BackwardRefines`
-  closure relation is proved.
+  `Predicate` is not yet wired into the polity model: that swap requires a
+  bridge soundness theorem to the existing `BackwardRefines` closure
+  relation, which is not proved here. This module does not modify
+  `Intersection.lean`.
 -/
 
 import Chio.Treaty.Intersection
@@ -133,15 +132,15 @@ theorem refinesOn_conj_intro
 
 /--
   Decidability witness: refinement on a fixed sample is decidable
-  by structural recursion on `Predicate`. This is the load-bearing
-  shape the closures-based `BackwardRefines` lacked.
+  by structural recursion on `Predicate`, unlike the closures-based
+  `BackwardRefines`, which is not.
 -/
 instance (p q : Predicate) (sample : List ReceiptId) :
     Decidable (refinesOn p q sample = true) :=
   inferInstance
 
 /-
-  ## Chain-invariant essential admission (action-plan V5).
+  ## Chain-invariant essential admission.
 
   This guards against the constitutional-ratchet attack: individually
   valid backward-refining amendments can collectively collapse admission
@@ -248,19 +247,18 @@ theorem ratchet_attack_requires_dropping_essential
   exact h_essential_lost.2 (hpres h_essential_lost.1)
 
 /-
-  ## Meta-stability theorem (action-plan V4).
+  ## Meta-stability theorem.
 
-  The §4 threat-model paragraph identifies the trust-store admission
-  predicate as an axiom-grade invariant no amendment may drop. We
-  formalize this syntactically: the constitution `c` "contains"
-  predicate `p` iff `p ∈ c.predicates`. Amendments that preserve
-  containment for a designated non-amendable predicate compose, so
-  structural non-amendability is chain-invariant in the same sense V5
-  made essential admission chain-invariant. V4 covers the syntactic
-  axis (the predicate stays in the
-  constitution at all); V5 covers the semantic axis (the predicate
-  continues to admit its essential receipts). Both must hold for the
-  trust-store-admission obligation to be defensible.
+  The trust-store admission predicate is an axiom-grade invariant no
+  amendment may drop. This is formalized syntactically: the constitution
+  `c` "contains" predicate `p` iff `p ∈ c.predicates`. Amendments that
+  preserve containment for a designated non-amendable predicate compose,
+  so structural non-amendability is chain-invariant, the same way the
+  essential-admission invariant above is chain-invariant. This theorem
+  covers the syntactic axis (the predicate stays in the constitution at
+  all); the essential-admission invariant covers the semantic axis (the
+  predicate continues to admit its essential receipts). Both must hold
+  for the trust-store-admission obligation to be defensible.
 -/
 
 /-- Predicate `p` is structurally present in `c`'s predicate list. -/
@@ -344,16 +342,15 @@ theorem containsPredicate_implies_satisfied
   exact (List.all_eq_true.mp hAdmits) p hContains
 
 /-
-  ## Lane quorum policy and anchor admission (action-plan V3).
+  ## Lane quorum policy and anchor admission.
 
-  The paper describes multi-lane anchor admission ("at least k of n
-  declared anchor lanes must co-sign") but the formal model had no
-  theorem connecting anchor-layer admission to lane quorum. V3 adds a
-  structural `LaneQuorumPolicy` field to a treaty scope and proves
-  `anchor_admission_iff_lane_quorum_satisfied`: the anchor layer
-  admits a receipt iff the witness's contributing lanes meet the
-  policy's quorum. The bi-conditional is the load-bearing claim that
-  no opaque side channel can sneak admission past the quorum gate.
+  Multi-lane anchor admission requires at least k of n declared anchor
+  lanes to co-sign. A structural `LaneQuorumPolicy` field on a treaty
+  scope carries the quorum, and `anchor_admission_iff_lane_quorum_satisfied`
+  proves the anchor layer admits a receipt iff the witness's contributing
+  lanes meet the policy's quorum. The bi-conditional is the load-bearing
+  claim that no opaque side channel can sneak admission past the quorum
+  gate.
 -/
 
 /-- Lane identifier (mirrors the Rust runtime's `LaneId` type). -/

@@ -1,15 +1,7 @@
-# Supplemental hand-typed models that the Python codegen does not yet cover.
-# Re-exported through chio_sdk.models (see that module).
-#
-# Ten types that had no confirmed generated equivalent as of schema sha256
-# 303b50183ef215723ba3d2cf0370c6cb7ac7f08616ccf6cd5a76dc4214dcf730 are still
-# imported by chio_sdk.models until the generated schema covers them. Those are:
-#   AuthMethod, CallerIdentity, CapabilityTokenBody, ChioHttpRequest,
-#   ChioPassthrough, EvaluateResponse, GovernedAutonomyTier, HttpReceipt,
-#   Verdict, VerifyReceiptResponse.
-#
-# DO NOT add new code here. The orchestrator will git rm this file once all
-# ten unresolved types have generated equivalents and models.py is updated.
+# Hand-typed models with no generated equivalent in chio_sdk._generated.
+# Re-exported through chio_sdk.models: AuthMethod, CallerIdentity,
+# CapabilityTokenBody, ChioHttpRequest, ChioPassthrough, EvaluateResponse,
+# GovernedAutonomyTier, HttpReceipt, Verdict, VerifyReceiptResponse.
 
 from __future__ import annotations
 
@@ -85,7 +77,7 @@ class Verdict(BaseModel):
 
 
 class _GuardEvidenceLegacy(BaseModel):
-    """Minimal guard evidence shape for types that still depend on legacy models."""
+    """Minimal guard evidence shape used by HttpReceipt."""
 
     guard_name: str
     verdict: bool

@@ -15,15 +15,15 @@ write_lines() {
 
 write_codegen_header_source() {
   local root="$1"
-  mkdir -p "$root/crates/chio-spec-codegen/src"
-  cat > "$root/crates/chio-spec-codegen/src/lib.rs" <<'EOF'
+  mkdir -p "$root/crates/tooling/chio-spec-codegen/src"
+  cat > "$root/crates/tooling/chio-spec-codegen/src/lib.rs" <<'EOF'
 pub const GENERATED_HEADER: &str = "\
 // DO NOT EDIT - test generated header.
 //
 // Source: test/schema.json
 ";
 EOF
-  cat > "$root/crates/chio-spec-codegen/src/errors_pass.rs" <<'EOF'
+  cat > "$root/crates/tooling/chio-spec-codegen/src/errors_pass.rs" <<'EOF'
 const ERROR_CODES_GENERATED_HEADER: &str = "\
 // DO NOT EDIT - regenerate via 'cargo run -p chio-spec-codegen -- --errors-only'.
 //
@@ -99,8 +99,8 @@ pass_case="$work/pass"
 init_case "$pass_case"
 write_lines "$pass_case/crates/chio-small/src/main.rs" 25
 write_lines "$pass_case/crates/chio-small/tests/large.rs" 1999
-write_generated_wire "$pass_case/crates/chio-core-types/src/_generated/chio_wire_v1.rs" 3001
-write_generated_errors "$pass_case/crates/chio-errors/src/_generated/error_codes.rs" 2501
+write_generated_wire "$pass_case/crates/core/chio-core-types/src/_generated/chio_wire_v1.rs" 3001
+write_generated_errors "$pass_case/crates/core/chio-errors/src/_generated/error_codes.rs" 2501
 track_case "$pass_case"
 assert_rc "$(run_checker "$pass_case" "$work/pass.out" "$work/pass.err")" 0 \
   "small production plus bounded test/generated files with canonical header pass"
@@ -120,31 +120,31 @@ grep -F "crates/chio-small/tests/large.rs: test file has 2001 lines" \
 allowlist_growth="$work/allowlist-growth"
 init_case "$allowlist_growth"
 write_lines "$allowlist_growth/crates/chio-small/src/main.rs" 25
-write_lines "$allowlist_growth/crates/chio-cli/tests/mcp_serve_http.rs" 6317
+write_lines "$allowlist_growth/crates/products/chio-cli/tests/mcp_serve_http.rs" 6317
 track_case "$allowlist_growth"
 assert_rc "$(run_checker "$allowlist_growth" "$work/allowlist-growth.out" "$work/allowlist-growth.err")" 1 \
   "oversized allowlisted test file cannot grow past cap"
-grep -F "crates/chio-cli/tests/mcp_serve_http.rs: allowlisted file has 6317 lines, cap is 6316" \
+grep -F "crates/products/chio-cli/tests/mcp_serve_http.rs: allowlisted file has 6317 lines, cap is 6316" \
   "$work/allowlist-growth.err" >/dev/null
 
 bad_generated="$work/bad-generated"
 init_case "$bad_generated"
 write_lines "$bad_generated/crates/chio-small/src/main.rs" 25
-write_lines "$bad_generated/crates/chio-core-types/src/_generated/chio_wire_v1.rs" 25
+write_lines "$bad_generated/crates/core/chio-core-types/src/_generated/chio_wire_v1.rs" 25
 track_case "$bad_generated"
 assert_rc "$(run_checker "$bad_generated" "$work/bad-generated.out" "$work/bad-generated.err")" 1 \
   "generated wire file without canonical header fails"
-grep -F "crates/chio-core-types/src/_generated/chio_wire_v1.rs: generated Rust file does not begin with chio_spec_codegen::GENERATED_HEADER" \
+grep -F "crates/core/chio-core-types/src/_generated/chio_wire_v1.rs: generated Rust file does not begin with chio_spec_codegen::GENERATED_HEADER" \
   "$work/bad-generated.err" >/dev/null
 
 bad_error_generated="$work/bad-error-generated"
 init_case "$bad_error_generated"
 write_lines "$bad_error_generated/crates/chio-small/src/main.rs" 25
-write_lines "$bad_error_generated/crates/chio-errors/src/_generated/error_codes.rs" 2501
+write_lines "$bad_error_generated/crates/core/chio-errors/src/_generated/error_codes.rs" 2501
 track_case "$bad_error_generated"
 assert_rc "$(run_checker "$bad_error_generated" "$work/bad-error-generated.out" "$work/bad-error-generated.err")" 1 \
   "generated error-code file without canonical header fails"
-grep -F "crates/chio-errors/src/_generated/error_codes.rs: generated Rust file does not begin with chio_spec_codegen::errors_pass::ERROR_CODES_GENERATED_HEADER" \
+grep -F "crates/core/chio-errors/src/_generated/error_codes.rs: generated Rust file does not begin with chio_spec_codegen::errors_pass::ERROR_CODES_GENERATED_HEADER" \
   "$work/bad-error-generated.err" >/dev/null
 
 large_production="$work/large-production"
@@ -177,11 +177,11 @@ grep -F "crates/chio-small/src/lib.rs: src/lib.rs has 1001 lines" \
 
 unallowlisted_production="$work/unallowlisted-production"
 init_case "$unallowlisted_production"
-write_lines "$unallowlisted_production/crates/chio-governance/src/lib.rs" 2101
+write_lines "$unallowlisted_production/crates/trust/chio-governance/src/lib.rs" 2101
 track_case "$unallowlisted_production"
 assert_rc "$(run_checker "$unallowlisted_production" "$work/unallowlisted-production.out" "$work/unallowlisted-production.err")" 1 \
   "unallowlisted oversized production file fails"
-grep -F "crates/chio-governance/src/lib.rs: production file has 2101 lines" \
+grep -F "crates/trust/chio-governance/src/lib.rs: production file has 2101 lines" \
   "$work/unallowlisted-production.err" >/dev/null
 
 expired_allowlist="$work/expired-allowlist"

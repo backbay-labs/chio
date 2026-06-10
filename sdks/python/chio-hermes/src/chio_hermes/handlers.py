@@ -531,10 +531,9 @@ def _factory_shell_run(handle: RuntimeHandle) -> ToolHandler:
             command=command,
             tool_args={"command": command},
         )
-        # `approved=False` hard-coded: with the sidecar holding the
-        # call instead, the legacy `approved=True` path is dead code
-        # and would still be rejected because `approved` is not in the
-        # public JSON schema.
+        # `approved=False` hard-coded: the sidecar holds approval, and an
+        # `approved=True` would be rejected anyway because `approved` is not
+        # in the public JSON schema.
         return await _agent(handle).shell.run_command(
             command,
             approved=False,
@@ -550,7 +549,7 @@ def _reject_shell_argv_escape(command: str, *, root: Any) -> None:
     Delegates to :func:`chio_adapter_base.security.reject_shell_argv_escape`
     and translates its :class:`ChioPathEscapeError` into the
     chio-hermes :class:`ChioCodeAgentDeniedError` so the surrounding
-    handler envelope renders the deny verdict with the historical
+    handler envelope renders the deny verdict with the
     ``tool_name`` / ``reason`` / ``guard`` fields.
     """
     from chio_code_agent.errors import ChioCodeAgentDeniedError

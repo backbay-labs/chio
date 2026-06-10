@@ -23,23 +23,23 @@ threats:
   # which fails the gate closed by design.
 
   # M10 P2 closes passkey_credential_theft via:
-  #   - crates/chio-custody-hw/src/verifier.rs (PasskeyVerifier)
-  #   - crates/chio-custody-hw/src/nonce_store.rs (replay-resistant store)
-  #   - crates/chio-custody-hw/src/revocation.rs (M04 oracle cascade)
-  #   - crates/chio-custody-hw/tests/replay_resistance.rs
-  #   - crates/chio-custody-hw/tests/revocation_cascade.rs
-  #   - crates/chio-custody-hw/tests/end_to_end.rs (M10.P2.T6)
+  #   - crates/trust/chio-custody-hw/src/verifier.rs (PasskeyVerifier)
+  #   - crates/trust/chio-custody-hw/src/nonce_store.rs (replay-resistant store)
+  #   - crates/trust/chio-custody-hw/src/revocation.rs (M04 oracle cascade)
+  #   - crates/trust/chio-custody-hw/tests/replay_resistance.rs
+  #   - crates/trust/chio-custody-hw/tests/revocation_cascade.rs
+  #   - crates/trust/chio-custody-hw/tests/end_to_end.rs (M10.P2.T6)
   - id: passkey_credential_theft
     coverage_state: covered
     owned_by: M10
     closed_by: M10.P2.T6
     backing_evidence:
-      - crates/chio-custody-hw/src/verifier.rs
-      - crates/chio-custody-hw/src/nonce_store.rs
-      - crates/chio-custody-hw/src/revocation.rs
-      - crates/chio-custody-hw/tests/replay_resistance.rs
-      - crates/chio-custody-hw/tests/revocation_cascade.rs
-      - crates/chio-custody-hw/tests/end_to_end.rs
+      - crates/trust/chio-custody-hw/src/verifier.rs
+      - crates/trust/chio-custody-hw/src/nonce_store.rs
+      - crates/trust/chio-custody-hw/src/revocation.rs
+      - crates/trust/chio-custody-hw/tests/replay_resistance.rs
+      - crates/trust/chio-custody-hw/tests/revocation_cascade.rs
+      - crates/trust/chio-custody-hw/tests/end_to_end.rs
 
   # M10 P2.T4 audience-confusion property test exercises bit-flips on
   # the audience field of every minted PasskeyCapability and asserts
@@ -49,8 +49,8 @@ threats:
     owned_by: M10
     closed_by: M10.P2.T4
     backing_evidence:
-      - crates/chio-custody-hw/src/capability.rs
-      - crates/chio-custody-hw/tests/audience_confusion.rs
+      - crates/trust/chio-custody-hw/src/capability.rs
+      - crates/trust/chio-custody-hw/tests/audience_confusion.rs
 
   # M05 P1 closes weights_hash_spoof by adding a loaded-weight digest
   # surface to the provider conformance contract. Local providers can
@@ -62,42 +62,42 @@ threats:
     owned_by: M05
     closed_by: M05.P1.T3
     backing_evidence:
-      - crates/chio-core-types/src/loaded_weights.rs
-      - crates/chio-provider-conformance/src/loaded_weights.rs
-      - crates/chio-weights/src/card.rs
-      - crates/chio-weights/src/bundle.rs
-      - crates/chio-kernel/src/weights_binding.rs
-      - crates/chio-kernel/tests/weights_binding.rs
-      - crates/chio-policy/src/weights.rs
-      - crates/chio-cli/src/commands/bind.rs
-      - crates/chio-conformance/tests/threats/weights_hash_spoof.rs
-      - crates/chio-weights/tests/lineage_anchor.rs
-      - crates/chio-weights/tests/equivalence.rs
+      - crates/core/chio-core-types/src/loaded_weights.rs
+      - crates/protocol/chio-provider-conformance/src/loaded_weights.rs
+      - crates/trust/chio-weights/src/card.rs
+      - crates/trust/chio-weights/src/bundle.rs
+      - crates/kernel/chio-kernel/src/weights_binding.rs
+      - crates/kernel/chio-kernel/tests/weights_binding.rs
+      - crates/guards/chio-policy/src/weights.rs
+      - crates/products/chio-cli/src/commands/bind.rs
+      - crates/tooling/chio-conformance/tests/threats/weights_hash_spoof.rs
+      - crates/trust/chio-weights/tests/lineage_anchor.rs
+      - crates/trust/chio-weights/tests/equivalence.rs
 
   - id: pq_signature_downgrade
     coverage_state: covered
     owned_by: M05
     closed_by: M05.P4.T1
     backing_evidence:
-      - crates/chio-attest-verify/tests/migration.rs
-      - crates/chio-attest-verify/tests/v318_migration.rs
-      - crates/chio-kernel/tests/pq_key_load_after_self_quote.rs
-      - crates/chio-kernel/tests/hybrid_receipt_sign.rs
-      - crates/chio-conformance/tests/threats/pq_signature_downgrade.rs
+      - crates/trust/chio-attest-verify/tests/migration.rs
+      - crates/trust/chio-attest-verify/tests/v318_migration.rs
+      - crates/kernel/chio-kernel/tests/pq_key_load_after_self_quote.rs
+      - crates/kernel/chio-kernel/tests/hybrid_receipt_sign.rs
+      - crates/tooling/chio-conformance/tests/threats/pq_signature_downgrade.rs
 
   - id: tee_quote_forgery
     coverage_state: covered
     owned_by: M05
     closed_by: M05.P4.T1
     backing_evidence:
-      - crates/chio-attest-verify/tests/cross_backend_conformance.rs
-      - crates/chio-attest-verify/tests/expect_report_data.rs
-      - crates/chio-attest-verify/tests/tdx_integration.rs
-      - crates/chio-attest-verify/tests/sev_snp_integration.rs
-      - crates/chio-attest-verify/tests/nitro_unit.rs
-      - crates/chio-attest-verify/tests/nitro_root_rotation.rs
-      - crates/chio-kernel/tests/pq_key_load_after_self_quote.rs
-      - crates/chio-conformance/tests/threats/tee_quote_forgery.rs
+      - crates/trust/chio-attest-verify/tests/cross_backend_conformance.rs
+      - crates/trust/chio-attest-verify/tests/expect_report_data.rs
+      - crates/trust/chio-attest-verify/tests/tdx_integration.rs
+      - crates/trust/chio-attest-verify/tests/sev_snp_integration.rs
+      - crates/trust/chio-attest-verify/tests/nitro_unit.rs
+      - crates/trust/chio-attest-verify/tests/nitro_root_rotation.rs
+      - crates/kernel/chio-kernel/tests/pq_key_load_after_self_quote.rs
+      - crates/tooling/chio-conformance/tests/threats/tee_quote_forgery.rs
 
   # M05 closes the initial register threats via chio-conformance threat
   # tests + chio-adversarial-suite cases. coveredBy mirrors the JSON
@@ -107,87 +107,87 @@ threats:
     owned_by: M05
     closed_by: M05.P5.T3
     backing_evidence:
-      - crates/chio-conformance/tests/threats/capability_token_theft.rs
-      - crates/chio-adversarial-suite/cases/clock_rewound/clock-rewound-001.json
-      - crates/chio-adversarial-suite/cases/clock_rewound/clock-rewound-002.json
-      - crates/chio-adversarial-suite/cases/clock_rewound/clock-rewound-005.json
-      - crates/chio-adversarial-suite/cases/future_dated/future-dated-002.json
-      - crates/chio-adversarial-suite/cases/partial_signature/partial-signature-005.json
-      - crates/chio-adversarial-suite/cases/scope_superset/scope-superset-003.json
-      - crates/chio-adversarial-suite/cases/scope_superset/scope-superset-005.json
+      - crates/tooling/chio-conformance/tests/threats/capability_token_theft.rs
+      - crates/core/chio-adversarial-suite/cases/clock_rewound/clock-rewound-001.json
+      - crates/core/chio-adversarial-suite/cases/clock_rewound/clock-rewound-002.json
+      - crates/core/chio-adversarial-suite/cases/clock_rewound/clock-rewound-005.json
+      - crates/core/chio-adversarial-suite/cases/future_dated/future-dated-002.json
+      - crates/core/chio-adversarial-suite/cases/partial_signature/partial-signature-005.json
+      - crates/core/chio-adversarial-suite/cases/scope_superset/scope-superset-003.json
+      - crates/core/chio-adversarial-suite/cases/scope_superset/scope-superset-005.json
 
   - id: delegation_chain_abuse
     coverage_state: covered
     owned_by: M05
     closed_by: M05.P5.T3
     backing_evidence:
-      - crates/chio-conformance/tests/threats/delegation_chain_abuse.rs
-      - crates/chio-adversarial-suite/cases/future_dated/future-dated-004.json
-      - crates/chio-adversarial-suite/cases/partial_signature/partial-signature-004.json
-      - crates/chio-adversarial-suite/cases/replayed_nonce/replayed-nonce-004.json
-      - crates/chio-adversarial-suite/cases/replayed_nonce/replayed-nonce-005.json
-      - crates/chio-adversarial-suite/cases/revocation_rollback/revocation-rollback-001.json
-      - crates/chio-adversarial-suite/cases/revocation_rollback/revocation-rollback-002.json
-      - crates/chio-adversarial-suite/cases/revocation_rollback/revocation-rollback-004.json
-      - crates/chio-adversarial-suite/cases/revocation_rollback/revocation-rollback-005.json
-      - crates/chio-adversarial-suite/cases/scope_superset/scope-superset-001.json
-      - crates/chio-adversarial-suite/cases/scope_superset/scope-superset-002.json
-      - crates/chio-adversarial-suite/cases/scope_superset/scope-superset-004.json
+      - crates/tooling/chio-conformance/tests/threats/delegation_chain_abuse.rs
+      - crates/core/chio-adversarial-suite/cases/future_dated/future-dated-004.json
+      - crates/core/chio-adversarial-suite/cases/partial_signature/partial-signature-004.json
+      - crates/core/chio-adversarial-suite/cases/replayed_nonce/replayed-nonce-004.json
+      - crates/core/chio-adversarial-suite/cases/replayed_nonce/replayed-nonce-005.json
+      - crates/core/chio-adversarial-suite/cases/revocation_rollback/revocation-rollback-001.json
+      - crates/core/chio-adversarial-suite/cases/revocation_rollback/revocation-rollback-002.json
+      - crates/core/chio-adversarial-suite/cases/revocation_rollback/revocation-rollback-004.json
+      - crates/core/chio-adversarial-suite/cases/revocation_rollback/revocation-rollback-005.json
+      - crates/core/chio-adversarial-suite/cases/scope_superset/scope-superset-001.json
+      - crates/core/chio-adversarial-suite/cases/scope_superset/scope-superset-002.json
+      - crates/core/chio-adversarial-suite/cases/scope_superset/scope-superset-004.json
 
   - id: kernel_impersonation
     coverage_state: covered
     owned_by: M05
     closed_by: M05.P5.T3
     backing_evidence:
-      - crates/chio-conformance/tests/threats/kernel_impersonation.rs
-      - crates/chio-adversarial-suite/cases/anchor_grafted/anchor-grafted-002.json
-      - crates/chio-adversarial-suite/cases/anchor_grafted/anchor-grafted-005.json
-      - crates/chio-adversarial-suite/cases/clock_rewound/clock-rewound-004.json
-      - crates/chio-adversarial-suite/cases/future_dated/future-dated-005.json
-      - crates/chio-adversarial-suite/cases/partial_signature/partial-signature-001.json
-      - crates/chio-adversarial-suite/cases/partial_signature/partial-signature-002.json
-      - crates/chio-adversarial-suite/cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-001.json
-      - crates/chio-adversarial-suite/cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-002.json
-      - crates/chio-adversarial-suite/cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-003.json
-      - crates/chio-adversarial-suite/cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-005.json
+      - crates/tooling/chio-conformance/tests/threats/kernel_impersonation.rs
+      - crates/core/chio-adversarial-suite/cases/anchor_grafted/anchor-grafted-002.json
+      - crates/core/chio-adversarial-suite/cases/anchor_grafted/anchor-grafted-005.json
+      - crates/core/chio-adversarial-suite/cases/clock_rewound/clock-rewound-004.json
+      - crates/core/chio-adversarial-suite/cases/future_dated/future-dated-005.json
+      - crates/core/chio-adversarial-suite/cases/partial_signature/partial-signature-001.json
+      - crates/core/chio-adversarial-suite/cases/partial_signature/partial-signature-002.json
+      - crates/core/chio-adversarial-suite/cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-001.json
+      - crates/core/chio-adversarial-suite/cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-002.json
+      - crates/core/chio-adversarial-suite/cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-003.json
+      - crates/core/chio-adversarial-suite/cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-005.json
 
   - id: native_channel_replay
     coverage_state: covered
     owned_by: M05
     closed_by: M05.P5.T3
     backing_evidence:
-      - crates/chio-conformance/tests/threats/native_channel_replay.rs
-      - crates/chio-adversarial-suite/cases/anchor_grafted/anchor-grafted-001.json
-      - crates/chio-adversarial-suite/cases/anchor_grafted/anchor-grafted-003.json
-      - crates/chio-adversarial-suite/cases/anchor_grafted/anchor-grafted-004.json
-      - crates/chio-adversarial-suite/cases/clock_rewound/clock-rewound-003.json
-      - crates/chio-adversarial-suite/cases/future_dated/future-dated-001.json
-      - crates/chio-adversarial-suite/cases/future_dated/future-dated-003.json
-      - crates/chio-adversarial-suite/cases/partial_signature/partial-signature-003.json
-      - crates/chio-adversarial-suite/cases/replayed_nonce/replayed-nonce-001.json
-      - crates/chio-adversarial-suite/cases/replayed_nonce/replayed-nonce-002.json
-      - crates/chio-adversarial-suite/cases/replayed_nonce/replayed-nonce-003.json
-      - crates/chio-adversarial-suite/cases/revocation_rollback/revocation-rollback-003.json
+      - crates/tooling/chio-conformance/tests/threats/native_channel_replay.rs
+      - crates/core/chio-adversarial-suite/cases/anchor_grafted/anchor-grafted-001.json
+      - crates/core/chio-adversarial-suite/cases/anchor_grafted/anchor-grafted-003.json
+      - crates/core/chio-adversarial-suite/cases/anchor_grafted/anchor-grafted-004.json
+      - crates/core/chio-adversarial-suite/cases/clock_rewound/clock-rewound-003.json
+      - crates/core/chio-adversarial-suite/cases/future_dated/future-dated-001.json
+      - crates/core/chio-adversarial-suite/cases/future_dated/future-dated-003.json
+      - crates/core/chio-adversarial-suite/cases/partial_signature/partial-signature-003.json
+      - crates/core/chio-adversarial-suite/cases/replayed_nonce/replayed-nonce-001.json
+      - crates/core/chio-adversarial-suite/cases/replayed_nonce/replayed-nonce-002.json
+      - crates/core/chio-adversarial-suite/cases/replayed_nonce/replayed-nonce-003.json
+      - crates/core/chio-adversarial-suite/cases/revocation_rollback/revocation-rollback-003.json
 
   - id: resource_exhaustion_dos
     coverage_state: covered
     owned_by: M05
     closed_by: M05.P5.T3
     backing_evidence:
-      - crates/chio-conformance/tests/threats/resource_exhaustion_dos.rs
-      - crates/chio-wasm-guards/tests/escape/fuel_exhaustion.rs
-      - crates/chio-wasm-guards/tests/escape/oversize_memory.rs
-      - crates/chio-wasm-guards/tests/escape/deep_recursion.rs
-      - crates/chio-wasm-guards/tests/escape/table_grow.rs
+      - crates/tooling/chio-conformance/tests/threats/resource_exhaustion_dos.rs
+      - crates/guards/chio-wasm-guards/tests/escape/fuel_exhaustion.rs
+      - crates/guards/chio-wasm-guards/tests/escape/oversize_memory.rs
+      - crates/guards/chio-wasm-guards/tests/escape/deep_recursion.rs
+      - crates/guards/chio-wasm-guards/tests/escape/table_grow.rs
 
   - id: tool_server_escape
     coverage_state: covered
     owned_by: M05
     closed_by: M05.P5.T3
     backing_evidence:
-      - crates/chio-conformance/tests/threats/tool_server_escape.rs
-      - crates/chio-adversarial-suite/cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-004.json
-      - crates/chio-wasm-guards/tests/escape/signed_but_malicious.rs
+      - crates/tooling/chio-conformance/tests/threats/tool_server_escape.rs
+      - crates/core/chio-adversarial-suite/cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-004.json
+      - crates/guards/chio-wasm-guards/tests/escape/signed_but_malicious.rs
 
   - id: mobile_attestation_replay
     coverage_state: pending

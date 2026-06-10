@@ -1,4 +1,3 @@
 #!/usr/bin/env bash
-# Thin wrapper preserved for CI compatibility. Dispatches to the unified
-# SDK release driver.
+# Thin wrapper that dispatches to the unified SDK release driver.
 exec "$(dirname "$0")/check-sdk-release.sh" cpp "$@"

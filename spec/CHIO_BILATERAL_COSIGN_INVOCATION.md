@@ -59,11 +59,11 @@ it is not a build-provenance gap. It is the gap between two parties
 parties **independently committing to the same canonical action under
 their separate policies** (a verifiable, mechanically-checkable joint
 intent). The existing chio primitive is
-[../crates/chio-federation/src/bilateral.rs](../crates/chio-federation/src/bilateral.rs).
+[../crates/trust/chio-federation/src/bilateral.rs](../crates/trust/chio-federation/src/bilateral.rs).
 The composition unit is the workflow receipt
-([../crates/chio-workflow/src/lib.rs](../crates/chio-workflow/src/lib.rs)),
+([../crates/platform/chio-workflow/src/lib.rs](../crates/platform/chio-workflow/src/lib.rs)),
 and capability scoping rides on agent passports
-([../crates/chio-credentials/src/lib.rs](../crates/chio-credentials/src/lib.rs)).
+([../crates/trust/chio-credentials/src/lib.rs](../crates/trust/chio-credentials/src/lib.rs)).
 The cross-vendor agent action attestation use case
 ([CHIO_CONCEPT.md](../docs/research/CHIO_CONCEPT.md) section 2)
 needs all three properties at once: bilateral intent, per-action
@@ -88,7 +88,7 @@ deployment but MUST NOT silently rewrite one into the other (the
 predicate type is part of the signed Statement and rewriting would
 break signature verification).
 
-Implementation status: `crates/chio-federation` emits and verifies the
+Implementation status: `crates/trust/chio-federation` emits and verifies the
 chio-namespaced fallback strict predicate type,
 `chio.bilateral-cosign-invocation.v1`, for Chio proof packages. The
 older `chio.bilateral-signature-slice.v1` profile remains available as a
@@ -140,7 +140,7 @@ receipt is stored. A verifier resolving the receipt out of a kernel's
 audit log can re-hash the body and confirm subject membership without
 needing to dereference any external pointer. This mirrors the chio
 internal pattern in
-[../crates/chio-federation/src/bilateral.rs](../crates/chio-federation/src/bilateral.rs)
+[../crates/trust/chio-federation/src/bilateral.rs](../crates/trust/chio-federation/src/bilateral.rs)
 where both kernels sign over the canonical bytes of `CoSigningBody`.
 
 ---
@@ -441,7 +441,7 @@ verify_bilateral_cosign_invocation(envelope, pinned_epoch, peer_pin_set):
 
 The following codes MUST be surfaced verbatim. Each maps to a
 `GenericGovernanceCaseKind::Dispute` finding in
-[../crates/chio-governance/src/lib.rs](../crates/chio-governance/src/lib.rs).
+[../crates/trust/chio-governance/src/lib.rs](../crates/trust/chio-governance/src/lib.rs).
 
 | Code | Meaning |
 | --- | --- |
@@ -466,7 +466,7 @@ The following codes MUST be surfaced verbatim. Each maps to a
 ## 8. Composition With Workflow Receipts
 
 A chio workflow receipt
-([../crates/chio-workflow/src/receipt.rs](../crates/chio-workflow/src/receipt.rs))
+([../crates/platform/chio-workflow/src/receipt.rs](../crates/platform/chio-workflow/src/receipt.rs))
 captures an N-step skill execution as a single signed artifact. When
 the steps cross trust boundaries, each step is itself a
 bilateral-cosign-invocation predicate. The composition rule:
@@ -482,7 +482,7 @@ bilateral-cosign-invocation predicate. The composition rule:
    `https://in-toto.io/attestation/chio-workflow-receipt/v1`, to be
    specified in a sibling proposal). Its `subject` is the
    canonical-JSON SHA-256 of the
-   [`WorkflowReceiptBody`](../crates/chio-workflow/src/receipt.rs).
+   [`WorkflowReceiptBody`](../crates/platform/chio-workflow/src/receipt.rs).
 4. A verifier of the workflow receipt SHOULD verify each referenced
    bilateral-cosign-invocation predicate independently. Failure of any
    one step's predicate verification MUST be surfaced; the workflow
@@ -521,7 +521,7 @@ evidence**, not as a substitute for the bilateral verification
 contract: a Rekor-anchored envelope that fails section 7 is invalid;
 a non-Rekor-anchored envelope that satisfies section 7 is valid. Chio
 already integrates with Sigstore at
-[../crates/chio-attest-verify/src/lib.rs](../crates/chio-attest-verify/src/lib.rs);
+[../crates/trust/chio-attest-verify/src/lib.rs](../crates/trust/chio-attest-verify/src/lib.rs);
 the inverse (writing chio receipts into Rekor) is a small extension.
 
 ---

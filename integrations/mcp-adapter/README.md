@@ -7,4 +7,4 @@ surfaces used by the AWS Bedrock and MCP marketplace listing lane.
 
 It is the packaging layer that turns the Chio MCP edge into a deployable,
 marketplace-distributable MCP server. The core MCP edge transport itself lives
-in `crates/chio-mcp-edge`.
+in `crates/protocol/chio-mcp-edge`.

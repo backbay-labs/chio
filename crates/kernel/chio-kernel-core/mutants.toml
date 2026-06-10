@@ -1,0 +1,39 @@
+# Focused cargo-mutants config for chio-kernel-core.
+#
+# cargo-mutants 25.x does not auto-discover this file from the crate
+# directory. Load it explicitly with:
+#
+#   cargo mutants --config crates/kernel/chio-kernel-core/mutants.toml --package chio-kernel-core
+#
+# Globs are workspace-rooted because cargo-mutants resolves paths with slashes
+# against the source-tree root even when this file is loaded explicitly.
+
+timeout_multiplier = 3.0
+minimum_test_timeout = 60
+
+examine_globs = [
+    "crates/kernel/chio-kernel-core/src/evaluate.rs",
+    "crates/kernel/chio-kernel-core/src/capability_verify.rs",
+    "crates/kernel/chio-kernel-core/src/scope.rs",
+    "crates/kernel/chio-kernel-core/src/receipts.rs",
+    "crates/kernel/chio-kernel-core/src/passport_verify.rs",
+    "crates/kernel/chio-kernel-core/src/guard.rs",
+    "crates/kernel/chio-kernel-core/src/normalized.rs",
+]
+
+exclude_globs = [
+    # Adapters, formal harnesses, fuzz targets, tests, and benches are covered
+    # by their dedicated lanes rather than kernel mutation scoring.
+    "crates/kernel/chio-kernel-core/src/clock.rs", # rationale: deterministic clock shim, no logic to mutation-score
+    "crates/kernel/chio-kernel-core/src/rng.rs", # rationale: RNG shim, no decision logic to mutation-score
+    "crates/kernel/chio-kernel-core/src/formal_aeneas.rs", # rationale: formal-method harness, covered by the proof lane
+    "crates/kernel/chio-kernel-core/src/formal_core.rs", # rationale: formal-method harness, covered by the proof lane
+    "crates/kernel/chio-kernel-core/src/kani_harnesses.rs", # rationale: kani proof harness, covered by the proof lane
+    "crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs", # rationale: kani proof harness, covered by the proof lane
+    "crates/kernel/chio-kernel-core/src/fuzz.rs", # rationale: fuzz target, covered by the fuzz lane
+    "**/tests.rs", # rationale: test surface, covered by the test lane
+    "**/test_*.rs", # rationale: test surface, covered by the test lane
+    "**/*_test.rs", # rationale: test surface, covered by the test lane
+    "**/tests/**", # rationale: test surface, covered by the test lane
+    "**/benches/**", # rationale: bench surface, covered by the bench lane
+]

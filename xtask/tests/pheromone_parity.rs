@@ -1,12 +1,9 @@
 // Retirement guard for the pheromone fixture-and-schema gate cluster.
 //
-// The 15 legacy `scripts/check-chio-pheromone-*.sh` gates were consolidated into
-// `cargo xtask check fixtures <facet>` and deleted after a green dual-run parity
-// sweep (15 facets x 3 modes, all exit codes identical). The dual-run harness
-// that proved that parity lived here and is preserved in git history; once the
-// scripts are gone it can no longer dual-run, so this file now enforces that the
-// scripts stay retired. A re-added script would resurrect the divergence the
-// consolidation closed and would not be exercised by any workflow.
+// The pheromone gates live in `cargo xtask check fixtures <facet>`. The
+// `scripts/check-chio-pheromone-*.sh` paths must stay absent: a re-added script
+// would not be exercised by any workflow and would diverge from the live gate.
+// This test fails if any of those script paths reappears.
 
 use std::path::PathBuf;
 

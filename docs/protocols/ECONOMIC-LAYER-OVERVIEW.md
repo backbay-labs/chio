@@ -931,13 +931,13 @@ Quick reference for navigating the codebase:
 
 | Crate | Entry Point | Key Exports |
 |-------|------------|-------------|
-| `chio-metering` | `crates/chio-metering/src/lib.rs` | `CostMetadata`, `BudgetEnforcer`, `CostQuery`, `BillingExport` |
-| `chio-underwriting` | `crates/chio-underwriting/src/lib.rs` | `evaluate_underwriting_policy_input`, `UnderwritingDecisionArtifact`, `UnderwritingRiskClass`, `UnderwritingPremiumQuote` |
-| `chio-credit` | `crates/chio-credit/src/lib.rs` | `ExposureLedgerReport`, `CreditScorecardReport`, `CreditFacilityArtifact`, `CreditBondArtifact`, `CreditLossLifecycleArtifact`, `CapitalBookReport`, `CapitalExecutionInstructionArtifact` |
-| `chio-market` | `crates/chio-market/src/lib.rs` | `LiabilityProviderReport`, `LiabilityQuoteRequestArtifact`, `LiabilityQuoteResponseArtifact`, `LiabilityBoundCoverageArtifact`, `LiabilityClaimPackageArtifact` |
-| `chio-settle` | `crates/chio-settle/src/lib.rs` | `prepare_web3_escrow_dispatch`, `prepare_bond_lock`, `prepare_solana_settlement`, `prepare_ccip_settlement_message`, `build_x402_payment_requirements` |
-| `chio-listing` | `crates/chio-listing/src/lib.rs` | `GenericListingArtifact`, `GenericNamespaceArtifact`, `GenericTrustActivationArtifact` |
-| `chio-open-market` | `crates/chio-open-market/src/fee_schedule.rs`, `crates/chio-open-market/src/penalty.rs`, `crates/chio-open-market/src/evaluation.rs` | `OpenMarketFeeScheduleArtifact`, `OpenMarketPenaltyArtifact`, `evaluate_open_market_penalty` |
+| `chio-metering` | `crates/economy/chio-metering/src/lib.rs` | `CostMetadata`, `BudgetEnforcer`, `CostQuery`, `BillingExport` |
+| `chio-underwriting` | `crates/economy/chio-underwriting/src/lib.rs` | `evaluate_underwriting_policy_input`, `UnderwritingDecisionArtifact`, `UnderwritingRiskClass`, `UnderwritingPremiumQuote` |
+| `chio-credit` | `crates/economy/chio-credit/src/lib.rs` | `ExposureLedgerReport`, `CreditScorecardReport`, `CreditFacilityArtifact`, `CreditBondArtifact`, `CreditLossLifecycleArtifact`, `CapitalBookReport`, `CapitalExecutionInstructionArtifact` |
+| `chio-market` | `crates/economy/chio-market/src/lib.rs` | `LiabilityProviderReport`, `LiabilityQuoteRequestArtifact`, `LiabilityQuoteResponseArtifact`, `LiabilityBoundCoverageArtifact`, `LiabilityClaimPackageArtifact` |
+| `chio-settle` | `crates/economy/chio-settle/src/lib.rs` | `prepare_web3_escrow_dispatch`, `prepare_bond_lock`, `prepare_solana_settlement`, `prepare_ccip_settlement_message`, `build_x402_payment_requirements` |
+| `chio-listing` | `crates/economy/chio-listing/src/lib.rs` | `GenericListingArtifact`, `GenericNamespaceArtifact`, `GenericTrustActivationArtifact` |
+| `chio-open-market` | `crates/economy/chio-open-market/src/fee_schedule.rs`, `crates/economy/chio-open-market/src/penalty.rs`, `crates/economy/chio-open-market/src/evaluation.rs` | `OpenMarketFeeScheduleArtifact`, `OpenMarketPenaltyArtifact`, `evaluate_open_market_penalty` |
 
 See also: `docs/AGENT_ECONOMY.md` for the foundational design document
 covering the kernel-level economic extensions (capability token spending

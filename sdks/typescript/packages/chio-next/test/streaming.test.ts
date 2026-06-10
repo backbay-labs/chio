@@ -139,7 +139,7 @@ describe("@chio-protocol/next streaming and denial response", () => {
 
   it("authorizes only the canonical \"allow\" result and denies legacy variants", async () => {
     // The shared Rust VerifyReceiptResponse encodes Verdict::Allow as the
-    // canonical lowercase "allow" (see crates/chio-http-core/src/evaluation.rs
+    // canonical lowercase "allow" (see crates/platform/chio-http-core/src/evaluation.rs
     // verdict_result()); it never emits "Allow"/"authorized"/"Authorized", so
     // the gate authorizes only the canonical value and denies the rest.
     const allowed = withChio(async () => new Response("ok"), {

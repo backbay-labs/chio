@@ -41,7 +41,7 @@ Directory layout:
 
 Source-of-truth pointers:
 
-- The Rust types backing these schemas live in `crates/chio-core-types`. When
+- The Rust types backing these schemas live in `crates/core/chio-core-types`. When
   Rust types and these schemas disagree, fix the schema or the type so they
   match again before shipping.
 - Cross-language conformance vectors live under `tests/bindings/vectors/`

@@ -16,8 +16,8 @@ timeout_multiplier = 3.0
 minimum_test_timeout = 60
 
 examine_globs = [
-    "crates/chio-attest-verify/src/lib.rs",
-    "crates/chio-attest-verify/src/sigstore.rs",
+    "crates/trust/chio-attest-verify/src/lib.rs",
+    "crates/trust/chio-attest-verify/src/sigstore.rs",
 ]
 
 exclude_globs = [

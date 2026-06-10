@@ -870,7 +870,7 @@ type CapabilityCapabilities struct {
 // CapabilityCapabilitiesSchema defines model for CapabilityCapabilities.Schema.
 type CapabilityCapabilitiesSchema string
 
-// CapabilityGrant A single grant carried inside a capability token's `scope`. Chio uses three distinct grant kinds (tool, resource, prompt) that share no common discriminator field; this schema accepts any one of them via `oneOf`. Mirrors `ToolGrant`, `ResourceGrant`, and `PromptGrant` in `crates/chio-core-types/src/capability.rs`. The wrapper `ChioScope` partitions grants into three named arrays (`grants`, `resource_grants`, `prompt_grants`); validators that consume a token can dispatch to the appropriate `$defs/*` shape directly without relying on `oneOf` matching.
+// CapabilityGrant A single grant carried inside a capability token's `scope`. Chio uses three distinct grant kinds (tool, resource, prompt) that share no common discriminator field; this schema accepts any one of them via `oneOf`. Mirrors `ToolGrant`, `ResourceGrant`, and `PromptGrant` in `crates/core/chio-core-types/src/capability.rs`. The wrapper `ChioScope` partitions grants into three named arrays (`grants`, `resource_grants`, `prompt_grants`); validators that consume a token can dispatch to the appropriate `$defs/*` shape directly without relying on `oneOf` matching.
 type CapabilityGrant struct {
 	union json.RawMessage
 }
@@ -924,7 +924,7 @@ type CapabilityGrantToolGrant struct {
 	ToolName string `json:"tool_name"`
 }
 
-// CapabilityRevocation A single revocation entry recording that a previously issued capability token (identified by its `id`) is no longer valid as of `revoked_at`. Mirrors `RevocationRecord` in `crates/chio-kernel/src/revocation_store.rs` (the kernel's persisted revocation row), and is the wire-level companion to the `capability_revoked` kernel notification under `chio-wire/v1/kernel/capability_revoked.schema.json`. Operators read these entries from `/admin/revocations` (hosted edge) and from the trust-control revocation list.
+// CapabilityRevocation A single revocation entry recording that a previously issued capability token (identified by its `id`) is no longer valid as of `revoked_at`. Mirrors `RevocationRecord` in `crates/kernel/chio-kernel/src/revocation_store.rs` (the kernel's persisted revocation row), and is the wire-level companion to the `capability_revoked` kernel notification under `chio-wire/v1/kernel/capability_revoked.schema.json`. Operators read these entries from `/admin/revocations` (hosted edge) and from the trust-control revocation list.
 type CapabilityRevocation struct {
 	// CapabilityId The `id` field of the revoked CapabilityToken. Used to match revocations against presented tokens.
 	CapabilityId string `json:"capability_id"`
@@ -1241,7 +1241,7 @@ type FederationBilateralSignatureSlicePolicyVerdict struct {
 // FederationBilateralSignatureSlicePolicyVerdictVerdict defines model for FederationBilateralSignatureSlicePolicyVerdict.Verdict.
 type FederationBilateralSignatureSlicePolicyVerdictVerdict string
 
-// JsonrpcNotification JSON-RPC 2.0 notification envelope used by Chio for MCP and A2A wire framing. Mirrors the inline serde shape constructed in `crates/chio-mcp-adapter/src/transport.rs::send_notification` (lines 770-774) and the streaming-chunk and cancellation notifications in `crates/chio-mcp-edge/src/runtime/protocol.rs` and transport.rs (lines 401-407, 1384-1392). A notification is structurally a request with no `id` field; the receiver MUST NOT respond. Common Chio notification methods include 'notifications/initialized', 'notifications/cancelled', 'notifications/tasks/status', 'notifications/resources/updated', 'notifications/resources/list_changed', and the Chio-specific tool-streaming chunk method exposed as `CHIO_TOOL_STREAMING_NOTIFICATION_METHOD`.
+// JsonrpcNotification JSON-RPC 2.0 notification envelope used by Chio for MCP and A2A wire framing. Mirrors the inline serde shape constructed in `crates/protocol/chio-mcp-adapter/src/transport.rs::send_notification` (lines 770-774) and the streaming-chunk and cancellation notifications in `crates/protocol/chio-mcp-edge/src/runtime/protocol.rs` and transport.rs (lines 401-407, 1384-1392). A notification is structurally a request with no `id` field; the receiver MUST NOT respond. Common Chio notification methods include 'notifications/initialized', 'notifications/cancelled', 'notifications/tasks/status', 'notifications/resources/updated', 'notifications/resources/list_changed', and the Chio-specific tool-streaming chunk method exposed as `CHIO_TOOL_STREAMING_NOTIFICATION_METHOD`.
 type JsonrpcNotification struct {
 	// Jsonrpc Protocol version literal. Always the string '2.0'.
 	Jsonrpc JsonrpcNotificationJsonrpc `json:"jsonrpc"`
@@ -1267,7 +1267,7 @@ type JsonrpcNotification_Params struct {
 	union json.RawMessage
 }
 
-// JsonrpcRequest JSON-RPC 2.0 request envelope used by Chio for MCP and A2A wire framing. Mirrors the inline serde shape constructed in `crates/chio-mcp-adapter/src/transport.rs::send_request` (lines 643-648) and the typed `A2aJsonRpcRequest<T>` in `crates/chio-a2a-adapter/src/protocol.rs` (lines 234-241). The `id` may be an integer, a string, or null; null is permitted on the wire because Chio relays peers that originate ids upstream and forward them verbatim. `params` is optional per JSON-RPC 2.0 (notifications and parameterless calls omit it), but most Chio call sites supply at least an empty object.
+// JsonrpcRequest JSON-RPC 2.0 request envelope used by Chio for MCP and A2A wire framing. Mirrors the inline serde shape constructed in `crates/protocol/chio-mcp-adapter/src/transport.rs::send_request` (lines 643-648) and the typed `A2aJsonRpcRequest<T>` in `crates/protocol/chio-a2a-adapter/src/protocol.rs` (lines 234-241). The `id` may be an integer, a string, or null; null is permitted on the wire because Chio relays peers that originate ids upstream and forward them verbatim. `params` is optional per JSON-RPC 2.0 (notifications and parameterless calls omit it), but most Chio call sites supply at least an empty object.
 type JsonrpcRequest struct {
 	// Id Request correlation id. Chio adapters originate monotonic integer ids; relayed peer ids may be strings. Null is permitted per JSON-RPC 2.0 but discouraged for new requests because it is indistinguishable from a server-side parse failure response.
 	Id *JsonrpcRequest_Id `json:"id"`
@@ -1307,7 +1307,7 @@ type JsonrpcRequest_Params struct {
 	union json.RawMessage
 }
 
-// JsonrpcResponse JSON-RPC 2.0 response envelope used by Chio for MCP and A2A wire framing. Mirrors the inline serde shapes constructed in `crates/chio-mcp-adapter/src/transport.rs::json_rpc_result` and `json_rpc_error` (lines 1299-1316) and the typed `A2aJsonRpcResponse<T>` / `A2aJsonRpcError` in `crates/chio-a2a-adapter/src/protocol.rs` (lines 243-255). Exactly one of `result` or `error` MUST be present, enforced via `oneOf`. The `error.code` field is an integer (Chio uses standard JSON-RPC reserved codes -32600 through -32603, MCP's -32800 for cancellation, and Chio extension codes such as -32002 for nested-flow policy denials and -32042 for URL elicitations required - see `map_nested_flow_error_code` in transport.rs lines 1280-1297). The `id` is null only when the server cannot determine the request id (parse error before the id was readable).
+// JsonrpcResponse JSON-RPC 2.0 response envelope used by Chio for MCP and A2A wire framing. Mirrors the inline serde shapes constructed in `crates/protocol/chio-mcp-adapter/src/transport.rs::json_rpc_result` and `json_rpc_error` (lines 1299-1316) and the typed `A2aJsonRpcResponse<T>` / `A2aJsonRpcError` in `crates/protocol/chio-a2a-adapter/src/protocol.rs` (lines 243-255). Exactly one of `result` or `error` MUST be present, enforced via `oneOf`. The `error.code` field is an integer (Chio uses standard JSON-RPC reserved codes -32600 through -32603, MCP's -32800 for cancellation, and Chio extension codes such as -32002 for nested-flow policy denials and -32042 for URL elicitations required - see `map_nested_flow_error_code` in transport.rs lines 1280-1297). The `id` is null only when the server cannot determine the request id (parse error before the id was readable).
 type JsonrpcResponse struct {
 	// Error Error payload. Present only on failure. Mutually exclusive with `result`.
 	Error *struct {
@@ -1618,13 +1618,13 @@ type ProvenanceAttestationBundle struct {
 	// ChainId Stable identifier of the governed call chain this bundle attests. Matches the `chainId` carried by `provenance/context.schema.json`.
 	ChainId string `json:"chainId"`
 
-	// EvidenceClass Canonical evidence class Chio resolved across the bundle as a whole. Mirrors `GovernedProvenanceEvidenceClass` in `crates/chio-core-types/src/capability.rs` (lines 1303-1314), which uses `serde(rename_all = snake_case)`. The bundle's class is the floor across its statements: a single `asserted` statement holds the bundle to `asserted` regardless of how many `verified` statements accompany it.
+	// EvidenceClass Canonical evidence class Chio resolved across the bundle as a whole. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314), which uses `serde(rename_all = snake_case)`. The bundle's class is the floor across its statements: a single `asserted` statement holds the bundle to `asserted` regardless of how many `verified` statements accompany it.
 	EvidenceClass ProvenanceAttestationBundleEvidenceClass `json:"evidenceClass"`
 
 	// Issuer Optional identifier of the bundle assembler (kernel, gateway, or trust-control authority). Omitted when the bundle is locally assembled by the receiving kernel.
 	Issuer *string `json:"issuer,omitempty"`
 
-	// Statements Ordered list of normalized runtime attestation evidence statements. Each statement is structurally identical to `chio-wire/v1/trust-control/attestation.schema.json` and mirrors `RuntimeAttestationEvidence` in `crates/chio-core-types/src/capability.rs` (lines 484-507). The struct does not carry `serde(rename_all)`, so the per-statement scalar fields are snake_case; the embedded `workload_identity` carries `serde(rename_all = camelCase)` so its inner fields are camelCase. Optional fields (`runtime_identity`, `workload_identity`, `claims`) are omitted from the wire when their underlying `Option<...>` is `None`.
+	// Statements Ordered list of normalized runtime attestation evidence statements. Each statement is structurally identical to `chio-wire/v1/trust-control/attestation.schema.json` and mirrors `RuntimeAttestationEvidence` in `crates/core/chio-core-types/src/capability.rs` (lines 484-507). The struct does not carry `serde(rename_all)`, so the per-statement scalar fields are snake_case; the embedded `workload_identity` carries `serde(rename_all = camelCase)` so its inner fields are camelCase. Optional fields (`runtime_identity`, `workload_identity`, `claims`) are omitted from the wire when their underlying `Option<...>` is `None`.
 	Statements []struct {
 		// Claims Optional structured claims preserved for adapters or operator inspection. Verifier-family-specific (for example `claims.azureMaa`, `claims.awsNitro`, `claims.googleAttestation`) and validated by per-vendor bridges, not by this schema. Omitted when the verifier did not expose preserved claims. Identical in shape to `chio-wire/v1/trust-control/attestation.schema.json#/properties/claims`.
 		Claims *interface{} `json:"claims,omitempty"`
@@ -1670,7 +1670,7 @@ type ProvenanceAttestationBundle struct {
 	} `json:"statements"`
 }
 
-// ProvenanceAttestationBundleEvidenceClass Canonical evidence class Chio resolved across the bundle as a whole. Mirrors `GovernedProvenanceEvidenceClass` in `crates/chio-core-types/src/capability.rs` (lines 1303-1314), which uses `serde(rename_all = snake_case)`. The bundle's class is the floor across its statements: a single `asserted` statement holds the bundle to `asserted` regardless of how many `verified` statements accompany it.
+// ProvenanceAttestationBundleEvidenceClass Canonical evidence class Chio resolved across the bundle as a whole. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314), which uses `serde(rename_all = snake_case)`. The bundle's class is the floor across its statements: a single `asserted` statement holds the bundle to `asserted` regardless of how many `verified` statements accompany it.
 type ProvenanceAttestationBundleEvidenceClass string
 
 // ProvenanceAttestationBundleStatementsTier Normalized assurance tier resolved from the evidence. Mirrors `RuntimeAssuranceTier` in capability.rs (lines 234-240).
@@ -1682,7 +1682,7 @@ type ProvenanceAttestationBundleStatementsWorkloadIdentityCredentialKind string
 // ProvenanceAttestationBundleStatementsWorkloadIdentityScheme Identity scheme Chio recognized from the upstream evidence. Mirrors `WorkloadIdentityScheme` (lines 273-278).
 type ProvenanceAttestationBundleStatementsWorkloadIdentityScheme string
 
-// ProvenanceContext One delegated call-chain context bound into a governed Chio request. The context names the stable `chainId` that identifies the delegated transaction, the upstream `parentRequestId` inside the trusted domain, the optional `parentReceiptId` when the upstream parent receipt is already available, the root `originSubject` that started the chain, and the immediate `delegatorSubject` that handed control to the current subject. Chio binds this shape into governed transactions and promotes it through the provenance evidence classes (`asserted`, `observed`, `verified`) defined in `crates/chio-core-types/src/capability.rs` (`GovernedProvenanceEvidenceClass`, lines 1303-1314). Mirrors the `GovernedCallChainContext` struct in `crates/chio-core-types/src/capability.rs` (lines 952-967). The struct uses `serde(rename_all = camelCase)` so wire field names are camelCase.
+// ProvenanceContext One delegated call-chain context bound into a governed Chio request. The context names the stable `chainId` that identifies the delegated transaction, the upstream `parentRequestId` inside the trusted domain, the optional `parentReceiptId` when the upstream parent receipt is already available, the root `originSubject` that started the chain, and the immediate `delegatorSubject` that handed control to the current subject. Chio binds this shape into governed transactions and promotes it through the provenance evidence classes (`asserted`, `observed`, `verified`) defined in `crates/core/chio-core-types/src/capability.rs` (`GovernedProvenanceEvidenceClass`, lines 1303-1314). Mirrors the `GovernedCallChainContext` struct in `crates/core/chio-core-types/src/capability.rs` (lines 952-967). The struct uses `serde(rename_all = camelCase)` so wire field names are camelCase.
 type ProvenanceContext struct {
 	// ChainId Stable identifier for the delegated transaction or call chain. Constant for the duration of the chain; bound into every receipt the chain produces.
 	ChainId string `json:"chainId"`
@@ -1723,7 +1723,7 @@ type ProvenanceVerdictLink struct {
 	// ChainId Stable identifier of the governed call chain this verdict ties back to. Matches the `chainId` carried by `provenance/context.schema.json` and `provenance/attestation-bundle.schema.json`.
 	ChainId string `json:"chainId"`
 
-	// EvidenceClass Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.
+	// EvidenceClass Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.
 	EvidenceClass *ProvenanceVerdictLinkEvidenceClass `json:"evidenceClass,omitempty"`
 
 	// Guard Policy guard identifier that produced a `deny` verdict. Required by the HTTP verdict union (and by this schema's `oneOf`) when `verdict` is `deny`. Forbidden for non-deny verdicts.
@@ -1738,7 +1738,7 @@ type ProvenanceVerdictLink struct {
 	// RenderedAt Unix timestamp (seconds) at which the policy engine rendered this verdict. Monotonic with respect to receipts emitted from the same kernel.
 	RenderedAt int64 `json:"renderedAt"`
 
-	// RequestId Stable identifier of the Chio request the verdict applies to. Threads the verdict into the request lineage carried by `crates/chio-core-types/src/session.rs` (`RequestLineageMode`, lines 717-768).
+	// RequestId Stable identifier of the Chio request the verdict applies to. Threads the verdict into the request lineage carried by `crates/core/chio-core-types/src/session.rs` (`RequestLineageMode`, lines 717-768).
 	RequestId string `json:"requestId"`
 
 	// Verdict Policy verdict decision Chio returned for the bound request. Vocabulary matches `spec/schemas/chio-http/v1/verdict.schema.json` and `StepVerdictKind` (Allowed, Denied) plus the cancel and incomplete terminal states defined under `spec/schemas/chio-wire/v1/result/`.
@@ -1746,7 +1746,7 @@ type ProvenanceVerdictLink struct {
 	union   json.RawMessage
 }
 
-// ProvenanceVerdictLinkEvidenceClass Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.
+// ProvenanceVerdictLinkEvidenceClass Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.
 type ProvenanceVerdictLinkEvidenceClass string
 
 // ProvenanceVerdictLinkVerdict Policy verdict decision Chio returned for the bound request. Vocabulary matches `spec/schemas/chio-http/v1/verdict.schema.json` and `StepVerdictKind` (Allowed, Denied) plus the cancel and incomplete terminal states defined under `spec/schemas/chio-wire/v1/result/`.
@@ -1793,7 +1793,7 @@ type ProvenanceVerdictLink3 struct {
 // ProvenanceVerdictLink3Verdict defines model for ProvenanceVerdictLink.3.Verdict.
 type ProvenanceVerdictLink3Verdict string
 
-// ReceiptInclusionProof Merkle inclusion proof for a single receipt leaf in a receipt-log Merkle tree. Mirrors the serde shape of `MerkleProof` in `crates/chio-core-types/src/merkle.rs`. The proof allows an auditor, holding only the published Merkle root and the original leaf bytes, to verify that the leaf was included in a tree of the given size at the given position. The audit path is the ordered list of sibling hashes encountered when walking from the leaf up to the root; siblings whose subtree was carried upward without pairing (the right-edge of an unbalanced level) are omitted. Deterministic-replay consumes this schema as the contract for golden-bundle inclusion artifacts under `tests/replay/goldens/<family>/<name>/`.
+// ReceiptInclusionProof Merkle inclusion proof for a single receipt leaf in a receipt-log Merkle tree. Mirrors the serde shape of `MerkleProof` in `crates/core/chio-core-types/src/merkle.rs`. The proof allows an auditor, holding only the published Merkle root and the original leaf bytes, to verify that the leaf was included in a tree of the given size at the given position. The audit path is the ordered list of sibling hashes encountered when walking from the leaf up to the root; siblings whose subtree was carried upward without pairing (the right-edge of an unbalanced level) are omitted. Deterministic-replay consumes this schema as the contract for golden-bundle inclusion artifacts under `tests/replay/goldens/<family>/<name>/`.
 type ReceiptInclusionProof struct {
 	// AuditPath Ordered sibling hashes from leaf-level up to (but not including) the root. Siblings that were carried upward without pairing on the right edge of an unbalanced level are omitted, so the path length is not strictly `ceil(log2(tree_size))`. Each entry is a `chio-core-types::Hash` serialized via its transparent serde adapter (32-byte SHA-256 digest, hex-encoded with a `0x` prefix).
 	AuditPath []string `json:"audit_path"`
@@ -1871,7 +1871,7 @@ type ReceiptRecord struct {
 	// Id Authoritative content-addressed receipt id.
 	Id string `json:"id"`
 
-	// KernelKey Kernel public key (for verification without out-of-band lookup). Bare 64-char lowercase hex string for Ed25519, `p256:<130-char hex>` for uncompressed SEC1 P-256 (65 bytes; leading byte `0x04`), or `p384:<194-char hex>` for uncompressed SEC1 P-384 (97 bytes; leading byte `0x04`). Anything outside these length classes is rejected at decode time by `PublicKey::from_hex` in `crates/chio-core-types/src/crypto.rs`.
+	// KernelKey Kernel public key (for verification without out-of-band lookup). Bare 64-char lowercase hex string for Ed25519, `p256:<130-char hex>` for uncompressed SEC1 P-256 (65 bytes; leading byte `0x04`), or `p384:<194-char hex>` for uncompressed SEC1 P-384 (97 bytes; leading byte `0x04`). Anything outside these length classes is rejected at decode time by `PublicKey::from_hex` in `crates/core/chio-core-types/src/crypto.rs`.
 	KernelKey string `json:"kernel_key"`
 
 	// Metadata Optional receipt metadata for stream/accounting/financial details. Schema-less by design (mirrors `Option<serde_json::Value>`).
@@ -1889,7 +1889,7 @@ type ReceiptRecord struct {
 	// RedactionMode Signed redaction mode applied to receipt details.
 	RedactionMode ReceiptRecordRedactionMode `json:"redaction_mode"`
 
-	// Signature Hex-encoded signature over canonical JSON of ChioReceiptSigningBody { id, body: ChioReceiptIdInput, bbs_signature? }. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.
+	// Signature Hex-encoded signature over canonical JSON of ChioReceiptSigningBody { id, body: ChioReceiptIdInput, bbs_signature? }. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/core/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.
 	Signature string `json:"signature"`
 
 	// TenantId Tenant identifier for multi-tenant deployments. Absent in single-tenant mode; derived from the authenticated session's enterprise identity context, never from caller-provided request fields.
@@ -2142,7 +2142,7 @@ type ResultStreamComplete struct {
 // ResultStreamCompleteStatus defines model for ResultStreamComplete.Status.
 type ResultStreamCompleteStatus string
 
-// TrustControlAttestation One normalized runtime attestation evidence statement carried alongside trust-control authority operations and governed capability issuance. The shape names the upstream attestation schema, the verifier or relying party that accepted the evidence, the normalized assurance tier Chio resolved, the evidence's issued-at and expires-at bounds, and a stable SHA-256 digest of the underlying attestation payload. Optional fields preserve a runtime or workload identifier and a normalized SPIFFE workload identity when the verifier exposed one. Mirrors the `RuntimeAttestationEvidence` struct in `crates/chio-core-types/src/capability.rs` (lines 484-507). The struct does not carry `serde(rename_all)`, so wire field names are snake_case. Verifier adapters and trust-control issuance call sites in `crates/chio-control-plane/src/attestation.rs` populate this shape after running the per-vendor verifier bridges (Azure MAA, AWS Nitro, Google Confidential VM).
+// TrustControlAttestation One normalized runtime attestation evidence statement carried alongside trust-control authority operations and governed capability issuance. The shape names the upstream attestation schema, the verifier or relying party that accepted the evidence, the normalized assurance tier Chio resolved, the evidence's issued-at and expires-at bounds, and a stable SHA-256 digest of the underlying attestation payload. Optional fields preserve a runtime or workload identifier and a normalized SPIFFE workload identity when the verifier exposed one. Mirrors the `RuntimeAttestationEvidence` struct in `crates/core/chio-core-types/src/capability.rs` (lines 484-507). The struct does not carry `serde(rename_all)`, so wire field names are snake_case. Verifier adapters and trust-control issuance call sites in `crates/platform/chio-control-plane/src/attestation.rs` populate this shape after running the per-vendor verifier bridges (Azure MAA, AWS Nitro, Google Confidential VM).
 type TrustControlAttestation struct {
 	// Claims Optional structured claims preserved for adapters or operator inspection. Verifier-family-specific (for example `claims.azureMaa`, `claims.awsNitro`, `claims.googleAttestation`) and validated by per-vendor bridges, not by this schema. Omitted when the verifier did not expose preserved claims.
 	Claims *interface{} `json:"claims,omitempty"`

@@ -74,7 +74,7 @@ jobs:
           # checked-in Go file catches side-effect writes that the per-lane
           # `--check` does not (for example, `npm ci` mutating package-lock.json).
           git diff --exit-code \
-            crates/chio-core-types/src/_generated \
+            crates/core/chio-core-types/src/_generated \
             sdks/python/chio-sdk-python/src/chio_sdk/_generated \
             sdks/typescript/packages/conformance/src/_generated \
             sdks/go/chio-go-http/types.go
@@ -87,7 +87,7 @@ jobs:
           # alongside the checked-in Go file) would not be flagged. List
           # untracked files and fail if any land in a path the lanes write to.
           untracked=$(git ls-files --others --exclude-standard -- \
-            crates/chio-core-types/src/_generated \
+            crates/core/chio-core-types/src/_generated \
             sdks/python/chio-sdk-python/src/chio_sdk/_generated \
             sdks/typescript/packages/conformance/src/_generated \
             sdks/go/chio-go-http)
@@ -133,11 +133,11 @@ jobs:
             echo "OK $file"
           }
 
-          # Rust: `crates/chio-core-types/src/_generated/**/*.rs`
+          # Rust: `crates/core/chio-core-types/src/_generated/**/*.rs`
           # tail substring: `cargo xtask codegen rust`
           while IFS= read -r f; do
             check "$f" "cargo xtask codegen rust"
-          done < <(find crates/chio-core-types/src/_generated -type f -name '*.rs' | sort)
+          done < <(find crates/core/chio-core-types/src/_generated -type f -name '*.rs' | sort)
 
           # Python: `sdks/python/chio-sdk-python/src/chio_sdk/_generated/**/*.py`
           # tail substring: `cargo xtask codegen --lang python`
@@ -242,8 +242,7 @@ jobs:
     # owner: Chio maintainers
     # Runs the canonical_json_diff proptest, which property-checks the Rust
     # canonicalizer against RFC 8785 invariants (key ordering, string escapes,
-    # number normalization). The Rust proptest is the gate until Python and
-    # TypeScript SDKs ship first-party byte-equivalence checks.
+    # number normalization). The Rust proptest is the canonicalization gate.
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:

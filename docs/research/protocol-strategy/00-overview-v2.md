@@ -11,7 +11,7 @@ Output: docs `07-` through `16-` on `research/protocol-strategy-2026`. First-rou
 > **Erratum (subsequent reviews)**:
 > - AGNTCY ACP is dead. `agntcy/acp-spec` was archived 2026-04-11 (the date doc 08 cited was the *archival* date, not a stabilization freeze). The bridge plan in phase C is struck; only the consume-only `chio-directory` integration survives. See [17-agntcy-revisited.md](17-agntcy-revisited.md).
 > - The n8n priority-1 framing here originally referenced the Talos 686% abuse spike, which is **Chain D** (NOT blocked by Chio). The actually-blocked attack is **Chain C** (prompt-injection agent-to-webhook). See [11-n8n-threat-mapping.md](11-n8n-threat-mapping.md).
-> - Bench-stub coverage is broader than originally reported: not 4 stubs, but **11+** ([reviews/04-receipts-kernel-latency-review.md](reviews/04-receipts-kernel-latency-review.md)). Doc 16's `responses.rs:1506` citation is also a wrong file path; the function lives at `crates/chio-kernel/src/kernel/responses.rs:1459-1517`.
+> - Bench-stub coverage is broader than originally reported: not 4 stubs, but **11+** ([reviews/04-receipts-kernel-latency-review.md](reviews/04-receipts-kernel-latency-review.md)). Doc 16's `responses.rs:1506` citation is also a wrong file path; the function lives at `crates/kernel/chio-kernel/src/kernel/responses.rs:1459-1517`.
 > - Canonical type forms: the current signed receipt field is `policy_hash`, encoded as a hex or operator-pinned `String` (matches existing code, RFC 8785 friendly). Historical `policy_digest` references are per-engine digest sketches, not a current core receipt field. ADR-0010 folds `tool_origin` (`CallerExecuted | HostExecutedProviderReported | HostExecutedUnmediated`) and `redaction_mode` into the current v1 receipt shape as separate signed fields; `human_principal` is the typed enum on `CallerIdentity` (doc 14) referenced by historical extension sketches, not duplicated.
 > - `ActorRef` (the actor-chain element type formerly planned as a later receipt schema field) needs a concrete definition stub before receipt-kind work begins. Captured in doc 15.
 > - Follow-up grounding corrections from PR 652 review: doc 05's `policy_version` / `manifest_id` receipt fields and `args_schema` examples are design intent, not current code; doc 09's event-action plan is folded into current v1 manifest planning, not a new manifest-generation rollout.
@@ -32,7 +32,7 @@ Everything else is incremental but coherent: Cedar, OpenAI Responses, Bedrock Ag
 | [07](07-oauth-as-usage-audit.md) | R1 OAuth AS audit | **Live but opt-in.** Real product code, 5 integration tests, conformance runner support, normative profile in [`spec/PROTOCOL.md:1351-1453`](../../../spec/PROTOCOL.md#L1351). Dead-by-default at runtime (handlers 404 without `--auth-server-seed-file`). No telemetry. | Block product tickets until an OAuth AS ADR or equivalent decision note settles feature gating, naming, scope clamp, telemetry, and posture. |
 | [08](08-agntcy-acp-bridge-spec.md) | R2 AGNTCY ACP | **SUPERSEDED.** ACP archived 2026-04-11; doc 08's "frozen v0.2.3" framing was wrong. See [17-agntcy-revisited.md](17-agntcy-revisited.md). | Drop `chio-bridge-agntcy`. Keep `chio-directory` (DirectoryProvider trait + StaticAgntcyDirectoryProvider) for consume-only Directory + Identity integration. |
 | [09](09-event-action-schema.md) | R3 Event actions | Unified `EventDestination` / `EventSource` with `BrokerKind` enum, not per-broker variants. | Fold into current `chio.manifest.v1` planning once the receipt/read-boundary gates exist. No manifest-generation bump before release. |
-| [10](10-cedar-first-guard.md) | R4 Cedar first-guard | `McpToolGuard` ([`chio-guards/src/mcp_tool.rs`](../../../crates/chio-guards/src/mcp_tool.rs), 429 LOC) is the right port. Only ~6 of ~30 guards are pure list-and-branch; the rest are journal-stateful or ML/heuristic. | **Option A': greenfield + two flagship ports** (`McpToolGuard` and `EgressAllowlistGuard`). Not full migration. |
+| [10](10-cedar-first-guard.md) | R4 Cedar first-guard | `McpToolGuard` ([`chio-guards/src/mcp_tool.rs`](../../../crates/guards/chio-guards/src/mcp_tool.rs), 429 LOC) is the right port. Only ~6 of ~30 guards are pure list-and-branch; the rest are journal-stateful or ML/heuristic. | **Option A': greenfield + two flagship ports** (`McpToolGuard` and `EgressAllowlistGuard`). Not full migration. |
 | [11](11-n8n-threat-mapping.md) | R5 n8n threat map | Priority-1 is **partially justified**. Chio blocks Chain C (prompt-injection webhook exfil) cleanly; does NOT block Chain D (the 686% ingress-abuse spike, which is below Chio's layer). | Keep n8n in the priority list; restrict the value-prop framing to Chain C. |
 | [12](12-openai-responses-adapter.md) | E1 OpenAI Responses | Future adapter research only. **Potential MVP: caller-executed `function` tools only over streaming SSE on non-reasoning models.** Refuses built-in-tool or reasoning requests. | Blocked until v1 receipt/read-boundary gates land, then needs an API refresh against official Responses docs before ticketing or codegen. |
 | [13](13-bedrock-agents-bridge.md) | E2 Bedrock Agents | New crate `chio-bedrock-agents-adapter`. **MVP: RETURN_CONTROL action groups full mediation**, Lambda actions receipt-logged only (AWS trust boundary). | Trace redaction default: `summary` (salted SHA-256 hashes preserving structural metadata). Opt-in `redacted` and `full` (full gated by separate IAM scope). |
@@ -48,7 +48,7 @@ Everything else is incremental but coherent: Cedar, OpenAI Responses, Bedrock Ag
 
 3. **Cedar looks plausible for selected guards, but latency is not proven.** R4 + X2 reconciliation estimated ~150us with entity cache, which would fit normal tiers if real workloads confirm it. The earlier bench-stub gap is resolved, so this can now be measured rather than asserted; voice-tier planning still needs a **policy tier classification on guards**: voice-tier guards must declare in-process + async-durability.
 
-4. **Double-gating is functionally free.** [`HttpEgressContract::enforce_url`](../../../crates/chio-egress-contract/src/lib.rs) is pure-Rust URL parse + allowlist (20-80us). Doc 05's double-gating recommendation stands without latency caveat.
+4. **Double-gating is functionally free.** [`HttpEgressContract::enforce_url`](../../../crates/protocol/chio-egress-contract/src/lib.rs) is pure-Rust URL parse + allowlist (20-80us). Doc 05's double-gating recommendation stands without latency caveat.
 
 5. **Future crate sketches, not shipped surfaces** + one blocked existing-surface follow-up: `chio-directory` (consume-only), `chio-bedrock-agents-adapter`, a future OpenAI function-tools adapter name TBD, `chio-livekit-py`, plus a future OAuth AS posture ticket only after its ADR or equivalent decision note is accepted. The previously-counted `chio-bridge-agntcy` has been struck (see erratum block). Coherent footprint, no overlap. The `chio-bridge-*` prefix is not a workspace convention; existing pattern is `-edge` (expose) / `-adapter` (consume) / `-proxy` (variant).
 
@@ -56,7 +56,7 @@ Everything else is incremental but coherent: Cedar, OpenAI Responses, Bedrock Ag
 
 Three protocols are named "ACP":
 
-1. **Zed's Agent Client Protocol / Anthropic Compute Protocol**: covered today by [`chio-acp-edge`](../../../crates/chio-acp-edge/).
+1. **Zed's Agent Client Protocol / Anthropic Compute Protocol**: covered today by [`chio-acp-edge`](../../../crates/protocol/chio-acp-edge/).
 2. **IBM Agent Communication Protocol**: converging with A2A; no Chio bridge today.
 3. **AGNTCY Agent Connect Protocol**: archived 2026-04-11; absorbed into A2A. No Chio bridge planned.
 
@@ -96,7 +96,7 @@ or equivalent decision note is accepted.
   default). ([12](12-openai-responses-adapter.md),
   [13](13-bedrock-agents-bridge.md), [15](15-receipt-kind-v1.md),
   [18](18-decision-packet.md))
-- **Parallelize hybrid signing** (`crates/chio-core-types/src/pq.rs:166-170` per doc 16: verify the citation as part of this work). ~50-100us savings on every receipt. ([16](16-latency-budget-audit.md))
+- **Parallelize hybrid signing** (`crates/core/chio-core-types/src/pq.rs:166-170` per doc 16: verify the citation as part of this work). ~50-100us savings on every receipt. ([16](16-latency-budget-audit.md))
 
 ### Phase B: high-ROI new bridges
 

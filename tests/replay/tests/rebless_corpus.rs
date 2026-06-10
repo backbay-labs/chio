@@ -8,16 +8,13 @@
 //! directly; the byte-equivalence test always writes into a
 //! `TempDir`.
 //!
-//! Why this exists: the bless wrapper script
-//! (`scripts/bless-replay-goldens.sh`) plus the in-process gate
-//! (`tests/replay/src/bless.rs`) cover the "operator-on-a-developer-
-//! workstation re-bless on a topic branch" flow. When a structural
-//! refactor inside the synthesis path itself changes the bytes (for
-//! example, advancing the nonce counter per `fixed_nonce_seed_index`
-//! so all 50 scenarios record distinct nonces rather than counter-
-//! zero), the re-bless that has to happen IS the change - so the
-//! mechanical part of the bless ("write the new bytes") and the
-//! gate's "guard the inputs" responsibility have to come apart.
+//! Scope: the bless wrapper script (`scripts/bless-replay-goldens.sh`)
+//! plus the in-process gate (`tests/replay/src/bless.rs`) cover the
+//! operator re-bless flow on a topic branch. This helper covers the
+//! separate case where a change to the synthesis path itself shifts
+//! the golden bytes: the re-bless is the change under review, so it
+//! writes the new bytes directly rather than passing through the gate's
+//! input-guarding clauses.
 //!
 //! Invocation:
 //!
@@ -26,10 +23,10 @@
 //!     --test rebless_corpus -- --ignored --nocapture
 //! ```
 //!
-//! The env-var requirement (on top of `--ignored`) is a belt-and-
-//! braces guard: a stray `cargo test -- --ignored` cannot rewrite
-//! the goldens; the operator must explicitly opt in. The follow-up
-//! commit message convention is the same as the manual bless flow.
+//! The env-var requirement (on top of `--ignored`) is a second guard:
+//! a stray `cargo test -- --ignored` cannot rewrite the goldens; the
+//! operator must explicitly opt in. The follow-up commit message
+//! convention is the same as the manual bless flow.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 

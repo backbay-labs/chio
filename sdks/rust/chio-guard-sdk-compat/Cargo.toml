@@ -11,7 +11,7 @@ publish = false
 name = "chio_guard_sdk"
 
 [dependencies]
-chio_guard_sdk_workspace = { package = "chio-guard-sdk", path = "../../../crates/chio-guard-sdk" }
+chio_guard_sdk_workspace = { package = "chio-guard-sdk", path = "../../../crates/sdk/chio-guard-sdk" }
 
 # This compatibility package lives inside the repo tree but is intentionally not
 # a member of the root workspace. The empty table makes it its own standalone

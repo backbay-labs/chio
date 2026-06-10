@@ -10,10 +10,6 @@
 //!   an in-toto Statement carrying the local bilateral predicate. The resulting
 //!   `(ChioReceipt, DsseEnvelope)` pair is what a signature-slice verifier
 //!   consumes.
-//!
-//! ## What is **not** claimed
-//!
-//! ## Lane primitives consumed
 
 use std::error::Error as StdError;
 use std::path::PathBuf;
@@ -216,9 +212,7 @@ fn run(config: DemoConfig) -> Result<(), Box<dyn StdError>> {
         paths.checkpoint_json.display()
     );
 
-    // 7. Final assertion: at least one receipt was emitted. The
-    //    cross-org refund path emits the signed receipt below; the KB
-    //    MCP path appends one receipt for each tool call.
+    // The cross-org refund must produce an Allow receipt.
     if !matches!(receipt.decision, Some(Decision::Allow)) {
         return Err("scenario expects an Allow receipt for the refund".into());
     }
@@ -230,8 +224,8 @@ fn run(config: DemoConfig) -> Result<(), Box<dyn StdError>> {
 ///
 /// Carries `FinancialReceiptMetadata` so the receipt is eligible for IOU
 /// minting through `chio-credit::LocalCreditAccount` if a runner wires the
-/// hook (the demo prints the financial fields but does not run the
-/// underwriting hook in this slice).
+/// hook. The demo prints the financial fields but does not run the
+/// underwriting hook.
 fn build_refund_receipt(kp_org_b: &Keypair) -> Result<ChioReceipt, Box<dyn StdError>> {
     let financial = FinancialReceiptMetadata {
         grant_index: 0,
@@ -367,11 +361,9 @@ fn emit_anchor_statement(
     })
 }
 
-/// Helper used only for canonicalising the demo's checkpoint body before
-/// signing. Production code uses
-/// `chio_kernel::checkpoint::build_checkpoint`; this struct simply mirrors
-/// the same fields without the chio-kernel dep so the example crate stays
-/// thin.
+/// Canonicalises the checkpoint body before signing. Mirrors the field layout
+/// of `chio_kernel::checkpoint::build_checkpoint` without depending on
+/// chio-kernel.
 #[derive(serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 struct UnsignedCheckpointBody {
@@ -500,8 +492,8 @@ mod tests {
         let want = leaf_hash(&receipt_bytes);
         assert_eq!(statement.merkle_root, want);
 
-        // Also confirm raw SHA256 (the *previous*, non-RFC6962 convention)
-        // does NOT match. Guards against accidental regression.
+        // Raw SHA256 (the non-RFC6962 convention) must NOT match the root.
+        // Guards against regressing away from the leaf_hash convention.
         let mut raw = Sha256::new();
         raw.update(&receipt_bytes);
         let raw_bytes: [u8; 32] = raw.finalize().as_slice().try_into().unwrap();

@@ -3,9 +3,8 @@
 Flagship local-realism example for Chio-mediated agent commerce over the Chio
 web3 evidence stack.
 
-This example keeps the service-order story from the original web3 bundle, but
-promotes it into a four-organization topology where every default cross-org
-API or tool boundary is mediated by Chio:
+The example runs a service-order story across a four-organization topology
+where every default cross-org API or tool boundary is mediated by Chio:
 
 - Atlas Operator runs the treasury, procurement, settlement, and auditor agents.
 - ProofWorks Provider runs the provider agent and provider review tool.

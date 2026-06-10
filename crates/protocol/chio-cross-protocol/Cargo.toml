@@ -1,0 +1,24 @@
+[package]
+name = "chio-cross-protocol"
+description = "Shared cross-protocol bridge contracts and orchestrator runtime for Chio"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_cross_protocol"
+
+[dependencies]
+async-trait = { workspace = true }
+chio-core = { package = "chio-core-types", path = "../../core/chio-core-types" }
+chio-kernel = { workspace = true }
+chio-manifest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

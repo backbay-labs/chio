@@ -27,7 +27,7 @@ It exposes only the offline kernel surface:
 
 `Kernel::evaluate` returns a structured deny result when no backend is linked.
 With `CHIO_CPP_KERNEL_ENABLE_FFI=ON`, it calls the portable Rust kernel core
-through the narrow JSON C ABI exported by `crates/chio-cpp-kernel-ffi`.
+through the narrow JSON C ABI exported by `crates/sdk/chio-cpp-kernel-ffi`.
 Successful FFI-backed evaluations expose the matched capability grant index when
 the Rust response includes it, and also retain the original backend JSON in
 `EvaluateResult::raw_result_json` for consumers that need backend-specific

@@ -3,16 +3,16 @@
 // The full extension only runs inside a VSCode host, so these tests
 // pin the LSP client wiring helpers (`buildServerOptions`,
 // `buildClientOptions`, `buildDocumentSelector`) without booting an
-// editor. Diagnostic-flow assertions across the live `chio-lsp`
-// binary are wired in as a follow-on once a VSCode integration host
-// is available in CI.
+// editor. They do not exercise diagnostic flow across the live
+// `chio-lsp` binary, which requires a VSCode integration host.
 
 import { describe, expect, it } from "vitest";
 
-// `vscode-languageclient/node` reaches for `vscode` at module load
-// time. Vitest aliases the `vscode` import to `test/vscode_stub.ts`
-// (see `vitest.config.ts`) so the wiring helpers can be imported in a
-// plain node test runner.
+// These tests import only the pure wiring helpers, which never touch
+// `vscode` or `vscode-languageclient` at module load. The full client
+// (which reaches for `vscode` on load) is pulled in by a lazy require
+// inside `createLanguageClient`, which these tests do not call, so they
+// run under a plain node test runner.
 
 import {
     buildClientOptions,

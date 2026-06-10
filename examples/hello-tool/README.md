@@ -1,6 +1,6 @@
 # hello-tool
 
-This example is the maintained native-side landing zone for wrapped-MCP-to-native migration work.
+A native Chio service built directly on `NativeChioServiceBuilder`, without a wrapped MCP subprocess.
 
 ## What it shows
 
@@ -14,14 +14,10 @@ This example is the maintained native-side landing zone for wrapped-MCP-to-nativ
 
 ## Why this example exists
 
-The repo already has strong wrapped-MCP support through `chio mcp serve` and `chio mcp serve-http`.
-
-This example shows the next step after that adapter layer:
-
-1. keep the same policy and trust model
-2. move policy authoring to HushSpec for new work
-3. replace the wrapped subprocess with a native service value
-4. register that service with the kernel and edge surfaces
+A native Chio service registers tools, resources, and prompts directly with the
+kernel under the same policy and trust model as the wrapped-MCP adapters
+(`chio mcp serve` and `chio mcp serve-http`), with no wrapped subprocess. The
+migration map below pairs each wrapped-MCP shape with its native equivalent.
 
 ## Migration map
 
@@ -41,7 +37,7 @@ without requiring downstream users to copy a binary-only module.
 
 ## Pricing
 
-The `greet` tool now advertises manifest pricing:
+The `greet` tool advertises manifest pricing:
 
 - pricing model: `per_invocation`
 - quoted price: `25` minor units in `USD`

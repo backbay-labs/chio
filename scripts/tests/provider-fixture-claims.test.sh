@@ -13,11 +13,11 @@ from typing import Any
 
 root = Path(sys.argv[1])
 fixture_roots = [
-    root / "crates/chio-provider-conformance/fixtures/gemini",
-    root / "crates/chio-provider-conformance/fixtures/mistral",
-    root / "crates/chio-provider-conformance/fixtures/groq",
-    root / "crates/chio-provider-conformance/fixtures/ollama",
-    root / "crates/chio-provider-conformance/fixtures/cohere",
+    root / "crates/protocol/chio-provider-conformance/fixtures/gemini",
+    root / "crates/protocol/chio-provider-conformance/fixtures/mistral",
+    root / "crates/protocol/chio-provider-conformance/fixtures/groq",
+    root / "crates/protocol/chio-provider-conformance/fixtures/ollama",
+    root / "crates/protocol/chio-provider-conformance/fixtures/cohere",
 ]
 
 

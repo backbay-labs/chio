@@ -744,11 +744,11 @@ The `chio-api-protect` crate defines the following additional error conditions:
 
 | Component | Crate | Entry Point |
 | --- | --- | --- |
-| OpenAPI parser | `chio-openapi` | `crates/chio-openapi/src/parser.rs` |
-| Manifest generator | `chio-openapi` | `crates/chio-openapi/src/generator.rs` |
-| Extension vocabulary | `chio-openapi` | `crates/chio-openapi/src/extensions.rs` |
-| Default policy | `chio-openapi` | `crates/chio-openapi/src/policy.rs` |
-| Reverse proxy | `chio-api-protect` | `crates/chio-api-protect/src/proxy.rs` |
-| Request evaluator | `chio-api-protect` | `crates/chio-api-protect/src/evaluator.rs` |
-| Spec discovery | `chio-api-protect` | `crates/chio-api-protect/src/spec_discovery.rs` |
+| OpenAPI parser | `chio-openapi` | `crates/protocol/chio-openapi/src/parser.rs` |
+| Manifest generator | `chio-openapi` | `crates/protocol/chio-openapi/src/generator.rs` |
+| Extension vocabulary | `chio-openapi` | `crates/protocol/chio-openapi/src/extensions.rs` |
+| Default policy | `chio-openapi` | `crates/protocol/chio-openapi/src/policy.rs` |
+| Reverse proxy | `chio-api-protect` | `crates/products/chio-api-protect/src/proxy.rs` |
+| Request evaluator | `chio-api-protect` | `crates/products/chio-api-protect/src/evaluator.rs` |
+| Spec discovery | `chio-api-protect` | `crates/products/chio-api-protect/src/spec_discovery.rs` |
 | Convenience function | `chio-openapi` | `chio_openapi::tools_from_spec()` |

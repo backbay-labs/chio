@@ -2,7 +2,7 @@
 
 This document plans the full absorption of the upstream output sanitizer
 into Chio's post-invocation guard system. Chio already has a partial port at
-`crates/chio-guards/src/response_sanitization.rs`. The upstream implementation
+`crates/guards/chio-guards/src/response_sanitization.rs`. The upstream implementation
 is substantially richer. This doc inventories the gap, defines the refactoring
 plan, and proposes type signatures for the complete Chio-native version.
 
@@ -210,7 +210,7 @@ separate pre- and post-invocation pipelines, so these map naturally.
 
 ### 4.1 What Chio Has
 
-`crates/chio-guards/src/response_sanitization.rs` implements:
+`crates/guards/chio-guards/src/response_sanitization.rs` implements:
 
 - `SensitivityLevel` enum (Low/Medium/High) -- three tiers, no custom variant
 - `SensitivePattern` struct with name, regex, level, redaction string
@@ -223,7 +223,7 @@ separate pre- and post-invocation pipelines, so these map naturally.
 - `ScanResult` enum (Clean/Blocked/Redacted)
 - `build_pattern()` helper for custom patterns
 
-`crates/chio-guards/src/post_invocation.rs` implements:
+`crates/guards/chio-guards/src/post_invocation.rs` implements:
 
 - `PostInvocationVerdict` enum (Allow/Block/Redact/Escalate)
 - `PostInvocationHook` trait with `name()` and `inspect()` methods
@@ -453,7 +453,7 @@ fn sanitize_json_value(
 
 The watermarking system is orthogonal to sanitization but closely related
 to Chio's receipt system. Chio should absorb it into a new
-`crates/chio-guards/src/watermarking.rs` module (or potentially a standalone
+`crates/guards/chio-guards/src/watermarking.rs` module (or potentially a standalone
 `chio-watermark` crate if the dependency footprint warrants it).
 
 ### 7.2 Use Case: Receipt-Linked Content Watermarks
@@ -511,7 +511,7 @@ configurable per tool or per capability scope:
 ## 8. Type Signatures for the Complete Chio-Native Version
 
 These are the target types for the fully absorbed implementation in
-`crates/chio-guards/src/response_sanitization.rs`.
+`crates/guards/chio-guards/src/response_sanitization.rs`.
 
 ### 8.1 Core Types
 

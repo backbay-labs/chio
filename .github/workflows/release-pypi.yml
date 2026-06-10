@@ -272,9 +272,9 @@ jobs:
           pip install --quiet --upgrade pip
           # Install the wheel WITH its declared runtime deps: packages
           # like chio-airflow / chio-temporal / chio-crewai import their
-          # third-party deps at load time, so `--no-deps` produced a
-          # false ModuleNotFoundError even when the wheel itself was
-          # perfectly valid and would install correctly in production.
+          # third-party deps at load time, so `--no-deps` raises a
+          # ModuleNotFoundError on import even when the wheel itself is
+          # valid.
           # Slug-specific releases must resolve dependencies the way users
           # do: from PyPI. Meta tags and manual dry-runs are co-publish
           # shapes, so local sibling dependencies are built into wheels

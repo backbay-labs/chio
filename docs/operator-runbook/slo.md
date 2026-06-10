@@ -61,7 +61,7 @@ Not counted against Chio error budget:
 
 ## Metrics and Alerts
 
-The authoritative metric taxonomy lives in `crates/chio-metrics-spec`.
+The authoritative metric taxonomy lives in `crates/observability/chio-metrics-spec`.
 Operators should load the Prometheus rule pack under `deploy/prometheus/`:
 
 - `chio-recording-rules.yml` defines p95 latency and error-ratio series for

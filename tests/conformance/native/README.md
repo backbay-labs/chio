@@ -1,7 +1,6 @@
 # Chio Native Conformance
 
-This directory contains the native Chio conformance lane introduced in phase
-`314`.
+This directory contains the native Chio conformance lane.
 
 Structure:
 

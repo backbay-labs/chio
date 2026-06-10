@@ -5,12 +5,12 @@
 #
 # The adversarial mode auto-promotes a libFuzzer crash whose bytes decode
 # cleanly into a triage-pending case under
-# `crates/chio-adversarial-suite/cases/<class>/<sha>.json`. The placeholder
+# `crates/core/chio-adversarial-suite/cases/<class>/<sha>.json`. The placeholder
 # `expected_verdict` is `DENY` and `pending` is `true` until a human triager
 # confirms the verdict and strips the flag.
 #
 # Each test runs in a sandboxed temporary repo so it can mutate
-# fuzz/corpus, fuzz/owners.toml, and crates/chio-adversarial-suite/cases
+# fuzz/corpus, fuzz/owners.toml, and crates/core/chio-adversarial-suite/cases
 # without touching the live tree.
 #
 # This file is dual-runnable: `bats <file>` runs it as a Bats test suite,
@@ -34,8 +34,8 @@ setup() {
 
     SANDBOX="$(mktemp -d "${BATS_TMPDIR}/promote-adv.XXXXXX")"
     mkdir -p "${SANDBOX}/scripts" "${SANDBOX}/fuzz" \
-        "${SANDBOX}/crates/chio-wasm-guards/tests" \
-        "${SANDBOX}/crates/chio-adversarial-suite/cases"
+        "${SANDBOX}/crates/guards/chio-wasm-guards/tests" \
+        "${SANDBOX}/crates/core/chio-adversarial-suite/cases"
 
     # Stage the script under test inside the sandbox so its REPO_ROOT
     # resolution lands on the sandbox.
@@ -46,11 +46,11 @@ setup() {
     cat >"${SANDBOX}/fuzz/owners.toml" <<'EOF'
 [targets.wasm_guard_escape]
 crate = "chio-wasm-guards"
-path  = "crates/chio-wasm-guards"
+path  = "crates/guards/chio-wasm-guards"
 EOF
 
     # Stub Cargo.toml so the libfuzzer fallback path can run if invoked.
-    cat >"${SANDBOX}/crates/chio-wasm-guards/Cargo.toml" <<'EOF'
+    cat >"${SANDBOX}/crates/guards/chio-wasm-guards/Cargo.toml" <<'EOF'
 [package]
 name = "chio-wasm-guards"
 version = "0.0.0"
@@ -148,7 +148,7 @@ teardown() {
     [[ "$output" == *"adversarial"* ]]
 
     # Exactly one case file was emitted under the requested class.
-    case_file="$(find "${SANDBOX}/crates/chio-adversarial-suite/cases/clock_rewound" -type f -name '*.json' | head -n1)"
+    case_file="$(find "${SANDBOX}/crates/core/chio-adversarial-suite/cases/clock_rewound" -type f -name '*.json' | head -n1)"
     [ -n "${case_file}" ]
     [ -f "${case_file}" ]
 
@@ -168,8 +168,8 @@ teardown() {
     [ -f "${corpus_file}" ]
 
     # Adversarial mode must NOT emit a regression .rs file under the owner crate's tests.
-    if [ -d "${SANDBOX}/crates/chio-wasm-guards/tests" ]; then
-        ! find "${SANDBOX}/crates/chio-wasm-guards/tests" -name 'regression_*.rs' | grep -q .
+    if [ -d "${SANDBOX}/crates/guards/chio-wasm-guards/tests" ]; then
+        ! find "${SANDBOX}/crates/guards/chio-wasm-guards/tests" -name 'regression_*.rs' | grep -q .
     fi
 }
 
@@ -185,7 +185,7 @@ EOF
         --threat-id native_channel_replay
     [ "$status" -eq 0 ]
 
-    case_file="$(find "${SANDBOX}/crates/chio-adversarial-suite/cases/replayed_nonce" -type f -name '*.json' | head -n1)"
+    case_file="$(find "${SANDBOX}/crates/core/chio-adversarial-suite/cases/replayed_nonce" -type f -name '*.json' | head -n1)"
     [ -n "${case_file}" ]
     grep -q '"class": "replayed_nonce"' "${case_file}"
     grep -q '"threat_id": "native_channel_replay"' "${case_file}"
@@ -217,6 +217,6 @@ EOF
     [ "$status" -eq 0 ]
 
     # The case directory still has exactly one JSON file for that hash.
-    count="$(find "${SANDBOX}/crates/chio-adversarial-suite/cases/scope_superset" -type f -name '*.json' | wc -l | tr -d ' ')"
+    count="$(find "${SANDBOX}/crates/core/chio-adversarial-suite/cases/scope_superset" -type f -name '*.json' | wc -l | tr -d ' ')"
     [ "${count}" = "1" ]
 }

@@ -1,5 +1,4 @@
-// Demo org layout for the four-quadrant graph. Hardcoded ensemble; future
-// versions may derive this from topology.json once the schema stabilizes.
+// Demo org layout for the four-quadrant graph. Hardcoded ensemble.
 
 import type { Edge, Org, Topology } from "./types";
 
@@ -144,8 +143,7 @@ export function mergeTopology(bundleTopology: Topology): Topology {
       mergedOrgs[id] = base;
     }
   }
-  // If the bundle has extra orgs (not in the demo), drop them - they would not
-  // have layout coordinates. Future waves: coordinate assignment.
+  // Drop bundle orgs that are not in the demo set: they have no layout coordinates.
   const edges = Array.isArray(bundleTopology.edges) && bundleTopology.edges.length > 0
     ? bundleTopology.edges
     : DEMO_EDGES;

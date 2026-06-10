@@ -88,7 +88,7 @@ export interface BudgetSummary {
   authorizedExposureUnits?: number;
   realizedSpendUnits?: number;
   source?: string;
-  // Tolerate wei fields in case future orchestrator runs add them.
+  // Optional wei fields when the orchestrator emits them.
   delegated_wei?: string;
   remaining_wei?: string;
   [key: string]: unknown;

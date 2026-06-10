@@ -5,7 +5,7 @@
 #   1. `scripts/check-threat-coverage.sh` (file-existence gate):
 #      fails the build if any threat ID lacks a populated test
 #      body (the codegen stub at
-#      crates/chio-conformance/tests/threats/<id>.rs still calls
+#      crates/tooling/chio-conformance/tests/threats/<id>.rs still calls
 #      `unimplemented!()`) and is not explicitly marked
 #      `coverage_state: pending` (with a `deferred_to`),
 #      `coverage_state: partial`, or `coverage_state:
@@ -33,8 +33,8 @@ on:
     paths:
       - "spec/security/chio-threat-model.v1.json"
       - "spec/security/chio-threat-model.schema.json"
-      - "crates/chio-conformance/tests/threats/**"
-      - "crates/chio-spec-codegen/src/threat_model.rs"
+      - "crates/tooling/chio-conformance/tests/threats/**"
+      - "crates/tooling/chio-spec-codegen/src/threat_model.rs"
       - "scripts/check-threat-coverage.sh"
       - "scripts/check-threat-coverage-mutants.sh"
       - "scripts/tests/check-threat-coverage.test.sh"

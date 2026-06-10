@@ -791,7 +791,7 @@ The data layer guards live in a new `chio-data-guards` crate to keep the
 dependency on `sqlparser` isolated from the core `chio-guards` crate:
 
 ```
-crates/chio-data-guards/
+crates/guards/chio-data-guards/
   Cargo.toml
   src/
     lib.rs                  # Re-exports, module declarations

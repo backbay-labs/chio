@@ -14,80 +14,80 @@
 
 [targets.attest_verify]
 crate = "chio-attest-verify"
-path  = "crates/chio-attest-verify"
+path  = "crates/trust/chio-attest-verify"
 
 [targets.jwt_vc_verify]
 crate = "chio-credentials"
-path  = "crates/chio-credentials"
+path  = "crates/trust/chio-credentials"
 
 [targets.oid4vp_presentation]
 crate = "chio-credentials"
-path  = "crates/chio-credentials"
+path  = "crates/trust/chio-credentials"
 
 [targets.did_resolve]
 crate = "chio-did"
-path  = "crates/chio-did"
+path  = "crates/trust/chio-did"
 
 [targets.anchor_bundle_verify]
 crate = "chio-anchor"
-path  = "crates/chio-anchor"
+path  = "crates/economy/chio-anchor"
 
 [targets.mcp_envelope_decode]
 crate = "chio-mcp-edge"
-path  = "crates/chio-mcp-edge"
+path  = "crates/protocol/chio-mcp-edge"
 
 [targets.a2a_envelope_decode]
 crate = "chio-a2a-adapter"
-path  = "crates/chio-a2a-adapter"
+path  = "crates/protocol/chio-a2a-adapter"
 
 [targets.acp_envelope_decode]
 crate = "chio-acp-edge"
-path  = "crates/chio-acp-edge"
+path  = "crates/protocol/chio-acp-edge"
 
 [targets.wasm_preinstantiate_validate]
 crate = "chio-wasm-guards"
-path  = "crates/chio-wasm-guards"
+path  = "crates/guards/chio-wasm-guards"
 
 [targets.wit_host_call_boundary]
 crate = "chio-wasm-guards"
-path  = "crates/chio-wasm-guards"
+path  = "crates/guards/chio-wasm-guards"
 
 [targets.chio_yaml_parse]
 crate = "chio-config"
-path  = "crates/chio-config"
+path  = "crates/platform/chio-config"
 
 [targets.openapi_ingest]
 crate = "chio-openapi-mcp-bridge"
-path  = "crates/chio-openapi-mcp-bridge"
+path  = "crates/protocol/chio-openapi-mcp-bridge"
 
 [targets.receipt_log_replay]
 crate = "chio-kernel-core"
-path  = "crates/chio-kernel-core"
+path  = "crates/kernel/chio-kernel-core"
 
 [targets.eval_receipt_bundle]
 crate = "chio-eval-receipt"
-path  = "crates/chio-eval-receipt"
+path  = "crates/sdk/chio-eval-receipt"
 
 [targets.canonical_json]
 crate = "chio-core-types"
-path  = "crates/chio-core-types"
+path  = "crates/core/chio-core-types"
 
 [targets.capability_receipt]
 crate = "chio-core-types"
-path  = "crates/chio-core-types"
+path  = "crates/core/chio-core-types"
 
 [targets.manifest_roundtrip]
 crate = "chio-manifest"
-path  = "crates/chio-manifest"
+path  = "crates/platform/chio-manifest"
 
 [targets.revocation_oracle_merkle]
 crate = "chio-revocation-oracle"
-path  = "crates/chio-revocation-oracle"
+path  = "crates/trust/chio-revocation-oracle"
 
 [targets.federation_trust_establishment]
 crate = "chio-federation"
-path  = "crates/chio-federation"
+path  = "crates/trust/chio-federation"
 
 [targets.underwriting_policy_input]
 crate = "chio-underwriting"
-path  = "crates/chio-underwriting"
+path  = "crates/economy/chio-underwriting"

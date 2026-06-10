@@ -11,8 +11,8 @@ The Chio C++ surface ships as four sibling packages: the host SDKs under
 | `chio-drogon`    | `ChioDrogon::chio_drogon`          | `chio-drogon/0.1.0`  | `chio-drogon`     |
 
 Each SDK is independently versionable but shares the C ABI invariant boundary
-defined by `crates/chio-bindings-ffi` (used by `chio-cpp`) and
-`crates/chio-cpp-kernel-ffi` (used by `chio-cpp-kernel`). The stable package
+defined by `crates/sdk/chio-bindings-ffi` (used by `chio-cpp`) and
+`crates/sdk/chio-cpp-kernel-ffi` (used by `chio-cpp-kernel`). The stable package
 boundary for every SDK is native C++17 over a C ABI invariant layer; do not
 expose Rust structs, CXX bridge types, session handles, callback handles, or
 async runtime state as public API.

@@ -64,8 +64,8 @@ cargo build -p chio-bindings-ffi
 require_cbindgen="${CHIO_CPP_REQUIRE_CBINDGEN:-${CI:-}}"
 if command -v cbindgen >/dev/null 2>&1; then
   generated_header="${smoke_dir}/chio_ffi.h"
-  cbindgen crates/chio-bindings-ffi -o "${generated_header}"
-  compare_generated_header crates/chio-bindings-ffi/include/chio/chio_ffi.h "${generated_header}"
+  cbindgen crates/sdk/chio-bindings-ffi -o "${generated_header}"
+  compare_generated_header crates/sdk/chio-bindings-ffi/include/chio/chio_ffi.h "${generated_header}"
 elif [[ -n "${require_cbindgen}" && "${require_cbindgen}" != "0" ]]; then
   echo "cbindgen is required for chio_ffi.h freshness but is not on PATH" >&2
   exit 1
@@ -100,7 +100,7 @@ case "$(uname -s)" in
     extra_link+=("-ldl" "-lpthread" "-lm")
     ;;
 esac
-cc -I "${repo_root}/crates/chio-bindings-ffi/include" \
+cc -I "${repo_root}/crates/sdk/chio-bindings-ffi/include" \
   "${smoke_dir}/smoke.c" "${ffi_lib}" "${extra_link[@]}" \
   -o "${smoke_dir}/smoke"
 "${smoke_dir}/smoke"

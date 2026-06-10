@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="${ROOT}/target/release-qualification/mobile-kernel/ios"
 SWIFT_OUT="${OUT_DIR}/swift"
 FRAMEWORK_OUT="${OUT_DIR}/ChioKernel.xcframework"
-UDL="${ROOT}/crates/chio-kernel-mobile/src/chio_kernel_mobile.udl"
+UDL="${ROOT}/crates/kernel/chio-kernel-mobile/src/chio_kernel_mobile.udl"
 
 if [[ "${1:-}" == "--test-only" ]]; then
   bash -n "$0"

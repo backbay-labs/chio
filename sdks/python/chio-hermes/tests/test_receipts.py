@@ -166,7 +166,7 @@ def test_append_jsonl_no_torn_line_on_partial_write_crash(
     """`append_jsonl` must issue exactly one `fh.write` call: POSIX
     append-mode is atomic per write up to PIPE_BUF (~4 KiB), so a
     single write keeps the line whole even if the process is killed
-    mid-write. Two writes (the historical shape) would tear."""
+    mid-write. Two writes would tear the line."""
     log = tmp_path / "chio-receipts.jsonl"
     log.parent.mkdir(parents=True, exist_ok=True)
 

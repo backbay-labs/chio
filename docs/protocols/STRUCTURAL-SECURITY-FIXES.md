@@ -49,7 +49,7 @@ When `evaluate()` returns `Verdict::Allow`, the kernel issues a short-lived,
 single-use `ExecutionNonce` bound to that specific verdict. The tool server
 must present this nonce when the actual call arrives. The nonce is
 replay-protected via an LRU store (reusing the `DpopNonceStore` pattern from
-`crates/chio-kernel/src/dpop.rs`).
+`crates/kernel/chio-kernel/src/dpop.rs`).
 
 ### 1.3 Type Signatures
 

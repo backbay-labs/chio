@@ -141,7 +141,7 @@ jobs:
           - revocation_oracle_merkle
           - fuzz_tool_action
     steps:
-      # Cleanup C6: GHA `exit 0` only marks the step successful; it does
+      # GHA `exit 0` only marks the step successful; it does
       # not skip subsequent steps in the same job. Set a `selected` step
       # output that every later step gates on so a `workflow_dispatch`
       # with `inputs.target` set short-circuits all the non-matching

@@ -47,11 +47,11 @@ fuzz_target!(|data: &[u8]| {
 
     // Byte-level equality is the actual stated invariant: two
     // back-to-back `to_vec` passes over the same `ToolManifest` must
-    // emit byte-identical output. Drift here is the canonical-shape
-    // bug this target was authored to catch (object-key reordering,
-    // whitespace drift, optional-field flip-flop). We compare the raw
-    // byte strings, not their parses, so a re-encode that produces
-    // structurally-equal-but-not-byte-equal output FAILS this assert.
+    // emit byte-identical output. Drift here is a canonical-shape bug
+    // (object-key reordering, whitespace drift, optional-field
+    // flip-flop). Comparing the raw byte strings, not their parses,
+    // means a re-encode that is structurally-equal-but-not-byte-equal
+    // FAILS this assert.
     assert_eq!(
         reserialized, second_serialized,
         "manifest roundtrip drift (byte-level): repeated to_vec emitted different bytes"

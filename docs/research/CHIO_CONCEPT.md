@@ -155,13 +155,13 @@ A finance-domain participant might call its Sensor an "Oracle" and its Adversari
 
 1. Local Pouncer asks local Tom for a destructive-response receipt.
 2. If the action affects a peer's domain (for example, revoking a credential the peer issued), the request is escalated to bilateral co-signing.
-3. Both kernels independently evaluate the request; both sign the same canonical body via [chio-federation::bilateral](../../crates/chio-federation/src/bilateral.rs).
+3. Both kernels independently evaluate the request; both sign the same canonical body via [chio-federation::bilateral](../../crates/trust/chio-federation/src/bilateral.rs).
 4. Either party can verify the action retrospectively from its own receipt store; neither party can rewrite the joint history.
 5. A workflow receipt captures the full joint multi-step plan, signed by both kernels at the boundary tick.
 
 **Cross-org task allocation** (Market mode, not committee):
 
-1. A participant publishes a [BidRequest](../../crates/chio-open-market/src/bidding.rs) for a hunt, investigation, or response action.
+1. A participant publishes a [BidRequest](../../crates/economy/chio-open-market/src/bidding.rs) for a hunt, investigation, or response action.
 2. Peers respond with AskResponses; pricing reflects local cost and confidence.
 3. The requester signs an AcceptedBid; the AcceptedBid mints a scoped capability for the awarded peer.
 4. The peer executes under the capability lease; the workflow receipt produces a complete trace.
@@ -170,10 +170,10 @@ A finance-domain participant might call its Sensor an "Oracle" and its Adversari
 **Compromised peer expulsion** (Sanction case + revocation gossip):
 
 1. Evidence of misbehaviour accumulates in the local receipt store.
-2. A [chio-governance](../../crates/chio-governance/src/lib.rs) Sanction case is filed with named evidence (signed listings, prior trust activations, operator reports).
+2. A [chio-governance](../../crates/trust/chio-governance/src/lib.rs) Sanction case is filed with named evidence (signed listings, prior trust activations, operator reports).
 3. Any third party can replay the case from the evidence and reach the same finding (no vote required).
-4. On enforcement, the [passport revocation bridge](../../crates/chio-revocation-oracle/src/passport_bridge.rs) flips the peer's passport state.
-5. The next [revocation oracle epoch](../../crates/chio-revocation-oracle/src/epoch.rs) root carries the change; bilateral [revocation gossip](../../crates/chio-federation/src/revocation_gossip.rs) propagates pairwise.
+4. On enforcement, the [passport revocation bridge](../../crates/trust/chio-revocation-oracle/src/passport_bridge.rs) flips the peer's passport state.
+5. The next [revocation oracle epoch](../../crates/trust/chio-revocation-oracle/src/epoch.rs) root carries the change; bilateral [revocation gossip](../../crates/trust/chio-federation/src/revocation_gossip.rs) propagates pairwise.
 6. Kernels fail-closed against the revoked peer at next verdict, freshness-gated to prevent permanent contagion from transient gossip outages.
 
 **Partition contingency** (rare; copy STS's pattern verbatim):
@@ -224,7 +224,7 @@ Required surface:
 
 ### 4.2 Action-Class to Governance-Mode Mapping (with consistency model)
 
-Specify which action classes map to which governance modes, declared as a per-participant **governance ladder manifest** signed and pinned at federation handshake time. [chio-governance](../../crates/chio-governance/src/lib.rs) has dispute / freeze / sanction / appeal cases but does not yet stratify governance intensity by action class.
+Specify which action classes map to which governance modes, declared as a per-participant **governance ladder manifest** signed and pinned at federation handshake time. [chio-governance](../../crates/trust/chio-governance/src/lib.rs) has dispute / freeze / sanction / appeal cases but does not yet stratify governance intensity by action class.
 
 The manifest declares, per action class: `mode` (Observation / Guarded / Receipt-backed / Partition-contingency / Maintenance), `destructive` (boolean; destructive must be at or above the declared `destructive_floor`), `cross_org_visibility`, `evidence_required`, `co_sign` (`none` / `bilateral_if_cross_org` / `bilateral_required` / `n_of_m`), optional `partition_fallback` with `lease_kind`, `blast_radius_cap`, and TTL.
 
@@ -267,7 +267,7 @@ DAOs are voting systems bolted onto treasuries. Chio has no token, no electorate
 
 ### vs. Multi-Agent Frameworks (CrewAI, AutoGen, LangGraph)
 
-These coordinate task execution within a single trust boundary. Chio is the trust-boundary protocol; it composes orthogonally with any of them. A participant kernel could use LangGraph internally and still join a chio via [chio-tower](../../crates/chio-tower/src/lib.rs) middleware.
+These coordinate task execution within a single trust boundary. Chio is the trust-boundary protocol; it composes orthogonally with any of them. A participant kernel could use LangGraph internally and still join a chio via [chio-tower](../../crates/protocol/chio-tower/src/lib.rs) middleware.
 
 ### vs. Agent-to-Agent Payment Protocols (x402, ACP)
 
@@ -275,11 +275,11 @@ Payment protocols move money between agents. Chio manages the institutional cont
 
 ### vs. Sigstore / in-toto / SLSA for runtime attestation
 
-Sigstore + in-toto + SLSA today are artifact-centric: build provenance signed by builder identity, anchored in Rekor's transparency log. Chio uses Sigstore today for release-artifact verification ([chio-attest-verify](../../crates/chio-attest-verify/src/lib.rs)).
+Sigstore + in-toto + SLSA today are artifact-centric: build provenance signed by builder identity, anchored in Rekor's transparency log. Chio uses Sigstore today for release-artifact verification ([chio-attest-verify](../../crates/trust/chio-attest-verify/src/lib.rs)).
 
 The in-toto attestation working group has active discussion (OpenSSF AI/ML Security WG, CoSAI Workstream 4) about extending to runtime invocation receipts. The predicate-shaped slice ("agent A invoked tool B with args C at time T, signed by builder identity") is likely 6-12 months out via someone like Microsoft's Agent Governance Toolkit or a CoSAI WS4 spinout. **The structural slice is durable**, not temporal: bilateral co-signed *intent* (both parties independently evaluated and signed the same canonical body), per-action attenuated capability scoping, workflow receipts as joint multi-party plans, and evidence-referential governance over a lineage DAG are different questions than transparency-log-anchored single-party signatures. Co-signing on top of Rekor is possible (DSSE multi-sig + custom predicate), but the predicate, the verifier, the capability binding, and the dispute model are not what Sigstore ships.
 
-The right posture: **reposition the chio cross-vendor pitch around the structural slice that does not collapse**, and treat Rekor anchoring as a free integration win (write chio receipt DSSE envelopes to Rekor v2 for public tamper-evidence; the inverse path of [chio-attest-verify::sigstore](../../crates/chio-attest-verify/src/sigstore.rs) is small). Engage Aditya Sirish A Yelgundhalli (in-toto), Tom Hennen (SLSA), and the CoSAI WS4 / OpenSSF AI/ML WG early on a "bilateral co-signed invocation" predicate proposal: either chio's semantics get into the in-toto vocabulary, or the structural gap gets confirmed in writing.
+The right posture: **reposition the chio cross-vendor pitch around the structural slice that does not collapse**, and treat Rekor anchoring as a free integration win (write chio receipt DSSE envelopes to Rekor v2 for public tamper-evidence; the inverse path of [chio-attest-verify::sigstore](../../crates/trust/chio-attest-verify/src/sigstore.rs) is small). Engage Aditya Sirish A Yelgundhalli (in-toto), Tom Hennen (SLSA), and the CoSAI WS4 / OpenSSF AI/ML WG early on a "bilateral co-signed invocation" predicate proposal: either chio's semantics get into the in-toto vocabulary, or the structural gap gets confirmed in writing.
 
 ---
 
@@ -321,13 +321,13 @@ Re-ordered in v1.1 by load-bearing impact on near-term work.
 
 5. **Reputation-poisoning attack surface.** Receiver-side reputation-weighted concentration is the same surface 15+ years of collaborative-IDS literature targets (Fung & Boutaba BTrM, Hoffman-Zage-Nita-Rotaru CSUR 2009 taxonomy, Fang et al. USENIX 2020 on Krum/median brittleness, more recent FL-poisoning surveys). Concrete defenses by layer: chio-pheromone owns Cheng-Friedman sqrt(N) passport-key cap per kernel, per-pair token bucket, observation-cost commitment field, newcomer age-discount; chio-reputation owns asymmetric EWMA (penalty rate >> reward rate per Buchegger-Boudec), confidence-variance weighting, collusion-cluster Jaccard penalty; chio-arena owns replayable-precision adversary scoring exported as a multiplicative reputation factor.
 
-6. **Multi-party (more than two) joint signature semantics.** Bilateral trees with path-cover predicate are the recommended default; FROST-aggregated Ed25519 over a canonical body is the opt-in for action classes declared `quorum-required` in the governance ladder manifest. Smallest validating experiment: a 3-party fixture in `crates/chio-federation/tests/` reusing the existing `InProcessCoSigner` to drive A-B over R1 and B-C over a parent R2 referencing R1's hash, with a `verify_joint_commit(set, root)` helper that walks the DAG.
+6. **Multi-party (more than two) joint signature semantics.** Bilateral trees with path-cover predicate are the recommended default; FROST-aggregated Ed25519 over a canonical body is the opt-in for action classes declared `quorum-required` in the governance ladder manifest. Smallest validating experiment: a 3-party fixture in `crates/trust/chio-federation/tests/` reusing the existing `InProcessCoSigner` to drive A-B over R1 and B-C over a parent R2 referencing R1's hash, with a `verify_joint_commit(set, root)` helper that walks the DAG.
 
 7. **Trust anchor bootstrap, see section 2.5.** Bilateral handshakes still need an out-of-band root. The protocol layer cannot solve this; operational design per sector is required.
 
 8. **Discovery gossip without leakage.** Listings are local-by-default. The federation needs a gossip layer for cross-org discovery that does not leak each org's full tool surface to every peer. Reusing the bilateral revocation-gossip pattern, scoped per-treaty, is the leading direction.
 
-9. **Reputation epoch-pinning.** Two peers with divergent receipt corpora compute divergent reputation scores. Anchor reputation to a named epoch ([chio-anchor](../../crates/chio-anchor/src/lib.rs)) so cross-peer comparison is always epoch-qualified.
+9. **Reputation epoch-pinning.** Two peers with divergent receipt corpora compute divergent reputation scores. Anchor reputation to a named epoch ([chio-anchor](../../crates/economy/chio-anchor/src/lib.rs)) so cross-peer comparison is always epoch-qualified.
 
 10. **Jurisdiction.** Bilateral co-signing helps (each side has a court-admissible artefact in its own jurisdiction), but the legal structure for cross-org chio still needs careful design per domain.
 

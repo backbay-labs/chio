@@ -24,7 +24,7 @@ tightens three research-era gaps deliberately:
    automation or HA anchoring infrastructure without widening operator trust.
 
 The compiled interface artifacts under `contracts/artifacts/interfaces/` are
-also the canonical binding input for `crates/chio-web3-bindings/`. Chio now
+also the canonical binding input for `crates/economy/chio-web3-bindings/`. Chio now
 derives the Rust Alloy surface from those compiled interface artifacts instead
 of maintaining a second handwritten contract interface inventory.
 

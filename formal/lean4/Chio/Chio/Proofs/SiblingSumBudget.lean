@@ -1,5 +1,5 @@
 /-
-  Sibling-sum budget soundness (W1.2).
+  Sibling-sum budget soundness.
 
   Models `theorem.budget.sibling_sum_soundness`: a parent capability with
   share `s_p` cannot mint a set of children whose admitted shares sum to
@@ -17,9 +17,9 @@
 
   The Lean toolchain is currently unavailable in CI, so the manifest
   status for this theorem is `assumed`. The Rust shell is exercised by
-  `crates/chio-conformance/tests/budget_split_rejects_oversubscribed_siblings.rs`
+  `crates/tooling/chio-conformance/tests/budget_split_rejects_oversubscribed_siblings.rs`
   and the cross-hop case by
-  `crates/chio-conformance/tests/budget_split_cross_hop_rejects_amplification.rs`.
+  `crates/tooling/chio-conformance/tests/budget_split_cross_hop_rejects_amplification.rs`.
   The protocol-side check is implemented in
   `chio_kernel_core::budget_split::BudgetSplit::try_admit_child`.
 -/
@@ -66,7 +66,7 @@ theorem admit_first_child_under_cap_admits
   simp [BudgetSplit.totalChild]
   exact h
 
-/-- The W1.2 attack scenario: parent at 5000 bps already admitted a
+/-- Attack scenario: parent at 5000 bps already admitted a
     child at 4000 bps. A second child at 4000 bps is rejected because
     4000 + 4000 = 8000 > 5000. -/
 theorem admit_second_oversubscribed_sibling_rejected :
@@ -91,7 +91,7 @@ theorem sibling_sum_soundness
 
 /-- Cross-hop composition: when `admitChild` admits, the sum-after
     bound carries through to `(s.childShares ++ [proposed]).foldl`.
-    Closes the W1.2 cross-hop amplification attack: even if individual
+    Closes the cross-hop amplification attack: even if individual
     grandchild shares are below the cap, their sum cannot exceed the
     intermediate parent's admitted share. -/
 theorem sibling_sum_after_admit_bounded

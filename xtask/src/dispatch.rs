@@ -10,9 +10,9 @@ use crate::XtaskError;
 use crate::{crate_paths, eval_receipt_regen};
 use crate::{errors_regen, freeze_vectors, run_codegen, run_snippets, validate_scenarios};
 
-/// Translate the parsed clap command into the existing handler calls. Leaf
-/// aliases and their `gen ...` equivalents route to the identical handler, so
-/// behavior is byte-for-byte preserved. Noun-group reserved leaves fail closed.
+/// Translate the parsed clap command into a handler call. A flat leaf alias and
+/// its `gen ...`/`check ...`/`qualify ...` equivalent route to the same handler.
+/// Noun-group reserved leaves fail closed.
 pub(crate) fn dispatch(command: cli::Command) -> Result<(), XtaskError> {
     match command {
         // -- gen group --
@@ -39,7 +39,7 @@ pub(crate) fn dispatch(command: cli::Command) -> Result<(), XtaskError> {
         cli::Command::Qualify { command } => match command {
             QualifyCommand::BoundedChio => qualify::run("bounded-chio"),
         },
-        // -- noun-group parents: leaves land in a later phase (fail closed) --
+        // -- noun-group parents with no implemented leaves (fail closed) --
         cli::Command::Verify { .. }
         | cli::Command::Fuzz { .. }
         | cli::Command::Mutants { .. }
@@ -48,7 +48,7 @@ pub(crate) fn dispatch(command: cli::Command) -> Result<(), XtaskError> {
         | cli::Command::Tools { .. } => Err(XtaskError::Usage(
             "this command group has no implemented subcommands yet".into(),
         )),
-        // -- back-compat leaf aliases (identical handlers) --
+        // -- flat leaf aliases (same handlers as the noun-group leaves) --
         cli::Command::ValidateScenarios => validate_scenarios(Vec::new()),
         cli::Command::FreezeVectors { check } => freeze_vectors(check_argv(check)),
         cli::Command::EvalReceiptRegen { check } => eval_receipt_regen::run(check_argv(check)),
@@ -62,12 +62,10 @@ pub(crate) fn dispatch(command: cli::Command) -> Result<(), XtaskError> {
     }
 }
 
-/// Rebuild the `Vec<String>` argv that `run_codegen` already parses, so its
-/// in-function flag handling (`xtask/src/main.rs` `run_codegen`) is reused
-/// verbatim. Accepts exactly one language selector: the positional form
-/// (preserving the `codegen rust` spelling stamped into generated headers) or
-/// the `--lang` flag form. Supplying both is rejected so a stray flag cannot
-/// silently override the positional argument.
+/// Build the `Vec<String>` argv that `run_codegen` parses. Accepts exactly one
+/// language selector: the positional form (the `codegen rust` spelling stamped
+/// into generated headers) or the `--lang` flag form. Supplying both is rejected
+/// so a stray flag cannot silently override the positional argument.
 pub(crate) fn codegen_argv(args: &CodegenArgs) -> Result<Vec<String>, XtaskError> {
     let mut out = Vec::new();
     match (args.lang_positional, args.lang_flag) {

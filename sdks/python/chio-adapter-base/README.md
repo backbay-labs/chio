@@ -154,14 +154,12 @@ from chio_adapter_base import (
 )
 ```
 
-## Migration story
+## Floor-pin matrix
 
-The "Where to redact" comparison table, the decision tree, and the
-helper selection above subsume the original step-by-step migration
-plan. The current floor-pin matrix is:
+Choose a `chio-adapter-base` floor pin by which helpers an adapter calls:
 
 - Adapters that already adopted `bind_and_redact` and want the v0.2.0
-  helper hardening (today: `chio-prefect 0.1.2` per PR #679) pin
+  helper hardening (currently `chio-prefect 0.1.2`) pin
   `chio-adapter-base>=0.2.0,<0.3` once the 0.2.0 package is
   published, or when their workspace resolver maps that pin to the
   in-repo package path.
@@ -176,11 +174,9 @@ adapter-author recipe for bumping a floor pin from 0.1.x to 0.2.0.
 
 ## Design notes
 
-- Each primitive has a docstring pointing at the `chio-hermes` source
-  it is being ported from, so the source-of-truth path is unambiguous
-  during the migration.
+- Each primitive's docstring names the corresponding `chio-hermes`
+  source, so the source-of-truth path is unambiguous.
 - The package depends only on `chio-sdk-python`. It must NOT depend on
   `chio-hermes` (circular) or on any sibling adapter.
-- No `_underscore_prefixed` names in the public API. Consumers were
-  expected to know that `_sanitised_env` was a contract; we are
-  fixing that bug as we extract.
+- No `_underscore_prefixed` names in the public API: a contract must not
+  hide behind a name that signals "private" to consumers.

@@ -13,7 +13,7 @@ sidecar protocol is defined in `spec/HTTP-SUBSTRATE.md`.
 
 ## 1. chio-tower (Rust)
 
-**Location:** `crates/chio-tower`
+**Location:** `crates/protocol/chio-tower`
 
 A `tower::Layer` that wraps any Tower-compatible HTTP service with Chio
 capability validation and receipt signing. Works with Axum (HTTP) and

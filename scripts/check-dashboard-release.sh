@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
-source_dir="${repo_root}/crates/chio-cli/dashboard"
+source_dir="${repo_root}/crates/products/chio-cli/dashboard"
 work_dir="$(mktemp -d "${TMPDIR:-/tmp}/chio-dashboard-release.XXXXXX")"
 dashboard_dir="${work_dir}/dashboard"
 

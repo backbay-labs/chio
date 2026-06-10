@@ -5,7 +5,7 @@
 (*                                                                          *)
 (* The broken Revoke action below only flips can_allow for the root cap,   *)
 (* not for transitive descendants. This mirrors the "shallow revoke" bug   *)
-(* the new property is supposed to catch. Apalache MUST find a              *)
+(* RevocationCutCompleteness is meant to catch. Apalache MUST find a        *)
 (* counterexample if the property is sound.                                *)
 (***************************************************************************)
 

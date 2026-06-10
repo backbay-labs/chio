@@ -3,9 +3,9 @@ name: Chio Pheromone Transit
 on:
   pull_request:
     paths:
-      - "crates/chio-pheromone/**"
-      - "crates/chio-federation/src/pheromone_gossip.rs"
-      - "crates/chio-federation/tests/pheromone_gossip.rs"
+      - "crates/trust/chio-pheromone/**"
+      - "crates/trust/chio-federation/src/pheromone_gossip.rs"
+      - "crates/trust/chio-federation/tests/pheromone_gossip.rs"
       - "examples/chio-3vendor/**"
       - "spec/CHIO_PHEROMONE.md"
       - "spec/schemas/chio-pheromone/**"
@@ -17,9 +17,9 @@ on:
     branches:
       - main
     paths:
-      - "crates/chio-pheromone/**"
-      - "crates/chio-federation/src/pheromone_gossip.rs"
-      - "crates/chio-federation/tests/pheromone_gossip.rs"
+      - "crates/trust/chio-pheromone/**"
+      - "crates/trust/chio-federation/src/pheromone_gossip.rs"
+      - "crates/trust/chio-federation/tests/pheromone_gossip.rs"
       - "examples/chio-3vendor/**"
       - "spec/CHIO_PHEROMONE.md"
       - "spec/schemas/chio-pheromone/**"

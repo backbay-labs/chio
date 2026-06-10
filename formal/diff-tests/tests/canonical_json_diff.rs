@@ -3,7 +3,7 @@
 //! Differential proptest harness for RFC 8785 (JSON Canonicalization Scheme).
 //!
 //! Cross-checks `chio_core::canonical::canonicalize` (the production
-//! canonicalizer in `crates/chio-core-types/src/canonical.rs`) against an
+//! canonicalizer in `crates/core/chio-core-types/src/canonical.rs`) against an
 //! independently-implemented oracle defined in this file. The oracle is a
 //! deliberately small, separately-derived implementation of RFC 8785 that
 //! exercises a subset of the production code paths (no f64 ryu shortest-form;
@@ -65,7 +65,7 @@ fn config() -> ProptestConfig {
 /// agreement well-defined: the production canonicalizer uses ryu for f64
 /// shortest-form, which we do not re-implement in the oracle. Floating-point
 /// edge cases (-0, 1e21, 5e-324, 9007199254740993) are exercised by hand in
-/// `crates/chio-core-types/src/canonical.rs::tests` and by the canonical-JSON
+/// `crates/core/chio-core-types/src/canonical.rs::tests` and by the canonical-JSON
 /// vector corpus under `tests/bindings/vectors/canonical/v1.json`.
 fn arbitrary_json_value() -> impl Strategy<Value = Value> {
     let leaf = prop_oneof![

@@ -18,20 +18,6 @@ The package depends on public APIs from:
 - `chio-manifest` for the tool manifest projected into ACP capability
   advertisements.
 
-## Current Pain Points
-
-- `src/main.rs` mixes manifest construction, kernel setup, capability issuance,
-  JSON-RPC serving, argument parsing, and tests in one binary-only module.
-- The smoke script proves the process path, but the package has no direct test
-  for the ACP JSON-RPC lifecycle even though `ChioAcpEdge::handle_jsonrpc` is a
-  synchronous package boundary.
-- `HelloToolServer` ignores the selected tool name for both blocking and
-  streaming calls. The kernel should route only registered tools, but the
-  example should still model a self-defensive fail-closed tool server.
-- The important teaching contract is that `tool/stream` creates a
-  receipt-pending deferred task and `tool/resume` resolves it through the
-  receipt-bearing kernel path. Today that is only asserted by the smoke script.
-
 ## Security And API Constraints
 
 - Preserve the server id `hello-acp-srv`, capability/tool id `hello_tool`,
@@ -41,9 +27,14 @@ The package depends on public APIs from:
 - Preserve kernel-mediated authorization. The example must not bypass
   capability validation, guard execution, receipt signing, revocation, budget,
   approval, runtime assurance, or cross-protocol orchestration paths.
+- As a protocol-edge reference, `HelloToolServer` self-defends its registration
+  boundary on both blocking and streaming paths even though the kernel routes
+  only registered tools.
+- `tool/stream` creates a receipt-pending deferred task and `tool/resume`
+  resolves it through the receipt-bearing kernel path.
 - Preserve deferred task ownership semantics and the `receiptPending` metadata
   on working task responses.
-- Do not change `chio-acp-edge` public APIs from this example slice.
+- Do not change `chio-acp-edge` public APIs from this example.
 
 ## Affected Dependents
 
@@ -52,16 +43,4 @@ flow: `examples/README.md`, `examples/EXAMPLE_SURFACE_MATRIX.md`,
 `examples/run-hello-smokes.sh`, and any operator running
 `examples/hello-acp/smoke.sh`.
 
-No downstream crate should require code changes. If the package split exposes a
-Cargo target issue, the fix should stay inside `examples/hello-acp`.
-
-## Planned Improvement
-
-Move demo state construction, capability-listing support, JSON-RPC serving, and
-mode dispatch into `src/lib.rs`; leave `src/main.rs` as a thin process wrapper.
-Add tests that exercise the authoritative ACP list/invoke/stream/resume
-lifecycle directly through `ChioAcpEdge::handle_jsonrpc`, prove stdio response
-framing, and prove the demo tool server rejects unknown tool names on both
-blocking and streaming paths. This is architectural because it separates the ACP
-edge contract from process presentation and makes the deferred receipt lifecycle
-a package-local invariant.
+No downstream crate requires code changes for this example.

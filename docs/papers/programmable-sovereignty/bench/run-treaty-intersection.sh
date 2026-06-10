@@ -33,8 +33,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-chio-runtime-core = { path = "$SOURCE/crates/chio-runtime-core" }
-chio-core-types = { path = "$SOURCE/crates/chio-core-types" }
+chio-runtime-core = { path = "$SOURCE/crates/kernel/chio-runtime-core" }
+chio-core-types = { path = "$SOURCE/crates/core/chio-core-types" }
 EOF
 
 mkdir -p "$WORK_DIR/src"

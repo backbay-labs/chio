@@ -2,7 +2,7 @@
 
 Operations evidence in the repository includes the audit-log export
 schema (`spec/audit-log/export-schema.v1.json`), the receipt pipeline
-(`crates/chio-kernel/src/receipt_store.rs`), and hosted CI
+(`crates/kernel/chio-kernel/src/receipt_store.rs`), and hosted CI
 (`.github/workflows/ci.yml`).
 
 This family is self-assessed as partial: schema, receipts, and CI exist,

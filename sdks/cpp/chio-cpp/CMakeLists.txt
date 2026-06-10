@@ -21,7 +21,7 @@ if(NOT EXISTS "${CHIO_CPP_REPO_ROOT}/Cargo.toml")
     FORCE
   )
 endif()
-set(CHIO_CPP_FFI_INCLUDE_DIR "${CHIO_CPP_REPO_ROOT}/crates/chio-bindings-ffi/include")
+set(CHIO_CPP_FFI_INCLUDE_DIR "${CHIO_CPP_REPO_ROOT}/crates/sdk/chio-bindings-ffi/include")
 
 set(CHIO_CPP_RUST_DEBUG_LIB
   "${CHIO_CPP_REPO_ROOT}/target/debug/${CMAKE_STATIC_LIBRARY_PREFIX}chio_bindings_ffi${CMAKE_STATIC_LIBRARY_SUFFIX}"

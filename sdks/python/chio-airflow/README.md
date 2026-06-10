@@ -4,8 +4,8 @@ Apache Airflow integration for the [Chio protocol](../../../spec/PROTOCOL.md).
 Wraps the two operator surfaces Airflow exposes (classic
 `BaseOperator` subclasses and the TaskFlow API) so every task run is
 capability-checked via the Chio sidecar kernel, denied tasks fail with
-`AirflowException` whose `__cause__` is a `PermissionError` (per
-roadmap 17.3), and receipt ids are pushed into XCom so downstream
+`AirflowException` whose `__cause__` is a `PermissionError`, and receipt
+ids are pushed into XCom so downstream
 tasks and the DAG listener can aggregate them into a workflow-level
 trail.
 

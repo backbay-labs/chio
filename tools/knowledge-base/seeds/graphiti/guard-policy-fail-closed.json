@@ -6,17 +6,17 @@
   "body": {
     "summary": "Guard and policy work should route through native guard pipeline behavior, policy validation and compiler code, and fail-closed tests. Guard denial and redaction evidence must remain connected to receipt and conformance surfaces.",
     "authoritative_files": [
-      "crates/chio-guards/src/pipeline.rs",
-      "crates/chio-guards/src/lib.rs",
-      "crates/chio-kernel/src/kernel/evaluator.rs",
-      "crates/chio-policy/src/validate.rs",
-      "crates/chio-policy/src/evaluate/engine.rs"
+      "crates/guards/chio-guards/src/pipeline.rs",
+      "crates/guards/chio-guards/src/lib.rs",
+      "crates/kernel/chio-kernel/src/kernel/evaluator.rs",
+      "crates/guards/chio-policy/src/validate.rs",
+      "crates/guards/chio-policy/src/evaluate/engine.rs"
     ],
     "tests": [
-      "crates/chio-guards/tests/integration.rs",
-      "crates/chio-guards/tests/output_sanitization.rs",
-      "crates/chio-policy/tests/compile_policy.rs",
-      "crates/chio-policy/tests/validate_boundary.rs"
+      "crates/guards/chio-guards/tests/integration.rs",
+      "crates/guards/chio-guards/tests/output_sanitization.rs",
+      "crates/guards/chio-policy/tests/compile_policy.rs",
+      "crates/guards/chio-policy/tests/validate_boundary.rs"
     ],
     "constraints": [
       "Invalid policies reject at load time.",

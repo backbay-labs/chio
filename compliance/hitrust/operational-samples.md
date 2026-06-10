@@ -29,7 +29,7 @@ evidence channel, never committed to this repository.
 ## Public evidence (in-repo)
 
 - Audit-log schema: `spec/audit-log/export-schema.v1.json`
-- Receipt store implementation: `crates/chio-kernel/src/receipt_store.rs`
+- Receipt store implementation: `crates/kernel/chio-kernel/src/receipt_store.rs`
 - Scope boundary: `compliance/hitrust/scope-boundary.md`
 
 ## Fail-closed rule

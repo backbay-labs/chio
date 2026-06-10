@@ -3,8 +3,8 @@ name: Chio Pheromone Directory Lifecycle
 on:
   pull_request:
     paths:
-      - "crates/chio-pheromone-relay/**"
-      - "crates/chio-cli/**"
+      - "crates/trust/chio-pheromone-relay/**"
+      - "crates/products/chio-cli/**"
       - "examples/chio-3vendor/**"
       - "docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md"
       - "docs/release/chio-pheromone-relay/**"
@@ -16,8 +16,8 @@ on:
   push:
     branches: [main]
     paths:
-      - "crates/chio-pheromone-relay/**"
-      - "crates/chio-cli/**"
+      - "crates/trust/chio-pheromone-relay/**"
+      - "crates/products/chio-cli/**"
       - "examples/chio-3vendor/**"
       - "docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md"
       - "docs/release/chio-pheromone-relay/**"

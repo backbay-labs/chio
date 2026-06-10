@@ -17,7 +17,7 @@ in three places: (1) the relationship between `00-overview.md` and
 the two files; (2) the three-ACPs naming warning carried in v1 is not
 propagated forward into v2, and doc 02 still names the AGNTCY bridge
 `chio-bridge-acp` (which would collide with the existing Zed
-`crates/chio-acp-edge`); and (3) the `tool_origin` field is described
+`crates/protocol/chio-acp-edge`); and (3) the `tool_origin` field is described
 three incompatible ways across docs 12, 13, 15, and the v2 overview. Em
 dashes slipped into both overviews despite the CLAUDE.md ban.
 
@@ -343,6 +343,6 @@ bench-stub PR ordering. None repeat round-1 items.
    `chio-bridge-acp`** (`02-decentralized-agent-networks.md:132, 243`),
    which v1's naming warning forbade and doc 08 explicitly retracts -
    the `chio-acp-*` namespace already belongs to Zed ACP in
-   `crates/chio-acp-edge`.
+   `crates/protocol/chio-acp-edge`.
 3. Path:
    this file.

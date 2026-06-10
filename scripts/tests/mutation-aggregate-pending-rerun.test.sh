@@ -42,7 +42,7 @@ cat > "$evidence_dir/2026-05-08-post-gap-closure.json" <<'JSON'
   "crate": "chio-attest-verify",
   "result_label": "PENDING-RERUN",
   "test_scope": "package-only (--test-package chio-attest-verify)",
-  "examine_scope": "full-crate (crates/chio-attest-verify/src/**)",
+  "examine_scope": "full-crate (crates/trust/chio-attest-verify/src/**)",
   "target_met": null
 }
 JSON

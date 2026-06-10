@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-source_file="crates/chio-kernel-core/src/formal_aeneas.rs"
+source_file="crates/kernel/chio-kernel-core/src/formal_aeneas.rs"
 work_dir="target/formal/aeneas-production"
 lean_dir="${work_dir}/lean"
 artifact_file="${work_dir}/equivalence-artifacts.json"
@@ -18,7 +18,7 @@ import json
 from pathlib import Path
 
 repo = Path(".")
-source_file = repo / "crates/chio-kernel-core/src/formal_aeneas.rs"
+source_file = repo / "crates/kernel/chio-kernel-core/src/formal_aeneas.rs"
 lean_dir = repo / "target/formal/aeneas-production/lean"
 artifact_file = repo / "target/formal/aeneas-production/equivalence-artifacts.json"
 

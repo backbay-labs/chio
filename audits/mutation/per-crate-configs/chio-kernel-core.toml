@@ -25,13 +25,13 @@ timeout_multiplier = 3.0
 minimum_test_timeout = 60
 
 examine_globs = [
-    "crates/chio-kernel-core/src/evaluate.rs",
-    "crates/chio-kernel-core/src/capability_verify.rs",
-    "crates/chio-kernel-core/src/scope.rs",
-    "crates/chio-kernel-core/src/receipts.rs",
-    "crates/chio-kernel-core/src/passport_verify.rs",
-    "crates/chio-kernel-core/src/guard.rs",
-    "crates/chio-kernel-core/src/normalized.rs",
+    "crates/kernel/chio-kernel-core/src/evaluate.rs",
+    "crates/kernel/chio-kernel-core/src/capability_verify.rs",
+    "crates/kernel/chio-kernel-core/src/scope.rs",
+    "crates/kernel/chio-kernel-core/src/receipts.rs",
+    "crates/kernel/chio-kernel-core/src/passport_verify.rs",
+    "crates/kernel/chio-kernel-core/src/guard.rs",
+    "crates/kernel/chio-kernel-core/src/normalized.rs",
 ]
 
 exclude_globs = [
@@ -42,10 +42,10 @@ exclude_globs = [
     "**/benches/**",
     "**/build.rs",
     "**/fuzz.rs",
-    "crates/chio-kernel-core/src/clock.rs",
-    "crates/chio-kernel-core/src/rng.rs",
-    "crates/chio-kernel-core/src/formal_aeneas.rs",
-    "crates/chio-kernel-core/src/formal_core.rs",
-    "crates/chio-kernel-core/src/kani_harnesses.rs",
-    "crates/chio-kernel-core/src/kani_public_harnesses.rs",
+    "crates/kernel/chio-kernel-core/src/clock.rs",
+    "crates/kernel/chio-kernel-core/src/rng.rs",
+    "crates/kernel/chio-kernel-core/src/formal_aeneas.rs",
+    "crates/kernel/chio-kernel-core/src/formal_core.rs",
+    "crates/kernel/chio-kernel-core/src/kani_harnesses.rs",
+    "crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs",
 ]

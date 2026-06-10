@@ -117,7 +117,7 @@ while IFS= read -r line; do
     continue
   fi
   if [[ "$text" =~ delegation_v2 ]] && \
-     [[ "$path" == "crates/chio-core-types/Cargo.toml" ]]; then
+     [[ "$path" == "crates/core/chio-core-types/Cargo.toml" ]]; then
     continue
   fi
 

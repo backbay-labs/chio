@@ -1,0 +1,31 @@
+# Focused cargo-mutants config for chio-credentials.
+#
+# cargo-mutants 25.x does not auto-discover this file from the crate
+# directory. Load it explicitly with:
+#
+#   cargo mutants --config crates/trust/chio-credentials/mutants.toml --package chio-credentials
+#
+# Globs are workspace-rooted because cargo-mutants resolves paths with slashes
+# against the source-tree root even when this file is loaded explicitly.
+# Most credentials modules are included through lib.rs, so lib.rs is the
+# mutation entry point for passport, OID4VP, SD-JWT, registry, presentation,
+# policy, and portable reputation code.
+
+timeout_multiplier = 3.0
+minimum_test_timeout = 60
+
+examine_globs = [
+    "crates/trust/chio-credentials/src/lib.rs",
+    "crates/trust/chio-credentials/src/trust_tier.rs",
+]
+
+exclude_globs = [
+    # rationale: fuzz, tests, and benches are verification surfaces rather
+    # than credential verification and presentation production logic.
+    "crates/trust/chio-credentials/src/fuzz.rs", # rationale: excluded helper or verification surface.
+    "**/tests.rs", # rationale: excluded helper or verification surface.
+    "**/test_*.rs", # rationale: excluded helper or verification surface.
+    "**/*_test.rs", # rationale: excluded helper or verification surface.
+    "**/tests/**", # rationale: excluded helper or verification surface.
+    "**/benches/**", # rationale: excluded helper or verification surface.
+]

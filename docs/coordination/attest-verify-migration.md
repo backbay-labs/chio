@@ -6,7 +6,7 @@ keyless verification through `chio_attest_verify::AttestVerifier`.
 
 ## Why this exists
 
-The producer change lands `crates/chio-attest-verify/`, the single source of truth
+The producer change lands `crates/trust/chio-attest-verify/`, the single source of truth
 for Sigstore verification across the chio workspace. The crate's lib doc
 states the rule plainly: "no other crate is permitted to call `sigstore-rs`
 directly". The consumer change will add OCI-published WASM guards with cosign
@@ -21,9 +21,9 @@ two trust roots, and two failure modes that audit cannot reconcile. This
 document and the producer's "Risks and mitigations" notes both pin this as a
 fail-closed invariant.
 
-## Current state in `crates/chio-wasm-guards/**`
+## Current state in `crates/guards/chio-wasm-guards/**`
 
-As of the producer change landing, `crates/chio-wasm-guards/` does not yet call
+As of the producer change landing, `crates/guards/chio-wasm-guards/` does not yet call
 `sigstore-rs`, `cosign`, Fulcio, or Rekor. The crate today loads `.wasm`
 guard modules with fuel metering and an Ed25519 manifest signature
 (`ed25519-dalek` in `Cargo.toml`). There is no Sigstore code path at all.
@@ -33,7 +33,7 @@ the consumer change introduces signature verification for OCI-published guards, 
 permitted entry point is `chio_attest_verify::AttestVerifier`. The
 "migration off raw `sigstore-rs`" goal covers two cases:
 
-1. Code that lands in `crates/chio-wasm-guards/` or its sibling
+1. Code that lands in `crates/guards/chio-wasm-guards/` or its sibling
    `chio-guard-registry` and reaches for `sigstore-rs`
    directly. This must be rewritten against `AttestVerifier` before merge.
 2. Any prototype or scratch branch that already hard-codes `sigstore-rs`
@@ -83,7 +83,7 @@ the migration is complete.
 When `chio-guard-registry` is scaffolded:
 
 - Add `chio-attest-verify = { path = "../chio-attest-verify" }` to
-  `crates/chio-guard-registry/Cargo.toml`.
+  `crates/guards/chio-guard-registry/Cargo.toml`.
 - Do NOT add `sigstore` or `sigstore-rs` to `chio-guard-registry` or to
   `chio-wasm-guards`. A `cargo tree -p chio-guard-registry | grep sigstore`
   must return zero hits.
@@ -210,7 +210,7 @@ update through the trait surface, not by reaching into `sigstore-rs`.
 ## Forbidden patterns (review checklist)
 
 When reviewing the consumer PR, reject the diff if any of the following
-appears in `crates/chio-wasm-guards/**` or `crates/chio-guard-registry/**`:
+appears in `crates/guards/chio-wasm-guards/**` or `crates/guards/chio-guard-registry/**`:
 
 - `use sigstore::` or `use sigstore_rs::`.
 - `sigstore = ` or `sigstore-rs = ` in a `Cargo.toml` under those crates.
@@ -233,14 +233,14 @@ satisfies all four conditions:
    `sigstore` or `sigstore-rs`. A bare
    `cargo tree -p chio-guard-registry | grep sigstore` is **not** a
    valid gate, because the required `chio-attest-verify` dependency
-   itself depends on `sigstore` (`crates/chio-attest-verify/Cargo.toml`),
+   itself depends on `sigstore` (`crates/trust/chio-attest-verify/Cargo.toml`),
    so the transitive grep would always fire and keep the migration
    permanently red even when the consumer follows the intended architecture. Use
    a direct-dependency check instead, e.g.
    `cargo tree -p chio-guard-registry --depth 1 | grep -E 'sigstore(-rs)?'`
    or, equivalently, `awk` on the `[dependencies]` block of
-   `crates/chio-guard-registry/Cargo.toml`.
-2. `rg -n 'use sigstore' crates/chio-wasm-guards crates/chio-guard-registry`
+   `crates/guards/chio-guard-registry/Cargo.toml`.
+2. `rg -n 'use sigstore' crates/guards/chio-wasm-guards crates/guards/chio-guard-registry`
    returns nothing.
 3. `cargo doc -p chio-guard-registry` shows `ExpectedIdentity`,
    `AttestVerifier`, and `VerifiedAttestation` only as re-exports from

@@ -23,7 +23,7 @@ export async function sha256Hex(bytes: ArrayBuffer | Uint8Array): Promise<string
  */
 export function matchesManifestHash(expected: string, computedHex: string): boolean {
   const normalized = expected.startsWith("sha256:") ? expected.slice("sha256:".length) : expected;
-  // Tolerate the trailing ellipsis that some placeholders used.
+  // Strip any non-hex characters (such as a trailing ellipsis) before comparing.
   const trimmed = normalized.replace(/[^0-9a-f]/gi, "").toLowerCase();
   return trimmed === computedHex.toLowerCase();
 }

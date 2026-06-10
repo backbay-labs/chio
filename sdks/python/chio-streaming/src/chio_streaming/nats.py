@@ -104,7 +104,7 @@ class ChioNatsConsumerConfig:
         ``"ack"`` (default) or ``"term"``. ``"ack"`` marks the deny as
         processed so JetStream does not redeliver; ``"term"`` is
         semantically "abandon this message" -- either is safe once the
-        DLQ publish succeeds. Formerly ``deny_ack_strategy``.
+        DLQ publish succeeds. ``deny_ack_strategy`` is a deprecated alias.
     handler_error_strategy:
         ``"nak"`` (default) or ``"term"``. Determines what happens
         when the application handler raises on the allow path. ``nak``

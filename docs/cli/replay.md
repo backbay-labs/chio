@@ -16,8 +16,8 @@ The goldens-replay subsystem owns it, and the tee-replay traffic mode consumes i
 chio replay <LOG> [OPTIONS]
 ```
 
-Surface (lifted from `crates/chio-cli/src/cli/types.rs::ReplayArgs` and
-the dispatch wiring in `crates/chio-cli/src/cli/dispatch.rs`):
+Surface (lifted from `crates/products/chio-cli/src/cli/types.rs::ReplayArgs` and
+the dispatch wiring in `crates/products/chio-cli/src/cli/dispatch.rs`):
 
 ```text
 ARGS:
@@ -162,7 +162,7 @@ The `merkle_mismatch` divergence shape used inside the
 class) when triggered by `--expect-root`; an internal accumulator
 disagreement during streaming verification is attributed to the
 underlying signature failure (exit 20). See
-`crates/chio-cli/src/cli/replay/report.rs` for the in-tree mapping
+`crates/products/chio-cli/src/cli/replay/report.rs` for the in-tree mapping
 function.
 
 ## Flag details
@@ -191,7 +191,7 @@ goldens, a file may be either.
 The interplay with the tee-replay subsystem:
 
 - The tee-replay subsystem owns the encoder. The `chio-tee` sidecar
-  (`crates/chio-tee/`) writes NDJSON capture files in
+  (`crates/trust/chio-tee/`) writes NDJSON capture files in
   `verdict-only`, `shadow`, and `enforce` modes. See the tee replay
   harness contract in `spec/PROTOCOL.md`.
 - The goldens-replay subsystem owns the consumer. `chio replay --from-tee <capture.ndjson>`
@@ -242,7 +242,7 @@ CI cannot bless: the gate refuses any invocation when `CI=true`.
 
 `--json` emits the `chio.replay.report/v1` document. The schema string
 `chio.replay.report/v1` is pinned by
-`crates/chio-cli/src/cli/replay/report.rs::SCHEMA_ID` and the formal
+`crates/products/chio-cli/src/cli/replay/report.rs::SCHEMA_ID` and the formal
 JSON Schema lives at
 `spec/schemas/chio-replay-report/v1.schema.json`. PR #186
 landed the surface; PR #193 wired it through the live
@@ -347,7 +347,7 @@ chio replay ./fixtures/run-42/ --json | jq -r '.first_divergence.kind'
 - `spec/PROTOCOL.md` tee replay harness contract (sibling
   `chio replay traffic --against <policy-path>` mode, which reuses this
   page's exit codes verbatim).
-- `crates/chio-cli/src/cli/replay/report.rs` (in-tree report builder
+- `crates/products/chio-cli/src/cli/replay/report.rs` (in-tree report builder
   and the `SCHEMA_ID` constant).
 - `spec/schemas/chio-replay-report/v1.schema.json` (formal JSON Schema
   for the `chio.replay.report/v1` document).

@@ -1,8 +1,8 @@
 name: JVM SDK
 
-# Path-scoped JVM SDK build. Extracted from ci.yml so the core PR gate stays
-# Rust-only and fast; the JVM lane runs only when the JVM SDK (or this
-# workflow) changes. Reported check context name is unchanged ("JVM build").
+# Path-scoped JVM SDK build. Runs only when the JVM SDK (or this workflow)
+# changes, keeping the core PR gate Rust-only and fast. Reported check context
+# name: "JVM build".
 
 on:
   push:

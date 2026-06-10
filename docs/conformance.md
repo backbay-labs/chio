@@ -7,7 +7,7 @@ Chio monorepo.
 
 It pairs with two other surfaces:
 
-- `crates/chio-conformance/README.md` - quickstart for the
+- `crates/tooling/chio-conformance/README.md` - quickstart for the
   source-installable crate and its bundled fixture tree.
 - `spec/PROTOCOL.md` - normative wire-level protocol specification that
   the conformance suite checks against. The external-consumer flow
@@ -94,15 +94,15 @@ The source-installable `chio-conformance` crate bundles:
   native runner binaries for direct use without the higher-level CLI.
 - The full scenario tree under `tests/conformance/scenarios/**`
   (vendored into the installable package via a symlinked subtree at
-  `crates/chio-conformance/tests/conformance/`).
+  `crates/tooling/chio-conformance/tests/conformance/`).
 - The reference Python peer (`tests/conformance/peers/python/**`) and
   Node.js peer (`tests/conformance/peers/js/**`).
 
 If you are building from a source checkout, the in-repo equivalent is:
 
 ```bash
-cargo install --path crates/chio-cli
-cargo install --path crates/chio-conformance
+cargo install --path crates/products/chio-cli
+cargo install --path crates/tooling/chio-conformance
 ```
 
 The in-repo build keeps the `in-repo-fixtures` feature (default on) so
@@ -116,7 +116,7 @@ External consumers building from git source can either keep the feature on
 ## 2. Fetch pinned peer binaries
 
 `chio conformance fetch-peers` downloads pre-built peer-language adapter
-binaries pinned by `crates/chio-conformance/peers.lock.toml`. The
+binaries pinned by `crates/tooling/chio-conformance/peers.lock.toml`. The
 lockfile has a stable schema (`chio.conformance.peers/v1`) and
 sha256-pins each entry so that an evil mirror cannot silently swap a
 peer binary.
@@ -285,7 +285,7 @@ corpus in one step.
 | C++     | in-repo + lockfile| Source build is in-repo only; pre-built binaries via fetch-peers |
 
 C++ Phase-0 scenario coverage (`mcp_core` and `auth`) is gated by the
-`cpp_peer_p0` integration test under `crates/chio-conformance/tests/`.
+`cpp_peer_p0` integration test under `crates/tooling/chio-conformance/tests/`.
 Other categories (`chio-extensions`, `tasks`, `nested_callbacks`,
 `notifications`) are deferred to a follow-on milestone for the C++
 peer per the initial roadmap decision.
@@ -314,7 +314,7 @@ The `chio conformance fetch-peers` subcommand looks for
 2. `$CHIO_PEERS_LOCK` env var.
 3. `$XDG_CONFIG_HOME/chio/peers.lock.toml` (or
    `$HOME/.config/chio/peers.lock.toml`).
-4. `<repo-root>/crates/chio-conformance/peers.lock.toml` (in-repo
+4. `<repo-root>/crates/tooling/chio-conformance/peers.lock.toml` (in-repo
    default).
 5. `./peers.lock.toml` (cwd-relative).
 
@@ -376,7 +376,7 @@ The C++ peer is not bundled in the source-installed crate. Either:
 The nightly smoke job runs a path install on a fresh runner. A divergence
 usually means a fixture file is missing from the crate's `include` list or
 from the source-install packaging path. Check the `include = [...]` array in
-`crates/chio-conformance/Cargo.toml` and add the missing path; the fixture is
+`crates/tooling/chio-conformance/Cargo.toml` and add the missing path; the fixture is
 always wrong if the in-repo runner is happy and the fresh install is not.
 
 ## Continuous-integration story
@@ -414,8 +414,8 @@ External consumers can copy the same pattern into their own CI:
 
 ## See also
 
-- `crates/chio-conformance/README.md` - crate-level quickstart.
-- `crates/chio-cli/README.md` - general `chio` CLI surface and global
+- `crates/tooling/chio-conformance/README.md` - crate-level quickstart.
+- `crates/products/chio-cli/README.md` - general `chio` CLI surface and global
   flags.
 - `spec/PROTOCOL.md` - normative wire-level protocol specification.
 - `tests/conformance/reports/` - canonical location for generated

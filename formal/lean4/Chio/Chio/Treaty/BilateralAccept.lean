@@ -5,8 +5,8 @@
   imports `Chio.Treaty.PredicateLang` for the `Predicate` type and
   `denote` interpreter but does not depend on the wider Chio polity
   model (no `SyntacticConstitution`, no anchor-quorum machinery, no
-  treaty intersection). A short-paper reviewer can read this file
-  and audit the structural claim end to end.
+  treaty intersection), so the structural claim can be audited end to
+  end from this module alone.
 
   The load-bearing structural theorem is
   `freestanding_accept_set_theorem`: a bilateral envelope is

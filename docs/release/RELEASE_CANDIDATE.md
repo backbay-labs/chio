@@ -405,15 +405,15 @@ kernel/browser/mobile qualification lanes.
 
 | Limit or default | Value | Source |
 | --- | --- | --- |
-| default max capability TTL | `3600s` | `crates/chio-cli/src/policy.rs` |
-| default delegation depth | `5` | `crates/chio-cli/src/policy.rs` |
-| default streamed tool duration limit | `300s` | `crates/chio-kernel/src/lib.rs` |
-| default streamed tool total-byte limit | `256 MiB` | `crates/chio-kernel/src/lib.rs` |
-| default MCP page size | `50` | `crates/chio-mcp-adapter/src/edge.rs` |
-| background-task progression per edge tick | `8 tasks` | `crates/chio-mcp-adapter/src/edge.rs`, `crates/chio-mcp-adapter/src/transport.rs` |
-| remote session idle expiry | `15 min` | `crates/chio-mcp-remote/src/remote_mcp/` |
-| remote session drain grace | `5 s` | `crates/chio-mcp-remote/src/remote_mcp/` |
-| remote session tombstone retention | `30 min` | `crates/chio-mcp-remote/src/remote_mcp/` |
+| default max capability TTL | `3600s` | `crates/products/chio-cli/src/policy.rs` |
+| default delegation depth | `5` | `crates/products/chio-cli/src/policy.rs` |
+| default streamed tool duration limit | `300s` | `crates/kernel/chio-kernel/src/lib.rs` |
+| default streamed tool total-byte limit | `256 MiB` | `crates/kernel/chio-kernel/src/lib.rs` |
+| default MCP page size | `50` | `crates/protocol/chio-mcp-adapter/src/edge.rs` |
+| background-task progression per edge tick | `8 tasks` | `crates/protocol/chio-mcp-adapter/src/edge.rs`, `crates/protocol/chio-mcp-adapter/src/transport.rs` |
+| remote session idle expiry | `15 min` | `crates/protocol/chio-mcp-remote/src/remote_mcp/` |
+| remote session drain grace | `5 s` | `crates/protocol/chio-mcp-remote/src/remote_mcp/` |
+| remote session tombstone retention | `30 min` | `crates/protocol/chio-mcp-remote/src/remote_mcp/` |
 
 Release qualification depends on those defaults being covered by tests and on
 stricter user-provided values continuing to fail closed.

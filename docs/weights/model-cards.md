@@ -24,7 +24,7 @@ A model card is a signed declaration binding:
 
 Schema is locked at `spec/schemas/model-card.v1.json`; canonical-JSON
 encoding (RFC 8785) is the on-the-wire byte form cosign signatures
-are taken over. The card crate lives at `crates/chio-weights/`.
+are taken over. The card crate lives at `crates/trust/chio-weights/`.
 
 When `policy.weights_card_required = required` (or
 `required_with_pin`), the kernel refuses to bind a provider unless
@@ -48,9 +48,9 @@ ships.
 ## 2. Verification path
 
 The card cosign bundle helper
-(`crates/chio-weights/src/bundle.rs`) consumes
+(`crates/trust/chio-weights/src/bundle.rs`) consumes
 `chio_attest_verify::SigstoreVerifier::verify_bundle` from
-[`crates/chio-attest-verify/`](../../crates/chio-attest-verify/).
+[`crates/trust/chio-attest-verify/`](../../crates/trust/chio-attest-verify/).
 This release does not introduce a new trust root or a new signature path;
 the existing cosign bundle verifier (and the PQ-hybrid surface) is consumed
 verbatim.
@@ -58,7 +58,7 @@ verbatim.
 `policy.weights_card_required = required_with_pin` adds an issuer SAN regex
 pin from the provider matrix. Invalid
 combinations (`required` with no issuer configured) reject at
-policy load (`crates/chio-policy/src/weights.rs`), not at first
+policy load (`crates/guards/chio-policy/src/weights.rs`), not at first
 bind, so the failure surfaces immediately at deployment.
 
 ## 3. Operational equivalence
@@ -68,11 +68,11 @@ canonical scenario corpus from the verdict-equality oracle, providers bound
 under each card produce verdict-equivalent outputs at every scenario.
 
 The cross-provider equivalence test
-(`crates/chio-weights/tests/equivalence.rs`) consumes the verdict-equality
+(`crates/trust/chio-weights/tests/equivalence.rs`) consumes the verdict-equality
 oracle, not a forked copy. PR CI runs the smoke subset gated by
 `--features smoke` (one fixture per provider in the canonical 8-provider
 cross-provider matrix at
-`crates/chio-provider-conformance/fixtures/cross_provider/manifest.toml`).
+`crates/protocol/chio-provider-conformance/fixtures/cross_provider/manifest.toml`).
 The full 8-provider * 12-fixture nightly sweep (96 fixtures) runs through
 the existing nightly conformance lane.
 
@@ -94,7 +94,7 @@ equivalent and the oracle catches it before publication.
 ## 4. Lineage anchoring
 
 Publishing a card to the public registry emits a
-`ModelCardLineageAnchor` artifact (`crates/chio-weights/src/lineage.rs`)
+`ModelCardLineageAnchor` artifact (`crates/trust/chio-weights/src/lineage.rs`)
 whose digest format mirrors
 `chio_lineage::anchor::AnchoredFrontier`. The anchor binds:
 
@@ -126,7 +126,7 @@ chio bind <provider> --card <path-to-card.json> \
 ```
 
 The `chio bind` subcommand at
-`crates/chio-cli/src/commands/bind.rs` loads the card, verifies the
+`crates/products/chio-cli/src/commands/bind.rs` loads the card, verifies the
 cosign bundle when supplied, and prints the resolved
 `(weights_hash, allowed_capability_set)` so the operator can
 sanity-check before promoting to production policy. When
@@ -168,13 +168,13 @@ generator runs.
 
 ## 7. Pointers
 
-- Card crate: `crates/chio-weights/`
+- Card crate: `crates/trust/chio-weights/`
 - Schema: `spec/schemas/model-card.v1.json`
-- Cosign bundle helper: `crates/chio-weights/src/bundle.rs`
-- Kernel binding refusal: `crates/chio-kernel/src/weights_binding.rs`
-- Runtime provider health: `crates/chio-runtime-core/src/ops.rs`
-- Policy: `crates/chio-policy/src/weights.rs`
-- CLI: `crates/chio-cli/src/commands/bind.rs`
-- Lineage anchor: `crates/chio-weights/src/lineage.rs`
-- Equivalence oracle: `crates/chio-weights/tests/equivalence.rs`
+- Cosign bundle helper: `crates/trust/chio-weights/src/bundle.rs`
+- Kernel binding refusal: `crates/kernel/chio-kernel/src/weights_binding.rs`
+- Runtime provider health: `crates/kernel/chio-runtime-core/src/ops.rs`
+- Policy: `crates/guards/chio-policy/src/weights.rs`
+- CLI: `crates/products/chio-cli/src/commands/bind.rs`
+- Lineage anchor: `crates/trust/chio-weights/src/lineage.rs`
+- Equivalence oracle: `crates/trust/chio-weights/tests/equivalence.rs`
 - Coverage map: `spec/security/coverage.yaml`

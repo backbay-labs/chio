@@ -14,8 +14,7 @@ are bumping the floor from `0.1.x` to `0.2.0`.
 ## 1. What changed in 0.2.0
 
 `bind_and_redact` is hardened against the wire shapes that
-chio-prefect's `_task_parameters` collapse and the v0.2 sibling-PR
-batch (#664-#675) exposed:
+chio-prefect's `_task_parameters` collapse exposes:
 
 1. **Keyword-only self-canonical pass**: a kwonly param whose name
    matches a protected canonical (e.g. `def fn(*, body)` for a
@@ -31,8 +30,8 @@ batch (#664-#675) exposed:
    slot. Matched and unmatched names are redacted independently.
 3. **TypeError fallback preserves the canonical alias map** so
    kwargs still redact under wrapper-renamed names when
-   `inspect.Signature.bind` raises (closes the alias-collision
-   data-loss path; "C1 fix" in PR #679).
+   `inspect.Signature.bind` raises, closing the alias-collision
+   data-loss path.
 4. **`_is_pure_forwarder` no longer captures `def upload(*payload)`**
    when `payload` matches a protected field; the signature path runs
    instead so each variadic value redacts under the canonical name.
@@ -73,8 +72,8 @@ What you need to do:
 
    Use this pin once the 0.2.0 package is published or when your
    workspace resolves `chio-adapter-base` from the in-repo path.
-   chio-prefect already bumps to this floor in its 0.1.2 release
-   as part of PR #679. Other adapters that only call `redact_args`
+   chio-prefect already bumps to this floor in its 0.1.2 release.
+   Other adapters that only call `redact_args`
    and have no exposure to the v0.2.0 `bind_and_redact` edge cells
    can stay on `chio-adapter-base>=0.1.0,<0.2` until they touch
    their wrappers next; the `redact_args` call sites are
@@ -139,13 +138,11 @@ When NOT to migrate:
 ## 4. If your adapter has a local helper
 
 The canonical example is chio-prefect's `_task_parameters`
-(originally at
-`sdks/python/chio-prefect/src/chio_prefect/decorators.py:486`).
-The collapse onto `bind_and_redact` plus a thin envelope shim landed
-in PR #679; the resulting shim preserves the prefect-specific
-`parameters["args"]` / `parameters["kwargs"]` envelope plus the
-`__var_kw_spillover__` synthetic-key shape while delegating the
-shared binding and redaction logic to `bind_and_redact`.
+(`sdks/python/chio-prefect/src/chio_prefect/decorators.py`). It is a
+thin envelope shim over `bind_and_redact`: it preserves the
+prefect-specific `parameters["args"]` / `parameters["kwargs"]`
+envelope plus the `__var_kw_spillover__` synthetic-key shape while
+delegating the shared binding and redaction logic to `bind_and_redact`.
 
 Recipe:
 
@@ -180,29 +177,21 @@ Recipe:
    old helper produced for at least one representative tool call
    per signature shape your adapter wraps.
 
-The chio-prefect collapse landed in
-[PR #679](https://github.com/backbay-labs/chio/pull/679): see it for the
-helper hardening + prefect canary collapse; the post-merge
-worked example lives at
+The worked example lives in
 `sdks/python/chio-prefect/src/chio_prefect/decorators.py`'s
-`_legacy_envelope` shim, which preserves the prefect-specific
+`_task_parameters`, which preserves the prefect-specific
 `parameters["args"]` / `parameters["kwargs"]` envelope plus the
 `__var_kw_spillover__` synthetic key against `bind_and_redact`'s
-`(redacted_args, redacted_kwargs)` return shape. PR URLs are
-stable across rebases; commit SHAs are not, so cite the PR rather
-than a specific SHA.
+`(redacted_args, redacted_kwargs)` return shape.
 
 ## 5. Custom `positional_table` semantic clarification (REPLACES)
 
-There is no code-level semantic change here: v0.1.1 already
-treated a caller-supplied `positional_table` as REPLACES-the-default
-(the chio-default table is not merged in implicitly). v0.3
-explicitly documents this so adapter authors do not have to read
-the source to confirm.
+A caller-supplied `positional_table` REPLACES the default: the
+chio-default table is not merged in implicitly.
 
-No code migration is required. The clarification is purely
-documentary: be aware that a custom `positional_table` fully
-replaces `DEFAULT_TOOL_POSITIONAL_NAMES` rather than extending it.
+No code migration is required. Be aware that a custom
+`positional_table` fully replaces `DEFAULT_TOOL_POSITIONAL_NAMES`
+rather than extending it.
 If your adapter declares custom tools and you also want the
 chio-default entries (`chio_file_write`, `chio_file_edit`) to keep
 working, merge the default in explicitly:

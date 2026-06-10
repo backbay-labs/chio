@@ -6,10 +6,10 @@ import {
   scenarioToHttpRequest,
   tupleFromEvaluateResponse,
   type VerdictScenario,
-} from "../../../../../crates/chio-conformance/verdict_matrix/drivers/typescript/run_scenarios.ts";
+} from "../../../../../crates/tooling/chio-conformance/verdict_matrix/drivers/typescript/run_scenarios.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../../../..");
-const scenarioRoot = join(repoRoot, "crates/chio-conformance/verdict_matrix/scenarios");
+const scenarioRoot = join(repoRoot, "crates/tooling/chio-conformance/verdict_matrix/scenarios");
 
 describe("verdict matrix TypeScript node-http driver", () => {
   it("reports scenarios as unsupported without a live sidecar", async () => {

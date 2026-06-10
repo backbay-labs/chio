@@ -51,7 +51,7 @@ A failing arena scenario can graduate to two corpora via the CHIO_BLESS gate:
 1. Replay fixtures under `tests/replay/fixtures/arena/<class>/`.
    `BLESS_REASON=arena:<scenario-id>` is the only accepted reason; the
    per-PR cap (default 5) carries forward unchanged.
-2. The adversarial suite under `crates/chio-adversarial-suite/cases/<class>/`.
+2. The adversarial suite under `crates/core/chio-adversarial-suite/cases/<class>/`.
    Until the suite scaffold lands, the writer falls back to
    `target/arena/promote-pending/`.
 

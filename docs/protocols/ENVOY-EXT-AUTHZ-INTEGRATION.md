@@ -807,7 +807,7 @@ spec:
 ### 10.1 Crate Layout
 
 ```
-crates/chio-envoy-ext-authz/
+crates/protocol/chio-envoy-ext-authz/
   Cargo.toml
   build.rs                    # protobuf codegen for envoy ext_authz v3
   proto/

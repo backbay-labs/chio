@@ -1,0 +1,196 @@
+[package]
+name = "chio-kernel"
+description = "Chio runtime kernel: capability validation, guard evaluation, receipt signing"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+publish = false
+autobenches = false
+
+[package.metadata.chio]
+public_entrypoint = true
+
+[lib]
+name = "chio_kernel"
+
+[features]
+# `delegation` is part of the kernel's default feature set so the
+# recursive-delegation oracle consultation runs on every dispatch out of
+# the box.
+default = ["delegation"]
+dhat-heap = []
+sustained-p99-nightly = []
+otel = ["dep:opentelemetry-semantic-conventions"]
+tokio-console-smoke = ["tokio/tracing"]
+# Hybrid signing path: pulls the pq cargo feature on chio-core-types so
+# the kernel boot path can construct `HybridBackend` from a rolled
+# ML-DSA-65 key. Default-off; enabled by deployments that flip
+# `policy.crypto_floor` to `allow_hybrid` or `pq_required`.
+pq = ["chio-core-types/pq", "chio-core/pq"]
+# Recursive-delegation kernel integration. Default OFF for the
+# trust boundary: when ON, the verifier consults the installed
+# `RevocationView` snapshot on every delegated dispatch and denies the
+# capability if any link's `capability_id` is in the revoked set.
+# `chio-kernel-core/revocation-view` is already default-on, so enabling
+# this feature here just toggles the consultation, not the underlying
+# data plane.
+delegation = ["chio-core-types/delegation"]
+
+[dependencies]
+chio-appraisal = { workspace = true }
+chio-core = { workspace = true }
+chio-core-types = { workspace = true }
+chio-custody-hw = { workspace = true }
+chio-weights = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
+chio-kernel-core = { workspace = true }
+chio-credit = { workspace = true }
+chio-federation = { workspace = true }
+chio-governance = { workspace = true }
+chio-link = { path = "../../economy/chio-link", default-features = false }
+chio-log-redact = { workspace = true }
+chio-metrics-spec = { workspace = true }
+chio-tool-call-fabric = { workspace = true }
+lru = "0.16.3"
+chio-listing = { workspace = true }
+chio-market = { workspace = true }
+chio-open-market = { workspace = true }
+chio-settle = { workspace = true }
+arc-swap = { workspace = true }
+async-trait = { workspace = true }
+dashmap = { workspace = true }
+futures = "0.3"
+regex = "1"
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+opentelemetry-semantic-conventions = { workspace = true, optional = true }
+rusqlite = { workspace = true }
+chio-underwriting = { workspace = true }
+uuid = { workspace = true, features = ["v7"] }
+ureq = { version = "2.10", features = ["json"] }
+rand = { workspace = true }
+base64 = { workspace = true }
+
+[dev-dependencies]
+chio-store-sqlite = { workspace = true }
+chio-test-support = { workspace = true }
+criterion = { workspace = true }
+dhat = { workspace = true }
+loom = { workspace = true }
+# proptest = "1.10" (via workspace.dependencies). Used by:
+# - tests/property_budget_store.rs
+# - tests/replay_proptest.rs (replay-invariance suite)
+proptest = { workspace = true }
+
+[[bench]]
+name = "cap_verify_ed25519"
+harness = false
+
+[[bench]]
+name = "scope_match"
+harness = false
+
+[[bench]]
+name = "time_bound"
+harness = false
+
+[[bench]]
+name = "revocation_lookup"
+harness = false
+
+[[bench]]
+name = "budget_decrement"
+harness = false
+
+[[bench]]
+name = "single_guard"
+harness = false
+
+[[bench]]
+name = "guard_pipeline_5"
+harness = false
+
+[[bench]]
+name = "receipt_sign"
+harness = false
+
+[[bench]]
+name = "receipt_append"
+harness = false
+
+[[bench]]
+name = "session_lookup"
+harness = false
+
+[[bench]]
+name = "dispatch_allow"
+harness = false
+
+[[bench]]
+name = "dispatch_allow_dhat"
+harness = false
+required-features = ["dhat-heap"]
+
+[[bench]]
+name = "dispatch_deny"
+harness = false
+
+[[bench]]
+name = "sustained_p99_30min"
+required-features = ["sustained-p99-nightly"]
+
+# Property-based replay-invariance suite (signing-is-a-function,
+# replay-root-is-idempotent, shuffle-preserves-bytes). Cargo would auto-
+# discover this test target from `tests/replay_proptest.rs`; the explicit
+# block exists so the CI gate can refer to the test by canonical name.
+[[test]]
+name = "replay_proptest"
+path = "tests/replay_proptest.rs"
+
+[[test]]
+name = "tokio_console_smoke"
+path = "tests/tokio_console_smoke.rs"
+required-features = ["tokio-console-smoke"]
+
+# Hybrid receipt signing path through `&dyn SigningBackend` and the
+# kernel-side `HybridBackend` constructor.
+[[test]]
+name = "hybrid_receipt_sign"
+path = "tests/hybrid_receipt_sign.rs"
+required-features = ["pq"]
+
+# Hybrid signing for SessionComplianceCertificate issuance.
+[[test]]
+name = "compliance_certificate_hybrid"
+path = "tests/compliance_certificate_hybrid.rs"
+required-features = ["pq"]
+
+# Kernel boot path gates the PQ signing key load on a verified
+# self-quote that binds expect_report_data(kernel_classical_pk,
+# receipt_root_genesis). Threat-model row pq_signature_downgrade is the
+# surface guarded here.
+[[test]]
+name = "pq_key_load_after_self_quote"
+path = "tests/pq_key_load_after_self_quote.rs"
+required-features = ["pq"]
+
+# Receipt-signing path consumes the SharedCanonicalBytes
+# (Arc<CanonicalBytes>) newtype so the canonical JSON buffer is built once,
+# signed once, and shared by every downstream consumer.
+[[test]]
+name = "canonical_bytes_hybrid"
+path = "tests/canonical_bytes_hybrid.rs"
+required-features = ["pq"]
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(dhat)", "cfg(loom)", "cfg(chio_kernel_loom)"] }

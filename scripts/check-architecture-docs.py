@@ -36,10 +36,15 @@ def changed_architecture_docs(base_ref: str) -> list[Path]:
         text=True,
         stdout=subprocess.PIPE,
     )
+    # The diff lists deleted flat-layout ARCHITECTURE.md paths alongside the
+    # grouped crates/<group>/chio-*/ARCHITECTURE.md files they moved to. A
+    # deleted doc has no content to validate, so keep only paths that still
+    # exist on disk (the grouped locations) rather than opening a vanished
+    # flat path.
     return [
         REPO_ROOT / line
         for line in result.stdout.splitlines()
-        if line.endswith("ARCHITECTURE.md")
+        if line.endswith("ARCHITECTURE.md") and (REPO_ROOT / line).is_file()
     ]
 
 

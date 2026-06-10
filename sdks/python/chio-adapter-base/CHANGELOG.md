@@ -10,10 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.0]
 
 `bind_and_redact` shape hardening + 6-axis coverage matrix. The helper
-now subsumes every wire shape that was bouncing between sibling
-adapters during the v0.2 batch (PRs #664-#675); the prefect canary
+subsumes every wire shape the sibling adapters produce; the prefect
 collapse in `chio-prefect 0.1.2` exercises the helper's API surface
-against a real adapter so future shape additions land once, in
+against a real adapter so shape additions land once, in
 `chio-adapter-base`.
 
 ### Added
@@ -60,8 +59,7 @@ against a real adapter so future shape additions land once, in
   same call) used to overwrite each other in the canonical view,
   silently dropping one bucket. The fix mirrors the merge-conflict
   semantics from the variadic / overflow paths so both buckets
-  round-trip with their own redaction record. (Closes Cursor Bugbot
-  Medium on PR #679.)
+  round-trip with their own redaction record.
 - TypeError fallback preserves the default table prefix before
   keyword-only protected aliases, so kwonly-only wrappers such as
   `def write_file(*, body)` map invalid positional calls as
@@ -136,8 +134,8 @@ chio-prefect 0.1.2 (PR #679) is the canonical worked example.
   Both are valid; pick based on sidecar deployment topology.
 
 ### Added
-- Phase 2: ported the seven primitives from chio-hermes into the new
-  package. `sanitised_env`, `harden_git_argv`, `reject_shell_argv_escape`,
+- Seven primitives shared across adapters.
+  `sanitised_env`, `harden_git_argv`, `reject_shell_argv_escape`,
   `resolve_within`, and `BoundedSubprocess` (plus async `arun`) live in
   `chio_adapter_base.security`. `ReceiptBuffer`, `append_jsonl`, and
   `canonical_dumps` live in `chio_adapter_base.receipts`. `redact_args`
@@ -161,9 +159,9 @@ chio-prefect 0.1.2 (PR #679) is the canonical worked example.
 - mypy is now strict (`strict = true` in `pyproject.toml`); every
   public signature has explicit type hints.
 
-### Phase 1 (scaffold) baseline
+### Package baseline
 - Package layout, public API contract via type-only signatures,
   conformance hooks, and a smoke-test that asserts the public surface
   imports cleanly.
-- Submodule layout chosen over flat namespace and over a facade class.
+- Submodule layout over a flat namespace or a facade class.
   See `README.md` section "Submodule layout" for the design rationale.

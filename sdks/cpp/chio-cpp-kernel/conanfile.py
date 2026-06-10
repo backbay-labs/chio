@@ -18,7 +18,7 @@ class ChioCppKernelConan(ConanFile):
     options = {"shared": [True, False]}
     default_options = {"shared": False}
 
-    _rust_workspace_roots = ["crates/chio-cpp-kernel-ffi", "crates/chio-metrics-spec"]
+    _rust_workspace_roots = ["crates/sdk/chio-cpp-kernel-ffi", "crates/observability/chio-metrics-spec"]
 
     @staticmethod
     def _extract_manifest_section(manifest, header):
@@ -183,7 +183,7 @@ class ChioCppKernelConan(ConanFile):
         if str(self.settings.os) == "Windows":
             ffi_lib_name = "chio_cpp_kernel_ffi.lib"
         toolchain.variables["CHIO_CPP_KERNEL_FFI_INCLUDE_DIR"] = str(
-            repo_root / "crates" / "chio-cpp-kernel-ffi" / "include"
+            repo_root / "crates" / "sdk" / "chio-cpp-kernel-ffi" / "include"
         )
         toolchain.variables["CHIO_CPP_KERNEL_FFI_LIBRARY"] = str(
             repo_root / "target" / profile / ffi_lib_name

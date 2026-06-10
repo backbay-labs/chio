@@ -7,7 +7,7 @@ This directory holds shared conformance assets such as:
 - mock transcripts
 - reusable upstream server fixtures
 
-The first executable slice is `mcp_core/`:
+`mcp_core/` contains:
 
 - `mock_mcp_server.py`
   Minimal stdio MCP server used by the live remote HTTP harness.

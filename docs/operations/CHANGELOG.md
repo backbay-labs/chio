@@ -13,7 +13,7 @@
 - **Release hygiene and structure** (`chio-cli`, packaging, scripts): generated
   Python cache/build artifacts are now excluded from tracked release inputs,
   release-input guard scripts fail fast when they reappear, and oversized CLI
-  admin handling has been split into `crates/chio-cli/src/admin.rs`.
+  admin handling has been split into `crates/products/chio-cli/src/admin.rs`.
 
 - **Qualification and operator runbooks** (`scripts`, workflows, docs): the
   release lane now explicitly qualifies dashboard, TypeScript package, Python

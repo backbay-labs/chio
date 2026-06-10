@@ -341,7 +341,7 @@ pub struct RetryConfig {
 New module in `chio-guards`:
 
 ```
-crates/chio-guards/src/
+crates/guards/chio-guards/src/
   external/
     mod.rs              // ExternalGuard trait, AsyncGuardAdapter
     circuit_breaker.rs  // CircuitBreaker state machine
@@ -483,7 +483,7 @@ keys.
 ### 3.5 Package Structure
 
 ```
-crates/chio-guards/src/
+crates/guards/chio-guards/src/
   external/
     mod.rs
     circuit_breaker.rs

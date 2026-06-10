@@ -16,7 +16,7 @@ This template is for liveness counterexamples produced by the nightly
 checking `formal/tla/RevocationPropagation.tla`. It is NOT for
 safety violations of `NoAllowAfterRevoke`, `MonotoneLog`, or
 `AttenuationPreserving` -- those are separate; file those against the
-property-counterexample template (M03.P3.T5).
+property-counterexample template.
 
 Drop the raw counterexample trace into `formal/tla/counterexamples/`
 (the directory is preserved by `.gitkeep`) and link it from this issue.
@@ -66,7 +66,7 @@ apalache-mc check \
 ```
 
 Config used (PR job is `PROCS=4, CAPS=8`; nightly liveness lane is
-`PROCS=6, CAPS=16` per the phase doc):
+`PROCS=6, CAPS=16`):
 
 - `PROCS = <int>`
 - `CAPS  = <int>`
@@ -146,5 +146,4 @@ matching label from the list. Severity drives release-gate posture in
 - [ ] If `severity-spec-bug`: PR opened against
       `formal/tla/RevocationPropagation.tla`.
 - [ ] `formal/MAPPING.md` updated if the counterexample changes the
-      Lean/Rust cross-reference for `RevocationEventuallySeen`
-      (M03.P3.T5 introduces `MAPPING.md`).
+      Lean/Rust cross-reference for `RevocationEventuallySeen`.

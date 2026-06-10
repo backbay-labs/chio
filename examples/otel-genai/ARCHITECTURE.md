@@ -8,14 +8,6 @@ integration test owns the decoded OTLP-to-Chio receipt contract: build one
 `gen_ai.tool.call` span, export it through `chio-otel-receipt-exporter`, verify
 the signed receipt, and prove lookup in both directions.
 
-## Pain Points
-
-The Rust contract currently lives as a single ignored integration test that
-mixes in-memory receipt storage, sink construction, span construction, export
-assertions, sanitized metadata checks, and lookup-index construction. Because it
-is ignored, `cargo test -p otel-genai` does not gate the example behavior even
-though the test does not require Docker or a live collector.
-
 ## Security And API Constraints
 
 The Rust gate must stay fully local and must not require the collector stack. It
@@ -27,12 +19,13 @@ attribute names from `chio-kernel::otel`.
 ## Affected Dependents
 
 The package README and `docs/integrations/otel.md` document how to run the
-contract test. They need synchronized command updates when the test becomes a
-default gate. No crate API consumers or generated artifacts are affected.
+contract test. No crate API consumers or generated artifacts are affected.
 
-## Completed Material Improvement
+## Test Plumbing
 
-The test plumbing now lives in a package-local support module, the contract uses
+The test plumbing lives in a package-local support module, the contract uses
 exported OTel attribute constants instead of duplicated raw strings where
-available, and the bidirectional lookup contract now runs in the default `cargo
-test -p otel-genai` gate.
+available, and the bidirectional lookup contract runs in the default
+`cargo test -p otel-genai` gate so the receipt correlation invariant is verified
+on every run without standing up the collector, Tempo, Jaeger, or Grafana demo
+stack.

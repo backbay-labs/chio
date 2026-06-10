@@ -134,15 +134,15 @@ evidence-package/
 
 ## Suggested Code Layout
 
-- `crates/chio-kernel/src/evidence_export.rs`
+- `crates/kernel/chio-kernel/src/evidence_export.rs`
   - package manifest types
   - inclusion-proof record types
   - local SQLite export helpers
-- `crates/chio-cli/src/evidence_export.rs`
+- `crates/products/chio-cli/src/evidence_export.rs`
   - CLI orchestration
   - output directory/tar writing
   - policy-file attachment handling
-- `crates/chio-cli/src/main.rs`
+- `crates/products/chio-cli/src/main.rs`
   - new `evidence export` subcommand wiring
 
 ## Acceptance Criteria For The First Coding Pass

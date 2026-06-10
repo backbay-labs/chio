@@ -6,17 +6,17 @@
   "body": {
     "summary": "MCP and SDK conformance work should connect adapter transport code, MCP edge runtime, integration tests, conformance peers, verdict matrix docs, and cross-language conformance tests.",
     "authoritative_files": [
-      "crates/chio-mcp-adapter/src/lib.rs",
-      "crates/chio-mcp-adapter/src/transport.rs",
-      "crates/chio-mcp-edge/src/runtime.rs",
+      "crates/protocol/chio-mcp-adapter/src/lib.rs",
+      "crates/protocol/chio-mcp-adapter/src/transport.rs",
+      "crates/protocol/chio-mcp-edge/src/runtime.rs",
       "docs/conformance/verdict-matrix.md",
       "tests/conformance/README.md"
     ],
     "tests": [
       "integrations/mcp-adapter/tests/transport_round_trip.rs",
       "integrations/mcp-adapter/tests/conformance_suite.rs",
-      "crates/chio-mcp-adapter/tests/integration_smoke.rs",
-      "crates/chio-conformance/verdict_matrix/tests/verdict_matrix_cross_language.rs"
+      "crates/protocol/chio-mcp-adapter/tests/integration_smoke.rs",
+      "crates/tooling/chio-conformance/verdict_matrix/tests/verdict_matrix_cross_language.rs"
     ],
     "constraints": [
       "Graph traversal should suppress generic docs and empty-path dependency crates before ranking MCP context.",

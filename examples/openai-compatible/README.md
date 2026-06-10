@@ -15,7 +15,7 @@ executing the returned function calls through `@chio-protocol/sdk`.
 ## Prerequisites
 
 - Node.js 22+
-- the phase `309` demo stack running locally, or equivalent direct
+- the Docker quickstart demo stack running locally, or equivalent direct
   `chio trust serve` plus `chio mcp serve-http` processes
 - optional: an OpenAI-compatible Chat Completions endpoint and API key for a
   live function-calling run
