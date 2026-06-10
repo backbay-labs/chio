@@ -51,6 +51,11 @@ pub(crate) fn pre_schema_guard(root: &Path, facet: &Facet) -> Result<(), XtaskEr
             &retired_marker(),
             "active Chio pheromone spec must not cite retired docs or labels",
         ),
+        "relay" => guard_no_marker_in_file(
+            &root.join("docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md"),
+            &retired_marker(),
+            "active Chio pheromone relay runbook must not cite retired docs or labels",
+        ),
         "relay_alert_assurance" => guard_assurance_no_legacy_marker(&root.join(&facet.fixture_dir)),
         _ => Ok(()),
     }
