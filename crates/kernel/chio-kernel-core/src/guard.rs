@@ -1,8 +1,7 @@
 //! Sync guard trait for portable evaluation.
 //!
-//! This matches the legacy `chio_kernel::Guard` surface byte-for-byte so
-//! existing guard implementations can be lifted into the core with no
-//! behavioural change:
+//! The surface matches `chio_kernel::Guard` byte-for-byte so the same
+//! guard implementations run in both crates with no behavioural change:
 //!
 //! ```ignore
 //! pub trait Guard: Send + Sync {
@@ -11,9 +10,9 @@
 //! }
 //! ```
 //!
-//! The error type is [`crate::evaluate::KernelCoreError`] instead of the
-//! legacy `chio_kernel::KernelError` because the full error enum carries
-//! std/tokio/sqlite-flavoured variants that are not portable. The legacy
+//! The error type is [`crate::evaluate::KernelCoreError`] instead of
+//! `chio_kernel::KernelError` because the full error enum carries
+//! std/tokio/sqlite-flavoured variants that are not portable. The
 //! adapter in `chio-kernel::kernel` bridges the two.
 
 use alloc::string::String;
@@ -22,7 +21,7 @@ use chio_core_types::capability::scope::ChioScope;
 
 use crate::Verdict;
 
-/// Sync guard trait. Preserved signature-for-signature from legacy
+/// Sync guard trait. Signature-for-signature compatible with
 /// `chio_kernel::Guard`.
 pub trait Guard: Send + Sync {
     /// Human-readable guard name (e.g. `forbidden-path`).
@@ -42,7 +41,7 @@ pub trait Guard: Send + Sync {
 ///
 /// - `request` carries only the portable shape (no `dpop_proof`,
 ///   `governed_intent`, `approval_token`, or `model_metadata` -- those are
-///   full-kernel concerns). The legacy adapter in `chio-kernel` builds a
+///   full-kernel concerns). The adapter in `chio-kernel` builds a
 ///   temporary [`PortableToolCallRequest`] when it runs the core evaluate
 ///   pipeline.
 /// - `session_filesystem_roots` stays in the portable surface so the

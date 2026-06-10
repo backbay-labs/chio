@@ -201,8 +201,8 @@ EXCLUDE_PREFIXES = (
 )
 
 # The guard's own resolver-test fixtures intentionally embed synthetic crate
-# names (chio-ghost, chio-foo) and pre-move literals; it is hand-edited in
-# Task 6, never by the blind sweep.
+# names (chio-ghost, chio-foo) and pre-move literals; the blind sweep must
+# never rewrite them.
 SKIP_FILES = ("xtask/src/crate_paths.rs",)
 
 # This migration script itself embeds the old-form crate names in its map; it

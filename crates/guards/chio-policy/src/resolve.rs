@@ -1,7 +1,6 @@
 //! HushSpec `extends` resolution.
 //!
-//! Ported from the HushSpec reference implementation. Resolves the `extends`
-//! field by loading parent policies and merging them.
+//! Resolves the `extends` field by loading parent policies and merging them.
 
 use crate::merge::merge;
 use crate::models::HushSpec;

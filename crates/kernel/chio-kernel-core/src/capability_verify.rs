@@ -159,7 +159,7 @@ fn verify_capability_base(
     clock: &dyn Clock,
     crypto_floor: CapabilityCryptoFloor,
 ) -> Result<VerifiedCapability, CapabilityError> {
-    // Issuer trust check. The legacy kernel also trusts its own public key
+    // Issuer trust check. The full kernel also trusts its own public key
     // and the set returned by the capability authority; callers must
     // provide the full trust set they care about.
     if !trusted_issuers.contains(&token.issuer) {

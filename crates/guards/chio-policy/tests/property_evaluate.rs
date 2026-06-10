@@ -6,7 +6,7 @@
 //! - `decision_deterministic_for_fixed_input`
 //! - `empty_extends_chain_is_identity_under_merge`
 //!
-//! Live-API notes:
+//! API mapping:
 //! - `Policy` maps to `HushSpec`. Merge entry point:
 //!   `chio_policy::merge::merge(base, child)`. Evaluate entry point:
 //!   `chio_policy::evaluate::evaluate(spec, action)`. Decision enum:

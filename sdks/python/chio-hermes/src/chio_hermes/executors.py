@@ -169,12 +169,13 @@ def _run_subprocess_impl(
     timeout: int,
     stdin: str | None = None,
 ) -> dict[str, Any]:
-    """Internal: bounded subprocess run returning the legacy dict shape.
+    """Internal: bounded subprocess run returning the dict shape.
 
     Wraps :class:`BoundedSubprocess` and adapts the
-    :class:`BoundedSubprocessResult` dataclass back to the historical
-    chio-hermes dict so the executor / handler code that calls into
-    this module sees the same shape as before the migration.
+    :class:`BoundedSubprocessResult` dataclass back to the chio-hermes
+    dict so the executor / handler code that calls into this module
+    sees the dict keys (``argv`` / ``returncode`` / ``stdout`` /
+    ``stderr`` / optional ``output_truncated``).
     """
     runner = _BoundedSubprocess(
         max_bytes=subprocess_max_bytes(),

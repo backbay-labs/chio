@@ -186,8 +186,8 @@ data:
           required_scopes:
             - demo.read
 ---
-# Demo credentials. The roadmap's production flow pulls these from an
-# external secret store (ExternalSecrets operator, SOPS, or a CSI driver).
+# Demo credentials. Production deployments pull these from an external
+# secret store (ExternalSecrets operator, SOPS, or a CSI driver).
 apiVersion: v1
 kind: Secret
 metadata:

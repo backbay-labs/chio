@@ -70,7 +70,7 @@ policy, kernel, storage, adapter, or product crates.
 The crate is intentionally broad because it is the stable wire substrate, but
 that breadth makes signed-artifact invariants easy to implement unevenly.
 Capability tokens already reject unsupported schema IDs before verification,
-while other schema-tagged signed artifacts have historically verified only the
+while other schema-tagged signed artifacts verify only the
 signature bytes. That is too weak for the protocol contract: a valid signature
 over an unknown schema is still not a valid current Chio artifact.
 

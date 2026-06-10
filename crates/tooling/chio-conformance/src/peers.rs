@@ -49,7 +49,7 @@ pub struct PeerEntry {
     /// Executable name inside the archive.
     pub binary: String,
     /// Whether this entry has been published with a real sha256 pin and a
-    /// reachable url. Defaults to `true` so historical entries do not need
+    /// reachable url. Defaults to `true` so existing entries do not need
     /// to be edited; placeholder entries MUST set `published = false`.
     /// `chio conformance fetch-peers` skips unpublished entries only when at
     /// least one selected entry is published.
@@ -439,8 +439,7 @@ binary = "chio-js-peer"
 
     #[test]
     fn published_defaults_to_true() {
-        // Omitting `published` keeps the historical
-        // behaviour where every entry is treated as published.
+        // Omitting `published` treats every entry as published.
         let lock = PeersLock::parse_str(VALID).expect("parse");
         assert!(lock.peers[0].published);
         assert!(lock.peers[1].published);

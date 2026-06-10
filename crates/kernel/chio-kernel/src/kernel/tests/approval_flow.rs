@@ -10,7 +10,7 @@
 // the full pipeline would require standing up every downstream store
 // (revocation, budget, authority, receipt log) for every case; a
 // focused test against the primitives is faster and still covers every
-// acceptance bullet in the phase spec.
+// approval behaviour.
 
 use std::sync::Arc as StdArc;
 

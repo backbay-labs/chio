@@ -1,7 +1,7 @@
 //! HushSpec policy schema types.
 //!
-//! Ported from the HushSpec reference implementation. These types define the
-//! canonical YAML schema for AI agent security policies.
+//! These types define the canonical YAML schema for AI agent security
+//! policies.
 
 use std::collections::BTreeMap;
 

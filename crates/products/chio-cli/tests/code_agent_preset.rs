@@ -10,7 +10,7 @@
 //!    and runtime policy hashes remain stable across runs.
 //! 3. Deny a `.env` write when the resulting guard pipeline
 //!    evaluates a simulated tool call, proving the preset actually
-//!    enforces the contract the roadmap advertises.
+//!    enforces its denial contract.
 //!
 //! The harness does not spawn `npx @modelcontextprotocol/server-filesystem`;
 //! we exercise the preset loading path directly so the test runs in
@@ -176,7 +176,7 @@ fn write_safe_output_fixture() -> tempfile::NamedTempFile {
     tmp
 }
 
-/// Roadmap 4.2 acceptance: the preset denies a `.env` write.
+/// The preset denies a `.env` write.
 ///
 /// We pipe the bundled YAML through `chio check` and assert the guard
 /// pipeline returns DENY for an `fs/write_file` call whose path is
@@ -221,7 +221,7 @@ fn preset_denies_dotenv_write_via_chio_check() {
     );
 }
 
-/// Roadmap 4.2 acceptance: the preset allows a safe file read.
+/// The preset allows a safe file read.
 ///
 /// Companion check to the `.env` deny case -- `fs/read_file` with a
 /// non-forbidden path should pass the guard pipeline even though the

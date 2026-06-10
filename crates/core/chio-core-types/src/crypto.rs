@@ -5,8 +5,8 @@
 //! Chio artifacts (capability tokens, receipts, DPoP proofs, governed approval
 //! tokens) are signed with a cryptographic algorithm negotiated between the
 //! kernel operator and its counterparties. The default algorithm is Ed25519
-//! via `ed25519-dalek`, which matches the historical behaviour of every Chio
-//! deployment and every on-wire artifact produced to date. To unblock
+//! via `ed25519-dalek`, which is the baseline backend every Chio deployment
+//! supports and the format every bare-hex on-wire artifact uses. To unblock
 //! enterprise procurement in FIPS-constrained environments, this module also
 //! exposes a [`SigningBackend`] abstraction with pluggable implementations for
 //! NIST P-256 (secp256r1), P-384 (secp384r1), and hybrid classical plus
@@ -103,7 +103,7 @@ impl SigningAlgorithm {
     /// Returns true when this algorithm is the default (Ed25519).
     ///
     /// Useful for `#[serde(skip_serializing_if)]` helpers that keep Ed25519
-    /// artifacts byte-identical to the historical format.
+    /// artifacts byte-identical to the bare-hex wire format.
     #[must_use]
     pub fn is_default(&self) -> bool {
         matches!(self, Self::Ed25519)
@@ -245,7 +245,7 @@ impl Keypair {
 /// Public key for verifying Chio signatures.
 ///
 /// Internally this is a sum over the supported [`SigningAlgorithm`]s. The
-/// common case (Ed25519) preserves the historical 32-byte encoding and bare
+/// common case (Ed25519) preserves the bare 32-byte encoding and bare
 /// hex serialization. Non-Ed25519 variants use a self-describing hex prefix
 /// (`p256:<hex>` / `p384:<hex>` / `hybrid:<classical>:<pq>:<alg_set>`) so the
 /// wire format unambiguously identifies the algorithm without a separate
@@ -509,8 +509,7 @@ impl PublicKey {
 
     /// Hex encoding, with algorithm prefix for non-Ed25519 keys.
     ///
-    /// Ed25519 keys render as a bare 64-character lowercase hex string,
-    /// byte-identical to the historical format. P-256 keys render as
+    /// Ed25519 keys render as a bare 64-character lowercase hex string. P-256 keys render as
     /// `p256:<130-char hex>` (uncompressed SEC1). P-384 keys render as
     /// `p384:<194-char hex>`.
     #[must_use]
@@ -722,8 +721,7 @@ impl Signature {
 
     /// Hex encoding, with algorithm prefix for non-Ed25519 signatures.
     ///
-    /// Ed25519 signatures render as a bare 128-character lowercase hex string,
-    /// byte-identical to the historical format.
+    /// Ed25519 signatures render as a bare 128-character lowercase hex string.
     #[must_use]
     pub fn to_hex(&self) -> String {
         match &self.material {
@@ -747,7 +745,7 @@ impl Signature {
 
     /// Raw 64-byte Ed25519 representation.
     ///
-    /// Mirrors the historical API. For non-Ed25519 signatures returns an
+    /// For non-Ed25519 signatures returns an
     /// all-zero placeholder (such signatures never flow through 64-byte-only
     /// consumer paths because those paths are Ed25519-specific on-chain
     /// anchoring layers that never see FIPS artifacts).
@@ -892,7 +890,7 @@ pub fn sign_canonical_with_backend_shared<T: Serialize>(
     sign_shared_canonical_with_backend(backend, canonical)
 }
 
-/// Ed25519 [`SigningBackend`] wrapping the historical [`Keypair`].
+/// Ed25519 [`SigningBackend`] wrapping a [`Keypair`].
 ///
 /// Always available regardless of feature flags.
 #[derive(Clone)]

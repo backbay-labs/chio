@@ -156,7 +156,7 @@ fn compile_policy_emits_all_twelve_guard_types() {
     assert_eq!(
         expected.len(),
         12,
-        "the acceptance criterion requires 12 distinct guard types"
+        "the compiler emits 12 distinct guard types"
     );
     assert!(
         compiled.guards.len() >= 12,
@@ -171,9 +171,8 @@ fn compile_policy_emits_all_twelve_guard_types() {
 fn compile_policy_produces_vec_of_guards_accessible_via_pipeline() {
     // The GuardPipeline stores guards as `Vec<Box<dyn Guard>>` internally;
     // the sidecar `guard_names` list mirrors that vector's ordering and
-    // size. Together they satisfy the acceptance wording that
-    // `compile_policy(yaml)` produces a `Vec<Box<dyn Guard>>` containing
-    // all 12 guard types.
+    // size, so it stands in for the otherwise-private guard vector when
+    // asserting that all 12 guard types are present.
     let pattern_db = write_temp_threat_intel_pattern_db();
     let spec = HushSpec::parse(&all_twelve_guards_yaml(&pattern_db)).expect("parse hushspec");
     let compiled = compile_policy(&spec).expect("compile should succeed");

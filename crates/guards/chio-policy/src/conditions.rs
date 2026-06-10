@@ -1,8 +1,7 @@
 //! Conditional rules system for HushSpec policies.
 //!
-//! Ported from the HushSpec reference implementation. Provides a `Condition`
-//! type that gates whether a rule block is active, evaluated against a
-//! `RuntimeContext`.
+//! Provides a `Condition` type that gates whether a rule block is active,
+//! evaluated against a `RuntimeContext`.
 //!
 //! Design principles:
 //! - Fail-closed: missing context fields cause conditions to evaluate to false.
@@ -21,11 +20,10 @@ pub use crate::models::RULE_BLOCK_NAMES as CONDITIONABLE_RULE_BLOCKS;
 /// Maximum allowed nesting depth for compound conditions.
 const MAX_NESTING_DEPTH: usize = 8;
 
-/// Reject condition maps whose keys are not known rule-block names. The
-/// reference evaluator calls this at the start of `evaluate_with_context`;
-/// callers that assemble condition maps elsewhere should also validate at load
-/// time, so a misspelled key fails closed instead of silently no-oping the rule
-/// it was meant to gate.
+/// Reject condition maps whose keys are not known rule-block names. Called at
+/// the start of `evaluate_with_context`; callers that assemble condition maps
+/// elsewhere should also validate at load time, so a misspelled key fails
+/// closed instead of silently no-oping the rule it was meant to gate.
 ///
 /// # Errors
 ///

@@ -47,9 +47,8 @@ pub enum ToolAction {
 /// A recognized tool-action shape with missing or mistyped arguments.
 ///
 /// Guard boundaries must treat this as deny. The plain [`extract_action`]
-/// helper preserves its historical best-effort `ToolAction` return type for
-/// non-guard callers; guards and guard-like host enrichers should use
-/// [`extract_action_checked`] instead.
+/// helper returns a best-effort `ToolAction` for non-guard callers; guards and
+/// guard-like host enrichers should use [`extract_action_checked`] instead.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MalformedAction {
     pub tool_name: String,
@@ -77,9 +76,9 @@ use extractor::{string_arg, StringArgViolation};
 /// Extract a `ToolAction` from a tool name and its arguments.
 ///
 /// This uses a best-effort heuristic based on common tool naming conventions.
-/// Recognized but malformed action shapes map to `ToolAction::Unknown` to
-/// preserve the historical return type. Guard-boundary code should call
-/// [`extract_action_checked`] and deny malformed-action errors.
+/// Recognized but malformed action shapes map to `ToolAction::Unknown`.
+/// Guard-boundary code should call [`extract_action_checked`] and deny
+/// malformed-action errors.
 pub fn extract_action(tool_name: &str, arguments: &Value) -> ToolAction {
     extractor::extract_action(tool_name, arguments)
 }

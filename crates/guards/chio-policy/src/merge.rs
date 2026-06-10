@@ -1,8 +1,7 @@
 //! HushSpec policy merge/inheritance.
 //!
-//! Ported from the HushSpec reference implementation. Merges a child policy
-//! into a base policy using one of three strategies: replace, merge, or
-//! deep merge (default).
+//! Merges a child policy into a base policy using one of three strategies:
+//! replace, merge, or deep merge (default).
 
 use crate::models::{
     ChioExtension, DetectionExtension, Extensions, HushSpec, JailbreakDetection, MergeStrategy,

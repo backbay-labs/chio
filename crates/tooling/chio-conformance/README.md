@@ -74,8 +74,8 @@ C++ P0 scenario coverage (`mcp_core` and `auth`) is covered by the
 
 ## Feature flags
 
-- `in-repo-fixtures` (default): keep the historical Chio repository layout
-  for resolving fixture and scenario paths through `default_repo_root()`
+- `in-repo-fixtures` (default): resolve fixture and scenario paths against
+  the Chio repository layout through `default_repo_root()`
   and `default_run_options()`. When the crate is consumed from a package
   without the monorepo root, the same defaults fall back to the bundled
   crate-local `tests/conformance/` tree. Disable via

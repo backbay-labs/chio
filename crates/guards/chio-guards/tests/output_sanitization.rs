@@ -661,14 +661,13 @@ fn sanitize_json_helper_aggregates_findings() {
 }
 
 // ---------------------------------------------------------------------------
-// Acceptance criterion sanity check.
+// Post-invocation guard redaction.
 // ---------------------------------------------------------------------------
 
 #[test]
 fn acceptance_post_invocation_guard_redacts_everything() {
-    // Acceptance criterion: "Post-invocation guard redacts SSNs, credit
-    // cards (Luhn-validated), API keys, and high-entropy strings from tool
-    // results."
+    // The post-invocation guard redacts SSNs, credit cards (Luhn-validated),
+    // API keys, and high-entropy strings from tool results.
     let mut pipeline = PostInvocationPipeline::new();
     pipeline.add(Box::new(SanitizerHook::new()));
 

@@ -36,7 +36,7 @@ url = { version = "2", default-features = false }
 # `core::fmt::Display` + `core::error::Error` impls for every error type.
 thiserror = { workspace = true, optional = true }
 # FIPS-capable ECDSA (P-256 / P-384) signing via aws-lc-rs. Gated behind the
-# `fips` feature so non-FIPS builds keep their historical dependency set.
+# `fips` feature so non-FIPS builds pull no extra dependencies.
 aws-lc-rs = { version = "1.16", default-features = false, features = ["aws-lc-sys"], optional = true }
 fips204 = { workspace = true, optional = true }
 

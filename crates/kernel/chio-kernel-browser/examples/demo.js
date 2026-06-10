@@ -1,4 +1,4 @@
-// Acceptance demo for chio-kernel-browser.
+// Demo for chio-kernel-browser.
 //
 // This file is intentionally dependency-free: it loads the wasm module
 // produced by `wasm-pack build --target web --release` and exercises
@@ -28,7 +28,7 @@ let fixture = null;
 
 // Capability-less evaluate request: the fixture pubkey does not match
 // the signed payload, so kernel-core returns a structured deny verdict.
-// Acceptance criterion: round-trip latency < 5 ms.
+// Target round-trip latency: < 5 ms.
 const FIXTURE_EVALUATE_REQUEST = {
   request: {
     request_id: "demo-req-1",

@@ -46,8 +46,7 @@ pub struct EvaluateRequestJson {
     pub trusted_issuers_hex: Vec<String>,
     /// Optional pinned unix-seconds clock override. When `None`, the
     /// adapter reads `Date::now()` via [`crate::BrowserClock`]. Test
-    /// harnesses use this to pin the clock for reproducible acceptance
-    /// checks.
+    /// harnesses use this to pin the clock for reproducible checks.
     #[serde(default)]
     pub clock_override_unix_secs: Option<u64>,
     /// Optional session filesystem roots, forwarded to guards.

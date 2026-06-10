@@ -78,7 +78,6 @@ pub fn is_zero_width(ch: char) -> bool {
 /// The table is intentionally small: we prioritise characters that actually
 /// appear in observed prompt-injection payloads (Cyrillic letters that look
 /// like Latin, full-width digits and letters, Greek alpha/omicron, etc.).
-/// Expanding the table later is purely additive.
 fn fold_homoglyph(ch: char) -> char {
     match ch {
         // Cyrillic -> Latin look-alikes.

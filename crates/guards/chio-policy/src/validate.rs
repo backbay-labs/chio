@@ -1,7 +1,6 @@
 //! HushSpec policy validation.
 //!
-//! Ported from the HushSpec reference implementation. Validates a parsed
-//! policy and returns errors and warnings.
+//! Validates a parsed policy and returns errors and warnings.
 
 use crate::models::{DetectionLevel, Extensions, HushSpec, Rules, TransitionTrigger};
 use crate::regex_safety::{compile_policy_regex, validate_policy_regex_count};

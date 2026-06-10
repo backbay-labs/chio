@@ -204,9 +204,8 @@ impl ComplianceScore {
     }
 }
 
-/// Options controlling scoring thresholds. Defaults match the
-/// roadmap's 19.1 acceptance targets (zero denies in 1000 calls -> >900;
-/// any revoked cap -> <500).
+/// Options controlling scoring thresholds. Defaults yield zero denies in
+/// 1000 calls -> >900; any revoked cap -> <500.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ComplianceScoreConfig {
@@ -216,9 +215,8 @@ pub struct ComplianceScoreConfig {
     /// the revocation factor even if `observed_capabilities` is zero.
     pub treat_any_revocation_as_full: bool,
     /// Ceiling (exclusive) on the final score when any observed
-    /// capability is revoked. Defaults to 500 so that the roadmap's
-    /// 19.1 acceptance target ("revoked capability -> score <500")
-    /// holds regardless of the raw factor math.
+    /// capability is revoked. Defaults to 500 so that a revoked
+    /// capability yields a score <500 regardless of the raw factor math.
     pub revocation_ceiling: u32,
 }
 
@@ -254,8 +252,8 @@ pub fn compliance_score(
     // Revocation ceiling: once the regulatory system has revoked any
     // capability exercised by this agent, the score is capped below
     // `revocation_ceiling` regardless of the raw factor math. This
-    // ensures the 19.1 acceptance target ("revoked -> <500") holds
-    // even when other factors look healthy.
+    // ensures a revoked capability yields a score <500 even when other
+    // factors look healthy.
     let score = if inputs.any_revoked || inputs.revoked_capabilities > 0 {
         raw_score.min(config.revocation_ceiling)
     } else {
@@ -298,8 +296,8 @@ pub fn compliance_factor_breakdown(
     } else {
         let raw = inputs.revoked_capabilities as f64 / inputs.observed_capabilities as f64;
         // If `any_revoked` is set the agent has *at least one* revoked
-        // capability: floor the rate so that acceptance (any revocation
-        // deducts below 500) is met even when the denominator is large.
+        // capability: floor the rate so any revocation deducts below 500
+        // even when the denominator is large.
         if config.treat_any_revocation_as_full && inputs.any_revoked {
             raw.max(1.0)
         } else {

@@ -1,10 +1,10 @@
-// Compliance-score acceptance tests.
+// Compliance-score tests.
 //
 // Included by `src/kernel/tests.rs`, which already pulled in `super::*`
 // and helpers from `tests/all.rs`. We only need items that are not in
 // scope yet.
 //
-// Acceptance criteria:
+// Verified behaviour:
 //   * zero denies in 1000 calls -> score > 900
 //   * revoked capability        -> score < 500
 

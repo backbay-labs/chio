@@ -550,7 +550,7 @@ def _reject_shell_argv_escape(command: str, *, root: Any) -> None:
     Delegates to :func:`chio_adapter_base.security.reject_shell_argv_escape`
     and translates its :class:`ChioPathEscapeError` into the
     chio-hermes :class:`ChioCodeAgentDeniedError` so the surrounding
-    handler envelope renders the deny verdict with the historical
+    handler envelope renders the deny verdict with the
     ``tool_name`` / ``reason`` / ``guard`` fields.
     """
     from chio_code_agent.errors import ChioCodeAgentDeniedError

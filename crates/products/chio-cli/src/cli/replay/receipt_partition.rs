@@ -315,7 +315,7 @@ mod replay_receipt_partition_tests {
     }
 
     #[test]
-    fn replay_receipt_id_format_matches_milestone_doc_line_568() {
+    fn replay_receipt_id_uses_run_frame_format() {
         // Pinned literal: "replay:<run_id>:<frame_id>".
         let id = replay_receipt_id("run-x", "frame-y");
         assert_eq!(id, "replay:run-x:frame-y");

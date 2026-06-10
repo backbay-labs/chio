@@ -5,7 +5,7 @@
 // `make_request_with_arguments`, `EchoServer`) with the sibling
 // test files.
 //
-// Acceptance coverage:
+// Coverage:
 //   * post-sign hook fires on federated requests and persists a
 //     DualSignedReceipt that verifies against both pinned peer keys,
 //   * non-federated requests still work and leave no dual-signed

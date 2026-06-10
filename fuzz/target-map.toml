@@ -41,7 +41,7 @@ triggers = [
     "tests/bindings/vectors/receipt/**",
 ]
 seeds    = "fuzz/corpus/capability_receipt"
-notes    = "Capability + receipt round-trip; intersects M03 capability algebra invariants."
+notes    = "Capability + receipt round-trip; exercises the capability-algebra invariants."
 
 [targets.manifest_roundtrip]
 crate    = "chio-manifest"
@@ -53,7 +53,7 @@ triggers = [
     "tests/bindings/vectors/manifest/**",
 ]
 seeds    = "fuzz/corpus/manifest_roundtrip"
-notes    = "Tool-manifest decode plus canonicalization; downstream of M01 manifest vectors."
+notes    = "Tool-manifest decode plus canonicalization."
 
 [targets.federation_trust_establishment]
 crate    = "chio-federation"

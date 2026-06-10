@@ -1,8 +1,5 @@
 //! Capability marketplace discovery: search and compare extensions on top of
-//! the generic listing surface.
-//!
-//! This module is purely additive to the shipped listing types in
-//! [`crate`]. It does not change any existing signatures.
+//! the generic listing surface in [`crate`].
 //!
 //! A tool server operator annotates a listing with a signed
 //! [`ListingPricingHint`] (price-per-call, SLA, revocation rate, recent

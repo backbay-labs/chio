@@ -544,9 +544,9 @@ fn verifier_trust_bundle_v3_requires_authority_roots() {
 #[test]
 #[ignore = "v1-only collapse: v1 is now the strict schema, not a historical one"]
 fn historical_v1_trust_bundle_is_not_strict_verifier_input() {
-    // Predates the Chio-owned pre-release v1-only collapse. Kept here as a
-    // marker so the historical-rejection contract can be revived if a
-    // future revision reintroduces multiple trust-bundle schema versions.
+    // Ignored while v1 is the only trust-bundle schema: there is no older
+    // version for the strict verifier to reject. Guards the rejection
+    // contract for any future revision that reintroduces multiple versions.
     let mut document = trust_bundle_document_from_fixture();
     document.schema = VERIFIER_TRUST_BUNDLE_SCHEMA.to_string();
 

@@ -113,7 +113,7 @@ impl EvaluationVerdict {
 
 /// Errors the portable core can raise.
 ///
-/// These are portable-kernel equivalents of the legacy
+/// These are portable-kernel equivalents of the
 /// `chio_kernel::KernelError` variants that can be produced without any
 /// I/O. The caller in `chio-kernel` maps them back onto its richer
 /// `KernelError` surface for backward compatibility.

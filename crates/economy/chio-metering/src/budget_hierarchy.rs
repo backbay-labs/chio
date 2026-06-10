@@ -1,7 +1,7 @@
 //! Hierarchical budget governance for enterprise fleet management.
 //!
-//! This module introduces a tree-structured budget policy model that sits
-//! above the flat [`crate::budget::BudgetPolicy`]. Parents cap children at
+//! A tree-structured budget policy model that sits above the flat
+//! [`crate::budget::BudgetPolicy`]. Parents cap children at
 //! every level -- organization, department, team, agent -- and draft spend
 //! is evaluated against every ancestor node. A tree is authoritative over
 //! the shape and limits of budgets; it is storage-agnostic. Callers supply

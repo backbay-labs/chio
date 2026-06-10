@@ -1,10 +1,9 @@
 //! Integration tests for [`chio_guards::PromptInjectionGuard`].
 //!
 //! These tests exercise the full `Guard` trait entrypoint (not just the
-//! `scan` helper) through a realistic `GuardContext`, verifying the
-//! acceptance criterion: classic "ignore previous
-//! instructions" payloads deny, benign inputs allow, and the guard does
-//! not interfere with non-text-bearing actions.
+//! `scan` helper) through a realistic `GuardContext`: classic "ignore
+//! previous instructions" payloads deny, benign inputs allow, and the guard
+//! does not interfere with non-text-bearing actions.
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 

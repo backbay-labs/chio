@@ -2,9 +2,8 @@
 //!
 //! This module is the single source of truth for the constants that
 //! the writer ([`crate::golden_writer`]) emits and the reader
-//! ([`crate::golden_reader`]) verifies. Co-locating them eliminates
-//! the writer-reader desync risk from earlier revisions where each
-//! module redeclared its own copy of the filenames and length
+//! ([`crate::golden_reader`]) verifies. Co-locating them keeps the
+//! writer and reader from desyncing on filenames and length
 //! invariants.
 //!
 //! It also re-exports the canonical JSON serializer the goldens are
@@ -12,11 +11,10 @@
 //! 8785 implementation in
 //! [`chio_core_types::canonical::canonicalize`] so a single canonical
 //! JSON definition governs receipts, checkpoints, signed plans, and
-//! every other deterministic-bytes artifact in the project. Earlier
-//! revisions of the writer hand-rolled their own BTreeMap-based
-//! reshape with `serde_json::to_string`; for the ASCII-only goldens
-//! that ship in the corpus the bytes coincide, but the duplication
-//! risked drift the day a non-ASCII string entered the receipt stream.
+//! every other deterministic-bytes artifact in the project. A
+//! hand-rolled BTreeMap reshape coincides byte-for-byte only for the
+//! ASCII-only goldens in the corpus; the shared RFC 8785 serializer
+//! holds the moment a non-ASCII string enters the receipt stream.
 
 use std::io;
 

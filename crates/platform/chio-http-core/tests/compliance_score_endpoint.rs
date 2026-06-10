@@ -2,7 +2,7 @@
 //!
 //! These tests wire a stubbed `ComplianceSource` into the handler to
 //! verify the wire contract: the response carries a 0..=1000 score and
-//! a per-factor breakdown, and the roadmap acceptance targets hold.
+//! a per-factor breakdown.
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 

@@ -1,9 +1,8 @@
 """Behavioural tests for :mod:`chio_adapter_base.security`.
 
-Many assertions are copied verbatim from
-``sdks/python/chio-hermes/tests/test_security_fixes.py`` so we know
-they cover the same real-world threats the chio-hermes implementation
-was hardened against.
+These assertions mirror
+``sdks/python/chio-hermes/tests/test_security_fixes.py`` and cover the
+same threats the chio-hermes implementation is hardened against.
 """
 
 from __future__ import annotations

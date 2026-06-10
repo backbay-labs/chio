@@ -5,7 +5,7 @@
 // (`make_config`, `make_keypair`, `make_scope`, `make_grant`,
 // `make_capability`, `EchoServer`, etc.).
 //
-// Acceptance coverage:
+// Coverage:
 //   * governed writes append provenance entries,
 //   * governed reads surface provenance metadata on the receipt,
 //   * reads of entries with no provenance are flagged as unverified,

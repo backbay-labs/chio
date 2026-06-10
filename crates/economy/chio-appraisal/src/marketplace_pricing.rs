@@ -1,17 +1,12 @@
-//! Marketplace pricing helper.
+//! Per-invocation marketplace pricing for guard manifests.
 //!
-//! `chio-appraisal` already models the runtime-attestation appraisal
-//! surface. This helper reuses the crate's deterministic-evaluation
-//! contract (output is a deterministic function of inputs) by adding
-//! a small per-invocation pricing helper for guard manifests. No new
-//! pricing primitives are introduced: the helper combines a manifest
-//! base price with tenant context to produce a final price in the
-//! manifest's currency.
+//! Combines a manifest base price with tenant context to produce a final
+//! price in the manifest's currency. Output is a deterministic function of
+//! inputs.
 //!
-//! The helper is intentionally pure and storage-agnostic. Callers
-//! inject the manifest base price plus a tenant pricing context
-//! assembled from the publish path (manifest) and reputation tier
-//! ascertainment.
+//! The helper is pure and storage-agnostic. Callers inject the manifest
+//! base price plus a tenant pricing context assembled from the publish path
+//! (manifest) and reputation tier ascertainment.
 
 use serde::{Deserialize, Serialize};
 

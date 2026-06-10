@@ -177,8 +177,8 @@ fn ai_agent_ruleset_adds_shell_command_patterns() {
 #[test]
 fn remote_desktop_ruleset_compiles_computer_use_blocks() {
     // The remote-desktop ruleset opts into computer_use,
-    // remote_desktop_channels, and input_injection. All three now compile
-    // to concrete guards on the pipeline.
+    // remote_desktop_channels, and input_injection. All three compile to
+    // concrete guards on the pipeline.
     let compiled = load_builtin("remote-desktop").expect("compile remote-desktop");
     assert!(compiled.guard_names.contains(&"computer-use".to_string()));
     assert!(compiled

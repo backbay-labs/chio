@@ -189,13 +189,10 @@ pub fn verify_anchor_batch_with_witness_policy(
     policy: &WitnessPolicy,
     now: i64,
 ) -> Result<(), AnchorError> {
-    // before any structural work. This makes the routing rule from
-    // PROTOCOL.md lines 980-993 load-bearing rather than relying on
-    // the per-state table inside `evaluate_witness_policy` to fail
-    // closed by happenstance. Reverting this early-return is what
-    // the negative conformance fixture
-    // `crates/tooling/chio-conformance/tests/b3_anchor_batch_sync_path_rejected_under_public_witness.rs`
-    // detects.
+    // Reject the sync route under `require_public_witness` before any
+    // structural work, so the PROTOCOL.md (section 980-993) routing rule
+    // is enforced at the entry point rather than relying on the per-state
+    // table inside `evaluate_witness_policy` to fail closed by happenstance.
     if policy.require_public_witness {
         return Err(AnchorError::SyncRouteRequiresAdvisoryPolicy);
     }

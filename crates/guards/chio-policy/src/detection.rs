@@ -1,8 +1,7 @@
 //! Regex-based detection for prompt injection, jailbreak, and data exfiltration.
 //!
-//! Ported from the HushSpec reference implementation. These detectors
-//! complement the chio-guards SecretLeakGuard by providing content-level
-//! scanning that can be wired into the evaluation pipeline.
+//! These detectors complement the chio-guards SecretLeakGuard by providing
+//! content-level scanning that can be wired into the evaluation pipeline.
 
 use crate::evaluate::{evaluate, Decision, EvaluationAction, EvaluationResult};
 use crate::models::HushSpec;

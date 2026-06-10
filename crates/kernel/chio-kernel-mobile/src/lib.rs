@@ -470,9 +470,9 @@ pub fn verify_capability(
 
 /// Verify a capability token with the full portable JSON context.
 ///
-/// This entry point preserves the legacy [`verify_capability`] function
-/// while giving mobile hosts a way to pass trust roots and parent-budget
-/// snapshots for delegated tokens.
+/// This entry point complements [`verify_capability`] by giving mobile
+/// hosts a way to pass trust roots and parent-budget snapshots for
+/// delegated tokens.
 pub fn verify_capability_with_context(
     request_json: String,
 ) -> Result<VerifiedCapability, ChioMobileError> {
@@ -643,10 +643,9 @@ pub fn verify_passport(
 /// Produce an App Attest challenge envelope bound to `challenge_hex`.
 ///
 /// The iOS host app still calls DeviceCheck to produce the platform
-/// attestation object. This entry point no longer reports the verifier as
-/// unavailable; it returns the exact server challenge envelope the native
-/// platform evidence must bind to before `verify_app_attest_evidence`
-/// accepts it.
+/// attestation object. This entry point returns the exact server
+/// challenge envelope the native platform evidence must bind to before
+/// `verify_app_attest_evidence` accepts it.
 pub fn attest_app_attest(key_id: String, challenge_hex: String) -> Result<String, ChioMobileError> {
     let challenge = decode_hex_argument("App Attest challenge", &challenge_hex)?;
     if key_id.trim().is_empty() {

@@ -1,10 +1,9 @@
 //! Reputation-weighted credit limit helper.
 //!
-//! `chio-underwriting` already models the underwriting decision shape.
-//! This helper reuses `UnderwritingDecisionOutcome` (Approve / ReduceCeiling
-//! / StepUp / Deny) by emitting a thin marketplace credit limit
-//! decision the CLI surfaces in `arc guard market info`. The helper
-//! is deterministic and storage-agnostic.
+//! Emits a marketplace credit limit decision keyed off
+//! `UnderwritingDecisionOutcome` (Approve / ReduceCeiling / StepUp / Deny),
+//! surfaced by the CLI in `arc guard market info`. Deterministic and
+//! storage-agnostic.
 //!
 //! Soft-dep: the revocation oracle revokes guard publisher
 //! credentials on the same sparse-Merkle root that revokes capabilities.

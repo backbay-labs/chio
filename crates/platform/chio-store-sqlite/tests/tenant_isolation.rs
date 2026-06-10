@@ -284,9 +284,9 @@ fn explicit_admin_context_returns_all_rows_regardless_of_tags() {
 
 #[test]
 fn tenant_a_queries_never_return_tenant_b_rows() {
-    // Roadmap acceptance: "Receipts from tenant A are invisible to
-    // tenant B queries." Verified from both directions and under strict
-    // isolation so the NULL-fallback cannot mask a regression.
+    // Receipts from tenant A are invisible to tenant B queries.
+    // Verified from both directions and under strict isolation so the
+    // NULL-fallback cannot mask a regression.
     let path = unique_db_path("tenant-isolation-cross");
     let store = SqliteReceiptStore::open(&path).test_expect("open store");
 

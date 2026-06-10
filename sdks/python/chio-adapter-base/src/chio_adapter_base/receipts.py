@@ -182,11 +182,9 @@ class ReceiptBuffer:
     def recent(self, n: int = 5) -> list[dict[str, Any]]:
         """Return the ``n`` most recently recorded receipts.
 
-        ``n <= 0`` returns ``[]``. The chio-hermes implementation has a
-        well-known bug fix here: the historical ``[-max(0, n):]``
-        evaluated ``[0:]`` and returned the entire buffer (the opposite
-        of what the caller asked for). The conformance test asserts
-        the ``n=0`` case is empty.
+        ``n <= 0`` returns ``[]`` (not the entire buffer): a naive
+        ``[-max(0, n):]`` slice would evaluate ``[0:]`` and return
+        everything, the opposite of what the caller asked for.
         """
         count = int(n)
         if count <= 0:

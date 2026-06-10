@@ -263,7 +263,7 @@ fn kernel_denies_tool_call_when_model_is_not_in_allowlist() {
 }
 
 /// A model whose declared safety tier is below `min_safety_tier` is
-/// denied. This is the roadmap acceptance criterion.
+/// denied.
 #[test]
 fn kernel_denies_tool_call_when_model_safety_tier_is_below_minimum() {
     let mut kernel = make_kernel(make_config());

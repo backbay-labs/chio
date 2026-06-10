@@ -50,7 +50,6 @@ impl ShellCommandGuard {
 
     /// Build a guard from operator-supplied regex patterns.
     ///
-    /// This compatibility constructor preserves the historical return type.
     /// Invalid regex configuration creates a deny-all guard so direct callers
     /// cannot accidentally widen access by dropping a malformed pattern.
     pub fn with_patterns(patterns: Vec<String>, enforce_forbidden_paths: bool) -> Self {

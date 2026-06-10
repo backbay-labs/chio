@@ -88,7 +88,7 @@ fn evaluate_round_trip() {
     let verdict_js = evaluate(&request_json.to_string()).expect("evaluate returned Ok");
     let elapsed_ms = js_sys::Date::now() - started;
 
-    // 5 ms is the roadmap acceptance ceiling. Allow some slack in CI.
+    // 5 ms is the target ceiling. Allow some slack in CI.
     assert!(
         elapsed_ms < 50.0,
         "evaluate round-trip took {elapsed_ms} ms; expected <50 ms"

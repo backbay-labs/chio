@@ -100,8 +100,8 @@ pub fn verify_capability(token_json: &str, authority_pub_hex: &str) -> Result<Js
 ///
 /// Accepts the JSON serialization of [`VerifyCapabilityRequestJson`],
 /// including trust roots and parent-budget snapshots for delegated
-/// tokens. The legacy [`verify_capability`] helper remains available
-/// for single-authority v1 checks.
+/// tokens. The [`verify_capability`] helper remains available for
+/// single-authority v1 checks.
 #[wasm_bindgen]
 pub fn verify_capability_with_context(request_json: &str) -> Result<JsValue, JsValue> {
     let request: VerifyCapabilityRequestJson =

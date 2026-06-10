@@ -332,9 +332,10 @@ impl CapabilityToken {
 
     /// Sign a capability token body with the given Ed25519 keypair.
     ///
-    /// This is the historical signing entry point and produces a
-    /// byte-identical artifact to pre-`SigningBackend` Chio releases: the
-    /// `algorithm` envelope field is omitted from the serialized output.
+    /// This is the bare Ed25519 signing entry point: the `algorithm` envelope
+    /// field is omitted from the serialized output, so the artifact is
+    /// byte-identical to one signed through the `SigningBackend` path with the
+    /// default Ed25519 algorithm.
     pub fn sign(body: CapabilityTokenBody, keypair: &Keypair) -> Result<Self> {
         ensure_keypair_matches_embedded_key(&body.issuer, keypair, "capability token", "issuer")?;
         let signing_body = CapabilityTokenSigningBody {

@@ -119,9 +119,9 @@ fn route_path_is_stable() {
     assert_eq!(EVALUATE_PLAN_PATH, "/evaluate-plan");
 }
 
-/// Roadmap acceptance: a 3-step plan where step 3 is out-of-scope
-/// returns `plan_verdict: PartiallyDenied` with step 3 flagged, before
-/// any tool executes.
+/// A 3-step plan where step 3 is out-of-scope returns
+/// `plan_verdict: PartiallyDenied` with step 3 flagged, before any tool
+/// executes.
 #[test]
 fn three_step_plan_with_step_three_out_of_scope_returns_partially_denied() {
     let kernel = build_kernel(&["read_file", "write_file", "delete_file"]);

@@ -195,9 +195,9 @@ class ReceiptBuffer:
                 _logger.warning("receipt JSONL write failed: %s", exc)
 
     def recent(self, n: int = 5) -> list[dict[str, Any]]:
-        # `n <= 0` means "give me nothing"; the historical
-        # `[-max(0, n):]` evaluated `[0:]` and returned the entire
-        # buffer (the opposite of what the caller asked for).
+        # `n <= 0` returns nothing: a naive `[-max(0, n):]` slice would
+        # evaluate `[0:]` and return the entire buffer, the opposite of
+        # what the caller asked for.
         count = int(n)
         if count <= 0:
             return []

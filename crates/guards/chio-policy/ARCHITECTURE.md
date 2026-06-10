@@ -17,43 +17,29 @@
   internals, receipt signing, capability verification, or persistent runtime
   state.
 
-## Current Pain Point
+## Workload Identity Path Matching
 
 `rules.tool_access.require_workload_identity.path_prefixes` is a policy
-admission boundary for SPIFFE/SVID-style runtime identities. The evaluator
-currently treats configured path prefixes as raw strings, so a policy prefix
-such as `/payments` can also match a sibling workload path such as
-`/payments-v2/worker`. That silently widens runtime identity admission beyond
-the path segment the operator named. The compiler already fails closed for
-workload-identity requirements when building default scopes because capability
-grants cannot encode that predicate, so the reference evaluator is the owning
-boundary that must preserve the identity semantics.
+admission boundary for SPIFFE/SVID-style runtime identities. The evaluator owns
+this boundary: the compiler fails closed for workload-identity requirements when
+building default scopes because capability grants cannot encode the predicate,
+so the evaluator must preserve the identity semantics directly.
+
+Path prefixes match on segment boundaries, not raw string prefixes. A prefix
+such as `/payments` must not match a sibling workload path such as
+`/payments-v2/worker`, which would silently widen runtime identity admission
+beyond the path segment the operator named. `chio-core` owns SPIFFE workload
+identity parsing and binding; policy matching follows that canonical path shape.
 
 ## Security And API Constraints
 
 - Invalid HushSpec documents must reject before guard or scope materialization.
-- Public parser, validator, compiler, and evaluator APIs should remain
-  compatible.
-- Workload identity path prefixes must match either the exact workload path or
-  a child segment boundary, never a sibling string prefix.
-- The root prefix `/` should keep matching all canonical workload paths.
-- Trailing slash input in policy prefixes should remain compatible by
-  normalizing to the same segment boundary.
-- Existing tool allow/block/default semantics, runtime-assurance checks,
-  warning-only workload identity preferences, posture checks, conditions, and
-  default-scope compilation must remain stable.
-
-## Affected Dependents
-
-The owning-crate change is internal to `chio-policy` and affects callers of the
-reference evaluator, including control-plane and CLI policy-check paths that
-evaluate HushSpec tool access rules with runtime attestation context. No
-dependent API change is planned. `chio-core` already owns SPIFFE workload
-identity parsing and binding; this slice aligns policy matching with that
-canonical path shape.
-
-## Implemented Improvement
-
-Workload identity matching now evaluates `path_prefixes` through a segment
-boundary helper. Regression coverage proves `/payments-v2/worker` no longer
-satisfies `/payments`, while exact and child-segment matches continue to pass.
+- Public parser, validator, compiler, and evaluator APIs are stable.
+- Workload identity path prefixes match either the exact workload path or a
+  child segment boundary, never a sibling string prefix.
+- The root prefix `/` matches all canonical workload paths.
+- Trailing slash input in policy prefixes normalizes to the same segment
+  boundary.
+- Tool allow/block/default semantics, runtime-assurance checks, warning-only
+  workload identity preferences, posture checks, conditions, and default-scope
+  compilation are stable.

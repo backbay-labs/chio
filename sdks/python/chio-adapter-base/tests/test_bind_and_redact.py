@@ -2017,13 +2017,11 @@ def test_typeerror_fallback_colliding_positional_aliases_redact_independently() 
 
 
 def test_build_alias_map_is_importable_from_top_level() -> None:
-    """Regression:
-
-    ``build_alias_map`` is a public helper (no underscore prefix) and
-    is advertised in the PR description as exposing the wrapper-name
-    -> canonical-name routing algorithm. It must be re-exported from
-    the top-level ``chio_adapter_base`` namespace so wildcard imports
-    and tooling-generated API docs surface it.
+    """``build_alias_map`` is a public helper (no underscore prefix)
+    exposing the wrapper-name -> canonical-name routing algorithm. It
+    must be re-exported from the top-level ``chio_adapter_base``
+    namespace so wildcard imports and tooling-generated API docs
+    surface it.
     """
 
     import chio_adapter_base

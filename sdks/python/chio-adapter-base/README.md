@@ -174,11 +174,9 @@ adapter-author recipe for bumping a floor pin from 0.1.x to 0.2.0.
 
 ## Design notes
 
-- Each primitive has a docstring pointing at the `chio-hermes` source
-  it is being ported from, so the source-of-truth path is unambiguous
-  during the migration.
+- Each primitive's docstring names the corresponding `chio-hermes`
+  source, so the source-of-truth path is unambiguous.
 - The package depends only on `chio-sdk-python`. It must NOT depend on
   `chio-hermes` (circular) or on any sibling adapter.
-- No `_underscore_prefixed` names in the public API. Consumers were
-  expected to know that `_sanitised_env` was a contract; we are
-  fixing that bug as we extract.
+- No `_underscore_prefixed` names in the public API: a contract must not
+  hide behind a name that signals "private" to consumers.

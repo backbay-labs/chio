@@ -54,7 +54,7 @@ official point-to-component edge that the other side does not reciprocate,
 negotiation can treat a manifest as targeting an official baseline that the
 inventory and stack do not actually share.
 
-## Local Invariants For This Slice
+## Local Invariants
 
 - `validate_extension_inventory` validates the inventory in isolation.
 - `validate_official_stack_package` validates the inventory and package
@@ -77,9 +77,7 @@ flow through this facade. When lower-level crates add signed or canonical
 types, `chio-core` verification should prove the re-export path does not
 change their construction, validation, or serialized field names.
 
-## Improvement In This Slice
-
-Strengthen `validate_official_stack_package` so the inventory and official
-stack form one authoritative graph for official components. Inventory-to-stack
-and stack-to-inventory mismatches must fail closed before negotiation evaluates
-profiles, supported components, or runtime guardrails.
+`validate_official_stack_package` treats the inventory and official stack as one
+authoritative graph for official components. Inventory-to-stack and
+stack-to-inventory mismatches fail closed before negotiation evaluates profiles,
+supported components, or runtime guardrails.

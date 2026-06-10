@@ -66,8 +66,8 @@ fn self_test_renders_chio_verified_block() {
 
 #[test]
 fn self_test_handles_arbitrary_tool_names() {
-    // Header is purely additive -- any tool name that is valid JSON
-    // string round-trips intact.
+    // Any tool name that is a valid JSON string round-trips intact in the
+    // attestation header.
     for tool in ["read_file", "fs.write", "tool/with/slash", "emoji-ok"] {
         let output = Command::new(chio_bin())
             .args(["mcp", "wrap", "--self-test-attestation", tool])

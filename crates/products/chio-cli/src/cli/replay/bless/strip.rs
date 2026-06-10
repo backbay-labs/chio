@@ -27,7 +27,7 @@ mod replay_bless_capability_tests {
     use super::*;
 
     #[test]
-    fn bless_capability_constant_matches_milestone_gate() {
+    fn bless_capability_constant_is_pinned() {
         assert_eq!(REPLAY_BLESS_CAPABILITY, "chio:tee/bless@1");
     }
 

@@ -6,8 +6,8 @@
 # ============================================================================
 #
 # This script is a blocking CI companion for the load-bearing runtime gate.
-# It is intentionally a grep-window heuristic, not a sound proof. Per the R3
-# review (BLOCKER #2 fix), the lint's contract is:
+# It is intentionally a grep-window heuristic, not a sound proof. The lint's
+# contract is:
 #
 #   - False POSITIVES are tolerated. The window can flag advisory-mode
 #     callers if a `require_public_witness: true` literal happens to live
@@ -66,9 +66,8 @@
 # `crates/economy/chio-anchor/src/batch.rs::verify_anchor_batch_with_witness_policy`.
 # This lint is a fast-feedback companion: it fails loudly on detected
 # violations, but a clean exit does NOT prove the absence of a bypass.
-# Audit R4 P1-010 requires CI posture to be non-advisory; the
-# [PUBLIC-WITNESS-LINT] prefix below makes the blocking companion
-# contract visible in logs.
+# CI posture is non-advisory (blocking); the [PUBLIC-WITNESS-LINT] prefix
+# below makes the blocking companion contract visible in logs.
 
 set -uo pipefail
 

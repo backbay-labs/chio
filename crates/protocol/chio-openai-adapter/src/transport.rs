@@ -12,7 +12,7 @@
 //! [`chio_provider_adapter_core::http`], so this module only encodes the two
 //! OpenAI endpoints and their response shapes:
 //!
-//! - `/v1/responses` (the Responses API the adapter already models): the
+//! - `/v1/responses` (the Responses API): the
 //!   response `output[]` is lifted by [`OpenAiAdapter::lift_batch`].
 //! - `/v1/chat/completions`: `choices[].message.tool_calls[]` are parsed into
 //!   [`OpenAiToolCall`] via the existing

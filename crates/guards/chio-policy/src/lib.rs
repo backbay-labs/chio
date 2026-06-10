@@ -1,8 +1,7 @@
 //! HushSpec policy format for the Chio runtime.
 //!
 //! This crate provides a portable, standards-based policy format for AI agent
-//! security rules. It is ported from the HushSpec reference implementation and
-//! adapted to integrate with Chio's guard pipeline and capability system.
+//! security rules, integrated with Chio's guard pipeline and capability system.
 //!
 //! # Key modules
 //!
@@ -35,7 +34,6 @@ pub mod validate;
 pub mod version;
 pub mod weights;
 
-// Re-exports for convenience
 pub use compiler::{compile_policy, compile_policy_with_source, CompileError, CompiledPolicy};
 pub use conditions::{evaluate_condition, Condition, RuntimeContext};
 pub use crypto_floor::{CryptoFloor, CryptoFloorLoadError};

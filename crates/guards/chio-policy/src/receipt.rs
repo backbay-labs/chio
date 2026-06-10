@@ -1,7 +1,6 @@
 //! Decision receipts for HushSpec evaluation.
 //!
-//! Ported from the HushSpec reference implementation. Wraps `evaluate()` with
-//! timing, policy hashing, and a structured receipt.
+//! Wraps `evaluate()` with timing, policy hashing, and a structured receipt.
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};

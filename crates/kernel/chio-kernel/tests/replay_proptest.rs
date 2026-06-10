@@ -376,7 +376,7 @@ proptest! {
         .. ProptestConfig::default()
     })]
 
-    /// Property 1 (named exit-criterion test):
+    /// Property 1:
     /// signing is a pure function: same canonical body, same signed bytes.
     /// We sign the same body three times across two independently-derived
     /// keypair instances and assert byte equality across every pairing.
@@ -467,7 +467,7 @@ proptest! {
         .. ProptestConfig::default()
     })]
 
-    /// Property 2 (named exit-criterion test):
+    /// Property 2:
     /// replaying the receipt log twice yields the same anchored root. We
     /// build the same receipt batch twice and assert byte equality on the
     /// computed Merkle root. The strategy covers four boundary shapes:

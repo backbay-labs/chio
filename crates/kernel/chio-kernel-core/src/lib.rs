@@ -10,7 +10,7 @@
 //! # What lives here
 //!
 //! - [`Verdict`] -- the three-valued outcome of an evaluation.
-//! - [`Guard`] -- the sync guard trait (identical signature to the legacy
+//! - [`Guard`] -- the sync guard trait (identical signature to
 //!   `chio_kernel::Guard`, modulo `Error` surface mapped onto [`KernelCoreError`]).
 //! - [`GuardContext`] -- the inputs a guard sees.
 //! - [`evaluate`] -- pure compute that walks a capability + request through
@@ -110,7 +110,7 @@ mod kani_public_harnesses;
 
 /// Three-valued outcome of a kernel evaluation step.
 ///
-/// This mirrors the legacy `chio_kernel::runtime::Verdict` exactly. The
+/// This mirrors `chio_kernel::runtime::Verdict` exactly. The
 /// kernel core never emits `PendingApproval` itself; the full `chio-kernel`
 /// orchestration shell wraps the core verdict with the human-in-the-loop
 /// approval path where needed.

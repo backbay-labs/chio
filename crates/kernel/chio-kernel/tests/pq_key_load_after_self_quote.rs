@@ -326,8 +326,8 @@ fn missing_pq_seed_fails_at_construction_after_verified_quote() {
 
 #[test]
 fn receipt_root_genesis_is_all_zero_sentinel() {
-    // The success criterion in 03-pq-hybrid-and-tee-quote-verifier.md
-    // pins receipt_root_genesis as the all-zero 32-byte sentinel. Lock
-    // the constant here so an unintentional bump fails this test first.
+    // receipt_root_genesis is pinned as the all-zero 32-byte sentinel.
+    // Lock the constant here so an unintentional bump fails this test
+    // first.
     assert_eq!(RECEIPT_ROOT_GENESIS, [0u8; 32]);
 }

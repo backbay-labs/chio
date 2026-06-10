@@ -5,7 +5,7 @@
 // `make_grant`, `make_keypair`, `make_capability`, `make_request`,
 // `EchoServer`).
 //
-// The tests cover six acceptance checks:
+// The tests cover six behaviours:
 //   (a) a fresh nonce on Allow verifies
 //   (b) a stale nonce (>TTL) is rejected
 //   (c) a replayed nonce is rejected
@@ -556,8 +556,7 @@ fn require_presented_nonce_passes_when_valid() {
 
 #[test]
 fn kernel_ttl_enforces_30s_default() {
-    // The roadmap's acceptance clause: a tool call presented >30s after
-    // evaluation is rejected. The unit-level assertion lives here; we
+    // A tool call presented >30s after evaluation is rejected. We
     // cannot "sleep 30s" in a unit test, so we mint a nonce at a
     // specific timestamp and re-verify with an explicit clock.
     let cfg = ExecutionNonceConfig::default();

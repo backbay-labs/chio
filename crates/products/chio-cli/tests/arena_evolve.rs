@@ -97,7 +97,7 @@ fn arena_evolve_refuses_zero_generations() {
 }
 
 #[test]
-fn arena_evolve_rejects_budget_overrides_above_milestone_cap() {
+fn arena_evolve_rejects_budget_overrides_above_cap() {
     let tmp = tempfile::tempdir().unwrap();
     let seed = write_seed(tmp.path());
     let too_many_generations = Command::new(cargo_bin())

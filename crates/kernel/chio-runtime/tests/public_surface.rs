@@ -10,6 +10,6 @@ fn chio_runtime_schema_constants_are_owned_locally() {
 
     assert!(
         schema_reexports.is_empty(),
-        "chio-runtime public Chio schema constants must be owned locally, not reexported from the historical runtime crate: {schema_reexports:#?}"
+        "chio-runtime public Chio schema constants must be owned locally, not reexported from chio-runtime-core: {schema_reexports:#?}"
     );
 }
