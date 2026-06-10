@@ -15,3 +15,5 @@ The trust boundary is typed JSON construction. Public `*_from_json` functions mu
 ## Verification Focus
 
 Tests should exercise malformed schema ids, missing artifact references, duplicate artifact keys, mismatched digests, and backend replay paths so public construction and verifier acceptance stay aligned.
+
+Constructor validation and backend replay must agree on every rejection: a packet that fails the `*_from_json` checks must also fail verification, and a packet the backend rejects must never be reachable as a trusted local struct. Coverage holds that invariant across schema-id mismatches, byte-count drift, and missing or duplicated artifact bindings so the typed boundary cannot drift away from the verifier it fronts.

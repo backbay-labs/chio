@@ -55,7 +55,7 @@ for check in checks:
             failures.append(f"{path} missing mediation marker: {required}")
 
 adapter_roots = set()
-for crate in Path("crates").glob("chio-*"):
+for crate in Path("crates").glob("*/chio-*"):
     if not crate.is_dir():
         continue
     if any(part in crate.name for part in ("adapter", "edge", "bridge", "proxy")):

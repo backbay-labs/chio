@@ -24,6 +24,6 @@
 ## Affected Dependents
 
 - `crates/guards/chio-wasm-guards/tests/example_guard_integration.rs` loads the
-  compiled `tool-gate` WASM artifact, keeping the native policy and host round
-  trip aligned.
-- No SDK, macro, or host runtime public API change is required.
+  compiled `tool-gate` WASM artifact, keeping the native policy and the compiled
+  host round trip aligned with each other.
+- No SDK, macro, or host runtime public API change is required by this example.

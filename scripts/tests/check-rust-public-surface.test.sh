@@ -309,7 +309,7 @@ workspace.write_text(
 manifest = Path(sys.argv[2])
 manifest.write_text(
     manifest.read_text(encoding="utf-8").replace("publish = false\n", "")
-    + '\n[dependencies]\nchio-core = { version = "0.1.0", path = "../chio-core" }\n',
+    + '\n[dependencies]\nchio-core = { version = "0.1.0", path = "../core/chio-core" }\n',
     encoding="utf-8",
 )
 PY

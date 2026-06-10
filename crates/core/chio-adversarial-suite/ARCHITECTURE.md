@@ -19,3 +19,16 @@
   (`^[a-z][a-z0-9_]*$`) in both the Rust loader and the case schema, so a
   padded or control-bearing verdict key fails validation rather than matching a
   harness reason key by accident.
+
+## Verification Focus
+
+- `tests/manifest_emit.rs` proves the emitted manifest matches the checked-in
+  manifest byte-for-byte and that coverage counts stay pinned to bundled case
+  content hashes, so a drifted or dropped case fails CI instead of silently
+  shrinking threat coverage.
+- Every non-pending bundled case is loaded and deny-asserted in test, and the
+  pending-case gate confirms triage cases never leak into manifest or coverage
+  output.
+- Schema and loader token validation is exercised with padded, uppercase, and
+  control-bearing keys to confirm a noncanonical verdict key is rejected at both
+  layers.

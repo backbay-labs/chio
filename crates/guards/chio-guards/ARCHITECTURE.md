@@ -61,3 +61,12 @@ targets return a malformed-action error instead of a normal action. Every
 built-in guard that depends on extracted actions denies that error before
 domain-specific matching. Malformed primary `path`, `command`, and `url` aliases
 deny rather than falling through to benign fallback aliases.
+
+## Verification Focus
+
+Regression coverage proves the classification boundary holds end to end:
+`fs/read_text_file` reaches `ForbiddenPathGuard`, `fs/write_text_file` reaches
+write allowlist policy, and unknown non-filesystem tools still fall back to
+`McpTool`. Kernel-level tests assert that malformed primary `path`, `command`,
+and `url` aliases deny rather than falling through to a benign fallback, so a
+mistyped action shape cannot be laundered into a safe one.

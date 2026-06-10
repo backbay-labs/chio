@@ -15,3 +15,5 @@ The security constraint is deterministic replay integrity. Scenario ids, agents,
 ## Verification Focus
 
 Tests should cover duplicate ids, missing deterministic witness material, virtual clock and RNG stability, promotion-bundle reproducibility, and fail-closed parsing of provider-specific scenario fields.
+
+Replay identity is the assertion that ties the suite together: a scenario re-run from the same validated material must produce a byte-identical promotion bundle, and any divergence is a determinism regression rather than acceptable noise. Coverage re-runs representative scenarios across virtual-clock and RNG-seed boundaries to keep that property observable.

@@ -16,4 +16,4 @@ OpenAI-style `sk-...` and `sk-proj-...` keys redact as whole API keys before gen
 
 ## Verification Focus
 
-Tests should exercise overlap ordering, provider-specific key coverage, invalid regex startup failure, Luhn filtering, UTF-8 span preservation, and byte-offset manifest stability.
+Tests should exercise overlap ordering, provider-specific key coverage, invalid regex startup failure, Luhn filtering, UTF-8 span preservation, and byte-offset manifest stability across the full default pass set.

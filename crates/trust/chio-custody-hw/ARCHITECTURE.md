@@ -15,3 +15,5 @@ The security constraint is hardware assertion freshness. Credential ids, challen
 ## Verification Focus
 
 Tests should cover malformed WebAuthn transport material, replay nonce absence and presence, revoked credentials, rate-limit ordering, audience-pin mismatches, and signing backend failures that must not leak partially minted capabilities.
+
+The fail-closed ordering itself is part of the test surface: rejection of malformed transport material must happen before any rate-limit, revocation, replay, or signing state mutates, so a rejected mint request leaves no observable side effect. Coverage asserts that ordering for both the nonce-store-attached and detached configurations.

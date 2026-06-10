@@ -26,4 +26,6 @@ contract test. No crate API consumers or generated artifacts are affected.
 The test plumbing lives in a package-local support module, the contract uses
 exported OTel attribute constants instead of duplicated raw strings where
 available, and the bidirectional lookup contract runs in the default
-`cargo test -p otel-genai` gate.
+`cargo test -p otel-genai` gate so the receipt correlation invariant is verified
+on every run without standing up the collector, Tempo, Jaeger, or Grafana demo
+stack.

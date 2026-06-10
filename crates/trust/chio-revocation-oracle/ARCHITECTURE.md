@@ -15,3 +15,5 @@ The security constraint is revocation-key exactness. Subjects, nonces, roots, si
 ## Verification Focus
 
 Tests should cover empty subjects, padded subjects, sparse-Merkle proof verification, stale epoch roots, bad signatures, passport-bridge subject mapping, and remote-cache merge behavior. Kernel and federation consumers should only see normalized revocation evidence, so tests need to prove malformed subjects are rejected before roots or proofs are signed.
+
+Freshness is the other half of the boundary: a proof or merged epoch root outside its freshness window must read as stale rather than as a negative revocation answer. Coverage exercises window edges across local oracle state, gossiped roots, and passport-bridge projections so a single revocation key resolves identically on every lane.

@@ -29,4 +29,5 @@ transitive crate API users beyond this package's local library target.
 Command dispatch lives in the package library through a typed `run_with_args`
 entrypoint used by tests and both binaries. Command parsing happens before
 expensive fixture generation, and command boundary tests keep usage errors and
-side-effect modes library-owned.
+side-effect modes library-owned so the binaries stay thin wrappers around the
+tested entrypoint.

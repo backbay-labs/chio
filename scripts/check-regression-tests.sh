@@ -2,13 +2,14 @@
 # scripts/check-regression-tests.sh
 #
 # Regression-test deletion guard. Detects deletion of fuzz-promoted regression
-# tests under tests/regression_*.rs or crates/*/tests/regression_*.rs. Fails CI
-# when any such file disappears between BASE..HEAD without a paired issue link
-# in the PR body or merge commit message.
+# tests under tests/regression_*.rs or crates/<group>/chio-<crate>/tests/
+# regression_*.rs (grouped layout; the legacy flat crates/<crate>/tests/ shape
+# also matches). Fails CI when any such file disappears between BASE..HEAD
+# without a paired issue link in the PR body or merge commit message.
 #
 # Mechanism:
 #   1. git diff --diff-filter=D --name-only $BASE..$HEAD
-#   2. filter for tests/regression_*.rs or crates/*/tests/regression_*.rs
+#   2. filter for tests/regression_*.rs or crates/**/tests/regression_*.rs
 #   3. for each deleted file, look for a paired issue link in:
 #        - the GitHub PR body (PR_BODY env var, set by ci.yml step)
 #        - the range of commit messages between BASE and HEAD
@@ -135,7 +136,7 @@ fi
 
 # Collect deleted files between BASE..HEAD that match regression-test paths.
 DELETED=$(git diff --diff-filter=D --name-only "$BASE..$HEAD_REF" \
-    | grep -E '(^tests/regression_[^/]+\.rs$|^crates/[^/]+/tests/regression_[^/]+\.rs$)' \
+    | grep -E '(^tests/regression_[^/]+\.rs$|^crates/([^/]+/)+tests/regression_[^/]+\.rs$)' \
     || true)
 
 if [[ -z "$DELETED" ]]; then

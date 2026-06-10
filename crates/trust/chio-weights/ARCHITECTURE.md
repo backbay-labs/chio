@@ -15,3 +15,5 @@ The trust boundary is card acceptance. A successful public verifier result means
 ## Verification Focus
 
 Tests should cover canonical JSON stability, cosign byte binding, issuer identity matching, live-window rejection, lineage-anchor digest coverage, and capability or banned-tool normalization.
+
+Acceptance is all-or-nothing: a card is trusted only when every check in the trust boundary holds together, so coverage pairs each positive path with a mutated-input negative that flips exactly one field (bytes, issuer, live window, or lineage digest) and confirms the verifier denies. The Kani harnesses extend that reasoning over canonical-JSON and scope-normalization inputs without entering production builds.

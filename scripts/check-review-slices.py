@@ -31,6 +31,8 @@ SLICES: tuple[ReviewSlice, ...] = (
         (
             "**/ARCHITECTURE.md",
             "README.md",
+            "AGENTS.md",
+            "CLAUDE.md",
             "docs/**",
             "spec/**",
         ),
@@ -57,6 +59,7 @@ SLICES: tuple[ReviewSlice, ...] = (
         (
             "crates/kernel/chio-kernel/**",
             "crates/kernel/chio-kernel-core/**",
+            "crates/chio-kernel-core/**",
             "crates/kernel/chio-kernel-browser/**",
             "crates/kernel/chio-kernel-mobile/**",
             "crates/kernel/chio-runtime/**",
@@ -71,6 +74,7 @@ SLICES: tuple[ReviewSlice, ...] = (
         "guards, policy evaluation, guard SDKs, and guard registries",
         (
             "crates/guards/chio-guards/**",
+            "crates/chio-guards/**",
             "crates/guards/chio-data-guards/**",
             "crates/guards/chio-external-guards/**",
             "crates/guards/chio-wasm-guards/**",
@@ -144,6 +148,7 @@ SLICES: tuple[ReviewSlice, ...] = (
             "crates/trust/chio-reputation/**",
             "crates/economy/chio-web3/**",
             "crates/economy/chio-web3-bindings/**",
+            "contracts/**",
         ),
     ),
     ReviewSlice(
@@ -164,6 +169,7 @@ SLICES: tuple[ReviewSlice, ...] = (
             "crates/trust/chio-tee/**",
             "crates/trust/chio-tee-frame/**",
             "crates/tooling/chio-test-support/**",
+            "arena/**",
             "formal/**",
             "fuzz/**",
             "tests/**",
@@ -198,6 +204,7 @@ SLICES: tuple[ReviewSlice, ...] = (
         "release manifests, audit evidence, and operational knowledge-base files",
         (
             "audits/**",
+            "compliance/**",
             "tools/knowledge-base/**",
             "releases.toml",
             "deploy/**",
@@ -212,6 +219,7 @@ SLICES: tuple[ReviewSlice, ...] = (
             ".tooling/**",
             "scripts/**",
             "ci-gates/**",
+            "tools/**",
             "xtask/**",
             ".cargo/**",
             ".kani/**",
