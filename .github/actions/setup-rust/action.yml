@@ -1,0 +1,65 @@
+name: setup-rust
+description: Install the pinned Rust toolchain, install protoc, and prime the Rust cache. The repository must already be checked out by the calling job.
+inputs:
+  toolchain:
+    description: Toolchain spec passed to rustup. Empty string uses rust-toolchain.toml.
+    required: false
+    default: ""
+  components:
+    description: Space-separated rustup components (e.g. "rustfmt clippy").
+    required: false
+    default: ""
+  targets:
+    description: Space-separated rustup targets (e.g. "wasm32-unknown-unknown").
+    required: false
+    default: ""
+  cache:
+    description: Set to "false" to skip Swatinem/rust-cache.
+    required: false
+    default: "true"
+  cache-key:
+    description: Extra cache key suffix passed to rust-cache (shared-key).
+    required: false
+    default: ""
+  protoc:
+    description: Set to "false" to skip apt-installing protobuf-compiler.
+    required: false
+    default: "true"
+runs:
+  using: composite
+  steps:
+    - name: Install Rust toolchain
+      shell: bash
+      run: |
+        set -euo pipefail
+        components=""
+        for c in ${{ inputs.components }}; do components="$components --component $c"; done
+        targets=""
+        for t in ${{ inputs.targets }}; do targets="$targets --target $t"; done
+        if [ -n "${{ inputs.toolchain }}" ]; then
+          rustup toolchain install "${{ inputs.toolchain }}" --profile minimal $components $targets
+          rustup default "${{ inputs.toolchain }}"
+        else
+          rustup toolchain install --profile minimal $components $targets
+        fi
+        rustup show active-toolchain
+    - name: Install protobuf compiler
+      if: inputs.protoc == 'true' && runner.os == 'Linux'
+      shell: bash
+      run: |
+        set -euo pipefail
+        export DEBIAN_FRONTEND=noninteractive
+        for attempt in 1 2 3; do
+          if timeout 180s sudo apt-get update \
+              && timeout 180s sudo apt-get install -y protobuf-compiler; then
+            exit 0
+          fi
+          echo "protobuf compiler install attempt ${attempt} failed; retrying" >&2
+          sleep $((attempt * 10))
+        done
+        echo "protobuf compiler install failed after retries" >&2
+        exit 1
+    - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+      if: inputs.cache == 'true'
+      with:
+        shared-key: ${{ inputs.cache-key }}
