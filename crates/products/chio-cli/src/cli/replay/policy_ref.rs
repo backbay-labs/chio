@@ -1,8 +1,8 @@
 // Policy-reference parser and resolver for `chio replay traffic --against`.
 //
 // Only workspace-local YAML policy paths are accepted. Manifest-hash and
-// package-version refs are intentionally rejected until a real registry-backed
-// resolver can materialize a verified LoadedPolicy.
+// package-version refs are rejected: there is no registry-backed resolver to
+// materialize a verified LoadedPolicy from them.
 
 use super::*;
 

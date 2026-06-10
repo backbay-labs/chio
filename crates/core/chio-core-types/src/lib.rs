@@ -15,9 +15,8 @@
 //! # Generated wire bindings
 //!
 //! Schema-derived Rust bindings live under `src/_generated/` as regenerate-only
-//! artifacts. They are deliberately not included in this crate root yet: the
-//! stable public API remains the hand-maintained no_std-compatible protocol
-//! modules below until generated wire bindings get an explicit API decision.
+//! artifacts. They are not re-exported from this crate root: the stable public
+//! API is the hand-maintained no_std-compatible protocol modules below.
 
 #![cfg_attr(all(not(feature = "std"), not(test)), no_std)]
 

@@ -783,8 +783,8 @@ pub struct KernelConfig {
 /// [`ChioKernel::with_hybrid_signing_backend`] with a verified self-quote
 /// port to obtain a `Box<dyn SigningBackend>` for hybrid receipt signing.
 ///
-/// Kept as a separate input rather than folded into [`KernelConfig`] so the
-/// existing struct literal stays byte-identical for legacy callers.
+/// A separate input from [`KernelConfig`]: the hybrid fields are not folded
+/// into `KernelConfig`, so its wire form is unaffected.
 #[derive(Debug, Clone, Default)]
 pub struct HybridSigningConfig {
     /// Minimum cryptographic posture enforced on receipts, capability

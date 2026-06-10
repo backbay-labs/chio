@@ -459,16 +459,7 @@ def _prefect_envelope(
        preserves both values under the canonical/wrapper names; this
        helper detects the positional-only-spillover collision and
        re-routes the kwarg value to the synthetic key (matching the
-       v0.2 wire shape; v0.4 will deprecate the synthetic key with a
-       one-release migration window).
-
-    The bulk of the body is the synthetic-key spillover-detection loop
-    (positional-only collision walk + per-name index lookup) and the
-    wire-shape rebuild that re-routes kwargs into the envelope under
-    either their original key or the synthetic spillover key. Both
-    pieces are prefect-specific behaviour the bare helper does not
-    own; v0.4 will deprecate the synthetic-key emission so this shim
-    can shrink to the envelope-pack only.
+       v0.2 wire shape).
     """
     redacted_args, redacted_kwargs = bind_and_redact(
         fn,

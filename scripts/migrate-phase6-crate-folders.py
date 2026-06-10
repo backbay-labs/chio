@@ -6,9 +6,8 @@ subfolders (`crates/<group>/chio-*`) and rewrite every path literal that
 references the old locations, in lockstep, so no fail-closed gate or path
 filter silently goes dark.
 
-This script is committed for auditability and is the single source of truth
-for the move map. It runs in explicit phases driven by flags so each step is
-verifiable in isolation:
+The move map below is authoritative. The script runs in explicit phases
+driven by flags so each step is verifiable in isolation:
 
   --check-sum-only           Validate the 11-group map sums to 107 and prints OK.
   --moves                    `git mv` the 107 crate dirs (nested crates ride along)
@@ -43,13 +42,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-# --- The 11-folder move map (authoritative; the doc body enumeration). ------
+# --- The 11-folder move map. ------------------------------------------------
 # Group totals: core 5, kernel 7, guards 6, protocol 27, economy 13, trust 20,
-# observability 5, platform 7, products 6, sdk 6, tooling 5. Sum = 107.
-# (The taxonomy summary line's "protocol 26 / tooling 6" are transcription
-# slips: the enumerated body lists 27 protocol crates, and chio-api-protect is
-# a products crate, not tooling. The body enumeration maps 1:1 onto the 107
-# real directories, which is the invariant the script asserts.)
+# observability 5, platform 7, products 6, sdk 6, tooling 5. Sum = 107, which
+# is the invariant build_crate_to_group asserts at import time. Each group
+# below maps 1:1 onto the 107 real crate directories.
 GROUPS: dict[str, list[str]] = {
     "core": [
         "chio-core",
@@ -291,10 +288,10 @@ def rewrite_directory_literals(text: str) -> str:
 
 # --- Mechanism C: mid-string wildcard glob patterns. ------------------------
 # Each maps to exactly one group because every crate matching the wildcard
-# lives in that group. Verified against the move map. Longest-first to avoid
-# `chio-*-edge` shadowing `chio-edge-metrics` style overlaps (none here, but
-# keep the discipline). `chio-replay-gate` is a pre-existing stale slice (no
-# such crate dir); carrying its prefix keeps it harmlessly non-matching.
+# lives in that group. Longest-first so a short wildcard cannot shadow a
+# longer crate name (e.g. `chio-*-edge` vs `chio-edge-metrics`).
+# `chio-replay-gate` matches no real crate dir; carrying its prefix keeps it
+# harmlessly non-matching.
 WILDCARD_MAP: list[tuple[str, str]] = [
     ("crates/chio-*-adapter/", "crates/protocol/chio-*-adapter/"),
     ("crates/chio-*-edge/", "crates/protocol/chio-*-edge/"),

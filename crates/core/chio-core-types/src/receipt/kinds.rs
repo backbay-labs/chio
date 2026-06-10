@@ -37,7 +37,7 @@ impl TrustLevel {
     }
 }
 
-/// Semantic class of a signed receipt in the current v1 pre-release model.
+/// Semantic class of a signed receipt in the v1 receipt model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ReceiptKind {

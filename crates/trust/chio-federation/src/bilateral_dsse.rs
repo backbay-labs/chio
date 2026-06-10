@@ -91,7 +91,7 @@ pub const DEFAULT_COSIGN_MODE: &str = "bilateral_required";
 pub const VALID_CROSS_ORG_VISIBILITY: &[&str] = &["private", "treaty_only", "federated", "public"];
 
 // ---------------------------------------------------------------------------
-// Public types (kept narrow; see module docs §"Bounded scope" for exclusions)
+// Public types
 // ---------------------------------------------------------------------------
 
 /// SHA-256 fingerprint of a kernel's passport public key (hex, lowercase),

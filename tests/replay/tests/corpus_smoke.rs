@@ -15,10 +15,9 @@
 //!   root to disk with sizes consistent with the writer's invariants
 //!   (root.hex == 64 bytes, checkpoint > 0, receipts > 0).
 //!
-//! Recursion delegates to [`chio_replay_gate::fs_iter::walk_files_sorted`]
-//! so this test and any future Scenario-loader code share a single canonical
-//! `LC_ALL=C`-equivalent byte-order enumerator. Symbolic links are filtered
-//! out fail-closed during recursion.
+//! Recursion delegates to [`chio_replay_gate::fs_iter::walk_files_sorted`],
+//! the single canonical `LC_ALL=C`-equivalent byte-order enumerator.
+//! Symbolic links are filtered out fail-closed during recursion.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -281,9 +280,8 @@ fn fixtures_root() -> PathBuf {
 
 /// Recursively enumerate every `.json` manifest under `root`, sorted
 /// lexicographically by raw byte order. Delegates to
-/// [`fs_iter::walk_files_sorted`] so this test and any future
-/// Scenario-loader code use the same canonicalization. Symlinks and
-/// special files are filtered out fail-closed by the walker.
+/// [`fs_iter::walk_files_sorted`] for the canonical enumeration order.
+/// Symlinks and special files are filtered out fail-closed by the walker.
 fn enumerate_manifests(root: &Path) -> Vec<PathBuf> {
     fs_iter::walk_files_sorted(root, |p| {
         p.extension()
@@ -343,8 +341,7 @@ fn count_by_family(manifests: &[PathBuf]) -> BTreeMap<&'static str, usize> {
 }
 
 /// Read and parse a manifest JSON file from disk. Panics with a
-/// useful, manifest-path-tagged message on any failure so a future
-/// `--bless` run gets actionable diagnostics.
+/// manifest-path-tagged message on any failure.
 fn load_manifest(path: &Path) -> Value {
     let bytes = fs::read(path)
         .unwrap_or_else(|err| panic!("failed to read manifest {}: {err}", path.display()));

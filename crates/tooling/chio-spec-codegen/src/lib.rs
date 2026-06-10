@@ -223,8 +223,8 @@ pub fn codegen_rust(schemas_dir: &Path, out_dir: &Path) -> Result<()> {
     write_if_changed(&out_path, body.as_bytes())?;
 
     // Refresh mod.rs so the header check passes on a fresh clone.
-    // mod.rs intentionally does not re-export `chio_wire_v1`; wire it behind a
-    // feature flag once the no_std story for generated types is settled.
+    // mod.rs intentionally does not re-export `chio_wire_v1`; the generated
+    // bindings stay quarantined until the public API surface is settled.
     let mod_body = format!(
         "{GENERATED_HEADER}\n\
          //! Header-only module marker for the chio-wire/v1 generated types.\n\

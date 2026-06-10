@@ -1,5 +1,6 @@
-// Ops-hardening and orchestration runtime handlers. Split out of
-// `fixtures_runtime.rs` and `include!`d transitively into `fixtures.rs`.
+// Ops-hardening and orchestration runtime handlers. `include!`d transitively
+// into `fixtures.rs` (via `fixtures_runtime.rs`) so the handlers share that
+// module's private helpers.
 
 // -- runtime-ops-hardening -------------------------------------------------
 

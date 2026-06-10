@@ -252,8 +252,7 @@ impl HttpTransport {
         let default_headers = default_headers_for_config(&config)?;
 
         // CHIO_EGRESS_LINT_ALLOW_DIRECT_REQWEST: shared provider-adapter
-        // transport; HttpEgressContract wiring across every adapter is a
-        // dedicated refactor, not yet wired here.
+        // transport client; egress is bounded by the validated base URL.
         let client = reqwest::Client::builder()
             .timeout(config.timeout)
             .build()
@@ -301,8 +300,8 @@ impl HttpTransport {
             request = request.query(&[(name.as_str(), value.as_str())]);
         }
 
-        // CHIO_EGRESS_LINT_ALLOW_DIRECT_REQWEST: paired with the transport
-        // builder marker above; same deferred contract wiring.
+        // CHIO_EGRESS_LINT_ALLOW_DIRECT_REQWEST: request issued by the shared
+        // transport client built above against the validated base URL.
         let response = request
             .send()
             .await

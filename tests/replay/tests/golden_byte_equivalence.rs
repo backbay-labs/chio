@@ -210,9 +210,8 @@ fn write_synthetic_goldens(manifest: &Value, manifest_path: &Path, scenario_dir:
 
 /// Recursively enumerate every `.json` manifest under `root`, sorted in
 /// `LC_ALL=C` byte order. Delegates to
-/// [`fs_iter::walk_files_sorted`] so this test and any future
-/// scenario loader use the same canonicalization. Symlinks and special
-/// files are filtered out fail-closed by the walker.
+/// [`fs_iter::walk_files_sorted`] for the canonical enumeration order.
+/// Symlinks and special files are filtered out fail-closed by the walker.
 fn enumerate_manifests(root: &Path) -> Vec<PathBuf> {
     fs_iter::walk_files_sorted(root, |p| {
         p.extension()

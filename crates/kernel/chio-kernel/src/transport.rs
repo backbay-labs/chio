@@ -324,25 +324,21 @@ mod tests {
 
     #[test]
     fn transport_send_recv_roundtrip() {
-        // Build the agent message to send.
         let agent_msg = AgentMessage::Heartbeat;
         let agent_bytes = canonical_json_bytes(&agent_msg).expect("canonical");
         let mut agent_wire = Vec::new();
         write_frame(&mut agent_wire, &agent_bytes).unwrap();
 
-        // Build a kernel message to send.
         let kernel_msg = KernelMessage::Heartbeat;
 
-        // Create transport: agent_wire is what the "agent" wrote, kernel_buf
-        // is where the kernel writes its response.
+        // agent_wire is what the "agent" wrote, kernel_buf is where the
+        // kernel writes its response.
         let kernel_buf: Vec<u8> = Vec::new();
         let mut transport = ChioTransport::new(Cursor::new(agent_wire), kernel_buf);
 
-        // Receive the agent message.
         let received = transport.recv().unwrap();
         assert!(matches!(received, AgentMessage::Heartbeat));
 
-        // Send a kernel message.
         transport.send(&kernel_msg).unwrap();
     }
 

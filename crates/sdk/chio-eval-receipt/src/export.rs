@@ -18,7 +18,7 @@ pub const VERDICT_MATRIX_SCENARIO_COUNT: u16 = 48;
 
 /// Manifest path for the corpus metadata.
 pub const VERDICT_MATRIX_MANIFEST_PATH: &str =
-    "crates/chio-conformance/verdict_matrix/manifest.toml";
+    "crates/tooling/chio-conformance/verdict_matrix/manifest.toml";
 
 const PRODUCER_REPOSITORY: &str = "https://github.com/backbay-labs/chio";
 const CORPUS_NAME: &str = "chio-verdict-matrix";

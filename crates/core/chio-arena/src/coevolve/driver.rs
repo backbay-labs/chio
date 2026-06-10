@@ -14,9 +14,8 @@
 //! generation cap or the wall-clock cap is reached before the requested
 //! generations complete, the run record is marked
 //! [`CoevolutionOutcome::BudgetExceeded`] and the driver returns the best
-//! population observed so far. The risk-register entry "co-evolution
-//! budget blowout" is the rationale; the CI lane runs with a 5-minute
-//! wall budget on PRs and a 30-minute budget nightly.
+//! population observed so far. The CI lane runs with a 5-minute wall
+//! budget on PRs and a 30-minute budget nightly.
 //!
 //! Determinism contract: every value computed in this module is a pure
 //! function of (witness, seed corpus fingerprint, parent blueprints).

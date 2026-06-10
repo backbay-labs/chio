@@ -149,7 +149,7 @@ impl ChainlinkFeedReader {
         Ok(Self::new(networks, egress_contract))
     }
 
-    /// Backwards-compatible alias for [`ChainlinkFeedReader::new`].
+    /// Alias for [`ChainlinkFeedReader::new`].
     #[must_use]
     pub fn with_contract(
         networks: Vec<ChainlinkNetworkConfig>,

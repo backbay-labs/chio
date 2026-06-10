@@ -308,8 +308,8 @@ pub enum Constraint {
     Custom(String, String),
 
     // The variants below carry data-layer, communication, financial,
-    // model-routing, and memory-governance policy. They participate in
-    // the existing tagged serde envelope
+    // model-routing, and memory-governance policy. They serialize through
+    // the same tagged serde envelope as the variants above
     // (`#[serde(tag = "type", content = "value", rename_all = "snake_case")]`).
     /// Data layer: database tables the grant may reference.
     ///

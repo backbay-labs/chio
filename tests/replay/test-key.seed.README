@@ -49,7 +49,7 @@ on a single line with no trailing newline:
 
     b32580c7001b8ad7cc9d29d4f8d4faf2ad067db558add9bb7e02bf8f5f9a01af
 
-Future replay-gate CI lanes can reverify the seed by comparing
+The replay-gate CI lane reverifies the seed by comparing
 `sha256(test-key.seed)` against the hex stored in
 `test-key.seed.sha256`. Any drift indicates either tampering or an
 accidental edit and MUST fail the gate.

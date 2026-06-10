@@ -6,8 +6,6 @@
 // consumers can plug in any OTel SDK version without coupling the
 // core ACP proxy to a specific OTel release.
 
-// ChioReceipt and chio_receipt_id are already imported through the include! pattern.
-
 /// An OTel-compatible span representation for a receipt.
 ///
 /// This mirrors the key fields of an OpenTelemetry span without

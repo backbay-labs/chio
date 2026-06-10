@@ -1,8 +1,6 @@
-//! Acceptance tests for premium pricing.
-//!
-//! Acceptance: *An agent with a clean receipt history gets a lower
-//! premium quote than one with denials.* and *decline below score
-//! floor.*
+//! Premium pricing tests: an agent with a clean receipt history gets a
+//! lower premium quote than one with denials, and quotes below the score
+//! floor are declined.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 

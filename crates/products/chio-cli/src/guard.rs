@@ -1067,10 +1067,6 @@ fn update_manifest_wasm_path(content: &str, new_wasm_path: &str) -> Result<Strin
         .map_err(|e| guard_yaml_error(format!("failed to serialize updated manifest: {e}")))
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 fn ensure_target_dir(path: &Path) -> Result<(), CliError> {
     if path.exists() {
         if !path.is_dir() {

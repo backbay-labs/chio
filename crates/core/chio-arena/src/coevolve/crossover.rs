@@ -19,8 +19,8 @@
 //! both parents have members. Sampling the upper bound from the shorter
 //! parent guarantees `parent_b[split..]` is a strictly shorter suffix
 //! than `parent_b` itself, so the offspring always mixes material from
-//! both parents (the prior bound `1..=parent_a.len()` could collapse the
-//! suffix to empty when `parent_a` was longer than `parent_b`).
+//! both parents. Bounding by `parent_a.len()` alone would collapse the
+//! suffix to empty when `parent_a` is longer than `parent_b`.
 
 use rand::Rng;
 use rand_chacha::ChaCha20Rng;

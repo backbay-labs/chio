@@ -1,6 +1,3 @@
-// Source of truth: spec/PROTOCOL.md (redactor host call shape for
-// chio:guards/redact@0.1.0 and the fail-closed persistence rule below).
-//
 // Errors are fail-closed: an Err return from the guest MUST cause the
 // tee to refuse persistence and write `tee.redact_failed` to the
 // receipt log.

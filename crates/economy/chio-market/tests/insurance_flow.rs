@@ -1,7 +1,5 @@
-//! Acceptance tests for the insurance flow.
-//!
-//! Acceptance: *A claim filed against a policy with receipt evidence is
-//! processed through the settlement flow.*
+//! Insurance flow tests: a claim filed against a policy with receipt
+//! evidence is processed through the settlement flow.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 

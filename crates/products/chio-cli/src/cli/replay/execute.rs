@@ -2,9 +2,8 @@
 //
 // Pipeline:
 // 1. Resolve the [`PolicyRef`] into a materialized [`policy::LoadedPolicy`].
-//    The shipped CLI accepts workspace-policy paths only; registry-backed
-//    manifest/package refs are rejected at parse time until a real resolver
-//    exists.
+//    The CLI accepts workspace-policy paths only; registry-backed
+//    manifest/package refs are rejected at parse time.
 // 2. Build a fresh ephemeral [`ChioKernel`] under that policy.
 // 3. Allocate a fresh [`StorePartition::Replay`]. The dispatcher type-fences
 //    this against the production partition; see `receipt_partition.rs`.

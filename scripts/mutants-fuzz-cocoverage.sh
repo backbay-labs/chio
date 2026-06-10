@@ -354,9 +354,8 @@ else
     #
     # The literal substring is `"MissedMutant"` (with the closing quote
     # AFTER 'Mutant', not after 'Missed') - cargo-mutants emits that
-    # exact tag for surviving mutants. Earlier revisions of this script
-    # searched for `"Missed"` which is never a substring of
-    # `"MissedMutant"` (the next char is 'M', not '"').
+    # exact tag for surviving mutants. Matching `"Missed"` would never
+    # hit: the char after 'Missed' is 'M', not the closing quote.
     while IFS= read -r line; do
         if [[ "${line}" == *'"summary"'*'"MissedMutant"'* ]]; then
             surviving_count=$((surviving_count + 1))

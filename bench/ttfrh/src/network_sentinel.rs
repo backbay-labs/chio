@@ -64,9 +64,9 @@ impl Allowlist {
         }
     }
 
-    /// Crude TOML-presence check that the on-disk manifest still names
-    /// every loopback host listed in the embedded constant. Avoids a
-    /// full TOML parser dependency in the bench crate.
+    /// Checks that the on-disk manifest still names every loopback host
+    /// listed in the embedded constant, without pulling a full TOML
+    /// parser dependency into the bench crate.
     pub fn matches_manifest(&self, manifest: &str) -> bool {
         let manifest = strip_toml_comments(manifest);
         for host in &self.global_hosts {

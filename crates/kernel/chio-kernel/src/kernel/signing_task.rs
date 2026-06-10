@@ -59,8 +59,7 @@ use crate::{ChioReceipt, ChioReceiptBody, KernelError, Keypair};
 /// (each request is a `ChioReceiptBody` plus a `oneshot::Sender`, well under
 /// 1 KiB amortised) and small enough to surface backpressure during a
 /// signing-task stall before producer memory grows unbounded. Operators
-/// can override via [`SigningTaskHandle::with_capacity`] until a config
-/// knob lands in a later phase.
+/// can override via [`SigningTaskHandle::with_capacity`].
 pub const DEFAULT_SIGNING_CHANNEL_CAPACITY: usize = 256;
 #[cfg_attr(test, allow(unused_imports))]
 pub use chio_metrics_spec::CHIO_SIGNING_QUEUE_BLOCK_TOTAL as METRIC_CHIO_SIGNING_QUEUE_BLOCK_TOTAL;
@@ -203,7 +202,6 @@ impl SigningTaskHandle {
     /// Lazily spawn the signing task and return a reference to the
     /// resulting [`SigningTaskInner`]. Idempotent: every caller after
     /// the first observes the existing task without spawning.
-    ///
     fn ensure_spawned(&self) -> Result<&SigningTaskInner, KernelError> {
         let _spawn_guard = self.lock_spawn_gate();
         if self.closed.load(Ordering::Acquire) {
@@ -484,25 +482,21 @@ fn sign_one_with_backend(
     body: ChioReceiptBody,
     backend: &dyn SigningBackend,
 ) -> Result<ChioReceipt, KernelError> {
-    // Delegate to the single canonical signing primitive
+    // Delegate to the canonical signing primitive
     // `chio_kernel_core::sign_receipt`, the same function the inline builders
-    // reach through `receipt_support::sign_receipt_body_with_backend` (which is
-    // a thin error-mapping wrapper over this call). The primitive routes
-    // through `ChioReceipt::sign_with_backend`, which performs the
-    // authoritative signing sequence: validate semantics, bind the
+    // reach through `receipt_support::sign_receipt_body_with_backend` (a thin
+    // error-mapping wrapper over this call). The primitive routes through
+    // `ChioReceipt::sign_with_backend`, which performs the authoritative
+    // signing sequence: validate semantics, bind the
     // `chio_receipt_signing_nonce` metadata key to the pre-nonce receipt id,
     // compute the content-addressed id, build the `ChioReceiptSigningBody`
-    // wrapper, and sign. Routing the mpsc task through the same primitive means
-    // there is exactly one signing implementation, so the inline and async
-    // funnels are byte-identical by construction rather than by hand
-    // synchronization. The mpsc task still owns the keypair and channel
-    // plumbing; only the pure crypto step is delegated. We call the portable
-    // kernel-core function directly (rather than the `crate::receipt_support`
-    // wrapper) because this module is also `#[path]`-included by the
-    // crash/backpressure integration tests, whose crate root does not carry
-    // the `receipt_support` module; `chio_kernel_core` is reachable in both
-    // contexts. The error mapping mirrors `sign_receipt_body_with_backend`
-    // verbatim so the surfaced `KernelError` is identical on both funnels.
+    // wrapper, and sign. The kernel-core function is called directly (rather
+    // than the `crate::receipt_support` wrapper) because this module is
+    // `#[path]`-included by the crash/backpressure integration tests, whose
+    // crate root does not carry the `receipt_support` module; `chio_kernel_core`
+    // is reachable in both contexts. The error mapping mirrors
+    // `sign_receipt_body_with_backend` so the surfaced `KernelError` is
+    // identical on both funnels.
     chio_kernel_core::sign_receipt(body, backend).map_err(|error| {
         use chio_kernel_core::ReceiptSigningError;
         let message = match error {

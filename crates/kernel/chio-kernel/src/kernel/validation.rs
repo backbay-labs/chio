@@ -255,9 +255,9 @@ impl ChioKernel {
         trusted
     }
 
-    /// Spec: PROTOCOL.md introduces a MUST that production kernels
-    /// route every capability admission through `verify_capability_full`;
-    /// this wrapper is the kernel-side enforcement of that MUST.
+    /// Spec: PROTOCOL.md requires production kernels to route every
+    /// capability admission through `verify_capability_full`; this wrapper
+    /// is the kernel-side enforcement of that MUST.
     pub(crate) fn verify_capability_full_pre_admit(
         &self,
         cap: &CapabilityToken,

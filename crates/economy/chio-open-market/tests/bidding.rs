@@ -776,10 +776,9 @@ fn accept_rejects_non_agent_acceptor_signature() {
 
 #[test]
 fn bid_rejects_max_total_cost_overflow_instead_of_silently_saturating() {
-    // Regression: minting a token must fail-closed when
-    // `advertised_price * max_invocations` overflows u64. Earlier code used
-    // saturating arithmetic, which silently capped the cost ceiling at
-    // u64::MAX rather than rejecting the bid.
+    // Minting a token must fail-closed when `advertised_price *
+    // max_invocations` overflows u64, rather than saturating the cost
+    // ceiling at u64::MAX and accepting the bid.
     let registry_keypair = Keypair::generate();
     let operator_keypair = Keypair::generate();
     let issuer_keypair = operator_keypair.clone();

@@ -85,8 +85,8 @@ pub struct TrafficArgs {
     /// Re-execute every frame against this policy reference in pre-output mode.
     ///
     /// Accepted shape: `path:<file>` or a workspace-local YAML policy path.
-    /// Registry-backed manifest hashes and package coordinates are rejected
-    /// until a real resolver can materialize a verified policy.
+    /// Registry-backed manifest hashes and package coordinates are rejected:
+    /// no resolver materializes a verified policy from them.
     /// Policies with concrete-server grants or post-output guards are rejected
     /// because `chio-tee-frame.v1` carries neither the original Chio
     /// tool-server id nor redacted response bytes.

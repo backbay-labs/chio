@@ -1,8 +1,6 @@
-//! Integration tests for hierarchical budget governance.
-//!
-//! These tests validate the acceptance criteria for hierarchical budgets:
-//! tree-structured budget policies where parent caps bound every child,
-//! and aggregate spend rolls up from leaf to root.
+//! Integration tests for hierarchical budget governance: tree-structured
+//! budget policies where parent caps bound every child, and aggregate spend
+//! rolls up from leaf to root.
 
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 
@@ -120,12 +118,8 @@ fn cycle_detection_rejects_cyclic_insert() {
         "expected duplicate, got {err:?}"
     );
 
-    // The Cycle guard itself is exercised when inserting a fresh id that
-    // references itself transitively. Because parents must already exist,
-    // we simulate that scenario by manually constructing a tree where an
-    // id equal to a node in the parent chain is inserted via direct map
-    // manipulation is impossible; so we validate the guard via a
-    // self-parented insert, the most direct cycle.
+    // A self-parented insert is the most direct cycle: a node whose parent
+    // is itself.
     let mut cyc = BudgetTree::new();
     cyc.insert(org("only", BudgetLimits::default(), BudgetWindow::Daily))
         .expect("only");

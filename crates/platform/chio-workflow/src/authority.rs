@@ -286,7 +286,6 @@ impl WorkflowAuthority {
             })
         });
 
-        // Track budget
         if let Some(ref c) = input.cost {
             execution.budget_spent = execution.budget_spent.saturating_add(c.units);
         }

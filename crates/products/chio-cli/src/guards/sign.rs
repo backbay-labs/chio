@@ -167,10 +167,6 @@ pub fn cmd_guard_verify(wasm_path: &Path) -> Result<(), CliError> {
     Ok(())
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 fn wasm_path_to_str(path: &Path) -> Result<&str, CliError> {
     path.to_str().ok_or_else(|| {
         CliError::manifest_schema_error(format!("wasm path is not valid UTF-8: {}", path.display()))

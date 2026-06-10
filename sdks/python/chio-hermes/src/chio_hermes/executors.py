@@ -122,9 +122,9 @@ def _resolve_within(path: str, root: Path) -> Path:
 def _resolve_within_impl(path: str, root: Path) -> Path:
     """Internal: resolve ``path`` under ``root`` without the deprecation warning.
 
-    Internal call sites in this module use this helper so the migration
-    does not flood the receipt log with warnings on every shell/git
-    dispatch. The public ``_resolve_within`` warns and delegates here.
+    Internal call sites in this module use this helper so that warnings do
+    not flood the receipt log on every shell/git dispatch. The public
+    ``_resolve_within`` warns and delegates here.
     """
     return _adapter_base_resolve_within(path, root)
 

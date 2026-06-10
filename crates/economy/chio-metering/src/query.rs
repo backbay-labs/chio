@@ -115,10 +115,8 @@ pub struct CostGroup {
     pub total_monetary_cost: Option<MonetaryAmount>,
 }
 
-/// Execute a cost query against an in-memory collection of cost metadata.
-///
-/// For production use this would query a receipt store backend, but the
-/// logic is the same: filter, aggregate, summarize.
+/// Execute a cost query against an in-memory collection of cost metadata:
+/// filter, aggregate, summarize.
 pub fn execute_cost_query(records: &[CostMetadata], query: &CostQuery) -> CostQueryResult {
     let limit = query
         .limit

@@ -42,9 +42,8 @@ impl PythHermesClient {
         })
     }
 
-    /// Backwards-compatible alias for [`PythHermesClient::new`]. The
-    /// contract is required in production paths; tests that need a
-    /// permissive contract should use
+    /// Alias for [`PythHermesClient::new`]. The contract is required on
+    /// production paths; tests that need a permissive contract should use
     /// [`HttpEgressContract::permissive_for_tests`].
     pub fn with_contract(
         base_url: impl Into<String>,
