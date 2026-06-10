@@ -13,8 +13,8 @@ name = "chio_cpp_kernel_ffi"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [dependencies]
-chio-core-types = { path = "../chio-core-types" }
-chio-kernel-core = { path = "../chio-kernel-core" }
+chio-core-types = { workspace = true }
+chio-kernel-core = { workspace = true }
 hex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

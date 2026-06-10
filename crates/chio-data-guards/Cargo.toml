@@ -12,10 +12,10 @@ publish = false
 name = "chio_data_guards"
 
 [dependencies]
-chio-core = { path = "../chio-core" }
-chio-kernel = { path = "../chio-kernel" }
-chio-guards = { path = "../chio-guards" }
-chio-metering = { path = "../chio-metering" }
+chio-core = { workspace = true }
+chio-kernel = { workspace = true }
+chio-guards = { workspace = true }
+chio-metering = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

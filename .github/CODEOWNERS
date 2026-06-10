@@ -15,11 +15,11 @@ crates/chio-kernel/src/receipt_*.rs          @backbay-labs/chio-maintainers
 crates/chio-kernel-core/**                   @backbay-labs/chio-maintainers
 crates/chio-kernel-browser/**                @backbay-labs/chio-maintainers
 crates/chio-arena/**                         @backbay-labs/chio-maintainers
-crates/chio-core-types/src/capability*.rs    @backbay-labs/chio-maintainers
-crates/chio-core-types/src/scope*.rs         @backbay-labs/chio-maintainers
-crates/chio-core-types/src/receipt*.rs       @backbay-labs/chio-maintainers
-crates/chio-core-types/src/provenance*.rs    @backbay-labs/chio-maintainers
-crates/chio-tower/src/middleware/**          @backbay-labs/chio-maintainers
+crates/chio-core-types/src/capability/**          @backbay-labs/chio-maintainers
+crates/chio-core-types/src/capability/scope.rs    @backbay-labs/chio-maintainers
+crates/chio-core-types/src/receipt/**             @backbay-labs/chio-maintainers
+crates/chio-core-types/src/capability/governance.rs @backbay-labs/chio-maintainers
+crates/chio-tower/src/**                     @backbay-labs/chio-maintainers
 crates/chio-tower/src/host_call.rs           @backbay-labs/chio-maintainers
 crates/chio-wasm-guards/src/host.rs          @backbay-labs/chio-maintainers
 crates/chio-wasm-guards/src/hot_reload.rs    @backbay-labs/chio-maintainers
@@ -29,7 +29,7 @@ crates/chio-attest-verify/**                 @backbay-labs/chio-maintainers
 crates/chio-tee/**                           @backbay-labs/chio-maintainers
 crates/chio-tee-frame/**                     @backbay-labs/chio-maintainers
 crates/chio-revocation-oracle/**             @backbay-labs/chio-maintainers
-crates/chio-credentials/src/revocation*.rs   @backbay-labs/chio-maintainers
+crates/chio-credentials/src/passport.rs      @backbay-labs/chio-maintainers
 crates/chio-federation/src/revocation*.rs    @backbay-labs/chio-maintainers
 crates/chio-federation/src/lib.rs            @backbay-labs/chio-maintainers
 crates/chio-tool-call-fabric/**              @backbay-labs/chio-maintainers
@@ -53,7 +53,7 @@ fuzz/corpora/**                              @backbay-labs/chio-maintainers
 fuzz/target-map.toml                         @backbay-labs/chio-maintainers
 Cargo.toml                                   @backbay-labs/chio-maintainers
 Cargo.lock                                   @backbay-labs/chio-maintainers
-crates/chio-core-types/src/capability.rs     @backbay-labs/chio-maintainers
+crates/chio-core-types/src/capability/**     @backbay-labs/chio-maintainers
 deny.toml                                    @backbay-labs/chio-maintainers
 .github/workflows/ci.yml                     @backbay-labs/chio-maintainers
 /.github/CODEOWNERS                          @backbay-labs/chio-maintainers

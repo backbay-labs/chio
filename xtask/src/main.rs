@@ -2,12 +2,18 @@
 //!
 //! Subcommands so far:
 //!
+//! Argument parsing is `clap`-derived (see `cli.rs`); run `cargo xtask --help`
+//! for the full tree. The historical leaf spellings remain as aliases:
+//!
 //! ```text
 //! cargo xtask validate-scenarios
-//! cargo xtask freeze-vectors
-//! cargo xtask freeze-vectors --check
-//! cargo xtask eval-receipt-regen
-//! cargo xtask eval-receipt-regen --check
+//! cargo xtask freeze-vectors [--check]
+//! cargo xtask eval-receipt-regen [--check]
+//! cargo xtask codegen <rust|ts|go|python> [--check]
+//! cargo xtask codegen --lang <rust|ts|go|python> [--check]
+//! cargo xtask errors regen [--check]
+//! cargo xtask snippets regen [--check]
+//! cargo xtask check crate-paths
 //! ```
 //!
 //! `validate-scenarios` walks `tests/conformance/scenarios/**/*.json`, looks
@@ -75,62 +81,38 @@
 use std::collections::BTreeMap;
 use std::env;
 use std::ffi::OsStr;
-use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
 use sha2::{Digest, Sha256};
 
+use clap::{CommandFactory, Parser};
+
+use cli::Cli;
+
+mod cli;
+mod crate_paths;
+mod dispatch;
+mod error;
 mod eval_receipt_regen;
 mod snippets_subcommand;
 
-#[derive(Debug)]
-enum XtaskError {
-    Usage(String),
-    Io(String, std::io::Error),
-    Yaml(String, serde_yml::Error),
-    Json(String, serde_json::Error),
-    Drift(String),
-    Validation(String),
-    Codegen(chio_spec_codegen::CodegenError),
-    Process(String),
-    ToolMissing(String),
-    ToolFailed(String),
-}
-
-impl fmt::Display for XtaskError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Usage(msg) => write!(f, "usage: {msg}"),
-            Self::Io(path, err) => write!(f, "io error on {path}: {err}"),
-            Self::Yaml(path, err) => write!(f, "yaml error in {path}: {err}"),
-            Self::Json(path, err) => write!(f, "json error in {path}: {err}"),
-            Self::Drift(detail) => write!(f, "manifest drift: {detail}"),
-            Self::Validation(detail) => write!(f, "scenario validation failed: {detail}"),
-            Self::Codegen(err) => write!(f, "codegen failed: {err}"),
-            Self::Process(msg) => write!(f, "subprocess error: {msg}"),
-            Self::ToolMissing(detail) => write!(f, "codegen tool missing: {detail}"),
-            Self::ToolFailed(detail) => write!(f, "codegen tool failed: {detail}"),
-        }
-    }
-}
+pub(crate) use dispatch::dispatch;
+pub(crate) use error::XtaskError;
 
 fn main() -> ExitCode {
-    let mut args = env::args().skip(1);
-    let cmd = args.next().unwrap_or_default();
-    let result = match cmd.as_str() {
-        "validate-scenarios" => validate_scenarios(args.collect()),
-        "freeze-vectors" => freeze_vectors(args.collect()),
-        "eval-receipt-regen" => eval_receipt_regen::run(args.collect()),
-        "codegen" => run_codegen(args.collect()),
-        "errors" => run_errors(args.collect()),
-        "snippets" => run_snippets(args.collect()),
-        "" | "help" | "--help" | "-h" => {
-            print_help();
-            return ExitCode::SUCCESS;
+    let cli = Cli::parse();
+    let result = match cli.command {
+        // Bare `cargo xtask` prints the help tree and exits 0, matching the
+        // historical hand-rolled CLI. An unknown subcommand still fails at the
+        // clap layer (non-zero), so this path only covers the no-argument case.
+        None => {
+            let _ = Cli::command().print_long_help();
+            println!();
+            Ok(())
         }
-        other => Err(XtaskError::Usage(format!("unknown subcommand: {other}"))),
+        Some(command) => dispatch(command),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -141,26 +123,9 @@ fn main() -> ExitCode {
     }
 }
 
-fn print_help() {
-    println!("xtask subcommands:");
-    println!("  validate-scenarios");
-    println!("  freeze-vectors [--check]");
-    println!("  eval-receipt-regen [--check]");
-    println!("  errors regen [--check]");
-    println!("  snippets regen [--check]");
-    println!("  codegen rust [--check]");
-    println!("  codegen --check");
-    println!("  codegen --lang rust [--check]");
-    println!("  codegen --lang go [--check]");
-    println!("  codegen ts [--check]");
-    println!("  codegen --lang ts [--check]");
-    println!("  codegen python [--check]");
-    println!("  codegen --lang python [--check]");
-}
-
 const SCHEMA_URI_PREFIX: &str = "https://chio-protocol.dev/schemas/";
 
-fn validate_scenarios(args: Vec<String>) -> Result<(), XtaskError> {
+pub(crate) fn validate_scenarios(args: Vec<String>) -> Result<(), XtaskError> {
     if let Some(arg) = args.into_iter().next() {
         return Err(XtaskError::Usage(format!(
             "validate-scenarios: unexpected argument: {arg}"
@@ -358,7 +323,7 @@ fn walk_json(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), XtaskError> {
 const VECTORS_DIR: &str = "tests/bindings/vectors";
 const VECTORS_MANIFEST: &str = "tests/bindings/vectors/MANIFEST.sha256";
 
-fn freeze_vectors(args: Vec<String>) -> Result<(), XtaskError> {
+pub(crate) fn freeze_vectors(args: Vec<String>) -> Result<(), XtaskError> {
     let mut check_only = false;
     for arg in args {
         match arg.as_str() {
@@ -449,7 +414,7 @@ const CHIO_WIRE_V1_SCHEMAS: &str = "spec/schemas/chio-wire/v1";
 /// Relative path (from workspace root) of the generated Rust output dir.
 const CHIO_WIRE_V1_RUST_OUT: &str = "crates/chio-core-types/src/_generated";
 
-fn run_codegen(args: Vec<String>) -> Result<(), XtaskError> {
+pub(crate) fn run_codegen(args: Vec<String>) -> Result<(), XtaskError> {
     // Accepted forms:
     //   cargo xtask codegen rust [--check]
     //   cargo xtask codegen --lang rust [--check]
@@ -506,25 +471,12 @@ fn run_codegen(args: Vec<String>) -> Result<(), XtaskError> {
     }
 }
 
-fn run_snippets(args: Vec<String>) -> Result<(), XtaskError> {
+pub(crate) fn run_snippets(args: Vec<String>) -> Result<(), XtaskError> {
     let workspace_root = workspace_root()?;
     snippets_subcommand::run(args, &workspace_root)
 }
 
-fn run_errors(args: Vec<String>) -> Result<(), XtaskError> {
-    let mut iter = args.into_iter();
-    let sub = iter
-        .next()
-        .ok_or_else(|| XtaskError::Usage("errors <subcommand>".into()))?;
-    match sub.as_str() {
-        "regen" => errors_regen(iter.collect()),
-        other => Err(XtaskError::Usage(format!(
-            "unknown errors subcommand: {other}"
-        ))),
-    }
-}
-
-fn errors_regen(args: Vec<String>) -> Result<(), XtaskError> {
+pub(crate) fn errors_regen(args: Vec<String>) -> Result<(), XtaskError> {
     let mut check_only = false;
     for arg in args {
         match arg.as_str() {

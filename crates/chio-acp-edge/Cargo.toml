@@ -25,11 +25,11 @@ async-trait = { workspace = true }
 futures = "0.3"
 tokio = { workspace = true }
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
-chio-cross-protocol = { path = "../chio-cross-protocol" }
-chio-edge-metrics = { path = "../chio-edge-metrics" }
-chio-kernel = { path = "../chio-kernel" }
-chio-manifest = { path = "../chio-manifest" }
-chio-mcp-edge = { path = "../chio-mcp-edge" }
+chio-cross-protocol = { workspace = true }
+chio-edge-metrics = { workspace = true }
+chio-kernel = { workspace = true }
+chio-manifest = { workspace = true }
+chio-mcp-edge = { workspace = true }
 chio-metrics-spec = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -40,7 +40,7 @@ tracing = { workspace = true }
 arbitrary = { version = "1", features = ["derive"], optional = true }
 
 [dev-dependencies]
-chio-test-support = { path = "../chio-test-support" }
+chio-test-support = { workspace = true }
 
 [lints]
 workspace = true

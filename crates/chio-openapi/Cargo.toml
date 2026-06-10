@@ -12,8 +12,8 @@ publish = false
 name = "chio_openapi"
 
 [dependencies]
-chio-core-types = { path = "../chio-core-types" }
-chio-http-core = { path = "../chio-http-core" }
+chio-core-types = { workspace = true }
+chio-http-core = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }

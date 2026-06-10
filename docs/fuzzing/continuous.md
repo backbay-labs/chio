@@ -162,11 +162,11 @@ The CFLite builder image lives under `.clusterfuzzlite/`:
 
 - `.clusterfuzzlite/Dockerfile` -- `FROM gcr.io/oss-fuzz-base/base-builder-rust`
   with the rustls/openssl build deps plus `zip`. Mirrors the OSS-Fuzz
-  scaffold under `infra/oss-fuzz/` so the in-tree CFLite image and the
+  scaffold under `fuzz/oss-fuzz/` so the in-tree CFLite image and the
   OSS-Fuzz image stay behaviourally identical.
 - `.clusterfuzzlite/build.sh` -- enumerates all sixteen fuzz targets and
   runs `cargo +nightly fuzz build <target> --release --sanitizer
-  "$SANITIZER"` per target. The OSS-Fuzz copy at `infra/oss-fuzz/build.sh`
+  "$SANITIZER"` per target. The OSS-Fuzz copy at `fuzz/oss-fuzz/build.sh`
   is the source-of-truth; any new fuzz target lands in both files in the
   same change set.
 - `.clusterfuzzlite/project.yaml` -- declares `language: rust`, the primary
@@ -191,7 +191,7 @@ secret is unavailable.
 
 - Target submission window: during OSS-Fuzz onboarding.
 - Status: pending.
-- Infrastructure scaffolding lands under `infra/oss-fuzz/` in the OSS-Fuzz integration package
+- Infrastructure scaffolding lands under `fuzz/oss-fuzz/` in the OSS-Fuzz integration package
   (`project.yaml`, `Dockerfile`, `build.sh`).
 - Acceptance lag: typically 2-6 weeks. ClusterFuzzLite carries coverage
   through the lag.
@@ -206,18 +206,18 @@ secret is unavailable.
 ## OSS-Fuzz integration
 
 Chio is in the OSS-Fuzz application pipeline. Integration
-files live under `infra/oss-fuzz/` and are mirrored into the upstream
+files live under `fuzz/oss-fuzz/` and are mirrored into the upstream
 `google/oss-fuzz` repo as a dedicated upstream PR:
 
-- `infra/oss-fuzz/project.yaml` declares `language: rust`, the primary
+- `fuzz/oss-fuzz/project.yaml` declares `language: rust`, the primary
   contact (`security@backbay.io`), backup contact (`fuzzing@backbay.io`),
   the `address` plus `undefined` sanitizer pair, the `x86_64` architecture,
   and the `libfuzzer` engine.
-- `infra/oss-fuzz/Dockerfile` is based on
+- `fuzz/oss-fuzz/Dockerfile` is based on
   `gcr.io/oss-fuzz-base/base-builder-rust`, installs the rustls/openssl
   build deps plus `zip` for seed-corpus packing, and clones the repo at
   `/src/chio`.
-- `infra/oss-fuzz/build.sh` enumerates all sixteen fuzz targets
+- `fuzz/oss-fuzz/build.sh` enumerates all sixteen fuzz targets
   (`attest_verify`, `jwt_vc_verify`, `oid4vp_presentation`,
   `did_resolve`, `anchor_bundle_verify`, `mcp_envelope_decode`,
   `a2a_envelope_decode`, `acp_envelope_decode`,
@@ -232,7 +232,7 @@ files live under `infra/oss-fuzz/` and are mirrored into the upstream
 The upstream PR opens against
 `https://github.com/google/oss-fuzz/tree/master/projects/chio` once
 these in-tree files merge. The OSS-Fuzz README requires the same
-three files at that path, so the in-tree copy under `infra/oss-fuzz/`
+three files at that path, so the in-tree copy under `fuzz/oss-fuzz/`
 is the source-of-truth and the upstream PR lifts the directory
 verbatim.
 

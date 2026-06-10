@@ -11,9 +11,9 @@ publish = false
 [dependencies]
 async-trait = { workspace = true }
 chio-core = { package = "chio-core-types", path = "../../crates/chio-core-types" }
-chio-kernel = { package = "chio-kernel", path = "../../crates/chio-kernel" }
-chio-guards = { package = "chio-guards", path = "../../crates/chio-guards" }
-chio-wasm-guards = { path = "../../crates/chio-wasm-guards", features = ["test-support"] }
+chio-kernel = { workspace = true }
+chio-guards = { workspace = true }
+chio-wasm-guards = { workspace = true, features = ["test-support"] }
 serde_json = { workspace = true }
 tokio = { workspace = true }
 

@@ -1,0 +1,47 @@
+# Local broker stack for chio-streaming integration tests.
+#
+# Brought up by `sdks/python/chio-streaming/Makefile`'s `test-integration`
+# target. Ports are deliberately offset from defaults so this stack can
+# coexist with the workspace-wide `backbay/infra/compose.yaml` (which
+# already publishes redis on 6379).
+#
+# Usage:
+#   docker compose -f deploy/compose/streaming-compose.yml up -d
+#   CHIO_INTEGRATION=1 \
+#     CHIO_TEST_REDIS_URL=redis://localhost:16379 \
+#     CHIO_TEST_NATS_URL=nats://localhost:14222 \
+#     uv run pytest sdks/python/chio-streaming/tests/integration -v
+#   docker compose -f deploy/compose/streaming-compose.yml down -v
+
+name: chio-streaming-it
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: chio-streaming-it-redis
+    command: ["redis-server", "--appendonly", "no", "--save", ""]
+    ports:
+      - "16379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  nats:
+    image: nats:2.10-alpine
+    container_name: chio-streaming-it-nats
+    command:
+      - "-js"
+      - "-m"
+      - "8222"
+    ports:
+      - "14222:4222"   # client
+      - "18222:8222"   # monitoring (used by healthcheck)
+    healthcheck:
+      # The default nats image has wget but not curl; /healthz is the
+      # JetStream-aware probe (returns 200 once JS is ready).
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8222/healthz?js-enabled=true || exit 1"]
+      interval: 2s
+      timeout: 2s
+      retries: 30

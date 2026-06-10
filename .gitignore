@@ -19,6 +19,10 @@ sdks/rust/chio-guard-sdk-compat/Cargo.lock
 # Local planning / orchestration state (not part of the published project)
 .worktrees/
 .planning/
+# Local agent scratch (untracked; never commit)
+.codex/
+# Coverage output is generated; keep docs, not the dir
+/coverage/
 
 # Local cleanup-audit working notes
 .cleanup-audit/
@@ -38,7 +42,7 @@ Thumbs.db
 # Environment
 .env
 .env.*
-!ops/knowledge-base/.env.example
+!tools/knowledge-base/.env.example
 
 # Debug
 *.pdb
@@ -54,9 +58,9 @@ output/playwright/
 # Generated Python packaging and cache artifacts
 __pycache__/
 *.py[cod]
-ops/knowledge-base/.pytest_cache/
-ops/knowledge-base/.venv/
-ops/knowledge-base/.cocoindex/
+tools/knowledge-base/.pytest_cache/
+tools/knowledge-base/.venv/
+tools/knowledge-base/.cocoindex/
 examples/anthropic-sdk/node_modules/
 examples/openai-compatible/node_modules/
 examples/langchain/*.egg-info/

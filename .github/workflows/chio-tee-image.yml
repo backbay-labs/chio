@@ -3,7 +3,7 @@ name: chio-tee-image
 on:
   pull_request:
     paths:
-      - Dockerfile.tee
+      - deploy/docker/Dockerfile.tee
       - .github/workflows/chio-tee-image.yml
       - crates/chio-tee/**
       - crates/chio-tee-frame/**
@@ -17,7 +17,7 @@ on:
       - main
       - 'project/**'
     paths:
-      - Dockerfile.tee
+      - deploy/docker/Dockerfile.tee
       - .github/workflows/chio-tee-image.yml
       - crates/chio-tee/**
       - crates/chio-tee-frame/**
@@ -47,7 +47,7 @@ jobs:
           persist-credentials: false
 
       - name: Build chio-tee image
-        run: docker build -f Dockerfile.tee -t chio-tee:ci .
+        run: docker build -f deploy/docker/Dockerfile.tee -t chio-tee:ci .
 
       - name: Smoke chio-tee entrypoint
         run: docker run --rm chio-tee:ci --help

@@ -12,11 +12,11 @@ publish = false
 name = "chio_runtime_core"
 
 [dependencies]
-chio-attest-buyer-core = { version = "0.1.0", path = "../chio-attest-buyer-core" }
-chio-core-types = { version = "0.1.0", path = "../chio-core-types" }
-chio-federation = { version = "0.1.0", path = "../chio-federation" }
-chio-kernel = { version = "0.1.0", path = "../chio-kernel" }
-chio-weights = { version = "0.1.0", path = "../chio-weights" }
+chio-attest-buyer-core = { workspace = true }
+chio-core-types = { workspace = true }
+chio-federation = { workspace = true }
+chio-kernel = { workspace = true }
+chio-weights = { workspace = true }
 rusqlite = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -24,7 +24,7 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 base64 = { workspace = true }
-chio-attest-loopback = { path = "../chio-attest-loopback" }
+chio-attest-loopback = { workspace = true }
 chrono = { workspace = true }
 tempfile = { workspace = true }
 

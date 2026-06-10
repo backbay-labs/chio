@@ -6,7 +6,7 @@
 # sampling) and .github/workflows/cflite_batch.yml (nightly rotation).
 #
 # This list MUST stay in lockstep with .clusterfuzzlite/build.sh and
-# infra/oss-fuzz/build.sh; any new fuzz target lands in all three files in
+# fuzz/oss-fuzz/build.sh; any new fuzz target lands in all three files in
 # the same change set.
 #
 # Schema:

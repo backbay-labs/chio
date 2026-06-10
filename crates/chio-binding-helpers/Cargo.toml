@@ -15,11 +15,11 @@ name = "chio_binding_helpers"
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-chio-core = { path = "../chio-core" }
-chio-manifest = { path = "../chio-manifest" }
+chio-core = { workspace = true }
+chio-manifest = { workspace = true }
 
 [dev-dependencies]
-chio-test-support = { path = "../chio-test-support" }
+chio-test-support = { workspace = true }
 
 [lints]
 workspace = true

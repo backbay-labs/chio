@@ -12,9 +12,9 @@ publish = false
 name = "chio_autonomy"
 
 [dependencies]
-chio-core-types = { path = "../chio-core-types" }
-chio-market = { path = "../chio-market" }
-chio-web3 = { path = "../chio-web3" }
+chio-core-types = { workspace = true }
+chio-market = { workspace = true }
+chio-web3 = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

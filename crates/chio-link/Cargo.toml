@@ -25,8 +25,8 @@ web3 = [
 ]
 
 [dependencies]
-chio-core = { path = "../chio-core" }
-chio-egress-contract = { path = "../chio-egress-contract", features = ["reqwest-egress"] }
+chio-core = { workspace = true }
+chio-egress-contract = { workspace = true, features = ["reqwest-egress"] }
 alloy-contract = { version = "1.8.3", default-features = false, optional = true }
 alloy-json-rpc = { version = "1.8.3", default-features = false, optional = true }
 alloy-primitives = { version = "1.5.7", default-features = false, features = ["std"], optional = true }
@@ -42,7 +42,7 @@ tokio = { workspace = true }
 tower = { workspace = true, optional = true }
 
 [dev-dependencies]
-chio-test-support = { path = "../chio-test-support" }
+chio-test-support = { workspace = true }
 
 [lints]
 workspace = true

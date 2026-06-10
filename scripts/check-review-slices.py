@@ -191,7 +191,6 @@ SLICES: tuple[ReviewSlice, ...] = (
             "crates/chio-wall/**",
             "crates/chio-wall-core/**",
             "bench/**",
-            "editors/**",
         ),
     ),
     ReviewSlice(
@@ -199,8 +198,10 @@ SLICES: tuple[ReviewSlice, ...] = (
         "release manifests, audit evidence, and operational knowledge-base files",
         (
             "audits/**",
-            "ops/**",
+            "tools/knowledge-base/**",
             "releases.toml",
+            "deploy/**",
+            "packaging/**",
         ),
     ),
     ReviewSlice(
@@ -211,10 +212,18 @@ SLICES: tuple[ReviewSlice, ...] = (
             ".tooling/**",
             "scripts/**",
             "xtask/**",
+            ".cargo/**",
+            ".kani/**",
+            ".clusterfuzzlite/**",
             "Cargo.toml",
             "Cargo.lock",
             "deny.toml",
             "osv-scanner.toml",
+            "Makefile",
+            "rust-toolchain.toml",
+            ".gitignore",
+            ".gitattributes",
+            ".dockerignore",
         ),
     ),
 )

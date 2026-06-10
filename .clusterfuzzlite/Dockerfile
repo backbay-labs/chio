@@ -2,7 +2,7 @@
 #
 # Companion docs in docs/fuzzing/continuous.md (ClusterFuzzLite bridge section).
 #
-# Mirrors the OSS-Fuzz scaffold under infra/oss-fuzz/
+# Mirrors the OSS-Fuzz scaffold under fuzz/oss-fuzz/
 # so the in-tree builder image and the CFLite builder image stay
 # behaviourally identical: same base image, same build deps, same
 # build.sh shape. Divergence between the two is a process bug.

@@ -270,7 +270,7 @@ jobs:
           set -euo pipefail
           mkdir -p out/sbom
           out_file="out/sbom/chio-${CHIO_TARGET}.cyclonedx.json"
-          syft --config infra/sbom/syft.yaml \
+          syft --config deploy/sbom/syft.yaml \
             -o "cyclonedx-json@1.6=${out_file}" \
             "target/${CHIO_TARGET}/release/${BINARY_NAME}${CHIO_BIN_SUFFIX}"
           jq -e '.bomFormat == "CycloneDX" and .specVersion == "1.6"' \
@@ -286,7 +286,7 @@ jobs:
           New-Item -ItemType Directory -Path "out/sbom" -Force | Out-Null
           $outFile = "out/sbom/chio-$env:CHIO_TARGET.cyclonedx.json"
           $binary = "target/$env:CHIO_TARGET/release/$env:BINARY_NAME$env:CHIO_BIN_SUFFIX"
-          syft --config infra/sbom/syft.yaml `
+          syft --config deploy/sbom/syft.yaml `
             -o "cyclonedx-json@1.6=$outFile" `
             "$binary"
           $sbom = Get-Content -Raw $outFile | ConvertFrom-Json
@@ -592,7 +592,7 @@ jobs:
           set -euo pipefail
           version="${CHIO_VERSION}"
           repo="${CHIO_GITHUB_REPO}"
-          formula_src="Homebrew/chio.rb.tmpl"
+          formula_src="packaging/homebrew/chio.rb.tmpl"
           formula_out="release/chio.rb"
           if [[ ! -f "$formula_src" ]]; then
             echo "formula source missing: $formula_src" >&2

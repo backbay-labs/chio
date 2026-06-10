@@ -12,7 +12,7 @@ publish = false
 name = "chio_metering"
 
 [dependencies]
-chio-core = { path = "../chio-core" }
+chio-core = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

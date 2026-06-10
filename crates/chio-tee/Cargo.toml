@@ -22,10 +22,10 @@ name = "chio-tee"
 path = "src/main.rs"
 
 [dependencies]
-chio-tee-frame = { path = "../chio-tee-frame" }
+chio-tee-frame = { workspace = true }
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
-chio-data-guards-redactors-default = { path = "../chio-data-guards/redactors/default" }
-chio-store-sqlite = { path = "../chio-store-sqlite" }
+chio-data-guards-redactors-default = { workspace = true }
+chio-store-sqlite = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -43,7 +43,7 @@ zeroize = { version = "1.8", features = ["derive"] }
 signal-hook = "0.3"
 
 [dev-dependencies]
-chio-test-support = { path = "../chio-test-support" }
+chio-test-support = { workspace = true }
 proptest = { workspace = true }
 tempfile = { workspace = true }
 

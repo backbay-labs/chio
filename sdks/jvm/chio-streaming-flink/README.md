@@ -133,7 +133,7 @@ Kafka suite (`ChioFlinkKafkaIntegrationTest`): a Flink MiniCluster job
 with a real `KafkaSource` -> `ChioAsyncEvaluateFunction` ->
 `ChioVerdictSplitFunction` -> two `KafkaSink`s, against a Testcontainers-
 managed Redpanda broker (image `redpandadata/redpanda:v24.2.7`,
-matching `infra/streaming-flink-compose.yml`).
+matching `deploy/compose/streaming-flink-compose.yml`).
 
 The task is self-contained: only a running Docker daemon is required;
 no `docker compose up` step. It is deliberately NOT wired to `check`,

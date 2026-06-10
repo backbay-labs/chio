@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
-dockerfile="${repo_root}/Dockerfile.sidecar"
+dockerfile="${repo_root}/deploy/docker/Dockerfile.sidecar"
 
 require_copy() {
   local source="$1"

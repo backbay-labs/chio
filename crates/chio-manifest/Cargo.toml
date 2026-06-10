@@ -16,7 +16,7 @@ public_entrypoint = true
 name = "chio_manifest"
 
 [dependencies]
-chio-core = { path = "../chio-core" }
+chio-core = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

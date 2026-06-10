@@ -13,7 +13,7 @@ name = "chio_pheromone"
 
 [dependencies]
 base64 = { workspace = true }
-chio-core-types = { version = "0.1.0", path = "../chio-core-types" }
+chio-core-types = { workspace = true }
 hex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

@@ -291,7 +291,7 @@ default_unwind = 8
 timeout_secs = 1800
 lane = "pr"
 features = ["kani"]
-notes = "MODEL-ONLY: proves the local model_evaluate_witness_policy decision algebra, not the production chio_anchor::witness::evaluate_witness_policy. Live runtime regression is checked separately by crates/chio-anchor/tests/witness_policy.rs and the chio-conformance negative tests. See the model-scope notes and harness module docstring for the future hardening follow-up."
+notes = "MODEL-ONLY: proves the local model_evaluate_witness_policy decision algebra, not the production chio_anchor::witness::evaluate_witness_policy. Live runtime regression is checked separately by crates/chio-anchor/tests/integration_smoke.rs and the chio-conformance negative tests. See the model-scope notes and harness module docstring for the future hardening follow-up."
 
 # ---------------------------------------------------------------------
 # chio-weights Kani harness evidence

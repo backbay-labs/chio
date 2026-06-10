@@ -8,8 +8,8 @@ connection error noise up the failure list -- so devs who forgot to
 ``docker compose up`` get a one-line "broker not reachable" instead of
 a backtrace tower.
 
-Endpoints default to the ports published by ``infra/streaming-compose.yml``
-(redis 16379, nats 14222) and ``infra/streaming-flink-compose.yml``
+Endpoints default to the ports published by ``deploy/compose/streaming-compose.yml``
+(redis 16379, nats 14222) and ``deploy/compose/streaming-flink-compose.yml``
 (redpanda 19092). Override via env vars (``CHIO_TEST_REDIS_URL``,
 ``CHIO_TEST_NATS_URL``, ``CHIO_TEST_KAFKA_BOOTSTRAP``) to point at an
 alternate stack.
@@ -90,7 +90,7 @@ async def redis_client(redis_url: str) -> AsyncIterator[object]:
     if not _tcp_reachable(host, port):
         pytest.skip(
             f"redis not reachable at {host}:{port}; "
-            f"start `docker compose -f infra/streaming-compose.yml up -d`"
+            f"start `docker compose -f deploy/compose/streaming-compose.yml up -d`"
         )
     try:
         from redis.asyncio import Redis  # type: ignore[import-not-found]
@@ -135,7 +135,7 @@ async def nats_connection(nats_url: str) -> AsyncIterator[object]:
     if not _tcp_reachable(host, port):
         pytest.skip(
             f"nats not reachable at {host}:{port}; "
-            f"start `docker compose -f infra/streaming-compose.yml up -d`"
+            f"start `docker compose -f deploy/compose/streaming-compose.yml up -d`"
         )
     try:
         import nats  # type: ignore[import-not-found]
@@ -187,7 +187,7 @@ def kafka_admin(kafka_bootstrap: str) -> Iterator[object]:
     if not _tcp_reachable(host or "localhost", port):
         pytest.skip(
             f"kafka not reachable at {kafka_bootstrap}; "
-            f"start `docker compose -f infra/streaming-flink-compose.yml up -d --wait`"
+            f"start `docker compose -f deploy/compose/streaming-flink-compose.yml up -d --wait`"
         )
     try:
         from confluent_kafka.admin import AdminClient  # type: ignore[import-not-found]

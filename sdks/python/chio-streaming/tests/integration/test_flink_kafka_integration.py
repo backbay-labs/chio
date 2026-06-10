@@ -30,7 +30,7 @@ Constraints honoured:
 
 * Uses ``LocalStreamEnvironment`` (PyFlink's in-process mini-cluster).
   The dockerised JobManager / TaskManager from
-  ``infra/streaming-flink-compose.yml`` are present only as a UI /
+  ``deploy/compose/streaming-flink-compose.yml`` are present only as a UI /
   manual exploration target; submitting a job to the dockerised
   cluster forces a Python version match between host and container
   which is brittle for CI.

@@ -13,8 +13,8 @@ name = "chio_replay_corpus"
 
 [dependencies]
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
-chio-tee = { path = "../chio-tee" }
-chio-tee-frame = { path = "../chio-tee-frame" }
+chio-tee = { workspace = true }
+chio-tee-frame = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 hex = { workspace = true }
@@ -22,7 +22,7 @@ sha2 = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
-chio-test-support = { path = "../chio-test-support" }
+chio-test-support = { workspace = true }
 tempfile = { workspace = true }
 
 [lints]

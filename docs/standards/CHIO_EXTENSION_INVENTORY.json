@@ -5,7 +5,7 @@
     {
       "id": "chio.canonical.capability",
       "name": "Capability and approval artifacts",
-      "crate_path": "crates/chio-core/src/capability.rs",
+      "crate_path": "crates/chio-core-types/src/capability/mod.rs",
       "contract_kind": "capability",
       "artifact_schemas": [
         "capability_token",
@@ -17,7 +17,7 @@
     {
       "id": "chio.canonical.receipt",
       "name": "Signed receipts and checkpoints",
-      "crate_path": "crates/chio-core/src/receipt.rs",
+      "crate_path": "crates/chio-core-types/src/receipt/mod.rs",
       "contract_kind": "receipt",
       "artifact_schemas": [
         "chio.receipt.v1",

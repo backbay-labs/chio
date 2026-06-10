@@ -16,12 +16,12 @@ demo = []
 pq = ["chio-core-types/pq"]
 
 [dependencies]
-chio-core-types = { path = "../chio-core-types" }
-chio-listing = { path = "../chio-listing" }
+chio-core-types = { workspace = true }
+chio-listing = { workspace = true }
 chio-metrics-spec = { workspace = true }
-chio-open-market = { path = "../chio-open-market" }
-chio-pheromone = { path = "../chio-pheromone" }
-chio-revocation-oracle = { path = "../chio-revocation-oracle" }
+chio-open-market = { workspace = true }
+chio-pheromone = { workspace = true }
+chio-revocation-oracle = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -41,7 +41,7 @@ hex = { workspace = true }
 # verifier-visibility latency budget. The kernel-core RevocationView is
 # the verifier-side surface so that crate is pulled in here as a dev
 # dependency only.
-chio-kernel-core = { path = "../chio-kernel-core" }
+chio-kernel-core = { workspace = true }
 
 [lints]
 workspace = true

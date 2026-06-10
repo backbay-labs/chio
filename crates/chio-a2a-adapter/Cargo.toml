@@ -15,9 +15,9 @@ name = "chio_a2a_adapter"
 async-trait = { workspace = true }
 base64 = "0.22"
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
-chio-egress-contract = { path = "../chio-egress-contract" }
-chio-kernel = { path = "../chio-kernel" }
-chio-manifest = { path = "../chio-manifest" }
+chio-egress-contract = { workspace = true }
+chio-kernel = { workspace = true }
+chio-manifest = { workspace = true }
 rustls-pemfile = "2"
 serde = { workspace = true }
 serde_json = { workspace = true }

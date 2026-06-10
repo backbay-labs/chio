@@ -12,8 +12,8 @@ publish = false
 name = "chio_web3"
 
 [dependencies]
-chio-core-types = { path = "../chio-core-types" }
-chio-credit = { path = "../chio-credit" }
+chio-core-types = { workspace = true }
+chio-credit = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

@@ -258,7 +258,7 @@ emits two complementary supply-chain artifacts in addition to the
 | Artifact | Producer | Where to find it |
 |---|---|---|
 | Embedded `auditable` dependency graph | `cargo auditable build` (cargo-auditable v0.7.4) | Inside the `chio` binary itself; read with `cargo audit -f <binary>`. |
-| CycloneDX 1.6 JSON SBOM | `syft` v1.18.1 with [`infra/sbom/syft.yaml`](../../infra/sbom/syft.yaml) | GitHub Actions artifact `sbom-<target>` (90-day retention). One file per matrix leg, named `chio-<target>.cyclonedx.json`. |
+| CycloneDX 1.6 JSON SBOM | `syft` v1.18.1 with [`deploy/sbom/syft.yaml`](../../deploy/sbom/syft.yaml) | GitHub Actions artifact `sbom-<target>` (90-day retention). One file per matrix leg, named `chio-<target>.cyclonedx.json`. |
 
 Both artifacts are produced per matrix leg, so each of the five
 release targets (linux x86_64 / aarch64, macOS x86_64 / aarch64,

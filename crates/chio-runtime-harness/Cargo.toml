@@ -13,14 +13,14 @@ name = "chio_runtime_harness"
 
 [dependencies]
 async-trait = { workspace = true }
-chio-attest-buyer-core = { path = "../chio-attest-buyer-core" }
-chio-attest-loopback = { path = "../chio-attest-loopback" }
-chio-runtime-core = { path = "../chio-runtime-core" }
-chio-core = { path = "../chio-core" }
-chio-core-types = { path = "../chio-core-types" }
-chio-federation = { path = "../chio-federation" }
-chio-kernel = { path = "../chio-kernel" }
-chio-store-sqlite = { path = "../chio-store-sqlite" }
+chio-attest-buyer-core = { workspace = true }
+chio-attest-loopback = { workspace = true }
+chio-runtime-core = { workspace = true }
+chio-core = { workspace = true }
+chio-core-types = { workspace = true }
+chio-federation = { workspace = true }
+chio-kernel = { workspace = true }
+chio-store-sqlite = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

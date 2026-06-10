@@ -24,9 +24,9 @@ lineage = []
 [dependencies]
 chacha20poly1305 = { workspace = true }
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
-chio-credit = { path = "../chio-credit" }
-chio-kernel = { path = "../chio-kernel" }
-chio-settle = { path = "../chio-settle" }
+chio-credit = { workspace = true }
+chio-kernel = { workspace = true }
+chio-settle = { workspace = true }
 thiserror = { workspace = true }
 r2d2 = "0.8"
 r2d2_sqlite = "0.33.0"
@@ -38,7 +38,7 @@ uuid = { workspace = true, features = ["v7"] }
 zeroize = { version = "1.8", features = ["derive"] }
 
 [dev-dependencies]
-chio-test-support = { path = "../chio-test-support" }
+chio-test-support = { workspace = true }
 criterion = { workspace = true }
 tempfile = { workspace = true }
 

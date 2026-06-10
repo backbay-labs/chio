@@ -32,10 +32,10 @@ aws-smithy-runtime-api = { version = "1", default-features = false, features = [
 ] }
 aws-smithy-types = { version = "1", default-features = false }
 aws-types = { version = "1", default-features = false }
-chio-attest-verify = { path = "../chio-attest-verify" }
+chio-attest-verify = { workspace = true }
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
-chio-provider-adapter-core = { path = "../chio-provider-adapter-core" }
-chio-tool-call-fabric = { path = "../chio-tool-call-fabric" }
+chio-provider-adapter-core = { workspace = true }
+chio-tool-call-fabric = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

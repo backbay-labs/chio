@@ -15,11 +15,11 @@ name = "mercury"
 path = "src/main.rs"
 
 [dependencies]
-chio-control-plane = { path = "../chio-control-plane" }
+chio-control-plane = { workspace = true }
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
-chio-kernel = { path = "../chio-kernel" }
-chio-mercury-core = { path = "../chio-mercury-core" }
-chio-store-sqlite = { path = "../chio-store-sqlite" }
+chio-kernel = { workspace = true }
+chio-mercury-core = { workspace = true }
+chio-store-sqlite = { workspace = true }
 chrono = { workspace = true }
 clap = { version = "4", features = ["derive"] }
 serde = { workspace = true }

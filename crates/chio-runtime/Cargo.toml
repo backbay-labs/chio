@@ -12,10 +12,10 @@ publish = false
 name = "chio_runtime"
 
 [dependencies]
-chio-runtime-core = { path = "../chio-runtime-core" }
-chio-core-types = { path = "../chio-core-types" }
-chio-kernel = { path = "../chio-kernel" }
-chio-weights = { path = "../chio-weights" }
+chio-runtime-core = { workspace = true }
+chio-core-types = { workspace = true }
+chio-kernel = { workspace = true }
+chio-weights = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 

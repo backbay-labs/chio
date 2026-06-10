@@ -20,48 +20,48 @@ path = "src/bin/chio.rs"
 
 [dependencies]
 async-trait = { workspace = true }
-chio-appraisal = { path = "../chio-appraisal" }
-chio-arena = { path = "../chio-arena" }
-chio-api-protect = { path = "../chio-api-protect" }
-chio-attest-buyer-core = { path = "../chio-attest-buyer-core" }
-chio-federation-authority = { path = "../chio-federation-authority" }
-chio-attest-loopback = { path = "../chio-attest-loopback" }
-chio-runtime-core = { path = "../chio-runtime-core" }
-chio-runtime-harness = { path = "../chio-runtime-harness" }
-chio-control-plane = { path = "../chio-control-plane" }
-chio-acp-proxy = { path = "../chio-acp-proxy" }
-chio-core = { path = "../chio-core" }
-chio-core-types = { path = "../chio-core-types" }
-chio-credentials = { path = "../chio-credentials" }
-chio-data-guards = { path = "../chio-data-guards" }
-chio-egress-contract = { path = "../chio-egress-contract" }
-chio-errors = { path = "../chio-errors" }
-chio-did = { path = "../chio-did" }
-chio-external-guards = { path = "../chio-external-guards" }
-chio-federation = { path = "../chio-federation" }
-chio-hosted-mcp = { path = "../chio-hosted-mcp" }
-chio-kernel = { path = "../chio-kernel" }
-chio-guards = { path = "../chio-guards" }
-chio-guard-registry = { path = "../chio-guard-registry", features = ["marketplace"] }
-chio-underwriting = { path = "../chio-underwriting" }
-chio-lineage = { path = "../chio-lineage" }
-chio-listing = { path = "../chio-listing" }
-chio-policy = { path = "../chio-policy" }
-chio-mcp-adapter = { path = "../chio-mcp-adapter" }
-chio-mcp-remote = { path = "../chio-mcp-remote" }
-chio-attest-buyer = { path = "../chio-attest-buyer" }
-chio-attest-verify = { path = "../chio-attest-verify" }
-chio-weights = { path = "../chio-weights" }
-chio-conformance = { path = "../chio-conformance" }
-chio-pheromone = { path = "../chio-pheromone" }
-chio-pheromone-relay = { path = "../chio-pheromone-relay" }
-chio-pheromone-runtime = { path = "../chio-pheromone-runtime" }
-chio-replay-corpus = { path = "../chio-replay-corpus" }
-chio-reputation = { path = "../chio-reputation" }
-chio-runtime = { path = "../chio-runtime" }
-chio-store-sqlite = { path = "../chio-store-sqlite" }
-chio-tee-frame = { path = "../chio-tee-frame" }
-chio-tool-call-fabric = { path = "../chio-tool-call-fabric" }
+chio-appraisal = { workspace = true }
+chio-arena = { workspace = true }
+chio-api-protect = { workspace = true }
+chio-attest-buyer-core = { workspace = true }
+chio-federation-authority = { workspace = true }
+chio-attest-loopback = { workspace = true }
+chio-runtime-core = { workspace = true }
+chio-runtime-harness = { workspace = true }
+chio-control-plane = { workspace = true }
+chio-acp-proxy = { workspace = true }
+chio-core = { workspace = true }
+chio-core-types = { workspace = true }
+chio-credentials = { workspace = true }
+chio-data-guards = { workspace = true }
+chio-egress-contract = { workspace = true }
+chio-errors = { workspace = true }
+chio-did = { workspace = true }
+chio-external-guards = { workspace = true }
+chio-federation = { workspace = true }
+chio-hosted-mcp = { workspace = true }
+chio-kernel = { workspace = true }
+chio-guards = { workspace = true }
+chio-guard-registry = { workspace = true, features = ["marketplace"] }
+chio-underwriting = { workspace = true }
+chio-lineage = { workspace = true }
+chio-listing = { workspace = true }
+chio-policy = { workspace = true }
+chio-mcp-adapter = { workspace = true }
+chio-mcp-remote = { workspace = true }
+chio-attest-buyer = { workspace = true }
+chio-attest-verify = { workspace = true }
+chio-weights = { workspace = true }
+chio-conformance = { workspace = true }
+chio-pheromone = { workspace = true }
+chio-pheromone-relay = { workspace = true }
+chio-pheromone-runtime = { workspace = true }
+chio-replay-corpus = { workspace = true }
+chio-reputation = { workspace = true }
+chio-runtime = { workspace = true }
+chio-store-sqlite = { workspace = true }
+chio-tee-frame = { workspace = true }
+chio-tool-call-fabric = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yml = { workspace = true }
@@ -83,13 +83,13 @@ ureq = { version = "2.10", features = ["json"] }
 serde_urlencoded = "0.7"
 toml = "0.8"
 rusqlite = { workspace = true }
-chio-siem = { path = "../chio-siem", optional = true }
+chio-siem = { workspace = true, optional = true }
 tower-http = { version = "0.6", features = ["fs", "set-header"] }
 chrono = { version = "0.4", features = ["clock"] }
 rsa = { version = "0.9", features = ["sha2"] }
 p256 = { version = "0.13", features = ["ecdsa"] }
 p384 = { version = "0.13", features = ["ecdsa"] }
-chio-wasm-guards = { path = "../chio-wasm-guards", features = ["wasmtime-runtime"] }
+chio-wasm-guards = { workspace = true, features = ["wasmtime-runtime"] }
 ed25519-dalek = { workspace = true }
 wasmparser = "0.221"
 flate2 = "1"
@@ -100,10 +100,10 @@ semver = "1"
 uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
-chio-credit = { path = "../chio-credit" }
-chio-open-market = { path = "../chio-open-market" }
-chio-settle = { path = "../chio-settle" }
-chio-test-support = { path = "../chio-test-support" }
+chio-credit = { workspace = true }
+chio-open-market = { workspace = true }
+chio-settle = { workspace = true }
+chio-test-support = { workspace = true }
 insta = { version = "1.42", features = ["json", "redactions"] }
 rand_core = { workspace = true }
 tempfile = "3"

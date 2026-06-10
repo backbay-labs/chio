@@ -65,3 +65,52 @@ fn normalize_ts_chunk_strips_trailing_newlines() {
     assert_eq!(normalize_ts_chunk("hello\n\n\n"), "hello");
     assert_eq!(normalize_ts_chunk("multi\nline\n"), "multi\nline");
 }
+
+#[test]
+fn codegen_argv_round_trips_positional_and_flag() {
+    // The clap dispatch rebuilds the exact argv the legacy run_codegen parses.
+    use crate::cli::{CodegenArgs, Lang};
+    use crate::dispatch::codegen_argv;
+    let pos = CodegenArgs {
+        lang_positional: Some(Lang::Rust),
+        lang_flag: None,
+        check: true,
+    };
+    match codegen_argv(&pos) {
+        Ok(argv) => assert_eq!(argv, vec!["rust".to_string(), "--check".to_string()]),
+        Err(err) => panic!("positional form must parse, got: {err}"),
+    }
+    let flag = CodegenArgs {
+        lang_positional: None,
+        lang_flag: Some(Lang::Python),
+        check: false,
+    };
+    match codegen_argv(&flag) {
+        Ok(argv) => assert_eq!(argv, vec!["--lang".to_string(), "python".to_string()]),
+        Err(err) => panic!("flag form must parse, got: {err}"),
+    }
+}
+
+#[test]
+fn codegen_argv_rejects_language_given_twice() {
+    // `codegen rust --lang python` supplies the language twice; the old
+    // hand-rolled parser rejected this and so must the clap dispatch, rather
+    // than silently keeping the positional and dropping the flag.
+    use crate::cli::{CodegenArgs, Lang};
+    use crate::dispatch::codegen_argv;
+    use crate::XtaskError;
+    let both = CodegenArgs {
+        lang_positional: Some(Lang::Rust),
+        lang_flag: Some(Lang::Python),
+        check: false,
+    };
+    match codegen_argv(&both) {
+        Err(XtaskError::Usage(msg)) => {
+            assert!(
+                msg.contains("given twice") && msg.contains("rust") && msg.contains("python"),
+                "got: {msg}"
+            );
+        }
+        other => panic!("expected Usage error for duplicate language, got {other:?}"),
+    }
+}

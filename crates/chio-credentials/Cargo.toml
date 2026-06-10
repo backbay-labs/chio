@@ -12,10 +12,10 @@ publish = false
 name = "chio_credentials"
 
 [dependencies]
-chio-core = { path = "../chio-core" }
-chio-did = { path = "../chio-did" }
-chio-reputation = { path = "../chio-reputation" }
-chio-revocation-oracle = { path = "../chio-revocation-oracle" }
+chio-core = { workspace = true }
+chio-did = { workspace = true }
+chio-reputation = { workspace = true }
+chio-revocation-oracle = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -45,7 +45,7 @@ fuzz = ["dep:arbitrary"]
 dudect = ["dep:dudect-bencher"]
 
 [dev-dependencies]
-chio-test-support = { path = "../chio-test-support" }
+chio-test-support = { workspace = true }
 proptest = { workspace = true }
 
 # Timing-leak dudect harness. `harness = false` so the test binary's `main`

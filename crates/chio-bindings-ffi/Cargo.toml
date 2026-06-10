@@ -13,7 +13,7 @@ name = "chio_bindings_ffi"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [dependencies]
-chio-binding-helpers = { path = "../chio-binding-helpers" }
+chio-binding-helpers = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 

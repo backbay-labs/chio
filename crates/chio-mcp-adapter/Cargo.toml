@@ -18,9 +18,9 @@ name = "chio_mcp_adapter"
 [dependencies]
 async-trait = { workspace = true }
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
-chio-mcp-edge = { path = "../chio-mcp-edge" }
-chio-kernel = { path = "../chio-kernel" }
-chio-manifest = { path = "../chio-manifest" }
+chio-mcp-edge = { workspace = true }
+chio-kernel = { workspace = true }
+chio-manifest = { workspace = true }
 chrono = { version = "0.4", features = ["clock"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -41,7 +41,7 @@ arbitrary = { version = "1", features = ["derive"], optional = true }
 fuzz = ["dep:arbitrary"]
 
 [dev-dependencies]
-chio-test-support = { path = "../chio-test-support" }
+chio-test-support = { workspace = true }
 
 [lints]
 workspace = true

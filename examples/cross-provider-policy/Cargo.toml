@@ -9,7 +9,7 @@ repository.workspace = true
 publish = false
 
 [dependencies]
-chio-provider-conformance = { path = "../../crates/chio-provider-conformance", features = [
+chio-provider-conformance = { workspace = true, features = [
     "fixtures-openai",
     "fixtures-anthropic",
     "fixtures-bedrock",

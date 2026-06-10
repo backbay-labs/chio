@@ -34,7 +34,7 @@ evaluate policies, load arbitrary project files, or mutate workspace state.
 
 - Preserve the public crate surface: `DocumentCache`, `DocumentEntry`,
   `DocumentLanguage`, `ChioLanguageServer`, and `ServerCapabilitiesSnapshot`.
-- Preserve editor contract behavior from `editors/README.md`: stdio LSP,
+- Preserve editor contract behavior from `integrations/editors/README.md`: stdio LSP,
   registry-coded diagnostics, completion, hover, and go-to-definition.
 - Keep `didOpen` as the only operation that admits a document and records the
   initial language classification.
@@ -45,7 +45,7 @@ evaluate policies, load arbitrary project files, or mutate workspace state.
 ## Affected Dependents
 
 `cargo tree -i chio-lsp --workspace` reports no direct Rust dependents.
-First-party editor packages under `editors/` depend on the `chio-lsp` binary
+First-party editor packages under `integrations/editors/` depend on the `chio-lsp` binary
 contract and LSP behavior. The planned change should require no transitive
 source edits.
 

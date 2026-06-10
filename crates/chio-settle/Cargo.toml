@@ -33,10 +33,10 @@ web3 = [
 ]
 
 [dependencies]
-chio-core = { path = "../chio-core", optional = true }
-chio-credit = { path = "../chio-credit", optional = true }
-chio-egress-contract = { path = "../chio-egress-contract", features = ["reqwest-egress"], optional = true }
-chio-web3 = { path = "../chio-web3", optional = true }
+chio-core = { workspace = true, optional = true }
+chio-credit = { workspace = true, optional = true }
+chio-egress-contract = { workspace = true, features = ["reqwest-egress"], optional = true }
+chio-web3 = { workspace = true, optional = true }
 chio-web3-bindings = { path = "../chio-web3-bindings", default-features = false, features = ["web3"], optional = true }
 alloy-primitives = { version = "1.5.7", default-features = false, features = ["std"], optional = true }
 alloy-sol-types = { version = "1.5.7", default-features = false, features = ["std"], optional = true }
@@ -51,10 +51,10 @@ thiserror = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 
 [dev-dependencies]
-chio-anchor = { path = "../chio-anchor" }
-chio-link = { path = "../chio-link" }
-chio-test-support = { path = "../chio-test-support" }
-chio-kernel = { path = "../chio-kernel" }
+chio-anchor = { workspace = true }
+chio-link = { workspace = true }
+chio-test-support = { workspace = true }
+chio-kernel = { workspace = true }
 
 [lints]
 workspace = true

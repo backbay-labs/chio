@@ -82,14 +82,14 @@ delegation = []
 delegation_v2 = ["delegation"]
 
 [dev-dependencies]
-chio-test-support = { path = "../chio-test-support" }
+chio-test-support = { workspace = true }
 jsonschema = { version = "0.46.0", default-features = false }
 proptest = { workspace = true }
 # Pulled in by the `_generated_check` integration test so the canonical
 # `// DO NOT EDIT` header is asserted byte-for-byte against
 # `chio_spec_codegen::GENERATED_HEADER` (the source of truth) rather than
 # only its first line.
-chio-spec-codegen = { path = "../chio-spec-codegen" }
+chio-spec-codegen = { workspace = true }
 
 [lints]
 workspace = true

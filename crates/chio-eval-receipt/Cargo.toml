@@ -13,7 +13,7 @@ name = "chio_eval_receipt"
 path = "src/lib.rs"
 
 [dependencies]
-chio-core-types = { path = "../chio-core-types" }
+chio-core-types = { workspace = true }
 serde_json.workspace = true
 sha2.workspace = true
 

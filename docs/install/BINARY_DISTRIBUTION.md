@@ -24,7 +24,7 @@ chio --version
 ```
 
 The release workflow renders the installable formula from
-`Homebrew/chio.rb.tmpl` and publishes it as the `chio.rb` release asset.
+`packaging/homebrew/chio.rb.tmpl` and publishes it as the `chio.rb` release asset.
 See [`docs/install/homebrew.md`](./homebrew.md) for details.
 
 ## Install via Docker
@@ -42,7 +42,7 @@ docker run --rm ghcr.io/backbay-labs/chio-sidecar:latest --help
 
 The image:
 
-- is built from `Dockerfile.sidecar` (Alpine base, non-root user `chio`, UID
+- is built from `deploy/docker/Dockerfile.sidecar` (Alpine base, non-root user `chio`, UID
   `10001`);
 - defaults to `chio --help`; operators override the command with `run`,
   `mcp serve-http`, or another real subcommand at deploy time;
@@ -117,4 +117,4 @@ docker buildx imagetools inspect ghcr.io/backbay-labs/chio-sidecar:0.1.0
 | ---------------------------------------------- | ----------------------------------------------------- |
 | GitHub Release archives + `SHA256SUMS`         | `.github/workflows/release-binaries.yml`              |
 | `ghcr.io/backbay-labs/chio-sidecar` container image | `.github/workflows/sidecar-image.yml`                 |
-| Homebrew formula template                      | `Homebrew/chio.rb.tmpl` rendered into release asset `chio.rb` |
+| Homebrew formula template                      | `packaging/homebrew/chio.rb.tmpl` rendered into release asset `chio.rb` |

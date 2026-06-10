@@ -533,7 +533,7 @@ gated by the `CHIO_INTEGRATION=1` environment variable so a normal
 `uv run pytest` invocation never touches a real broker (the suite is
 skipped, not failed, when the gate is off).
 
-The integration stack ships as `infra/streaming-compose.yml` at the
+The integration stack ships as `deploy/compose/streaming-compose.yml` at the
 repo root and currently includes Redis (port `16379`) and NATS with
 JetStream enabled (port `14222`). The ports are deliberately offset
 from the broker defaults so the stack can coexist with a workspace-wide
@@ -565,7 +565,7 @@ backtrace) when the broker is unreachable.
 
 A second integration stack covers the Flink operators and the Kafka
 middleware against real brokers. It ships as
-`infra/streaming-flink-compose.yml` and brings up:
+`deploy/compose/streaming-flink-compose.yml` and brings up:
 
 - **Redpanda** (Kafka-API compatible) on port `19092` (host) /
   `9092` (in-cluster).

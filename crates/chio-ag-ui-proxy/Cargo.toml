@@ -12,7 +12,7 @@ publish = false
 name = "chio_ag_ui_proxy"
 
 [dependencies]
-chio-core = { path = "../chio-core" }
+chio-core = { workspace = true }
 chio-kernel-core = { path = "../chio-kernel-core", default-features = false }
 serde = { workspace = true }
 serde_json = { workspace = true }

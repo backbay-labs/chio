@@ -88,6 +88,9 @@ fn bless_without_chio_bless_fails_closed() {
         .current_dir(workspace_root())
         .env_remove("CHIO_BLESS")
         .env_remove("BLESS_REASON")
+        // Remove CI as well: this test asserts the missing-CHIO_BLESS error, but
+        // the gate refuses to bless under CI first, which would mask it.
+        .env_remove("CI")
         .args([
             "--bless",
             "tests/replay/fixtures/allow_simple/01_basic_capability.json",

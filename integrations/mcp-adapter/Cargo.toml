@@ -13,7 +13,7 @@ name = "chio_mcp_adapter_integration"
 
 [dependencies]
 base64 = { workspace = true }
-chio-mcp-edge = { path = "../../crates/chio-mcp-edge" }
+chio-mcp-edge = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha2 = { workspace = true }

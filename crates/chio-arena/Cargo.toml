@@ -14,9 +14,9 @@ name = "chio_arena"
 [dependencies]
 async-trait = { workspace = true }
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
-chio-kernel = { path = "../chio-kernel" }
-chio-replay-corpus = { path = "../chio-replay-corpus" }
-chio-tee-frame = { path = "../chio-tee-frame" }
+chio-kernel = { workspace = true }
+chio-replay-corpus = { workspace = true }
+chio-tee-frame = { workspace = true }
 rand = { workspace = true }
 rand_chacha = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

@@ -80,7 +80,7 @@ import java.util.concurrent.TimeUnit
 private const val ALLOW_INTENT: String = "ok"
 private const val DENY_INTENT: String = "evil"
 
-// Pinned to match the python compose at infra/streaming-flink-compose.yml
+// Pinned to match the python compose at deploy/compose/streaming-flink-compose.yml
 // so cross-language parity tests run against the same broker image.
 private const val REDPANDA_IMAGE: String = "redpandadata/redpanda:v24.2.7"
 

@@ -12,8 +12,8 @@ publish = false
 name = "chio_otel_receipt_exporter"
 
 [target.'cfg(not(loom))'.dependencies]
-chio-core = { path = "../chio-core" }
-chio-kernel = { path = "../chio-kernel" }
+chio-core = { workspace = true }
+chio-kernel = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
