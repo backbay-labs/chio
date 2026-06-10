@@ -18,9 +18,10 @@ use std::path::{Path, PathBuf};
 use crate::{workspace_root, XtaskError};
 
 /// The 11 functional crate-group folders under `crates/`. A path literal that
-/// names a crate is `crates/<group>/chio-...`; the extractor recognizes only
-/// these group prefixes so a stale `crates/chio-...` literal (missing its group
-/// segment after the Phase 6 move) does not match and silently go dark.
+/// names a crate is `crates/<group>/chio-...`. The extractor matches these
+/// group prefixes AND the bare `crates/chio-...` shape (a literal that lost its
+/// group segment after the Phase 6 move): the bare form never resolves, so it
+/// is reported as a violation rather than silently skipped (fail-closed).
 const CRATE_GROUPS: [&str; 11] = [
     "core",
     "kernel",
@@ -46,7 +47,9 @@ pub fn extract_crate_paths(content: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut i = 0usize;
     while i < bytes.len() {
-        if let Some(prefix_len) = group_prefix_len(&bytes[i..]) {
+        if let Some(prefix_len) =
+            group_prefix_len(&bytes[i..]).or_else(|| bare_crate_prefix_len(&bytes[i..]))
+        {
             let start = i;
             let mut j = i + prefix_len;
             while j < bytes.len() && is_path_byte(bytes[j]) {
@@ -80,6 +83,16 @@ fn group_prefix_len(bytes: &[u8]) -> Option<usize> {
         }
     }
     None
+}
+
+/// If `bytes` begins with the stale group-less `crates/chio-` prefix, return
+/// its length so the literal is extracted and checked. Every crate now lives
+/// under `crates/<group>/`, so a group-less path never resolves after the move;
+/// extracting it lets `find_violations` report it (fail-closed) instead of
+/// silently skipping a missed migration.
+fn bare_crate_prefix_len(bytes: &[u8]) -> Option<usize> {
+    const BARE: &[u8] = b"crates/chio-";
+    bytes.starts_with(BARE).then_some(BARE.len())
 }
 
 fn is_path_byte(b: u8) -> bool {
@@ -156,16 +169,25 @@ pub fn normalize_for_resolution(raw: &str) -> Option<Resolution> {
     Some(Resolution::Path(path))
 }
 
-/// Join `segments` into a `crates/<group>/chio-<name>/...` prefix, returning
-/// `None` when nothing more specific than a bare crate name (or a truncated
-/// `crates/<group>/chio-`) remains. The crate-name segment is the third
-/// (`crates` / `<group>` / `chio-<name>`). Trims a trailing sentence period.
+/// Join `segments` into a `crates/.../chio-<name>/...` prefix, returning `None`
+/// when nothing more specific than a truncated `chio-` remains. The
+/// `chio-<name>` segment is the third in the grouped layout
+/// (`crates` / `<group>` / `chio-<name>`) or the second in a stale group-less
+/// path (`crates` / `chio-<name>`); either is resolved so a group-less literal
+/// is reported as a missing path rather than silently skipped. Trims a trailing
+/// sentence period.
 fn concrete_prefix(segments: &[&str]) -> Option<String> {
-    if segments.len() < 3 {
+    if segments.first() != Some(&"crates") {
         return None;
     }
-    if segments[2].len() <= "chio-".len() {
-        return None;
+    // `chio-<name>` is at index 1 (group-less) or 2 (grouped).
+    let name_idx = match segments.get(1) {
+        Some(seg) if seg.starts_with("chio-") => 1,
+        _ => 2,
+    };
+    match segments.get(name_idx) {
+        Some(name) if name.len() > "chio-".len() => {}
+        _ => return None,
     }
     let joined = segments.join("/");
     let trimmed = joined.trim_end_matches('.');
@@ -386,19 +408,24 @@ mod tests {
     }
 
     #[test]
-    fn extract_ignores_group_less_literal() {
+    fn extract_catches_group_less_literal() {
         // A `crates/chio-...` literal that lost its `<group>/` segment after the
-        // move must NOT be extracted: this is the exact go-dark shape the
-        // post-Phase-6 needle defends against. (Were it still extracted, a
-        // resolver miss would be reported, but a literal that the gate never
-        // sees at all is the silent failure mode; this test pins that the
-        // group-anchored needle does not regress to matching bare `crates/chio-`.)
+        // move IS extracted so `find_violations` reports it. Every crate now
+        // lives under `crates/<group>/`, so a group-less path never resolves;
+        // skipping it would let a missed migration in the curated scan targets
+        // pass CI silently instead of failing closed.
         let got = extract_crate_paths("x: crates/chio-kernel/src/lib.rs\n");
-        assert!(
-            got.is_empty(),
-            "group-less literal must not match; got: {got:?}"
+        assert_eq!(got, vec!["crates/chio-kernel/src/lib.rs".to_string()]);
+        // ...and it resolves to a concrete path check, so the missing file is a
+        // reported violation rather than a no-op.
+        assert_eq!(
+            normalize_for_resolution("crates/chio-kernel/src/lib.rs"),
+            Some(Resolution::Path(
+                "crates/chio-kernel/src/lib.rs".to_string()
+            ))
         );
-        // An unknown group is likewise not a recognized crate folder.
+        // An unknown group folder is not the bare-crate go-dark shape and is
+        // left as ordinary text.
         let got = extract_crate_paths("x: crates/bogus/chio-kernel/**\n");
         assert!(got.is_empty(), "unknown group must not match; got: {got:?}");
     }

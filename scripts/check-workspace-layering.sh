@@ -14,7 +14,10 @@ domain_manifests=(
   "crates/kernel/chio-kernel/Cargo.toml"
 )
 
-blocked_workspace_paths='path = "\\.\\./(chio-cli|chio-control-plane|chio-hosted-mcp)"'
+# Match any relative path dependency on these top-of-stack crates regardless of
+# depth or group folder: after the crate-folder move a reverse dependency is
+# written as `path = "../../products/chio-cli"`, not the old `path = "../chio-cli"`.
+blocked_workspace_paths='path = "[^"]*/(chio-cli|chio-control-plane|chio-hosted-mcp)"'
 blocked_transport_deps='^(clap|axum|reqwest)[[:space:]]*='
 failed=0
 
