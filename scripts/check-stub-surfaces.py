@@ -310,7 +310,6 @@ ALLOWLIST_MATCHES: dict[str, tuple[str, ...]] = {
     ),
     "crates/trust/chio-custody-hw/src/lib.rs": (
         r"trust-boundary stubs",
-        r"todo!.+unimplemented!.+panic!",
     ),
     "crates/trust/chio-custody-hw/src/verifier.rs": (
         r"signature are placeholders",
@@ -411,7 +410,6 @@ ALLOWLIST_MATCHES: dict[str, tuple[str, ...]] = {
     ),
     "crates/trust/chio-weights/src/lib.rs": (
         r"trust-boundary stubs",
-        r"todo!.+unimplemented!.+panic!",
     ),
     "crates/trust/chio-weights/src/lineage.rs": (
         r"signing state placeholder",
