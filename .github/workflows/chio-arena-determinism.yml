@@ -50,6 +50,8 @@ jobs:
           persist-credentials: false
 
       - uses: ./.github/actions/setup-rust
+        with:
+          toolchain: stable
 
       - name: Verify reference scenarios are present
         # Defence in depth: the determinism_gate test references these by
