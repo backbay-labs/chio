@@ -14,11 +14,11 @@
 - `manifest` owns signed manifest JSON parsing, structural validation, embedded public-key checks, and signature checks.
 - `error` owns the stable bindings-oriented error-code taxonomy.
 
-## Pain Points
+## Design Constraints
 
-- The public Rust helper `verify_receipt_with_trusted_signers` takes `PublicKey` values, which is useful inside Rust but not enough for language bindings that naturally carry trusted kernel keys as hex strings.
-- The vector generator and round-trip tests live in one large integration test file. That file is allowed to remain large because it is a corpus oracle, but public helper changes must add focused assertions around the helper boundary.
-- `docs/reference/BINDINGS_API.md` is the contract consumers read. It must be updated when the facade grows.
+- `verify_receipt_with_trusted_signers` takes `PublicKey` values for Rust callers; language bindings carry trusted kernel keys as hex strings, so the facade also exposes a hex-string helper.
+- The vector generator and round-trip tests share one large integration test file that serves as the corpus oracle. Public helper changes add focused assertions around the helper boundary.
+- `docs/reference/BINDINGS_API.md` is the contract consumers read. Update it when the facade grows.
 
 ## Security And API Constraints
 

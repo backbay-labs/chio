@@ -635,7 +635,7 @@ pub fn registry_snapshot() -> String {
 mod tests {
     use super::*;
 
-    const REQUIRED_T1_5_METRICS: &[&str] = &[
+    const REQUIRED_SRE_METRICS: &[&str] = &[
         CHIO_KERNEL_DECISION_LATENCY_SECONDS,
         CHIO_RECEIPT_WRITE_TOTAL,
         CHIO_GUARD_EVALUATIONS_TOTAL,
@@ -762,14 +762,14 @@ mod tests {
     }
 
     #[test]
-    fn t1_5_required_metrics_are_registered() {
-        for name in REQUIRED_T1_5_METRICS {
+    fn required_sre_metrics_are_registered() {
+        for name in REQUIRED_SRE_METRICS {
             assert!(is_registered_metric(name), "missing required metric {name}");
         }
     }
 
     #[test]
-    fn labelled_ticket_metrics_have_expected_labels() {
+    fn labelled_metrics_have_expected_labels() {
         assert_eq!(
             descriptor_for(CHIO_RECEIPT_WRITE_TOTAL).map(|metric| metric.labels),
             Some(&["outcome"][..])

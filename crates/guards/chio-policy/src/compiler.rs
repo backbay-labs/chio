@@ -87,7 +87,7 @@ pub struct CompiledPolicy {
 /// This maps HushSpec rule blocks and detection-extension blocks to Chio
 /// guard configurations. See the module-level documentation for the full
 /// mapping table. Missing sections compile to an empty pipeline; no error
-/// is raised for policies that simply do not exercise every guard type.
+/// is raised for policies that do not exercise every guard type.
 pub fn compile_policy(policy: &HushSpec) -> Result<CompiledPolicy, CompileError> {
     compile_policy_with_source(policy, None)
 }

@@ -46,7 +46,7 @@ fn default_forbidden_patterns() -> Vec<String> {
         "/etc/sudoers".to_string(),
     ];
 
-    // Windows paths -- on non-Windows these globs simply never match.
+    // Windows paths -- on non-Windows these globs never match.
     patterns.extend([
         "**/AppData/Roaming/Microsoft/Credentials/**".to_string(),
         "**/AppData/Local/Microsoft/Credentials/**".to_string(),

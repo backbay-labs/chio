@@ -242,8 +242,7 @@ jobs:
     # owner: Chio maintainers
     # Runs the canonical_json_diff proptest, which property-checks the Rust
     # canonicalizer against RFC 8785 invariants (key ordering, string escapes,
-    # number normalization). The Rust proptest is the gate until Python and
-    # TypeScript SDKs ship first-party byte-equivalence checks.
+    # number normalization). The Rust proptest is the canonicalization gate.
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:

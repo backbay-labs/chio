@@ -22,8 +22,7 @@
 //!   (default 90 days).
 //! - `signature`: base64-encoded Sigstore signature over the canonical JSON
 //!   serialisation of every other field. Verified through the same
-//!   `SigstoreVerifier` surface every other attestation flows through; no
-//!   new sigstore-rs imports are introduced outside this crate.
+//!   `SigstoreVerifier` surface every other attestation flows through.
 //! - `pq_identity_regexps`: reserved field for ML-DSA cert identities. Empty
 //!   today; present so that adding an ML-DSA-aware cert family in the future
 //!   does not require a schema bump.

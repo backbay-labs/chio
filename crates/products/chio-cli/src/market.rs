@@ -6,12 +6,10 @@
 //! guard ref, the manifest fields (`GuardPrice`, `ReputationTier`) plus
 //! a recent settlement summary emitted by the settlement observer.
 //!
-//! The catalog format is intentionally simple: a JSON array of
-//! [`MarketCatalogEntry`] under the path resolved by
-//! `chio guard market --catalog <PATH>`. The end-to-end demo test writes
-//! this catalog directly. A production deployment refreshes the catalog
-//! by walking the OCI registry and indexing manifests; that loop is
-//! deliberately out of scope.
+//! The catalog format is a JSON array of [`MarketCatalogEntry`] under the
+//! path resolved by `chio guard market --catalog <PATH>`. This module reads
+//! the catalog; populating it (for example by walking the OCI registry and
+//! indexing manifests) is out of scope here.
 //!
 //! Three contracts the marketplace preserves:
 //!
@@ -525,8 +523,7 @@ pub fn render_info_text(report: &MarketInfoReport) -> String {
     output
 }
 
-/// Mark the marketplace catalog block key as referenced from this
-/// module so a future reader sees the link with the registry crate.
+/// Re-export of [`MARKETPLACE_BLOCK_KEY`] from the registry crate.
 pub const fn _marketplace_block_key_link() -> &'static str {
     MARKETPLACE_BLOCK_KEY
 }

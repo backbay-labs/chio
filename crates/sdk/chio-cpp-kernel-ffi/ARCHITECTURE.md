@@ -20,16 +20,16 @@ policy engine.
   budget-split enforcement, passport verification, and receipt signing
   semantics.
 
-## Pain Points
+## Design Constraints
 
 - The FFI accepts rich JSON envelopes for evaluation and contextual capability
-  verification, so trust-bearing maps and budget snapshots need explicit
-  validation at the FFI boundary.
-- `capability_trust_roots` is keyed by issuer public-key hex. Malformed keys
-  are not useful trust roots and should not be silently ignored just because a
-  specific token path does not consult them.
-- `ScopeHash` is currently a string alias, so empty or padded root hashes need
-  local validation before they participate in chain-binding decisions.
+  verification, so trust-bearing maps and budget snapshots are validated
+  explicitly at the FFI boundary.
+- `capability_trust_roots` is keyed by issuer public-key hex. Malformed keys are
+  rejected rather than silently ignored, even when a specific token path does
+  not consult them.
+- `ScopeHash` is a string alias, so empty or padded root hashes are validated
+  locally before they participate in chain-binding decisions.
 
 ## Security And API Constraints
 

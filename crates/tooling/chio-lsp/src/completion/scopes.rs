@@ -1,8 +1,7 @@
 //! Capability scope completions.
 //!
 //! The catalog is the seed set of `urn:chio:scope:*` identifiers
-//! recognised by the kernel. It is extended as new scopes are
-//! introduced.
+//! recognised by the kernel.
 
 use tower_lsp::lsp_types::{
     CompletionItem, CompletionItemKind, Documentation, MarkupContent, MarkupKind,

@@ -262,9 +262,8 @@ fn collect_attestations(
 }
 
 /// Height-to-unix lower bound: Bitcoin block 0 was at 2009-01-03; an
-/// average inter-block interval of 600s gives a floor estimate that
-/// is good enough for staleness checks. Production callers should
-/// substitute a real chain-tip oracle. Returns 0 for height 0.
+/// average inter-block interval of 600s gives a conservative floor
+/// estimate for staleness checks. Returns 0 for height 0.
 fn height_to_unix_lower_bound(height: u64) -> i64 {
     const GENESIS_UNIX: i64 = 1_231_006_505; // 2009-01-03T18:15:05Z
     GENESIS_UNIX.saturating_add(600i64.saturating_mul(height as i64))

@@ -20,12 +20,10 @@ pub fn cmd_cert_generate(
     authority_seed_file: Option<&Path>,
     json_output: bool,
 ) -> Result<(), CliError> {
-    // Load or create the signing keypair.
     let default_seed_path = std::path::PathBuf::from(".chio-authority-seed");
     let seed_path = authority_seed_file.unwrap_or(&default_seed_path);
     let keypair = crate::load_or_create_authority_keypair(seed_path)?;
 
-    // Open the receipt store and load receipts for the session.
     let db_path = receipt_db.to_string_lossy();
     let conn = rusqlite::Connection::open(receipt_db).map_err(|e| {
         CliError::cli_other_error(format!("failed to open receipt db {db_path}: {e}"))

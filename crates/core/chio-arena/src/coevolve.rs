@@ -10,7 +10,7 @@
 //!   * [`driver`]: N-generation loop with elitism, fitness-proportional
 //!     selection, and the bounded-budget gate.
 //!
-//! This file provides the fitness function the loop optimises. Survival
+//! The fitness function the loop optimises lives here. Survival
 //! rate is the share of an adversary's actions that the deployed guard
 //! pool fails to deny: an action that the guards correctly deny lowers
 //! fitness, an action that escapes (the guards return Allow when the

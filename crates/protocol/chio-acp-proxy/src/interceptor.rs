@@ -204,7 +204,7 @@ impl MessageInterceptor {
             (_, Some(AcpMethod::SessionCancel)) => {
                 self.intercept_session_cancel(message)
             }
-            // -- New ACP methods: forward unchanged (no guard needed) --
+            // -- Unguarded ACP methods: forward unchanged --
             (_, Some(AcpMethod::Authenticate))
             | (_, Some(AcpMethod::SessionLoad))
             | (_, Some(AcpMethod::SessionList))

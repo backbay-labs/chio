@@ -1,6 +1,6 @@
 //! Behavioral-profile integration tests.
 //!
-//! These tests confirm the acceptance criteria:
+//! These tests verify that:
 //!   1. EMA baseline stabilizes under a steady sample.
 //!   2. A 50x spike in call rate triggers an advisory signal.
 //!   3. The guard reads from chio-store-sqlite receipt queries

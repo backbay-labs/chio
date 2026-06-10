@@ -107,10 +107,9 @@ tasks.named<Test>("test").configure {
  * Requires a running Docker daemon (Testcontainers manages container
  * lifecycle, so no `docker compose up` step is needed).
  *
- * Class-name filter: scoped to the Kafka end-to-end IT to keep the task
- * focused. Other @Tag("integration") files in src/integrationTest/ are
- * left out of this task on purpose; running them is the writer's
- * responsibility.
+ * Class-name filter: this task runs only the Kafka end-to-end IT. Other
+ * @Tag("integration") files in src/integrationTest/ are not included and
+ * must be run directly.
  */
 val integrationTest by tasks.registering(Test::class) {
     description = "Runs Flink MiniCluster + Testcontainers Kafka integration tests."

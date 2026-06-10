@@ -1,7 +1,7 @@
 //! Guard identifier completions.
 //!
 //! The catalog covers the seed set of native, data, external, and
-//! WASM guards. New entries are added as guards are registered.
+//! WASM guards.
 
 use tower_lsp::lsp_types::{
     CompletionItem, CompletionItemKind, Documentation, MarkupContent, MarkupKind,

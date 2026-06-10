@@ -61,8 +61,9 @@ its own sufficient:
    with different permission postures into one reusable workflow risks silently
    changing the token scope for some gates, over-granting a fail-closed CI
    surface.
-3. The node-version split (22 in shape B vs 24 in shape C) cannot be resolved
-   from the YAML alone. It may be an intentional pin or stale drift.
+3. The node-version split (22 in shape B vs 24 in shape C) is not reconcilable
+   from the YAML alone; collapsing to one version would change at least one
+   gate's node runtime.
 4. Required status-check matching. Branch-protection / ruleset config lives in
    GitHub settings outside this repo. Converting these to callers changes how
    each check surfaces (it appears as `caller / reusable-job` instead of the

@@ -2,8 +2,8 @@
 #
 # When a PR touches `spec/schemas/**/*.json`, runs `json-schema-diff` for
 # each changed schema (PR merge-base vs. PR head) and posts a sticky comment
-# summarising any breaking changes detected. Advisory only (does NOT block
-# merge) until the BREAKING: title convention is enforced in CONTRIBUTING.md.
+# summarising any breaking changes detected. Advisory only: does NOT block
+# merge.
 #
 # Tooling: `json-schema-diff` is the language-agnostic CLI/library
 # published on npm (https://www.npmjs.com/package/json-schema-diff). It

@@ -43,8 +43,7 @@ const TEST_KEY_SEED_PATH: &str = "test-key.seed";
 /// Fixed clock used by [`ScenarioDriver::now`].
 ///
 /// Anchored at the UTC midnight starting 2026-01-01 so the driver's
-/// notion of "now" is independent of wall-clock time and is far enough
-/// in the future to avoid colliding with historical fixture data.
+/// notion of "now" is independent of wall-clock time.
 const FIXED_CLOCK_YEAR: i32 = 2026;
 const FIXED_CLOCK_MONTH: u32 = 1;
 const FIXED_CLOCK_DAY: u32 = 1;

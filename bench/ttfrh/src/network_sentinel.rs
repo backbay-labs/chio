@@ -317,8 +317,8 @@ impl SentinelReport {
 ///
 /// IPv6 addresses contain colons, so a naive `split_once(':')` strips the
 /// host down to an empty string and silently bypasses the sentinel
-/// (allowing arbitrary IPv6 endpoints to evade the allowlist). Three forms
-/// are supported:
+/// (allowing arbitrary IPv6 endpoints to evade the allowlist). The
+/// supported forms are:
 ///
 /// - `[::1]:8787`   - bracketed IPv6 with port; brackets and port stripped.
 /// - `[::1]`        - bracketed IPv6 without port.

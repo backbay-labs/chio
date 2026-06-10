@@ -1356,8 +1356,7 @@ pub struct BehavioralFeedReport {
 pub type SignedBehavioralFeed = SignedExportEnvelope<BehavioralFeedReport>;
 
 // ===========================================================================
-// Additive scoring and advisory signals on top of ComplianceReport and
-// BehavioralFeedReport. These helpers do not mutate the existing structs.
+// Scoring and advisory signals over ComplianceReport and BehavioralFeedReport.
 // ===========================================================================
 
 impl ComplianceReport {

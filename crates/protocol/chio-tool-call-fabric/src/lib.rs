@@ -14,9 +14,8 @@
 //! - A [`provenance::sign_provenance`] helper that produces a stand-alone
 //!   [`provenance::SignedProvenance`] so downstream auditors can attest to a
 //!   stamp's identity without pulling the surrounding receipt.
-//! - The streaming state machine
-//!   (`crates/chio-tool-call-fabric/src/stream.rs`), the kernel verdict shim,
-//!   and the lift/lower fixture set on top of this surface.
+//! - The streaming state machine ([`stream`]) that gates buffered tool-call
+//!   blocks against a kernel verdict before they are forwarded.
 
 #![forbid(unsafe_code)]
 

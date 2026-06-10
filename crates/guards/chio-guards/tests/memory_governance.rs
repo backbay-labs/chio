@@ -1,6 +1,6 @@
 //! Integration tests for MemoryGovernanceGuard.
 //!
-//! Acceptance criteria:
+//! Verify that:
 //!
 //! * writes to a collection not in `MemoryStoreAllowlist` are denied;
 //! * writes exceeding `max_memory_entries` are denied;

@@ -37,9 +37,8 @@ use chio_wasm_guards::{create_backend, detect_wasm_format, ComponentBackend, Was
 /// Maximum module size for Python-compiled WASM components.
 ///
 /// The `componentize-py` output embeds the CPython interpreter, which
-/// produces binaries around 10-35 MiB. The current build produces ~18 MiB.
-/// This exceeds the default 10 MiB `max_module_size` on `ComponentBackend`,
-/// so we raise the limit to 40 MiB for safety margin.
+/// produces binaries around 10-35 MiB. This exceeds the default 10 MiB
+/// `max_module_size` on `ComponentBackend`, so the limit is raised to 40 MiB.
 const PY_MAX_MODULE_SIZE: usize = 40 * 1024 * 1024;
 
 /// Maximum memory for the Python component runtime (64 MiB).

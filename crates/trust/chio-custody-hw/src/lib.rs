@@ -25,9 +25,7 @@
 //! # Forbidden constructs
 //!
 //! No verifier or trust-boundary stubs: this crate forbids `unsafe`,
-//! `unwrap`, and `expect` at the lint level. PRs touching this crate
-//! also require a `rg -n 'todo!\(|unimplemented!\(|panic!\('` sweep
-//! across `src/` and `tests/`.
+//! `unwrap`, and `expect` at the lint level.
 
 #![forbid(unsafe_code)]
 #![forbid(clippy::unwrap_used)]

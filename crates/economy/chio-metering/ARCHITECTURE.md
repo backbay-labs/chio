@@ -38,6 +38,6 @@ this crate performs deterministic aggregation, validation, and policy checks.
 Unit tests cover cost metadata serialization, saturating totals, flat budget
 violations, query filters, query grouping, export records, hierarchy insertion,
 hierarchy serialization, ancestor traversal, disabled nodes, and construction
-validation. Integration tests exercise the hierarchy acceptance criteria around
-parent caps, rolling-window reset behavior, multiple dimensions, and unknown
-node denial.
+validation. Integration tests exercise hierarchy enforcement around parent
+caps, rolling-window reset behavior, multiple dimensions, and unknown node
+denial.

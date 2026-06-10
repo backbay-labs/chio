@@ -576,8 +576,7 @@ pub(crate) async fn serve_async(config: TrustServiceConfig) -> Result<(), CliErr
     let router = router.with_state(state);
 
     // Dashboard SPA is served from the same origin via ServeDir -- no CORS
-    // headers needed. If the dashboard is ever served from a separate origin,
-    // add tower-http CorsLayer.
+    // headers needed.
 
     // Apply Content-Security-Policy to every response to restrict resource
     // loading to same-origin and prevent XSS escalation.

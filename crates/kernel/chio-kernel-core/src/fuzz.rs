@@ -44,8 +44,7 @@
 //! As a fall-back interpretation, the entire input is also fed once through
 //! `serde_json::from_slice::<ChioReceipt>` so libFuzzer can reach the
 //! single-receipt decode path with arbitrary bytes that do not contain a
-//! newline. This mirrors the `chio-anchor` two-interpretation pattern: every
-//! iteration drives both parsers concurrently from the same byte stream.
+//! newline. Every iteration drives both parsers from the same byte stream.
 //!
 //! No setup state is required: the verifier operates purely over its input
 //! arguments (no clocks, no key registries, no stores).

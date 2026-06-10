@@ -1,6 +1,6 @@
 //! Integration tests for BrowserAutomationGuard.
 //!
-//! Acceptance criteria:
+//! Verify that:
 //!
 //! * navigation to a domain outside the allowlist is denied;
 //! * a read-only browser session (navigate + screenshot only) denies

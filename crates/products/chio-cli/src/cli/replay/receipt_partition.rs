@@ -5,7 +5,7 @@
 //    cannot collide with production receipts.
 // 2. [`StorePartition`] enforces bidirectional refusal: production writes
 //    are rejected from replay partitions and vice versa. This enforcement
-//    lives at the chio-cli layer; store-layer enforcement is follow-up work.
+//    lives at the chio-cli layer, not the store layer.
 
 /// Logical partition flag enforced at the chio-cli layer.
 ///

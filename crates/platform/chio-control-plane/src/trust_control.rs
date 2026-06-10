@@ -4,8 +4,7 @@
 mod trust_control_health;
 
 // Shared import set for the entire trust-control surface. The sibling modules
-// below inherit these via `use super::*;`, mirroring the single flat scope the
-// previous `include!()` layout composed them in.
+// below inherit these via `use super::*;`.
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
 use std::path::Path;

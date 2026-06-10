@@ -694,9 +694,7 @@ mod tests {
         // `DELEGATION_CHAIN_BINDING=false` profile must NOT reject it. The
         // leaf token is signed by its issuer and each `DelegationLink`
         // carries its own signature; there is nothing about the leaf scope
-        // for the chain-binding rule to bind against. Treating any
-        // populated chain as "attenuated" rendered every plain mobile/FFI
-        // delegation flow unverifiable for no soundness gain.
+        // for the chain-binding rule to bind against.
         let issuer = Keypair::generate();
         let subject = Keypair::generate();
         let parent_link = DelegationLink::sign(

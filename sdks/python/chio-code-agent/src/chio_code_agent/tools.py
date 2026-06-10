@@ -4,8 +4,8 @@ These wrappers sit between an MCP-style coding agent (Claude Code,
 Cursor, a custom CLI) and the Chio sidecar. Each operation:
 
 1. Runs a local pre-flight check against :class:`CodeAgentPolicy` so
-   obviously-denied calls fail without burning a sidecar round-trip
-   (and so the package works for unit tests without a live kernel).
+   locally-denied calls fail without a sidecar round-trip (and so the
+   package works for unit tests without a live kernel).
 2. Calls ``ChioClient.evaluate_tool_call`` to get a signed receipt.
 3. Executes the wrapped I/O only after an allow verdict comes back.
 

@@ -1030,9 +1030,9 @@ fn run_json2ts(json2ts: &Path, schema: &Path) -> Result<String, XtaskError> {
 }
 
 /// Normalize a json2ts emission so it composes inside a namespace block.
-/// The current pipeline strips per-chunk banner comments via
-/// `--no-bannerComment`, so this function only collapses the trailing
-/// blank-line padding that `prettier` (the json2ts formatter) appends.
+/// `run_json2ts` passes `--no-bannerComment`, so per-chunk banner comments
+/// are already absent; this function only collapses the trailing blank-line
+/// padding that `prettier` (the json2ts formatter) appends.
 fn normalize_ts_chunk(raw: &str) -> String {
     let trimmed = raw.trim_end_matches(['\n', '\r']);
     trimmed.to_string()

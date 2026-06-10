@@ -198,7 +198,6 @@ impl ChioKernel {
             KernelError::DpopVerificationFailed("kernel DPoP config not configured".to_string())
         })?;
 
-        // Compute action hash from the serialized arguments.
         let args_bytes = canonical_json_bytes(&request.arguments).map_err(|e| {
             KernelError::DpopVerificationFailed(format!(
                 "failed to serialize arguments for action hash: {e}"

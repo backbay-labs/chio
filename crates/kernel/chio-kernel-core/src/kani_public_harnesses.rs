@@ -454,9 +454,8 @@ pub fn verify_revocation_predicate_idempotent() {
 // exactly the conjunction the runtime computes, (2) it rejects every single
 // widening, (3) reflexivity holds, and (4) the time-window monotonicity
 // `expiry(c') <= expiry(c)` propagates `is_valid_at(now)` from child to
-// parent. The bounded sizes match the existing module convention (u8-promoted
-// u32 for caps, u8-promoted u64 for monetary units); no new size constants
-// are introduced.
+// parent. The symbolic bounds are u8-promoted u32 for caps and u8-promoted
+// u64 for monetary units.
 fn one_step_attenuation_predicate(
     // Identity coverage flags (parent wildcard or exact match) per axis.
     server_parent_is_wildcard: bool,
@@ -702,11 +701,10 @@ pub fn verify_delegation_chain_step() {
     // would still pass.
     //
     // We pin server / tool / operations / constraints to a single
-    // identity-covering shape (so the harness stays inside the bounded
-    // search space convention used by the rest of this module's kani
-    // proofs) and let the cap / dpop axes vary symbolically. The
-    // `assume_single_normalized_tool_grant` helper enforces the same
-    // bounds that the existing single-grant kani harnesses assume.
+    // identity-covering shape so the search space stays bounded, and let
+    // the cap / dpop axes vary symbolically. The
+    // `assume_single_normalized_tool_grant` helper enforces the single-grant
+    // bounds the proof relies on.
     let parent_grant = NormalizedToolGrant {
         server_id: "s".to_string(),
         tool_name: "r".to_string(),
@@ -819,15 +817,13 @@ pub fn verify_receipt_roundtrip() {
     // and `message_class` are bounded to u8 (matching the rest of this
     // module's `kani::any::<u8>()` convention); the search space is
     // 256^2 = 65,536 honest-pair points plus the tamper combinations
-    // below. No new size constants are introduced.
+    // below.
     let signer_id = kani::any::<u8>();
     let message_class = kani::any::<u8>();
 
     // (1) Honest roundtrip: a signature produced over (signer_id,
     // message_class) must verify under the same pair. This is the
-    // affirmative arm of the roundtrip property and is the analogue of
-    // the existing `public_sign_receipt_accepts_matching_kernel_key`
-    // harness's success path, lifted to the verify side.
+    // affirmative arm of the roundtrip property.
     let honest = model_sign(signer_id, message_class);
     assert!(model_verify(signer_id, message_class, honest));
 
@@ -931,11 +927,10 @@ fn model_budget_apply(state: u64, delta: u64, cap: u64) -> (Result<u64, ModelBud
 
 #[kani::proof]
 pub fn verify_budget_checked_add_no_overflow() {
-    // Phase 1: bounded axes. Every component is a u8 promoted to u64,
-    // matching the existing module convention. This phase witnesses
-    // the cap-arm and the success-arm densely (full 256^3 enumeration
-    // of small budgets); the overflow arm is unreachable here because
-    // 255 + 255 = 510 < u64::MAX.
+    // Phase 1: bounded axes. Every component is a u8 promoted to u64. This
+    // phase witnesses the cap-arm and the success-arm densely (full 256^3
+    // enumeration of small budgets); the overflow arm is unreachable here
+    // because 255 + 255 = 510 < u64::MAX.
     let current = u64::from(kani::any::<u8>());
     let delta = u64::from(kani::any::<u8>());
     let cap = u64::from(kani::any::<u8>());
@@ -1066,9 +1061,8 @@ pub fn verify_budget_checked_add_no_overflow() {
 //   * verify_oracle_inclusion_soundness  - sparse-Merkle inclusion proof
 //     soundness modulo a symbolic hash function (chio-revocation-oracle).
 //
-// Each property is modelled at the algebraic level the way the existing
-// formal_core::* harnesses do, so the symbolic search space stays bounded
-// and the PR Kani lane finishes inside its budget.
+// Each property is modelled at the algebraic level so the symbolic search
+// space stays bounded.
 // =====================================================================
 
 #[kani::proof]

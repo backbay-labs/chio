@@ -61,8 +61,8 @@ fn complete_chio_yaml(text: &str, position: Position) -> Vec<CompletionItem> {
 }
 
 /// Walk upward from `cursor_line` looking for the nearest line that
-/// looks like `key:` at column 0. The check stays cheap because the
-/// YAML model is kept lightweight; a full AST is the eventual direction.
+/// looks like `key:` at column 0. This is a line scan rather than a
+/// YAML parse.
 fn nearest_top_level_section<'a>(lines: &[&'a str], cursor_line: usize) -> Option<&'a str> {
     let mut idx = cursor_line;
     loop {

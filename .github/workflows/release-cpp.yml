@@ -11,10 +11,10 @@ name: Release C++ SDKs
 #   - CHIO_VCPKG_REGISTRY_DEPLOY_KEY: SSH private key whose public half is
 #     a deploy key on backbay-labs/chio-vcpkg-registry with write access
 #
-# Conan packages are published as assets on the cpp/v<X.Y.Z> GitHub Release
-# (the prior private Nexus remote was decommissioned). The publish-conan job
-# attaches the qualified Conan 2 cache archive; consumers restore it into a
-# local Conan home (the restore command is in the job's release notes).
+# Conan packages are published as assets on the cpp/v<X.Y.Z> GitHub Release.
+# The publish-conan job attaches the qualified Conan 2 cache archive;
+# consumers restore it into a local Conan home (the restore command is in
+# the job's release notes).
 
 on:
   push:

@@ -1,15 +1,14 @@
 //! Integration tests for `QueryResultGuard`.
 //!
-//! The guard is post-invocation-shaped; kernel integration is deferred
-//! (see module docs in `result_guard.rs`).  These tests exercise two
-//! integration surfaces:
+//! The guard is post-invocation-shaped (see module docs in
+//! `result_guard.rs`).  These tests exercise two integration surfaces:
 //!
 //! 1. The standalone `redact_result` transform that callers can wire
 //!    anywhere they have a response value and an `ChioScope`.
 //! 2. The `PostInvocationHook` adapter, which slots into the
-//!    `chio_guards::post_invocation::PostInvocationPipeline` today.
+//!    `chio_guards::post_invocation::PostInvocationPipeline`.
 //!
-//! Acceptance criteria:
+//! They verify that:
 //!
 //! - Post-invocation guard truncates results exceeding `MaxRowsReturned`.
 //! - Columns in `ColumnDenylist` are redacted from results.

@@ -15,9 +15,6 @@
 //!    layer-1 + layer-2 feature flags.  The weights are configurable so
 //!    operators can tune sensitivity without recompiling.
 //!
-//! The LLM-as-judge layer is intentionally deferred.  See the
-//! `ml_score` function for the extension point.
-//!
 //! All thresholds and weights live on [`DetectorConfig`] and [`LayerWeights`].
 //! There are no magic numbers on the hot path; defaults are defined in this
 //! file so they can be audited in one place.
@@ -113,8 +110,8 @@ pub struct LayerWeights {
     pub ml: f32,
     /// Divisor used to bring raw heuristic score into `[0.0, 1.0]` before
     /// weighting.  The upstream detector divides by `3.0`, matching the
-    /// roughly three heuviest patterns; we expose the knob so operators can
-    /// retune without recompiling.
+    /// roughly three heaviest patterns; the knob lets operators retune
+    /// without recompiling.
     pub heuristic_divisor: f32,
 }
 

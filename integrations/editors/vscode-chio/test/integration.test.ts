@@ -8,10 +8,11 @@
 
 import { describe, expect, it } from "vitest";
 
-// `vscode-languageclient/node` reaches for `vscode` at module load
-// time. Vitest aliases the `vscode` import to `test/vscode_stub.ts`
-// (see `vitest.config.ts`) so the wiring helpers can be imported in a
-// plain node test runner.
+// These tests import only the pure wiring helpers, which never touch
+// `vscode` or `vscode-languageclient` at module load. The full client
+// (which reaches for `vscode` on load) is pulled in by a lazy require
+// inside `createLanguageClient`, which these tests do not call, so they
+// run under a plain node test runner.
 
 import {
     buildClientOptions,

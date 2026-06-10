@@ -1,7 +1,7 @@
 // End-to-end test wrapping a real MCP fixture server, asserting the
 // verdict gate and the attestation header round-trip.
 //
-// This test exercises the full `arc mcp wrap` stdio orchestration loop
+// This test exercises the full `chio mcp wrap` stdio orchestration loop
 // without a real wrapped child by feeding the binary the
 // `echo_server_fixture.json` corpus through `--e2e-fixture`. The
 // fixture mirrors the mcp-adapter test fixture surface:

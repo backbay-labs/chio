@@ -32,11 +32,10 @@ pub(crate) fn build_app(state: Arc<ProxyState>) -> Router {
         // concurrent release.
         .route("/v1/capabilities", post(sidecar_capabilities_alias_handler))
         .route("/v1/capabilities/release", post(sidecar_release_handler))
-        // Phase B: capability validation route the SDK already calls.
-        // Validate verifies the embedded Ed25519 signature and checks the
-        // local revocation set and `expires_at`. Attenuation is a fail-closed
-        // boundary because the sidecar must not hold the parent subject's
-        // private key.
+        // Capability validation route the SDK calls. Validate verifies the
+        // embedded Ed25519 signature and checks the local revocation set and
+        // `expires_at`. Attenuation is a fail-closed boundary because the
+        // sidecar must not hold the parent subject's private key.
         .route(
             "/v1/capabilities/validate",
             post(sidecar_validate_capability_handler),
@@ -46,10 +45,10 @@ pub(crate) fn build_app(state: Arc<ProxyState>) -> Router {
             post(sidecar_attenuate_capability_handler),
         )
         .route("/v1/receipts", post(sidecar_submit_receipt_handler))
-        // Phase B: verify a `ChioReceipt` signature against the embedded
-        // kernel public key.
+        // Verify a `ChioReceipt` signature against the embedded kernel
+        // public key.
         .route("/v1/receipts/verify", post(sidecar_verify_receipt_handler))
-        // Phase A: advisory tool-call evaluation. The SDK posts a
+        // Advisory tool-call evaluation. The SDK posts a
         // `{capability_id, tool_server, tool_name, parameters,
         // parameter_hash}` body and receives an explicit advisory wrapper
         // with `authorization: false`. The kernel-driven evaluation that
@@ -103,7 +102,6 @@ pub(crate) async fn proxy_handler(
     let query = parse_query_params(uri.query());
     let forwarded_query = forwarded_query_string(uri.query());
 
-    // Extract relevant headers.
     let mut headers = HashMap::new();
     for (name, value) in &raw_headers {
         if let Ok(v) = value.to_str() {
@@ -111,7 +109,6 @@ pub(crate) async fn proxy_handler(
         }
     }
 
-    // Read body for hashing.
     let body_bytes = match axum::body::to_bytes(request.into_body(), 10 * 1024 * 1024).await {
         Ok(b) => b,
         Err(e) => {
@@ -161,7 +158,6 @@ pub(crate) async fn proxy_handler(
         }
     };
 
-    // If denied, return structured 403.
     if result.verdict.is_denied() {
         let denied_status = StatusCode::from_u16(verdict_http_status(&result.verdict))
             .unwrap_or(StatusCode::FORBIDDEN);
@@ -218,7 +214,6 @@ pub(crate) async fn proxy_handler(
             .into_response();
     }
 
-    // Proxy to upstream.
     let mut upstream_url = format!("{}{}", state.upstream.trim_end_matches('/'), &path);
     if let Some(raw_query) = forwarded_query {
         upstream_url.push('?');
@@ -276,12 +271,10 @@ pub(crate) async fn proxy_handler(
 
             let mut response_builder = Response::builder().status(status);
 
-            // Forward response headers.
             for (name, value) in &response_headers {
                 response_builder = response_builder.header(name.as_str(), value.as_bytes());
             }
 
-            // Add receipt ID header.
             response_builder = response_builder.header("X-Chio-Receipt-Id", &final_receipt.id);
 
             response_builder

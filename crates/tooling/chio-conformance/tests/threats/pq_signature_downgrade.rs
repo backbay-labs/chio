@@ -11,17 +11,16 @@
 // Production MUST reject with `CapabilityError::CryptoFloorRejected`
 // before any trust / time / budget surface is reached.
 //
-// Scope of this partial row: the verifier-side floor enforcement is
-// in tree today (`verify_capability_with_floor` -> `CapabilityToken::
+// Scope of this partial row: only verifier-side floor enforcement is
+// exercised (`verify_capability_with_floor` -> `CapabilityToken::
 // verify_signature_with_floor`). The hybrid-PQ wire-format SIGNING
-// path (kernel mints hybrid-prefix signatures with ML-DSA-65 alongside
-// Ed25519) is deferred follow-up work; the row "verifiers MUST
-// dispatch from the signature prefix" is structural-only today. That
-// downstream signing work is intentionally out of scope here. What
-// IS in scope and what this conformance test pins is the verifier's
-// REJECTION of a downgrade attempt under `pq_required` -- the front
-// line of defense that prevents an attacker from getting a classical-
-// only token admitted on a PQ-required kernel.
+// path (kernel minting hybrid-prefix signatures with ML-DSA-65 alongside
+// Ed25519) is not wired, so the row "verifiers MUST dispatch from the
+// signature prefix" is structural-only and that signing path is out of
+// scope here. This conformance test pins the verifier's REJECTION of a
+// downgrade attempt under `pq_required` -- the front line of defense
+// that prevents an attacker from getting a classical-only token
+// admitted on a PQ-required kernel.
 //
 // Three sub-vectors:
 //

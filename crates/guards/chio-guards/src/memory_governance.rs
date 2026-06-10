@@ -11,9 +11,8 @@
 //! 2. **Guard configuration** ([`MemoryGovernanceConfig`]): provides
 //!    deployment-wide defaults for `max_memory_entries`,
 //!    `max_retention_ttl_secs`, and per-store overrides.  Operators can
-//!    use these even when the current capability grammar does not
-//!    surface the equivalent constraints (see ADR-TYPE-EVOLUTION for
-//!    future expansion to first-class constraints).
+//!    use these even when the capability grammar does not surface the
+//!    equivalent constraints.
 //!
 //! The guard keeps an in-memory per-session counter of memory writes so
 //! it can enforce [`MemoryGovernanceConfig::max_memory_entries`]

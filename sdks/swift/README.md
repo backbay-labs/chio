@@ -29,8 +29,8 @@ The build script:
 2. Run `uniffi-bindgen generate --language swift`.
 3. Create
    `target/release-qualification/mobile-kernel/ios/ChioKernel.xcframework`.
-4. Copy the produced artifact into `sdks/swift/Frameworks/` when a
-   release slice refreshes the committed binary target.
+4. Copy the produced artifact into `sdks/swift/Frameworks/` to refresh
+   the committed binary target.
 
 ## Minimum Platform
 

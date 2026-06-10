@@ -108,7 +108,6 @@ impl BudgetEnforcer {
     /// The `cost_units` must already be denominated in the policy currency.
     /// Use chio-link oracle to convert cross-currency costs before calling this.
     pub fn check(&self, meta: &CostMetadata, cost_units: u64) -> Result<(), BudgetViolation> {
-        // Check total
         if self.total_spent.saturating_add(cost_units) > self.policy.max_total.units {
             return Err(BudgetViolation::Total {
                 limit_units: self.policy.max_total.units,
@@ -118,7 +117,6 @@ impl BudgetEnforcer {
             });
         }
 
-        // Check per-session
         if let (Some(ref limit), Some(ref sid)) = (&self.policy.max_per_session, &meta.session_id) {
             let current = self.session_spent.get(sid).copied().unwrap_or(0);
             if current.saturating_add(cost_units) > limit.units {
@@ -132,7 +130,6 @@ impl BudgetEnforcer {
             }
         }
 
-        // Check per-agent
         if let Some(ref limit) = self.policy.max_per_agent {
             let current = self.agent_spent.get(&meta.agent_id).copied().unwrap_or(0);
             if current.saturating_add(cost_units) > limit.units {
@@ -146,7 +143,6 @@ impl BudgetEnforcer {
             }
         }
 
-        // Check per-tool
         let tool_key = format!("{}:{}", meta.tool_server, meta.tool_name);
         if let Some(limit) = self.policy.max_per_tool.get(&tool_key) {
             let current = self.tool_spent.get(&tool_key).copied().unwrap_or(0);

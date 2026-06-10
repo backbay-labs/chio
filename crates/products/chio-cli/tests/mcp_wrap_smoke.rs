@@ -1,4 +1,4 @@
-// Smoke test for `arc mcp wrap`.
+// Smoke test for `chio mcp wrap`.
 //
 // We avoid spawning a real MCP child here so the smoke test remains
 // hermetic on shared CI runners. Instead, we exercise the CLI surface:

@@ -1,6 +1,6 @@
 //! Integration tests for ContentReviewGuard.
 //!
-//! Acceptance criteria:
+//! Verify that:
 //!
 //! * a Slack message with PII in the body is denied;
 //! * a Stripe charge above `RequireApprovalAbove` triggers

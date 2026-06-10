@@ -156,15 +156,9 @@ fn try_compile(pattern: &str) -> Option<Regex> {
     }
 }
 
-// -------------------------------------------------------------------------
-// Single source of truth for every default-pattern source string.
-//
-// The `LazyLock`-pinned `Regex` instances on the redactor hot path and
-// the `validate_default_redactor_compiles` startup hook both compile
-// from these same `&'static str` constants, so a future divergence is
-// impossible by construction: there is only one string per label, and
-// editing it changes both the runtime regex and the validator.
-// -------------------------------------------------------------------------
+// The `LazyLock`-pinned `Regex` instances on the redactor hot path and the
+// `validate_default_redactor_compiles` startup hook both compile from these
+// `&'static str` constants, so there is one source string per label.
 
 const PATTERN_AWS_KEY: &str = r"(?-u)\bAKIA[0-9A-Z]{16}\b";
 const PATTERN_JWT: &str = r"(?-u)\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b";
@@ -185,9 +179,9 @@ const PATTERN_BEARER: &str = r"(?i-u)\bBearer\s+[A-Za-z0-9._\-+/=]{8,}";
 /// Default redactor patterns the [`validate_default_redactor_compiles`]
 /// startup hook re-checks. The `&str` entries point at the same
 /// `PATTERN_*` constants the runtime `LazyLock` instances below compile
-/// from, so the validator and the redactor hot path are guaranteed to
-/// stay in lockstep. Adding a new class without updating this list is
-/// caught by the `default_pattern_inventory_matches_lazylocks` test.
+/// from, so the validator and the redactor hot path share one source string
+/// per label. Adding a new class without updating this list is caught by the
+/// `default_pattern_inventory_matches_lazylocks` test.
 const DEFAULT_PATTERNS: &[(&str, &str)] = &[
     ("secrets.aws-key", PATTERN_AWS_KEY),
     ("secrets.jwt", PATTERN_JWT),
@@ -209,12 +203,10 @@ const DEFAULT_PATTERNS: &[(&str, &str)] = &[
 /// every (label, pattern) pair that failed.
 ///
 /// This complements the soft fallback in [`try_compile`]: callers that
-/// want the original silent-skip behaviour simply skip this hook,
-/// callers that want the strict load-time guarantee call it during
-/// service bootstrap. Because the validator and the runtime
-/// `LazyLock` instances share the same `PATTERN_*` source strings,
-/// validating these patterns is equivalent to validating the runtime
-/// regexes themselves.
+/// accept silent-skip omit this hook; callers that want the strict
+/// load-time guarantee call it during service bootstrap. The validator and
+/// the runtime `LazyLock` instances share the same `PATTERN_*` source
+/// strings, so validating these patterns validates the runtime regexes.
 pub fn validate_default_redactor_compiles() -> Result<(), Vec<String>> {
     let mut failures = Vec::new();
     for (label, pattern) in DEFAULT_PATTERNS {
@@ -642,20 +634,17 @@ mod tests {
 
     #[test]
     fn validate_default_redactor_compiles_succeeds_on_known_patterns() {
-        // Every vetted-constant pattern must compile cleanly; a failure
-        // here means a maintainer broke a default pattern and the
-        // soft-fallback `try_compile` would have masked it. The startup
-        // validator surfaces such regressions for callers that prefer a
-        // hard fail-closed contract.
+        // Every default-pattern constant must compile cleanly. The
+        // soft-fallback `try_compile` would mask a broken pattern; this
+        // startup validator surfaces it for hard fail-closed callers.
         validate_default_redactor_compiles().expect("default patterns must compile");
     }
 
     #[test]
     fn default_pattern_inventory_matches_lazylocks() {
-        // Trip-wire: if a maintainer adds a new pattern to the redactor
-        // hot path without updating DEFAULT_PATTERNS, the startup
-        // validator silently stops covering it. Counting the inventory
-        // against the live `LazyLock` siblings keeps them in lockstep.
+        // A new hot-path pattern that is not added to DEFAULT_PATTERNS
+        // escapes the startup validator. Counting the inventory against the
+        // live `LazyLock` siblings keeps the two lists the same length.
         let live: &[&LazyLock<Option<Regex>>] = &[
             &AWS_KEY,
             &JWT,
@@ -680,12 +669,10 @@ mod tests {
 
     #[test]
     fn default_patterns_match_runtime_lazylock_sources() {
-        // Regression for the validator/runtime divergence concern: the
-        // startup validator must check the same patterns the runtime
+        // The startup validator must check the same patterns the runtime
         // LazyLocks compile from. Asserting `DEFAULT_PATTERNS[i].1 ==
-        // <RUNTIME_REGEX>.as_str()` proves the validator and the
-        // hot-path regex compiled the same source string, even if a
-        // future edit nudges one constant and forgets the other.
+        // <RUNTIME_REGEX>.as_str()` proves the validator and the hot-path
+        // regex compiled the same source string.
         let live: &[(&str, &LazyLock<Option<Regex>>)] = &[
             ("secrets.aws-key", &AWS_KEY),
             ("secrets.jwt", &JWT),

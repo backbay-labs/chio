@@ -172,9 +172,9 @@ pub trait GitProvider {
 
 /// Filesystem-side I/O surface used by the bless flow.
 ///
-/// Today this is only used by [`append_audit_line`] (clause 7 audit
-/// entry write). It exists as a trait so future bless flows can stub
-/// it or layer in atomic-write semantics without touching call sites.
+/// Used by [`append_audit_line`] (clause 7 audit entry write). Routing
+/// the write through a trait lets the gate's tests stub filesystem
+/// access in isolation.
 pub trait FsProvider {
     /// Append `line` (terminated by `\n`) to `path`, creating the file
     /// if it does not yet exist.
@@ -335,10 +335,8 @@ pub fn evaluate_gate(
 /// Format (single line, terminated by `\n`):
 /// `<iso8601>\t<user_name> <<user_email>>\t<branch>\t<sha>\t<fixture>\t<reason>`
 ///
-/// Tab-separated and explicitly fixed-order so a future tooling layer
-/// can trivially `awk -F'\t'` over the log. The line is appended via
-/// the supplied [`FsProvider`] so callers can swap in atomic-write
-/// implementations later.
+/// Tab-separated with a fixed column order so the log is parseable by
+/// `awk -F'\t'`. The line is appended via the supplied [`FsProvider`].
 pub fn append_audit_line(
     fs: &dyn FsProvider,
     audit_log_path: &Path,

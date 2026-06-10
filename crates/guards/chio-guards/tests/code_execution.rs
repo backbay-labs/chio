@@ -1,6 +1,6 @@
 //! Integration tests for CodeExecutionGuard.
 //!
-//! Exercises the three acceptance criteria:
+//! Verify that:
 //!
 //! * language outside the allowlist is denied;
 //! * `import subprocess` (dangerous module) is denied;

@@ -2,8 +2,8 @@
 //! constant reference) and then scrapes the per-edge Prometheus body to
 //! assert (a) the registry-keyed metric name is present and (b) the
 //! production-exercised sample count is non-zero. A registry constant
-//! referenced in source code but never emitted at runtime would fail the
-//! count check, which is exactly the gap T1.5 left open.
+//! referenced in source code but never emitted at runtime fails the
+//! count check.
 
 use std::collections::HashMap;
 use std::error::Error;

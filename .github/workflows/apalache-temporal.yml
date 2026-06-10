@@ -1,12 +1,12 @@
 name: apalache-temporal
 
-# Scheduled/manual workflow: runs the legacy temporal liveness property
+# Scheduled/manual workflow: runs the temporal liveness property
 # RevocationEventuallySeen against formal/tla/RevocationPropagation.tla.
 #
-# This job is scheduled/manual only and is not a required PR gate while the
-# temporal lane gathers green history. Safety invariants for
-# RevocationPropagation run in apalache-safety.yml at the PR length bound.
-# This length-24 temporal config keeps deep liveness coverage separate.
+# This job is scheduled/manual only and is not a required PR gate. Safety
+# invariants for RevocationPropagation run in apalache-safety.yml at the PR
+# length bound. This length-24 temporal config keeps deep liveness coverage
+# separate.
 #
 # Do not promote this workflow to a required check until the underlying
 # property is fixed and the run is reliably green.

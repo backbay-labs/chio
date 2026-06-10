@@ -1,8 +1,8 @@
 //! Shared cross-protocol bridge contracts and runtime orchestration substrate.
 //!
 //! This crate centralizes the reusable types needed by outward protocol edges
-//! so A2A, ACP, and later MCP/OpenAI/HTTP bridge paths do not each redefine
-//! provenance, attenuation, and receipt-lineage behavior independently.
+//! so each bridge path shares one definition of provenance, attenuation, and
+//! receipt-lineage behavior rather than redefining it independently.
 
 #![forbid(unsafe_code)]
 
