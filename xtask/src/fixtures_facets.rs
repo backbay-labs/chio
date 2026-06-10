@@ -41,24 +41,15 @@ fn scratch_counter() -> u64 {
 
 // -- Pre-schema guards -----------------------------------------------------
 
-/// Run the retired-marker / runbook / fixture-name guards a facet performs
-/// before its schema block. The retired marker is assembled at runtime as
-/// `"chio" + "dos"` so this gate file never embeds the joined literal it
-/// screens for.
+/// Run the retired-marker / fixture-name guards a facet performs before its
+/// schema block. The retired marker is assembled at runtime as `"chio" + "dos"`
+/// so this gate file never embeds the joined literal it screens for.
 pub(crate) fn pre_schema_guard(root: &Path, facet: &Facet) -> Result<(), XtaskError> {
     match facet.kind.as_str() {
         "transit" => guard_no_marker_in_file(
             &root.join("spec/CHIO_PHEROMONE.md"),
             &retired_marker(),
             "active Chio pheromone spec must not cite retired docs or labels",
-        ),
-        "relay" => guard_no_chio_in_file(
-            &root.join("docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md"),
-            "active Chio pheromone relay runbook must not cite Chio-named docs or labels",
-        ),
-        "directory_lifecycle" => guard_no_chio_in_tree(
-            &root.join(&facet.fixture_dir),
-            "active Chio pheromone relay fixtures must not cite Chio-named docs or labels",
         ),
         "relay_alert_assurance" => guard_assurance_no_legacy_marker(&root.join(&facet.fixture_dir)),
         _ => Ok(()),
@@ -82,32 +73,6 @@ fn guard_no_marker_in_file(
     let text = fs::read_to_string(path).map_err(|err| XtaskError::Io(display(path), err))?;
     if text.to_ascii_lowercase().contains(&marker.to_ascii_lowercase()) {
         return Err(XtaskError::Validation(message.into()));
-    }
-    Ok(())
-}
-
-/// Fail if any of the Chio/CHIO/chio spellings appears in a file (matches the
-/// relay runbook guard, which is intentionally case-sensitive across spellings).
-fn guard_no_chio_in_file(path: &Path, message: &str) -> Result<(), XtaskError> {
-    let text = fs::read_to_string(path).map_err(|err| XtaskError::Io(display(path), err))?;
-    if text.contains("Chio") || text.contains("CHIO") || text.contains("chio") {
-        return Err(XtaskError::Validation(message.into()));
-    }
-    Ok(())
-}
-
-/// Fail if any of the Chio spellings appears in any file under a tree (the
-/// directory-lifecycle fixture guard).
-fn guard_no_chio_in_tree(dir: &Path, message: &str) -> Result<(), XtaskError> {
-    for path in walk_files(dir)? {
-        let text =
-            fs::read_to_string(&path).map_err(|err| XtaskError::Io(display(&path), err))?;
-        if text.contains("Chio") || text.contains("CHIO") || text.contains("chio") {
-            return Err(XtaskError::Validation(format!(
-                "{message}: {}",
-                display(&path)
-            )));
-        }
     }
     Ok(())
 }

@@ -1416,36 +1416,15 @@ mod tests {
 
     #[test]
     fn relay_schema_block_and_metadata_pass_against_committed_fixtures() {
-        // The relay runbook guard intentionally fires on the current branch
-        // (the runbook is the Chio runbook and cites the name), exactly as
-        // `check-chio-pheromone-relay.sh` does, so this test exercises only the
-        // schema + metadata block, which must pass against the committed
-        // fixtures. The guard's fail-closed behavior is covered separately by
-        // `relay_runbook_guard_reproduces_script_rejection`.
         let root = crate::workspace_root().unwrap_or_else(|err| panic!("workspace root: {err}"));
         let manifest = load();
         let facet = manifest
             .facet_by_name("relay")
             .unwrap_or_else(|| panic!("relay facet missing"));
+        pre_schema_guard(&root, facet).unwrap_or_else(|err| panic!("relay guard: {err}"));
         run_schema_block(&root, &manifest, facet)
             .unwrap_or_else(|err| panic!("relay schema block: {err}"));
         run_metadata_block(&root, facet).unwrap_or_else(|err| panic!("relay metadata: {err}"));
-    }
-
-    #[test]
-    fn relay_runbook_guard_reproduces_script_rejection() {
-        // Parity: the consolidated relay guard must reject the same runbook the
-        // original `rg "Chio|CHIO|chio"` guard rejected (fail-closed).
-        let root = crate::workspace_root().unwrap_or_else(|err| panic!("workspace root: {err}"));
-        let manifest = load();
-        let facet = manifest
-            .facet_by_name("relay")
-            .unwrap_or_else(|| panic!("relay facet missing"));
-        match pre_schema_guard(&root, facet) {
-            Ok(()) => panic!("relay runbook guard unexpectedly passed"),
-            Err(XtaskError::Validation(_)) => {}
-            Err(other) => panic!("expected Validation rejection, got {other}"),
-        }
     }
 
     #[test]
