@@ -66,6 +66,43 @@ fn reject_chio(root: &Path, chio_args: &[&str], detail: &str) -> Result<(), Xtas
     }
 }
 
+/// Run a `chio` CLI invocation expected to fail, then confirm its combined
+/// stdout/stderr carries an expected marker. Reproduces the runtime scripts'
+/// `! cargo run ... 2>err; grep -q "<marker>" err` negatives, which both require
+/// the non-zero exit AND pin the specific failure message (so a different,
+/// unrelated failure cannot masquerade as the expected one).
+fn reject_chio_with_marker(
+    root: &Path,
+    chio_args: &[&str],
+    marker: &str,
+    detail: &str,
+) -> Result<(), XtaskError> {
+    let mut args = vec!["-p", "chio-cli", "--bin", "chio", "--"];
+    args.extend_from_slice(chio_args);
+    let output = Command::new("cargo")
+        .arg("run")
+        .args(&args)
+        .current_dir(root)
+        .output()
+        .map_err(|err| XtaskError::Io("cargo run".into(), err))?;
+    if output.status.success() {
+        return Err(XtaskError::Process(format!(
+            "negative assertion failed: {detail}"
+        )));
+    }
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    if !combined.contains(marker) {
+        return Err(XtaskError::Process(format!(
+            "negative assertion failed: {detail} (expected marker {marker:?} in output)"
+        )));
+    }
+    Ok(())
+}
+
 /// Confirm `report[field] == expected` (string), failing closed otherwise. This
 /// is the Rust equivalent of the scripts' `grep -q '"field": "expected"'` and
 /// the python `report.get(field)` assertions.

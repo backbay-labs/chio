@@ -24,7 +24,7 @@
 //! profile document, which must exist on disk. That contract is enforced here.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 
 use serde_json::Value;
 
@@ -84,7 +84,11 @@ fn bounded_chio(root: &Path) -> Result<(), XtaskError> {
                 display(&matrix_path)
             ))
         })?;
-    let profile_path = root.join(profile_doc);
+    // The legacy script hard-coded a fixed repo-relative profile path; the matrix
+    // supplies it as data here, so fail closed on a path that is absolute or
+    // escapes the workspace root before resolving it. A `profile.document` that
+    // points outside the repo would make the bounded boundary unverifiable.
+    let profile_path = resolve_repo_relative(root, profile_doc)?;
     if !profile_path.is_file() {
         return Err(XtaskError::Validation(format!(
             "bounded operational profile document is missing on disk: {profile_doc}"
@@ -149,6 +153,40 @@ fn assert_bounded_matrix(matrix: &Value) -> Result<(), XtaskError> {
         }
     }
     Ok(())
+}
+
+/// Resolve a matrix-supplied document path against the workspace root, failing
+/// closed on anything that is not a plain repo-relative path. Rejects absolute
+/// paths and any `..` / root component so a drifted matrix cannot point the
+/// bounded profile at a file outside the repository; the resolved path is then
+/// asserted to stay under `root`.
+fn resolve_repo_relative(root: &Path, rel: &str) -> Result<PathBuf, XtaskError> {
+    let candidate = Path::new(rel);
+    for component in candidate.components() {
+        match component {
+            Component::Normal(_) | Component::CurDir => {}
+            Component::ParentDir => {
+                return Err(XtaskError::Validation(format!(
+                    "bounded profile document path escapes the repository (parent component): {rel}"
+                )));
+            }
+            Component::RootDir | Component::Prefix(_) => {
+                return Err(XtaskError::Validation(format!(
+                    "bounded profile document path must be repo-relative, not absolute: {rel}"
+                )));
+            }
+        }
+    }
+    let joined = root.join(candidate);
+    // Defense in depth: assert the lexical join still starts at the root prefix.
+    // (The component scan already rejects `..`/absolute, so the join cannot climb
+    // out; this guards against a future change to the scan.)
+    if !joined.starts_with(root) {
+        return Err(XtaskError::Validation(format!(
+            "bounded profile document path resolves outside the repository: {rel}"
+        )));
+    }
+    Ok(joined)
 }
 
 fn display(path: &Path) -> String {
@@ -237,6 +275,37 @@ mod tests {
         });
         match assert_bounded_matrix(&matrix) {
             Ok(()) => panic!("idless gate condition passed"),
+            Err(XtaskError::Validation(_)) => {}
+            Err(other) => panic!("expected Validation, got {other}"),
+        }
+    }
+
+    #[test]
+    fn resolve_repo_relative_accepts_plain_path() {
+        let root = Path::new("/repo");
+        let resolved = resolve_repo_relative(root, "docs/standards/PROFILE.md")
+            .unwrap_or_else(|err| panic!("plain repo-relative path must resolve: {err}"));
+        assert_eq!(resolved, root.join("docs/standards/PROFILE.md"));
+    }
+
+    #[test]
+    fn resolve_repo_relative_rejects_absolute() {
+        match resolve_repo_relative(Path::new("/repo"), "/etc/passwd") {
+            Ok(path) => panic!("absolute path resolved to {}", path.display()),
+            Err(XtaskError::Validation(_)) => {}
+            Err(other) => panic!("expected Validation, got {other}"),
+        }
+    }
+
+    #[test]
+    fn resolve_repo_relative_rejects_parent_escape() {
+        match resolve_repo_relative(Path::new("/repo"), "../outside/PROFILE.md") {
+            Ok(path) => panic!("parent-escape path resolved to {}", path.display()),
+            Err(XtaskError::Validation(_)) => {}
+            Err(other) => panic!("expected Validation, got {other}"),
+        }
+        match resolve_repo_relative(Path::new("/repo"), "docs/../../escape.md") {
+            Ok(path) => panic!("embedded parent-escape resolved to {}", path.display()),
             Err(XtaskError::Validation(_)) => {}
             Err(other) => panic!("expected Validation, got {other}"),
         }

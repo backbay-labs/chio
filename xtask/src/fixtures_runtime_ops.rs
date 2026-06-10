@@ -416,10 +416,11 @@ fn ops_negative_flow(
     assert_report_str(&status_bad, "failureCode", "runtime_ops_status_degraded")?;
 
     // Retention planning rejects a missing evidence root (fail-closed: success
-    // is the error).
+    // is the error). The retired script grep'd the specific stderr marker, so a
+    // non-zero exit alone is not enough: pin the expected failure message.
     let missing_report = scratch.join("retention-missing-report.json");
     let missing_root = scratch.join("evidence-missing");
-    reject_chio(
+    reject_chio_with_marker(
         root,
         &[
             "runtime", "ops", "retention", "plan",
@@ -429,6 +430,7 @@ fn ops_negative_flow(
             "--now-unix-ms", "1800000001000",
             "--report", &display(&missing_report),
         ],
+        "requires existing evidence root",
         "retention planning unexpectedly accepted a missing evidence root",
     )
 }

@@ -556,31 +556,10 @@ fn run_metadata_block(root: &Path, facet: &Facet) -> Result<(), XtaskError> {
         "directory_lifecycle" => metadata_directory_lifecycle(&fixture_dir),
         "relay_observability" => metadata_relay_observability(&fixture_dir),
         "relay_alert_routing" => metadata_relay_alert_routing(&fixture_dir),
-        "relay_alert_handoff" => metadata_negative_ids(
-            &fixture_dir,
-            "relay-alert-handoff-negative-cases.json",
-            &HANDOFF_REQUIRED_CASES,
-        ),
-        "relay_alert_delivery" => metadata_negative_ids(
-            &fixture_dir,
-            "relay-alert-delivery-negative-cases.json",
-            &DELIVERY_REQUIRED_CASES,
-        ),
-        "relay_alert_assurance" => metadata_negative_case_ids(
-            &fixture_dir,
-            "relay-alert-assurance-negative-cases.json",
-            &ASSURANCE_REQUIRED_CASES,
-        ),
-        "relay_alert_assurance_export" => metadata_negative_case_ids(
-            &fixture_dir,
-            "relay-alert-assurance-export-negative-cases.json",
-            &[
-                "invalid_signature",
-                "source_hash_mismatch",
-                "path_traversal",
-                "wrong_expected_code",
-            ],
-        ),
+        "relay_alert_handoff" => metadata_relay_alert_handoff(&fixture_dir),
+        "relay_alert_delivery" => metadata_relay_alert_delivery(&fixture_dir),
+        "relay_alert_assurance" => metadata_relay_alert_assurance(&fixture_dir),
+        "relay_alert_assurance_export" => metadata_relay_alert_assurance_export(&fixture_dir),
         "relay_alert_assurance_archive" => metadata_negative_case_ids(
             &fixture_dir,
             "relay-alert-assurance-archive-negative-cases.json",
@@ -1152,6 +1131,7 @@ fn metadata_negative_case_ids(
 }
 
 include!("fixtures_facets.rs");
+include!("fixtures_facets_meta.rs");
 include!("fixtures_facets_alert.rs");
 include!("fixtures_facets_assurance.rs");
 include!("fixtures_runtime.rs");

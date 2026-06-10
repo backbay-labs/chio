@@ -154,6 +154,39 @@ fn metadata_transit(fixture_dir: &Path) -> Result<(), XtaskError> {
     if str_field(commitment, "schema") != Some("chio.pheromone-cost-commitment.v1") {
         return Err(invalid("cost commitment fixture has wrong schema"));
     }
+    // The cost-commitment statement must bind back to the deposit's subject
+    // namespace/class and treaty scope, and carry the verifier identity the
+    // scarcity policy later pins. The commitment is the load-bearing tie between
+    // the deposit and the scarcity economics; the consolidated handler had
+    // dropped every one of these bindings.
+    let statement = commitment
+        .get("statement")
+        .ok_or_else(|| invalid("cost commitment fixture must carry a statement"))?;
+    for field in ["subjectClassNamespace", "subjectClass", "treatyId", "verifierId"] {
+        if statement.get(field).is_none() {
+            return Err(invalid(&format!("cost commitment statement missing {field}")));
+        }
+    }
+    if str_field(statement, "subjectClassNamespace") != str_field(&deposit, "subject_class_namespace")
+    {
+        return Err(invalid(
+            "cost commitment namespace does not bind deposit subject namespace",
+        ));
+    }
+    if str_field(statement, "subjectClass") != str_field(&deposit, "subject_class") {
+        return Err(invalid("cost commitment class does not bind deposit subject class"));
+    }
+    let statement_treaty = str_field(statement, "treatyId")
+        .ok_or_else(|| invalid("cost commitment statement has no treatyId"))?;
+    let treaty_scope = deposit
+        .get("treaty_scope")
+        .and_then(Value::as_array)
+        .ok_or_else(|| invalid("deposit fixture has no treaty_scope"))?;
+    if !treaty_scope.iter().any(|t| t.as_str() == Some(statement_treaty)) {
+        return Err(invalid(
+            "cost commitment treaty scope does not bind deposit treaty scope",
+        ));
+    }
     if str_field(
         deposit.get("workflow_context").unwrap_or(&Value::Null),
         "workflow_id",
@@ -164,9 +197,105 @@ fn metadata_transit(fixture_dir: &Path) -> Result<(), XtaskError> {
     if str_field(&batch, "schema") != Some("chio.pheromone-batch.v1") {
         return Err(invalid("batch fixture has wrong schema"));
     }
-    let frames = batch.get("frames").and_then(Value::as_array);
-    if frames.map(|f| f.len()) != Some(1) {
+    let frames = batch
+        .get("frames")
+        .and_then(Value::as_array)
+        .ok_or_else(|| invalid("batch fixture has no frames array"))?;
+    if frames.len() != 1 {
         return Err(invalid("batch fixture must carry one relayed frame"));
+    }
+    // The single frame must exercise a two-hop downstream transit chain: the
+    // first hop on the origin treaty, the last hop on the frame treaty, and the
+    // frame treaty distinct from the first-hop treaty (a relay, not direct
+    // gossip). Both hop treaties must be admitted in the deposit treaty scope.
+    let frame = &frames[0];
+    let hops = frame
+        .get("transit_chain")
+        .and_then(|c| c.get("hops"))
+        .and_then(Value::as_array)
+        .ok_or_else(|| invalid("frame has no transit chain hops"))?;
+    if hops.len() != 2 {
+        return Err(invalid("fixture must carry a two-hop transit chain"));
+    }
+    let frame_treaty = str_field(frame, "treaty_id");
+    let first_hop_treaty = str_field(&hops[0], "treaty_id");
+    let last_hop_treaty = str_field(&hops[hops.len() - 1], "treaty_id");
+    if frame_treaty == first_hop_treaty {
+        return Err(invalid(
+            "fixture must exercise downstream treaty relay, not direct gossip",
+        ));
+    }
+    let frame_treaty = frame_treaty
+        .ok_or_else(|| invalid("frame has no treaty_id"))?;
+    if !treaty_scope.iter().any(|t| t.as_str() == Some(frame_treaty)) {
+        return Err(invalid(
+            "frame treaty must be admitted in deposit treaty scope for scoped economics",
+        ));
+    }
+    let first_hop_treaty =
+        first_hop_treaty.ok_or_else(|| invalid("first transit hop has no treaty_id"))?;
+    if !treaty_scope.iter().any(|t| t.as_str() == Some(first_hop_treaty)) {
+        return Err(invalid("first transit hop must use the origin treaty"));
+    }
+    if last_hop_treaty != Some(frame_treaty) {
+        return Err(invalid("last transit hop must match the frame treaty"));
+    }
+    // The transit policy must cap the fixture at two hops and carry exactly one
+    // scarcity policy whose hashes bind the cost-commitment statement.
+    let policy_body = policy_envelope
+        .get("body")
+        .ok_or_else(|| invalid("transit policy envelope has no body"))?;
+    if policy_body.get("max_hops").and_then(Value::as_i64) != Some(2) {
+        return Err(invalid("transit policy must cap the fixture at two hops"));
+    }
+    let scarcity_policies = policy_body
+        .get("admission")
+        .and_then(|a| a.get("scarcityPolicies"))
+        .and_then(Value::as_array)
+        .ok_or_else(|| invalid("transit policy admission has no scarcityPolicies"))?;
+    if scarcity_policies.len() != 1 {
+        return Err(invalid("transit policy must carry one scarcity policy fixture"));
+    }
+    let scarcity = &scarcity_policies[0];
+    if str_field(scarcity, "schema") != Some("chio.pheromone-scarcity-policy.v1") {
+        return Err(invalid("scarcity policy fixture has wrong schema"));
+    }
+    if scarcity.get("newcomerHorizonEpochs").and_then(Value::as_i64) != Some(8) {
+        return Err(invalid(
+            "scarcity policy fixture must preserve the eight-epoch default",
+        ));
+    }
+    for field in ["runtimePolicySha256", "policySha256"] {
+        if !is_canonical_sha256(str_field(scarcity, field)) {
+            return Err(invalid(&format!(
+                "scarcity policy fixture missing canonical {field}"
+            )));
+        }
+    }
+    if scarcity.get("activePeersEpoch") != scarcity.get("reputationEpoch") {
+        return Err(invalid(
+            "scarcity policy fixture must carry explicit active peer epoch",
+        ));
+    }
+    if str_field(scarcity, "observationCostVerification") != Some("required") {
+        return Err(invalid(
+            "scarcity policy fixture must require verified cost commitments",
+        ));
+    }
+    if str_field(scarcity, "verifierId") != str_field(statement, "verifierId") {
+        return Err(invalid(
+            "scarcity policy verifier must bind the cost commitment verifier",
+        ));
+    }
+    if str_field(scarcity, "policySha256") != str_field(statement, "scarcityPolicySha256") {
+        return Err(invalid(
+            "scarcity policy hash must bind the cost commitment statement",
+        ));
+    }
+    if str_field(scarcity, "runtimePolicySha256") != str_field(statement, "runtimePolicySha256") {
+        return Err(invalid(
+            "runtime policy hash must bind the cost commitment statement",
+        ));
     }
     if str_field(&concentration, "schema") != Some("chio.pheromone-concentration.v1") {
         return Err(invalid("concentration fixture has wrong schema"));
@@ -196,6 +325,58 @@ fn metadata_runtime(_root: &Path, fixture_dir: &Path) -> Result<(), XtaskError> 
     {
         return Err(invalid("runtime policy must be a signed envelope"));
     }
+    // The runtime policy admission must bind the verifier-owned recipient and
+    // authenticated sender, carry admitted passport material, and pin exactly one
+    // scarcity policy with the canonical runtime/scarcity hashes. The consolidated
+    // handler had reduced this to "is a signed envelope".
+    let admission = policy_envelope
+        .get("body")
+        .and_then(|b| b.get("admission"))
+        .ok_or_else(|| invalid("runtime policy body has no admission"))?;
+    if str_field(admission, "recipientKernelId") != Some("did:chio:dataco") {
+        return Err(invalid("runtime policy recipient is not verifier-owned"));
+    }
+    if str_field(admission, "authenticatedSenderKernelId") != Some("did:chio:buyer-kernel") {
+        return Err(invalid("runtime policy authenticated sender is not verifier-owned"));
+    }
+    if admission
+        .get("passports")
+        .and_then(Value::as_array)
+        .map(|p| p.is_empty())
+        .unwrap_or(true)
+    {
+        return Err(invalid("runtime policy must carry admitted passport material"));
+    }
+    let scarcity_policies = admission
+        .get("scarcityPolicies")
+        .and_then(Value::as_array)
+        .ok_or_else(|| invalid("runtime policy admission has no scarcityPolicies"))?;
+    if scarcity_policies.len() != 1 {
+        return Err(invalid(
+            "runtime policy must carry explicit scarcity policy material",
+        ));
+    }
+    let scarcity = &scarcity_policies[0];
+    if str_field(scarcity, "schema") != Some("chio.pheromone-scarcity-policy.v1") {
+        return Err(invalid("runtime scarcity policy schema mismatch"));
+    }
+    if scarcity.get("newcomerHorizonEpochs").and_then(Value::as_i64) != Some(8) {
+        return Err(invalid(
+            "runtime scarcity policy default horizon is not explicit",
+        ));
+    }
+    for field in ["runtimePolicySha256", "policySha256"] {
+        if !is_canonical_sha256(str_field(scarcity, field)) {
+            return Err(invalid(&format!(
+                "runtime scarcity policy missing canonical {field}"
+            )));
+        }
+    }
+    if scarcity.get("activePeersEpoch") != scarcity.get("reputationEpoch") {
+        return Err(invalid(
+            "runtime scarcity policy active peer epoch must be explicit",
+        ));
+    }
     if str_field(&receive, "schema") != Some("chio.pheromone.receive-report.v1")
         || receive.get("accepted") != Some(&Value::Bool(true))
     {
@@ -203,6 +384,11 @@ fn metadata_runtime(_root: &Path, fixture_dir: &Path) -> Result<(), XtaskError> 
     }
     if str_field(&receive, "batchOutcome") != Some("accepted") {
         return Err(invalid("committed receive report must carry accepted batch outcome"));
+    }
+    if receive.get("acceptedFrameCount").and_then(Value::as_i64) != Some(1)
+        || receive.get("rejectedFrameCount").and_then(Value::as_i64) != Some(0)
+    {
+        return Err(invalid("committed receive report must carry frame outcome counts"));
     }
     if str_field(&query, "schema") != Some("chio.pheromone.query-report.v1")
         || query.get("accepted") != Some(&Value::Bool(true))
@@ -322,12 +508,83 @@ fn metadata_relay_alert_routing(fixture_dir: &Path) -> Result<(), XtaskError> {
             "missing-metrics-false-all-clear",
         ],
     )?;
+    // The routing profile must declare the notification_route label and carry no
+    // dynamic URL targets or inline secret material in its routes.
+    let profile = load_json(&fixture_dir.join("relay-alert-routing-profile.json"))?;
+    let declares_notification_route = profile
+        .get("allowedLabelNames")
+        .and_then(Value::as_array)
+        .map(|names| names.iter().any(|n| n.as_str() == Some("notification_route")))
+        .unwrap_or(false);
+    if !declares_notification_route {
+        return Err(invalid("routing profile does not declare notification_route label"));
+    }
+    if let Some(routes) = profile.get("routes").and_then(Value::as_array) {
+        for route in routes {
+            if str_field(route, "targetRef")
+                .map(|t| t.contains("://"))
+                .unwrap_or(false)
+            {
+                return Err(invalid("routing profile contains dynamic URL target"));
+            }
+            if json_contains_secret_marker(route) {
+                return Err(invalid(
+                    "routing profile route may contain inline secret material",
+                ));
+            }
+        }
+    }
+
     let alert_report = load_json(&fixture_dir.join("relay-alert-report.json"))?;
     if alert_report.get("accepted") != Some(&Value::Bool(false))
         || str_field(&alert_report, "code") != Some("alerts_firing")
     {
         return Err(invalid("degraded alert report must remain firing"));
     }
+    let alerts = alert_report
+        .get("alerts")
+        .and_then(Value::as_array)
+        .ok_or_else(|| invalid("degraded alert report has no alerts array"))?;
+    // The critical dead-letter alert must remain visible (firing/critical) and the
+    // stale-lease alert must exercise capped suppression.
+    let dead_letter = alerts
+        .iter()
+        .find(|a| str_field(a, "code") == Some("dead_letters_present"));
+    match dead_letter {
+        Some(alert)
+            if str_field(alert, "state") == Some("firing")
+                && str_field(alert, "severity") == Some("critical") => {}
+        _ => return Err(invalid("critical dead-letter alert must remain visible")),
+    }
+    let stale_lease = alerts
+        .iter()
+        .find(|a| str_field(a, "code") == Some("stale_leases_present"));
+    match stale_lease {
+        Some(alert) if str_field(alert, "state") == Some("suppressed") => {}
+        _ => return Err(invalid("stale lease alert should exercise capped suppression")),
+    }
+    // No alert may carry a label outside the bounded set, nor a value that leaks
+    // unbounded identifiers (DIDs, treaties, long hex, nonces, cursors, outboxes).
+    let allowed_labels = ["notification_route", "opsgenie", "service", "severity"];
+    for alert in alerts {
+        if let Some(labels) = alert.get("labels").and_then(Value::as_object) {
+            for name in labels.keys() {
+                if !allowed_labels.contains(&name.as_str()) {
+                    return Err(invalid(&format!(
+                        "alert has unbounded label: {name}"
+                    )));
+                }
+            }
+            for value in labels.values() {
+                if let Some(text) = value.as_str() {
+                    if value_leaks_unbounded_label(text) {
+                        return Err(invalid("alert leaks unbounded label value"));
+                    }
+                }
+            }
+        }
+    }
+
     let trend = load_json(&fixture_dir.join("relay-trend-report.json"))?;
     let trend_codes: std::collections::BTreeSet<&str> = trend
         .get("points")
@@ -402,11 +659,19 @@ fn handle_runtime(
     mode: Mode,
 ) -> Result<(), XtaskError> {
     if mode == Mode::NegativeOnly {
-        // Negative-only runs the targeted rejection tests, not the full suite.
+        // Negative-only runs the targeted rejection tests, not the full suite,
+        // then the CLI receive/query orchestration and its replay /
+        // wrong-recipient CLI negatives. The retired script's `negative-only`
+        // branch exited after the rejection tests, but its trailing
+        // `if negative-only: exit 0` (placed AFTER the replay / wrong-recipient
+        // negatives) shows those CLI negatives were intended to be part of the
+        // negative path; restore them here rather than skip them.
         for tail in RUNTIME_NEGATIVE_TESTS {
             run_cargo_test(root, &to_owned(tail))?;
         }
-        return Ok(());
+        let scratch = ScratchDir::new("runtime-negative")?;
+        let fixture_dir = root.join(&facet.fixture_dir);
+        return runtime_receive_query_flow(root, &fixture_dir, &scratch);
     }
     run_cargo_tests(root, facet)?;
 
@@ -1324,7 +1589,13 @@ fn handle_relay_ops(
     facet: &Facet,
     mode: Mode,
 ) -> Result<(), XtaskError> {
+    // The lint (local-dev + production) and tick CLI orchestration the script
+    // drove, including the production `relay_profile_denied` assertion, runs in
+    // both `all` and `negative-only` (it precedes the script's negative-only
+    // exit). The consolidated handler had dropped it entirely.
+    relay_ops_lint_orchestration(root, facet)?;
     run_cargo_tests(root, facet)?;
+    relay_ops_tick(root, facet)?;
     if mode == Mode::NegativeOnly {
         run_cargo_test(
             root,
@@ -1337,6 +1608,80 @@ fn handle_relay_ops(
         return Ok(());
     }
     run_recursion(root, manifest, facet)
+}
+
+/// The relay-ops `pheromone relay lint` flow: lint the committed peer directory
+/// under local-dev and under production, asserting the production profile
+/// rejects the raw directory with `relay_profile_denied`.
+fn relay_ops_lint_orchestration(root: &Path, facet: &Facet) -> Result<(), XtaskError> {
+    let scratch = ScratchDir::new("relay-ops-lint")?;
+    let fixture_dir = root.join(&facet.fixture_dir);
+    let schema_dir = root.join("spec/schemas/chio-pheromone/v1");
+    let peer_directory = fixture_dir.join("peer-directory.json");
+
+    let lint = scratch.join("lint.json");
+    require_cli(
+        root,
+        &[
+            "-p", "chio-cli", "--bin", "chio", "--",
+            "pheromone", "relay", "lint",
+            "--peer-directory", &display(&peer_directory),
+            "--profile", "local-dev",
+            "--report", &display(&lint),
+        ],
+    )?;
+    validate_document(&schema_dir.join("relay-health-report.schema.json"), &lint)?;
+
+    let lint_production = scratch.join("lint-production.json");
+    require_cli(
+        root,
+        &[
+            "-p", "chio-cli", "--bin", "chio", "--",
+            "pheromone", "relay", "lint",
+            "--peer-directory", &display(&peer_directory),
+            "--profile", "production",
+            "--report", &display(&lint_production),
+        ],
+    )?;
+    validate_document(
+        &schema_dir.join("relay-health-report.schema.json"),
+        &lint_production,
+    )?;
+    let production = load_json(&lint_production)?;
+    if production.get("accepted") != Some(&Value::Bool(false))
+        || str_field(&production, "code") != Some("relay_profile_denied")
+    {
+        return Err(invalid("production lint did not reject raw peer directory"));
+    }
+    Ok(())
+}
+
+/// The relay-ops `pheromone relay tick` step: tick the leased batches against the
+/// committed peer directory, validating the emitted tick report.
+fn relay_ops_tick(root: &Path, facet: &Facet) -> Result<(), XtaskError> {
+    let scratch = ScratchDir::new("relay-ops-tick")?;
+    let fixture_dir = root.join(&facet.fixture_dir);
+    let schema_dir = root.join("spec/schemas/chio-pheromone/v1");
+    let peer_directory = fixture_dir.join("peer-directory.json");
+
+    let signing_key = scratch.join("relay-signing-key.json");
+    write_signing_key(&signing_key)?;
+    let store = scratch.join("relay.sqlite3");
+    let tick = scratch.join("tick.json");
+    require_cli(
+        root,
+        &[
+            "-p", "chio-cli", "--bin", "chio", "--",
+            "pheromone", "relay", "tick",
+            "--store", &display(&store),
+            "--peer-directory", &display(&peer_directory),
+            "--now-unix-ms", "1766000000500",
+            "--max-batches", "4",
+            "--signing-key", &display(&signing_key),
+            "--report", &display(&tick),
+        ],
+    )?;
+    validate_document(&schema_dir.join("relay-tick-report.schema.json"), &tick)
 }
 
 fn handle_directory_lifecycle(
