@@ -1611,52 +1611,8 @@ mod cli_entrypoint_tests {
     }
 
     #[test]
-    fn chio_pheromone_relay_gate_scripts_use_chio_filters() {
-        let scripts = [
-            include_str!("../../../scripts/check-chio-pheromone-relay-alert-assurance-archive.sh"),
-            include_str!("../../../scripts/check-chio-pheromone-relay-alert-assurance-export.sh"),
-            include_str!("../../../scripts/check-chio-pheromone-relay-alert-assurance.sh"),
-            include_str!("../../../scripts/check-chio-pheromone-relay-alert-delivery.sh"),
-            include_str!("../../../scripts/check-chio-pheromone-relay-alert-handoff.sh"),
-            include_str!("../../../scripts/check-chio-pheromone-relay-alert-routing.sh"),
-            include_str!("../../../scripts/check-chio-pheromone-relay-observability.sh"),
-            include_str!("../../../scripts/check-chio-pheromone-relay-ops.sh"),
-        ];
-        let retired = retired_surface_name();
-        for script in scripts {
-            assert!(!script.to_ascii_lowercase().contains(&retired));
-        }
-    }
-
-    #[test]
-    fn chio_gate_scripts_use_chio_authority_entrypoints() {
-        let scripts = [
-            include_str!("../../../scripts/check-chio-pheromone-transit.sh"),
-            include_str!("../../../scripts/check-chio-pheromone-runtime.sh"),
-        ];
-        let retired_authority_gate = ["scripts/check-", &retired_surface_name(), "-authority-issuance.sh"].concat();
-        for script in scripts {
-            assert!(!script.contains(&retired_authority_gate));
-        }
-    }
-
-    #[test]
     fn chio_pheromone_gates_use_chio_fixture_root() {
-        let scripts = [
-            include_str!("../../../scripts/check-chio-authority-issuance.sh"),
-            include_str!("../../../scripts/check-chio-pheromone-directory-lifecycle.sh"),
-            include_str!("../../../scripts/check-chio-pheromone-relay-alert-assurance-archive.sh"),
-            include_str!("../../../scripts/check-chio-pheromone-relay-alert-assurance-export.sh"),
-            include_str!("../../../scripts/check-chio-pheromone-relay-alert-assurance.sh"),
-            include_str!("../../../scripts/check-chio-pheromone-relay-alert-delivery.sh"),
-            include_str!("../../../scripts/check-chio-pheromone-relay-alert-handoff.sh"),
-            include_str!("../../../scripts/check-chio-pheromone-relay-alert-routing.sh"),
-            include_str!("../../../scripts/check-chio-pheromone-relay-observability.sh"),
-            include_str!("../../../scripts/check-chio-pheromone-relay-ops.sh"),
-            include_str!("../../../scripts/check-chio-pheromone-relay.sh"),
-            include_str!("../../../scripts/check-chio-pheromone-runtime.sh"),
-            include_str!("../../../scripts/check-chio-pheromone-transit.sh"),
-        ];
+        let scripts = [include_str!("../../../scripts/check-chio-authority-issuance.sh")];
         let workflows = [
             include_str!("../../../.github/workflows/chio-pheromone-directory-lifecycle.yml"),
             include_str!("../../../.github/workflows/chio-pheromone-relay.yml"),

@@ -12,7 +12,8 @@ on:
       - "deploy/prometheus/**"
       - "spec/schemas/chio-pheromone/**"
       - "spec/schemas/registry.json"
-      - "scripts/check-chio-pheromone-relay-observability.sh"
+      - "ci-gates/pheromone.toml"
+      - "xtask/**"
       - "scripts/check-sre-metrics-registry.sh"
       - ".github/workflows/chio-pheromone-relay-observability.yml"
   push:
@@ -27,7 +28,8 @@ on:
       - "deploy/prometheus/**"
       - "spec/schemas/chio-pheromone/**"
       - "spec/schemas/registry.json"
-      - "scripts/check-chio-pheromone-relay-observability.sh"
+      - "ci-gates/pheromone.toml"
+      - "xtask/**"
       - "scripts/check-sre-metrics-registry.sh"
       - ".github/workflows/chio-pheromone-relay-observability.yml"
 
@@ -46,4 +48,4 @@ jobs:
         run: npm ci
         working-directory: crates/chio-cli/dashboard
       - name: Check Chio pheromone relay observability
-        run: bash scripts/check-chio-pheromone-relay-observability.sh
+        run: cargo xtask check fixtures relay-observability

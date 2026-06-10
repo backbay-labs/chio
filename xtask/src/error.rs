@@ -15,6 +15,7 @@ pub(crate) enum XtaskError {
     Process(String),
     ToolMissing(String),
     ToolFailed(String),
+    Manifest(String),
 }
 
 impl fmt::Display for XtaskError {
@@ -31,6 +32,7 @@ impl fmt::Display for XtaskError {
             Self::Process(msg) => write!(f, "subprocess error: {msg}"),
             Self::ToolMissing(detail) => write!(f, "codegen tool missing: {detail}"),
             Self::ToolFailed(detail) => write!(f, "codegen tool failed: {detail}"),
+            Self::Manifest(detail) => write!(f, "pheromone manifest error: {detail}"),
         }
     }
 }

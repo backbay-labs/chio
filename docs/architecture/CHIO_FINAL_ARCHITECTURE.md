@@ -160,14 +160,15 @@ relay path, including catch-up and future replay endpoints.
   local signing keys, revocation publication requests, revocation checkpoints,
   peer pins, and verifier trust bundles. New authority emitters write
   `chio.federation.*` wrapper IDs.
-- `scripts/check-chio-pheromone-runtime.sh`,
-  `scripts/check-chio-pheromone-transit.sh`, and
+- `cargo xtask check fixtures runtime`,
+  `cargo xtask check fixtures transit`, and
   `scripts/check-chio-authority-issuance.sh` own Chio pheromone schema,
   fixture, public receive/query CLI validation, and federation authority
   issuance validation.
-- `scripts/check-chio-pheromone-relay*.sh` and
-  `scripts/check-chio-pheromone-directory-lifecycle.sh` own relay, relay ops,
-  directory lifecycle, observability, and relay alert validation.
+- `cargo xtask check fixtures <relay-facet>` and
+  `cargo xtask check fixtures directory-lifecycle` own relay, relay ops,
+  directory lifecycle, observability, and relay alert validation. The 15
+  pheromone facets are enumerated in `ci-gates/pheromone.toml`.
 - `scripts/check-chio-runtime-spine.sh`, `scripts/check-chio-runtime-policy.sh`,
   `scripts/check-chio-runtime-proof-parity.sh`,
   `scripts/check-chio-runtime-ops-hardening.sh`, and
@@ -683,7 +684,7 @@ when the commitment was signed before revocation; historical verification may
 expose an explicit as-of mode.
 
 Current verification:
-`scripts/check-chio-pheromone-runtime.sh --schema-only` validates a Chio-native
+`cargo xtask check fixtures runtime --schema-only` validates a Chio-native
 trust-floor state against
 `spec/schemas/chio-runtime/v1/trust-floor-state.schema.json`.
 
@@ -992,8 +993,8 @@ Current verification: `runtime_policy_loader_rejects`,
 `mixed_batch_reports_partial_and_invalid_frame_consumes_no_admission_state`,
 `live_deposit_without_scarcity_policy_is_rejected`,
 `scarcity_policy_selection`, `verified_cost_commitment`,
-`scripts/check-chio-pheromone-runtime.sh --schema-only`, and
-`scripts/check-chio-pheromone-runtime.sh --negative-only` pass in this
+`cargo xtask check fixtures runtime --schema-only`, and
+`cargo xtask check fixtures runtime --negative-only` pass in this
 worktree. The negative gate runs public `chio pheromone receive/query` and
 validates replay and wrong-recipient rejection reports.
 
@@ -1150,9 +1151,9 @@ validates replay and wrong-recipient rejection reports.
   `docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md`, and the Chio-named
   relay operator example directory and directory lifecycle workflow; the old
   Chio spec and runbook filenames are compatibility notes only.
-  `scripts/check-chio-pheromone-transit.sh --schema-only` now rejects
+  `cargo xtask check fixtures transit --schema-only` now rejects
   Chio-named references in the active Chio pheromone spec, and
-  `scripts/check-chio-pheromone-relay.sh --schema-only` rejects them in the
+  `cargo xtask check fixtures relay --schema-only` rejects them in the
   active Chio relay runbook. The Chio pheromone directory lifecycle gate also
   rejects legacy naming in active relay fixture details such as relay drill
   reports. Active Chio pheromone gate scripts, workflows, and runtime/relay

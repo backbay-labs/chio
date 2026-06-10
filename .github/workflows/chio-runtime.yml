@@ -1,7 +1,8 @@
 name: Chio Runtime
 
 # Consolidated runtime gate family. Each matrix leg runs one per-capability
-# script under scripts/check-chio-runtime-*.sh.
+# facet via `cargo xtask check fixtures runtime-<capability>` (manifest in
+# ci-gates/runtime.toml, typed handlers in xtask/src/fixtures_runtime*.rs).
 #
 # The GitHub branch ruleset must require the matrix-leg check contexts (e.g.
 # "Chio Runtime / runtime (spine)"), not a single top-level workflow check.
@@ -32,13 +33,10 @@ on:
       - "spec/schemas/chio-runtime/**"
       - "spec/schemas/registry.json"
       - "spec/schemas/MANIFEST.sha256"
-      - "scripts/check-chio-runtime-ops-hardening.sh"
-      - "scripts/check-chio-runtime-orchestration.sh"
-      - "scripts/check-chio-runtime-policy.sh"
-      - "scripts/check-chio-runtime-proof-parity.sh"
-      - "scripts/check-chio-runtime-spine.sh"
       - "scripts/check-chio-runtime-spine-fixtures.sh"
       - "scripts/check-chio-treaty-buyer-hero-loop.sh"
+      - "ci-gates/runtime.toml"
+      - "xtask/**"
       - ".github/workflows/chio-runtime.yml"
   push:
     branches: [main]
@@ -59,13 +57,10 @@ on:
       - "spec/schemas/chio-runtime/**"
       - "spec/schemas/registry.json"
       - "spec/schemas/MANIFEST.sha256"
-      - "scripts/check-chio-runtime-ops-hardening.sh"
-      - "scripts/check-chio-runtime-orchestration.sh"
-      - "scripts/check-chio-runtime-policy.sh"
-      - "scripts/check-chio-runtime-proof-parity.sh"
-      - "scripts/check-chio-runtime-spine.sh"
       - "scripts/check-chio-runtime-spine-fixtures.sh"
       - "scripts/check-chio-treaty-buyer-hero-loop.sh"
+      - "ci-gates/runtime.toml"
+      - "xtask/**"
       - ".github/workflows/chio-runtime.yml"
   workflow_dispatch:
 
@@ -98,4 +93,4 @@ jobs:
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
       - name: Run Chio runtime ${{ matrix.capability }} gate
-        run: bash scripts/check-chio-runtime-${{ matrix.capability }}.sh
+        run: cargo xtask check fixtures runtime-${{ matrix.capability }}

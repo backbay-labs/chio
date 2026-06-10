@@ -37,16 +37,18 @@ Chio now has four distinct gate types:
 
 For the current ship decision, Chio has one primary release gate:
 
-- `./scripts/qualify-bounded-chio.sh`
+- `cargo xtask qualify bounded-chio`
 
-This command is the authoritative bounded Chio ship gate. It records:
+This command is the authoritative bounded Chio ship gate. It asserts, fail-closed,
+the structural contract of the bounded qualification matrix:
 
-- the named bounded operational profile used for release
-- the exact guarantee class for the sensitive surfaces that were previously
-  overclaimed
-- the retained non-claims: no consensus-grade HA, no distributed-linearizable
-  budget authority, no public transparency-log semantics, and no proved
-  market-position thesis
+- the named bounded operational profile used for release exists on disk
+- the matrix declares the bounded release scope and a non-empty, labeled set of
+  gate conditions
+- the matrix entrypoint points at this gate
+- the retained non-claims captured in the matrix: no consensus-grade HA, no
+  distributed-linearizable budget authority, no public transparency-log
+  semantics, and no proved market-position thesis
 
 The strongest honest ship-facing claim Chio can now make is:
 
@@ -69,10 +71,6 @@ That bounded release does **not** qualify:
 The machine-readable gate for this lane is:
 
 - [CHIO_BOUNDED_QUALIFICATION_MATRIX.json](../standards/CHIO_BOUNDED_QUALIFICATION_MATRIX.json)
-
-Its artifact bundle is written to:
-
-- `target/release-qualification/bounded-chio/`
 
 ## Additional Claim-Gate Addenda
 
@@ -150,7 +148,7 @@ Regular workspace lane:
 Release-qualification lane:
 
 ```bash
-./scripts/qualify-bounded-chio.sh
+cargo xtask qualify bounded-chio
 ./scripts/qualify-trust-control.sh
 ./scripts/qualify-release.sh
 ```

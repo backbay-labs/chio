@@ -13,7 +13,8 @@ on:
       - "deploy/prometheus/**"
       - "spec/schemas/chio-pheromone/v1/**"
       - "spec/schemas/registry.json"
-      - "scripts/check-chio-pheromone-relay-alert-routing.sh"
+      - "ci-gates/pheromone.toml"
+      - "xtask/**"
       - ".github/workflows/chio-pheromone-relay-alert-routing.yml"
   push:
     branches: [main]
@@ -28,7 +29,8 @@ on:
       - "deploy/prometheus/**"
       - "spec/schemas/chio-pheromone/v1/**"
       - "spec/schemas/registry.json"
-      - "scripts/check-chio-pheromone-relay-alert-routing.sh"
+      - "ci-gates/pheromone.toml"
+      - "xtask/**"
       - ".github/workflows/chio-pheromone-relay-alert-routing.yml"
 
 permissions:
@@ -50,4 +52,4 @@ jobs:
         working-directory: crates/chio-cli/dashboard
         run: npm ci
       - name: Check Chio pheromone relay alert routing
-        run: bash scripts/check-chio-pheromone-relay-alert-routing.sh
+        run: cargo xtask check fixtures relay-alert-routing

@@ -1,0 +1,469 @@
+# ci-gates/pheromone.toml
+# Single source of truth for the pheromone fixture-and-schema gate cluster.
+# Consumed by `cargo xtask check fixtures <facet>`. Fail-closed: this file MUST
+# enumerate all 15 facets; an unknown facet on the CLI is an error, and the
+# xtask test `manifest_enumerates_all_known_facets` rejects a short manifest.
+#
+# Per-facet imperative steps (CLI orchestration, fixture regen, npm, retired
+# marker guards) live in typed Rust handlers selected by `kind`; this file only
+# carries the tabular data those handlers and the generic handler consume.
+#
+# `schema_check` records the schema-shape assertion each facet's original gate
+# made: "strict-object" requires `type=="object"` and `additionalProperties==false`;
+# "frozen-object" requires `type=="object"` and a present `$id`.
+
+schema_dir = "spec/schemas/chio-pheromone/v1"
+schema_registry = "spec/schemas/registry.json"
+
+[[facet]]
+name = "directory-lifecycle"
+kind = "directory_lifecycle"
+schema_check = "strict-object"
+fixture_dir = "examples/chio-3vendor/fixtures/pheromone/relay"
+schemas = [
+  { id = "chio.pheromone.peer-directory-state.v1", file = "peer-directory-state.schema.json" },
+  { id = "chio.pheromone.peer-directory-rotation-report.v1", file = "peer-directory-rotation-report.schema.json" },
+  { id = "chio.pheromone.relay-supervisor-profile.v1", file = "relay-supervisor-profile.schema.json" },
+  { id = "chio.pheromone.relay-drill-report.v1", file = "relay-drill-report.schema.json" },
+]
+validate = [
+  { schema = "peer-directory.schema.json", doc = "peer-directory.json" },
+  { schema = "peer-directory-bundle.schema.json", doc = "peer-directory-bundle.json" },
+  { schema = "peer-directory-bundle.schema.json", doc = "peer-directory-candidate.json" },
+  { schema = "peer-directory-state.schema.json", doc = "peer-directory-state.json" },
+  { schema = "peer-directory-rotation-report.schema.json", doc = "peer-directory-rotation-report.json" },
+  { schema = "relay-supervisor-profile.schema.json", doc = "relay-supervisor-profile.json" },
+  { schema = "relay-drill-report.schema.json", doc = "relay-drill-report.json" },
+  { schema = "relay-negative-fixture-corpus.schema.json", doc = "negative-cases.json" },
+]
+cargo_tests = [
+  ["-p", "chio-pheromone-relay", "directory"],
+  ["-p", "chio-cli", "--bin", "chio", "chio_pheromone"],
+]
+recurse = [
+  { facet = "relay-ops", mode = "schema-only" },
+]
+
+[[facet]]
+name = "relay-alert-assurance-archive-hardening"
+kind = "generic"
+schema_check = "strict-object"
+fixture_dir = "examples/chio-3vendor/fixtures/pheromone/relay/alert-assurance"
+schemas = [
+  { id = "chio.pheromone.relay-alert-assurance-archive-restore-profile.v1", file = "relay-alert-assurance-archive-restore-profile.schema.json" },
+  { id = "chio.pheromone.relay-alert-assurance-archive-restore-drill-report.v1", file = "relay-alert-assurance-archive-restore-drill-report.schema.json" },
+  { id = "chio.pheromone.relay-alert-assurance-archive-restore-negative-fixture-corpus.v1", file = "relay-alert-assurance-archive-restore-negative-fixture-corpus.schema.json" },
+]
+validate = [
+  { schema = "relay-alert-assurance-archive-restore-profile.schema.json", doc = "relay-alert-assurance-archive-restore-profile.json" },
+  { schema = "relay-alert-assurance-archive-restore-negative-fixture-corpus.schema.json", doc = "relay-alert-assurance-archive-restore-negative-cases.json" },
+]
+cargo_tests = [
+  ["-p", "chio-cli", "guard_archive_hardening"],
+  ["-p", "chio-cli", "conformance_archive_hardening"],
+  ["-p", "chio-pheromone-relay", "relay_alert_assurance_archive", "--test", "relay"],
+]
+
+[[facet]]
+name = "relay-alert-assurance-archive-package"
+kind = "relay_alert_assurance_archive_package"
+schema_check = "strict-object"
+fixture_dir = "examples/chio-3vendor/fixtures/pheromone/relay/alert-assurance"
+schemas = [
+  { id = "chio.pheromone.relay-alert-assurance-archive-package-manifest.v1", file = "relay-alert-assurance-archive-package-manifest.schema.json" },
+  { id = "chio.pheromone.relay-alert-assurance-archive-package-report.v1", file = "relay-alert-assurance-archive-package-report.schema.json" },
+  { id = "chio.pheromone.relay-alert-assurance-trusted-archive-packagers.v1", file = "relay-alert-assurance-trusted-archive-packagers.schema.json" },
+  { id = "chio.pheromone.relay-alert-assurance-archive-extraction-report.v1", file = "relay-alert-assurance-archive-extraction-report.schema.json" },
+  { id = "chio.pheromone.relay-alert-assurance-physical-archive-evidence.v1", file = "relay-alert-assurance-physical-archive-evidence.schema.json" },
+  { id = "chio.pheromone.relay-alert-assurance-physical-archive-drill-report.v1", file = "relay-alert-assurance-physical-archive-drill-report.schema.json" },
+  { id = "chio.pheromone.relay-alert-assurance-retention-handoff-profile.v1", file = "relay-alert-assurance-retention-handoff-profile.schema.json" },
+  { id = "chio.pheromone.relay-alert-assurance-retention-handoff-evidence.v1", file = "relay-alert-assurance-retention-handoff-evidence.schema.json" },
+  { id = "chio.pheromone.relay-alert-assurance-retention-handoff-report.v1", file = "relay-alert-assurance-retention-handoff-report.schema.json" },
+  { id = "chio.pheromone.relay-alert-assurance-archive-package-negative-fixture-corpus.v1", file = "relay-alert-assurance-archive-package-negative-fixture-corpus.schema.json" },
+]
+validate = [
+  { schema = "relay-alert-assurance-trusted-archive-packagers.schema.json", doc = "relay-alert-assurance-trusted-archive-packagers.json" },
+  { schema = "relay-alert-assurance-retention-handoff-profile.schema.json", doc = "relay-alert-assurance-retention-handoff-profile.json" },
+  { schema = "relay-alert-assurance-archive-package-negative-fixture-corpus.schema.json", doc = "relay-alert-assurance-archive-package-negative-cases.json" },
+]
+cargo_tests = [
+  ["-p", "chio-pheromone-relay", "alert_assurance_archive_package", "--test", "relay"],
+  ["-p", "chio-pheromone-relay", "physical_drill", "--test", "relay"],
+  ["-p", "chio-cli", "--bin", "chio", "chio_pheromone_relay_alert_assurance"],
+]
+recurse = [
+  { facet = "relay-alert-assurance-archive", mode = "schema-only" },
+]
+
+[[facet]]
+name = "relay-alert-assurance-archive"
+kind = "relay_alert_assurance_archive"
+schema_check = "strict-object"
+fixture_dir = "examples/chio-3vendor/fixtures/pheromone/relay/alert-assurance"
+schemas = [
+  { id = "chio.pheromone.relay-alert-assurance-archive-profile.v1", file = "relay-alert-assurance-archive-profile.schema.json" },
+  { id = "chio.pheromone.relay-alert-assurance-archive-report.v1", file = "relay-alert-assurance-archive-report.schema.json" },
+  { id = "chio.pheromone.relay-alert-assurance-closeout-profile.v1", file = "relay-alert-assurance-closeout-profile.schema.json" },
+  { id = "chio.pheromone.relay-alert-assurance-closeout-report.v1", file = "relay-alert-assurance-closeout-report.schema.json" },
+  { id = "chio.pheromone.relay-alert-assurance-archive-negative-fixture-corpus.v1", file = "relay-alert-assurance-archive-negative-fixture-corpus.schema.json" },
+]
+validate = [
+  { schema = "relay-alert-assurance-archive-profile.schema.json", doc = "relay-alert-assurance-archive-profile.json" },
+  { schema = "relay-alert-assurance-closeout-profile.schema.json", doc = "relay-alert-assurance-closeout-profile.json" },
+  { schema = "relay-alert-assurance-archive-report.schema.json", doc = "relay-alert-assurance-archive-report.json" },
+  { schema = "relay-alert-assurance-closeout-report.schema.json", doc = "relay-alert-assurance-closeout-report.json" },
+  { schema = "relay-alert-assurance-archive-negative-fixture-corpus.schema.json", doc = "relay-alert-assurance-archive-negative-cases.json" },
+]
+cargo_tests = [
+  ["-p", "chio-pheromone-relay", "alert_assurance_archive", "--test", "relay"],
+  ["-p", "chio-cli", "--bin", "chio", "chio_pheromone"],
+]
+recurse = [
+  { facet = "relay-alert-assurance-export", mode = "schema-only" },
+]
+
+[[facet]]
+name = "relay-alert-assurance-export"
+kind = "relay_alert_assurance_export"
+schema_check = "strict-object"
+fixture_dir = "examples/chio-3vendor/fixtures/pheromone/relay/alert-assurance"
+schemas = [
+  { id = "chio.pheromone.relay-alert-assurance-export-manifest.v1", file = "relay-alert-assurance-export-manifest.schema.json" },
+  { id = "chio.pheromone.relay-alert-assurance-export-report.v1", file = "relay-alert-assurance-export-report.schema.json" },
+  { id = "chio.pheromone.relay-alert-assurance-trusted-exporters.v1", file = "relay-alert-assurance-trusted-exporters.schema.json" },
+  { id = "chio.pheromone.relay-alert-assurance-replay-report.v1", file = "relay-alert-assurance-replay-report.schema.json" },
+  { id = "chio.pheromone.relay-alert-assurance-retention-profile.v1", file = "relay-alert-assurance-retention-profile.schema.json" },
+  { id = "chio.pheromone.relay-alert-assurance-retention-report.v1", file = "relay-alert-assurance-retention-report.schema.json" },
+  { id = "chio.pheromone.relay-alert-assurance-recovery-drill-report.v1", file = "relay-alert-assurance-recovery-drill-report.schema.json" },
+  { id = "chio.pheromone.relay-alert-assurance-export-negative-fixture-corpus.v1", file = "relay-alert-assurance-export-negative-fixture-corpus.schema.json" },
+]
+validate = [
+  { schema = "relay-alert-assurance-export-manifest.schema.json", doc = "export-bundle/manifest.json" },
+  { schema = "relay-alert-assurance-export-report.schema.json", doc = "relay-alert-assurance-export-report.json" },
+  { schema = "relay-alert-assurance-export-report.schema.json", doc = "relay-alert-assurance-export-verify-report.json" },
+  { schema = "relay-alert-assurance-trusted-exporters.schema.json", doc = "relay-alert-assurance-trusted-exporters.json" },
+  { schema = "relay-alert-assurance-replay-report.schema.json", doc = "relay-alert-assurance-replay-report.json" },
+  { schema = "relay-alert-assurance-retention-profile.schema.json", doc = "relay-alert-assurance-retention-profile.json" },
+  { schema = "relay-alert-assurance-retention-report.schema.json", doc = "relay-alert-assurance-retention-report.json" },
+  { schema = "relay-alert-assurance-recovery-drill-report.schema.json", doc = "relay-alert-assurance-recovery-drill-report.json" },
+  { schema = "relay-alert-assurance-export-negative-fixture-corpus.schema.json", doc = "relay-alert-assurance-export-negative-cases.json" },
+]
+cargo_tests = [
+  ["-p", "chio-pheromone-relay", "alert_assurance_export", "--test", "relay"],
+  ["-p", "chio-cli", "--bin", "chio", "chio_pheromone"],
+]
+recurse = [
+  { facet = "relay-alert-assurance", mode = "schema-only" },
+]
+
+[[facet]]
+name = "relay-alert-assurance-external-retention"
+kind = "generic"
+schema_check = "strict-object"
+fixture_dir = "examples/chio-3vendor/fixtures/pheromone/relay/alert-assurance"
+schemas = [
+  { id = "chio.pheromone.relay-alert-assurance-external-retention-profile.v1", file = "relay-alert-assurance-external-retention-profile.schema.json" },
+  { id = "chio.pheromone.relay-alert-assurance-external-retention-review-report.v1", file = "relay-alert-assurance-external-retention-review-report.schema.json" },
+  { id = "chio.pheromone.relay-alert-assurance-external-retention-negative-fixture-corpus.v1", file = "relay-alert-assurance-external-retention-negative-fixture-corpus.schema.json" },
+]
+validate = [
+  { schema = "relay-alert-assurance-external-retention-profile.schema.json", doc = "relay-alert-assurance-external-retention-profile.json" },
+  { schema = "relay-alert-assurance-external-retention-review-report.schema.json", doc = "relay-alert-assurance-external-retention-review-report.json" },
+  { schema = "relay-alert-assurance-external-retention-negative-fixture-corpus.schema.json", doc = "relay-alert-assurance-external-retention-negative-cases.json" },
+]
+cargo_tests = [
+  ["-p", "chio-pheromone-relay", "external_retention_review", "--test", "relay"],
+  ["-p", "chio-cli", "--bin", "chio", "chio_pheromone_relay_alert_assurance"],
+]
+
+[[facet]]
+name = "relay-alert-assurance"
+kind = "relay_alert_assurance"
+schema_check = "strict-object"
+fixture_dir = "examples/chio-3vendor/fixtures/pheromone/relay/alert-assurance"
+schemas = [
+  { id = "chio.pheromone.relay-alert-normalization-profile.v1", file = "relay-alert-normalization-profile.schema.json" },
+  { id = "chio.pheromone.relay-alert-normalization-report.v1", file = "relay-alert-normalization-report.schema.json" },
+  { id = "chio.pheromone.relay-alert-delivery-drift-report.v1", file = "relay-alert-delivery-drift-report.schema.json" },
+  { id = "chio.pheromone.relay-alert-route-owner-profile.v1", file = "relay-alert-route-owner-profile.schema.json" },
+  { id = "chio.pheromone.relay-alert-route-review-packet.v1", file = "relay-alert-route-review-packet.schema.json" },
+  { id = "chio.pheromone.relay-alert-assurance-package.v1", file = "relay-alert-assurance-package.schema.json" },
+  { id = "chio.pheromone.relay-alert-assurance-negative-fixture-corpus.v1", file = "relay-alert-assurance-negative-fixture-corpus.schema.json" },
+]
+validate = [
+  { schema = "relay-alert-normalization-profile.schema.json", doc = "relay-alert-normalization-profile.json" },
+  { schema = "relay-alert-normalization-report.schema.json", doc = "relay-alert-normalization-report.json" },
+  { schema = "relay-alert-delivery-drift-report.schema.json", doc = "relay-alert-delivery-drift-report.json" },
+  { schema = "relay-alert-route-owner-profile.schema.json", doc = "relay-alert-route-owner-profile.json" },
+  { schema = "relay-alert-route-review-packet.schema.json", doc = "relay-alert-route-review-packet.json" },
+  { schema = "relay-alert-assurance-package.schema.json", doc = "relay-alert-assurance-package.json" },
+  { schema = "relay-alert-assurance-negative-fixture-corpus.schema.json", doc = "relay-alert-assurance-negative-cases.json" },
+]
+# A glob of normalized/*.json is validated against relay-alert-delivery-evidence
+# in the handler (the script iterates the directory at runtime).
+validate_glob = [
+  { dir = "normalized", schema = "relay-alert-delivery-evidence.schema.json" },
+]
+cargo_tests = [
+  ["-p", "chio-pheromone-relay", "alert_assurance", "--test", "relay"],
+  ["-p", "chio-cli", "--bin", "chio", "chio_pheromone"],
+]
+needs_dashboard_npm = true
+recurse = [
+  { facet = "relay-alert-delivery", mode = "schema-only" },
+  { facet = "relay-alert-handoff", mode = "schema-only" },
+  { facet = "relay-alert-routing", mode = "schema-only" },
+]
+
+[[facet]]
+name = "relay-alert-delivery"
+kind = "relay_alert_delivery"
+schema_check = "strict-object"
+fixture_dir = "examples/chio-3vendor/fixtures/pheromone/relay"
+schemas = [
+  { id = "chio.pheromone.relay-alert-delivery-profile.v1", file = "relay-alert-delivery-profile.schema.json" },
+  { id = "chio.pheromone.relay-alert-delivery-evidence.v1", file = "relay-alert-delivery-evidence.schema.json" },
+  { id = "chio.pheromone.relay-alert-delivery-report.v1", file = "relay-alert-delivery-report.schema.json" },
+  { id = "chio.pheromone.relay-alert-acknowledgement-report.v1", file = "relay-alert-acknowledgement-report.schema.json" },
+  { id = "chio.pheromone.relay-alert-handoff-drift-report.v1", file = "relay-alert-handoff-drift-report.schema.json" },
+  { id = "chio.pheromone.relay-alert-delivery-negative-fixture-corpus.v1", file = "relay-alert-delivery-negative-fixture-corpus.schema.json" },
+]
+validate = [
+  { schema = "relay-alert-delivery-profile.schema.json", doc = "relay-alert-delivery-profile.json" },
+  { schema = "relay-alert-delivery-report.schema.json", doc = "relay-alert-delivery-report.json" },
+  { schema = "relay-alert-acknowledgement-report.schema.json", doc = "relay-alert-acknowledgement-report.json" },
+  { schema = "relay-alert-handoff-drift-report.schema.json", doc = "relay-alert-handoff-drift-report.json" },
+  { schema = "relay-alert-delivery-negative-fixture-corpus.schema.json", doc = "relay-alert-delivery-negative-cases.json" },
+  { schema = "relay-alert-handoff-report.schema.json", doc = "relay-alert-handoff-report.json" },
+]
+# relay-alert-delivery-evidence-*.json glob in the fixture root.
+validate_glob = [
+  { dir = ".", pattern = "relay-alert-delivery-evidence-*.json", schema = "relay-alert-delivery-evidence.schema.json" },
+]
+cargo_tests = [
+  ["-p", "chio-pheromone-relay", "alert_delivery", "--test", "relay"],
+  ["-p", "chio-cli", "--bin", "chio", "chio_pheromone"],
+]
+needs_dashboard_npm = true
+recurse = [
+  { facet = "relay-alert-handoff", mode = "schema-only" },
+  { facet = "relay-alert-routing", mode = "schema-only" },
+  { facet = "relay-observability", mode = "schema-only" },
+  { facet = "directory-lifecycle", mode = "schema-only" },
+  { facet = "relay-ops", mode = "schema-only" },
+  { facet = "relay", mode = "schema-only" },
+]
+
+[[facet]]
+name = "relay-alert-handoff"
+kind = "relay_alert_handoff"
+schema_check = "strict-object"
+fixture_dir = "examples/chio-3vendor/fixtures/pheromone/relay"
+schemas = [
+  { id = "chio.pheromone.relay-alert-handoff-profile.v1", file = "relay-alert-handoff-profile.schema.json" },
+  { id = "chio.pheromone.relay-alert-handoff-report.v1", file = "relay-alert-handoff-report.schema.json" },
+  { id = "chio.pheromone.relay-alert-drill-report.v1", file = "relay-alert-drill-report.schema.json" },
+  { id = "chio.pheromone.relay-alert-handoff-negative-fixture-corpus.v1", file = "relay-alert-handoff-negative-fixture-corpus.schema.json" },
+]
+validate = [
+  { schema = "relay-alert-handoff-profile.schema.json", doc = "relay-alert-handoff-profile.json" },
+  { schema = "relay-alert-handoff-report.schema.json", doc = "relay-alert-handoff-report.json" },
+  { schema = "relay-alert-drill-report.schema.json", doc = "relay-alert-drill-report.json" },
+  { schema = "relay-alert-handoff-negative-fixture-corpus.schema.json", doc = "relay-alert-handoff-negative-cases.json" },
+  { schema = "relay-alert-report.schema.json", doc = "relay-alert-report.json" },
+  { schema = "relay-trend-report.schema.json", doc = "relay-trend-report.json" },
+  { schema = "relay-alert-routing-profile.schema.json", doc = "relay-alert-routing-profile.json" },
+]
+cargo_tests = [
+  ["-p", "chio-pheromone-relay", "alert_handoff", "--test", "relay"],
+  ["-p", "chio-cli", "--bin", "chio", "chio_pheromone"],
+]
+needs_dashboard_npm = true
+recurse = [
+  { facet = "relay-alert-routing", mode = "schema-only" },
+  { facet = "relay-observability", mode = "schema-only" },
+  { facet = "directory-lifecycle", mode = "schema-only" },
+  { facet = "relay-ops", mode = "schema-only" },
+  { facet = "relay", mode = "schema-only" },
+]
+
+[[facet]]
+name = "relay-alert-routing"
+kind = "relay_alert_routing"
+schema_check = "strict-object"
+fixture_dir = "examples/chio-3vendor/fixtures/pheromone/relay"
+schemas = [
+  { id = "chio.pheromone.relay-alert-routing-profile.v1", file = "relay-alert-routing-profile.schema.json" },
+  { id = "chio.pheromone.relay-alert-report.v1", file = "relay-alert-report.schema.json" },
+  { id = "chio.pheromone.relay-alert-suppression-state.v1", file = "relay-alert-suppression-state.schema.json" },
+  { id = "chio.pheromone.relay-trend-report.v1", file = "relay-trend-report.schema.json" },
+  { id = "chio.pheromone.relay-alert-negative-fixture-corpus.v1", file = "relay-alert-negative-fixture-corpus.schema.json" },
+]
+validate = [
+  { schema = "relay-alert-routing-profile.schema.json", doc = "relay-alert-routing-profile.json" },
+  { schema = "relay-alert-suppression-state.schema.json", doc = "relay-alert-suppression-state.json" },
+  { schema = "relay-alert-report.schema.json", doc = "relay-alert-report.json" },
+  { schema = "relay-trend-report.schema.json", doc = "relay-trend-report.json" },
+  { schema = "relay-alert-negative-fixture-corpus.schema.json", doc = "relay-alert-negative-cases.json" },
+  { schema = "relay-event-report.schema.json", doc = "relay-event-dead-letter-report.json" },
+]
+cargo_tests = [
+  ["-p", "chio-pheromone-relay", "alert"],
+  ["-p", "chio-cli", "--bin", "chio", "chio_pheromone"],
+  ["-p", "chio-metrics-spec"],
+]
+sre_metrics_registry = true
+needs_dashboard_npm = true
+recurse = [
+  { facet = "relay-observability", mode = "schema-only" },
+  { facet = "directory-lifecycle", mode = "schema-only" },
+  { facet = "relay-ops", mode = "schema-only" },
+  { facet = "relay", mode = "schema-only" },
+]
+
+[[facet]]
+name = "relay-observability"
+kind = "relay_observability"
+schema_check = "strict-object"
+fixture_dir = "examples/chio-3vendor/fixtures/pheromone/relay"
+schemas = [
+  { id = "chio.pheromone.relay-observability-report.v1", file = "relay-observability-report.schema.json" },
+  { id = "chio.pheromone.relay-metrics-snapshot.v1", file = "relay-metrics-snapshot.schema.json" },
+  { id = "chio.pheromone.relay-event-report.v1", file = "relay-event-report.schema.json" },
+]
+validate = [
+  { schema = "relay-observability-report.schema.json", doc = "relay-observability-report.json" },
+  { schema = "relay-observability-report.schema.json", doc = "relay-observability-degraded-report.json" },
+  { schema = "relay-metrics-snapshot.schema.json", doc = "relay-metrics-snapshot.json" },
+  { schema = "relay-event-report.schema.json", doc = "relay-event-report.json" },
+  { schema = "relay-negative-fixture-corpus.schema.json", doc = "negative-cases.json" },
+]
+cargo_tests = [
+  ["-p", "chio-pheromone-relay", "observability"],
+  ["-p", "chio-cli", "--bin", "chio", "chio_pheromone"],
+  ["-p", "chio-metrics-spec"],
+]
+sre_metrics_registry = true
+needs_dashboard_npm = true
+recurse = [
+  { facet = "directory-lifecycle", mode = "schema-only" },
+  { facet = "relay-ops", mode = "schema-only" },
+  { facet = "relay", mode = "schema-only" },
+]
+
+[[facet]]
+name = "relay-ops"
+kind = "relay_ops"
+schema_check = "strict-object"
+fixture_dir = "examples/chio-3vendor/fixtures/pheromone/relay"
+schemas = [
+  { id = "chio.pheromone.peer-directory-bundle.v1", file = "peer-directory-bundle.schema.json" },
+  { id = "chio.pheromone.relay-health-report.v1", file = "relay-health-report.schema.json" },
+]
+validate = [
+  { schema = "peer-directory.schema.json", doc = "peer-directory.json" },
+  { schema = "relay-operator-report.schema.json", doc = "operator-report.json" },
+  { schema = "relay-health-report.schema.json", doc = "health-report.json" },
+  { schema = "relay-tick-report.schema.json", doc = "tick-report.json" },
+  { schema = "relay-negative-fixture-corpus.schema.json", doc = "negative-cases.json" },
+]
+cargo_tests = [
+  ["-p", "chio-pheromone-relay", "signed_peer_directory_bundle_verifies_trust_and_rejects_rollback"],
+  ["-p", "chio-pheromone-relay", "relay_profiles_reject_unsafe_production_endpoints"],
+  ["-p", "chio-pheromone-relay", "relay_tick_delivers_leased_batches_with_real_request_signature"],
+  ["-p", "chio-cli", "--bin", "chio", "chio_pheromone"],
+]
+recurse = [
+  { facet = "relay", mode = "schema-only" },
+]
+
+[[facet]]
+name = "relay"
+kind = "relay"
+schema_check = "frozen-object"
+fixture_dir = "examples/chio-3vendor/fixtures/pheromone/relay"
+schemas = [
+  { id = "chio.pheromone.peer-directory.v1", file = "peer-directory.schema.json" },
+  { id = "chio.pheromone.relay-config.v1", file = "relay-config.schema.json" },
+  { id = "chio.pheromone.relay-http-request.v1", file = "relay-http-request.schema.json" },
+  { id = "chio.pheromone.relay-tick-report.v1", file = "relay-tick-report.schema.json" },
+  { id = "chio.pheromone.relay-operator-report.v1", file = "relay-operator-report.schema.json" },
+  { id = "chio.pheromone.catchup-request.v1", file = "catchup-request.schema.json" },
+  { id = "chio.pheromone.catchup-response.v1", file = "catchup-response.schema.json" },
+  { id = "chio.pheromone.relay-negative-fixture-corpus.v1", file = "relay-negative-fixture-corpus.schema.json" },
+]
+validate = [
+  { schema = "peer-directory.schema.json", doc = "peer-directory.json" },
+  { schema = "relay-operator-report.schema.json", doc = "operator-report.json" },
+  { schema = "relay-tick-report.schema.json", doc = "tick-report.json" },
+  { schema = "catchup-request.schema.json", doc = "catchup-request.json" },
+  { schema = "catchup-response.schema.json", doc = "catchup-response.json" },
+  { schema = "relay-negative-fixture-corpus.schema.json", doc = "negative-cases.json" },
+]
+cargo_tests = [
+  ["-p", "chio-cli", "--bin", "chio", "chio_pheromone"],
+]
+recurse = [
+  { facet = "runtime", mode = "all" },
+]
+
+[[facet]]
+name = "runtime"
+kind = "runtime"
+schema_check = "frozen-object"
+fixture_dir = "examples/chio-3vendor/fixtures/pheromone"
+schemas = [
+  { id = "chio.pheromone-deposit.v1", file = "deposit.schema.json" },
+  { id = "chio.pheromone-cost-commitment.v1", file = "cost-commitment.schema.json" },
+  { id = "chio.pheromone-observation-cost-statement.v1", file = "observation-cost-statement.schema.json" },
+  { id = "chio.pheromone-observation-cost-telemetry-root.v1", file = "observation-cost-telemetry-root.schema.json" },
+  { id = "chio.pheromone-observation-cost-leaf.v1", file = "observation-cost-leaf.schema.json" },
+  { id = "chio.pheromone-observation-cost-verifier-root.v1", file = "observation-cost-verifier-root.schema.json" },
+  { id = "chio.runtime.trust-floor-state.v1", file = "spec/schemas/chio-runtime/v1/trust-floor-state.schema.json" },
+  { id = "chio.pheromone-scarcity-policy.v1", file = "scarcity-policy.schema.json" },
+  { id = "chio.pheromone-scarcity-window-id.v1", file = "scarcity-window-id.schema.json" },
+  { id = "chio.pheromone.receive-report.v1", file = "receive-report.schema.json" },
+  { id = "chio.pheromone.query-report.v1", file = "query-report.schema.json" },
+  { id = "chio.pheromone.peer-weights.v1", file = "peer-weights.schema.json" },
+]
+validate = [
+  { schema = "transit-policy.schema.json", doc = "transit-policy.json" },
+  { schema = "receive-report.schema.json", doc = "receive-report.json" },
+  { schema = "query-report.schema.json", doc = "query-report.json" },
+  { schema = "peer-weights.schema.json", doc = "peer-weights.json" },
+]
+cargo_tests = [
+  ["-p", "chio-pheromone-runtime"],
+  ["-p", "chio-cli", "--bin", "chio", "chio_pheromone"],
+]
+recurse = [
+  { facet = "transit", mode = "all" },
+]
+
+[[facet]]
+name = "transit"
+kind = "transit"
+schema_check = "frozen-object"
+fixture_dir = "examples/chio-3vendor/fixtures/pheromone"
+schemas = [
+  { id = "chio.pheromone-deposit.v1", file = "deposit.schema.json" },
+  { id = "chio.pheromone-cost-commitment.v1", file = "cost-commitment.schema.json" },
+  { id = "chio.pheromone-scarcity-policy.v1", file = "scarcity-policy.schema.json" },
+  { id = "chio.pheromone-workflow-context.v1", file = "workflow-context.schema.json" },
+  { id = "chio.pheromone-deposit-gossip.v1", file = "gossip.schema.json" },
+  { id = "chio.pheromone-batch.v1", file = "batch.schema.json" },
+  { id = "chio.pheromone-concentration.v1", file = "concentration.schema.json" },
+  { id = "chio.pheromone-transit-policy.v1", file = "transit-policy.schema.json" },
+  { id = "chio.pheromone.negative-fixture-corpus.v1", file = "negative-fixture-corpus.schema.json" },
+]
+validate = [
+  { schema = "deposit.schema.json", doc = "deposit.json" },
+  { schema = "batch.schema.json", doc = "gossip-batch.json" },
+  { schema = "transit-policy.schema.json", doc = "transit-policy.json" },
+  { schema = "concentration.schema.json", doc = "concentration.json" },
+  { schema = "negative-fixture-corpus.schema.json", doc = "negative-cases.json" },
+]
+cargo_tests = [
+  ["-p", "chio-pheromone"],
+  ["-p", "chio-federation", "pheromone"],
+]

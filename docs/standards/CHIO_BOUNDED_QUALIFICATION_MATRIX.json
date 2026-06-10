@@ -76,18 +76,5 @@
       ]
     }
   ],
-  "artifactBundle": {
-    "root": "target/release-qualification/bounded-chio",
-    "requiredFiles": [
-      "artifact-manifest.json",
-      "qualification-report.md",
-      "CHIO_BOUNDED_QUALIFICATION_MATRIX.json",
-      "CHIO_BOUNDED_OPERATIONAL_PROFILE.md",
-      "bounded-chio-pre-ship-checklist.md",
-      "SHA256SUMS",
-      "logs/doc-claim-discipline.log",
-      "logs/planning-truth.log"
-    ]
-  },
-  "entrypoint": "./scripts/qualify-bounded-chio.sh"
+  "entrypoint": "cargo xtask qualify bounded-chio"
 }
