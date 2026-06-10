@@ -1,7 +1,7 @@
 /*
  * Chio C++ kernel FFI ABI.
  *
- * This header is generated from crates/chio-cpp-kernel-ffi with cbindgen.
+ * This header is generated from crates/sdk/chio-cpp-kernel-ffi with cbindgen.
  * The ABI is intentionally narrow: JSON strings in, JSON strings out, and
  * explicit Rust-owned buffer release.
  */
