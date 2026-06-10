@@ -1,6 +1,6 @@
 //! Chio hardware custody surface.
 //!
-//! The crate lands the WebAuthn assertion verifier surface, the
+//! The crate owns the WebAuthn assertion verifier surface, the
 //! audience-pinned `PasskeyCapability` envelope, and an issuer service
 //! that signs every capability it mints through its signing backend
 //! (`Ed25519Backend`, the FIPS P-256/P-384 backends, or `HybridBackend`

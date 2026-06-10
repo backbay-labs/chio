@@ -19,7 +19,7 @@
 //!
 //! # Async discipline
 //!
-//! This module introduces NO `&mut self` on the verifier surface.
+//! The verifier surface takes no `&mut self`.
 //! `PasskeyCapabilityVerifier::verify` takes `&self` so it can be shared
 //! behind an `Arc<>` and consumed concurrently from the async kernel.
 

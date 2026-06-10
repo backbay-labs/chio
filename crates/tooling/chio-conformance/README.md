@@ -57,7 +57,7 @@ The C++ and Go peers are built from sources outside the crate (the C++
 peer lives under `sdks/cpp/chio-cpp/`, the Go peer under
 `sdks/go/chio-go/`) and are only available when the crate is consumed
 in-repo. External consumers should drive their own peer binaries via the
-`ConformanceRunOptions` API or the upcoming `chio conformance fetch-peers`
+`ConformanceRunOptions` API or the `chio conformance fetch-peers`
 subcommand.
 
 ## Peer language coverage

@@ -1,7 +1,7 @@
 //! Portable passport verification.
 //!
-//! This module is the "the WASM-compiled kernel verifies the passport"
-//! surface. It is pure compute over a minimal portable passport
+//! The WASM-compiled kernel verifies passports through this surface. It is
+//! pure compute over a minimal portable passport
 //! envelope: given bytes on the wire, a trusted authority key set, and a
 //! clock, it answers "is this envelope signed by a trusted authority,
 //! well-formed, and currently inside its validity window?".

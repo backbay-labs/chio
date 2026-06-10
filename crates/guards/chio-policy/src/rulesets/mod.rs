@@ -4,9 +4,6 @@
 //! `include_str!()`. The rulesets provide curated starting points operators
 //! can extend from (e.g. `extends: chio:strict`) without shipping YAML files
 //! alongside their deployment.
-//!
-//! The set provides curated base rulesets so operators can adopt a sensible
-//! starting policy without authoring one from scratch.
 
 use crate::compiler::{compile_policy, CompileError, CompiledPolicy};
 use crate::models::HushSpec;

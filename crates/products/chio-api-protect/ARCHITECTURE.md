@@ -40,16 +40,15 @@ human approval workflows.
 - `src/error.rs` is the product error surface. It maps library failures into
   operator-visible errors without exposing secrets.
 
-## Pain Points
+## Structural Notes
 
-- Caller identity extraction exists in both `evaluator.rs` and `proxy/http.rs`.
-  Divergence here changes signed receipt caller hashes
-  depending on which product path handled the request.
-- `proxy.rs` still acts as a large integration-test container. That is
-  acceptable for now because the tests exercise product routes end to end, but
-  production code should stay in the focused `src/proxy/*` modules.
-- Sidecar compatibility routes serve multiple SDK shapes. Tight validation is
-  preferable to silently normalizing malformed authorization material.
+- Caller identity extraction is shared: `proxy/http.rs` calls
+  `evaluator::caller_identity_from_headers` so signed receipt caller hashes do
+  not depend on which product path handled the request.
+- `proxy.rs` is a large integration-test container that exercises product routes
+  end to end; production code stays in the focused `src/proxy/*` modules.
+- Sidecar compatibility routes serve multiple SDK shapes with tight validation
+  rather than silently normalizing malformed authorization material.
 
 ## Security And API Constraints
 
@@ -65,7 +64,7 @@ human approval workflows.
   exported `ProtectConfig`, `ProtectProxy`, `RequestEvaluator`, and discovery
   helpers must keep their existing signatures unless separately approved.
 
-## Affected Dependents
+## Dependents
 
 - `chio-cli` invokes this crate for `chio api protect` and `chio start`.
 - SDK compatibility routes are exercised by Python and controller integrations
@@ -75,18 +74,11 @@ human approval workflows.
   parsing, and durable stores. This crate should adapt to them, not duplicate
   their protocol logic.
 
-## Planned Improvement
+## Header Lookup
 
-The caller identity helper is now shared by proxy and evaluator paths, but the
-underlying header map lookups still recognize only selected spellings such as
-`Authorization`, `authorization`, `X-Chio-Capability`, and
-`x-chio-capability`. HTTP header names are case-insensitive, so this product
-boundary must use one case-insensitive lookup for caller credentials,
-capability transport, revocation preflight, and upstream header scrubbing.
-
-Planned improvement for this slice: introduce a shared case-insensitive header
-lookup inside the evaluator/proxy boundary and route all Chio authorization
-header decisions through it. This is architectural rather than cosmetic because
-header spelling currently changes whether a side-effect request is authorized,
-which caller identity hash is signed into the receipt, and whether Chio
-transport credentials can be recognized consistently before forwarding.
+HTTP header names are case-insensitive, so the evaluator/proxy boundary routes
+all Chio authorization header decisions through one case-insensitive lookup
+covering caller credentials, capability transport, revocation preflight, and
+upstream header scrubbing. Header spelling therefore does not change whether a
+side-effect request is authorized, which caller identity hash is signed into the
+receipt, or whether Chio transport credentials are recognized before forwarding.

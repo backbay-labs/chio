@@ -26,10 +26,9 @@
 //! - internal mutex poisoning -> `Verdict::Deny` (fail-closed);
 //! - unrecognised [`ToolAction`] -> `Verdict::Allow` (guard does not apply).
 //!
-//! The guard is NOT registered in [`crate::GuardPipeline::default_pipeline`]
-//! by design: it is opt-in so existing guards remain
-//! unaffected.  Callers can register it explicitly via
-//! `kernel.add_guard(Box::new(PromptInjectionGuard::default()))` or include
+//! The guard is opt-in: it is NOT registered in
+//! [`crate::GuardPipeline::default_pipeline`].  Callers register it explicitly
+//! via `kernel.add_guard(Box::new(PromptInjectionGuard::default()))` or include
 //! it in a bespoke pipeline.
 
 use std::num::NonZeroUsize;

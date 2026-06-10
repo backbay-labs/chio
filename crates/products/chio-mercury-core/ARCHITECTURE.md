@@ -22,20 +22,19 @@ publication claims while leaving command orchestration to `chio-mercury`.
 - `fixtures.rs` provides public sample artifacts for CLI and integration tests.
   It must remain obviously valid under the same validators as real packages.
 
-## Pain Points
+## Validation
 
-- Foundational string validation is duplicated across modules. Some paths reject
-  padded identifiers while others only reject empty values, so deserialized
-  evidence can carry canonical-byte-relevant whitespace that generated builders
-  would never emit.
-- `lib.rs` is a broad re-export surface. That is acceptable for compatibility,
-  but it makes module-local validation drift harder to see.
-- The crate has only a small public smoke test even though proof-package
+- Foundational string validation routes through a shared internal boundary used
+  by the metadata, bundle, and proof-package contracts. Optional business
+  identifiers on `MercuryWorkflowIdentifiers` (account, desk, strategy, release,
+  rollback, exception, inquiry) must be absent or clean, never empty or padded,
+  so deserialized evidence cannot carry canonical-byte-relevant whitespace that
+  generated builders never emit.
+- `lib.rs` is a broad re-export surface, which keeps compatibility but makes
+  module-local validation drift harder to see.
+- The crate carries a small public smoke test even though proof-package
   validation carries receipt, checkpoint, publication, and rendered-export
   trust semantics.
-- There is no dedicated MERCURY README in the crate. Product context is
-  currently inferred from `docs/operations/STRATEGIC_ROADMAP.md` and the
-  Chio-Wall boundary docs.
 
 ## Security And API Constraints
 
@@ -52,21 +51,11 @@ publication claims while leaving command orchestration to `chio-mercury`.
   CLI changes should be transitive only when a core boundary change makes them
   necessary.
 
-## Affected Dependents
+## Dependents
 
 - `crates/products/chio-mercury` exports and validates MERCURY product packages through
   these contracts.
 - Chio evidence export, checkpoint, and receipt crates are upstream inputs to
-  proof package verification, but this slice should not move their semantics.
+  proof package verification; their semantics stay in those crates.
 - Downstream product docs and generated package files rely on stable schema
   names, field names, and canonical digest behavior.
-
-## Planned Improvement
-
-Introduce a small internal validation boundary for foundational MERCURY string
-fields and use it in the metadata, bundle, and proof-package contracts. The
-current slice hardens `MercuryWorkflowIdentifiers`: optional business
-identifiers such as account, desk, strategy, release, rollback, exception, and
-inquiry IDs must be absent or clean, never present as empty or padded strings.
-Builders already emit clean values, so accepting padded deserialized identifiers
-only weakens verification and creates divergent canonical bytes.

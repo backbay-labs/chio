@@ -10,7 +10,7 @@ The crate boundary is intentionally small: `DidChio` parses and renders canonica
 
 ## Trust Invariants
 
-The security constraint is that resolver metadata must not weaken the self-certifying identifier. Service URLs are public trust hints, so they must be syntactically valid and transport-safe before entering a DID Document.
+The security constraint is that resolver metadata must not weaken the self-certifying identifier. Service URLs are public trust hints, so they must be syntactically valid and transport-safe before entering a DID Document. Non-HTTPS service endpoints are rejected at construction time so receipt-log and passport-status services cannot advertise plaintext or local file endpoints.
 
 ## Dependent Surfaces
 
@@ -19,7 +19,3 @@ Credential, federation, governance, and reputation code can treat resolved `did:
 ## Verification Focus
 
 Tests should cover canonical identifier round trips, invalid key material, service URL scheme validation, service type validation, and document rendering that preserves the key-derived verification method.
-
-## Improvement Target
-
-Planned improvement: reject non-HTTPS service endpoints at construction time so receipt-log and passport-status services cannot advertise plaintext or local file endpoints.

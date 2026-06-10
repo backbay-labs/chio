@@ -16,9 +16,9 @@ The trust boundary is pre-chain and post-chain determinism. Inputs from policies
 
 `chio-web3` defines the contract artifact shapes, while `chio-credit`, `chio-market`, and receipt projection surfaces depend on this crate to preserve settlement identity after execution. Any validation change must keep prepared artifact bytes, retry keys, and reconciliation receipts stable for already-signed settlement flows.
 
-## Current Hardening
+## x402 Requirement Validation
 
-Current hardening: x402 public payment requirements reject blank or whitespace-bearing facilitator, resource, and accepted-token fields before those values can be advertised to callers.
+x402 public payment requirements reject blank or whitespace-bearing facilitator, resource, and accepted-token fields before those values can be advertised to callers.
 
 ## Verification Focus
 

@@ -3,9 +3,8 @@
 // The full extension only runs inside a VSCode host, so these tests
 // pin the LSP client wiring helpers (`buildServerOptions`,
 // `buildClientOptions`, `buildDocumentSelector`) without booting an
-// editor. Diagnostic-flow assertions across the live `chio-lsp`
-// binary are wired in as a follow-on once a VSCode integration host
-// is available in CI.
+// editor. They do not exercise diagnostic flow across the live
+// `chio-lsp` binary, which requires a VSCode integration host.
 
 import { describe, expect, it } from "vitest";
 

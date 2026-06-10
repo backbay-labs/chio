@@ -10,11 +10,7 @@ The crate is split into schema and canonical JSON handling in `card`, cosign bun
 
 ## Trust Invariants
 
-The trust boundary is card acceptance. A successful public verifier result means the card bytes were canonical, the structure was valid, the cosign bundle verified against the exact bytes, the issuer matched the verified certificate identity, the card was live at verifier time, and any lineage anchor digest covered the canonical card bytes plus attestation metadata.
-
-## Current Hardening
-
-Current hardening: capability and banned-tool set entries now reject blank or surrounding-whitespace values in both deserialization and post-construction validation, so malformed scope identifiers cannot be signed into otherwise valid model cards.
+The trust boundary is card acceptance. A successful public verifier result means the card bytes were canonical, the structure was valid, the cosign bundle verified against the exact bytes, the issuer matched the verified certificate identity, the card was live at verifier time, and any lineage anchor digest covered the canonical card bytes plus attestation metadata. Capability and banned-tool set entries reject blank or surrounding-whitespace values in both deserialization and post-construction validation, so malformed scope identifiers cannot be signed into otherwise valid model cards.
 
 ## Verification Focus
 

@@ -1,6 +1,6 @@
 //! Compliance scoring built on top of `ComplianceReport`.
 //!
-//! Productizes the existing [`crate::operator_report::ComplianceReport`]
+//! Projects a [`crate::operator_report::ComplianceReport`]
 //! into a user-facing 0..=1000 score with weighted factors:
 //!
 //! | Factor                   | Max points | Signal                                   |
@@ -14,9 +14,9 @@
 //! Weights sum to 1000. Each factor produces a 0..=max deduction; the
 //! final score is `1000 - total_deductions`, clamped to `[0, 1000]`.
 //!
-//! This module is additive: it consumes a [`ComplianceReport`] without
-//! modifying its fields. Callers who already materialize a compliance
-//! report reuse its figures verbatim.
+//! Scoring consumes a [`ComplianceReport`] without modifying its fields.
+//! Callers who already materialize a compliance report reuse its figures
+//! verbatim.
 
 use serde::{Deserialize, Serialize};
 

@@ -10,12 +10,8 @@ The crate is split into assertion verification, capability canonicalization, sig
 
 ## Trust Invariants
 
-The security constraint is hardware assertion freshness. Credential ids, challenge nonces, audience pins, scope sets, expiry timestamps, revocation subjects, and detached signatures must remain canonical and unambiguous across verifier, issuer, nonce-store, and kernel checks.
+The security constraint is hardware assertion freshness. Credential ids, challenge nonces, audience pins, scope sets, expiry timestamps, revocation subjects, and detached signatures must remain canonical and unambiguous across verifier, issuer, nonce-store, and kernel checks. The issuer boundary rejects non-base64url credential ids and challenge nonces even when no replay nonce store is attached, so malformed WebAuthn transport material cannot be signed into a capability.
 
 ## Verification Focus
 
 Tests should cover malformed WebAuthn transport material, replay nonce absence and presence, revoked credentials, rate-limit ordering, audience-pin mismatches, and signing backend failures that must not leak partially minted capabilities.
-
-## Improvement Target
-
-Planned improvement: reject non-base64url credential ids and challenge nonces at the issuer boundary even when no replay nonce store is attached, so malformed WebAuthn transport material cannot be signed into a capability.

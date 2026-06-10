@@ -15,16 +15,16 @@ platform claims.
 - `docs/chio-wall/*` owns product scope, supported claims, output layout, and
   non-claims for the bounded buyer motion.
 
-## Pain Points
+## Validation
 
-- `ChioWallControlPackage::validate` now requires the complete bounded artifact
-  set described in `docs/chio-wall/VALIDATION_PACKAGE.md`, but the foundational
-  string validators still allow embedded control characters.
-- List validators reject empty allowlist entries, but they do not yet reject
-  padded or control-bearing entries that would be invalid as stable package
-  identifiers and reviewer-facing evidence fields.
-- The crate intentionally has a small surface, so validation drift tends to
-  concentrate in helper functions rather than module boundaries.
+- `ChioWallControlPackage::validate` requires the complete bounded artifact set
+  described in `docs/chio-wall/VALIDATION_PACKAGE.md`.
+- Scalar fields that reject empty and padded values also reject control
+  characters. Non-empty string lists reject empty, padded, and control-bearing
+  entries so package identifiers and reviewer-facing evidence fields stay stable
+  single-line values.
+- The crate has a small surface, so validation concentrates in shared helper
+  functions rather than module boundaries.
 
 ## Security And API Constraints
 
@@ -37,17 +37,10 @@ platform claims.
   validate package contracts; the CLI remains responsible for writing files and
   exporting Chio evidence.
 
-## Affected Dependents
+## Dependents
 
 - `crates/products/chio-wall` exports and validates packages through these core types.
 - `docs/chio-wall/VALIDATION_PACKAGE.md` defines the artifact layout the core
-  validator should enforce.
+  validator enforces.
 - Tests under `crates/products/chio-wall/tests` are the dependent gate for CLI-generated
   packages.
-
-## Planned Improvement
-
-Harden foundational string validation across the Chio-Wall contracts. Scalar
-fields that already reject empty and padded values must also reject control
-characters, and non-empty string lists must reject padded or control-bearing
-entries before package data reaches CLI artifact generation or reviewer output.

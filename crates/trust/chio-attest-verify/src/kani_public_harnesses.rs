@@ -11,8 +11,6 @@
 //! - `<TdxDcapVerifier as QuoteVerifier>::verify_quote` (impl at
 //!   `src/tdx.rs:159`).
 //!
-//! # Bound parameters
-//!
 //! # Anti-pattern guard
 //!
 //! Every `#[kani::proof]` function in this module either calls a real
@@ -25,8 +23,6 @@
 //! helper.
 //!
 //! # Honesty boundary: what "model" harnesses actually prove
-//!
-//! Model-only scope note:
 //!
 //! - The `public_expect_report_data_determinism_under_input_change`
 //!   harness exercises a real production `pub fn`

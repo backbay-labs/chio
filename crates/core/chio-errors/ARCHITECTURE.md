@@ -21,20 +21,25 @@ metadata when a registry entry exists.
 - `_generated::error_codes` is generated from `spec/errors/registry.yaml` by
   `chio-spec-codegen` and must not be edited directly.
 
-## Pain Points
+## Registry Binding
 
-- Registry entries already carry canonical URN, domain, severity, summary, help,
-  stability, string-code, and JSON-RPC metadata.
-- Registry-bound constructors now centralize the common
-  `ErrorCodeSpec` plus caller message path, but free-form constructors can still
-  create a diagnostic whose code is a registered URN while its domain or
-  severity disagrees with the registry.
-- A code-only registry lookup is useful for hovers and direct registry queries,
-  but treating a mismatched diagnostic as registry-bound can attach stable
-  string-code, stability, or help metadata to a contradictory local error.
-- Generated lookup helpers are intentionally simple. Non-generated diagnostic
-  APIs should own the stronger "is this diagnostic actually bound to the
-  registry entry it names" rule.
+Registry entries carry canonical URN, domain, severity, summary, help,
+stability, string-code, and JSON-RPC metadata. Two binding paths exist, and the
+ownership boundary between them is deliberate:
+
+- `lookup_error_code` is a raw code-keyed registry query, useful for hovers and
+  direct lookups.
+- `Diagnostic::registry_spec` and `ChioError::registry_spec` are verified
+  bindings: they return a registry entry only when the diagnostic's code,
+  domain, and severity all match that entry. A free-form constructor can build
+  a diagnostic whose code is a registered URN while its domain or severity
+  disagrees with the registry; the verified binding rejects that case rather
+  than attaching stable string-code, stability, or help metadata to a
+  contradictory local error.
+
+Generated lookup helpers stay simple by code alone. The non-generated
+diagnostic API owns the stronger "is this diagnostic actually bound to the
+registry entry it names" rule.
 
 ## Security And API Constraints
 
@@ -54,18 +59,6 @@ metadata when a registry entry exists.
 Direct dependents include `chio-cli`, `chio-control-plane`, and `chio-lsp`.
 Downstream consumers through `chio-control-plane` include `chio-hosted-mcp`,
 `chio-mcp-remote`, `chio-conformance`, `chio-mercury`, and `chio-wall`.
-The diagnostic API keeps its return type, but `chio-control-plane` reporting
-must use the verified method so it does not attach registry metadata to a
-mismatched diagnostic by raw code alone.
-
-## Planned Improvement
-
-Make diagnostic registry binding verified rather than code-only. Keep
-`lookup_error_code` available for direct registry lookup, but make
-`Diagnostic::registry_spec` and `ChioError::registry_spec` return a registry
-entry only when the diagnostic code, domain, and severity all match that entry.
-
-This is architectural because it defines the ownership boundary between raw
-registry queries and typed diagnostic binding. Dependents that report
-`ChioError` metadata should use the verified method instead of reattaching
-registry metadata by code alone.
+`chio-control-plane` reporting must use the verified `registry_spec` method so
+it does not attach registry metadata to a mismatched diagnostic by raw code
+alone.

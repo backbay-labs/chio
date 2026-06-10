@@ -41,10 +41,3 @@ crates such as `chio-store-sqlite`.
   bonds, and receipt evidence must preserve canonical bytes and verification
   semantics.
 - Public kernel and receipt-store APIs should remain unchanged.
-
-## Improvement In This Slice
-
-Split governed-admission validators out of `kernel/validation.rs` into
-`kernel/governed_validation.rs` without changing method visibility or call
-sites. The remaining validation module now stays focused on capability,
-portable verdict, and budget validation.

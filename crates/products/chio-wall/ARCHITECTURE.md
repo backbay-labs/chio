@@ -14,15 +14,24 @@ creation, SQLite-backed evidence export, and validation-package rendering.
 - `docs/chio-wall/*` defines the bounded product claim, required output layout,
   fail-closed operations, and deferred scope.
 
-## Pain Points
+## Post-Write Reconciliation
 
-- The export path validates in-memory objects before writing them, but the CLI
-  reports success without reading the completed package back from disk.
-- The operations runbook says the package is incomplete if files are missing,
-  inconsistent, or unresolved. That is a wrapper-owned invariant because only
-  the CLI sees the final file layout and Chio evidence directory.
-- `commands.rs` is large because it currently mixes object construction,
-  evidence export, file writes, output summaries, and tests in one module.
+`export_control_path` does not report success on in-memory validation alone.
+After writing the control-path package and Chio evidence export,
+`verify_control_path_export` reads the package back from disk, validates the
+typed contracts, verifies cross-file consistency, and fails before printing
+success if any required artifact or evidence directory is missing. Package-layout
+completeness is a wrapper-owned invariant because only the CLI sees the final
+file layout and Chio evidence directory.
+
+Reconciliation also closes the package root: `ensure_only_expected_package_entries`
+fails if the output root contains any undeclared top-level entry, so the
+transient SQLite receipt database or any stray artifact cannot leave material
+outside the declared control-path contract. Evidence-export internals stay scoped
+inside `chio-evidence`; only the Chio-Wall package root is closed.
+
+`commands.rs` is large because it mixes object construction, evidence export,
+file writes, output summaries, and tests in one module.
 
 ## Security And API Constraints
 
@@ -37,40 +46,9 @@ creation, SQLite-backed evidence export, and validation-package rendering.
 - Do not move Chio evidence export semantics into `chio-wall-core`; the CLI owns
   file-system reconciliation while the core crate owns typed contracts.
 
-## Affected Dependents
+## Dependents
 
 - `crates/products/chio-wall-core` remains the source of typed contract validation.
 - CLI tests under `crates/products/chio-wall/tests` exercise exported on-disk packages.
 - Documentation under `docs/chio-wall` is the source of truth for output layout
   and fail-closed operating expectations.
-
-## Completed Post-Write Reconciliation Slice
-
-Add a post-write reconciliation boundary to `export_control_path`: after the
-CLI writes the control-path package and Chio evidence export, read the package
-back from disk, validate the typed contracts, verify cross-file consistency, and
-fail before printing success if any required artifact or evidence directory is
-missing.
-
-## Package Closure Slice
-
-### Current Boundary
-
-`verify_control_path_export` confirms that the required Chio-Wall files exist,
-the Chio evidence directory is non-empty, typed contracts validate, and declared
-cross-file references agree. It does not reject undeclared top-level files in
-the generated package directory.
-
-### Pain Point
-
-The export command creates a transient SQLite receipt database before producing
-the evidence bundle. If that file or any other unexpected artifact remains in
-the output root, the package can still be reported as valid even though the
-buyer-facing package contains material outside the declared control-path
-contract.
-
-### Planned Improvement
-
-Add a package-closure check that fails reconciliation when the output root
-contains any undeclared top-level entry. Keep evidence-export internals scoped
-inside `chio-evidence`; only the Chio-Wall package root is closed.

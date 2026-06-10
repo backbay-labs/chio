@@ -12,9 +12,7 @@ The crate is split into the public verifier facade in `lib`, Sigstore bundle and
 
 The trust boundary is exact acceptance. A successful attestation or quote result means the signed bytes, certificate identity, OIDC issuer, trust root, TEE collateral, TCB status, and report-data binding all satisfied their declared preconditions. A successful tenant-policy load means the policy structure, signature, signing identity, and staleness horizon were all accepted before a tenant identity can be resolved.
 
-## Current Hardening
-
-Current hardening: tenant policy text fields and list entries now reject blank and surrounding-whitespace values before regex compilation or signature verification, so an empty regex string cannot become a valid `ExpectedIdentity` source.
+Tenant policy text fields and list entries reject blank and surrounding-whitespace values before regex compilation or signature verification, so an empty regex string cannot become a valid `ExpectedIdentity` source.
 
 ## Verification Focus
 

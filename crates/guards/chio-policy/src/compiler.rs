@@ -379,9 +379,9 @@ fn compile_computer_use_rule(rule: &ComputerUseRule) -> ComputerUseConfig {
 
 fn compile_remote_desktop_rule(rule: &RemoteDesktopChannelsRule) -> RemoteDesktopSideChannelConfig {
     // HushSpec `remote_desktop_channels` carries per-channel toggles for
-    // clipboard / file_transfer / audio / drive_mapping. It does not
-    // currently model session_share, printing, or transfer size, so we
-    // leave those at the guard's defaults (enabled / no limit).
+    // clipboard / file_transfer / audio / drive_mapping. It does not model
+    // session_share, printing, or transfer size, so those stay at the guard's
+    // defaults (enabled / no limit).
     RemoteDesktopSideChannelConfig {
         enabled: true,
         clipboard_enabled: rule.clipboard,
@@ -596,11 +596,10 @@ fn compile_budget_guards(
 
     // 12. origin budgets -> AgentVelocityGuard
     //
-    // Take the most restrictive `tool_calls` budget across all profiles and
-    // use it as the per-agent request ceiling within a 60-second window.
-    // This is a coarse mapping -- richer modelling would require a per-
-    // origin guard factory -- but it provides a single policy-driven way to
-    // exercise the guard type from a HushSpec document.
+    // The most restrictive `tool_calls` budget across all profiles becomes the
+    // per-agent request ceiling within a 60-second window. The mapping is
+    // coarse: it collapses per-origin granularity into one ceiling rather than
+    // emitting a per-origin guard.
     let mut tightest_tool_calls: Option<u32> = None;
     for profile in &origins.profiles {
         let Some(budgets) = &profile.budgets else {

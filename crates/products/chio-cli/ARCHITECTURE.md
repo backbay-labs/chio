@@ -54,9 +54,7 @@ protocol behavior to the owning library crates.
   operator-visible output contracts at the narrowest level that proves the
   product behavior.
 
-## Trust Serve Tenant Token Input Slice
-
-### Current Boundary
+## Trust Serve Tenant Token Input
 
 `TrustCommands::Serve` accepts repeated `--tenant-read-token TENANT=TOKEN`
 arguments and passes those strings through `cmd_trust_serve` into
@@ -64,32 +62,11 @@ arguments and passes those strings through `cmd_trust_serve` into
 principal, and the parsed token becomes bearer material for tenant-scoped
 receipt reads.
 
-### Pain Point
-
-The CLI parser rejects blank and padded tenant-token mappings, but it currently
-accepts internal control characters in either side of the mapping. The
-control-plane service-config validator has the same gap. That lets a shell
-quoted `tenant=token` value create a tenant principal or bearer token that is
-not visible as a normal single-line operator identifier, then pushes that value
-into service state and request-auth comparison.
-
-### Security And API Constraints
-
-- Preserve the public `--tenant-read-token TENANT=TOKEN` CLI shape.
-- Preserve valid tenant ids and token values byte-for-byte.
-- Do not trim or normalize ambiguous values. Reject them before service state is
-  built.
-- Keep the same `CliError` taxonomy and existing service config fields.
-
-### Affected Dependents
-
-The owning product change is in `chio-cli` input parsing. A narrow transitive
-`chio-control-plane` validator update is required because `TrustServiceConfig`
-is public and direct callers should receive the same fail-closed invariant as
-the CLI path.
-
-### Completed Material Improvement
-
-Reject control characters in CLI tenant-read-token mappings and in
-`TrustServiceConfig::validate`. Add focused regressions for both the product
-parser and the service-config boundary.
+The CLI parser and `TrustServiceConfig::validate` both reject blank, padded, and
+control-bearing tenant-token mappings: a tenant principal or bearer token must be
+a single-line operator identifier before it reaches service state or request-auth
+comparison. Valid tenant ids and token values pass through byte-for-byte;
+ambiguous values are rejected rather than trimmed or normalized, under the same
+`CliError` taxonomy and existing service config fields. The validator lives in
+`chio-control-plane` because `TrustServiceConfig` is public, so direct callers
+get the same fail-closed invariant as the CLI path.

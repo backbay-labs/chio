@@ -14,10 +14,6 @@ The crate serves two modes. Fixture mode builds the full loopback package from d
 
 The trust boundary is runtime material intake. A supplied receipt must match the fixture vendor slot, carry a valid signature from the expected vendor key, and bind the loopback workflow action payload before the crate generates or accepts downstream proof material. Runtime artifacts also have to match the issued lease, governance receipt, parent-step hash chain, DSSE envelope, output hash, and consistency anchor.
 
-## Current Hardening
-
-Current hardening: runtime receipts now validate their signed action hash, `workflowId`, case reference, tool name, and loopback metadata before `proof_package_from_runtime_receipts` can build a package from them.
-
 ## Verification Focus
 
 Tests should keep fixture determinism separate from runtime-material acceptance and should reject mismatched vendor slots, bad receipt signatures, stale leases, broken workflow lineage, and inconsistent DSSE envelopes.

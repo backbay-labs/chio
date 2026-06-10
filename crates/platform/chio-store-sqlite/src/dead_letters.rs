@@ -1,10 +1,9 @@
 //! SQLite-backed persistence for [`DeadLetterRecord`] rows.
 //!
-//! Adds an additive `settle_dead_letters` table on the existing
-//! `chio-store-sqlite` connection. The table is keyed by `receipt_id`
-//! so a finalized receipt can have at most one dead-letter row at any
-//! time. Re-inserting the same record is idempotent: a byte-identical
-//! row returns `Ok(false)`; a different row returns
+//! The `settle_dead_letters` table is keyed by `receipt_id` so a
+//! finalized receipt can have at most one dead-letter row at any time.
+//! Re-inserting the same record is idempotent: a byte-identical row
+//! returns `Ok(false)`; a different row returns
 //! [`DeadLetterStoreError::Conflict`].
 //!
 //! Fail-closed: once a row is persisted the kernel observer slot
@@ -12,9 +11,9 @@
 //! the row via [`SqliteDeadLetterStore::clear`]. There is no
 //! auto-retry past the documented bound.
 //!
-//! No existing schema columns are dropped or renamed. The migration
-//! is `CREATE TABLE IF NOT EXISTS` plus `CREATE INDEX IF NOT EXISTS`
-//! so it can run repeatedly against an existing receipt store.
+//! The migration is `CREATE TABLE IF NOT EXISTS` plus
+//! `CREATE INDEX IF NOT EXISTS`, so it can run repeatedly against a
+//! receipt-store database that already holds other tables.
 
 use chio_settle::DeadLetterRecord;
 use r2d2::Pool;
@@ -23,8 +22,7 @@ use rusqlite::{params, OptionalExtension};
 use thiserror::Error;
 
 /// SQL migration applied by [`SqliteDeadLetterStore::open_with_pool`]
-/// to add the `settle_dead_letters` table without touching existing
-/// schema.
+/// to create the `settle_dead_letters` table.
 pub const SETTLE_DEAD_LETTERS_MIGRATION: &str = r#"
 CREATE TABLE IF NOT EXISTS settle_dead_letters (
     receipt_id TEXT PRIMARY KEY,

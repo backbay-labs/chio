@@ -8,7 +8,7 @@
 //!
 //! `crate::runtime::Verdict` is `Copy`. This module exposes a richer
 //! [`HitlVerdict`] that carries the pending approval request when one is
-//! needed, keeping `Verdict` itself `Copy`. The public `Verdict` enum gains a
+//! needed, keeping `Verdict` itself `Copy`. The public `Verdict` enum carries a
 //! `PendingApproval` marker variant so external callers can pattern-match on
 //! the three-way decision; the payload is returned separately via
 //! [`ApprovalGuard::evaluate`] and

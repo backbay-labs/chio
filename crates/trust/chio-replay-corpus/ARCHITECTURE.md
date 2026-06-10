@@ -13,13 +13,5 @@
 - Fixture bytes must stay deterministic across machines: canonical JSON receipts, stable re-redaction output, lowercase hex roots, and sorted redaction pass IDs.
 - Bless audit entries are signed canonical JSON. Invalid audit bodies must fail before signing.
 - Fixture directories must keep the exact replay-gate shape and must not accept path traversal or non-fixture entries.
-- Public struct fields and helper names are already consumed by replay and bless tooling, so validation should tighten without changing the wire shape.
-
-## Pain Points
-
-- The fixture writer rejects empty captures and writes 64-character lowercase hex roots, but the audit signer currently accepts malformed `fixture.receipts_root` values and zero capture counts.
-- That lets a signed bless audit claim a fixture state the writer itself could never produce.
-
-## Planned Improvement
-
-Make `TeeBlessAuditBody::validate` enforce writer-compatible root and capture-count invariants before signing.
+- Public struct fields and helper names are already consumed by replay and bless tooling, so validation tightens without changing the wire shape.
+- `TeeBlessAuditBody::validate` enforces writer-compatible root and capture-count invariants before signing: a 64-character lowercase hex `fixture.receipts_root` and a nonzero capture count, so a signed bless audit cannot claim a fixture state the writer itself could never produce.

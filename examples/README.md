@@ -20,7 +20,7 @@ For web backends, the supported order is:
 
 See [`docs/guides/WEB_BACKEND_QUICKSTART.md`](../docs/guides/WEB_BACKEND_QUICKSTART.md) for the shared verification flow.
 
-## Current Flagship Examples
+## Flagship Examples
 
 - [`agent-commerce-network/`](./agent-commerce-network/): buyer/provider/reviewer topology with approvals, budgets, settlement, federation, and live receipt capture
 - [`internet-of-agents-incident-network/`](./internet-of-agents-incident-network/): recursive cross-org incident-response network with a live happy path for OpenAI SDK orchestration, MCP tools, ACP provider jobs, and offline review
@@ -48,7 +48,7 @@ Use the root runner to list or execute the current smoke set:
 ./run-hello-smokes.sh
 ```
 
-## Implemented Hello Examples
+## Hello Examples
 
 ### Control Plane Adjuncts
 
@@ -80,30 +80,6 @@ Use the root runner to list or execute the current smoke set:
 | [`hello-a2a/`](./hello-a2a/) | A2A edge with authoritative send + deferred task lifecycle | `./run-edge.sh serve` | `./smoke.sh` |
 | [`hello-acp/`](./hello-acp/) | ACP edge with invoke + deferred stream/resume lifecycle | `./run-edge.sh serve` | `./smoke.sh` |
 
-## Build Order That Landed
-
-1. `hello-openapi-sidecar`
-2. `hello-fastapi`
-3. `hello-fastify`
-4. `hello-chi`
-5. `hello-express`
-6. `hello-django`
-7. `hello-elysia`
-8. `hello-spring-boot`
-9. `hello-dotnet`
-10. `hello-drogon`
-11. `hello-mcp`
-12. `hello-a2a`
-13. `hello-acp`
-
-That sequence gave:
-
-- one Python HTTP path
-- one TypeScript HTTP path
-- one Go HTTP path
-- then the remaining framework wrappers (including the C++/Drogon path)
-- then the protocol-native and agent surfaces
-
 ## Standard Shape
 
 Every hello example converges on roughly this structure:
@@ -116,10 +92,6 @@ hello-<surface>/
   smoke.sh
   app/ or src/
 ```
-
-## Adjunct Candidates
-
-The next small examples should avoid broadening the matrix with thin variants. The strongest follow-ons are federation-aware surfaces that add a distinct protocol path.
 
 ## Relationship To `agent-commerce-network`
 

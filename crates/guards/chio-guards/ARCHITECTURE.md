@@ -8,23 +8,21 @@ action categories, evaluates policy-specific guard logic, and returns
 fail-closed `Verdict` values to the hosted kernel. It should not own receipt
 signing, capability validation, budget mutation, or persistent kernel state.
 
-## Current Pain Point
+## Action Classification Boundary
 
-Guard policy only runs after `action::extract_action` classifies a tool call.
-The classifier recognizes canonical names such as `read_file`, `write_file`,
-`filesystem`, and `fs`, but Chio's ACP bridge uses slash-delimited tools such as
-`fs/read_text_file` and `fs/write_text_file`. Those names can currently fall
-through as generic MCP tools, which means `ForbiddenPathGuard` and
-`PathAllowlistGuard` never see the path-bearing action. The bridge spec already
-treats filesystem-like names as filesystem category inputs, so the built-in
-guard classifier must apply the same boundary before policy evaluation.
+Guard policy runs after `action::extract_action` classifies a tool call. The
+classifier recognizes canonical names such as `read_file`, `write_file`,
+`filesystem`, and `fs`, and the slash-delimited ACP bridge tools such as
+`fs/read_text_file` and `fs/write_text_file`. Filesystem-shaped names that carry
+a `path` argument reach `ForbiddenPathGuard` and `PathAllowlistGuard` instead of
+falling through as generic MCP tools.
 
-The classifier is also part of the fail-closed boundary. When a recognized
-action shape presents a primary argument with the wrong JSON type, the extractor
-must not skip that field and fall back to a later alias. For example, a
-filesystem request with non-string `path` and string `file` is malformed, not a
-safe file access to the fallback path. The same priority rule applies to command,
-URL, query, patch, browser, external API, and memory aliases.
+The classifier is part of the fail-closed boundary. When a recognized action
+shape presents a primary argument with the wrong JSON type, the extractor does
+not skip that field and fall back to a later alias. A filesystem request with
+non-string `path` and string `file` is malformed, not a safe file access to the
+fallback path. The same priority rule applies to command, URL, query, patch,
+browser, external API, and memory aliases.
 
 ## Security And API Constraints
 
@@ -42,26 +40,24 @@ URL, query, patch, browser, external API, and memory aliases.
 - Unknown tools without filesystem shape must continue to fall back to
   `McpTool` so `McpToolGuard` allow/block lists still apply.
 
-## Affected Dependents
+## Dependents
 
-The owning-crate change is internal to `chio-guards`, but it protects callers
-that install `ForbiddenPathGuard` or `PathAllowlistGuard` around ACP-style
-filesystem tools. `chio-acp-proxy` already enforces its own local guard path;
-this slice keeps the shared built-in guard pipeline aligned for kernels that
-receive the same tool names directly. No dependent API change is planned.
+The classification boundary protects callers that install `ForbiddenPathGuard`
+or `PathAllowlistGuard` around ACP-style filesystem tools. `chio-acp-proxy`
+enforces its own local guard path; the shared built-in guard pipeline applies
+the same classification for kernels that receive the tool names directly.
 
-## Implemented Improvement
+## Malformed-Action Handling
 
-Move filesystem tool-name classification behind a shared action-extractor
+Filesystem tool-name classification sits behind a shared action-extractor
 boundary that understands canonical, prefix, substring, and ACP slash-delimited
-filesystem names. Regression coverage proves `fs/read_text_file` reaches
-`ForbiddenPathGuard`, `fs/write_text_file` reaches write allowlist policy, and
-unknown non-filesystem tools still fall back to MCP classification.
+filesystem names: `fs/read_text_file` reaches `ForbiddenPathGuard`,
+`fs/write_text_file` reaches write allowlist policy, and unknown non-filesystem
+tools fall back to MCP classification.
 
-Guard-boundary code now uses `extract_action_checked` so recognized action
-shapes with missing required fields, mistyped priority aliases, or unparseable
-network targets return a malformed-action error instead of a normal action.
-Every built-in guard that depends on extracted actions denies that error before
-domain-specific matching. Regression coverage includes kernel tests proving
-malformed primary `path`, `command`, and `url` aliases deny instead of falling
-through to benign fallback aliases.
+Guard-boundary code uses `extract_action_checked`, so recognized action shapes
+with missing required fields, mistyped priority aliases, or unparseable network
+targets return a malformed-action error instead of a normal action. Every
+built-in guard that depends on extracted actions denies that error before
+domain-specific matching. Malformed primary `path`, `command`, and `url` aliases
+deny rather than falling through to benign fallback aliases.

@@ -26,7 +26,7 @@
 //!
 //! # Async discipline
 //!
-//! This module introduces NO `&mut self` on the verifier surface.
+//! The verifier surface takes no `&mut self`.
 //! [`evaluate_weights_binding`] is a free function over `&ModelCard` so
 //! it composes cleanly with the async kernel without locking.
 

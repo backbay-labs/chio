@@ -34,7 +34,7 @@ The package depends on public APIs from:
   resolves it through the receipt-bearing kernel path.
 - Preserve deferred task ownership semantics and the `receiptPending` metadata
   on working task responses.
-- Do not change `chio-acp-edge` public APIs from this example slice.
+- Do not change `chio-acp-edge` public APIs from this example.
 
 ## Affected Dependents
 

@@ -14,10 +14,11 @@
 //!
 //! Authentication: the handlers require an `X-Admin-Token` header
 //! whose value matches the string configured on [`EmergencyAdmin`].
-//! No new middleware layer is introduced. Adapters that already have
-//! their own auth middleware can either pass the caller's bearer
-//! token through as the admin token (when configured that way) or
-//! short-circuit the `expected_admin_token` check.
+//! The check lives inside the handler, so adapters do not need a
+//! separate middleware layer. Adapters that already have their own
+//! auth middleware can either pass the caller's bearer token through
+//! as the admin token (when configured that way) or short-circuit the
+//! `expected_admin_token` check.
 
 use std::sync::Arc;
 

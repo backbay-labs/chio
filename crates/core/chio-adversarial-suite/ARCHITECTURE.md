@@ -15,12 +15,7 @@
 - Pending cases may be loaded for triage but must not enter coverage or manifest outputs.
 - The manifest must stay deterministic and pinned to bundled case content hashes.
 - Public loader names and case wire fields must stay source and JSON compatible.
-
-## Pain Points
-
-- The Rust loader validates case IDs and threat IDs as tokens, but `expected_reason` only has a non-empty check.
-- The JSON schema also accepts padded or control-bearing `expected_reason` strings even though downstream harnesses treat the field as an exact verdict-reason key.
-
-## Planned Improvement
-
-Make `expected_reason` a strict lowercase token in both Rust validation and the case schema.
+- `expected_reason`, case IDs, and threat IDs are strict lowercase tokens
+  (`^[a-z][a-z0-9_]*$`) in both the Rust loader and the case schema, so a
+  padded or control-bearing verdict key fails validation rather than matching a
+  harness reason key by accident.

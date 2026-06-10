@@ -10,12 +10,8 @@ The crate is organized around scenario parsing, deterministic scheduling, virtua
 
 ## Trust Invariants
 
-The security constraint is deterministic replay integrity. Scenario ids, agents, steps, guards, budgets, scheduler settings, locale, virtual clock, and RNG seed must be canonical enough that replay bundles can be reproduced and compared without hidden provider or ordering drift. Runtime execution must not reinterpret scenario material after validation in a way that changes replay identity.
+The security constraint is deterministic replay integrity. Scenario ids, agents, steps, guards, budgets, scheduler settings, locale, virtual clock, and RNG seed must be canonical enough that replay bundles can be reproduced and compared without hidden provider or ordering drift. Runtime execution must not reinterpret scenario material after validation in a way that changes replay identity. Scenario parsing rejects duplicate guard ids so guard configuration and enforcement references cannot become ambiguous.
 
 ## Verification Focus
 
 Tests should cover duplicate ids, missing deterministic witness material, virtual clock and RNG stability, promotion-bundle reproducibility, and fail-closed parsing of provider-specific scenario fields.
-
-## Improvement Target
-
-Planned improvement: reject duplicate guard ids during scenario parsing so guard configuration and enforcement references cannot become ambiguous.

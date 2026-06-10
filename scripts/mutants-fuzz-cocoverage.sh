@@ -8,7 +8,7 @@
 # mutants-fuzz-cocoverage.sh - replay the libFuzzer corpus against
 # surviving cargo-mutants mutants. Cross-oracle nightly; advisory.
 #
-# Cross-oracle insight (the why):
+# Cross-oracle rationale:
 #
 #   - cargo-mutants flags a "surviving mutant" when the unit suite
 #     fails to detect the mutation. Surviving mutants represent test
@@ -20,20 +20,20 @@
 #     that the unit suite missed. Cross-oracle reduction in missed-
 #     mutant count: expected 5-15%.
 #
-# Architecture (the how):
+# Injection mechanism:
 #
-#   The naive approach - replaying the corpus once against the current
-#   tree - cannot work. cargo-mutants applies each mutation to a TEMP
-#   work tree, runs the test suite there, and then discards it; the
-#   source-tree binary the script can reach has none of those mutations
-#   applied. Replaying against it measures "does the corpus crash the
-#   clean binary" (which should always be no), not the cocoverage signal.
+#   cargo-mutants applies each mutation to a TEMP work tree, runs the
+#   test suite there, then discards it; the source-tree binary this
+#   script can reach has none of those mutations applied. Replaying the
+#   corpus against the source tree therefore measures only whether the
+#   corpus crashes the clean binary (always no), not the cocoverage
+#   signal.
 #
-#   The fix: drive mutant injection per-survivor by re-shelling
+#   Injection is instead driven per-survivor by re-shelling
 #   `cargo mutants` with `--file <path> --line <start>:<end>` plus a
-#   custom `--test-tool` that runs OUR fuzz-replay against the mutated
+#   custom `--test-tool` that runs the fuzz-replay against the mutated
 #   tree cargo-mutants prepared. cargo-mutants applies the patch,
-#   builds, invokes our wrapper as the "test", and reverts.
+#   builds, invokes the wrapper as the "test", and reverts.
 #   `--test-tool` is documented in cargo-mutants 25.x as the
 #   substitution point for non-`cargo test` workflows. The wrapper's
 #   exit code feeds straight into cargo-mutants' verdict for that

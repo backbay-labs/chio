@@ -16,22 +16,18 @@ The main internal areas are:
 - `tests.rs`: root-level regression coverage for provider, quote, placement,
   claim, payout, settlement, and workflow validators.
 
-## Pain Points
+## Claim Validation Boundary
 
-The full liability artifact path has many artifact validators, but the lightweight insurance-flow path can construct a `ClaimSettlementRequest` without an owning validation method on the request itself. That request is field-compatible with `chio_settle::SettlementCommitment`, so empty chain ids, zero settlement amounts, empty receipt references, or the wrong lane kind should be rejected by `chio-market` before any sink or settlement runtime sees the request.
+`ClaimEvidence` and `ClaimSettlementRequest` own validation for the lightweight insurance-flow path, and `BoundPolicy::file_claim` calls that validation before receipt lookup or settlement handoff. The validation rejects empty or padded claim identifiers, empty incident descriptions, non-positive or invalid requested amounts, missing settlement chain ids, empty settlement request fields, non-claim settlement lanes, zero settlement amounts, and empty receipt fingerprints before the insurance flow can submit a settlement request. `ClaimSettlementRequest` is field-compatible with `chio_settle::SettlementCommitment`, so these checks run at the `chio-market` boundary rather than depending on any sink or settlement runtime to reject malformed requests.
 
 ## Security And API Constraints
 
-- Preserve public struct shapes and signed artifact compatibility.
-- Do not add a hard dependency on `chio-settle`; the crate graph intentionally avoids that cycle.
-- Keep settlement handoff explicit. Insurance claims may request settlement, but they must not imply ambient settlement authority.
-- Keep fail-closed claim behavior: malformed evidence must not submit settlement requests.
-- Preserve deterministic policy ids and existing quote/bind behavior for valid inputs.
+- Public struct shapes and signed artifact compatibility are preserved.
+- The crate takes no hard dependency on `chio-settle`; the crate graph intentionally avoids that cycle.
+- Settlement handoff is explicit. Insurance claims may request settlement, but they do not imply ambient settlement authority.
+- Claim behavior is fail-closed: malformed evidence does not submit settlement requests.
+- Policy ids are deterministic, and quote/bind behavior is stable for valid inputs.
 
-## Affected Dependents
+## Dependent Surfaces
 
-`chio-kernel`, `chio-control-plane`, and tests can continue treating `ClaimSettlementRequest` as a field-compatible settlement commitment. The intended change is additive API hardening: add owning validation and call it inside `BoundPolicy::file_claim` before `ClaimSettlementSink::submit`.
-
-## Material Improvement
-
-`ClaimEvidence` and `ClaimSettlementRequest` own validation for the lightweight insurance-flow path, and `BoundPolicy::file_claim` calls that validation before receipt lookup or settlement handoff. The validation rejects empty or padded claim identifiers, empty incident descriptions, non-positive or invalid requested amounts, missing settlement chain ids, empty settlement request fields, non-claim settlement lanes, zero settlement amounts, and empty receipt fingerprints before the insurance flow can submit a settlement request.
+`chio-kernel`, `chio-control-plane`, and tests treat `ClaimSettlementRequest` as a field-compatible settlement commitment.

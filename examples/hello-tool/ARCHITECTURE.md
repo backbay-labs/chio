@@ -22,7 +22,7 @@ The package depends on public APIs from:
   adoption and tool-pricing guides.
 - Keep invalid greet inputs fail-closed through `KernelError::RequestIncomplete`.
 - Do not change `NativeChioServiceBuilder` or lower-level adapter APIs from this
-  example slice.
+  example.
 - Do not weaken manifest validation or signed artifact compatibility.
 
 ## Affected Dependents

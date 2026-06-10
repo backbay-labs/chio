@@ -6,8 +6,7 @@
 //! on operations, tables, columns, and predicates.
 //!
 //! The crate also ships `VectorDbGuard`, `WarehouseCostGuard`, and the
-//! post-invocation `QueryResultGuard`. The module layout is designed to
-//! absorb further additions without breaking the public surface.
+//! post-invocation `QueryResultGuard`.
 //!
 //! # Relationship to `chio-guards`
 //!

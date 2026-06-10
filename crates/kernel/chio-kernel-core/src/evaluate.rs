@@ -21,9 +21,8 @@
 //! - Tool dispatch to wrapped servers (async transport).
 //! - Receipt persistence / Merkle checkpointing (SQL / IO).
 //!
-//! The caller -- today `chio-kernel::ChioKernel::evaluate_tool_call_sync` and
-//! tomorrow `chio-kernel-wasm::BrowserKernel::evaluate` -- wraps this pure
-//! core in the I/O checks it needs.
+//! Callers (`chio-kernel::ChioKernel::evaluate_tool_call_sync`, the browser
+//! and mobile adapters) wrap this pure core in the I/O checks they need.
 //!
 //! Verified-core boundary note:
 //! `formal/proof-manifest.toml` names this module as covered Rust surface for

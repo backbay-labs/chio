@@ -13,18 +13,17 @@
 - `src/lib.rs` exposes the stable public API and the `tools_from_spec`
   convenience path.
 
-## Pain Points
+## Parameter Ingest Boundary
 
-- The parser is the ingest trust boundary for operator-supplied OpenAPI specs,
-  and downstream bridge code assumes parsed parameters are intentional.
-- The normative OpenAPI integration spec requires each parameter to include
-  `name` and `in`, but `parse_single_parameter` silently treats a missing or
-  malformed `in` as a query parameter. That can publish an invalid contract as
-  a valid tool input and route bridged calls with a broader input surface than
-  the API author declared.
-- Unknown `in` values are deliberately compatible with the current spec and
-  still default to query. The unsafe gap is absence or non-string shape, not an
-  explicitly unknown string.
+The parser is the ingest trust boundary for operator-supplied OpenAPI specs;
+downstream bridge code assumes parsed parameters are intentional. The normative
+OpenAPI integration spec requires each parameter to include `name` and `in`, so
+`parse_single_parameter` rejects parameters whose `in` field is absent, empty, or
+not a string rather than publishing an invalid contract as a valid tool input and
+routing bridged calls with a broader input surface than the author declared. An
+explicitly unknown string `in` value remains compatible and maps to query,
+matching the integration spec text; the rejected case is absence or non-string
+shape, not an unknown string.
 
 ## Security And API Constraints
 
@@ -39,16 +38,9 @@
 ## Affected Dependents
 
 - `crates/protocol/chio-openapi-mcp-bridge` calls `OpenApiSpec::parse` before building
-  route bindings and manifests. It should inherit stricter parameter validation
-  without code changes.
+  route bindings and manifests, inheriting parameter validation without code changes.
 - `spec/OPENAPI-INTEGRATION.md` is the normative contract for this crate and
-  already requires parameter `in` to be present.
-
-## Planned Improvement
-
-Reject parameters whose `in` field is absent, empty, or not a string. Keep the
-existing compatibility behavior for explicitly unknown string locations by
-mapping them to query, matching the current integration spec text.
+  requires parameter `in` to be present.
 
 ## Verification Focus
 

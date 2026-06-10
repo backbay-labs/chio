@@ -35,10 +35,6 @@ The crate has two direct workspace dependents, `chio-control-plane` and `chio-cl
 
 The default redactor under `redactors/default` is a sibling package. It is related, but not part of this crate's API surface.
 
-## Current Design Pressure
+## Argument Extraction
 
-Each sub-guard has its own argument extraction logic because the data sources differ. That keeps policy local, but it also means helper behavior can diverge. The warehouse guard already treats field path overrides as dotted JSON paths. The vector guard documented the same concept, but its extractor only looked at top-level keys. That mismatch is small in code size but material in behavior: nested SDK payloads could be denied despite a correctly configured path override.
-
-## Current Slice
-
-This slice aligns vector field extraction with the documented JSON field-path contract while preserving top-level key compatibility. The change is intentionally internal: callers keep using `VectorGuardConfig::field_paths`, existing default keys still work, and nested payload support becomes available for vendor adapters that wrap vector call parameters under request or options objects.
+Each sub-guard owns its own argument extraction logic because the data sources differ, which keeps policy local. Field path overrides resolve as dotted JSON paths across sub-guards: the warehouse guard and the vector guard both walk nested payloads. `VectorGuardConfig::field_paths` matches top-level default keys and nested fields, so vendor adapters that wrap vector call parameters under request or options objects resolve through the same path override.

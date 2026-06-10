@@ -46,7 +46,7 @@ on:
   schedule:
     # 05:00 UTC nightly. Sits after fuzz.yml (03:23) and the existing
     # nightly proptest lane (04:23) so the GHA runner pool is not
-    # over-subscribed. Source doc cron: '0 5 * * *'.
+    # over-subscribed.
     - cron: "0 5 * * *"
   workflow_dispatch:
     inputs:
@@ -283,8 +283,8 @@ jobs:
     name: mutants-nightly (${{ matrix.package }})
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    # Source doc allots a 4-hour budget per crate; GitHub-hosted runners
-    # cap at 6 h. 240 min keeps headroom for setup steps.
+    # The per-crate budget is 4 hours; GitHub-hosted runners cap at 6 h.
+    # 240 min keeps headroom for setup steps.
     timeout-minutes: 240
     continue-on-error: true
     strategy:

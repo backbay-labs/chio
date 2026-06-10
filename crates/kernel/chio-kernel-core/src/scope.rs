@@ -1,8 +1,6 @@
 //! Portable scope matching for tool grants.
 //!
-//! This module implements portable scope matching for tool grants.
-//!
-//! The hosted kernel still carries the richest matcher in
+//! The hosted kernel carries the richest matcher in
 //! `chio-kernel::request_matching`, but the portable core must never
 //! silently drop a grant constraint. Constraints that can be evaluated
 //! from request arguments are enforced here; constraints that require
@@ -10,10 +8,9 @@
 //! inspection, regex compilation, etc.) fail closed with an explicit
 //! error instead of widening scope.
 //!
-//! Callers that want the full constraint pipeline continue to go through
-//! `chio_kernel::capability_matches_request` -- the public API in the
-//! orchestration shell is unchanged. This function is the pure-compute
-//! kernel the portable adapters will consume directly.
+//! Callers that want the full constraint pipeline go through
+//! `chio_kernel::capability_matches_request`. This function is the
+//! pure-compute matcher that the portable adapters consume directly.
 //!
 //! Verified-core boundary note:
 //! `formal/proof-manifest.toml` includes the portable matcher because it is

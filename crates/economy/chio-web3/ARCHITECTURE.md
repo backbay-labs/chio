@@ -34,6 +34,4 @@ Generated bindings, `chio-settle`, `chio-anchor`, and Web3 examples consume thes
 
 Tests should cover settlement currency canonicalization, chain coverage, proof consistency, custody boundary validation, oracle evidence references, and terminal state validation.
 
-## Improvement Target
-
-Planned improvement: reject non-uppercase settlement currencies in all web3 monetary amounts so dispatch and receipt artifacts cannot carry noncanonical live-money currency codes.
+Non-uppercase settlement currencies are rejected in all web3 monetary amounts so dispatch and receipt artifacts cannot carry noncanonical live-money currency codes.

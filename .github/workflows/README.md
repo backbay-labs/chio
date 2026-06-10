@@ -1,10 +1,10 @@
 # GitHub Actions workflows
 
-## The `chio-pheromone-*` gate family is intentionally kept as separate files
+## The `chio-pheromone-*` gate family is kept as separate files
 
-There are 15 `chio-pheromone-*.yml` workflows. They look like near-duplicates but
-are deliberately NOT consolidated into a single matrix workflow. This note
-records why.
+The 15 `chio-pheromone-*.yml` workflows look like near-duplicates but must not be
+consolidated into a single matrix workflow. Two constraints rule out the obvious
+collapses.
 
 ### The 15 files
 
@@ -26,20 +26,19 @@ Relay subsystem gates (each runs one `scripts/check-<name>.sh`):
 - `chio-pheromone-runtime.yml`
 - `chio-pheromone-transit.yml`
 
-### Why not one matrix workflow
+### A single matrix workflow cannot path-scope per gate
 
 Each file carries its own `on.paths` trigger (a different set of crate, spec,
 script, and doc globs). A single matrix workflow has one `on:` block and cannot
-express per-matrix-entry path filters, so collapsing them would force every gate
-to run on every pheromone-related change. That defeats the path-scoping these
-files exist to provide.
+express per-matrix-entry path filters, so collapsing them forces every gate to
+run on every pheromone-related change, defeating the path-scoping these files
+provide.
 
-### Why not the reusable-workflow (`workflow_call`) pattern either
+### The reusable-workflow (`workflow_call`) pattern does not fit either
 
-The standard alternative is to extract the shared job body into one
-`workflow_call` reusable workflow and reduce each file to a thin path-triggered
-caller. This is declined because the job bodies are NOT uniform. They fall into
-four distinct shapes:
+Extracting the shared job body into one `workflow_call` reusable workflow with
+thin path-triggered callers fails because the job bodies are not uniform. They
+fall into four distinct shapes:
 
 | Shape | Files | `permissions:` block | `Swatinem/rust-cache` | `setup-node` | node version |
 | ----- | ----- | -------------------- | --------------------- | ------------ | ------------ |
@@ -48,14 +47,12 @@ four distinct shapes:
 | C | alert-routing, alert-delivery, alert-handoff, alert-assurance | `contents: read` | yes | yes | 24 |
 | D | the five `...-assurance-archive` / `-export` / `-external-retention` | `contents: read` | yes | no | - |
 
-A reusable workflow could in principle express these differences with
-`workflow_call` inputs (booleans gating the cache / node steps via `if:`, a
-string for the node version, strings for the gate name and script path). It is
-still declined for four reasons, any one of which is sufficient:
+`workflow_call` inputs could express these differences (booleans gating the
+cache / node steps via `if:`, a string for the node version, strings for the
+gate name and script path), but four constraints block the conversion, each on
+its own sufficient:
 
-1. The bodies are not "near-identical": the four shapes mean the reusable
-   workflow would need conditional (`if: inputs.*`) steps. That is a
-   behavior-bearing rewrite, not a mechanical de-duplication, and the resulting
+1. The four shapes require conditional (`if: inputs.*`) steps. The resulting
    single file is harder to reason about than the 15 flat files it replaces.
 2. Permissions posture differs. Shapes A and B set no `permissions:` block (they
    inherit the repository / org default token scope); shapes C and D pin
@@ -68,15 +65,12 @@ still declined for four reasons, any one of which is sufficient:
    from the YAML alone. It may be an intentional pin or stale drift.
 4. Required status-check matching. Branch-protection / ruleset config lives in
    GitHub settings outside this repo. Converting these to callers changes how
-   each check surfaces (it would appear as `caller / reusable-job` instead of
-   the current top-level job name), which can silently break a required-check
-   rule.
+   each check surfaces (it appears as `caller / reusable-job` instead of the
+   current top-level job name), which can silently break a required-check rule.
 
-### If this is revisited
-
-Do it on a branch where GitHub Actions can run, and confirm with Actions
-executing: the per-file `on.paths` triggers still gate correctly on both
-`pull_request` and `push`; the effective token permissions per gate are
-unchanged; the node version choice is deliberate; and the surfaced check names
-still satisfy whatever required-status-check rules are configured in GitHub
-settings.
+Any consolidation must be validated on a branch where GitHub Actions runs, with
+Actions executing, against four invariants: the per-file `on.paths` triggers
+still gate correctly on both `pull_request` and `push`; the effective token
+permissions per gate are unchanged; the node version choice is deliberate; and
+the surfaced check names still satisfy the required-status-check rules
+configured in GitHub settings.

@@ -21,8 +21,8 @@ without reaching into kernel or transport internals.
 - `SessionJournalError` is the fail-closed error surface for poisoned locks,
   invalid record fields, and integrity violations.
 
-The crate is currently a compact single-file crate. Splitting files is not
-useful until additional journal backends or persistence boundaries exist.
+These boundaries live in a single source file; the crate has one journal
+backend and no separate persistence layer.
 
 ## Guard Boundary
 

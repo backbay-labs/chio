@@ -2,8 +2,7 @@
 //!
 //! Holds parent-request continuation, guard execution, runtime admission
 //! hook invocation, the tool-dispatch entrypoints, and child-receipt
-//! recording. Method bodies are moved verbatim from `kernel/mod.rs`;
-//! receipt-construction and signing sequences are unchanged.
+//! recording.
 
 use crate::budget_store::BudgetReverseHoldDecision;
 use chio_log_redact::redacted;

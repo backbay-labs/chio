@@ -2,10 +2,9 @@
 //!
 //! Two kernels bootstrap mutual trust by exchanging signed challenges and
 //! pinning each other's kernel signing public keys. Once pinned, the
-//! [`FederationPeer`] set lives alongside the existing federation-state
-//! primitives (`chio-federation` already persists activation, governance, and
-//! reputation artifacts; the peer set is a new surface with the same
-//! persistence semantics: in-memory by default, pluggable store).
+//! [`FederationPeer`] set lives alongside the other federation-state
+//! primitives (activation, governance, and reputation artifacts) and shares
+//! their persistence semantics: in-memory by default, pluggable store.
 //!
 //! ## Handshake summary
 //!

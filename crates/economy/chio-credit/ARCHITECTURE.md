@@ -13,26 +13,24 @@ The main internal areas are:
 - `risk_reports.rs`: loss-lifecycle, backtest, and provider-risk report contracts.
 - `credit/capital_and_execution.rs`: capital-book, custody-neutral capital instruction, allocation decision, and bonded-execution simulation contracts.
 
-## Pain Points
+## Capital Execution Envelope
 
-The capital execution envelope is a load-bearing contract in the protocol: every capital instruction, reserve-control artifact, allocation decision, and liability capital movement depends on authority-chain freshness, execution-window validity, custody-provider authority, and amount reconciliation. Today those checks are implemented downstream in `chio-control-plane`, while `chio-credit` only exposes the structs.
-
-That split weakens the crate boundary. A caller can construct and sign a `CapitalExecutionInstructionArtifact` directly through the public types without any owning-crate validation, and downstream modules have to duplicate or remember the economic invariants themselves.
+The capital execution envelope is a load-bearing contract in the protocol: every capital instruction, reserve-control artifact, allocation decision, and liability capital movement depends on authority-chain freshness, execution-window validity, custody-provider authority, and amount reconciliation. The reusable validation for these artifacts is owned here so callers cannot construct and sign a `CapitalExecutionInstructionArtifact` through the public types without the owning-crate checks.
 
 ## Security And API Constraints
 
-- Preserve public data shapes and schema strings for signed artifact compatibility.
-- Preserve fail-closed capital semantics: stale authority, empty authority, expired windows, missing custody execution, invalid amounts, and contradictory observed execution must reject before signing or dispatch.
-- Do not make external custody execution ambient. Artifacts may describe intent or observed execution, but they must not imply automatic dispatch unless an explicit support boundary says so.
-- Keep control-plane and settlement transitive edits minimal. `chio-credit` should own generic artifact validation; downstream code can still own store lookups, source selection, web3 readiness, and HTTP status mapping.
-
-## Affected Dependents
-
-Primary dependents are `chio-core` and `chio-kernel` reexports, `chio-control-plane` issuance paths, `chio-cli` request plumbing, `chio-store-sqlite` persistence/reporting, and `chio-settle` web3 dispatch readiness. The validation boundary preserves struct compatibility and only moves reusable validation into this crate, so dependent changes should be limited to calling the owning validator where artifacts are issued.
+- Public data shapes and schema strings are stable for signed artifact compatibility.
+- Capital semantics are fail-closed: stale authority, empty authority, expired windows, missing custody execution, invalid amounts, and contradictory observed execution reject before signing or dispatch.
+- External custody execution is not ambient. Artifacts may describe intent or observed execution, but they do not imply automatic dispatch unless an explicit support boundary says so.
+- `chio-credit` owns generic artifact validation; downstream code owns store lookups, source selection, web3 readiness, and HTTP status mapping.
 
 ## Validation Boundary
 
-`credit/capital_and_execution.rs` exposes the owning-crate capital execution validation boundary. The validator covers authority chains, execution windows, custody-provider authority, capital rail identifiers, intended versus observed execution, cancel instruction shape, transfer receipt provenance, and nonzero amount rules. `chio-control-plane` reuses that validator through a thin status-mapping wrapper instead of keeping the generic economic contract checks as downstream-only logic.
+`credit/capital_and_execution.rs` exposes the owning-crate capital execution validation boundary. The validator covers authority chains, execution windows, custody-provider authority, capital rail identifiers, intended versus observed execution, cancel instruction shape, transfer receipt provenance, and nonzero amount rules. `chio-control-plane` reuses that validator through a thin status-mapping wrapper.
+
+## Dependent Surfaces
+
+Dependents are `chio-core` and `chio-kernel` reexports, `chio-control-plane` issuance paths, `chio-cli` request plumbing, `chio-store-sqlite` persistence/reporting, and `chio-settle` web3 dispatch readiness. Each calls the owning validator where artifacts are issued.
 
 ## Verification Focus
 

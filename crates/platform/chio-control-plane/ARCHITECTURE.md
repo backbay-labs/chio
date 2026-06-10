@@ -14,13 +14,12 @@ reputation, and certification support remain separate crate-local modules.
 provider verification concerns focused: `attestation/model.rs` owns verifier
 policies, adapters, and error types; `attestation/verification.rs` owns JWT,
 JWKS, COSE, certificate-chain, appraisal, and vendor-claim helpers; and
-`attestation/tests.rs` keeps provider verifier branch coverage out of
-production line-count accounting.
+`attestation/tests.rs` holds provider verifier branch coverage.
 
 `policy.rs` owns policy YAML loading, HushSpec materialization, guard pipeline
 construction, default capability synthesis, and policy identity hashing.
-`policy/tests.rs` keeps policy parser, guard-construction, capability, and
-HushSpec regression coverage out of production line-count accounting.
+`policy/tests.rs` holds policy parser, guard-construction, capability, and
+HushSpec regression coverage.
 
 `evidence_export.rs` owns the CLI and trust-control orchestration surface for
 evidence export, import, verification, signed federation policy creation,
@@ -29,8 +28,8 @@ package rendering, filesystem IO, and query preparation. Its
 receipt and checkpoint signature checks, transparency-claim boundary checks,
 federation-policy attachment validation, import-package validation, verified
 package loading, and federated-share import construction.
-`evidence_export/tests.rs` keeps export/import verification and disclosure
-notice coverage out of production line-count accounting.
+`evidence_export/tests.rs` holds export/import verification and disclosure
+notice coverage.
 
 `certify.rs` owns local certification artifact construction, registry state,
 local registry commands, public metadata/search/transparency data contracts,

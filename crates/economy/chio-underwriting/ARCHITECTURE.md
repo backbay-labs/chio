@@ -25,6 +25,4 @@ The security constraint is that malformed evidence or pricing inputs must not si
 
 Tests should cover stale evidence, revoked publisher state, appeal paths, malformed policy inputs, non-finite premium thresholds, reputation-tier limits, and deterministic simulation output.
 
-## Improvement Target
-
-Planned improvement: reject non-finite behavioral premium thresholds so anomaly penalties cannot be disabled through an invalid floating-point configuration.
+Non-finite behavioral premium thresholds are rejected so anomaly penalties cannot be disabled through an invalid floating-point configuration.

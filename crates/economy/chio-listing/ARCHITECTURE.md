@@ -28,6 +28,4 @@ The security constraint is visibility without ambient admission. A listing may b
 
 Tests should distinguish listing visibility from activation, reject stale signed listings, validate publisher role and signer authority, and keep pricing-hint normalization exact. Search and comparison tests should keep unauthenticated visibility separate from local activation, because marketplace discovery is intentionally weaker than runtime trust.
 
-## Improvement Target
-
-Planned improvement: require exact uppercase 3-letter currency codes on signed pricing hints so marketplace search and comparison cannot split price buckets through lowercase money identifiers. The listing crate should reject malformed hint data before governance or open-market code can rank, compare, or persist it as if it were canonical economic evidence.
+Signed pricing hints require exact uppercase 3-letter currency codes so marketplace search and comparison cannot split price buckets through lowercase money identifiers. The crate rejects malformed hint data before governance or open-market code can rank, compare, or persist it as canonical economic evidence.

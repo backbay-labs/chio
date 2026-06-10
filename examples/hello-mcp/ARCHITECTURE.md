@@ -30,7 +30,7 @@ The package depends on public APIs from:
   routes only registered tools.
 - Preserve MCP JSON-RPC response shape for the smoke script and existing
   captured artifacts.
-- Do not change `chio-mcp-edge` public APIs from this example slice.
+- Do not change `chio-mcp-edge` public APIs from this example.
 
 ## Affected Dependents
 

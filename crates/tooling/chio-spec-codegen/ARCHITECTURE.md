@@ -16,11 +16,6 @@
 - Network schema references must not become ambient authority or typify-side fallback behavior.
 - Existing public entry points and generated header bytes must remain compatible.
 
-## Pain Points
+## Schema Reference Resolution
 
-- `resolve_local_schema_ref` validates local filesystem references, but absolute `http` or `https` `$ref`s are currently ignored by the pre-pass and left for typify.
-- That makes the crate boundary less explicit than `chio-spec-validate`: an external ref should be a `SchemaRef` denial before generation, not a backend-specific typify failure.
-
-## Planned Improvement
-
-Reject absolute network `$ref`s during the schema pre-pass while preserving internal fragment refs and existing local cross-file inlining.
+`resolve_local_schema_ref` validates local filesystem references against the configured schema tree. Absolute `http` and `https` `$ref`s are rejected as a `SchemaRef` denial during the schema pre-pass, before typify generation, rather than left to fail as a backend-specific typify error. Internal fragment refs and local cross-file inlining are preserved.

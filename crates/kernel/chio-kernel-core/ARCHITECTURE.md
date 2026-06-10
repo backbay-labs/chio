@@ -33,51 +33,30 @@ state, payment adapters, and other I/O.
 
 ## Constraints
 
-The crate must preserve fail-closed behavior, canonical JSON byte stability,
+The crate preserves fail-closed behavior, canonical JSON byte stability,
 signed capability and receipt compatibility, guard ordering, subject binding,
 delegation chain binding, sibling budget enforcement, and the portable
 `no_std + alloc` build. Public API compatibility matters because
 `chio-kernel`, browser, mobile, C++ FFI, and AG-UI proxy surfaces import these
 types directly.
 
-No module in this crate should reach into `std`, wall-clock globals, filesystem,
-network, async runtimes, stores, or policy engines. Hosted-only code must be
+No module in this crate reaches into `std`, wall-clock globals, filesystem,
+network, async runtimes, stores, or policy engines. Hosted-only code is
 feature gated.
 
-## Current Pain Points
+## Verification Ordering
 
-The hot path now has one shared post-verification boundary for subject binding,
-scope matching, guard ordering, and deferred delegated-budget admission. That
-removed the prior duplicated ordering risk.
+The hot path has one shared post-verification boundary for subject binding,
+scope matching, guard ordering, and deferred delegated-budget admission.
 
-The remaining verification-ordering risk is inside the full capability
-verifier. `verify_capability_full` owns the current production semantics for
-browser, mobile, C++ FFI, AG-UI proxy, and hosted kernel callers, but it runs
-chain-binding checks before the base verifier has proven issuer trust,
-signature validity, crypto-floor compliance, or token time bounds. The result is
-still fail-closed, but untrusted, forged, or expired attenuated tokens can reach
-the trust-root resolver and can be reported as chain-binding failures instead of
-the more fundamental admission failure.
-
-That ordering is a poor security boundary for the portable TCB. The verifier
-should prove base token admissibility first, then check chain binding, then
-mutate sibling-budget state last. This preserves public API compatibility while
-making the verifier phases explicit enough that downstream portable adapters do
-not accidentally grow resolver work or budget mutation before signature and time
-admission.
-
-## Improvement In This Slice
-
-Refactor full capability verification into explicit internal phases:
+`verify_capability_full` owns the production verification semantics for
+browser, mobile, C++ FFI, AG-UI proxy, and hosted kernel callers. It runs in
+explicit phases so that untrusted, forged, or expired attenuated tokens fail at
+the earliest applicable admission check rather than reaching the trust-root
+resolver or sibling-budget mutation:
 
 - base verification: issuer trust, signature, crypto floor, and time window
 - chain-binding verification: negotiated feature gate and issuer trust-root
   binding, only after base verification succeeds
-- sibling-budget admission: last, only after the signed token and its binding are
-  acceptable
-
-Add focused regressions proving untrusted, signature-invalid, and expired
-attenuated tokens stop at the base verifier and do not call the trust-root
-resolver. No public API, wire format, canonical JSON, or dependent crate changes
-are planned. Dependent gates should only need to prove the existing callers still
-compile and preserve the same successful verification paths.
+- sibling-budget admission: last, only after the signed token and its binding
+  are acceptable

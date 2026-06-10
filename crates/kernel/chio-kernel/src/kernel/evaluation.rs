@@ -1,9 +1,7 @@
 //! `ChioKernel` tool-call and plan evaluation path.
 //!
 //! Holds the synchronous and asynchronous evaluate entrypoints, the plan
-//! evaluation helpers, and the long-form evaluation cores. Method bodies are
-//! moved verbatim from `kernel/mod.rs`; the canonical receipt body and
-//! signing sequence are unchanged.
+//! evaluation helpers, and the long-form evaluation cores.
 
 use chio_log_redact::redacted;
 

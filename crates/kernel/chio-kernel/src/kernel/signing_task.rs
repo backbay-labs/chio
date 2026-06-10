@@ -6,18 +6,17 @@
 //! path, preventing the synchronous `build_and_sign_receipt` step from pinning a
 //! worker thread per concurrent evaluate call.
 //!
-//! A single signing task now owns a clone of the kernel signing keypair and
+//! A single signing task owns a clone of the kernel signing keypair and
 //! pulls signing requests from a bounded [`tokio::sync::mpsc`] channel.
 //! Producers `.await` on a oneshot reply channel rather than on a mutex;
 //! backpressure surfaces naturally when the bounded queue fills.
 //!
-//! The existing synchronous `build_and_sign_receipt` helper in
-//! `kernel/responses.rs` is unchanged. Internal call sites (deny-receipt
-//! builders, child-receipt builders, federation cosign hook) keep their inline
-//! path. The mpsc path signs the same canonical receipt body bytes through the
-//! shared canonical-byte signing API, so receipt bytes are byte-identical across
-//! the two paths. Persistence stays inline; only the signature step crosses the
-//! channel.
+//! The synchronous `build_and_sign_receipt` helper in `kernel/responses.rs`
+//! remains the inline path for internal call sites (deny-receipt builders,
+//! child-receipt builders, federation cosign hook). The mpsc path signs the
+//! same canonical receipt body bytes through the shared canonical-byte signing
+//! API, so receipt bytes are byte-identical across the two paths. Persistence
+//! stays inline; only the signature step crosses the channel.
 //!
 //! ## Crash recovery contract
 //!
@@ -36,12 +35,11 @@
 //!
 //! ## Channel capacity
 //!
-//! Default capacity is [`DEFAULT_SIGNING_CHANNEL_CAPACITY`] (256). The
-//! This is a fail-closed default: a bounded channel where
-//! producers `.await` on `send` until capacity frees up, rather than an
-//! unbounded queue that lets memory grow without limit. Tests can pick a
-//! smaller capacity to exercise backpressure deterministically via
-//! [`SigningTaskHandle::with_capacity`].
+//! Default capacity is [`DEFAULT_SIGNING_CHANNEL_CAPACITY`] (256). This is a
+//! fail-closed default: a bounded channel where producers `.await` on `send`
+//! until capacity frees up, rather than an unbounded queue that lets memory
+//! grow without limit. Tests can pick a smaller capacity to exercise
+//! backpressure deterministically via [`SigningTaskHandle::with_capacity`].
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard, OnceLock};

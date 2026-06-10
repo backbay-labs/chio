@@ -65,18 +65,21 @@ policy, kernel, storage, adapter, or product crates.
   exported from `src/lib.rs`, until generated wire bindings get a deliberate
   no_std-compatible API decision.
 
-## Pain Points
+## Schema Admission
 
-The crate is intentionally broad because it is the stable wire substrate, but
-that breadth makes signed-artifact invariants easy to implement unevenly.
-Capability tokens already reject unsupported schema IDs before verification,
-while other schema-tagged signed artifacts verify only the
-signature bytes. That is too weak for the protocol contract: a valid signature
-over an unknown schema is still not a valid current Chio artifact.
+Every schema-tagged signed artifact rejects unsupported schema IDs before it
+verifies signature bytes. A valid signature over an unknown schema is not a
+valid current Chio artifact, so schema admission is fail-closed at the owning
+wire-type crate rather than deferred to downstream kernels, stores, or
+adapters. Session anchors, receipt-lineage statements, and call-chain
+continuation tokens enforce this admission check before signing or
+verification. Request-lineage records are not signed, but they are
+schema-tagged provenance artifacts and expose the same admission check on load
+and persistence paths.
 
-The public export surface in `lib.rs` is also dense. New helpers should stay
-private unless they are part of the stable wire API, because widening this crate
-widens nearly every downstream crate.
+The public export surface in `lib.rs` is dense. New helpers stay private unless
+they are part of the stable wire API, because widening this crate widens nearly
+every downstream crate.
 
 ## Security And API Constraints
 
@@ -84,26 +87,13 @@ widens nearly every downstream crate.
 - Preserve existing public structs, field names, serde shapes, and default
   feature behavior.
 - Reject unsupported schema identifiers fail-closed.
-- Keep all new validation available in `no_std + alloc`.
-- Do not require downstream crates to opt into a new public API to retain
-  current safety.
+- Keep validation available in `no_std + alloc`.
+- Do not require downstream crates to opt into a public API to retain safety.
 
 ## Affected Dependents
 
 `chio-core`, `chio-kernel-core`, `chio-kernel`, `chio-manifest`, adapters,
 storage, control-plane crates, bindings, fixtures, and examples all consume
-these types. Any rejection added here can surface in downstream sign or verify
-paths, so tests must cover both the owning crate and any dependent code touched
-by the change.
-
-## Planned Improvement
-
-Complete the schema-tagged artifact boundary in this crate by rejecting
-unsupported schema IDs for session anchors, receipt-lineage statements, and
-call-chain continuation tokens before signing or verification. Request-lineage
-records are not signed, but they are still schema-tagged provenance artifacts,
-so the owning type must expose the same fail-closed schema admission check for
-load and persistence paths. This is an architectural invariant, not a cosmetic
-cleanup: it centralizes current-schema admission at the owning wire-type crate
-and prevents downstream kernels, stores, or adapters from treating future or
-foreign schema payloads as valid merely because their bytes deserialize.
+these types. A rejection here surfaces in downstream sign or verify paths, so
+tests must cover both the owning crate and any dependent code touched by a
+change.

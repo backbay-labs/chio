@@ -13,16 +13,14 @@
   auth flows, lifecycle, session isolation, structured errors, SIEM export, and
   fixture server support.
 
-## Pain Points
+## Dependency Boundary
 
-- The library crate currently lists direct normal dependencies for test helper
-  and downstream implementation crates even though its production surface only
-  re-exports `chio-control-plane` and `chio-mcp-remote`.
-- That makes the hosted compatibility layer look like it owns HTTP, crypto,
-  SQLite, Axum, kernel, and adapter implementation details that actually live
-  behind the remote runtime boundary.
-- Unnecessary normal dependencies increase direct coupling and make future
-  public-surface audits noisier.
+The library crate's production surface only re-exports `chio-control-plane` and
+`chio-mcp-remote`, so its normal dependencies are constrained to the crates
+`src/lib.rs` actually re-exports; hosted integration-test helper crates (HTTP,
+crypto, SQLite, Axum, kernel, adapter helpers) are dev-dependencies. The
+compatibility crate does not own HTTP, crypto, SQLite, Axum, kernel, or adapter
+implementation details, which live behind the remote runtime boundary.
 
 ## Security And API Constraints
 
@@ -43,11 +41,3 @@
   a narrower direct dependency boundary.
 - Integration tests still need HTTP, JSON, crypto, and URL helper crates as
   dev-dependencies.
-
-## Planned Improvement
-
-Constrain normal dependencies to the crates actually re-exported by
-`src/lib.rs` and move hosted integration-test helper dependencies to
-`dev-dependencies`. This is architectural because it makes the compatibility
-crate's boundary match its public surface and reduces false ownership of the
-remote runtime internals.

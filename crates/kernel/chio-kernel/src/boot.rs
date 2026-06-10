@@ -1,7 +1,7 @@
 //! Kernel boot path: gate the PQ signing key load on a self-quote.
 //!
-//! This closes the trust loop opened by the `expect_report_data` and
-//! hybrid-signing paths. Boot order:
+//! The PQ signing key load is gated on a verified self-quote that binds the
+//! `expect_report_data` and hybrid-signing paths. Boot order:
 //!
 //! 1. The kernel comes up with its classical Ed25519 keypair already
 //!    materialized. No PQ key has been touched.

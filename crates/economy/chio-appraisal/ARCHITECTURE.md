@@ -14,27 +14,20 @@
 - `marketplace_pricing` computes deterministic per-invocation prices from a manifest base price plus tenant reputation tier.
 - `tests` contains root module unit coverage for appraisal derivation, signed descriptor artifacts, trust bundles, and import-policy edge cases.
 
-## Pain Points
+## Pricing API Surface
 
-- The unchecked pricing helper treats tenant ids and currency as caller-validated input. Catalog callers that need settlement-grade pricing must use the checked boundary so empty or padded tenant ids and non-canonical currency codes fail closed before prices are persisted.
-- The existing `compute_marketplace_invocation_price` API returns a value rather than a `Result`, so hardening the public function directly would break current callers.
-- Downstream marketplace CLI code persists computed prices into install records, so pricing input validation has to fail closed before those records are written.
+The crate exposes two invocation-pricing entry points. `compute_checked_marketplace_invocation_price` and the checked pricing constructors validate tenant id shape and ISO-style uppercase currency codes, failing closed before any settlement-grade price is computed. `compute_marketplace_invocation_price` returns a value rather than a `Result` and treats tenant ids and currency as caller-validated input; it remains for callers that already validate their inputs. Catalog callers that persist computed prices into install records use the checked boundary so empty or padded tenant ids and non-canonical currency codes fail closed before records are written.
 
 ## Security And API Constraints
 
-- Appraisal derivation and pricing must remain deterministic pure functions of their explicit inputs.
-- Imported appraisal evaluation must not widen local runtime-assurance policy.
-- Signed appraisal, descriptor, reference-value, and trust-bundle artifacts must keep canonical JSON byte stability.
-- Marketplace prices must use stable minor-unit integer arithmetic and must not introduce floating-point rounding.
-- Public API compatibility must be preserved. New checked APIs may be added, but existing call signatures should not be removed or changed without approval.
+- Appraisal derivation and pricing are deterministic pure functions of their explicit inputs.
+- Imported appraisal evaluation does not widen local runtime-assurance policy.
+- Signed appraisal, descriptor, reference-value, and trust-bundle artifacts keep canonical JSON byte stability.
+- Marketplace prices use stable minor-unit integer arithmetic with no floating-point rounding.
 
 ## Affected Dependents
 
 `crates/products/chio-cli/src/market.rs` consumes marketplace pricing for `guard market list`, `info`, and `install`. The CLI catalog path uses the checked API so malformed catalog prices fail closed instead of being displayed or persisted. Trust-control startup separately validates tenant read-token ids because those tenant principals participate in read-boundary authorization.
-
-## Completed Material Improvement
-
-Add checked pricing constructors and a checked invocation-pricing API that validate tenant id shape and ISO-style uppercase currency codes. Keep the existing unchecked compute function for compatibility, then move settlement-facing marketplace callers onto the checked API.
 
 ## Verification Focus
 

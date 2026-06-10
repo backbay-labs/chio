@@ -1,15 +1,13 @@
 //! SQLite-backed persistence for IOU envelopes.
 //!
-//! Adds an additive `iou_envelope` table on the existing
-//! `chio-store-sqlite` connection. The table is keyed by `receipt_id`
-//! so a finalized receipt maps to exactly one row. Re-processing the
-//! same finalized receipt is idempotent: a byte-identical envelope
-//! returns `Ok(false)`; a different envelope returns
-//! [`IouEnvelopeStoreError::Conflict`].
+//! The `iou_envelope` table is keyed by `receipt_id` so a finalized
+//! receipt maps to exactly one row. Re-processing the same finalized
+//! receipt is idempotent: a byte-identical envelope returns `Ok(false)`;
+//! a different envelope returns [`IouEnvelopeStoreError::Conflict`].
 //!
-//! No existing schema columns are dropped or renamed. The migration
-//! is `CREATE TABLE IF NOT EXISTS` plus `CREATE INDEX IF NOT EXISTS`
-//! so it can run repeatedly against an existing receipt store.
+//! The migration is `CREATE TABLE IF NOT EXISTS` plus
+//! `CREATE INDEX IF NOT EXISTS`, so it can run repeatedly against a
+//! receipt-store database that already holds other tables.
 
 use std::sync::Arc;
 
@@ -20,7 +18,7 @@ use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, OptionalExtension};
 
 /// SQL migration applied by [`SqliteIouEnvelopeStore::open_with_pool`]
-/// to add the `iou_envelope` table without touching existing schema.
+/// to create the `iou_envelope` table.
 pub const IOU_ENVELOPE_MIGRATION: &str = r#"
 CREATE TABLE IF NOT EXISTS iou_envelope (
     receipt_id TEXT PRIMARY KEY,

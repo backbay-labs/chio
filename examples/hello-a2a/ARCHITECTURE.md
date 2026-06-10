@@ -31,7 +31,7 @@ The package depends on public APIs from:
   kernel routes only registered tools.
 - Preserve deferred task ownership semantics and the `receiptPending` metadata
   on working task responses.
-- Do not change `chio-a2a-edge` public APIs from this example slice.
+- Do not change `chio-a2a-edge` public APIs from this example.
 
 ## Affected Dependents
 

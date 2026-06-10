@@ -270,9 +270,9 @@ mod tests {
         let a = d.now();
         let b = d.now();
         assert_eq!(a, b, "fixed clock must be stable across calls");
-        // Spot-check the anchor instant so any accidental change to the
-        // FIXED_CLOCK_* constants is caught here, not at byte-diff
-        // time three tickets later.
+        // Spot-check the anchor instant so any change to the
+        // FIXED_CLOCK_* constants is caught here rather than as a
+        // downstream byte-diff.
         let expected = Utc
             .with_ymd_and_hms(2026, 1, 1, 0, 0, 0)
             .single()

@@ -14,15 +14,17 @@ test-support boundary, not a minimal runtime library. Its public API is the
 loader, runner, native-suite, peer-lock, and report surface re-exported from
 `src/lib.rs`.
 
-## Pain Points
+## Fixture Discovery
 
-Fixture discovery is split across repository-root defaults and crate-local
-packaging. The cross-language fixture tree is included in the installable
-package, but the native scenario tree is resolved through the same
-`default_repo_root()` path while not being listed in `Cargo.toml` `include`.
-At the same time, both JSON scenario loaders silently return an empty suite for
-a missing directory. That turns a packaging or path mistake into a green empty
-run or an unhelpful empty report.
+Fixture discovery supports in-repo defaults, source-installed crate defaults,
+and caller-supplied absolute paths. Both the cross-language fixture tree and the
+native scenario tree are listed in `Cargo.toml` `include`, so they travel with
+the installable package and resolve through `default_repo_root()`. A shared
+fixture-directory validation boundary gates cross-language and native scenario
+loading: missing or non-directory roots, symlinked fixture escapes, malformed
+JSON, and empty scenario directories are reported as errors before a report is
+written, so a packaging or path mistake fails closed rather than producing a
+green empty run.
 
 ## Security and API Constraints
 
@@ -36,21 +38,10 @@ The harness must continue to support in-repo defaults, source-installed crate
 defaults, and caller-supplied absolute paths through `ConformanceRunOptions`
 and `NativeConformanceRunOptions`.
 
-## Affected Dependents
+## Dependents
 
-No transitive crate edits are expected. `chio-cli conformance`, the direct
-runner binaries, integration tests, and external callers all flow through the
-same loader functions, so the behavior change is centralized in this crate.
-Valid fixture trees keep their existing behavior. Invalid or incomplete fixture
-trees fail before generating compatibility evidence.
-
-## Planned Material Improvement
-
-Add a shared fixture-directory validation boundary for cross-language and
-native scenario loading. Missing or non-directory roots should return an
-existing I/O-style error, symlinks should remain rejected, and the native
-scenario tree should be packaged alongside the existing cross-language
-fixtures. Empty scenario directories should also fail closed instead of
-producing empty evidence. This preserves public API signatures while making
-packaged and standalone conformance runs fail closed instead of producing
-empty evidence.
+`chio-cli conformance`, the direct runner binaries, integration tests, and
+external callers all flow through the same loader functions, so fixture
+validation is centralized in this crate. Valid fixture trees produce
+compatibility evidence; invalid or incomplete fixture trees fail before any
+report is generated.

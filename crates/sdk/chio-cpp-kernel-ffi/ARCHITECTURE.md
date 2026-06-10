@@ -23,8 +23,8 @@ policy engine.
 ## Pain Points
 
 - The FFI accepts rich JSON envelopes for evaluation and contextual capability
-  verification. That is the right ABI shape, but it means trust-bearing maps
-  and budget snapshots need explicit validation at the FFI boundary.
+  verification, so trust-bearing maps and budget snapshots need explicit
+  validation at the FFI boundary.
 - `capability_trust_roots` is keyed by issuer public-key hex. Malformed keys
   are not useful trust roots and should not be silently ignored just because a
   specific token path does not consult them.

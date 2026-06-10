@@ -16,21 +16,18 @@
   conversion, tool-call extraction, direct kernel execution, and response
   rendering.
 
-## Pain Points
+## API-Version Pin
 
-- The default extraction helpers and the provider-adapter lift path share
-  OpenAI tool-call validation, but the large `src/lib.rs` file still carries
-  much of the stable public surface. Changing that shape would be high-risk
-  API work, so this slice does not move those public types.
-- The buffered transport status boundary is now normalized before body parsing
-  for `/v1/responses` and `/v1/chat/completions`, so injected transports and
-  real HTTP transports share the same fail-closed taxonomy.
-- `OpenAiAdapterConfig.api_version` is public on the provider-adapter config,
-  and callers can construct or mutate a stale Responses API snapshot while the
-  adapter still stamps that value into provenance.
-- Batch lift, lower, streaming gates, and outbound transport all share the same
-  Responses API snapshot contract, but they do not currently enforce that the
-  configured `api_version` equals `responses.2026-04-25` before work begins.
+The default extraction helpers and the provider-adapter lift path share OpenAI
+tool-call validation. The buffered transport status boundary is normalized before
+body parsing for `/v1/responses` and `/v1/chat/completions`, so injected
+transports and real HTTP transports share the same fail-closed taxonomy.
+
+`OpenAiAdapterConfig.api_version` is public, so callers can construct or mutate a
+Responses API snapshot that the adapter stamps into provenance. An adapter-local
+API-version guard accepts only `responses.2026-04-25` and runs before batch lift,
+lower, streaming evaluation, and outbound transport. The Responses API snapshot
+pin is therefore a runtime contract across every provider-adapter trust boundary.
 
 ## Security And API Constraints
 
@@ -50,11 +47,3 @@
 - Downstream callers that inject `MockHttpTransport` or another custom
   `ProviderHttpTransport` depend on `OpenAiTransport` enforcing the same
   status taxonomy as the real reqwest-backed transport.
-
-## Planned Improvement
-
-Add an adapter-local API-version guard that accepts only
-`responses.2026-04-25`, then invoke it before batch lift, lower, streaming
-evaluation, and outbound transport. This makes the Responses API snapshot pin a
-runtime contract across every provider-adapter trust boundary while preserving
-the default feature surface and the public config shape.

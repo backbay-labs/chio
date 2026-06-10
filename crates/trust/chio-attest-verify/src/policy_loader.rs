@@ -2,9 +2,8 @@
 //!
 //! The loader consumes a [`TenantPolicy`] together with the certificate that
 //! signed it and verifies the policy through the same [`crate::AttestVerifier`]
-//! surface every other attestation flows through. No new sigstore-rs imports
-//! are introduced; the loader is a pure consumer of [`crate::SigstoreVerifier`].
-//! Mitigation focus: per-tenant policy file drift.
+//! surface every other attestation flows through. The loader introduces no new
+//! sigstore-rs imports; it is a pure consumer of [`crate::SigstoreVerifier`].
 //!
 //! # Fail-closed contract
 //!

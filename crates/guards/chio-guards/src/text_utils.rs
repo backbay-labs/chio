@@ -7,9 +7,9 @@
 //! substitution, punctuation runs, case flipping).
 //!
 //! This module is shared infrastructure for the
-//! [`crate::prompt_injection::PromptInjectionGuard`] and the forthcoming
-//! jailbreak guard.  It has no external dependencies beyond the standard
-//! library and is safe to use in fail-closed guard paths.
+//! [`crate::prompt_injection::PromptInjectionGuard`] and the
+//! [`crate::jailbreak::JailbreakGuard`].  It has no external dependencies beyond
+//! the standard library and is safe to use in fail-closed guard paths.
 
 /// The canonical-form representation of an input string.
 ///

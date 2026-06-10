@@ -16,11 +16,11 @@
 //!
 //! `chio-guards` ships a [`PostInvocationHook`] trait and a
 //! [`PostInvocationPipeline`] that threads pre-invocation guards' output
-//! into a chain of response inspectors.  `chio-kernel` now threads a
-//! post-invocation context that includes the matched grant, but this
-//! guard still exposes standalone transform helpers so callers can wire
-//! it into bespoke pipelines or test harnesses. We therefore implement
-//! this guard in three shapes:
+//! into a chain of response inspectors.  `chio-kernel` threads a
+//! post-invocation context that includes the matched grant, and this
+//! guard also exposes standalone transform helpers so callers can wire
+//! it into bespoke pipelines or test harnesses. The guard exposes three
+//! shapes:
 //!
 //! - [`QueryResultGuard::redact_result`] and
 //!   [`QueryResultGuard::redact_result_for_request`] -- standalone

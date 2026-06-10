@@ -37,9 +37,9 @@ expected tuple and every other emitted driver tuple for the same scenario.
 - Preserve the existing scenario corpus hash unless scenario fixtures are
   intentionally changed and reindexed.
 
-## Completed Material Improvement
+## Scenario Identity Validation
 
-`VerdictScenario::validate` now rejects empty, whitespace-padded, or
+`VerdictScenario::validate` rejects empty, whitespace-padded, or
 control-bearing identity fields for scenario ids, tags, requirements, expected
 reason codes, expected scopes, script operations, script tools, capability
 scopes, and required scopes. This keeps the manifest-bound corpus and

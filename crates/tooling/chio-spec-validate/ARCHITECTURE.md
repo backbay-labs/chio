@@ -13,11 +13,6 @@
 - `file://` references must stay inside the local schema root after canonicalization.
 - Public API compatibility is preserved through `validate`, `validate_value`, `load_json`, and `ValidateError`.
 
-## Pain Points
+## Schema Namespace Resolution
 
-- The local retriever only maps the older `https://chio.world/schemas/` host even though current `chio-wire` schema IDs use `https://chio-protocol.dev/schemas/`.
-- Exact canonical schema IDs such as `.../receipt/record/v1` do not map cleanly to file names like `record.schema.json` unless the local registry matches by `$id`.
-
-## Planned Improvement
-
-Resolve both Chio schema namespaces from the local schema tree, including exact `$id` lookups, while continuing to reject every non-Chio network URI.
+The local retriever resolves both Chio schema namespaces from the local schema tree: the `https://chio.world/schemas/` host and the current `https://chio-protocol.dev/schemas/` host that `chio-wire` schema IDs use. Resolution includes exact `$id` lookups, so canonical schema IDs such as `.../receipt/record/v1` map to their registry entry rather than a guessed file name like `record.schema.json`. Every non-Chio network URI is rejected.

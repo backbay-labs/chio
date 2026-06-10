@@ -10,12 +10,8 @@ The crate is split into public API types, an in-memory sparse-Merkle oracle, epo
 
 ## Trust Invariants
 
-The security constraint is revocation-key exactness. Subjects, nonces, roots, signatures, and freshness windows must be unambiguous before proofs are emitted or remote caches merge epoch roots.
+The security constraint is revocation-key exactness. Subjects, nonces, roots, signatures, and freshness windows must be unambiguous before proofs are emitted or remote caches merge epoch roots. The oracle boundary rejects empty or padded revocation subject identifiers so sparse-Merkle leaves cannot be minted for noncanonical subjects, keeping revocation lookup keys stable across local oracle state, gossiped epoch roots, and passport bridge projections.
 
 ## Verification Focus
 
 Tests should cover empty subjects, padded subjects, sparse-Merkle proof verification, stale epoch roots, bad signatures, passport-bridge subject mapping, and remote-cache merge behavior. Kernel and federation consumers should only see normalized revocation evidence, so tests need to prove malformed subjects are rejected before roots or proofs are signed.
-
-## Improvement Target
-
-Planned improvement: reject empty or padded revocation subject identifiers at the oracle boundary so sparse-Merkle leaves cannot be minted for noncanonical subjects. That keeps revocation lookup keys stable across local oracle state, gossiped epoch roots, and passport bridge projections.

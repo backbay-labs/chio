@@ -41,7 +41,7 @@
 //! vendor substring) so it can enforce the same policy against bespoke
 //! vendor-adapted SDK tools as well.  The memory-read/write actions are
 //! handled as a second pass -- they carry the store and optional key but
-//! no `top_k` or `operation` hint, so we lift those from the raw
+//! no `top_k` or `operation` hint, so the guard lifts those from the raw
 //! arguments JSON.
 //!
 //! # Tool argument schema

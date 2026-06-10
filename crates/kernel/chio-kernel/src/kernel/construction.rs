@@ -2,9 +2,7 @@
 //!
 //! Holds the kernel constructor, session/store accessors, and the
 //! `set_*` / `with_*` / `register_*` configuration setters, including
-//! federation, emergency-stop, DPoP, and execution-nonce wiring. Method
-//! bodies are moved verbatim from `kernel/mod.rs`; receipt-construction and
-//! signing sequences are unchanged.
+//! federation, emergency-stop, DPoP, and execution-nonce wiring.
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};

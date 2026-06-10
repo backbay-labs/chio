@@ -36,11 +36,8 @@ imported trust policy accepts the provenance.
 - Treat empty trusted-kernel-key sets as a misconfiguration that filters receipt
   evidence instead of trusting ambient receipts.
 - Reject ambiguous imported identity material rather than silently trimming it
-  into authority-bearing provenance.
-
-## Completed Material Improvement
-
-`build_imported_reputation_signal` now rejects missing share ids and imported
-identity fields with surrounding whitespace or control characters. This keeps
-issuer, partner, signer, and share identifiers unambiguous before imported
-signals can be accepted or attenuated into a composite reputation score.
+  into authority-bearing provenance. `build_imported_reputation_signal` rejects
+  missing share ids and imported identity fields with surrounding whitespace or
+  control characters, keeping issuer, partner, signer, and share identifiers
+  unambiguous before imported signals can be accepted or attenuated into a
+  composite reputation score.

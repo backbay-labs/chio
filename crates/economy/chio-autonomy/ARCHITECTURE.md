@@ -16,7 +16,7 @@ out of the public API root.
 
 ## Trust Invariants
 
-The core security constraint is bounded execution. A validated artifact must not smuggle broader authority through malformed amounts, loose references, mismatched currencies, or unchecked automation modes.
+The core security constraint is bounded execution. A validated artifact must not smuggle broader authority through malformed amounts, loose references, mismatched currencies, or unchecked automation modes. Currency validation is exact for declared and nested monetary amounts, so canonical artifacts cannot differ only by lowercase or padded currency strings.
 
 ## Dependent Surfaces
 
@@ -25,7 +25,3 @@ The core security constraint is bounded execution. A validated artifact must not
 ## Verification Focus
 
 Tests should cover declared and nested monetary amounts, missing rollback coverage, stale qualification references, unsafe automation modes, and validator rejection before downstream settlement state changes.
-
-## Improvement Target
-
-Planned improvement: make currency validation exact for declared and nested monetary amounts so canonical artifacts cannot differ only by lowercase or padded currency strings.

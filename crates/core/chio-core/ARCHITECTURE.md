@@ -39,20 +39,20 @@ Public re-exports are a compatibility contract. New helpers should be additive,
 and existing exported names should not be removed or narrowed without an
 explicit migration.
 
-## Current Pain Points
+## Cross-Artifact Agreement
 
 The extension contract is intentionally cross-artifact: inventories name
 extension points, official stack packages name first-party components, manifests
 target those components, and qualification matrices record the cases that prove
-the boundary. The most fragile code is therefore not field validation, but
-agreement between artifacts.
+the boundary. The load-bearing constraint is not field validation but agreement
+between artifacts.
 
-One concrete gap is bidirectional official stack consistency. A package
-component can name its extension points, and an inventory point can name its
-official components. Both sides need to agree. If either side claims an
-official point-to-component edge that the other side does not reciprocate,
-negotiation can treat a manifest as targeting an official baseline that the
-inventory and stack do not actually share.
+Official stack consistency is bidirectional. A package component names its
+extension points and an inventory point names its official components; both
+sides must agree. If either side claims an official point-to-component edge that
+the other does not reciprocate, validation fails closed before negotiation,
+so a manifest cannot target an official baseline that the inventory and stack do
+not actually share.
 
 ## Local Invariants
 
@@ -65,8 +65,8 @@ inventory and stack do not actually share.
 - `negotiate_extension` assumes the three artifact validators have already
   rejected malformed inputs, then reports compatibility reasons for valid but
   incompatible artifacts.
-- `validate_qualification_matrix` remains shape-only until a separate
-  contextual matrix validator is added.
+- `validate_qualification_matrix` is shape-only; contextual matrix validation
+  is not yet wired.
 
 ## Verification Focus
 
@@ -76,8 +76,3 @@ network validation, and byte-stable serde for public protocol artifacts that
 flow through this facade. When lower-level crates add signed or canonical
 types, `chio-core` verification should prove the re-export path does not
 change their construction, validation, or serialized field names.
-
-`validate_official_stack_package` treats the inventory and official stack as one
-authoritative graph for official components. Inventory-to-stack and
-stack-to-inventory mismatches fail closed before negotiation evaluates profiles,
-supported components, or runtime guardrails.

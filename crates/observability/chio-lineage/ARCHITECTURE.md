@@ -12,9 +12,9 @@ The crate is split into the graph schema in `schema`, OTEL stream ingest in `ing
 
 The trust boundary is natural-key integrity. Node ids and edge ids are derived from receipt ids, capability ids, span ids, tool names, tenants, and signed receipt-lineage statements. Inputs that would produce blank or whitespace-padded graph identifiers must fail before projection, because downstream query and anchor code treats graph ids as canonical.
 
-## Current Hardening
+## Field Validation
 
-Current hardening: replay-corpus ingest validates every required and optional string field before constructing the graph, and returns `CorpusIngestError::InvalidField` instead of emitting malformed `rcpt:`, `cap:`, or `tool:*` node ids.
+Replay-corpus ingest validates every required and optional string field before constructing the graph. A blank or whitespace-padded field returns `CorpusIngestError::InvalidField` rather than producing a malformed `rcpt:`, `cap:`, or `tool:*` node id.
 
 ## Verification Focus
 

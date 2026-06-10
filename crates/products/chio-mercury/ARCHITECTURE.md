@@ -26,17 +26,16 @@ and control-plane crates.
   fail-closed filesystem and package validation behavior that only exists in the
   CLI layer.
 
-## Pain Points
+## Structural Notes
 
-- The command crate has grown around `include!`-based modules and large shared
-  helper files. That makes package-layout invariants easy to miss because they
-  are not all represented in core contract validation.
-- Generated package paths mix fixed filenames and filenames derived from
-  product identifiers. Any derived filename boundary must reject confusing or
-  ambiguous names before writing artifacts.
-- Core MERCURY validation is intentionally about typed product contracts. The
-  CLI still owns local filesystem safety when valid product identifiers become
-  filenames.
+- The command crate is built from `include!`-based modules and large shared
+  helper files, so package-layout invariants are not all represented in core
+  contract validation and live in the CLI layer.
+- Generated package paths mix fixed filenames and filenames derived from product
+  identifiers. Derived filename boundaries reject confusing or ambiguous names
+  before writing artifacts.
+- Core MERCURY validation covers typed product contracts; the CLI owns local
+  filesystem safety when valid product identifiers become filenames.
 
 ## Security And API Constraints
 
@@ -50,7 +49,7 @@ and control-plane crates.
 - Canonical JSON bytes, receipt hashes, checkpoint continuity, and package
   verification semantics must remain unchanged.
 
-## Affected Dependents
+## Dependents
 
 - `chio-mercury-core` supplies bundle manifests, pilot fixtures, supervised-live
   captures, and package validators consumed by this CLI.
@@ -59,9 +58,10 @@ and control-plane crates.
 - Product documentation and reviewer artifacts consume the generated package
   layout emitted by this crate.
 
-## Planned Improvement
+## Derived Manifest Filenames
 
-Harden the CLI export-layout boundary for derived bundle manifest filenames.
 When a command writes multiple bundle manifests, the file stem is derived from
-`MercuryBundleManifest::bundle_id`; that local filesystem projection must reject
-control characters as well as path separators and padded names.
+`MercuryBundleManifest::bundle_id`. `bundle_manifest_file_name` rejects that
+projection when it is empty, padded, `.` or `..`, or carries path separators or
+control characters, so a valid product identifier cannot become an ambiguous or
+escaping filename.

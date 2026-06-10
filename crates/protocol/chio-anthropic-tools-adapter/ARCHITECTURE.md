@@ -27,16 +27,18 @@ HTTP transport classification, or provider-fixture replay. Those remain in
   transport construction while delegating HTTP mechanics to
   `chio-provider-adapter-core`.
 
-## Pain Points
+## Server-Tool Classification
 
-The streaming module now uses the shared provider-core SSE parser and preserves
-forwarded frame bytes, but server-tool classification is still split across two
-places. `adapter.rs` carries an exact local list of beta wire names for the
-`computer-use` cargo feature gate, while `chio-manifest` intentionally maps the
-whole date-suffixed Anthropic server-tool families (`bash_*`,
-`computer_use_*`, `text_editor_*`) to stable manifest entries. A future
-date-suffixed server-tool name can therefore be classified as a server tool by
-the manifest gate but missed by the feature gate.
+The streaming module uses the shared provider-core SSE parser and preserves
+forwarded frame bytes. Server-tool classification has one source of truth: the
+`computer-use` cargo feature gate delegates server-tool recognition to the same
+`chio-manifest::ServerTool::from_anthropic_wire_name` mapping used by the runtime
+manifest allowlist, which maps the whole date-suffixed Anthropic server-tool
+families (`bash_*`, `computer_use_*`, `text_editor_*`) to stable manifest
+entries. A date-suffixed server-tool family name cannot be classified as a server
+tool by the manifest gate while being missed by the feature gate, so a wire-suffix
+version bump cannot turn a server tool into a regular customer tool in default
+builds.
 
 ## Security And API Constraints
 
@@ -58,15 +60,6 @@ the manifest gate but missed by the feature gate.
 ## Affected Dependents
 
 `chio-provider-conformance` replays Anthropic fixtures through this adapter
-when built with `fixtures-anthropic`. The intended change is internal to
-server-tool classification and should preserve public APIs and fixture
-semantics. If dependent replay fails, the classification contract should be
-corrected here rather than patched in replay code.
-
-## Implemented Improvement
-
-The adapter's `computer-use` feature gate delegates server-tool recognition
-to the same `chio-manifest::ServerTool::from_anthropic_wire_name` mapping used
-by the runtime manifest allowlist. A regression proves a date-suffixed
-server-tool family name fails closed in default builds even when the manifest
-allowlists that stable server-tool entry.
+when built with `fixtures-anthropic`. Server-tool classification stays internal
+and preserves public APIs and fixture semantics. If dependent replay fails, the
+classification contract is corrected here rather than patched in replay code.

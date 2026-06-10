@@ -18,17 +18,17 @@ evaluate policies, load arbitrary project files, or mutate workspace state.
 - `definition` owns URN extraction and scoped go-to-definition resolution.
 - `position` owns UTF-16 LSP position conversion before string slicing.
 
-## Pain Points
+## Cache Lifecycle
 
-- The document cache currently treats an unknown `didChange` as an implicit
-  open by inserting a new entry when no existing document is present.
-- That blurs the LSP lifecycle boundary: `didOpen` is the operation that
-  provides the language id and admits a document into the cache.
-- Unknown changes can therefore publish diagnostics for documents the server
-  did not accept through the open path.
-- Diagnostics, hover, and definition code already fail closed for unknown
-  languages and unsafe manifest paths; the cache lifecycle should follow the
-  same model.
+The document cache is an explicit LSP lifecycle state machine, not a generic URI
+map: `didOpen` admits and classifies a document, `didChange` mutates existing
+state, and `didClose` removes state. `didOpen` is the only operation that
+provides the language id and admits a document into the cache.
+`DocumentCache::replace` updates only an already-open document; an unknown
+`didChange` returns `None`, leaves the cache unchanged, and publishes no
+diagnostics, so the server never surfaces diagnostics for documents it did not
+accept through the open path. Diagnostics, hover, and definition code fail
+closed for unknown languages and unsafe manifest paths under the same model.
 
 ## Security And API Constraints
 
@@ -42,23 +42,11 @@ evaluate policies, load arbitrary project files, or mutate workspace state.
   is not already open.
 - Keep UTF-16 range conversion and scoped manifest-file resolution intact.
 
-## Affected Dependents
+## Dependents
 
 `cargo tree -i chio-lsp --workspace` reports no direct Rust dependents.
-First-party editor packages under `integrations/editors/` depend on the `chio-lsp` binary
-contract and LSP behavior. The planned change should require no transitive
-source edits.
-
-## Planned Improvement
-
-Harden the document-cache lifecycle so `DocumentCache::replace` updates only an
-existing opened document. Unknown `didChange` events should return `None`,
-leave the cache unchanged, and avoid diagnostic publication.
-
-This is architectural because it makes the cache an explicit LSP lifecycle
-state machine instead of a generic URI map:
-`didOpen` admits and classifies, `didChange` mutates existing state,
-`didClose` removes state.
+First-party editor packages under `integrations/editors/` depend on the
+`chio-lsp` binary contract and LSP behavior, not its Rust source.
 
 ## Verification Focus
 
