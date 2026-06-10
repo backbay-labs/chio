@@ -71,6 +71,17 @@ jobs:
         run: |
           set -euo pipefail
           benches_file="$(mktemp)"
+          # The worktree may predate the crate-folder move, so the chio-kernel
+          # manifest can be at the grouped or the old flat path. Skip gracefully
+          # if neither exists.
+          manifest="crates/kernel/chio-kernel/Cargo.toml"
+          if [ ! -f "${manifest}" ]; then
+            manifest="crates/chio-kernel/Cargo.toml"
+          fi
+          if [ ! -f "${manifest}" ]; then
+            echo "::notice::worktree has no chio-kernel manifest; comparison will be skipped"
+            exit 0
+          fi
           awk '
             function flush_bench() {
               if (in_bench && bench_name != "" && !has_required_features) {
@@ -101,7 +112,7 @@ jobs:
               next
             }
             END { flush_bench() }
-          ' crates/kernel/chio-kernel/Cargo.toml > "${benches_file}"
+          ' "${manifest}" > "${benches_file}"
           bench_count="$(wc -l < "${benches_file}" | tr -d ' ')"
           if [ "${bench_count}" = "0" ]; then
             echo "::notice::baseline has no chio-kernel benchmarks; comparison will be skipped"
@@ -121,6 +132,17 @@ jobs:
         run: |
           set -euo pipefail
           benches_file="$(mktemp)"
+          # The worktree may predate the crate-folder move, so the chio-kernel
+          # manifest can be at the grouped or the old flat path. Skip gracefully
+          # if neither exists.
+          manifest="crates/kernel/chio-kernel/Cargo.toml"
+          if [ ! -f "${manifest}" ]; then
+            manifest="crates/chio-kernel/Cargo.toml"
+          fi
+          if [ ! -f "${manifest}" ]; then
+            echo "::notice::worktree has no chio-kernel manifest; comparison will be skipped"
+            exit 0
+          fi
           awk '
             function flush_bench() {
               if (in_bench && bench_name != "" && !has_required_features) {
@@ -151,7 +173,7 @@ jobs:
               next
             }
             END { flush_bench() }
-          ' crates/kernel/chio-kernel/Cargo.toml > "${benches_file}"
+          ' "${manifest}" > "${benches_file}"
           bench_count="$(wc -l < "${benches_file}" | tr -d ' ')"
           if [ "${bench_count}" = "0" ]; then
             echo "::error::no chio-kernel benchmarks found in Cargo.toml" >&2
