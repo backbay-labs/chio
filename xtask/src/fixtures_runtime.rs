@@ -228,7 +228,7 @@ fn handle_spine(
 
     if mode == Mode::All {
         run_runtime_cargo_tests(root, facet)?;
-        run_cargo_test(
+        run_cargo_test_filtered(
             root,
             &to_owned(&["-p", "chio-kernel", "chio_runtime", "--lib"]),
         )?;

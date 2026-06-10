@@ -474,7 +474,224 @@ fn handle_runtime(
         cmp_files(&fixture_dir.join(filename), &out_dir.join(filename))?;
     }
 
+    // The CLI receive -> query persisted-state flow and its replay /
+    // wrong-recipient negatives that the script drove (the consolidated handler
+    // previously only regenerated and diffed the fixtures).
+    runtime_receive_query_flow(root, &fixture_dir, &scratch)?;
+
     run_recursion(root, manifest, facet)
+}
+
+/// Port of the `check-chio-pheromone-runtime.sh` CLI flow: receive the committed
+/// gossip batch into a fresh store, query the store and verify the persisted
+/// passport history is reflected in the concentration ratio, then confirm the
+/// replayed-nonce and wrong-recipient batches are rejected with the expected
+/// per-frame codes.
+fn runtime_receive_query_flow(
+    root: &Path,
+    fixture_dir: &Path,
+    scratch: &ScratchDir,
+) -> Result<(), XtaskError> {
+    let root_fixtures = root.join("examples/chio-3vendor/fixtures");
+    let transit_policy = fixture_dir.join("transit-policy.json");
+    let proof_package = root_fixtures.join("buyer-auditor-proof-package.json");
+    let trust_bundle = root_fixtures.join("verifier-trust-bundle.json");
+    let context = root_fixtures.join("verification-context.json");
+    let gossip_batch = fixture_dir.join("gossip-batch.json");
+    let peer_weights = fixture_dir.join("peer-weights.json");
+
+    let store = scratch.join("runtime.sqlite3");
+    let receive_report = scratch.join("receive-report.json");
+    require_cli(
+        root,
+        &[
+            "-p", "chio-cli", "--bin", "chio", "--",
+            "pheromone", "receive",
+            "--batch", &display(&gossip_batch),
+            "--transit-policy", &display(&transit_policy),
+            "--proof-package", &display(&proof_package),
+            "--trust-bundle", &display(&trust_bundle),
+            "--context", &display(&context),
+            "--store", &display(&store),
+            "--report", &display(&receive_report),
+        ],
+    )?;
+    runtime_assert_receive(&receive_report)?;
+
+    let query_report = scratch.join("query-report.json");
+    require_cli(
+        root,
+        &[
+            "-p", "chio-cli", "--bin", "chio", "--",
+            "pheromone", "query",
+            "--store", &display(&store),
+            "--subject-class", "support.prompt_injection",
+            "--namespace", "dev.chio.support",
+            "--reputation-epoch", "42",
+            "--peer-weights", &display(&peer_weights),
+            "--report", &display(&query_report),
+        ],
+    )?;
+    runtime_assert_query_persisted(&query_report, &transit_policy, &peer_weights)?;
+
+    // Negative: re-receiving the same batch into the same store must be rejected
+    // with replay_window_exceeded.
+    let replay_report = scratch.join("replay-report.json");
+    reject_cli(
+        root,
+        &[
+            "-p", "chio-cli", "--bin", "chio", "--",
+            "pheromone", "receive",
+            "--batch", &display(&gossip_batch),
+            "--transit-policy", &display(&transit_policy),
+            "--proof-package", &display(&proof_package),
+            "--trust-bundle", &display(&trust_bundle),
+            "--context", &display(&context),
+            "--store", &display(&store),
+            "--report", &display(&replay_report),
+        ],
+        "replayed nonce was accepted",
+    )?;
+    runtime_assert_frame_code(&replay_report, "replay_window_exceeded")?;
+
+    // Negative: a batch addressed to the wrong recipient must be rejected with
+    // batch_recipient_mismatch.
+    let wrong_batch = scratch.join("wrong-recipient-batch.json");
+    let mut batch = load_json(&gossip_batch)?;
+    set_str(&mut batch, "recipient_kernel_id", "did:chio:wrong-recipient");
+    write_json(&wrong_batch, &batch)?;
+    let wrong_store = scratch.join("wrong-recipient.sqlite3");
+    let wrong_report = scratch.join("wrong-recipient-report.json");
+    reject_cli(
+        root,
+        &[
+            "-p", "chio-cli", "--bin", "chio", "--",
+            "pheromone", "receive",
+            "--batch", &display(&wrong_batch),
+            "--transit-policy", &display(&transit_policy),
+            "--proof-package", &display(&proof_package),
+            "--trust-bundle", &display(&trust_bundle),
+            "--context", &display(&context),
+            "--store", &display(&wrong_store),
+            "--report", &display(&wrong_report),
+        ],
+        "wrong recipient batch was accepted",
+    )?;
+    runtime_assert_frame_code(&wrong_report, "batch_recipient_mismatch")
+}
+
+/// Assert the CLI receive report accepted the fixture with the expected batch
+/// outcome and frame counts.
+fn runtime_assert_receive(report: &Path) -> Result<(), XtaskError> {
+    let value = load_json(report)?;
+    if value.get("accepted") != Some(&Value::Bool(true)) {
+        return Err(invalid("CLI receive did not accept the fixture"));
+    }
+    if str_field(&value, "batchOutcome") != Some("accepted") {
+        return Err(invalid("CLI receive report did not carry accepted batch outcome"));
+    }
+    if value.get("acceptedFrameCount").and_then(Value::as_i64) != Some(1)
+        || value.get("rejectedFrameCount").and_then(Value::as_i64) != Some(0)
+    {
+        return Err(invalid("CLI receive report did not carry frame outcome counts"));
+    }
+    Ok(())
+}
+
+/// Assert the CLI query accepted the stored fixture and that its concentration
+/// ratio reflects the persisted passport history (the newcomer discount derived
+/// from the policy passport's firstSeenEpoch and the scarcity horizon). A query
+/// that read persisted admission state reproduces `weight * discount`; a query
+/// over an empty store could not.
+fn runtime_assert_query_persisted(
+    query_report: &Path,
+    transit_policy: &Path,
+    peer_weights: &Path,
+) -> Result<(), XtaskError> {
+    let report = load_json(query_report)?;
+    if report.get("accepted") != Some(&Value::Bool(true)) {
+        return Err(invalid("CLI query did not accept the stored fixture"));
+    }
+    let concentration = report
+        .get("concentration")
+        .ok_or_else(|| invalid("CLI query report has no concentration"))?;
+    let total = concentration
+        .get("total_strength")
+        .and_then(Value::as_f64)
+        .ok_or_else(|| invalid("CLI query report concentration has no usable total_strength"))?;
+    let unweighted = concentration
+        .get("unweighted_total_strength")
+        .and_then(Value::as_f64)
+        .ok_or_else(|| {
+            invalid("CLI query report concentration has no usable unweighted_total_strength")
+        })?;
+
+    // When the persisted history yields strength, the weighted/unweighted ratio
+    // must equal the policy weight scaled by the newcomer discount; this is only
+    // reproducible if the query read the receive-persisted passport admission.
+    if unweighted > 0.0 {
+        let policy = load_json(transit_policy)?;
+        let admission = policy
+            .get("body")
+            .and_then(|b| b.get("admission"))
+            .ok_or_else(|| invalid("transit policy body has no admission"))?;
+        let passport = admission
+            .get("passports")
+            .and_then(Value::as_array)
+            .and_then(|p| p.first())
+            .ok_or_else(|| invalid("transit policy admission has no passports"))?;
+        let first_seen = passport
+            .get("firstSeenEpoch")
+            .and_then(Value::as_i64)
+            .ok_or_else(|| invalid("passport has no firstSeenEpoch"))?;
+        let horizon = admission
+            .get("scarcityPolicies")
+            .and_then(Value::as_array)
+            .and_then(|p| p.first())
+            .and_then(|p| p.get("newcomerHorizonEpochs"))
+            .and_then(Value::as_i64)
+            .unwrap_or(8);
+        let weights = load_json(peer_weights)?;
+        let epoch = weights
+            .get("reputationEpoch")
+            .and_then(Value::as_i64)
+            .ok_or_else(|| invalid("peer weights has no reputationEpoch"))?;
+        let weight = weights
+            .get("weights")
+            .and_then(Value::as_array)
+            .and_then(|w| w.first())
+            .and_then(|w| w.get("weight"))
+            .and_then(Value::as_f64)
+            .ok_or_else(|| invalid("peer weights has no first weight"))?;
+        let discount = (((epoch - first_seen + 1) as f64) / (horizon as f64)).min(1.0);
+        let expected_ratio = weight * discount;
+        let actual_ratio = total / unweighted;
+        if (actual_ratio - expected_ratio).abs() > 0.000_001 {
+            return Err(invalid(&format!(
+                "CLI query ratio {actual_ratio} did not use persisted passport history {expected_ratio}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Assert a rejected receive report carries the expected per-frame failure code.
+fn runtime_assert_frame_code(report: &Path, expected: &str) -> Result<(), XtaskError> {
+    let value = load_json(report)?;
+    let present = value
+        .get("frames")
+        .and_then(Value::as_array)
+        .map(|frames| {
+            frames
+                .iter()
+                .any(|frame| frame.get("code").and_then(Value::as_str) == Some(expected))
+        })
+        .unwrap_or(false);
+    if present {
+        Ok(())
+    } else {
+        Err(invalid(&format!("receive report missing frame code {expected}")))
+    }
 }
 
 const RUNTIME_NEGATIVE_TESTS: [&[&str]; 4] = [
@@ -1164,10 +1381,209 @@ fn handle_directory_lifecycle(
     mode: Mode,
 ) -> Result<(), XtaskError> {
     run_cargo_tests(root, facet)?;
+    // The inspect/promote/lint orchestration (with its rollback, version-floor,
+    // and removed-peer negatives) runs in both `all` and `negative-only`, since
+    // the negatives are part of it. Only `all` performs the relay-ops recursion.
+    directory_lifecycle_orchestration(root, facet)?;
     if mode == Mode::NegativeOnly {
         return Ok(());
     }
     run_recursion(root, manifest, facet)
+}
+
+/// Port of the `check-chio-pheromone-directory-lifecycle.sh` CLI flow: inspect
+/// active state, promote a first candidate, reject a rolled-back candidate,
+/// promote the proper candidate (asserting the version-2 floor and the
+/// quarantined removed peer), lint the promoted state and the supervisor
+/// profile, and confirm a removed peer cannot catch up.
+fn directory_lifecycle_orchestration(root: &Path, facet: &Facet) -> Result<(), XtaskError> {
+    let scratch = ScratchDir::new("directory-lifecycle")?;
+    let fixture_dir = root.join(&facet.fixture_dir);
+    let schema_dir = root.join("spec/schemas/chio-pheromone/v1");
+
+    let state_fixture = fixture_dir.join("peer-directory-state.json");
+    let bundle = fixture_dir.join("peer-directory-bundle.json");
+    let candidate = fixture_dir.join("peer-directory-candidate.json");
+    let trusted_issuers = fixture_dir.join("trusted-peer-directory-issuers.json");
+    let supervisor_profile = fixture_dir.join("relay-supervisor-profile.json");
+
+    // Inspect the committed active state.
+    let inspect_report = scratch.join("inspect-report.json");
+    require_cli(
+        root,
+        &[
+            "-p", "chio-cli", "--bin", "chio", "--",
+            "pheromone", "relay", "directory", "inspect",
+            "--state", &display(&state_fixture),
+            "--report", &display(&inspect_report),
+        ],
+    )?;
+    validate_document(
+        &schema_dir.join("peer-directory-rotation-report.schema.json"),
+        &inspect_report,
+    )?;
+
+    // First promotion: the bundle candidate into a fresh working state file.
+    let working_state = scratch.join("peer-directory-state.json");
+    let first_report = scratch.join("first-rotation-report.json");
+    require_cli(
+        root,
+        &[
+            "-p", "chio-cli", "--bin", "chio", "--",
+            "pheromone", "relay", "directory", "promote",
+            "--state", &display(&working_state),
+            "--candidate", &display(&bundle),
+            "--trusted-issuers", &display(&trusted_issuers),
+            "--profile", "production",
+            "--now-unix-ms", "1766000000500",
+            "--report", &display(&first_report),
+        ],
+    )?;
+    validate_document(&schema_dir.join("peer-directory-state.schema.json"), &working_state)?;
+    validate_document(
+        &schema_dir.join("peer-directory-rotation-report.schema.json"),
+        &first_report,
+    )?;
+
+    // Negative: a candidate whose previousVersionSha256 is wrong must be
+    // rejected with peer_directory_rollback.
+    let bad_candidate = scratch.join("bad-candidate.json");
+    let mut candidate_value = load_json(&candidate)?;
+    if let Some(body) = candidate_value.get_mut("body") {
+        set_str(body, "previousVersionSha256", &"d".repeat(64));
+    } else {
+        return Err(invalid("peer-directory candidate has no body to mutate"));
+    }
+    write_json(&bad_candidate, &candidate_value)?;
+    let rejected_report = scratch.join("rejected-rotation-report.json");
+    reject_cli(
+        root,
+        &[
+            "-p", "chio-cli", "--bin", "chio", "--",
+            "pheromone", "relay", "directory", "promote",
+            "--state", &display(&working_state),
+            "--candidate", &display(&bad_candidate),
+            "--trusted-issuers", &display(&trusted_issuers),
+            "--profile", "production",
+            "--now-unix-ms", "1766000000500",
+            "--report", &display(&rejected_report),
+        ],
+        "bad peer-directory candidate was unexpectedly promoted",
+    )?;
+    validate_document(&schema_dir.join("peer-directory-state.schema.json"), &working_state)?;
+    validate_document(
+        &schema_dir.join("peer-directory-rotation-report.schema.json"),
+        &rejected_report,
+    )?;
+    let rejected = load_json(&rejected_report)?;
+    if rejected.get("accepted") != Some(&Value::Bool(false))
+        || str_field(&rejected, "code") != Some("peer_directory_rollback")
+    {
+        return Err(invalid("bad candidate did not fail with peer_directory_rollback"));
+    }
+
+    // Second promotion: the proper candidate, advancing to the version-2 floor.
+    let second_report = scratch.join("second-rotation-report.json");
+    require_cli(
+        root,
+        &[
+            "-p", "chio-cli", "--bin", "chio", "--",
+            "pheromone", "relay", "directory", "promote",
+            "--state", &display(&working_state),
+            "--candidate", &display(&candidate),
+            "--trusted-issuers", &display(&trusted_issuers),
+            "--profile", "production",
+            "--now-unix-ms", "1766000000500",
+            "--report", &display(&second_report),
+        ],
+    )?;
+    validate_document(&schema_dir.join("peer-directory-state.schema.json"), &working_state)?;
+    validate_document(
+        &schema_dir.join("peer-directory-rotation-report.schema.json"),
+        &second_report,
+    )?;
+    directory_assert_promoted(&working_state, &second_report)?;
+
+    // Lint the promoted state.
+    let lint_state = scratch.join("lint-state.json");
+    require_cli(
+        root,
+        &[
+            "-p", "chio-cli", "--bin", "chio", "--",
+            "pheromone", "relay", "lint",
+            "--peer-directory-state", &display(&working_state),
+            "--profile", "production",
+            "--trusted-issuers", &display(&trusted_issuers),
+            "--report", &display(&lint_state),
+        ],
+    )?;
+    validate_document(&schema_dir.join("relay-health-report.schema.json"), &lint_state)?;
+
+    // Lint the supervisor profile.
+    let supervisor_report = scratch.join("supervisor-report.json");
+    require_cli(
+        root,
+        &[
+            "-p", "chio-cli", "--bin", "chio", "--",
+            "pheromone", "relay", "supervisor", "lint",
+            "--profile", &display(&supervisor_profile),
+            "--report", &display(&supervisor_report),
+        ],
+    )?;
+    validate_document(&schema_dir.join("relay-drill-report.schema.json"), &supervisor_report)?;
+
+    // Negative: the quarantined buyer peer must not be able to catch up.
+    let removed_catchup = scratch.join("removed-peer-catchup.json");
+    let store = scratch.join("relay.sqlite3");
+    reject_cli(
+        root,
+        &[
+            "-p", "chio-cli", "--bin", "chio", "--",
+            "pheromone", "relay", "catchup",
+            "--store", &display(&store),
+            "--peer", "did:chio:buyer-kernel",
+            "--peer-directory-state", &display(&working_state),
+            "--profile", "production",
+            "--trusted-issuers", &display(&trusted_issuers),
+            "--now-unix-ms", "1766000000500",
+            "--treaty", "treaty:buyer-dataco:support-ops",
+            "--after-cursor", "start",
+            "--limit", "1",
+            "--report", &display(&removed_catchup),
+        ],
+        "removed peer catch-up unexpectedly succeeded",
+    )?;
+    Ok(())
+}
+
+/// Assert the second promotion advanced to the version-2 floor, was accepted,
+/// and quarantined the removed buyer peer (the script's final python block).
+fn directory_assert_promoted(state: &Path, report: &Path) -> Result<(), XtaskError> {
+    let state_value = load_json(state)?;
+    let report_value = load_json(report)?;
+    let version_floor = state_value.get("versionFloor").and_then(Value::as_i64);
+    let active_version = state_value
+        .get("active")
+        .and_then(|a| a.get("version"))
+        .and_then(Value::as_i64);
+    if version_floor != Some(2) || active_version != Some(2) {
+        return Err(invalid("promoted state did not advance to version 2"));
+    }
+    if report_value.get("accepted") != Some(&Value::Bool(true))
+        || report_value.get("promotedVersion").and_then(Value::as_i64) != Some(2)
+    {
+        return Err(invalid("second promotion report was not accepted"));
+    }
+    let quarantined = state_value
+        .get("active")
+        .and_then(|a| a.get("removedPeerIds"))
+        .and_then(Value::as_array)
+        .map(|ids| ids.iter().any(|id| id.as_str() == Some("did:chio:buyer-kernel")))
+        .unwrap_or(false);
+    if !quarantined {
+        return Err(invalid("removed peer was not quarantined"));
+    }
+    Ok(())
 }
 
 fn handle_relay_observability(
@@ -1184,68 +1600,61 @@ fn handle_relay_observability(
         run_dashboard_test_and_build(root, &[])?;
     }
     if mode == Mode::NegativeOnly {
-        return Ok(());
+        // Parity with the script's `--negative-only` tail: the degraded
+        // observability fixture must carry the dead-letter and stale-lease
+        // recommendations before the gate exits.
+        return observability_assert_degraded_recommendations(&root.join(&facet.fixture_dir));
     }
     run_recursion(root, manifest, facet)
 }
 
-/// The alert routing/handoff/delivery facets: cargo tests, optional
-/// sre-metrics, npm test/build, then recurse. The dashboard `npm test`
-/// arguments differ per facet, so they are encoded here by facet name.
-fn handle_alert_with_npm(
-    root: &Path,
-    manifest: &Manifest,
-    facet: &Facet,
-    mode: Mode,
-) -> Result<(), XtaskError> {
-    run_cargo_tests(root, facet)?;
-    if facet.sre_metrics_registry {
-        run_sre_metrics(root)?;
-    }
-    if mode == Mode::NegativeOnly {
-        return Ok(());
-    }
-    if facet.needs_dashboard_npm {
-        run_dashboard_test_and_build(root, dashboard_test_args(&facet.name))?;
-    }
-    run_recursion(root, manifest, facet)
-}
-
-fn dashboard_test_args(facet_name: &str) -> &'static [&'static str] {
-    match facet_name {
-        "relay-alert-delivery" => &["--", "RelayAlertDeliverySummary", "RelayAlertRoutingSummary"],
-        "relay-alert-handoff" => &["--", "RelayAlertRoutingSummary"],
-        _ => &[],
-    }
-}
-
-/// The assurance facet runs cargo tests then its dashboard build after
-/// recursion (the script order). npm test args are the assurance-specific set.
-fn handle_alert_assurance(
-    root: &Path,
-    manifest: &Manifest,
-    facet: &Facet,
-    mode: Mode,
-) -> Result<(), XtaskError> {
-    run_cargo_tests(root, facet)?;
-    if mode == Mode::NegativeOnly {
-        return Ok(());
-    }
-    run_recursion(root, manifest, facet)?;
-    if facet.needs_dashboard_npm {
-        run_dashboard_test_and_build(root, &["--", "RelayAlertAssuranceSummary", "api", "App"])?;
+/// Assert the degraded relay observability fixture carries the
+/// `dead_letters_present` and `stale_leases_present` recommendations.
+fn observability_assert_degraded_recommendations(fixture_dir: &Path) -> Result<(), XtaskError> {
+    let report = load_json(&fixture_dir.join("relay-observability-degraded-report.json"))?;
+    let codes: std::collections::BTreeSet<&str> = report
+        .get("recommendations")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.get("code").and_then(Value::as_str))
+                .collect()
+        })
+        .unwrap_or_default();
+    for required in ["dead_letters_present", "stale_leases_present"] {
+        if !codes.contains(required) {
+            return Err(invalid(&format!(
+                "degraded relay observability fixture missing recommendation {required}"
+            )));
+        }
     }
     Ok(())
 }
 
-/// The export/archive/archive-package chain: cargo tests, then (mode == All)
-/// recurse one level up the chain (`--schema-only`).
+/// The export/archive/archive-package chain: each facet's artifact
+/// create-and-verify CLI orchestration (with the negatives the script drove),
+/// then the cargo tests, then (mode == All) recurse one level up the chain
+/// (`--schema-only`). The orchestration + negatives run in both `all` and
+/// `negative-only`; only `all` recurses.
 fn handle_archive_chain(
     root: &Path,
     manifest: &Manifest,
     facet: &Facet,
     mode: Mode,
 ) -> Result<(), XtaskError> {
+    match facet.name.as_str() {
+        "relay-alert-assurance-export" => assurance_export_orchestration(root, facet)?,
+        "relay-alert-assurance-archive" => assurance_archive_orchestration(root, facet)?,
+        "relay-alert-assurance-archive-package" => {
+            assurance_archive_package_orchestration(root, facet)?
+        }
+        other => {
+            return Err(invalid(&format!(
+                "archive chain has no orchestration for facet {other}"
+            )));
+        }
+    }
     run_cargo_tests(root, facet)?;
     if mode == Mode::NegativeOnly {
         return Ok(());
